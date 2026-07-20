@@ -1,5 +1,7 @@
 # Tranche INCOME-EXPENSE — Findings & design fork (2026-07-18)
 
+> **Lifecycle:** historical build evidence, không phải trạng thái live. Writer đã go-live sau snapshot này; xem [README.md](README.md). File được giữ vì SQL chuẩn bị vẫn tham chiếu các quyết định thiết kế bên dưới.
+
 > Trạng thái: **DESIGN-BLOCKED** — cần 1 quyết định kiến trúc của owner trước khi
 > build/activate. KHÁC HẲN 3 domain đã xong (payment/meter/cashbook) vốn chỉ cần
 > *wire* writer có sẵn. Domain này phải *author* nhiều writer mới VÀ có 1 xung đột

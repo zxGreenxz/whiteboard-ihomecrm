@@ -1,5 +1,7 @@
 # Chat Zalo (Zalo Chat)
 
+> **Reviewed:** 2026-07-20. Outbound từ web chỉ hỗ trợ text/reply/broadcast text; media là chiều nhận/render. Worker giữ service-role và cookie phiên plaintext nên là thành phần đặc quyền cần hardening.
+
 ## 1. Tổng quan & vai trò nghiệp vụ
 
 Domain này đưa kênh **Zalo cá nhân** vào CRM: nhắn tin 2 chiều với khách trọ / lead / môi giới ngay trong web (route `/chat-zalo`), gửi hàng loạt theo nhãn phân loại, và nhận Web Push khi có tin mới. Trong vòng đời tổng của CRM, Chat Zalo nằm ở khâu **giao tiếp khách hàng** — trước hợp đồng (tư vấn lead) lẫn sau hợp đồng (chăm sóc khách trọ, nhắc nợ) — nhưng hiện **chưa nối dữ liệu** với các domain khách hàng/HĐ (xem mục 6).
@@ -256,7 +258,7 @@ Route khai báo trong [App.tsx](src/App.tsx) với `RequirePermission module="ch
 - ← **Sale Phòng / Phòng trống** (dự kiến): automation `broadcast_vacant` được thiết kế để bắn ảnh phòng trống cho tập khách theo nhãn — mới có công tắc, chưa có engine.
 - ← Các domain khác hiện **không đọc** bảng `zalo_*` nào (nút "Gửi Zalo" trên hoá đơn ([InvoiceSendActions](src/components/invoices/InvoiceSendActions.tsx)), trang khách hàng… hiện mở deep-link/copy nội dung, không đi qua module chat).
 
-**Ranh giới hạ tầng:** worker là **tiến trình ngoài Vercel** giữ service-role key — tuyệt đối không đưa key này vào FE/repo public; cookie phiên Zalo chỉ nằm ở file `worker/sessions/` trên máy chạy worker.
+**Ranh giới hạ tầng:** worker là tiến trình ngoài Vercel giữ service-role key, poll queue mỗi 2 giây và có thể bypass RLS. Cookie phiên Zalo nằm trong JSON plaintext ở `worker/sessions/`; giới hạn quyền file/backup/log, dùng tài khoản phụ và xoay phiên nếu lộ. Xem [runbook Zalo](../zalo/README.md).
 
 ---
 

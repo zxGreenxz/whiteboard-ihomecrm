@@ -3,6 +3,18 @@
 Chỉ đạo owner: "tổ chức đã dừng để tập trung update toàn bộ lên và dùng luôn,
 sai sót sau đó thì sửa, không bật từ từ" + "bật nốt 4 writer".
 
+## Quyết định D1–D4 đã xác minh trước cutover
+
+| Quyết định | Thực hiện | Bằng chứng chính |
+|---|---|---|
+| **D1a** người duyệt là chủ sở hữu tổ chức | `t5_17` gán approver role cho hai organization | Demo: maker lập request → quản lý duyệt → `POSTED + APPROVED` |
+| **D1b** tự gạch trạng thái đã trả | `t5_19` đồng bộ accrual `paid` và `payout_voucher_id` | Duyệt tăng đúng; bỏ duyệt hoàn tác đúng |
+| **D2b** chốt lương fail-closed | `t5_11` bắt lợi nhuận tháng đã chốt và liệt kê hoa hồng thiếu sổ | REST happy path và hai guard đều PASS |
+| **D3** force-cancel hóa đơn chỉ khi sạch phiếu thu | `t5_18 force_cancel_v2`, không xóa payment | Còn phiếu thu bị chặn; trạng thái đã hủy là no-op |
+| **D4** invoice writer đủ parity | `t5_14 create/update_invoice_v1` hỗ trợ 7 field + credit | Kiểm field, credit, số hóa đơn và total mismatch đều PASS |
+
+Đây là bằng chứng tiền-cutover. Trạng thái flag OFF/CANARY của thời điểm này đã bị các đợt go-live bên dưới thay thế.
+
 ## Đợt 1 (sáng) — 11 flag money-path → ON
 
 - Căn cứ: preflight 30-agent **157 PASS / 0 FAIL / 0 BLOCKED thật** + browser

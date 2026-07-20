@@ -1,229 +1,68 @@
-# Supabase Edge Functions - AI Assistant
+# Supabase Edge Functions
 
-Hệ thống Edge Functions cho tính năng AI Assistant với khả năng:
-- Chat với AI (OpenAI GPT-4)
-- RAG (Retrieval Augmented Generation) với vector embeddings
-- Quản lý Knowledge Base
+> **Reviewed:** 2026-07-20. Legacy `ai-chat`, `ai-embeddings` và RAG `ai_*` đã bị xoá; không deploy theo hướng dẫn cũ.
 
-## Cấu trúc
+## Functions hiện hành
 
-```
-supabase/functions/
-├── ai-chat/          # Edge Function xử lý chat với AI
-│   └── index.ts      # Chính xử lý chat + RAG
-├── ai-embeddings/    # Edge Function tạo embeddings
-│   └── index.ts      # Tạo vector embeddings cho knowledge base
-└── README.md         # Tài liệu này
-```
+| Function | Vai trò | Auth chính |
+|---|---|---|
+| `admin-create-user` | **Tạo** user mới qua Supabase Admin API; không phải endpoint update | JWT hợp lệ + caller là `super_admin` |
+| `demo-reset` | Reset dữ liệu demo có cooldown/tripwire | POST + header `x-demo-secret` (không dùng admin JWT) |
+| `llm-proxy` | Proxy model cho AI Copilot, quota/reservation/usage | JWT + entitlement + cấu hình provider |
+| `salary-v5-jobs` | Chạy job V5 (`nightly`, `digest`, `close_period`...) | cron secret, service role hoặc JWT admin |
+| `send-push` | Gửi Web Push từ notification pipeline | JWT/service caller theo implementation |
 
-## Cài đặt
+Mỗi function có thư mục riêng với `index.ts`. Nguồn sự thật là code function, migrations liên quan và [docs hiện hành](../../docs/README.md).
 
-### 1. Cài đặt Supabase CLI
+## Deploy
 
-```bash
-npm install -g supabase
+```powershell
+supabase link --project-ref <project-ref>
+supabase functions deploy <function-name>
 ```
 
-### 2. Link với Supabase project
+Không deploy tất cả functions mù. Review diff, secrets, auth gateway và caller trước; deploy từng function trong phạm vi thay đổi.
 
-```bash
-supabase link --project-ref tryymsxyyckgbrmmvozx
+## Chạy local
+
+```powershell
+supabase functions serve <function-name> --env-file supabase/.env.local
 ```
 
-### 3. Cấu hình Environment Variables
+`supabase/.env.local` là secret local, phải nằm trong `.gitignore`. Không ghi key/token thật vào README, command log hoặc fixture.
 
-Trên Supabase Dashboard → Edge Functions → Secrets, thêm:
+## Secrets
 
-```
-OPENAI_API_KEY=sk-xxx...
-```
+- Provider/API key, `CRON_SECRET`, service-role và cấu hình push thuộc môi trường deploy.
+- Tên secret phải lấy từ code function tương ứng; không suy từ tài liệu AI/RAG cũ.
+- Thay đổi secret cần có kế hoạch rotation và kiểm tra fail-closed khi thiếu/sai.
 
-### 4. Deploy Edge Functions
+## AI Copilot (`llm-proxy`)
 
-```bash
-# Deploy tất cả functions
-supabase functions deploy
+- Runtime hiện dùng schema Copilot mới, không dùng `ai_conversations`, `ai_messages`, `ai_memory_embeddings` hay `ai_usage_stats` legacy.
+- Proxy kiểm provider/entitlement/quota server-side và ghi usage theo schema hiện hành.
+- Model không nằm trong metadata giá có thể bị hạch toán cost 0; xem [AI Copilot current status](../../docs/ai-copilot/README.md) trước khi mở model/provider mới.
+- Browser local/Ollama là nhánh riêng; không giả định mọi request đều qua Edge Function.
 
-# Hoặc deploy từng function riêng lẻ
-supabase functions deploy ai-chat
-supabase functions deploy ai-embeddings
-```
+## Salary V5 (`salary-v5-jobs`)
 
-## Chạy local (development)
+- Transport gọi logic job DB; idempotency/heartbeat nằm ở `cron_runs`.
+- Kênh chính là Vercel Cron qua `api/salary-v5-cron.js`; admin có thể chạy lại từ UI.
+- Job không tự post tiền V5. Ghi tiền chỉ qua gate đối soát/lock tương ứng.
+- Xem [V5 runbook](../../docs/bang-luong/V5-RUNBOOK.md).
 
-### 1. Tạo file .env.local
+## Security checklist
 
-```bash
-# supabase/.env.local
-OPENAI_API_KEY=sk-xxx...
-```
+1. Xác thực caller ở gateway và trong function khi cần.
+2. Không tin user ID/organization từ body nếu có thể derive từ JWT/database.
+3. Service-role chỉ dùng server-side và giới hạn code path.
+4. Validate method, content type, payload size và CORS theo endpoint.
+5. Không log Authorization header, secret, PII hoặc raw provider payload nhạy cảm.
+6. Test deny path, expired token, cross-org và retry/idempotency trước deploy.
 
-### 2. Start local functions
+## Kiểm tra sau thay đổi
 
-```bash
-supabase functions serve --env-file supabase/.env.local
-```
-
-Functions sẽ chạy tại: `http://localhost:54321/functions/v1/`
-
-## API Documentation
-
-### 1. AI Chat (`/ai-chat`)
-
-**Endpoint:** `POST /functions/v1/ai-chat`
-
-**Headers:**
-```
-Authorization: Bearer {supabase_access_token}
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "conversation_id": "uuid-optional",
-  "message": "Tôi muốn biết về hợp đồng thuê...",
-  "include_context": true,
-  "temperature": 0.7
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "conversation_id": "uuid",
-  "user_message": {...},
-  "assistant_message": {...},
-  "context_used": 3
-}
-```
-
-**Tính năng:**
-- Tự động tạo conversation mới nếu chưa có
-- Lưu user message vào database
-- Sử dụng RAG để tìm kiếm context từ Knowledge Base
-- Gọi OpenAI API với context
-- Lưu AI response vào database
-- Tự động cập nhật conversation stats
-
-### 2. Create Embeddings (`/ai-embeddings`)
-
-**Endpoint:** `POST /functions/v1/ai-embeddings`
-
-**Headers:**
-```
-Authorization: Bearer {supabase_access_token}
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "content": "Chính sách giảm giá cho khách thuê dài hạn...",
-  "entity_type": "policy",
-  "entity_id": "uuid-optional",
-  "entity_name": "Giảm giá dài hạn",
-  "importance_score": 0.8
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "embedding_id": "uuid",
-  "message": "Embedding created successfully"
-}
-```
-
-**Tính năng:**
-- Tạo vector embedding từ text
-- Lưu vào bảng ai_memory_embeddings
-- Hỗ trợ tìm kiếm semantic similarity
-
-## Database Schema
-
-### ai_conversations
-Lưu các cuộc trò chuyện của user
-
-### ai_messages
-Lưu các tin nhắn (user + assistant)
-
-### ai_memory_embeddings
-Lưu knowledge base dưới dạng vector embeddings (1536 dimensions)
-
-### Functions
-- `search_similar_memories()`: Tìm kiếm memories tương tự bằng vector similarity
-- `get_conversation_context()`: Lấy context của conversation
-
-## RAG (Retrieval Augmented Generation)
-
-Hệ thống sử dụng RAG để cải thiện chất lượng trả lời:
-
-1. **User gửi câu hỏi**
-2. **Tạo embedding** cho câu hỏi
-3. **Tìm kiếm** 5 memories tương tự nhất từ Knowledge Base (similarity > 0.7)
-4. **Ghép context** vào system message
-5. **Gọi OpenAI** với full context
-6. **Lưu response** và cập nhật access_count
-
-## Models được sử dụng
-
-- **Chat:** GPT-4 Mini (`gpt-4o-mini`) - Nhanh, rẻ, chất lượng tốt
-- **Embeddings:** text-embedding-3-small - 1536 dimensions
-
-## Cost Estimation
-
-**GPT-4o-mini pricing:**
-- Input: $0.15 / 1M tokens
-- Output: $0.60 / 1M tokens
-
-**Embeddings pricing:**
-- $0.02 / 1M tokens
-
-Trung bình 1 cuộc trò chuyện (10 messages, có RAG):
-- Tokens: ~5,000 tokens
-- Cost: ~$0.003
-
-## Troubleshooting
-
-### Error: "Missing OPENAI_API_KEY"
-→ Kiểm tra secrets trên Supabase Dashboard
-
-### Error: "relation does not exist"
-→ Chạy migration 026_ai_assistant_tables.sql
-
-### Error: "User not authenticated"
-→ Kiểm tra Authorization header có đúng format không
-
-### Embeddings search không trả về kết quả
-→ Kiểm tra similarity threshold (mặc định 0.7, có thể giảm xuống 0.5)
-
-## Tối ưu hóa
-
-### 1. Giảm token cost
-- Giới hạn conversation history (hiện tại: 20 messages)
-- Sử dụng temperature thấp hơn cho câu trả lời ổn định hơn
-
-### 2. Tăng tốc độ
-- Cache embeddings
-- Sử dụng HNSW index cho vector search (đã có)
-
-### 3. Cải thiện chất lượng
-- Tăng số lượng similar memories (hiện tại: 5)
-- Fine-tune similarity threshold
-- Thêm metadata vào embeddings
-
-## Security
-
-- ✅ Row Level Security (RLS) được bật
-- ✅ User chỉ truy cập được dữ liệu của mình
-- ✅ OPENAI_API_KEY được lưu an toàn trong Supabase Secrets
-- ✅ CORS được cấu hình đúng
-
-## References
-
-- [Supabase Edge Functions](https://supabase.com/docs/guides/functions)
-- [OpenAI API](https://platform.openai.com/docs)
-- [pgvector](https://github.com/pgvector/pgvector)
+- Chạy test caller/function liên quan.
+- Kiểm typecheck baseline và build.
+- Với schema migration, regenerate Supabase types sau deploy.
+- Với function đụng tiền/quyền, test trên org DEMO và kiểm audit/console; không ghi dữ liệu vào org thật.

@@ -5,11 +5,18 @@
 
 ## Hiện trạng
 
-- CRM hỗ trợ chat Zalo cá nhân hai chiều tại `/chat-zalo` qua worker Node `zca-js` chạy ngoài Vercel.
-- Frontend chỉ đọc/gọi Supabase; worker giữ service-role, xử lý queue gửi, WebSocket tin đến và đồng bộ Realtime.
-- Đã có hội thoại, gửi text/media, tải lịch sử, reaction, thu hồi, video, nhãn, mẫu tin, broadcast và Web Push tin mới.
+- CRM hỗ trợ chat Zalo cá nhân hai chiều tại `/chat-zalo` qua worker Node `zca-js` chạy ngoài Vercel; chiều gửi từ web hiện chỉ hỗ trợ **text/reply** và broadcast text.
+- Frontend chỉ đọc/gọi Supabase; worker giữ service-role, poll queue gửi mỗi 2 giây, nghe WebSocket tin đến và đồng bộ qua Realtime.
+- Media hiện chỉ ở chiều **nhận/render**: worker nhận ảnh/video, lưu URL CDN Zalo và frontend hiển thị; ảnh/file/voice từ web chưa có handler gửi dù schema và icon UI đã chừa chỗ.
+- Đã có hội thoại, tải lịch sử nhóm, reaction, thu hồi, nhãn, mẫu tin, broadcast text và Web Push tin mới.
 - Module chưa phải Zalo OA chính thức; dùng tài khoản phụ, theo dõi rủi ro khóa tài khoản và anti-spam/băng thông trong plan.
 - Liên kết customer/lead/contract còn là hướng mở rộng, không giả định đã tự ghép dữ liệu.
+
+## Rủi ro vận hành hiện tại
+
+- Worker giữ `SUPABASE_SERVICE_ROLE_KEY`, có thể bypass RLS; nếu VPS/process bị chiếm quyền thì phạm vi ảnh hưởng không chỉ riêng Zalo.
+- Session Zalo `{cookie, imei, userAgent}` được lưu JSON không mã hoá trong `worker/sessions/`; phải giới hạn quyền file, backup/log và xoay phiên nếu lộ.
+- Polling 2 giây tạo tải DB/độ trễ nền và worker đang là thành phần đặc quyền tin cậy. Theo dõi queue `queued/processing/failed`, chỉ giữ một listener cho mỗi nick và không coi polling là bảo đảm giao nhận tức thời.
 
 ## Vận hành
 

@@ -1,6 +1,6 @@
 # V5 — HỆ THỐNG LƯƠNG-THƯỞNG-KPI THỐNG NHẤT (Chuyên cần + Streak + Coverage + My Day)
 
-> v5 là đặc tả hợp nhất và thay thế toàn bộ bản thiết kế tiền-v5 đã được dọn khỏi repository. Plan giao hàng: [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). Đối chiếu triển khai: [V5-IMPLEMENTATION-LOG.md](V5-IMPLEMENTATION-LOG.md). Reviewed 2026-07-20.
+> v5 là đặc tả nghiệp vụ hợp nhất. Hành vi code/DB mới nhất, gồm forward-fix 20/07, được tóm tại [../he-thong/17-luong-thuong.md](../he-thong/17-luong-thuong.md); migration mới hơn thắng khi khác đặc tả. Plan giao hàng: [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). Đối chiếu triển khai: [V5-IMPLEMENTATION-LOG.md](V5-IMPLEMENTATION-LOG.md). Worker watchdog trong thiết kế ban đầu đã bị gỡ; fallback live là nút admin chạy lại job. Reviewed 2026-07-20.
 
 ---
 
@@ -1018,7 +1018,7 @@ ALTER TABLE salary_adjustments ADD CONSTRAINT salary_adjustments_source_check
 
 - Mọi job **IDEMPOTENT** + ghi `cron_runs` (UNIQUE (job, idem_key) chống chạy đôi); chạy 2 lần cùng khoá không đổi kết quả.
 - **Fallback tầng 1:** nút admin **"Chạy lại job"** trong settings (đủ cả 4 job), gọi đúng edge fn cùng idem_key, kết quả trong 10s.
-- **Fallback tầng 2:** `worker/index.js` làm **watchdog mỏng** — mỗi 30–60′ đọc `cron_runs`, thiếu heartbeat >2h → HTTP gọi lại chính edge fn (cùng khoá idempotent) + báo chủ. Worker **KHÔNG ôm logic v5** — chỉ vài dòng gọi lại; caveat phải-restart-worker chỉ áp cho đoạn watchdog, ghi rõ trong runbook.
+- **Sai khác triển khai:** watchdog mỏng trong `worker/index.js` từng có ở bản đầu nhưng đã bị gỡ. Runtime hiện chỉ dùng fallback tầng 1; `cron_runs` vẫn là nguồn kiểm tra heartbeat để admin phát hiện và chạy lại job.
 - Các job này chỉ tính điểm/nhắc/dựng bảng đối chiếu — **không sinh tiền** (tiền chỉ sinh khi LOCK) → cron fail không làm sai lương (test: tắt cron 48h → 0 sai state tiền).
 
 ### 9.8 Edge cases chốt
@@ -1036,7 +1036,7 @@ ALTER TABLE salary_adjustments ADD CONSTRAINT salary_adjustments_source_check
 | 9 | Thu hộ từ xa / phiếu phòng toà khác | Geofence so toà CỦA PHÒNG TRÊN PHIẾU → `outside`, không tick nguồn 3; phiếu vẫn hợp lệ về tiền |
 | 10 | Double-tap / retry mạng | Advisory lock + idempotent key tự nhiên (user+date / session+hash / job+idem_key) — gọi lại trả kết quả cũ |
 | 11 | Đứt chuỗi ngày cuối tháng vs full_month | full_month = đứt-không-phép **= 0** trên N_chuẩn — đánh giá tại close_period; ngày cuối expired → chỉ không đạt full_month, mốc số đã bank giữ nguyên |
-| 12 | Cron fail / worker chết | Job không sinh tiền → fail không sai lương; watchdog heartbeat >2h gọi lại; nút admin tầng 1 |
+| 12 | Cron fail | Job không sinh tiền → fail không sai lương; kiểm `cron_runs` rồi dùng nút admin chạy lại job |
 | 13 | Thu tiền toà chưa check nhưng ngày ĐÃ ticked | KHÔNG sinh notification treo (tránh spam Nathan); nhu cầu ghé toà chuyển prompt piggyback |
 
 ---
@@ -1128,19 +1128,19 @@ Gánh hành chính của chủ gói trong **3 nút, tổng <10′/ngày**: duy�
 - **Chất lượng phiếu:** dwell median theo cỡ toà (vs 8/12/18), histogram dwell (phát hiện dồn sát ngưỡng), %fail-dwell, %ảnh flag, %phiếu "Tình trạng nhà: có vấn đề".
 - **Tiền (shadow):** phân bố ngày-công, median/phân vị best-streak, %full-streak, %mốc-nhờ-khiên (kèm mô phỏng cap khiên 2 từ `sim_cap2`), variance tạm-tính vs LOCK-shadow, quỹ v5 vs thực trả per-người.
 - **Hành vi:** push-ignore rate, %check-sau-thu quá hạn 23:59 (đo nhịp 17:00 có đúng không), tỷ lệ khiếu nại tick, thời gian xử án, p90 gánh chủ/ngày, presenteeism ở rìa mốc (van CHRO).
-- **Vận hành:** `cron_runs` heartbeat, lần watchdog phải gọi lại, lỗi trong `salary_award_errors`.
+- **Vận hành:** `cron_runs` heartbeat, số lần admin phải chạy lại job, lỗi trong `salary_award_errors`.
 
 ---
 
 ## Ch.12 — ROADMAP GIAO HÀNG (TÓM TẮT)
 
-**6 epics:** **E1** Nền dữ liệu (schema INS/INP/SAD/SSS/cron_runs + collect_* + VIEW coverage + catalog settings + calendar `vn_workdays` + `get_salary_v5_config` + feature flag) · **E2** Engine dấu chân (phiên FULL/QUICK + presence/resume + hàm lõi `v5_tick_attendance` + streak/khiên + `record_payment_gps` + edge fn `salary-v5-jobs` 4 job + watchdog) · **E3** Màn /my-day (3 khối + tuyến + piggyback + digest/recap + treo check-sau-thu + gain-framing lint) · **E4** Đo đếm + LOCK (self-view + owner dashboard 4 tab có Đối soát tháng + 5 lớp flag + màn kết án + chốt mềm/72h/LOCK + 3 ASSERT) · **E5** Settings + phép 1-chạm (tab Lương v5 + holidays + nút chạy lại job) · **E6** Shadow & metrics + kill-switch (chặng-state machine + gate dashboard + báo cáo lệch + sim cap 2 + diễn tập + onboarding "Tôi đã hiểu" + runbook).
+**6 epics (lịch sử giao hàng):** **E1** Nền dữ liệu (schema INS/INP/SAD/SSS/cron_runs + collect_* + VIEW coverage + catalog settings + calendar `vn_workdays` + `get_salary_v5_config` + feature flag) · **E2** Engine dấu chân (phiên FULL/QUICK + presence/resume + hàm lõi `v5_tick_attendance` + streak/khiên + `record_payment_gps` + edge fn `salary-v5-jobs` 4 job; watchdog từng triển khai rồi đã gỡ) · **E3** Màn /my-day (3 khối + tuyến + piggyback + digest/recap + treo check-sau-thu + gain-framing lint) · **E4** Đo đếm + LOCK (self-view + owner dashboard 4 tab có Đối soát tháng + 5 lớp flag + màn kết án + chốt mềm/72h/LOCK + 3 ASSERT) · **E5** Settings + phép 1-chạm (tab Lương v5 + holidays + nút chạy lại job) · **E6** Shadow & metrics + kill-switch (chặng-state machine + gate dashboard + báo cáo lệch + sim cap 2 + diễn tập + onboarding "Tôi đã hiểu" + runbook).
 
 | Sprint (2 tuần) | Nội dung chính |
 |---|---|
 | **S0** (2 ngày) | Chủ xác nhận model phép trung tính + regen types.ts + đối chiếu information_schema + check trùng tên bảng |
 | **S1** | E1: migrations (Node UTF-8) + catalog + calendar + RPC config + flag; DoD: test acc nhân viên, property test SQL≡TS, grep 0 literal 230769/26 |
-| **S2** | E2: toàn bộ RPC engine + cron 4 job + watchdog; DoD: idempotent test, cron live 3 ngày sạch; **GRACE 14d bắt đầu cuối S2** |
+| **S2** | E2: toàn bộ RPC engine + cron 4 job + watchdog ở bản đầu (sau đó đã gỡ); DoD: idempotent test, cron live 3 ngày sạch; **GRACE 14d bắt đầu cuối S2** |
 | **S3** | E3 + US-5.3 phép 1-chạm 2 phía; DoD: Playwright Joey-flow + Nathan-flow mobile viewport, lint chuỗi cấm xanh |
 | **S4** | E4 + E5 (settings/holidays); DoD: LOCK-shadow 1 kỳ giả lập 3 ASSERT pass, án gian lận demo end-to-end, tab Đối soát tháng đủ |
 | **S5** | E6: gates + kill-switch (diễn tập có biên bản) + onboarding + runbook; rollout tiếp chặng 1→2→3 theo gate Ch.11 |

@@ -1,5 +1,7 @@
 # FINDING: đường "payout qua engine duyệt" chưa sẵn sàng (2026-07-18)
 
+> **Lifecycle:** historical audit evidence. Blocker này đã được xử lý trước go-live; trạng thái hiện hành nằm ở [README.md](README.md) và [STATUS-2026-07-19-GOLIVE-FULL.md](STATUS-2026-07-19-GOLIVE-FULL.md). Nội dung bên dưới giữ nguyên để giải thích vì sao các migration `t5_17`–`t5_19` tồn tại.
+
 **Mức độ: BLOCKER cho cả họ money-payout** (salary_payout_v1, distribute_shareholder_profit_v1,
 manager_salary_payout_v1). Không phá gì hiện tại — tất cả đang **inert (flag OFF)**, app 100% legacy.
 

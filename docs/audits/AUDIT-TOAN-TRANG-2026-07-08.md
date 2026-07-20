@@ -1,5 +1,7 @@
 # Báo cáo kiểm tra toàn trang web + Phương án tối ưu
 
+> **Lifecycle:** historical audit snapshot. Mọi finding phải tái kiểm chứng với runtime/code hiện tại; xem [README.md](README.md).
+
 **Ngày:** 2026-07-08 · **Phạm vi:** toàn bộ `src/` (128 page, 392 component, 116 hook, ~181.500 dòng, ~60 route)
 **Phương pháp:** đọc code theo 8 nhóm domain (8 agent song song) → xác minh đối kháng 19 finding nghiêm trọng nhất (mỗi finding 1 verifier hoài nghi độc lập đọc lại code + đối chiếu schema) → **đo thực nghiệm trên DB production** để chốt cái nào đang cắn thật.
 

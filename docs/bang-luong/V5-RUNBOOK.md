@@ -1,6 +1,7 @@
 # V5 RUNBOOK — vận hành hệ lương v5 (cho chủ + dev)
 
 > Đọc kèm [V5-IMPLEMENTATION-LOG.md](V5-IMPLEMENTATION-LOG.md) (bản đồ revert) và [V5-HE-THONG-LUONG-THUONG-THONG-NHAT.md](V5-HE-THONG-LUONG-THUONG-THONG-NHAT.md) Ch.11 (gates).
+> **Reviewed:** 2026-07-20. Trước khi chốt, kiểm thêm `system_v5.effective_from`, các việc `exclude_from_salary` và thời điểm hoàn thành do server đóng dấu.
 
 ## 1. Việc chủ cần làm MỘT LẦN sau deploy
 

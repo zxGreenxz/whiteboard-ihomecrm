@@ -103,6 +103,6 @@ Kết quả mong đợi: bạn đọc được cấu trúc bản kê cọc (7 c�
 - [Thu tiền hóa đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/) — cọc còn thiếu được gộp thu qua hóa đơn tháng đầu, tách thành hạng mục "Tiền cọc" khi thu.
 - [Thanh lý – khách trả phòng](/03-quan-ly-van-hanh/thanh-ly-move-out/) — nơi phát sinh việc **hoàn cọc** khi khách rời phòng.
 - [Thanh lý – bỏ cọc](/03-quan-ly-van-hanh/thanh-ly-forfeit/) — nơi phát sinh việc **mất cọc** (cọc thành doanh thu thanh lý).
-- [Khách nợ tiền](/04-bao-cao/khach-no-tien/) — soi công nợ hóa đơn của khách, bổ trợ cho bức tranh cọc/nợ.
+- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — xem các hóa đơn còn phải thu, bổ trợ cho bức tranh cọc/nợ.
 - [Hub Báo cáo Tài chính](/04-bao-cao/hub-tai-chinh/) — điểm vào của toàn bộ báo cáo tài chính.
 - [Quy trình khách thuê](/01-bat-dau/quy-trinh-khach-thue/) — mạch từ giữ chỗ, đặt cọc đến ký hợp đồng, để đặt báo cáo này đúng chỗ trong quy trình.

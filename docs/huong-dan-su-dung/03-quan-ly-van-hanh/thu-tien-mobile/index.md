@@ -6,7 +6,7 @@ permissions: [{module: thu_tien, action: collect}]
 viewport: mobile
 audience: [thu-ngan, sale]
 captured:
-  date: "2026-07-03"
+  date: "2026-07-20"
   account: demo
 status: published
 ---
@@ -66,13 +66,15 @@ Khi bạn xác nhận thu, hệ thống tạo **một phiếu thu** và ghi ti�
 
 **Bước 7**: Ghi chú cho phòng — trong ngăn thu tiền có ô **Ghi chú** để lưu tình huống (khách hẹn ngày trả, thu hộ…). Ghi chú bám theo hoá đơn, ai mở ra cũng thấy.
 
-**Bước 8**: Lỡ tay thì hoàn tác — nếu ghi nhầm, ấn **Hoàn tác** trong ngăn thu tiền để huỷ **khoản thu gần nhất** của hoá đơn đó; số tiền và trạng thái được tính lại ngay.
+**Bước 8**: Lỡ tay thì hoàn tác — nếu ghi nhầm, ấn **Hoàn tác** trong ngăn thu tiền để đảo **khoản thu gần nhất** của hoá đơn đó; số tiền và trạng thái được tính lại ngay.
 
 ::: warning Hoàn tác chỉ gỡ khoản thu mới nhất
-**Hoàn tác** xoá phiếu thu vừa ghi (và tiền thối / khoản dư đi kèm) của hoá đơn, rồi hạ lại số đã thu. Nó chỉ áp cho **lần thu gần nhất**, không phải toàn bộ lịch sử. Cần điều chỉnh một khoản cũ hơn thì xử lý phiếu ở màn [Thu chi](/03-quan-ly-van-hanh/thu-chi/). Thao tác này khó lấy lại nếu bạn đã bàn giao tiền, nên chỉ hoàn tác khi chắc chắn ghi sai.
+**Hoàn tác** ưu tiên tạo bút toán đối ứng và giữ dấu vết thay vì xoá lịch sử payment. Nó chỉ áp cho **lần thu gần nhất**, không phải toàn bộ lịch sử. Một số payment legacy đặc biệt mới dùng fallback xoá cũ. Cần điều chỉnh khoản cũ hơn thì xử lý tại [Thu chi](/03-quan-ly-van-hanh/thu-chi/). Nếu tiền đã bàn giao, phải đối chiếu trước khi hoàn tác.
 :::
 
 **Bước 9**: Xem báo cáo thu — mở **Báo cáo** (cần quyền `thu_tien.report`) để xem theo **Toà** (hoặc Tất cả toà) và theo **thời gian** (Cả kỳ / Hôm nay / chọn 1 ngày trên lịch tháng thu gọn): nhóm phòng đã thu theo toà và danh sách phòng chưa thu để bạn biết còn phải đi những phòng nào.
+
+**Bước 10**: Đóng phí vận hành theo kỳ — bấm icon **phích cắm** trên header. Màn **Đóng tiền tập trung** cho phép chọn Tiền nhà, Điện, Nước, Internet, Quản lý, Vệ sinh, Công an, Rác, Thang máy; ngoài ra có khu Hoa hồng và Bảo trì. Chọn toà, nhập **tổng tiền của cả khoảng kỳ**, số kỳ (1–36), sổ và ảnh rồi xác nhận. Ô có thể ở trạng thái **Nháp chờ thanh toán**; khi đó mở phiếu, chọn sổ/ảnh và bấm **Thanh toán** để duyệt. Nếu hệ thống cảnh báo trùng, kiểm các voucher đang có trước khi force tạo thêm.
 
 ## Các tính năng khác trên màn hình
 
@@ -87,7 +89,7 @@ Khi bạn xác nhận thu, hệ thống tạo **một phiếu thu** và ghi ti�
 | Nút **Gọi khách** (trong ngăn) | Gọi cho khách đại diện của phòng đang mở. |
 | **Báo cáo** | Mở báo cáo thu theo toà và thời gian (cần quyền `thu_tien.report`). |
 | **Bàn giao tiền mặt** | Bàn giao số dư sổ thu của bạn cho người nhận — xem [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) và [Bàn giao & đối soát](/03-quan-ly-van-hanh/ban-giao-doi-soat/). |
-| **Đóng tiền điện nước** | Ghi phiếu chi tiền điện/nước cho nhà cung cấp theo từng toà. |
+| **Đóng phí theo kỳ** | Ghi/đối chiếu phí cố định, hoa hồng và bảo trì theo toà; hỗ trợ nhiều kỳ, phiếu nháp và nhiều voucher mỗi ô. |
 
 Kỳ, toà và các bộ lọc bạn đang chọn được **giữ lại khi tải lại trang (F5)**.
 
@@ -103,6 +105,8 @@ Kỳ, toà và các bộ lọc bạn đang chọn được **giữ lại khi t�
 | Hoá đơn tự thành **Đã thu** dù còn thiếu vài nghìn | Đúng thiết kế: phần thiếu **dưới 10.000đ** được **làm tròn** vào sổ "Làm tròn tiền thiếu" và đóng hoá đơn — không trừ số dư của bạn. |
 | Không thấy nút **Hoàn tác** | Bạn thiếu quyền **Thu tiền => Hoàn tác** (`thu_tien.undo`). Hoàn tác cũng chỉ gỡ được **khoản thu gần nhất** của hoá đơn. |
 | Thu tiền cọc mà lo cọc **lẫn vào doanh thu** | Yên tâm: hạng mục **Tiền cọc** trong hoá đơn tháng đầu được tách riêng khi thu và **không tính vào KQKD**. |
+| Phí theo kỳ hiện badge **Nháp** | Phiếu chưa vào sổ. Mở voucher, chọn sổ + ảnh chứng từ rồi bấm **Thanh toán**. |
+| Đóng phí báo **đã có phiếu** | Mở danh sách voucher của ô để kiểm số tiền/kỳ; chỉ force tạo thêm khi chắc chắn đây là khoản chi khác. |
 
 ## Thử trực tiếp trên sandbox
 

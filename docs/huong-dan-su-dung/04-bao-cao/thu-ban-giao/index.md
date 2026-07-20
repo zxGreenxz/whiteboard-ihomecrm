@@ -75,7 +75,7 @@ Vì mọi con số bám vào hóa đơn và phiếu bàn giao thật, báo cáo 
 - Màn hình **chưa có nút xuất file** riêng. Muốn lưu lại, bạn **in / lưu PDF** từ trình duyệt (Ctrl / Cmd + P) hoặc chụp màn hình.
 - **Vào nhanh khi đang thu tiền**: ở trang **Thu tiền** bấm biểu tượng **↻ (Repeat)** để mở ngay chu kỳ của mình — tiện kiểm tra "mình còn giữ bao nhiêu chưa nộp" ngay trong lúc đi thu.
 - **Người đi thu không cần quyền báo cáo đầy đủ**: chỉ cần quyền **thu tiền hóa đơn** là xem được chu kỳ **của chính mình** (không mở được các báo cáo tài chính khác).
-- **Muốn biết chính xác "còn phải nộp" và chốt số theo ngày**: dùng [Bàn giao & đối soát](/03-quan-ly-van-hanh/ban-giao-doi-soat/). **Muốn xem tồn quỹ từng ngày**: dùng [Sổ quỹ theo ngày](/04-bao-cao/so-quy-ngay/). **Muốn danh sách từng khách còn nợ**: dùng [Khách nợ tiền](/04-bao-cao/khach-no-tien/).
+- **Muốn biết chính xác "còn phải nộp" và chốt số theo ngày**: dùng [Bàn giao & đối soát](/03-quan-ly-van-hanh/ban-giao-doi-soat/). **Muốn xem tồn quỹ từng ngày**: dùng [Sổ quỹ theo ngày](/04-bao-cao/so-quy-ngay/). **Muốn xem các hóa đơn còn phải thu**: dùng [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
 
 ## Thử trực tiếp trên sandbox
 
@@ -98,9 +98,7 @@ Kết quả mong đợi: bạn hiểu **chu kỳ thu → nộp chủ** — đã 
 - [Bàn giao tiền & đối soát chốt sổ](/03-quan-ly-van-hanh/ban-giao-doi-soat/) — tạo phiếu bàn giao, xem *còn phải nộp* và chốt số dư sổ theo ngày; nguồn của các mốc bàn giao trong báo cáo này.
 - [Thu tiền hóa đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/) — ghi nhận thu tiền (TM/TK/TT) sinh ra số "đã thu" và nút ↻ vào thẳng chu kỳ.
 - [Sổ quỹ theo ngày](/04-bao-cao/so-quy-ngay/) — tồn quỹ từng sổ theo ngày (as-of), đối chiếu với tiền đã thu/đã nộp.
-- [Khách nợ tiền](/04-bao-cao/khach-no-tien/) — danh sách từng khách còn nợ, bổ trợ cho con số "Chưa thu".
-- [Công nợ HĐ mới](/04-bao-cao/cong-no-hd-moi/) — theo dõi công nợ theo hợp đồng mới.
+- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — xem các hóa đơn còn phải thu, bổ trợ cho con số "Chưa thu".
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/) — quản lý từng sổ quỹ, số dư và khóa sổ.
-- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — bức tranh tổng từ thu tiền tới sổ quỹ.
 - [Quy trình bàn giao](/01-bat-dau/quy-trinh-ban-giao/) — thu → bàn giao → chốt sổ.
 - [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/) — chu kỳ vận hành cuối tháng liên quan tới thu và bàn giao.

@@ -1,8 +1,10 @@
 # Tài liệu Yêu cầu - Tái triển khai Đồng hồ Công tơ & Ghi chỉ số
 
+> **Lifecycle:** historical Kiro spec. Nguồn hiện hành: `docs/he-thong/06-cong-to-chi-so.md` và `docs/huong-dan-su-dung/03-quan-ly-van-hanh/ghi-chi-so/`.
+
 ## Giới thiệu
 
-Tính năng này tái triển khai hoàn toàn hai module quản lý Đồng hồ Công tơ (Meters) và Ghi chỉ số (Meter Readings) trong hệ thống quản lý bất động sản Resident. Mục tiêu là đảm bảo 100% khớp với tài liệu hướng dẫn chính thức tại `resident-docs/`, bao gồm: quản lý CRUD công tơ theo phòng, ghi chỉ số từng phòng và hàng loạt, quy trình duyệt chỉ số, thống kê, và tích hợp với hóa đơn. Hệ thống hiện tại có cơ sở dữ liệu (bảng `meters`, `meter_readings`) và code frontend cơ bản nhưng chưa khớp với tài liệu, cần tái triển khai lại giao diện và logic nghiệp vụ.
+Tài liệu này ghi lại yêu cầu tái triển khai theo cây Resident docs cũ. Mọi hạng mục chưa hoàn tất phải tái kiểm chứng với tài liệu và code hiện hành trước khi thực hiện.
 
 ## Thuật ngữ
 

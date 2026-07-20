@@ -1,5 +1,5 @@
 // Đối chiếu sổ tay Excel 686-TCB (Nathan) với sổ quỹ TKHIEP trên web.
-// Quy tắc chi tiết: docs/doi-chieu-so-quy-686tcb.md
+// Quy tắc chi tiết: docs/doi-chieu/so-quy-686tcb.md
 // Dùng: node scripts/doi-chieu-thu-tien.mjs [file.xlsx] [YYYY-MM-DD]
 //   - file.xlsx : mặc định "dataexcel/danh sách thu tiền v2.xlsx"
 //   - YYYY-MM-DD: ngày chốt — chỉ lấy phiếu web đến hết ngày này (Excel thường nhập trễ hơn web)
@@ -183,4 +183,4 @@ const dThu = match(exIn, aggregate(web.filter((v) => v.type === 'INCOME')), 'THU
 const dChi = match(exOut, aggregate(web.filter((v) => v.type === 'EXPENSE')), 'CHI');
 console.log('\n=== KIỂM CHỨNG ===');
 console.log(`Chênh số dư (Web − Excel) = NetCHI − NetTHU = ${fmt(dChi - dThu)} (phải khớp dòng CHÊNH dư ở trên)`);
-console.log('Lưu ý: cặp lệch còn lại đọc theo docs/doi-chieu-so-quy-686tcb.md mục "Bẫy thường gặp".');
+console.log('Lưu ý: cặp lệch còn lại đọc theo docs/doi-chieu/so-quy-686tcb.md mục "Bẫy thường gặp".');

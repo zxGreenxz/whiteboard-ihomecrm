@@ -4,6 +4,18 @@
 > Mỗi phase = 1 commit độc lập, shippable, đã push thẳng `main` → Vercel production.
 > Đọc theo thứ tự; mỗi file phase có mục **"Reviewer cần soi"** ở cuối.
 
+> **Lifecycle:** historical implementation evidence. Trạng thái hệ thống hiện hành nằm ở [../he-thong/README.md](../he-thong/README.md); audit đầu vào nằm ở [../audits/README.md](../audits/README.md).
+
+## Mục lục hồ sơ
+
+- [RISK-REGISTER.md](RISK-REGISTER.md) — rủi ro, câu hỏi mở và follow-up.
+- [phase-1-security.md](phase-1-security.md) — tenant/security.
+- [phase-1b-audit-followup.md](phase-1b-audit-followup.md) — audit vòng 2 và forward-fix.
+- [phase-2-3-types-money.md](phase-2-3-types-money.md) — generated types và cap-1000 tiền.
+- [phase-4-db-hygiene.md](phase-4-db-hygiene.md) — policy/view/migration hygiene.
+- [phase-5-6-frontend.md](phase-5-6-frontend.md) — query gate, log và formatter.
+- [phase-7-10.md](phase-7-10.md) — route/report cleanup và refactor frontend tiếp theo.
+
 ## Bối cảnh
 
 Xuất phát từ yêu cầu "rà soát toàn bộ web (code + database + logic liên hệ giữa

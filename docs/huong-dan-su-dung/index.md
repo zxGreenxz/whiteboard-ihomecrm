@@ -1,5 +1,6 @@
 ---
 layout: home
+markdownStyles: false
 
 hero:
   name: "ptcrm"

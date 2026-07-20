@@ -1,6 +1,9 @@
 ---
 title: "Khách nợ tiền (đã chuyển)"
 description: "Trang cũ được giữ làm biển chỉ đường tới luồng Thu tiền hiện hành."
+kind: redirect
+lifecycle: current
+sidebar: false
 routes: ["/reports/finance/customer-debt"]
 redirect_to: "/thu-tien"
 permissions: []

@@ -1,6 +1,8 @@
 ---
 title: "Demo kế hoạch phát triển"
 description: "Phòng trình bày các kế hoạch phát triển sản phẩm bằng sơ đồ, lộ trình, mô hình nghiệp vụ và phụ lục kỹ thuật."
+kind: presentation-hub
+lifecycle: current
 routes: []
 permissions: []
 viewport: desktop

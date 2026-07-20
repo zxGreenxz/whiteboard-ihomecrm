@@ -1,5 +1,7 @@
 # Thu chi & Sổ quỹ (Income/Expenses · Accounts/Cashbooks)
 
+> **Reviewed:** 2026-07-20. Thanh toán hoá đơn dùng writer atomic; approval canonical đã go-live, nhưng các flow batch/legacy khác trong domain vẫn phải đọc theo cảnh báo riêng.
+
 > Domain trung tâm dòng tiền. Mọi tiền vào/ra hệ thống — thu HĐ, thanh toán hoá đơn,
 > chi phí vận hành, hoàn/thối cọc, hoa hồng, chia lợi nhuận cổ đông — đều đáp xuống
 > đây dưới dạng **phiếu thu/chi** (`income_expenses`) gắn vào một **sổ quỹ** (`accounts`).
@@ -477,7 +479,7 @@ File: [ThuTien.tsx](src/pages/ThuTien.tsx) + [src/components/thu-tien/](src/comp
 
 **Quyền**: gate bằng `invoices.record_payment` (`useMyPermissions` + `can`) — không có quyền thì ẩn nút thu.
 
-**Luồng thu** ([useQuickCollect](src/hooks/useQuickCollect.ts)): hỗ trợ **TM/TK/TT** (1-chạm mặc định TM; form nhiều dòng `lines` tách phương thức, cho thu dư → thối hoặc "nợ khách" `excess_amounts`) — bọc `useBulkRecordPayment` → INSERT `payments` + phiếu `income_expenses` INCOME mirror (`payment_id`/`invoice_id`; **`user_id` = OWNER của hoá đơn**, không phải staff thao tác — để RLS khớp); trigger `recompute_invoice_for_id` tự cập nhật `paid_amount`/`status` hoá đơn. Số tiền cap ≤ remaining.
+**Luồng thu** ([useQuickCollect](src/hooks/useQuickCollect.ts)): hỗ trợ **TM/TK/TT** (1-chạm mặc định TM; form nhiều dòng `lines` tách phương thức, cho thu dư → thối hoặc "nợ khách" `excess_amounts`) — bọc `useBulkRecordPayment` → adapter thử `record_invoice_payment_v4`, fallback có kiểm soát sang v3; mỗi sub-line ghi payment + voucher + item atomic với idempotency (`user_id` attribution = owner hoá đơn). Trigger/server tự cập nhật `paid_amount`/`status`; toàn batch vẫn có thể thành công một phần. Số tiền cap ≤ remaining.
 
 - **Sổ quỹ nhận resolve theo PHƯƠNG THỨC** qua hàm thuần dùng chung [cashAccount.ts](src/lib/cashAccount.ts) (`resolveAccountIdForMethod` — cũng dùng cho `RecordPaymentDialog`): **TM** = sổ `"…Thu"` do CHÍNH user sở hữu (**nhiều sổ "…Thu" → ưu tiên `is_default`**, vd Tâm Thu = default, Huy Thu để dành user sau; không có default mới lấy sổ đầu A→Z) → sổ tên `"Chung"` → sổ **trùng tên toà**; **TK/TT** = `buildings.default_account_id_tk/tt` → sổ trùng tên toà. Không resolve được → `''` (UI disable chip / throw chặn insert `account_id` rỗng). Vẫn là quy ước theo TÊN (magic string — cảnh báo §5.4 còn nguyên hiệu lực).
 - **Tiền thối**: sổ `"…Thối"` của chính user (`findOwnChangeAccount` — Hiển→Hiển Thối, Hiệp→Hiệp Thối).
@@ -500,7 +502,7 @@ File: [BanGiaoCycleReport.tsx](src/pages/reports/finance/BanGiaoCycleReport.tsx)
 
 **Vào domain này (tiền đáp xuống thu chi):**
 
-- **Hoá đơn / Thanh toán** (`payments` → `income_expenses.payment_id`, `invoice_id`): mỗi thanh toán hoá đơn tạo phiếu thu mirror, qua 2 đường: (a) `RecordPaymentDialog` (thu 1 hoá đơn) → `useRecordPaymentRPC` — RPC `record_invoice_payment_v2` insert payment + update hoá đơn, FE insert phiếu mirror sau đó, **`user_id` = người thao tác** (`auth.uid()`); (b) `BulkRecordPaymentDialog` (thu hàng loạt) + trang `/thu-tien` (§5.10, qua `useQuickCollect`) → `useBulkRecordPayment` — insert trực tiếp payments + voucher, **`user_id` = OWNER của hoá đơn** (không phải staff thao tác — để RLS khớp). Huỷ phiếu thu mirror → xoá payment → trigger recompute hoá đơn (chuỗi 2 bước không atomic — §5.1 #4).
+- **Hoá đơn / Thanh toán** (`payments` → `income_expenses.payment_id`, `invoice_id`): `RecordPaymentDialog`, bulk và `/thu-tien` cùng dùng `recordInvoicePaymentWithFallback` (v4 canonical → v3 coexistence). Một sub-line atomic gồm payment + phiếu thu + items + idempotency; bulk nhiều hoá đơn không phải một transaction. Hoàn tác payment ưu tiên `reverse_invoice_payment_v3` để giữ lịch sử; chỉ legacy paired flow mới xoá theo fallback được phân loại.
 - **Hợp đồng / Thanh lý** (`contracts` → `contract_id`): phiếu cọc, hoa hồng (`useCreateCommissionVoucher` tạo phiếu chi UNAPPROVED khi ký HĐ, chờ duyệt qua `approve_voucher`), hoàn/thối cọc khi thanh lý (sổ "CỌC (giữ hộ khách)" + chuyển khoản nội bộ sang sổ vận hành). Thanh lý move-out/bỏ cọc **gạch nợ AR bằng payments `method='CT'`** (không phải tiền mặt) + phiếu thu cấn trừ vào sổ ảo **"Cấn trừ thanh lý (nội bộ)" (TK000055)**, ngoài KQKD — để không phồng ô thống kê TM (xem enum §2 + [16-thanh-ly-hop-dong.md](16-thanh-ly-hop-dong.md)).
 - **Lương** ([17-luong-thuong.md](17-luong-thuong.md)): phiếu chi lương gắn `salary_staff_id` (toà ảo Chung, ngoài KQKD); trả lương có thể **tự gạch nợ tiền phòng** — phiếu chi 2 dòng + payment `CT` + phiếu thu mirror cùng sổ (§4.19).
 - **Cọc** (`is_deposit` types + `is_deposit` items): phiếu thu cọc / hoàn cọc; nguồn deposit_remaining và phân biệt KQKD. Phiếu cọc giữ chỗ (kể cả UNAPPROVED) kích `recompute_room_reservation` → `rooms.status = RESERVED` (domain Phòng).

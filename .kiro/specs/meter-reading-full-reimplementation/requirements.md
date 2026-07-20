@@ -1,8 +1,10 @@
 # Tài liệu Yêu cầu - Tái hiện thực toàn bộ Ghi chỉ số (Meter Reading)
 
+> **Lifecycle:** historical Kiro spec. Nguồn hiện hành: `docs/he-thong/06-cong-to-chi-so.md` và `docs/huong-dan-su-dung/03-quan-ly-van-hanh/ghi-chi-so/`.
+
 ## Giới thiệu
 
-Tái hiện thực toàn bộ module Ghi chỉ số (Meter Reading) trong hệ thống quản lý bất động sản Resident, đảm bảo 100% khớp với tài liệu hướng dẫn chính thức (`resident-docs/quan-ly-and-van-hanh/tai-chinh/ghi-chi-so.md`). Phạm vi bao gồm: ghi chỉ số từng phòng, ghi chỉ số hàng loạt bằng file mẫu, quy trình duyệt/bỏ duyệt, sửa/xoá chỉ số, thống kê, quản lý công tơ (meters), database functions/triggers, và tích hợp với hóa đơn. Hệ thống hiện tại có code cơ bản nhưng còn lỗi logic, cần tái hiện thực lại toàn bộ code, logic, và database functions.
+Tài liệu này ghi lại yêu cầu theo hướng dẫn Resident đã được thay thế. Phạm vi/claim phải tái kiểm chứng với nguồn hiện hành trước khi dùng lại.
 
 ## Thuật ngữ
 

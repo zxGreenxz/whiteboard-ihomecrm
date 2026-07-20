@@ -1,5 +1,5 @@
 // Đối chiếu bảng chốt tiền mặt NABUBU của Hiển (Excel) với sổ quỹ Hiển Thu trên web.
-// Quy tắc chi tiết: docs/doi-chieu-nabubu-hienthu.md
+// Quy tắc chi tiết: docs/doi-chieu/nabubu-hienthu.md
 // Dùng: node scripts/doi-chieu-nabubu-hienthu.mjs [file.xlsx] [YYYY-MM-DD]
 //   - file.xlsx : mặc định "dataexcel/NABUBU T7-1.xlsx"
 //   - YYYY-MM-DD: ngày chốt — chỉ lấy phiếu web đến hết ngày này (mặc định: hôm nay)
@@ -185,4 +185,4 @@ chiLeft.forEach((c) => console.log(`  WEB-only  : ${c.d} ${c.code} ${fmt(c.amt)}
 // ===== 6. Chốt =====
 console.log('\n=== KIỂM CHỨNG ===');
 console.log(`Tồn quỹ web ${fmt(wThu - wChi)} − tiền đếm ${fmt(denomTotal ?? exThu - exUngSum)} = ${fmt((wThu - wChi) - (denomTotal ?? exThu - exUngSum))} (phải = −Net THU ${fmt(-netThu)} nếu ứng/chi khớp)`);
-console.log('Đọc cách xử lý từng loại lệch: docs/doi-chieu-nabubu-hienthu.md');
+console.log('Đọc cách xử lý từng loại lệch: docs/doi-chieu/nabubu-hienthu.md');

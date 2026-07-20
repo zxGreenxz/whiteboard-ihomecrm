@@ -1,8 +1,10 @@
 # Tài liệu Yêu cầu - Đồng bộ Ứng dụng Web với Tài liệu Hướng dẫn Resident
 
+> **Lifecycle:** historical Kiro spec. Cây `resident-docs/` đã được loại bỏ; mục lục hiện hành là `docs/README.md`, hướng dẫn xuất bản ở `docs/huong-dan-su-dung/` và tham chiếu hệ thống ở `docs/he-thong/`.
+
 ## Giới thiệu
 
-Tài liệu này xác định các yêu cầu để kiểm tra và cập nhật toàn bộ ứng dụng web CRM (Resident) nhằm đạt 100% đồng bộ với tài liệu hướng dẫn mới được định nghĩa trong `resident-docs/SUMMARY.md`. Phạm vi bao gồm: flow nghiệp vụ, logic xử lý, database schema, giao diện UI, hình ảnh minh họa và giải thích tính năng.
+Tài liệu này ghi lại yêu cầu đồng bộ với bộ Resident docs cũ. Khi tái sử dụng requirement, phải đối chiếu lại với `docs/huong-dan-su-dung/`, `docs/he-thong/` và code hiện tại; không dùng `resident-docs/SUMMARY.md` đã xoá.
 
 ## Bảng thuật ngữ
 

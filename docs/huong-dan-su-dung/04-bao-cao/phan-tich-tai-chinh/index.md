@@ -75,7 +75,7 @@ Vài đặc điểm về nguồn cần nhớ khi đối chiếu:
 
 - **Chốt số tháng trước khi đọc**: doanh thu/lãi chỉ chính xác khi thu/chi của tháng đã đủ và đã duyệt. Xem [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/).
 - **Muốn tra tới từng phiếu**: trang này là góc nhìn tổng hợp, không mở tới chứng từ gốc. Thấy một tháng bất thường thì sang [Dòng tiền](/04-bao-cao/dong-tien/) hoặc soi chi tiết ở màn thu chi.
-- **Đối chiếu công nợ theo khách**: bậc tuổi nợ ở đây là số tổng; để biết *ai* đang nợ thì mở [Khách nợ tiền](/04-bao-cao/khach-no-tien/) và [Công nợ hợp đồng mới](/04-bao-cao/cong-no-hd-moi/).
+- **Đối chiếu khoản còn phải thu**: bậc tuổi nợ ở đây là số tổng; để xem từng hóa đơn/phòng và xử lý thu, mở [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
 - **So YoY nhanh**: giữ nguyên toà, kéo qua các tab Doanh thu/Chi phí/Lợi nhuận để đọc cặp cột năm nay — năm trước trên cùng biểu đồ.
 - **Bộ lọc được giữ qua F5**: tháng, toà và công tắc Dồn tích được nhớ lại khi bạn tải lại trang, nên quay lại không phải chọn từ đầu.
 - **Chênh với báo cáo khác là bình thường**: trang này cộng đủ phiếu nhân viên và loại cọc khỏi doanh thu; nếu số vênh với một dashboard nhanh, hãy đối chiếu hai điểm đó trước.
@@ -98,8 +98,7 @@ Kết quả mong đợi: bạn đọc được bức tranh lãi/lỗ 13 tháng c
 - [Quy trình chốt tháng](/01-bat-dau/quy-trinh-chot-thang/) — chốt thu/chi cho đủ và đúng *trước khi* đọc phân tích, để doanh thu/lãi không thiếu phiếu.
 - [Hub Báo cáo tài chính](/04-bao-cao/hub-tai-chinh/) — cửa vào chung của 12 báo cáo tài chính, nơi mở trang này.
 - [Dòng tiền](/04-bao-cao/dong-tien/) — soi tiền vào/ra theo tháng-quý từ sổ quỹ khi cần truy một tháng bất thường.
-- [Khách nợ tiền](/04-bao-cao/khach-no-tien/) — quy công nợ tổng ở đây về *từng khách* đang nợ.
-- [Công nợ hợp đồng mới](/04-bao-cao/cong-no-hd-moi/) — chi tiết phải thu và tuổi nợ theo hoá đơn.
+- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — quy số phải thu tổng về từng hóa đơn/phòng và thực hiện thu.
 - [Danh sách cọc](/04-bao-cao/danh-sach-coc/) — đối chiếu phần "cọc đang giữ" trong KPI với danh sách cọc thực tế.
 - [Tỷ lệ chi phí trên doanh thu](/04-bao-cao/ty-le-chi-phi/) — góc nhìn bổ trợ cho cơ cấu chi phí ở tab Chi phí.
 - [Chia lợi nhuận cổ đông](/03-quan-ly-van-hanh/chia-loi-nhuan/) — dùng lãi/lỗ đã tính (cùng chế độ dồn tích) làm căn cứ chốt-chia cho cổ đông.

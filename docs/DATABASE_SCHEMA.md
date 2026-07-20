@@ -1,7 +1,7 @@
 # Database schema
 
-> **Reviewed:** 2026-07-20  
-> **Source of truth:** generated types + ordered migrations, không phải dump prose tháng 5.
+> **Reviewed:** 2026-07-20 tại commit `1d2c9d9`
+> **Source of truth:** generated types + ordered migrations, không phải số đếm trong prose.
 
 ## Inventory hiện tại
 
@@ -9,12 +9,12 @@ Theo `src/integrations/supabase/types.ts`:
 
 | Object public | Số lượng |
 |---|---:|
-| Tables | 159 |
+| Tables | 164 |
 | Views | 6 |
-| Functions/RPC | 256 |
+| Functions/RPC | 322 |
 | Enums | 30 |
 
-Repository hiện có **362** migration SQL hoạt động trong `supabase/migrations/` và một migration superseded trong `supabase/migrations-archive/`. Số này là inventory repository ngày review, không tự chứng minh mọi migration đã deploy lên một project cụ thể.
+Repository có **371** migration SQL hoạt động trong `supabase/migrations/` tại mốc review và một migration superseded trong `supabase/migrations-archive/`. Đây là inventory của repository, không tự chứng minh mọi migration đã deploy lên một project cụ thể.
 
 ## Cách xác định schema đúng
 
@@ -22,6 +22,8 @@ Repository hiện có **362** migration SQL hoạt động trong `supabase/migra
 2. Tìm migration mới nhất chạm object bằng `rg "<object_name>" supabase/migrations`.
 3. Với incident/cutover, đối chiếu catalog live read-only; ghi rõ project ref, UTC, query và commit.
 4. Sau thay đổi schema đã deploy, chạy `npm run gen:types` rồi review diff generated types.
+
+Không dùng các con số inventory như API ổn định. Khi cần số mới, đếm lại trực tiếp từ generated types và `supabase/migrations/`, rồi cập nhật ngày/commit ở đầu tài liệu.
 
 ## Các cụm schema chính
 

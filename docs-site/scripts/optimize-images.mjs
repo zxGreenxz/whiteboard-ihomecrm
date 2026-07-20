@@ -131,6 +131,9 @@ async function check() {
     const base = path.basename(md)
     if (base.startsWith('_')) continue
     if (path.resolve(md) === path.resolve(CONTENT, 'index.md')) continue // trang chủ không cần trong sidebar
+    const text = await readFile(md, 'utf8')
+    const frontmatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] ?? ''
+    if (/^kind:\s*redirect\s*$/m.test(frontmatter) || /^sidebar:\s*false\s*$/m.test(frontmatter)) continue
     const link =
       '/' +
       path

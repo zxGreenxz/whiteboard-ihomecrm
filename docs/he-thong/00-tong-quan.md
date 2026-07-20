@@ -39,8 +39,9 @@ Backend là nơi quyết định quyền và trạng thái tiền. Frontend gate
 - Authorization organization-model đang production; 15/15 canonical writer flags ON.
 - Approval inbox live; phiếu đặc biệt/chi vượt ngưỡng đi qua maker-checker.
 - Hub báo cáo tài chính hiện có 9 báo cáo. Các route debt cũ chuyển về `/thu-tien`.
-- AI Copilot có chat, tool đọc, UI-control có gate và write tool draft-first.
-- Zalo chat hai chiều dùng worker `zca-js`; xem [18](18-zalo-chat.md) và [runbook Zalo](../zalo/README.md).
+- Profit Close V2 chốt lợi nhuận server-side bằng preview/source hash/revision; snapshot cũ được đánh dấu stale thay vì âm thầm ghi đè.
+- AI Copilot có chat, tool đọc, UI-control có gate và write tool draft-first; write tool hiện chưa là một transaction DB duy nhất.
+- Zalo chat dùng worker `zca-js`; web gửi text/reply, còn media hiện là chiều nhận/render. Xem [18](18-zalo-chat.md) và [runbook Zalo](../zalo/README.md).
 
 ## Nguồn sự thật
 

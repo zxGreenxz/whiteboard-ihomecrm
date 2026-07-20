@@ -1,12 +1,12 @@
 ---
 title: "Bảng tra quyền nhanh"
-description: "Bảng tra cứu nhanh quyền theo trang: mỗi module × chức năng ứng với mức Xem / Quản lý / Nhạy cảm, kèm cách hoạt động của mô hình phân quyền và phạm vi toà."
+description: "Bảng tra cứu nhanh quyền theo trang, kèm mô hình tổ chức, role binding, phạm vi và override ALLOW/DENY."
 routes: []
 permissions: []
 viewport: desktop
 audience: [chu-nha, quan-ly-toa, ke-toan]
 captured:
-  date: "2026-07-03"
+  date: "2026-07-20"
   account: demo
 status: published
 ---
@@ -15,7 +15,7 @@ status: published
 
 Trang này là **bảng tra cứu** để bạn nắm nhanh: mỗi trang (module) trong phần mềm có những **chức năng** nào, và mỗi chức năng thuộc **mức quyền** nào — **Xem**, **Quản lý** hay **Nhạy cảm**. Dùng bảng này khi bạn thiết kế mẫu phân quyền cho nhân viên, khi rà soát xem một người đang được cấp gì, hoặc khi muốn hiểu vì sao ai đó "thấy được nhưng không thao tác được".
 
-Phần mềm quản lý quyền theo **hai chiều tách rời**: **quyền** (làm được *việc gì*) và **phạm vi toà** (làm được *ở toà nào*). Bảng bên dưới chỉ nói về chiều **quyền**; chiều **phạm vi toà** được giải thích riêng ở mục [Hai chiều kiểm soát](#hai-chieu-kiem-soat-quyen-x-pham-vi). Để thực sự cấp/chỉnh các quyền này, bạn vào màn hình **Phân quyền** — xem [Phân quyền theo trang](/05-cai-dat/phan-quyen/).
+Quyền hiệu lực không chỉ là một ô tick. Hệ thống kết hợp **membership trong tổ chức**, **role binding** (được làm gì), **scope** (được làm ở đâu) và **override riêng ALLOW/DENY**. Xem công thức ở mục [Quyền hiệu lực](#hai-chieu-kiem-soat-quyen-x-pham-vi). Để cấp/chỉnh quyền, vào màn hình **Phân quyền** — xem [Phân quyền theo trang](/05-cai-dat/phan-quyen/).
 
 ::: info Cách đọc trang này
 - Danh mục quyền được tổ chức **theo từng trang** của phần mềm (gần **40 trang**, chia thành **10 nhóm**: Bất động sản, Khách & Hợp đồng, Hoá đơn, Thu chi, Sổ quỹ, Báo cáo, Cấu hình…).
@@ -37,14 +37,16 @@ Mọi chức năng trong phần mềm được xếp vào một trong ba mức. 
 Các chức năng mức **Nhạy cảm** cho phép người dùng **ghi nhận tiền** (thu tiền, hoàn cọc, thanh lý) hoặc **thay đổi phân quyền** (quản lý nhân viên, sửa mẫu quyền). Chỉ cấp cho người thực sự cần. Thu hồi quyền về sau **không** tự động xoá những dữ liệu (phiếu thu, hợp đồng đã thanh lý…) mà người đó đã tạo trước đó.
 :::
 
-## Hai chiều kiểm soát: quyền × phạm vi {#hai-chieu-kiem-soat-quyen-x-pham-vi}
+## Quyền hiệu lực: tổ chức × binding × phạm vi × override {#hai-chieu-kiem-soat-quyen-x-pham-vi}
 
-Một nhân viên chỉ thao tác được khi **cả hai chiều** đều mở:
+Một nhân viên chỉ thao tác được khi các lớp liên quan đều hợp lệ:
 
-1. **Quyền** — người đó có được cấp chức năng đó không (chiều mô tả trong bảng tra bên dưới).
-2. **Phạm vi toà** — người đó có được giao **toà** liên quan không.
+1. **Membership tổ chức** — tài khoản phải là thành viên đang hoạt động của đúng organization.
+2. **Role binding** — nối thành viên với vai trò, xác định tập quyền được phép.
+3. **Phạm vi (scope)** — giới hạn binding theo toàn tổ chức, khu vực, toà hoặc sổ quỹ.
+4. **Override riêng** — ngoại lệ `ALLOW`/`DENY` cho từng thành viên; nếu cùng áp dụng thì **DENY thắng ALLOW**.
 
-Phạm vi toà được chọn khi bạn thêm/sửa nhân viên (xem [Thêm nhân viên](/01-bat-dau/them-nhan-vien/)), có **3 kiểu**:
+Màn thêm/sửa nhân viên (xem [Thêm nhân viên](/01-bat-dau/them-nhan-vien/)) thường trình bày **3 kiểu phạm vi toà**:
 
 | Kiểu phạm vi | Nghĩa |
 |---|---|
@@ -52,8 +54,10 @@ Phạm vi toà được chọn khi bạn thêm/sửa nhân viên (xem [Thêm nh�
 | **Theo khu vực** *(tự cập nhật)* | Áp cho mọi toà thuộc **khu vực** được chọn; thêm toà vào khu sau này thì nhân viên **tự động** có phạm vi toà đó. |
 | **Toà lẻ** *(cố định)* | Chỉ đúng các toà được tích, không tự mở rộng. |
 
+Các chức năng cấp tổ chức như AI Copilot, khách hàng hoặc cấu hình dùng scope organization; nghiệp vụ sổ quỹ có thể kiểm thêm scope cashbook.
+
 ::: tip Vì sao "có quyền mà vẫn không làm được"
-Đây là nhầm lẫn phổ biến nhất. Nếu một người **có quyền** (ví dụ *Quản lý* hợp đồng) nhưng vẫn không sửa được hợp đồng của một toà, gần như luôn là do **phạm vi toà** chưa bao gồm toà đó. Kiểm tra lại phạm vi toà của người đó, không phải mẫu quyền.
+Nếu một người có ô quyền nhưng vẫn không thao tác được, hãy kiểm tra lần lượt membership có active, binding còn hiệu lực, scope có khớp tài nguyên và có override `DENY` hay không. Với hợp đồng/phòng, nguyên nhân thường gặp nhất vẫn là phạm vi toà chưa bao gồm toà đó.
 
 Ngoại lệ: một số danh mục **cấp tổ chức** — điển hình là **Khách hàng / Cư dân** — **không** giới hạn theo toà. Ai có quyền *Quản lý* khách hàng thì sửa được mọi khách của bạn, bất kể toà.
 :::
@@ -61,6 +65,14 @@ Ngoại lệ: một số danh mục **cấp tổ chức** — điển hình là 
 ## Bảng tra nhanh: trang × chức năng × mức quyền {#bang-tra-nhanh}
 
 Bảng dưới liệt kê các module chính. Ô để trống nghĩa là module đó **không có** mức tương ứng.
+
+### Tổng quan & AI
+
+| Trang / Module | Xem | Quản lý | Nhạy cảm |
+|---|---|---|---|
+| **AI Copilot** | **Dùng chat Trợ lý AI** (`ai_copilot.view`) | — | **Điều khiển trang thử nghiệm** (`ai_copilot.ui_control`): điều hướng, lọc, điền form nhưng không tự Lưu/Xác nhận |
+
+Quyền AI chưa đủ để bật tính năng: tài khoản còn cần entitlement server-side và global kill switch đang mở.
 
 ### Bất động sản
 
@@ -133,7 +145,7 @@ Thay vì tick từng quyền, bạn thường bắt đầu từ một **mẫu h�
 | **Partner** | Quản lý khách hẹn & cọc, **xem** bất động sản và hợp đồng (read-only) | Cộng tác viên / đối tác |
 | **Viewer** | Mọi module chỉ **Xem** | Người chỉ cần theo dõi |
 
-Khi bạn gán một mẫu cho nhân viên, phần mềm **sao chép** bộ quyền của mẫu sang người đó. Sau đó bạn có thể **tinh chỉnh riêng** cho người này mà **không** ảnh hưởng mẫu gốc hay người khác — thẻ nhân viên sẽ hiện **N thay đổi so với mẫu** khi quyền đã lệch khỏi mẫu.
+Mẫu là điểm khởi đầu để cấp vai trò. Trong mô hình quyền hiệu lực, nhân viên có membership trong organization, role binding kèm scope; phần tinh chỉnh riêng được biểu diễn bằng override `ALLOW`/`DENY` và **DENY thắng**. Thẻ nhân viên vẫn có thể hiện **N thay đổi so với mẫu**, nhưng sửa mẫu không nên được hiểu là tự động xoá binding/override đã có của từng người.
 
 ## Tình huống & lỗi thường gặp {#tinh-huong}
 
@@ -143,8 +155,9 @@ Khi bạn gán một mẫu cho nhân viên, phần mềm **sao chép** bộ quy�
 | Có quyền *Xem* khách hàng nhưng lại sửa được **mọi** khách | Đúng thiết kế: **Khách hàng / Cư dân** là danh mục cấp tổ chức, không giới hạn theo toà. Cấp quyền *Quản lý* khách cho ai là mở với **toàn bộ** khách. |
 | Đã tick quyền *Xem* nhưng người dùng vẫn không mở được một trang | Trang đó có thể thuộc mức **Nhạy cảm** (ví dụ *Phân quyền*, *Chia lợi nhuận*) — cần cấp đúng chức năng nhạy cảm chứ không chỉ *Xem* chung. |
 | Không thấy nhân viên bật được **Mọi toà** trong Thu chi | Đây là chức năng **Nhạy cảm** riêng của module Thu chi; phải tick riêng, không nằm trong quyền *Quản lý* thu chi thông thường. |
+| Đã cấp `ai_copilot.view` nhưng không thấy nút AI | Quyền UI chỉ là một lớp; kiểm tra thêm entitlement của tài khoản và kill switch Copilot phía server. |
 | Thu hồi quyền rồi mà dữ liệu cũ vẫn còn | Thu hồi quyền chỉ chặn thao tác **từ nay về sau**; các phiếu / hợp đồng người đó đã tạo trước đó vẫn được giữ nguyên. |
-| Nhân viên cũ vẫn hoạt động sau khi cập nhật mẫu quyền | Quyền được **sao chép** vào từng người khi gán mẫu; sửa mẫu **không** tự động cập nhật ngược cho người đã gán. Mở lại người đó, chọn lại mẫu để nạp mới. |
+| Nhân viên cũ vẫn hoạt động sau khi cập nhật mẫu quyền | Binding/scope hoặc override riêng của người đó vẫn còn hiệu lực; mở hồ sơ nhân viên để rà lại vai trò, phạm vi và ngoại lệ thay vì chỉ nhìn mẫu. |
 
 ## Thử trực tiếp trên sandbox {#thu-tren-sandbox}
 

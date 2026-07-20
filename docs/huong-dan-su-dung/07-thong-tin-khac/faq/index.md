@@ -53,15 +53,15 @@ Khi ký, form tính **Cọc còn thiếu = Cọc cần thu − Cọc đã thu**.
 
 ### Khách trả một phần rồi, phần còn nợ nằm ở đâu?
 
-Sau khi thu một phần, hoá đơn chuyển sang **Thu một phần** và phần còn thiếu = **Tổng hoá đơn − Đã thu**. Số "đã thu" luôn được tính lại từ các phiếu thu đã duyệt (đã trừ tiền thối), nên bạn không sửa tay. Bạn theo dõi công nợ còn lại ngay trên hoá đơn đó, hoặc gom theo khách ở báo cáo [Khách nợ tiền](/04-bao-cao/khach-no-tien/). Muốn thu nốt, mở lại hoá đơn và ghi thu tiếp — xem [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/).
+Sau khi thu một phần, hoá đơn chuyển sang **Thu một phần** và phần còn thiếu = **Tổng hoá đơn − Đã thu**. Số "đã thu" luôn được tính lại từ các phiếu thu đã duyệt (đã trừ tiền thối), nên bạn không sửa tay. Theo dõi và thu nốt ngay trong luồng [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) hoặc mở lại [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/).
 
 ### Nợ cũ kỳ trước có tự cộng vào hoá đơn tháng sau không?
 
-Có. Khi bạn **sinh hoá đơn kỳ mới**, hệ thống tự **cộng phần nợ chưa trả của (các) kỳ trước** vào hoá đơn tháng này và ghi rõ nguồn nợ được kéo sang. Nhờ vậy khách chỉ cần trả một hoá đơn là dứt điểm cả nợ cũ lẫn tiền kỳ mới. Muốn xem nợ cũ được cộng thế nào, xem [Sinh hoá đơn](/03-quan-ly-van-hanh/sinh-hoa-don/); muốn nhìn tổng công nợ, xem [Khách nợ tiền](/04-bao-cao/khach-no-tien/).
+Có. Khi bạn **sinh hoá đơn kỳ mới**, hệ thống tự **cộng phần nợ chưa trả của (các) kỳ trước** vào hoá đơn tháng này và ghi rõ nguồn nợ được kéo sang. Nhờ vậy khách chỉ cần trả một hoá đơn là dứt điểm cả nợ cũ lẫn tiền kỳ mới. Muốn xem nợ cũ được cộng thế nào, xem [Sinh hoá đơn](/03-quan-ly-van-hanh/sinh-hoa-don/); muốn xử lý số còn phải thu, mở [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
 
 ### Khi thu tiền, tiền vào sổ quỹ nào? Vì sao tôi không chọn được sổ?
 
-Ở màn **thu tiền nhanh trên điện thoại** (`/thu-tien`), hệ thống **tự chọn sổ thu tiền mặt cho bạn** để thao tác gọn: ưu tiên sổ có tên dạng **"…Thu"** của bạn, nếu không có thì tới sổ **"Chung"**, rồi tới sổ trùng tên toà. Vì thu nhanh chỉ dùng **tiền mặt** nên không hiện ô chọn sổ. Muốn chủ động chọn sổ, thu ở màn hoá đơn thường. Nếu báo lỗi "không tìm thấy sổ thu", hãy đặt một **sổ thu mặc định** cho tài khoản. Xem [Thu tiền trên điện thoại](/03-quan-ly-van-hanh/thu-tien-mobile/) và [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/).
+Ở màn **thu tiền nhanh trên điện thoại** (`/thu-tien`), bạn có thể chọn **TM / TK / TT**; form nhiều dòng cho phép tách nhiều phương thức trong cùng lần thu. Sổ mặc định được resolve theo phương thức: TM ưu tiên sổ **"…Thu"** của bạn rồi **"Chung"**/sổ tên toà; TK/TT dùng sổ mặc định của toà hoặc sổ tên toà. Nếu báo lỗi không tìm thấy sổ, hãy cấu hình sổ phù hợp hoặc nhờ quản trị kiểm tra scope. Xem [Thu tiền trên điện thoại](/03-quan-ly-van-hanh/thu-tien-mobile/) và [Sổ quỹ & loại thu chi](/01-bat-dau/so-quy-loai-thu-chi/).
 
 ### Bàn giao tiền là gì và khi nào phải nộp?
 

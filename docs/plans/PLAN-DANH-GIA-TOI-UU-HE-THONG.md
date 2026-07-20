@@ -93,7 +93,7 @@ SPECIAL_CONCERNS = Dòng tiền nguyên tử; canonical ledger; cọc và doanh 
 1. Mọi claim đáng kể phải gắn `FACT`, `INFERENCE`, `HYPOTHESIS` hoặc `UNKNOWN`.
 2. P0/P1 chỉ được xác nhận sau khi ít nhất hai vai trò kiểm tra độc lập.
 3. Dùng thứ tự nguồn: runtime production → live DB → working tree → HEAD/deploy → migration/types → docs.
-4. Báo cáo cũ như `docs/AUDIT-TOAN-TRANG-2026-07-08.md` và `docs/hoi-dong-co-van-2026-07-03.md` chỉ là **risk register đầu vào**. Mỗi finding phải tái kiểm chứng; không copy severity hoặc trạng thái cũ.
+4. Báo cáo cũ như `docs/audits/AUDIT-TOAN-TRANG-2026-07-08.md` và `docs/audits/hoi-dong-co-van-2026-07-03.md` chỉ là **risk register đầu vào**. Mỗi finding phải tái kiểm chứng; không copy severity hoặc trạng thái cũ.
 5. Working tree hiện có nhiều thay đổi của người dùng. Khi chạy phiên thật phải snapshot lại bằng Git, không reset/stash/checkout và không trộn chúng vào kết luận production.
 6. Query live DB chỉ đọc, có scope thời gian/toà/tenant và timeout phù hợp; output chỉ dùng aggregate hoặc ID đã rút gọn.
 7. Không ghi PAT, JWT, service-role key, password, connection string hay PII vào terminal log và báo cáo.

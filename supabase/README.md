@@ -7,7 +7,7 @@
 - Public generated types: [src/integrations/supabase/types.ts](../src/integrations/supabase/types.ts).
 - Mô tả schema: [docs/DATABASE_SCHEMA.md](../docs/DATABASE_SCHEMA.md).
 - Cổng tài liệu: [docs/README.md](../docs/README.md).
-- Migration hoạt động: `supabase/migrations/*.sql`, chạy theo thứ tự tên file. Hiện có 362 file; không dùng hướng dẫn cũ kiểu “chỉ chạy 001–009”.
+- Migration hoạt động: `supabase/migrations/*.sql`, chạy theo thứ tự tên file. Có 371 file tại mốc review 20/07; không dùng hướng dẫn cũ kiểu “chỉ chạy 001–009”.
 
 ## Quy tắc migration
 
@@ -28,4 +28,4 @@ npm run gen:types
 
 ## Edge Functions
 
-Mỗi function nằm trong `supabase/functions/<name>/`. Deploy và secret thuộc môi trường Supabase; kiểm auth ở cả gateway lẫn function. Các function hiện hành gồm admin-create-user, demo-reset, llm-proxy, salary-v5-jobs và send-push.
+Mỗi function nằm trong `supabase/functions/<name>/`. Deploy và secret thuộc môi trường Supabase; kiểm auth ở cả gateway lẫn function. Danh sách, vai trò và runbook hiện hành xem [functions/README.md](functions/README.md).

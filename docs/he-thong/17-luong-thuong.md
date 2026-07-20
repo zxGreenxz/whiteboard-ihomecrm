@@ -1,5 +1,7 @@
 # Bảng lương & Thưởng (Salary · Bonus · V5 "dấu chân")
 
+> **Reviewed:** 2026-07-20. Các forward-fix `20260720120000`–`20260720190000` là một phần của hành vi hiện hành.
+
 ## 1. Tổng quan & vai trò nghiệp vụ
 
 Domain này trả lời câu hỏi **"nhân viên quản lý vận hành được trả bao nhiêu, vì sao, và bằng chứng ở đâu"**. Điểm cốt lõi của thiết kế: **lương tính từ dữ liệu vận hành thật** (việc đã hoàn thành, hợp đồng đã ký, phiếu thu đã ghi, phiên kiểm tra nhà đã đạt) chứ không nhập tay — nhập tay chỉ còn ở các dòng thưởng/trừ thủ công có nhãn rõ ràng.
@@ -13,7 +15,7 @@ Trong domain tồn tại **3 lớp chạy song song** trên production:
 | Tiền vào lương | Chốt tháng (LOCK) → `salary_monthly` + snapshot | Không tự cộng tiền — chỉ **thông báo** (tiền đã nằm trong ledger) | Chốt qua `v5_apply_lock_adjustments` → 2 dòng `salary_adjustments` (`ATTEND_V5`/`STREAK_V5`) — **chỉ khi kill-switch `v5_money` BẬT** |
 | UI chính | `/finance/salary` (admin) + `/finance/my-salary` (self) | Popup [BonusToast](src/components/tasks/BonusToast.tsx) + Web Push | `/my-day` (nhân viên) + `/reports/coverage` (chủ) |
 
-> **Trạng thái thực tế (thời điểm lập tài liệu):** toàn bộ schema + RPC + cron + màn hình V5 (S1→S5) đã deploy live, **nhưng feature flags mặc định OFF** (`system_v5.feature_flags.v5_money=false`, `stage='off'`) — engine chạy ngầm (shadow), số hiển thị "TẠM TÍNH", **tiền v5 chưa ghi vào lương** cho tới khi chủ bật flag và bấm chốt. Lương thật đang trả vẫn theo lớp v3.
+> **Trạng thái vận hành:** schema + RPC + cron + UI V5 đã deploy. Không suy trạng thái live từ seed cũ `stage='off'`/flags OFF trong implementation log; phải đọc `system_v5.stage`, `feature_flags` và `effective_from` tại thời điểm xử lý. V5 chỉ thay công thức tháng từ mốc `effective_from`, các tháng trước đó tiếp tục dùng cơ chế legacy tương ứng.
 
 **Phân biệt quan trọng:** "Bảng lương quản lý" (bảng `manager_salary_config`, cột `income_expenses.salary_staff_id`) **khác hoàn toàn** với **"Lương điều hành"** (bảng `profit_managers`, cột `income_expenses.profit_manager_id`) — lương điều hành là khoản trừ khỏi lợi nhuận từng toà **trước khi chia cổ đông**, thuộc domain [12 — Cổ đông · Chia lợi nhuận](12-co-dong-loi-nhuan.md) (xem mục 4.7).
 
@@ -34,7 +36,7 @@ Trong domain tồn tại **3 lớp chạy song song** trên production:
 #### `salary_bonus_rules` — 1 dòng/owner, cột `rules` (jsonb) là "két cấu hình" nhiều đời
 - Key v3: `repair`, `weekendRepair` (mặc định 20k), `afterHourContract` (50k), `afterHourMark` ('18:00'), `weekendDays` ([0]=CN), `requirePhoto`.
 - Key `staffMonths` ([20260629000003](supabase/migrations/20260629000003_salary_staff_visible_months.sql)) — override hiện/ẩn từng tháng cho self-view (mục 4.6).
-- 4 block V5 (seed ở [20260703000001](supabase/migrations/20260703000001_v5_foundation.sql)): `attendance_v5` (budget **6.000.000**, phép có lương 1 ngày/tháng, sàn mềm 13 ngày → 3tr), `streak_v5` (budget **3.000.000**, mốc 4/8/13/18/23/trọn-tháng, khiên free 3 + dự trữ cap 2), `coverage_v5` (SLA 4 ngày/3 ngày toà nóng, chuẩn ảnh/dwell theo cỡ toà), `system_v5` (feature flags/kill-switch, stage, lịch cron, `pending_money_patch`, audit).
+- 4 block V5 (seed ở [20260703000001](supabase/migrations/20260703000001_v5_foundation.sql)): `attendance_v5` (budget **6.000.000**, phép có lương 1 ngày/tháng, sàn mềm 13 ngày → 3tr), `streak_v5` (budget **3.000.000**, mốc 4/8/13/18/23/trọn-tháng, khiên free 3 + dự trữ cap 2), `coverage_v5` (SLA 4 ngày/3 ngày toà nóng, chuẩn ảnh/dwell theo cỡ toà), `system_v5` (feature flags/kill-switch, stage, lịch cron, `effective_from`, `pending_money_patch`, audit). Từ [20260720160000](supabase/migrations/20260720160000_ledger_excluded_and_v5_effective_from.sql), tháng trước `effective_from` không bị áp ngược V5.
 
 #### `salary_holidays` — lịch ngày lễ của owner
 `holiday_date` UNIQUE theo user. Đầu vào cho nhánh thưởng CN/Lễ (v3) **và** calendar ngày-làm V5 (`vn_workdays`). Quản lý ở tab Cấu hình (có nút thêm nhanh bộ lễ VN).
@@ -49,7 +51,9 @@ Trong domain tồn tại **3 lớp chạy song song** trên production:
 Copy nguyên các dòng RPC `salary_work_ledger` tại thời điểm LOCK (bất biến lịch sử — đổi quy tắc/loại việc sau này không làm lệch tháng cũ). Có thêm cột `is_contract` ([20260630000002](supabase/migrations/20260630000002_ledger_drop_contract_branch.sql)).
 
 #### Cột "mượn" trên bảng domain khác
-- `job_types.bonus_amount` / `is_repair` / `counts_for_salary` (+ `is_contract` ở [20260630000001](supabase/migrations/20260630000001_bonus_rules_contract_combo.sql)) — cấu hình thưởng **theo loại việc** ngay trong form Loại công việc ([TaskTypeFormDialog](src/components/task-types/TaskTypeFormDialog.tsx)).
+- `job_types.bonus_amount` / `is_repair` / `counts_for_salary` (+ `is_contract`) — cấu hình thưởng **theo loại việc**. Việc `checkin` được khôi phục cờ ký hợp đồng +50k từ [20260720120000](supabase/migrations/20260720120000_fix_checkin_contract_bonus.sql).
+- `jobs.exclude_from_salary` — chủ có thể loại **một việc cụ thể** khỏi thưởng mà không đổi loại việc hay xoá lịch sử; dòng vẫn hiện trong bảng kê với thưởng 0đ ([20260720140000](supabase/migrations/20260720140000_jobs_exclude_from_salary.sql)).
+- `jobs.completion_time` do server đóng dấu khi chuyển sang `COMPLETED`; `completion_captured_at` chỉ là mốc client để đối chiếu watermark, không dùng tính lương. Helper `job_photo_ok` đọc cả `attachments` và `completion_attachments` ([20260720181000](supabase/migrations/20260720181000_jobs_completion_time_integrity.sql)).
 - `income_expenses.salary_staff_id` + `salary_role` (`ADVANCE` ứng lương / `CASH_COLLECTION` thu tiền mặt — hiển thị minh bạch, không thưởng / `COMMISSION`) — gắn phiếu thu chi cho một quản lý hưởng lương.
 - `notifications.job_id` + `metadata` (jsonb) + giá trị enum `SALARY_BONUS` ([20260629000010](supabase/migrations/20260629000010_notification_type_salary_bonus.sql), [20260629000011](supabase/migrations/20260629000011_award_job_bonus.sql)) — lưu + **dedup** thông báo thưởng (2 partial unique index: 1 thưởng JOB/job, 1 phụ cấp DAY_BONUS/ngày).
 
@@ -73,7 +77,7 @@ Nguyên tắc C9 của thiết kế: **các bảng V5 chỉ chứa STATE + BẰN
 `current_streak`, `best_streak`, `milestones_banked` (jsonb — **mốc đã đạt là BANKED 🔒 không rơi**), `breaks_no_leave` (đứt KHÔNG-phép — trọn-tháng đòi = 0), `shields_free_left` (3/tháng), `shields_reserve`/`_used` (khiên dự trữ carry-over, cap tồn 2/tiêu 1), `sim_cap2` (mô phỏng nới cap — không hiện cho staff), `reset_from_date` (mốc "tính lại từ ngày kế" sau án gian lận). Recompute được 100% từ SAD + config.
 
 #### `cron_runs` — heartbeat + idempotency cho jobs
-`(job, idem_key)` UNIQUE — job `tier`/`score`/`digest`/`close_period`, idem theo ngày/tháng VN → chạy đôi tự skip; worker watchdog đọc heartbeat từ đây.
+`(job, idem_key)` UNIQUE — job `tier`/`score`/`digest`/`close_period`, idem theo ngày/tháng VN → chạy đôi tự skip. Bảng này là nguồn kiểm tra heartbeat; worker watchdog cũ đã bị gỡ, fallback live là nút chạy lại của admin.
 
 #### `salary_award_errors` — KHÔNG nuốt lỗi im lặng
 Mọi RPC ghi tiền/tick đều log lỗi vào đây trước khi RAISE — truy vết "làm xong sao không thấy công". Chỉ admin đọc.
@@ -140,7 +144,7 @@ erDiagram
 
 RPC **SECURITY DEFINER** (đọc xuyên RLS jobs/contracts/income_expenses), bảo mật ở tầng hàm: **người không phải admin bị ép `v_staff := auth.uid()`** — chỉ xem của chính mình. Trả bảng kê từng dòng, gồm các nhánh:
 
-- **(A) JOB** — việc `COMPLETED` của loại việc tính lương (`counts_for_salary` và có `bonus_amount>0` hoặc `is_repair`), quy về ngày/giờ VN bằng `vn_local_date/dow/time()` (mốc xét = `completion_time`). `bonus_amount` của dòng = 0 nếu: thiếu ảnh khi `requirePhoto` bật, **hoặc** là việc ký HĐ (`is_contract`) hoàn thành trong giờ hành chính ngày thường (điều kiện +50k: **sau `afterHourMark` HOẶC CN/Lễ**).
+- **(A) JOB** — việc `COMPLETED` của loại việc tính lương, quy về ngày/giờ VN bằng `completion_time` do server đóng dấu. `bonus_amount` = 0 nếu thiếu ảnh khi `requirePhoto` bật, việc có `exclude_from_salary=true`, hoặc việc ký HĐ hoàn thành trong giờ hành chính ngày thường. Ledger trả thêm cờ `excluded` để UI hiện nút **Không tính / Tính lại**.
 - **(B) DAY_BONUS** — phụ cấp `weekendRepair` (+20k) cho **mỗi NGÀY** CN/Lễ có ≥1 việc sửa chữa **hoặc** ký HĐ (mở rộng ở [20260630000001](supabase/migrations/20260630000001_bonus_rules_contract_combo.sql)).
 - **(D) CASH** — phiếu thu tiền mặt `salary_role='CASH_COLLECTION'`: hiển thị minh bạch trong bảng kê, **không thưởng**.
 - **(C) CONTRACT đã GỠ** ([20260630000002](supabase/migrations/20260630000002_ledger_drop_contract_branch.sql), commit `0fcdd47`): +50k ký HĐ **không còn đọc bảng `contracts`** — chỉ đến từ **VIỆC loại "checkin"** (`job_types.is_contract`) qua nhánh (A)+(B), tránh thưởng trùng. Dòng `CONTRACT` chỉ còn xuất hiện từ snapshot cũ (legacy).
@@ -148,6 +152,11 @@ RPC **SECURITY DEFINER** (đọc xuyên RLS jobs/contracts/income_expenses), b�
 Hai bản vá lịch sử quan trọng:
 - **Owner-scope fix** ([20260629000004](supabase/migrations/20260629000004_salary_ledger_owner_scope_fix.sql)): bản đầu lọc `j.user_id = v_owner` làm **rớt toàn bộ việc do staff tự tạo** (jobs mang `user_id` = người tạo). Scope tenant đúng là theo **assignee** (assignee = mình, hoặc thuộc danh sách quản lý hưởng lương của owner) — đã bỏ predicate thừa.
 - Quy tắc đọc từ `salary_bonus_rules` của owner (super_admin đầu tiên) — hệ hiện là single-tenant về lương.
+
+Hardening 20/07:
+- Không còn fallback `completion_time → created_at` cho việc đã hoàn thành; sai dữ liệu phải lỗi rõ.
+- Nhân viên không tự chọn mốc thời gian tính thưởng; admin chỉ được lùi ngày khi kỳ tương ứng chưa LOCKED.
+- `v5_tick_attendance` chặn ngày tương lai và tháng đã chốt; phiên kiểm tra qua nửa đêm có grace 4 giờ nhưng tick về `session_date` lúc bắt đầu ([20260720190000](supabase/migrations/20260720190000_v5_date_hardening.sql)).
 
 ### 4.2. Tổng hợp lương ở TS — [useManagerSalary](src/hooks/useManagerSalary.ts) + [managerSalary.ts](src/lib/managerSalary.ts)
 
@@ -220,27 +229,27 @@ Khoản trả cho người quản lý điều hành được trừ khỏi LN t�
 - **Kỷ luật có due-process (C2)**: chủ `v5_flag_day` (chỉ chủ; nhân viên nhận thông báo + 48h phản hồi) → nhân viên `v5_appeal` → chủ `v5_verdict`: xác nhận gian lận = `voided` + **tước toàn bộ mốc banked tháng** (ngoại lệ duy nhất của banked) + `reset_from_date = ngày kế` (chuỗi tính lại, các ngày làm thật khác giữ nguyên); minh oan = trả `ticked`.
 - **`v5_shadow_report(month)`** — bảng "nếu áp v5 thì ra bao nhiêu" để chủ so trước khi bật tiền.
 
-### 4.10. V5 — cron/watchdog: **KHÔNG pg_cron** ([20260703000003](supabase/migrations/20260703000003_v5_jobs.sql))
+### 4.10. V5 — cron và fallback thủ công: **KHÔNG pg_cron** ([20260703000003](supabase/migrations/20260703000003_v5_jobs.sql))
 
-Kiến trúc 3 tầng, logic job đặt **trong DB** (`v5_run_job`), transport ở ngoài:
+Logic job đặt **trong DB** (`v5_run_job`); transport hiện có Vercel Cron và nút chạy lại của admin:
 
 ```mermaid
 flowchart LR
     VC["Vercel Cron (vercel.json crons)\nnightly 23:45 UTC = 06:45 VN\ndigest 00:00 UTC = 07:00 VN"] --> API["api/salary-v5-cron.js\n(x-cron-secret)"]
     API --> EF["edge fn salary-v5-jobs\n(transport + cron_runs idem)"]
-    WD["worker/index.js — V5 WATCHDOG\n(30 phút/lần, đọc heartbeat cron_runs,\nlỡ giờ → gọi bù edge fn)"] --> EF
     BTN["Nút 'Chạy lại' tab Cài đặt v5\n(JWT admin)"] --> EF
     EF --> RUN["v5_run_job trong DB\ntier · score · digest · close_period"]
 ```
 
 - **`nightly`** = `tier` (dọn phiên/SAD quá hạn qua `v5_expire_stale`) + `score` (làm nóng `v5_daily_missions` — tuyến gợi ý per staff: `score = D×(1+P/20) + 10·phòng-trống + 5·HĐ-đáo-hạn + 15·việc-mở`, màu red/yellow/green theo ngưỡng remind) + **`close_period`** nếu là ngày 1 VN (vật chất hoá `pending_money_patch`; bank mốc trọn-tháng khi `breaks_no_leave=0`; mở SSS tháng mới: khiên free reset, khiên dự trữ carry + earn).
 - **`digest`** = 1 bản tin gộp/người/ngày "Tuyến hôm nay: N toà nên ghé" (chỉ toà red/yellow, tối đa 3 dòng; **tắt CN + ngày phép**; dedup unique index) → edge fn gửi Web Push qua `send-push`.
-- Idempotent 2 lớp: `v5_cron_start/finish` trên `cron_runs` (UNIQUE `job+idem_key`) — Vercel Cron và watchdog cùng bắn cũng chỉ chạy 1 lần. **Job không sinh tiền** — cron chết 1 tuần không làm sai lương. Auth edge fn: `x-cron-secret` / service_role / JWT admin. CAVEAT: sửa block watchdog trong `worker/index.js` phải **restart worker**.
+- `v5_cron_start/finish` trên `cron_runs` (UNIQUE `job+idem_key`) làm job idempotent. **Job không sinh tiền** — cron lỗi không tự ghi sai lương; admin có thể chạy lại từ UI. Auth edge fn: `x-cron-secret`, service role hoặc JWT admin.
 
 ### 4.11. V5 — config & kill-switch
 
 - `get_salary_v5_config()` — 1 nguồn đọc config hiệu-lực (merge 4 block + áp pending 💰 nếu tới tháng hiệu lực).
 - `set_salary_v5_config(p_patch)` — **chỉ chủ**; block `attendance_v5`/`streak_v5` là **key 💰: gói vào `pending_money_patch`, hiệu lực ĐẦU THÁNG KẾ** (không đổi luật giữa tháng); `coverage_v5`/`system_v5` áp NGAY (kill-switch phải tức thời); validate bất biến (Σ deltas = streak budget, phép 0–4); audit tối đa 50 entry + `config_version` tăng.
+- `system_v5.effective_from` — mốc tháng đầu tiên được dùng công thức V5. Đây là guard chống áp ngược V5 cho kỳ cũ không có dữ liệu dấu chân.
 - **Kill-switch** nằm ở tab "Cài đặt v5" của [OwnerDashboardV5](src/pages/reports/OwnerDashboardV5.tsx) (`/reports/coverage`): switch `v5_money` (TẮT = lương giữ nguyên cơ chế cũ — đây là kill-switch tiền), `v5_coverage`, và nút chọn `stage` ∈ off → grace → shadow_coverage → shadow_money → live. Nút chốt tiền ở tab Đối soát bị disable khi `v5_money` OFF hoặc còn ai rớt ASSERT.
 
 ### 4.12. RLS & phân quyền
@@ -252,8 +261,7 @@ flowchart LR
 
 ### 4.13. ⚠️ Ranh giới ĐÃ CODE vs THIẾT KẾ (V5)
 
-Con số "chuyên cần 6tr + streak 3tr banked" xuất phát từ thiết kế `docs/bang-luong/V5-*.md` và **đã được code + seed làm config mặc định**; engine/verdict/LOCK/cron/màn hình đều live. Những gì **chưa** phải hành vi production:
-- `stage='off'`, `v5_money=false` mặc định → tiền v5 **chưa ghi vào lương thật**; lương đang trả vẫn 100% theo lớp v3 (mục 4.1–4.4). Lộ trình grace → shadow → live do chủ bấm theo `V5-RUNBOOK.md`.
+Con số "chuyên cần 6tr + streak 3tr banked" xuất phát từ thiết kế `docs/bang-luong/V5-*.md` và đã được code + seed làm config mặc định; engine/verdict/LOCK/cron/màn hình đều live. Trạng thái `stage`, `v5_money` và `effective_from` là cấu hình runtime, không phải hằng số của tài liệu. Những gì **chưa** phải hành vi production đầy đủ:
 - Job `tier` hiện **chỉ dọn phiên/SAD quá hạn** — chưa gửi "nhắc 3 nấc 19:00 per toà" như thiết kế Ch. coverage (mới có digest gộp 07:00; config `remind`/`remind_hot` đang dùng để tô màu missions).
 - `sim_cap2`, `building_overrides`, `quiet_hours`, `grace_days`… đã có chỗ trong config nhưng phần tiêu thụ mới ở mức tối thiểu.
 - Các cơ chế thuần thiết kế chưa có code: ma trận dấu chân đầy đủ theo chương SLA/điểm coverage (red 25/yellow 15/green 5), popup piggyback route đầy đủ (server mới trả `piggyback_prompt`, FE chưa dựng UI riêng).
@@ -264,7 +272,7 @@ Con số "chuyên cần 6tr + streak 3tr banked" xuất phát từ thiết kế 
 
 ### 5.1. `/finance/salary` — Bảng lương quản lý ([ManagerSalaryPage](src/pages/finance/ManagerSalaryPage.tsx))
 
-**Vai admin** (desktop): 3 tab — **Bảng lương tháng** ([SalaryMonthly](src/components/salary/SalaryMonthly.tsx): card từng quản lý với breakdown lương cứng/thưởng tự động/HH/đầu tư/ứng/tiền phòng, thêm-sửa-xoá adjustment, nút Trả lương từng người/hàng loạt chọn sổ quỹ, nút Chốt/Mở khoá tháng, điều hướng tháng ± persist qua F5 `flt:salary-manager:*`), **Bảng kê công việc** ([SalaryLedger](src/components/salary/SalaryLedger.tsx): từng dòng bằng chứng, lọc theo người/toà, cờ ảnh khi `requirePhoto`), **Cấu hình** ([SalaryConfig](src/components/salary/SalaryConfig.tsx), quyền `manage_salary`: danh sách quản lý hưởng lương + lương cứng/tiền phòng/phòng ở/alias/mục tiêu; quy tắc thưởng; **Ngày lễ** (kèm seed bộ lễ VN); **Tháng hiển thị cho nhân viên** — bật/tắt override từng tháng). Có thanh "Xem dưới vai trò" để preview self-view của từng quản lý.
+**Vai admin** (desktop): 3 tab — **Bảng lương tháng** ([SalaryMonthly](src/components/salary/SalaryMonthly.tsx): card từng quản lý với breakdown lương cứng/thưởng tự động/HH/đầu tư/ứng/tiền phòng, adjustment, trả lương, chốt/mở khoá), **Bảng kê công việc** ([SalaryLedger](src/components/salary/SalaryLedger.tsx): từng dòng bằng chứng, lọc theo người/toà, cờ ảnh và nút **Không tính / Tính lại** cho từng JOB), **Cấu hình** ([SalaryConfig](src/components/salary/SalaryConfig.tsx): người hưởng lương, quy tắc, ngày lễ, tháng hiển thị). Có thanh "Xem dưới vai trò" để preview self-view.
 
 **Mobile** (nhánh `usePhoneViewport`): shell web-app trọn màn [SalaryAdminMobile](src/components/salary/SalaryAdminMobile.tsx) — 4 tab đáy (Lương / Cá nhân / Bảng kê / Cấu hình), thao tác chốt/trả/adjustment đầy đủ.
 
@@ -291,7 +299,7 @@ Phiên kiểm tra chạy trong dialog [InspectionRunner](src/components/inspecti
 
 ### 5.5. Điểm chạm rải ở trang khác
 
-- **Hoàn thành việc** ([TaskCompleteDialog](src/components/tasks/TaskCompleteDialog.tsx)): sau khi lưu → `awardAndNotifyJobBonus` (popup + push, mục 4.5) **và** `v5_tick_from_job` (tick ngày-công) — cả hai fire-and-forget, lỗi nuốt êm (server đã log).
+- **Hoàn thành việc** ([TaskCompleteDialog](src/components/tasks/TaskCompleteDialog.tsx)): client gửi ảnh + `completion_captured_at` để đối chiếu; trigger server tự đóng dấu `completion_time` dùng tính lương. Sau khi lưu, UI gọi thưởng nóng và tick V5; lỗi server được ghi audit.
 - **Thu tiền `/thu-tien`** ([useQuickCollect](src/hooks/useQuickCollect.ts) → [captureGpsAndRecord](src/lib/v5PaymentGps.ts)): sau khi phiếu thu lưu OK, bắn GPS **nền im lặng** qua `record_payment_gps` với `voucherIds` do [useBulkRecordPayment](src/hooks/useBulkRecordPayment.ts) trả — **không bao giờ chặn luồng thu**; server quyết tick / treo check-nhanh / piggyback, FE chỉ toast nhẹ.
 - **Loại công việc** ([TaskTypeFormDialog](src/components/task-types/TaskTypeFormDialog.tsx)): khu cấu hình lương-thưởng của loại việc — `bonus_amount`, `is_repair`, `is_contract` (checkin), `counts_for_salary`.
 - **Form thu chi**: người nhận là quản lý hưởng lương được đánh dấu `salary_staff_id` (dấu `*`) + `salary_role` — phiếu ứng/HH tự chảy vào bảng lương khi duyệt.
@@ -311,6 +319,6 @@ Phiên kiểm tra chạy trong dialog [InspectionRunner](src/components/inspecti
 **Đi VÀO (domain khác phụ thuộc domain này):**
 - ← **Phân quyền ([01](01-phan-quyen-nhan-su.md))**: module `salary` trong catalog trang; scope V5 (missions/digest/close_period) chạy theo `staff_assignments` có `building_id`.
 - ← **Trang chủ/launcher**: tile "Hôm nay" (`/my-day`) nhóm Vận hành, gắn cờ hot.
-- ← **Worker Zalo** (`worker/index.js`): mang thêm nhiệm vụ **V5 watchdog** (fallback cron tầng 2) — ranh giới: watchdog *không chứa logic lương*, chỉ gọi bù edge fn.
+- ← **API cron** (`api/salary-v5-cron.js`): chuyển Vercel Cron sang edge function; worker Zalo không phải dependency của V5.
 
 **Lưu ý ranh giới:** đừng nhầm 3 chữ "lương": (1) **Bảng lương quản lý** (doc này) — trả công vận hành từ việc thật; (2) **Lương điều hành** — khấu trừ tầng phân bổ LN (doc 12); (3) **HH Sale** — phiếu chi hoa hồng của domain thu chi được *đối chiếu vào* bảng lương chứ không sinh ra ở đây. Tương tự, `salary_work_ledger` là RPC (không có bảng cùng tên), còn "bảng kê đóng băng" mới là bảng thật (`salary_work_ledger_snapshot`).

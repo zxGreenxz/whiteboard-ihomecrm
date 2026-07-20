@@ -5,7 +5,7 @@
 // Route này TỰ gắn `x-cron-secret` khi forward, nên PHẢI xác thực caller trước —
 // nếu không, bất kỳ ai biết URL đều kích hoạt được job. Vercel Cron tự gửi header
 // `Authorization: Bearer <CRON_SECRET>` khi env CRON_SECRET được set, nên ta so
-// khớp header đó (constant-time). Không set → 500 (watchdog worker chạy bù).
+// khớp header đó (constant-time). Không set → 500; admin chạy lại từ UI sau khi sửa env.
 //
 // Ghi chú: Vercel Cron gọi bằng GET nên KHÔNG ép POST-only (ép POST sẽ làm hỏng
 // cron thật). Kiểm soát an ninh cốt lõi là Bearer secret constant-time.
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   const job = (req.query && req.query.job) || "";
   const secret = process.env.CRON_SECRET;
   if (!secret) {
-    res.status(500).json({ error: "CRON_SECRET chưa cấu hình trên Vercel — watchdog worker sẽ tự chạy bù" });
+    res.status(500).json({ error: "CRON_SECRET chưa cấu hình trên Vercel — hãy cấu hình env rồi chạy lại job từ UI admin" });
     return;
   }
 

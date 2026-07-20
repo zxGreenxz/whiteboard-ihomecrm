@@ -1,43 +1,84 @@
 # Trung tâm tài liệu ptcrm
 
 > **Last reviewed:** 2026-07-20  
-> Đây là cổng vào duy nhất cho tài liệu trong repository.
+> Đây là cổng vào duy nhất cho toàn bộ Markdown trong `docs/`. Mỗi nhóm có một index gần nhất; không tạo thêm file status song song khi đã có nguồn current.
 
-## Tài liệu canonical
+## Bắt đầu từ đâu
 
-| Nhóm | Nguồn | Dùng khi |
+| Nhu cầu | Nguồn nên đọc |
+|---|---|
+| Thao tác trên giao diện | [Hướng dẫn sử dụng](huong-dan-su-dung/) và sidebar VitePress |
+| Hiểu hành vi code/DB hiện tại | [Tham chiếu hệ thống](he-thong/README.md) |
+| Tìm entry point/module/test | [Cấu trúc codebase](CODEBASE_STRUCTURE.md) |
+| Đọc schema, migration và nguồn sự thật | [Database schema](DATABASE_SCHEMA.md) |
+| Vận hành Supabase | [Supabase runbook](../supabase/README.md) |
+| Xem trạng thái authorization | [Authorization current status](authorization/README.md) |
+| Vận hành AI Copilot | [AI Copilot current status](ai-copilot/README.md) |
+| Vận hành lương V5 | [Hệ lương thưởng](bang-luong/README.md) |
+| Vận hành Zalo worker | [Zalo CRM](zalo/README.md) |
+
+## Mục lục đầy đủ
+
+### Tài liệu gốc ở `docs/`
+
+- [CODEBASE_STRUCTURE.md](CODEBASE_STRUCTURE.md) — canonical engineering overview.
+- [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) — inventory schema và cách xác minh nguồn đúng.
+- [AUTHORIZATION-PLAN.md](AUTHORIZATION-PLAN.md) — design baseline; trạng thái live ở `authorization/README.md`.
+- [AI-SYSTEM-AUDIT-OPTIMIZATION-ROADMAP-2026-07-20.md](AI-SYSTEM-AUDIT-OPTIMIZATION-ROADMAP-2026-07-20.md) — audit/roadmap snapshot bất biến. File này được giữ nguyên; các số liệu và link lịch sử bên trong không thay current runtime truth.
+
+### Hướng dẫn đã xuất bản
+
+- [Trang chủ hướng dẫn](huong-dan-su-dung/) — 7 nhóm thao tác vận hành và khu demo kế hoạch số 8.
+- [Sidebar đầy đủ](../docs-site/.vitepress/sidebar.mts) — mục lục của mọi trang published.
+- [Mẫu trang](huong-dan-su-dung/_template.md) — template nội bộ, không xuất bản.
+- Hai trang `cong-no-hd-moi` và `khach-no-tien` là redirect stub có `kind: redirect`, giữ cho bookmark cũ; nội dung vận hành hiện tại nằm ở Quy trình thu tiền.
+- Khu [08 — Kế hoạch phát triển](huong-dan-su-dung/08-ke-hoach-phat-trien/) là presentation/proposal, không phải hướng dẫn runtime.
+
+### Tham chiếu kỹ thuật và vận hành
+
+- [he-thong/README.md](he-thong/README.md) — index đủ `00`–`21`, `99`, realtime và performance evidence.
+- [authorization/README.md](authorization/README.md) — current status + toàn bộ evidence/tranche còn giữ.
+- [ai-copilot/README.md](ai-copilot/README.md) — runtime, giới hạn, plan và spike evidence.
+- [bang-luong/README.md](bang-luong/README.md) — system reference, runbook, spec, plan và implementation log.
+- [zalo/README.md](zalo/README.md) — hiện trạng, rủi ro, setup và plan.
+- [doi-chieu/README.md](doi-chieu/README.md) — runbook đối chiếu NABUBU/Hiển Thu và 686-TCB/TKHIEP.
+
+### Kế hoạch, audit và hồ sơ lịch sử
+
+- [plans/README.md](plans/README.md) — kế hoạch đang hoạt động.
+- [prompts/README.md](prompts/README.md) — prompt nghiên cứu tái sử dụng, không phải spec.
+- [audits/README.md](audits/README.md) — audit snapshot 03/07 và 08/07.
+- [refactor-2026-07/README.md](refactor-2026-07/README.md) — hồ sơ phase, risk register và bằng chứng refactor.
+
+## Phân loại vòng đời
+
+| Loại | Ý nghĩa | Ví dụ |
 |---|---|---|
-| Hướng dẫn người dùng đã xuất bản | [huong-dan-su-dung/](huong-dan-su-dung/) | Thao tác trên giao diện; nội dung được VitePress xuất bản. |
-| Tham chiếu hệ thống | [he-thong/README.md](he-thong/README.md) | Luồng nghiệp vụ, bảng/RPC chính, route và ranh giới module. Các file `docs/he-thong/*.md` cũng được AI Copilot nạp ở runtime. |
-| Cấu trúc code | [CODEBASE_STRUCTURE.md](CODEBASE_STRUCTURE.md) | Tìm entry point, module, backend và vị trí kiểm thử. |
-| Schema database | [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) | Cách đọc schema hiện tại và nguồn sự thật cho type/migration. |
-| Runbook | [bang-luong/README.md](bang-luong/README.md), [zalo/README.md](zalo/README.md), [supabase/README.md](../supabase/README.md) | Vận hành, kiểm tra và xử lý sự cố. |
-| Kế hoạch đang hoạt động | [plans/README.md](plans/README.md), [ai-copilot/README.md](ai-copilot/README.md), [authorization/README.md](authorization/README.md) | Việc chưa đóng hoặc tài liệu thiết kế cần đối chiếu với trạng thái hiện tại. |
-| Bằng chứng audit | [authorization/](authorization/), [refactor-2026-07/](refactor-2026-07/) và các file audit/đối chiếu có ngày | Lưu bằng chứng theo mốc; không dùng thay cho tài liệu canonical. |
-| Prompt nghiên cứu | [prompts/README.md](prompts/README.md) | Đầu vào tái sử dụng cho các vòng phân tích; không phải đặc tả sản phẩm. |
+| `canonical/current` | Mô tả hành vi hiện tại | `he-thong/**`, `CODEBASE_STRUCTURE.md`, `DATABASE_SCHEMA.md` |
+| `current-status` | Một index duy nhất cho trạng thái runtime | `authorization/README.md`, `ai-copilot/README.md` |
+| `runbook` | Quy trình vận hành/sự cố | `bang-luong/V5-RUNBOOK.md`, `zalo/ZALO-WORKER-SETUP.md`, `doi-chieu/**` |
+| `active-plan` | Việc chưa đóng hoặc kế hoạch đánh giá | `plans/**`, `zalo/PLAN.md` |
+| `presentation-plan` | Bản demo/proposal cho họp | `huong-dan-su-dung/08-ke-hoach-phat-trien/**` |
+| `audit-evidence` | Snapshot theo ngày/commit | `audits/**`, authorization tranche, refactor phase |
+| `redirect` | Biển chỉ đường từ URL tài liệu cũ | hai trang báo cáo công nợ đã chuyển |
 
-## Quy tắc vòng đời
+Code chạy, generated types, migration mới hơn và runtime production luôn thắng audit/spec cũ. Tài liệu historical phải có banner hoặc nằm trong nhóm evidence.
 
-- Mỗi tài liệu phải được hiểu theo một trong các trạng thái: `canonical`, `active-plan`, `runbook`, `audit-evidence` hoặc `historical`.
-- Không nhân bản cùng một nội dung ở nhiều nơi. Tài liệu phụ chỉ tóm tắt và liên kết tới nguồn canonical.
-- Code chạy, generated types và migration mới hơn luôn thắng prose cũ. Snapshot live phải ghi rõ ngày, project và phạm vi.
-- Tài liệu đã bị thay thế phải được xóa hoặc có banner chỉ rõ nguồn thay thế; không để nhiều file cùng tự nhận là “nguồn sự thật”.
-- Hai trunk `docs/huong-dan-su-dung/**` và `docs/he-thong/**` giữ đường dẫn ổn định vì VitePress và AI Copilot sử dụng trực tiếp.
+## Quy tắc duy trì
 
-## Nguồn sự thật kỹ thuật
+- Không nhân bản cùng một nội dung ở nhiều nơi. Trang phụ tóm tắt và link về nguồn canonical.
+- Khi một plan hoàn tất, chuyển kết luận bền vững vào tài liệu current rồi xoá/đánh nhãn plan lịch sử.
+- Không để tài liệu historical trong `docs/he-thong/` vì AI Copilot nạp toàn bộ thư mục đó.
+- Khi di chuyển/xoá file, cập nhật mọi comment/script/inbound link trong cùng commit.
+- Không sửa hoặc commit secret, dữ liệu nhận diện khách hàng hay output live nhạy cảm vào Markdown.
 
-- Database public types: [src/integrations/supabase/types.ts](../src/integrations/supabase/types.ts).
-- Lịch sử thay đổi database: [supabase/migrations/](../supabase/migrations/) theo thứ tự tên file; archive chỉ để tra cứu.
-- Route và gate giao diện: [src/App.tsx](../src/App.tsx), catalog quyền ở [src/lib/permissionPages.ts](../src/lib/permissionPages.ts).
-- Tài liệu xuất bản: `docs/huong-dan-su-dung`; cấu hình site ở [docs-site/](../docs-site/).
-
-## Kiểm tra tài liệu
+## Kiểm tra
 
 ```powershell
-npm run docs:check:links
-npm --prefix docs-site run images:check
+npm run docs:check
 npm --prefix docs-site run build
 git diff --check
+npm run typecheck:baseline
 ```
 
-Lần cài mới dùng `npm --prefix docs-site ci` trước khi build. Không sửa `package-lock.json` bằng tay.
+`docs:check` kiểm link, nội dung trùng SHA-256, ảnh và sidebar. Trang `kind: redirect`/`sidebar: false` được phép không xuất hiện trong sidebar.

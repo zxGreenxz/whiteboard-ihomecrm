@@ -1,5 +1,7 @@
 # Phase 0 Spike — Kết quả (10/07/2026): **TOÀN BỘ GATE PASS**
 
+> **Lifecycle:** historical spike evidence. Provider/model, quota và safety hiện hành xem [README.md](README.md); PASS ở đây chỉ áp cho gate và code ngày 10/07.
+
 > Spike theo `PLAN.md` v2.1 §Phase 0. Đợt 1 (chưa có key): Gate A + phần lớn Gate C
 > bằng **provider `mock`** trong `llm-proxy` (mock trả completion OpenAI-format với
 > tool_call `AgentOutput` — đủ verify toàn bộ plumbing client-side).

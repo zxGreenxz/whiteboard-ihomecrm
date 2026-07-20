@@ -3,7 +3,7 @@
 //
 // payments không lưu người thu (user_id = owner hoá đơn để khớp RLS) —
 // người thu thật nằm ở income_expenses.creator_name của phiếu thu link
-// payment_id (xem docs/he-thong/15 §4.7). Hook gom các phiếu thu APPROVED
+// payment_id (xem docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md §4.7). Hook gom các phiếu thu APPROVED
 // theo invoice_id → map { invoice_id: [{creator_name, amount, date}] }
 // theo thứ tự thu trước → sau, phục vụ:
 //  - Ô phòng: "{tên} Thu đủ" / "Thu thêm 2731K(T+N)"

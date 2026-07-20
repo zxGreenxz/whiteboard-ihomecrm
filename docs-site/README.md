@@ -2,6 +2,8 @@
 
 VitePress xuất nội dung trực tiếp từ `../docs/huong-dan-su-dung`. Sidebar viết tay ở `.vitepress/sidebar.mts`; mỗi trang published mới phải được thêm vào đó.
 
+Ngoại lệ: trang có frontmatter `kind: redirect` hoặc `sidebar: false` là biển chỉ đường cho URL cũ và không cần xuất hiện trong sidebar.
+
 ```powershell
 npm --prefix docs-site ci
 npm --prefix docs-site run images:check

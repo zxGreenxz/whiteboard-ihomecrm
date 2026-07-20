@@ -15,7 +15,7 @@ status: published
 
 Báo cáo **Lịch thanh toán** cho bạn biết **mỗi phòng đang thuê đã được lập hoá đơn đến ngày nào**. Thay vì liệt kê từng hoá đơn, báo cáo gom **mỗi phòng thành một dòng** và hiển thị mốc **Đã lên hóa đơn đến ngày** — tức ngày đến hạn muộn nhất trong số các hoá đơn đã tạo cho phòng đó.
 
-Nhờ vậy bạn nhìn nhanh được phòng nào đã "phủ" hoá đơn tới tương lai và phòng nào có mốc rơi vào quá khứ / gần hôm nay — dấu hiệu **cần tạo hoá đơn cho kỳ thu tiếp theo**. Báo cáo này chỉ hiển thị **mốc ngày**, không hiển thị số tiền còn nợ (số tiền xem ở báo cáo [Khách nợ tiền](/04-bao-cao/khach-no-tien/) và [Công nợ HĐ mới](/04-bao-cao/cong-no-hd-moi/)).
+Nhờ vậy bạn nhìn nhanh được phòng nào đã "phủ" hoá đơn tới tương lai và phòng nào có mốc rơi vào quá khứ / gần hôm nay — dấu hiệu **cần tạo hoá đơn cho kỳ thu tiếp theo**. Báo cáo này chỉ hiển thị **mốc ngày**, không hiển thị số tiền còn phải thu; phần tiền xử lý tại [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
 
 Báo cáo phù hợp với **kế toán**, **quản lý toà** và **chủ nhà** khi rà soát chu kỳ xuất hoá đơn hằng tháng.
 
@@ -62,7 +62,7 @@ Trên đầu trang có các ô lọc, phía dưới là bảng dữ liệu. Bộ
 - Trang **chưa có nút Xuất Excel**. Để lưu lại, bạn có thể chụp màn hình, hoặc tăng **Số bản ghi** lên 100 rồi bôi đen bảng để sao chép.
 - Dùng cặp ô **Chọn ngày** + **Ngày kết thúc** để lọc riêng những phòng có mốc rơi vào tháng hiện tại — nhanh chóng thấy phòng nào **sắp hết kỳ đã xuất hoá đơn**.
 - Chọn từng **Toà nhà** khi bạn phụ trách nhiều toà, để rà soát gọn theo từng toà.
-- Báo cáo này chỉ nói **đến ngày nào**, không nói **còn nợ bao nhiêu**. Muốn biết số tiền, hãy mở [Khách nợ tiền](/04-bao-cao/khach-no-tien/) hoặc [Công nợ HĐ mới](/04-bao-cao/cong-no-hd-moi/).
+- Báo cáo này chỉ nói **đến ngày nào**, không nói **còn phải thu bao nhiêu**. Muốn biết và xử lý số tiền, hãy mở [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/).
 - Bộ lọc bạn chọn được **giữ lại qua F5** (làm mới trang), nên khi quay lại báo cáo vẫn ở đúng toà/khoảng ngày bạn đang xem.
 
 ## Thử trực tiếp trên sandbox
@@ -79,5 +79,5 @@ Hãy nhìn thấy: mỗi phòng đang thuê ở **Toà DEMO A** và **Toà DEMO 
 - [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — sau khi có hoá đơn thì ghi nhận thu tiền.
 - [Hoá đơn](/03-quan-ly-van-hanh/hoa-don/) — nơi tạo và tra cứu chi tiết từng hoá đơn của phòng.
 - [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/) — ghi nhận thanh toán cho hoá đơn.
-- [Khách nợ tiền](/04-bao-cao/khach-no-tien/) và [Công nợ HĐ mới](/04-bao-cao/cong-no-hd-moi/) — xem số tiền còn phải thu.
+- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/) — xem và thu số tiền còn lại theo hóa đơn/phòng.
 - [Hub Báo cáo tài chính](/04-bao-cao/hub-tai-chinh/) — quay lại danh sách toàn bộ báo cáo tài chính.

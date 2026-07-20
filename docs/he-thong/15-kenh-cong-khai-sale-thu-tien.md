@@ -1,10 +1,12 @@
 # Kênh công khai & mobile: Phòng trống (/r/:token) · Sale Phòng · Thu tiền
 
+> **Reviewed:** 2026-07-20. Luồng thu tiền bên dưới đã cập nhật sang adapter v4 canonical/v3 coexistence.
+
 > Ba module "mặt tiền" mới (2026-06) phục vụ **sale & vận hành ngoài hiện trường**, xây bên trên các domain lõi sẵn có:
 >
 > 1. **Trang công khai "Phòng trống"** `/r/:token` — bảng phòng trống live cho khách/sale xem **không cần đăng nhập** (share link). Có thêm route thương hiệu `/phongtrong` (cùng trang, token cố định `"demo"`, commit `59d984c`) cho domain chillhome.io.vn.
 > 2. **Module quản trị "Sale Phòng"** `/sale-phong` — nơi owner vận hành trang công khai: token chia sẻ, cài đặt hiển thị, thông tin sale (liên hệ/nội thất/ảnh), phòng khách nhờ sale, editor sơ đồ tầng kéo-thả, **tab Thống kê** đo đếm truy cập. Trên điện thoại tự chuyển sang bản mobile web-app riêng (§5.3).
-> 3. **Trang "Thu tiền"** `/thu-tien` — màn mobile cho nhân viên đi **thu tiền** theo hoá đơn tháng (thu đủ 1 chạm / thu một phần / form TM-TK-TT / hoàn tác / báo cáo / bàn giao tiền mặt / đóng tiền điện nước NCC).
+> 3. **Trang "Thu tiền"** `/thu-tien` — màn mobile cho nhân viên đi **thu tiền** theo hoá đơn tháng (thu đủ 1 chạm / thu một phần / form TM-TK-TT / hoàn tác / báo cáo / bàn giao tiền mặt) và đóng phí vận hành tập trung theo kỳ.
 >
 > Flow **"Tạo cọc nhanh"** trên trang công khai (trước đây đánh dấu WIP) **đã commit** tại `4b4f1cd` (2026-06-17) kèm migration [20260608100000_ensure_room_deposit_type_rpc.sql](supabase/migrations/20260608100000_ensure_room_deposit_type_rpc.sql) — xem §4.6.
 >
@@ -41,10 +43,10 @@ Trên **điện thoại** (`usePhoneViewport`) entry rẽ nhánh sang [SalePhong
 ### 1.3. Trang "Thu tiền" `/thu-tien`
 
 - Page phụ mobile-first ([ThuTien.tsx](src/pages/ThuTien.tsx) + bộ component [src/components/thu-tien/](src/components/thu-tien/RoomCellGrid.tsx)), style riêng `thu-tien.css` scope dưới `.tt-page` (font Be Vietnam Pro / Space Mono), lazy-load. Sidebar *Tài chính → Thu tiền*. Desktop ≥1024px có thêm cột trái [ManagePanel](src/components/thu-tien/ManagePanel.tsx) (bảng quản lý/báo cáo dùng chung data với khung phone).
-- Vẫn là "view nghiệp vụ" trên domain [07 Hoá đơn](07-hoa-don-thanh-toan.md) + [08 Thu chi](08-thu-chi-so-quy.md), nhưng từ `f203aa9` có thêm **1 bảng + 2 RPC riêng cho tính năng "Đóng tiền Điện nước"** (`building_utility_accounts`, §2.6). Đọc hoá đơn = **1 query duy nhất cho CẢ KỲ mọi toà** (`8190d18`, key `['invoices','thu-tien',month]` — §5.4), lưới ô phòng 3 màu (Chưa thu / Một phần / Đã thu), thao tác **Thu đủ** (1 chạm), **Thu một phần** (bàn phím số nhập theo nghìn) hoặc **form nhiều dòng TM/TK/TT** trong drawer.
+- Vẫn là "view nghiệp vụ" trên domain [07 Hoá đơn](07-hoa-don-thanh-toan.md) + [08 Thu chi](08-thu-chi-so-quy.md). Đọc hoá đơn = **1 query duy nhất cho CẢ KỲ mọi toà** (`8190d18`, key `['invoices','thu-tien',month]` — §5.4), lưới ô phòng 3 màu (Chưa thu / Một phần / Đã thu), thao tác **Thu đủ** (1 chạm), **Thu một phần** (bàn phím số nhập theo nghìn) hoặc **form nhiều dòng TM/TK/TT** trong drawer. Khối đóng phí NCC đã được mở rộng từ Điện/Nước thành **Đóng tiền tập trung theo kỳ** (§2.6).
 - Mỗi lần thu = ghi **`payments` + phiếu thu `income_expenses`** (xem §4.7) — đúng dòng dữ liệu của nút "Thu tiền" trong trang Hoá đơn, không phát minh đường ghi mới.
 - Route gate `RequirePermission module="thu_tien"`; quyền chi tiết `thu_tien.view / collect / undo / report` (fallback legacy `invoices.record_payment`, riêng `report` fallback `invoices.view` — xem [permissionPages.ts](src/lib/permissionPages.ts)).
-- Ngoài thu tiền còn 3 lối phụ trên header: **Bàn giao tiền mặt** ([HandoverSheet](src/components/thu-tien/HandoverSheet.tsx), xem [08 Thu chi](08-thu-chi-so-quy.md) + báo cáo bàn giao), **Đóng tiền điện nước** ([UtilityBillSheet](src/components/thu-tien/UtilityBillSheet.tsx)) và nút mở báo cáo **Chu kỳ Thu → Bàn giao** `/reports/finance/thu-ban-giao` (quyền `reports_finance.collection_cycle`).
+- Ngoài thu tiền còn 3 lối phụ trên header: **Bàn giao tiền mặt** ([HandoverSheet](src/components/thu-tien/HandoverSheet.tsx), xem [08 Thu chi](08-thu-chi-so-quy.md) + báo cáo bàn giao), **Đóng phí theo kỳ** ([PeriodFeePanel](src/components/thu-tien/PeriodFeePanel.tsx) desktop / [PeriodFeeSheet](src/components/thu-tien/PeriodFeeSheet.tsx) mobile) và nút mở báo cáo **Chu kỳ Thu → Bàn giao** `/reports/finance/thu-ban-giao` (quyền `reports_finance.collection_cycle`).
 
 ---
 
@@ -105,7 +107,8 @@ RLS owner-only như trên. Thiếu dòng → RPC dùng mặc định (30 ngày, 
 | `recompute_room_reservation(room_id)` | (trigger gọi) | Nguồn sự thật cờ "cọc giữ chỗ": phòng `AVAILABLE` có cọc chưa-link-HĐ (kể cả phiếu **chưa duyệt**, chỉ loại `CANCELLED`/đã xoá) → `RESERVED`, và ngược lại. Migration [20260608000000](supabase/migrations/20260608000000_room_reservation_reconcile.sql) — xem chi tiết [04 Cọc](04-coc-giu-cho.md). |
 | `ensure_room_deposit_type()` | authenticated | Get-or-create loại thu "Tiền cọc" của caller, **ép `is_deposit = TRUE`** (tái dùng helper `_termination_ensure_type`) — để `ie_has_deposit_item()` nhận diện phiếu cọc → trigger khoá phòng. Migration [20260608100000](supabase/migrations/20260608100000_ensure_room_deposit_type_rpc.sql) (commit `4b4f1cd`). |
 | `get_or_create_deposit_account()` | authenticated | Sổ quỹ hệ thống **"CỌC (giữ hộ khách)"** (sẵn có từ module thanh lý, migration `20260603000022`) — QuickDepositModal dùng làm sổ nhận mặc định. |
-| `upsert_building_utility_account` / `pay_utility_bill` | authenticated | Tính năng "Đóng tiền Điện nước" của `/thu-tien` (§2.6). Migration [20260620000000](supabase/migrations/20260620000000_building_utility_accounts.sql). |
+| `get_period_fee_status` / `pay_period_fee` / `update_period_fee` / `cancel_period_fee` / `pay_draft_fee_voucher` / `append_fee_attachment` | authenticated | Đọc, đóng, sửa, huỷ, thanh toán phiếu nháp và đính ảnh cho phí tập trung theo kỳ (§2.6). Nền V1 `20260708130000`–`130600`, V2 `20260710120000`–`120600`. |
+| `upsert_building_fee_account` / `get_period_commissions` / `get_period_maintenance` | authenticated | Cấu hình phí theo toà, trạng thái hoa hồng và nhóm bảo trì trong cùng khối Period Fee. |
 
 > [types.ts](src/integrations/supabase/types.ts) regen lần gần nhất đã gồm đủ nhóm cột sale (`rooms.sale_note`/`sale_bonus_note`, `buildings.public_contact_*`/`public_map_url`/`public_lift_type`), bảng `room_pass_listings` (+ `avail_date`/`contact_manager`), `public_room_events`, các RPC pass/`pra_*`/`log_public_room_events`/`get_my_available_rooms` và `ensure_room_deposit_type` (một số hook vẫn gọi qua cast `as any` từ thời chưa regen — vô hại).
 
@@ -136,10 +139,15 @@ flowchart LR
 - **Trạng thái migrate**: Phase 1 **xong** — 126 ảnh cũ đã copy sang R2 và `rooms.images`/`buildings.images` rewrite thành URL R2. Phase 2 (10 bucket riêng tư) **chưa bật**.
 - **Bucket Supabase `room-sale-images` (PUBLIC, migration [20260607090200](supabase/migrations/20260607090200_room_sale_images_bucket.sql)) vẫn tồn tại làm fallback**: adapter [supabaseData.ts](src/pages/phong-trong/supabaseData.ts) `imageUrl()` pass-through URL đầy đủ (giờ là URL R2), chỉ dựng `getPublicUrl` Supabase khi giá trị còn là storage path trần. RLS `storage.objects` như cũ: đọc = `public`; ghi/sửa/xoá = `authenticated`.
 
-### 2.6. Thu tiền — schema gần như tái dùng, chỉ thêm 1 bảng cho "Đóng tiền Điện nước"
+### 2.6. Thu tiền và Đóng tiền tập trung theo kỳ
 
-- Phần thu tiền đọc/ghi các bảng sẵn có: `invoices` + `invoice_items` + `payments` (domain 07), `income_expenses` + `income_expense_types` + `accounts` (domain 08), `excess_amounts` (thu dư/hoàn tác). Logic FE thuần nằm ở [src/lib/collect.ts](src/lib/collect.ts) (pure helpers: `collectStatus`, `remainingOf`, `paymentsInRange`, `latestPaymentId`, **`paidAsOf`/`remainingAsOf`/`paidUpTo`** — snapshot công nợ *tính đến hết một ngày* cho bộ lọc theo ngày, format tiền/Zalo/tel — có test được) + [collectPlan.ts](src/lib/collectPlan.ts) (`planCollect` — tính dòng tiền form nhiều phương thức) + [cashAccount.ts](src/lib/cashAccount.ts) (resolve sổ quỹ theo phương thức, §4.7).
-- **Bảng mới duy nhất** (commit `f203aa9`, migration [20260620000000_building_utility_accounts.sql](supabase/migrations/20260620000000_building_utility_accounts.sql)): `building_utility_accounts` — mã PE (điện) / số danh bạ (nước) + tên chủ hộ đăng ký NCC theo `(building_id, utility_type)`, owner-scoped, staff đọc qua RLS. Kèm 2 RPC: `upsert_building_utility_account` (sửa mã inline) và `pay_utility_bill` (SECURITY DEFINER, tạo **1 phiếu CHI** từ sổ "…Thu" của user, tính KQKD, kỳ gắn qua `start_date/end_date` của hạng mục, `voucher_date` = ngày đóng thực tế). FE: [UtilityBillSheet](src/components/thu-tien/UtilityBillSheet.tsx) + [useUtilityBills.ts](src/hooks/useUtilityBills.ts).
+- Phần thu khách đọc/ghi các bảng sẵn có: `invoices` + `invoice_items` + `payments` (domain 07), `income_expenses` + `income_expense_types` + `accounts` (domain 08), `excess_amounts` (thu dư/hoàn tác). Logic FE thuần nằm ở [src/lib/collect.ts](src/lib/collect.ts), [collectPlan.ts](src/lib/collectPlan.ts) và [cashAccount.ts](src/lib/cashAccount.ts).
+- Khối **Period Fee V2** dùng `building_fee_accounts` để lưu mã NCC/chủ hộ, mức tiền và sổ mặc định theo `(building_id, fee_category)`. Cờ "Không áp dụng" có nguồn duy nhất là `buildings.hidden_fixed_expenses`; cột `building_fee_accounts.not_applicable` đã deprecated.
+- Lưới phí gồm 9 key `tien_nha`, `dien`, `nuoc`, `internet`, `quan_ly`, `ve_sinh`, `cong_an`, `rac`, `thang_may`; thêm hai khu riêng cho **hoa hồng hợp đồng** và **bảo trì**. `get_period_fee_status` nhận diện phiếu theo `fee_type_matches` trên mọi type nhìn thấy trong các toà được phép, không lọc type theo owner vì dữ liệu thật có phiếu do nhiều người tạo.
+- `pay_period_fee` nhận **tổng tiền của cả khoảng kỳ**; `start_date/end_date` trên item làm nguồn accrual để báo cáo chia theo tháng. Có chip số kỳ và nhập tuỳ ý 1–36 kỳ. RPC chống đóng trùng phiếu APPROVED, trả cảnh báo trước khi user force ghi.
+- Phiếu định kỳ có thể sinh `UNAPPROVED` + sổ trống khi `repeat_auto_approve=false`. `pay_draft_fee_voucher` gán sổ, ảnh và duyệt nguyên tử; nháp vẫn được tính là chưa chi cho tới khi thanh toán.
+- Sửa/huỷ/đính ảnh làm theo **từng voucher** qua `update_period_fee`, `cancel_period_fee`, `append_fee_attachment`; phiếu nhiều item bị hạn chế sửa tiền/kỳ và phiếu thuộc batch không được huỷ từ lưới. Hoa hồng dùng trạng thái `unpaid|draft|paid`; bảo trì đọc các phiếu batch/đơn hiện có để tránh tạo lại.
+- FE hiện hành: [usePeriodFees.ts](src/hooks/usePeriodFees.ts) + [usePeriodFeeState.ts](src/hooks/usePeriodFeeState.ts), [PeriodFeePanel](src/components/thu-tien/PeriodFeePanel.tsx) desktop và [PeriodFeeSheet](src/components/thu-tien/PeriodFeeSheet.tsx) mobile. Các component `UtilityBill*` cũ không còn là surface chính.
 
 ### 2.7. Bảng `room_pass_listings` — "phòng khách nhờ sale / pass" (2026-06-17)
 
@@ -304,18 +312,18 @@ Một lần thu trên `/thu-tien` chạy [useQuickCollect.ts](src/hooks/useQuick
 - **1-chạm** (nút Thu đủ / keypad Thu 1P): 1 line `TM` (hoặc method chọn nhanh), `amount` cap ≤ `remaining`.
 - **Form nhiều dòng** ([CollectPayForm](src/components/thu-tien/CollectPayForm.tsx) trong drawer): tách nhiều dòng **TM/TK/TT** — mỗi dòng vào đúng sổ riêng, kèm ngày + ảnh chứng từ; cho **thu DƯ qua TM** → tiền thối (sổ `"…Thối"`, đã net vào `total_amount`) hoặc giữ làm **nợ khách** (`excess_amounts`, cần HĐ). Tính tiền thuần ở [collectPlan.ts](src/lib/collectPlan.ts) `planCollect` — y hệt RecordPaymentDialog trang Hoá đơn.
 
-Dữ liệu ghi (mỗi **dòng phương thức** = 1 cặp):
+Dữ liệu ghi (mỗi **dòng phương thức** = một RPC atomic):
 
-1. **`payments`**: 1 dòng `payment_method` = method của line, `payment_date` = ngày chọn (mặc định hôm nay), `user_id` = **owner của invoice** (không phải staff — để RLS `staff_can('invoices', …)` match).
-2. **`income_expenses`**: 1 phiếu thu `INCOME` link `payment_id`/`invoice` (loại thu mặc định `is_default` của owner), cùng `user_id` owner.
-3. **Trigger DB** `recompute_invoice_for_id` (migration `20260510000010`) tự cập nhật `invoices.paid_amount / remaining_amount / status` — FE không tự tính.
-4. **Không dùng RPC `record_invoice_payment`** — RPC đó check `user_id = p_user_id` nên staff bị từ chối dù RLS cho ghi; insert trực tiếp là chủ ý.
+1. Adapter thử **`record_invoice_payment_v4`** canonical; chỉ fallback v3 theo tín hiệu coexistence hợp lệ.
+2. RPC ghi cùng transaction: `payments` + phiếu `income_expenses` + item + recompute invoice + idempotency/audit.
+3. `p_voucher_owner_id` giữ attribution owner hoá đơn; actor thao tác vẫn được writer audit.
+4. Mỗi sub-line atomic, nhưng form nhiều dòng/batch nhiều hoá đơn vẫn là nhiều transaction và có thể thành công một phần.
 
 Quy tắc kèm theo:
 
 - **Resolve sổ quỹ nhận theo phương thức** ([cashAccount.ts](src/lib/cashAccount.ts)): `TM` → sổ tên kết thúc `"…Thu"` thuộc user đang đăng nhập (**user có nhiều sổ "…Thu" thì ưu tiên sổ `is_default`**) → sổ `"Chung"` → sổ trùng tên toà; `TK` → `buildings.default_account_id_tk` → sổ trùng tên toà; `TT` → `buildings.default_account_id_tt` → sổ trùng tên toà. Không resolve được → **throw, chặn ghi** (không insert `account_id` rỗng).
 - **Làm tròn tự động**: residual sau thu `0 < x < 10.000đ` → gắn metadata `rounding_amount` + sổ `"Làm tròn tiền thiếu"` lên voucher (audit, **không trừ số dư**) → trigger DB mark invoice `PAID`. Cùng cơ chế với [08 §4.10](08-thu-chi-so-quy.md).
-- **Hoàn tác** (gate quyền `thu_tien.undo`; [useDeletePayment.ts](src/hooks/useDeletePayment.ts), lấy payment mới nhất qua `latestPaymentId`): soft-delete voucher `income_expenses` theo `payment_id` → hard-delete `excess_amounts` có `source_payment_id` → hard-delete `payments` → trigger `recompute_invoice_after_payment_change` tự hạ `paid_amount/status`.
+- **Hoàn tác** (gate `thu_tien.undo`; [useDeletePayment.ts](src/hooks/useDeletePayment.ts)): ưu tiên `reverse_invoice_payment_v3` để tạo bút toán đối ứng, recompute và giữ lịch sử. Chỉ payment legacy/paired đặc biệt mới dùng đường xoá cũ theo fallback được phân loại.
 - **Ghi chú** khi phòng chưa thu: ghi thẳng `invoices.notes` ([useUpdateInvoiceNote.ts](src/hooks/useUpdateInvoiceNote.ts)); khi thu kèm ghi chú thì truyền vào `notes` của phiếu.
 - Trạng thái 3 màu map từ hoá đơn thật ([collect.ts](src/lib/collect.ts)): `paid` = `PAID` hoặc remaining ≤ 0; `partial` = `PARTIAL_PAID` hoặc `paid_amount > 0`; `unpaid` = còn lại (gồm `APPROVED/OVERDUE/DRAFT`).
 - **Ai thu hiển thị trên ô phòng/drawer**: [useInvoiceCollectors.ts](src/hooks/useInvoiceCollectors.ts) đọc `creator_name` của phiếu thu theo `payment_id` — nhân viên thấy khoản nào do ai thu.
@@ -410,7 +418,7 @@ Commit `e6f44a7` (trang) + `8510493` (scope CSS `.tt-page`); các đợt lớn s
 5. **Lưới ô phòng** ([RoomCellGrid](src/components/thu-tien/RoomCellGrid.tsx) / [RoomCell](src/components/thu-tien/RoomCell.tsx)): mỗi ô = 1 hoá đơn, 3 màu đỏ/vàng/xanh, sort tên phòng numeric; hiện **chữ cái viết tắt người thu** ([useInvoiceCollectors](src/hooks/useInvoiceCollectors.ts)); nút Zalo khách đại diện; nút **THU** mở drawer chế độ bàn phím (ConfirmCollectDialog cũ đã bỏ — Thu đủ giờ nằm trong drawer/keypad).
 6. **[CollectDrawer](src/components/thu-tien/CollectDrawer.tsx)** (tap ô): chi tiết hoá đơn ([InvoiceDetailCard](src/components/thu-tien/InvoiceDetailCard.tsx), items lazy), Thu đủ / Thu một phần ([CollectKeypad](src/components/thu-tien/CollectKeypad.tsx) — nhập **theo nghìn**, `entered * 1000`) / **form nhiều dòng TM-TK-TT** ([CollectPayForm](src/components/thu-tien/CollectPayForm.tsx), §4.7), Ghi chú ([NoteEditor](src/components/thu-tien/NoteEditor.tsx)), **Hoàn tác** (quyền `thu_tien.undo`), Gọi khách đại diện (`contract_customers.is_representative`), điều hướng phòng trước/sau theo danh sách đã lọc. Nút ghi gated `thu_tien.collect`.
 7. **[CollectionReport](src/components/thu-tien/CollectionReport.tsx)**: báo cáo full-sheet theo Toà (hoặc Tất cả toà) × **popover "Thời gian báo cáo"** (`21dd862`): Cả kỳ / Hôm nay / **lịch tháng thu gọn chọn 1 ngày ngay trong popover (1 chạm)**; nhóm đã-thu theo toà + chips danh sách phòng chưa thu; dùng `useCollectionReport` (lọc client trên cache `useThuTienInvoices`, không query riêng).
-8. **[UtilityBillSheet](src/components/thu-tien/UtilityBillSheet.tsx)** (`f203aa9`): tab "Đóng tiền" — mỗi toà 1 card dòng Điện/Nước, mã PE/danh bạ + chủ hộ sửa inline (autosave, RPC `upsert_building_utility_account`), nhập tiền → ✓ tạo **phiếu CHI** qua RPC `pay_utility_bill` (§2.6); tab "Báo cáo" theo ngày có đóng trong kỳ.
+8. **[PeriodFeePanel](src/components/thu-tien/PeriodFeePanel.tsx) / [PeriodFeeSheet](src/components/thu-tien/PeriodFeeSheet.tsx)**: đóng phí tập trung theo kỳ cho 9 hạng mục cố định, hoa hồng và bảo trì; hỗ trợ nhiều kỳ, phiếu nháp chờ thanh toán, nhiều voucher mỗi ô, sửa/huỷ/đính ảnh per-voucher và lịch sử. Data/action dùng [usePeriodFees](src/hooks/usePeriodFees.ts) + [usePeriodFeeState](src/hooks/usePeriodFeeState.ts), xem §2.6.
 9. **[HandoverSheet](src/components/thu-tien/HandoverSheet.tsx)**: bàn giao tiền mặt theo **số dư ròng** sổ "…Thu" của tôi → chọn người nhận (teams) → phiên PENDING → người nhận xác nhận (chọn sổ nhận); từ `f1208e9` chọn được **sổ nguồn** (bàn giao chuyển khoản). Chi tiết nghiệp vụ ở domain [08](08-thu-chi-so-quy.md) + báo cáo `/reports/finance/ban-giao`.
 
 ```mermaid
@@ -419,9 +427,9 @@ flowchart LR
     Q -->|không refetch| MP[ManagePanel desktop]
     Q -->|không refetch| CR[CollectionReport]
     A -->|"THU → drawer (Thu đủ / keypad ×1000 / form TM-TK-TT)"| C{useQuickCollect + planCollect}
-    C -->|"resolve sổ theo phương thức (cashAccount.ts):\nTM: '…Thu' is_default → 'Chung' → tên toà\nTK/TT: default_account_id_* → tên toà"| D["useBulkRecordPayment (1 item, n line)"]
-    D --> E[("payments (1/line)")]
-    D --> F[("income_expenses INCOME (1/line)")]
+    C -->|"resolve sổ theo phương thức (cashAccount.ts):\nTM: '…Thu' is_default → 'Chung' → tên toà\nTK/TT: default_account_id_* → tên toà"| D["useBulkRecordPayment → v4/v3 adapter"]
+    D --> E[("payment + voucher + item atomic / line")]
+    E --> F[("recompute invoice + audit/idempotency")]
     D -.->|"residual < 10K"| G["metadata rounding + sổ 'Làm tròn tiền thiếu'"]
     D -.->|"thu dư TM"| K["tiền thối (sổ '…Thối') / excess_amounts"]
     E & F --> H["trigger recompute_invoice_for_id → paid_amount/status"]
@@ -438,10 +446,10 @@ flowchart LR
 | [02 Cơ cấu BĐS](02-co-cau-toa-nha-phong-dich-vu.md) — `buildings`/`rooms`/`areas`/`building_services` | **Vào** | RPC public đọc cây tài sản + giá điện (`unit ILIKE 'kwh'`); cột sale (`sale_note`, `floor_layouts`, `public_*`…) đắp thêm lên 2 bảng này; trạng thái `RESERVED` do cọc giữ chỗ. |
 | [05 Hợp đồng](05-hop-dong.md) — `contracts` | **Vào** | `status_public` (free/soon/rented) + `avail_date` suy từ HĐ `ACTIVE` (EXTENDED đã ngưng dùng), kể cả `expected_move_out_date` (khách đăng ký chuyển đi → "sắp trống", §4.2); `recompute_room_reservation` bỏ qua phòng có HĐ hiệu lực. |
 | [04 Cọc giữ chỗ](04-coc-giu-cho.md) | **Ra** | Tạo cọc nhanh ghi phiếu thu `is_deposit` `contract_id=NULL` → trigger `RESERVED`; sổ "CỌC (giữ hộ khách)"; nguồn sự thật cọc vẫn là IE `is_deposit`. |
-| [08 Thu chi & Sổ quỹ](08-thu-chi-so-quy.md) — `income_expenses`, `accounts`, `income_expense_types`, `cash_handovers` | **Ra** | Thu tiền tạo phiếu thu + resolve sổ theo phương thức (TM: "…Thu" `is_default`/"Chung"/tên toà; TK/TT: `default_account_id_*`); làm tròn <10K vào sổ "Làm tròn tiền thiếu"; thu dư TM → sổ "…Thối"/`excess_amounts`; cọc nhanh dùng loại thu "Tiền cọc"; HandoverSheet = UI mobile của bàn giao tiền mặt; `pay_utility_bill` tạo phiếu CHI điện nước NCC. |
-| [07 Hoá đơn & Thanh toán](07-hoa-don-thanh-toan.md) — `invoices`, `payments` | **Vào/Ra** | `/thu-tien` là UI mobile của flow record-payment: đọc 1 query/kỳ `useThuTienInvoices`, ghi `payments` TM/TK/TT, hoàn tác xoá payment; ghi chú vào `invoices.notes`. Cùng họ với trang công khai `/c/:code` của HĐ-đơn. |
+| [08 Thu chi & Sổ quỹ](08-thu-chi-so-quy.md) — `income_expenses`, `accounts`, `income_expense_types`, `cash_handovers` | **Ra** | Thu tiền tạo phiếu thu + resolve sổ theo phương thức (TM: "…Thu" `is_default`/"Chung"/tên toà; TK/TT: `default_account_id_*`); làm tròn <10K vào sổ "Làm tròn tiền thiếu"; thu dư TM → sổ "…Thối"/`excess_amounts`; cọc nhanh dùng loại thu "Tiền cọc"; HandoverSheet = UI mobile của bàn giao tiền mặt; Period Fee tạo/duyệt phiếu CHI theo kỳ. |
+| [07 Hoá đơn & Thanh toán](07-hoa-don-thanh-toan.md) — `invoices`, `payments` | **Vào/Ra** | `/thu-tien` là UI mobile của flow record-payment: đọc 1 query/kỳ `useThuTienInvoices`, ghi `payments` TM/TK/TT; hoàn tác canonical tạo bút toán đối ứng qua `reverse_invoice_payment_v3`, chỉ legacy đặc biệt mới xoá fallback. Ghi chú lưu vào `invoices.notes`. Cùng họ với trang công khai `/c/:code` của HĐ-đơn. |
 | [01 Phân quyền](01-phan-quyen-nhan-su.md) | **Vào** | Module `sale_phong` 8 action chi tiết (view / manage_tokens / manage_settings / manage_images / edit_floor_plan / manage_pass_listings / create_deposit / view_analytics, fallback legacy `edit`) + module `thu_tien` (view/collect/undo/report, fallback `invoices.record_payment`); token/settings RLS owner-only; `public_room_events` SELECT theo chủ. |
 | `hotlines` (domain 14) | **Vào** | Liên hệ mặc định của trang công khai (`hotline_id` override); cũng là số hiển thị khi phòng pass bật "Liên hệ quản lý". |
 | Cloudflare R2 (`img.chillhome.io.vn` + Worker `storage.chillhome.io.vn`) | **Ra** | Kho ảnh sale hiện hành (§2.5): upload/tải-CORS qua Worker, đọc thẳng custom domain, egress $0. Bucket Supabase `room-sale-images` (PUBLIC) chỉ còn fallback path cũ — vẫn là ngoại lệ của quy tắc private + signed URL. |
 
-> **Trạng thái tài liệu**: viết 2026-06-10 (commit `8510493`), chốt lần 2 ngày 2026-06-17 (`4b4f1cd`), **cập nhật lớn 2026-07-03 theo HEAD `1d945d9`**: gỡ toàn bộ nhãn WIP "Tạo cọc nhanh"; thêm bộ đo đếm `public_room_events`/`pra_*` (§2.8, §4.8); ảnh sale sang Cloudflare R2 (§2.5); RPC mirror `get_my_available_rooms` + bản mobile Sale Phòng (§2.4, §5.3); pass listing thêm `avail_date`/`contact_manager` (§2.7); `/thu-tien` gộp 1 query/kỳ, quyền `thu_tien.*`, TM/TK/TT, điện nước NCC, bàn giao, popover thời gian báo cáo (§5.4).
+> **Trạng thái tài liệu**: viết 2026-06-10, cập nhật các đợt lớn tới 2026-07-20. `/thu-tien` hiện dùng payment v4/v3 adapter và Period Fee V2; không dùng mô tả Utility Bill V1 làm nguồn current.

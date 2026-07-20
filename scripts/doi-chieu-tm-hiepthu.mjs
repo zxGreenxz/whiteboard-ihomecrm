@@ -1,5 +1,5 @@
 // Đối chiếu kênh TM (khách đưa − thối lại) trong Excel của Nathan với sổ quỹ Hiệp Thu (TK000032).
-// Quy tắc chung: docs/doi-chieu-so-quy-686tcb.md (mapping mục 1: TM ↔ Hiệp Thu).
+// Quy tắc chung: docs/doi-chieu/so-quy-686tcb.md (mapping mục 1: TM ↔ Hiệp Thu).
 // Dùng: node scripts/doi-chieu-tm-hiepthu.mjs [file.xlsx] [YYYY-MM-DD]
 // Ghi chú riêng kênh TM:
 //   - T6/T7: net = cột "khách đưa" − cột "thối lại" (phiếu web đã net tiền thối — xem memory).
@@ -198,4 +198,4 @@ const dThu = match(exIn, aggregate(wIn), 'THU TM');
 const dChi = match(exOut, aggregate(wOut), 'CHI TM (dòng âm cột khách đưa = bàn giao/chi hộ)');
 console.log('\n=== KIỂM CHỨNG ===');
 console.log(`Chênh dư (Web − Excel) ≈ NetCHI − NetTHU = ${fmt(dChi - dThu)} (± tổng lệch làm tròn)`);
-console.log('Lưu ý: cặp lệch đọc theo docs/doi-chieu-so-quy-686tcb.md mục "Bẫy thường gặp" (tiền có thể nằm ở sổ Tâm Thu/TK939/CỌC/Chung, hoặc phiếu tổng tách con).');
+console.log('Lưu ý: cặp lệch đọc theo docs/doi-chieu/so-quy-686tcb.md mục "Bẫy thường gặp" (tiền có thể nằm ở sổ Tâm Thu/TK939/CỌC/Chung, hoặc phiếu tổng tách con).');

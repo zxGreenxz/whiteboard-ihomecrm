@@ -1,5 +1,7 @@
 # Khảo sát domain PROFIT-DISTRIBUTION (2026-07-18)
 
+> **Lifecycle:** historical build evidence. Writer profit đã được xây dựng và go-live sau snapshot này; xem [README.md](README.md). File được giữ vì SQL chuẩn bị dùng nó làm nền thiết kế.
+
 Verified prod read-only + code. **SURVEY xong — domain "trần" nhất: CHƯA có writer/flag nào. 2 design-fork cần owner.** Kề salary (TRANCHE-SALARY-SURVEY), dùng chung nền org-decision.
 
 ## Write-sites client còn trần

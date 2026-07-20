@@ -1,8 +1,10 @@
 # Tài liệu Yêu cầu - Căn chỉnh trang Quản lý Đồng hồ Công tơ
 
+> **Lifecycle:** historical Kiro spec. Nguồn hiện hành: `docs/he-thong/06-cong-to-chi-so.md`, `docs/huong-dan-su-dung/01-bat-dau/cong-to/` và code trang cài đặt công tơ.
+
 ## Giới thiệu
 
-Tính năng này căn chỉnh lại trang quản lý Đồng hồ Công tơ (Meters) tại Cài đặt hệ thống → Danh mục khác → Tài chính → Đồng hồ Công tơ để khớp 100% với tài liệu hướng dẫn Resident (`resident-docs/cai-dat-he-thong/danh-muc-khac/tai-chinh/dong-ho-cong-to.md`). Trang hiện tại đã có code cơ bản (CRUD) nhưng có nhiều điểm chưa khớp với tài liệu: thông báo toast sai nội dung, nút bấm dùng icon thay vì text, form có trường thừa, thiếu cơ chế tạo công tơ mặc định cho phòng, và tồn tại trang cũ trùng lặp cần dọn dẹp.
+Tài liệu này ghi lại yêu cầu căn chỉnh theo hướng dẫn Resident đã được thay thế. Các gap bên dưới chỉ là snapshot lịch sử và phải tái kiểm chứng.
 
 ## Thuật ngữ
 

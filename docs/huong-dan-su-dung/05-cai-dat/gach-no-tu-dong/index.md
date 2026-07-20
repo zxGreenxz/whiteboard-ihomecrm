@@ -75,5 +75,5 @@ Xem quy tắc gạch nợ tự động: mở danh sách cấu hình, quan sát c
 ## Quy trình liên quan
 
 - [Thu tiền hoá đơn](/03-quan-ly-van-hanh/thu-tien-hoa-don/)
-- [Khách nợ tiền](/04-bao-cao/khach-no-tien/)
+- [Quy trình thu tiền](/01-bat-dau/quy-trinh-thu-tien/)
 - [Sổ quỹ](/03-quan-ly-van-hanh/so-quy/)

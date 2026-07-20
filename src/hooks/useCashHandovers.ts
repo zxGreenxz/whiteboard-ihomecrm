@@ -8,7 +8,7 @@
 //   lọc) + badge số phiên CẦN TÔI thao tác.
 // - 5 mutation gọi RPC SECURITY DEFINER (migration 20260610130000).
 //   Gọi supabase.rpc như METHOD + cast any (types.ts chưa regen —
-//   gotcha docs/he-thong/15 §4.4).
+//   gotcha docs/he-thong/15-kenh-cong-khai-sale-thu-tien.md §4.4).
 // =============================================
 
 import { useMemo } from 'react';

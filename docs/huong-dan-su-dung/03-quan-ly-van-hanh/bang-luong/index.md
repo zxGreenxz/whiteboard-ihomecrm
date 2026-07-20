@@ -6,14 +6,14 @@ permissions: [{module: salary, action: manage_salary}]
 viewport: desktop
 audience: [chu-nha]
 captured:
-  date: "2026-07-03"
+  date: "2026-07-20"
   account: demo
 status: published
 ---
 
 # Bảng lương quản lý
 
-Màn **Bảng lương** là nơi bạn — chủ nhà — tính công cho các nhân viên quản lý vận hành. Điểm cốt lõi: lương ở đây **tính từ dữ liệu vận hành thật** (việc đã hoàn thành, hoa hồng bán phòng, lợi nhuận đầu tư, các khoản ứng…), chứ không gõ tổng bằng tay. Bạn chỉ khai báo **ai hưởng lương** và **quy tắc thưởng** một lần ở tab Cấu hình; hệ thống cộng lương cứng, thưởng việc, hoa hồng, đầu tư rồi trừ ứng và tiền phòng để ra **thực nhận**. Cuối tháng bạn **chốt** để đóng băng con số, rồi **trả lương** — thao tác này ghi một phiếu chi thật vào sổ quỹ. Trang này hướng dẫn bạn đi từ cấu hình → đọc bảng kê → chốt → trả.
+Màn **Bảng lương** là nơi bạn — chủ nhà — tính công cho nhân viên quản lý vận hành. Lương lấy từ dữ liệu thật: việc đã hoàn thành, hoa hồng, lợi nhuận đầu tư, ứng và tiền phòng. Cuối tháng bạn chốt snapshot, rồi gửi yêu cầu trả lương qua luồng phê duyệt; tiền chỉ được post vào sổ sau quyết định hợp lệ.
 
 ::: info Điều kiện tiên quyết
 - Quyền **Bảng lương => Xem** (module `salary`, action `view`) để mở màn; **Cấu hình** (`manage_salary`) để khai báo người hưởng lương và quy tắc; **Chốt** (`lock`) / **Mở khoá** (`unlock`) để đóng/mở tháng; **Trả lương** (`distribute`) để ghi phiếu chi.
@@ -42,7 +42,7 @@ Cùng tab này bạn cấu hình **Quy tắc thưởng** (thưởng ngày Chủ 
 
 Trong đó: **Thưởng việc tự động** gộp 3 nhóm — thưởng theo loại việc đã hoàn thành, phụ cấp Chủ nhật/Lễ, và +50.000đ ký hợp đồng ngoài giờ; **Đầu tư** chỉ có khi quản lý đồng thời là **cổ đông** (cộng phần lợi nhuận đã chốt); **Hoa hồng** là các phiếu chi HH Sale khớp biệt danh trong tháng; **Tiền phòng** khấu trừ theo hoá đơn phòng của **tháng kế** (lương tháng này trả vào tháng sau).
 
-**Bước 4**: Mở tab **Bảng kê công việc** để soi **bằng chứng** đằng sau mỗi con số thưởng. Bảng liệt kê từng dòng việc đã **hoàn thành** được tính lương (kèm ngày, loại việc, số tiền), có thể **lọc theo người** và **theo toà**; nếu quy tắc bật "yêu cầu ảnh" thì dòng thiếu ảnh được gắn cờ và **không cộng thưởng**. Đây là nơi bạn giải thích cho nhân viên "vì sao được bấy nhiêu".
+**Bước 4**: Mở tab **Bảng kê công việc** để soi bằng chứng. Thời điểm tính lương là lúc server ghi nhận hoàn thành; mốc chụp trên máy chỉ dùng đối chiếu. Bảng cho phép lọc theo người/toà, kiểm ảnh và dùng nút **Không tính** để loại một việc cụ thể khỏi thưởng mà vẫn giữ dòng lịch sử. Dòng bị loại hiện thưởng 0đ và có nút **Tính lại**.
 
 **Bước 5**: Quay lại tab **Bảng lương tháng**. Mỗi quản lý là một **card** với breakdown Lương cứng / Thưởng tự động / Hoa hồng / Đầu tư / Ứng / Tiền phòng và **Thực nhận**. Tại đây bạn:
 - **Thêm / Sửa / Xoá adjustment** — dòng **thưởng** hoặc **trừ** thủ công (có dấu), ví dụ thưởng nóng hay phạt.
@@ -55,10 +55,10 @@ Trong đó: **Thưởng việc tự động** gộp 3 nhóm — thưởng theo l
 Mở khoá (quyền `unlock`) sẽ xoá bản ảnh chụp và đưa tháng về **nháp** để tính lại theo dữ liệu hiện hành — con số có thể đổi so với lúc bạn đã chốt. Chỉ mở khoá khi thực sự cần sửa, và **chốt lại** ngay sau khi sửa xong.
 :::
 
-**Bước 7**: **Trả lương** (cần quyền `distribute`). Bấm trả cho từng người hoặc hàng loạt, **chọn sổ quỹ** chi tiền. Hệ thống ghi một **phiếu chi "Lương quản lý"** (vào toà ảo **Chung**, không tính vào Kết quả kinh doanh) bằng đúng số thực nhận. Nếu nhân viên còn nợ **tiền phòng** ở tháng kế, phiếu chi tách 2 dòng (thực nhận + tiền phòng khấu trừ) và hệ thống **tự gạch nợ** hoá đơn phòng đó, để sổ quỹ chỉ giảm đúng phần tiền mặt thực đưa.
+**Bước 7**: **Trả lương** (cần quyền `distribute`). Bấm trả từng người hoặc hàng loạt, chọn sổ quỹ và kiểm số thực nhận. Hệ thống tạo request canonical qua engine duyệt. Sau khi được duyệt/post, phiếu chi **Lương quản lý** nằm trên toà ảo **Chung**, không tính KQKD; phần tiền phòng tháng kế được cấn trừ và tự gạch nợ theo flow server.
 
-::: danger Trả lương là thao tác ghi tiền thật
-Bấm **Trả lương** lập tức tạo **phiếu chi** trong **sổ quỹ** bạn chọn và đánh dấu tháng đã trả — đây là tiền thật ra khỏi quỹ, không phải bản nháp. Hãy kiểm tra kỹ **đúng người, đúng số thực nhận và đúng sổ quỹ** trước khi xác nhận. Nên **chốt tháng** trước rồi mới trả để số không còn dao động.
+::: danger Trả lương khởi tạo một yêu cầu tiền thật
+Kiểm tra kỹ đúng người, số thực nhận và sổ quỹ trước khi gửi. Request có thể ở trạng thái chờ duyệt; chỉ khi được duyệt/post mới làm giảm quỹ và gạch trạng thái đã trả. Theo dõi tại [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/).
 :::
 
 ## Các tính năng khác trên màn hình
@@ -66,13 +66,13 @@ Bấm **Trả lương** lập tức tạo **phiếu chi** trong **sổ quỹ** b
 | Nút / Khu vực | Công dụng |
 | --- | --- |
 | Tab **Bảng lương tháng** | Card từng quản lý với breakdown lương cứng / thưởng / hoa hồng / đầu tư / ứng / tiền phòng và thực nhận. |
-| Tab **Bảng kê công việc** | Từng dòng việc hoàn thành được tính lương; lọc theo người / toà; cờ ảnh khi bật "yêu cầu ảnh". |
+| Tab **Bảng kê công việc** | Từng dòng bằng chứng; lọc người/toà, kiểm ảnh, **Không tính / Tính lại** một việc cụ thể. |
 | Tab **Cấu hình** | Khai báo người hưởng lương (lương cứng, phòng ở, biệt danh, mục tiêu, hiệu lực), quy tắc thưởng, ngày lễ, tháng hiển thị cho nhân viên. |
 | Điều hướng **tháng ±** | Chuyển qua lại giữa các tháng; lựa chọn được giữ khi tải lại trang (F5). |
 | **Thêm / Sửa / Xoá adjustment** | Ghi dòng thưởng hoặc trừ thủ công (có dấu) cho một quản lý trong tháng. |
 | **Xem dưới vai trò** | Xem trước màn "Lương của tôi" đúng như nhân viên nhìn thấy. |
 | **Chốt tháng** / **Mở khoá** | Đóng băng số vào bản lương tháng (Lock) hoặc mở lại để tính lại (Unlock). |
-| **Trả lương** (từng người / hàng loạt) | Ghi phiếu chi "Lương quản lý" vào sổ quỹ chọn; tự gạch nợ tiền phòng nếu có. |
+| **Trả lương** (từng người / hàng loạt) | Gửi request trả lương; sau duyệt/post mới ghi phiếu chi và gạch nợ tiền phòng nếu có. |
 | **Ngày lễ** (trong Cấu hình) | Danh sách ngày lễ của bạn, có nút thêm nhanh bộ lễ Việt Nam; ảnh hưởng thưởng Chủ nhật/Lễ. |
 
 ## Tình huống & lỗi thường gặp
@@ -80,12 +80,13 @@ Bấm **Trả lương** lập tức tạo **phiếu chi** trong **sổ quỹ** b
 | Tình huống | Cách xử lý |
 | --- | --- |
 | Tab **Bảng lương tháng trống** hoàn toàn | Chưa khai báo ai hưởng lương. Vào tab **Cấu hình** thêm quản lý (lương cứng, hiệu lực từ) — đây chính là trạng thái của dữ liệu demo. |
-| Nhân viên đã hoàn thành nhiều việc nhưng **không thấy thưởng** | Loại việc đó chưa bật "tính lương" hoặc chưa có mức thưởng; hoặc quy tắc bật **yêu cầu ảnh** mà việc thiếu ảnh. Kiểm tra ở tab **Bảng kê công việc** và cấu hình loại việc. |
+| Nhân viên đã hoàn thành nhiều việc nhưng **không thấy thưởng** | Kiểm tra loại việc, mức thưởng, ảnh và cờ **Không tính** ở tab Bảng kê. Thời gian thưởng lấy từ dấu server, không từ giờ người dùng nhập. |
 | **Hoa hồng (HH Sale)** không cộng vào lương | Phiếu chi hoa hồng phải có **tên người nhận khớp biệt danh (alias)** của quản lý và kỳ phân bổ rơi trong tháng. Sửa alias ở tab Cấu hình cho khớp. |
 | Cột **Đầu tư** trống dù quản lý là cổ đông | Đầu tư chỉ cộng khi lợi nhuận toà đã **chốt (LOCKED)**; tháng còn nháp sẽ hiện "chờ chốt". Xem [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/). |
 | Sửa quy tắc/loại việc nhưng **tháng cũ không đổi** | Đúng thiết kế: tháng đã **chốt** đóng băng số, không tính lại. Muốn áp lại phải **Mở khoá** rồi chốt lại (cân nhắc kỹ). |
 | Đã trả lương nhưng **tiền phòng** nhân viên vẫn còn nợ | Tiền phòng chỉ tự gạch khi nhân viên có **hoá đơn phòng** ở tháng kế và bạn đã gán **Phòng ở** trong Cấu hình; không gán thì chỉ khấu trừ theo "tiền phòng mặc định", không đụng hoá đơn. |
 | Không thấy nút **Chốt / Trả lương** | Thiếu quyền tương ứng (`lock` / `distribute`). Nhờ chủ hệ thống cấp quyền trong Phân quyền. |
+| Đã bấm Trả lương nhưng quỹ chưa giảm | Request còn chờ duyệt hoặc chưa post. Mở [Chờ duyệt](/03-quan-ly-van-hanh/cho-duyet/) để xem trạng thái. |
 | Nhân viên báo **xem tháng bị lùi** | Đúng chính sách: self-view mặc định hiển thị tháng trước cho tới khi tháng đó được **chốt**. Bật hiển thị sớm ở **Tháng hiển thị cho nhân viên** (tab Cấu hình). |
 
 ## Thử trực tiếp trên sandbox

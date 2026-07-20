@@ -1,5 +1,7 @@
 # Hội đồng Cố vấn 5 chuyên gia — Biên bản tranh luận & Kế hoạch hành động
 
+> **Lifecycle:** historical audit snapshot tại commit `98927ca`. Các claim/action bên dưới không phải trạng thái hiện hành; xem [README.md](README.md).
+
 > Ngày 2026-07-03 · HEAD `98927ca` · Phạm vi: toàn bộ codebase + live DB (đối chiếu qua Management API, read-only).
 > Thành phần: **COO** (Vận hành & Nghiệp vụ) · **Architect** (Backend/DB) · **UX Lead** (Frontend) · **QA** (Bug Hunter) · **Kế toán trưởng** (Chief Accountant).
 > Mỗi phát hiện đều có dẫn chứng `file:dòng` do chuyên gia tương ứng tự xác minh. Tài liệu hệ thống nền: `docs/he-thong/` (đã đại tu cùng ngày, commit `98927ca`).

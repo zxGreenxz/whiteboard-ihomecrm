@@ -1,12 +1,14 @@
 # Tài liệu Thiết kế - Căn chỉnh trang Quản lý Đồng hồ Công tơ
 
+> **Lifecycle:** historical Kiro design. Nguồn hiện hành: `docs/he-thong/06-cong-to-chi-so.md` và code module meter.
+
 ## Tổng quan
 
 Tài liệu này mô tả thiết kế kỹ thuật cho việc căn chỉnh trang quản lý Đồng hồ Công tơ (Meters) để khớp 100% với tài liệu hướng dẫn Resident. Đây không phải tái triển khai mà là sửa đổi code hiện có để khớp với tài liệu.
 
 ### Phân tích Gap hiện tại
 
-Sau khi phân tích code hiện có so với tài liệu `resident-docs/cai-dat-he-thong/danh-muc-khac/tai-chinh/dong-ho-cong-to.md`, các điểm cần sửa:
+Sau khi phân tích code tại snapshot cũ so với bộ Resident docs đã xoá, các điểm từng được đề xuất sửa là:
 
 | # | Vấn đề | File ảnh hưởng |
 |---|--------|----------------|

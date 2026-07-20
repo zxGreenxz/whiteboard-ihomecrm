@@ -6,7 +6,7 @@ permissions: []
 viewport: mobile
 audience: [nhan-vien]
 captured:
-  date: "2026-07-03"
+  date: "2026-07-20"
   account: demo
 status: published
 ---
@@ -41,7 +41,7 @@ Màn **Lương của tôi** là nơi bạn — nhân viên vận hành — tự 
 
 Công thức tổng: **Thực nhận = Lương cứng + Thưởng + Hoa hồng + Đầu tư − Ứng lương − Tiền phòng**.
 
-**Bước 4**: Kéo xuống phần **lịch sử việc** (bảng kê) để xem **từng dòng bằng chứng** đã cộng thành thưởng: mỗi việc hoàn thành, mỗi phụ cấp cuối tuần/lễ, mỗi lần ký hợp đồng — kèm ngày và số tiền. Đây là lời giải thích minh bạch cho con số **Thưởng tự động** ở trên: bạn thấy rõ tiền đến từ đâu.
+**Bước 4**: Kéo xuống **lịch sử việc** để xem từng dòng bằng chứng. Ngày/giờ tính thưởng lấy từ dấu thời gian server khi hoàn thành; ảnh chụp là bằng chứng đối chiếu. Nếu quản trị đánh dấu một việc **Không tính**, dòng vẫn còn trong bảng kê nhưng thưởng của việc đó là 0đ để bạn biết vì sao tổng thay đổi.
 
 **Bước 5**: Đổi **tháng** để xem lại lịch sử. Bạn lùi được về các tháng cũ **đã chốt**, nhưng hệ thống **chặn xem vượt** mốc tháng bạn được phép xem — số liệu tháng cũ đã đóng băng nên luôn khớp với lúc quản trị chốt.
 
@@ -50,7 +50,7 @@ Mặc định màn **lùi 1 tháng cho tới khi chốt**: bạn xem **tháng tr
 :::
 
 ::: tip Thưởng nóng khi vừa hoàn thành việc
-Ngay khi bạn bấm **Hoàn thành** một việc có thưởng, một **popup thưởng** hiện lên và bạn nhận **thông báo đẩy** về máy — đó là "thưởng nóng" báo bạn vừa được cộng gì. Khoản đó **tự động dồn vào mục Thưởng tự động** ở màn Lương của tôi này; bạn không phải nhập lại. Xem thao tác hoàn thành việc ở [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/).
+Ngay khi bạn bấm **Hoàn thành** một việc có thưởng, popup và thông báo đẩy cho biết kết quả tại thời điểm hoàn thành. Khoản tháng vẫn theo bảng kê hiện hành: nếu quản trị loại riêng việc đó khỏi thưởng trước khi chốt, dòng còn hiển thị nhưng số thưởng về 0đ. Xem thao tác ở [Việc của tôi](/02-theo-doi-nhanh/viec-cua-toi/).
 :::
 
 ::: warning Số của tháng chưa chốt là tạm tính
@@ -76,7 +76,7 @@ Số nhân viên bạn thấy ở đây **luôn khớp** với số quản trị
 | --- | --- |
 | Màn hiện **"Bạn chưa được cấu hình hưởng lương"** | Tài khoản của bạn chưa nằm trong danh sách hưởng lương. Nhờ quản trị thêm bạn ở **Bảng lương => Cấu hình** (xem [Bảng lương](/03-quan-ly-van-hanh/bang-luong/)). |
 | Không thấy **tháng hiện tại**, chỉ thấy tháng trước | Đúng chính sách **lùi-tháng**: bạn xem tháng trước cho tới khi nó được **chốt**, rồi màn mới sang tháng này. |
-| **Thưởng** ít hơn bạn nghĩ | Thưởng phụ thuộc **loại việc** (chỉ loại tính lương mới cộng), có **ảnh** khi hệ thống yêu cầu, và điều kiện **giờ/ngày** (ký HĐ chỉ +50.000đ khi sau giờ hoặc CN/lễ). Xem lịch sử việc để đối chiếu từng dòng. |
+| **Thưởng** ít hơn bạn nghĩ | Kiểm tra loại việc, ảnh, điều kiện giờ/ngày và xem dòng có bị quản trị đánh dấu **Không tính** hay không. Mốc giờ do server ghi khi hoàn thành. |
 | Phần **Đầu tư** bằng 0 dù bạn là cổ đông | Lợi nhuận toà **chưa chốt** (còn nháp) thì chưa cộng; màn hiện trạng thái "chờ chốt" cho tới khi quản trị chốt lợi nhuận (xem [Chia lợi nhuận](/03-quan-ly-van-hanh/chia-loi-nhuan/)). |
 | Chưa thấy **Hoa hồng (HH Sale)** | Phiếu hoa hồng chưa được duyệt, hoặc **biệt danh** của bạn chưa khớp tên người nhận trên phiếu chi. Nhờ quản trị kiểm tra cấu hình biệt danh. |
 | Số **thay đổi** giữa các lần xem | Bình thường với tháng **chưa chốt** — số là tạm tính, cập nhật theo việc mới. Chốt tháng xong sẽ đứng yên. |

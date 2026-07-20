@@ -1,6 +1,8 @@
 ---
 title: "Mẫu kế hoạch phát triển"
 description: "Khung nội dung tái sử dụng để tạo một bản demo kế hoạch có phần nghiệp vụ, biểu đồ và phụ lục kỹ thuật."
+kind: presentation-template
+lifecycle: current
 routes: []
 permissions: []
 viewport: desktop

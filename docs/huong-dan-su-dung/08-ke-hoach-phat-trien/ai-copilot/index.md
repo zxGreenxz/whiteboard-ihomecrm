@@ -1,8 +1,12 @@
 ---
 title: "Kế hoạch phát triển AI Copilot"
 description: "Bản trình bày kế hoạch đưa AI Copilot từ thử nghiệm hỏi đáp thành trợ lý nghiệp vụ an toàn, có lộ trình và tiêu chí nghiệm thu rõ ràng."
-routes: ["/settings/ai-copilot"]
-permissions: [{module: ai_copilot, action: view}]
+kind: presentation-plan
+lifecycle: proposal
+source_document: "docs/AI-SYSTEM-AUDIT-OPTIMIZATION-ROADMAP-2026-07-20.md"
+decision_state: "chua-phe-duyet"
+routes: []
+permissions: []
 viewport: desktop
 captured:
   date: "2026-07-20"

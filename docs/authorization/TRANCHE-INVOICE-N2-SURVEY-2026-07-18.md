@@ -1,5 +1,7 @@
 # Khảo sát INVOICE nhịp 2 (2026-07-18) — create parity + force-cancel
 
+> **Lifecycle:** historical build evidence. Các gap được xử lý trong tranche sau và hệ canonical đã go-live; xem [README.md](README.md). File được giữ vì các SQL `t5_14`/`t5_15` tham chiếu trực tiếp.
+
 Verified prod DDL + client payload (useInvoices.ts + GenerateInvoiceDialog). Nhịp 1 (8 status-writer) đã VERIFIED.
 
 ## 1. `create_invoice_v1` — KHÔNG wireable nguyên trạng (drop field lớn)
