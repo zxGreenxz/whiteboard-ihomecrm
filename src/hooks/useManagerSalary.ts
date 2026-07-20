@@ -17,8 +17,7 @@ import {
   firstName,
   initialsOf,
   shiftYm,
-  autoStaffYm,
-  latestVisibleStaffYm,
+  staffCeilingYm,
 } from "@/lib/managerSalary";
 // YYYY-MM-01 cho tháng lệch n so với mốc — canonical ở lib/salaryPeriod (10E).
 import { shiftPeriodMonth as shiftMonth, vnYmOf } from "@/lib/salaryPeriod";
@@ -546,8 +545,8 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
       const locked = new Set<string>(
         ((rows || []) as any[]).map((r) => String(r.period_month).slice(0, 7)),
       );
-      const auto = autoStaffYm(cur, locked.has(shiftYm(cur, -1)));
-      const ym = latestVisibleStaffYm(cur, auto, overrides);
+      void locked; // giữ query để admin còn thấy trạng thái chốt; ceiling không phụ thuộc nữa
+      const ym = staffCeilingYm(cur, overrides);
       return `${ym}-01`;
     },
   });

@@ -9,6 +9,7 @@ import {
   resolveSalaryEngine,
   zeroBonusReason,
   isUnqualifiedContractRow,
+  staffCeilingYm,
   shiftYm,
   autoStaffYm,
   isStaffMonthVisible,
@@ -257,5 +258,25 @@ describe("isUnqualifiedContractRow", () => {
   it("dòng CN/Lễ và dòng thu tiền → KHÔNG ẩn", () => {
     expect(isUnqualifiedContractRow(row({ item_type: "DAY_BONUS", is_contract: false }))).toBe(false);
     expect(isUnqualifiedContractRow(row({ item_type: "CASH", bonus_amount: null }))).toBe(false);
+  });
+});
+
+describe("staffCeilingYm", () => {
+  it("mặc định = THÁNG HIỆN TẠI, không lùi 1 tháng như trước", () => {
+    expect(staffCeilingYm("2026-07", {})).toBe("2026-07");
+  });
+
+  it("không phụ thuộc tháng trước đã chốt hay chưa", () => {
+    expect(staffCeilingYm("2026-07", {})).toBe("2026-07");
+    expect(staffCeilingYm("2026-01", {})).toBe("2026-01");
+  });
+
+  it("admin tắt tháng hiện tại → lùi về tháng gần nhất còn bật", () => {
+    expect(staffCeilingYm("2026-07", { "2026-07": false })).toBe("2026-06");
+    expect(staffCeilingYm("2026-07", { "2026-07": false, "2026-06": false })).toBe("2026-05");
+  });
+
+  it("admin bật tường minh tháng hiện tại → vẫn tháng hiện tại", () => {
+    expect(staffCeilingYm("2026-07", { "2026-07": true })).toBe("2026-07");
   });
 });

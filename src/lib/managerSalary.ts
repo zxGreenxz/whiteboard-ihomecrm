@@ -304,3 +304,12 @@ export function isUnqualifiedContractRow(r: SalLedgerRow): boolean {
     !r.excluded
   );
 }
+
+// Kỳ MẶC ĐỊNH nhân viên thấy khi mở "Lương của tôi" (chính sách 2026-07-20):
+// vào thẳng THÁNG HIỆN TẠI, muốn xem kỳ cũ thì bấm lùi.
+// Trước đây mặc định lùi 1 tháng cho tới khi tháng trước được CHỐT — hệ quả là
+// nhân viên không xem được lương tháng đang chạy của chính mình.
+// Admin vẫn chặn/mở từng tháng qua staffMonths (override luôn thắng).
+export function staffCeilingYm(curYm: string, overrides: Record<string, boolean>): string {
+  return latestVisibleStaffYm(curYm, curYm, overrides);
+}

@@ -11,7 +11,7 @@ import {
   useSalaryHolidays, useAddHoliday, useDeleteHoliday,
   useStaffMonthOverrides, useSaveStaffMonthOverride, useSalaryLockedMonths,
 } from "@/hooks/useSalaryConfig";
-import { shiftYm, autoStaffYm, isStaffMonthVisible, latestVisibleStaffYm } from "@/lib/managerSalary";
+import { shiftYm, isStaffMonthVisible, staffCeilingYm } from "@/lib/managerSalary";
 import { vnYmOf } from "@/lib/salaryPeriod";
 
 const I = SAL_ICONS;
@@ -119,9 +119,9 @@ function StaffMonthsCard() {
   const saveOverride = useSaveStaffMonthOverride();
 
   const cur = vnYmOf(); // giờ VN, không phải giờ máy (audit 2026-07-20)
-  const prevLocked = lockedMonths?.has(shiftYm(cur, -1)) ?? false;
-  const auto = autoStaffYm(cur, prevLocked);
-  const staffViewing = latestVisibleStaffYm(cur, auto, overrides);
+  // Chính sách mới: nhân viên vào thẳng THÁNG HIỆN TẠI, tắt tháng nào thì lùi tháng đó.
+  const auto = cur;
+  const staffViewing = staffCeilingYm(cur, overrides);
   const months = Array.from({ length: 6 }, (_, i) => shiftYm(cur, -i)); // cur … cur-5
 
   return (
@@ -133,7 +133,7 @@ function StaffMonthsCard() {
       <div className="sal-cfg-body">
         <div className="sal-note" style={{ marginTop: 0, marginBottom: 8 }}>
           <I.Info size={14} style={{ marginTop: 1, flexShrink: 0 }} />
-          Mặc định lùi 1 tháng: hiện <b>{ymLabel(shiftYm(cur, -1))}</b> tới khi chốt lương, chốt rồi nhảy sang <b>{ymLabel(cur)}</b>. Nhân viên đang xem: <b style={{ color: "hsl(var(--primary))" }}>{ymLabel(staffViewing)}</b>.
+          Mặc định nhân viên vào thẳng <b>{ymLabel(cur)}</b> (tháng hiện tại) và bấm lùi để xem kỳ cũ. Tắt tháng nào thì tháng đó bị ẩn. Nhân viên đang xem: <b style={{ color: "hsl(var(--primary))" }}>{ymLabel(staffViewing)}</b>.
         </div>
         {months.map((m) => {
           const visible = isStaffMonthVisible(m, auto, overrides);
