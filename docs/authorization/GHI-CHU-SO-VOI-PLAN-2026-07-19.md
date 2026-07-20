@@ -91,8 +91,13 @@ ngày, xem §3) + 2 claim bị bác (hệ thống thực tế ổn hơn báo cá
   (typecheck/lint/build/vitest, không cần secret, xanh ngay) + security-gates
   (definer-acl/view-invoker, bật khi có SUPABASE_PAT) + 3 job optional. Dùng
   preflight-job pattern (GitHub cấm `secrets.*` trong `if:` cấp job).
-- ⏳ **R2 Worker bản hardened đã deploy chưa** — vẫn cần `wrangler deployments list`
-  (không xác minh được read-only). CÒN LẠI duy nhất của P1.
+- ✅ **R2 Worker bản hardened — ĐÃ DEPLOY (2026-07-20):** kiểm `wrangler deployments
+  list` phát hiện bản chạy là 2026-06-27 (cũ, trước Sprint-0), mã nguồn gia cố
+  (commit 45d3a94, 2026-07-13) CHƯA lên. Đã `wrangler deploy` bản gia cố (version
+  939fe905). Verify live: /health 200 · PUT /upload không auth → 401 · GET /file
+  sai bucket → 403 (containment `room-sale-images/<uid>/`). An toàn: frontend
+  (`ImageUploadZone`) đã gửi đúng key `room-sale-images/<uid>/...`; ảnh hiển thị
+  đi thẳng bucket không qua worker. → **P1 XONG 100%.**
 
 ## 6. P2 / đúng lộ trình (T7–T9, chưa tới hạn)
 
