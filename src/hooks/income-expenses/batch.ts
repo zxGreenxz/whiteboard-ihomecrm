@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { IncomeExpenseBatchFormValues } from "@/lib/incomeExpenseValidation";
 import { requireBuildingOrganizationId } from "@/lib/buildingOrganization";
 import type { ImportIncomeExpenseRow } from "./types";
+import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 
 // Import phiếu thu/chi hàng loạt từ Excel
 export const useImportIncomeExpenses = () => {
@@ -25,6 +26,10 @@ export const useImportIncomeExpenses = () => {
       let successCount = 0;
       let failedCount = 0;
       const errors: Array<{ row: number; message: string }> = [];
+      const accountingClassFor =
+        await loadIncomeExpenseAccountingClassResolver(
+          rows.map((row) => row.income_expense_type_id),
+        );
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -56,6 +61,9 @@ export const useImportIncomeExpenses = () => {
             .insert({
               income_expense_id: (voucher as any).id,
               income_expense_type_id: row.income_expense_type_id,
+              accounting_class: accountingClassFor(
+                row.income_expense_type_id,
+              ),
               description: row.item_name,
               quantity: 1,
               unit_price: row.amount,
@@ -104,6 +112,10 @@ export const useCreateIncomeExpenseBatch = () => {
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =
         meta.full_name || meta.name || user.email || "Người dùng";
+      const accountingClassFor =
+        await loadIncomeExpenseAccountingClassResolver(
+          input.items.map((item) => item.income_expense_type_id),
+        );
 
       // 1. INSERT batch metadata
       const { data: batch, error: batchError } = await supabase
@@ -164,6 +176,7 @@ export const useCreateIncomeExpenseBatch = () => {
         const itemRows = input.items.map((item, idx) => ({
           income_expense_id: childVouchers[idx].id,
           income_expense_type_id: item.income_expense_type_id,
+          accounting_class: accountingClassFor(item.income_expense_type_id),
           description: item.description ?? null,
           quantity: item.quantity,
           unit_price: item.unit_price,

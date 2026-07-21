@@ -10,6 +10,7 @@ import type {
   UpdateIncomeExpenseInput,
   QuickUpdateIncomeExpenseInput,
 } from "./types";
+import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 
 // --- Mutation Hooks ---
 
@@ -79,6 +80,10 @@ export const useCreateIncomeExpense = () => {
       const creatorName: string =
         meta.full_name || meta.name || user.email || "Người dùng";
       const organizationId = await requireBuildingOrganizationId(input.building_id);
+      const accountingClassFor =
+        await loadIncomeExpenseAccountingClassResolver(
+          input.items.map((item) => item.income_expense_type_id),
+        );
 
       // 1. Insert the voucher
       const { data: voucher, error: voucherError } = await supabase
@@ -126,6 +131,7 @@ export const useCreateIncomeExpense = () => {
       const itemsToInsert = input.items.map((item) => ({
         income_expense_id: (voucher as any).id,
         income_expense_type_id: item.income_expense_type_id,
+        accounting_class: accountingClassFor(item.income_expense_type_id),
         description: item.description ?? null,
         quantity: item.quantity,
         unit_price: item.unit_price,
@@ -161,6 +167,10 @@ export const useUpdateIncomeExpense = () => {
   return useMutation({
     mutationFn: async (input: UpdateIncomeExpenseInput) => {
       const { id, data } = input;
+      const accountingClassFor =
+        await loadIncomeExpenseAccountingClassResolver(
+          data.items.map((item) => item.income_expense_type_id),
+        );
 
       // 1. Update the voucher (only if UNAPPROVED)
       const { data: voucher, error: voucherError } = await supabase
@@ -223,6 +233,7 @@ export const useUpdateIncomeExpense = () => {
       const itemsToInsert = data.items.map((item) => ({
         income_expense_id: id,
         income_expense_type_id: item.income_expense_type_id,
+        accounting_class: accountingClassFor(item.income_expense_type_id),
         description: item.description ?? null,
         quantity: item.quantity,
         unit_price: item.unit_price,

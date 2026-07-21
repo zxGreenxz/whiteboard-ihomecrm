@@ -934,6 +934,7 @@ export const useSalaryPayout = () => {
         {
           income_expense_id: (voucher as any).id,
           income_expense_type_id: typeId,
+          accounting_class: "PNL",
           description: rentCollect > 0 ? `Tiền thực nhận — ${name}` : (input.note ?? null),
           quantity: 1,
           unit_price: input.amount,
@@ -945,6 +946,7 @@ export const useSalaryPayout = () => {
         salItems.push({
           income_expense_id: (voucher as any).id,
           income_expense_type_id: typeId,
+          accounting_class: "PNL",
           description: `Tiền phòng (khấu trừ) · HĐ ${rentInv.invoice_number ?? ""}`.trim(),
           quantity: 1,
           unit_price: rentCollect,
@@ -1015,6 +1017,7 @@ export const useSalaryPayout = () => {
         const { error: rItErr } = await supabase.from("income_expense_items").insert({
           income_expense_id: (rentVoucher as any).id,
           income_expense_type_id: incomeTypeId,
+          accounting_class: "PNL",
           description: `Thu tiền phòng HĐ ${roomNm}`.trim(),
           quantity: 1,
           unit_price: rentCollect,

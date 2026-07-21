@@ -64,6 +64,103 @@ export type Database = {
           },
         ]
       }
+      accounting_integrity_exceptions: {
+        Row: {
+          created_at: string
+          details: Json
+          entity_id: string
+          entity_type: string
+          exception_code: string
+          id: string
+          organization_id: string
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          entity_id: string
+          entity_type: string
+          exception_code: string
+          id?: string
+          organization_id: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          entity_id?: string
+          entity_type?: string
+          exception_code?: string
+          id?: string
+          organization_id?: string
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounting_integrity_exceptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accounting_repair_audit: {
+        Row: {
+          after_snapshot: Json
+          before_snapshot: Json
+          details: Json
+          entity_id: string
+          entity_type: string
+          id: string
+          organization_id: string
+          repair_code: string
+          repaired_at: string
+          repaired_by: string | null
+        }
+        Insert: {
+          after_snapshot: Json
+          before_snapshot: Json
+          details?: Json
+          entity_id: string
+          entity_type: string
+          id?: string
+          organization_id: string
+          repair_code: string
+          repaired_at?: string
+          repaired_by?: string | null
+        }
+        Update: {
+          after_snapshot?: Json
+          before_snapshot?: Json
+          details?: Json
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          organization_id?: string
+          repair_code?: string
+          repaired_at?: string
+          repaired_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounting_repair_audit_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accounts: {
         Row: {
           account_number: string | null
@@ -2107,6 +2204,20 @@ export type Database = {
             referencedRelation: "income_expenses"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cash_handover_items_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handover_items_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
         ]
       }
       cash_handovers: {
@@ -2248,6 +2359,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_handovers_transfer_expense_id_fkey"
+            columns: ["transfer_expense_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_transfer_expense_id_fkey"
+            columns: ["transfer_expense_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
             foreignKeyName: "cash_handovers_transfer_income_batch_id_fkey"
             columns: ["transfer_income_batch_id"]
             isOneToOne: false
@@ -2260,6 +2385,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "income_expenses"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_transfer_income_id_fkey"
+            columns: ["transfer_income_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_transfer_income_id_fkey"
+            columns: ["transfer_income_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
           },
         ]
       }
@@ -2500,6 +2639,72 @@ export type Database = {
           },
           {
             foreignKeyName: "contract_customers_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_deposit_links: {
+        Row: {
+          contract_id: string
+          id: string
+          income_expense_id: string
+          link_source: string
+          linked_at: string
+          linked_by: string
+          organization_id: string
+        }
+        Insert: {
+          contract_id: string
+          id?: string
+          income_expense_id: string
+          link_source?: string
+          linked_at?: string
+          linked_by: string
+          organization_id: string
+        }
+        Update: {
+          contract_id?: string
+          id?: string
+          income_expense_id?: string
+          link_source?: string
+          linked_at?: string
+          linked_by?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_deposit_links_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_deposit_links_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: true
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_deposit_links_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contract_deposit_links_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: true
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "contract_deposit_links_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -3276,6 +3481,287 @@ export type Database = {
           },
         ]
       }
+      customer_credit_applications: {
+        Row: {
+          amount: number
+          application_kind: string
+          applied_at: string
+          applied_by: string
+          credit_lot_id: string
+          description: string | null
+          excess_amount_id: string | null
+          id: string
+          idempotency_key: string | null
+          invoice_id: string | null
+          organization_id: string
+          restoration_idempotency_key: string | null
+          restored_at: string | null
+          restored_by: string | null
+          reversal_excess_amount_id: string | null
+          reversal_idempotency_key: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
+        }
+        Insert: {
+          amount: number
+          application_kind?: string
+          applied_at?: string
+          applied_by: string
+          credit_lot_id: string
+          description?: string | null
+          excess_amount_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          invoice_id?: string | null
+          organization_id: string
+          restoration_idempotency_key?: string | null
+          restored_at?: string | null
+          restored_by?: string | null
+          reversal_excess_amount_id?: string | null
+          reversal_idempotency_key?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+        }
+        Update: {
+          amount?: number
+          application_kind?: string
+          applied_at?: string
+          applied_by?: string
+          credit_lot_id?: string
+          description?: string | null
+          excess_amount_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          invoice_id?: string | null
+          organization_id?: string
+          restoration_idempotency_key?: string | null
+          restored_at?: string | null
+          restored_by?: string | null
+          reversal_excess_amount_id?: string | null
+          reversal_idempotency_key?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_credit_applications_credit_lot_id_fkey"
+            columns: ["credit_lot_id"]
+            isOneToOne: false
+            referencedRelation: "customer_credit_lots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_excess_amount_id_fkey"
+            columns: ["excess_amount_id"]
+            isOneToOne: false
+            referencedRelation: "excess_amounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_excess_org_fkey"
+            columns: ["excess_amount_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "excess_amounts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_invoice_org_fkey"
+            columns: ["invoice_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_lot_org_fkey"
+            columns: ["credit_lot_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "customer_credit_lots"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_reversal_excess_amount_id_fkey"
+            columns: ["reversal_excess_amount_id"]
+            isOneToOne: false
+            referencedRelation: "excess_amounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_applications_reversal_excess_org_fkey"
+            columns: ["reversal_excess_amount_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "excess_amounts"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      customer_credit_lots: {
+        Row: {
+          amount: number
+          contract_id: string
+          created_at: string
+          id: string
+          organization_id: string
+          remaining_amount: number
+          reversed_at: string | null
+          source_collection_id: string | null
+          source_excess_amount_id: string | null
+          source_payment_id: string | null
+          source_tender_id: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          contract_id: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          remaining_amount: number
+          reversed_at?: string | null
+          source_collection_id?: string | null
+          source_excess_amount_id?: string | null
+          source_payment_id?: string | null
+          source_tender_id?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          contract_id?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          remaining_amount?: number
+          reversed_at?: string | null
+          source_collection_id?: string | null
+          source_excess_amount_id?: string | null
+          source_payment_id?: string | null
+          source_tender_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_credit_lots_collection_org_fkey"
+            columns: ["source_collection_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_contract_org_fkey"
+            columns: ["contract_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_excess_org_fkey"
+            columns: ["source_excess_amount_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "excess_amounts"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_payment_org_fkey"
+            columns: ["source_payment_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "active_payments"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_payment_org_fkey"
+            columns: ["source_payment_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_payment_org_fkey"
+            columns: ["source_payment_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_source_collection_id_fkey"
+            columns: ["source_collection_id"]
+            isOneToOne: true
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_source_excess_amount_id_fkey"
+            columns: ["source_excess_amount_id"]
+            isOneToOne: false
+            referencedRelation: "excess_amounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_source_payment_id_fkey"
+            columns: ["source_payment_id"]
+            isOneToOne: false
+            referencedRelation: "active_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_source_payment_id_fkey"
+            columns: ["source_payment_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_source_payment_id_fkey"
+            columns: ["source_payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_source_tender_id_fkey"
+            columns: ["source_tender_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_tenders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_credit_lots_tender_org_fkey"
+            columns: ["source_tender_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_tenders"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           advisor: string | null
@@ -3729,6 +4215,7 @@ export type Database = {
           amount: number
           contract_id: string
           created_at: string
+          credit_lot_id: string | null
           description: string | null
           id: string
           organization_id: string
@@ -3740,6 +4227,7 @@ export type Database = {
           amount: number
           contract_id: string
           created_at?: string
+          credit_lot_id?: string | null
           description?: string | null
           id?: string
           organization_id: string
@@ -3751,6 +4239,7 @@ export type Database = {
           amount?: number
           contract_id?: string
           created_at?: string
+          credit_lot_id?: string | null
           description?: string | null
           id?: string
           organization_id?: string
@@ -3767,6 +4256,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "excess_amounts_credit_lot_id_fkey"
+            columns: ["credit_lot_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "customer_credit_lots"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
             foreignKeyName: "excess_amounts_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -3778,6 +4274,20 @@ export type Database = {
             columns: ["source_invoice_id"]
             isOneToOne: false
             referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "excess_amounts_source_payment_id_fkey"
+            columns: ["source_payment_id"]
+            isOneToOne: false
+            referencedRelation: "active_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "excess_amounts_source_payment_id_fkey"
+            columns: ["source_payment_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
             referencedColumns: ["id"]
           },
           {
@@ -4068,6 +4578,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "income_expense_batch_items_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_batch_items_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
             foreignKeyName: "income_expense_batch_items_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -4128,6 +4652,7 @@ export type Database = {
       }
       income_expense_items: {
         Row: {
+          accounting_class: string
           amount: number | null
           created_at: string
           description: string | null
@@ -4142,6 +4667,7 @@ export type Database = {
           unit_price: number
         }
         Insert: {
+          accounting_class: string
           amount?: number | null
           created_at?: string
           description?: string | null
@@ -4156,6 +4682,7 @@ export type Database = {
           unit_price?: number
         }
         Update: {
+          accounting_class?: string
           amount?: number | null
           created_at?: string
           description?: string | null
@@ -4176,6 +4703,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "income_expenses"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_items_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_items_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
           },
           {
             foreignKeyName: "income_expense_items_income_expense_type_id_fkey"
@@ -4344,6 +4885,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           payer_name: string | null
+          payment_collection_id: string | null
           payment_id: string | null
           posted_at_v2: string | null
           posting_id: string | null
@@ -4357,6 +4899,7 @@ export type Database = {
           repeat_next_date: string | null
           repeat_parent_id: string | null
           repeat_remaining: number
+          reversal_of_income_expense_id: string | null
           reversed_by_posting_id: string | null
           room_id: string | null
           rounding_account_id: string | null
@@ -4413,6 +4956,7 @@ export type Database = {
           notes?: string | null
           organization_id: string
           payer_name?: string | null
+          payment_collection_id?: string | null
           payment_id?: string | null
           posted_at_v2?: string | null
           posting_id?: string | null
@@ -4426,6 +4970,7 @@ export type Database = {
           repeat_next_date?: string | null
           repeat_parent_id?: string | null
           repeat_remaining?: number
+          reversal_of_income_expense_id?: string | null
           reversed_by_posting_id?: string | null
           room_id?: string | null
           rounding_account_id?: string | null
@@ -4482,6 +5027,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string
           payer_name?: string | null
+          payment_collection_id?: string | null
           payment_id?: string | null
           posted_at_v2?: string | null
           posting_id?: string | null
@@ -4495,6 +5041,7 @@ export type Database = {
           repeat_next_date?: string | null
           repeat_parent_id?: string | null
           repeat_remaining?: number
+          reversal_of_income_expense_id?: string | null
           reversed_by_posting_id?: string | null
           room_id?: string | null
           rounding_account_id?: string | null
@@ -4595,6 +5142,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "income_expenses_payment_collection_id_fkey"
+            columns: ["payment_collection_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "income_expenses_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "active_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "income_expenses_payment_id_fkey"
             columns: ["payment_id"]
             isOneToOne: false
@@ -4614,6 +5182,34 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "income_expenses"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_repeat_parent_id_fkey"
+            columns: ["repeat_parent_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_repeat_parent_id_fkey"
+            columns: ["repeat_parent_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "income_expenses_reversal_of_income_expense_id_fkey"
+            columns: ["reversal_of_income_expense_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "income_expenses_reversal_of_income_expense_id_fkey"
+            columns: ["reversal_of_income_expense_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id", "organization_id"]
           },
           {
             foreignKeyName: "income_expenses_room_id_fkey"
@@ -4829,6 +5425,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "inspection_sessions_paired_income_expense_id_fkey"
+            columns: ["paired_income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_paired_income_expense_id_fkey"
+            columns: ["paired_income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
             foreignKeyName: "inspection_sessions_spawned_job_id_fkey"
             columns: ["spawned_job_id"]
             isOneToOne: false
@@ -4939,6 +5549,7 @@ export type Database = {
       }
       invoice_items: {
         Row: {
+          accounting_class: string
           amount: number
           coefficient: number
           created_at: string
@@ -4957,6 +5568,7 @@ export type Database = {
           unit_price: number
         }
         Insert: {
+          accounting_class?: string
           amount?: number
           coefficient?: number
           created_at?: string
@@ -4975,6 +5587,7 @@ export type Database = {
           unit_price?: number
         }
         Update: {
+          accounting_class?: string
           amount?: number
           coefficient?: number
           created_at?: string
@@ -5013,6 +5626,357 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "services"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_payment_allocations: {
+        Row: {
+          accounting_class: string
+          amount: number
+          collection_id: string
+          created_at: string
+          id: string
+          income_expense_item_id: string
+          organization_id: string
+          tender_id: string
+          voucher_id: string
+        }
+        Insert: {
+          accounting_class: string
+          amount: number
+          collection_id: string
+          created_at?: string
+          id?: string
+          income_expense_item_id: string
+          organization_id: string
+          tender_id: string
+          voucher_id: string
+        }
+        Update: {
+          accounting_class?: string
+          amount?: number
+          collection_id?: string
+          created_at?: string
+          id?: string
+          income_expense_item_id?: string
+          organization_id?: string
+          tender_id?: string
+          voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payment_allocations_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_allocations_income_expense_item_id_fkey"
+            columns: ["income_expense_item_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_allocations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_allocations_tender_id_fkey"
+            columns: ["tender_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_tenders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_allocations_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_allocations_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_allocations_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
+      invoice_payment_collections: {
+        Row: {
+          actor_id: string
+          applied_amount: number
+          change_amount: number
+          collection_date: string
+          contract_id: string | null
+          created_at: string
+          credit_amount: number
+          expected_paid_amount: number
+          gross_amount: number
+          id: string
+          idempotency_key: string
+          invoice_id: string
+          notes: string | null
+          organization_id: string
+          payload_hash: string
+          receipt_image_url: string | null
+          retained_amount: number
+          reversal_date: string | null
+          reversal_idempotency_key: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
+          rounding_amount: number
+          status: string
+        }
+        Insert: {
+          actor_id: string
+          applied_amount: number
+          change_amount?: number
+          collection_date: string
+          contract_id?: string | null
+          created_at?: string
+          credit_amount?: number
+          expected_paid_amount: number
+          gross_amount: number
+          id?: string
+          idempotency_key: string
+          invoice_id: string
+          notes?: string | null
+          organization_id: string
+          payload_hash: string
+          receipt_image_url?: string | null
+          retained_amount: number
+          reversal_date?: string | null
+          reversal_idempotency_key?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          rounding_amount?: number
+          status?: string
+        }
+        Update: {
+          actor_id?: string
+          applied_amount?: number
+          change_amount?: number
+          collection_date?: string
+          contract_id?: string | null
+          created_at?: string
+          credit_amount?: number
+          expected_paid_amount?: number
+          gross_amount?: number
+          id?: string
+          idempotency_key?: string
+          invoice_id?: string
+          notes?: string | null
+          organization_id?: string
+          payload_hash?: string
+          receipt_image_url?: string | null
+          retained_amount?: number
+          reversal_date?: string | null
+          reversal_idempotency_key?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          rounding_amount?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payment_collections_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_collections_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_collections_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_payment_tenders: {
+        Row: {
+          account_id: string
+          applied_amount: number
+          change_account_id: string | null
+          change_amount: number
+          collection_id: string
+          created_at: string
+          credit_amount: number
+          gross_amount: number
+          id: string
+          line_index: number
+          organization_id: string
+          payment_id: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          receipt_number: string | null
+          retained_amount: number
+          rounding_account_id: string | null
+          rounding_amount: number
+          voucher_id: string | null
+        }
+        Insert: {
+          account_id: string
+          applied_amount: number
+          change_account_id?: string | null
+          change_amount?: number
+          collection_id: string
+          created_at?: string
+          credit_amount?: number
+          gross_amount: number
+          id?: string
+          line_index: number
+          organization_id: string
+          payment_id?: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          receipt_number?: string | null
+          retained_amount: number
+          rounding_account_id?: string | null
+          rounding_amount?: number
+          voucher_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          applied_amount?: number
+          change_account_id?: string | null
+          change_amount?: number
+          collection_id?: string
+          created_at?: string
+          credit_amount?: number
+          gross_amount?: number
+          id?: string
+          line_index?: number
+          organization_id?: string
+          payment_id?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          receipt_number?: string | null
+          retained_amount?: number
+          rounding_account_id?: string | null
+          rounding_amount?: number
+          voucher_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payment_tenders_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_change_account_id_fkey"
+            columns: ["change_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_change_account_id_fkey"
+            columns: ["change_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "active_payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_rounding_account_id_fkey"
+            columns: ["rounding_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_rounding_account_id_fkey"
+            columns: ["rounding_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
           },
         ]
       }
@@ -7377,7 +8341,10 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          change_amount: number
+          collection_id: string | null
           created_at: string
+          credit_amount: number
           id: string
           invoice_id: string
           notes: string | null
@@ -7386,12 +8353,20 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           receipt_image_url: string | null
           receipt_number: string | null
+          received_amount: number | null
+          reversed_at: string | null
+          reversed_by_collection_id: string | null
+          rounding_amount: number
+          tender_id: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           amount: number
+          change_amount?: number
+          collection_id?: string | null
           created_at?: string
+          credit_amount?: number
           id?: string
           invoice_id: string
           notes?: string | null
@@ -7400,12 +8375,20 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           receipt_image_url?: string | null
           receipt_number?: string | null
+          received_amount?: number | null
+          reversed_at?: string | null
+          reversed_by_collection_id?: string | null
+          rounding_amount?: number
+          tender_id?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           amount?: number
+          change_amount?: number
+          collection_id?: string | null
           created_at?: string
+          credit_amount?: number
           id?: string
           invoice_id?: string
           notes?: string | null
@@ -7414,10 +8397,22 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           receipt_image_url?: string | null
           receipt_number?: string | null
+          received_amount?: number | null
+          reversed_at?: string | null
+          reversed_by_collection_id?: string | null
+          rounding_amount?: number
+          tender_id?: string | null
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payments_collection_id_fkey"
+            columns: ["collection_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id", "organization_id"]
+          },
           {
             foreignKeyName: "payments_invoice_id_fkey"
             columns: ["invoice_id"]
@@ -7431,6 +8426,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_reversed_by_collection_id_fkey"
+            columns: ["reversed_by_collection_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payments_tender_id_fkey"
+            columns: ["tender_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_tenders"
+            referencedColumns: ["id", "organization_id"]
           },
         ]
       }
@@ -8116,6 +9125,8 @@ export type Database = {
           organization_id: string
           period_month: string
           revision_number: number
+          shareholder_allocated_amount: number
+          shareholder_percent_total: number
           source_captured_at: string
           source_expense: number | null
           source_hash: string
@@ -8123,6 +9134,9 @@ export type Database = {
           source_revenue: number | null
           stale_reason: string | null
           status: string
+          unallocated_disposition: string | null
+          unallocated_disposition_reason: string | null
+          unallocated_profit: number
           updated_at: string
           user_id: string
         }
@@ -8144,6 +9158,8 @@ export type Database = {
           organization_id: string
           period_month: string
           revision_number?: number
+          shareholder_allocated_amount?: number
+          shareholder_percent_total?: number
           source_captured_at: string
           source_expense?: number | null
           source_hash: string
@@ -8151,6 +9167,9 @@ export type Database = {
           source_revenue?: number | null
           stale_reason?: string | null
           status?: string
+          unallocated_disposition?: string | null
+          unallocated_disposition_reason?: string | null
+          unallocated_profit?: number
           updated_at?: string
           user_id: string
         }
@@ -8172,6 +9191,8 @@ export type Database = {
           organization_id?: string
           period_month?: string
           revision_number?: number
+          shareholder_allocated_amount?: number
+          shareholder_percent_total?: number
           source_captured_at?: string
           source_expense?: number | null
           source_hash?: string
@@ -8179,6 +9200,9 @@ export type Database = {
           source_revenue?: number | null
           stale_reason?: string | null
           status?: string
+          unallocated_disposition?: string | null
+          unallocated_disposition_reason?: string | null
+          unallocated_profit?: number
           updated_at?: string
           user_id?: string
         }
@@ -8202,6 +9226,243 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profit_payout_exceptions: {
+        Row: {
+          amount: number
+          created_at: string
+          details: Json
+          exception_code: string
+          id: string
+          organization_id: string
+          payout_voucher_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          shareholder_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          details?: Json
+          exception_code: string
+          id?: string
+          organization_id: string
+          payout_voucher_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shareholder_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          details?: Json
+          exception_code?: string
+          id?: string
+          organization_id?: string
+          payout_voucher_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          shareholder_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_payout_exceptions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_payout_exceptions_payout_voucher_id_fkey"
+            columns: ["payout_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_payout_exceptions_payout_voucher_id_fkey"
+            columns: ["payout_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_payout_exceptions_payout_voucher_id_fkey"
+            columns: ["payout_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "profit_payout_exceptions_shareholder_id_fkey"
+            columns: ["shareholder_id"]
+            isOneToOne: false
+            referencedRelation: "shareholders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profit_payout_reservations: {
+        Row: {
+          amount: number
+          approval_request_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          organization_id: string
+          payout_voucher_id: string
+          profit_allocation_id: string
+          reservation_source: string
+          shareholder_id: string
+          source_payload_hash: string | null
+        }
+        Insert: {
+          amount: number
+          approval_request_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id: string
+          payout_voucher_id: string
+          profit_allocation_id: string
+          reservation_source: string
+          shareholder_id: string
+          source_payload_hash?: string | null
+        }
+        Update: {
+          amount?: number
+          approval_request_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id?: string
+          payout_voucher_id?: string
+          profit_allocation_id?: string
+          reservation_source?: string
+          shareholder_id?: string
+          source_payload_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_payout_reservations_allocation_org_fk"
+            columns: ["profit_allocation_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "profit_allocations"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "profit_payout_reservations_approval_request_id_fkey"
+            columns: ["approval_request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_payout_reservations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_payout_reservations_shareholder_org_fk"
+            columns: ["shareholder_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "shareholders"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "profit_payout_reservations_voucher_org_fk"
+            columns: ["payout_voucher_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "profit_payout_reservations_voucher_org_fk"
+            columns: ["payout_voucher_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      profit_unallocated_decisions: {
+        Row: {
+          actor_id: string | null
+          building_id: string
+          created_at: string
+          decision_source: string
+          disposition: string
+          id: string
+          organization_id: string
+          period_month: string
+          profit_monthly_id: string
+          reason: string
+          run_id: string | null
+          unallocated_profit: number
+        }
+        Insert: {
+          actor_id?: string | null
+          building_id: string
+          created_at?: string
+          decision_source: string
+          disposition: string
+          id?: string
+          organization_id: string
+          period_month: string
+          profit_monthly_id: string
+          reason: string
+          run_id?: string | null
+          unallocated_profit: number
+        }
+        Update: {
+          actor_id?: string | null
+          building_id?: string
+          created_at?: string
+          decision_source?: string
+          disposition?: string
+          id?: string
+          organization_id?: string
+          period_month?: string
+          profit_monthly_id?: string
+          reason?: string
+          run_id?: string | null
+          unallocated_profit?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profit_unallocated_decisions_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "profit_unallocated_decisions_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_unallocated_decisions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_unallocated_decisions_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "profit_close_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -8876,6 +10137,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "salary_adjustments_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_adjustments_income_expense_id_fkey"
+            columns: ["income_expense_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
             foreignKeyName: "salary_adjustments_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -9142,6 +10417,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "income_expenses"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_monthly_payout_voucher_id_fkey"
+            columns: ["payout_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_monthly_payout_voucher_id_fkey"
+            columns: ["payout_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
           },
         ]
       }
@@ -11075,6 +12364,135 @@ export type Database = {
         }
         Relationships: []
       }
+      active_payment_receipts: {
+        Row: {
+          account_id: string | null
+          applied_amount: number | null
+          change_amount: number | null
+          collected_amount: number | null
+          collection_id: string | null
+          created_at: string | null
+          credit_amount: number | null
+          gross_amount: number | null
+          id: string | null
+          invoice_id: string | null
+          organization_id: string | null
+          payment_date: string | null
+          payment_id: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"] | null
+          receipt_image_url: string | null
+          receipt_number: string | null
+          rounding_amount: number | null
+          source_kind: string | null
+          voucher_id: string | null
+        }
+        Relationships: []
+      }
+      active_payments: {
+        Row: {
+          amount: number | null
+          change_amount: number | null
+          collection_id: string | null
+          created_at: string | null
+          credit_amount: number | null
+          id: string | null
+          invoice_id: string | null
+          notes: string | null
+          organization_id: string | null
+          payment_date: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"] | null
+          receipt_image_url: string | null
+          receipt_number: string | null
+          received_amount: number | null
+          reversed_at: string | null
+          reversed_by_collection_id: string | null
+          rounding_amount: number | null
+          tender_id: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          amount?: number | null
+          change_amount?: number | null
+          collection_id?: string | null
+          created_at?: string | null
+          credit_amount?: number | null
+          id?: string | null
+          invoice_id?: string | null
+          notes?: string | null
+          organization_id?: string | null
+          payment_date?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          receipt_image_url?: string | null
+          receipt_number?: string | null
+          received_amount?: number | null
+          reversed_at?: string | null
+          reversed_by_collection_id?: string | null
+          rounding_amount?: number | null
+          tender_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          amount?: number | null
+          change_amount?: number | null
+          collection_id?: string | null
+          created_at?: string | null
+          credit_amount?: number | null
+          id?: string | null
+          invoice_id?: string | null
+          notes?: string | null
+          organization_id?: string | null
+          payment_date?: string | null
+          payment_method?: Database["public"]["Enums"]["payment_method"] | null
+          receipt_image_url?: string | null
+          receipt_number?: string | null
+          received_amount?: number | null
+          reversed_at?: string | null
+          reversed_by_collection_id?: string | null
+          rounding_amount?: number | null
+          tender_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_collection_id_fkey"
+            columns: ["collection_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_reversed_by_collection_id_fkey"
+            columns: ["reversed_by_collection_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "payments_tender_id_fkey"
+            columns: ["tender_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_tenders"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       building_coverage: {
         Row: {
           building_id: string | null
@@ -11121,6 +12539,83 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_pnl_cash_entries: {
+        Row: {
+          building_id: string | null
+          id: string | null
+          invoice_id: string | null
+          organization_id: string | null
+          pnl_amount: number | null
+          revenue_date: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expenses_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legacy_payment_receipt_semantics: {
+        Row: {
+          account_id: string | null
+          applied_amount: number | null
+          change_amount: number | null
+          created_at: string | null
+          credit_amount: number | null
+          gross_amount: number | null
+          gross_era_change_amount: number | null
+          gross_era_expense_count: number | null
+          id: string | null
+          invoice_id: string | null
+          metadata_change_amount: number | null
+          organization_id: string | null
+          payment_date: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"] | null
+          receipt_image_url: string | null
+          receipt_number: string | null
+          retained_amount: number | null
+          reversed_at: string | null
+          rounding_amount: number | null
+          stored_payment_amount: number | null
+          unresolved_change_expense_count: number | null
+          voucher_count: number | null
+          voucher_id: string | null
+          voucher_total_amount: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expenses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -11267,6 +12762,23 @@ export type Database = {
           },
         ]
       }
+      payment_receipt_events: {
+        Row: {
+          applied_amount: number | null
+          collected_amount: number | null
+          collection_id: string | null
+          created_at: string | null
+          credit_amount: number | null
+          event_kind: string | null
+          invoice_id: string | null
+          organization_id: string | null
+          payment_date: string | null
+          payment_id: string | null
+          payment_method: Database["public"]["Enums"]["payment_method"] | null
+          source_id: string | null
+        }
+        Relationships: []
+      }
       v_termination_calculation: {
         Row: {
           actual_move_out_date: string | null
@@ -11338,6 +12850,10 @@ export type Database = {
         Args: { p_actor: string; p_request: string; p_voucher: string }
         Returns: string
       }
+      _profit_allocation_reserved_v2: {
+        Args: { p_profit_allocation_id: string }
+        Returns: number
+      }
       _profit_assert_authorized_v2: {
         Args: { p_organization_id: string; p_permission_key: string }
         Returns: undefined
@@ -11359,6 +12875,11 @@ export type Database = {
       }
       _profit_current_state_v2: {
         Args: { p_organization_id: string; p_period_month: string }
+        Returns: Json
+      }
+      _profit_enrich_state_v3: { Args: { p_document: Json }; Returns: Json }
+      _profit_enrich_unallocated_v3: {
+        Args: { p_adjustments?: Json; p_document: Json }
         Returns: Json
       }
       _profit_management_allocations_v2: {
@@ -11386,6 +12907,61 @@ export type Database = {
           p_operation: string
           p_organization_id: string
           p_period_month: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      _profit_write_close_v2_base: {
+        Args: {
+          p_adjustments: Json
+          p_building_ids: string[]
+          p_expected_source_hash: string
+          p_idempotency_key: string
+          p_operation: string
+          p_organization_id: string
+          p_period_month: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      _record_invoice_payment_v3_legacy: {
+        Args: {
+          p_account_id?: string
+          p_amount: number
+          p_idempotency_key: string
+          p_invoice_id: string
+          p_items?: Json
+          p_notes?: string
+          p_payment_date: string
+          p_payment_method: Database["public"]["Enums"]["payment_method"]
+          p_receipt_image_url?: string
+          p_receipt_number?: string
+          p_voucher?: Json
+          p_voucher_owner_id?: string
+        }
+        Returns: Json
+      }
+      _record_invoice_payment_v4_legacy: {
+        Args: {
+          p_account_id?: string
+          p_amount: number
+          p_idempotency_key: string
+          p_invoice_id: string
+          p_items?: Json
+          p_notes?: string
+          p_payment_date: string
+          p_payment_method: Database["public"]["Enums"]["payment_method"]
+          p_receipt_image_url?: string
+          p_receipt_number?: string
+          p_voucher?: Json
+          p_voucher_owner_id?: string
+        }
+        Returns: Json
+      }
+      _reverse_invoice_payment_v3_legacy: {
+        Args: {
+          p_idempotency_key: string
+          p_payment_id: string
           p_reason: string
         }
         Returns: Json
@@ -11428,6 +13004,17 @@ export type Database = {
       ai_copilot_perms_for: { Args: { p_user: string }; Returns: Json }
       append_fee_attachment: {
         Args: { p_url: string; p_voucher_id: string }
+        Returns: Json
+      }
+      apply_customer_credit_v1: {
+        Args: {
+          p_amount: number
+          p_application_kind: string
+          p_contract_id: string
+          p_description: string
+          p_idempotency_key: string
+          p_invoice_id: string
+        }
         Returns: Json
       }
       approve_contract_termination_v1: {
@@ -11584,6 +13171,10 @@ export type Database = {
         Args: { p_invoice_ids: string[] }
         Returns: number
       }
+      bulk_soft_delete_invoices_with_credit_v1: {
+        Args: { p_idempotency_key: string; p_invoice_ids: string[] }
+        Returns: Json
+      }
       calculate_lead_score: { Args: { lead_id: string }; Returns: number }
       can_access_building: { Args: { _building_id: string }; Returns: boolean }
       can_access_org_entity: {
@@ -11650,6 +13241,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      cancel_invoice_with_credit_v1: {
+        Args: { p_idempotency_key: string; p_invoice_id: string }
+        Returns: Json
+      }
       cancel_period_fee: { Args: { p_voucher_id: string }; Returns: Json }
       cancel_reconciliation: { Args: { p_id: string }; Returns: Json }
       cancel_utility_bill: { Args: { p_voucher_id: string }; Returns: Json }
@@ -11690,6 +13285,10 @@ export type Database = {
       complete_inspection: {
         Args: { p_condition_note?: string; p_session: string }
         Returns: Json
+      }
+      compute_first_billing_month_v2: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: string
       }
       confirm_cancel_handover: {
         Args: { p_handover_id: string }
@@ -11753,6 +13352,10 @@ export type Database = {
         }
         Returns: Json
       }
+      create_contract_v2: {
+        Args: { p_idempotency_key: string; p_payload: Json }
+        Returns: Json
+      }
       create_income_expense_v1: {
         Args: {
           p_account_id: string
@@ -11807,6 +13410,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           payer_name: string | null
+          payment_collection_id: string | null
           payment_id: string | null
           posted_at_v2: string | null
           posting_id: string | null
@@ -11820,6 +13424,7 @@ export type Database = {
           repeat_next_date: string | null
           repeat_parent_id: string | null
           repeat_remaining: number
+          reversal_of_income_expense_id: string | null
           reversed_by_posting_id: string | null
           room_id: string | null
           rounding_account_id: string | null
@@ -11863,6 +13468,33 @@ export type Database = {
           p_issue_date: string
           p_items: Json
           p_kind: string
+          p_notes?: string
+          p_prepaid_amount?: number
+          p_previous_debt: number
+          p_previous_debt_sources?: Json
+          p_room_id: string
+          p_subtotal: number
+          p_template_id?: string
+          p_total_amount: number
+        }
+        Returns: Json
+      }
+      create_invoice_with_credit_v1: {
+        Args: {
+          p_applied_credit?: number
+          p_billing_month: string
+          p_building_id: string
+          p_contract_id: string
+          p_creator_name?: string
+          p_discount_amount: number
+          p_discount_notes?: string
+          p_due_date: string
+          p_electricity_prev_overridden?: boolean
+          p_idempotency_key: string
+          p_issue_date: string
+          p_items: Json
+          p_kind: string
+          p_non_credit_discount_amount?: number
           p_notes?: string
           p_prepaid_amount?: number
           p_previous_debt: number
@@ -12292,6 +13924,10 @@ export type Database = {
         Args: { p_building_ids?: string[]; p_in30?: string; p_today?: string }
         Returns: Json
       }
+      get_customer_credit_balance_v1: {
+        Args: { p_contract_id: string }
+        Returns: number
+      }
       get_customer_stats: {
         Args: {
           p_building_id?: string
@@ -12625,6 +14261,57 @@ export type Database = {
         Returns: undefined
       }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
+      invoice_active_payment_methods: {
+        Args: { p_invoice_ids: string[] }
+        Returns: {
+          invoice_id: string
+          payment_methods: string[]
+        }[]
+      }
+      invoice_payment_method_drilldown: {
+        Args: {
+          p_payment_method: Database["public"]["Enums"]["payment_method"]
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          billing_month: string
+          building_id: string
+          contract_id: string
+          created_at: string
+          creator_name: string | null
+          deleted_at: string | null
+          discount_amount: number
+          discount_notes: string | null
+          due_date: string
+          electricity_prev_overridden: boolean
+          id: string
+          invoice_number: string | null
+          issue_date: string
+          kind: string
+          notes: string | null
+          organization_id: string
+          paid_amount: number
+          paid_date: string | null
+          prepaid_amount: number
+          previous_debt: number
+          previous_debt_sources: Json
+          remaining_amount: number | null
+          room_id: string
+          status: Database["public"]["Enums"]["invoice_status"]
+          subtotal: number
+          template_id: string | null
+          total_amount: number
+          updated_at: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "invoices"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       is_account_owner: { Args: { p_account_id: string }; Returns: boolean }
       is_account_shared_with_me: {
         Args: { p_account_id: string }
@@ -13027,6 +14714,20 @@ export type Database = {
         Args: { p_room_id: string }
         Returns: undefined
       }
+      record_invoice_collection_v5: {
+        Args: {
+          p_allow_rounding: boolean
+          p_collection_date: string
+          p_expected_paid_amount: number
+          p_idempotency_key: string
+          p_invoice_id: string
+          p_notes: string
+          p_overpay_action: string
+          p_receipt_image_url: string
+          p_tenders: Json
+        }
+        Returns: Json
+      }
       record_invoice_payment_v2: {
         Args: {
           p_amount: number
@@ -13180,6 +14881,27 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      restore_invoice_with_credit_v1: {
+        Args: { p_idempotency_key: string; p_invoice_id: string }
+        Returns: Json
+      }
+      reverse_customer_credit_application_v1: {
+        Args: {
+          p_application_id: string
+          p_idempotency_key: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      reverse_invoice_collection_v5: {
+        Args: {
+          p_collection_id: string
+          p_idempotency_key: string
+          p_reason: string
+          p_reversal_date: string
+        }
+        Returns: Json
+      }
       reverse_invoice_payment_v3: {
         Args: {
           p_idempotency_key: string
@@ -13287,6 +15009,10 @@ export type Database = {
         }
       }
       set_salary_v5_config: { Args: { p_patch: Json }; Returns: Json }
+      set_termination_forfeit_status_v1: {
+        Args: { p_status: string; p_voucher_id: string }
+        Returns: undefined
+      }
       shared_account_ids: { Args: never; Returns: string[] }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -13297,6 +15023,10 @@ export type Database = {
       soft_delete_invoice_v1: {
         Args: { p_invoice_id: string }
         Returns: undefined
+      }
+      soft_delete_invoice_with_credit_v1: {
+        Args: { p_idempotency_key: string; p_invoice_id: string }
+        Returns: Json
       }
       staff_building_scope: { Args: { owner_id: string }; Returns: string[] }
       staff_can: {
@@ -13348,6 +15078,10 @@ export type Database = {
         Args: { p_invoice_id: string }
         Returns: Json
       }
+      super_admin_force_cancel_invoice_with_credit_v1: {
+        Args: { p_idempotency_key: string; p_invoice_id: string }
+        Returns: Json
+      }
       terminate_contract_forfeit: {
         Args: {
           p_contract_id: string
@@ -13361,6 +15095,15 @@ export type Database = {
           p_contract_id: string
           p_extra_charges?: Json
           p_forfeit_date: string
+        }
+        Returns: Json
+      }
+      terminate_contract_forfeit_with_credit_v1: {
+        Args: {
+          p_contract_id: string
+          p_extra_charges: Json
+          p_forfeit_date: string
+          p_idempotency_key: string
         }
         Returns: Json
       }
@@ -13391,6 +15134,22 @@ export type Database = {
           p_penalty_fee?: number
           p_receipt_account_id?: string
           p_shortfall_mode?: string
+        }
+        Returns: Json
+      }
+      terminate_contract_move_out_with_credit_v1: {
+        Args: {
+          p_contract_id: string
+          p_deposit_refund: number
+          p_excess_rent: number
+          p_extra_charges: Json
+          p_idempotency_key: string
+          p_move_out_date: string
+          p_notes: string
+          p_outstanding_debt: number
+          p_penalty_fee: number
+          p_receipt_account_id: string
+          p_shortfall_mode: string
         }
         Returns: Json
       }
@@ -13571,6 +15330,7 @@ export type Database = {
           notes: string | null
           organization_id: string
           payer_name: string | null
+          payment_collection_id: string | null
           payment_id: string | null
           posted_at_v2: string | null
           posting_id: string | null
@@ -13584,6 +15344,7 @@ export type Database = {
           repeat_next_date: string | null
           repeat_parent_id: string | null
           repeat_remaining: number
+          reversal_of_income_expense_id: string | null
           reversed_by_posting_id: string | null
           room_id: string | null
           rounding_account_id: string | null
