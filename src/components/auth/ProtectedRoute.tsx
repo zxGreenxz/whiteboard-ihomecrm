@@ -1,8 +1,7 @@
-import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
+import { isAuthBootstrapTimeoutError } from '@/lib/authBootstrap';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -16,22 +15,10 @@ interface ProtectedRouteProps {
  * Shows loading state while checking authentication.
  */
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { data: user, isLoading, error } = useAuth();
+  const { data: user, isLoading, isFetching, error, refetch } = useAuth();
   const location = useLocation();
 
-  useEffect(() => {
-    // Listen to auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
-        // Redirect to login when signed out
-        window.location.href = '/login';
-      }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
+  if (user) return <>{children}</>;
 
   if (isLoading) {
     return (
@@ -44,12 +31,41 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  if (error || !user) {
-    // Save the attempted location for redirecting after login
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  if (error) {
+    const timedOut = isAuthBootstrapTimeoutError(error);
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-sm text-center">
+          <h1 className="text-lg font-semibold">Chưa thể kiểm tra phiên đăng nhập</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {timedOut
+              ? 'Ứng dụng mất quá nhiều thời gian để khôi phục phiên. Dữ liệu đăng nhập vẫn được giữ nguyên.'
+              : 'Có lỗi khi khôi phục phiên đăng nhập. Vui lòng thử lại.'}
+          </p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button
+              type="button"
+              className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-60"
+              disabled={isFetching}
+              onClick={() => void refetch()}
+            >
+              {isFetching ? 'Đang thử lại…' : 'Thử lại'}
+            </button>
+            <button
+              type="button"
+              className="rounded-md border px-4 py-2 text-sm"
+              onClick={() => window.location.reload()}
+            >
+              Tải lại ứng dụng
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  return <>{children}</>;
+  // Save the attempted location for redirecting after login.
+  return <Navigate to="/login" state={{ from: location }} replace />;
 };
 
 export default ProtectedRoute;

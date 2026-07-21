@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 // lazyWithRetry: thử lại import() page khi mạng chập chờn (tab idle → wifi ngủ →
 // request chunk đầu fail) trước khi để lỗi rơi xuống ErrorBoundary. Alias thành
 // `lazy` để mọi call site route bên dưới giữ nguyên.
@@ -11,6 +11,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-
 import ErrorBoundary from "./components/errors/ErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
+import { hideAppSplash } from "@/lib/appSplash";
 
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
 // đổ về danh sách).
@@ -157,6 +158,36 @@ const RouteFallback = () => (
     Đang tải…
   </div>
 );
+
+const RouteTreeCommit = () => {
+  useLayoutEffect(() => hideAppSplash(), []);
+  return null;
+};
+
+const DeferredCopilotLauncher = () => {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (idleWindow.requestIdleCallback) {
+      const id = idleWindow.requestIdleCallback(() => setReady(true), { timeout: 1_500 });
+      return () => idleWindow.cancelIdleCallback?.(id);
+    }
+
+    const id = window.setTimeout(() => setReady(true), 700);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  if (!ready) return null;
+  return (
+    <Suspense fallback={null}>
+      <CopilotLauncher />
+    </Suspense>
+  );
+};
 
 // CRM nội bộ: dữ liệu 1 phút tuổi chấp nhận được. staleTime=0 +
 // refetchOnWindowFocus mặc định của TanStack Query khiến MỌI query đang mount
@@ -450,12 +481,11 @@ const App = () => (
           {/* 404 Not Found - Catch all */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <RouteTreeCommit />
         </Suspense>
         {/* AI Copilot: nút nổi toàn app — tự ẩn trên route public / khi không
             có session / không entitlement / không quyền ai_copilot.view */}
-        <Suspense fallback={null}>
-          <CopilotLauncher />
-        </Suspense>
+        <DeferredCopilotLauncher />
       </BrowserRouter>
       </ErrorBoundary>
     </TooltipProvider>

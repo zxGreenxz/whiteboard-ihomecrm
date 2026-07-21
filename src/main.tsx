@@ -6,6 +6,9 @@ import { hideAppSplash } from "./lib/appSplash";
 import { registerServiceWorker } from "./lib/push";
 import { initPerfTrace } from "./lib/perfTrace";
 
+// The standalone watchdog is only cleared once this entry module evaluates.
+(window as Window & { __ihomePwaEntryReady?: () => void }).__ihomePwaEntryReady?.();
+
 // Lưu vết hiệu năng (đo request Supabase chậm + tổng hợp __perfReport()).
 initPerfTrace();
 
@@ -19,8 +22,7 @@ window.addEventListener("vite:preloadError", (event) => {
 
 createRoot(document.getElementById("root")!).render(<App />);
 
-// Lưới an toàn: nếu trang đầu chưa kịp gọi hideAppSplash (lỗi/route lạ),
-// vẫn ẩn splash sau 4.5s để không bao giờ kẹt màn chờ.
+// Lưới an toàn nếu React không commit được route tree.
 window.setTimeout(hideAppSplash, 4500);
 
 // Đăng ký service worker (PWA + Web Push). Không chặn render.

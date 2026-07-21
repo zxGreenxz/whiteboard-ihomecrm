@@ -51,14 +51,9 @@ const avatarInitial = (name?: string | null, email?: string | null): string => {
  * mỗi ô là <Link> tới đúng route đang có. CSS scope riêng (.hl-stage/.hl-app),
  * KHÔNG bọc MainLayout — đây là shell độc lập như Thu tiền.
  */
-// Skeleton trong lúc tải perms/stats — tránh "nháy" lưới rỗng (chỉ 2 ô) rồi mới
-// đủ. Giữ bố cục giống thật để chuyển mượt.
-const LauncherSkeleton = () => (
+// Tiles only wait for permissions; hero data loads independently.
+const LauncherGridSkeleton = () => (
   <>
-    <div className="hero">
-      <div className="sk sk-hero" />
-      <div className="sk sk-hero" />
-    </div>
     {[0, 1].map((s) => (
       <section className="lsec" key={s}>
         <div className="sk sk-lbl-sec" />
@@ -88,7 +83,7 @@ const HomeLauncher = () => {
   const queryClient = useQueryClient();
   const { data: user } = useAuth();
   const { data: profile } = useProfile();
-  const { data: stats, isLoading: statsLoading } = useDashboardStats(null);
+  const { data: stats } = useDashboardStats(null);
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
   const [animateIn] = useState(() => !enteredOnce());
 
@@ -102,7 +97,6 @@ const HomeLauncher = () => {
   // là hiện ngay, không "Đang tải".
   usePrefetchHeavyPages();
 
-  const booting = permsLoading || statsLoading;
   const name = profile?.full_name || user?.email || 'Bạn';
 
   // Ô chỉ hiện khi có quyền XEM tương ứng (khớp đúng route guard). Section rỗng → ẩn.
@@ -143,10 +137,6 @@ const HomeLauncher = () => {
           </header>
 
           <div className="home-body">
-            {booting ? (
-              <LauncherSkeleton />
-            ) : (
-            <>
             <InstallHint />
             <div className="hero">
               <div className="hero-card rev">
@@ -161,7 +151,7 @@ const HomeLauncher = () => {
               </div>
             </div>
 
-            {sections.map((sec) => (
+            {permsLoading ? <LauncherGridSkeleton /> : sections.map((sec) => (
               <section className="lsec" key={sec.label}>
                 <p className="lsec-lbl">{sec.label}</p>
                 <div className="lgrid">
@@ -189,8 +179,6 @@ const HomeLauncher = () => {
                 </div>
               </section>
             ))}
-            </>
-            )}
           </div>
         </div>
       </div>

@@ -3,6 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import {
+  isAuthBootstrapTimeoutError,
+  withAuthBootstrapTimeout,
+} from '@/lib/authBootstrap';
 
 // =============================================
 // Types
@@ -86,12 +90,14 @@ export const useAuth = () => {
     // (INITIAL_SESSION / SIGNED_IN / TOKEN_REFRESHED / SIGNED_OUT) nên
     // staleTime: Infinity an toàn. RLS vẫn kiểm server-side mọi request dữ liệu.
     queryFn: async (): Promise<User | null> => {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const { data: { session }, error } = await withAuthBootstrapTimeout(
+        supabase.auth.getSession(),
+      );
       if (error) throw error;
       return session?.user ?? null;
     },
     staleTime: Infinity,
-    retry: 1,
+    retry: (failureCount, error) => !isAuthBootstrapTimeoutError(error) && failureCount < 1,
   });
 };
 
@@ -103,12 +109,14 @@ export const useSession = () => {
   return useQuery({
     queryKey: ['auth', 'session'],
     queryFn: async (): Promise<Session | null> => {
-      const { data: { session }, error } = await supabase.auth.getSession();
+      const { data: { session }, error } = await withAuthBootstrapTimeout(
+        supabase.auth.getSession(),
+      );
       if (error) throw error;
       return session;
     },
     staleTime: Infinity, // listener toàn cục trong App.tsx giữ cache tươi
-    retry: 1,
+    retry: (failureCount, error) => !isAuthBootstrapTimeoutError(error) && failureCount < 1,
   });
 };
 
