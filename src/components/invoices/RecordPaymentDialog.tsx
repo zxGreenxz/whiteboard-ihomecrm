@@ -23,7 +23,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useRecordPaymentRPC } from '@/hooks/useInvoicePayments';
+import {
+  useRecordPaymentRPC,
+  type RecordPaymentRPCData,
+} from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
 import { changeAccountOptions, findOwnChangeAccount } from '@/lib/changeAccounts';
 import { ownCashAccountId } from '@/lib/cashAccount';
@@ -35,6 +38,7 @@ import { getSessionUser } from "@/lib/authSession";
 import { Checkbox } from '@/components/ui/checkbox';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { toast } from 'sonner';
+import { deriveInvoiceDepositDue } from '@/lib/paymentRecordRpc';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -89,6 +93,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [changeUserEdited, setChangeUserEdited] = useState(false);
+  const collectionAttemptRef = useRef<{
+    fingerprint: string;
+    request: RecordPaymentRPCData;
+  } | null>(null);
 
   const {
     handleSubmit,
@@ -115,25 +123,46 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const watchedChangeAccountId = watch('change_account_id');
   const watchedKeepAsCredit = watch('keep_as_credit');
 
+  const realAccounts = useMemo(
+    () => (accounts as any[]).filter((account) => account.is_virtual === false),
+    [accounts],
+  );
+  const virtualAccounts = useMemo(
+    () => (accounts as any[]).filter((account) => account.is_virtual === true),
+    [accounts],
+  );
+  const accountVirtuality = useMemo(
+    () => new Map((accounts as any[]).map((account) => [account.id, account.is_virtual])),
+    [accounts],
+  );
+
   const totalPaid = (watchedLines ?? []).reduce(
     (s, l) => s + (Number((l as any)?.amount) || 0),
     0,
   );
 
-  const outstandingAmount = invoice ? (invoice.total_amount || 0) - (invoice.paid_amount || 0) : 0;
+  const outstandingAmount = invoice
+    ? Math.max((invoice.total_amount || 0) - (invoice.paid_amount || 0), 0)
+    : 0;
 
   // ID sổ quỹ trùng tên tòa nhà của hoá đơn — fallback cho TT/TK khi
   // toà nhà chưa cấu hình default_account_id_tt/tk trong Cài đặt toà nhà.
   const defaultAccountIdByName = useMemo(() => {
-    if (!invoice || !accounts.length) return '';
+    if (!invoice || !realAccounts.length) return '';
     const buildingName = invoice.building?.name?.trim();
     if (!buildingName) return '';
-    return (accounts as any[]).find((a) => a.name?.trim() === buildingName)?.id ?? '';
-  }, [invoice, accounts]);
+    return realAccounts.find((a) => a.name?.trim() === buildingName)?.id ?? '';
+  }, [invoice, realAccounts]);
 
   // Sổ quỹ mặc định lấy từ cài đặt toà nhà (mọi user dùng chung).
-  const buildingDefaultTT = (invoice?.building as any)?.default_account_id_tt ?? '';
-  const buildingDefaultTK = (invoice?.building as any)?.default_account_id_tk ?? '';
+  const rawBuildingDefaultTT = (invoice?.building as any)?.default_account_id_tt ?? '';
+  const rawBuildingDefaultTK = (invoice?.building as any)?.default_account_id_tk ?? '';
+  const buildingDefaultTT = realAccounts.some((account) => account.id === rawBuildingDefaultTT)
+    ? rawBuildingDefaultTT
+    : '';
+  const buildingDefaultTK = realAccounts.some((account) => account.id === rawBuildingDefaultTK)
+    ? rawBuildingDefaultTK
+    : '';
   // Toà nhà có cấu hình default sổ quỹ cho TT/TK chưa? Quyết định xem phương
   // thức tương ứng có xuất hiện trong dropdown và có cần lock TK thành "+".
   const hasBuildingTT = !!buildingDefaultTT;
@@ -142,27 +171,27 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   // Sổ Thu của user đăng nhập — nếu user có nhiều sổ "…Thu" thì ưu tiên sổ
   // đánh dấu is_default (xem lib/cashAccount), tránh phụ thuộc thứ tự A→Z.
   const myCashAccountId = useMemo(
-    () => ownCashAccountId(accounts as any[], currentUser?.id),
-    [currentUser, accounts],
+    () => ownCashAccountId(realAccounts, currentUser?.id),
+    [currentUser, realAccounts],
   );
 
   // Sổ quỹ "Chung" — fallback cho TM khi user đăng nhập không phải joey/nathan
   // (và không sở hữu sổ "Thu" riêng).
   const chungAccountId = useMemo(() => {
-    if (!accounts.length) return '';
-    return (accounts as any[]).find(
+    if (!realAccounts.length) return '';
+    return realAccounts.find(
       (a) => typeof a.name === 'string' && a.name.trim().toLowerCase() === 'chung',
     )?.id ?? '';
-  }, [accounts]);
+  }, [realAccounts]);
 
   // Sổ quỹ "Làm tròn tiền thiếu" — dùng cho audit khi residual < 10K
   // được làm tròn. Chỉ là ledger metadata, không trừ số dư.
   const roundingAccountId = useMemo(() => {
-    if (!accounts.length) return '';
-    return (accounts as any[]).find(
+    if (!virtualAccounts.length) return '';
+    return virtualAccounts.find(
       (a) => typeof a.name === 'string' && a.name.trim() === 'Làm tròn tiền thiếu',
     )?.id ?? '';
-  }, [accounts]);
+  }, [virtualAccounts]);
 
   const accountIdForMethod = (method: PaymentMethod): string => {
     // TM: sổ Thu của chính nhân viên đang đăng nhập (joey → Hiển Thu,
@@ -314,10 +343,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   // Pre-select sổ ghi nhận thối theo user: Hiển→Hiển Thối, Hiệp→Hiệp Thối
   // (user khác: sổ "Thối" đầu tiên — giữ hành vi cũ).
   useEffect(() => {
-    if (!watchedChangeAmount || watchedChangeAccountId || !accounts.length) return;
-    const target = findOwnChangeAccount(accounts as any[], currentUser?.id);
+    if (!watchedChangeAmount || watchedChangeAccountId || !virtualAccounts.length) return;
+    const target = findOwnChangeAccount(virtualAccounts, currentUser?.id);
     if (target) setValue('change_account_id', target.id);
-  }, [watchedChangeAmount, watchedChangeAccountId, accounts, currentUser?.id, setValue]);
+  }, [watchedChangeAmount, watchedChangeAccountId, virtualAccounts, currentUser?.id, setValue]);
 
   const handleClose = () => {
     reset();
@@ -325,6 +354,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     setReceiptPreview(null);
     setChangeUserEdited(false);
     setUnlockedTkFieldIds(new Set());
+    collectionAttemptRef.current = null;
     onOpenChange(false);
   };
 
@@ -338,6 +368,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       return;
     }
     setReceiptImage(file);
+    collectionAttemptRef.current = null;
     if (receiptPreview) URL.revokeObjectURL(receiptPreview);
     setReceiptPreview(URL.createObjectURL(file));
   };
@@ -354,6 +385,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const handleRemoveImage = () => {
     setReceiptImage(null);
+    collectionAttemptRef.current = null;
     if (receiptPreview) {
       URL.revokeObjectURL(receiptPreview);
       setReceiptPreview(null);
@@ -411,85 +443,137 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
     try {
       setIsUploading(true);
-
-      // Upload image if exists
-      let receiptImageUrl: string | undefined;
-      if (receiptImage) {
-        const uploadedUrl = await uploadReceiptImage();
-        if (uploadedUrl) {
-          receiptImageUrl = uploadedUrl;
-        }
-      }
-
-      const change = data.change_amount || 0;
-      const keepAsCredit = !!data.keep_as_credit && change > 0;
-
-      // Tiền thối CHỈ áp dụng line TM. Khấu trừ vào line TM CUỐI CÙNG:
-      //   - phiếu thu line đó: amount = line.amount - change_amount (số thực thu)
-      //   - metadata change_amount / change_account_id gắn lên phiếu thu này
-      // Các line khác (TM trước đó, TK, TT): giữ nguyên amount, không metadata thối.
-      // KHI keep_as_credit: KHÔNG khấu trừ, line TM giữ nguyên amount; tiền thối
-      // sẽ được lưu thành excess_amounts row sau khi tạo phiếu thu xong (mutation
-      // useRecordPaymentRPC tự xử lý phần này dựa trên flag keep_as_credit).
-      const tmDeductIdx = change > 0 && !keepAsCredit
-        ? (() => {
-            for (let i = data.payment_lines.length - 1; i >= 0; i--) {
-              if (data.payment_lines[i].payment_method === 'TM') return i;
-            }
-            return -1;
-          })()
-        : -1;
-
-      const tmLastIdx = (() => {
-        for (let i = data.payment_lines.length - 1; i >= 0; i--) {
-          if (data.payment_lines[i].payment_method === 'TM') return i;
-        }
-        return -1;
-      })();
-
-      // Làm tròn tiền thiếu: residual sau khi thu line < 10K → đính kèm
-      // rounding metadata vào line CUỐI để tạo 1 audit entry duy nhất.
       const totalAcrossLines = data.payment_lines.reduce(
         (s, l) => s + (Number(l.amount) || 0),
         0,
       );
-      const residualAfter =
-        (invoice.total_amount || 0) - (invoice.paid_amount || 0) - totalAcrossLines;
+      const overpay = Math.max(totalAcrossLines - outstandingAmount, 0);
+      const submittedChange = data.change_amount || 0;
+      if (Math.abs(submittedChange - overpay) >= 0.01) {
+        toast.error('Tiền dư phải đúng bằng phần khách đưa vượt số còn phải thu', {
+          description: `Phần dư thực tế là ${formatVN(overpay)}đ.`,
+        });
+        return;
+      }
+      if (overpay > 0 && tmTotal < overpay) {
+        toast.error('Phần tiền dư phải nằm hoàn toàn trong các dòng tiền mặt TM');
+        return;
+      }
+      const keepAsCredit = !!data.keep_as_credit && overpay > 0;
+      if (keepAsCredit && !invoice.contract_id) {
+        toast.error('Hóa đơn không gắn hợp đồng nên không thể giữ tiền dư làm credit');
+        return;
+      }
+      if (overpay > 0 && !keepAsCredit && !data.change_account_id) {
+        toast.error('Vui lòng chọn sổ ghi nhận tiền thối');
+        return;
+      }
+      const invalidReceivingLine = data.payment_lines.find(
+        (line) => accountVirtuality.get(line.account_id) !== false,
+      );
+      if (invalidReceivingLine) {
+        toast.error(`Sổ nhận ${invalidReceivingLine.payment_method} phải là sổ quỹ thật`);
+        return;
+      }
+      if (
+        overpay > 0
+        && !keepAsCredit
+        && accountVirtuality.get(data.change_account_id ?? '') !== true
+      ) {
+        toast.error('Sổ ghi nhận tiền thối phải là sổ ảo');
+        return;
+      }
+
+      const depositDue = deriveInvoiceDepositDue(invoice as any);
+      const appliedAmount = Math.min(totalAcrossLines, outstandingAmount);
+      const residualAfter = outstandingAmount - appliedAmount;
+      const revenueDue = Math.max((invoice.total_amount || 0) - depositDue, 0);
+      const depositAfter = Math.max(
+        Math.min(
+          depositDue,
+          (invoice.paid_amount || 0) + appliedAmount - revenueDue,
+        ),
+        0,
+      );
+      const roundingWouldSkipDeposit =
+        residualAfter > 0 &&
+        residualAfter < ROUNDING_THRESHOLD &&
+        depositDue - depositAfter >= 0.01;
       const applyRounding =
         residualAfter > 0 &&
         residualAfter < ROUNDING_THRESHOLD &&
-        totalAcrossLines > 0;
-      const lastLineIdx = data.payment_lines.length - 1;
-
-      for (let i = 0; i < data.payment_lines.length; i++) {
-        const line = data.payment_lines[i];
-        const isDeductLine = i === tmDeductIdx;
-        const deducted = isDeductLine ? change : 0;
-        const effectiveAmount = line.amount - deducted;
-        if (effectiveAmount <= 0) {
-          // Line bị khấu trừ hết → không tạo phiếu. (Hiếm — đã chặn ở zod.)
-          continue;
-        }
-        // Khi keep_as_credit, gắn credit metadata lên line TM cuối để hook tạo
-        // excess_amounts row link đúng payment.
-        const isCreditLine = keepAsCredit && i === tmLastIdx;
-        const isRoundingLine = applyRounding && i === lastLineIdx;
-        await recordMutation.mutateAsync({
-          invoice_id: invoice.id,
-          amount: effectiveAmount,
-          payment_method: line.payment_method,
-          payment_date: data.payment_date,
-          notes: data.notes,
-          receipt_image_url: i === 0 ? receiptImageUrl : undefined,
-          account_id: line.account_id,
-          change_amount: deducted,
-          change_account_id: isDeductLine ? (data.change_account_id ?? null) : null,
-          credit_amount: isCreditLine ? change : 0,
-          rounding_amount: isRoundingLine ? residualAfter : 0,
-          rounding_account_id:
-            isRoundingLine && roundingAccountId ? roundingAccountId : null,
-        });
+        totalAcrossLines > 0 &&
+        !roundingWouldSkipDeposit;
+      if (applyRounding && !roundingAccountId) {
+        toast.error('Thiếu sổ quỹ "Làm tròn tiền thiếu"');
+        return;
       }
+      if (applyRounding && accountVirtuality.get(roundingAccountId) !== true) {
+        toast.error('Sổ quỹ "Làm tròn tiền thiếu" phải là sổ ảo');
+        return;
+      }
+
+      const fileFingerprint = receiptImage
+        ? `${receiptImage.name}:${receiptImage.size}:${receiptImage.type}:${receiptImage.lastModified}`
+        : null;
+      const fingerprint = JSON.stringify({
+        invoice_id: invoice.id,
+        payment_lines: data.payment_lines,
+        payment_date: data.payment_date,
+        keep_as_credit: keepAsCredit,
+        change_account_id: data.change_account_id ?? null,
+        rounding_account_id: roundingAccountId || null,
+        notes: data.notes?.trim() || null,
+        file: fileFingerprint,
+      });
+
+      let request = collectionAttemptRef.current?.fingerprint === fingerprint
+        ? collectionAttemptRef.current.request
+        : null;
+      if (!request) {
+        let receiptImageUrl: string | null = null;
+        if (receiptImage) receiptImageUrl = await uploadReceiptImage();
+        const lastLineIndex = data.payment_lines.length - 1;
+        request = {
+          invoice_id: invoice.id,
+          collection_date: data.payment_date,
+          tenders: data.payment_lines.map((line, index) => ({
+            payment_method: line.payment_method,
+            gross_amount: line.amount,
+            account_id: line.account_id,
+            account_is_virtual: accountVirtuality.get(line.account_id) ?? null,
+            change_account_id:
+              overpay > 0 && !keepAsCredit && line.payment_method === 'TM'
+                ? (data.change_account_id ?? null)
+                : null,
+            change_account_is_virtual:
+              overpay > 0 && !keepAsCredit && line.payment_method === 'TM'
+                ? accountVirtuality.get(data.change_account_id ?? '') ?? null
+                : null,
+            rounding_account_id:
+              applyRounding && index === lastLineIndex ? roundingAccountId : null,
+            rounding_account_is_virtual:
+              applyRounding && index === lastLineIndex
+                ? accountVirtuality.get(roundingAccountId) ?? null
+                : null,
+          })),
+          overpay_action: overpay > 0
+            ? (keepAsCredit ? 'CREDIT' : 'REFUND')
+            : 'REJECT',
+          allow_rounding: applyRounding,
+          notes: data.notes?.trim() || null,
+          receipt_image_url: receiptImageUrl,
+          expected_paid_amount: invoice.paid_amount || 0,
+          invoice_total_amount: invoice.total_amount || 0,
+          deposit_due: depositDue,
+          has_contract: !!invoice.contract_id,
+          idempotency_key: `collect-${crypto.randomUUID()}`,
+        };
+        collectionAttemptRef.current = { fingerprint, request };
+      }
+
+      await recordMutation.mutateAsync(request);
+      collectionAttemptRef.current = null;
       handleClose();
     } catch (error) {
       console.error('Payment error:', error);
@@ -507,13 +591,31 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     }).format(amount);
   };
 
-  const newPaidAmount = (invoice.paid_amount || 0) + totalPaid;
+  const overpayAmount = Math.max(totalPaid - outstandingAmount, 0);
+  const previewAppliedAmount = Math.min(totalPaid, outstandingAmount);
+  const newPaidAmount = (invoice.paid_amount || 0) + previewAppliedAmount;
   const newOutstanding = (invoice.total_amount || 0) - newPaidAmount;
   // Áp dụng làm tròn tự động: residual > 0 và < 10K → coi như đã thanh toán
   // đủ; phần thiếu được ghi nhận vào sổ "Làm tròn tiền thiếu" (metadata).
   const ROUNDING_THRESHOLD = 10000;
+  const previewDepositDue = deriveInvoiceDepositDue(invoice as any);
+  const previewRevenueDue = Math.max((invoice.total_amount || 0) - previewDepositDue, 0);
+  const previewDepositAfter = Math.max(
+    Math.min(
+      previewDepositDue,
+      (invoice.paid_amount || 0) + previewAppliedAmount - previewRevenueDue,
+    ),
+    0,
+  );
+  const roundingBlockedByDeposit =
+    newOutstanding > 0 &&
+    newOutstanding < ROUNDING_THRESHOLD &&
+    previewDepositDue - previewDepositAfter >= 0.01;
   const willRound =
-    newOutstanding > 0 && newOutstanding < ROUNDING_THRESHOLD && totalPaid > 0;
+    newOutstanding > 0 &&
+    newOutstanding < ROUNDING_THRESHOLD &&
+    totalPaid > 0 &&
+    !roundingBlockedByDeposit;
   const roundingAmount = willRound ? newOutstanding : 0;
   const willBePaid = newOutstanding <= 0 || willRound;
   const willBePartialPaid = newPaidAmount > 0 && newOutstanding > 0 && !willRound;
@@ -595,7 +697,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
               {/* Số tiền thanh toán + Tiền thối + nút "+" — 1 dòng */}
               <div className="flex gap-4 items-start">
                 <div className="flex-1 space-y-2">
-                  <Label htmlFor="amount">Số tiền thanh toán *</Label>
+                  <Label htmlFor="amount">Tiền khách đưa *</Label>
                   <Input
                     id="amount"
                     type="text"
@@ -737,7 +839,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
                     </SelectTrigger>
                     <SelectContent>
-                      {accounts.map((a: any) => (
+                      {realAccounts.map((a: any) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name}
                           {a.bank_name ? ` — ${a.bank_name}` : ''}
@@ -781,7 +883,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label>Số tiền *</Label>
+                      <Label>Tiền khách đưa *</Label>
                       <Input
                         type="text"
                         inputMode="numeric"
@@ -886,7 +988,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                           <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
                         </SelectTrigger>
                         <SelectContent>
-                          {accounts.map((a: any) => (
+                          {realAccounts.map((a: any) => (
                             <SelectItem key={a.id} value={a.id}>
                               {a.name}
                               {a.bank_name ? ` — ${a.bank_name}` : ''}
@@ -972,7 +1074,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   <SelectValue placeholder="Chọn sổ ghi nhận tiền thối" />
                 </SelectTrigger>
                 <SelectContent>
-                  {changeAccountOptions(accounts as any[], currentUser?.id).map((a: any) => (
+                  {changeAccountOptions(virtualAccounts, currentUser?.id).map((a: any) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}
                       {a.bank_name ? ` — ${a.bank_name}` : ''}
@@ -1087,10 +1189,10 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     {formatCurrency(Math.max(0, newOutstanding))}
                   </span>
                 </div>
-                {newOutstanding < 0 && (
+                {overpayAmount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">Tiền thừa:</span>
-                    <span className="font-medium text-blue-600">{formatCurrency(Math.abs(newOutstanding))}</span>
+                    <span className="font-medium text-blue-600">{formatCurrency(overpayAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t pt-2">
@@ -1113,9 +1215,19 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   <AlertDescription className="text-green-800 text-sm">
                     {willRound
                       ? `Còn thiếu ${formatCurrency(roundingAmount)} (< 10.000 ₫) — hệ thống tự làm tròn, ghi nhận vào sổ "Làm tròn tiền thiếu" và đánh dấu hoá đơn Đã thanh toán đủ.`
-                      : newOutstanding < 0
-                        ? `Hóa đơn sẽ được thanh toán đầy đủ. Số tiền thừa ${formatCurrency(Math.abs(newOutstanding))} sẽ được ghi nhận cho khách thuê.`
+                      : overpayAmount > 0
+                        ? watchedKeepAsCredit
+                          ? `Hóa đơn sẽ được thanh toán đủ và giữ ${formatCurrency(overpayAmount)} làm credit trừ kỳ sau.`
+                          : `Hóa đơn sẽ được thanh toán đủ và thối lại ${formatCurrency(overpayAmount)} qua sổ đã chọn.`
                         : 'Hóa đơn sẽ được đánh dấu là đã thanh toán đầy đủ'}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {roundingBlockedByDeposit && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertDescription className="text-amber-800 text-sm">
+                    Còn thiếu {formatCurrency(newOutstanding)} thuộc phần tiền cọc nên hệ thống không làm tròn; hóa đơn sẽ giữ trạng thái trả một phần.
                   </AlertDescription>
                 </Alert>
               )}

@@ -104,6 +104,12 @@ export function FirstInvoicePreview({
                     size="icon"
                     className="h-9 w-9 mt-5 text-destructive hover:text-destructive shrink-0"
                     onClick={() => removeInvoiceItem(it.id)}
+                    disabled={it.accounting_class === "DEPOSIT"}
+                    title={
+                      it.accounting_class === "DEPOSIT"
+                        ? "Dòng cọc bắt buộc, không thể xoá"
+                        : "Xoá dòng"
+                    }
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -117,6 +123,7 @@ export function FirstInvoicePreview({
                       min={1}
                       className="w-full h-9 text-right"
                       value={it.quantity}
+                      disabled={it.accounting_class === "DEPOSIT"}
                       onChange={(v) =>
                         updateInvoiceItem(it.id, "quantity", v || 1)
                       }
@@ -130,6 +137,7 @@ export function FirstInvoicePreview({
                       suffix={false}
                       className="w-full h-9 text-right"
                       value={it.unit_price}
+                      disabled={it.accounting_class === "DEPOSIT"}
                       onChange={(v) =>
                         updateInvoiceItem(it.id, "unit_price", v)
                       }
@@ -205,6 +213,7 @@ export function FirstInvoicePreview({
                         min={1}
                         className="w-16 h-8 text-right ml-auto"
                         value={it.quantity}
+                        disabled={it.accounting_class === "DEPOSIT"}
                         onChange={(v) =>
                           updateInvoiceItem(it.id, "quantity", v || 1)
                         }
@@ -215,6 +224,7 @@ export function FirstInvoicePreview({
                         suffix={false}
                         className="w-32 h-8 text-right ml-auto"
                         value={it.unit_price}
+                        disabled={it.accounting_class === "DEPOSIT"}
                         onChange={(v) =>
                           updateInvoiceItem(it.id, "unit_price", v)
                         }
@@ -230,6 +240,12 @@ export function FirstInvoicePreview({
                         size="icon"
                         className="h-8 w-8 text-destructive hover:text-destructive"
                         onClick={() => removeInvoiceItem(it.id)}
+                        disabled={it.accounting_class === "DEPOSIT"}
+                        title={
+                          it.accounting_class === "DEPOSIT"
+                            ? "Dòng cọc bắt buộc, không thể xoá"
+                            : "Xoá dòng"
+                        }
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

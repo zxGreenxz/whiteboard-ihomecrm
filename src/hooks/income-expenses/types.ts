@@ -128,6 +128,7 @@ export interface IncomeExpenseWithRelations {
   // B4: sổ ảo? (embed accounts.is_virtual) + nguồn sinh phiếu (system_source).
   account_is_virtual: boolean | null;
   system_source: string | null;
+  shareholder_id: string | null;
   contract_id: string | null;
   // Hoá đơn liên quan — phiếu thu sinh từ thanh toán hoá đơn (deep-link 2 chiều).
   invoice_id: string | null;

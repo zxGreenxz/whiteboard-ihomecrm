@@ -336,7 +336,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const sumRows = (rows: MRow[]) => rows.reduce((s, r) => (r.isNote ? s : s + r.amount), 0);
   const shownIncomeSum = useMemo(() => sumRows(shownIncomeRows), [shownIncomeRows]);
   const shownExpenseSum = useMemo(() => sumRows(shownExpenseRows), [shownExpenseRows]);
-  const hiddenSum = sumRows(incomeRows) + sumRows(expenseRows) - shownIncomeSum - shownExpenseSum;
+  const hiddenIncomeSum = sumRows(incomeRows) - shownIncomeSum;
+  const hiddenExpenseSum = sumRows(expenseRows) - shownExpenseSum;
   const hiddenCount =
     incomeRows.length + expenseRows.length - shownIncomeRows.length - shownExpenseRows.length;
   const capWarning =
@@ -657,7 +658,8 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             shownIncomeSum={shownIncomeSum}
             shownExpenseSum={shownExpenseSum}
             hiddenCount={hiddenCount}
-            hiddenSum={hiddenSum}
+            hiddenIncomeSum={hiddenIncomeSum}
+            hiddenExpenseSum={hiddenExpenseSum}
             capWarning={capWarning}
             onIssueChange={setHasVerifyIssue}
           />

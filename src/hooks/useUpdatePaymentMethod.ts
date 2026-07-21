@@ -30,7 +30,7 @@ export const useUpdatePaymentMethod = () => {
       const { data: payment, error: pErr } = await (supabase as any)
         .from('payments')
         .select(`
-          id, user_id, payment_method, invoice_id,
+          id, user_id, payment_method, invoice_id, collection_id,
           invoice:invoice_id (
             id,
             building:building_id (
@@ -41,6 +41,12 @@ export const useUpdatePaymentMethod = () => {
         .eq('id', payment_id)
         .single();
       if (pErr || !payment) throw pErr ?? new Error('Không tìm thấy phiếu thu');
+
+      if (payment.collection_id) {
+        throw new Error(
+          'Lần thu V5 đã khóa phương thức và sổ quỹ. Hãy hoàn tác toàn bộ collection rồi ghi nhận lại đúng phương thức.',
+        );
+      }
 
       if (payment.payment_method === new_method) {
         return { skipped: true as const };
@@ -58,8 +64,9 @@ export const useUpdatePaymentMethod = () => {
         // Sổ "...Thu" của user đã tạo phiếu (joey/nathan/…)
         const { data: ownThu } = await (supabase as any)
           .from('accounts')
-          .select('id, name')
+          .select('id, name, is_virtual')
           .eq('user_id', payment.user_id)
+          .eq('is_virtual', false)
           .is('deleted_at', null);
         newAccountId =
           (ownThu as any[] | null)?.find(
@@ -72,8 +79,9 @@ export const useUpdatePaymentMethod = () => {
           // Fallback: sổ "Chung"
           const { data: chung } = await (supabase as any)
             .from('accounts')
-            .select('id, name')
+            .select('id, name, is_virtual')
             .ilike('name', 'chung')
+            .eq('is_virtual', false)
             .is('deleted_at', null)
             .limit(1);
           newAccountId = (chung as any[] | null)?.[0]?.id ?? null;
@@ -82,11 +90,23 @@ export const useUpdatePaymentMethod = () => {
         // TT/TK: ưu tiên cài đặt toà nhà, sau đó match-by-name
         newAccountId = new_method === 'TT' ? buildingDefaultTT : buildingDefaultTK;
 
+        if (newAccountId) {
+          const { data: configured } = await (supabase as any)
+            .from('accounts')
+            .select('id')
+            .eq('id', newAccountId)
+            .eq('is_virtual', false)
+            .is('deleted_at', null)
+            .maybeSingle();
+          if (!configured) newAccountId = null;
+        }
+
         if (!newAccountId && buildingName) {
           const { data: matched } = await (supabase as any)
             .from('accounts')
-            .select('id, name')
+            .select('id, name, is_virtual')
             .eq('name', buildingName)
+            .eq('is_virtual', false)
             .is('deleted_at', null)
             .limit(1);
           newAccountId = (matched as any[] | null)?.[0]?.id ?? null;

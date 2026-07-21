@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { contractFormSchema } from "@/lib/contractValidation";
 import type { ContractFormData } from "@/lib/contractValidation";
-import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
+import { calculateContractDepositBalance } from "@/lib/contractCreateRpc";
 import type { ContractWithRelations, PaymentCycle } from "@/types/contract";
 import {
   useCreateContract,
@@ -22,11 +22,10 @@ import type { ServiceBasic } from "../ServiceSelectionDialog";
 import {
   buildFirstInvoiceItems,
   buildFirstInvoiceDiscount,
+  normalizeFirstBillingPeriod,
   type FirstInvoiceItem,
 } from "@/lib/firstInvoiceBuilder";
-import { useIncomeExpenseTypes } from "@/hooks/useIncomeExpenseTypes";
 import { useOrphanDepositVouchers } from "@/hooks/useDeposits";
-import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -113,9 +112,12 @@ export function useContractFormState({
         type: b.service?.type ?? "",
         pricing_type: b.service?.pricing_type ?? null,
         initial_reading: 0,
-        quantity: 1,
+        quantity:
+          b.service?.pricing_type === "DON_GIA_THEO_NGUOI"
+            ? Math.max(1, selectedCustomers.length)
+            : 1,
       })),
-    [buildingActiveServices],
+    [buildingActiveServices, selectedCustomers.length],
   );
 
   // Invoice preview (hoá đơn cọc + tháng đầu) — items được tự sinh từ
@@ -123,21 +125,9 @@ export function useContractFormState({
   // được dùng làm nội dung hoá đơn. Reset khi inputs đổi (xem useEffect).
   const [invoiceItems, setInvoiceItems] = useState<FirstInvoiceItem[]>([]);
 
-  // Phiếu thu cọc — auto-tạo sau khi lưu HĐ thành công nếu user đã nhập
-  // "Đã đặt cọc". Lookup id của type "Tiền cọc" và default account.
-  // enabled: open — form mounted sẵn (đóng) không fetch types/accounts.
-  const { data: incomeTypes = [] } = useIncomeExpenseTypes("income", {
-    enabled: open,
-  });
-  const depositIncomeType = useMemo(
-    () =>
-      incomeTypes.find(
-        (t) => t.name.trim().toLowerCase() === "tiền cọc",
-      ),
-    [incomeTypes],
-  );
+  // RPC creates deposit receipts atomically; the form only needs accounts for
+  // selecting the real cashbook of each receipt row.
   const { data: accounts = [] } = useAccounts({ enabled: open });
-  const createDepositVoucher = useCreateIncomeExpense();
   const { data: authUser } = useAuth();
 
   // Danh sách dòng "Đã đặt cọc": mỗi dòng = 1 lần khách đưa cọc → 1 phiếu thu
@@ -198,8 +188,8 @@ export function useContractFormState({
   );
 
   // ---- Cọc đã thu trước của phòng (phiếu IE mồ côi: giữ chỗ / cọc trước) ----
-  // Trigger trg_contract_link_orphan_deposits TỰ GẮN các phiếu này vào HĐ khi
-  // INSERT và recompute deposit_paid = Σ phiếu APPROVED. Vì vậy:
+  // create_contract_v2 receives approved voucher IDs explicitly, links them,
+  // then recomputes deposit_paid in the same transaction. Vì vậy:
   //  - hiển thị dòng XÁM read-only để quản lý biết đã có phiếu cọc nào;
   //  - chỉ tính phiếu ĐÃ DUYỆT vào "đã đặt cọc" (recompute chỉ cộng APPROVED);
   //  - KHÔNG tạo lại phiếu cho các dòng này (tránh double-count deposit_paid).
@@ -218,11 +208,31 @@ export function useContractFormState({
 
   // Cọc đã đặt = dòng user nhập + phiếu cọc cũ ĐÃ DUYỆT (khớp recompute DB).
   const depositPaidTotal = typedDepositTotal + approvedOrphanTotal;
-  const depositRemaining = Math.max(0, totalDeposit - depositPaidTotal);
+  const depositBalance = calculateContractDepositBalance(
+    totalDeposit,
+    depositPaidTotal,
+  );
+  const depositRemaining = depositBalance.shortfall;
   // Chặn ký khi thiếu cọc (chênh ≥ ngưỡng làm tròn) mà chưa chọn cách xử lý
   // (Nợ cọc / Đóng đủ). Chỉ áp dụng lúc tạo mới — edit không khoá.
-  const depositShortfall = depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD;
+  const depositShortfall = depositBalance.requiresResolution;
   const blockByDepositDebt = !isEditMode && depositShortfall && !depositDebtMode;
+
+  useEffect(() => {
+    if (isEditMode || depositShortfall) return;
+    if (form.getValues("deposit_debt_mode") !== undefined) {
+      form.setValue("deposit_debt_mode", undefined);
+    }
+    if (form.getValues("deposit_debt_reason")) {
+      form.setValue("deposit_debt_reason", "");
+    }
+    if (form.getValues("deposit_topup_due_date")) {
+      form.setValue("deposit_topup_due_date", "");
+    }
+    if (form.getValues("deposit_debt_acknowledged")) {
+      form.setValue("deposit_debt_acknowledged", false);
+    }
+  }, [depositShortfall, form, isEditMode]);
 
   // ---- Helpers thao tác dòng cọc ----
   const addDepositRow = (amount = 0) =>
@@ -355,24 +365,37 @@ export function useContractFormState({
   }, [open, contract, form, prefill]);
 
   // Tiền cọc ghi vào SỔ QUỸ THẬT user chọn ở từng dòng "Đã đặt cọc" (sổ CỌC
-  // chỉ là sổ ảo theo dõi, không nhận dòng tiền). Phiếu thu cọc auto-tạo theo
-  // từng dòng lúc lưu HĐ (xem onSuccess bên dưới).
+  // chỉ là sổ ảo theo dõi, không nhận dòng tiền). RPC tạo các phiếu này cùng HĐ.
 
   // Auto-điền "Đến ngày" = ngày 5 tháng kế tiếp khi user chọn "Ngày BĐ tính tiền"
   // và chưa nhập "Đến ngày". User vẫn có thể chỉnh tay sau đó.
-  const startBilling = form.watch("start_billing_date");
-  const endBilling = form.watch("end_billing_date");
+  const startBillingInput = form.watch("start_billing_date");
+  const endBillingInput = form.watch("end_billing_date");
   useEffect(() => {
-    if (!startBilling) return;
-    if (endBilling) return;
-    const d = new Date(startBilling);
+    if (!startBillingInput) return;
+    if (endBillingInput) return;
+    const d = new Date(startBillingInput);
     if (Number.isNaN(d.getTime())) return;
     const next = new Date(d.getFullYear(), d.getMonth() + 1, 5);
     const yyyy = next.getFullYear();
     const mm = String(next.getMonth() + 1).padStart(2, "0");
     const dd = String(next.getDate()).padStart(2, "0");
     form.setValue("end_billing_date", `${yyyy}-${mm}-${dd}`);
-  }, [startBilling, endBilling, form]);
+  }, [startBillingInput, endBillingInput, form]);
+
+  // Match create_contract_v2 exactly: date-only values, start falls back to
+  // contract start, and an omitted end falls back to the effective start.
+  const normalizedBillingPeriod = useMemo(
+    () =>
+      normalizeFirstBillingPeriod(
+        startBillingInput,
+        endBillingInput,
+        startDateWatch,
+      ),
+    [startBillingInput, endBillingInput, startDateWatch],
+  );
+  const startBilling = normalizedBillingPeriod.start_date ?? "";
+  const endBilling = normalizedBillingPeriod.end_date ?? "";
 
   // Khi số khách thay đổi → tự cập nhật "Số lượng" của các dịch vụ tính
   // theo người (pricing_type = DON_GIA_THEO_NGUOI). Vd Nước 100k/người,
@@ -414,15 +437,17 @@ export function useContractFormState({
   // giữ override mơ hồ).
   const rentPriceWatch = form.watch("rent_price") ?? 0;
   const totalDepositWatch = form.watch("total_deposit") ?? 0;
-  const depositPaidWatch = form.watch("deposit_paid") ?? 0;
   const discountMonthsWatch = form.watch("discount_months") ?? 0;
   const discountAmtWatch = form.watch("discount_amount_per_month") ?? 0;
+  const invoiceServices = useCustomServices
+    ? selectedServices
+    : buildingServicesAsSelected;
   const servicesKey = useMemo(
     () =>
-      selectedServices
-        .map((s) => `${s.id}:${s.unit_price}:${s.quantity}`)
+      invoiceServices
+        .map((s) => `${s.id}:${s.unit_price}:${s.quantity}:${s.pricing_type}`)
         .join("|"),
-    [selectedServices],
+    [invoiceServices],
   );
   useEffect(() => {
     if (!open) return;
@@ -430,17 +455,17 @@ export function useContractFormState({
     const items = buildFirstInvoiceItems({
       rent_price: rentPriceWatch,
       total_deposit: totalDepositWatch,
-      // Cọc đã đặt (dòng nhập + phiếu cọc cũ ĐÃ DUYỆT) → phần cọc CÒN LẠI gộp
-      // vào hoá đơn. Mode "Nợ cọc" (DEBT) thì KHÔNG gộp (chỉ theo dõi nợ).
+      // Only FIRST_INVOICE may carry a DEPOSIT item. The RPC rejects deposit
+      // semantics in every other mode.
       deposit_paid: depositPaidTotal,
-      include_deposit: depositDebtMode !== "DEBT",
+      include_deposit: depositShortfall && depositDebtMode === "FIRST_INVOICE",
       start_billing_date: startBilling || undefined,
       end_billing_date: endBilling || undefined,
       discount_months: discountMonthsWatch,
       discount_amount_per_month: discountAmtWatch,
-      // Toggle OFF (dùng dịch vụ toà) → không đưa service vào hoá đơn đầu
-      // (giống HĐ chưa cấu hình dịch vụ); ON → dùng dịch vụ riêng của HĐ.
-      services: (useCustomServices ? selectedServices : []).map((s) => ({
+      // Contract-specific services are persisted only when the toggle is ON,
+      // but the first invoice still snapshots building defaults when it is OFF.
+      services: invoiceServices.map((s) => ({
         service_id: s.id,
         name: s.name,
         unit_price: s.unit_price,
@@ -456,13 +481,13 @@ export function useContractFormState({
     rentPriceWatch,
     totalDepositWatch,
     depositPaidTotal,
+    depositShortfall,
     depositDebtMode,
     startBilling,
     endBilling,
     discountMonthsWatch,
     discountAmtWatch,
     servicesKey,
-    useCustomServices,
   ]);
 
   const invoiceSubtotal = useMemo(
@@ -477,17 +502,18 @@ export function useContractFormState({
       buildFirstInvoiceDiscount({
         rent_price: rentPriceWatch,
         total_deposit: totalDepositWatch,
-        deposit_paid: depositPaidWatch,
+        deposit_paid: depositPaidTotal,
         discount_months: discountMonthsWatch,
         discount_amount_per_month: discountAmtWatch,
         services: [],
-      }),
+      }, invoiceItems),
     [
       rentPriceWatch,
       totalDepositWatch,
-      depositPaidWatch,
+      depositPaidTotal,
       discountMonthsWatch,
       discountAmtWatch,
+      invoiceItems,
     ],
   );
   const invoiceTotal = Math.max(0, invoiceSubtotal - firstInvoiceDiscount.amount);
@@ -498,12 +524,20 @@ export function useContractFormState({
     value: string | number,
   ) => {
     setInvoiceItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, [field]: value } : it)),
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        if (it.accounting_class === "DEPOSIT" && field !== "description") {
+          return it;
+        }
+        return { ...it, [field]: value };
+      }),
     );
   };
 
   const removeInvoiceItem = (id: string) => {
-    setInvoiceItems((prev) => prev.filter((it) => it.id !== id));
+    setInvoiceItems((prev) =>
+      prev.filter((it) => it.id !== id || it.accounting_class === "DEPOSIT"),
+    );
   };
 
   const addInvoiceItem = () => {
@@ -512,6 +546,7 @@ export function useContractFormState({
       {
         id: `manual-${Date.now()}-${prev.length}`,
         type: "OTHER",
+        accounting_class: "REVENUE",
         description: "Khoản thu khác",
         unit_price: 0,
         quantity: 1,
@@ -652,14 +687,12 @@ export function useContractFormState({
     syncCustomers,
     syncServices,
     isPending,
-    createDepositVoucher,
     // data
     buildings,
     rooms,
     filteredRooms,
     accounts,
     authUser,
-    depositIncomeType,
     buildingActiveServices,
     buildingServicesAsSelected,
     orphanDepositVouchers,

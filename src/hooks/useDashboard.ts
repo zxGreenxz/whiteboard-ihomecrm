@@ -4,6 +4,7 @@ import { getSessionUserId } from "@/lib/authSession";
 import { toast } from "sonner";
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { getRepresentativeName } from "@/lib/contractCustomerHelpers";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 
 export interface DashboardStats {
   totalRooms: number;
@@ -117,7 +118,7 @@ export const useDashboardStats = (buildingId?: string | null) => {
 };
 
 // Revenue chart data (last 12 months)
-// 1 QUERY cho cả kỳ rồi group theo tháng ở client — bản cũ bắn 12 query
+// 1 dataset phân trang cho cả kỳ rồi group theo tháng ở client — bản cũ bắn 12 query
 // TUẦN TỰ (mỗi tháng 1 round-trip) khiến chart mất 1.5-2.5s mỗi lần mở
 // Dashboard. Đồng thời respect bộ lọc toà (bản cũ bỏ qua buildingId).
 export const useRevenueChart = (months: number = 12, buildingId?: string | null) => {
@@ -130,21 +131,28 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
       const rangeStart = startOfMonth(subMonths(new Date(), months - 1));
       const rangeEnd = endOfMonth(new Date());
 
-      let query = supabase
-        .from("payments")
-        .select(
-          buildingId
-            ? "amount, payment_date, invoice:invoices!inner(building_id)"
-            : "amount, payment_date",
-        )
-        .gte("payment_date", rangeStart.toISOString())
-        .lte("payment_date", rangeEnd.toISOString());
-      if (buildingId) {
-        query = query.eq("invoice.building_id", buildingId);
-      }
-      const { data: payments } = await query;
+      const entries = await fetchAllRows<{
+        id: string;
+        revenue_date: string;
+        pnl_amount: number | null;
+      }>(
+        (from, to) => {
+          let query = (supabase as any)
+            .from("invoice_pnl_cash_entries")
+            .select("id, revenue_date, pnl_amount")
+            .gte("revenue_date", format(rangeStart, "yyyy-MM-dd"))
+            .lte("revenue_date", format(rangeEnd, "yyyy-MM-dd"));
+          if (buildingId) query = query.eq("building_id", buildingId);
+          return query
+            .order("revenue_date", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to);
+        },
+        { label: "dashboard.revenue-chart" },
+      );
+      if (entries === null) throw new Error("Không thể tải dữ liệu doanh thu");
 
-      // Khởi tạo đủ 12 tháng (tháng không có payment vẫn hiện 0).
+      // Khởi tạo đủ 12 tháng (tháng không có bút toán P&L vẫn hiện 0).
       const byMonth = new Map<string, number>();
       const data: RevenueData[] = [];
       for (let i = months - 1; i >= 0; i--) {
@@ -152,12 +160,12 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
         byMonth.set(key, 0);
         data.push({ month: key, revenue: 0 });
       }
-      for (const p of (payments as any[]) || []) {
-        const d = new Date(p.payment_date);
+      for (const entry of entries) {
+        const d = new Date(`${entry.revenue_date}T00:00:00`);
         if (Number.isNaN(d.getTime())) continue;
         const key = format(d, "MM/yyyy");
         if (byMonth.has(key)) {
-          byMonth.set(key, (byMonth.get(key) || 0) + (Number(p.amount) || 0));
+          byMonth.set(key, (byMonth.get(key) || 0) + (Number(entry.pnl_amount) || 0));
         }
       }
       for (const row of data) {
@@ -400,33 +408,54 @@ export const useRecentActivities = (buildingId?: string | null) => {
         });
       });
 
-      // Recent payments (last 7 days)
-      const { data: recentPayments } = await (supabase as any)
-        .from("payments")
-        .select(
-          `id, amount, payment_date,
-           invoice:invoices(
+      // Cash collection activities only. The view removes reversals and returned
+      // change; customer credit stays included, while non-cash CT is excluded.
+      const { data: recentReceipts, error: receiptsError } = await (supabase as any)
+        .from("active_payment_receipts")
+        .select("id, invoice_id, collected_amount, payment_date")
+        .neq("payment_method", "CT")
+        .gt("collected_amount", 0)
+        .gte("payment_date", format(sevenDaysAgo, "yyyy-MM-dd"))
+        .order("payment_date", { ascending: false })
+        .order("id", { ascending: true })
+        .limit(5);
+      if (receiptsError) throw receiptsError;
+
+      const invoiceIds = Array.from(new Set(
+        (recentReceipts ?? [])
+          .map((receipt: any) => receipt.invoice_id as string | null)
+          .filter((id: string | null): id is string => !!id),
+      ));
+      const invoiceById = new Map<string, any>();
+      if (invoiceIds.length > 0) {
+        const { data: receiptInvoices, error: invoicesError } = await (supabase as any)
+          .from("invoices")
+          .select(
+            `id,
              contract:contracts(
                contract_customers!contract_customers_contract_id_fkey(
                  is_representative,
                  customer:customers!contract_customers_customer_id_fkey(full_name)
                )
-             )
-           )`
-        )
-        .gte("payment_date", sevenDaysAgo.toISOString())
-        .order("payment_date", { ascending: false })
-        .limit(5);
+             )`,
+          )
+          .in("id", invoiceIds);
+        if (invoicesError) throw invoicesError;
+        for (const invoice of receiptInvoices ?? []) {
+          invoiceById.set(invoice.id, invoice);
+        }
+      }
 
-      recentPayments?.forEach((payment: any) => {
-        const customerName = getRepresentativeName(payment.invoice?.contract, "Khách hàng");
+      recentReceipts?.forEach((receipt: any) => {
+        const invoice = receipt.invoice_id ? invoiceById.get(receipt.invoice_id) : null;
+        const customerName = getRepresentativeName(invoice?.contract, "Khách hàng");
         activities.push({
-          id: payment.id,
+          id: receipt.id,
           type: "payment",
           title: "Thu tiền",
           description: customerName,
-          date: payment.payment_date,
-          amount: payment.amount,
+          date: receipt.payment_date,
+          amount: Number(receipt.collected_amount) || 0,
         });
       });
 

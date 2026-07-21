@@ -190,14 +190,25 @@ const IncomeExpenseDesktopPage = () => {
 
   const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
+  const isShareholderPayout = !!approveTarget?.shareholder_id;
+  const approvalAccounts = isShareholderPayout
+    ? accounts.filter((account) => !account.is_virtual)
+    : accounts;
 
   // Nạp giá trị hiện tại của phiếu mỗi khi mở hộp thoại duyệt.
   useEffect(() => {
     if (approveTarget) {
-      setApproveAccountId(approveTarget.account_id ?? "");
+      const currentAccount = accounts.find(
+        (account) => account.id === approveTarget.account_id,
+      );
+      setApproveAccountId(
+        approveTarget.shareholder_id && currentAccount?.is_virtual
+          ? ""
+          : approveTarget.account_id ?? "",
+      );
       setApproveAttachments(approveTarget.attachments ?? []);
     }
-  }, [approveTarget]);
+  }, [accounts, approveTarget]);
 
   const handleFiltersChange = useCallback(
     (newFilters: IncomeExpenseFilters) => {
@@ -686,7 +697,7 @@ const IncomeExpenseDesktopPage = () => {
                   <SelectValue placeholder="Chọn sổ quỹ" />
                 </SelectTrigger>
                 <SelectContent>
-                  {accounts.map((acc) => (
+                  {approvalAccounts.map((acc) => (
                     <SelectItem key={acc.id} value={acc.id}>
                       {acc.name}
                     </SelectItem>
@@ -719,7 +730,11 @@ const IncomeExpenseDesktopPage = () => {
                 e.preventDefault();
                 confirmApprove();
               }}
-              disabled={approveMutation.isPending || quickUpdateMutation.isPending}
+              disabled={
+                approveMutation.isPending ||
+                quickUpdateMutation.isPending ||
+                (isShareholderPayout && !approveAccountId)
+              }
               className="bg-green-600 hover:bg-green-700"
             >
               {approveMutation.isPending || quickUpdateMutation.isPending

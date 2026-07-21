@@ -229,7 +229,7 @@ export function RentDepositSection({
           </div>
 
           {/* Phiếu cọc cũ của phòng (giữ chỗ / cọc trước) — XÁM, chỉ xem.
-              Tự gắn vào HĐ khi lưu; không tạo lại để tránh trùng. */}
+              RPC nhận ID rõ ràng và gắn cùng transaction; không tạo lại. */}
           {orphanDepositVouchers.map((v) => (
             <div
               key={v.id}

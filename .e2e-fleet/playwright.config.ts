@@ -11,7 +11,7 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'https://ptcrm.vercel.app',
+    baseURL: process.env.FLEET_BASE_URL || 'https://ptcrm.vercel.app',
     headless: process.env.FLEET_HEADED ? false : true,
     launchOptions: { slowMo: process.env.FLEET_HEADED ? 350 : 0 }, // chậm lại để nhìn rõ thao tác
     actionTimeout: 20_000,

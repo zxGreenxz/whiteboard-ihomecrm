@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import {
+  buildFirstInvoiceDiscount,
+  buildFirstInvoiceItems,
+  calculateProratedRent,
   computeFirstBillingMonth,
+  normalizeFirstBillingPeriod,
   validateFirstBillingPeriod,
 } from '../firstInvoiceBuilder';
 
@@ -96,6 +100,89 @@ describe('validateFirstBillingPeriod', () => {
           expect(validateFirstBillingPeriod(from, to).ok).toBe(expected);
         },
       ),
+    );
+  });
+});
+
+describe('first invoice amount builder', () => {
+  it('prorates each calendar month with that month own day count', () => {
+    expect(
+      calculateProratedRent(3_100_000, '2026-01-31', '2026-03-01'),
+    ).toBe(3_300_000);
+  });
+
+  it('marks revenue and deposit items explicitly and dates fixed services', () => {
+    const items = buildFirstInvoiceItems({
+      rent_price: 3_100_000,
+      total_deposit: 4_000_000,
+      deposit_paid: 1_000_000,
+      include_deposit: true,
+      start_billing_date: '2026-01-31',
+      end_billing_date: '2026-03-01',
+      services: [
+        {
+          service_id: 'service-1',
+          name: 'Internet',
+          unit_price: 310_000,
+          pricing_type: 'DON_GIA_CO_DINH',
+        },
+      ],
+    });
+
+    expect(items.find((item) => item.type === 'RENT')).toEqual(
+      expect.objectContaining({
+        accounting_class: 'REVENUE',
+        unit_price: 3_300_000,
+      }),
+    );
+    expect(items.find((item) => item.type === 'SERVICE')).toEqual(
+      expect.objectContaining({
+        accounting_class: 'REVENUE',
+        unit_price: 330_000,
+        from_date: '2026-01-31',
+        to_date: '2026-03-01',
+      }),
+    );
+    expect(items.find((item) => item.accounting_class === 'DEPOSIT')).toEqual(
+      expect.objectContaining({
+        type: 'OTHER',
+        unit_price: 3_000_000,
+        quantity: 1,
+      }),
+    );
+  });
+
+  it('caps discount at revenue and never consumes the deposit amount', () => {
+    const input = {
+      rent_price: 1_000_000,
+      total_deposit: 4_000_000,
+      deposit_paid: 0,
+      include_deposit: true,
+      start_billing_date: '2026-07-01',
+      end_billing_date: '2026-07-31',
+      discount_months: 1,
+      discount_amount_per_month: 5_000_000,
+      services: [],
+    };
+    const items = buildFirstInvoiceItems(input);
+    expect(buildFirstInvoiceDiscount(input, items).amount).toBe(1_000_000);
+  });
+});
+
+describe('billing normalization and long periods', () => {
+  it('normalizes timestamps and mirrors the RPC fallback for an omitted end', () => {
+    expect(
+      normalizeFirstBillingPeriod(
+        undefined,
+        undefined,
+        '2026-07-22T09:30:00+07:00',
+      ),
+    ).toEqual({ start_date: '2026-07-22', end_date: '2026-07-22' });
+  });
+
+  it('finds the latest full billing month beyond the former 24 month cap', () => {
+    expect(computeFirstBillingMonth('2024-01-15', '2027-02-28')).toBe(
+      '2027-02',
     );
   });
 });

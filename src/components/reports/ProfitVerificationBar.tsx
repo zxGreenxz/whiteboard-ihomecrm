@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, AlertTriangle, ChevronDown, Info } from "lucide-react";
 import { useProfitVerification } from "@/hooks/useProfitVerification";
+import {
+  calculateProfitVerificationInvariant,
+  resolveProfitVerificationVisualState,
+} from "@/lib/profitVerification";
 
 /**
  * B5 (thống nhất tài chính 04/07): thanh KIỂM CHỨNG của trang Phân bổ lợi
@@ -8,7 +12,8 @@ import { useProfitVerification } from "@/hooks/useProfitVerification";
  * "nhìn bảng phân bổ không chắc có đủ/thiếu gì không".
  *
  *  1. Tổng thẻ = Σ dòng hiển thị? (± phần dòng đang ẩn bởi "hạng mục đặc biệt")
- *  2. Đã LOẠI những gì khỏi P&L: phiếu nháp · khoản ngoài-KQKD · phiếu chưa chọn sổ.
+ *  2. Đã LOẠI những gì khỏi P&L: phiếu nháp · khoản ngoài-KQKD. Phiếu đã
+ *     duyệt chưa chọn sổ vẫn nằm trong tổng và được cảnh báo riêng.
  *  3. Khớp engine chia cổ đông (fa_monthly_pnl_accrual) — lệch ≠ 0 là ĐỎ.
  *  4. Đối chiếu tiền đã thu của hoá đơn kỳ (thông tin, lệch là bình thường).
  *
@@ -31,9 +36,10 @@ export interface ProfitVerificationBarProps {
   /** Σ các dòng ĐANG hiển thị trong 2 cột (sau khi ẩn hạng mục đặc biệt). */
   shownIncomeSum: number;
   shownExpenseSum: number;
-  /** Phần bị ẩn bởi toggle "Ẩn hạng mục đặc biệt". */
+  /** Phần bị ẩn bởi toggle "Ẩn hạng mục đặc biệt", tách đúng chiều Thu/Chi. */
   hiddenCount: number;
-  hiddenSum: number;
+  hiddenIncomeSum: number;
+  hiddenExpenseSum: number;
   /** Chế độ tiền mặt chạm trần danh sách: {shown, total} → không so Σ dòng được. */
   capWarning?: { shown: number; total: number } | null;
   /** Báo trạng thái CÓ LỆCH (cờ đỏ) lên parent — mobile dùng để ẩn thanh, chỉ hiện
@@ -46,19 +52,25 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     ym, startDate, endDate, buildingIds, monthLabel,
     accrualMode, pnlOnly,
     totalIncome, totalExpense, shownIncomeSum, shownExpenseSum,
-    hiddenCount, hiddenSum, capWarning,
+    hiddenCount, hiddenIncomeSum, hiddenExpenseSum, capWarning,
   } = props;
   const [open, setOpen] = useState(false);
 
-  const { data: v } = useProfitVerification({
+  const verificationQuery = useProfitVerification({
     ym, startDate, endDate, buildingIds, pnlOnly, accrualMode,
   });
+  const { data: v } = verificationQuery;
 
-  // 1) Bất biến hiển thị: tổng thẻ − (Σ dòng hiển thị + phần đang ẩn) ≈ 0.
-  const sumWithHidden = shownIncomeSum + shownExpenseSum + hiddenSum;
-  const totalBoth = totalIncome + totalExpense;
-  const rowsMatch = Math.abs(totalBoth - sumWithHidden) < 2; // dung sai làm tròn
-  const rowsDiff = totalBoth - sumWithHidden;
+  // 1) Hai bất biến độc lập; không cho chênh Thu bù trừ chênh Chi.
+  const invariant = calculateProfitVerificationInvariant({
+    totalIncome,
+    totalExpense,
+    shownIncomeSum,
+    shownExpenseSum,
+    hiddenIncomeSum,
+    hiddenExpenseSum,
+  });
+  const hiddenSum = hiddenIncomeSum + hiddenExpenseSum;
 
   // 3) Tie-out engine chia cổ đông (chỉ chạy accrual + pnlOnly).
   const faDiffIncome = v?.fa ? totalIncome - v.fa.income : 0;
@@ -67,11 +79,19 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
 
   const anyExcluded =
     (v?.draftCount ?? 0) > 0 ||
-    (v?.nonKqkdIncome ?? 0) + (v?.nonKqkdExpense ?? 0) > 0 ||
-    (v?.noBookCount ?? 0) > 0;
+    Math.abs(v?.nonKqkdIncome ?? 0) + Math.abs(v?.nonKqkdExpense ?? 0) > 0;
+
+  const visualState = resolveProfitVerificationVisualState({
+    loading: verificationQuery.isLoading || (!v && !verificationQuery.isError),
+    unavailable: verificationQuery.isError,
+    capWarning: !!capWarning,
+    incomeMatches: invariant.incomeMatches,
+    expenseMatches: invariant.expenseMatches,
+    faMatches: faOk,
+  });
 
   // Cờ đỏ tổng hợp (cùng điều kiện icon AlertTriangle ở header) — báo lên parent.
-  const hasIssue = faOk === false || (!rowsMatch && !capWarning);
+  const hasIssue = visualState === "ERROR" || visualState === "UNAVAILABLE";
   const { onIssueChange } = props;
   useEffect(() => {
     onIssueChange?.(hasIssue);
@@ -86,10 +106,16 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
         className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left"
       >
         <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
-          {faOk === false || (!rowsMatch && !capWarning) ? (
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-          ) : (
+          {visualState === "OK" ? (
             <ShieldCheck className="h-4 w-4 text-emerald-600" />
+          ) : (
+            <AlertTriangle
+              className={`h-4 w-4 ${
+                visualState === "ERROR" || visualState === "UNAVAILABLE"
+                  ? "text-red-600"
+                  : "text-amber-600"
+              }`}
+            />
           )}
           Kiểm chứng T{monthLabel}
         </span>
@@ -100,23 +126,29 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
           {pnlOnly ? "chỉ khoản KQKD" : "gồm cả khoản ngoài KQKD"}
         </span>
 
-        {/* 1) Tổng = Σ dòng */}
-        {capWarning ? (
+        {visualState === "UNAVAILABLE" ? (
+          <span className="font-medium text-red-600">
+            UNAVAILABLE — không thể xác minh số server
+          </span>
+        ) : visualState === "LOADING" ? (
+          <span className="font-medium text-amber-700">Đang tải số kiểm chứng server…</span>
+        ) : capWarning ? (
           <span className="text-amber-700">
             ⚠ Danh sách chạm trần {capWarning.shown}/{capWarning.total} dòng — tổng ở thẻ vẫn đủ (server tính)
           </span>
-        ) : rowsMatch ? (
-          <span className="text-emerald-700">
-            Tổng = Σ dòng hiển thị{hiddenCount > 0 ? ` + ${hiddenCount} dòng đang ẩn` : ""} ✓
-          </span>
         ) : (
-          <span className="text-red-600 font-medium">
-            Tổng ≠ Σ dòng (lệch {fmt(Math.abs(rowsDiff))}) — cần kiểm tra
-          </span>
+          <>
+            <span className={invariant.incomeMatches ? "text-emerald-700" : "font-medium text-red-600"}>
+              Thu {invariant.incomeMatches ? "= Σ dòng ✓" : `≠ Σ dòng (lệch ${fmt(Math.abs(invariant.incomeDiff))})`}
+            </span>
+            <span className={invariant.expenseMatches ? "text-emerald-700" : "font-medium text-red-600"}>
+              Chi {invariant.expenseMatches ? "= Σ dòng ✓" : `≠ Σ dòng (lệch ${fmt(Math.abs(invariant.expenseDiff))})`}
+            </span>
+          </>
         )}
 
         {/* 3) Engine chia cổ đông */}
-        {v?.fa && (
+        {visualState !== "UNAVAILABLE" && v?.fa && (
           faOk ? (
             <span className="text-emerald-700">Khớp engine chia cổ đông ±0 ✓</span>
           ) : (
@@ -130,7 +162,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
       </button>
 
       {/* Hàng 2: đã loại gì khỏi P&L (luôn hiện khi có) */}
-      {(anyExcluded || hiddenCount > 0) && (
+      {anyExcluded && (
         <div className="px-3 pb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground">
           <span className="font-medium text-slate-600">Không nằm trong tổng:</span>
           {(v?.draftCount ?? 0) > 0 && (
@@ -143,16 +175,23 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
               ngoài-KQKD: thu {fmt(v!.nonKqkdIncome)} · chi {fmt(v!.nonKqkdExpense)}
             </span>
           )}
-          {(v?.noBookCount ?? 0) > 0 && (
-            <span className="text-amber-700">
-              <b className="tabular-nums">{v!.noBookCount}</b> phiếu chưa chọn sổ ({fmt(v!.noBookTotal)})
-            </span>
-          )}
-          {hiddenCount > 0 && (
-            <span>
-              đang ẩn <b className="tabular-nums">{hiddenCount}</b> dòng hạng mục đặc biệt ({fmt(hiddenSum)}) — tổng vẫn gồm
-            </span>
-          )}
+        </div>
+      )}
+
+      {(v?.noBookCount ?? 0) > 0 && (
+        <div className="px-3 pb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-amber-700">
+          <span className="font-medium">Cần xử lý:</span>
+          <span>
+            <b className="tabular-nums">{v!.noBookCount}</b> phiếu đã duyệt chưa chọn sổ
+            {" "}(thu {fmt(v!.noBookIncome)} · chi {fmt(v!.noBookExpense)}) — vẫn đã nằm trong tổng báo cáo
+          </span>
+        </div>
+      )}
+
+      {hiddenCount > 0 && (
+        <div className="px-3 pb-2 text-muted-foreground">
+          Đang ẩn <b className="tabular-nums">{hiddenCount}</b> dòng hạng mục đặc biệt
+          {" "}(thu {fmt(hiddenIncomeSum)} · chi {fmt(hiddenExpenseSum)}; tổng {fmt(hiddenSum)}) — tổng thẻ vẫn gồm.
         </div>
       )}
 
@@ -165,6 +204,13 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
             {" — "}Σ dòng hiển thị: thu <b className="tabular-nums">{fmt(shownIncomeSum)}</b> · chi{" "}
             <b className="tabular-nums">{fmt(shownExpenseSum)}</b>
           </div>
+          {verificationQuery.isError && (
+            <div className="text-red-600">
+              {verificationQuery.error instanceof Error
+                ? verificationQuery.error.message
+                : "UNAVAILABLE: lỗi tải dữ liệu kiểm chứng"}
+            </div>
+          )}
           {v?.invoicePaid != null && (
             <div className="inline-flex items-start gap-1.5">
               <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />

@@ -1,5 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  calculateNonKqkdAmounts,
+  requireProfitVerificationRpcData,
+} from "@/lib/profitVerification";
 import { VOUCHER_SOURCES } from "@/lib/voucherSources";
 
 /**
@@ -31,6 +35,8 @@ export interface ProfitVerificationData {
   /** Phiếu APPROVED nhưng CHƯA CHỌN SỔ — không phân được lớp, nêu riêng. */
   noBookCount: number;
   noBookTotal: number;
+  noBookIncome: number;
+  noBookExpense: number;
   /** Tổng engine SQL fa_monthly_pnl_accrual (null = không chạy/không áp dụng). */
   fa: { income: number; expense: number; byBuilding: Map<string, { income: number; expense: number }> } | null;
   /** Đã thu thực tế của hoá đơn kỳ (mọi thời điểm thu). */
@@ -67,13 +73,12 @@ export function useProfitVerification(opts: {
           ...statsArgs,
           p_approval: "UNAPPROVED",
         }),
-        // Tổng mọi khoản APPROVED (total_amount, tách lớp).
-        pnlOnly
-          ? (supabase.rpc as any)("get_income_expense_layer_stats", {
-              ...statsArgs,
-              p_approval: "APPROVED",
-            })
-          : Promise.resolve({ data: null, error: null }),
+        // Tổng mọi khoản APPROVED (total_amount, tách lớp). Luôn tải để cảnh báo
+        // phiếu đã duyệt nhưng chưa chọn sổ ở cả hai chế độ KQKD.
+        (supabase.rpc as any)("get_income_expense_layer_stats", {
+          ...statsArgs,
+          p_approval: "APPROVED",
+        }),
         // Tổng KQKD (kqkd_amount, mọi phiếu APPROVED bất kể lớp/sổ).
         pnlOnly
           ? (supabase.rpc as any)("get_income_expense_layer_stats", {
@@ -98,33 +103,42 @@ export function useProfitVerification(opts: {
         }),
       ]);
 
-      for (const r of [draftRes, allRes, kqkdRes, faRes, invRes]) {
-        if (r?.error) console.error("useProfitVerification:", r.error);
-      }
+      const one = (label: string, res: any) => {
+        const data = requireProfitVerificationRpcData<any>(label, res);
+        const row = Array.isArray(data) ? data[0] : data;
+        if (row == null) {
+          throw new Error(`UNAVAILABLE: RPC ${label} không trả dòng tổng hợp`);
+        }
+        return row;
+      };
 
-      const one = (res: any) =>
-        Array.isArray(res?.data) ? res.data[0] : res?.data ?? null;
-
-      const draft = one(draftRes);
-      const all = one(allRes);
-      const kqkd = one(kqkdRes);
+      const draft = one("thống kê phiếu nháp", draftRes);
+      const all = one("thống kê phiếu đã duyệt", allRes);
+      const kqkd = pnlOnly ? one("thống kê KQKD", kqkdRes) : null;
 
       let nonKqkdIncome = 0;
       let nonKqkdExpense = 0;
-      if (all && kqkd) {
-        // Tổng mọi khoản = CASH + INTERNAL (pending = chưa chọn sổ, nêu riêng).
-        const allIncome = (Number(all.cash_income) || 0) + (Number(all.internal_income) || 0);
-        const allExpense = (Number(all.cash_expense) || 0) + (Number(all.internal_expense) || 0);
-        nonKqkdIncome = Math.max(0, allIncome - (Number(kqkd.cash_income) || 0));
-        nonKqkdExpense = Math.max(0, allExpense - (Number(kqkd.cash_expense) || 0));
+      if (kqkd) {
+        // Tổng mọi khoản gồm cả PENDING theo từng chiều. Phiếu APPROVED chưa chọn
+        // sổ vẫn nằm trong báo cáo KQKD; chỉ lớp sổ quỹ của nó là chưa xác định.
+        const nonKqkd = calculateNonKqkdAmounts(all, kqkd);
+        nonKqkdIncome = nonKqkd.income;
+        nonKqkdExpense = nonKqkd.expense;
       }
 
       let fa: ProfitVerificationData["fa"] = null;
-      if (faRes?.data && Array.isArray(faRes.data)) {
+      if (accrualMode && pnlOnly) {
+        const faRows = requireProfitVerificationRpcData<any[]>(
+          "engine chia cổ đông",
+          faRes,
+        );
+        if (!Array.isArray(faRows)) {
+          throw new Error("UNAVAILABLE: RPC engine chia cổ đông trả sai định dạng");
+        }
         const byBuilding = new Map<string, { income: number; expense: number }>();
         let income = 0;
         let expense = 0;
-        for (const row of faRes.data as any[]) {
+        for (const row of faRows) {
           const inc = Number(row.revenue) || 0;
           const exp = Number(row.expense) || 0;
           income += inc;
@@ -134,7 +148,7 @@ export function useProfitVerification(opts: {
         fa = { income, expense, byBuilding };
       }
 
-      const inv = one(invRes);
+      const inv = one("thống kê hoá đơn", invRes);
 
       return {
         draftCount: Number(draft?.pending_count) || 0,
@@ -143,6 +157,8 @@ export function useProfitVerification(opts: {
         nonKqkdExpense,
         noBookCount: Number(all?.pending_count) || 0,
         noBookTotal: Number(all?.pending_total) || 0,
+        noBookIncome: Number(all?.pending_income) || 0,
+        noBookExpense: Number(all?.pending_expense) || 0,
         fa,
         invoicePaid: inv ? Number(inv.total_paid) || 0 : null,
       };

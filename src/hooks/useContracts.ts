@@ -4,8 +4,10 @@ import { getSessionUser } from "@/lib/authSession";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
-import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
-import { computeFirstBillingMonth } from "@/lib/firstInvoiceBuilder";
+import {
+  createContractV2,
+  type ContractCreateRequest,
+} from "@/lib/contractCreateRpc";
 import type {
   Contract,
   ContractWithRelations,
@@ -16,59 +18,11 @@ import type {
   PaymentCycle,
 } from "@/types/contract";
 
-// =============================================
-// Payload types
-// =============================================
-
-export interface CreateContractPayload {
-  contract: {
-    room_id: string;
-    signed_date: string;
-    start_date: string;
-    end_date: string;
-    rent_price: number;
-    total_deposit: number;
-    deposit_paid?: number;
-    payment_cycle: PaymentCycle;
-    start_billing_date?: string;
-    end_billing_date?: string;
-    contract_template_id?: string;
-    invoice_template_id?: string;
-    notes?: string;
-    discounts?: { months: number; amount_per_month: number };
-    // Xử lý thiếu cọc khi ký: cách xử lý + lý do + hẹn ngày bổ sung.
-    deposit_debt_acknowledged?: boolean;
-    deposit_debt_mode?: 'DEBT' | 'FIRST_INVOICE' | null;
-    deposit_debt_reason?: string | null;
-    deposit_topup_due_date?: string | null;
-  };
-  customers: { customer_id: string; is_representative: boolean }[];
-  services: { service_id: string; unit_price: number; initial_reading?: number }[];
-  /**
-   * Items cho hoá đơn cọc + tháng đầu. Dialog đã preview/cho user chỉnh,
-   * hook chỉ việc insert đúng như payload (không tự tính lại để đỡ đè
-   * mất chỉnh sửa của user).
-   */
-  invoiceItems?: Array<{
-    type: "RENT" | "SERVICE" | "DISCOUNT" | "OTHER";
-    description: string;
-    unit_price: number;
-    quantity: number;
-    service_id?: string | null;
-    from_date?: string | null;
-    to_date?: string | null;
-  }>;
-  /**
-   * Giảm trừ "Khuyến mãi tháng đầu" — ghi vào invoices.discount_amount +
-   * discount_notes (KHÔNG trộn vào items để tooltip "Giảm trừ" của cột HĐ
-   * hiển thị đúng). Slot 1/Y; các tháng 2..Y sẽ auto-fill bằng
-   * getContractDiscountSlot khi tạo HĐ tháng kế tiếp.
-   */
-  firstInvoiceDiscount?: {
-    amount: number;
-    notes: string;
-  };
-}
+export type {
+  ContractCreatePayload,
+  ContractCreatePayload as CreateContractPayload,
+  ContractCreateRequest,
+} from "@/lib/contractCreateRpc";
 
 export interface UpdateContractPayload {
   room_id?: string;
@@ -576,130 +530,6 @@ export const useContract = (id?: string) => {
 };
 
 // =============================================
-// createFirstInvoiceForContract — Auto-tạo hoá đơn cọc + tháng đầu sau khi
-// hợp đồng được tạo. Best-effort: nếu fail thì hợp đồng vẫn còn, người dùng
-// có thể tự tạo hoá đơn sau.
-//
-// Items được dialog tính sẵn (có cho user chỉnh trước khi lưu) và truyền
-// xuống qua payload.invoiceItems. Hook chỉ insert đúng nội dung đó.
-// =============================================
-async function createFirstInvoiceForContract(args: {
-  contract: any;
-  contractData: CreateContractPayload["contract"];
-  invoiceItems: NonNullable<CreateContractPayload["invoiceItems"]>;
-  firstInvoiceDiscount?: CreateContractPayload["firstInvoiceDiscount"];
-  userId: string;
-}) {
-  const { contract, contractData, invoiceItems, firstInvoiceDiscount, userId } = args;
-
-  if (!invoiceItems || invoiceItems.length === 0) return;
-
-  // Lấy building_id từ room — invoice cần building_id NOT NULL.
-  const { data: room } = await supabase
-    .from("rooms")
-    .select("building_id")
-    .eq("id", contractData.room_id)
-    .maybeSingle();
-
-  const building_id = (room as any)?.building_id;
-  if (!building_id) {
-    console.warn("createFirstInvoiceForContract: missing building_id, skip");
-    return;
-  }
-
-  // Mốc ngày cho hoá đơn đầu tiên.
-  const startBilling = contractData.start_billing_date || contractData.start_date;
-  const issue_date = new Date().toISOString().split("T")[0];
-  const due_date = contractData.end_billing_date || startBilling;
-  // Kỳ thanh toán HĐ đầu theo quy tắc "tháng phủ trọn muộn nhất" (vào-muộn
-  // 28/5–30/6 → T6, không phải T5). Doanh thu ghi nhận theo billing_month này.
-  const billing_month = computeFirstBillingMonth(
-    startBilling,
-    contractData.end_billing_date,
-  );
-
-  const subtotal = invoiceItems.reduce(
-    (sum, it) => sum + it.unit_price * it.quantity,
-    0,
-  );
-  const discount_amount = Math.max(0, firstInvoiceDiscount?.amount ?? 0);
-  const discount_notes = firstInvoiceDiscount?.notes?.trim() || null;
-  // total = subtotal − discount + previous_debt (HĐ đầu: prev=0).
-  const total_amount = Math.max(0, subtotal - discount_amount);
-
-  const { generateInvoiceNumber } = await import("@/lib/invoiceUtils");
-  const invoice_number = await generateInvoiceNumber(userId);
-
-  // Ghi chú nói RÕ nội dung hoá đơn (yêu cầu chủ): tiền phòng đầu tiên, và nếu
-  // có GỘP CỌC (item OTHER "Tiền cọc" — phần cọc còn thiếu) thì kèm số tiền.
-  // LƯU Ý: useFirstInvoiceDetails nhận diện HĐ tháng đầu fallback theo notes —
-  // regex bên đó phải khớp cả mẫu cũ ("tháng đầu") lẫn mẫu này ("đầu tiên").
-  const depositBundled = invoiceItems
-    .filter(
-      (it) =>
-        it.type === "OTHER" &&
-        (it.description ?? "").trim().toLowerCase() === "tiền cọc",
-    )
-    .reduce((s, it) => s + it.unit_price * it.quantity, 0);
-  const [bmY, bmM] = billing_month.split("-");
-  const bmLabel = bmM ? `T${Number(bmM)}/${bmY}` : billing_month;
-  const invoiceNotes =
-    depositBundled > 0
-      ? `Hoá đơn tiền phòng đầu tiên ${bmLabel} + kèm cọc ${depositBundled.toLocaleString("vi-VN")}đ (tự động)`
-      : `Hoá đơn tiền phòng đầu tiên ${bmLabel} (tự động)`;
-
-  const { data: invoice, error: invErr } = await supabase
-    .from("invoices")
-    .insert({
-      user_id: userId,
-      contract_id: contract.id,
-      building_id,
-      room_id: contractData.room_id,
-      invoice_number,
-      billing_month,
-      issue_date,
-      due_date,
-      status: "APPROVED" as any,
-      approved_at: new Date().toISOString(),
-      approved_by: userId,
-      subtotal,
-      discount_amount,
-      discount_notes,
-      total_amount,
-      prepaid_amount: 0,
-      paid_amount: 0,
-      previous_debt: 0,
-      notes: invoiceNotes,
-      template_id: contractData.invoice_template_id || null,
-    } as any)
-    .select()
-    .single();
-
-  if (invErr) throw invErr;
-
-  const rows = invoiceItems.map((it, idx) => ({
-    invoice_id: invoice.id,
-    service_id: it.service_id ?? null,
-    type: it.type,
-    description: it.description,
-    unit_price: it.unit_price,
-    quantity: it.quantity,
-    coefficient: 1,
-    amount: it.unit_price * it.quantity,
-    previous_reading: null,
-    current_reading: null,
-    from_date: it.from_date ?? null,
-    to_date: it.to_date ?? null,
-    sort_order: idx,
-  }));
-
-  const { error: itemsErr } = await supabase
-    .from("invoice_items")
-    .insert(rows as any);
-  if (itemsErr) throw itemsErr;
-}
-
-// =============================================
 // useCreateContract — Create contract + customers + services + update room
 // Requirements: 2.11, 2.13, 3.3
 // =============================================
@@ -708,158 +538,25 @@ export const useCreateContract = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (payload: CreateContractPayload) => {
-      const user = await getSessionUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { contract: contractData, customers, services } = payload;
-
-      // Guard: contract requires at least one customer (representative).
-      // Without this, the DB throws "null value in column tenant_id" which is
-      // confusing for the user.
-      const tenantId =
-        customers.find((c) => c.is_representative)?.customer_id ||
-        customers[0]?.customer_id;
-      if (!tenantId) {
-        throw new Error(
-          "Vui lòng chọn ít nhất một khách hàng cho hợp đồng (người đại diện)."
-        );
-      }
-
-      // Guard: a room can only have ONE active contract at a time. Without this,
-      // moving a new tenant in while the old contract is still ACTIVE leaves two
-      // ACTIVE contracts on the same room → phòng bị "nhân đôi" ở các màn lập hoá
-      // đơn. Chặn tại đây (luồng tạo HĐ duy nhất từ UI); gia hạn/chuyển phòng đi
-      // qua RPC riêng nên không bị ảnh hưởng.
-      if (contractData.room_id) {
-        const { data: existingActive, error: activeErr } = await supabase
-          .from("contracts")
-          .select("id")
-          .eq("room_id", contractData.room_id)
-          .in("status", ["ACTIVE"])
-          .is("deleted_at", null)
-          .limit(1);
-        if (activeErr) throw activeErr;
-        if (existingActive && existingActive.length > 0) {
-          throw new Error(
-            "Phòng này đang có hợp đồng hiệu lực. Vui lòng thanh lý / kết thúc hợp đồng cũ trước khi tạo hợp đồng mới."
-          );
-        }
-      }
-
-      // Guard: bắt buộc thu đủ cọc khi ký. Nếu deposit_paid < total_deposit
-      // (chênh ≥ ngưỡng làm tròn) thì admin phải chủ động "Đồng ý cho nợ cọc"
-      // (kèm lý do nhập ở form) — defense-in-depth, khớp rule ở ContractFormDialog.
-      const depositRemaining =
-        (contractData.total_deposit || 0) - (contractData.deposit_paid || 0);
-      if (
-        depositRemaining >= PREVIOUS_DEBT_ROUND_THRESHOLD &&
-        !contractData.deposit_debt_acknowledged
-      ) {
-        throw new Error(
-          "Khách chưa đóng đủ cọc. Vui lòng thu đủ cọc, hoặc tích \"Đồng ý cho nợ cọc\" kèm lý do để tiếp tục.",
-        );
-      }
-
-      // 1. Insert contract.
-      // NOTE: contracts.tenant_id is the legacy column that used to FK to
-      // `tenants`. The authoritative customer link is in contract_customers
-      // (see Bundle 2). After Bundle 3 the FK is dropped and the column is
-      // nullable; we leave it NULL on new rows to avoid confusion. tenantId
-      // is still used for the empty-customer guard above.
-      void tenantId;
-      const insertData: any = {
-        ...contractData,
-        user_id: user.id,
-        tenant_id: null,
-        status: "ACTIVE",
-      };
-
-      const { data: contract, error: contractError } = await supabase
-        .from("contracts")
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (contractError) throw contractError;
-
-      // 2. Batch insert contract_customers
-      if (customers.length > 0) {
-        const contractCustomers = customers.map((c) => ({
-          contract_id: contract.id,
-          customer_id: c.customer_id,
-          is_representative: c.is_representative,
-          notes: c.notes ?? null,
-        }));
-
-        const { error: customersError } = await (supabase as any)
-          .from("contract_customers")
-          .insert(contractCustomers);
-
-        if (customersError) {
-          console.error("Error inserting contract_customers:", customersError);
-          throw customersError;
-        }
-      }
-
-      // 3. Batch insert contract_services
-      if (services.length > 0) {
-        const contractServices = services.map((s) => ({
-          contract_id: contract.id,
-          service_id: s.service_id,
-          unit_price: s.unit_price,
-          initial_reading: s.initial_reading ?? null,
-        }));
-
-        const { error: servicesError } = await supabase
-          .from("contract_services")
-          .insert(contractServices);
-
-        if (servicesError) {
-          console.error("Error inserting contract_services:", servicesError);
-          throw servicesError;
-        }
-      }
-
-      // 4. Update room status to OCCUPIED
-      if (contractData.room_id) {
-        const { error: roomError } = await supabase
-          .from("rooms")
-          .update({ status: "OCCUPIED" } as any)
-          .eq("id", contractData.room_id);
-
-        if (roomError) {
-          console.error("Error updating room status:", roomError);
-        }
-      }
-
-      // 5. Auto-tạo hoá đơn cọc + tháng đầu (best-effort).
-      // Items đã được dialog tính + cho user chỉnh, nên hook chỉ insert đúng
-      // những gì user đã preview.
-      if (payload.invoiceItems && payload.invoiceItems.length > 0) {
-        try {
-          await createFirstInvoiceForContract({
-            contract,
-            contractData,
-            invoiceItems: payload.invoiceItems,
-            firstInvoiceDiscount: payload.firstInvoiceDiscount,
-            userId: user.id,
-          });
-        } catch (e) {
-          console.error("Auto-create first invoice failed:", e);
-          toast.error(
-            "Đã tạo hợp đồng nhưng chưa tạo được hoá đơn cọc + tháng đầu. Vui lòng tạo hoá đơn thủ công."
-          );
-        }
-      }
-
-      return contract as unknown as Contract;
+    mutationFn: async (request: ContractCreateRequest) => {
+      const response = await createContractV2(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        request,
+      );
+      return response.contract;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
       queryClient.invalidateQueries({ queryKey: ["invoices-legacy"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });
+      queryClient.invalidateQueries({ queryKey: ["orphan-deposit-vouchers"] });
       toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: any) => {

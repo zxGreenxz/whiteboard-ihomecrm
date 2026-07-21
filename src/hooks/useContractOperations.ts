@@ -3,6 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { ExtraChargeItem } from "@/lib/contractValidation";
+import {
+  buildForfeitWithCreditRpcArgs,
+  buildMoveOutWithCreditRpcArgs,
+  invokeCustomerCreditRpc,
+  prepareCustomerCreditRequest,
+} from "@/lib/customerCreditRpc";
 
 // =============================================
 // useRenewContract — Gia hạn hợp đồng
@@ -185,24 +191,14 @@ export const useTerminateForfeit = () => {
       forfeitDate: string;
       extraCharges?: ExtraChargeItem[];
     }) => {
-      const { data, error } = await (supabase as any).rpc(
-        "terminate_contract_forfeit",
-        {
-          p_contract_id: params.contractId,
-          p_forfeit_date: params.forfeitDate,
-          p_extra_charges: params.extraCharges ?? [],
-        }
+      const request = prepareCustomerCreditRequest("contract-forfeit");
+      return invokeCustomerCreditRpc(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        "terminate_contract_forfeit_with_credit_v1",
+        buildForfeitWithCreditRpcArgs(params, request),
       );
-
-      if (error) throw error;
-
-      // Xoá toàn bộ credit còn dư của contract (forfeit)
-      await consumeRemainingCredit(
-        params.contractId,
-        `Forfeit credit khi bỏ cọc ngày ${params.forfeitDate}`,
-      );
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
@@ -234,53 +230,6 @@ export const useTerminateForfeit = () => {
   });
 };
 
-// Consume credit còn dư của contract bằng cách INSERT excess_amounts row âm.
-// - forfeit: tiêu TOÀN BỘ (khách bỏ đi, credit bị forfeit) — maxAmount undefined.
-// - move-out: chỉ tiêu ĐÚNG phần đã áp vào quyết toán (excess_rent) — B2 audit
-//   03/07: trước đây luôn tiêu hết nên hạ ô "Tiền phòng thừa" xuống vẫn mất
-//   sạch credit của khách một cách im lặng.
-// Idempotent qua source_invoice rollback.
-async function consumeRemainingCredit(
-  contractId: string,
-  description: string,
-  maxAmount?: number,
-): Promise<void> {
-  const user = await getSessionUser();
-  if (!user) return;
-
-  const { data: rows, error: queryErr } = await (supabase
-    .from("excess_amounts" as any) as any)
-    .select(
-      "amount, source_invoice:invoices!source_invoice_id(deleted_at)",
-    )
-    .eq("contract_id", contractId);
-  if (queryErr) {
-    console.error("consumeRemainingCredit query error:", queryErr);
-    return;
-  }
-  const total = (rows ?? []).reduce((sum: number, row: any) => {
-    if (row.source_invoice?.deleted_at) return sum;
-    return sum + (Number(row.amount) || 0);
-  }, 0);
-  const toConsume =
-    maxAmount === undefined ? total : Math.min(total, Math.max(maxAmount, 0));
-  if (toConsume <= 0) return;
-
-  const { error: insertErr } = await supabase
-    .from("excess_amounts" as any)
-    .insert({
-      user_id: user.id,
-      contract_id: contractId,
-      amount: -toConsume,
-      description,
-      source_invoice_id: null,
-      source_payment_id: null,
-    } as any);
-  if (insertErr) {
-    console.error("consumeRemainingCredit insert error:", insertErr);
-  }
-}
-
 // =============================================
 // useTerminateMoveOut — Thanh lý: Khách rời phòng
 // Requirements: 9.6
@@ -307,33 +256,14 @@ export const useTerminateMoveOut = () => {
       // sổ "%Thu" của người bấm (ưu tiên is_default), fallback sổ vận hành toà.
       receiptAccountId?: string | null;
     }) => {
-      const { data, error } = await (supabase as any).rpc(
-        "terminate_contract_move_out",
-        {
-          p_contract_id: params.contractId,
-          p_move_out_date: params.moveOutDate,
-          p_deposit_refund: params.depositRefund,
-          p_penalty_fee: params.penaltyFee ?? 0,
-          p_excess_rent: params.excessRent ?? 0,
-          p_outstanding_debt: params.outstandingDebt ?? 0,
-          p_notes: params.notes ?? null,
-          p_extra_charges: params.extraCharges ?? [],
-          p_shortfall_mode: params.shortfallMode ?? "PAID",
-          p_receipt_account_id: params.receiptAccountId ?? null,
-        }
+      const request = prepareCustomerCreditRequest("contract-move-out");
+      return invokeCustomerCreditRpc(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        "terminate_contract_move_out_with_credit_v1",
+        buildMoveOutWithCreditRpcArgs(params, request),
       );
-
-      if (error) throw error;
-
-      // B2: chỉ tiêu credit ĐÚNG phần đã áp vào quyết toán (excess_rent) —
-      // phần còn lại giữ nguyên trên sổ credit của khách.
-      await consumeRemainingCredit(
-        params.contractId,
-        `Tiêu credit khi thanh lý move-out ngày ${params.moveOutDate}`,
-        params.excessRent ?? 0,
-      );
-
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contracts"] });
