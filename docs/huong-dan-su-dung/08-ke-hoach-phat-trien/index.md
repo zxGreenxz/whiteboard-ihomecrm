@@ -20,8 +20,8 @@ status: published
   <h1>Demo kế hoạch phát triển</h1>
   <p class="plan-lead">Nơi mở một kế hoạch để thuyết trình ngay hoặc in thành báo cáo: mục tiêu kinh doanh, quy trình tương lai, kiến trúc hệ thống, lộ trình triển khai, rủi ro và tiêu chí nghiệm thu.</p>
   <div class="plan-actions">
-    <a class="plan-action plan-action-primary" href="/08-ke-hoach-phat-trien/ai-copilot/">Xem kế hoạch AI Copilot</a>
-    <a class="plan-action" href="/08-ke-hoach-phat-trien/mau-plan/">Mở mẫu kế hoạch mới</a>
+    <a class="plan-action plan-action-primary" href="/08-ke-hoach-phat-trien/quy-trinh-chi-phi/">Xem quy trình chi phí</a>
+    <a class="plan-action" href="/08-ke-hoach-phat-trien/ai-copilot/">Xem kế hoạch AI Copilot</a>
   </div>
 </div>
 
@@ -51,7 +51,13 @@ Mỗi trang thể hiện một phương án để lãnh đạo, nghiệp vụ v�
 
 ## Kế hoạch đang có
 
-<div class="plan-grid plan-grid-2">
+<div class="plan-grid plan-grid-3">
+  <a class="plan-card plan-card-link" href="/08-ke-hoach-phat-trien/quy-trinh-chi-phi/">
+    <div class="plan-audience-label">TÀI CHÍNH · PHÊ DUYỆT · SỔ QUỸ</div>
+    <h3>Ghi nhận chi phí đúng kỳ, duyệt trước khi xuất tiền</h3>
+    <p>Tách rõ chi phí trên báo cáo lợi nhuận, quyền duyệt thanh toán, tiền thực tế rời sổ quỹ và điều kiện chốt kỳ.</p>
+    <span class="plan-link-label">Mở artifact nghiệp vụ →</span>
+  </a>
   <a class="plan-card plan-card-link" href="/08-ke-hoach-phat-trien/ai-copilot/">
     <div class="plan-audience-label">AI · VẬN HÀNH · TÀI CHÍNH</div>
     <h3>AI Copilot bám sát nghiệp vụ ptcrm</h3>

@@ -416,6 +416,182 @@
   margin-inline: auto;
 }
 
+.vp-doc .expense-state-flow {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1.75rem 0;
+}
+
+.vp-doc .expense-state-card {
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--plan-border);
+  border-top: 4px solid var(--plan-accent);
+  border-radius: 1rem;
+  background:
+    linear-gradient(135deg, var(--plan-accent-wash), transparent 48%),
+    var(--plan-surface-raised);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.vp-doc .expense-state-card.is-pending {
+  border-top-color: var(--plan-warning);
+  background:
+    linear-gradient(135deg, var(--plan-warning-soft), transparent 52%),
+    var(--plan-surface-raised);
+}
+
+.vp-doc .expense-state-card.is-approved {
+  border-top-color: var(--plan-secondary);
+  background:
+    linear-gradient(135deg, var(--plan-secondary-soft), transparent 52%),
+    var(--plan-surface-raised);
+}
+
+.vp-doc .expense-state-card.is-action {
+  border-top-color: var(--plan-warning);
+}
+
+.vp-doc .expense-state-card.is-paid {
+  border-top-color: var(--plan-accent);
+}
+
+.vp-doc .expense-state-card > :last-child {
+  margin-bottom: 0;
+}
+
+.vp-doc .expense-state-card h3 {
+  margin: 0.45rem 0 0.4rem;
+  border: 0;
+}
+
+.vp-doc .expense-state-card > p {
+  margin: 0;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc .expense-state-topline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+}
+
+.vp-doc .expense-state-topline code,
+.vp-doc .expense-state-action {
+  margin: 0;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.vp-doc .expense-state-number {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 0.65rem;
+  background: var(--plan-accent-soft);
+  color: var(--plan-accent-strong);
+  font-size: 0.75rem;
+  font-weight: 760;
+}
+
+.vp-doc .expense-state-card.is-pending .expense-state-number,
+.vp-doc .expense-state-card.is-action .expense-state-number {
+  background: var(--plan-warning-soft);
+  color: var(--plan-warning);
+}
+
+.vp-doc .expense-state-card.is-approved .expense-state-number {
+  background: var(--plan-secondary-soft);
+  color: var(--plan-secondary);
+}
+
+.vp-doc .expense-impact-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0 0;
+}
+
+.vp-doc .expense-impact-list > div {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 0.75rem;
+  background: var(--vp-c-bg-soft);
+}
+
+.vp-doc .expense-impact-list dt {
+  color: var(--vp-c-text-3);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vp-doc .expense-impact-list dd {
+  margin: 0.3rem 0 0;
+  color: var(--vp-c-text-1);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.vp-doc .expense-flow-arrow {
+  display: grid;
+  height: 2rem;
+  place-items: center;
+  color: var(--plan-accent-strong);
+  font-size: 1.5rem;
+  font-weight: 700;
+  transform: rotate(90deg);
+}
+
+.vp-doc .expense-example-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 1.5rem 0;
+}
+
+.vp-doc .expense-example-item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 0.9rem;
+  background: var(--vp-c-bg-soft);
+}
+
+.vp-doc .expense-example-item span {
+  color: var(--vp-c-text-3);
+  font-size: 0.8rem;
+}
+
+.vp-doc .expense-example-item strong {
+  color: var(--vp-c-text-1);
+  font-size: clamp(1.15rem, 2.5vw, 1.55rem);
+  line-height: 1.2;
+}
+
+.vp-doc .expense-example-item.is-pending {
+  border-color: var(--plan-warning);
+  background: var(--plan-warning-soft);
+}
+
+.vp-doc .expense-example-item.is-result {
+  border-color: var(--plan-accent);
+  background: var(--plan-accent-wash);
+}
+
 @media (max-width: 639px) {
   .vp-doc .plan-hero {
     padding: 1.25rem;
@@ -447,10 +623,23 @@
     min-width: 42rem;
     max-width: none !important;
   }
+
+  .vp-doc .expense-state-card {
+    padding: 1rem;
+  }
+
+  .vp-doc .expense-impact-list,
+  .vp-doc .expense-example-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 640px) and (max-width: 959px) {
   .vp-doc .plan-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vp-doc .expense-example-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
