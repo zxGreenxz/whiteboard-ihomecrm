@@ -125,3 +125,16 @@ RPC: `v5_daily_missions_self` (guard self) · `get_my_day_summary` (1 round-trip
   - 17 toà thật (rooms>0) mỗi toà 1 phiên FULL `passed` ngày 01/07 (attribution theo `staff_assignments.staff_id` THẬT: **Nathan 9, Joey 7, B.Huy 1** — 45/3 Trần Thái Tông giao RIÊNG B.Huy, không Joey/Nathan; marker `condition_note='OK — seed khởi động thử v5 (2026-07-03)'`). Coverage: mọi toà D=2 (102LVT D=1 do job thật 02/07) — **không toà nào chạm SLA 4/3**. Verify Playwright /reports/coverage: 17 thẻ "Chạm 2 ngày trước", console 0 error.
   - Số LIVE sau seed (v5_month_money 07/2026): JOEY & NATHAN = 2/27 ngày công · 444.444đ tạm tính (đơn giá 222.222 = 6tr/27); B.Huy = 0/27 (ngoài đợt seed streak). Đối soát/Shadow refresh sẽ hiện đúng (ảnh 0/27 là trước seed).
   - Idempotent + revert theo marker; recompute streak sau revert đưa SSS về trạng thái tự nhiên.
+
+## Forward-fix My Day Route Phase 1–2 (2026-07-21) ✅
+
+**Migration:** `supabase/migrations/20260721140000_v5_route_planning_phase12.sql` — đã apply live trực tiếp qua Management API.
+
+- `v5_route_candidates_self()` trả toàn bộ toà trong scope direct/area/full, tách `days_since_full` khỏi `days_since_touch`, kèm tọa độ/địa chỉ, SLA, bucket và người FULL gần nhất. Core nhận `p_user` chỉ mở cho `service_role`; client chỉ gọi self-wrapper. SLA áp `building_overrides.is_hot/sla_days`; HĐ đáo hạn chỉ tăng risk, không tự rút SLA.
+- Priority cứng: FULL overdue/never → touch overdue → due-soon → fresh → FULL-completed-today; có tie-break `building_name + building_id`, không còn `.slice(0, 3)` phía FE.
+- `v5_checklist_for_building()` random trực tiếp trong tập tầng thật; regression `65NTG` quét 365 ngày không sinh tầng >3. Helper chỉ cấp cho `service_role`; `start_inspection()` kiểm `can_access_building()` trước khi gọi nội bộ, chặn UUID toà ngoài tenant và chỉ nhận phiếu thu GPS-ok thuộc đúng caller/toà.
+- `set_my_ui_preference(key,value)` merge một key bằng `jsonb_set` trong một UPDATE, tránh hai tab/thiết bị ghi đè toàn bộ `ui_preferences`.
+
+**FE:** `/my-day` hiện toàn bộ đỏ/vàng theo nhóm, giữ card đã ghé hôm nay, hiện đồng thời tuổi FULL/touch. Sheet `Xếp tuyến` hỗ trợ kéo-thả mobile/keyboard, nút lên/xuống, lưu route versioned theo ngày VN, GPS nearest-neighbor + 2-opt theo priority, Google Maps tối đa 4 toà/chặng và fallback link/địa chỉ cho toà thiếu tọa độ. Mode priority luôn theo server; manual giữ thứ tự toàn cục; optimized giữ thứ tự trong từng bucket hiện tại. Refetch khi đang sửa loại stop stale/completed và ghép stop mới mà không xoá thứ tự chưa lưu.
+
+**Test:** SQL compile+assert trong transaction rollback ✅ (ACL, cross-tenant deny, tuổi thật 999, override, bucket/SLA/order, floor thật, idempotency) · assert lại trên schema live ✅ · `v5Routing` Vitest/fast-check 23/23 ✅ · production build ✅ · Playwright mobile/headless lặp 2 lần (all due không cap, FULL/touch, completed retained, pointer drag xuyên bucket, save+reload + CTA theo route, Maps chunks, GPS optimize, console sạch) 2/2 ✅. `typecheck:baseline` không có lỗi route; toàn worktree còn 3 lỗi TS2367 tại các hook payment do thay đổi song song ngoài scope Phase 1–2.

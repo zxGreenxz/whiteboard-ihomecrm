@@ -4,16 +4,24 @@
 // Mỗi key là một tuỳ chọn nhỏ (vd 'pd_hideStatCards'). Ghi merge từng key để
 // không đè các key khác. Cập nhật lạc quan (optimistic) cho phản hồi tức thì.
 // =============================================================================
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { getSessionUserId } from '@/lib/authSession';
 
 export type UiPreferences = Record<string, unknown>;
 
 const QK = ['ui-preferences'] as const;
+const MUTATION_KEY = ['set-ui-preference'] as const;
+const optimisticOwners = new WeakMap<QueryClient, Map<string, symbol>>();
 
-// `ui_preferences` chưa có trong types generated → đọc/ghi qua client nới lỏng kiểu.
-const db = supabase as any;
+function getOptimisticOwners(queryClient: QueryClient): Map<string, symbol> {
+  const current = optimisticOwners.get(queryClient);
+  if (current) return current;
+  const created = new Map<string, symbol>();
+  optimisticOwners.set(queryClient, created);
+  return created;
+}
 
 /** Đọc toàn bộ tuỳ chọn UI của user hiện tại (rỗng nếu chưa đăng nhập). */
 export const useUiPreferences = () =>
@@ -22,7 +30,7 @@ export const useUiPreferences = () =>
     queryFn: async (): Promise<UiPreferences> => {
       const userId = await getSessionUserId();
       if (!userId) return {};
-      const { data, error } = await db
+      const { data, error } = await supabase
         .from('profiles')
         .select('ui_preferences')
         .eq('id', userId)
@@ -40,38 +48,68 @@ export const useUiPrefBool = (key: string, fallback = false): boolean => {
   return typeof v === 'boolean' ? v : fallback;
 };
 
-/** Ghi 1 key tuỳ chọn (merge), lưu server + optimistic. */
+/** Ghi atomic 1 key qua RPC để hai thiết bị không ghi đè các preference khác. */
 export const useSetUiPreference = () => {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: MUTATION_KEY,
     mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
-      const userId = await getSessionUserId();
-      if (!userId) throw new Error('Not authenticated');
-      // Đọc bản hiện tại rồi merge để không đè key khác (jsonb ghi cả object).
-      const { data: cur } = await db
-        .from('profiles')
-        .select('ui_preferences')
-        .eq('id', userId)
-        .single();
-      const next: UiPreferences = { ...((cur?.ui_preferences as UiPreferences) ?? {}), [key]: value };
-      const { error } = await db
-        .from('profiles')
-        .update({ ui_preferences: next })
-        .eq('id', userId);
+      const { data, error } = await supabase.rpc('set_my_ui_preference', {
+        p_key: key,
+        p_value: value as Json,
+      });
       if (error) throw error;
-      return next;
+      return (data as UiPreferences) ?? {};
     },
     onMutate: async ({ key, value }) => {
       await qc.cancelQueries({ queryKey: QK });
-      const prev = qc.getQueryData<UiPreferences>(QK);
-      qc.setQueryData<UiPreferences>(QK, (o) => ({ ...(o ?? {}), [key]: value }));
-      return { prev };
+      const previous = qc.getQueryData<UiPreferences>(QK);
+      const hadPrevious = Object.prototype.hasOwnProperty.call(previous ?? {}, key);
+      const optimisticOwner = Symbol(key);
+      getOptimisticOwners(qc).set(key, optimisticOwner);
+      let optimisticPreferences: UiPreferences | undefined;
+      qc.setQueryData<UiPreferences>(QK, (current) => {
+        optimisticPreferences = { ...(current ?? {}), [key]: value };
+        return optimisticPreferences;
+      });
+      return {
+        key,
+        previousValue: previous?.[key],
+        hadPrevious,
+        optimisticValue: value,
+        optimisticOwner,
+        optimisticPreferences,
+      };
     },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(QK, ctx.prev);
+    onError: (_error, _variables, context) => {
+      if (!context) return;
+      const owners = getOptimisticOwners(qc);
+      if (owners.get(context.key) !== context.optimisticOwner) return;
+      qc.setQueryData<UiPreferences>(QK, (current) => {
+        if (!current) return current;
+        const stillOwnsKey = current === context.optimisticPreferences
+          || Object.is(current[context.key], context.optimisticValue);
+        if (!stillOwnsKey) return current;
+
+        const next = { ...current };
+        if (context.hadPrevious) next[context.key] = context.previousValue;
+        else delete next[context.key];
+        return next;
+      });
+      owners.delete(context.key);
+    },
+    onSuccess: (preferences, { key }, context) => {
+      qc.setQueryData<UiPreferences>(QK, (current) => ({
+        ...preferences,
+        ...(current ?? {}),
+      }));
+      const owners = getOptimisticOwners(qc);
+      if (context && owners.get(key) === context.optimisticOwner) owners.delete(key);
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: QK });
+      if (qc.isMutating({ mutationKey: MUTATION_KEY }) === 1) {
+        return qc.invalidateQueries({ queryKey: QK });
+      }
     },
   });
 };

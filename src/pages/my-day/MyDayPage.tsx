@@ -7,16 +7,18 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft, Banknote, Building2, CalendarClock, CheckCircle2, ChevronRight,
-  ClipboardList, Flame, Shield, Sun,
+  ClipboardList, Flame, Route, Shield, Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import RoutePlannerSheet from "@/components/my-day/RoutePlannerSheet";
 import { toast } from "sonner";
 import { useJobs } from "@/hooks/useJobs";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { v5Copy } from "@/lib/v5Copy";
-import { useSetUiPreference, useUiPrefBool } from "@/hooks/useUiPreferences";
+import { applySavedRouteOrder, isActiveRouteCandidate, normalizePriorityBucket } from "@/lib/v5Routing";
+import { useSetUiPreference, useUiPrefBool, useUiPreferences } from "@/hooks/useUiPreferences";
 import {
   useMyDaySummary, useMyMissions, useMyOpenInspections, useRequestLeave, type Mission,
 } from "@/hooks/useMyDay";
@@ -53,36 +55,84 @@ export default function MyDayPage() {
   const summaryQ = useMyDaySummary();
   const missionsQ = useMyMissions();
   const requestLeave = useRequestLeave();
+  const { data: uiPreferences } = useUiPreferences();
 
   const [runner, setRunner] = useState<{
     buildingId: string; buildingName: string; type: "FULL" | "QUICK";
   } | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveDate, setLeaveDate] = useState("");
+  const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
   // Chủ nhật: mở lại tuyến gợi ý nếu muốn làm tự nguyện
   const [showRouteOnRest, setShowRouteOnRest] = useState(false);
 
   const s = summaryQ.data;
   // Phiên kiểm tra ĐANG DỞ hôm nay — tắt app/mất mạng vẫn còn, bấm là làm tiếp
   const openSessQ = useMyOpenInspections(s?.today.date, authUser?.id);
-  const openSessions = openSessQ.data ?? [];
-  const missions = missionsQ.data ?? [];
-  const suggested = useMemo(
-    () => missions.filter((m) => m.color !== "green").slice(0, 3),
+  const openSessions = useMemo(() => openSessQ.data ?? [], [openSessQ.data]);
+  const missions = useMemo(() => missionsQ.data ?? [], [missionsQ.data]);
+  const activeMissions = useMemo(
+    () => missions.filter(isActiveRouteCandidate),
     [missions],
   );
+  const completedToday = useMemo(
+    () => missions.filter((m) => m.checked_today || normalizePriorityBucket(m.priority_bucket) === 4),
+    [missions],
+  );
+  const nextMission = useMemo(
+    () => applySavedRouteOrder(activeMissions, s?.today.date ?? "", uiPreferences?.v5_route_plan)[0],
+    [activeMissions, s?.today.date, uiPreferences?.v5_route_plan],
+  );
+  const missionGroups = useMemo(() => [
+    {
+      key: "full",
+      label: "Đến nhịp kiểm tra FULL",
+      hint: "Ưu tiên ghé trước",
+      className: "bg-amber-50 text-amber-800",
+      missions: activeMissions.filter((m) => normalizePriorityBucket(m.priority_bucket) === 0),
+    },
+    {
+      key: "touch",
+      label: "Nên ghé hôm nay",
+      hint: "Giữ nhịp chăm toà",
+      className: "bg-sky-50 text-sky-800",
+      missions: activeMissions.filter((m) => normalizePriorityBucket(m.priority_bucket) === 1),
+    },
+    {
+      key: "soon",
+      label: "Sắp đến nhịp",
+      hint: "Tiện đường thì ghé",
+      className: "bg-cyan-50 text-cyan-800",
+      missions: activeMissions.filter((m) => normalizePriorityBucket(m.priority_bucket) === 2),
+    },
+    {
+      key: "completed",
+      label: "Đã ghé hôm nay",
+      hint: "Giữ lại để bạn đối chiếu",
+      className: "bg-emerald-50 text-emerald-800",
+      missions: completedToday,
+    },
+  ].filter((group) => group.missions.length > 0), [activeMissions, completedToday]);
 
   const jobsQ = useJobs({ assignee_id: authUser?.id ?? undefined, status: "IN_PROGRESS" } as any);
   const myJobs: any[] = Array.isArray(jobsQ.data) ? (jobsQ.data as any[]).slice(0, 5) : [];
 
   const coordIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const m of suggested) ids.add(m.building_id);
+    for (const m of missions) ids.add(m.building_id);
     for (const p of s?.pending_checks ?? []) ids.add(p.building_id);
     for (const o of openSessions) ids.add(o.building_id);
     return [...ids];
-  }, [suggested, s?.pending_checks, openSessions]);
+  }, [missions, s?.pending_checks, openSessions]);
   const coordsQ = useBuildingCoords(coordIds);
+  const missionCoords = useMemo(() => Object.fromEntries(missions.map((mission) => [
+    mission.building_id,
+    {
+      name: mission.building_name,
+      latitude: mission.latitude,
+      longitude: mission.longitude,
+    },
+  ])), [missions]);
 
   const ticked = s?.today.status === "ticked";
   const leaveToday = s?.today.status === "leave_approved" || s?.today.status === "pending_leave";
@@ -234,14 +284,14 @@ export default function MyDayPage() {
                 <Sun className="h-9 w-9 text-amber-500" />
                 <div className="font-semibold">{v5Copy.dayNotYet}</div>
               </div>
-              {suggested[0] && (
+              {nextMission && (
                 <button
                   className="mt-3 flex w-full items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5 text-left"
-                  onClick={() => openRunner(suggested[0], "FULL")}
+                  onClick={() => openRunner(nextMission, "FULL")}
                 >
                   <span className="text-sm">
-                    <span className="font-medium">Kiểm tra {suggested[0].building_name}</span>
-                    <span className="block text-xs text-slate-500">{suggested[0].reason}</span>
+                    <span className="font-medium">Kiểm tra {nextMission.building_name}</span>
+                    <span className="block text-xs text-slate-500">{nextMission.reason}</span>
                   </span>
                   <ChevronRight className="h-4 w-4 text-emerald-600" />
                 </button>
@@ -271,11 +321,27 @@ export default function MyDayPage() {
 
         {/* KHỐI B — tuyến gợi ý sáng nay */}
         <div className="mb-3 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-            <Building2 className="h-4 w-4 text-sky-600" /> Hôm nay nên ghé
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Building2 className="h-4 w-4 text-sky-600" /> Hôm nay nên ghé
+            </div>
+            {(!isRestDay || showRouteOnRest) && missions.length > 0 && !!s?.today.date && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"
+                onClick={() => setRoutePlannerOpen(true)}
+              >
+                <Route className="h-3.5 w-3.5" /> Xếp tuyến
+              </button>
+            )}
           </div>
           {missionsQ.isLoading ? (
             <div className="h-20 animate-pulse rounded-lg bg-slate-100" />
+          ) : missionsQ.isError ? (
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-slate-600">
+              Chưa tải được tuyến hôm nay.
+              <button className="ml-1 font-medium text-sky-700" onClick={() => missionsQ.refetch()}>Thử lại</button>
+            </div>
           ) : isRestDay && !showRouteOnRest ? (
             <div className="text-sm text-slate-500">
               <p>Hôm nay là ngày nghỉ — danh sách gợi ý tạm thu gọn để bạn thảnh thơi.</p>
@@ -286,27 +352,67 @@ export default function MyDayPage() {
                 {v5Copy.restDayShowRoute}
               </button>
             </div>
-          ) : suggested.length === 0 ? (
+          ) : missionGroups.length === 0 ? (
             <p className="text-sm text-slate-500">Các toà của bạn đều mới được ghé gần đây — tuyệt vời! 🎉</p>
           ) : (
-            suggested.map((m: Mission) => (
-              <div key={m.building_id} className="mb-2 rounded-xl border p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium">{m.building_name}</span>
-                    <span
-                      className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        m.color === "red" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700"
-                      }`}
-                    >
-                      {m.days_since_touch == null ? "chưa có dấu chân" : `${m.days_since_touch} ngày`}
-                    </span>
+            <div className="max-h-[32rem] space-y-4 overflow-y-auto pr-1">
+              {missionGroups.map((group) => (
+                <section key={group.key} aria-labelledby={`mission-group-${group.key}`}>
+                  <div className={`mb-2 flex items-center justify-between rounded-lg px-2.5 py-1.5 ${group.className}`}>
+                    <h3 id={`mission-group-${group.key}`} className="text-xs font-semibold">
+                      {group.label} · {group.missions.length}
+                    </h3>
+                    <span className="text-[10px] opacity-75">{group.hint}</span>
                   </div>
-                  <Button size="sm" onClick={() => openRunner(m, "FULL")}>Bắt đầu</Button>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">{m.reason}</p>
-              </div>
-            ))
+                  <div className="space-y-2">
+                    {group.missions.map((m: Mission) => {
+                      const completed = m.checked_today || normalizePriorityBucket(m.priority_bucket) === 4;
+                      const bucket = normalizePriorityBucket(m.priority_bucket);
+                      const age = bucket === 0 ? m.days_since_full : m.days_since_touch;
+                      return (
+                        <div
+                          key={m.building_id}
+                          className={`rounded-xl border p-3 ${completed ? "border-emerald-100 bg-emerald-50/60" : "border-slate-200"}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-medium">{m.building_name}</span>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  completed ? "bg-emerald-100 text-emerald-700" : bucket === 0
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-sky-100 text-sky-700"
+                                }`}>
+                                  {completed ? "đã ghé hôm nay" : age == null ? "chưa có lần đầu" : `${age} ngày`}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs leading-relaxed text-slate-500">{m.reason}</p>
+                              <p className="mt-1 text-[11px] text-slate-400">
+                                FULL {m.days_since_full == null ? "chưa có lần đầu" : `${m.days_since_full} ngày`}
+                                {" · "}ghé {m.days_since_touch == null ? "chưa có lần đầu" : `${m.days_since_touch} ngày`}
+                              </p>
+                              {!completed && (
+                                <p className="mt-0.5 text-[11px] text-slate-400">
+                                  Nhịp ghé {m.touch_sla_days} ngày · FULL mỗi {m.full_interval_days} ngày
+                                  {m.last_full_by_name ? ` · FULL gần nhất bởi ${m.last_full_by_name}` : ""}
+                                </p>
+                              )}
+                            </div>
+                            {completed ? (
+                              <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2 py-1.5 text-xs font-medium text-emerald-700">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Đã xong
+                              </span>
+                            ) : (
+                              <Button size="sm" className="shrink-0" onClick={() => openRunner(m, "FULL")}>Bắt đầu</Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
           )}
         </div>
 
@@ -387,6 +493,17 @@ export default function MyDayPage() {
         </p>
       </div>
 
+      <RoutePlannerSheet
+        open={routePlannerOpen}
+        onOpenChange={setRoutePlannerOpen}
+        missions={missions}
+        date={s?.today.date ?? ""}
+        onStartInspection={(mission) => {
+          setRoutePlannerOpen(false);
+          openRunner(mission, "FULL");
+        }}
+      />
+
       {runner && (
         <Suspense fallback={null}>
           <InspectionRunner
@@ -394,7 +511,7 @@ export default function MyDayPage() {
             onOpenChange={(o) => { if (!o) { setRunner(null); openSessQ.refetch(); } }}
             buildingId={runner.buildingId}
             buildingName={runner.buildingName}
-            buildingCoords={coordsQ.data?.[runner.buildingId] ?? null}
+            buildingCoords={coordsQ.data?.[runner.buildingId] ?? missionCoords[runner.buildingId] ?? null}
             type={runner.type}
             onDone={() => { summaryQ.refetch(); missionsQ.refetch(); openSessQ.refetch(); }}
           />

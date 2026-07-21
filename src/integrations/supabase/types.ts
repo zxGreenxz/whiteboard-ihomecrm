@@ -13256,6 +13256,10 @@ export type Database = {
         Args: { p_reason?: string; p_status: string; p_user_id: string }
         Returns: Json
       }
+      set_my_ui_preference: {
+        Args: { p_key: string; p_value: Json }
+        Returns: Json
+      }
       set_room_pass_listing_active: {
         Args: { p_active: boolean; p_id: string }
         Returns: {
@@ -13862,6 +13866,70 @@ export type Database = {
       v5_recompute_streak: {
         Args: { p_month: string; p_user: string }
         Returns: Json
+      }
+      v5_route_candidates: {
+        Args: { p_user: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          checked_today: boolean
+          cluster_id: string
+          color: string
+          days_since_full: number
+          days_since_touch: number
+          district: string
+          expiring_contracts: number
+          full_interval_days: number
+          last_full_by_name: string
+          last_full_date: string
+          last_touch_date: string
+          latitude: number
+          longitude: number
+          open_jobs: number
+          priority_bucket: number
+          priority_label: string
+          province: string
+          public_map_url: string
+          reason: string
+          rooms_total: number
+          score: number
+          street_address: string
+          touch_sla_days: number
+          vacant_rooms: number
+          ward: string
+        }[]
+      }
+      v5_route_candidates_self: {
+        Args: never
+        Returns: {
+          building_id: string
+          building_name: string
+          checked_today: boolean
+          cluster_id: string
+          color: string
+          days_since_full: number
+          days_since_touch: number
+          district: string
+          expiring_contracts: number
+          full_interval_days: number
+          last_full_by_name: string
+          last_full_date: string
+          last_touch_date: string
+          latitude: number
+          longitude: number
+          open_jobs: number
+          priority_bucket: number
+          priority_label: string
+          province: string
+          public_map_url: string
+          reason: string
+          rooms_total: number
+          score: number
+          street_address: string
+          touch_sla_days: number
+          vacant_rooms: number
+          ward: string
+        }[]
       }
       v5_run_digest: {
         Args: never

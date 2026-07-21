@@ -1,6 +1,6 @@
 # V5 — HỆ THỐNG LƯƠNG-THƯỞNG-KPI THỐNG NHẤT (Chuyên cần + Streak + Coverage + My Day)
 
-> v5 là đặc tả nghiệp vụ hợp nhất. Hành vi code/DB mới nhất, gồm forward-fix 20/07, được tóm tại [../he-thong/17-luong-thuong.md](../he-thong/17-luong-thuong.md); migration mới hơn thắng khi khác đặc tả. Plan giao hàng: [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). Đối chiếu triển khai: [V5-IMPLEMENTATION-LOG.md](V5-IMPLEMENTATION-LOG.md). Worker watchdog trong thiết kế ban đầu đã bị gỡ; fallback live là nút admin chạy lại job. Reviewed 2026-07-20.
+> v5 là đặc tả nghiệp vụ hợp nhất. Hành vi code/DB mới nhất, gồm forward-fix 20–21/07, được tóm tại [../he-thong/17-luong-thuong.md](../he-thong/17-luong-thuong.md); migration mới hơn thắng khi khác đặc tả. Plan giao hàng: [V5-PLAN-THUC-HIEN.md](V5-PLAN-THUC-HIEN.md). Đối chiếu triển khai: [V5-IMPLEMENTATION-LOG.md](V5-IMPLEMENTATION-LOG.md). Worker watchdog trong thiết kế ban đầu đã bị gỡ; fallback live là nút admin chạy lại job. Reviewed 2026-07-21.
 
 ---
 
@@ -304,7 +304,7 @@ Theo cửa sổ 30 ngày hiện tại: Nathan có 4 toà BẬN tự phủ (1392Q
 
 ## 5.2 SLA + nhắc 3 nấc
 
-**SLA touch: 4 ngày thường / 3 ngày toà nóng** (`sla_days` / `sla_days_hot`; toà nóng = có phòng trống đang chào khách HOẶC HĐ đáo hạn ≤30 ngày). **FULL ≥1 lần/7 ngày/toà** (`full_interval_days` — QUICK chỉ reset touch, không reset đồng hồ FULL). Override per-toà qua `building_overrides[building_id]` (chỉ sla/dwell/photos/cờ-nóng).
+**SLA touch: 4 ngày thường / 3 ngày toà nóng** (`sla_days` / `sla_hot_days`; mặc định toà nóng = có phòng trống đang chào khách, hoặc được bật rõ bằng `building_overrides[building_id].is_hot`). HĐ đáo hạn ≤30 ngày chỉ tăng risk/độ ưu tiên, **không âm thầm rút SLA**. **FULL ≥1 lần/7 ngày/toà** (`full_interval_days` — QUICK chỉ reset touch, không reset đồng hồ FULL). Override per-toà qua `building_overrides[building_id]` (chỉ sla/dwell/photos/cờ-nóng).
 
 **Đồng hồ D (C10):** D = số **NGÀY LỊCH kể cả CN/lễ** kể từ dấu chân thật gần nhất — rủi ro tài sản không nghỉ CN. Nhưng **CN/lễ không push đỏ** (dồn digest sáng ngày làm việc kế tiếp), quiet hours 21:00–07:00 giữ nguyên, và **không nấc nhắc nào trừ tiền**.
 
@@ -327,7 +327,7 @@ Chống spam: 1 digest coverage/người/ngày (gộp top 2–3 toà); tắt CN/
 
 ```
 score = D × (1 + P/20)                        -- D = ngày lịch từ DẤU CHÂN THẬT gần nhất; P = số phòng
-      + 10  nếu có phòng trống đang chào khách
+      + 10  nếu toà đang hot (mặc định có phòng trống; override is_hot có thể bật/tắt)
       + 5 × số HĐ đáo hạn ≤30 ngày (cap 10)
       + 5   nếu kỳ chốt điện nước / thu tiền ≤3 ngày tới
       + 15  nếu có sự cố điện/nước/PCCC đang mở (90 ngày)
@@ -346,7 +346,7 @@ UI: **"Bắt đầu"** (1 chạm, auto geofence 70m — đọc config geofence h
 **Checklist điểm cố định:**
 1. Tủ điện tổng / CB (tiện đọc số nếu sát kỳ chốt)
 2. PCCC — bình (tem hạn / kim áp) + lối thoát không bị chắn
-3. Hành lang **TẦNG do app chỉ định random**
+3. Hành lang **TẦNG do app chỉ định random** — chỉ random trực tiếp trong tập tầng thật từ `rooms`/`floors`; cấm suy dải `1..MAX`, cấm dùng `total_floors` stale để sinh tầng không tồn tại.
 4. Nước — bơm / bồn / đồng hồ tổng / khu rác
 5. **PHÒNG TRỐNG (bắt buộc khi toà đang chào khách)** — mở cửa vào trong, ảnh nạp thẳng module Sale Phòng (*giá trị kép: hàng sẵn bán + không thể fake từ ngoài vì phải có chìa khoá*)
 6. **+1 hạng mục sâu random theo seed ngày+toà** (không đoán trước được)
@@ -451,7 +451,7 @@ Route `/my-day`, mobile-first (pattern `SalarySelfMobile` / `TasksMobilePage`, b
 2. Mọi số tiền realtime dán chip nhỏ `TẠM TÍNH — chốt khi khoá sổ`; trong shadow chưa gắn tiền → nhãn to `TẠM TÍNH — CHƯA GẮN TIỀN` (C8).
 3. Mọi con số ngưỡng/tiền đọc từ `get_salary_v5_config()` lúc runtime — số trong wireframe (26, 231.000đ…) **chỉ là minh hoạ, cấm hardcode** (kể cả `230769` và `26`).
 4. Tái dùng, không xây mới: hero card + tile `.hl-*` (HomeLauncher) · card nhiệm vụ (AlertsList) · camera/watermark/geofence (JobCaptureCamera + TaskCompleteDialog) · popup tick (pipeline `award_job_bonus` → realtime → BonusToast) · thông báo treo (NotificationBell + `useNotifications` + Web Push deep-link `sw.js data.url`).
-5. Nhân viên **không bao giờ thấy** bản đồ D đỏ toàn tuyến, số D, số điểm priority — chỉ thấy LÝ DO BẰNG CHỮ ngôn ngữ khách. Khách thuê không thấy gì của v5 trên mọi surface.
+5. Nhân viên **không bao giờ thấy** raw priority score hoặc bản đồ coverage đỏ toàn tuyến. Riêng sheet xếp tuyến được hiện rõ **hai đồng hồ vận hành** `FULL X/Y ngày` và `ghé X/Y ngày` để tự xếp đường; đây là tuổi dữ liệu trung tính, không phải điểm phạt. Khách thuê không thấy gì của v5 trên mọi surface.
 
 ### 7.2 Wireframe tổng (scroll dọc, 1 cột)
 
@@ -556,7 +556,9 @@ Route `/my-day`, mobile-first (pattern `SalarySelfMobile` / `TasksMobilePage`, b
 
 **K1 — Chip trạng thái ngày-công.** Đúng 3 state: `CHƯA CÓ CÔNG` (xám) / `ĐANG CHỜ CHỐT` (vàng — chỉ khi nguồn 3 đang nợ check) / `ĐÃ CÓ CÔNG` (xanh). Ưu tiên hiển thị: đã tick > chờ chốt > chưa tick. Nguồn tick ghi rõ (việc thật / FULL / thu tiền + check / sự cố thiết bị đã duyệt). Ngày CN-lễ hoặc phép-đã-duyệt: chip đổi thành **"Hôm nay là ngày nghỉ — chuỗi của bạn được giữ nguyên"** (xanh nhạt, không nút hành động, K2 ẩn) — phép là **ngày trung tính bắc cầu streak**, không phải ngày tick (model phép Ch.9/Ch.13). Dữ liệu từ `get_my_day_summary()`.
 
-**K2 — Tuyến gợi ý (~2 toà, theo SLA 4/3).** Dữ liệu từ job `score` 06:00 (`get_daily_missions`): 1 FULL + 1–2 QUICK theo cụm ≤500m, quota ~N/4 toà/ngày. Card lấy đúng anatomy AlertsList. Lý do luôn là CÂU CHỮ sinh từ priority score (phòng đang chào khách / HĐ đáo hạn / kỳ thu ≤3 ngày / lâu chưa ghé) — không bao giờ in số điểm hay số D. "Đổi tuyến" mở bottom-sheet danh sách toà kèm cùng loại lý do, swap 1 chạm, log lựa chọn — **máy gợi ý, người quyết**; từ chối không bị log xấu. Prompt **piggyback** (đang ở toà/cụm ≤500m có toà chưa đạt nhịp): hiện 1 chạm mở QUICK/FULL, +5 điểm, nút "Để sau" bằng cỡ nút chính.
+**K2 — Tuyến gợi ý theo SLA 4/3 + FULL/7.** Dữ liệu runtime từ `v5_route_candidates_self()`, không cắt top-3: màn chính hiện **toàn bộ** nhóm FULL đến nhịp, nhóm nên ghé hôm nay, nhóm sắp đến nhịp và giữ lại toà đã FULL hôm nay để đối chiếu. Hai tuổi dữ liệu tách riêng: dấu chân QUICK/job/thu GPS chỉ reset đồng hồ `touch`; chỉ FULL pass mới reset đồng hồ `FULL`, nên 403PVB hoặc toà tương tự không biến mất khỏi ưu tiên chỉ vì có một touch khác. Thứ tự server deterministic: FULL overdue/never → touch overdue → due-soon → fresh → completed-today; trong nhóm mới xét tuổi/risk/name/id.
+
+"Xếp tuyến" mở bottom-sheet có danh sách cuộn, hiện cả `FULL X/Y ngày` và `ghé X/Y ngày`. Tuyến cần ghé được kéo-thả xuyên nhóm hoặc đổi bằng nút; thứ tự manual của người dùng thắng gợi ý máy. Nút tối ưu dùng GPS **chỉ trong bộ nhớ phiên**, chạy nearest-neighbor + 2-opt **bên trong từng bucket ưu tiên**, giữ toà thiếu GPS ở danh sách. Google Maps chia chặng tối đa 4 toà; toà thiếu tọa độ mở riêng bằng `public_map_url` hoặc địa chỉ. Route lưu atomic tại `profiles.ui_preferences.v5_route_plan` theo payload versioned `{version,date,building_ids,mode,updated_at}` dùng ngày VN từ server; qua ngày tự reset và ID stale bị loại. Mode `priority` luôn lấy thứ tự server mới nhất; `manual` giữ thứ tự toàn cục do người dùng kéo rồi append toà mới; `optimized` giữ thứ tự GPS trong **từng bucket hiện tại**, nên toà FULL khẩn cấp mới không bị chôn sau bucket thấp hơn. Refetch đang mở sheet phải loại toà đã hoàn thành/mất assignment và ghép toà mới mà không xoá thứ tự chưa lưu. **Máy gợi ý, người quyết**; từ chối/đổi tuyến không bị log xấu.
 
 **K3/K4 — Việc & thu tiền đến hạn.** Tái dùng list hiện có; tap đi thẳng vào luồng cũ (TaskCompleteDialog / ThuTien lọc sẵn toà). v5 không đổi gì các luồng này — chỉ hưởng dấu chân từ chúng.
 
@@ -736,7 +738,7 @@ Form đọc/ghi `salary_bonus_rules.rules` qua `useSalaryConfig` (mở rộng), 
 |---|---|---|
 | Chuyên cần (`attendance_v5`) | attendance_budget, paid_leave_days_per_month (0–4), soft_floor {enabled/days/amount} | Mọi field 💰 badge cam **"Hiệu lực từ 01 tháng kế"**; lưu → dialog xác nhận ghi version + audit (ai/khi nào/cũ→mới); dòng preview "Đơn giá tháng này: 6.000.000 / 26 = 230.769đ" — **CHỈ preview, không lưu day_rate** |
 | Streak (`streak_v5`) | milestones, deltas (validate Σ = streak_budget, lỗi inline), shields_free, shield_earn_rule, shield_reserve_cap, shield_spend_cap | shield_spend_cap: chỉ cho đổi 1→2, disable chiều 2→1 + tooltip "Không siết quyền lợi đã mở" (C7) |
-| Coverage (`coverage_v5`) | sla_days/sla_days_hot, remind/remind_hot, full_interval_days, dwell_min[3], photos_min[3], points{}, busy_threshold, cluster_radius_m, quota_divisor, quiet_hours, grace_days, supplement_deadline, snooze_last_remind | Đổi ngay không chờ tháng; sub-table **Override per-toà** (building_overrides): chọn toà → chỉ 4 field sla/dwell/photos/cờ-nóng. Bán kính geofence KHÔNG có ở đây — đọc config acceptance_geofence hiện có |
+| Coverage (`coverage_v5`) | sla_days/sla_hot_days, remind/remind_hot, full_interval_days, dwell_min[3], photos_min[3], points{}, busy_threshold, cluster_radius_m, quota_divisor, quiet_hours, grace_days, supplement_deadline, snooze_last_remind | Đổi ngay không chờ tháng; sub-table **Override per-toà** (building_overrides): chọn toà → chỉ 4 field sla/dwell/photos/cờ-nóng. Bán kính geofence KHÔNG có ở đây — đọc config acceptance_geofence hiện có |
 | Hệ thống (`system_v5`) | holidays[] (date-picker list, khoá chỉnh sau ngày 25 tháng trước — disable + tooltip; owner-force có audit + preview N_chuẩn/đơn giá/mốc bị cắt), review_window_hours, appeal_hours, lịch cron (read-only) + bảng `cron_runs` 20 dòng cuối + nút "Chạy lại job" **từng job trong 4 job** | Toggle "Tiền v5" ghi rõ đang bật/tắt key **`feature_flags.v5_money`** (kill-switch C8), confirm 2 bước |
 | Lịch sử thay đổi | Bảng audit version các key 💰 | Read-only |
 
@@ -1059,7 +1061,7 @@ ALTER TABLE salary_adjustments ADD CONSTRAINT salary_adjustments_source_check
 | 💰 `shield_earn_rule` | jsonb | `{break_no_leave_max:1, earn:1}` | Tháng đứt-không-phép ≤1 → +1; cap kiếm 1/tháng; **nguồn khiên-từ-CN ĐÃ BỎ** | streak_v5 |
 | 💰 `shield_reserve_cap` | int | 2 | Cap tồn | streak_v5 |
 | 💰 `shield_spend_cap` | int/tháng | 1 | Chỉ được NỚI lên 2 sau dữ liệu shadow — không chiều siết | streak_v5 |
-| `sla_days` / `sla_days_hot` | int | **4 / 3** | D đếm ngày LỊCH kể cả CN/lễ; hot = toà chào khách/HĐ đáo hạn | coverage_v5 |
+| `sla_days` / `sla_hot_days` | int | **4 / 3** | D đếm ngày LỊCH kể cả CN/lễ; hot mặc định = có phòng trống, hoặc override `is_hot`; HĐ đáo hạn chỉ tăng risk | coverage_v5 |
 | `remind` / `remind_hot` | int[] | **[3,4,6] / [2,3,5]** | Vàng in-app → đỏ push → báo chủ; **không nấc nào trừ tiền**; CN/lễ không push đỏ | coverage_v5 |
 | `full_interval_days` | int | 7 | FULL ≥1 lần/7 ngày/toà | coverage_v5 |
 | `dwell_min` | int[3] (phút) | **[8,12,18]** | Theo cỡ toà S/M/L; cộng dồn phiên cùng ngày cùng toà | coverage_v5 |

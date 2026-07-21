@@ -23,10 +23,28 @@ export interface Mission {
   building_id: string;
   building_name: string;
   cluster_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  street_address?: string | null;
+  ward?: string | null;
+  district?: string | null;
+  province?: string | null;
+  public_map_url?: string | null;
+  last_touch_date: string | null;
+  last_full_date: string | null;
   days_since_touch: number | null;
   days_since_full: number | null;
   vacant_rooms: number;
-  score: number;
+  rooms_total: number;
+  expiring_contracts: number;
+  open_jobs: number;
+  score: number | string;
+  priority_bucket: number;
+  priority_label: string;
+  touch_sla_days: number;
+  full_interval_days: number;
+  checked_today: boolean;
+  last_full_by_name: string | null;
   color: "red" | "yellow" | "green";
   reason: string;
 }
@@ -48,7 +66,7 @@ export function useMyMissions() {
   return useQuery({
     queryKey: ["v5-my-missions"],
     queryFn: async (): Promise<Mission[]> => {
-      const { data, error } = await rpc("v5_daily_missions_self");
+      const { data, error } = await rpc("v5_route_candidates_self");
       if (error) throw error;
       return (data ?? []) as Mission[];
     },
