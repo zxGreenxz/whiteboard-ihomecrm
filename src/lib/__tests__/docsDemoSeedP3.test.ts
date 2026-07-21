@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync("scripts/docs-demo/seed-p3.mjs", "utf8");
+const source = readFileSync("scripts/docs-demo/seed-p3.mjs", "utf8").replace(
+  /\r\n/g,
+  "\n",
+);
 const paymentFlow =
   source.match(/if \(inv\.pay > 0\) \{([\s\S]*?)\n  \}\n  console\.log/)?.[1] ?? "";
 const v5Cleanup =

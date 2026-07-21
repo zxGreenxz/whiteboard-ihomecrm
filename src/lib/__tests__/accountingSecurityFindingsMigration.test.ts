@@ -2,21 +2,20 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-const terminationSql = readFileSync(
+const readNormalized = (path: string) =>
+  readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+
+const terminationSql = readNormalized(
   "supabase/migrations/20260721135500_termination_non_cash_payment_semantics.sql",
-  "utf8",
 );
-const payoutSql = readFileSync(
+const payoutSql = readNormalized(
   "supabase/migrations/20260721120000_profit_payout_reservations_v2.sql",
-  "utf8",
 );
-const rolloutSql = readFileSync(
+const rolloutSql = readNormalized(
   "supabase/migrations/20260721140500_accounting_rollout_gate_v1.sql",
-  "utf8",
 );
-const finalProfitCloseSql = readFileSync(
+const finalProfitCloseSql = readNormalized(
   "supabase/migrations/20260720215000_profit_close_v2_ignore_inactive_managers.sql",
-  "utf8",
 );
 
 function functionBody(sql: string, signature: string): string {
