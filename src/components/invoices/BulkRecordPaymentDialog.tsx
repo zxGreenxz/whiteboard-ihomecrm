@@ -67,6 +67,7 @@ interface RowData {
   paid_amount: number;
   remaining: number;
   status: InvoiceStatus;
+  has_contract: boolean;
 
   selected: boolean;
   amount_tm: number;
@@ -128,6 +129,19 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   );
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const submitAttemptsRef = useRef<Map<string, {
+    fingerprint: string;
+    idempotencyKey: string;
+    receiptUrl: string | null;
+  }>>(new Map());
+  const realAccounts = useMemo(
+    () => (accounts as any[]).filter((account) => account.is_virtual === false),
+    [accounts],
+  );
+  const virtualAccounts = useMemo(
+    () => (accounts as any[]).filter((account) => account.is_virtual === true),
+    [accounts],
+  );
 
   // ─── Auto-detect sổ quỹ nhận khi đổi toà ───
   const buildingName = useMemo(
@@ -137,11 +151,11 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     if (headerAccountUserEdited) return;
-    if (!buildingName || !accounts.length) {
+    if (!buildingName || !realAccounts.length) {
       setHeaderAccountId('');
       return;
     }
-    const matched = (accounts as any[]).find(
+    const matched = realAccounts.find(
       (a) => a.name?.trim() === buildingName,
     );
     if (matched) {
@@ -151,37 +165,37 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       // Không tìm được → tự bật cột để user chọn
       setShowAccountColumns(true);
     }
-  }, [buildingName, accounts, headerAccountUserEdited]);
+  }, [buildingName, realAccounts, headerAccountUserEdited]);
 
   // ─── Auto-detect sổ quỹ thối theo user: Hiển→Hiển Thối, Hiệp→Hiệp Thối ───
   useEffect(() => {
     if (headerChangeAccountUserEdited) return;
-    if (!accounts.length || !currentUserId) return;
+    if (!virtualAccounts.length || !currentUserId) return;
     const ownName = ownChangeAccountName(currentUserId);
     if (!ownName) return;
-    const target = (accounts as any[]).find(
+    const target = virtualAccounts.find(
       (a) => (a.name ?? '').trim() === ownName,
     );
     if (target) setHeaderChangeAccountId(target.id);
-  }, [accounts, currentUserId, headerChangeAccountUserEdited]);
+  }, [virtualAccounts, currentUserId, headerChangeAccountUserEdited]);
 
   const headerAccountName = useMemo(
-    () => (accounts as any[]).find((a) => a.id === headerAccountId)?.name ?? '',
-    [accounts, headerAccountId],
+    () => realAccounts.find((a) => a.id === headerAccountId)?.name ?? '',
+    [realAccounts, headerAccountId],
   );
   const headerChangeAccountName = useMemo(
-    () => (accounts as any[]).find((a) => a.id === headerChangeAccountId)?.name ?? '',
-    [accounts, headerChangeAccountId],
+    () => virtualAccounts.find((a) => a.id === headerChangeAccountId)?.name ?? '',
+    [virtualAccounts, headerChangeAccountId],
   );
 
   // Sổ quỹ "Làm tròn tiền thiếu" — audit cho rounding < 10K (FE tự
   // detect khi submit, không cần UI riêng).
   const roundingAccountId = useMemo(() => {
-    if (!accounts.length) return '';
-    return (accounts as any[]).find(
+    if (!virtualAccounts.length) return '';
+    return virtualAccounts.find(
       (a) => typeof a.name === 'string' && a.name.trim() === 'Làm tròn tiền thiếu',
     )?.id ?? '';
-  }, [accounts]);
+  }, [virtualAccounts]);
 
   const handleLoad = async () => {
     if (!buildingId) return;
@@ -230,6 +244,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             paid_amount: paid,
             remaining,
             status: (inv.status ?? 'APPROVED') as InvoiceStatus,
+            has_contract: !!inv.contract?.id,
             selected: remaining > 0,
             amount_tm: 0,
             amount_tk: 0,
@@ -291,6 +306,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       return;
     }
     const previewUrl = URL.createObjectURL(file);
+    submitAttemptsRef.current.delete(rows[idx]?.invoice_id);
     setRows((prev) => {
       const next = [...prev];
       const row = next[idx];
@@ -301,6 +317,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
   };
 
   const handleRemoveImage = (idx: number) => {
+    submitAttemptsRef.current.delete(rows[idx]?.invoice_id);
     setRows((prev) => {
       const next = [...prev];
       const row = next[idx];
@@ -346,6 +363,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     setHeaderAccountUserEdited(false);
     setHeaderChangeAccountUserEdited(false);
     setShowAccountColumns(false);
+    submitAttemptsRef.current.clear();
     onOpenChange(false);
   };
 
@@ -361,6 +379,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
         if (!r.selected) return r;
         const sum = r.amount_tm + r.amount_tk + r.amount_tt;
         const net = sum - r.change_amount;
+        const overpay = Math.max(sum - r.remaining, 0);
         if (
           r.amount_tm < 0 ||
           r.amount_tk < 0 ||
@@ -376,6 +395,21 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             ...r,
             error: `Tiền nhận thực (${fmt(net)}đ) > Còn lại (${fmt(r.remaining)}đ). Nhập tiền thối nếu khách trả dư.`,
           };
+        }
+        if (Math.abs(r.change_amount - overpay) >= 0.01) {
+          bad = true;
+          return {
+            ...r,
+            error: `Tiền dư phải đúng ${fmt(overpay)}đ (phần khách đưa vượt còn phải thu).`,
+          };
+        }
+        if (overpay > r.amount_tm) {
+          bad = true;
+          return { ...r, error: 'Phần tiền dư phải nằm hoàn toàn trong cột TM.' };
+        }
+        if (r.keep_as_credit && overpay > 0 && !r.has_contract) {
+          bad = true;
+          return { ...r, error: 'Hóa đơn không có hợp đồng nên không thể giữ credit.' };
         }
         return { ...r, error: undefined };
       }),
@@ -465,20 +499,49 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     setSubmitting(true);
     setFailures([]);
     try {
-      // Upload tất cả ảnh song song để nhanh
-      const uploads = await Promise.all(
+      // Giữ cả URL ảnh và idempotency key ổn định cho retry cùng payload.
+      const preparedAttempts = await Promise.all(
         selected.map(async (r) => {
-          if (!r.receipt_image) return { invoice_id: r.invoice_id, url: null };
-          try {
-            const url = await uploadReceipt(r.receipt_image);
-            return { invoice_id: r.invoice_id, url };
-          } catch (err) {
-            console.error('Upload failed for', r.room_name, err);
-            return { invoice_id: r.invoice_id, url: null };
+          const fileSignature = r.receipt_image
+            ? `${r.receipt_image.name}:${r.receipt_image.size}:${r.receipt_image.type}:${r.receipt_image.lastModified}`
+            : null;
+          const fingerprint = JSON.stringify({
+            paymentDate,
+            invoice_id: r.invoice_id,
+            amount_tm: r.amount_tm,
+            amount_tk: r.amount_tk,
+            amount_tt: r.amount_tt,
+            change_amount: r.change_amount,
+            keep_as_credit: r.keep_as_credit,
+            account_id: r.account_id_override ?? headerAccountId,
+            change_account_id: r.change_account_id_override ?? headerChangeAccountId,
+            rounding_account_id: roundingAccountId || null,
+            notes: r.notes.trim() || null,
+            file: fileSignature,
+          });
+          const cached = submitAttemptsRef.current.get(r.invoice_id);
+          if (cached?.fingerprint === fingerprint) {
+            return { invoice_id: r.invoice_id, ...cached };
           }
+
+          let receiptUrl: string | null = null;
+          if (r.receipt_image) {
+            try {
+              receiptUrl = await uploadReceipt(r.receipt_image);
+            } catch (err) {
+              console.error('Upload failed for', r.room_name, err);
+            }
+          }
+          const prepared = {
+            fingerprint,
+            idempotencyKey: `collect-${crypto.randomUUID()}`,
+            receiptUrl,
+          };
+          submitAttemptsRef.current.set(r.invoice_id, prepared);
+          return { invoice_id: r.invoice_id, ...prepared };
         }),
       );
-      const urlMap = new Map(uploads.map((u) => [u.invoice_id, u.url]));
+      const attemptMap = new Map(preparedAttempts.map((attempt) => [attempt.invoice_id, attempt]));
 
       const items: BulkPaymentItem[] = selected.map((r) => {
         // Làm tròn tự động: residual sau payment > 0 và < 10K → đính rounding
@@ -502,11 +565,12 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
               ? (r.change_account_id_override ?? headerChangeAccountId)
               : null,
           keep_as_credit: r.keep_as_credit && r.change_amount > 0,
-          receipt_image_url: urlMap.get(r.invoice_id) ?? null,
+          receipt_image_url: attemptMap.get(r.invoice_id)?.receiptUrl ?? null,
           notes: r.notes || undefined,
           rounding_amount: willRoundRow ? residualAfter : 0,
           rounding_account_id:
             willRoundRow && roundingAccountId ? roundingAccountId : null,
+          idempotency_key: attemptMap.get(r.invoice_id)?.idempotencyKey,
         };
       });
 
@@ -520,6 +584,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       } else {
         // Giữ dialog mở, hiển thị lỗi từng dòng + bỏ chọn các row đã ok
         const okSet = new Set(result.ok);
+        result.ok.forEach((invoiceId) => submitAttemptsRef.current.delete(invoiceId));
         const failMap = new Map(result.failures.map((f) => [f.invoice_id, f.message]));
         setRows((prev) =>
           prev.map((r) => {
@@ -645,7 +710,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                   <SelectValue placeholder="Chọn sổ quỹ nhận tiền..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {(accounts as any[]).map((a) => (
+                  {realAccounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}
                       {a.bank_name ? ` — ${a.bank_name}` : ''}
@@ -667,7 +732,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                   <SelectValue placeholder="Chọn sổ quỹ chi tiền thối..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {changeAccountOptions(accounts as any[], currentUserId).map((a) => (
+                  {changeAccountOptions(virtualAccounts, currentUserId).map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}
                       {a.bank_name ? ` — ${a.bank_name}` : ''}
@@ -867,7 +932,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                               <SelectValue placeholder="—" />
                             </SelectTrigger>
                             <SelectContent>
-                              {(accounts as any[]).map((a) => (
+                              {realAccounts.map((a) => (
                                 <SelectItem key={a.id} value={a.id}>
                                   {a.name}
                                 </SelectItem>
@@ -888,7 +953,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                               <SelectValue placeholder="—" />
                             </SelectTrigger>
                             <SelectContent>
-                              {changeAccountOptions(accounts as any[], currentUserId).map((a) => (
+                              {changeAccountOptions(virtualAccounts, currentUserId).map((a) => (
                                 <SelectItem key={a.id} value={a.id}>
                                   {a.name}
                                 </SelectItem>

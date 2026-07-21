@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -36,12 +36,17 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { useAccounts } from "@/hooks/useAccounts";
+import { resolveAccountIdForMethod } from "@/lib/cashAccount";
+import { deriveInvoiceDepositDue } from "@/lib/paymentRecordRpc";
+import { toast } from "sonner";
 
 const paymentSchema = z.object({
   type: z.enum(["income", "expense"]),
   invoice_id: z.string().optional(),
   amount: z.number().min(0, "Số tiền phải >= 0"),
   payment_method: z.enum(["TM", "TK", "TT"]),
+  account_id: z.string().optional(),
   payment_date: z.string().min(1, "Ngày thanh toán là bắt buộc"),
   receipt_number: z.string().optional(),
   income_expense_type_id: z.string().optional(),
@@ -49,6 +54,8 @@ const paymentSchema = z.object({
 });
 
 type PaymentFormValues = z.infer<typeof paymentSchema>;
+
+class CollectPaymentValidationError extends Error {}
 
 interface CollectPaymentDialogProps {
   open: boolean;
@@ -66,6 +73,16 @@ export function CollectPaymentDialog({
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const createPayment = useCreatePayment();
   const { data: user } = useAuth();
+  const { data: accounts = [] } = useAccounts({ enabled: open });
+  const realAccounts = useMemo(
+    () => (accounts as any[]).filter((account) => account.is_virtual === false),
+    [accounts],
+  );
+  const attemptRef = useRef<{
+    fingerprint: string;
+    idempotencyKey: string;
+    receiptNumber: string;
+  } | null>(null);
 
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
@@ -74,6 +91,7 @@ export function CollectPaymentDialog({
       invoice_id: preSelectedInvoiceId || "",
       amount: 0,
       payment_method: "TM",
+      account_id: "",
       payment_date: new Date().toISOString().split('T')[0],
       receipt_number: "",
       income_expense_type_id: "",
@@ -82,6 +100,7 @@ export function CollectPaymentDialog({
   });
 
   const watchType = form.watch("type");
+  const watchMethod = form.watch("payment_method");
 
   // Fetch income_expense_types based on selected type
   const { data: incomeExpenseTypes = [] } = useIncomeExpenseTypes(watchType);
@@ -111,7 +130,12 @@ export function CollectPaymentDialog({
         .from("invoices")
         .select(`
           *,
+          invoice_items(type, description, amount),
+          building:buildings!invoices_building_id_fkey(
+            id, name, default_account_id_tt, default_account_id_tk
+          ),
           contract:contracts!invoices_contract_id_fkey (
+            id,
             contract_number,
             tenant:tenants!contracts_tenant_id_fkey (
               full_name, phone
@@ -134,12 +158,14 @@ export function CollectPaymentDialog({
         invoice_id: preSelectedInvoiceId || "",
         amount: 0,
         payment_method: "TM",
+        account_id: "",
         payment_date: new Date().toISOString().split('T')[0],
         receipt_number: "",
         income_expense_type_id: "",
         notes: "",
       });
       setSelectedInvoice(null);
+      attemptRef.current = null;
     }
   }, [open, defaultType]);
 
@@ -157,10 +183,71 @@ export function CollectPaymentDialog({
     }
   }, [form.watch("invoice_id"), invoices]);
 
+  useEffect(() => {
+    if (!selectedInvoice) return;
+    const building = selectedInvoice.building
+      ? {
+          ...selectedInvoice.building,
+          default_account_id_tt: realAccounts.some(
+            (account) => account.id === selectedInvoice.building.default_account_id_tt,
+          )
+            ? selectedInvoice.building.default_account_id_tt
+            : null,
+          default_account_id_tk: realAccounts.some(
+            (account) => account.id === selectedInvoice.building.default_account_id_tk,
+          )
+            ? selectedInvoice.building.default_account_id_tk
+            : null,
+        }
+      : null;
+    const accountId = resolveAccountIdForMethod(
+      watchMethod,
+      realAccounts,
+      user?.id,
+      building,
+    );
+    form.setValue("account_id", accountId, { shouldValidate: true });
+  }, [selectedInvoice, watchMethod, realAccounts, user?.id]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) attemptRef.current = null;
+    onOpenChange(nextOpen);
+  };
+
   const onSubmit = async (data: PaymentFormValues) => {
     try {
-      const receiptPrefix = data.type === "income" ? "PT" : "PC";
-      const receiptNumber = data.receipt_number || `${receiptPrefix}${Date.now()}`;
+      if (data.invoice_id) {
+        if (!selectedInvoice) throw new CollectPaymentValidationError("Không tìm thấy hóa đơn đã chọn");
+        const selectedAccount = realAccounts.find((account) => account.id === data.account_id);
+        if (!selectedAccount) throw new CollectPaymentValidationError("Vui lòng chọn sổ quỹ thật để nhận tiền");
+        const remaining = Math.max(
+          Number(selectedInvoice.total_amount) - Number(selectedInvoice.paid_amount),
+          0,
+        );
+        if (data.amount > remaining) {
+          throw new CollectPaymentValidationError("Màn hình này không hỗ trợ thu dư; dùng Ghi nhận thanh toán để chọn thối/credit");
+        }
+      }
+
+      const fingerprint = JSON.stringify({
+        invoice_id: data.invoice_id || null,
+        amount: data.amount,
+        payment_method: data.payment_method,
+        account_id: data.account_id || null,
+        payment_date: data.payment_date,
+        receipt_number: data.receipt_number?.trim() || null,
+        notes: data.notes?.trim() || null,
+      });
+      if (attemptRef.current?.fingerprint !== fingerprint) {
+        const receiptPrefix = data.type === "income" ? "PT" : "PC";
+        attemptRef.current = {
+          fingerprint,
+          idempotencyKey: `collect-${crypto.randomUUID()}`,
+          receiptNumber: data.receipt_number?.trim() || `${receiptPrefix}${Date.now()}`,
+        };
+      }
+      const currentAttempt = attemptRef.current!;
+      const receiptNumber = currentAttempt.receiptNumber;
 
       await createPayment.mutateAsync({
         invoice_id: data.invoice_id || null as any,
@@ -169,20 +256,31 @@ export function CollectPaymentDialog({
         payment_date: data.payment_date,
         receipt_number: receiptNumber,
         notes: data.notes || null,
+        account_id: data.account_id || null,
+        account_is_virtual: data.account_id
+          ? realAccounts.find((account) => account.id === data.account_id)?.is_virtual ?? null
+          : null,
+        invoice_total_amount: selectedInvoice ? Number(selectedInvoice.total_amount) || 0 : undefined,
+        expected_paid_amount: selectedInvoice ? Number(selectedInvoice.paid_amount) || 0 : undefined,
+        deposit_due: selectedInvoice ? deriveInvoiceDepositDue(selectedInvoice) : undefined,
+        has_contract: selectedInvoice ? !!selectedInvoice.contract?.id : undefined,
+        idempotency_key: currentAttempt.idempotencyKey,
       });
 
+      attemptRef.current = null;
       form.reset();
       setSelectedInvoice(null);
-      onOpenChange(false);
+      handleOpenChange(false);
     } catch (error) {
       console.error("Failed to create payment:", error);
+      if (error instanceof CollectPaymentValidationError) toast.error(error.message);
     }
   };
 
   const isIncome = watchType === "income";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{isIncome ? "Tạo phiếu thu" : "Tạo phiếu chi"}</DialogTitle>
@@ -354,6 +452,33 @@ export function CollectPaymentDialog({
               />
             </div>
 
+            {selectedInvoice && isIncome && (
+              <FormField
+                control={form.control}
+                name="account_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sổ quỹ nhận *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Chọn sổ quỹ thật nhận tiền" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {realAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -415,7 +540,7 @@ export function CollectPaymentDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => handleOpenChange(false)}
               >
                 Hủy
               </Button>

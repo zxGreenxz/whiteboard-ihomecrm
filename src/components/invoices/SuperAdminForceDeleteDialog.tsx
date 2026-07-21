@@ -30,6 +30,8 @@ interface PaymentRow {
   payment_method: 'TM' | 'TT' | 'TK' | string;
   payment_date: string;
   receipt_number: string | null;
+  collection_id: string | null;
+  reversed_at: string | null;
   created_at: string;
 }
 
@@ -68,14 +70,20 @@ const SuperAdminForceDeleteDialog = ({
   }, [open]);
 
   const invoiceId = invoice?.id ?? '';
-  const { data: payments, isLoading } = useQuery({
+  const {
+    data: payments,
+    isLoading,
+    isFetching,
+    isError,
+  } = useQuery({
     queryKey: ['invoice-payments-summary', invoiceId],
     enabled: open && !!invoiceId,
     queryFn: async (): Promise<PaymentRow[]> => {
       const { data, error } = await (supabase as any)
         .from('payments')
-        .select('id, amount, payment_method, payment_date, receipt_number, created_at')
+        .select('id, amount, payment_method, payment_date, receipt_number, collection_id, reversed_at, created_at')
         .eq('invoice_id', invoiceId)
+        .is('reversed_at', null)
         .order('created_at', { ascending: true });
       if (error) throw error;
       return (data || []) as PaymentRow[];
@@ -86,7 +94,14 @@ const SuperAdminForceDeleteDialog = ({
 
   const paymentList = payments ?? [];
   const totalPaid = paymentList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const canConfirm = typed.trim().toUpperCase() === CONFIRM_WORD && !isPending;
+  const hasActiveV5Collection = paymentList.some((payment) => !!payment.collection_id);
+  const canConfirm =
+    typed.trim().toUpperCase() === CONFIRM_WORD
+    && !isPending
+    && !isLoading
+    && !isFetching
+    && !isError
+    && !hasActiveV5Collection;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -94,11 +109,11 @@ const SuperAdminForceDeleteDialog = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-700">
             <AlertTriangle className="h-5 w-5" />
-            Xoá vĩnh viễn hoá đơn
+            Huỷ cưỡng bức hoá đơn
           </DialogTitle>
           <DialogDescription>
-            Thao tác chỉ dành cho super admin. Hoá đơn sẽ chuyển sang trạng thái Đã huỷ và các
-            payment liên quan sẽ bị xoá vĩnh viễn.
+            Thao tác chỉ dành cho super admin. Collection V5 đang hoạt động phải được hoàn tác
+            trước; giao diện không xoá payment V5 để tránh phá lịch sử kế toán.
           </DialogDescription>
         </DialogHeader>
 
@@ -136,8 +151,12 @@ const SuperAdminForceDeleteDialog = ({
         </div>
 
         <div>
-          <div className="mb-2 text-sm font-medium">Payment sẽ bị xoá vĩnh viễn</div>
-          {isLoading ? (
+          <div className="mb-2 text-sm font-medium">Payment đang hoạt động</div>
+          {isError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700">
+              Không thể kiểm tra payment đang hoạt động. Hệ thống đã khóa thao tác huỷ.
+            </div>
+          ) : isLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : paymentList.length === 0 ? (
             <div className="rounded-md border border-dashed border-zinc-200 p-3 text-center text-sm text-muted-foreground">
@@ -182,7 +201,7 @@ const SuperAdminForceDeleteDialog = ({
                   })}
                   <tr className="bg-red-50 border-t border-red-200">
                     <td colSpan={3} className="px-3 py-2 text-right font-semibold text-red-700">
-                      Tổng payment sẽ bị xoá ({paymentList.length} phiếu)
+                      Tổng payment đang liên kết ({paymentList.length} phiếu)
                     </td>
                     <td className="px-3 py-2 text-right font-bold text-red-700">
                       {fmtVND(totalPaid)}
@@ -194,18 +213,24 @@ const SuperAdminForceDeleteDialog = ({
           )}
         </div>
 
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div className={`rounded-md border p-3 text-sm ${
+          hasActiveV5Collection
+            ? 'border-amber-300 bg-amber-50 text-amber-900'
+            : 'border-red-200 bg-red-50 text-red-800'
+        }`}>
           <div className="font-semibold flex items-center gap-1.5">
             <AlertTriangle className="h-4 w-4" />
-            Cảnh báo
+            {hasActiveV5Collection ? 'Không thể huỷ khi collection V5 còn hoạt động' : 'Cảnh báo'}
           </div>
           <ul className="mt-1 list-disc pl-5 space-y-0.5">
-            <li>Các payment trên sẽ bị xoá <b>VĨNH VIỄN</b>, không thể phục hồi.</li>
-            <li>Số tiền dư (excess credit) phát sinh từ HĐ này (nếu có) cũng sẽ bị xoá.</li>
-            <li>
-              Hoá đơn chuyển sang trạng thái <b>Đã huỷ</b>. Có thể phục hồi hoá đơn nhưng
-              payment đã mất sẽ không quay lại.
-            </li>
+            {hasActiveV5Collection ? (
+              <li>Vào “Các lần thanh toán” và hoàn tác collection trước, rồi mới huỷ hóa đơn.</li>
+            ) : (
+              <>
+                <li>Writer huỷ sẽ từ chối nếu vẫn còn phiếu thu chưa hoàn tác.</li>
+                <li>Hoá đơn chỉ chuyển sang <b>Đã huỷ</b> sau khi chuỗi tiền đã được xử lý an toàn.</li>
+              </>
+            )}
           </ul>
         </div>
 
@@ -228,7 +253,11 @@ const SuperAdminForceDeleteDialog = ({
             Huỷ bỏ
           </Button>
           <Button variant="destructive" disabled={!canConfirm} onClick={onConfirm}>
-            {isPending ? 'Đang xoá...' : 'Xoá vĩnh viễn'}
+            {hasActiveV5Collection
+              ? 'Hoàn tác collection trước'
+              : isPending
+                ? 'Đang huỷ...'
+                : 'Huỷ hoá đơn'}
           </Button>
         </DialogFooter>
       </DialogContent>

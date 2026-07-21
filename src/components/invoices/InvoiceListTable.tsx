@@ -55,6 +55,28 @@ interface InvoiceListTableProps {
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
+export const getActivePaymentMethods = (invoice: InvoiceWithRelations): string[] => {
+  const activeMethods = (invoice as InvoiceWithRelations & {
+    active_payment_methods?: unknown;
+  }).active_payment_methods;
+  if (Array.isArray(activeMethods)) {
+    return activeMethods.filter((method): method is string => typeof method === 'string');
+  }
+
+  return ((invoice.payments ?? []) as Array<{
+    payment_method?: string;
+    reversed_at?: string | null;
+  }>)
+    .filter((payment) => !payment.reversed_at)
+    .map((payment) => payment.payment_method)
+    .filter((method): method is string => !!method);
+};
+
+export const hasMixedActivePaymentMethods = (invoice: InvoiceWithRelations): boolean => {
+  const methods = new Set(getActivePaymentMethods(invoice));
+  return methods.has('TK') && (methods.has('TM') || methods.has('TT'));
+};
+
 /** Sum invoice_items amounts by type */
 const sumByType = (items: InvoiceWithRelations['invoice_items'], types: string[]): number => {
   if (!items) return 0;
@@ -121,16 +143,12 @@ const InvoiceListTable = ({
   // Set hoá đơn có TK đi kèm TM hoặc TT (cả TM+TK, TT+TK, hoặc TM+TT+TK)
   // → tô vàng nhẹ cell "Đã thanh toán". Mix mà KHÔNG có TK (ví dụ TM+TT)
   // thì không cảnh báo.
-  // Tính TRỰC TIẾP từ invoice.payments đã nạp sẵn trong danh sách
-  // (INVOICE_LIST_SELECT đã embed payments.payment_method) → BỎ query payments
-  // thứ 2 từng bắn mỗi lần render bảng, đua tài nguyên với query chính.
+  // `active_payment_methods` được aggregate server-side từ receipt projection,
+  // nên gồm cả tender pure-credit và loại payment đã hoàn tác.
   const mixedInvoiceIds = useMemo(() => {
     const mixed = new Set<string>();
     for (const inv of invoices) {
-      const methods = new Set(
-        ((inv as any).payments ?? []).map((p: { payment_method?: string }) => p.payment_method),
-      );
-      if (methods.has('TK') && (methods.has('TM') || methods.has('TT'))) {
+      if (hasMixedActivePaymentMethods(inv)) {
         mixed.add(inv.id);
       }
     }
@@ -221,6 +239,7 @@ const InvoiceListTable = ({
               const isFullyPaid =
                 (invoice.total_amount || 0) > 0 &&
                 (invoice.paid_amount || 0) >= (invoice.total_amount || 0);
+              const hasActiveReceipts = getActivePaymentMethods(invoice).length > 0;
               const rentAmount = sumByType(invoice.invoice_items, ['RENT']);
               const { electric, water, pdv, penalty } = splitServiceAmounts(invoice.invoice_items);
 
@@ -480,7 +499,7 @@ const InvoiceListTable = ({
                       }
                     >
                       <span>{formatCurrency(invoice.paid_amount || 0)}</span>
-                      {(invoice.paid_amount || 0) > 0 && (
+                      {((invoice.paid_amount || 0) > 0 || hasActiveReceipts) && (
                         <button
                           className="ml-1 text-blue-500 hover:underline text-xs"
                           onClick={() =>

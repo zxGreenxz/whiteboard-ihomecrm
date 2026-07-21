@@ -26,6 +26,20 @@ export const useUploadPaymentReceipt = () => {
       const invalid = validateReceiptFile(file);
       if (invalid) throw new Error(invalid);
 
+      const { data: payment, error: paymentError } = await (supabase as any)
+        .from('payments')
+        .select('id, collection_id')
+        .eq('id', payment_id)
+        .single();
+      if (paymentError || !payment) {
+        throw paymentError ?? new Error('Không tìm thấy phiếu thanh toán');
+      }
+      if (payment.collection_id) {
+        throw new Error(
+          'Lần thu V5 đã khóa bất biến. Hiện chưa có RPC được ủy quyền để bổ sung ảnh; hãy đính ảnh ngay khi thu hoặc hoàn tác rồi ghi lại.',
+        );
+      }
+
       const url = await uploadReceiptToStorage(file);
 
       // 1. Cập nhật payments.receipt_image_url (ảnh hiển thị trên popup).

@@ -54,22 +54,47 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
   const { data: currentUser } = useAuth();
   const bulkMutation = useBulkRecordPayment();
 
+  const realAccounts = useMemo(
+    () => (accounts as any[]).filter((account) => account.is_virtual === false),
+    [accounts],
+  );
+  const virtualAccounts = useMemo(
+    () => (accounts as any[]).filter((account) => account.is_virtual === true),
+    [accounts],
+  );
+
   const roundingAccountId = useMemo(() => {
-    if (!accounts.length) return '';
+    if (!virtualAccounts.length) return '';
     return (
-      (accounts as any[]).find(
+      virtualAccounts.find(
         (a) => typeof a.name === 'string' && a.name.trim() === 'Làm tròn tiền thiếu',
       )?.id ?? ''
     );
-  }, [accounts]);
+  }, [virtualAccounts]);
 
   /** Sổ quỹ nhận cho 1 HĐ theo phương thức — '' nếu chưa cấu hình (UI disable chip). */
-  const accountIdFor = (invoice: InvoiceWithRelations, method: CollectMethod): string =>
-    resolveAccountIdForMethod(method, accounts as any[], currentUser?.id, invoice.building);
+  const accountIdFor = (invoice: InvoiceWithRelations, method: CollectMethod): string => {
+    const building = invoice.building
+      ? {
+          ...invoice.building,
+          default_account_id_tt: realAccounts.some(
+            (account) => account.id === invoice.building?.default_account_id_tt,
+          )
+            ? invoice.building.default_account_id_tt
+            : null,
+          default_account_id_tk: realAccounts.some(
+            (account) => account.id === invoice.building?.default_account_id_tk,
+          )
+            ? invoice.building.default_account_id_tk
+            : null,
+        }
+      : null;
+    return resolveAccountIdForMethod(method, realAccounts, currentUser?.id, building);
+  };
 
   /** Sổ "…Thối" của user (Hiển→Hiển Thối, Hiệp→Hiệp Thối, khác→sổ "…Thối" đầu). */
   const changeAccountId = (): string =>
-    findOwnChangeAccount(accounts as any[], currentUser?.id)?.id ?? '';
+    findOwnChangeAccount(virtualAccounts, currentUser?.id)?.id ?? '';
 
   const collect = async ({
     invoice,
@@ -128,6 +153,11 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
         );
       }
     }
+    if (rounding > 0 && !roundingAccountId) {
+      throw new Error(
+        'Chưa có sổ ảo "Làm tròn tiền thiếu". Vào Cài đặt → Sổ quỹ để tạo/cấu hình trước khi làm tròn.',
+      );
+    }
 
     const item: BulkPaymentItem = {
       invoice_id: invoice.id,
@@ -161,9 +191,9 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
     collect,
     accountIdFor,
     /** Tên sổ thối của user (hiển thị trong form); '' nếu chưa có. */
-    changeAccountName: findOwnChangeAccount(accounts as any[], currentUser?.id)?.name ?? '',
+    changeAccountName: findOwnChangeAccount(virtualAccounts, currentUser?.id)?.name ?? '',
     isCollecting: bulkMutation.isPending,
     hasCashAccount:
-      !!resolveTmAccountId(accounts as any[], currentUser?.id) || accounts.length > 0,
+      !!resolveTmAccountId(realAccounts, currentUser?.id) || realAccounts.length > 0,
   };
 };

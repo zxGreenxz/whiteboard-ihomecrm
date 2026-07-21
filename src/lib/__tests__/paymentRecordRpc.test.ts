@@ -1,188 +1,335 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  buildRecordInvoicePaymentRpcArgs,
-  classifyV4FallbackSignal,
-  recordInvoicePaymentWithFallback,
-  type PaymentRpcInvoker,
-  type RecordInvoicePaymentInput,
+  buildRecordInvoiceCollectionRpcArgs,
+  deriveInvoiceDepositDue,
+  planInvoiceCollection,
+  recordInvoiceCollectionV5,
+  reverseInvoicePaymentBySource,
+  type CollectionRpcInvoker,
+  type RecordInvoiceCollectionInput,
+  type ReversePaymentRpcInvoker,
 } from "../paymentRecordRpc";
 
-const INPUT: RecordInvoicePaymentInput = {
+const COLLECTION_INPUT: RecordInvoiceCollectionInput = {
   invoice_id: "11111111-1111-4111-8111-111111111111",
-  amount: 150000,
-  payment_method: "TM",
-  payment_date: "2026-07-17",
+  collection_date: "2026-07-21",
+  tenders: [
+    {
+      payment_method: "TK",
+      gross_amount: 3_000_000,
+      account_id: "22222222-2222-4222-8222-222222222222",
+    },
+    {
+      payment_method: "TM",
+      gross_amount: 2_000_000,
+      account_id: "33333333-3333-4333-8333-333333333333",
+      change_account_id: "44444444-4444-4444-8444-444444444444",
+    },
+  ],
+  overpay_action: "REFUND",
+  allow_rounding: false,
+  notes: "Thu tại phòng",
+  receipt_image_url: "https://example.com/receipt.jpg",
+  expected_paid_amount: 1_000_000,
 };
 
-const KEY = "pay-key-00000001";
+const KEY = "collect-key-00000001";
 
-describe("buildRecordInvoicePaymentRpcArgs", () => {
-  it("maps every field exactly with null defaults for omitted optionals", () => {
-    expect(buildRecordInvoicePaymentRpcArgs(INPUT, KEY)).toEqual({
-      p_invoice_id: INPUT.invoice_id,
-      p_amount: 150000,
-      p_payment_method: "TM",
-      p_payment_date: "2026-07-17",
+describe("record_invoice_collection_v5 args and routing", () => {
+  it("maps one RPC payload containing every tender", () => {
+    expect(buildRecordInvoiceCollectionRpcArgs(COLLECTION_INPUT, `  ${KEY}  `)).toEqual({
+      p_invoice_id: COLLECTION_INPUT.invoice_id,
+      p_collection_date: "2026-07-21",
+      p_tenders: [
+        {
+          payment_method: "TK",
+          gross_amount: 3_000_000,
+          account_id: "22222222-2222-4222-8222-222222222222",
+          change_account_id: null,
+          rounding_account_id: null,
+          receipt_number: null,
+        },
+        {
+          payment_method: "TM",
+          gross_amount: 2_000_000,
+          account_id: "33333333-3333-4333-8333-333333333333",
+          change_account_id: "44444444-4444-4444-8444-444444444444",
+          rounding_account_id: null,
+          receipt_number: null,
+        },
+      ],
+      p_overpay_action: "REFUND",
+      p_allow_rounding: false,
+      p_notes: "Thu tại phòng",
+      p_receipt_image_url: "https://example.com/receipt.jpg",
+      p_expected_paid_amount: 1_000_000,
       p_idempotency_key: KEY,
-      p_account_id: null,
-      p_notes: null,
-      p_receipt_image_url: null,
-      p_voucher: null,
-      p_items: null,
-      p_receipt_number: null,
-      p_voucher_owner_id: null,
     });
   });
 
-  it("passes optional fields through verbatim", () => {
-    const voucher = { room_id: "22222222-2222-4222-8222-222222222222" };
-    const items = [{ income_expense_type_id: "33333333-3333-4333-8333-333333333333" }];
-    const args = buildRecordInvoicePaymentRpcArgs(
-      {
-        ...INPUT,
-        account_id: "44444444-4444-4444-8444-444444444444",
-        notes: "ghi chú",
-        receipt_image_url: "https://example.com/r.jpg",
-        receipt_number: "PT-001",
-        voucher,
-        items,
-        voucher_owner_id: "55555555-5555-4555-8555-555555555555",
-      },
-      KEY,
-    );
-    expect(args.p_account_id).toBe("44444444-4444-4444-8444-444444444444");
-    expect(args.p_notes).toBe("ghi chú");
-    expect(args.p_receipt_image_url).toBe("https://example.com/r.jpg");
-    expect(args.p_receipt_number).toBe("PT-001");
-    expect(args.p_voucher).toBe(voucher);
-    expect(args.p_items).toBe(items);
-    expect(args.p_voucher_owner_id).toBe("55555555-5555-4555-8555-555555555555");
+  it("keeps the same prepared key stable across retries", () => {
+    expect(buildRecordInvoiceCollectionRpcArgs(COLLECTION_INPUT, KEY).p_idempotency_key).toBe(KEY);
+    expect(buildRecordInvoiceCollectionRpcArgs(COLLECTION_INPUT, KEY).p_idempotency_key).toBe(KEY);
   });
 
-  it("trims the idempotency key", () => {
-    expect(buildRecordInvoicePaymentRpcArgs(INPUT, `  ${KEY}  `).p_idempotency_key).toBe(KEY);
+  it("rejects virtual receiving accounts and real metadata accounts", () => {
+    expect(() => buildRecordInvoiceCollectionRpcArgs({
+      ...COLLECTION_INPUT,
+      tenders: [{
+        payment_method: "TM",
+        gross_amount: 100_000,
+        account_id: "virtual-receiving",
+        account_is_virtual: true,
+      }],
+      overpay_action: "REJECT",
+    }, KEY)).toThrow(/sổ thật/);
+
+    expect(() => buildRecordInvoiceCollectionRpcArgs({
+      ...COLLECTION_INPUT,
+      tenders: [{
+        payment_method: "TM",
+        gross_amount: 100_000,
+        account_id: "real-receiving",
+        account_is_virtual: false,
+        change_account_id: "real-change",
+        change_account_is_virtual: false,
+      }],
+    }, KEY)).toThrow(/tiền thối phải là sổ ảo/);
+
+    expect(() => buildRecordInvoiceCollectionRpcArgs({
+      ...COLLECTION_INPUT,
+      tenders: [{
+        payment_method: "TM",
+        gross_amount: 100_000,
+        account_id: "real-receiving",
+        account_is_virtual: false,
+        rounding_account_id: "real-rounding",
+        rounding_account_is_virtual: false,
+      }],
+      overpay_action: "REJECT",
+    }, KEY)).toThrow(/làm tròn phải là sổ ảo/);
   });
 
   it.each(["short", "has space key", "bad!char-key", "việt-hoá-key-123"])(
     "rejects invalid idempotency key %s",
-    (bad) => {
-      expect(() => buildRecordInvoicePaymentRpcArgs(INPUT, bad)).toThrow(/idempotency_key/);
-    },
-  );
-
-  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
-    "rejects non-positive or non-finite amount %s",
-    (amount) => {
-      expect(() =>
-        buildRecordInvoicePaymentRpcArgs({ ...INPUT, amount }, KEY),
-      ).toThrow(/số dương/);
-    },
-  );
-});
-
-describe("classifyV4FallbackSignal", () => {
-  it("classifies PGRST202 as writer-not-deployed", () => {
-    expect(classifyV4FallbackSignal({ code: "PGRST202", message: "not found" })).toBe(
-      "writer-not-deployed",
-    );
-  });
-
-  it("classifies 55000 'chưa bật' as writer-disabled", () => {
-    expect(
-      classifyV4FallbackSignal({
-        code: "55000",
-        message: "Writer thu tiền chưa bật cho tổ chức này",
-      }),
-    ).toBe("writer-disabled");
-  });
-
-  it("does NOT treat other 55000 errors as fallback (ledger anomaly must throw)", () => {
-    expect(
-      classifyV4FallbackSignal({
-        code: "55000",
-        message: "Không nhận diện được operation idempotency",
-      }),
-    ).toBeNull();
-  });
-
-  it("classifies 42501 as v4-denied (coexistence until T7 drain)", () => {
-    expect(
-      classifyV4FallbackSignal({ code: "42501", message: "permission denied" }),
-    ).toBe("v4-denied");
-  });
-
-  it.each([
-    ["23505", "idempotency_key đã dùng với nội dung khác"],
-    ["23505", "idempotency_key đã dùng ở đường legacy (v3)"],
-    ["P0001", "Số tiền không hợp lệ"],
-    [undefined, "network down"],
-  ])("never falls back on %s %s", (code, message) => {
-    expect(classifyV4FallbackSignal({ code, message })).toBeNull();
-  });
-});
-
-describe("recordInvoicePaymentWithFallback", () => {
-  const okV4 = { data: { payment_id: "v4-payment" }, error: null };
-  const okV3 = { data: { payment_id: "v3-payment" }, error: null };
-
-  it("returns CANONICAL on v4 success without touching v3", async () => {
-    const rpc = vi.fn().mockResolvedValue(okV4) as unknown as PaymentRpcInvoker;
-    const outcome = await recordInvoicePaymentWithFallback(rpc, INPUT, KEY);
-    expect(outcome).toEqual({ result: { payment_id: "v4-payment" }, route: "CANONICAL" });
-    expect(rpc).toHaveBeenCalledTimes(1);
-    expect(rpc).toHaveBeenCalledWith(
-      "record_invoice_payment_v4",
-      expect.objectContaining({ p_idempotency_key: KEY }),
-    );
-  });
-
-  it.each([
-    [{ code: "PGRST202", message: "no function" }, "writer-not-deployed"],
-    [{ code: "55000", message: "Writer thu tiền chưa bật cho tổ chức này" }, "writer-disabled"],
-    [{ code: "42501", message: "Không có quyền thu tiền (thu_tien.collect)" }, "v4-denied"],
-  ])("falls back to v3 with IDENTICAL args on %o", async (error, reason) => {
-    const rpc = vi
-      .fn()
-      .mockResolvedValueOnce({ data: null, error })
-      .mockResolvedValueOnce(okV3) as unknown as PaymentRpcInvoker;
-    const outcome = await recordInvoicePaymentWithFallback(rpc, INPUT, KEY);
-    expect(outcome).toEqual({
-      result: { payment_id: "v3-payment" },
-      route: "LEGACY",
-      legacyReason: reason,
-    });
-    const calls = (rpc as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls[0][0]).toBe("record_invoice_payment_v4");
-    expect(calls[1][0]).toBe("record_invoice_payment_v3");
-    expect(calls[1][1]).toEqual(calls[0][1]);
-  });
-
-  it.each([
-    { code: "23505", message: "idempotency_key đã dùng với nội dung khác" },
-    { code: "23505", message: "idempotency_key đã dùng ở đường legacy (v3)" },
-    { code: "55000", message: "Không nhận diện được operation idempotency" },
-    { code: "P0001", message: "Số tiền không hợp lệ" },
-  ])("throws v4 error %o without calling v3", async (error) => {
-    const rpc = vi.fn().mockResolvedValue({ data: null, error }) as unknown as PaymentRpcInvoker;
-    await expect(recordInvoicePaymentWithFallback(rpc, INPUT, KEY)).rejects.toBe(error);
-    expect(rpc).toHaveBeenCalledTimes(1);
-  });
-
-  it("throws the v3 error when the fallback also fails", async () => {
-    const v3Error = { code: "42501", message: "legacy denied too" };
-    const rpc = vi
-      .fn()
-      .mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "absent" } })
-      .mockResolvedValueOnce({ data: null, error: v3Error }) as unknown as PaymentRpcInvoker;
-    await expect(recordInvoicePaymentWithFallback(rpc, INPUT, KEY)).rejects.toBe(v3Error);
-  });
-
-  it("validates the key before any rpc call", async () => {
-    const rpc = vi.fn() as unknown as PaymentRpcInvoker;
-    await expect(recordInvoicePaymentWithFallback(rpc, INPUT, "bad key")).rejects.toThrow(
+    (bad) => expect(() => buildRecordInvoiceCollectionRpcArgs(COLLECTION_INPUT, bad)).toThrow(
       /idempotency_key/,
-    );
+    ),
+  );
+
+  it("calls V5 exactly once on success and never invokes legacy", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: { collection_id: "collection-1" },
+      error: null,
+    }) as unknown as CollectionRpcInvoker;
+    const outcome = await recordInvoiceCollectionV5(rpc, COLLECTION_INPUT, KEY);
+    expect(outcome).toEqual({ collection_id: "collection-1" });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { code: "PGRST202", message: "function missing" },
+    { code: "55000", message: "Writer invoice.collection.v5 chưa bật" },
+    { code: "42501", message: "Không có quyền thu tiền hóa đơn" },
+    { code: "55000", message: "Writer invoice.collection.v5 đang bị đóng băng" },
+    { code: "55000", message: "[FROZEN] invoice.collection.v5" },
+    { code: "40001", message: "Số đã thu vừa thay đổi" },
+    { code: "23505", message: "idempotency_key đã dùng với nội dung khác" },
+  ])("does not swallow business error %o", async (error) => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error }) as unknown as CollectionRpcInvoker;
+    await expect(recordInvoiceCollectionV5(rpc, COLLECTION_INPUT, KEY)).rejects.toBe(error);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("collection planning", () => {
+  it("treats gross as money received and allocates refund only from TM", () => {
+    const plan = planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      invoice_total_amount: 5_000_000,
+      deposit_due: 0,
+      has_contract: true,
+    });
+    expect(plan).toMatchObject({
+      gross_amount: 5_000_000,
+      retained_amount: 4_000_000,
+      applied_amount: 4_000_000,
+      change_amount: 1_000_000,
+      credit_amount: 0,
+    });
+    expect(plan.tenders[0]).toMatchObject({ applied_amount: 3_000_000, change_amount: 0 });
+    expect(plan.tenders[1]).toMatchObject({ applied_amount: 1_000_000, change_amount: 1_000_000 });
+  });
+
+  it("allocates overpay as credit without reducing retained cash", () => {
+    const plan = planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      overpay_action: "CREDIT",
+      tenders: COLLECTION_INPUT.tenders.map((tender) => ({
+        ...tender,
+        change_account_id: null,
+      })),
+      invoice_total_amount: 5_000_000,
+      deposit_due: 0,
+      has_contract: true,
+    });
+    expect(plan).toMatchObject({
+      gross_amount: 5_000_000,
+      retained_amount: 5_000_000,
+      applied_amount: 4_000_000,
+      credit_amount: 1_000_000,
+      change_amount: 0,
+    });
+    expect(plan.tenders.reduce((sum, line) => sum + line.credit_amount, 0)).toBe(1_000_000);
+  });
+
+  it("requires TM to cover the complete overpay", () => {
+    expect(() => planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      tenders: [
+        { payment_method: "TK", gross_amount: 4_500_000, account_id: "account-tk" },
+        { payment_method: "TM", gross_amount: 500_000, account_id: "account-tm", change_account_id: "change" },
+      ],
+      invoice_total_amount: 4_000_000,
+      expected_paid_amount: 0,
+      deposit_due: 0,
+    })).toThrow(/tiền mặt TM/);
+  });
+
+  it("rounds a small revenue residual with an explicit account", () => {
+    const plan = planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      tenders: [{
+        payment_method: "TM",
+        gross_amount: 995_000,
+        account_id: "account-tm",
+        rounding_account_id: "rounding-account",
+      }],
+      overpay_action: "REJECT",
+      allow_rounding: true,
+      expected_paid_amount: 0,
+      invoice_total_amount: 1_000_000,
+      deposit_due: 0,
+    });
+    expect(plan.rounding_amount).toBe(5_000);
+    expect(plan.tenders[0].rounding_amount).toBe(5_000);
+  });
+
+  it("rejects rounding when the unpaid residual is deposit", () => {
+    expect(() => planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      tenders: [{
+        payment_method: "TM",
+        gross_amount: 995_000,
+        account_id: "account-tm",
+        rounding_account_id: "rounding-account",
+      }],
+      overpay_action: "REJECT",
+      allow_rounding: true,
+      expected_paid_amount: 0,
+      invoice_total_amount: 1_000_000,
+      deposit_due: 1_000_000,
+    })).toThrow(/tiền cọc/);
+  });
+
+  it("derives deposit from accounting class, legacy label and debt sources once", () => {
+    expect(deriveInvoiceDepositDue({
+      invoice_items: [
+        { accounting_class: "DEPOSIT", type: "OTHER", description: "Tiền cọc", amount: 500_000 },
+        { type: "OTHER", description: "Tiền cọc", amount: 300_000 },
+        { type: "OTHER", description: "Cọc xe máy", amount: 100_000 },
+      ],
+      previous_debt_sources: [{ type: "deposit", amount: 200_000 }],
+    })).toBe(1_000_000);
+  });
+
+  it("keeps tender allocations balanced without client-side writes", () => {
+    const plan = planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      invoice_total_amount: 5_000_000,
+      deposit_due: 1_000_000,
+      has_contract: true,
+    });
+    expect(plan.tenders.reduce((sum, line) => sum + line.gross_amount, 0)).toBe(plan.gross_amount);
+    expect(plan.tenders.reduce((sum, line) => sum + line.applied_amount, 0)).toBe(plan.applied_amount);
+    expect(plan.tenders.reduce((sum, line) => sum + line.change_amount, 0)).toBe(plan.change_amount);
+  });
+});
+
+describe("reverse routing", () => {
+  it("reverses a V5 collection directly", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { status: "REVERSED" }, error: null }) as unknown as ReversePaymentRpcInvoker;
+    const outcome = await reverseInvoicePaymentBySource(rpc, {
+      payment_id: "payment-1",
+      collection_id: "collection-1",
+      reversal_date: "2026-07-21",
+      reason: "Hoàn tác từ giao diện",
+      idempotency_key: "reverse-collection-0001",
+    });
+    expect(outcome.source).toBe("COLLECTION");
+    expect(rpc).toHaveBeenCalledWith("reverse_invoice_collection_v5", expect.objectContaining({
+      p_collection_id: "collection-1",
+    }));
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("reverses a pure-credit collection without requiring a payment row", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { status: "REVERSED" }, error: null }) as unknown as ReversePaymentRpcInvoker;
+    const outcome = await reverseInvoicePaymentBySource(rpc, {
+      payment_id: null,
+      collection_id: "collection-credit-only",
+      reversal_date: "2026-07-21",
+      reason: "Hoàn tác tender chỉ giữ credit",
+      idempotency_key: "reverse-credit-only-0001",
+    });
+    expect(outcome.source).toBe("COLLECTION");
+    expect(rpc).toHaveBeenCalledWith("reverse_invoice_collection_v5", {
+      p_collection_id: "collection-credit-only",
+      p_reversal_date: "2026-07-21",
+      p_reason: "Hoàn tác tender chỉ giữ credit",
+      p_idempotency_key: "reverse-credit-only-0001",
+    });
+  });
+
+  it("uses the v3 adapter only for a legacy payment", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { reversed: true }, error: null }) as unknown as ReversePaymentRpcInvoker;
+    const outcome = await reverseInvoicePaymentBySource(rpc, {
+      payment_id: "payment-old",
+      collection_id: null,
+      reversal_date: "2026-07-21",
+      reason: "Hoàn tác payment cũ",
+      idempotency_key: "reverse-payment-0001",
+    });
+    expect(outcome.source).toBe("LEGACY_PAYMENT");
+    expect(rpc).toHaveBeenCalledWith("reverse_invoice_payment_v3", expect.objectContaining({
+      p_payment_id: "payment-old",
+    }));
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates permission errors without another route", async () => {
+    const error = { code: "42501", message: "Không có quyền hoàn tác" };
+    const rpc = vi.fn().mockResolvedValue({ data: null, error }) as unknown as ReversePaymentRpcInvoker;
+    await expect(reverseInvoicePaymentBySource(rpc, {
+      payment_id: "payment-1",
+      collection_id: "collection-1",
+      reversal_date: "2026-07-21",
+      reason: "Hoàn tác từ giao diện",
+      idempotency_key: "reverse-collection-0001",
+    })).rejects.toBe(error);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a legacy reversal without a payment source", async () => {
+    const rpc = vi.fn() as unknown as ReversePaymentRpcInvoker;
+    await expect(reverseInvoicePaymentBySource(rpc, {
+      payment_id: "   ",
+      collection_id: null,
+      reversal_date: "2026-07-21",
+      reason: "Hoàn tác payment cũ bị thiếu nguồn",
+      idempotency_key: "reverse-missing-source-0001",
+    })).rejects.toThrow(/collection_id hoặc payment_id legacy/);
     expect(rpc).not.toHaveBeenCalled();
   });
 });

@@ -49,7 +49,6 @@ export function ContractFormDialog({
   const onSubmit = useContractSubmit({
     state,
     contract,
-    prefill,
     onOpenChange,
     onCreated,
   });

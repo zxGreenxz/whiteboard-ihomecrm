@@ -1,37 +1,36 @@
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
 
 import type { ContractFormData } from "@/lib/contractValidation";
-import { PREVIOUS_DEBT_ROUND_THRESHOLD } from "@/lib/invoiceHelpers";
 import type { ContractWithRelations } from "@/types/contract";
 import { formatCurrency } from "@/lib/utils";
-import { validateFirstBillingPeriod } from "@/lib/firstInvoiceBuilder";
-import { supabase } from "@/integrations/supabase/client";
-import type { ContractPrefill } from "./types";
+import {
+  computeFirstBillingMonth,
+  normalizeFirstBillingPeriod,
+  validateFirstBillingPeriod,
+} from "@/lib/firstInvoiceBuilder";
+import {
+  calculateContractDepositBalance,
+  prepareContractCreateRequest,
+} from "@/lib/contractCreateRpc";
 import type { ContractFormState } from "./useContractFormState";
 
 interface UseContractSubmitParams {
   state: ContractFormState;
   contract?: ContractWithRelations;
-  prefill?: ContractPrefill;
   onOpenChange: (open: boolean) => void;
   /** Gọi sau khi TẠO HĐ thành công (không gọi ở edit mode). */
   onCreated?: (contractId: string) => void;
 }
 
 /**
- * Submit orchestration của form HĐ — tách CƠ HỌC từ ContractFormDialog
- * (onSubmit giữ NGUYÊN VĂN: thứ tự validation → mutation → phiếu thu cọc →
- * flip giữ chỗ → đóng dialog → modal hoa hồng KHÔNG đổi).
+ * Submit orchestration for contract edit and atomic V2 creation.
  */
 export function useContractSubmit({
   state,
   contract,
-  prefill,
   onOpenChange,
   onCreated,
 }: UseContractSubmitParams) {
-  const queryClient = useQueryClient();
   const {
     isEditMode,
     form,
@@ -44,15 +43,10 @@ export function useContractSubmit({
     syncServices,
     typedDepositTotal,
     approvedOrphanTotal,
+    orphanDepositVouchers,
     invoiceItems,
     firstInvoiceDiscount,
-    buildings,
-    rooms,
-    selectedBuildingId,
-    selectedRoomId,
     depositRows,
-    depositIncomeType,
-    createDepositVoucher,
     setCommissionContractId,
   } = state;
 
@@ -72,16 +66,13 @@ export function useContractSubmit({
       return;
     }
 
-    // Make sure exactly one customer is flagged as representative; if none,
-    // promote the first.
-    const hasRep = selectedCustomers.some((c) => c.is_representative);
-    if (!hasRep) {
-      selectedCustomers[0].is_representative = true;
-    }
+    const representativeId =
+      selectedCustomers.find((customer) => customer.is_representative)?.id ??
+      selectedCustomers[0].id;
 
     const customers = selectedCustomers.map((c) => ({
       customer_id: c.id,
-      is_representative: c.is_representative,
+      is_representative: c.id === representativeId,
       notes: c.notes,
     }));
 
@@ -144,11 +135,14 @@ export function useContractSubmit({
     } else {
       // Create mode
 
-      // Kỳ HĐ đầu phải tính đủ đến hết tháng của ngày bắt đầu tính tiền (vd
-      // 20/5–30/5 → lỗi vì tháng 5 chưa đủ tới 31/5). Chặn trước khi tạo HĐ.
-      const billCheck = validateFirstBillingPeriod(
-        data.start_billing_date || data.start_date,
+      const billingPeriod = normalizeFirstBillingPeriod(
+        data.start_billing_date,
         data.end_billing_date,
+        data.start_date,
+      );
+      const billCheck = validateFirstBillingPeriod(
+        billingPeriod.start_date,
+        billingPeriod.end_date,
       );
       if (!billCheck.ok) {
         form.setError("end_billing_date", {
@@ -163,11 +157,24 @@ export function useContractSubmit({
         return;
       }
 
-      // Cọc đã đặt = tổng dòng user nhập + phiếu cọc cũ ĐÃ DUYỆT (khớp recompute
-      // DB). Cọc thiếu KHÔNG còn vào hoá đơn; theo dõi ở mục cọc của HĐ.
       const depositPaidValue = typedDepositTotal + approvedOrphanTotal;
-      const remaining = (data.total_deposit || 0) - depositPaidValue;
-      if (remaining >= PREVIOUS_DEBT_ROUND_THRESHOLD) {
+      const depositBalance = calculateContractDepositBalance(
+        data.total_deposit || 0,
+        depositPaidValue,
+      );
+      if (depositBalance.isOverpaid) {
+        toast.error("Không thể lưu hợp đồng", {
+          description: `Tổng tiền cọc đã nhận đang vượt ${formatCurrency(depositBalance.overpayment)} so với tiền cọc của hợp đồng.`,
+        });
+        return;
+      }
+      const remaining = depositBalance.shortfall;
+      const hasDepositShortfall = depositBalance.requiresResolution;
+      const effectiveDebtMode = hasDepositShortfall
+        ? data.deposit_debt_mode ?? null
+        : null;
+
+      if (hasDepositShortfall) {
         if (!data.deposit_debt_mode) {
           form.setError("deposit_debt_mode", {
             type: "manual",
@@ -189,6 +196,16 @@ export function useContractSubmit({
           });
           return;
         }
+        if (data.deposit_debt_mode === "DEBT" && !data.deposit_topup_due_date) {
+          form.setError("deposit_topup_due_date", {
+            type: "manual",
+            message: "Chọn hạn bổ sung cọc.",
+          });
+          toast.error("Không thể lưu hợp đồng", {
+            description: "Vui lòng chọn hạn bổ sung cọc.",
+          });
+          return;
+        }
       }
 
       const discounts =
@@ -199,178 +216,125 @@ export function useContractSubmit({
             }
           : undefined;
 
-      createContract.mutate(
-        {
-          contract: {
-            room_id: data.room_id,
-            signed_date: data.signed_date,
-            start_date: data.start_date,
-            end_date: data.end_date,
-            rent_price: data.rent_price,
-            total_deposit: data.total_deposit,
-            // = tổng dòng cọc + phiếu cọc cũ ĐÃ DUYỆT; trigger DB sẽ recompute
-            // lại = Σ phiếu cọc APPROVED sau khi onSuccess tạo phiếu từng dòng.
-            deposit_paid: depositPaidValue,
-            payment_cycle: data.payment_cycle,
-            start_billing_date: data.start_billing_date || undefined,
-            end_billing_date: data.end_billing_date || undefined,
-            contract_template_id: data.contract_template_id || undefined,
-            invoice_template_id: data.invoice_template_id || undefined,
-            notes: data.notes || undefined,
-            discounts,
-            // Xử lý thiếu cọc — chỉ ý nghĩa khi còn thiếu cọc; ngược lại null.
-            // mode DEBT giữ lý do + hẹn ngày để nhắc; FIRST_INVOICE bỏ qua.
-            deposit_debt_acknowledged: !!data.deposit_debt_mode,
-            deposit_debt_mode: data.deposit_debt_mode ?? null,
-            deposit_debt_reason:
-              data.deposit_debt_mode === "DEBT"
-                ? data.deposit_debt_reason?.trim() || null
-                : null,
-            deposit_topup_due_date:
-              data.deposit_debt_mode === "DEBT"
-                ? data.deposit_topup_due_date || null
-                : null,
-          },
-          customers,
-          services,
-          // Items hoá đơn cọc + tháng đầu — đã được user xem trước/chỉnh
-          // trong section preview, gửi xuống đúng những gì user thấy.
-          invoiceItems: invoiceItems.map((it) => ({
-            type: it.type,
-            description: it.description,
-            unit_price: it.unit_price,
-            quantity: it.quantity,
-            service_id: it.service_id ?? null,
-            from_date: it.from_date ?? null,
-            to_date: it.to_date ?? null,
-          })),
-          firstInvoiceDiscount:
-            firstInvoiceDiscount.amount > 0
-              ? {
-                  amount: firstInvoiceDiscount.amount,
-                  notes: firstInvoiceDiscount.notes,
-                }
-              : undefined,
+      const firstInvoiceItems = invoiceItems.filter(
+        (item) =>
+          item.accounting_class !== "DEPOSIT" ||
+          effectiveDebtMode === "FIRST_INVOICE",
+      );
+      const depositInvoiceItems = firstInvoiceItems.filter(
+        (item) => item.accounting_class === "DEPOSIT",
+      );
+      if (
+        effectiveDebtMode === "FIRST_INVOICE" &&
+        (depositInvoiceItems.length !== 1 ||
+          depositInvoiceItems[0].type !== "OTHER" ||
+          Math.abs(
+            depositInvoiceItems[0].unit_price * depositInvoiceItems[0].quantity -
+              remaining,
+          ) >= 0.01)
+      ) {
+        toast.error("Không thể lưu hợp đồng", {
+          description: "Dòng tiền cọc trong hoá đơn đầu không còn khớp phần cọc thiếu.",
+        });
+        return;
+      }
+
+      const revenueSubtotal = firstInvoiceItems
+        .filter((item) => item.accounting_class === "REVENUE")
+        .reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+      const discountAmount = Math.min(
+        firstInvoiceDiscount.amount,
+        Math.max(0, revenueSubtotal),
+      );
+      const billingMonth = computeFirstBillingMonth(
+        billingPeriod.start_date,
+        billingPeriod.end_date,
+      );
+      const [billingYear, billingMonthNumber] = billingMonth.split("-");
+      const billingLabel = billingMonthNumber
+        ? `T${Number(billingMonthNumber)}/${billingYear}`
+        : billingMonth;
+      const depositBundled = depositInvoiceItems.reduce(
+        (sum, item) => sum + item.unit_price * item.quantity,
+        0,
+      );
+      const invoiceNotes =
+        depositBundled > 0
+          ? `Hoá đơn tiền phòng đầu tiên ${billingLabel} + kèm cọc ${depositBundled.toLocaleString("vi-VN")}đ (tự động)`
+          : `Hoá đơn tiền phòng đầu tiên ${billingLabel} (tự động)`;
+
+      const request = prepareContractCreateRequest({
+        contract: {
+          room_id: data.room_id,
+          signed_date: data.signed_date,
+          start_date: data.start_date,
+          end_date: data.end_date,
+          rent_price: data.rent_price,
+          total_deposit: data.total_deposit,
+          payment_cycle: data.payment_cycle,
+          start_billing_date: billingPeriod.start_date,
+          end_billing_date: billingPeriod.end_date,
+          contract_template_id: data.contract_template_id || null,
+          invoice_template_id: data.invoice_template_id || null,
+          notes: data.notes || null,
+          discounts: discounts ?? null,
+          deposit_debt_mode: effectiveDebtMode,
+          deposit_debt_reason:
+            effectiveDebtMode === "DEBT"
+              ? data.deposit_debt_reason?.trim() || null
+              : null,
+          deposit_topup_due_date:
+            effectiveDebtMode === "DEBT"
+              ? data.deposit_topup_due_date || null
+              : null,
         },
+        customers,
+        services,
+        deposit_receipts: depositRows
+          .filter((row) => (Number(row.amount) || 0) > 0)
+          .map((row) => ({
+            amount: Number(row.amount),
+            account_id: row.account_id || null,
+            received_date: row.received_date || data.signed_date,
+            attachments: [...row.images],
+          })),
+        existing_deposit_voucher_ids: orphanDepositVouchers
+          .filter((voucher) => voucher.approval_status === "APPROVED")
+          .map((voucher) => voucher.id),
+        first_invoice:
+          firstInvoiceItems.length > 0
+            ? {
+                items: firstInvoiceItems.map((item) => ({
+                  type: item.type,
+                  accounting_class: item.accounting_class,
+                  description: item.description,
+                  unit_price: item.unit_price,
+                  quantity: item.quantity,
+                  service_id: item.service_id ?? null,
+                  from_date: item.from_date ?? null,
+                  to_date: item.to_date ?? null,
+                })),
+                discount_amount: discountAmount,
+                discount_notes:
+                  discountAmount > 0 ? firstInvoiceDiscount.notes : null,
+                issue_date: data.signed_date,
+                due_date: billingPeriod.end_date,
+                notes: invoiceNotes,
+              }
+            : null,
+      });
+
+      createContract.mutate(
+        request,
         {
-          onSuccess: async (contract) => {
-            // Tạo phiếu thu cọc theo TỪNG DÒNG "Đã đặt cọc" → ghi vào SỔ QUỸ
-            // THẬT user chọn (hạng mục "Tiền cọc" is_deposit → tự loại khỏi
-            // KQKD). KHÔNG tạo cho phiếu cọc cũ (orphan) — trigger đã tự gắn
-            // vào HĐ và tính deposit_paid (tránh double-count).
-            const building = (buildings as any[])?.find(
-              (b) => b.id === selectedBuildingId,
-            );
-            const buildingName: string = building?.name ?? "";
-            const room = (rooms as any[])?.find((r) => r.id === selectedRoomId);
-            const roomName = room?.name ?? "";
-            const voucherName =
-              roomName && buildingName
-                ? `Cọc giữ phòng ${roomName} Toà nhà ${buildingName}`
-                : roomName
-                  ? `Cọc giữ phòng ${roomName}`
-                  : "Cọc giữ phòng";
-            const today = new Date().toISOString().split("T")[0];
-            const rowsToCreate = depositRows.filter(
-              (r) => (Number(r.amount) || 0) > 0,
-            );
-
-            if (rowsToCreate.length > 0 && !depositIncomeType) {
-              toast.error(
-                'HĐ đã lưu nhưng chưa tạo phiếu thu cọc: thiếu loại thu "Tiền cọc".',
-                {
-                  duration: 15000,
-                  description: `Tạo loại thu "Tiền cọc" trong Cài đặt rồi tạo phiếu thu cọc gắn phòng ${roomName}.`,
-                },
-              );
-            } else if (rowsToCreate.length > 0 && selectedBuildingId) {
-              for (const r of rowsToCreate) {
-                // Fallback sổ CỌC ảo nếu dòng chưa chọn sổ (account_id NOT NULL).
-                let accId: string | null = r.account_id || null;
-                if (!accId) {
-                  const { data: depAcc } = await (supabase as any).rpc(
-                    "get_or_create_deposit_account",
-                  );
-                  accId = (depAcc as string) ?? null;
-                }
-                if (!accId) {
-                  toast.error(
-                    `HĐ đã lưu nhưng 1 dòng cọc ${formatCurrency(r.amount)} chưa có sổ quỹ`,
-                    {
-                      duration: 15000,
-                      description: `Vào Thu chi tạo phiếu thu "Tiền cọc" cho phòng ${roomName}.`,
-                    },
-                  );
-                  continue;
-                }
-                const vDate = r.received_date || data.signed_date || today;
-                try {
-                  await createDepositVoucher.mutateAsync({
-                    type: "INCOME",
-                    name: voucherName,
-                    building_id: selectedBuildingId,
-                    room_id: selectedRoomId || null,
-                    tenant_id: null,
-                    contract_id: contract?.id ?? null,
-                    payer_name: null,
-                    account_id: accId,
-                    voucher_date: vDate,
-                    // null = tự động; hạng mục "Tiền cọc" (is_deposit) tự loại
-                    // khoản này khỏi báo cáo Lợi nhuận.
-                    business_result_accounting: null,
-                    repeat_cycle: "NONE",
-                    repeat_infinity: false,
-                    repeat_count: 0,
-                    attachments: r.images,
-                    items: [
-                      {
-                        income_expense_type_id: depositIncomeType.id,
-                        description: null,
-                        quantity: 1,
-                        unit_price: r.amount,
-                        start_date: vDate,
-                        end_date: vDate,
-                      },
-                    ],
-                  });
-                } catch (voucherErr) {
-                  console.error("Tạo phiếu thu cọc thất bại:", voucherErr);
-                  toast.error("HĐ đã lưu nhưng 1 phiếu thu cọc TẠO THẤT BẠI", {
-                    duration: 15000,
-                    description: `Cọc ${formatCurrency(r.amount)} chưa có chứng từ. Vào Thu chi tạo phiếu thu "Tiền cọc" cho phòng ${roomName}.`,
-                  });
-                }
-              }
-            }
-
-            // Flow Cọc giữ chỗ → HĐ: flip phiếu giữ chỗ SAU khi HĐ đã tạo
-            // thành công (trước đây flip TRƯỚC khi tạo → HĐ fail là phòng mất
-            // RESERVED + lộ ra trang Phòng trống công khai).
-            if (prefill?.depositId && contract?.id) {
-              const { error: depUpdateErr } = await supabase
-                .from("deposits")
-                .update({
-                  status: "CONVERTED",
-                  contract_id: contract.id,
-                } as any)
-                .eq("id", prefill.depositId);
-              if (depUpdateErr) {
-                console.error("Flip deposit CONVERTED thất bại:", depUpdateErr);
-                toast.warning(
-                  "HĐ đã tạo nhưng phiếu giữ chỗ chưa chuyển trạng thái — cập nhật tay trong trang Đặt cọc.",
-                );
-              }
-              queryClient.invalidateQueries({ queryKey: ["deposits"] });
-            }
-
-            // Đóng dialog HĐ trước rồi mở modal tạo phiếu chi hoa hồng
+          onSuccess: (contract) => {
             onOpenChange(false);
             if (contract?.id) {
               onCreated?.(contract.id);
               setCommissionContractId(contract.id);
             }
           },
-        }
+        },
       );
     }
   };

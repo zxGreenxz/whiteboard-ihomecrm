@@ -42,10 +42,13 @@ import {
 } from "@/hooks/useShareholderProfit";
 import {
   buildProfitCloseAdjustments,
+  hasUnallocatedProfitResidual,
   mergeProfitCloseDrafts,
+  normalizeUnallocatedDisposition,
   resolveProfitCloseOrganizationId,
   validateProfitCloseDrafts,
   type ProfitCloseDraftMap,
+  type ProfitUnallocatedDisposition,
 } from "@/lib/profitClose";
 import { formatCurrency } from "@/lib/utils";
 import { currentYear, periodOf, periodToLabel } from "./shareholderUtils";
@@ -114,6 +117,14 @@ function SignedAdjustmentInput({
 
 function shortHash(hash: string | null | undefined): string {
   return hash ? `${hash.slice(0, 8)}…${hash.slice(-6)}` : "—";
+}
+
+function dispositionLabel(
+  disposition: ProfitUnallocatedDisposition | null | undefined,
+): string {
+  if (disposition === "RETAINED_EARNINGS") return "Giữ lại lợi nhuận";
+  if (disposition === "CARRY_FORWARD") return "Chuyển kỳ sau";
+  return "Chưa chọn";
 }
 
 export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
@@ -189,6 +200,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       adjustment_amount: row.adjustment_amount,
       management_salary: row.management_salary,
       distributable_profit: row.distributable_profit,
+      shareholder_percent_total: row.shareholder_percent_total,
+      shareholder_allocated_amount: row.shareholder_allocated_amount,
+      unallocated_profit: row.unallocated_profit,
+      unallocated_disposition: row.unallocated_disposition,
+      unallocated_disposition_reason: row.unallocated_disposition_reason,
       source_hash: row.source_hash,
       is_stale: row.is_stale,
       stale_reason: row.stale_reason,
@@ -204,6 +220,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
         adjusted_profit: row.adjusted_profit,
         management_salary: row.management_salary,
         distributable_profit: row.distributable_profit,
+        shareholder_percent_total: row.shareholder_percent_total,
+        shareholder_allocated_amount: row.shareholder_allocated_amount,
+        unallocated_profit: row.unallocated_profit,
+        unallocated_disposition: row.unallocated_disposition,
+        unallocated_disposition_reason: row.unallocated_disposition_reason,
         source_hash: row.source_hash,
         locked_at: row.locked_at,
       },
@@ -235,6 +256,31 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     () => previewRows.map((row) => row.building_id),
     [previewRows],
   );
+  const unallocatedProfitByBuilding = useMemo(
+    () =>
+      Object.fromEntries(
+        previewRows.map((row) => [row.building_id, row.unallocated_profit]),
+      ),
+    [previewRows],
+  );
+  const invalidResidualRows = useMemo(
+    () =>
+      previewRows.filter((row) => {
+        if (!hasUnallocatedProfitResidual(row.unallocated_profit)) return false;
+        const draft = activeDrafts[row.building_id];
+        const disposition = normalizeUnallocatedDisposition(
+          draft?.unallocatedDisposition ?? row.unallocated_disposition,
+        );
+        const reason = (
+          draft?.unallocatedDispositionReason ??
+          row.unallocated_disposition_reason ??
+          ""
+        ).trim();
+        return !disposition || reason.length < 8 || reason.length > 500;
+      }),
+    [activeDrafts, previewRows],
+  );
+  const hasInvalidResidualDisposition = invalidResidualRows.length > 0;
   const isEditing = canLock && (recloseMode ? canReclose : canInitialClose);
   const rows = canLock ? previewRows : stateRows;
   const dataLoading = stateQuery.isLoading || (canLock && previewQuery.isLoading);
@@ -253,6 +299,12 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           locked: row.current_snapshot?.status === "LOCKED",
           snapshotAdjustmentAmount: row.current_snapshot?.adjustment_amount,
           snapshotAdjustmentReason: row.current_snapshot?.adjustment_reason,
+          unallocatedDisposition:
+            row.unallocated_disposition ??
+            row.current_snapshot?.unallocated_disposition,
+          unallocatedDispositionReason:
+            row.unallocated_disposition_reason ??
+            row.current_snapshot?.unallocated_disposition_reason,
         })),
         sameScope ? previous.drafts : {},
         new Set(Object.keys(dirty)),
@@ -281,6 +333,8 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
       const current = drafts[buildingId] ?? {
         adjustmentAmount: 0,
         adjustmentReason: "",
+        unallocatedDisposition: null,
+        unallocatedDispositionReason: "",
       };
       return {
         scopeKey,
@@ -312,6 +366,12 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           locked: row.current_snapshot?.status === "LOCKED",
           snapshotAdjustmentAmount: row.current_snapshot?.adjustment_amount,
           snapshotAdjustmentReason: row.current_snapshot?.adjustment_reason,
+          unallocatedDisposition:
+            row.unallocated_disposition ??
+            row.current_snapshot?.unallocated_disposition,
+          unallocatedDispositionReason:
+            row.unallocated_disposition_reason ??
+            row.current_snapshot?.unallocated_disposition_reason,
         })),
         {},
         new Set(),
@@ -326,11 +386,16 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
     const validation = validateProfitCloseDrafts(targetBuildingIds, activeDrafts, {
       reclose: recloseMode,
       overallReason,
+      unallocatedProfitByBuilding,
     });
     setRowErrors(validation.rowErrors);
     setOverallReasonError(validation.overallReasonError);
     if (!validation.valid) {
       toast.error("Kiểm tra lại lý do điều chỉnh trước khi chốt");
+      return;
+    }
+    if (hasInvalidResidualDisposition) {
+      toast.error("Mọi phần lợi nhuận chưa phân bổ phải có cách xử lý và lý do");
       return;
     }
     if (previewInputPending || previewQuery.isFetching) {
@@ -346,12 +411,20 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
 
   const confirmClose = async () => {
     if (!preview) return;
+    if (hasInvalidResidualDisposition) {
+      toast.error("Preview còn phần chưa phân bổ chưa có cách xử lý hợp lệ");
+      return;
+    }
     try {
       await closeMutation.mutateAsync({
         organizationId,
         periodMonth: period,
         buildingIds: targetBuildingIds,
-        adjustments: buildProfitCloseAdjustments(targetBuildingIds, activeDrafts),
+        adjustments: buildProfitCloseAdjustments(
+          targetBuildingIds,
+          activeDrafts,
+          unallocatedProfitByBuilding,
+        ),
         expectedSourceHash: preview.source_hash,
         reason: overallReason,
         reclose: recloseMode,
@@ -392,6 +465,17 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const totalDistributable = rows.reduce(
     (sum, row) => sum + row.distributable_profit,
     0,
+  );
+  const totalShareholderAllocated = rows.reduce(
+    (sum, row) => sum + row.shareholder_allocated_amount,
+    0,
+  );
+  const totalUnallocated = rows.reduce(
+    (sum, row) => sum + row.unallocated_profit,
+    0,
+  );
+  const hasAnyResidual = rows.some((row) =>
+    hasUnallocatedProfitResidual(row.unallocated_profit),
   );
   const shareholderTotals = useMemo(() => {
     const totals = new Map<string, { name: string; amount: number }>();
@@ -512,6 +596,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 previewQuery.isFetching ||
                 stateQuery.isFetching ||
                 previewInputPending ||
+                hasInvalidResidualDisposition ||
                 closeMutation.isPending
               }
             >
@@ -609,13 +694,26 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
         </Alert>
       )}
 
+      {hasInvalidResidualDisposition && (
+        <Alert variant="destructive">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertTitle>Chưa có cách xử lý phần lợi nhuận còn dư</AlertTitle>
+          <AlertDescription>
+            {invalidResidualRows.length} nhà còn phần chưa phân bổ từ 0,01đ trở lên.
+            Chọn “Giữ lại lợi nhuận” hoặc “Chuyển kỳ sau” và nhập lý do 8–500 ký tự
+            cho từng nhà trước khi chốt{hasLocked && !recloseMode ? " lại" : ""}.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader className="space-y-2 pb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <CardTitle className="text-base">Lợi nhuận theo nhà — {periodToLabel(period)}</CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Công thức: <strong>LN tự tính + Điều chỉnh − Lương điều hành = LN chia cổ đông</strong>
+                Công thức: <strong>LN tự tính + Điều chỉnh − Lương điều hành = Quỹ sau lương</strong>;
+                quỹ này được tách thành phần đã phân bổ cho cổ đông và phần chưa phân bổ.
               </p>
             </div>
             <div className="text-right">
@@ -646,21 +744,24 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   <TableHead className="text-right">LN tự tính</TableHead>
                   <TableHead className="min-w-[220px]">Điều chỉnh có dấu</TableHead>
                   <TableHead className="text-right">Lương điều hành</TableHead>
-                  <TableHead className="text-right">LN chia cổ đông</TableHead>
+                  <TableHead className="text-right">Quỹ sau lương</TableHead>
+                  <TableHead className="text-right">Tỷ lệ CĐ</TableHead>
+                  <TableHead className="text-right">Đã phân bổ</TableHead>
+                  <TableHead className="min-w-[260px]">Phần chưa phân bổ</TableHead>
                   <TableHead className="min-w-[180px]">Snapshot hiện tại</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {dataLoading && (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
                       Đang tải preview canonical…
                     </TableCell>
                   </TableRow>
                 )}
                 {!dataLoading && rows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
                       Không có nhà trong phạm vi được phép của tháng này
                     </TableCell>
                   </TableRow>
@@ -671,7 +772,31 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   const draft = activeDrafts[row.building_id] ?? {
                     adjustmentAmount: row.current_snapshot?.adjustment_amount ?? 0,
                     adjustmentReason: row.current_snapshot?.adjustment_reason ?? "",
+                    unallocatedDisposition:
+                      row.unallocated_disposition ??
+                      row.current_snapshot?.unallocated_disposition ??
+                      null,
+                    unallocatedDispositionReason:
+                      row.unallocated_disposition_reason ??
+                      row.current_snapshot?.unallocated_disposition_reason ??
+                      "",
                   };
+                  const rowError = rowErrors[row.building_id];
+                  const dispositionError = rowError?.includes("chưa phân bổ");
+                  const hasResidual = hasUnallocatedProfitResidual(
+                    row.unallocated_profit,
+                  );
+                  const normalizedDraftDisposition =
+                    normalizeUnallocatedDisposition(
+                      draft.unallocatedDisposition,
+                    );
+                  const dispositionReasonLength =
+                    draft.unallocatedDispositionReason.trim().length;
+                  const dispositionInvalid =
+                    hasResidual &&
+                    (!normalizedDraftDisposition ||
+                      dispositionReasonLength < 8 ||
+                      dispositionReasonLength > 500);
                   const displayedDistributable =
                     row.computed_profit + draft.adjustmentAmount - row.management_salary;
                   return (
@@ -723,11 +848,11 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                               }
                               placeholder={draft.adjustmentAmount === 0 ? "Không bắt buộc" : "Lý do (ít nhất 8 ký tự)"}
                               maxLength={500}
-                              aria-invalid={!!rowErrors[row.building_id]}
+                              aria-invalid={!!rowError && !dispositionError}
                               aria-label={`Lý do điều chỉnh ${row.building_name}`}
                             />
-                            {rowErrors[row.building_id] && (
-                              <p className="text-xs text-destructive">{rowErrors[row.building_id]}</p>
+                            {rowError && !dispositionError && (
+                              <p className="text-xs text-destructive">{rowError}</p>
                             )}
                           </div>
                         ) : (
@@ -750,6 +875,82 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                           <p className="mt-1 text-[11px] font-normal text-muted-foreground">Đang kiểm tra lại…</p>
                         )}
                       </TableCell>
+                      <TableCell className="align-top text-right tabular-nums">
+                        <span
+                          className={
+                            row.shareholder_percent_total > 100.0001
+                              ? "text-red-600"
+                              : row.shareholder_percent_total < 99.9999
+                                ? "text-amber-700"
+                                : "text-emerald-700"
+                          }
+                        >
+                          {row.shareholder_percent_total.toLocaleString("vi-VN", { maximumFractionDigits: 4 })}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="align-top text-right font-medium tabular-nums">
+                        {formatCurrency(row.shareholder_allocated_amount)}
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-2">
+                          <p className={`font-semibold tabular-nums ${hasResidual ? "text-amber-700" : "text-emerald-700"}`}>
+                            {formatCurrency(row.unallocated_profit)}
+                          </p>
+                          {hasResidual ? rowEditable ? (
+                            <>
+                              <Select
+                                value={draft.unallocatedDisposition ?? ""}
+                                onValueChange={(value) =>
+                                  updateDraft(row.building_id, {
+                                    unallocatedDisposition:
+                                      value as ProfitUnallocatedDisposition,
+                                  })
+                                }
+                              >
+                                <SelectTrigger aria-label={`Cách xử lý phần chưa phân bổ ${row.building_name}`}>
+                                  <SelectValue placeholder="Chọn cách xử lý" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="RETAINED_EARNINGS">Giữ lại lợi nhuận</SelectItem>
+                                  <SelectItem value="CARRY_FORWARD">Chuyển kỳ sau</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                value={draft.unallocatedDispositionReason}
+                                onChange={(event) =>
+                                  updateDraft(row.building_id, {
+                                    unallocatedDispositionReason: event.target.value,
+                                  })
+                                }
+                                placeholder="Lý do xử lý (ít nhất 8 ký tự)"
+                                maxLength={500}
+                                aria-invalid={dispositionInvalid}
+                                aria-label={`Lý do xử lý phần chưa phân bổ ${row.building_name}`}
+                              />
+                              {dispositionInvalid && (
+                                <p className="text-xs text-destructive">
+                                  {dispositionError
+                                    ? rowError
+                                    : !normalizedDraftDisposition
+                                      ? "Chọn cách xử lý phần chưa phân bổ"
+                                      : "Lý do xử lý phải có 8–500 ký tự"}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <div className="space-y-1 text-xs">
+                              <Badge variant={draft.unallocatedDisposition ? "secondary" : "destructive"}>
+                                {dispositionLabel(draft.unallocatedDisposition)}
+                              </Badge>
+                              {draft.unallocatedDispositionReason && (
+                                <p className="text-muted-foreground">{draft.unallocatedDispositionReason}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-emerald-700">Đã phân bổ hết</span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="align-top">
                         {row.current_snapshot ? (
                           <div className="space-y-1 text-sm">
@@ -764,8 +965,13 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                               </span>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              LN nguồn: {formatCurrency(row.current_snapshot.computed_profit)}
+                              Đã phân bổ: {formatCurrency(row.current_snapshot.shareholder_allocated_amount)}
                             </p>
+                            {hasUnallocatedProfitResidual(row.current_snapshot.unallocated_profit) && (
+                              <p className="text-xs text-amber-700">
+                                Còn {formatCurrency(row.current_snapshot.unallocated_profit)} · {dispositionLabel(row.current_snapshot.unallocated_disposition)}
+                              </p>
+                            )}
                             <p className="text-[11px] text-muted-foreground">
                               Hash <span className="font-mono" title={row.current_snapshot.source_hash ?? undefined}>{shortHash(row.current_snapshot.source_hash)}</span>
                             </p>
@@ -782,13 +988,25 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </div>
 
           {rows.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-4 py-3">
-              <span className="text-sm text-muted-foreground">
-                Tổng LN chia cổ đông của {rows.length} nhà trong phạm vi preview
-              </span>
-              <span className={`text-lg font-semibold tabular-nums ${totalDistributable < 0 ? "text-red-600" : ""}`}>
-                {formatCurrency(totalDistributable)}
-              </span>
+            <div className="mt-4 grid gap-3 rounded-lg border bg-muted/30 px-4 py-3 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted-foreground">Tổng quỹ sau lương</p>
+                <p className={`text-lg font-semibold tabular-nums ${totalDistributable < 0 ? "text-red-600" : ""}`}>
+                  {formatCurrency(totalDistributable)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Đã phân bổ cho cổ đông</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {formatCurrency(totalShareholderAllocated)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Chưa phân bổ</p>
+                <p className={`text-lg font-semibold tabular-nums ${hasAnyResidual ? "text-amber-700" : "text-emerald-700"}`}>
+                  {formatCurrency(totalUnallocated)}
+                </p>
+              </div>
             </div>
           )}
         </CardContent>
@@ -876,7 +1094,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               <div className="space-y-2 text-sm text-muted-foreground">
                 <p>
                   Server sẽ tự tính lại doanh thu, chi phí, lương điều hành và phân bổ cổ đông cho {targetBuildingIds.length} nhà.
-                  Client chỉ gửi khoản điều chỉnh có dấu và lý do.
+                  Client chỉ gửi khoản điều chỉnh có dấu, disposition phần chưa phân bổ và lý do tương ứng.
                 </p>
                 {recloseMode && (
                   <p>
@@ -892,7 +1110,15 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={closeMutation.isPending}>Huỷ</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmClose} disabled={closeMutation.isPending}>
+            <AlertDialogAction
+              onClick={confirmClose}
+              disabled={
+                closeMutation.isPending ||
+                previewInputPending ||
+                previewQuery.isFetching ||
+                hasInvalidResidualDisposition
+              }
+            >
               {closeMutation.isPending ? "Đang xử lý…" : recloseMode ? "Chốt lại" : "Chốt tháng"}
             </AlertDialogAction>
           </AlertDialogFooter>

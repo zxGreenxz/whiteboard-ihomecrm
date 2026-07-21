@@ -1,6 +1,14 @@
+export type ProfitUnallocatedDisposition =
+  | "RETAINED_EARNINGS"
+  | "CARRY_FORWARD";
+
+export const UNALLOCATED_PROFIT_TOLERANCE = 0.01;
+
 export interface ProfitCloseDraft {
   adjustmentAmount: number;
   adjustmentReason: string;
+  unallocatedDisposition: ProfitUnallocatedDisposition | null;
+  unallocatedDispositionReason: string;
 }
 
 export type ProfitCloseDraftMap = Record<string, ProfitCloseDraft>;
@@ -10,12 +18,16 @@ export interface ProfitCloseDraftSeed {
   locked: boolean;
   snapshotAdjustmentAmount?: number | null;
   snapshotAdjustmentReason?: string | null;
+  unallocatedDisposition?: ProfitUnallocatedDisposition | string | null;
+  unallocatedDispositionReason?: string | null;
 }
 
 export interface ProfitCloseAdjustmentPayload {
   building_id: string;
   adjustment_amount: number;
   adjustment_reason: string | null;
+  unallocated_disposition: ProfitUnallocatedDisposition | null;
+  unallocated_disposition_reason: string | null;
 }
 
 export interface ProfitCloseValidationResult {
@@ -47,12 +59,33 @@ function finiteMoney(value: number | null | undefined): number {
   return Number.isFinite(value) ? Number(value) : 0;
 }
 
+export function normalizeUnallocatedDisposition(
+  value: unknown,
+): ProfitUnallocatedDisposition | null {
+  return value === "RETAINED_EARNINGS" || value === "CARRY_FORWARD"
+    ? value
+    : null;
+}
+
+export function hasUnallocatedProfitResidual(value: unknown): boolean {
+  const parsed = Number(value);
+  return (
+    Number.isFinite(parsed) &&
+    Math.abs(parsed) >= UNALLOCATED_PROFIT_TOLERANCE
+  );
+}
+
 function seedDraft(row: ProfitCloseDraftSeed): ProfitCloseDraft {
   return {
     // A locked snapshot contributes only its signed adjustment. Its old absolute
     // adjusted profit must never become the base for a fresh server calculation.
     adjustmentAmount: row.locked ? finiteMoney(row.snapshotAdjustmentAmount) : 0,
     adjustmentReason: row.locked ? row.snapshotAdjustmentReason?.trim() ?? "" : "",
+    unallocatedDisposition: normalizeUnallocatedDisposition(
+      row.unallocatedDisposition,
+    ),
+    unallocatedDispositionReason:
+      row.unallocatedDispositionReason?.trim() ?? "",
   };
 }
 
@@ -74,16 +107,34 @@ export function mergeProfitCloseDrafts(
 export function buildProfitCloseAdjustments(
   buildingIds: string[],
   drafts: ProfitCloseDraftMap,
+  unallocatedProfitByBuilding?: Readonly<Record<string, number>>,
 ): ProfitCloseAdjustmentPayload[] {
   return buildingIds.map((buildingId) => {
-    const draft = drafts[buildingId] ?? { adjustmentAmount: 0, adjustmentReason: "" };
+    const draft = drafts[buildingId] ?? {
+      adjustmentAmount: 0,
+      adjustmentReason: "",
+      unallocatedDisposition: null,
+      unallocatedDispositionReason: "",
+    };
     const adjustmentAmount = finiteMoney(draft.adjustmentAmount);
     const adjustmentReason = draft.adjustmentReason.trim();
+    const hasResidual = unallocatedProfitByBuilding
+      ? hasUnallocatedProfitResidual(unallocatedProfitByBuilding[buildingId])
+      : draft.unallocatedDisposition !== null;
+    const unallocatedDisposition = hasResidual
+      ? normalizeUnallocatedDisposition(draft.unallocatedDisposition)
+      : null;
+    const unallocatedDispositionReason = hasResidual
+      ? draft.unallocatedDispositionReason.trim()
+      : "";
     return {
       building_id: buildingId,
       adjustment_amount: adjustmentAmount,
       adjustment_reason:
         adjustmentAmount === 0 ? null : adjustmentReason || null,
+      unallocated_disposition: unallocatedDisposition,
+      unallocated_disposition_reason:
+        unallocatedDispositionReason || null,
     };
   });
 }
@@ -91,7 +142,11 @@ export function buildProfitCloseAdjustments(
 export function validateProfitCloseDrafts(
   buildingIds: string[],
   drafts: ProfitCloseDraftMap,
-  options: { reclose: boolean; overallReason: string },
+  options: {
+    reclose: boolean;
+    overallReason: string;
+    unallocatedProfitByBuilding?: Readonly<Record<string, number>>;
+  },
 ): ProfitCloseValidationResult {
   const rowErrors: Record<string, string> = {};
 
@@ -116,6 +171,22 @@ export function validateProfitCloseDrafts(
         draft.adjustmentReason.trim().length > 500)
     ) {
       rowErrors[buildingId] = "Lý do điều chỉnh phải có 8–500 ký tự";
+      continue;
+    }
+
+    const unallocatedProfit =
+      options.unallocatedProfitByBuilding?.[buildingId] ?? 0;
+    if (hasUnallocatedProfitResidual(unallocatedProfit)) {
+      if (!normalizeUnallocatedDisposition(draft.unallocatedDisposition)) {
+        rowErrors[buildingId] =
+          "Phần chưa phân bổ phải chọn Giữ lại hoặc Chuyển kỳ sau";
+        continue;
+      }
+      const dispositionReason = draft.unallocatedDispositionReason.trim();
+      if (dispositionReason.length < 8 || dispositionReason.length > 500) {
+        rowErrors[buildingId] =
+          "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự";
+      }
     }
   }
 

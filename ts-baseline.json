@@ -12,7 +12,6 @@
   "src/components/sale-phong/floor-editor/FloorPlanEditorTab.tsx|TS2345|Argument of type '…' is not assignable to parameter of type '…'.",
   "src/components/ui/__tests__/searchableSelect.test.ts|TS2578|Unused '…' directive.",
   "src/hooks/__tests__/useIncomeExpenses.property.test.ts|TS2339|Property '…' does not exist on type '…'.",
-  "src/hooks/useContracts.ts|TS2339|Property '…' does not exist on type '…'.",
   "src/hooks/useContracts.ts|TS2352|Conversion of type '…' to type '…' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to '…' first.",
   "src/hooks/useDocumentTemplates.ts|TS2769|No overload matches this call.",
   "src/hooks/useIncomeExpenseTypes.ts|TS2352|Conversion of type '…' to type '…' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to '…' first.",

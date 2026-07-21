@@ -25,6 +25,14 @@ import {
   isFirstMonthInvoice,
 } from '@/lib/invoiceUtils';
 import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
+import {
+  buildBulkInvoiceCreditLifecycleRpcArgs,
+  buildCreditInvoiceCreateRpcArgs,
+  buildInvoiceCreditLifecycleRpcArgs,
+  invokeCustomerCreditRpc,
+  prepareCustomerCreditRequest,
+  selectInvoiceCreateRpc,
+} from '@/lib/customerCreditRpc';
 
 // Re-export types for backward compatibility
 export type { InvoiceWithRelations, InvoiceFilters } from '@/types/invoice';
@@ -49,7 +57,7 @@ const INVOICE_LIST_SELECT = `
   ),
   building:buildings!invoices_building_id_fkey (id, name, name_sort, default_account_id_tt, default_account_id_tk),
   room:rooms!invoices_room_id_fkey (id, name, name_sort),  invoice_items (id, type, description, unit_price, quantity, coefficient, amount, service_id, previous_reading, current_reading, from_date, to_date, sort_order),
-  payments (id, amount, payment_date, payment_method, notes, receipt_image_url)
+  payments (id, amount, payment_date, payment_method, notes, receipt_image_url, collection_id, reversed_at)
 `;
 
 // =============================================
@@ -78,29 +86,27 @@ export const invoicesListQuery = (
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      // Lọc theo phương thức thanh toán → cần INNER join payments để loại HĐ
-      // không có phiếu thu method đó (PostgREST trả 1 dòng/HĐ, count vẫn đúng).
-      const listSelect = filters?.payment_method
-        ? INVOICE_LIST_SELECT.replace('payments (', 'payments!inner (')
-        : INVOICE_LIST_SELECT;
-
       // Sort mặc định: KỲ mới nhất trước (toàn bộ HĐ tháng 7 → tháng 6 → ...),
       // trong cùng kỳ xếp như mục Thu của Phân bổ LN: tòa A→Z → phòng
       // (MB→G→L→số, so tự nhiên). name_sort = generated column mirror của
       // src/lib/roomSort.ts (migration 20260702100000). Phải order server-side
       // vì phân trang server-side (mỗi trang chỉ fetch 20 dòng).
-      let query = (supabase
-        .from('invoices')
-        .select(listSelect, { count: 'exact' }) as any)
+      // Method drill-down starts from a SECURITY INVOKER table-valued RPC.
+      // PostgREST can still apply all filters/count/range to SETOF invoices,
+      // while the EXISTS stays server-side and cannot hit the 1000-row cap.
+      const invoiceSource = filters?.payment_method
+        ? (supabase as any).rpc('invoice_payment_method_drilldown', {
+            p_payment_method: filters.payment_method,
+          })
+        : (supabase as any).from('invoices');
+
+      let query = (invoiceSource
+        .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
         .is('deleted_at', null)
         .order('billing_month', { ascending: false })
         .order('building(name_sort)', { ascending: true, nullsFirst: false })
         .order('room(name_sort)', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false });
-
-      if (filters?.payment_method) {
-        query = query.eq('payments.payment_method', filters.payment_method);
-      }
 
       // Apply filters
       if (filters?.building_ids?.length) {
@@ -196,10 +202,40 @@ export const invoicesListQuery = (
         throw error;
       }
 
-      return {
-        data: (data || []) as InvoiceWithRelations[],
-        count: count || 0,
-      };
+      const invoiceRows = ((data || []) as InvoiceWithRelations[]).map((invoice) => ({
+        ...invoice,
+        payments: (invoice.payments ?? []).filter(
+          (payment) => !(payment as typeof payment & { reversed_at?: string | null }).reversed_at,
+        ),
+      }));
+
+      if (invoiceRows.length > 0) {
+        const { data: methodRows, error: methodError } = await (supabase as any).rpc(
+          'invoice_active_payment_methods',
+          { p_invoice_ids: invoiceRows.map((invoice) => invoice.id) },
+        );
+        if (!methodError) {
+          const methodsByInvoice = new Map<string, string[]>();
+          for (const row of (methodRows ?? []) as Array<{
+            invoice_id: string;
+            payment_methods: string[] | null;
+          }>) {
+            methodsByInvoice.set(row.invoice_id, row.payment_methods ?? []);
+          }
+          return {
+            data: invoiceRows.map((invoice) => ({
+              ...invoice,
+              active_payment_methods: methodsByInvoice.get(invoice.id) ?? [],
+            })) as InvoiceWithRelations[],
+            count: count || 0,
+          };
+        }
+        // Highlight enrichment is non-critical; keep the paginated invoice list
+        // available and fall back to its active embedded payment rows.
+        console.error('invoice_active_payment_methods error:', methodError);
+      }
+
+      return { data: invoiceRows as InvoiceWithRelations[], count: count || 0 };
     },
   });
 
@@ -595,10 +631,15 @@ export const useCreateInvoice = () => {
         + (invoiceFields.previous_debt || 0),
       );
 
-      // Canonical create_invoice_v1: server ATOMIC (hoá đơn + items + tiêu credit),
-      // tự sinh số hoá đơn (nguồn duy nhất), đối chiếu làm tròn, quyền invoices.create.
-      // Flag OFF → "chưa bật" → fallback legacy insert (giữ số client-gen bên dưới).
-      const canonical = await (supabase.rpc as any)('create_invoice_v1', {
+      const appliedCredit = invoiceFields.applied_credit ?? 0;
+      const request = prepareCustomerCreditRequest('invoice-create');
+      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+      const creatorName: string =
+        (typeof meta.full_name === 'string' && meta.full_name)
+        || (typeof meta.name === 'string' && meta.name)
+        || user.email
+        || 'Người dùng';
+      const canonicalBaseArgs = {
         p_contract_id: invoiceFields.contract_id,
         p_building_id: invoiceFields.building_id,
         p_room_id: invoiceFields.room_id ?? null,
@@ -624,25 +665,35 @@ export const useCreateInvoice = () => {
           to_date: item.to_date || null,
           sort_order: item.sort_order,
         })),
-        p_idempotency_key: `inv-create-${crypto.randomUUID()}`,
         p_prepaid_amount: invoiceFields.prepaid_amount || 0,
         p_discount_notes: invoiceFields.discount_notes || null,
         p_electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
         p_previous_debt_sources: invoiceFields.previous_debt_sources ?? [],
         p_template_id: invoiceFields.template_id || null,
         p_notes: invoiceFields.notes || null,
-        p_applied_credit: invoiceFields.applied_credit ?? 0,
-      });
+        p_creator_name: creatorName,
+      };
+      const rpcName = selectInvoiceCreateRpc(appliedCredit);
+      const canonicalArgs = appliedCredit > 0
+        ? buildCreditInvoiceCreateRpcArgs(canonicalBaseArgs, appliedCredit, request)
+        : {
+            ...canonicalBaseArgs,
+            p_idempotency_key: request.idempotencyKey,
+            p_applied_credit: 0,
+          };
+
+      // Credit invoices have one atomic path and fail closed on every RPC error.
+      // Non-credit invoices retain the existing controlled legacy fallback.
+      // Generated types intentionally lag until the migration is applied.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const canonical = await (supabase.rpc as any)(rpcName, canonicalArgs);
       if (!canonical.error) return canonical.data;
+      if (appliedCredit > 0) throw canonical.error;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
       // Generate invoice number
       const { generateInvoiceNumber } = await import('@/lib/invoiceUtils');
       const invoice_number = await generateInvoiceNumber(user.id);
-
-      const meta = (user.user_metadata ?? {}) as Record<string, any>;
-      const creatorName: string =
-        meta.full_name || meta.name || user.email || 'Người dùng';
 
       // Insert invoice
       const { data: invoice, error: invoiceError } = await supabase
@@ -675,22 +726,6 @@ export const useCreateInvoice = () => {
         .single();
 
       if (invoiceError) throw invoiceError;
-
-      // Tiêu credit khi áp credit vào discount của HĐ này.
-      const appliedCredit = invoiceFields.applied_credit ?? 0;
-      if (appliedCredit > 0 && invoiceFields.contract_id) {
-        const { error: creditErr } = await supabase
-          .from('excess_amounts' as any)
-          .insert({
-            user_id: user.id,
-            contract_id: invoiceFields.contract_id,
-            amount: -appliedCredit,
-            description: `Áp credit vào Giảm trừ HĐ ${invoice_number}`,
-            source_invoice_id: invoice.id,
-            source_payment_id: null,
-          } as any);
-        if (creditErr) throw creditErr;
-      }
 
       // Insert invoice items
       if (items.length > 0) {
@@ -929,23 +964,21 @@ export const useDeleteInvoice = () => {
         throw new Error('Không thể xoá hoá đơn ở trạng thái này');
       }
 
-      const canonical = await (supabase.rpc as any)('soft_delete_invoice_v1', {
-        p_invoice_id: invoiceId,
-      });
-      if (!canonical.error) return;
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { error } = await supabase
-        .from('invoices')
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq('id', invoiceId)
-        ;
-
-      if (error) throw error;
+      return invokeCustomerCreditRpc(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        'soft_delete_invoice_with_credit_v1',
+        buildInvoiceCreditLifecycleRpcArgs(
+          invoiceId,
+          prepareCustomerCreditRequest('invoice-delete'),
+        ),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
 
       toast({
@@ -979,23 +1012,21 @@ export const useBulkDeleteInvoices = () => {
 
       if (invoiceIds.length === 0) return;
 
-      const canonical = await (supabase.rpc as any)('bulk_soft_delete_invoices_v1', {
-        p_invoice_ids: invoiceIds,
-      });
-      if (!canonical.error) return;
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { error } = await supabase
-        .from('invoices')
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .in('id', invoiceIds)
-        .eq('status', 'DRAFT' as any); // Only allow deleting DRAFT invoices
-
-      if (error) throw error;
+      return invokeCustomerCreditRpc(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        'bulk_soft_delete_invoices_with_credit_v1',
+        buildBulkInvoiceCreditLifecycleRpcArgs(
+          invoiceIds,
+          prepareCustomerCreditRequest('invoice-bulk-delete'),
+        ),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
         title: 'Dữ liệu đã được XOÁ thành công',
@@ -1339,7 +1370,7 @@ export const useCheckOverdueInvoices = () => {
 };
 
 // =============================================
-// useExcessAmount - Query SUM(amount) from excess_amounts by contract_id
+// useExcessAmount - Read the canonical lot-backed customer credit balance
 // Requirements: 8.2
 // =============================================
 
@@ -1352,22 +1383,15 @@ export const useExcessAmount = (contractId?: string) => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await (supabase
-        .from('excess_amounts' as any) as any)
-        .select('amount, source_invoice:invoices!source_invoice_id(deleted_at)')
-        .eq('contract_id', contractId)
-        ;
+      // Generated types intentionally lag until the migration is applied.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)(
+        'get_customer_credit_balance_v1',
+        { p_contract_id: contractId },
+      );
 
       if (error) throw error;
-
-      // Sum all amounts (positive = credit added, negative = credit used).
-      // Bỏ qua row nếu source_invoice đã soft-delete (auto rollback khi huỷ HĐ).
-      const total = (data || []).reduce((sum: number, row: any) => {
-        const invDeleted = row.source_invoice?.deleted_at;
-        if (invDeleted) return sum;
-        return sum + (Number(row.amount) || 0);
-      }, 0);
-      return total;
+      return Number(data) || 0;
     },
     enabled: !!contractId,
   });
@@ -1566,34 +1590,23 @@ export const useRestoreInvoice = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      // 23505 (đã có HĐ khác cùng HĐ+kỳ) KHÔNG phải fallback signal — bong lên
-      // để onError hiển thị friendly như cũ.
-      const canonical = await (supabase.rpc as any)('restore_invoice_v1', {
-        p_invoice_id: invoiceId,
-      });
-      if (!canonical.error) return canonical.data;
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { data, error } = await supabase
-        .from('invoices')
-        .update({
-          status: 'APPROVED' as any,
-          approved_at: new Date().toISOString(),
-          approved_by: user.id,
-        } as any)
-        .eq('id', invoiceId)
-        .eq('status', 'CANCELLED' as any)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return invokeCustomerCreditRpc(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        'restore_invoice_with_credit_v1',
+        buildInvoiceCreditLifecycleRpcArgs(
+          invoiceId,
+          prepareCustomerCreditRequest('invoice-restore'),
+        ),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
         title: 'Đã phục hồi hoá đơn',
@@ -1615,10 +1628,8 @@ export const useRestoreInvoice = () => {
 };
 
 /**
- * Super admin xoá hoá đơn ở mọi trạng thái:
- *   hard-delete payments + excess_amounts liên quan, set status='CANCELLED'.
- * HĐ sau khi xoá xuất hiện trong filter "Đã huỷ", có thể phục hồi qua
- * `useRestoreInvoice` (CANCELLED → APPROVED), nhưng payments KHÔNG khôi phục lại.
+ * Super admin huỷ hoá đơn sau khi mọi payment đã được hoàn tác. Credit đã áp
+ * được unwind bằng bút toán đối ứng; không hard-delete payment hay ledger.
  */
 export const useForceCancelInvoice = () => {
   const queryClient = useQueryClient();
@@ -1626,19 +1637,16 @@ export const useForceCancelInvoice = () => {
 
   return useMutation({
     mutationFn: async (invoiceId: string) => {
-      // v2 theo LUẬT OWNER (D3): KHÔNG xoá payment — chỉ huỷ được khi mọi phiếu
-      // thu đã huỷ/hoàn; còn phiếu thu → lỗi hướng dẫn. Fallback v1 (hard-delete)
-      // CHỈ khi v2 chưa deploy (PGRST202) — mọi lỗi khác nổi lên nguyên trạng.
-      const v2 = await (supabase.rpc as any)('super_admin_force_cancel_invoice_v2', {
-        p_invoice_id: invoiceId,
-      });
-      if (!v2.error) return;
-      if (v2.error.code !== 'PGRST202') throw v2.error;
-
-      const { error } = await (supabase.rpc as any)('super_admin_force_cancel_invoice', {
-        p_invoice_id: invoiceId,
-      });
-      if (error) throw error;
+      return invokeCustomerCreditRpc(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        'super_admin_force_cancel_invoice_with_credit_v1',
+        buildInvoiceCreditLifecycleRpcArgs(
+          invoiceId,
+          prepareCustomerCreditRequest('invoice-force-cancel'),
+        ),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
@@ -1647,10 +1655,11 @@ export const useForceCancelInvoice = () => {
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-payments-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
         title: 'Đã xoá hoá đơn',
-        description: 'Hoá đơn và các payment liên quan đã bị xoá. Có thể phục hồi hoá đơn trong filter "Đã huỷ".',
+        description: 'Hoá đơn đã được huỷ sau khi kiểm tra payment và hoàn tác credit an toàn.',
       });
     },
     onError: (error: Error) => {
@@ -1672,27 +1681,23 @@ export const useCancelInvoice = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      const canonical = await (supabase.rpc as any)('cancel_invoice_v1', {
-        p_invoice_id: invoiceId,
-      });
-      if (!canonical.error) return canonical.data;
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { data, error } = await supabase
-        .from('invoices')
-        .update({ status: 'CANCELLED' as any } as any)
-        .eq('id', invoiceId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return invokeCustomerCreditRpc(
+        // Generated types intentionally lag until the migration is applied.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn, args) => (supabase.rpc as any)(fn, args),
+        'cancel_invoice_with_credit_v1',
+        buildInvoiceCreditLifecycleRpcArgs(
+          invoiceId,
+          prepareCustomerCreditRequest('invoice-cancel'),
+        ),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices-legacy'] });
       queryClient.invalidateQueries({ queryKey: ['invoice'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-statistics'] });
+      queryClient.invalidateQueries({ queryKey: ['excess-amount'] });
 
       toast({
         title: 'Hoá đơn đã được huỷ',

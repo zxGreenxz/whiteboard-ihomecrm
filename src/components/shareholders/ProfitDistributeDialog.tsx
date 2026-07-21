@@ -32,6 +32,7 @@ export default function ProfitDistributeDialog({
 }: Props) {
   const { data: accounts = [] } = useAccounts();
   const createMut = useCreateProfitDistribution();
+  const payoutAccounts = accounts.filter((account) => !account.is_virtual);
 
   const [shareholderId, setShareholderId] = useState("");
   const [amount, setAmount] = useState(0);
@@ -50,7 +51,11 @@ export default function ProfitDistributeDialog({
   }, [open, defaultShareholderId]);
 
   const canSubmit =
-    !!shareholderId && amount > 0 && !!accountId && !!voucherDate && !createMut.isPending;
+    !!shareholderId &&
+    amount > 0 &&
+    payoutAccounts.some((account) => account.id === accountId) &&
+    !!voucherDate &&
+    !createMut.isPending;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -93,7 +98,11 @@ export default function ProfitDistributeDialog({
               value={accountId}
               onValueChange={setAccountId}
               placeholder="Chọn sổ quỹ nguồn"
-              options={accounts.map((a) => ({ value: a.id, label: a.name, keywords: a.code }))}
+              options={payoutAccounts.map((a) => ({
+                value: a.id,
+                label: a.name,
+                keywords: a.code,
+              }))}
             />
           </div>
           <div className="space-y-2">

@@ -51,11 +51,19 @@ interface Props {
 
 type PaymentMethod = 'TM' | 'TT' | 'TK';
 
-interface PaymentRow {
+interface PaymentReceiptRow {
   id: string;
-  amount: number;
+  source_kind: 'COLLECTION_TENDER' | 'LEGACY_PAYMENT' | string;
+  payment_id: string | null;
+  collection_id: string | null;
+  voucher_id: string | null;
+  account_id: string | null;
+  collected_amount: number;
+  applied_amount: number;
+  credit_amount: number;
   payment_method: PaymentMethod | string;
   payment_date: string;
+  receipt_number: string | null;
   receipt_image_url: string | null;
   created_at: string;
 }
@@ -67,16 +75,33 @@ const METHOD_OPTIONS: PaymentMethod[] = ['TM', 'TT', 'TK'];
  *  - Hover + Ctrl/Cmd+V → paste ảnh từ clipboard
  *  Sau upload sẽ append vào income_expenses.attachments của phiếu Thu/Chi
  *  liên kết. */
-const ReceiptUploadSlot = ({ paymentId }: { paymentId: string }) => {
+const ReceiptUploadSlot = ({
+  paymentId,
+  disabledReason,
+}: {
+  paymentId: string;
+  disabledReason?: string;
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const upload = useUploadPaymentReceipt();
   const handleFile = (file: File) => upload.mutate({ payment_id: paymentId, file });
   const paste = useClipboardImagePaste({
-    enabled: !upload.isPending,
+    enabled: !disabledReason && !upload.isPending,
     onFiles: (files) => {
       if (files[0]) handleFile(files[0]);
     },
   });
+
+  if (disabledReason) {
+    return (
+      <div
+        className="shrink-0 h-14 w-14 grid place-items-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-400 cursor-not-allowed"
+        title={disabledReason}
+      >
+        <ImageIcon className="h-5 w-5" />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -140,43 +165,19 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
   const { data: depositVouchers } = useContractDepositVouchers(
     firstDetail?.contractId ?? null,
   );
-  const { data: payments, isLoading } = useQuery({
-    queryKey: ['invoice-payments-summary', invoiceId],
+  const { data: payments, isLoading, isError } = useQuery({
+    // Keep this distinct from SuperAdminForceDeleteDialog, whose similarly
+    // named query intentionally returns raw payment rows with a different shape.
+    queryKey: ['invoice-payments-summary', 'active-receipts', invoiceId],
     enabled: open && !!invoiceId,
-    queryFn: async (): Promise<PaymentRow[]> => {
+    queryFn: async (): Promise<PaymentReceiptRow[]> => {
       const { data, error } = await (supabase as any)
-        .from('payments')
-        .select('id, amount, payment_method, payment_date, receipt_image_url, created_at')
+        .from('active_payment_receipts')
+        .select('id, source_kind, payment_id, collection_id, voucher_id, account_id, collected_amount, applied_amount, credit_amount, payment_method, payment_date, receipt_number, receipt_image_url, created_at')
         .eq('invoice_id', invoiceId)
         .order('created_at', { ascending: true });
       if (error) throw error;
-      return (data || []) as PaymentRow[];
-    },
-  });
-
-  // Phiếu thu sổ quỹ liên kết với từng payment (income_expenses.payment_id).
-  // 1 query .in() cho cả danh sách payment — không N+1. Payment KHÔNG có phiếu
-  // thu liên kết là dấu hiệu lệch sổ → hiện badge cảnh báo.
-  const paymentIds = (payments ?? []).map((p) => p.id);
-  const { data: ieByPayment } = useQuery({
-    queryKey: ['invoice-payments-ie-links', invoiceId, paymentIds],
-    enabled: open && paymentIds.length > 0,
-    queryFn: async (): Promise<Map<string, { id: string; code: string }>> => {
-      const { data, error } = await (supabase as any)
-        .from('income_expenses')
-        .select('id, code, payment_id')
-        .in('payment_id', paymentIds)
-        .is('deleted_at', null);
-      if (error) throw error;
-      const map = new Map<string, { id: string; code: string }>();
-      for (const row of (data ?? []) as Array<{
-        id: string;
-        code: string;
-        payment_id: string;
-      }>) {
-        map.set(row.payment_id, { id: row.id, code: row.code });
-      }
-      return map;
+      return (data || []) as PaymentReceiptRow[];
     },
   });
 
@@ -205,10 +206,14 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
 
   const handleConfirmDelete = () => {
     if (!confirmDeleteId) return;
-    const id = confirmDeleteId;
-    setDeletingId(id);
+    const target = (payments ?? []).find((payment) => payment.id === confirmDeleteId);
+    if (!target) return;
+    setDeletingId(target.id);
     deletePayment.mutate(
-      { payment_id: id },
+      {
+        payment_id: target.payment_id,
+        collection_id: target.collection_id,
+      },
       {
         onSettled: () => {
           setDeletingId(null);
@@ -220,12 +225,25 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
 
   const confirmTarget = (payments ?? []).find((p) => p.id === confirmDeleteId);
   const confirmIdx = (payments ?? []).findIndex((p) => p.id === confirmDeleteId);
+  const confirmCollectionPayments = confirmTarget?.collection_id
+    ? (payments ?? []).filter((payment) => payment.collection_id === confirmTarget.collection_id)
+    : confirmTarget
+      ? [confirmTarget]
+      : [];
+  const confirmAmount = confirmCollectionPayments.reduce(
+    (sum, payment) => sum + (Number(payment.collected_amount) || 0),
+    0,
+  );
 
   if (!invoice) return null;
 
-  const total = (payments ?? []).reduce(
-    (sum, p) => sum + (Number(p.amount) || 0),
-    0,
+  const totals = (payments ?? []).reduce(
+    (sum, payment) => ({
+      collected: sum.collected + (Number(payment.collected_amount) || 0),
+      applied: sum.applied + (Number(payment.applied_amount) || 0),
+      credit: sum.credit + (Number(payment.credit_amount) || 0),
+    }),
+    { collected: 0, applied: 0, credit: 0 },
   );
 
   return (
@@ -289,7 +307,14 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
           );
         })()}
 
-        {isLoading ? (
+        {isError ? (
+          <div
+            role="alert"
+            className="rounded-md border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700"
+          >
+            Không thể tải các lần thu đang hoạt động. Hệ thống đã khóa thao tác cập nhật và hoàn tác.
+          </div>
+        ) : isLoading ? (
           <div className="space-y-2">
             {[1, 2].map((i) => (
               <Skeleton key={i} className="h-20 w-full" />
@@ -312,7 +337,11 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                 const timeStr = p.created_at
                   ? format(new Date(p.created_at), 'HH:mm')
                   : '';
-                const ieLink = ieByPayment?.get(p.id);
+                const collectedAmount = Number(p.collected_amount) || 0;
+                const appliedAmount = Number(p.applied_amount) || 0;
+                const creditAmount = Number(p.credit_amount) || 0;
+                const isPureCredit = appliedAmount < 0.01 && creditAmount > 0;
+                const canEditLegacyPayment = !p.collection_id && !!p.payment_id;
 
                 return (
                   <li
@@ -327,14 +356,24 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                     {/* Thông tin */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-base font-semibold text-emerald-600">
-                          +{fmtVND(Number(p.amount) || 0)}
+                        <div>
+                          <div className="text-base font-semibold text-emerald-600">
+                            +{fmtVND(collectedAmount)}
+                          </div>
+                          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                            <span>Áp vào HĐ: {fmtVND(appliedAmount)}</span>
+                            <span>Credit: {fmtVND(creditAmount)}</span>
+                          </div>
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger
-                            disabled={editingId === p.id}
+                            disabled={editingId === p.id || !canEditLegacyPayment}
                             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold transition hover:opacity-80 hover:shadow-sm disabled:opacity-60 disabled:cursor-not-allowed ${badgeCls}`}
-                            title="Click để đổi phương thức thanh toán"
+                            title={p.collection_id
+                              ? 'Collection V5 đã khóa phương thức; hoàn tác rồi ghi lại nếu cần sửa'
+                              : p.payment_id
+                                ? 'Click để đổi phương thức thanh toán'
+                                : 'Dòng thu không có payment legacy để cập nhật'}
                           >
                             {editingId === p.id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
@@ -350,8 +389,8 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                               <DropdownMenuItem
                                 key={m}
                                 onSelect={() => {
-                                  if (m !== p.payment_method) {
-                                    handleChangeMethod(p.id, m);
+                                  if (p.payment_id && m !== p.payment_method) {
+                                    handleChangeMethod(p.payment_id, m);
                                   }
                                 }}
                                 className="flex items-center justify-between"
@@ -364,6 +403,16 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                             ))}
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        {p.collection_id && (
+                          <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                            V5 khóa sổ
+                          </span>
+                        )}
+                        {isPureCredit && (
+                          <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">
+                            Chỉ giữ credit
+                          </span>
+                        )}
                       </div>
                       <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
@@ -377,30 +426,26 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                           </span>
                         )}
                       </div>
-                      {/* Deep-link sang phiếu thu sổ quỹ liên kết — chỉ render
-                          sau khi query link đã có kết quả để tránh chớp badge
-                          "không có phiếu thu" lúc đang tải. */}
-                      {ieByPayment &&
-                        (ieLink ? (
-                          <a
-                            href={`/income-expense/print/${ieLink.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition"
-                            title="Mở phiếu thu trong sổ Thu/Chi (trang in — xem chi tiết)"
-                          >
-                            <Receipt className="h-3 w-3" />
-                            Phiếu thu {ieLink.code}
-                          </a>
-                        ) : (
-                          <span
-                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-                            title="Payment này chưa có phiếu thu trong sổ Thu/Chi — có thể lệch sổ"
-                          >
-                            <Receipt className="h-3 w-3" />
-                            Không có phiếu thu
-                          </span>
-                        ))}
+                      {p.voucher_id ? (
+                        <a
+                          href={`/income-expense/print/${p.voucher_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100 hover:border-blue-300 transition"
+                          title="Mở phiếu thu trong sổ Thu/Chi (trang in — xem chi tiết)"
+                        >
+                          <Receipt className="h-3 w-3" />
+                          Phiếu thu{p.receipt_number ? ` ${p.receipt_number}` : ''}
+                        </a>
+                      ) : (
+                        <span
+                          className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                          title="Dòng receipt chưa có phiếu thu liên kết — có thể lệch sổ"
+                        >
+                          <Receipt className="h-3 w-3" />
+                          Không có phiếu thu
+                        </span>
+                      )}
                     </div>
 
                     {/* Chứng từ */}
@@ -439,13 +484,22 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                         </HoverCardContent>
                       </HoverCard>
                     ) : (
-                      <ReceiptUploadSlot paymentId={p.id} />
+                      <ReceiptUploadSlot
+                        paymentId={p.payment_id ?? ''}
+                        disabledReason={p.collection_id
+                          ? 'Collection V5 đã khóa chứng từ; chưa có RPC metadata được ủy quyền'
+                          : !p.payment_id
+                            ? 'Dòng receipt không có payment legacy để gắn chứng từ'
+                            : undefined}
+                      />
                     )}
 
                     {/* Nút xoá phiếu thanh toán — đặt ngoài cùng bên phải */}
                     <button
                       type="button"
-                      title="Xoá phiếu thanh toán này (xoá luôn phiếu thu liên kết)"
+                      title={p.collection_id
+                        ? 'Hoàn tác toàn bộ lần thu V5 (mọi dòng TM/TK/TT)'
+                        : 'Hoàn tác phiếu thanh toán cũ'}
                       disabled={deletingId === p.id}
                       onClick={() => setConfirmDeleteId(p.id)}
                       className="shrink-0 grid place-items-center h-9 w-9 rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -461,13 +515,19 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
               })}
             </ul>
 
-            <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2">
-              <span className="text-sm font-medium text-emerald-900">
-                Tổng đã thanh toán ({payments.length} lần)
-              </span>
-              <span className="text-base font-bold text-emerald-700">
-                {fmtVND(total)}
-              </span>
+            <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-emerald-900">
+                  Tổng receipt đang hoạt động ({payments.length} dòng)
+                </span>
+                <span className="text-base font-bold text-emerald-700">
+                  {fmtVND(totals.collected)}
+                </span>
+              </div>
+              <div className="mt-1 flex flex-wrap justify-end gap-x-4 gap-y-0.5 text-xs text-emerald-900/80">
+                <span>Áp vào HĐ: <b>{fmtVND(totals.applied)}</b></span>
+                <span>Giữ credit: <b>{fmtVND(totals.credit)}</b></span>
+              </div>
             </div>
           </>
         )}
@@ -566,21 +626,23 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xoá phiếu thanh toán?</AlertDialogTitle>
+            <AlertDialogTitle>Hoàn tác lần thu tiền?</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmTarget ? (
                 <>
-                  Bạn sắp xoá phiếu thanh toán
+                  Bạn sắp hoàn tác {confirmTarget.collection_id ? 'toàn bộ collection chứa phiếu' : 'phiếu thanh toán cũ'}
                   {confirmIdx >= 0 ? ` #${confirmIdx + 1}` : ''}{' '}
                   <span className="font-semibold text-emerald-700">
-                    {fmtVND(Number(confirmTarget.amount) || 0)}
+                    {fmtVND(confirmAmount)}
                   </span>{' '}
-                  ({confirmTarget.payment_method}). Phiếu Thu liên kết trong sổ
-                  Thu/Chi (kể cả phiếu cọc tách kèm nếu có) cũng sẽ bị xoá.
-                  Thao tác này không thể hoàn tác.
+                  {confirmTarget.collection_id
+                    ? `tiền đã thu giữ (${confirmCollectionPayments.length} dòng TM/TK/TT). `
+                    : `(${confirmTarget.payment_method}). `}
+                  Hệ thống sẽ tạo bút toán đối ứng,
+                  giữ nguyên lịch sử gốc và tính lại số đã thu của hóa đơn.
                 </>
               ) : (
-                'Phiếu Thu liên kết trong sổ Thu/Chi (kể cả phiếu cọc tách kèm nếu có) cũng sẽ bị xoá. Thao tác này không thể hoàn tác.'
+                'Hệ thống sẽ tạo bút toán đối ứng và giữ nguyên lịch sử gốc.'
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -599,10 +661,10 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
               {deletePayment.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Đang xoá...
+                  Đang hoàn tác...
                 </>
               ) : (
-                'Xoá phiếu'
+                'Hoàn tác'
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

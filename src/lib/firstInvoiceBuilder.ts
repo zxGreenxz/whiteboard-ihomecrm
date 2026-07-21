@@ -2,7 +2,7 @@
 // Hoá đơn cọc + tháng đầu — sinh items mặc định.
 //
 // Bao gồm:
-//   - RENT: tháng đầu (tự chia tỉ lệ theo số ngày start→end / daysInStartMonth)
+//   - RENT: kỳ đầu (chia tỉ lệ riêng theo số ngày của từng tháng dương lịch)
 //   - DISCOUNT: khuyến mãi tháng đầu (nếu có discounts)
 //   - SERVICE: dịch vụ tính cố định (theo tháng/phòng/người).
 //     Bỏ qua dịch vụ tính theo đồng hồ (đợi chốt chỉ số).
@@ -13,11 +13,13 @@
 // =============================================
 
 export type FirstInvoiceItemType = "RENT" | "SERVICE" | "DISCOUNT" | "OTHER";
+export type FirstInvoiceAccountingClass = "REVENUE" | "DEPOSIT";
 
 export interface FirstInvoiceItem {
   /** Local id để React render — không lưu DB. */
   id: string;
   type: FirstInvoiceItemType;
+  accounting_class: FirstInvoiceAccountingClass;
   description: string;
   unit_price: number;
   quantity: number;
@@ -56,35 +58,90 @@ const METERED_PRICING = new Set([
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** Số ngày tính tiền từ start→end (inclusive cả 2 đầu) — chia tỉ lệ tháng đầu. */
+interface ParsedISODate {
+  y: number;
+  m: number;
+  d: number;
+  iso: string;
+}
+
+function parseISODate(value?: string | null): ParsedISODate | null {
+  if (!value) return null;
+  const iso = value.slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const m = Number(match[2]);
+  const d = Number(match[3]);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  if (
+    utc.getUTCFullYear() !== y ||
+    utc.getUTCMonth() !== m - 1 ||
+    utc.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return { y, m, d, iso };
+}
+
+export function normalizeDateOnly(value?: string | null): string | null {
+  return parseISODate(value)?.iso ?? null;
+}
+
+export function normalizeFirstBillingPeriod(
+  startBillingDate?: string | null,
+  endBillingDate?: string | null,
+  contractStartDate?: string | null,
+): { start_date: string | null; end_date: string | null } {
+  const startDate =
+    normalizeDateOnly(startBillingDate) ?? normalizeDateOnly(contractStartDate);
+  const endDate = normalizeDateOnly(endBillingDate) ?? startDate;
+  return { start_date: startDate, end_date: endDate };
+}
+
+/** Số ngày tính tiền từ start→end (inclusive cả 2 đầu). */
 export function getProratedDays(startISO?: string, endISO?: string): number {
-  if (!startISO || !endISO) return 0;
-  const s = new Date(startISO + "T00:00:00");
-  const e = new Date(endISO + "T00:00:00");
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return 0;
-  if (e < s) return 0;
-  return Math.round((e.getTime() - s.getTime()) / MS_PER_DAY) + 1;
+  const start = parseISODate(startISO);
+  const end = parseISODate(endISO);
+  if (!start || !end || end.iso < start.iso) return 0;
+  const startMs = Date.UTC(start.y, start.m - 1, start.d);
+  const endMs = Date.UTC(end.y, end.m - 1, end.d);
+  return Math.round((endMs - startMs) / MS_PER_DAY) + 1;
 }
 
-/** Số ngày trong tháng của start_billing_date. */
-function daysInMonthOf(iso: string): number {
-  const d = new Date(iso + "T00:00:00");
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-/** Tỉ lệ tiền thuê tháng đầu = rent × (days / daysInStartMonth). */
+/**
+ * Prorate a monthly amount month-by-month. Each calendar month uses its own
+ * denominator, so a period crossing February/March is not divided by the
+ * number of days in the first month only.
+ */
 export function calculateProratedRent(
   rent: number,
   startISO?: string,
   endISO?: string,
 ): number {
-  if (!rent || !startISO) return rent || 0;
-  if (!endISO) return rent;
-  const days = getProratedDays(startISO, endISO);
-  if (days <= 0) return rent;
-  const daysInMonth = daysInMonthOf(startISO);
-  if (!daysInMonth) return rent;
-  return Math.round((rent / daysInMonth) * days);
+  if (!rent) return rent || 0;
+  const start = parseISODate(startISO);
+  const end = parseISODate(endISO);
+  if (!start || !end || end.iso < start.iso) return rent;
+
+  const startMonthIndex = start.y * 12 + (start.m - 1);
+  const endMonthIndex = end.y * 12 + (end.m - 1);
+  let total = 0;
+
+  for (let monthIndex = startMonthIndex; monthIndex <= endMonthIndex; monthIndex += 1) {
+    const year = Math.floor(monthIndex / 12);
+    const month = (monthIndex % 12) + 1;
+    const monthDays = daysInMonth(year, month);
+    const firstCoveredDay = monthIndex === startMonthIndex ? start.d : 1;
+    const lastCoveredDay = monthIndex === endMonthIndex ? end.d : monthDays;
+    total += rent * ((lastCoveredDay - firstCoveredDay + 1) / monthDays);
+  }
+
+  return Math.round(total);
 }
 
 let _seq = 0;
@@ -98,7 +155,7 @@ export function buildFirstInvoiceItems(
 ): FirstInvoiceItem[] {
   const items: FirstInvoiceItem[] = [];
 
-  // RENT — tháng đầu (chia tỉ lệ theo số ngày start→end).
+  // RENT — kỳ đầu (chia tỉ lệ riêng theo từng tháng dương lịch).
   const proratedRent = calculateProratedRent(
     input.rent_price,
     input.start_billing_date,
@@ -113,6 +170,7 @@ export function buildFirstInvoiceItems(
     items.push({
       id: nextId("rent"),
       type: "RENT",
+      accounting_class: "REVENUE",
       description: desc,
       unit_price: proratedRent,
       quantity: 1,
@@ -126,23 +184,21 @@ export function buildFirstInvoiceItems(
   // "Giảm trừ" thống nhất, có notes/tooltip rõ ràng "tháng X/Y × Z đ", và áp
   // tự động cho cả HĐ tháng 2..N (qua getContractDiscountSlot).
 
-  // SERVICE — dịch vụ cố định: prorate theo cùng tỉ lệ ngày như tiền thuê
+  // SERVICE — dịch vụ cố định: prorate theo cùng cách từng tháng như tiền thuê
   // (dịch vụ đồng hồ bỏ qua, sẽ chốt khi ghi chỉ số).
   const proratedDays = getProratedDays(
     input.start_billing_date,
     input.end_billing_date,
   );
-  const startDaysInMonth = input.start_billing_date
-    ? daysInMonthOf(input.start_billing_date)
-    : 0;
-  const shouldProrate =
-    proratedDays > 0 && startDaysInMonth > 0 && proratedDays !== startDaysInMonth;
   for (const s of input.services) {
     if (METERED_PRICING.has(s.pricing_type ?? "")) continue;
     if (!s.unit_price || s.unit_price <= 0) continue;
-    const proratedPrice = shouldProrate
-      ? Math.round((s.unit_price / startDaysInMonth) * proratedDays)
-      : s.unit_price;
+    const proratedPrice = calculateProratedRent(
+      s.unit_price,
+      input.start_billing_date,
+      input.end_billing_date,
+    );
+    const shouldProrate = proratedDays > 0 && proratedPrice !== s.unit_price;
     const description = shouldProrate
       ? `${s.name} (${proratedDays} ngày)`
       : s.name;
@@ -150,10 +206,13 @@ export function buildFirstInvoiceItems(
     items.push({
       id: nextId("svc"),
       type: "SERVICE",
+      accounting_class: "REVENUE",
       description,
       unit_price: proratedPrice,
       quantity: qty,
       service_id: s.service_id,
+      from_date: input.start_billing_date ?? null,
+      to_date: input.end_billing_date ?? null,
     });
   }
 
@@ -171,6 +230,7 @@ export function buildFirstInvoiceItems(
       items.push({
         id: nextId("deposit"),
         type: "OTHER",
+        accounting_class: "DEPOSIT",
         description: "Tiền cọc",
         unit_price: depositRemaining,
         quantity: 1,
@@ -190,13 +250,19 @@ export function buildFirstInvoiceItems(
  */
 export function buildFirstInvoiceDiscount(
   input: FirstInvoiceBuilderInput,
+  items: readonly FirstInvoiceItem[],
 ): { amount: number; notes: string } {
   const months = Math.max(0, Math.floor(input.discount_months ?? 0));
   const perMonth = Math.max(0, input.discount_amount_per_month ?? 0);
   if (months <= 0 || perMonth <= 0) return { amount: 0, notes: '' };
+  const revenueSubtotal = items
+    .filter((item) => item.accounting_class === "REVENUE")
+    .reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const amount = Math.min(perMonth, Math.max(0, revenueSubtotal));
+  if (amount <= 0) return { amount: 0, notes: '' };
   return {
-    amount: perMonth,
-    notes: `Khuyến mãi HĐ — tháng 1/${months} × ${perMonth.toLocaleString('vi-VN')}đ`,
+    amount,
+    notes: `Khuyến mãi HĐ — tháng 1/${months} × ${amount.toLocaleString('vi-VN')}đ`,
   };
 }
 
@@ -256,13 +322,15 @@ export function computeFirstBillingMonth(
 
   // Quét các tháng từ tháng của `from` trở lên; giữ tháng phủ TRỌN muộn nhất.
   let result = fromKey;
-  let y = f.y;
-  let m = f.m;
-  for (let i = 0; i < 24; i++) {
+  const toMonth = parseYearMonth(to);
+  if (!toMonth) return fromKey;
+  const startMonthIndex = f.y * 12 + (f.m - 1);
+  const endMonthIndex = toMonth.y * 12 + (toMonth.m - 1);
+  for (let monthIndex = startMonthIndex; monthIndex <= endMonthIndex; monthIndex += 1) {
+    const y = Math.floor(monthIndex / 12);
+    const m = (monthIndex % 12) + 1;
     if (lastDayISO(y, m) > toDate) break; // tháng này chưa kết thúc trong kỳ
     if (firstDayISO(y, m) >= fromDate) result = `${y}-${pad2(m)}`; // phủ trọn
-    m += 1;
-    if (m > 12) { m = 1; y += 1; }
   }
   return result;
 }

@@ -3,7 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildProfitCloseAdjustments,
+  hasUnallocatedProfitResidual,
   mergeProfitCloseDrafts,
+  normalizeUnallocatedDisposition,
   resolveProfitCloseOrganizationId,
   validateProfitCloseDrafts,
   type ProfitCloseDraftMap,
@@ -17,7 +19,14 @@ describe("profit close draft initialization", () => {
         {},
         new Set(),
       ),
-    ).toEqual({ b1: { adjustmentAmount: 0, adjustmentReason: "" } });
+    ).toEqual({
+      b1: {
+        adjustmentAmount: 0,
+        adjustmentReason: "",
+        unallocatedDisposition: null,
+        unallocatedDispositionReason: "",
+      },
+    });
   });
 
   it("reuses only the signed snapshot adjustment, never a stale absolute adjusted value", () => {
@@ -28,6 +37,8 @@ describe("profit close draft initialization", () => {
           locked: true,
           snapshotAdjustmentAmount: -250_000,
           snapshotAdjustmentReason: " Giảm khoản bất thường ",
+          unallocatedDisposition: "CARRY_FORWARD",
+          unallocatedDispositionReason: " Chuyển sang kỳ kế tiếp ",
         },
       ],
       {},
@@ -37,12 +48,19 @@ describe("profit close draft initialization", () => {
     expect(drafts.b1).toEqual({
       adjustmentAmount: -250_000,
       adjustmentReason: "Giảm khoản bất thường",
+      unallocatedDisposition: "CARRY_FORWARD",
+      unallocatedDispositionReason: "Chuyển sang kỳ kế tiếp",
     });
   });
 
   it("does not overwrite dirty input during a background preview refresh", () => {
     const previous: ProfitCloseDraftMap = {
-      b1: { adjustmentAmount: 125_000, adjustmentReason: "User đang sửa" },
+      b1: {
+        adjustmentAmount: 125_000,
+        adjustmentReason: "User đang sửa",
+        unallocatedDisposition: "RETAINED_EARNINGS",
+        unallocatedDispositionReason: "Giữ lại theo nghị quyết",
+      },
     };
     const drafts = mergeProfitCloseDrafts(
       [
@@ -66,8 +84,18 @@ describe("profit close adjustment validation", () => {
     const result = validateProfitCloseDrafts(
       ["increase", "decrease"],
       {
-        increase: { adjustmentAmount: 100, adjustmentReason: "" },
-        decrease: { adjustmentAmount: -100, adjustmentReason: "Giảm theo biên bản" },
+        increase: {
+          adjustmentAmount: 100,
+          adjustmentReason: "",
+          unallocatedDisposition: null,
+          unallocatedDispositionReason: "",
+        },
+        decrease: {
+          adjustmentAmount: -100,
+          adjustmentReason: "Giảm theo biên bản",
+          unallocatedDisposition: null,
+          unallocatedDispositionReason: "",
+        },
       },
       { reclose: false, overallReason: "" },
     );
@@ -79,7 +107,14 @@ describe("profit close adjustment validation", () => {
   });
 
   it("requires an overall reason only for reclose", () => {
-    const drafts = { b1: { adjustmentAmount: 0, adjustmentReason: "" } };
+    const drafts = {
+      b1: {
+        adjustmentAmount: 0,
+        adjustmentReason: "",
+        unallocatedDisposition: null,
+        unallocatedDispositionReason: "",
+      },
+    };
     expect(
       validateProfitCloseDrafts(["b1"], drafts, {
         reclose: false,
@@ -99,18 +134,77 @@ describe("profit close adjustment validation", () => {
       buildProfitCloseAdjustments(
         ["b1", "b2"],
         {
-          b1: { adjustmentAmount: 0, adjustmentReason: "ignored" },
-          b2: { adjustmentAmount: -75_000, adjustmentReason: "  Điều chỉnh giảm  " },
+          b1: {
+            adjustmentAmount: 0,
+            adjustmentReason: "ignored",
+            unallocatedDisposition: null,
+            unallocatedDispositionReason: "",
+          },
+          b2: {
+            adjustmentAmount: -75_000,
+            adjustmentReason: "  Điều chỉnh giảm  ",
+            unallocatedDisposition: "RETAINED_EARNINGS",
+            unallocatedDispositionReason: "  Giữ lại theo nghị quyết  ",
+          },
         },
+        { b1: 0, b2: 25_000 },
       ),
     ).toEqual([
-      { building_id: "b1", adjustment_amount: 0, adjustment_reason: null },
+      {
+        building_id: "b1",
+        adjustment_amount: 0,
+        adjustment_reason: null,
+        unallocated_disposition: null,
+        unallocated_disposition_reason: null,
+      },
       {
         building_id: "b2",
         adjustment_amount: -75_000,
         adjustment_reason: "Điều chỉnh giảm",
+        unallocated_disposition: "RETAINED_EARNINGS",
+        unallocated_disposition_reason: "Giữ lại theo nghị quyết",
       },
     ]);
+  });
+
+  it("blocks a material residual without disposition and a valid reason", () => {
+    const base = {
+      adjustmentAmount: 0,
+      adjustmentReason: "",
+      unallocatedDisposition: null,
+      unallocatedDispositionReason: "",
+    } as const;
+    expect(
+      validateProfitCloseDrafts(["b1"], { b1: base }, {
+        reclose: false,
+        overallReason: "",
+        unallocatedProfitByBuilding: { b1: 0.01 },
+      }).rowErrors.b1,
+    ).toMatch(/chưa phân bổ/);
+
+    expect(
+      validateProfitCloseDrafts(
+        ["b1"],
+        {
+          b1: {
+            ...base,
+            unallocatedDisposition: "CARRY_FORWARD",
+            unallocatedDispositionReason: "Chuyển sang kỳ sau",
+          },
+        },
+        {
+          reclose: false,
+          overallReason: "",
+          unallocatedProfitByBuilding: { b1: -0.01 },
+        },
+      ).valid,
+    ).toBe(true);
+  });
+
+  it("uses the exact residual threshold and rejects unknown dispositions", () => {
+    expect(hasUnallocatedProfitResidual(0.009)).toBe(false);
+    expect(hasUnallocatedProfitResidual(-0.01)).toBe(true);
+    expect(normalizeUnallocatedDisposition("UNKNOWN")).toBeNull();
   });
 });
 
@@ -169,6 +263,32 @@ describe("profit close V2 boundaries", () => {
     expect(canonicalSection).toContain("profit_close_v2");
     expect(canonicalSection).toContain("profit_reclose_v2");
     expect(canonicalSection).toContain("profit_reset_checked_v2");
+  });
+
+  it("fetches complete profit histories with stable paged queries", () => {
+    expect(hookSource).toContain('from("profit_monthly")');
+    expect(hookSource).toContain('label: "profit.monthlyHistory"');
+    expect(hookSource).toContain('label: "profit.shareholderAllocations"');
+    expect(hookSource).toContain('label: "profit.shareholderDistributions"');
+    expect(hookSource).toContain('label: "profit.managerAllocations"');
+    expect(hookSource).toContain('label: "profit.managerSalaryPayouts"');
+    expect(hookSource.match(/fetchAllRows<any>/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("preserves and submits the unallocated-profit accounting fields", () => {
+    for (const field of [
+      "shareholder_percent_total",
+      "shareholder_allocated_amount",
+      "unallocated_profit",
+      "unallocated_disposition",
+      "unallocated_disposition_reason",
+    ]) {
+      expect(hookSource).toContain(field);
+      expect(uiSource).toContain(field);
+    }
+    expect(hookSource).toContain("p_adjustments: previewAdjustments");
+    expect(hookSource).toContain("p_adjustments: input.adjustments");
+    expect(uiSource).toContain("hasInvalidResidualDisposition");
   });
 
   it("never mutates canonical source/config tables in the V2 migration", () => {

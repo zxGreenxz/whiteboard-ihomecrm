@@ -7,7 +7,12 @@ import {
   computeShareholderSummary,
   type ShareholderSummaryRow,
 } from "@/lib/shareholderProfit";
-import type { ProfitCloseAdjustmentPayload } from "@/lib/profitClose";
+import {
+  normalizeUnallocatedDisposition,
+  type ProfitCloseAdjustmentPayload,
+  type ProfitUnallocatedDisposition,
+} from "@/lib/profitClose";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 
 export { computeShareholderSummary };
 export type { ShareholderSummaryRow };
@@ -29,6 +34,11 @@ export interface ProfitMonthly {
   computed_profit: number;
   adjusted_profit: number;
   management_salary: number; // lương điều hành đã trừ (snapshot); distributable = adjusted - này
+  shareholder_percent_total?: number;
+  shareholder_allocated_amount?: number;
+  unallocated_profit?: number;
+  unallocated_disposition?: ProfitUnallocatedDisposition | null;
+  unallocated_disposition_reason?: string | null;
   status: "DRAFT" | "LOCKED";
   note: string | null;
   locked_at: string | null;
@@ -44,6 +54,11 @@ export interface ProfitCloseSnapshot {
   adjusted_profit: number;
   management_salary: number;
   distributable_profit: number;
+  shareholder_percent_total: number;
+  shareholder_allocated_amount: number;
+  unallocated_profit: number;
+  unallocated_disposition: ProfitUnallocatedDisposition | null;
+  unallocated_disposition_reason: string | null;
   source_hash: string | null;
   locked_at: string | null;
 }
@@ -57,6 +72,11 @@ export interface ProfitClosePreviewRow {
   adjustment_amount: number;
   management_salary: number;
   distributable_profit: number;
+  shareholder_percent_total: number;
+  shareholder_allocated_amount: number;
+  unallocated_profit: number;
+  unallocated_disposition: ProfitUnallocatedDisposition | null;
+  unallocated_disposition_reason: string | null;
   source_hash: string;
   is_stale: boolean;
   stale_reason: string | null;
@@ -212,19 +232,31 @@ export const useProfitMonthly = () => {
   return useQuery({
     queryKey: ["profit-monthly"],
     queryFn: async () => {
-      const { data, error } = await (supabase
-        .from("profit_monthly")
-        .select("*") as any)
-        .order("period_month", { ascending: false });
-      if (error) {
+      const data = await fetchAllRows<any>(
+        (from, to) =>
+          (supabase.from("profit_monthly").select("*") as any)
+            .order("period_month", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to),
+        { label: "profit.monthlyHistory" },
+      );
+      if (data === null) {
         toast.error("Không thể tải dữ liệu chốt lợi nhuận");
-        throw error;
+        throw new Error("Lỗi tải toàn bộ lịch sử chốt lợi nhuận");
       }
       return ((data || []) as any[]).map((r) => ({
         ...r,
         computed_profit: Number(r.computed_profit) || 0,
         adjusted_profit: Number(r.adjusted_profit) || 0,
         management_salary: Number(r.management_salary) || 0,
+        shareholder_percent_total: money(r.shareholder_percent_total),
+        shareholder_allocated_amount: money(r.shareholder_allocated_amount),
+        unallocated_profit: money(r.unallocated_profit),
+        unallocated_disposition: normalizeUnallocatedDisposition(
+          r.unallocated_disposition,
+        ),
+        unallocated_disposition_reason:
+          r.unallocated_disposition_reason ?? null,
       })) as ProfitMonthly[];
     },
   });
@@ -235,12 +267,18 @@ export const useProfitAllocations = () => {
   return useQuery({
     queryKey: ["profit-allocations"],
     queryFn: async () => {
-      const { data, error } = await (supabase
-        .from("profit_allocations")
-        .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any);
-      if (error) {
+      const data = await fetchAllRows<any>(
+        (from, to) =>
+          (supabase
+            .from("profit_allocations")
+            .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any)
+            .order("id", { ascending: true })
+            .range(from, to),
+        { label: "profit.shareholderAllocations" },
+      );
+      if (data === null) {
         toast.error("Không thể tải phân bổ lợi nhuận");
-        throw error;
+        throw new Error("Lỗi tải toàn bộ phân bổ lợi nhuận");
       }
       return ((data || []) as any[]).map((r) => ({
         id: r.id,
@@ -261,17 +299,23 @@ export const useShareholderDistributions = () => {
   return useQuery({
     queryKey: ["shareholder-distributions"],
     queryFn: async () => {
-      const { data, error } = await (supabase
-        .from("income_expenses")
-        .select("id, shareholder_id, total_amount, voucher_date, name, account_id, building_id") as any)
-        .eq("type", "EXPENSE")
-        .eq("approval_status", "APPROVED")
-        .not("shareholder_id", "is", null)
-        .is("deleted_at", null)
-        .order("voucher_date", { ascending: false });
-      if (error) {
+      const data = await fetchAllRows<any>(
+        (from, to) =>
+          (supabase
+            .from("income_expenses")
+            .select("id, shareholder_id, total_amount, voucher_date, name, account_id, building_id") as any)
+            .eq("type", "EXPENSE")
+            .eq("approval_status", "APPROVED")
+            .not("shareholder_id", "is", null)
+            .is("deleted_at", null)
+            .order("voucher_date", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to),
+        { label: "profit.shareholderDistributions" },
+      );
+      if (data === null) {
         toast.error("Không thể tải lịch sử chia lợi nhuận");
-        throw error;
+        throw new Error("Lỗi tải toàn bộ lịch sử chia lợi nhuận");
       }
       return ((data || []) as any[]).map((r) => ({
         id: r.id,
@@ -291,12 +335,18 @@ export const useProfitManagerAllocations = () => {
   return useQuery({
     queryKey: ["profit-manager-allocations"],
     queryFn: async () => {
-      const { data, error } = await (supabase
-        .from("profit_manager_allocations")
-        .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any);
-      if (error) {
+      const data = await fetchAllRows<any>(
+        (from, to) =>
+          (supabase
+            .from("profit_manager_allocations")
+            .select("*, pm:profit_monthly_id(period_month, building_id, status)") as any)
+            .order("id", { ascending: true })
+            .range(from, to),
+        { label: "profit.managerAllocations" },
+      );
+      if (data === null) {
         toast.error("Không thể tải phân bổ lương điều hành");
-        throw error;
+        throw new Error("Lỗi tải toàn bộ phân bổ lương điều hành");
       }
       return ((data || []) as any[]).map((r) => ({
         id: r.id,
@@ -316,17 +366,23 @@ export const useManagerSalaryPayouts = () => {
   return useQuery({
     queryKey: ["manager-salary-payouts"],
     queryFn: async () => {
-      const { data, error } = await (supabase
-        .from("income_expenses")
-        .select("id, profit_manager_id, total_amount, voucher_date, name, account_id, building_id") as any)
-        .eq("type", "EXPENSE")
-        .eq("approval_status", "APPROVED")
-        .not("profit_manager_id", "is", null)
-        .is("deleted_at", null)
-        .order("voucher_date", { ascending: false });
-      if (error) {
+      const data = await fetchAllRows<any>(
+        (from, to) =>
+          (supabase
+            .from("income_expenses")
+            .select("id, profit_manager_id, total_amount, voucher_date, name, account_id, building_id") as any)
+            .eq("type", "EXPENSE")
+            .eq("approval_status", "APPROVED")
+            .not("profit_manager_id", "is", null)
+            .is("deleted_at", null)
+            .order("voucher_date", { ascending: false })
+            .order("id", { ascending: true })
+            .range(from, to),
+        { label: "profit.managerSalaryPayouts" },
+      );
+      if (data === null) {
         toast.error("Không thể tải lịch sử trả lương điều hành");
-        throw error;
+        throw new Error("Lỗi tải toàn bộ lịch sử trả lương điều hành");
       }
       return ((data || []) as any[]).map((r) => ({
         id: r.id,
@@ -373,6 +429,11 @@ export interface ProfitCloseStateRow {
   adjustment_reason: string | null;
   management_salary: number;
   distributable_profit: number;
+  shareholder_percent_total: number;
+  shareholder_allocated_amount: number;
+  unallocated_profit: number;
+  unallocated_disposition: ProfitUnallocatedDisposition | null;
+  unallocated_disposition_reason: string | null;
   source_revenue: number;
   source_expense: number;
   source_hash: string;
@@ -453,6 +514,14 @@ function normalizeProfitCloseState(value: any): ProfitCloseState {
       adjustment_reason: row.adjustment_reason ?? null,
       management_salary: money(row.management_salary),
       distributable_profit: money(row.distributable_profit),
+      shareholder_percent_total: money(row.shareholder_percent_total),
+      shareholder_allocated_amount: money(row.shareholder_allocated_amount),
+      unallocated_profit: money(row.unallocated_profit),
+      unallocated_disposition: normalizeUnallocatedDisposition(
+        row.unallocated_disposition,
+      ),
+      unallocated_disposition_reason:
+        row.unallocated_disposition_reason ?? null,
       source_revenue: money(row.source_revenue),
       source_expense: money(row.source_expense),
       source_hash: String(row.source_hash ?? ""),
@@ -497,6 +566,14 @@ function normalizeSnapshot(value: any): ProfitCloseSnapshot | null {
     adjusted_profit: adjusted,
     management_salary: salary,
     distributable_profit: money(value.distributable_profit ?? adjusted - salary),
+    shareholder_percent_total: money(value.shareholder_percent_total),
+    shareholder_allocated_amount: money(value.shareholder_allocated_amount),
+    unallocated_profit: money(value.unallocated_profit),
+    unallocated_disposition: normalizeUnallocatedDisposition(
+      value.unallocated_disposition,
+    ),
+    unallocated_disposition_reason:
+      value.unallocated_disposition_reason ?? null,
     source_hash: value.source_hash ?? null,
     locked_at: value.locked_at ?? null,
   };
@@ -543,6 +620,31 @@ function normalizeProfitClosePreview(
             ? snapshot.source_hash !== rowSourceHash
             : false)),
     );
+    const shareholderAllocations = Array.isArray(row.shareholder_allocations)
+      ? row.shareholder_allocations.map((allocation: any) => ({
+          shareholder_id: String(allocation.shareholder_id),
+          shareholder_name: String(allocation.shareholder_name ?? ""),
+          percent: money(allocation.percent),
+          amount: money(allocation.amount),
+        }))
+      : [];
+    const shareholderPercentTotal = money(
+      row.shareholder_percent_total ??
+        shareholderAllocations.reduce(
+          (sum: number, allocation: { percent: number }) => sum + allocation.percent,
+          0,
+        ),
+    );
+    const shareholderAllocatedAmount = money(
+      row.shareholder_allocated_amount ??
+        shareholderAllocations.reduce(
+          (sum: number, allocation: { amount: number }) => sum + allocation.amount,
+          0,
+        ),
+    );
+    const unallocatedProfit = money(
+      row.unallocated_profit ?? distributable - shareholderAllocatedAmount,
+    );
     return {
       building_id: String(row.building_id),
       building_name: String(row.building_name ?? ""),
@@ -552,18 +654,21 @@ function normalizeProfitClosePreview(
       adjustment_amount: adjustment,
       management_salary: salary,
       distributable_profit: distributable,
+      shareholder_percent_total: shareholderPercentTotal,
+      shareholder_allocated_amount: shareholderAllocatedAmount,
+      unallocated_profit: unallocatedProfit,
+      unallocated_disposition: normalizeUnallocatedDisposition(
+        row.unallocated_disposition ?? snapshot?.unallocated_disposition,
+      ),
+      unallocated_disposition_reason:
+        row.unallocated_disposition_reason ??
+        snapshot?.unallocated_disposition_reason ??
+        null,
       source_hash: rowSourceHash,
       is_stale: stale,
       stale_reason: row.current_stale_reason ?? row.stale_reason ?? null,
       delta_profit: money(row.delta_profit ?? (snapshot ? computed - snapshot.computed_profit : 0)),
-      shareholder_allocations: Array.isArray(row.shareholder_allocations)
-        ? row.shareholder_allocations.map((allocation: any) => ({
-            shareholder_id: String(allocation.shareholder_id),
-            shareholder_name: String(allocation.shareholder_name ?? ""),
-            percent: money(allocation.percent),
-            amount: money(allocation.amount),
-          }))
-        : [],
+      shareholder_allocations: shareholderAllocations,
       manager_allocations: Array.isArray(row.manager_allocations)
         ? row.manager_allocations.map((allocation: any) => ({
             manager_id: String(allocation.manager_id),
@@ -661,6 +766,26 @@ export const useCloseProfitPeriod = () => {
         throw new Error("Lý do chốt lại phải có 8–1000 ký tự");
       }
       const reason = submittedReason || `Chốt lợi nhuận lần đầu ${input.periodMonth}`;
+      for (const adjustment of input.adjustments) {
+        const disposition = normalizeUnallocatedDisposition(
+          adjustment.unallocated_disposition,
+        );
+        if (
+          adjustment.unallocated_disposition != null &&
+          !disposition
+        ) {
+          throw new Error("Cách xử lý phần chưa phân bổ không hợp lệ");
+        }
+        if (disposition) {
+          const dispositionReason =
+            adjustment.unallocated_disposition_reason?.trim() ?? "";
+          if (dispositionReason.length < 8 || dispositionReason.length > 500) {
+            throw new Error(
+              "Lý do xử lý phần chưa phân bổ phải có 8–500 ký tự",
+            );
+          }
+        }
+      }
       const { data, error } = await (supabase.rpc as any)(rpcName, {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,

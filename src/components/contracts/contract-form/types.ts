@@ -9,7 +9,7 @@ import type { ServiceBasic } from "../ServiceSelectionDialog";
 export interface ContractPrefill {
   buildingId?: string;
   roomId?: string;
-  /** Phiếu giữ chỗ (bảng deposits) — flip CONVERTED + gắn contract_id SAU khi HĐ tạo thành công. */
+  /** Legacy deposits row id; retained for old callers but V2 create does not flip it client-side. */
   depositId?: string;
   /** Tiền cọc đã ghi trên phiếu giữ chỗ — prefill "Đã đặt cọc". */
   depositAmount?: number;

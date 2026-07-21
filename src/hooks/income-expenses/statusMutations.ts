@@ -3,6 +3,124 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
 
+type RpcError = { code?: string | null; message?: string | null };
+type RpcResult = { error: RpcError | null };
+
+const callUnregisteredRpc = supabase.rpc as unknown as (
+  name: string,
+  args: Record<string, unknown>,
+) => Promise<RpcResult>;
+
+const errorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { message?: unknown }).message || fallback);
+  }
+  return fallback;
+};
+
+const isTerminationForfeitRpcUnavailable = (error: RpcError) => {
+  if (error.code === "PGRST202") return true;
+  if (error.code !== "42883") return false;
+
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    message.includes("set_termination_forfeit_status_v1") &&
+    message.includes("does not exist")
+  );
+};
+
+const TERMINATION_FORFEIT_SYSTEM_SOURCES = new Set([
+  "termination.forfeit_revenue",
+  "termination.forfeit_offset",
+]);
+const TERMINATION_FORFEIT_LEGACY_MARKER = "[CẤN CỌC BỎ CỌC";
+
+const isConfidentlyOrdinaryVoucher = async (id: string) => {
+  const { data, error } = await supabase
+    .from("income_expenses")
+    .select("system_source, notes")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return false;
+
+  const row = data as { system_source?: unknown; notes?: unknown };
+  if (!("system_source" in row) || !("notes" in row)) return false;
+  const rawSystemSource = row.system_source;
+  const rawNotes = row.notes;
+  if (rawSystemSource !== null && typeof rawSystemSource !== "string") {
+    return false;
+  }
+  if (rawNotes !== null && typeof rawNotes !== "string") return false;
+  const systemSource = typeof rawSystemSource === "string" ? rawSystemSource : "";
+  const notes = typeof rawNotes === "string" ? rawNotes : "";
+
+  return !(
+    TERMINATION_FORFEIT_SYSTEM_SOURCES.has(systemSource) ||
+    notes.startsWith(TERMINATION_FORFEIT_LEGACY_MARKER)
+  );
+};
+
+const TERMINATION_FORFEIT_QUERY_KEYS = [
+  ["invoices"],
+  ["invoices-legacy"],
+  ["invoice"],
+  ["invoice-history"],
+  ["invoice-vouchers"],
+  ["invoice-statistics"],
+  ["invoice-totals-by-ids"],
+  ["first-invoice-details"],
+  ["invoice-collectors"],
+  ["unpaid-invoices"],
+  ["ie-related-invoice"],
+  ["room-latest-invoice"],
+  ["payments"],
+  ["payments-summary"],
+  ["invoice-payments-summary"],
+  ["dashboard-summary"],
+  ["dashboard-alerts"],
+  ["recent-activities"],
+  ["deposit-dashboard"],
+  ["cash-book"],
+  ["cash-book-summary"],
+  ["cash-flow-by-day"],
+  ["settlement-report"],
+  ["financial-analysis"],
+  ["reports"],
+  ["monthly-building-profit"],
+  ["profit-verification"],
+] as const;
+
+const invalidateTerminationForfeitQueries = (
+  queryClient: ReturnType<typeof useQueryClient>,
+) => {
+  for (const queryKey of TERMINATION_FORFEIT_QUERY_KEYS) {
+    queryClient.invalidateQueries({ queryKey });
+  }
+};
+
+const trySetTerminationForfeitStatus = async (
+  id: string,
+  status: "APPROVED" | "UNAPPROVED" | "CANCELLED",
+) => {
+  const { error } = await callUnregisteredRpc(
+    "set_termination_forfeit_status_v1",
+    { p_voucher_id: id, p_status: status },
+  );
+  if (!error) return true;
+  if (isTerminationForfeitRpcUnavailable(error)) {
+    if (await isConfidentlyOrdinaryVoucher(id)) return false;
+    throw error;
+  }
+  if (
+    error.code === "55000" &&
+    error.message?.includes("not a termination forfeit pair")
+  ) {
+    return false;
+  }
+  throw error;
+};
+
 // Duyệt phiếu thu/chi (UNAPPROVED → APPROVED). Dùng khi đã thực thanh toán
 // phiếu nháp (vd phiếu chi hoa hồng tạo cùng hợp đồng).
 // Canonical approve_income_expense_v1 (phiếu flow-owned) trước; phiếu legacy
@@ -12,10 +130,17 @@ export const useApproveVoucher = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      try {
+        if (await trySetTerminationForfeitStatus(id, "APPROVED")) return true;
+      } catch (error: unknown) {
+        toast.error(errorMessage(error, "Không thể duyệt phiếu"));
+        throw error;
+      }
+
       const canonical = await (supabase.rpc as any)("approve_income_expense_v1", {
         p_voucher_id: id,
       });
-      if (!canonical.error) return;
+      if (!canonical.error) return false;
       if (!isIeLifecycleFallbackSignal(canonical.error)) {
         toast.error(canonical.error.message || "Không thể duyệt phiếu");
         throw canonical.error;
@@ -28,10 +153,14 @@ export const useApproveVoucher = () => {
         toast.error(error.message || "Không thể duyệt phiếu");
         throw error;
       }
+      return false;
     },
-    onSuccess: () => {
+    onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      if (isTerminationForfeit) {
+        invalidateTerminationForfeitQueries(queryClient);
+      }
       toast.success("Phiếu đã được duyệt");
     },
     onError: (error) => {
@@ -48,6 +177,13 @@ export const useUnapproveVoucher = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      try {
+        if (await trySetTerminationForfeitStatus(id, "UNAPPROVED")) return true;
+      } catch (error: unknown) {
+        toast.error(errorMessage(error, "Không thể huỷ duyệt phiếu"));
+        throw error;
+      }
+
       const { error } = await (supabase as any).rpc("unapprove_voucher", {
         voucher_id: id,
       });
@@ -62,10 +198,14 @@ export const useUnapproveVoucher = () => {
         );
         throw error;
       }
+      return false;
     },
-    onSuccess: () => {
+    onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
+      if (isTerminationForfeit) {
+        invalidateTerminationForfeitQueries(queryClient);
+      }
       toast.success("Đã chuyển phiếu về Nháp");
     },
     onError: (error) => {
@@ -82,6 +222,13 @@ export const useCancelIncomeExpense = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      try {
+        if (await trySetTerminationForfeitStatus(id, "CANCELLED")) return true;
+      } catch (error: unknown) {
+        toast.error(errorMessage(error, "Không thể huỷ phiếu thu/chi"));
+        throw error;
+      }
+
       // Canonical cancel (phiếu flow-owned): transition + audit hash-chain
       // server-side, KHÔNG đụng payments (phiếu canonical không gắn payment).
       // Phiếu legacy → tín hiệu fallback → giữ nguyên đường cũ bên dưới.
@@ -89,7 +236,7 @@ export const useCancelIncomeExpense = () => {
         p_voucher_id: id,
         p_reason: null,
       });
-      if (!canonical.error) return;
+      if (!canonical.error) return false;
       if (!isIeLifecycleFallbackSignal(canonical.error)) {
         toast.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
         throw canonical.error;
@@ -134,8 +281,9 @@ export const useCancelIncomeExpense = () => {
         p_action: "CANCELLED_NOTE",
         p_note: null,
       });
+      return false;
     },
-    onSuccess: () => {
+    onSuccess: (isTerminationForfeit) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["accounts-with-balance"] });
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -146,6 +294,9 @@ export const useCancelIncomeExpense = () => {
       // trên thiết bị thao tác (đối xứng usePayUtilityBill.onSuccess). Hub
       // realtime lo cross-client; đây lo tức thì cho client hiện tại.
       queryClient.invalidateQueries({ queryKey: ["utility-payments"] });
+      if (isTerminationForfeit) {
+        invalidateTerminationForfeitQueries(queryClient);
+      }
       toast.success("Phiếu đã được HUỶ");
     },
     onError: (error) => {
