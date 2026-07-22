@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Audit an already-applied accounting schema without permitting database writes.
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -24,6 +23,7 @@ export const APPLIED_ROLLOUT_MIGRATIONS = Object.freeze([
   "supabase/migrations/20260721135000_customer_credit_application_v1.sql",
   "supabase/migrations/20260721135500_termination_non_cash_payment_semantics.sql",
   "supabase/migrations/20260721140500_accounting_rollout_gate_v1.sql",
+  "supabase/migrations/20260721150500_accounting_scope_narrowing.sql",
 ]);
 
 export const REPORT_SQL = String.raw`
@@ -553,12 +553,12 @@ export async function main(
 ) {
   if (argv.includes("--help") || argv.includes("-h")) {
     log("Usage: node scripts/audit-accounting-rollout.mjs");
-    log("Runs a read-only audit after all 13 accounting migrations are applied.");
+    log("Runs a read-only audit after all 14 accounting migrations are applied.");
     return;
   }
   if (argv.length > 0) throw new Error(`Unknown argument: ${argv[0]}`);
-  if (APPLIED_ROLLOUT_MIGRATIONS.length !== 13) {
-    throw new Error("Accounting rollout audit expects exactly 13 migrations");
+  if (APPLIED_ROLLOUT_MIGRATIONS.length !== 14) {
+    throw new Error("Accounting rollout audit expects exactly 14 migrations");
   }
 
   const body = await executeManagementQuery(

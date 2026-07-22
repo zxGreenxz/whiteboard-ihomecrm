@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Validate locally by default; live DDL compilation requires --live-rollback.
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
@@ -27,6 +26,7 @@ export const DEFAULT_FILES = Object.freeze([
   "supabase/migrations/20260721135000_customer_credit_application_v1.sql",
   "supabase/migrations/20260721135500_termination_non_cash_payment_semantics.sql",
   "supabase/migrations/20260721140500_accounting_rollout_gate_v1.sql",
+  "supabase/migrations/20260721150500_accounting_scope_narrowing.sql",
 ]);
 
 export function parseValidateArgs(argv) {

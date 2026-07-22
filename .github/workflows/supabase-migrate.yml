@@ -1,35 +1,45 @@
-name: Supabase Migration
+name: Supabase Migration Validation
+
+# SAFETY (do not remove): this workflow intentionally does NOT auto-apply migrations.
+#
+# The accounting migration ledger (supabase_migrations.schema_migrations) is managed
+# OUT-OF-BAND via the Management-API rollout scripts (scripts/apply-accounting-rollout.mjs),
+# applied forward-only with an operator PAT. The live ledger sits at 20260716170000 while
+# the 2026-07-20/21 bundle was applied inline. An automatic Supabase migration apply here
+# would REPLAY that bundle against production and corrupt it.
+#
+# Therefore: on push we only run read-only static validation. Real apply is always manual,
+# forward-only, via the PAT rollout scripts.
+# Ref: docs/plans/PLAN-HOAN-THIEN-V5-COLLECTION-2026-07-22.md (Phase 1 / Stop gate 14).
 
 on:
   push:
     branches: [main, master]
     paths:
       - 'supabase/migrations/**'
-  workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Run migrations manually'
-        required: true
-        default: 'yes'
+      - 'scripts/apply-accounting-rollout.mjs'
+      - 'scripts/validate-accounting-migrations.mjs'
+      - 'scripts/audit-accounting-rollout.mjs'
+      - '.github/workflows/supabase-migrate.yml'
+  workflow_dispatch: {}
 
 jobs:
-  migrate:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+      - uses: actions/setup-node@v4
         with:
-          version: latest
+          node-version: '20'
 
-      - name: Link Supabase project
-        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - name: Static accounting-migration validation (no DB writes, no apply)
+        run: node scripts/validate-accounting-migrations.mjs
 
-      - name: Run migrations
-        run: supabase db push
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      - name: Guard - forbid auto-apply of migrations in any workflow
+        run: |
+          if grep -RInE --include='*.yml' --include='*.yaml' 'run:[^#]*supabase[[:space:]]+db[[:space:]]+push' .github/workflows; then
+            echo "::error::Auto-apply of migrations is forbidden. Apply is forward-only via PAT rollout scripts while the ledger is managed out-of-band."
+            exit 1
+          fi
+          echo "OK: no workflow auto-applies migrations."

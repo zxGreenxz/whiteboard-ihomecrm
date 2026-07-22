@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Apply the accounting rollout as one serialized, all-or-nothing transaction.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -19,6 +18,7 @@ export const ACCOUNTING_MIGRATIONS = Object.freeze([
   "supabase/migrations/20260721135000_customer_credit_application_v1.sql",
   "supabase/migrations/20260721135500_termination_non_cash_payment_semantics.sql",
   "supabase/migrations/20260721140500_accounting_rollout_gate_v1.sql",
+  "supabase/migrations/20260721150500_accounting_scope_narrowing.sql",
 ]);
 
 export const ROLLOUT_LOCK_NAME = "ihomecrm:accounting-rollout:v1";
@@ -252,8 +252,8 @@ export async function main(
   log(ROLLOUT_CATALOG_SCOPE_NOTICE);
 
   const migrations = loadMigrationBodies(ACCOUNTING_MIGRATIONS);
-  if (migrations.length !== 13) {
-    throw new Error(`Expected exactly 13 accounting migrations, got ${migrations.length}`);
+  if (migrations.length !== 14) {
+    throw new Error(`Expected exactly 14 accounting migrations, got ${migrations.length}`);
   }
   const sql = buildRolloutSql(migrations);
   const digest = createHash("sha256").update(sql).digest("hex");

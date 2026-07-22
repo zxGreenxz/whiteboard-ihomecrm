@@ -54,8 +54,8 @@ const cleanReport = {
 };
 
 describe("accounting rollout migration assembly", () => {
-  it("pins the same ordered set of exactly 13 migrations everywhere", () => {
-    expect(ACCOUNTING_MIGRATIONS).toHaveLength(13);
+  it("pins the same ordered set of exactly 14 migrations everywhere", () => {
+    expect(ACCOUNTING_MIGRATIONS).toHaveLength(14);
     expect(DEFAULT_FILES).toEqual(ACCOUNTING_MIGRATIONS);
     expect(APPLIED_ROLLOUT_MIGRATIONS).toEqual(ACCOUNTING_MIGRATIONS);
   });
@@ -84,7 +84,7 @@ describe("accounting rollout migration assembly", () => {
 
   it("loads every real migration with no transaction wrapper left behind", () => {
     const migrations = loadMigrationBodies();
-    expect(migrations).toHaveLength(13);
+    expect(migrations).toHaveLength(14);
     for (const migration of migrations) {
       expect(migration.body, migration.file).not.toMatch(
         /^\s*(?:BEGIN|COMMIT)\s*;\s*$/im,
