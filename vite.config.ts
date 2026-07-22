@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
@@ -14,6 +14,12 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  test: {
+    // .e2e-fleet/*.spec.ts are Playwright specs (see .e2e-fleet/playwright.config.ts),
+    // not vitest unit tests — keep them out of `vitest run` so the CI quality gate
+    // does not fail on Playwright-only APIs (test.use, FLEET_BASE_URL, ...).
+    exclude: [...configDefaults.exclude, ".e2e-fleet/**"],
   },
   build: {
     rollupOptions: {
