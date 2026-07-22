@@ -13565,6 +13565,18 @@ export type Database = {
         }
         Returns: Json
       }
+      create_profit_payout_compat_v1: {
+        Args: {
+          p_account_id: string
+          p_amount: number
+          p_idempotency_key: string
+          p_note: string
+          p_target_id: string
+          p_target_kind: string
+          p_voucher_date: string
+        }
+        Returns: Json
+      }
       create_public_room_token: {
         Args: { p_label?: string }
         Returns: {
@@ -15263,6 +15275,14 @@ export type Database = {
         }
       }
       unapprove_voucher: { Args: { voucher_id: string }; Returns: undefined }
+      undo_invoice_payment_compat_v1: {
+        Args: {
+          p_idempotency_key: string
+          p_payment_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       unlock_profit_month_v1: {
         Args: { p_building_ids: string[]; p_period_month: string }
         Returns: number
@@ -15372,6 +15392,13 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      update_invoice_payment_method_v1: {
+        Args: {
+          p_new_method: Database["public"]["Enums"]["payment_method"]
+          p_payment_id: string
+        }
+        Returns: Json
       }
       update_invoice_v1: {
         Args: {

@@ -134,19 +134,29 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     idempotencyKey: string;
     receiptUrl: string | null;
   }>>(new Map());
+  // ─── Auto-detect sổ quỹ nhận khi đổi toà ───
+  const selectedBuilding = useMemo(
+    () => (buildings ?? []).find((building: any) => building.id === buildingId) ?? null,
+    [buildings, buildingId],
+  );
+  const buildingName = selectedBuilding?.name?.trim() ?? '';
+  const buildingOrganizationId = selectedBuilding?.organization_id ?? null;
+  // Chỉ dùng sổ quỹ cùng tổ chức với toà đang chọn — tránh chọn nhầm sổ tenant khác.
+  const organizationAccounts = useMemo(
+    () =>
+      (accounts as any[]).filter(
+        (account) =>
+          !buildingOrganizationId || account.organization_id === buildingOrganizationId,
+      ),
+    [accounts, buildingOrganizationId],
+  );
   const realAccounts = useMemo(
-    () => (accounts as any[]).filter((account) => account.is_virtual === false),
-    [accounts],
+    () => organizationAccounts.filter((account) => account.is_virtual === false),
+    [organizationAccounts],
   );
   const virtualAccounts = useMemo(
-    () => (accounts as any[]).filter((account) => account.is_virtual === true),
-    [accounts],
-  );
-
-  // ─── Auto-detect sổ quỹ nhận khi đổi toà ───
-  const buildingName = useMemo(
-    () => (buildings ?? []).find((b: any) => b.id === buildingId)?.name?.trim() ?? '',
-    [buildings, buildingId],
+    () => organizationAccounts.filter((account) => account.is_virtual === true),
+    [organizationAccounts],
   );
 
   useEffect(() => {
@@ -178,6 +188,25 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     );
     if (target) setHeaderChangeAccountId(target.id);
   }, [virtualAccounts, currentUserId, headerChangeAccountUserEdited]);
+
+  // Đổi toà (→ đổi tổ chức) có thể làm sổ đã chọn không còn hợp lệ → reset để
+  // fail-closed, buộc auto-detect/chọn lại theo danh sách sổ đã lọc.
+  useEffect(() => {
+    if (headerAccountId && !realAccounts.some((account) => account.id === headerAccountId)) {
+      setHeaderAccountId('');
+      setHeaderAccountUserEdited(false);
+    }
+  }, [headerAccountId, realAccounts]);
+
+  useEffect(() => {
+    if (
+      headerChangeAccountId &&
+      !virtualAccounts.some((account) => account.id === headerChangeAccountId)
+    ) {
+      setHeaderChangeAccountId('');
+      setHeaderChangeAccountUserEdited(false);
+    }
+  }, [headerChangeAccountId, virtualAccounts]);
 
   const headerAccountName = useMemo(
     () => realAccounts.find((a) => a.id === headerAccountId)?.name ?? '',
@@ -427,7 +456,10 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     const needsAccount = selected.some((r) => {
       const accountId = r.account_id_override ?? headerAccountId;
       const sum = r.amount_tm + r.amount_tk + r.amount_tt;
-      return sum > 0 && !accountId;
+      return (
+        sum > 0 &&
+        (!accountId || !realAccounts.some((account) => account.id === accountId))
+      );
     });
     if (needsAccount) {
       toast({
@@ -442,7 +474,11 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     // Cần sổ quỹ thối (chỉ khi không giữ làm credit)
     const needsChangeAccount = selected.some((r) => {
       const ca = r.change_account_id_override ?? headerChangeAccountId;
-      return r.change_amount > 0 && !r.keep_as_credit && !ca;
+      return (
+        r.change_amount > 0 &&
+        !r.keep_as_credit &&
+        (!ca || !virtualAccounts.some((account) => account.id === ca))
+      );
     });
     if (needsChangeAccount) {
       toast({
@@ -910,13 +946,10 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                       >
                         <Checkbox
                           className="h-3 w-3"
-                          checked={r.keep_as_credit}
-                          disabled={r.change_amount <= 0}
-                          onCheckedChange={(v) =>
-                            updateRow(i, { keep_as_credit: !!v })
-                          }
+                          checked={false}
+                          disabled
                         />
-                        Nợ kỳ sau
+                        Nợ kỳ sau (tạm khóa)
                       </label>
                     </td>
                     {showAccountColumns && (

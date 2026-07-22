@@ -618,6 +618,12 @@ export const useCreateInvoice = () => {
 
       const { items, ...invoiceFields } = formData;
 
+      // TẠM KHÓA: áp dụng credit khách hàng vào hóa đơn chưa đối soát kế toán xong.
+      // Fail-closed cho tới khi flag customer.credit.apply.v1 thành CANONICAL — bỏ guard này khi đó.
+      if ((invoiceFields.applied_credit ?? 0) > 0) {
+        throw new Error('Tính năng áp dụng credit khách hàng vào hóa đơn đang tạm khóa để đối soát kế toán.');
+      }
+
       // Calculate totals from items
       const subtotal = items.reduce(
         (sum, item) => sum + item.unit_price * item.quantity * item.coefficient,

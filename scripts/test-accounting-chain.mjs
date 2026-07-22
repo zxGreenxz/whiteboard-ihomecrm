@@ -16,6 +16,7 @@ const migrationFiles = [
   "supabase/migrations/20260721135000_customer_credit_application_v1.sql",
   "supabase/migrations/20260721135500_termination_non_cash_payment_semantics.sql",
   "supabase/migrations/20260721140500_accounting_rollout_gate_v1.sql",
+  "supabase/migrations/20260721150500_accounting_scope_narrowing.sql",
 ];
 
 const projectRef = readFileSync("supabase/.temp/project-ref", "utf8").trim();

@@ -96,7 +96,8 @@ const SuperAdminForceDeleteDialog = ({
   const totalPaid = paymentList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const hasActiveV5Collection = paymentList.some((payment) => !!payment.collection_id);
   const canConfirm =
-    typed.trim().toUpperCase() === CONFIRM_WORD
+    paymentList.length === 0
+    && typed.trim().toUpperCase() === CONFIRM_WORD
     && !isPending
     && !isLoading
     && !isFetching

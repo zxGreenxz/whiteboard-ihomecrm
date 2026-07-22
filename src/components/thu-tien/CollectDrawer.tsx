@@ -54,7 +54,7 @@ export function CollectDrawer({
   onNavigate,
 }: Props) {
   // Sổ quỹ chỉ tải khi sheet thực sự mở (drawer luôn mounted để chạy animation).
-  const { collect, accountIdFor, changeAccountName, isCollecting } = useQuickCollect({
+  const { collect, accountIdFor, changeAccountNameFor, isCollecting } = useQuickCollect({
     enabled: !!invoice,
   });
   const deletePayment = useDeletePayment();
@@ -90,6 +90,8 @@ export function CollectDrawer({
     );
   }
 
+  // Tên sổ thối org-scoped theo HĐ đang mở (invoice đã chắc chắn non-null tại đây).
+  const changeAccountName = changeAccountNameFor(invoice);
   const remaining = remainingOf(invoice);
   const st = collectStatus(invoice);
   const meta = STATUS_META[st];

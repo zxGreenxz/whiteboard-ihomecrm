@@ -56,11 +56,9 @@ const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
 export const getActivePaymentMethods = (invoice: InvoiceWithRelations): string[] => {
-  const activeMethods = (invoice as InvoiceWithRelations & {
-    active_payment_methods?: unknown;
-  }).active_payment_methods;
+  const activeMethods = invoice.active_payment_methods;
   if (Array.isArray(activeMethods)) {
-    return activeMethods.filter((method): method is string => typeof method === 'string');
+    return activeMethods.filter((method) => typeof method === 'string');
   }
 
   return ((invoice.payments ?? []) as Array<{

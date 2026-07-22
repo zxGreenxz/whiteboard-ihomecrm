@@ -82,6 +82,17 @@ const parseVN = (s: string): number => {
   return digits ? parseInt(digits, 10) : 0;
 };
 
+// Storage trả 409 (hoặc message "already exists"/"duplicate") khi object đã tồn
+// tại. Với uploadKey ổn định, đây chính là dấu hiệu retry an toàn: lần trước đã
+// tải ảnh lên nhưng response timeout → coi như thành công, tái dùng URL cũ.
+const isExistingStorageObjectError = (error: unknown): boolean => {
+  const storageError = error as { statusCode?: string | number; message?: string } | null;
+  const message = storageError?.message?.toLowerCase() ?? '';
+  return String(storageError?.statusCode ?? '') === '409'
+    || message.includes('already exists')
+    || message.includes('duplicate');
+};
+
 type PaymentMethod = 'TM' | 'TT' | 'TK';
 
 const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialogProps) => {
@@ -95,7 +106,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [changeUserEdited, setChangeUserEdited] = useState(false);
   const collectionAttemptRef = useRef<{
     fingerprint: string;
-    request: RecordPaymentRPCData;
+    request: RecordPaymentRPCData | null;
+    // uploadKey ổn định để retry sau timeout tái dùng đúng object Storage.
+    uploadKey: string;
+    // started = đã gọi RPC ghi tiền ít nhất 1 lần cho attempt này.
+    started: boolean;
   } | null>(null);
 
   const {
@@ -123,17 +138,27 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const watchedChangeAccountId = watch('change_account_id');
   const watchedKeepAsCredit = watch('keep_as_credit');
 
+  // Chỉ dùng sổ quỹ cùng tổ chức với hóa đơn — tránh chọn nhầm sổ tenant khác.
+  const organizationAccounts = useMemo(
+    () =>
+      (accounts as any[]).filter(
+        (account) =>
+          !invoice?.organization_id ||
+          account.organization_id === invoice.organization_id,
+      ),
+    [accounts, invoice?.organization_id],
+  );
   const realAccounts = useMemo(
-    () => (accounts as any[]).filter((account) => account.is_virtual === false),
-    [accounts],
+    () => organizationAccounts.filter((account) => account.is_virtual === false),
+    [organizationAccounts],
   );
   const virtualAccounts = useMemo(
-    () => (accounts as any[]).filter((account) => account.is_virtual === true),
-    [accounts],
+    () => organizationAccounts.filter((account) => account.is_virtual === true),
+    [organizationAccounts],
   );
   const accountVirtuality = useMemo(
-    () => new Map((accounts as any[]).map((account) => [account.id, account.is_virtual])),
-    [accounts],
+    () => new Map(organizationAccounts.map((account) => [account.id, account.is_virtual])),
+    [organizationAccounts],
   );
 
   const totalPaid = (watchedLines ?? []).reduce(
@@ -368,7 +393,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
       return;
     }
     setReceiptImage(file);
-    collectionAttemptRef.current = null;
     if (receiptPreview) URL.revokeObjectURL(receiptPreview);
     setReceiptPreview(URL.createObjectURL(file));
   };
@@ -385,7 +409,6 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
 
   const handleRemoveImage = () => {
     setReceiptImage(null);
-    collectionAttemptRef.current = null;
     if (receiptPreview) {
       URL.revokeObjectURL(receiptPreview);
       setReceiptPreview(null);
@@ -395,33 +418,35 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     }
   };
 
-  const uploadReceiptImage = async (): Promise<string | null> => {
+  const uploadReceiptImage = async (uploadKey: string): Promise<string | null> => {
     if (!receiptImage) return null;
 
     const user = await getSessionUser();
     if (!user) throw new Error('Not authenticated');
 
     const fileExt = receiptImage.name.split('.').pop();
-    const fileName = `${user.id}/${Date.now()}_receipt.${fileExt}`;
+    // Đường dẫn ổn định (uploadKey) để retry sau timeout an toàn: nếu lần trước
+    // đã tới Storage nhưng response mất, lần sau gặp 409 → coi như thành công.
+    const fileName = `${user.id}/${uploadKey}_receipt.${fileExt}`;
 
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from('payment-receipts')
       .upload(fileName, receiptImage, {
         cacheControl: '3600',
         upsert: false,
       });
 
-    if (error) {
+    if (error && !isExistingStorageObjectError(error)) {
       console.error('Upload error:', error);
       // If bucket doesn't exist, try documents bucket
-      const { data: fallbackData, error: fallbackError } = await supabase.storage
+      const { error: fallbackError } = await supabase.storage
         .from('documents')
         .upload(`receipts/${fileName}`, receiptImage, {
           cacheControl: '3600',
           upsert: false,
         });
 
-      if (fallbackError) {
+      if (fallbackError && !isExistingStorageObjectError(fallbackError)) {
         console.error('Fallback upload error:', fallbackError);
         return null;
       }
@@ -527,14 +552,28 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         file: fileFingerprint,
       });
 
-      let request = collectionAttemptRef.current?.fingerprint === fingerprint
-        ? collectionAttemptRef.current.request
-        : null;
-      if (!request) {
+      const previousAttempt = collectionAttemptRef.current;
+      // Fail-closed: nếu attempt trước đã gọi RPC (server có thể đã commit dù
+      // client báo lỗi) mà lần này số tiền/nội dung đã khác → chặn, buộc tải
+      // lại hóa đơn rồi thao tác theo số còn lại mới, tránh thu trùng.
+      if (previousAttempt && previousAttempt.started && previousAttempt.fingerprint !== fingerprint) {
+        toast.error('Lần thu trước có thể đã được ghi. Vui lòng đóng và tải lại hóa đơn rồi thao tác theo số còn lại mới.');
+        return;
+      }
+      if (!previousAttempt || previousAttempt.fingerprint !== fingerprint) {
+        collectionAttemptRef.current = {
+          fingerprint,
+          request: null,
+          uploadKey: `collect-receipt-${crypto.randomUUID()}`,
+          started: false,
+        };
+      }
+      const attempt = collectionAttemptRef.current!;
+      if (!attempt.request) {
         let receiptImageUrl: string | null = null;
-        if (receiptImage) receiptImageUrl = await uploadReceiptImage();
+        if (receiptImage) receiptImageUrl = await uploadReceiptImage(attempt.uploadKey);
         const lastLineIndex = data.payment_lines.length - 1;
-        request = {
+        attempt.request = {
           invoice_id: invoice.id,
           collection_date: data.payment_date,
           tenders: data.payment_lines.map((line, index) => ({
@@ -569,9 +608,12 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
           has_contract: !!invoice.contract_id,
           idempotency_key: `collect-${crypto.randomUUID()}`,
         };
-        collectionAttemptRef.current = { fingerprint, request };
       }
 
+      const request = attempt.request!;
+      // Đánh dấu started TRƯỚC RPC đầu tiên: timeout vẫn có thể là server đã
+      // commit, nên mọi lần retry phải tái dùng đúng request + idempotency_key.
+      attempt.started = true;
       await recordMutation.mutateAsync(request);
       collectionAttemptRef.current = null;
       handleClose();
@@ -732,13 +774,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     placeholder="0"
                   />
                   <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                    <Checkbox
-                      checked={watchedKeepAsCredit}
-                      onCheckedChange={(v) =>
-                        setValue('keep_as_credit', !!v, { shouldValidate: true })
-                      }
-                    />
-                    Nợ khách (trừ kỳ sau)
+                    <Checkbox checked={false} disabled />
+                    Nợ khách (tạm khóa đối soát)
                   </label>
                 </div>
                 <div className="pt-7">
@@ -1046,13 +1083,8 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   placeholder="0"
                 />
                 <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                  <Checkbox
-                    checked={watchedKeepAsCredit}
-                    onCheckedChange={(v) =>
-                      setValue('keep_as_credit', !!v, { shouldValidate: true })
-                    }
-                  />
-                  Nợ khách (trừ kỳ sau)
+                  <Checkbox checked={false} disabled />
+                  Nợ khách (tạm khóa đối soát)
                 </label>
                 <p className="text-xs text-muted-foreground">
                   Tổng đã nhập: {formatVN(totalPaid)} đ — Còn phải thu:{' '}

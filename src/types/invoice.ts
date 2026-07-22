@@ -51,6 +51,7 @@ export interface PreviousDebtSource {
 /** Matches `invoices` table */
 export interface Invoice {
   id: string;
+  organization_id?: string;
   user_id: string;
   contract_id: string;
   building_id: string;
@@ -256,4 +257,5 @@ export interface InvoiceWithRelations extends Invoice {
   };
   invoice_items?: InvoiceItem[];
   payments?: Payment[];
+  active_payment_methods?: PaymentMethod[];
 }

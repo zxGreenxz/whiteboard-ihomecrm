@@ -27,6 +27,12 @@ export const useRecordPaymentRPC = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
+      // TẠM KHÓA: giữ tiền thừa làm credit khách hàng chưa đối soát kế toán xong.
+      // Fail-closed cho tới khi flag customer.credit.apply.v1 thành CANONICAL — bỏ guard này khi đó.
+      if (data.overpay_action === 'CREDIT') {
+        throw new Error('Tính năng giữ tiền thừa làm credit khách hàng đang tạm khóa để đối soát kế toán.');
+      }
+
       const collectionInput: RecordInvoiceCollectionInput = {
         invoice_id: data.invoice_id,
         collection_date: data.collection_date,

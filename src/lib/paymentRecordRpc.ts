@@ -346,7 +346,7 @@ export interface ReverseInvoicePaymentInput {
 }
 
 export type ReversePaymentRpcInvoker = (
-  fn: "reverse_invoice_collection_v5" | "reverse_invoice_payment_v3",
+  fn: "reverse_invoice_collection_v5" | "undo_invoice_payment_compat_v1",
   args: Record<string, unknown>,
 ) => PromiseLike<{ data: unknown; error: PaymentRpcError | null }>;
 
@@ -374,7 +374,7 @@ export async function reverseInvoicePaymentBySource(
         p_reason: reason,
         p_idempotency_key: key,
       })
-    : await rpc("reverse_invoice_payment_v3", {
+    : await rpc("undo_invoice_payment_compat_v1", {
         p_payment_id: paymentId,
         p_reason: reason,
         p_idempotency_key: key,

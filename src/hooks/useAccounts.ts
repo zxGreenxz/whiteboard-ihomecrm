@@ -8,6 +8,7 @@ import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 
 export interface Account {
   id: string;
+  organization_id?: string;
   user_id: string;
   code: string;
   name: string;

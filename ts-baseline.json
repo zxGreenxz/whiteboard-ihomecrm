@@ -8,7 +8,6 @@
   "src/components/import-export/ImportExcelDialog.tsx|TS2554|Expected 1 arguments, but got 2.",
   "src/components/invoices/GenerateInvoiceDialog.tsx|TS2322|Type '…' is not assignable to type '…'.",
   "src/components/leads/ConvertLeadDialog.tsx|TS2561|Object literal may only specify known properties, but '…' does not exist in type '…'. Did you mean to write '…'?",
-  "src/components/payments/CollectPaymentDialog.tsx|TS2345|Argument of type '…' is not assignable to parameter of type '…'.",
   "src/components/sale-phong/floor-editor/FloorPlanEditorTab.tsx|TS2345|Argument of type '…' is not assignable to parameter of type '…'.",
   "src/components/ui/__tests__/searchableSelect.test.ts|TS2578|Unused '…' directive.",
   "src/hooks/__tests__/useIncomeExpenses.property.test.ts|TS2339|Property '…' does not exist on type '…'.",

@@ -292,7 +292,7 @@ describe("reverse routing", () => {
     });
   });
 
-  it("uses the v3 adapter only for a legacy payment", async () => {
+  it("uses the compat undo adapter only for a legacy payment", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: { reversed: true }, error: null }) as unknown as ReversePaymentRpcInvoker;
     const outcome = await reverseInvoicePaymentBySource(rpc, {
       payment_id: "payment-old",
@@ -302,7 +302,7 @@ describe("reverse routing", () => {
       idempotency_key: "reverse-payment-0001",
     });
     expect(outcome.source).toBe("LEGACY_PAYMENT");
-    expect(rpc).toHaveBeenCalledWith("reverse_invoice_payment_v3", expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith("undo_invoice_payment_compat_v1", expect.objectContaining({
       p_payment_id: "payment-old",
     }));
     expect(rpc).toHaveBeenCalledTimes(1);
