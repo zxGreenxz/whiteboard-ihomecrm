@@ -38,7 +38,7 @@ SELECT jsonb_build_object(
     FROM (SELECT possession_kind, count(*) AS cnt FROM public.cashbook_possession_bindings
           WHERE valid_to IS NULL GROUP BY possession_kind) k
   ), '{}'::jsonb),
-  'account_shared_users', (SELECT count(*) FROM public.account_shared_users),
+  'account_shared_users', (SELECT count(*) FROM public.account_shared_users WHERE v2_classified_at IS NULL),
   'pending_kqkd_by_org', COALESCE((
     SELECT jsonb_agg(row_to_json(t)) FROM (
       SELECT organization_id, count(*) AS cnt, COALESCE(sum(total_amount),0) AS total
@@ -85,7 +85,7 @@ SELECT jsonb_build_object(
       SELECT possession_kind, count(*) AS cnt FROM public.cashbook_possession_bindings WHERE valid_to IS NULL GROUP BY possession_kind
     ) k
   ), '{}'::jsonb),
-  'account_shared_users', (SELECT count(*) FROM public.account_shared_users),
+  'account_shared_users', (SELECT count(*) FROM public.account_shared_users WHERE v2_classified_at IS NULL),
   'pending_kqkd_by_org', COALESCE((
     SELECT jsonb_agg(row_to_json(t)) FROM (
       SELECT organization_id, count(*) AS cnt, COALESCE(sum(total_amount),0) AS total
