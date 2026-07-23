@@ -78,7 +78,12 @@
       hash-chain trong 2 phiếu CANCELLED — vô hại, không tiền treo).
 
 ## Vòng 3 — Nợ kiến trúc ghi nhận (không chặn vận hành, làm sau vòng 2)
-- §11.3 hợp nhất: report đọc resolver server (hiện F2 dùng ALL_ACTIVE client-side khớp công thức)
+- §11.3 hợp nhất: report đọc resolver server. **KẾT LUẬN ĐÁNH GIÁ 2026-07-24: GIỮ
+  Vòng 3, chưa wire.** Lý do: mục tiêu của §11.3 là chống lệch client/engine —
+  lệch hiện = 0 (browser "Khớp ±0 ✓") và được thanh kiểm chứng GIÁM SÁT TỰ ĐỘNG
+  (đỏ ngay khi lệch ≥2đ). Wire resolver = thay nguồn dữ liệu trang báo cáo phức
+  tạp nhất (3 nhánh query + gộp HĐ + phòng trống) trong khi resolver server 0
+  consumer, chưa từng browser-verified → rủi ro regress cao hơn lợi ích lúc này.
 - V5 per-tender lineage đầy đủ §6.2 (hiện bridge voucher-formula, parity đúng)
 - resubmit tạo request engine mới; execution-queue UI; evidence-first posting UI
 - Mục 4 owner: 52 unsafe locks + 22 phiếu kỳ khóa (profit_close đang FROZEN an toàn)
