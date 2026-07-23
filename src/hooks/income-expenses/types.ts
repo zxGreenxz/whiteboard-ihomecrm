@@ -108,6 +108,13 @@ export interface IncomeExpenseItem {
 export interface IncomeExpenseWithRelations {
   id: string;
   user_id: string;
+  /** Finance V2 (§12.1): org để resolve route + 4 trục trạng thái + version CAS. */
+  organization_id: string | null;
+  posting_mode: "CASHBOOK" | "NON_CASH" | null;
+  posting_status: "UNPOSTED" | "POSTED" | "REVERSED" | "NOT_APPLICABLE" | null;
+  review_state: "PENDING" | "CHANGES_REQUESTED" | "DISPUTED" | "RESOLVED" | null;
+  approval_version: number;
+  posting_version: number;
   code: string;
   type: "INCOME" | "EXPENSE";
   name: string;

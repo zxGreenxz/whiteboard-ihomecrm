@@ -64,6 +64,12 @@ function mapVoucherRow(
   return {
     id: v.id,
     user_id: v.user_id,
+    organization_id: v.organization_id ?? null,
+    posting_mode: v.posting_mode ?? null,
+    posting_status: v.posting_status ?? null,
+    review_state: v.review_state ?? null,
+    approval_version: Number(v.approval_version ?? 1),
+    posting_version: Number(v.posting_version ?? 1),
     code: v.code,
     type: v.type,
     name: v.name,

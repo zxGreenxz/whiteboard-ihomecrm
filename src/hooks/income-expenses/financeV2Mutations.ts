@@ -96,6 +96,43 @@ export function useApproveAndPostIncomeExpenseV2() {
   });
 }
 
+/**
+ * Upload chứng từ theo flow §6.3: intent (server cấp path) → upload storage →
+ * finalize (server verify + FINALIZED). Trả evidence_id hoặc null nếu lỗi.
+ * Dùng làm onUploadEvidence của IncomeExpensePostingDialog.
+ */
+export async function uploadFinanceEvidence(
+  file: File,
+  organizationId?: string | null,
+): Promise<string | null> {
+  // PHẢI truyền org của phiếu: server-default là membership đầu tiên của user —
+  // user đa-org sẽ bị stamp sai tenant ⇒ posting từ chối "not FINALIZED in tenant".
+  const intent = await rpc("create_finance_evidence_upload_intent_v2", {
+    p_organization_id: organizationId ?? null,
+  });
+  if (intent.error) {
+    toast.error(intent.error.message || "Không tạo được intent chứng từ");
+    return null;
+  }
+  const { evidence_id, bucket_id, object_name } = intent.data as {
+    evidence_id: string; bucket_id: string; object_name: string;
+  };
+  const up = await supabase.storage.from(bucket_id).upload(object_name, file, {
+    contentType: file.type || "application/octet-stream",
+    upsert: false,
+  });
+  if (up.error) {
+    toast.error(up.error.message || "Upload chứng từ thất bại");
+    return null;
+  }
+  const fin = await rpc("finalize_finance_evidence_v2", { p_evidence_id: evidence_id });
+  if (fin.error) {
+    toast.error(fin.error.message || "Finalize chứng từ thất bại");
+    return null;
+  }
+  return evidence_id;
+}
+
 /** Binding sổ của CHÍNH actor (CUSTODIAN/KNOWER) — nguồn lọc selector §12.6. */
 export function useMyCashbookAccessV2() {
   return useQuery({

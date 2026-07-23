@@ -420,6 +420,14 @@ export const incomeExpensesListQuery = (
         (v: any) => ({
           id: v.id,
           user_id: v.user_id,
+          // Finance V2 (§12.1): 4 trục + version — thiếu các field này là toàn bộ
+          // UI route-aware (dialog 2 nút, badge composite) âm thầm rơi về LEGACY.
+          organization_id: v.organization_id ?? null,
+          posting_mode: v.posting_mode ?? null,
+          posting_status: v.posting_status ?? null,
+          review_state: v.review_state ?? null,
+          approval_version: Number(v.approval_version ?? 1),
+          posting_version: Number(v.posting_version ?? 1),
           code: v.code,
           type: v.type,
           name: v.name,
@@ -806,6 +814,12 @@ export const useIncomeExpenseBatches = (
         voucherMap.set(v.id, {
           id: v.id,
           user_id: v.user_id,
+          organization_id: v.organization_id ?? null,
+          posting_mode: v.posting_mode ?? null,
+          posting_status: v.posting_status ?? null,
+          review_state: v.review_state ?? null,
+          approval_version: Number(v.approval_version ?? 1),
+          posting_version: Number(v.posting_version ?? 1),
           code: v.code,
           type: v.type,
           name: v.name,
