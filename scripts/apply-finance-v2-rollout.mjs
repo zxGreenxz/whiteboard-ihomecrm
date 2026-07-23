@@ -36,6 +36,7 @@ export const FINANCE_V2_MIGRATIONS = Object.freeze([
   "supabase/migrations/20260723100000_finance_v2_read_models.sql",
   "supabase/migrations/20260723105000_finance_v2_shadow_reconcile.sql",
   "supabase/migrations/20260723110000_finance_v2_rls_canary.sql",
+  "supabase/migrations/20260723115000_finance_v2_client_flags.sql",
   "supabase/migrations/20260723120000_finance_v2_cutover_readiness.sql",
 ]);
 

@@ -65,6 +65,18 @@ import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
 import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
 import { usePersistedState } from "@/hooks/usePersistedState";
+// Finance V2 (route-aware §9.6/§12): duyệt-only / duyệt+ghi sổ atomic khi org CANONICAL.
+import {
+  useFinanceV2Routes,
+  canWriteWorkflow,
+  canWritePosting,
+} from "@/lib/financeV2Route";
+import {
+  useApproveIncomeExpenseV2,
+  useApproveAndPostIncomeExpenseV2,
+  useCustodianCashbooksV2,
+} from "@/hooks/income-expenses/financeV2Mutations";
+import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 
 const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
 
@@ -121,6 +133,8 @@ const IncomeExpenseDesktopPage = () => {
   const [approveAccountId, setApproveAccountId] = useState<string>("");
   const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
   const [unapproveTarget, setUnapproveTarget] = useState<string | null>(null);
+  // V2: mở Posting dialog "Duyệt và Chi/Thu" (chỉ khi route CANONICAL).
+  const [approveAndPostOpen, setApproveAndPostOpen] = useState(false);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   const pagination = usePagination(20);
@@ -190,6 +204,19 @@ const IncomeExpenseDesktopPage = () => {
 
   const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
+
+  // Finance V2 route-aware (§9.6): org CANONICAL → duyệt-only không đổi tồn quỹ,
+  // "Duyệt và Chi/Thu" đi qua Posting dialog atomic. Mặc định LEGACY giữ flow cũ.
+  const v2Routes = useFinanceV2Routes();
+  const approveOrgRoutes = v2Routes.getOrg(
+    (approveTarget as { organization_id?: string } | null)?.organization_id ?? null,
+  );
+  const v2ApproveOnly = canWriteWorkflow(approveOrgRoutes);
+  const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes);
+  const approveV2Mutation = useApproveIncomeExpenseV2();
+  const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
+  const { data: custodianBooks = [] } = useCustodianCashbooksV2(approveAndPostOpen);
+
   const isShareholderPayout = !!approveTarget?.shareholder_id;
   const approvalAccounts = isShareholderPayout
     ? accounts.filter((account) => !account.is_virtual)
@@ -296,10 +323,25 @@ const IncomeExpenseDesktopPage = () => {
   );
 
   // Nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước
-  // (update_income_expense_quick chỉ áp cho phiếu nháp) rồi mới ghi vào tồn quỹ.
+  // (update_income_expense_quick chỉ áp cho phiếu chờ duyệt) rồi mới ghi vào tồn quỹ.
   const confirmApprove = useCallback(async () => {
     const target = approveTarget;
     if (!target) return;
+    // V2 CANONICAL: duyệt-only qua RPC canonical — KHÔNG đổi tồn quỹ, không quick-update
+    // sổ/ảnh (posting fields thuộc Posting dialog, §12.3). Không có fallback legacy.
+    if (v2ApproveOnly) {
+      try {
+        await approveV2Mutation.mutateAsync({
+          voucherId: target.id,
+          expectedApprovalVersion:
+            (target as { approval_version?: number }).approval_version ?? 1,
+        });
+        setApproveTarget(null);
+      } catch {
+        // toast đã hiển thị trong hook; giữ hộp thoại để người dùng thử lại.
+      }
+      return;
+    }
     const nextAccountId = approveAccountId || null;
     const accountChanged = nextAccountId !== (target.account_id ?? null);
     const prevAttachments = target.attachments ?? [];
@@ -319,7 +361,15 @@ const IncomeExpenseDesktopPage = () => {
     } catch {
       // toast đã hiển thị trong hook; giữ hộp thoại để người dùng thử lại.
     }
-  }, [approveTarget, approveAccountId, approveAttachments, approveMutation, quickUpdateMutation]);
+  }, [
+    approveTarget,
+    approveAccountId,
+    approveAttachments,
+    approveMutation,
+    quickUpdateMutation,
+    v2ApproveOnly,
+    approveV2Mutation,
+  ]);
 
   const handleUnapproveVoucher = useCallback((id: string) => {
     setUnapproveTarget(id);
@@ -681,11 +731,22 @@ const IncomeExpenseDesktopPage = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận duyệt phiếu</AlertDialogTitle>
             <AlertDialogDescription>
-              Sau khi duyệt, phiếu sẽ được tính vào <b>tồn quỹ</b> và không
-              còn chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
+              {v2ApproveOnly ? (
+                <>
+                  <b>Duyệt</b> chỉ chuyển trạng thái phê duyệt — <b>không</b> thay
+                  đổi tồn quỹ. Tiền chỉ vào/ra sổ khi thực hiện <b>Thu/Chi</b> với
+                  đủ ngày, sổ quỹ và chứng từ.
+                </>
+              ) : (
+                <>
+                  Sau khi duyệt, phiếu sẽ được tính vào <b>tồn quỹ</b> và không
+                  còn chỉnh sửa được. Hãy chắc chắn đã thanh toán cho người nhận.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
+          {!v2ApproveOnly && (
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="approve-account">Sổ quỹ</Label>
@@ -718,13 +779,28 @@ const IncomeExpenseDesktopPage = () => {
               />
             </div>
           </div>
+          )}
 
           <AlertDialogFooter>
             <AlertDialogCancel
-              disabled={approveMutation.isPending || quickUpdateMutation.isPending}
+              disabled={
+                approveMutation.isPending ||
+                quickUpdateMutation.isPending ||
+                approveV2Mutation.isPending
+              }
             >
               Đóng
             </AlertDialogCancel>
+            {v2ApproveAndPost && (
+              <Button
+                variant="outline"
+                className="border-blue-600 text-blue-700 hover:bg-blue-50"
+                disabled={approveV2Mutation.isPending || approveAndPostV2Mutation.isPending}
+                onClick={() => setApproveAndPostOpen(true)}
+              >
+                {approveTarget?.type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
+              </Button>
+            )}
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -733,17 +809,53 @@ const IncomeExpenseDesktopPage = () => {
               disabled={
                 approveMutation.isPending ||
                 quickUpdateMutation.isPending ||
-                (isShareholderPayout && !approveAccountId)
+                approveV2Mutation.isPending ||
+                (!v2ApproveOnly && isShareholderPayout && !approveAccountId)
               }
               className="bg-green-600 hover:bg-green-700"
             >
-              {approveMutation.isPending || quickUpdateMutation.isPending
+              {approveMutation.isPending ||
+              quickUpdateMutation.isPending ||
+              approveV2Mutation.isPending
                 ? "Đang duyệt…"
-                : "Duyệt phiếu"}
+                : v2ApproveOnly
+                  ? "Chỉ duyệt"
+                  : "Duyệt phiếu"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Finance V2: Duyệt và Chi/Thu atomic qua Posting dialog (§12.3). */}
+      {approveTarget && (
+        <IncomeExpensePostingDialog
+          open={approveAndPostOpen}
+          onOpenChange={setApproveAndPostOpen}
+          mode="APPROVE_AND_POST"
+          voucher={{
+            subjectKind: "VOUCHER",
+            subjectId: approveTarget.id,
+            type: (approveTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
+            approvedTotal: approveTarget.total_amount ?? 0,
+            name: approveTarget.name ?? undefined,
+          }}
+          capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
+          cashbookOptions={custodianBooks}
+          expectedExecutionRevision={0}
+          expectedApprovalVersion={
+            (approveTarget as { approval_version?: number }).approval_version ?? 1
+          }
+          expectedPostingVersion={
+            (approveTarget as { posting_version?: number }).posting_version ?? 1
+          }
+          onSubmit={async (input) => {
+            await approveAndPostV2Mutation.mutateAsync(input);
+            setApproveAndPostOpen(false);
+            setApproveTarget(null);
+          }}
+          isSubmitting={approveAndPostV2Mutation.isPending}
+        />
+      )}
 
       <AlertDialog
         open={!!unapproveTarget}
@@ -753,7 +865,7 @@ const IncomeExpenseDesktopPage = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận huỷ duyệt phiếu</AlertDialogTitle>
             <AlertDialogDescription>
-              Phiếu sẽ chuyển về trạng thái <b>Nháp</b> và không còn tính vào{" "}
+              Phiếu sẽ chuyển về trạng thái <b>Chờ duyệt</b> và không còn tính vào{" "}
               <b>tồn quỹ</b> cho đến khi duyệt lại. Dùng khi cần chỉnh sửa phiếu
               đã ghi nhận.
             </AlertDialogDescription>

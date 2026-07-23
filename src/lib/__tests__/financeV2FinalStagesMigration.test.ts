@@ -122,6 +122,23 @@ describe("Finance V2 Stage 11 — RLS-canary read boundary", () => {
   });
 });
 
+describe("Finance V2 Stage 11b — client feature-route flags", () => {
+  const sql = readMigration("20260723115000_finance_v2_client_flags.sql");
+
+  it("exposes only route names per active-membership org, granted to authenticated", () => {
+    expect(sql).toContain("get_finance_v2_client_flags_v1");
+    expect(sql).toContain("income_expense.read_semantics.v2");
+    expect(sql).toContain("income_expense.workflow.v2");
+    expect(sql).toContain("income_expense.posting.v2");
+    expect(sql).toContain("cashbook.access.v2");
+    expect(sql).toContain("m.user_id = auth.uid()");
+    expect(sql).toContain(
+      "GRANT EXECUTE ON FUNCTION public.get_finance_v2_client_flags_v1() TO authenticated",
+    );
+    noModeChange(sql);
+  });
+});
+
 describe("Finance V2 Stage 12 — cutover readiness", () => {
   const sql = readMigration("20260723120000_finance_v2_cutover_readiness.sql");
 
