@@ -36,7 +36,7 @@ interface IncomeExpenseFilterPanelProps {
 const STATUS_OPTIONS = [
   { value: "ALL_ACTIVE", label: "Tất cả" },
   { value: "APPROVED", label: "Đã ghi nhận" },
-  { value: "UNAPPROVED", label: "Nháp" },
+  { value: "UNAPPROVED", label: "Chờ duyệt" },
   { value: "CANCELLED", label: "Đã huỷ" },
 ] as const;
 

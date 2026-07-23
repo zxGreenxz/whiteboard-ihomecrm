@@ -228,7 +228,7 @@ export function IncomeExpenseBatchDetailMobile({
                       </span>
                     ) : unapproved ? (
                       <span className="vd-tag" style={{ color: "#b45309", background: "#fef3c7" }}>
-                        Nháp
+                        Chờ duyệt
                       </span>
                     ) : null}
                   </div>
@@ -253,7 +253,7 @@ export function IncomeExpenseBatchDetailMobile({
                     <button
                       className="bchild-edit"
                       aria-label="Sửa phiếu"
-                      title={unapproved ? "Sửa phiếu nháp" : "Sửa phiếu (Super Admin)"}
+                      title={unapproved ? "Sửa phiếu chờ duyệt" : "Sửa phiếu (Super Admin)"}
                       onClick={() => {
                         onClose();
                         onEditVoucher?.(v);

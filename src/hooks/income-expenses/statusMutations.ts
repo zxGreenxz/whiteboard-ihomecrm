@@ -206,7 +206,7 @@ export const useUnapproveVoucher = () => {
       if (isTerminationForfeit) {
         invalidateTerminationForfeitQueries(queryClient);
       }
-      toast.success("Đã chuyển phiếu về Nháp");
+      toast.success("Đã chuyển phiếu về Chờ duyệt");
     },
     onError: (error) => {
       console.error("Error unapproving voucher:", error);

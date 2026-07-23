@@ -54,7 +54,7 @@ function ExistingVoucherBanner({
     <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
       Đã chi {label} cho HĐ này: phiếu <b>{voucher.code ?? "?"}</b> —{" "}
       <b>{formatVND(Number(voucher.total_amount) || 0)}</b>
-      {voucher.approval_status === "UNAPPROVED" ? " (nháp — chờ duyệt)" : ""}.
+      {voucher.approval_status === "UNAPPROVED" ? " (chờ duyệt)" : ""}.
       Mỗi hợp đồng chỉ chi 1 lần; nếu phiếu sai, hãy hủy phiếu đó ở trang Thu
       chi rồi tạo lại.
     </div>
@@ -211,7 +211,7 @@ export function CommissionVoucherModal({
       }
 
       toast.success(
-        `Đã tạo ${created} phiếu chi hoa hồng (nháp) cho HĐ ${
+        `Đã tạo ${created} phiếu chi hoa hồng (chờ duyệt) cho HĐ ${
           prefill.contract_number ?? ""
         }`
       );

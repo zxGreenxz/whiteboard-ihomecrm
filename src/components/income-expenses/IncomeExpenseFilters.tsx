@@ -249,7 +249,7 @@ export function IncomeExpenseFiltersBar({
         options={[
           { value: "ALL_ACTIVE", label: "Tất cả" },
           { value: "APPROVED", label: "Đã ghi nhận" },
-          { value: "UNAPPROVED", label: "Nháp (chưa duyệt)" },
+          { value: "UNAPPROVED", label: "Chờ duyệt" },
           { value: "CANCELLED", label: "Đã huỷ" },
         ]}
       />

@@ -120,7 +120,7 @@ export function IncomeExpenseStats({
             type="button"
             onClick={onShowPending}
             className="inline-flex items-center gap-1.5 text-amber-700 hover:underline"
-            title="Phiếu nháp/chờ chọn sổ — chưa tính vào tồn quỹ, cần xử lý"
+            title="Phiếu chờ duyệt/chờ chọn sổ — chưa tính vào tồn quỹ, cần xử lý"
           >
             <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
             Chờ xử lý: <b className="tabular-nums">{pendingCount}</b> phiếu

@@ -562,7 +562,7 @@ const IncomeExpenseForm = ({
               {isAdminOverride
                 ? 'SỬA PHIẾU (SUPER ADMIN)'
                 : isUnapprovedDraft
-                ? 'SỬA PHIẾU NHÁP'
+                ? 'SỬA PHIẾU CHỜ DUYỆT'
                 : isViewing
                 ? 'CHI TIẾT PHIẾU'
                 : 'THÊM PHIẾU THU/CHI'}
@@ -578,7 +578,7 @@ const IncomeExpenseForm = ({
           )}
           {!isAdminOverride && isUnapprovedDraft && (
             <p className="text-sm text-muted-foreground">
-              Phiếu đang ở trạng thái <b>Nháp</b>. Bạn có thể chỉnh sửa nội
+              Phiếu đang ở trạng thái <b>Chờ duyệt</b>. Bạn có thể chỉnh sửa nội
               dung, sau đó ấn <b>Lưu</b> để cập nhật. Phiếu chỉ tính vào tồn
               quỹ khi đã được duyệt.
             </p>
@@ -1163,7 +1163,7 @@ const IncomeExpenseForm = ({
                         <div className="pr-3">
                           <FormLabel className="text-xs">Phiếu sinh ra tự động duyệt</FormLabel>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
-                            Tắt = phiếu con sinh dạng <b>NHÁP, sổ quỹ trống</b> — thanh toán
+                            Tắt = phiếu con sinh dạng <b>CHỜ DUYỆT, sổ quỹ trống</b> — thanh toán
                             (chọn sổ + ảnh CK) và duyệt tại trang Đóng tiền tập trung.
                           </p>
                         </div>

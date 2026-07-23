@@ -41,7 +41,7 @@ export function IncomeExpenseFilterChips({
   } else if (filters.approval_status === "UNAPPROVED") {
     chips.push({
       key: "approval_status",
-      label: "Nháp",
+      label: "Chờ duyệt",
       patch: { approval_status: "ALL_ACTIVE" },
     });
   } else if (filters.approval_status === "APPROVED") {

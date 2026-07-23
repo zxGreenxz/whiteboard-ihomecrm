@@ -182,7 +182,7 @@ export function IncomeExpenseDetailDialog({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  title={isUnapproved ? 'Sửa phiếu nháp' : 'Sửa phiếu (Super Admin)'}
+                  title={isUnapproved ? 'Sửa phiếu chờ duyệt' : 'Sửa phiếu (Super Admin)'}
                   onClick={() => {
                     onEdit!(voucher);
                     onOpenChange(false);
@@ -224,7 +224,7 @@ export function IncomeExpenseDetailDialog({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  title="Huỷ duyệt (chuyển về Nháp) — Super Admin"
+                  title="Huỷ duyệt (chuyển về Chờ duyệt) — Super Admin"
                   onClick={() => {
                     onUnapprove(voucher.id);
                     onOpenChange(false);
@@ -308,7 +308,7 @@ export function IncomeExpenseDetailDialog({
                   )}
                   {isUnapproved && (
                     <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">
-                      Nháp
+                      Chờ duyệt
                     </span>
                   )}
                 </div>

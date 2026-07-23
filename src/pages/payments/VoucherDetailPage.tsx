@@ -44,7 +44,7 @@ const StatusBadge = ({ status }: { status: IncomeExpenseWithRelations['approval_
   if (status === 'CANCELLED')
     return <span className="px-2 py-0.5 text-xs rounded bg-red-100 text-red-700">Đã huỷ</span>;
   if (status === 'UNAPPROVED')
-    return <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">Nháp</span>;
+    return <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">Chờ duyệt</span>;
   return <span className="px-2 py-0.5 text-xs rounded bg-green-100 text-green-800">Đã ghi nhận</span>;
 };
 

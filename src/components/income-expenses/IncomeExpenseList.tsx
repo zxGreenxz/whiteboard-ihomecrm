@@ -297,7 +297,7 @@ const IncomeExpenseList = ({
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         onClick={() => onEdit!(voucher)}
-                        title={isUnapproved ? 'Sửa phiếu nháp' : 'Sửa phiếu (Super Admin)'}
+                        title={isUnapproved ? 'Sửa phiếu chờ duyệt' : 'Sửa phiếu (Super Admin)'}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -336,7 +336,7 @@ const IncomeExpenseList = ({
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         onClick={() => onUnapprove(voucher.id)}
-                        title="Huỷ duyệt (chuyển về Nháp) — Super Admin"
+                        title="Huỷ duyệt (chuyển về Chờ duyệt) — Super Admin"
                       >
                         <Undo2 className="h-4 w-4" />
                       </Button>

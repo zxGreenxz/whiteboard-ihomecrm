@@ -196,7 +196,7 @@ export const useRecordRefundRPC = () => {
       toast({
         title: 'Đã lập phiếu hoàn trả (chờ duyệt)',
         description:
-          'Phiếu chi hoàn trả đang ở trạng thái Nháp trong Thu chi — cần duyệt trước khi tính vào sổ.',
+          'Phiếu chi hoàn trả đang ở trạng thái Chờ duyệt trong Thu chi — cần duyệt trước khi tính vào sổ.',
       });
     },
     onError: (error: Error) => {

@@ -346,7 +346,7 @@ function IeAutoApproveThresholdCard() {
       toast.success(
         v === null
           ? 'Đã bỏ ngưỡng — mọi phiếu chi thường tự duyệt khi tạo'
-          : `Đã đặt ngưỡng ${v.toLocaleString('vi-VN')}đ — phiếu chi từ mức này sinh ở NHÁP chờ duyệt`,
+          : `Đã đặt ngưỡng ${v.toLocaleString('vi-VN')}đ — phiếu chi từ mức này sinh ở CHỜ DUYỆT`,
       );
     } catch (e) {
       toast.error((e as Error).message || 'Không lưu được ngưỡng');
@@ -361,7 +361,7 @@ function IeAutoApproveThresholdCard() {
         <CardTitle>Ngưỡng tự duyệt phiếu chi</CardTitle>
         <CardDescription>
           Phiếu CHI thường DƯỚI ngưỡng tự duyệt ngay khi tạo; từ ngưỡng trở lên sinh ở
-          trạng thái Nháp chờ duyệt. Hạng mục đặc biệt (hoàn cọc, thanh lý, lương, lợi
+          trạng thái Chờ duyệt. Hạng mục đặc biệt (hoàn cọc, thanh lý, lương, lợi
           nhuận, hoa hồng, thưởng…) luôn phải duyệt bất kể số tiền. Phiếu thu không áp
           ngưỡng. Chỉ Chủ sở hữu tổ chức thay đổi được.
         </CardDescription>

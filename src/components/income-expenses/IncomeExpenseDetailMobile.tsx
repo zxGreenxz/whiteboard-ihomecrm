@@ -259,7 +259,7 @@ export function IncomeExpenseDetailMobile({
                   className="vd-tag"
                   style={{ color: "#b45309", background: "#fef3c7" }}
                 >
-                  Nháp
+                  Chờ duyệt
                 </span>
               )}
             </div>

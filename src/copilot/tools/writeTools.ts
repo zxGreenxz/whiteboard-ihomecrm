@@ -60,7 +60,7 @@ async function resolveType(name: string, ieType: 'INCOME' | 'EXPENSE') {
 export const taoPhieuThuChiNhap: DomainTool<Input> = {
   name: 'tao_phieu_thu_chi_nhap',
   description:
-    'Tạo phiếu thu/chi BẢN NHÁP (chưa duyệt, chưa vào sổ quỹ). QUY TRÌNH BẮT BUỘC 2 BƯỚC: lần 1 gọi với xac_nhan=false để xem trước và HỎI người dùng; CHỈ khi người dùng trả lời đồng ý mới gọi lại với xac_nhan=true.',
+    'Tạo phiếu thu/chi BẢN CHỜ DUYỆT (chưa duyệt, chưa vào sổ quỹ). QUY TRÌNH BẮT BUỘC 2 BƯỚC: lần 1 gọi với xac_nhan=false để xem trước và HỎI người dùng; CHỈ khi người dùng trả lời đồng ý mới gọi lại với xac_nhan=true.',
   inputSchema,
   requiredPermission: { module: 'income_expenses', action: 'create' },
   execute: async (args) => {
@@ -85,10 +85,10 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
     const type = types[0];
 
     const preview =
-      `PHIẾU ${args.loai === 'thu' ? 'THU' : 'CHI'} NHÁP:\n` +
+      `PHIẾU ${args.loai === 'thu' ? 'THU' : 'CHI'} CHỜ DUYỆT:\n` +
       `- Tên: ${args.ten_phieu}\n- Số tiền: ${formatVND(args.so_tien)}\n` +
       `- Toà: ${building.name}\n- Hạng mục: ${type.name}\n- Ngày: ${voucherDate}\n` +
-      `- Trạng thái: NHÁP (chưa duyệt, chưa vào sổ — người dùng duyệt tại /income-expense)`;
+      `- Trạng thái: CHỜ DUYỆT (chưa duyệt, chưa vào sổ — người dùng duyệt tại /income-expense)`;
 
     if (!args.xac_nhan) {
       return `${preview}\n\n⚠️ CHƯA TẠO. BƯỚC TIẾP THEO BẮT BUỘC: gọi respond NGAY BÂY GIỜ, đưa bản xem trước trên cho người dùng và hỏi "Bạn xác nhận tạo phiếu này chứ?". KHÔNG gọi lại tool này cho đến khi người dùng trả lời đồng ý (khi đó mới gọi với xac_nhan=true, giữ nguyên tham số).`;
@@ -161,6 +161,6 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
       .eq('id', audit.id);
 
     const code = (voucher as { code?: string }).code ?? (voucher as { id: string }).id.slice(0, 8);
-    return `✅ Đã tạo phiếu ${args.loai === 'thu' ? 'THU' : 'CHI'} NHÁP ${code} — ${formatVND(args.so_tien)} — ${building.name}. Phiếu CHƯA duyệt, chưa vào sổ; người dùng kiểm tra và duyệt tại [Thu chi](/income-expense).`;
+    return `✅ Đã tạo phiếu ${args.loai === 'thu' ? 'THU' : 'CHI'} CHỜ DUYỆT ${code} — ${formatVND(args.so_tien)} — ${building.name}. Phiếu CHƯA duyệt, chưa vào sổ; người dùng kiểm tra và duyệt tại [Thu chi](/income-expense).`;
   },
 };

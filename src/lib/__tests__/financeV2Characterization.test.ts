@@ -336,23 +336,27 @@ describe("VoucherDetailPage.StatusBadge — pin chuỗi inline HIỆN TẠI (pri
     "utf8",
   );
 
-  it("UNAPPROVED render 'Nháp'", () => {
-    expect(detailSrc).toContain("Nháp");
+  // §12.2 sweep (P11b): chữ "Nháp" đã bị loại khỏi domain Thu Chi — UNAPPROVED
+  // hiển thị "Chờ duyệt" ở mọi nơi. Pin cập nhật theo plan §16.4 ("sau cutover
+  // thay bằng state/access matrix mới").
+  it("UNAPPROVED render 'Chờ duyệt' (không còn 'Nháp' trong domain Thu Chi)", () => {
+    expect(detailSrc).toContain("Chờ duyệt");
+    expect(detailSrc).not.toContain("Nháp");
   });
 
   it("mặc định (không CANCELLED/UNAPPROVED, tức APPROVED) render 'Đã ghi nhận'", () => {
-    // Sau cutover: khối này được thay bằng composite getVoucherDisplayState()
-    // (plan §12.1) → 'Đã Duyệt - Chưa Thu/Chi' / 'Đã Thu/Chi' / 'Đã ghi nhận -
-    // Không qua sổ' tuỳ posting, KHÔNG còn một nhãn 'Đã ghi nhận' cứng.
+    // Còn lại của overload legacy: nhãn APPROVED cứng. Khi VoucherDetailPage
+    // chuyển sang composite getVoucherDisplayState() (route CANONICAL, §12.1),
+    // literal này rời khỏi file và pin này được thay tiếp.
     expect(detailSrc).toContain("Đã ghi nhận");
   });
 
-  it("thứ tự nhánh hiện tại: CANCELLED('Đã huỷ') → UNAPPROVED('Nháp') → mặc định('Đã ghi nhận')", () => {
+  it("thứ tự nhánh hiện tại: CANCELLED('Đã huỷ') → UNAPPROVED('Chờ duyệt') → mặc định('Đã ghi nhận')", () => {
     const idxHuy = detailSrc.indexOf("Đã huỷ");
-    const idxNhap = detailSrc.indexOf("Nháp");
+    const idxChoDuyet = detailSrc.indexOf("Chờ duyệt");
     const idxGhiNhan = detailSrc.indexOf("Đã ghi nhận");
     expect(idxHuy).toBeGreaterThanOrEqual(0);
-    expect(idxNhap).toBeGreaterThan(idxHuy);
-    expect(idxGhiNhan).toBeGreaterThan(idxNhap);
+    expect(idxChoDuyet).toBeGreaterThan(idxHuy);
+    expect(idxGhiNhan).toBeGreaterThan(idxChoDuyet);
   });
 });

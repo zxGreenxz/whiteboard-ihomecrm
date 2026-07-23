@@ -397,7 +397,7 @@ export function IncomeExpenseBatchDetailDialog({
                         }}
                         title={
                           isUnapproved
-                            ? 'Sửa phiếu nháp'
+                            ? 'Sửa phiếu chờ duyệt'
                             : 'Sửa phiếu (Super Admin)'
                         }
                       >
