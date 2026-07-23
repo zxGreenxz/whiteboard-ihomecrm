@@ -1013,12 +1013,22 @@ function ProfitDistributionDesktop() {
           </div>
         )}
 
-        {/* B5: thanh kiểm chứng — desktop + mobile dùng chung */}
+        {/* B5: thanh kiểm chứng — desktop + mobile dùng chung.
+            buildingIds: khi user KHÔNG lọc toà phải truyền TOÀN BỘ toà của org
+            hiện hành (không phải null) — RPC kiểm chứng (fa engine, layer stats)
+            là SECURITY DEFINER quét MỌI building user thấy, gồm cả org khác
+            (V2-PRE-1: org DEMO lọt vào engine ⇒ lệch −17,3tr oan). */}
         <ProfitVerificationBar
           ym={ym}
           startDate={startDate}
           endDate={endDate}
-          buildingIds={buildingIds}
+          buildingIds={
+            buildingIds.length > 0
+              ? buildingIds
+              : buildingOptions.length > 0
+                ? buildingOptions.map((b) => b.id)
+                : undefined
+          }
           monthLabel={monthLabel}
           accrualMode={accrualMode}
           pnlOnly={pnlOnly}

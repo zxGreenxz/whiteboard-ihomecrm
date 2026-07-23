@@ -29,13 +29,16 @@
 
 ### Lợi nhuận (§21.2)
 - [x] Pending KQKD vào đúng kỳ + 1 lần (🟢 F2 local — fixture 77k vào bảng+tổng, counter riêng)
-- [ ] Finding V2-PRE-1: lệch engine pre-existing 8 toà (🔴 điều tra riêng). Chẩn đoán
-      bước 1 (SQL mô phỏng): client lọc `is_deposit` còn engine lọc
-      `accounting_class='PNL'` → client tính dư items CUSTOMER_CREDIT/INTERNAL
-      (+1.218.118 thu / +47.000 chi, 29 phiếu — vd "Tiền khách trả thừa" 538.500
-      ở 309/102LVT). Phần −17,3tr ngược chiều KHÔNG tái hiện được bằng công thức
-      per-voucher ⇒ nằm ở tầng fetch/RLS/toà của client thật — cần đo per-building
-      dưới auth user (đã có "Lệch theo toà" trong bar để drill-down).
+- [x] Finding V2-PRE-1: lệch engine pre-existing (🟢 **FIXED, browser "Khớp engine
+      ±0 ✓"**). Hai nguồn, cộng khớp TỪNG ĐỒNG (−17.276.000 + 1.213.118 = −16.062.882):
+      1. RPC kiểm chứng (fa engine/layer stats, SECURITY DEFINER) với
+         p_building_ids=NULL quét MỌI building user thấy — gồm cả org DEMO
+         (thu 17,3tr / chi 743k) trong khi client chỉ xem org hiện hành.
+         Fix: 2 trang truyền TOÀN BỘ toà org hiện hành khi không lọc.
+      2. Client accrual lọc `is_deposit` thay `accounting_class='PNL'` → tính dư
+         item CUSTOMER_CREDIT/INTERNAL (+1,2tr — vd "Tiền khách trả thừa").
+         Fix: skipDepositItem + rowCounts ưu tiên accounting_class (fallback
+         is_deposit cho item cũ null).
 - [ ] Approve/post không nhảy P&L lần 2 (🟡 cần test browser sau F2)
 - [ ] Close chặn pending + drill-down (🟡 blockers RPC có; close FROZEN — mục 4 owner)
 

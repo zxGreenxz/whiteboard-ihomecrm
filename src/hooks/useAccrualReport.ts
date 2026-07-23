@@ -97,7 +97,7 @@ const ACCRUAL_SELECT = `
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   items:income_expense_items!inner (
-    id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date,
+    id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date, accounting_class,
     income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
   )
 `;
@@ -113,7 +113,7 @@ const ACCRUAL_SELECT_INV = `
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   invoice:invoices!income_expenses_invoice_id_fkey!inner ( billing_month ),
   items:income_expense_items (
-    id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date,
+    id, income_expense_type_id, amount, quantity, unit_price, start_date, end_date, accounting_class,
     income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
   )
 `;
@@ -292,7 +292,9 @@ export const useAccrualMonthReport = (
             ? false
             : voucher.business_result_accounting === true
               ? true
-              : !t?.is_deposit;
+              : it.accounting_class != null
+                ? it.accounting_class === "PNL"
+                : !t?.is_deposit;
         rows.push({
           itemId: it.id,
           voucherId: voucher.id,
@@ -313,12 +315,19 @@ export const useAccrualMonthReport = (
         });
       };
 
-      // KQKD item-level: bỏ item CỌC (trừ phiếu ép TRUE) — khớp
-      // fa_accrual_allocations sau migration 20260702120000_kqkd_item_level.
-      const skipDepositItem = (voucher: any, it: any) =>
-        businessResultOnly &&
-        !!it?.income_expense_type?.is_deposit &&
-        voucher.business_result_accounting !== true;
+      // KQKD item-level: KHỚP fa_accrual_allocations — engine lọc theo
+      // item.accounting_class='PNL' (trừ phiếu ép TRUE). Lọc bằng is_deposit là
+      // SAI LỆCH đã đo được (V2-PRE-1): item CUSTOMER_CREDIT/INTERNAL — vd "Tiền
+      // khách trả thừa" trong phiếu thu HĐ — không phải doanh thu nhưng
+      // is_deposit=false nên lọt vào tổng (+1,2tr). Fallback: item cũ chưa có
+      // accounting_class (null) coi như PNL, và vẫn loại cọc theo is_deposit.
+      const skipDepositItem = (voucher: any, it: any) => {
+        if (!businessResultOnly) return false;
+        if (voucher.business_result_accounting === true) return false;
+        const cls = it?.accounting_class ?? null;
+        if (cls != null) return cls !== "PNL";
+        return !!it?.income_expense_type?.is_deposit;
+      };
 
       // (1) Phiếu KHÔNG gắn hoá đơn: phân bổ theo kỳ của item; null-period →
       // ghi nhận trọn vào tháng của voucher_date.

@@ -671,11 +671,19 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
           {/* B5: thanh kiểm chứng — ẩn mặc định, chỉ hiện khi có lệch + bấm chấm đỏ.
               Luôn mount (display:none) để tự tính trạng thái lệch. */}
           <div className={showVerify ? "" : "hidden"}>
+            {/* buildingIds: không lọc toà → truyền TOÀN BỘ toà org hiện hành,
+                tránh RPC kiểm chứng quét cả org khác (V2-PRE-1, đồng bộ desktop). */}
             <ProfitVerificationBar
             ym={ymStr}
             startDate={startDate}
             endDate={endDate}
-            buildingIds={buildingIds}
+            buildingIds={
+              buildingIds.length > 0
+                ? buildingIds
+                : (buildings as any[]).length > 0
+                  ? (buildings as any[]).map((b) => b.id)
+                  : undefined
+            }
             monthLabel={monthLabel}
             accrualMode={accrualMode}
             pnlOnly={pnlOnly}
