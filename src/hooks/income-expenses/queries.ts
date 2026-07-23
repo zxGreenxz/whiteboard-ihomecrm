@@ -308,6 +308,17 @@ export const incomeExpensesListQuery = (
       }
       if (filters.approval_status === "ALL_ACTIVE") {
         query = query.in("approval_status", ["APPROVED", "UNAPPROVED"]);
+      } else if (filters.approval_status === "APPROVED_UNPOSTED") {
+        // V2 §12.1: Đã duyệt - CHƯA thu/chi (posting_status NULL = phiếu cũ
+        // chưa backfill, tương đương UNPOSTED về ngữ nghĩa hiển thị).
+        // posting_status chưa có trong generated types → cast như các cột V2 khác.
+        query = (query as any)
+          .eq("approval_status", "APPROVED")
+          .or("posting_status.eq.UNPOSTED,posting_status.is.null");
+      } else if (filters.approval_status === "POSTED") {
+        query = (query as any).eq("posting_status", "POSTED");
+      } else if (filters.approval_status === "REVERSED") {
+        query = (query as any).eq("posting_status", "REVERSED");
       } else if (filters.approval_status) {
         query = query.eq("approval_status", filters.approval_status);
       }
@@ -575,7 +586,21 @@ export const incomeExpenseStatsQuery = (
           p_type: filters.type ?? null,
           p_start_date: filters.start_date ?? null,
           p_end_date: filters.end_date ?? null,
-          p_approval: filters.approval_status ?? 'ALL_ACTIVE',
+          // V2 composite (§12.1): pseudo-value tách thành approval + posting.
+          p_approval:
+            filters.approval_status === 'APPROVED_UNPOSTED'
+              ? 'APPROVED'
+              : filters.approval_status === 'POSTED' ||
+                  filters.approval_status === 'REVERSED'
+                ? 'ALL_ACTIVE'
+                : (filters.approval_status ?? 'ALL_ACTIVE'),
+          p_posting:
+            filters.approval_status === 'APPROVED_UNPOSTED'
+              ? 'UNPOSTED'
+              : filters.approval_status === 'POSTED' ||
+                  filters.approval_status === 'REVERSED'
+                ? filters.approval_status
+                : null,
           p_creator_id: filters.creator_id ?? null,
           p_amount: filters.amount_target ?? null,
           p_amount_tol: AMOUNT_SEARCH_TOLERANCE,
@@ -902,6 +927,14 @@ export const useIncomeExpenseBatches = (
 
         // Apply approval_status filter ở mức batch
         if (filters.approval_status === "APPROVED" && !hasApproved) continue;
+        // Pseudo V2 (composite) ở mức batch: gần đúng theo "có phiếu đã duyệt".
+        if (
+          (filters.approval_status === "APPROVED_UNPOSTED" ||
+            filters.approval_status === "POSTED" ||
+            filters.approval_status === "REVERSED") &&
+          !hasApproved
+        )
+          continue;
         if (filters.approval_status === "CANCELLED" && !allCancelled) continue;
         // ALL_ACTIVE = Đã ghi nhận + Nháp: ẩn batch đã huỷ hoàn toàn
         if (filters.approval_status === "ALL_ACTIVE" && allCancelled) continue;

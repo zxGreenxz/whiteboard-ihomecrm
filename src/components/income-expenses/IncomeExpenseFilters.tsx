@@ -103,11 +103,7 @@ export function IncomeExpenseFiltersBar({
 
   const handleApprovalChange = (value: string) => {
     handleChange({
-      approval_status: value as
-        | "UNAPPROVED"
-        | "APPROVED"
-        | "CANCELLED"
-        | "ALL_ACTIVE",
+      approval_status: value as IncomeExpenseFilters["approval_status"],
     });
   };
 
@@ -248,8 +244,12 @@ export function IncomeExpenseFiltersBar({
         placeholder="Trạng thái"
         options={[
           { value: "ALL_ACTIVE", label: "Tất cả" },
-          { value: "APPROVED", label: "Đã ghi nhận" },
           { value: "UNAPPROVED", label: "Chờ duyệt" },
+          // V2 §12.1: trạng thái composite duyệt × tiền.
+          { value: "APPROVED_UNPOSTED", label: "Đã duyệt - Chưa thu/chi" },
+          { value: "POSTED", label: "Đã thu/chi" },
+          { value: "REVERSED", label: "Đã hoàn tác" },
+          { value: "APPROVED", label: "Đã duyệt (tất cả)" },
           { value: "CANCELLED", label: "Đã huỷ" },
         ]}
       />

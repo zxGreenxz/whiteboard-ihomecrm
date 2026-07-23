@@ -47,7 +47,25 @@ export function IncomeExpenseFilterChips({
   } else if (filters.approval_status === "APPROVED") {
     chips.push({
       key: "approval_status",
-      label: "Đã ghi nhận",
+      label: "Đã duyệt (tất cả)",
+      patch: { approval_status: "ALL_ACTIVE" },
+    });
+  } else if (filters.approval_status === "APPROVED_UNPOSTED") {
+    chips.push({
+      key: "approval_status",
+      label: "Đã duyệt - Chưa thu/chi",
+      patch: { approval_status: "ALL_ACTIVE" },
+    });
+  } else if (filters.approval_status === "POSTED") {
+    chips.push({
+      key: "approval_status",
+      label: "Đã thu/chi",
+      patch: { approval_status: "ALL_ACTIVE" },
+    });
+  } else if (filters.approval_status === "REVERSED") {
+    chips.push({
+      key: "approval_status",
+      label: "Đã hoàn tác",
       patch: { approval_status: "ALL_ACTIVE" },
     });
   }

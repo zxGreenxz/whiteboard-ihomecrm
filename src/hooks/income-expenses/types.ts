@@ -21,8 +21,18 @@ export interface IncomeExpenseFilters {
   type?: "INCOME" | "EXPENSE" | null;
   start_date?: string | null;
   end_date?: string | null;
-  // "ALL_ACTIVE" = Đã ghi nhận + Nháp (loại trừ Đã huỷ) — đây là mặc định.
-  approval_status?: "UNAPPROVED" | "APPROVED" | "CANCELLED" | "ALL_ACTIVE" | null;
+  // "ALL_ACTIVE" = Đã ghi nhận + Chờ duyệt (loại trừ Đã huỷ) — mặc định.
+  // V2 §12.1 (composite): APPROVED_UNPOSTED = Đã duyệt - Chưa thu/chi;
+  // POSTED = Đã thu/chi; REVERSED = Đã hoàn tác.
+  approval_status?:
+    | "UNAPPROVED"
+    | "APPROVED"
+    | "CANCELLED"
+    | "ALL_ACTIVE"
+    | "APPROVED_UNPOSTED"
+    | "POSTED"
+    | "REVERSED"
+    | null;
   // Lọc theo hạng mục (income_expense_type) trong items của phiếu.
   // income_type_id: chỉ áp dụng cho phiếu thu, expense_type_id: cho phiếu chi.
   // Nếu cả 2 cùng có → union (phiếu thu khớp HOẶC phiếu chi khớp).

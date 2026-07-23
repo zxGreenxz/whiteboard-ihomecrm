@@ -77,6 +77,23 @@
       Mốc sổ CANARY renamed (DEMO) sau đợt này: **218.000** (45k bụi test kẹt
       hash-chain trong 2 phiếu CANCELLED — vô hại, không tiền treo).
 
+### Bổ sung 2026-07-24 (sau go-live)
+- [x] **HOTFIX P0002 PROD** (NATHAN tạo phiếu chi chờ-duyệt): a86 birth ĐÈ
+      source_payload_hash của writer create v1 ⇒ claim lệch hash ⇒
+      "no matching in-progress canonical operation". Fix 20260724070000
+      (birth tôn trọng hash sẵn có; op birth ghi đúng hash đó — boundary V2 vẫn
+      khớp). Verify REST org DEMO: create v1 chờ-duyệt 200 + hash giữ nguyên;
+      cancel_income_expense_v1 (đường UI chính) 204 ✅.
+- [x] **Bộ lọc trạng thái V2** (yêu cầu owner): dropdown thêm "Đã duyệt - Chưa
+      thu/chi" / "Đã thu/chi" / "Đã hoàn tác" (+ đổi nhãn "Đã ghi nhận"→"Đã duyệt
+      (tất cả)"), đồng bộ FilterPanel/Chips; RPC layer_stats thêm p_posting
+      (20260724080000). Browser-verified: từng trạng thái lọc thuần nhất, cards
+      ăn theo, 0 console error.
+- [ ] Nợ nhỏ: fallback `ie_compat_cancel_v2`/`cancel_unposted_income_expense_v2`
+      ghi cột ngoài allowlist freeze (review_state, cancellation_kind, deleted_at…)
+      → 55000 trên phiếu canonical owned. Đường UI chính (cancel v1) không dính;
+      chỉ lộ nếu primary đổi. Vá allowlist khi thuận tiện.
+
 ## Vòng 3 — Nợ kiến trúc ghi nhận (không chặn vận hành, làm sau vòng 2)
 - §11.3 hợp nhất: report đọc resolver server. **KẾT LUẬN ĐÁNH GIÁ 2026-07-24: GIỮ
   Vòng 3, chưa wire.** Lý do: mục tiêu của §11.3 là chống lệch client/engine —
