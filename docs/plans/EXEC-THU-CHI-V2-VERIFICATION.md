@@ -8,9 +8,9 @@
 
 | # | Việc | Phương pháp verify | Trạng thái |
 |---|---|---|---|
-| F1 | Dialog **Duyệt / Duyệt-và-Chi** kích hoạt (root-cause: mapper thiếu org/status; +5 bug server 210000–240000, evidence sai tenant) | Playwright localhost cả 2 nhánh + DB assert + fixture tự dọn (commit 4c55ac8) | 🟢 local · prod chờ re-check |
-| F2 | Báo cáo lợi nhuận **gồm phiếu Chờ duyệt** (§2.3) + dòng đếm riêng + bỏ "phiếu nháp" | Playwright: fixture 77k vào tổng+bảng; counter "16 phiếu chờ duyệt"; tie-out engine bảo toàn | 🟢 local |
-| F3 | Badge composite §12.1 ở danh sách + inbox 2 nút + mobile parity | Playwright: desktop badge Chờ duyệt→Đã Duyệt-Chưa Chi→Đã Chi; mobile tag parity; inbox "Duyệt và Chi…" live (RPC +organization_id 250000) + request tự đóng (a87 260000) | 🟢 local |
+| F1 | Dialog **Duyệt / Duyệt-và-Chi** kích hoạt (root-cause: mapper thiếu org/status; +5 bug server 210000–240000, evidence sai tenant) | Playwright localhost cả 2 nhánh + DB assert + fixture tự dọn (commit 4c55ac8) | 🟢 **PROD** (dialog 2 nút mở trên ptcrm, read-only) |
+| F2 | Báo cáo lợi nhuận **gồm phiếu Chờ duyệt** (§2.3) + dòng đếm riêng + bỏ "phiếu nháp" | Playwright: fixture 77k vào tổng+bảng; counter riêng; tie-out engine bảo toàn | 🟢 **PROD** (counter "15 phiếu chờ duyệt · thu 19,7tr · chi 112,6tr" live) |
+| F3 | Badge composite §12.1 ở danh sách + inbox 2 nút + mobile parity | Playwright: desktop badge Chờ duyệt→Đã Duyệt-Chưa Chi→Đã Chi; mobile tag parity; inbox "Duyệt và Chi…" live (RPC +organization_id 250000) + request tự đóng (a87 260000) | 🟢 **PROD** (badge "Đã Thu" thay "Đã vào sổ" trên org thật) |
 
 > **Finding V2-PRE-1 (pre-existing, KHÔNG do FIX 2):** tie-out engine chia cổ đông lệch
 > thu −16.062.882 / chi −743.000 ở 8 toà (102LVT, 111PVC, 1392QT, 158PVC, 15KV, 162NVK,
@@ -29,14 +29,20 @@
 
 ### Lợi nhuận (§21.2)
 - [x] Pending KQKD vào đúng kỳ + 1 lần (🟢 F2 local — fixture 77k vào bảng+tổng, counter riêng)
-- [ ] Finding V2-PRE-1: lệch engine pre-existing 8 toà (🔴 điều tra riêng)
+- [ ] Finding V2-PRE-1: lệch engine pre-existing 8 toà (🔴 điều tra riêng). Chẩn đoán
+      bước 1 (SQL mô phỏng): client lọc `is_deposit` còn engine lọc
+      `accounting_class='PNL'` → client tính dư items CUSTOMER_CREDIT/INTERNAL
+      (+1.218.118 thu / +47.000 chi, 29 phiếu — vd "Tiền khách trả thừa" 538.500
+      ở 309/102LVT). Phần −17,3tr ngược chiều KHÔNG tái hiện được bằng công thức
+      per-voucher ⇒ nằm ở tầng fetch/RLS/toà của client thật — cần đo per-building
+      dưới auth user (đã có "Lệch theo toà" trong bar để drill-down).
 - [ ] Approve/post không nhảy P&L lần 2 (🟡 cần test browser sau F2)
 - [ ] Close chặn pending + drill-down (🟡 blockers RPC có; close FROZEN — mục 4 owner)
 
 ### Sổ quỹ (§21.3)
 - [ ] Balance = posting lines (🟢 25/25 khớp, reconcile-v2 PASS)
-- [ ] Cash report theo posted_on (🟡 RPC v2 delegate; cần browser-check trang Dòng tiền)
-- [ ] Retry/concurrency 1 posting (🟡 unique index + idempotency; cần test double-click)
+- [x] Cash report theo posted_on (🟢 prod "Tài khoản theo ngày" render, 0 console error, chuỗi tồn ngày liên tục khớp)
+- [x] Retry/concurrency 1 posting (🟢 DB: ux_ie_postings_subject_generation UNIQUE(org,subject,generation) WHERE POSTING + ux idempotency + CAS posting_version; UI disable isSubmitting)
 
 ### Phân quyền (§21.4)
 - [ ] CUSTODIAN/KNOWER đúng ma trận (🟢 cài đặt 2 danh sách + chặn KNOWER-chi verified)
