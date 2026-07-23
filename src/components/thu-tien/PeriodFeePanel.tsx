@@ -1,10 +1,10 @@
 // =============================================================================
 // PeriodFeePanel V2 — panel DESKTOP "Đóng tiền Tập trung theo Kỳ" (cột trái).
 // Ô chọn LOẠI PHÍ → family: Tổng quan · Điện & Nước (EN) · GRID · Hoa hồng ·
-// Bảo trì. V2 (10/07): 3 trạng thái ô (chưa đóng / NHÁP chờ thanh toán / đã
+// Bảo trì. V2 (10/07): 3 trạng thái ô (chưa đóng / CHỜ DUYỆT chờ thanh toán / đã
 // đóng), sửa/hủy/ảnh theo TỪNG phiếu, chống đóng trùng, cờ Không-áp-dụng,
 // thang máy hiện theo phiếu, ẩn Quản Lý theo quyền, tab Lịch sử, HH modal
-// Nháp|Chi&duyệt + nhắc kỳ trước, form bảo trì đủ sổ/ngày/ảnh.
+// Chờ duyệt|Chi&duyệt + nhắc kỳ trước, form bảo trì đủ sổ/ngày/ảnh.
 // =============================================================================
 
 import { useMemo, useRef, useState } from 'react';
@@ -318,12 +318,12 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           {paid ? (
             <div className="ud-paidamt">
               <span className="ud-paidamt-a">{fmtFull(st!.paidAmount)}</span>
-              <span className="ud-paidamt-m">{fmtDate(st!.coveredStart)}{hasDraft ? ` · +${fmtFull(st!.draftAmount)} nháp` : ''}</span>
+              <span className="ud-paidamt-m">{fmtDate(st!.coveredStart)}{hasDraft ? ` · +${fmtFull(st!.draftAmount)} chờ duyệt` : ''}</span>
             </div>
           ) : hasDraft ? (
             <div className="ud-paidamt">
               <span className="ud-paidamt-a draft">{fmtFull(st!.draftAmount)}</span>
-              <span className="ud-paidamt-m">phiếu nháp chờ thanh toán</span>
+              <span className="ud-paidamt-m">phiếu chờ duyệt chờ thanh toán</span>
             </div>
           ) : isEditingExp ? (
             <span className="ptt-expedit">
@@ -365,7 +365,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           ) : hasDraft && draftVoucher ? (
             <span className="ud-acts">
               {draftVoucher.isAuto && <span className="ptt-auto">TỰ ĐỘNG</span>}
-              <span className="ptt-badge-draft">NHÁP</span>
+              <span className="ptt-badge-draft">CHỜ DUYỆT</span>
               <button type="button" className="ptt-paydraft" disabled={!canRecordPayment} onClick={() => S.openPayDraft(b.id, draftVoucher)}>
                 <HandCoins />Thanh toán
               </button>
@@ -440,12 +440,12 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
             <div className="ptt-ov-card red">
               <div className="ptt-ov-lbl">Còn thiếu phiếu kỳ này</div>
               <div className="ptt-ov-big">{overview.dueCount} khoản</div>
-              <div className="ptt-ov-sub">trên {overview.slots} khoản · {overview.dueBldCount} tòa{overview.draftCount > 0 ? ` · ${overview.draftCount} nháp chờ TT` : ''}</div>
+              <div className="ptt-ov-sub">trên {overview.slots} khoản · {overview.dueBldCount} tòa{overview.draftCount > 0 ? ` · ${overview.draftCount} chờ duyệt chờ TT` : ''}</div>
             </div>
             <div className="ptt-ov-card amber">
               <div className="ptt-ov-lbl">Dự kiến còn phải chi</div>
               <div className="ptt-ov-big">{fmtFull(overview.dueSum)}</div>
-              <div className="ptt-ov-sub">theo dự kiến từng hạng mục + phiếu nháp</div>
+              <div className="ptt-ov-sub">theo dự kiến từng hạng mục + phiếu chờ duyệt</div>
             </div>
             <div className="ptt-ov-card green">
               <div className="ptt-ov-lbl">Đã chi trong kỳ</div>
@@ -469,7 +469,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                         <span className="ptt-ov-hm-ic" style={{ background: r.cat.accent + '18', color: r.cat.accent }}><FeeIcon name={r.cat.icon} style={{ width: 15, height: 15 }} /></span>
                         <span className="ptt-ov-hm-lbl">{r.cat.label}</span>
                         {r.cat.restricted && <span className="ptt-tag-restricted">hạn chế</span>}
-                        {r.draftN > 0 && <span className="ptt-badge-draft">{r.draftN} nháp</span>}
+                        {r.draftN > 0 && <span className="ptt-badge-draft">{r.draftN} chờ duyệt</span>}
                       </span>
                     </td>
                     <td className="ctr"><span className="ptt-prog"><span className="ptt-prog-bar"><span className="ptt-prog-fill" style={{ width: r.pct + '%' }} /></span><span className="ptt-prog-t">{r.paidN}/{r.total}</span></span></td>
@@ -506,7 +506,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
             <span className="ptt-gridstat-ic" style={{ background: cat!.accent + '18', color: cat!.accent }}><FeeIcon name={cat!.icon} style={{ width: 18, height: 18 }} /></span>
             <div className="ptt-gridstat-h">
               <div className="ptt-gridstat-title">{cat!.label} · kỳ {fmtBillingMonth(period)}</div>
-              <div className="ptt-gridstat-sub">{gridStat.paidN}/{gridStat.total} tòa đã có phiếu{gridStat.draft > 0 ? ` · nháp ${fmtFull(gridStat.draft)}` : ''}</div>
+              <div className="ptt-gridstat-sub">{gridStat.paidN}/{gridStat.total} tòa đã có phiếu{gridStat.draft > 0 ? ` · chờ duyệt ${fmtFull(gridStat.draft)}` : ''}</div>
             </div>
             <div className="ptt-gridstat-amt"><div className="ptt-gridstat-num">{fmtFull(gridStat.sum)}</div><div className="ptt-gridstat-lbl">đã chi kỳ này</div></div>
             {gridStat.dueList.length > 0 && (
@@ -590,7 +590,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                           {d.rows.map(({ v, bld }) => (
                             <tr key={v.id}>
                               <td className="ud-mono">{bld}</td>
-                              <td>{v.status === 'UNAPPROVED' ? <span className="ptt-badge-draft">NHÁP</span> : v.isAuto ? <span className="ptt-auto">TỰ ĐỘNG</span> : <span className="ptt-comm-paid sm">Đã duyệt</span>}</td>
+                              <td>{v.status === 'UNAPPROVED' ? <span className="ptt-badge-draft">CHỜ DUYỆT</span> : v.isAuto ? <span className="ptt-auto">TỰ ĐỘNG</span> : <span className="ptt-comm-paid sm">Đã duyệt</span>}</td>
                               <td>{v.creatorName || '—'}</td>
                               <td><span className="ud-bookchip"><BookIcon size={14} />{v.accountName ?? '—'}</span></td>
                               <td className="ctr"><UtilityReceiptThumb attachments={v.attachments} onView={onView} size="md" /></td>
@@ -630,7 +630,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                 <div className="ptt-comm-stats">
                   <div className="ptt-comm-card"><div className="ptt-ov-lbl">HH dự kiến kỳ này</div><div className="ptt-comm-num">{fmtFull(rows.reduce((s, r) => s + r.expectedAmount, 0))}</div><div className="ptt-ov-sub">{rows.length} hợp đồng ký trong kỳ</div></div>
                   <div className="ptt-comm-card green"><div className="ptt-ov-lbl">Đã chi (phiếu duyệt)</div><div className="ptt-comm-num green">{fmtFull(paidSum)}</div><div className="ptt-ov-sub">{paidN} phiếu · số THẬT trên phiếu</div></div>
-                  <div className="ptt-comm-card amber"><div className="ptt-ov-lbl">Nháp chờ duyệt</div><div className="ptt-comm-num amber">{fmtFull(draftSum)}</div><div className="ptt-ov-sub">{draftN} phiếu nháp</div></div>
+                  <div className="ptt-comm-card amber"><div className="ptt-ov-lbl">Chờ duyệt chờ duyệt</div><div className="ptt-comm-num amber">{fmtFull(draftSum)}</div><div className="ptt-ov-sub">{draftN} phiếu chờ duyệt</div></div>
                   <div className="ptt-comm-card red"><div className="ptt-ov-lbl">Chưa chi</div><div className="ptt-comm-num red">{fmtFull(dueSum)}</div><div className="ptt-ov-sub">{rows.length - paidN - draftN} hợp đồng</div></div>
                 </div>
                 <div className="ud-body">
@@ -654,7 +654,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                                 )}
                                 {r.status === 'draft' && (
                                   <span className="ud-acts">
-                                    <span className="ptt-badge-draft">NHÁP</span>
+                                    <span className="ptt-badge-draft">CHỜ DUYỆT</span>
                                     <button type="button" className="ptt-paydraft" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><Check />Duyệt</button>
                                   </span>
                                 )}
@@ -664,7 +664,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                           ))}
                         </tbody>
                       </table>
-                      <div className="ptt-comm-note">HH dự kiến = <b>bậc hoa hồng</b> của tòa × tiền phòng theo số tháng HĐ. <b>Lưu nháp</b> chờ duyệt · <b>Chi &amp; duyệt</b> vào sổ ngay. Mỗi HĐ chỉ chi 1 lần (khoá ở DB).</div>
+                      <div className="ptt-comm-note">HH dự kiến = <b>bậc hoa hồng</b> của tòa × tiền phòng theo số tháng HĐ. <b>Lưu chờ duyệt</b> chờ duyệt · <b>Chi &amp; duyệt</b> vào sổ ngay. Mỗi HĐ chỉ chi 1 lần (khoá ở DB).</div>
                     </div>
                   )}
                 </div>

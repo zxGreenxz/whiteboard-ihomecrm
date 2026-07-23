@@ -35,6 +35,20 @@ import {
   useDecideApproval,
   type PendingApproval,
 } from "@/hooks/useApprovals";
+// Finance V2 (route-aware §9.6/§12.4): org CANONICAL → "Duyệt" = duyệt-only RPC v2
+// trên PHIẾU (subject), thêm "Duyệt và Thu/Chi…" (Posting dialog) khi actor giữ sổ.
+// Mặc định LEGACY giữ nguyên decide_financial_request_v2.
+import {
+  useFinanceV2Routes,
+  canWriteWorkflow,
+  canWritePosting,
+} from "@/lib/financeV2Route";
+import {
+  useApproveIncomeExpenseV2,
+  useApproveAndPostIncomeExpenseV2,
+  useCustodianCashbooksV2,
+} from "@/hooks/income-expenses/financeV2Mutations";
+import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 
 const typeLabel = (type: string | null) => {
   if (type === "INCOME") return { text: "Phiếu thu", className: "bg-emerald-100 text-emerald-700" };
@@ -51,6 +65,29 @@ const ApprovalsPage = () => {
   // Từ chối BẮT BUỘC nhập lý do → mở dialog thay vì gọi thẳng RPC.
   const [rejecting, setRejecting] = useState<PendingApproval | null>(null);
   const [reason, setReason] = useState("");
+
+  // Finance V2 route-aware: resolve route theo org của từng request (phiếu subject).
+  // organization_id chưa có trên RPC ⇒ null ⇒ LEGACY (flow decide cũ, không đổi).
+  const v2Routes = useFinanceV2Routes();
+  const approveV2 = useApproveIncomeExpenseV2();
+  const approveAndPostV2 = useApproveAndPostIncomeExpenseV2();
+  // "Duyệt và Thu/Chi…" mở Posting dialog cho request này (chỉ org CANONICAL).
+  const [postTarget, setPostTarget] = useState<PendingApproval | null>(null);
+  // Chỉ hỏi sổ CUSTODIAN khi có ít nhất 1 request thuộc org posting-CANONICAL.
+  const anyV2Posting = rows.some((r) => {
+    const or = v2Routes.getOrg(r.organization_id);
+    return !!r.voucher_id && canWriteWorkflow(or) && canWritePosting(or);
+  });
+  const { data: custodianBooks = [] } = useCustodianCashbooksV2(anyV2Posting);
+
+  // V2 duyệt-only áp cho request có phiếu subject (INCOME_EXPENSE) và org workflow-CANONICAL.
+  const v2WorkflowFor = (row: PendingApproval) =>
+    !!row.voucher_id && canWriteWorkflow(v2Routes.getOrg(row.organization_id));
+  // Option "Duyệt và Thu/Chi…" cần thêm posting-CANONICAL và actor đang giữ sổ.
+  const v2PostOptionFor = (row: PendingApproval) =>
+    v2WorkflowFor(row) &&
+    canWritePosting(v2Routes.getOrg(row.organization_id)) &&
+    custodianBooks.length > 0;
 
   const closeReject = () => {
     setRejecting(null);
@@ -73,8 +110,21 @@ const ApprovalsPage = () => {
     }
   };
 
-  const approve = (row: PendingApproval) =>
+  const approve = (row: PendingApproval) => {
+    // V2 CANONICAL: duyệt-only trên PHIẾU qua RPC canonical — KHÔNG đổi tồn quỹ
+    // (posting làm sau ở dialog Thu/Chi). Không fallback legacy khi RPC lỗi.
+    if (v2WorkflowFor(row)) {
+      approveV2.mutate(
+        {
+          voucherId: row.voucher_id,
+          expectedApprovalVersion: row.approval_version ?? 1,
+        },
+        { onSuccess: () => refetch() },
+      );
+      return;
+    }
     decide.mutate({ requestId: row.request_id, decision: "APPROVE", reason: null });
+  };
 
   const emptyMsg = "Không có yêu cầu nào chờ bạn duyệt";
 
@@ -134,16 +184,31 @@ const ApprovalsPage = () => {
                   <div className="text-xs text-muted-foreground mt-1">
                     {r.maker_name ?? "—"} • {format(new Date(r.submitted_at), "dd/MM/yyyy HH:mm")}
                   </div>
-                  <div className="flex gap-2 mt-3">
+                  <div className="flex flex-wrap gap-2 mt-3">
                     <Button
                       size="sm"
                       className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                      disabled={decide.isPending}
+                      disabled={decide.isPending || approveV2.isPending}
                       onClick={() => approve(r)}
                     >
                       <Check className="h-4 w-4 mr-1" />
                       Duyệt
                     </Button>
+                    {v2PostOptionFor(r) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 border-blue-600 text-blue-700 hover:bg-blue-50"
+                        disabled={
+                          decide.isPending ||
+                          approveV2.isPending ||
+                          approveAndPostV2.isPending
+                        }
+                        onClick={() => setPostTarget(r)}
+                      >
+                        {r.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="destructive"
@@ -204,12 +269,27 @@ const ApprovalsPage = () => {
                           <Button
                             size="sm"
                             className="bg-emerald-600 hover:bg-emerald-700"
-                            disabled={decide.isPending}
+                            disabled={decide.isPending || approveV2.isPending}
                             onClick={() => approve(r)}
                           >
                             <Check className="h-4 w-4 mr-1" />
                             Duyệt
                           </Button>
+                          {v2PostOptionFor(r) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-blue-600 text-blue-700 hover:bg-blue-50"
+                              disabled={
+                                decide.isPending ||
+                                approveV2.isPending ||
+                                approveAndPostV2.isPending
+                              }
+                              onClick={() => setPostTarget(r)}
+                            >
+                              {r.voucher_type === "INCOME" ? "Duyệt và Thu…" : "Duyệt và Chi…"}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="destructive"
@@ -229,6 +309,35 @@ const ApprovalsPage = () => {
           </Card>
         )}
       </div>
+
+      {/* Finance V2: Duyệt và Chi/Thu atomic qua Posting dialog (§12.3/§12.4). */}
+      {postTarget && (
+        <IncomeExpensePostingDialog
+          open={!!postTarget}
+          onOpenChange={(o) => {
+            if (!o) setPostTarget(null);
+          }}
+          mode="APPROVE_AND_POST"
+          voucher={{
+            subjectKind: "VOUCHER",
+            subjectId: postTarget.voucher_id,
+            type: postTarget.voucher_type === "INCOME" ? "INCOME" : "EXPENSE",
+            approvedTotal: postTarget.amount ?? 0,
+            name: postTarget.voucher_name ?? undefined,
+          }}
+          capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
+          cashbookOptions={custodianBooks}
+          expectedExecutionRevision={0}
+          expectedApprovalVersion={postTarget.approval_version ?? 1}
+          expectedPostingVersion={postTarget.posting_version ?? 1}
+          onSubmit={async (input) => {
+            await approveAndPostV2.mutateAsync(input);
+            setPostTarget(null);
+            refetch();
+          }}
+          isSubmitting={approveAndPostV2.isPending}
+        />
+      )}
 
       <Dialog open={!!rejecting} onOpenChange={(open) => !open && closeReject()}>
         <DialogContent>

@@ -252,10 +252,13 @@ export const useCancelIncomeExpense = () => {
         throw fetchErr;
       }
 
-      const { error } = await supabase
-        .from("income_expenses")
-        .update({ approval_status: "CANCELLED" })
-        .eq("id", id);
+      // Stage-7 drain: huỷ phiếu legacy qua RPC ie_compat_cancel_v2 (client hết
+      // UPDATE trực tiếp income_expenses). Phiếu đã POSTED (ghi sổ V2) bị server
+      // từ chối 55000 — dùng reversal thay vì huỷ trực tiếp.
+      const { error } = await callUnregisteredRpc("ie_compat_cancel_v2", {
+        p_ids: [id],
+        p_reason: null,
+      });
       if (error) {
         toast.error(error.message || "Không thể huỷ phiếu thu/chi");
         throw error;

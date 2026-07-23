@@ -7,6 +7,22 @@ import { requireBuildingOrganizationId } from "@/lib/buildingOrganization";
 import type { ImportIncomeExpenseRow } from "./types";
 import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 
+// Compat gateway V2 (Stage-7b drain): RPC chưa có trong generated types cho tới
+// lần regen sau forward-apply — gọi qua cast (mẫu financeV2Mutations.ts).
+// Server ép birth UNAPPROVED/PENDING (import/batch hết default-APPROVED — §8).
+type CompatRpcResult = {
+  data: unknown;
+  error: { code?: string; message?: string } | null;
+};
+const compatRpc = (
+  fn: string,
+  args?: Record<string, unknown>,
+): PromiseLike<CompatRpcResult> =>
+  (supabase.rpc as unknown as (
+    f: string,
+    a?: Record<string, unknown>,
+  ) => PromiseLike<CompatRpcResult>)(fn, args);
+
 // Import phiếu thu/chi hàng loạt từ Excel
 export const useImportIncomeExpenses = () => {
   const queryClient = useQueryClient();
@@ -35,43 +51,32 @@ export const useImportIncomeExpenses = () => {
         const row = rows[i];
         try {
           const organizationId = await requireBuildingOrganizationId(row.building_id);
-          // 1. Create the voucher
-          const { data: voucher, error: voucherError } = await supabase
-            .from("income_expenses")
-            .insert({
+          // Phiếu + item trong MỘT call server-side (birth UNAPPROVED — §8).
+          const { error: compatError } = await compatRpc("ie_compat_insert_v2", {
+            p_row: {
               user_id: user.id,
               type: row.type,
               name: row.name,
               building_id: row.building_id,
               organization_id: organizationId,
               voucher_date: row.voucher_date,
-            })
-            .select()
-            .single();
+            },
+            p_items: [
+              {
+                income_expense_type_id: row.income_expense_type_id,
+                accounting_class: accountingClassFor(
+                  row.income_expense_type_id,
+                ),
+                description: row.item_name,
+                quantity: 1,
+                unit_price: row.amount,
+              },
+            ],
+          });
 
-          if (voucherError) {
+          if (compatError) {
             failedCount++;
-            errors.push({ row: i + 1, message: voucherError.message });
-            continue;
-          }
-
-          // 2. Create the item
-          const { error: itemError } = await supabase
-            .from("income_expense_items")
-            .insert({
-              income_expense_id: (voucher as any).id,
-              income_expense_type_id: row.income_expense_type_id,
-              accounting_class: accountingClassFor(
-                row.income_expense_type_id,
-              ),
-              description: row.item_name,
-              quantity: 1,
-              unit_price: row.amount,
-            });
-
-          if (itemError) {
-            failedCount++;
-            errors.push({ row: i + 1, message: itemError.message });
+            errors.push({ row: i + 1, message: compatError.message ?? "Lỗi không xác định" });
             continue;
           }
 
@@ -136,59 +141,57 @@ export const useCreateIncomeExpenseBatch = () => {
         throw batchError;
       }
 
-      // 2. INSERT N phiếu con (denormalize metadata chung).
-      //    Insert TỪNG phiếu để giữ thứ tự rõ ràng (tương ứng với items input).
-      //    Nếu lỗi ở giữa: rollback bằng cách xoá batch (CASCADE xoá junction và batch_items).
-      const childVouchers: any[] = [];
+      // 2. Tạo N phiếu con qua ie_compat_insert_v2 (phiếu + item atomic mỗi
+      //    call, birth UNAPPROVED — §8). Tạo TỪNG phiếu để giữ thứ tự rõ ràng
+      //    (tương ứng với items input). Nếu lỗi ở giữa: rollback bằng cách xoá
+      //    batch (CASCADE xoá junction) + huỷ phiếu con đã tạo.
+      const childVouchers: { id: string }[] = [];
       try {
         for (const item of input.items) {
           const organizationId = await requireBuildingOrganizationId(item.building_id);
-          const { data: voucher, error: voucherError } = await supabase
-            .from("income_expenses")
-            .insert({
-              user_id: user.id,
-              creator_name: creatorName,
-              type: input.type,
-              name: `${input.shared_name} - ${item.type_name ?? ""}`.trim(),
-              building_id: item.building_id,
-              organization_id: organizationId,
-              room_id: item.room_id ?? null,
-              account_id: input.account_id,
-              payer_name: input.payer_name ?? null,
-              attachments: input.attachments ?? [],
-              business_result_accounting: input.business_result_accounting ?? null,
-              voucher_date: input.voucher_date,
-              repeat_cycle: "NONE",
-              repeat_infinity: false,
-              repeat_count: 0,
-              repeat_remaining: 0,
-            })
-            .select()
-            .single();
+          const { data: created, error: voucherError } = await compatRpc(
+            "ie_compat_insert_v2",
+            {
+              p_row: {
+                user_id: user.id,
+                creator_name: creatorName,
+                type: input.type,
+                name: `${input.shared_name} - ${item.type_name ?? ""}`.trim(),
+                building_id: item.building_id,
+                organization_id: organizationId,
+                room_id: item.room_id ?? null,
+                account_id: input.account_id,
+                payer_name: input.payer_name ?? null,
+                attachments: input.attachments ?? [],
+                business_result_accounting: input.business_result_accounting ?? null,
+                voucher_date: input.voucher_date,
+                repeat_cycle: "NONE",
+                repeat_infinity: false,
+                repeat_count: 0,
+                repeat_remaining: 0,
+              },
+              p_items: [
+                {
+                  income_expense_type_id: item.income_expense_type_id,
+                  accounting_class: accountingClassFor(item.income_expense_type_id),
+                  description: item.description ?? null,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  start_date: item.start_date ?? null,
+                  end_date: item.end_date ?? null,
+                },
+              ],
+            },
+          );
 
-          if (voucherError || !voucher) {
+          const voucherId = (created as { id?: string } | null)?.id;
+          if (voucherError || !voucherId) {
             throw voucherError ?? new Error("Không thể tạo phiếu con");
           }
-          childVouchers.push(voucher);
+          childVouchers.push({ id: voucherId });
         }
 
-        // 3. INSERT items (1 item / phiếu vì mỗi hạng mục = 1 phiếu)
-        const itemRows = input.items.map((item, idx) => ({
-          income_expense_id: childVouchers[idx].id,
-          income_expense_type_id: item.income_expense_type_id,
-          accounting_class: accountingClassFor(item.income_expense_type_id),
-          description: item.description ?? null,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          start_date: item.start_date ?? null,
-          end_date: item.end_date ?? null,
-        }));
-        const { error: itemsError } = await supabase
-          .from("income_expense_items")
-          .insert(itemRows);
-        if (itemsError) throw itemsError;
-
-        // 4. INSERT junction rows
+        // 3. INSERT junction rows (bảng batch_items — ngoài phạm vi drain).
         const linkRows = childVouchers.map((v) => ({
           batch_id: (batch as any).id,
           income_expense_id: v.id,
@@ -199,13 +202,14 @@ export const useCreateIncomeExpenseBatch = () => {
         if (linkError) throw linkError;
       } catch (err: any) {
         // Best-effort rollback: xoá batch (CASCADE xoá junction);
-        // Phiếu con đã insert sẽ thành phiếu lẻ standalone — soft-delete chúng.
+        // Phiếu con đã tạo sẽ thành phiếu lẻ standalone — huỷ chúng qua RPC
+        // (Stage-7: client không còn UPDATE/DELETE trực tiếp income_expenses).
         if (childVouchers.length > 0) {
           const ids = childVouchers.map((v) => v.id);
-          await supabase
-            .from("income_expenses")
-            .update({ deleted_at: new Date().toISOString() })
-            .in("id", ids);
+          await compatRpc("ie_compat_cancel_v2", {
+            p_ids: ids,
+            p_reason: "Rollback tạo phiếu tổng lỗi",
+          });
         }
         await supabase
           .from("income_expense_batches")
@@ -247,20 +251,32 @@ export const useCancelIncomeExpenseBatch = () => {
       const ids = ((links ?? []) as any[]).map((l) => l.income_expense_id);
       if (ids.length === 0) return { count: 0 };
 
-      // 2. UPDATE chuyển CANCELLED (chỉ với phiếu đang APPROVED), trả về cả payment_id
-      //    để cascade xoá payment hoá đơn tương ứng (nếu có).
-      const { data, error } = await supabase
+      // 2. Đọc (read-only) các phiếu còn hiệu lực để biết payment_id cần
+      //    cascade xoá; sau đó huỷ qua ie_compat_cancel_v2 (Stage-7: client
+      //    không còn UPDATE trực tiếp income_expenses). Phiếu đã POSTED (ghi
+      //    sổ V2) sẽ bị server từ chối — dùng reversal thay vì huỷ.
+      const { data: vouchers, error: readError } = await supabase
         .from("income_expenses")
-        .update({ approval_status: "CANCELLED" })
+        .select("id, type, payment_id")
         .in("id", ids)
-        .eq("approval_status", "APPROVED")
-        .select("id, type, payment_id");
+        .neq("approval_status", "CANCELLED");
+      if (readError) {
+        toast.error(readError.message || "Không thể đọc phiếu trong đợt");
+        throw readError;
+      }
+      const activeVouchers = (vouchers ?? []) as any[];
+      if (activeVouchers.length === 0) return { count: 0 };
+
+      const { data: cancelResult, error } = await compatRpc("ie_compat_cancel_v2", {
+        p_ids: activeVouchers.map((v) => v.id),
+        p_reason: null,
+      });
       if (error) {
         toast.error(error.message || "Không thể huỷ phiếu trong đợt");
         throw error;
       }
 
-      const paymentIdsToDelete = ((data ?? []) as any[])
+      const paymentIdsToDelete = activeVouchers
         .filter((v) => v.type === "INCOME" && v.payment_id)
         .map((v) => v.payment_id);
       if (paymentIdsToDelete.length > 0) {
@@ -274,7 +290,10 @@ export const useCancelIncomeExpenseBatch = () => {
         }
       }
 
-      return { count: (data ?? []).length };
+      const cancelled =
+        (cancelResult as { cancelled?: number } | null)?.cancelled ??
+        activeVouchers.length;
+      return { count: cancelled };
     },
     onSuccess: ({ count }) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
@@ -318,17 +337,24 @@ export const useUpdateBatchAccount = () => {
       const ids = ((links ?? []) as any[]).map((l) => l.income_expense_id);
       if (ids.length === 0) return { count: 0 };
 
-      const { data, error } = await supabase
-        .from("income_expenses")
-        .update({ account_id: accountId })
-        .in("id", ids)
-        .select("id");
-      if (error) {
-        toast.error(error.message || "Không cập nhật được sổ quỹ");
-        throw error;
+      // Stage-7 drain: đổi sổ quỹ từng phiếu qua ie_compat_update_pending_v2
+      // (account_id là trục tiền — server chỉ cho sửa khi phiếu còn Chờ duyệt
+      // và chưa ghi sổ; phiếu đã duyệt/POSTED sẽ bị từ chối 55000).
+      let count = 0;
+      for (const id of ids) {
+        const { error } = await compatRpc("ie_compat_update_pending_v2", {
+          p_id: id,
+          p_patch: { account_id: accountId },
+          p_items: null,
+        });
+        if (error) {
+          toast.error(error.message || "Không cập nhật được sổ quỹ");
+          throw error;
+        }
+        count++;
       }
 
-      return { count: (data ?? []).length };
+      return { count };
     },
     onSuccess: ({ count }) => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });

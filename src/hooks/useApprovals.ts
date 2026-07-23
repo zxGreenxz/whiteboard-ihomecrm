@@ -17,6 +17,12 @@ export interface PendingApproval {
   maker_name: string | null;
   step_no: number;
   request_version: number;
+  // Finance V2 (route-aware §9.6): các cột dưới do server bổ sung dần vào RPC —
+  // khi RPC chưa trả thì null/1 ⇒ org resolve LEGACY, inbox giữ nguyên flow
+  // decide_financial_request_v2 hiện tại (fail-safe, không đoán CANONICAL).
+  organization_id: string | null;
+  approval_version: number;
+  posting_version: number;
 }
 
 // Cache cần invalidate sau khi quyết định: hộp thư duyệt + danh sách phiếu +
@@ -48,6 +54,9 @@ export const usePendingApprovals = () => {
         maker_name: r.maker_name ?? null,
         step_no: Number(r.step_no ?? 0),
         request_version: Number(r.request_version ?? 0),
+        organization_id: r.organization_id ?? null,
+        approval_version: Number(r.approval_version ?? 1),
+        posting_version: Number(r.posting_version ?? 1),
       }));
     },
   });

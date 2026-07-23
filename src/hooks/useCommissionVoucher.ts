@@ -56,6 +56,9 @@ export interface CommissionPrefillData {
   contract_id: string;
   contract_number: string | null;
   signed_date: string;
+  /** Ngày bắt đầu / kết thúc HĐ — hiển thị metadata trong modal HH (23/07). */
+  start_date: string | null;
+  end_date: string | null;
   rent_price: number;
   months: number;
   matched_tier: CommissionTier | null;
@@ -126,6 +129,8 @@ export const useCommissionPrefill = (contractId: string | null) => {
         contract_id: contract.id,
         contract_number: contract.contract_number ?? null,
         signed_date: contract.signed_date,
+        start_date: contract.start_date ?? null,
+        end_date: contract.end_date ?? null,
         rent_price: Number(contract.rent_price ?? 0),
         months,
         matched_tier: matched,

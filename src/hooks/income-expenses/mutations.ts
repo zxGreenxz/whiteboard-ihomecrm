@@ -14,11 +14,26 @@ import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 
 // --- Mutation Hooks ---
 
+// Compat gateway V2 (Stage-7b drain): các RPC chưa có trong generated types
+// cho tới lần regen sau forward-apply — gọi qua cast (mẫu financeV2Mutations.ts).
+type CompatRpcResult = {
+  data: unknown;
+  error: { code?: string; message?: string } | null;
+};
+const compatRpc = (
+  fn: string,
+  args?: Record<string, unknown>,
+): PromiseLike<CompatRpcResult> =>
+  (supabase.rpc as unknown as (
+    f: string,
+    a?: Record<string, unknown>,
+  ) => PromiseLike<CompatRpcResult>)(fn, args);
+
 /**
  * Phiếu đủ điều kiện đi đường canonical create_income_expense_v1?
  * Writer chỉ nhận: non-recurring, item có đủ start/end date, attachments là
- * URL https tuyệt đối. Ngoài phạm vi đó → đi thẳng legacy (không thử canonical
- * để khỏi ăn lỗi validation writer thành lỗi user).
+ * URL https tuyệt đối. Ngoài phạm vi đó → đi thẳng ie_compat_insert_v2 (không
+ * thử canonical để khỏi ăn lỗi validation writer thành lỗi user).
  */
 const isCanonicalCreateEligible = (input: CreateIncomeExpenseInput): boolean => {
   if ((input.repeat_cycle ?? "NONE") !== "NONE") return false;
@@ -41,8 +56,10 @@ export const useCreateIncomeExpense = () => {
       if (!user) throw new Error("User not authenticated");
 
       // Canonical trước (phiếu thường, non-recurring): writer server-side tự
-      // authorize + claim + audit hash-chain. Fallback legacy CHỈ theo tín hiệu
-      // hợp lệ (chưa deploy / chưa bật / coexistence / lớp phiếu không hỗ trợ).
+      // authorize + claim + audit hash-chain. KHÔNG còn raw-INSERT fallback
+      // (Stage-7 drain): tín hiệu hợp lệ (chưa deploy / chưa bật / lớp phiếu
+      // không hỗ trợ 0A000) → ie_compat_insert_v2 (server ép birth UNAPPROVED);
+      // lỗi khác (kể cả 42501 quyền thật) → throw.
       if (isCanonicalCreateEligible(input)) {
         const canonical = await (supabase.rpc as any)("create_income_expense_v1", {
           p_type: input.type,
@@ -76,6 +93,8 @@ export const useCreateIncomeExpense = () => {
         }
       }
 
+      // Đường compat V2 (thay raw-INSERT cũ): server strip field server-owned,
+      // ép approval_status=UNAPPROVED/review_state=PENDING, stamp maker.
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =
         meta.full_name || meta.name || user.email || "Người dùng";
@@ -85,10 +104,8 @@ export const useCreateIncomeExpense = () => {
           input.items.map((item) => item.income_expense_type_id),
         );
 
-      // 1. Insert the voucher
-      const { data: voucher, error: voucherError } = await supabase
-        .from("income_expenses")
-        .insert({
+      const compat = await compatRpc("ie_compat_insert_v2", {
+        p_row: {
           user_id: user.id,
           creator_name: creatorName,
           type: input.type,
@@ -118,37 +135,24 @@ export const useCreateIncomeExpense = () => {
               ? addCycle(input.voucher_date, input.repeat_cycle as RepeatCycle, 1)
               : null,
           voucher_date: input.voucher_date,
-        })
-        .select()
-        .single();
+        },
+        p_items: input.items.map((item) => ({
+          income_expense_type_id: item.income_expense_type_id,
+          accounting_class: accountingClassFor(item.income_expense_type_id),
+          description: item.description ?? null,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          start_date: item.start_date ?? null,
+          end_date: item.end_date ?? null,
+        })),
+      });
 
-      if (voucherError) {
-        toast.error(voucherError.message || "Không thể tạo phiếu thu/chi");
-        throw voucherError;
+      if (compat.error) {
+        toast.error(compat.error.message || "Không thể tạo phiếu thu/chi");
+        throw compat.error;
       }
 
-      // 2. Insert items
-      const itemsToInsert = input.items.map((item) => ({
-        income_expense_id: (voucher as any).id,
-        income_expense_type_id: item.income_expense_type_id,
-        accounting_class: accountingClassFor(item.income_expense_type_id),
-        description: item.description ?? null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        start_date: item.start_date ?? null,
-        end_date: item.end_date ?? null,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from("income_expense_items")
-        .insert(itemsToInsert);
-
-      if (itemsError) {
-        toast.error(itemsError.message || "Không thể tạo hạng mục");
-        throw itemsError;
-      }
-
-      return voucher;
+      return compat.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
@@ -160,7 +164,11 @@ export const useCreateIncomeExpense = () => {
   });
 };
 
-// Cập nhật phiếu thu/chi (chỉ khi UNAPPROVED)
+// Cập nhật phiếu thu/chi (trục tiền chỉ khi UNAPPROVED — server enforce).
+// Stage-7 drain: MỘT call ie_compat_update_pending_v2 (patch + items) thay cho
+// 3 request cũ (update header + delete items + re-insert items). Server chỉ
+// nhận field whitelist (trục tiền khi pending, metadata khi chưa huỷ); field
+// ngoài whitelist bị bỏ qua im lặng.
 export const useUpdateIncomeExpense = () => {
   const queryClient = useQueryClient();
 
@@ -172,10 +180,9 @@ export const useUpdateIncomeExpense = () => {
           data.items.map((item) => item.income_expense_type_id),
         );
 
-      // 1. Update the voucher (only if UNAPPROVED)
-      const { data: voucher, error: voucherError } = await supabase
-        .from("income_expenses")
-        .update({
+      const compat = await compatRpc("ie_compat_update_pending_v2", {
+        p_id: id,
+        p_patch: {
           type: data.type,
           name: data.name,
           building_id: data.building_id,
@@ -189,9 +196,6 @@ export const useUpdateIncomeExpense = () => {
           attachments: data.attachments ?? [],
           business_result_accounting: data.business_result_accounting ?? null,
           voucher_date: data.voucher_date,
-          // FIX: trước đây bỏ qua các trường repeat_* nên sửa "Cài đặt lặp lại"
-          // không lưu (và không tắt được lặp). repeat_remaining/next_date sẽ được
-          // RPC tự suy lại theo số phiếu con thực tế ở lần sinh kế tiếp.
           repeat_cycle: data.repeat_cycle ?? "NONE",
           repeat_infinity: !!data.repeat_infinity,
           repeat_count: data.repeat_count ?? 0,
@@ -201,56 +205,31 @@ export const useUpdateIncomeExpense = () => {
             data.repeat_cycle && data.repeat_cycle !== "NONE"
               ? addCycle(data.voucher_date, data.repeat_cycle as RepeatCycle, 1)
               : null,
-        })
-        .eq("id", id)
-        .select()
-        .single();
+        },
+        p_items: data.items.map((item) => ({
+          income_expense_type_id: item.income_expense_type_id,
+          accounting_class: accountingClassFor(item.income_expense_type_id),
+          description: item.description ?? null,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          start_date: item.start_date ?? null,
+          end_date: item.end_date ?? null,
+        })),
+      });
 
-      if (voucherError) {
+      if (compat.error) {
         // Phiếu canonical (Phương án A) bất biến sau khi tạo — freeze trigger
         // trả 55000 'frozen'. Hướng dẫn đường đúng thay vì lỗi kỹ thuật.
-        const frozen = (voucherError.message ?? "").includes("frozen");
+        const frozen = (compat.error.message ?? "").includes("frozen");
         toast.error(
           frozen
             ? "Phiếu canonical không sửa được — hãy Huỷ phiếu rồi bấm Tạo bản sao"
-            : voucherError.message || "Không thể cập nhật phiếu thu/chi",
+            : compat.error.message || "Không thể cập nhật phiếu thu/chi",
         );
-        throw voucherError;
+        throw compat.error;
       }
 
-      // 2. Delete existing items
-      const { error: deleteError } = await supabase
-        .from("income_expense_items")
-        .delete()
-        .eq("income_expense_id", id);
-
-      if (deleteError) {
-        toast.error(deleteError.message || "Không thể xoá hạng mục cũ");
-        throw deleteError;
-      }
-
-      // 3. Re-insert new items
-      const itemsToInsert = data.items.map((item) => ({
-        income_expense_id: id,
-        income_expense_type_id: item.income_expense_type_id,
-        accounting_class: accountingClassFor(item.income_expense_type_id),
-        description: item.description ?? null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        start_date: item.start_date ?? null,
-        end_date: item.end_date ?? null,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from("income_expense_items")
-        .insert(itemsToInsert);
-
-      if (itemsError) {
-        toast.error(itemsError.message || "Không thể tạo hạng mục mới");
-        throw itemsError;
-      }
-
-      return voucher;
+      return compat.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["income-expenses"] });

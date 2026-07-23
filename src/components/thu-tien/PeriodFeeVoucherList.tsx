@@ -3,8 +3,8 @@
 // — bộ modal per-voucher cho trang Đóng tiền Tập trung (dùng chung 2 surface).
 //
 //   • VoucherList: 1 ô có NHIỀU phiếu → liệt kê từng phiếu (ngày, tiền, sổ,
-//     badge TỰ ĐỘNG/NHÁP, ảnh) với Sửa / Hủy / Thanh toán đúng TỪNG phiếu.
-//   • PayDraftModal: thanh toán phiếu NHÁP (recurring draft-mode) — bắt buộc
+//     badge TỰ ĐỘNG/CHỜ DUYỆT, ảnh) với Sửa / Hủy / Thanh toán đúng TỪNG phiếu.
+//   • PayDraftModal: thanh toán phiếu CHỜ DUYỆT (recurring draft-mode) — bắt buộc
 //     chọn sổ + đính ảnh CK → duyệt nguyên tử qua pay_draft_fee_voucher.
 //   • DupConfirmModal: xác nhận đóng THÊM khi kỳ đã có phiếu (chống trùng).
 // =============================================================================
@@ -55,7 +55,7 @@ export function PeriodFeeVoucherList({ open, title, vouchers, canRecordPayment, 
               <div className="ptt-vrow-main">
                 <div className="ptt-vrow-l1">
                   <span className="ptt-vrow-amt">{fmtFull(v.amount)}</span>
-                  {v.status === 'UNAPPROVED' && <span className="ptt-badge-draft">NHÁP</span>}
+                  {v.status === 'UNAPPROVED' && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}
                   {v.isAuto && <span className="ptt-auto">TỰ ĐỘNG</span>}
                   {v.inBatch && <span className="ptt-badge-batch">PHIẾU TỔNG</span>}
                 </div>
@@ -88,7 +88,7 @@ export function PeriodFeeVoucherList({ open, title, vouchers, canRecordPayment, 
   );
 }
 
-// ── Thanh toán phiếu NHÁP ────────────────────────────────────────────────────
+// ── Thanh toán phiếu CHỜ DUYỆT ────────────────────────────────────────────────────
 interface PayDraftProps {
   target: DraftPayTarget | null;
   myBooks: { id: string; name: string }[];
@@ -114,7 +114,7 @@ export function PeriodFeePayDraftModal({ target, myBooks, defaultBookId, attachm
         <div className="ptt-modal-head">
           <span className="ptt-modal-ic"><HandCoins /></span>
           <div className="ptt-modal-h">
-            <div className="ptt-modal-title">Thanh toán phiếu nháp</div>
+            <div className="ptt-modal-title">Thanh toán phiếu chờ duyệt</div>
             <div className="ptt-modal-sub">{target.categoryLabel} · {target.buildingName} · {fmtDate(target.voucher.date)}</div>
           </div>
           <button type="button" className="ptt-modal-x" onClick={onClose}><X /></button>

@@ -1,8 +1,8 @@
 // =============================================================================
 // PeriodFeeSheet V2 — sheet MOBILE "Đóng tiền Tập trung theo Kỳ".
-// Mirror đầy đủ desktop V2: 3 trạng thái ô (chưa/NHÁP/đã đóng), sửa-hủy-ảnh
+// Mirror đầy đủ desktop V2: 3 trạng thái ô (chưa/CHỜ DUYỆT/đã đóng), sửa-hủy-ảnh
 // theo TỪNG phiếu, chống trùng, Không-áp-dụng, thang máy theo phiếu, ẩn Quản Lý
-// theo quyền, tab Lịch sử, HH modal Nháp|Chi&duyệt + nhắc kỳ trước, form phiếu
+// theo quyền, tab Lịch sử, HH modal Chờ duyệt|Chi&duyệt + nhắc kỳ trước, form phiếu
 // tổng bảo trì (sổ+ngày+ảnh) NGAY TRÊN MOBILE.
 // =============================================================================
 
@@ -230,7 +230,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           <div className="ubc-paid">
             <span className="ubc-paid-pill">
               <UtilityReceiptThumb attachments={(single ?? paidVouchers[0])?.attachments ?? []} onView={onView} size="sm" />
-              <span className="ubc-paid-txt"><span className="ubc-paid-a">Đã đóng {st!.paidAmount.toLocaleString('vi-VN')}</span><span className="ubc-paid-m">{fmtDate(st!.coveredStart)}{hasDraft ? ` · +${formatVN(st!.draftAmount)} nháp` : ''}</span></span>
+              <span className="ubc-paid-txt"><span className="ubc-paid-a">Đã đóng {st!.paidAmount.toLocaleString('vi-VN')}</span><span className="ubc-paid-m">{fmtDate(st!.coveredStart)}{hasDraft ? ` · +${formatVN(st!.draftAmount)} chờ duyệt` : ''}</span></span>
             </span>
             {(single ?? paidVouchers[0])?.isAuto && <span className="ptt-auto">TỰ ĐỘNG</span>}
             <span className="ptt-m-cardacts">
@@ -247,7 +247,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           </div>
         ) : hasDraft && draftVoucher ? (
           <div className="ubc-paid">
-            <span className="ubc-paid-pill draft"><span className="ubc-paid-txt"><span className="ubc-paid-a">Nháp {st!.draftAmount.toLocaleString('vi-VN')}</span><span className="ubc-paid-m">chờ thanh toán · {fmtDate(draftVoucher.date)}</span></span></span>
+            <span className="ubc-paid-pill draft"><span className="ubc-paid-txt"><span className="ubc-paid-a">Chờ duyệt {st!.draftAmount.toLocaleString('vi-VN')}</span><span className="ubc-paid-m">chờ thanh toán · {fmtDate(draftVoucher.date)}</span></span></span>
             {draftVoucher.isAuto && <span className="ptt-auto">TỰ ĐỘNG</span>}
             <span className="ptt-m-cardacts">
               <button type="button" className="ptt-paydraft" disabled={!canRecordPayment} onClick={() => S.openPayDraft(b.id, draftVoucher)}><HandCoins />Thanh toán</button>
@@ -314,14 +314,14 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           {fam === 'over' && (
             <div className="ptt-m-ov">
               <div className="ptt-m-ovtop">
-                <div className="ptt-m-ovcard red"><div className="ptt-ov-lbl">Còn thiếu</div><div className="ptt-m-ovbig">{overview.dueCount}</div><div className="ptt-ov-sub">khoản{overview.draftCount > 0 ? ` · ${overview.draftCount} nháp` : ''}</div></div>
+                <div className="ptt-m-ovcard red"><div className="ptt-ov-lbl">Còn thiếu</div><div className="ptt-m-ovbig">{overview.dueCount}</div><div className="ptt-ov-sub">khoản{overview.draftCount > 0 ? ` · ${overview.draftCount} chờ duyệt` : ''}</div></div>
                 <div className="ptt-m-ovcard amber"><div className="ptt-ov-lbl">Dự kiến</div><div className="ptt-m-ovmid">{fmtFull(overview.dueSum)}</div><div className="ptt-ov-sub">còn phải chi</div></div>
               </div>
               {overview.rows.map((r) => (
                 <div className="ptt-m-ovrow" key={r.cat.key}>
                   <div className="ptt-m-ovrow-top">
                     <span className="ptt-ov-hm-ic" style={{ background: r.cat.accent + '18', color: r.cat.accent }}><FeeIcon name={r.cat.icon} style={{ width: 15, height: 15 }} /></span>
-                    <span className="ptt-m-ovrow-lbl">{r.cat.label}{r.draftN > 0 && <span className="ptt-badge-draft">{r.draftN} nháp</span>}</span>
+                    <span className="ptt-m-ovrow-lbl">{r.cat.label}{r.draftN > 0 && <span className="ptt-badge-draft">{r.draftN} chờ duyệt</span>}</span>
                     <span className="ptt-m-ovrow-prog">{r.paidN}/{r.total}</span>
                     {r.dueN > 0 ? <button type="button" className="ptt-go sm" onClick={() => pick(r.cat.key)}>Đóng<ArrowRight /></button> : r.allPaid ? <span className="ptt-ov-check sm"><Check /></span> : null}
                   </div>
@@ -403,7 +403,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                       {d.rows.map(({ v, bld }) => (
                         <div className="ptt-m-histrow" key={v.id}>
                           <span className="ud-bldcode">{bld}</span>
-                          {v.status === 'UNAPPROVED' ? <span className="ptt-badge-draft">NHÁP</span> : v.isAuto ? <span className="ptt-auto">TỰ ĐỘNG</span> : null}
+                          {v.status === 'UNAPPROVED' ? <span className="ptt-badge-draft">CHỜ DUYỆT</span> : v.isAuto ? <span className="ptt-auto">TỰ ĐỘNG</span> : null}
                           <UtilityReceiptThumb attachments={v.attachments} onView={onView} size="sm" />
                           <span className="ptt-m-histamt ud-mono">{fmtFull(v.amount)}</span>
                         </div>
@@ -428,15 +428,15 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                 )}
                 <div className="ptt-m-commstats">
                   <div className="ptt-m-commcard green"><div className="ptt-ov-lbl">Đã chi</div><div className="ptt-m-commnum green">{fmtFull(paidSum)}</div></div>
-                  <div className="ptt-m-commcard amber"><div className="ptt-ov-lbl">Nháp</div><div className="ptt-m-commnum amber">{draftN}</div></div>
+                  <div className="ptt-m-commcard amber"><div className="ptt-ov-lbl">Chờ duyệt</div><div className="ptt-m-commnum amber">{draftN}</div></div>
                   <div className="ptt-m-commcard red"><div className="ptt-ov-lbl">Chưa chi</div><div className="ptt-m-commnum red">{fmtFull(dueSum)}</div></div>
                 </div>
                 {rows.length === 0 ? <div className="c-empty"><div className="e-ic">📄</div><p>Không có HĐ ký trong kỳ.</p></div> : rows.map((r) => (
                   <div className="ptt-m-commrow" key={r.contractId}>
-                    <div className="ptt-m-commr1"><span className="ud-mono2">{r.contractNumber ?? '—'}</span><span className="ptt-m-commroom">{r.buildingName} · {r.roomName ?? ''}</span>{r.status === 'paid' && <span className="ptt-comm-paid sm">Đã chi</span>}{r.status === 'draft' && <span className="ptt-badge-draft">NHÁP</span>}</div>
+                    <div className="ptt-m-commr1"><span className="ud-mono2">{r.contractNumber ?? '—'}</span><span className="ptt-m-commroom">{r.buildingName} · {r.roomName ?? ''}</span>{r.status === 'paid' && <span className="ptt-comm-paid sm">Đã chi</span>}{r.status === 'draft' && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}</div>
                     <div className="ptt-m-commr2"><div className="ptt-m-commtenant"><div>{r.tenantName}</div><div className="ptt-m-commmeta">Ký {fmtDate(r.signedDate)} · {r.months} th · bậc {r.tierPercent != null ? r.tierPercent + '%' : '—'}</div></div><span className={'ud-mono' + (r.status === 'paid' ? ' paid' : '')}>{fmtFull(r.voucherAmount ?? r.expectedAmount)}</span></div>
                     {r.status === 'unpaid' && <button type="button" className="ptt-m-commbtn" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><HandCoins />Chi hoa hồng</button>}
-                    {r.status === 'draft' && <button type="button" className="ptt-m-commbtn draft" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><Check />Duyệt phiếu nháp</button>}
+                    {r.status === 'draft' && <button type="button" className="ptt-m-commbtn draft" disabled={!canRecordPayment} onClick={() => setCommRow(r)}><Check />Duyệt phiếu chờ duyệt</button>}
                   </div>
                 ))}
               </div>

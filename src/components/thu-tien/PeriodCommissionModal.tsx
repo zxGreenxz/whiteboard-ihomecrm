@@ -1,22 +1,24 @@
 // =============================================================================
 // PeriodCommissionModal — chi hoa hồng từ trang Đóng tiền Tập trung (10/07).
 //
-// 2 chế độ theo trạng thái dòng:
-//   • unpaid → form đầy đủ (số tiền/người nhận/bank/số TK/sổ/ngày) với 2 nút:
-//       "Lưu nháp" (tạo phiếu NHÁP — RPC create_commission_voucher luôn nháp)
-//       "Chi & duyệt" (tạo nháp + approve_voucher ngay — cần sổ).
-//   • draft  → duyệt phiếu nháp ĐÃ CÓ: nếu thiếu sổ thì bắt chọn (ghi qua
-//     update_period_fee) rồi approve. Không tạo phiếu mới (khoá 1 HĐ = 1 phiếu).
+// Plan §12.7 (2026-07-23): BỎ shortcut create-then-approve ("Chi & duyệt").
+//   • unpaid → form đầy đủ (số tiền/người nhận/bank/số TK/sổ/ngày) với MỘT nút
+//       "Tạo phiếu Chờ duyệt" — chỉ TẠO phiếu UNAPPROVED (RPC
+//       create_commission_voucher), KHÔNG gọi approve_voucher sau đó.
+//   • draft (phiếu Chờ duyệt đã có) → modal chỉ hiển thị trạng thái và dẫn
+//     sang trang Thu chi để duyệt — không duyệt tại đây, không gán sổ tại đây.
+// Phiếu tồn tại ≠ "đã chi": chỉ hiển thị "Chờ duyệt" cho tới khi được duyệt
+// ở Thu chi.
 // =============================================================================
 
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Check, HandCoins, FileText, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, HandCoins, FileText, Info, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { fmtFull } from '@/lib/collect';
 import { useCreateCommissionVoucher } from '@/hooks/useCommissionVoucher';
-import { useApproveVoucher } from '@/hooks/useIncomeExpenses';
-import { useUpdatePeriodFee, type PeriodCommissionRow } from '@/hooks/usePeriodFees';
+import { type PeriodCommissionRow } from '@/hooks/usePeriodFees';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { BankSelect } from '@/components/income-expenses/BankSelect';
 
@@ -33,9 +35,8 @@ interface Props {
 
 export function PeriodCommissionModal({ row, myBooks, defaultBookId, onClose }: Props) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const createComm = useCreateCommissionVoucher();
-  const approveMut = useApproveVoucher();
-  const updateFee = useUpdatePeriodFee();
 
   const [amount, setAmount] = useState(0);
   const [recipient, setRecipient] = useState('');
@@ -43,17 +44,17 @@ export function PeriodCommissionModal({ row, myBooks, defaultBookId, onClose }: 
   const [accNumber, setAccNumber] = useState('');
   const [bookId, setBookId] = useState<string | null>(null);
   const [vdate, setVdate] = useState(todayISO());
-  const [busy, setBusy] = useState<'draft' | 'approve' | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!row) return;
     setAmount(row.status === 'draft' ? (row.voucherAmount ?? row.expectedAmount) : row.expectedAmount);
     setRecipient(''); setBank(null); setAccNumber('');
-    setBookId(null); setVdate(todayISO()); setBusy(null);
+    setBookId(null); setVdate(todayISO()); setBusy(false);
   }, [row?.contractId, row?.status]);
 
   if (!row) return null;
-  const isDraftMode = row.status === 'draft';
+  const isPendingMode = row.status === 'draft'; // phiếu Chờ duyệt đã tồn tại
   const chosenBook = bookId ?? defaultBookId;
   const doneAndClose = () => {
     qc.invalidateQueries({ queryKey: ['period-commissions'] });
@@ -62,13 +63,13 @@ export function PeriodCommissionModal({ row, myBooks, defaultBookId, onClose }: 
     onClose();
   };
 
-  // Tạo phiếu (luôn NHÁP theo RPC); approveNow = duyệt ngay sau khi tạo.
-  const createVoucher = async (approveNow: boolean) => {
+  // Tạo phiếu Chờ duyệt (RPC create_commission_voucher — luôn UNAPPROVED).
+  // KHÔNG có nhánh approve ngay sau khi tạo (plan §12.7).
+  const createVoucher = async () => {
     if (amount <= 0) { toast.error('Nhập số tiền hoa hồng'); return; }
-    if (approveNow && !chosenBook) { toast.error('Chọn sổ quỹ để duyệt phiếu'); return; }
-    setBusy(approveNow ? 'approve' : 'draft');
+    setBusy(true);
     try {
-      const res = await createComm.mutateAsync({
+      await createComm.mutateAsync({
         contract_id: row.contractId, contract_number: row.contractNumber,
         building_id: row.buildingId, room_id: row.roomId, tenant_id: null,
         account_id: chosenBook ?? null, voucher_date: vdate,
@@ -78,31 +79,16 @@ export function PeriodCommissionModal({ row, myBooks, defaultBookId, onClose }: 
         recipient_bank: bank, recipient_account_number: accNumber.trim() || null,
         item_description: `Hoa hồng môi giới HĐ ${row.contractNumber ?? ''} (${row.tierPercent ?? 0}% × ${row.months} tháng)`,
       });
-      if (approveNow && res?.id) {
-        await approveMut.mutateAsync(res.id);
-        toast.success(`Đã chi & duyệt hoa hồng ${fmtFull(amount)} · HĐ ${row.contractNumber ?? ''}`);
-      } else {
-        toast.success(`Đã lưu NHÁP hoa hồng ${fmtFull(amount)} · HĐ ${row.contractNumber ?? ''}`);
-      }
+      toast.success(`Đã tạo phiếu Chờ duyệt ${fmtFull(amount)} · HĐ ${row.contractNumber ?? ''} — duyệt tại trang Thu chi`);
       doneAndClose();
     } catch { /* toast lỗi từ mutation */ }
-    finally { setBusy(null); }
+    finally { setBusy(false); }
   };
 
-  // Duyệt phiếu NHÁP đã có (gán sổ nếu thiếu).
-  const approveExisting = async () => {
-    if (!row.voucherId) return;
-    if (row.accountIsEmpty && !chosenBook) { toast.error('Phiếu chưa có sổ — chọn sổ quỹ trước'); return; }
-    setBusy('approve');
-    try {
-      if (row.accountIsEmpty && chosenBook) {
-        await updateFee.mutateAsync({ voucherId: row.voucherId, accountId: chosenBook });
-      }
-      await approveMut.mutateAsync(row.voucherId);
-      toast.success(`Đã duyệt phiếu hoa hồng · HĐ ${row.contractNumber ?? ''}`);
-      doneAndClose();
-    } catch { /* toast lỗi từ mutation */ }
-    finally { setBusy(null); }
+  // Phiếu Chờ duyệt đã có → dẫn sang Thu chi để duyệt (không duyệt tại đây).
+  const goToIncomeExpense = () => {
+    onClose();
+    navigate('/income-expense');
   };
 
   return (
@@ -112,27 +98,25 @@ export function PeriodCommissionModal({ row, myBooks, defaultBookId, onClose }: 
         <div className="ptt-modal-head">
           <span className="ptt-modal-ic"><HandCoins /></span>
           <div className="ptt-modal-h">
-            <div className="ptt-modal-title">{isDraftMode ? 'Duyệt phiếu hoa hồng (nháp)' : 'Chi hoa hồng môi giới'}</div>
+            <div className="ptt-modal-title">{isPendingMode ? 'Phiếu hoa hồng Chờ duyệt' : 'Chi hoa hồng môi giới'}</div>
             <div className="ptt-modal-sub">HĐ {row.contractNumber ?? '—'} · {row.buildingName} · {row.roomName ?? ''} · {row.tenantName}</div>
           </div>
           <button type="button" className="ptt-modal-x" onClick={onClose}><X /></button>
         </div>
 
         <div className="ptt-edit-body">
-          {isDraftMode ? (
+          {isPendingMode ? (
             <>
               <div className="ptt-draftpay-amt">
-                <span className="ptt-field-lbl">Số tiền phiếu nháp</span>
+                <span className="ptt-field-lbl">Số tiền phiếu Chờ duyệt</span>
                 <span className="ptt-draftpay-num">{fmtFull(row.voucherAmount ?? 0)}</span>
               </div>
               {row.accountIsEmpty ? (
-                <label className="ptt-field">
-                  <span className={'ptt-field-lbl' + (!chosenBook ? ' danger' : '')}>Sổ quỹ ghi chi (phiếu đang trống)</span>
-                  <UtilityBookMenu accounts={myBooks} valueId={bookId} defaultId={defaultBookId} onPick={setBookId} />
-                </label>
+                <div className="ptt-note info"><Info /><span>Phiếu chưa gán sổ quỹ — chọn sổ khi duyệt ở trang Thu chi.</span></div>
               ) : (
-                <div className="ptt-note info"><Info /><span>Phiếu đã có sổ <b>{row.voucherAccountName ?? ''}</b> — duyệt sẽ ghi tiền vào sổ này.</span></div>
+                <div className="ptt-note info"><Info /><span>Phiếu đã có sổ <b>{row.voucherAccountName ?? ''}</b> — khi duyệt ở Thu chi, tiền ghi vào sổ này.</span></div>
               )}
+              <div className="ptt-note info"><FileText /><span>Phiếu đang <b>Chờ duyệt</b> (chưa vào sổ). Việc duyệt thực hiện ở trang <b>Thu chi</b>.</span></div>
             </>
           ) : (
             <>
@@ -161,29 +145,27 @@ export function PeriodCommissionModal({ row, myBooks, defaultBookId, onClose }: 
                 </label>
               </div>
               <label className="ptt-field">
-                <span className="ptt-field-lbl">Sổ quỹ ghi chi</span>
+                <span className="ptt-field-lbl">Sổ quỹ ghi chi (tuỳ chọn — có thể gán khi duyệt)</span>
                 <UtilityBookMenu accounts={myBooks} valueId={bookId} defaultId={defaultBookId} onPick={setBookId} />
               </label>
-              <div className="ptt-note info"><FileText /><span><b>Lưu nháp</b>: phiếu chờ duyệt (chưa vào sổ). <b>Chi &amp; duyệt</b>: ghi tiền vào sổ ngay. Mỗi HĐ chỉ chi HH 1 lần.</span></div>
+              <div className="ptt-note info"><FileText /><span>Phiếu tạo ra ở trạng thái <b>Chờ duyệt</b> (chưa vào sổ) — duyệt tại trang <b>Thu chi</b>. Mỗi HĐ chỉ chi HH 1 lần.</span></div>
             </>
           )}
         </div>
 
         <div className="ptt-modal-foot">
-          {isDraftMode ? (
+          {isPendingMode ? (
             <>
               <button type="button" className="ptt-btn ghost" onClick={onClose}>Đóng</button>
-              <button type="button" className="ptt-btn go" disabled={busy != null} onClick={approveExisting}>
-                {busy ? <span className="ub-spin" /> : <Check />}Duyệt phiếu
+              <button type="button" className="ptt-btn go" onClick={goToIncomeExpense}>
+                <ExternalLink />Mở Thu chi để duyệt
               </button>
             </>
           ) : (
             <>
-              <button type="button" className="ptt-btn ghost" disabled={busy != null} onClick={() => createVoucher(false)}>
-                {busy === 'draft' ? <span className="ub-spin dark" /> : null}Lưu nháp
-              </button>
-              <button type="button" className="ptt-btn go" disabled={busy != null} onClick={() => createVoucher(true)}>
-                {busy === 'approve' ? <span className="ub-spin" /> : <Check />}Chi &amp; duyệt
+              <button type="button" className="ptt-btn ghost" disabled={busy} onClick={onClose}>Huỷ</button>
+              <button type="button" className="ptt-btn go" disabled={busy} onClick={createVoucher}>
+                {busy ? <span className="ub-spin" /> : <FileText />}Tạo phiếu Chờ duyệt
               </button>
             </>
           )}

@@ -16,6 +16,10 @@ import { formatPeriod } from '@/lib/monthPeriod';
 import { kqkdStatusLabel } from '@/lib/kqkd';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { IncomeExpenseWithRelations, IncomeExpenseBatchSummary } from '@/hooks/useIncomeExpenses';
+// Finance V2 (route-aware §9.6/§12.1): badge composite khi org CANONICAL read-semantics.
+import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
+import { VoucherStatusBadge } from '@/components/income-expenses/VoucherStatusBadge';
+import type { VoucherDisplayInput } from '@/lib/financeV2VoucherState';
 
 const formatVND = (n: number) => `${n.toLocaleString('vi-VN')} đ`;
 const isPdf = (url: string) =>
@@ -46,6 +50,39 @@ const StatusBadge = ({ status }: { status: IncomeExpenseWithRelations['approval_
   if (status === 'UNAPPROVED')
     return <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">Chờ duyệt</span>;
   return <span className="px-2 py-0.5 text-xs rounded bg-green-100 text-green-800">Đã ghi nhận</span>;
+};
+
+// Finance V2 (route-aware §9.6/§12.1): khi org của phiếu đã CANONICAL read-semantics
+// VÀ row có posting_status (cột V2 — cast vì chưa vào generated types), render badge
+// composite dùng chung (VoucherStatusBadge + v2). Ngược lại giữ NGUYÊN StatusBadge
+// legacy ở trên — mọi chuỗi/lối rẽ hiện tại không đổi.
+const RouteAwareStatusBadge = ({
+  v,
+}: {
+  v: Pick<IncomeExpenseWithRelations, 'approval_status' | 'type'>;
+}) => {
+  const v2Routes = useFinanceV2Routes();
+  const row = v as {
+    organization_id?: string | null;
+    review_state?: string | null;
+    posting_mode?: string | null;
+    posting_status?: string | null;
+  };
+  const orgRoutes = v2Routes.getOrg(row.organization_id ?? null);
+  if (isCanonicalRead(orgRoutes) && row.posting_status) {
+    return (
+      <VoucherStatusBadge
+        status={v.approval_status}
+        v2={{
+          type: v.type,
+          review_state: (row.review_state ?? null) as VoucherDisplayInput['review_state'],
+          posting_mode: (row.posting_mode ?? null) as VoucherDisplayInput['posting_mode'],
+          posting_status: row.posting_status as VoucherDisplayInput['posting_status'],
+        }}
+      />
+    );
+  }
+  return <StatusBadge status={v.approval_status} />;
 };
 
 // Lưới ảnh đính kèm — click mở lightbox.
@@ -102,7 +139,7 @@ function VoucherCard({
           value={
             <span className="inline-flex items-center gap-2">
               <span className="font-medium">{v.code}</span>
-              <StatusBadge status={v.approval_status} />
+              <RouteAwareStatusBadge v={v} />
             </span>
           }
         />
@@ -284,7 +321,7 @@ function BatchCard({
                 {fmtAmount(v.type, v.total_amount)}
               </div>
               <div className="px-3 py-2 flex items-center gap-1.5">
-                <StatusBadge status={v.approval_status} />
+                <RouteAwareStatusBadge v={v} />
                 {isCurrent && <span className="text-[10px] text-violet-600 font-medium">đang xem</span>}
               </div>
             </div>

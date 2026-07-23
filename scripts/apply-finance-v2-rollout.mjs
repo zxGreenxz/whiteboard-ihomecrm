@@ -38,6 +38,10 @@ export const FINANCE_V2_MIGRATIONS = Object.freeze([
   "supabase/migrations/20260723110000_finance_v2_rls_canary.sql",
   "supabase/migrations/20260723115000_finance_v2_client_flags.sql",
   "supabase/migrations/20260723120000_finance_v2_cutover_readiness.sql",
+  // Stage 7b: compat gateway RPCs so the LAST raw-DML FE callers (edit/import/batch/
+  // copilot/refund/metadata) drain to RPCs BEFORE Stage-7 revokes client DML.
+  "supabase/migrations/20260723130000_finance_v2_drain_compat_rpcs.sql",
+  "supabase/migrations/20260723140000_finance_v2_compat_whitelist_patch.sql",
 ]);
 
 export const FINANCE_V2_LOCK_NAME = "ihomecrm:finance-v2-rollout:v1";

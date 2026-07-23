@@ -119,48 +119,60 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
       throw new Error(`Lỗi ghi audit: ${auditErr.message}`);
     }
 
-    // Tạo phiếu NHÁP: approval_status UNAPPROVED tường minh (DB default là
-    // APPROVED!) + account_id null (sổ trống — chưa đụng tiền thật)
+    // Tạo phiếu NHÁP qua server RPC ie_compat_insert_v2 (Stage-7 drain: client
+    // hết INSERT trực tiếp income_expenses/_items). Server ép approval_status
+    // UNAPPROVED/PENDING + stamp maker; account_id null (sổ trống — chưa đụng
+    // tiền thật). Phiếu + hạng mục atomic trong một call.
     const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
     const creatorName = String(meta.full_name || meta.name || user.email || 'Người dùng');
-    const { data: voucher, error: vErr } = await supabase
-      .from('income_expenses')
-      .insert({
-        user_id: user.id,
-        creator_name: `${creatorName} (AI Copilot)`,
-        type: ieType,
-        name: args.ten_phieu,
-        building_id: building.id,
-        account_id: null,
-        approval_status: 'UNAPPROVED',
-        voucher_date: voucherDate,
-        attachments: [],
-        notes: `Tạo bởi AI Copilot (draft-first, audit ${audit.id})`,
-        repeat_cycle: 'NONE',
-        repeat_infinity: false,
-        repeat_count: 0,
-        repeat_auto_approve: true,
-        repeat_remaining: 0,
-      } as never)
-      .select('id, code')
-      .single();
+    const { data: created, error: vErr } = await (supabase.rpc as unknown as (
+      fn: string,
+      params: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: { message?: string } | null }>)(
+      'ie_compat_insert_v2',
+      {
+        p_row: {
+          user_id: user.id,
+          creator_name: `${creatorName} (AI Copilot)`,
+          type: ieType,
+          name: args.ten_phieu,
+          building_id: building.id,
+          account_id: null,
+          voucher_date: voucherDate,
+          attachments: [],
+          notes: `Tạo bởi AI Copilot (draft-first, audit ${audit.id})`,
+          repeat_cycle: 'NONE',
+          repeat_infinity: false,
+          repeat_count: 0,
+          repeat_auto_approve: true,
+          repeat_remaining: 0,
+        },
+        p_items: [
+          {
+            income_expense_type_id: type.id,
+            description: args.ten_phieu,
+            quantity: 1,
+            unit_price: args.so_tien,
+          },
+        ],
+      },
+    );
     if (vErr) throw new Error(`Lỗi tạo phiếu: ${vErr.message}`);
-
-    const { error: itemErr } = await supabase.from('income_expense_items').insert({
-      income_expense_id: (voucher as { id: string }).id,
-      income_expense_type_id: type.id,
-      description: args.ten_phieu,
-      quantity: 1,
-      unit_price: args.so_tien,
-    } as never);
-    if (itemErr) throw new Error(`Phiếu đã tạo nhưng lỗi hạng mục: ${itemErr.message} — báo người dùng kiểm tra tại /income-expense.`);
+    const voucherId = (created as { id?: string } | null)?.id;
+    if (!voucherId) throw new Error('Lỗi tạo phiếu: server không trả về id.');
 
     await supabase
       .from('ai_write_audit')
-      .update({ entity_id: (voucher as { id: string }).id })
+      .update({ entity_id: voucherId })
       .eq('id', audit.id);
 
-    const code = (voucher as { code?: string }).code ?? (voucher as { id: string }).id.slice(0, 8);
+    // RPC chỉ trả {id, approval_status} — đọc lại code (read-only) cho message.
+    const { data: codeRow } = await supabase
+      .from('income_expenses')
+      .select('code')
+      .eq('id', voucherId)
+      .maybeSingle();
+    const code = (codeRow as { code?: string } | null)?.code ?? voucherId.slice(0, 8);
     return `✅ Đã tạo phiếu ${args.loai === 'thu' ? 'THU' : 'CHI'} CHỜ DUYỆT ${code} — ${formatVND(args.so_tien)} — ${building.name}. Phiếu CHƯA duyệt, chưa vào sổ; người dùng kiểm tra và duyệt tại [Thu chi](/income-expense).`;
   },
 };

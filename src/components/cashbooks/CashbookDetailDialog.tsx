@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { X, Pencil, Trash2, Wallet } from "lucide-react";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
 import { useAccountSharedUsers } from "@/hooks/useAccountSharedUsers";
+import {
+  useCashbookAccessAdminV2,
+  useCashbookOrgId,
+  useProfileLabels,
+  type CashbookAccessMemberV2,
+} from "@/components/cashbooks/CashbookForm";
+import { useFinanceV2Routes, isCanonicalAccess } from "@/lib/financeV2Route";
 import { format } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatVND } from "@/lib/utils";
@@ -46,11 +53,37 @@ export function CashbookDetailDialog({
   const isMobile = useIsMobile();
   const { data: sharedUsers } = useAccountSharedUsers(account?.id);
 
+  // ── Finance V2 (route-aware): khi org của sổ có access route CANONICAL,
+  //    hiển thị 2 dòng CUSTODIAN/KNOWER (get_cashbook_access_admin_v2) thay
+  //    dòng "Người được phép sử dụng". Chưa CANONICAL / RPC lỗi (vd không đủ
+  //    quyền cashbooks.share) → giữ NGUYÊN hiển thị legacy như hôm nay.
+  const v2Routes = useFinanceV2Routes();
+  const orgFromAccount = account?.organization_id ?? null;
+  const orgIdQuery = useCashbookOrgId(open ? account?.id : null, orgFromAccount);
+  const cashbookOrgId = orgFromAccount ?? orgIdQuery.data ?? null;
+  const v2AccessMode = isCanonicalAccess(v2Routes.getOrg(cashbookOrgId));
+  const accessQuery = useCashbookAccessAdminV2(
+    account?.id ?? null,
+    open && v2AccessMode
+  );
+  const access = accessQuery.data ?? null;
+  const { data: profileLabels } = useProfileLabels(
+    access
+      ? [...access.custodians, ...access.knowers].map((m) => m.user_id)
+      : []
+  );
+
   if (!account) return null;
 
   const sharedLabels = (sharedUsers ?? [])
     .map((s) => s.full_name || s.email || s.user_id.slice(0, 8))
     .join(", ");
+
+  const showV2Access = v2AccessMode && !!access;
+  const memberNames = (list: CashbookAccessMemberV2[]) =>
+    list
+      .map((m) => profileLabels?.get(m.user_id) ?? m.user_id.slice(0, 8))
+      .join(", ");
 
   const isRefundLogAccount =
     typeof account.name === "string" &&
@@ -95,10 +128,23 @@ export function CashbookDetailDialog({
           <div className="bg-zinc-100/70 rounded-2xl p-4">
             <Row label="Tên sổ quỹ:" value={account.name} />
             <Row label="Phụ trách:" value={account.owner_name || "—"} />
-            <Row
-              label="Người được phép sử dụng:"
-              value={sharedLabels || "—"}
-            />
+            {showV2Access && access ? (
+              <>
+                <Row
+                  label="Người giữ sổ (CUSTODIAN):"
+                  value={memberNames(access.custodians) || "—"}
+                />
+                <Row
+                  label="Người biết sổ (KNOWER):"
+                  value={memberNames(access.knowers) || "—"}
+                />
+              </>
+            ) : (
+              <Row
+                label="Người được phép sử dụng:"
+                value={sharedLabels || "—"}
+              />
+            )}
             <Row
               label="Ngày chốt số dư đầu kỳ:"
               value={

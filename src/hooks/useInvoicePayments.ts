@@ -6,7 +6,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
 import { useToast } from '@/hooks/use-toast';
-import { getInvoiceShortTitle } from '@/lib/invoiceUtils';
 import {
   planInvoiceCollection,
   recordInvoiceCollectionV5,
@@ -83,9 +82,10 @@ export const useRecordPaymentRPC = () => {
 
 // =============================================
 // useRecordRefundRPC - For settlement invoices with NEGATIVE total
-// (i.e. landlord owes tenant). Creates an EXPENSE voucher (Phiếu chi)
-// linked to the invoice; recompute_invoice_for_id picks it up via the
-// `[Hoàn trả thanh lý]` marker in notes and flips the invoice to PAID.
+// (i.e. landlord owes tenant). Stage-7 drain: MỘT call server RPC
+// create_invoice_refund_obligation_v2 tạo atomic phiếu chi hoàn trả
+// PENDING ('Chờ duyệt') + reservation gắn hoá đơn — không còn raw insert
+// income_expenses/_items từ client.
 // =============================================
 
 export interface RecordRefundRPCData {
@@ -107,81 +107,21 @@ export const useRecordRefundRPC = () => {
 
       if (data.amount <= 0) throw new Error('Số tiền hoàn trả phải > 0');
 
-      const { data: inv, error: invErr } = await supabase
-        .from('invoices')
-        .select('id, invoice_number, building_id, room_id, contract_id, billing_month, total_amount, paid_amount, notes, invoice_items(type), building:buildings!invoices_building_id_fkey(id, name), room:rooms!invoices_room_id_fkey(id, name)')
-        .eq('id', data.invoice_id)
-        .single() as any;
-      if (invErr || !inv) throw invErr ?? new Error('Không tìm thấy hoá đơn');
+      const { data: result, error } = await (supabase.rpc as any)(
+        'create_invoice_refund_obligation_v2',
+        {
+          p_invoice_id: data.invoice_id,
+          p_amount: data.amount,
+          p_reason: data.notes ?? null,
+          p_idempotency_key: `refund-${crypto.randomUUID()}`,
+        },
+      );
+      if (error) throw error;
 
-      const { data: existingType } = await supabase
-        .from('income_expense_types' as any)
-        .select('id')
-        .eq('type', 'expense')
-        .eq('name', 'Hoàn trả thanh lý')
-        .limit(1)
-        .maybeSingle() as any;
-
-      let typeId: string | undefined = existingType?.id;
-      if (!typeId) {
-        const { data: created, error: cErr } = await supabase
-          .from('income_expense_types' as any)
-          .insert({
-            user_id: user.id,
-            type: 'expense',
-            name: 'Hoàn trả thanh lý',
-            description: 'Tự tạo khi ghi nhận hoàn trả hoá đơn thanh lý',
-          })
-          .select('id')
-          .single() as any;
-        if (cErr) throw cErr;
-        typeId = created.id;
-      }
-
-      const meta = (user.user_metadata ?? {}) as Record<string, any>;
-      const creatorName: string =
-        meta.full_name || meta.name || user.email || 'Người dùng';
-
-      const voucherNotes =
-        '[Hoàn trả thanh lý] HĐ ' + getInvoiceShortTitle(inv as any) +
-        (data.notes ? '\n' + data.notes : '');
-
-      const { data: voucher, error: vErr } = await supabase
-        .from('income_expenses' as any)
-        .insert({
-          user_id: user.id,
-          type: 'EXPENSE',
-          name: `Hoàn trả khách thanh lý — HĐ ${getInvoiceShortTitle(inv as any)}`,
-          building_id: inv.building_id,
-          room_id: inv.room_id,
-          contract_id: inv.contract_id,
-          account_id: data.account_id,
-          invoice_id: inv.id,
-          voucher_date: data.payment_date,
-          total_amount: data.amount,
-          attachments: [],
-          approval_status: 'UNAPPROVED',
-          creator_name: creatorName,
-          notes: voucherNotes,
-        } as any)
-        .select()
-        .single();
-      if (vErr) throw vErr;
-
-      const { error: itemErr } = await supabase
-        .from('income_expense_items' as any)
-        .insert({
-          income_expense_id: (voucher as any).id,
-          income_expense_type_id: typeId,
-          description: `Hoàn trả khách — HĐ ${getInvoiceShortTitle(inv as any)}`,
-          quantity: 1,
-          unit_price: data.amount,
-          start_date: data.payment_date,
-          end_date: data.payment_date,
-        });
-      if (itemErr) throw itemErr;
-
-      return { voucher_id: (voucher as any).id };
+      return {
+        voucher_id:
+          (result as { voucher_id?: string } | null)?.voucher_id ?? null,
+      };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });

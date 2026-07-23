@@ -139,6 +139,32 @@ describe("Finance V2 Stage 11b — client feature-route flags", () => {
   });
 });
 
+describe("Finance V2 Stage 7b — drain-compat gateway RPCs", () => {
+  const sql = readMigration("20260723130000_finance_v2_drain_compat_rpcs.sql");
+
+  it("forces pending birth and blocks client-set approval/posting fields", () => {
+    expect(sql).toContain("public.ie_compat_insert_v2");
+    expect(sql).toContain("'UNAPPROVED'");
+    expect(sql).toContain("- 'approval_status'");
+    expect(sql).toContain("- 'posting_id'");
+    expect(sql).toContain("maker_membership_id");
+    noModeChange(sql);
+  });
+
+  it("money-axis edits are pending-only; posted rows require reversal", () => {
+    expect(sql).toContain("public.ie_compat_update_pending_v2");
+    expect(sql).toMatch(/Trục tiền chỉ sửa được khi phiếu Chờ duyệt/);
+    expect(sql).toContain("public.ie_compat_cancel_v2");
+    expect(sql).toMatch(/đã ghi sổ — dùng reversal/);
+    expect(sql).toContain("is_income_expense_flow_owned");
+  });
+
+  it("wraps the refund adapter behind a public atomic RPC", () => {
+    expect(sql).toContain("public.create_invoice_refund_obligation_v2");
+    expect(sql).toContain("app_private.reserve_invoice_refund_obligation_v2");
+  });
+});
+
 describe("Finance V2 Stage 12 — cutover readiness", () => {
   const sql = readMigration("20260723120000_finance_v2_cutover_readiness.sql");
 

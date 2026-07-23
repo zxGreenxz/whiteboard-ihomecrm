@@ -249,6 +249,21 @@ Nguồn: `EXEC-THU-CHI-V2-INVENTORY.md §10`. R = plan đã quyết; D = tôi qu
   refactor gọi `effective_profit_contributions_v2`, tạo algorithm version Finance V2 mới
   (`profit-close-v2.2`?), snapshot cũ `profit-close-v2.1` vẫn verify bằng v1 (§11.3).
 
+## 4d. PRODUCTION STATUS 2026-07-23 (cập nhật realtime)
+
+- ✅ **12/13 stage FORWARD-APPLIED lên production** (bundle `6fe5402f…`); Stage-7 chờ drain.
+- ✅ Parity 25/25 sổ thực · view invoker 12/12 · 55 exceptions dispositioned (0 mở) · delta lag 0.
+- ✅ Ma trận quyền owner: 35 CUSTODIAN + 15 KNOWER; 15 share legacy classified (xóa lúc access-ON).
+- ✅ 3 policy §2.6 ghi bất biến (commission: tạo lúc ký HĐ, chi phí theo tháng NGÀY BẮT ĐẦU HĐ,
+  clawback thủ công; STANDALONE-all + salary không double-count; rent-offset max-available).
+- ✅ **CANARY→route CANONICAL cả 2 org**: read_semantics/workflow/posting/access.v2 (attestation
+  thật, release identity đầy đủ, caps 100k ops/500tr/50 tỷ/90 ngày). profit_close FROZEN.
+- ✅ Stage-7b drain-compat RPCs applied (`ie_compat_insert/update_pending/cancel_v2`,
+  `create_invoice_refund_obligation_v2`).
+- 🔄 Agents: A (mobile/detail/inbox), B (cashbook 2 danh sách + commission metadata + bỏ
+  Chi&duyệt), C (drain hooks → RPC). Sau đó: commit → merge main (deploy) → **Stage-7** → **ON**
+  → full re-verify. Mục 4 (52 locks + 22 phiếu kỳ khóa) owner làm sau — profit_close giữ FROZEN.
+
 ## 5. Trạng thái sống
 
 - [x] P0 snapshot live + resolve possession/pending divergence

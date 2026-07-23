@@ -68,10 +68,16 @@ export const useUploadPaymentReceipt = () => {
           : [];
         if (!existing.includes(url)) {
           const next = [...existing, url];
-          const { error: updVErr } = await (supabase as any)
-            .from('income_expenses')
-            .update({ attachments: next })
-            .eq('id', voucher.id);
+          // Stage-7 drain: append attachments qua RPC ie_compat_update_pending_v2
+          // (metadata — server cho sửa khi phiếu chưa huỷ, không đụng trục tiền).
+          const { error: updVErr } = await (supabase.rpc as any)(
+            'ie_compat_update_pending_v2',
+            {
+              p_id: voucher.id,
+              p_patch: { attachments: next },
+              p_items: null,
+            },
+          );
           if (updVErr) throw updVErr;
           voucherUpdated = true;
         }

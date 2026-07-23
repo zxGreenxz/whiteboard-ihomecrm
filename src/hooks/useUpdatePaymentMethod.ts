@@ -129,12 +129,19 @@ export const useUpdatePaymentMethod = () => {
         .maybeSingle();
       if (vErr) throw vErr;
 
-      // 4. UPDATE sổ quỹ trên phiếu thu trước (nếu có voucher liên kết).
+      // 4. Đổi sổ quỹ trên phiếu thu trước (nếu có voucher liên kết) — qua RPC
+      //    ie_compat_update_pending_v2 (Stage-7 drain: client hết UPDATE trực
+      //    tiếp income_expenses; account_id là trục tiền — server chỉ cho sửa
+      //    khi phiếu còn Chờ duyệt và chưa ghi sổ).
       if (voucher) {
-        const { error: updVErr } = await (supabase as any)
-          .from('income_expenses')
-          .update({ account_id: newAccountId })
-          .eq('id', voucher.id);
+        const { error: updVErr } = await (supabase.rpc as any)(
+          'ie_compat_update_pending_v2',
+          {
+            p_id: voucher.id,
+            p_patch: { account_id: newAccountId },
+            p_items: null,
+          },
+        );
         if (updVErr) throw updVErr;
       }
 

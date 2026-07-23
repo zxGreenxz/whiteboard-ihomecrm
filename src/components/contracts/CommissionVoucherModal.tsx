@@ -42,6 +42,15 @@ function formatVND(n: number): string {
   return new Intl.NumberFormat("vi-VN").format(Math.round(n)) + " đ";
 }
 
+function formatDateVN(s: string | null | undefined): string {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${String(d.getDate()).padStart(2, "0")}-${String(
+    d.getMonth() + 1
+  ).padStart(2, "0")}-${d.getFullYear()}`;
+}
+
 /** Banner "đã chi" — thay form nhập khi HĐ đã có phiếu HH loại tương ứng */
 function ExistingVoucherBanner({
   voucher,
@@ -138,6 +147,15 @@ export function CommissionVoucherModal({
       ? `${t.rate_percent}% tiền phòng (mốc ${t.min_months}-${t.max_months} tháng)`
       : `${t.rate_percent}% tiền phòng (vượt mốc, áp dụng mốc cao nhất ${t.min_months}-${t.max_months} tháng)`;
   }, [prefill]);
+
+  // % hoa hồng hiển thị (owner decision 23/07): ưu tiên mốc cấu hình khớp;
+  // nếu không có mốc thì suy từ số tiền HH đang nhập / giá phòng.
+  const commissionPercent =
+    prefill?.matched_tier != null
+      ? Number(prefill.matched_tier.rate_percent)
+      : prefill && prefill.rent_price > 0 && brokerAmount > 0
+      ? (brokerAmount / prefill.rent_price) * 100
+      : null;
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -245,6 +263,44 @@ export function CommissionVoucherModal({
             </div>
           ) : (
             <div className="space-y-6 pb-2">
+              {/* Metadata HĐ (owner decision 2026-07-23): Phòng/Tòa, thời hạn
+                  HĐ, giá phòng, % hoa hồng — read-only, không đổi logic tạo. */}
+              <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Phòng / Tòa</span>
+                  <span className="font-medium text-right">
+                    {prefill.room_name ?? "—"} / {prefill.building_name || "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">
+                    Ngày bắt đầu – kết thúc HĐ
+                  </span>
+                  <span className="font-medium text-right">
+                    {formatDateVN(prefill.start_date)} –{" "}
+                    {formatDateVN(prefill.end_date)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Giá phòng</span>
+                  <span className="font-medium text-right">
+                    {formatVND(prefill.rent_price)}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">
+                    % hoa hồng (tính theo giá phòng)
+                  </span>
+                  <span className="font-medium text-right">
+                    {commissionPercent != null
+                      ? `${(
+                          Math.round(commissionPercent * 100) / 100
+                        ).toLocaleString("vi-VN")}%`
+                      : "—"}
+                  </span>
+                </div>
+              </div>
+
               {/* Mục 1: Thông tin chung */}
               <div className="space-y-3">
                 <h3 className="font-medium">1. THÔNG TIN CHUNG</h3>
