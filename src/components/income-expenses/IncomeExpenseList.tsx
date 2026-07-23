@@ -26,6 +26,7 @@ import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
   Eye,
   Ban,
@@ -183,6 +184,9 @@ const IncomeExpenseList = ({
   const { data: authUser } = useAuth();
   const { data: perms } = useMyPermissions();
   const currentUserId = authUser?.id ?? null;
+  // Finance V2 §12.1: org CANONICAL read → badge composite 4 trục (Đã Duyệt -
+  // Chưa Chi / Đã Chi / Đã hoàn tác…); org LEGACY giữ nhãn cũ.
+  const v2Routes = useFinanceV2Routes();
   // Quyền chi tiết: duyệt / huỷ phiếu thu chi (fallback legacy: approve cũ,
   // cancel rơi về edit).
   const canApproveVoucher = canUse(perms, 'income_expenses', 'approve');
@@ -434,6 +438,16 @@ const IncomeExpenseList = ({
                       <VoucherStatusBadge
                         status={voucher.approval_status}
                         verifiedAt={voucher.verified_at}
+                        v2={
+                          isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null))
+                            ? {
+                                review_state: voucher.review_state,
+                                posting_mode: voucher.posting_mode,
+                                posting_status: voucher.posting_status,
+                                type: voucher.type,
+                              }
+                            : null
+                        }
                       />
                     </span>
                     {isInternal && !isCancelled && (

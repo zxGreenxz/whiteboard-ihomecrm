@@ -9,6 +9,7 @@ import {
   InternalBadge,
 } from "@/components/income-expenses/VoucherStatusBadge";
 import { voucherLayer } from "@/lib/voucherSources";
+import { useFinanceV2Routes, isCanonicalRead } from "@/lib/financeV2Route";
 
 interface Props {
   vouchers: IncomeExpenseWithRelations[];
@@ -34,6 +35,9 @@ export function IncomeExpenseListMobile({
   onView,
   onShareQR,
 }: Props) {
+  // Finance V2 §12.1: org CANONICAL read → badge composite (parity desktop).
+  // Hook phải gọi TRƯỚC mọi early-return (rules of hooks).
+  const v2Routes = useFinanceV2Routes();
   if (isLoading) {
     return (
       <div className="px-3 py-3 space-y-2.5">
@@ -115,6 +119,16 @@ export function IncomeExpenseListMobile({
                   <VoucherStatusBadge
                     status={v.approval_status}
                     verifiedAt={v.verified_at}
+                    v2={
+                      isCanonicalRead(v2Routes.getOrg(v.organization_id ?? null))
+                        ? {
+                            review_state: v.review_state,
+                            posting_mode: v.posting_mode,
+                            posting_status: v.posting_status,
+                            type: v.type,
+                          }
+                        : null
+                    }
                   />
                   {isInternal && !isCancelled && <InternalBadge />}
                 </div>

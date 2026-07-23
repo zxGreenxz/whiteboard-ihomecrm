@@ -74,15 +74,33 @@ import {
   useFinanceV2Routes,
   canWriteWorkflow,
   canWritePosting,
+  isCanonicalRead,
 } from "@/lib/financeV2Route";
+import {
+  getVoucherDisplayState,
+  type VoucherDisplayInput,
+  type VoucherTone,
+} from "@/lib/financeV2VoucherState";
 import {
   useApproveIncomeExpenseV2,
   useApproveAndPostIncomeExpenseV2,
   useCustodianCashbooksV2,
+  uploadFinanceEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
+
+// Màu vch-tag theo tone composite V2 (khớp bảng màu TONE_CLASSES desktop).
+const V2_TAG_STYLES: Record<VoucherTone, { color: string; background: string }> = {
+  pending: { color: "#b45309", background: "#fef3c7" },
+  changes: { color: "#c2410c", background: "#ffedd5" },
+  disputed: { color: "#be123c", background: "#ffe4e6" },
+  approved: { color: "#0369a1", background: "#e0f2fe" },
+  posted: { color: "#1d4ed8", background: "#dbeafe" },
+  reversed: { color: "#6d28d9", background: "#ede9fe" },
+  cancelled: { color: "#b91c1c", background: "#fee2e2" },
+};
 
 const compact = (n: number) => {
   const a = Math.abs(n);
@@ -519,21 +537,62 @@ export default function IncomeExpenseMobilePage() {
                           >
                             {inc ? "Phiếu thu" : "Phiếu chi"}
                           </span>
-                          {cancelled && (
-                            <span
-                              className="vch-tag"
-                              style={{ color: "#52525b", background: "#f4f4f5" }}
-                            >
-                              Đã huỷ
-                            </span>
-                          )}
-                          {draft && (
-                            <span
-                              className="vch-tag"
-                              style={{ color: "#b45309", background: "#fef3c7" }}
-                            >
-                              Chờ duyệt
-                            </span>
+                          {/* Finance V2 §12.1: org CANONICAL read → tag composite
+                              (Đã Duyệt - Chưa Chi / Đã Chi / Đã hoàn tác…) parity
+                              desktop; org LEGACY giữ 2 tag cũ. */}
+                          {(() => {
+                            const vv = v as {
+                              organization_id?: string | null;
+                              review_state?: string | null;
+                              posting_mode?: string | null;
+                              posting_status?: string | null;
+                            };
+                            if (
+                              !isCanonicalRead(v2Routes.getOrg(vv.organization_id ?? null))
+                            ) {
+                              return null;
+                            }
+                            const s = getVoucherDisplayState({
+                              approval_status:
+                                v.approval_status as VoucherDisplayInput["approval_status"],
+                              review_state:
+                                (vv.review_state ?? null) as VoucherDisplayInput["review_state"],
+                              posting_mode:
+                                (vv.posting_mode ?? null) as VoucherDisplayInput["posting_mode"],
+                              posting_status:
+                                (vv.posting_status ?? null) as VoucherDisplayInput["posting_status"],
+                              type: v.type as VoucherDisplayInput["type"],
+                            });
+                            return (
+                              <span
+                                className="vch-tag"
+                                style={{
+                                  color: V2_TAG_STYLES[s.tone].color,
+                                  background: V2_TAG_STYLES[s.tone].background,
+                                }}
+                              >
+                                {s.label}
+                              </span>
+                            );
+                          })() ?? (
+                            <>
+                              {cancelled && (
+                                <span
+                                  className="vch-tag"
+                                  style={{ color: "#52525b", background: "#f4f4f5" }}
+                                >
+                                  Đã huỷ
+                                </span>
+                              )}
+                              {draft && (
+                                <span
+                                  className="vch-tag"
+                                  style={{ color: "#b45309", background: "#fef3c7" }}
+                                >
+                                  Chờ duyệt
+                                </span>
+                              )}
+                            </>
                           )}
                           {internal && (
                             <span
@@ -982,6 +1041,12 @@ export default function IncomeExpenseMobilePage() {
           }
           expectedPostingVersion={
             (approveTarget as { posting_version?: number }).posting_version ?? 1
+          }
+          onUploadEvidence={(file) =>
+            uploadFinanceEvidence(
+              file,
+              (approveTarget as { organization_id?: string | null }).organization_id,
+            )
           }
           onSubmit={async (input) => {
             await approveAndPostV2Mutation.mutateAsync(input);

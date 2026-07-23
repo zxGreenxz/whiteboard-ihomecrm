@@ -47,6 +47,7 @@ import {
   useApproveIncomeExpenseV2,
   useApproveAndPostIncomeExpenseV2,
   useCustodianCashbooksV2,
+  uploadFinanceEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 
@@ -330,6 +331,9 @@ const ApprovalsPage = () => {
           expectedExecutionRevision={0}
           expectedApprovalVersion={postTarget.approval_version ?? 1}
           expectedPostingVersion={postTarget.posting_version ?? 1}
+          onUploadEvidence={(file) =>
+            uploadFinanceEvidence(file, postTarget.organization_id)
+          }
           onSubmit={async (input) => {
             await approveAndPostV2.mutateAsync(input);
             setPostTarget(null);

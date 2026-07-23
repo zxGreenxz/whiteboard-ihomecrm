@@ -10,7 +10,7 @@
 |---|---|---|---|
 | F1 | Dialog **Duyệt / Duyệt-và-Chi** kích hoạt (root-cause: mapper thiếu org/status; +5 bug server 210000–240000, evidence sai tenant) | Playwright localhost cả 2 nhánh + DB assert + fixture tự dọn (commit 4c55ac8) | 🟢 local · prod chờ re-check |
 | F2 | Báo cáo lợi nhuận **gồm phiếu Chờ duyệt** (§2.3) + dòng đếm riêng + bỏ "phiếu nháp" | Playwright: fixture 77k vào tổng+bảng; counter "16 phiếu chờ duyệt"; tie-out engine bảo toàn | 🟢 local |
-| F3 | Badge composite §12.1 ở danh sách + inbox 2 nút + mobile parity | Playwright desktop + mobile viewport | 🔴 |
+| F3 | Badge composite §12.1 ở danh sách + inbox 2 nút + mobile parity | Playwright: desktop badge Chờ duyệt→Đã Duyệt-Chưa Chi→Đã Chi; mobile tag parity; inbox "Duyệt và Chi…" live (RPC +organization_id 250000) + request tự đóng (a87 260000) | 🟢 local |
 
 > **Finding V2-PRE-1 (pre-existing, KHÔNG do FIX 2):** tie-out engine chia cổ đông lệch
 > thu −16.062.882 / chi −743.000 ở 8 toà (102LVT, 111PVC, 1392QT, 158PVC, 15KV, 162NVK,
