@@ -958,7 +958,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                               {rowLocked ? (
                                 <Badge className="bg-emerald-600">Đã chốt</Badge>
                               ) : (
-                                <Badge variant="outline">Nháp</Badge>
+                                <Badge variant="outline">Chưa chốt</Badge>
                               )}
                               <span className="font-medium tabular-nums">
                                 {formatCurrency(row.current_snapshot.distributable_profit)}

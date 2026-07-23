@@ -214,7 +214,7 @@ function HomeScreen({ managers, period, locked, totals, metrics, canPay, canLock
           Tổng quỹ thực chi · {N} nhân sự
           <span className="ml-auto inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wide px-[7px] py-[2px] rounded-full"
             style={locked ? { background: "rgba(52,211,153,.16)", color: "#7BE7AC" } : { background: "rgba(255,210,63,.16)", color: "#FFD23F" }}>
-            {locked ? <><Lock size={10} />Đã chốt</> : <><span className="w-[5px] h-[5px] rounded-full animate-pulse" style={{ background: "#FFD23F" }} />Nháp</>}
+            {locked ? <><Lock size={10} />Đã chốt</> : <><span className="w-[5px] h-[5px] rounded-full animate-pulse" style={{ background: "#FFD23F" }} />Chưa chốt</>}
           </span>
         </div>
         <div className="relative mt-1.5 font-extrabold tabular-nums leading-[1.04] text-[42px] tracking-tight"

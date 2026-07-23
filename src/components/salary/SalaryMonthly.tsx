@@ -437,7 +437,7 @@ export default function SalaryMonthly(props: MonthlyProps) {
                   <td className="c">
                     {paidState ? <span className="sal-statebadge sal-statebadge--paid"><I.Check size={12} />Đã trả</span>
                       : rowLocked ? <span className="sal-statebadge sal-statebadge--locked"><I.Lock size={11} />Đã chốt</span>
-                        : <span className="sal-statebadge sal-statebadge--draft"><span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />Nháp</span>}
+                        : <span className="sal-statebadge sal-statebadge--draft"><span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />Chưa chốt</span>}
                   </td>
                   <td className="c"><button className="sal-btn sal-btn--ghost sal-btn--icon sal-btn--sm" aria-label={"Tác vụ cho " + m.short} onClick={(e) => setMenu({ m, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() })}><I.MoreVertical size={16} /></button></td>
                 </tr>

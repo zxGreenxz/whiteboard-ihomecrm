@@ -20,7 +20,8 @@
 ## Vòng 2 — Sượt §21 acceptance (từng dòng → test → fix → re-test)
 
 ### Nghiệp vụ/state (§21.1)
-- [ ] Không còn "Nháp" toàn domain (🟡 ProfitVerificationBar đã bỏ "phiếu nháp"; còn salary UI)
+- [x] Không còn "Nháp" toàn domain thu-chi (🟢 salary/khoá-LN "Nháp"→"Chưa chốt";
+      nhãn DRAFT hợp đồng/hoá đơn giữ nguyên — domain riêng đúng nghiệp vụ)
 - [x] Tạo phiếu không đổi balance (🟢 verified — pending không vào tồn)
 - [x] **Duyệt không đổi balance** (🟢 F1 — token FINANCE_V2_LIFECYCLE + bridge skip, 240000)
 - [x] Duyệt-và-Chi atomic (🟢 F1 — POSTED + line MAIN + evidence ATTACHED + balance đúng)
@@ -64,7 +65,17 @@
 ### Security/data (§21.5)
 - [ ] Base tables không client-DML (🟢 Stage-7 applied + grep 0 raw)
 - [ ] Audit --strict CLEAN (🟢) · view invoker (🟢) · delta lag 0 (🟢)
-- [ ] E2E specs `.e2e-fleet/finance-*.spec.ts` (🔴 chưa viết — thay bằng Playwright MCP checklist, sẽ bổ sung spec)
+- [x] E2E specs (🟢 `.e2e-fleet/specs/finance-v2.spec.ts` PASS 2/2 ổn định trên
+      localhost): seed compat Chờ duyệt (ketoan) → Chỉ duyệt (chunha, RPC v2 200)
+      → Thu tiền vào sổ (custodian + evidence thật) → fail-closed huỷ-phiếu-đã-
+      ghi-sổ (55000 đúng §2.2) → reversal RPC v2 → huỷ. Passwords fleet reset
+      2026-07-24, lưu CLAUDE.local.md. **Spec bắt được 6 regression server thật**,
+      đã fix bằng 20260724010000→060000:
+      7m id NULL (compat+a86 birth) · 7n total_amount NULL · 7o defaults header
+      (generic) · 7p defaults items · 7q policy storage v2/ prefix (MỌI user
+      thường không upload được chứng từ!) · 7r registry SELECT own-rows.
+      Mốc sổ CANARY renamed (DEMO) sau đợt này: **218.000** (45k bụi test kẹt
+      hash-chain trong 2 phiếu CANCELLED — vô hại, không tiền treo).
 
 ## Vòng 3 — Nợ kiến trúc ghi nhận (không chặn vận hành, làm sau vòng 2)
 - §11.3 hợp nhất: report đọc resolver server (hiện F2 dùng ALL_ACTIVE client-side khớp công thức)
