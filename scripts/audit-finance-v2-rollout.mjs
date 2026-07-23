@@ -58,7 +58,7 @@ SELECT jsonb_build_object(
     WHERE feature_key = ANY (ARRAY[${FINANCE_KEYS.map((k) => `'${k}'`).join(",")}])
   ), '{}'::jsonb),
   'backfill_exceptions', jsonb_build_object(
-    'income_expense', (SELECT count(*) FROM app_private.income_expense_v2_backfill_exceptions),
+    'income_expense', (SELECT count(*) FROM app_private.income_expense_v2_backfill_exceptions WHERE disposition_at IS NULL),
     'cashbook_access', (SELECT count(*) FROM app_private.cashbook_access_v2_backfill_exceptions)
   ),
   'change_log_lag', (
