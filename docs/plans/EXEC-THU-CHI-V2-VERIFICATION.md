@@ -8,22 +8,28 @@
 
 | # | Việc | Phương pháp verify | Trạng thái |
 |---|---|---|---|
-| F1 | Dialog **Duyệt / Duyệt-và-Chi** kích hoạt (root-cause đã khoanh: wiring page) | Dev local instrument → fix → Playwright cả 2 nhánh trên prod | 🔴 → đang debug |
-| F2 | Báo cáo lợi nhuận **gồm phiếu Chờ duyệt** (§2.3) + dòng đếm riêng + bỏ "phiếu nháp" | Playwright: số tổng đổi đúng khi có pending; counter hiện | 🔴 |
+| F1 | Dialog **Duyệt / Duyệt-và-Chi** kích hoạt (root-cause: mapper thiếu org/status; +5 bug server 210000–240000, evidence sai tenant) | Playwright localhost cả 2 nhánh + DB assert + fixture tự dọn (commit 4c55ac8) | 🟢 local · prod chờ re-check |
+| F2 | Báo cáo lợi nhuận **gồm phiếu Chờ duyệt** (§2.3) + dòng đếm riêng + bỏ "phiếu nháp" | Playwright: fixture 77k vào tổng+bảng; counter "16 phiếu chờ duyệt"; tie-out engine bảo toàn | 🟢 local |
 | F3 | Badge composite §12.1 ở danh sách + inbox 2 nút + mobile parity | Playwright desktop + mobile viewport | 🔴 |
+
+> **Finding V2-PRE-1 (pre-existing, KHÔNG do FIX 2):** tie-out engine chia cổ đông lệch
+> thu −16.062.882 / chi −743.000 ở 8 toà (102LVT, 111PVC, 1392QT, 158PVC, 15KV, 162NVK,
+> 32PVC, 331PHI) — đo y hệt trên baseline HEAD (APPROVED-only) lẫn sau FIX 2 → client
+> accrual vs fa_accrual_allocations lệch từ trước. Điều tra ở Vòng 2 (§21.2).
 
 ## Vòng 2 — Sượt §21 acceptance (từng dòng → test → fix → re-test)
 
 ### Nghiệp vụ/state (§21.1)
-- [ ] Không còn "Nháp" toàn domain (🟡 sweep xong, cần browser-sượt các trang phụ: salary UI, ProfitVerificationBar)
-- [ ] Tạo phiếu không đổi balance (🟢 verified — pending không vào tồn)
-- [ ] **Duyệt không đổi balance** (🔴 chờ F1 — hiện luồng cũ vẫn auto-vào-sổ qua bridge)
-- [ ] Duyệt-và-Chi atomic + rollback (🔴 chờ F1)
+- [ ] Không còn "Nháp" toàn domain (🟡 ProfitVerificationBar đã bỏ "phiếu nháp"; còn salary UI)
+- [x] Tạo phiếu không đổi balance (🟢 verified — pending không vào tồn)
+- [x] **Duyệt không đổi balance** (🟢 F1 — token FINANCE_V2_LIFECYCLE + bridge skip, 240000)
+- [x] Duyệt-và-Chi atomic (🟢 F1 — POSTED + line MAIN + evidence ATTACHED + balance đúng)
 - [ ] Chi sau duyệt không cần quyền approve (🟡 RPC có; UI custodian-post chưa nối)
 - [ ] Sửa/hủy pending (🟢 sau 4 hotfix); posted → reversal (🟡 RPC, chưa UI)
 
 ### Lợi nhuận (§21.2)
-- [ ] Pending KQKD vào đúng kỳ + 1 lần (🔴 F2)
+- [x] Pending KQKD vào đúng kỳ + 1 lần (🟢 F2 local — fixture 77k vào bảng+tổng, counter riêng)
+- [ ] Finding V2-PRE-1: lệch engine pre-existing 8 toà (🔴 điều tra riêng)
 - [ ] Approve/post không nhảy P&L lần 2 (🟡 cần test browser sau F2)
 - [ ] Close chặn pending + drill-down (🟡 blockers RPC có; close FROZEN — mục 4 owner)
 

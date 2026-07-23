@@ -272,7 +272,9 @@ function ProfitDistributionDesktop() {
     type: voucherType === "all" ? undefined : (voucherType as any),
     start_date: startDate,
     end_date: endDate,
-    approval_status: "APPROVED",
+    // Finance V2 §2.3: phiếu CHỜ DUYỆT vẫn ghi nhận KQKD (chi phí/doanh thu đã
+    // phát sinh) — báo cáo tính cả UNAPPROVED, thanh kiểm chứng nêu counter riêng.
+    approval_status: "ALL_ACTIVE",
     business_result_only: pnlOnly,
   };
 
@@ -304,6 +306,31 @@ function ProfitDistributionDesktop() {
     filters,
     { businessResultOnly: pnlOnly }
   );
+
+  // §2.3: phần "chờ duyệt" ĐANG NẰM TRONG tổng — accrual lấy từ hook (đúng phân
+  // bổ kỳ), tiền mặt tính từ list (kqkd khi pnlOnly, total khi không).
+  const pendingInfo = useMemo(() => {
+    if (accrualMode) {
+      return {
+        count: accrual?.pendingCount ?? 0,
+        income: accrual?.pendingIncome ?? 0,
+        expense: accrual?.pendingExpense ?? 0,
+      };
+    }
+    let income = 0;
+    let expense = 0;
+    let count = 0;
+    for (const r of (result?.data ?? []) as any[]) {
+      if (r.approval_status !== "UNAPPROVED") continue;
+      count++;
+      const amt = pnlOnly
+        ? Number(r.kqkd_amount ?? r.total_amount) || 0
+        : Number(r.total_amount) || 0;
+      if (r.type === "INCOME") income += amt;
+      else expense += amt;
+    }
+    return { count, income, expense };
+  }, [accrualMode, accrual, result, pnlOnly]);
 
   // Giá trị 3 thẻ + tổng mỗi bên theo chế độ ghi nhận.
   // Tiền mặt + "gồm cả khoản ngoài KQKD": tổng MỌI khoản (kể cả bút toán nội
@@ -1003,6 +1030,9 @@ function ProfitDistributionDesktop() {
           hiddenIncomeSum={hiddenIncomeSum}
           hiddenExpenseSum={hiddenExpenseSum}
           capWarning={capWarning}
+          pendingCount={pendingInfo.count}
+          pendingIncome={pendingInfo.income}
+          pendingExpense={pendingInfo.expense}
         />
 
         {/* Filters */}

@@ -44,6 +44,8 @@ export interface AccrualReportRow {
   countsInBusinessResult: boolean;
   /** Hoá đơn nguồn (phiếu thu sinh từ thanh toán HĐ) — gộp khoản thu cùng HĐ. */
   invoiceId: string | null;
+  /** V2 §2.3: phiếu Chờ duyệt vẫn nằm trong tổng KQKD — đánh dấu để đếm riêng. */
+  approvalStatus: "APPROVED" | "UNAPPROVED";
 }
 
 export interface AccrualReportResult {
@@ -51,6 +53,12 @@ export interface AccrualReportResult {
   totalExpense: number;
   difference: number;
   rows: AccrualReportRow[];
+  /** Phần thuộc phiếu CHỜ DUYỆT trong tổng (§2.3) — hiển thị counter riêng và
+   *  trừ ra khi tie-out engine chia cổ đông (engine chỉ tính APPROVED). */
+  pendingIncome: number;
+  pendingExpense: number;
+  /** Số phiếu (distinct) chờ duyệt đóng góp vào tháng này. */
+  pendingCount: number;
 }
 
 type AccrualFilters = Pick<
@@ -69,6 +77,9 @@ const EMPTY: AccrualReportResult = {
   totalExpense: 0,
   difference: 0,
   rows: [],
+  pendingIncome: 0,
+  pendingExpense: 0,
+  pendingCount: 0,
 };
 
 // PostgREST trả tối đa 1000 dòng/trang → fetch-all phải phân trang theo `.range`.
@@ -82,7 +93,7 @@ const PARENT_PAGE = 1000;
 // LƯU Ý: `!inner` cũng loại phiếu KHÔNG có item nào → bù lại bằng truy vấn (3)
 // (ACCRUAL_SELECT_NOITEM) để không thất thoát total_amount của phiếu trống item.
 const ACCRUAL_SELECT = `
-  id, name, type, voucher_date, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id,
+  id, name, type, voucher_date, approval_status, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   items:income_expense_items!inner (
@@ -97,7 +108,7 @@ const ACCRUAL_SELECT = `
 // như cách gom invoice_id). items KHÔNG `!inner`/không lọc kỳ → lấy mọi hạng mục
 // của phiếu (kỳ của item = ngày thu, không dùng để xếp tháng ở nhánh này).
 const ACCRUAL_SELECT_INV = `
-  id, name, type, voucher_date, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id, total_amount,
+  id, name, type, voucher_date, approval_status, counts_in_business_result, business_result_accounting, building_id, room_id, invoice_id, total_amount,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   invoice:invoices!income_expenses_invoice_id_fkey!inner ( billing_month ),
@@ -113,7 +124,7 @@ const ACCRUAL_SELECT_INV = `
 // (khớp nhánh b_noitem của fa_accrual_allocations). Chỉ cần items(id) để biết
 // rỗng hay không — phiếu có item đã được nhánh (1) xử lý.
 const ACCRUAL_SELECT_NOITEM = `
-  id, name, type, voucher_date, counts_in_business_result, building_id, room_id, invoice_id, total_amount,
+  id, name, type, voucher_date, approval_status, counts_in_business_result, building_id, room_id, invoice_id, total_amount,
   building:buildings!income_expenses_building_id_fkey ( id, name ),
   room:rooms!income_expenses_room_id_fkey ( id, name ),
   items:income_expense_items ( id )
@@ -298,6 +309,7 @@ export const useAccrualMonthReport = (
           expense: isIncome ? 0 : portion,
           countsInBusinessResult: rowCounts,
           invoiceId: voucher.invoice_id ?? null,
+          approvalStatus: voucher.approval_status === "UNAPPROVED" ? "UNAPPROVED" : "APPROVED",
         });
       };
 
@@ -367,11 +379,26 @@ export const useAccrualMonthReport = (
         pushRow(voucher, { id: voucher.id, income_expense_type: NOITEM_TYPE }, amt, null, null);
       }
 
+      // §2.3: tách phần thuộc phiếu Chờ duyệt (đã nằm TRONG tổng) để hiển thị
+      // counter riêng + tie-out engine chia cổ đông (engine chỉ tính APPROVED).
+      let pendingIncome = 0;
+      let pendingExpense = 0;
+      const pendingVouchers = new Set<string>();
+      for (const r of rows) {
+        if (r.approvalStatus !== "UNAPPROVED") continue;
+        pendingIncome += r.income;
+        pendingExpense += r.expense;
+        pendingVouchers.add(r.voucherId);
+      }
+
       return {
         totalIncome,
         totalExpense,
         difference: totalIncome - totalExpense,
         rows,
+        pendingIncome,
+        pendingExpense,
+        pendingCount: pendingVouchers.size,
       };
     },
   });

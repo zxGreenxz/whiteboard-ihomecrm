@@ -140,7 +140,9 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
     building_ids: buildingIds.length ? buildingIds : undefined,
     start_date: startDate,
     end_date: endDate,
-    approval_status: "APPROVED",
+    // Finance V2 §2.3: phiếu CHỜ DUYỆT vẫn ghi nhận KQKD — tính cả UNAPPROVED,
+    // thanh kiểm chứng nêu counter riêng (đồng bộ desktop).
+    approval_status: "ALL_ACTIVE",
     business_result_only: pnlOnly,
   };
 
@@ -160,6 +162,30 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
   const vacancyRefDate = endDate < todayStr ? endDate : todayStr;
 
   const loading = accrualMode ? accrualLoading : cashLoading;
+
+  // §2.3: phần "chờ duyệt" trong tổng — đồng bộ công thức desktop.
+  const pendingInfo = useMemo(() => {
+    if (accrualMode) {
+      return {
+        count: accrual?.pendingCount ?? 0,
+        income: accrual?.pendingIncome ?? 0,
+        expense: accrual?.pendingExpense ?? 0,
+      };
+    }
+    let income = 0;
+    let expense = 0;
+    let count = 0;
+    for (const r of (cash?.data ?? []) as any[]) {
+      if (r.approval_status !== "UNAPPROVED") continue;
+      count++;
+      const amt = pnlOnly
+        ? Number(r.kqkd_amount ?? r.total_amount) || 0
+        : Number(r.total_amount) || 0;
+      if (r.type === "INCOME") income += amt;
+      else expense += amt;
+    }
+    return { count, income, expense };
+  }, [accrualMode, accrual, cash, pnlOnly]);
 
   // Cùng công thức desktop: tiền mặt + gồm-cọc → tổng MỌI khoản (allIncome).
   const cashIncome = pnlOnly ? stats?.totalIncome ?? 0 : stats?.allIncome ?? stats?.totalIncome ?? 0;
@@ -661,6 +687,9 @@ export default function ProfitDistributionMobile({ onBack }: { onBack?: () => vo
             hiddenIncomeSum={hiddenIncomeSum}
             hiddenExpenseSum={hiddenExpenseSum}
             capWarning={capWarning}
+            pendingCount={pendingInfo.count}
+            pendingIncome={pendingInfo.income}
+            pendingExpense={pendingInfo.expense}
             onIssueChange={setHasVerifyIssue}
           />
           </div>

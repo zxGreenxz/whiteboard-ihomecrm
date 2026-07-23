@@ -12,9 +12,11 @@ import {
  * "nhìn bảng phân bổ không chắc có đủ/thiếu gì không".
  *
  *  1. Tổng thẻ = Σ dòng hiển thị? (± phần dòng đang ẩn bởi "hạng mục đặc biệt")
- *  2. Đã LOẠI những gì khỏi P&L: phiếu nháp · khoản ngoài-KQKD. Phiếu đã
- *     duyệt chưa chọn sổ vẫn nằm trong tổng và được cảnh báo riêng.
- *  3. Khớp engine chia cổ đông (fa_monthly_pnl_accrual) — lệch ≠ 0 là ĐỎ.
+ *  2. Finance V2 §2.3: phiếu CHỜ DUYỆT nằm TRONG tổng KQKD — nêu counter riêng
+ *     (không còn "phiếu nháp bị loại"). Khoản ngoài-KQKD vẫn nêu phần bị loại.
+ *     Phiếu đã duyệt chưa chọn sổ vẫn nằm trong tổng và được cảnh báo riêng.
+ *  3. Khớp engine chia cổ đông (fa_monthly_pnl_accrual) — engine chỉ tính
+ *     APPROVED nên tie-out so TỔNG TRỪ PHẦN CHỜ DUYỆT; lệch ≠ 0 là ĐỎ.
  *  4. Đối chiếu tiền đã thu của hoá đơn kỳ (thông tin, lệch là bình thường).
  *
  * Mọi con số lấy từ RPC aggregate server-side — không dính cap 1000.
@@ -42,6 +44,12 @@ export interface ProfitVerificationBarProps {
   hiddenExpenseSum: number;
   /** Chế độ tiền mặt chạm trần danh sách: {shown, total} → không so Σ dòng được. */
   capWarning?: { shown: number; total: number } | null;
+  /** §2.3: phần thuộc phiếu CHỜ DUYỆT đã nằm TRONG tổng (client tính từ đúng
+   *  nguồn dữ liệu của tổng — accrual rows / list). Engine chia cổ đông chỉ tính
+   *  APPROVED nên tie-out sẽ trừ phần này ra trước khi so. */
+  pendingCount?: number;
+  pendingIncome?: number;
+  pendingExpense?: number;
   /** Báo trạng thái CÓ LỆCH (cờ đỏ) lên parent — mobile dùng để ẩn thanh, chỉ hiện
    *  chấm đỏ ở ô Lợi nhuận khi lệch. Truyền setState (identity ổn định). */
   onIssueChange?: (hasIssue: boolean) => void;
@@ -53,6 +61,7 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
     accrualMode, pnlOnly,
     totalIncome, totalExpense, shownIncomeSum, shownExpenseSum,
     hiddenCount, hiddenIncomeSum, hiddenExpenseSum, capWarning,
+    pendingCount = 0, pendingIncome = 0, pendingExpense = 0,
   } = props;
   const [open, setOpen] = useState(false);
 
@@ -72,13 +81,13 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
   });
   const hiddenSum = hiddenIncomeSum + hiddenExpenseSum;
 
-  // 3) Tie-out engine chia cổ đông (chỉ chạy accrual + pnlOnly).
-  const faDiffIncome = v?.fa ? totalIncome - v.fa.income : 0;
-  const faDiffExpense = v?.fa ? totalExpense - v.fa.expense : 0;
+  // 3) Tie-out engine chia cổ đông (chỉ chạy accrual + pnlOnly). Engine SQL chỉ
+  // tính APPROVED → so phần APPROVED của tổng (tổng − phần chờ duyệt).
+  const faDiffIncome = v?.fa ? totalIncome - pendingIncome - v.fa.income : 0;
+  const faDiffExpense = v?.fa ? totalExpense - pendingExpense - v.fa.expense : 0;
   const faOk = v?.fa ? Math.abs(faDiffIncome) < 2 && Math.abs(faDiffExpense) < 2 : null;
 
   const anyExcluded =
-    (v?.draftCount ?? 0) > 0 ||
     Math.abs(v?.nonKqkdIncome ?? 0) + Math.abs(v?.nonKqkdExpense ?? 0) > 0;
 
   const visualState = resolveProfitVerificationVisualState({
@@ -161,15 +170,22 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
         <ChevronDown className={`h-4 w-4 ml-auto shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {/* Hàng 2: đã loại gì khỏi P&L (luôn hiện khi có) */}
+      {/* Hàng 2a (§2.3): phiếu CHỜ DUYỆT nằm TRONG tổng — counter riêng. */}
+      {pendingCount > 0 && (
+        <div className="px-3 pb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sky-700">
+          <span className="font-medium">Trong tổng có:</span>
+          <span>
+            <b className="tabular-nums">{pendingCount}</b> phiếu chờ duyệt
+            {" "}(thu {fmt(pendingIncome)} · chi {fmt(pendingExpense)}) — chi phí/doanh thu đã
+            ghi nhận KQKD, sẽ chốt tiền khi duyệt &amp; thu/chi
+          </span>
+        </div>
+      )}
+
+      {/* Hàng 2b: đã loại gì khỏi P&L (luôn hiện khi có) */}
       {anyExcluded && (
         <div className="px-3 pb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground">
           <span className="font-medium text-slate-600">Không nằm trong tổng:</span>
-          {(v?.draftCount ?? 0) > 0 && (
-            <span>
-              <b className="tabular-nums">{v!.draftCount}</b> phiếu nháp ({fmt(v!.draftTotal)})
-            </span>
-          )}
           {pnlOnly && (v?.nonKqkdIncome ?? 0) + (v?.nonKqkdExpense ?? 0) > 0 && (
             <span title="Item tiền cọc, phiếu đánh dấu không hạch toán, bút toán nội bộ (cấn cọc…)">
               ngoài-KQKD: thu {fmt(v!.nonKqkdIncome)} · chi {fmt(v!.nonKqkdExpense)}
