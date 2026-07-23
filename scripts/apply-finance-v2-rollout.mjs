@@ -42,6 +42,7 @@ export const FINANCE_V2_MIGRATIONS = Object.freeze([
   // copilot/refund/metadata) drain to RPCs BEFORE Stage-7 revokes client DML.
   "supabase/migrations/20260723130000_finance_v2_drain_compat_rpcs.sql",
   "supabase/migrations/20260723140000_finance_v2_compat_whitelist_patch.sql",
+  "supabase/migrations/20260723150000_finance_v2_read_cutover_bridge.sql",
 ]);
 
 export const FINANCE_V2_LOCK_NAME = "ihomecrm:finance-v2-rollout:v1";
