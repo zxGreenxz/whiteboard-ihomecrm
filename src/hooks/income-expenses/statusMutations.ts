@@ -6,10 +6,16 @@ import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
 type RpcError = { code?: string | null; message?: string | null };
 type RpcResult = { error: RpcError | null };
 
-const callUnregisteredRpc = supabase.rpc as unknown as (
+// GOTCHA: KHÔNG gán tách `supabase.rpc` ra biến (mất `this` → "reading 'rest'").
+// Luôn gọi qua member expression để giữ binding.
+const callUnregisteredRpc = (
   name: string,
   args: Record<string, unknown>,
-) => Promise<RpcResult>;
+): Promise<RpcResult> =>
+  (supabase.rpc as unknown as (
+    n: string,
+    a: Record<string, unknown>,
+  ) => Promise<RpcResult>)(name, args);
 
 const errorMessage = (error: unknown, fallback: string) => {
   if (typeof error === "object" && error !== null && "message" in error) {

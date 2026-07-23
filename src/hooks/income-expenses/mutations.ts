@@ -87,8 +87,16 @@ export const useCreateIncomeExpense = () => {
           p_idempotency_key: `ie-create-${crypto.randomUUID()}`,
         });
         if (!canonical.error) return canonical.data;
-        if (!isIeCreateFallbackSignal(canonical.error)) {
-          toast.error(canonical.error.message || "Không thể tạo phiếu thu/chi");
+        // Fallback hợp lệ: (a) tín hiệu route/lớp phiếu chuẩn, HOẶC (b) lỗi quyền-sổ
+        // của v1 — writer v1 chỉ biết CUSTODIAN/OPERATOR, chưa biết KNOWER (V2).
+        // Compat RPC re-check §9.2 server-side (CUSTODIAN thu+chi, KNOWER chỉ thu)
+        // nên đây KHÔNG phải bypass quyền: nếu thật sự không có quyền, compat trả
+        // 42501 với thông báo tiếng Việt rõ nghĩa.
+        const msg = canonical.error.message ?? "";
+        const v1CashbookPermission =
+          canonical.error.code === "42501" || /sổ quỹ|Quyền/i.test(msg);
+        if (!isIeCreateFallbackSignal(canonical.error) && !v1CashbookPermission) {
+          toast.error(msg || "Không thể tạo phiếu thu/chi");
           throw canonical.error;
         }
       }
