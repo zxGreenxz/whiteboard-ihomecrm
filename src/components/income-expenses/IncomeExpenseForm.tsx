@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -55,6 +55,7 @@ import {
   useIncomeExpenseFormRooms,
 } from '@/hooks/useIncomeExpenseFormScope';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useMyCashbookAccessV2 } from '@/hooks/income-expenses/financeV2Mutations';
 import { useContractsLegacy } from '@/hooks/useContracts';
 import { useIncomeExpenseTypes, type IncomeExpenseType } from '@/hooks/useIncomeExpenseTypes';
 import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
@@ -175,6 +176,7 @@ const IncomeExpenseForm = ({
   const otherBuildings = buildings.filter((b) => !b.managed);
   const showBuildingGroups = managedBuildings.length > 0 && otherBuildings.length > 0;
   const { data: accounts = [] } = useAccounts();
+  const { data: myAccess } = useMyCashbookAccessV2();
   // Danh sách HĐ trên phòng đã chọn — để link phiếu cọc đúng HĐ.
   const { data: roomContracts = [] } = useContractsLegacy(
     selectedRoomId ? { room_id: selectedRoomId } : undefined,
@@ -224,6 +226,17 @@ const IncomeExpenseForm = ({
   });
 
   const voucherType = form.watch('type');
+  // §12.6 (V2): chọn sổ theo VAI TRÒ — Phiếu chi: chỉ sổ mình GIỮ (CUSTODIAN);
+  // Phiếu thu: sổ GIỮ + sổ BIẾT (KNOWER). RPC lỗi → fail-open giữ list cũ;
+  // user chưa có binding nào → legacy list (ngoài ma trận, server vẫn chặn §9.2).
+  const selectableAccounts = useMemo(() => {
+    if (!Array.isArray(myAccess)) return accounts;
+    const wanted = voucherType === 'EXPENSE'
+      ? new Set(myAccess.filter((b) => b.possession_kind === 'CUSTODIAN').map((b) => b.cashbook_id))
+      : new Set(myAccess.filter((b) => b.possession_kind === 'CUSTODIAN' || b.possession_kind === 'KNOWER').map((b) => b.cashbook_id));
+    if (wanted.size === 0) return accounts;
+    return accounts.filter((a) => wanted.has(a.id) || a.is_virtual);
+  }, [accounts, myAccess, voucherType]);
 
   // When voucher type changes, reset items (income types differ from expense types)
   useEffect(() => {
@@ -699,7 +712,7 @@ const IncomeExpenseForm = ({
                           disabled={!canEdit}
                           placeholder="Chọn sổ quỹ"
                           searchPlaceholder="Tìm sổ quỹ..."
-                          options={accounts.map((a) => ({
+                          options={selectableAccounts.map((a) => ({
                             value: a.id,
                             label: `${a.name}${a.bank_name ? ` (${a.bank_name})` : ''}`,
                           }))}

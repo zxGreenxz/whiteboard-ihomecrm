@@ -44,6 +44,8 @@ export const FINANCE_V2_MIGRATIONS = Object.freeze([
   "supabase/migrations/20260723140000_finance_v2_compat_whitelist_patch.sql",
   "supabase/migrations/20260723150000_finance_v2_read_cutover_bridge.sql",
   "supabase/migrations/20260723160000_finance_v2_compat_guard_fix.sql",
+  "supabase/migrations/20260723170000_finance_v2_readonly_txn_fix.sql",
+  "supabase/migrations/20260723180000_finance_v2_compat_columns_fix.sql",
 ]);
 
 export const FINANCE_V2_LOCK_NAME = "ihomecrm:finance-v2-rollout:v1";

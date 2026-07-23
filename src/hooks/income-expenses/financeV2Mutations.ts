@@ -96,6 +96,23 @@ export function useApproveAndPostIncomeExpenseV2() {
   });
 }
 
+/** Binding sổ của CHÍNH actor (CUSTODIAN/KNOWER) — nguồn lọc selector §12.6. */
+export function useMyCashbookAccessV2() {
+  return useQuery({
+    queryKey: ["my-cashbook-access-v2"],
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await rpc("list_my_cashbook_access_v2");
+      if (error) {
+        console.warn("[financeV2] list_my_cashbook_access_v2:", error.message);
+        return null; // null = KHÔNG rõ (RPC lỗi) → caller fail-open giữ list cũ
+      }
+      return (data ?? []) as { cashbook_id: string; possession_kind: string }[];
+    },
+  });
+}
+
 /** Sổ actor đang là CUSTODIAN — nguồn cho ô Sổ quỹ của Posting dialog (§12.6). */
 export function useCustodianCashbooksV2(enabled: boolean) {
   return useQuery({
