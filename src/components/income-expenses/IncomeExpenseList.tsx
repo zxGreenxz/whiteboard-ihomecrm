@@ -38,6 +38,7 @@ import {
   Repeat,
   CalendarX,
   Undo2,
+  Banknote,
   RotateCcw,
   CopyPlus,
 } from 'lucide-react';
@@ -63,6 +64,9 @@ interface IncomeExpenseListProps {
    *  trên phiếu đã ghi nhận/đã huỷ, không cần super admin. */
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Finance V2 §12.3: CUSTODIAN Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (không cần
+   *  quyền duyệt). Chỉ hiện khi org CANONICAL read + phiếu APPROVED+UNPOSTED. */
+  onPostApproved?: (voucher: IncomeExpenseWithRelations) => void;
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
   onUnapprove?: (id: string) => void;
   onVerify?: (voucher: IncomeExpenseWithRelations) => void;
@@ -169,6 +173,7 @@ const IncomeExpenseList = ({
   onEdit,
   onQuickEdit,
   onApprove,
+  onPostApproved,
   onUnapprove,
   onVerify,
   onCopy,
@@ -332,6 +337,30 @@ const IncomeExpenseList = ({
                         <CheckCircle2 className="h-4 w-4" />
                       </Button>
                     )}
+
+                    {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ
+                        (CUSTODIAN, không cần quyền duyệt) — chỉ org CANONICAL. */}
+                    {onPostApproved &&
+                      !isCancelled &&
+                      voucher.approval_status === 'APPROVED' &&
+                      voucher.posting_status !== 'POSTED' &&
+                      voucher.posting_status !== 'REVERSED' &&
+                      voucher.posting_status !== 'NOT_APPLICABLE' &&
+                      isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => onPostApproved(voucher)}
+                          title={
+                            voucher.type === 'INCOME'
+                              ? 'Thu tiền vào sổ (phiếu đã duyệt)'
+                              : 'Chi tiền từ sổ (phiếu đã duyệt)'
+                          }
+                        >
+                          <Banknote className="h-4 w-4" />
+                        </Button>
+                      )}
 
                     {/* Huỷ duyệt: phiếu đã ghi nhận -> Nháp (chỉ super admin) */}
                     {isAdmin && !isUnapproved && !isCancelled && onUnapprove && (

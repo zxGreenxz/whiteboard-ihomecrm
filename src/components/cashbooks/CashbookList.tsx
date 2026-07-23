@@ -18,6 +18,7 @@ import {
 } from "@/hooks/usePagination";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
 import { Lock, LockOpen, Pencil, Trash2, Wallet, Eye } from "lucide-react";
+import { useMyCashbookAccessV2 } from "@/hooks/income-expenses/financeV2Mutations";
 
 interface CashbookListProps {
   rows: AccountWithBalance[];
@@ -53,6 +54,18 @@ const CashbookList = ({
         totalCount
       ),
     [pagination.page, pagination.pageSize, totalCount]
+  );
+  // §12.6/§1810: binding KNOWER = biết sổ, KHÔNG thấy tồn quỹ. RLS đã chặn số
+  // thật (client tính ra 0 giả) — hiện "—" thay vì "0 đ" gây hiểu lầm.
+  const { data: myAccess } = useMyCashbookAccessV2();
+  const knowerBooks = useMemo(
+    () =>
+      new Set(
+        (myAccess ?? [])
+          .filter((a) => a.possession_kind === "KNOWER")
+          .map((a) => a.cashbook_id),
+      ),
+    [myAccess],
   );
 
   if (isLoading) {
@@ -177,18 +190,29 @@ const CashbookList = ({
                   {acc.owner_name || "—"}
                 </TableCell>
                 <TableCell className="text-right">
-                  {formatVND(Number(acc.initial_amount))}
+                  {knowerBooks.has(acc.id)
+                    ? "—"
+                    : formatVND(Number(acc.initial_amount))}
                 </TableCell>
                 <TableCell className="text-right">
-                  <span
-                    className={
-                      Number(acc.current_amount) < 0
-                        ? "text-red-600 font-medium"
-                        : "font-medium"
-                    }
-                  >
-                    {formatVND(Number(acc.current_amount))}
-                  </span>
+                  {knowerBooks.has(acc.id) ? (
+                    <span
+                      className="text-muted-foreground"
+                      title="Bạn là Người biết sổ (KNOWER) — không xem tồn quỹ"
+                    >
+                      —
+                    </span>
+                  ) : (
+                    <span
+                      className={
+                        Number(acc.current_amount) < 0
+                          ? "text-red-600 font-medium"
+                          : "font-medium"
+                      }
+                    >
+                      {formatVND(Number(acc.current_amount))}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {acc.description || "—"}

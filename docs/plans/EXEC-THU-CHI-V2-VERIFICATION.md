@@ -24,7 +24,8 @@
 - [x] Tạo phiếu không đổi balance (🟢 verified — pending không vào tồn)
 - [x] **Duyệt không đổi balance** (🟢 F1 — token FINANCE_V2_LIFECYCLE + bridge skip, 240000)
 - [x] Duyệt-và-Chi atomic (🟢 F1 — POSTED + line MAIN + evidence ATTACHED + balance đúng)
-- [ ] Chi sau duyệt không cần quyền approve (🟡 RPC có; UI custodian-post chưa nối)
+- [x] Chi sau duyệt không cần quyền approve (🟢 nút "Thu/Chi tiền (phiếu đã duyệt)" +
+      dialog POST_APPROVED — browser: G APPROVED→POSTED −21k, evidence đúng tenant)
 - [ ] Sửa/hủy pending (🟢 sau 4 hotfix); posted → reversal (🟡 RPC, chưa UI)
 
 ### Lợi nhuận (§21.2)
@@ -49,7 +50,15 @@
 
 ### Phân quyền (§21.4)
 - [ ] CUSTODIAN/KNOWER đúng ma trận (🟢 cài đặt 2 danh sách + chặn KNOWER-chi verified)
-- [ ] KNOWER: chỉ thấy phiếu thu mình tạo (🔴 list vẫn RLS legacy — cần route list_income_expenses_v2 hoặc policy CANONICAL; kiểm bằng tài khoản NATHAN)
+- [x] KNOWER/list scope (🟢 browser với tài khoản NATHAN thật):
+      1. Canary PC2607147 (tòa 417LVT ngoài scope, sổ Tâm Thu KNOWER, NG TÂM tạo)
+         → NATHAN KHÔNG thấy ✓; tổng Thu/Chi scoped nhỏ hơn owner ✓.
+      2. Phiếu tòa mình quản (102LVT) → thấy đủ (role Quản Lý Tòa ALLOW) ✓.
+      3. Balance sổ KNOWER: RLS server chặn số thật (ATam thật −1,42tỷ, NATHAN
+         nhận 0 giả) ✓ KHÔNG lộ; UI trang Sổ quỹ nay hiện "—" cho sổ KNOWER
+         (desktop + mobile) thay "0 đ" gây hiểu lầm.
+      4. Nợ nhỏ: sổ không-binding vẫn hiện TÊN + "0 đ" giả trong list quản trị;
+         icon sửa/xoá hiện nhưng server 42501 khi bấm (fail-closed).
 - [ ] Admin RPC share-scope (🟢 dialog verified)
 
 ### Security/data (§21.5)

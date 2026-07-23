@@ -74,6 +74,7 @@ import {
 import {
   useApproveIncomeExpenseV2,
   useApproveAndPostIncomeExpenseV2,
+  usePostApprovedIncomeExpenseV2,
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
@@ -136,6 +137,9 @@ const IncomeExpenseDesktopPage = () => {
   const [unapproveTarget, setUnapproveTarget] = useState<string | null>(null);
   // V2: mở Posting dialog "Duyệt và Chi/Thu" (chỉ khi route CANONICAL).
   const [approveAndPostOpen, setApproveAndPostOpen] = useState(false);
+  // V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (CUSTODIAN, không cần quyền duyệt).
+  const [postApprovedTarget, setPostApprovedTarget] =
+    useState<IncomeExpenseWithRelations | null>(null);
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   const pagination = usePagination(20);
@@ -216,7 +220,10 @@ const IncomeExpenseDesktopPage = () => {
   const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes);
   const approveV2Mutation = useApproveIncomeExpenseV2();
   const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
-  const { data: custodianBooks = [] } = useCustodianCashbooksV2(approveAndPostOpen);
+  const postApprovedV2Mutation = usePostApprovedIncomeExpenseV2();
+  const { data: custodianBooks = [] } = useCustodianCashbooksV2(
+    approveAndPostOpen || !!postApprovedTarget,
+  );
 
   const isShareholderPayout = !!approveTarget?.shareholder_id;
   const approvalAccounts = isShareholderPayout
@@ -579,6 +586,7 @@ const IncomeExpenseDesktopPage = () => {
             onEdit={handleEditVoucher}
             onQuickEdit={handleQuickEditVoucher}
             onApprove={handleApproveVoucher}
+            onPostApproved={(v) => setPostApprovedTarget(v)}
             onUnapprove={handleUnapproveVoucher}
             onVerify={handleVerifyVoucher}
             onCopy={(v) => setCopyVoucher(v)}
@@ -861,6 +869,37 @@ const IncomeExpenseDesktopPage = () => {
             setApproveTarget(null);
           }}
           isSubmitting={approveAndPostV2Mutation.isPending}
+        />
+      )}
+
+      {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT (CUSTODIAN, không cần quyền duyệt). */}
+      {postApprovedTarget && (
+        <IncomeExpensePostingDialog
+          open={!!postApprovedTarget}
+          onOpenChange={(o) => {
+            if (!o) setPostApprovedTarget(null);
+          }}
+          mode="POST_APPROVED"
+          voucher={{
+            subjectKind: "VOUCHER",
+            subjectId: postApprovedTarget.id,
+            type: (postApprovedTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
+            approvedTotal: postApprovedTarget.total_amount ?? 0,
+            name: postApprovedTarget.name ?? undefined,
+          }}
+          capability={{ isCustodian: custodianBooks.length > 0, canApprove: false }}
+          cashbookOptions={custodianBooks}
+          expectedExecutionRevision={0}
+          expectedApprovalVersion={postApprovedTarget.approval_version ?? 1}
+          expectedPostingVersion={postApprovedTarget.posting_version ?? 1}
+          onUploadEvidence={(file) =>
+            uploadFinanceEvidence(file, postApprovedTarget.organization_id)
+          }
+          onSubmit={async (input) => {
+            await postApprovedV2Mutation.mutateAsync(input);
+            setPostApprovedTarget(null);
+          }}
+          isSubmitting={postApprovedV2Mutation.isPending}
         />
       )}
 

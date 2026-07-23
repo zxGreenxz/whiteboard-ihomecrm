@@ -3,6 +3,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Wallet, Lock, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
+import { useMyCashbookAccessV2 } from "@/hooks/income-expenses/financeV2Mutations";
 
 interface Props {
   rows: AccountWithBalance[];
@@ -26,6 +27,13 @@ export function CashbookListMobile({
   onLock,
   onUnlock,
 }: Props) {
+  // §12.6/§1810: binding KNOWER = biết sổ, KHÔNG thấy tồn quỹ (parity desktop).
+  const { data: myAccess } = useMyCashbookAccessV2();
+  const knowerBooks = new Set(
+    (myAccess ?? [])
+      .filter((a) => a.possession_kind === "KNOWER")
+      .map((a) => a.cashbook_id),
+  );
   if (isLoading) {
     return (
       <div className="px-3 py-3 space-y-2.5">
@@ -98,7 +106,9 @@ export function CashbookListMobile({
                       balanceNeg ? "text-red-600" : "text-emerald-600"
                     }`}
                   >
-                    {formatVND(Number(acc.current_amount))}
+                    {knowerBooks.has(acc.id)
+                      ? "—"
+                      : formatVND(Number(acc.current_amount))}
                   </div>
                 </div>
               </div>
