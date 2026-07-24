@@ -16,8 +16,9 @@ import { test, expect, Page, Route } from '@playwright/test';
  * (Không cần FLEET_PASS_* — các test này không đăng nhập.)
  */
 
-// Rút ngắn timings watchdog cho test (prod: soft 12s / hard 30s / nav 6s).
-const WD = { soft: 1200, hard: 2600, nav: 1500 };
+// Rút ngắn timings watchdog cho test (prod: soft 12s / hard 30s / nav 6s /
+// probe 5s / probeAbort 4s).
+const WD = { soft: 1200, hard: 2600, nav: 1500, probe: 700, probeAbort: 600 };
 
 /** Giả lập display-mode: standalone + timings ngắn — chạy TRƯỚC mọi script của trang. */
 async function armStandalone(page: Page) {
@@ -60,6 +61,12 @@ test('entry JS treo + reload nghẽn: soft → hard → màn lỗi, bấm tải 
       heldNav = route; // giữ lơ lửng — bước 3 sẽ khai tử (ERR_ABORTED)
     },
   );
+  // Probe dò mạng: giữ chết VĨNH VIỄN trong test này để đường tự-reload không
+  // nhảy vào tranh nút bấm — bài này kiểm chứng đường bấm tay.
+  await page.route(
+    (url) => url.searchParams.has('_probe'),
+    async () => { /* treo lơ lửng — client tự abort sau probeAbort */ },
+  );
 
   // load/DOMContentLoaded không bao giờ bắn khi module script treo → chờ 'commit'.
   await page.goto('/', { waitUntil: 'commit' });
@@ -94,7 +101,7 @@ test('entry JS treo + reload nghẽn: soft → hard → màn lỗi, bấm tải 
       const spin = document.querySelector('#app-splash .as-spin');
       const retry = document.getElementById('app-splash-reload');
       return !!el && el.classList.contains('as-failed')
-        && !!msg && (msg.textContent || '').includes('Không thể kết nối')
+        && !!msg && (msg.textContent || '').includes('kết nối')
         && !!spin && getComputedStyle(spin).display === 'none'
         && !!retry && getComputedStyle(retry).display !== 'none';
     },
@@ -109,6 +116,53 @@ test('entry JS treo + reload nghẽn: soft → hard → màn lỗi, bấm tải 
   networkDead = false;
   await heldNav!.abort('aborted');
   await page.click('#app-splash-reload');
+  await page.waitForURL(/\/login/, { timeout: 40_000 });
+  await expect(page.locator('#app-splash')).toHaveCount(0);
+  expect(page.url()).not.toContain('_ihome_boot');
+});
+
+test('mạng sống lại → TỰ tải lại vào app, không cần bấm nút', async ({ page }) => {
+  await armStandalone(page);
+
+  // Mạng chết toàn tập: entry JS + navigation cứu hộ + probe đều treo lơ lửng.
+  let networkDead = true;
+  await page.route('**/assets/index-*.js', async (route) => {
+    if (!networkDead) return route.continue();
+  });
+  await page.route(
+    (url) => url.searchParams.has('_ihome_boot'),
+    async (route) => {
+      if (!networkDead || route.request().resourceType() !== 'document') {
+        return route.continue();
+      }
+      // treo lơ lửng — sẽ bị navigation do probe kích hoạt thay thế
+    },
+  );
+  await page.route(
+    (url) => url.searchParams.has('_probe'),
+    async (route) => {
+      if (!networkDead) return route.continue();
+      // treo lơ lửng — client tự abort sau probeAbort rồi dò tiếp
+    },
+  );
+
+  await page.goto('/', { waitUntil: 'commit' });
+
+  // Rơi vào màn lỗi, thông báo hứa TỰ tải lại khi có mạng.
+  await page.waitForFunction(
+    () => {
+      const el = document.getElementById('app-splash');
+      const msg = document.getElementById('app-splash-msg');
+      return !!el && el.classList.contains('as-failed')
+        && !!msg && (msg.textContent || '').includes('tự tải lại');
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+
+  // Mạng sống lại → probe kế tiếp OK → watchdog TỰ reload → app boot thật,
+  // KHÔNG có thao tác bấm nào từ phía user.
+  networkDead = false;
   await page.waitForURL(/\/login/, { timeout: 40_000 });
   await expect(page.locator('#app-splash')).toHaveCount(0);
   expect(page.url()).not.toContain('_ihome_boot');

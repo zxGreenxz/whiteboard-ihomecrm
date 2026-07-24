@@ -36,6 +36,9 @@
         var softTimeoutMs = T.soft || 12000; // nhắc "mạng chậm", spinner vẫn chạy, KHÔNG hủy download đang dở
         var hardTimeoutMs = T.hard || 30000; // tự reload bust-cache (1 lần / retryWindowMs)
         var navTimeoutMs = T.nav || 6000;    // reload phát đi mà navigation không cập bến → màn lỗi
+        var probeIntervalMs = T.probe || 5000;   // nhịp dò mạng khi đã ở màn lỗi
+        var probeAbortMs = T.probeAbort || 4000; // mỗi lần dò chờ tối đa bấy nhiêu rồi hủy
+        var autoKey = 'ihome:pwa-auto-reloads';  // ngân sách tự-reload-khi-có-mạng (3 lần/phiên)
         var autoReloadDone = false;
         var failedShown = false;
         var retryBound = false;
@@ -62,13 +65,17 @@
 
         window.__ihomePwaEntryReady = function () {
           clearTimers();
+          stopProbing();
           window.removeEventListener('error', onEntryError, true);
           var splash = document.getElementById('app-splash');
           if (splash) {
             splash.classList.remove('as-slow', 'as-failed');
             splash.setAttribute('aria-hidden', 'true');
           }
-          try { window.sessionStorage.removeItem(retryKey); } catch (e) {}
+          try {
+            window.sessionStorage.removeItem(retryKey);
+            window.sessionStorage.removeItem(autoKey);
+          } catch (e) {}
           try {
             var cleanUrl = new URL(window.location.href);
             if (cleanUrl.searchParams.has('_ihome_boot')) {
@@ -87,7 +94,9 @@
         function startReload() {
           clearTimers();
           armTimer(function () {
-            showRecovery(true, 'Không thể kết nối máy chủ. Kiểm tra mạng rồi bấm tải lại.');
+            showRecovery(true, budgetLeft()
+              ? 'Mất kết nối máy chủ. Sẽ tự tải lại ngay khi có mạng — hoặc bấm tải lại.'
+              : 'Không thể kết nối máy chủ. Kiểm tra mạng rồi bấm tải lại.');
           }, navTimeoutMs);
           window.location.replace(cacheBustedUrl());
         }
@@ -110,7 +119,81 @@
           showRecovery(true, 'Ứng dụng chưa thể khởi động. Hãy kiểm tra kết nối rồi tải lại.');
         }
 
+        // ===== Tự hồi phục: khi đã rơi vào màn lỗi, dò mạng định kỳ (fetch nhỏ
+        // + hủy sau probeAbortMs) kết hợp sự kiện online/visibilitychange —
+        // mạng sống lại là TỰ reload, không cần bấm. Ngân sách autoKey (3 lần/
+        // phiên) chặn vòng lặp reload khi mạng OK nhưng app hỏng (deploy lỗi):
+        // hết ngân sách thì chỉ còn nút bấm tay.
+        var probing = false;
+        var probeInFlight = false;
+        var probeIval = null;
+        var probeListenersBound = false;
+
+        function budgetLeft() {
+          try { return Number(window.sessionStorage.getItem(autoKey) || 0) < 3; }
+          catch (e) { return false; }
+        }
+
+        function stopProbing() {
+          probing = false;
+          if (probeIval) { window.clearInterval(probeIval); probeIval = null; }
+        }
+
+        function kickProbe() { if (probing) doProbe(); }
+
+        function startProbing() {
+          if (probing || !budgetLeft()) return;
+          probing = true;
+          if (!probeListenersBound) {
+            probeListenersBound = true;
+            window.addEventListener('online', kickProbe);
+            document.addEventListener('visibilitychange', function () {
+              if (document.visibilityState === 'visible') kickProbe();
+            });
+          }
+          probeIval = window.setInterval(doProbe, probeIntervalMs);
+          doProbe();
+        }
+
+        function doProbe() {
+          if (probeInFlight) return;
+          probeInFlight = true;
+          var done = false;
+          var ctrl = null;
+          try { ctrl = new AbortController(); } catch (e) {}
+          function settle(ok) {
+            if (done) return;
+            done = true;
+            probeInFlight = false;
+            if (ok && probing) { stopProbing(); autoReloadViaProbe(); }
+          }
+          window.setTimeout(function () {
+            if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+            settle(false);
+          }, probeAbortMs);
+          try {
+            fetch('/manifest.webmanifest?_probe=' + Date.now(), {
+              cache: 'no-store',
+              credentials: 'omit',
+              signal: ctrl ? ctrl.signal : undefined,
+            }).then(function (res) { settle(!!res && res.ok); }, function () { settle(false); });
+          } catch (e) { settle(false); }
+        }
+
+        function autoReloadViaProbe() {
+          if (!budgetLeft()) {
+            showRecovery(true, 'Ứng dụng chưa thể khởi động. Hãy kiểm tra kết nối rồi bấm tải lại.');
+            return;
+          }
+          try {
+            var n = Number(window.sessionStorage.getItem(autoKey) || 0);
+            window.sessionStorage.setItem(autoKey, String(n + 1));
+          } catch (e) {}
+          startReload();
+        }
+
         function showRecovery(failed, message) {
+          if (failed) startProbing(); // idempotent; tự thoát nếu hết ngân sách
           function reveal() {
             if (!failed && failedShown) return; // không hạ cấp màn lỗi về nhắc mạng chậm
             var splash = document.getElementById('app-splash');
@@ -124,7 +207,10 @@
             if (!retryBound) {
               retryBound = true;
               retry.addEventListener('click', function () {
-                try { window.sessionStorage.removeItem(retryKey); } catch (e) {}
+                try {
+                  window.sessionStorage.removeItem(retryKey);
+                  window.sessionStorage.removeItem(autoKey);
+                } catch (e) {}
                 autoReloadDone = true;
                 startReload();
               });
