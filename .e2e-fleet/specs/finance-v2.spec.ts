@@ -119,6 +119,90 @@ async function findVoucherRow(page: Page, name: string) {
   return row;
 }
 
+// Tổ hợp từng LỌT lưới (P0002 prod 24/07): writer canonical create v1 sinh phiếu
+// CHỜ DUYỆT (chi vượt ngưỡng tự-duyệt) — mọi user DEMO tạo qua form đều tự-duyệt
+// nên UI không bao giờ mở nhánh này; phải gọi RPC trực tiếp với số tiền lớn.
+// Regression guard cho hotfix 20260724070000 (a86 không được đè hash writer).
+test('finance-v2-create-v1-pending-over-threshold', async ({ browser }) => {
+  const name = `[E2E-V2] v1 pending ${Date.now()}`;
+  const ctx = await browser.newContext();
+  const pk = await ctx.newPage();
+  await login(pk, 'ketoan');
+  const nav = pk.goto('/income-expense');
+  const auth = await captureSupabaseAuth(pk);
+  await nav;
+
+  const [b] = await sbGet(auth, 'buildings?select=id,organization_id&name=eq.T%C3%B2a%20DEMO%20A&limit=1');
+  const [acc] = await sbGet(auth, 'accounts?select=id&name=eq.CANARY%20renamed&limit=1');
+  const [t] = await sbGet(
+    auth,
+    `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.expense&limit=1`,
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const r = await fetch(`${auth.base}/rest/v1/rpc/create_income_expense_v1`, {
+    method: 'POST',
+    headers: {
+      apikey: auth.apikey,
+      Authorization: auth.auth,
+      'Content-Type': 'application/json',
+      'Content-Profile': 'public',
+    },
+    body: JSON.stringify({
+      p_type: 'EXPENSE',
+      p_name: name,
+      p_building_id: b.id,
+      p_room_id: null,
+      p_tenant_id: null,
+      p_contract_id: null,
+      p_payer_name: null,
+      p_receive_bank_account: null,
+      p_receive_bank_name: null,
+      p_account_id: acc.id,
+      p_attachments: [],
+      p_business_result_accounting: null,
+      p_notes: null,
+      p_voucher_date: today,
+      p_items: [
+        {
+          income_expense_type_id: t.id,
+          description: 'e2e over-threshold',
+          quantity: 1,
+          unit_price: 99_999_000, // vượt ngưỡng tự-duyệt → PHẢI sinh Chờ duyệt
+          start_date: today,
+          end_date: today,
+        },
+      ],
+      p_idempotency_key: `e2e-v1-pending-${Date.now()}`,
+    }),
+  });
+  expect(r.status, `create v1: ${await r.clone().text()}`).toBe(200);
+
+  const [v] = await sbGet(
+    auth,
+    `income_expenses?select=id,approval_status,source_payload_hash,birth_operation_id&name=eq.${encodeURIComponent(name)}&limit=1`,
+  );
+  expect(v.approval_status).toBe('UNAPPROVED');
+  expect(v.birth_operation_id).not.toBeNull();
+  // Hash writer phải ĐƯỢC GIỮ — không bị a86 đè bằng marker khai sinh.
+  const crypto = await import('node:crypto');
+  const birthHash = crypto.createHash('md5').update(`birth:${v.id}`).digest('hex');
+  expect(v.source_payload_hash).not.toBe(birthHash);
+
+  // Huỷ qua đường UI chính (cancel v1) — cũng là cleanup fixture.
+  const c = await fetch(`${auth.base}/rest/v1/rpc/cancel_income_expense_v1`, {
+    method: 'POST',
+    headers: {
+      apikey: auth.apikey,
+      Authorization: auth.auth,
+      'Content-Type': 'application/json',
+      'Content-Profile': 'public',
+    },
+    body: JSON.stringify({ p_voucher_id: v.id, p_reason: 'e2e cleanup' }),
+  });
+  expect([200, 204]).toContain(c.status);
+  await ctx.close();
+});
+
 test('finance-v2-lifecycle', async ({ browser }) => {
   const name = `[E2E-V2] lifecycle ${Date.now()}`;
 
