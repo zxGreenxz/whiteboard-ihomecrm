@@ -76,6 +76,7 @@ import {
   useApproveIncomeExpenseV2,
   useApproveAndPostIncomeExpenseV2,
   usePostApprovedIncomeExpenseV2,
+  useReversePostingV2,
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
@@ -143,6 +144,10 @@ const IncomeExpenseDesktopPage = () => {
   // V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (CUSTODIAN, không cần quyền duyệt).
   const [postApprovedTarget, setPostApprovedTarget] =
     useState<IncomeExpenseWithRelations | null>(null);
+  // Mô hình 2 nút: HOÀN TÁC phiếu đã ghi sổ (kèm lý do).
+  const [reverseTarget, setReverseTarget] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  const [reverseReason, setReverseReason] = useState("");
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   const pagination = usePagination(20);
@@ -224,6 +229,7 @@ const IncomeExpenseDesktopPage = () => {
   const approveV2Mutation = useApproveIncomeExpenseV2();
   const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
   const postApprovedV2Mutation = usePostApprovedIncomeExpenseV2();
+  const reversePostingV2Mutation = useReversePostingV2();
   const { data: custodianBooks = [] } = useCustodianCashbooksV2(
     approveAndPostOpen || !!postApprovedTarget,
   );
@@ -602,6 +608,7 @@ const IncomeExpenseDesktopPage = () => {
             onQuickEdit={handleQuickEditVoucher}
             onApprove={handleApproveVoucher}
             onPostApproved={(v) => setPostApprovedTarget(v)}
+            onReversePosting={(v) => setReverseTarget(v)}
             onUnapprove={handleUnapproveVoucher}
             onVerify={handleVerifyVoucher}
             onCopy={(v) => setCopyVoucher(v)}
@@ -910,6 +917,56 @@ const IncomeExpenseDesktopPage = () => {
           isSubmitting={approveAndPostV2Mutation.isPending}
         />
       )}
+
+      {/* Mô hình 2 nút: xác nhận HOÀN TÁC phiếu đã ghi sổ (kèm lý do). */}
+      <AlertDialog
+        open={!!reverseTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setReverseTarget(null);
+            setReverseReason("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hoàn tác {reverseTarget?.type === "INCOME" ? "khoản thu" : "khoản chi"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hệ thống tạo bút toán <b>đối dấu ghi ngày hôm nay</b> — tiền{" "}
+              {reverseTarget?.type === "INCOME" ? "rời khỏi" : "trả về"} sổ{" "}
+              <b>{(reverseTarget as { account_name?: string } | null)?.account_name ?? "đã chi"}</b>,{" "}
+              <b>tồn quỹ thay đổi</b>. Phiếu chuyển sang <b>Đã hoàn tác</b> và
+              nằm chờ: có thể <b>Thu/Chi lại</b> (vd đúng sổ khác) hoặc{" "}
+              <b>Huỷ</b>. Bút toán gốc giữ nguyên trong lịch sử.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            value={reverseReason}
+            onChange={(e) => setReverseReason(e.target.value)}
+            placeholder="Lý do hoàn tác (ghi vào bút toán — nên nhập)"
+            rows={2}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel>Đóng</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-violet-600 hover:bg-violet-700"
+              disabled={reversePostingV2Mutation.isPending}
+              onClick={() => {
+                if (!reverseTarget?.account_id) return;
+                reversePostingV2Mutation.mutate({
+                  voucherId: reverseTarget.id,
+                  cashbookId: reverseTarget.account_id,
+                  reason: reverseReason.trim() || null,
+                });
+                setReverseTarget(null);
+                setReverseReason("");
+              }}
+            >
+              Hoàn tác
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT (CUSTODIAN, không cần quyền duyệt). */}
       {postApprovedTarget && (

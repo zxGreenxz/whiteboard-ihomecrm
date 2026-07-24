@@ -65,8 +65,11 @@ interface IncomeExpenseListProps {
   onQuickEdit?: (voucher: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
   /** Finance V2 §12.3: CUSTODIAN Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (không cần
-   *  quyền duyệt). Chỉ hiện khi org CANONICAL read + phiếu APPROVED+UNPOSTED. */
+   *  quyền duyệt). Chỉ hiện khi org CANONICAL read + phiếu APPROVED+UNPOSTED,
+   *  và cả phiếu ĐÃ HOÀN TÁC (chi lại — thế hệ bút toán mới). */
   onPostApproved?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ (tiền về sổ, phiếu chờ chi lại/huỷ). */
+  onReversePosting?: (voucher: IncomeExpenseWithRelations) => void;
   /** Huỷ duyệt: đưa phiếu đã ghi nhận về Nháp (chỉ super admin). */
   onUnapprove?: (id: string) => void;
   onVerify?: (voucher: IncomeExpenseWithRelations) => void;
@@ -174,6 +177,7 @@ const IncomeExpenseList = ({
   onQuickEdit,
   onApprove,
   onPostApproved,
+  onReversePosting,
   onUnapprove,
   onVerify,
   onCopy,
@@ -339,12 +343,12 @@ const IncomeExpenseList = ({
                     )}
 
                     {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ
-                        (CUSTODIAN, không cần quyền duyệt) — chỉ org CANONICAL. */}
+                        (CUSTODIAN, không cần quyền duyệt) — chỉ org CANONICAL.
+                        Phiếu ĐÃ HOÀN TÁC cũng chi lại được (thế hệ mới, 7x). */}
                     {onPostApproved &&
                       !isCancelled &&
                       voucher.approval_status === 'APPROVED' &&
                       voucher.posting_status !== 'POSTED' &&
-                      voucher.posting_status !== 'REVERSED' &&
                       voucher.posting_status !== 'NOT_APPLICABLE' &&
                       isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)) && (
                         <Button
@@ -353,12 +357,37 @@ const IncomeExpenseList = ({
                           className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                           onClick={() => onPostApproved(voucher)}
                           title={
-                            voucher.type === 'INCOME'
-                              ? 'Thu tiền vào sổ (phiếu đã duyệt)'
-                              : 'Chi tiền từ sổ (phiếu đã duyệt)'
+                            voucher.posting_status === 'REVERSED'
+                              ? (voucher.type === 'INCOME'
+                                  ? 'Thu LẠI vào sổ (bút toán mới sau hoàn tác)'
+                                  : 'Chi LẠI từ sổ (bút toán mới sau hoàn tác)')
+                              : voucher.type === 'INCOME'
+                                ? 'Thu tiền vào sổ (phiếu đã duyệt)'
+                                : 'Chi tiền từ sổ (phiếu đã duyệt)'
                           }
                         >
                           <Banknote className="h-4 w-4" />
+                        </Button>
+                      )}
+
+                    {/* Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ (tiền về sổ,
+                        phiếu nằm chờ Chi lại hoặc Huỷ). CUSTODIAN đúng sổ. */}
+                    {onReversePosting &&
+                      !isCancelled &&
+                      voucher.posting_status === 'POSTED' &&
+                      isCanonicalRead(v2Routes.getOrg(voucher.organization_id ?? null)) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                          onClick={() => onReversePosting(voucher)}
+                          title={
+                            voucher.type === 'INCOME'
+                              ? 'Hoàn tác khoản thu (tiền rời sổ, phiếu chờ thu lại/huỷ)'
+                              : 'Hoàn tác khoản chi (tiền về sổ, phiếu chờ chi lại/huỷ)'
+                          }
+                        >
+                          <RotateCcw className="h-4 w-4" />
                         </Button>
                       )}
 

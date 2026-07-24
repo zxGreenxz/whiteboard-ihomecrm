@@ -111,6 +111,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
             <input
               className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền"
               value={formatVN(amount)}
+              onFocus={() => S.setActiveKey(k)}
               onChange={(e) => S.setAmount(k, parseVN(e.target.value))}
             />
             <UtilityBookMenu

@@ -96,6 +96,34 @@ export function useApproveAndPostIncomeExpenseV2() {
   });
 }
 
+/** Hoàn tác phiếu ĐÃ GHI SỔ (mô hình 2 nút): tiền trả về sổ bằng bút toán đối
+ *  dấu, phiếu về "Đã hoàn tác" — nằm chờ Chi lại hoặc Huỷ. CUSTODIAN đúng sổ. */
+export function useReversePostingV2() {
+  const invalidate = useInvalidateMoney();
+  return useMutation({
+    mutationFn: async (args: {
+      voucherId: string;
+      cashbookId: string;
+      reason?: string | null;
+    }) => {
+      const { data, error } = await rpc("reverse_posted_income_expense_v2", {
+        p_voucher: args.voucherId,
+        p_cashbook: args.cashbookId,
+        p_posted_on: new Date().toISOString().split("T")[0],
+        p_reason: args.reason || "Hoàn tác thủ công",
+        p_idempotency_key: `rev-${args.voucherId}-${Date.now()}`,
+      });
+      if (error) throw new Error(error.message || "Hoàn tác thất bại");
+      return data;
+    },
+    onSuccess: () => {
+      invalidate();
+      toast.success("Đã hoàn tác — tiền trả về sổ, phiếu chờ Chi lại hoặc Huỷ");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+}
+
 /**
  * Upload chứng từ theo flow §6.3: intent (server cấp path) → upload storage →
  * finalize (server verify + FINALIZED). Trả evidence_id hoặc null nếu lỗi.

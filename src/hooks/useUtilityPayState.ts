@@ -7,7 +7,7 @@
 // đính ảnh, đóng tiền, hủy phiếu, thêm/xoá đồng hồ, xem ảnh (lightbox).
 // =============================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { fmtFull } from '@/lib/collect';
 import { getSessionUser } from '@/lib/authSession';
@@ -150,11 +150,8 @@ export function useUtilityPayState(
     attachKeyRef.current = key;
     fileRef.current?.click();
   };
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    const k = attachKeyRef.current;
-    if (!file || !k) return;
+  /** Upload 1 file cho khoản `k` — dùng chung cho chọn file lẫn Ctrl+V. */
+  const attachFile = useCallback(async (k: string, file: File) => {
     const err = validateReceiptFile(file);
     if (err) { toast.error(err); return; }
     setUploadingKey(k);
@@ -167,7 +164,39 @@ export function useUtilityPayState(
     } finally {
       setUploadingKey(null);
     }
+  }, []);
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const k = attachKeyRef.current;
+    if (!file || !k) return;
+    await attachFile(k, file);
   };
+  /** Đánh dấu khoản đang thao tác (focus ô Số tiền) — đích của Ctrl+V ảnh. */
+  const setActiveKey = useCallback((key: string) => {
+    attachKeyRef.current = key;
+  }, []);
+  // Ctrl+V ảnh chứng từ: dán vào khoản đang thao tác (owner yêu cầu 24/07).
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const img = Array.from(items).find((it) => it.type.startsWith('image/'));
+      if (!img) return; // dán text bình thường — không can thiệp
+      const file = img.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      const k = attachKeyRef.current;
+      if (!k) {
+        toast.info('Chạm vào ô Số tiền (hoặc nút ảnh) của khoản cần đính rồi dán lại');
+        return;
+      }
+      if (uploadingKey) return;
+      void attachFile(k, file);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [attachFile, uploadingKey]);
 
   const submitPay = async (row: MeterRow, name: string) => {
     const amount = amountOf(row.key);
@@ -227,7 +256,7 @@ export function useUtilityPayState(
     // meters
     addMeter, adding: addMeterMut.isPending, deleteMeter, deleting: deleteMeterMut.isPending,
     // attach input
-    fileRef, onFileChange, onAttachClick,
+    fileRef, onFileChange, onAttachClick, setActiveKey,
     // cancel
     cancelTarget, requestCancel, confirmCancel, cancelling: cancelMut.isPending,
     closeCancel: () => setCancelTarget(null),

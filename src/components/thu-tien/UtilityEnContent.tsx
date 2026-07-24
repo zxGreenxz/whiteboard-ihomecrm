@@ -201,7 +201,7 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                             {paid ? (
                               <div className="ud-paidamt"><span className="ud-paidamt-a">{fmtFull(paid.amount)}</span><span className="ud-paidamt-m">{fmtDate(paid.date)} · {paid.by}</span></div>
                             ) : (
-                              <input className="ud-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onChange={(e) => S.setAmount(k, parseVN(e.target.value))} />
+                              <input className="ud-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => S.setActiveKey(k)} onChange={(e) => S.setAmount(k, parseVN(e.target.value))} />
                             )}
                           </td>
                           <td className="act">

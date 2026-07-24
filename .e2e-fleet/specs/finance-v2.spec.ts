@@ -291,6 +291,51 @@ test('finance-v2-lifecycle', async ({ browser }) => {
   expect(postResp.status()).toBe(200);
   await expect(row.getByText(/^Đã (Thu|Chi)$/)).toBeVisible({ timeout: 30_000 });
 
+  // ---- 3b. MÔ HÌNH 2 NÚT: HOÀN TÁC qua UI → "Đã hoàn tác" (phiếu nằm chờ) ----
+  const [vRow] = await sbGet(
+    authC,
+    `income_expenses?select=id&name=eq.${encodeURIComponent(name)}&limit=1`,
+  );
+  await row.getByRole('button', { name: /Hoàn tác khoản (thu|chi)/ }).click();
+  await pc
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Hoàn tác' })
+    .click();
+  await expect
+    .poll(async () => {
+      const [st] = await sbGet(
+        authC,
+        `income_expenses?select=posting_status&id=eq.${vRow.id}`,
+      );
+      return st.posting_status;
+    }, { timeout: 30_000 })
+    .toBe('REVERSED');
+
+  // ---- 3c. CHI LẠI (thế hệ bút toán mới, 7x) → Đã Thu trở lại ----
+  await pc.reload();
+  const rowR = await findVoucherRow(pc, name);
+  await rowR.getByRole('button', { name: /Thu LẠI vào sổ|Chi LẠI từ sổ/ }).click();
+  await pc.getByRole('combobox', { name: 'Sổ quỹ *' }).click();
+  await pc.getByRole('option', { name: 'CANARY renamed' }).click();
+  await uploadEvidence(pc);
+  const [repostResp] = await Promise.all([
+    pc.waitForResponse(
+      (r) => RPC('post_approved_income_expense_v2').test(r.url()) && r.status() === 200,
+      { timeout: 30_000 },
+    ),
+    pc.getByRole('dialog').getByRole('button', { name: /^(Thu|Chi)$/ }).click(),
+  ]);
+  expect(repostResp.status()).toBe(200);
+  await expect
+    .poll(async () => {
+      const [st] = await sbGet(
+        authC,
+        `income_expenses?select=posting_status&id=eq.${vRow.id}`,
+      );
+      return st.posting_status;
+    }, { timeout: 30_000 })
+    .toBe('POSTED');
+
   // ---- 4. HUỶ PHIẾU ĐÃ CHI qua UI (hành vi owner yêu cầu 24/07): client tự
   // HOÀN TÁC (reversal — tiền trả về sổ, giữ dấu vết §2.2) rồi huỷ. Assert
   // bằng DB thật (REST) — không tin "row biến khỏi list" (từng false-positive).
