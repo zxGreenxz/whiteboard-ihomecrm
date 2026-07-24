@@ -35,7 +35,7 @@
         var retryWindowMs = T.retryWindow || 120000;
         var softTimeoutMs = T.soft || 12000; // nhắc "mạng chậm", spinner vẫn chạy, KHÔNG hủy download đang dở
         var hardTimeoutMs = T.hard || 30000; // tự reload bust-cache (1 lần / retryWindowMs)
-        var navTimeoutMs = T.nav || 10000;   // reload phát đi mà navigation không cập bến → màn lỗi
+        var navTimeoutMs = T.nav || 6000;    // reload phát đi mà navigation không cập bến → màn lỗi
         var autoReloadDone = false;
         var failedShown = false;
         var retryBound = false;

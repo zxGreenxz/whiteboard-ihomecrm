@@ -16,7 +16,7 @@ import { test, expect, Page, Route } from '@playwright/test';
  * (Không cần FLEET_PASS_* — các test này không đăng nhập.)
  */
 
-// Rút ngắn timings watchdog cho test (prod: soft 12s / hard 30s / nav 10s).
+// Rút ngắn timings watchdog cho test (prod: soft 12s / hard 30s / nav 6s).
 const WD = { soft: 1200, hard: 2600, nav: 1500 };
 
 /** Giả lập display-mode: standalone + timings ngắn — chạy TRƯỚC mọi script của trang. */
