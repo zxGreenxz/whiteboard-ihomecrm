@@ -146,6 +146,8 @@
 | 7y(1) | 24/07 | **PROD NATHAN**: thu tiền hoá đơn V5 → 23503 FK postings→voucher | bridge a85 tạo POSTING trong **BEFORE INSERT** (row cha chưa tồn tại); ngủ yên tới khi có INSERT-đã-duyệt đầu tiên sau go-live | 140000 (tách AFTER INSERT bridge a85b) | **L3** |
 | 7y(2) | 24/07 | **PROD NATHAN**: sửa phiếu chờ duyệt → 23502 items.id NULL | `ie_compat_update_pending_v2` cũng populate_record (7o/7p chỉ vá hàm INSERT) | 140000 (trigger a000 defaults-fill TẦNG BẢNG cho income_expenses + items) | **L1** |
 
+| 7z | 24/07 | **PROD NATHAN**: thanh lý move-out 55000 "does not match the active termination context" | Trigger classify_termination_payment_v1 (26bf179 **21/07 — đợt khoá chuỗi hạch toán, TRƯỚC Thu Chi V2**) đòi invoice.user_id = chủ HĐ; dữ liệu thật có 71 hoá đơn nợ do staff lập hộ (55 HĐ hiệu lực) | 20260724150000 (bỏ ràng buộc người-lập + room của HOÁ ĐƠN; neo = đúng hợp đồng trong context) — verify đúng ca lệch trên DEMO: RPC 200, HĐ TERMINATED | L2 (của đợt trước) |
+
 ### PHÂN TÍCH MẪU LỖI (trả lời "đang hỏng ở phần nào")
 1. **L1 — `jsonb_populate_record` đè DEFAULT** (7m,7n,7o,7p,7y2 — 5 lần): một kỹ thuật
    dùng ở NHIỀU writer; tôi vá theo TỪNG HÀM bị lộ thay vì quét mọi hàm dùng nó
