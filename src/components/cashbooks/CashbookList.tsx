@@ -18,7 +18,10 @@ import {
 } from "@/hooks/usePagination";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
 import { Lock, LockOpen, Pencil, Trash2, Wallet, Eye } from "lucide-react";
-import { useMyCashbookAccessV2 } from "@/hooks/income-expenses/financeV2Mutations";
+import {
+  useMyCashbookAccessV2,
+  useCashbookVisibilityV2,
+} from "@/hooks/income-expenses/financeV2Mutations";
 
 interface CashbookListProps {
   rows: AccountWithBalance[];
@@ -67,6 +70,14 @@ const CashbookList = ({
       ),
     [myAccess],
   );
+  // Cờ server per-sổ: sổ KHÔNG binding cũng phải "—" + ẩn icon Sửa/Xoá/Khoá
+  // (trước đây hiện 0 đ giả + icon bấm vào mới 42501). RPC lỗi → null → giữ
+  // hành vi cũ (chỉ mask KNOWER).
+  const { data: visibility } = useCashbookVisibilityV2();
+  const visById = useMemo(
+    () => new Map((visibility ?? []).map((f) => [f.cashbook_id, f])),
+    [visibility],
+  );
 
   if (isLoading) {
     return (
@@ -109,6 +120,12 @@ const CashbookList = ({
             .sort((a, b) => Number(!!a.is_virtual) - Number(!!b.is_virtual))
             .map((acc) => {
             const isLocked = !!acc.lock_date;
+            const vis = visById.get(acc.id);
+            const balanceMasked = vis
+              ? !vis.balance_visible
+              : knowerBooks.has(acc.id);
+            const canManage = vis ? vis.can_manage : true;
+            const canDelete = vis ? vis.can_delete : true;
             return (
               <TableRow key={acc.id} className={acc.is_virtual ? "bg-muted/40" : undefined}>
                 <TableCell>
@@ -144,45 +161,50 @@ const CashbookList = ({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    {isLocked ? (
+                    {canManage &&
+                      (isLocked ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
+                          onClick={() => onUnlock(acc)}
+                          title="Mở khoá sổ"
+                        >
+                          <LockOpen className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                          onClick={() => onLock(acc)}
+                          title="Khoá sổ"
+                        >
+                          <Lock className="h-4 w-4" />
+                        </Button>
+                      ))}
+                    {canManage && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                        onClick={() => onUnlock(acc)}
-                        title="Mở khoá sổ"
+                        className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                        onClick={() => onEdit(acc)}
+                        title="Chỉnh sửa"
                       >
-                        <LockOpen className="h-4 w-4" />
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
-                        onClick={() => onLock(acc)}
-                        title="Khoá sổ"
-                      >
-                        <Lock className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
-                      onClick={() => onEdit(acc)}
-                      title="Chỉnh sửa"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => onDelete(acc.id)}
-                      title="Xoá"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => onDelete(acc.id)}
+                        title="Xoá"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="font-medium">{acc.name}</TableCell>
@@ -190,15 +212,19 @@ const CashbookList = ({
                   {acc.owner_name || "—"}
                 </TableCell>
                 <TableCell className="text-right">
-                  {knowerBooks.has(acc.id)
+                  {balanceMasked
                     ? "—"
                     : formatVND(Number(acc.initial_amount))}
                 </TableCell>
                 <TableCell className="text-right">
-                  {knowerBooks.has(acc.id) ? (
+                  {balanceMasked ? (
                     <span
                       className="text-muted-foreground"
-                      title="Bạn là Người biết sổ (KNOWER) — không xem tồn quỹ"
+                      title={
+                        knowerBooks.has(acc.id)
+                          ? "Bạn là Người biết sổ (KNOWER) — không xem tồn quỹ"
+                          : "Bạn không giữ sổ này — không xem tồn quỹ"
+                      }
                     >
                       —
                     </span>

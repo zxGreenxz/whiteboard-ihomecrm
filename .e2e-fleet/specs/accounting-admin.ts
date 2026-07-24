@@ -726,13 +726,10 @@ WHERE payment.id IN (SELECT id FROM _e2e_payments);
 DELETE FROM public.invoice_payment_collections collection
 WHERE collection.id IN (SELECT id FROM _e2e_collections);
 
-DELETE FROM app_private.canonical_write_operations operation
-USING _e2e_canonical target
-WHERE operation.organization_id = target.organization_id
-  AND operation.operation = target.operation
-  AND operation.subject_scope = target.subject_scope
-  AND operation.actor_id = target.actor_id
-  AND operation.idempotency_key = target.idempotency_key;
+-- Finance V2 (24/07): canonical_write_operations là ledger APPEND-ONLY —
+-- guard_canonical_write_operation() chặn DELETE (55000) kể cả replica role.
+-- Dòng audit ledger của fixture là vô hại (không FK treo, không đụng balance)
+-- nên KHÔNG xoá nữa; xoá sẽ làm cleanup nổ và bỏ lại toàn bộ rác phía trên.
 
 SELECT app_private.end_accounting_chain_write_v1();
 

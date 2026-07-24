@@ -282,10 +282,31 @@ export const useCancelIncomeExpense = () => {
         p_reason: reason,
       });
       if (!canonical.error) return false;
+      // 7ac: phiếu do FLOW HỆ THỐNG sở hữu (vd Hoàn tiền hoá đơn) — cancel v1
+      // từ chối 'owned by system flow'; huỷ qua dispatcher §8 (release
+      // reservation atomic), KHÔNG rơi xuống compat.
+      if (/owned by system flow/i.test(canonical.error.message ?? "")) {
+        const owned = await (supabase.rpc as any)(
+          "decide_owned_income_expense_v2",
+          {
+            p_voucher: id,
+            p_decision: "cancel",
+            p_reason: reason,
+            p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
+          },
+        );
+        if (owned.error) {
+          toast.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
+          throw owned.error;
+        }
+        return false;
+      }
       // Phiếu đã duyệt/đã hoàn tác: cancel v1 từ chối (chỉ nhận pending của
       // maker) — KHÔNG phải lỗi chặn, rơi xuống compat cancel (tự cấp token).
       const approvedShape =
-        voucher?.approval_status === "APPROVED" || postingStatus === "POSTED";
+        voucher?.approval_status === "APPROVED" ||
+        postingStatus === "POSTED" ||
+        postingStatus === "REVERSED";
       if (!isIeLifecycleFallbackSignal(canonical.error) && !approvedShape) {
         toast.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
         throw canonical.error;
@@ -299,6 +320,24 @@ export const useCancelIncomeExpense = () => {
         p_reason: reason,
       });
       if (error) {
+        // 7ac: phiếu do FLOW HỆ THỐNG sở hữu (vd Hoàn tiền hoá đơn) — cả cancel
+        // v1 lẫn compat đều từ chối; huỷ qua dispatcher §8 (release reservation).
+        if (/owned by system flow/i.test(error.message ?? "")) {
+          const owned = await (supabase.rpc as any)(
+            "decide_owned_income_expense_v2",
+            {
+              p_voucher: id,
+              p_decision: "cancel",
+              p_reason: reason,
+              p_idempotency_key: `owned-cancel-${id}-${Date.now()}`,
+            },
+          );
+          if (owned.error) {
+            toast.error(owned.error.message || "Không thể huỷ phiếu thu/chi");
+            throw owned.error;
+          }
+          return false;
+        }
         toast.error(error.message || "Không thể huỷ phiếu thu/chi");
         throw error;
       }

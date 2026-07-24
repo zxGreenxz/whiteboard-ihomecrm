@@ -3,7 +3,10 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Wallet, Lock, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
-import { useMyCashbookAccessV2 } from "@/hooks/income-expenses/financeV2Mutations";
+import {
+  useMyCashbookAccessV2,
+  useCashbookVisibilityV2,
+} from "@/hooks/income-expenses/financeV2Mutations";
 
 interface Props {
   rows: AccountWithBalance[];
@@ -34,6 +37,10 @@ export function CashbookListMobile({
       .filter((a) => a.possession_kind === "KNOWER")
       .map((a) => a.cashbook_id),
   );
+  // Cờ server per-sổ (parity desktop): sổ KHÔNG binding → "—" + ẩn icon;
+  // RPC lỗi → null → giữ hành vi cũ (chỉ mask KNOWER).
+  const { data: visibility } = useCashbookVisibilityV2();
+  const visById = new Map((visibility ?? []).map((f) => [f.cashbook_id, f]));
   if (isLoading) {
     return (
       <div className="px-3 py-3 space-y-2.5">
@@ -61,6 +68,12 @@ export function CashbookListMobile({
       {rows.map((acc) => {
         const isLocked = !!acc.lock_date;
         const balanceNeg = Number(acc.current_amount) < 0;
+        const vis = visById.get(acc.id);
+        const balanceMasked = vis
+          ? !vis.balance_visible
+          : knowerBooks.has(acc.id);
+        const canManage = vis ? vis.can_manage : true;
+        const canDelete = vis ? vis.can_delete : true;
 
         return (
           <li key={acc.id}>
@@ -106,7 +119,7 @@ export function CashbookListMobile({
                       balanceNeg ? "text-red-600" : "text-emerald-600"
                     }`}
                   >
-                    {knowerBooks.has(acc.id)
+                    {balanceMasked
                       ? "—"
                       : formatVND(Number(acc.current_amount))}
                   </div>
@@ -120,46 +133,52 @@ export function CashbookListMobile({
                 <span>
                   Số dư đầu kỳ:{" "}
                   <span className="font-medium text-zinc-700 tabular-nums">
-                    {formatVND(Number(acc.initial_amount))}
+                    {balanceMasked ? "—" : formatVND(Number(acc.initial_amount))}
                   </span>
                 </span>
                 <div className="flex items-center gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-amber-500 hover:bg-amber-50"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      isLocked ? onUnlock(acc) : onLock(acc);
-                    }}
-                    title={isLocked ? "Mở khoá sổ" : "Khoá sổ"}
-                  >
-                    <Lock className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-blue-500 hover:bg-blue-50"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEdit(acc);
-                    }}
-                    title="Sửa"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-red-500 hover:bg-red-50"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(acc.id);
-                    }}
-                    title="Xoá"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {canManage && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-amber-500 hover:bg-amber-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        isLocked ? onUnlock(acc) : onLock(acc);
+                      }}
+                      title={isLocked ? "Mở khoá sổ" : "Khoá sổ"}
+                    >
+                      <Lock className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canManage && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-blue-500 hover:bg-blue-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(acc);
+                      }}
+                      title="Sửa"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-500 hover:bg-red-50"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(acc.id);
+                      }}
+                      title="Xoá"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </article>

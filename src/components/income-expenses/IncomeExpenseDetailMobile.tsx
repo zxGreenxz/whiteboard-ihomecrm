@@ -23,6 +23,9 @@ import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
+// Finance V2 (§12.2 mobile parity): nút Thu/Chi phiếu đã duyệt + Hoàn tác phiếu
+// đã ghi sổ — chỉ hiện khi org đọc CANONICAL (đối xứng IncomeExpenseList desktop).
+import { useFinanceV2Routes, isCanonicalRead } from "@/lib/financeV2Route";
 import {
   useIncomeExpenseHistory,
   type IncomeExpenseWithRelations,
@@ -39,6 +42,10 @@ interface Props {
   onRestore?: (id: string) => void;
   /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
   onCopy?: (v: IncomeExpenseWithRelations) => void;
+  /** V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (gồm cả Thu/Chi LẠI sau hoàn tác). */
+  onPostApproved?: (v: IncomeExpenseWithRelations) => void;
+  /** Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ (tiền về sổ, phiếu chờ chi lại/huỷ). */
+  onReversePosting?: (v: IncomeExpenseWithRelations) => void;
 }
 
 const fmtVND = (n: number) => `${n.toLocaleString("vi-VN")} đ`;
@@ -70,6 +77,8 @@ export function IncomeExpenseDetailMobile({
   onCancel,
   onRestore,
   onCopy,
+  onPostApproved,
+  onReversePosting,
 }: Props) {
   const navigate = useNavigate();
   const [paySheetOpen, setPaySheetOpen] = useState(false);
@@ -102,6 +111,11 @@ export function IncomeExpenseDetailMobile({
 
   const isCancelled = v.approval_status === "CANCELLED";
   const isUnapproved = v.approval_status === "UNAPPROVED";
+  // V2 route-aware: posting_status/organization_id chưa vào generated types → cast.
+  const v2Routes = useFinanceV2Routes();
+  const vv = v as { organization_id?: string | null; posting_status?: string | null };
+  const canonicalV2 = isCanonicalRead(v2Routes.getOrg(vv.organization_id ?? null));
+  const postingStatus = vv.posting_status ?? null;
   const isExpense = v.type === "EXPENSE";
   const accent = v.type === "INCOME" ? "#1f9d57" : "#d6453f";
   const isCreator = !!currentUserId && v.user_id === currentUserId;
@@ -184,6 +198,43 @@ export function IncomeExpenseDetailMobile({
                 <CheckCircle2 size={15} />
               </button>
             )}
+            {/* V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT - CHƯA GHI SỔ (CUSTODIAN, không
+                cần quyền duyệt); phiếu ĐÃ HOÀN TÁC cũng Thu/Chi LẠI được. */}
+            {onPostApproved &&
+              !isCancelled &&
+              v.approval_status === "APPROVED" &&
+              postingStatus !== "POSTED" &&
+              postingStatus !== "NOT_APPLICABLE" &&
+              canonicalV2 && (
+                <button
+                  className="vd-act"
+                  style={{ background: "#2563eb" }}
+                  aria-label={v.type === "INCOME" ? "Thu tiền vào sổ" : "Chi tiền từ sổ"}
+                  onClick={() => {
+                    onPostApproved(v);
+                    onClose();
+                  }}
+                >
+                  <Banknote size={15} />
+                </button>
+              )}
+            {/* Mô hình 2 nút: HOÀN TÁC phiếu ĐÃ GHI SỔ. */}
+            {onReversePosting &&
+              !isCancelled &&
+              postingStatus === "POSTED" &&
+              canonicalV2 && (
+                <button
+                  className="vd-act"
+                  style={{ background: "#7c3aed" }}
+                  aria-label="Hoàn tác"
+                  onClick={() => {
+                    onReversePosting(v);
+                    onClose();
+                  }}
+                >
+                  <RotateCcw size={15} />
+                </button>
+              )}
             {!isCancelled && onCancel && (
               <button
                 className="vd-act"

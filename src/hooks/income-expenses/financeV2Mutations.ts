@@ -41,6 +41,12 @@ function useInvalidateMoney() {
   };
 }
 
+/** Phiếu do FLOW HỆ THỐNG sở hữu (vd Hoàn tiền hoá đơn): RPC thủ công từ chối
+ * "owned by system flow" — phải quyết định qua dispatcher §8. */
+export function isOwnedBySystemFlow(message: string | null | undefined): boolean {
+  return /owned by system flow/i.test(message ?? "");
+}
+
 /** Duyệt-only V2: balance KHÔNG đổi (khác legacy). */
 export function useApproveIncomeExpenseV2() {
   const invalidate = useInvalidateMoney();
@@ -51,6 +57,18 @@ export function useApproveIncomeExpenseV2() {
         p_expected_approval_version: args.expectedApprovalVersion ?? 1,
         p_idempotency_key: genIdempotencyKey(),
       });
+      if (error && isOwnedBySystemFlow(error.message)) {
+        // 7ac: phiếu flow-owned (INVOICE_REFUND/TERMINATION_REFUND) duyệt qua
+        // entrypoint dispatch — cùng quyền income_expenses.approve, không đổi cash.
+        const owned = await rpc("decide_owned_income_expense_v2", {
+          p_voucher: args.voucherId,
+          p_decision: "approve",
+          p_reason: null,
+          p_idempotency_key: genIdempotencyKey(),
+        });
+        if (owned.error) throw new Error(owned.error.message || "Duyệt phiếu thất bại");
+        return owned.data;
+      }
       if (error) throw new Error(error.message || "Duyệt phiếu thất bại");
       return data;
     },
@@ -174,6 +192,31 @@ export function useMyCashbookAccessV2() {
         return null; // null = KHÔNG rõ (RPC lỗi) → caller fail-open giữ list cũ
       }
       return (data ?? []) as { cashbook_id: string; possession_kind: string }[];
+    },
+  });
+}
+
+/** Cờ hiển thị per-sổ cho trang Sổ quỹ: balance_visible bám ĐÚNG predicate RLS
+ * posting lines (sổ không-binding → "—" thay vì 0 đ giả); can_manage/can_delete
+ * mirror policy UPDATE/DELETE accounts (ẩn icon thay vì để bấm rồi 42501). */
+export interface CashbookVisibility {
+  cashbook_id: string;
+  balance_visible: boolean;
+  can_manage: boolean;
+  can_delete: boolean;
+}
+export function useCashbookVisibilityV2() {
+  return useQuery({
+    queryKey: ["cashbook-visibility-v2"],
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await rpc("list_cashbook_visibility_v2");
+      if (error) {
+        console.warn("[financeV2] list_cashbook_visibility_v2:", error.message);
+        return null; // null = KHÔNG rõ (RPC lỗi/chưa deploy) → caller giữ hành vi cũ
+      }
+      return (data ?? []) as CashbookVisibility[];
     },
   });
 }

@@ -106,9 +106,9 @@
       → huỷ); bước cleanup lifecycle đổi sang REST-assert CANCELLED (bài học:
       assert "row biến khỏi list" từng false-positive). 2 specs PASS, 0 fixture
       treo sau chạy.
-- [ ] Nợ nhỏ mới: nút Huỷ trên phiếu ĐÃ HOÀN TÁC (REVERSED) — cancel v1 từ chối
-      phiếu đã duyệt (409) và client chưa fallback compat cho case này → user
-      chưa huỷ được phiếu REVERSED qua UI (compat cancel REST thì được).
+- [x] Nợ nhỏ (ĐÃ ĐÓNG đợt 7 — 24/07): nút Huỷ trên phiếu ĐÃ HOÀN TÁC (REVERSED)
+      — nới approvedShape phủ REVERSED (statusMutations) → fallback compat; e2e
+      desktop + mobile PASS (finance-v2.spec test 3 + finance-v2-mobile-cancel).
 
 ## Vòng 3 — Nợ kiến trúc ghi nhận (không chặn vận hành, làm sau vòng 2)
 - §11.3 hợp nhất: report đọc resolver server. **KẾT LUẬN ĐÁNH GIÁ 2026-07-24: GIỮ
@@ -120,6 +120,73 @@
 - V5 per-tender lineage đầy đủ §6.2 (hiện bridge voucher-formula, parity đúng)
 - resubmit tạo request engine mới; execution-queue UI; evidence-first posting UI
 - Mục 4 owner: 52 unsafe locks + 22 phiếu kỳ khóa (profit_close đang FROZEN an toàn)
+
+## KẾT LUẬN ĐỐI CHIẾU PLAN GỐC (audit 2026-07-24, câu hỏi owner "plan đã hoàn tất chưa?")
+
+Đối chiếu TOÀN BỘ `PLAN-THU-CHI-V2-DUYET-CHI-PHAN-QUYEN-SO-QUY.md` (2311 dòng
+= **207 hạng mục cam kết**: §2=14, §5=5, §6=18, §7=8, §8=7, §9=7, §10=17, §11=11,
+§12=32, §13=15, §15=7, §16=30, §18-20=7, §21=98 gates, §22=1 — số liệu 2 lượt
+trích độc lập) với hiện thực:
+
+| Nhóm | Verdict |
+|---|---|
+| Hạ tầng DB/RPC/RLS/flags/backfill §5–§11 | ✅ 41 migrations PROD (manifest → 20260724160000), 12/13 stage; Stage-13 cleanup cố ý out-of-band (đúng §13) |
+| UI §12 core | ✅ browser-verified PROD (2 nút, badge composite, filter V2, cashbook access UI, inbox); mobile parity 2 nút bổ sung 24/07 (đợt 7) |
+| §16 test | Thay 25 file assertion tĩnh bằng smoke in-migration + e2e (đã bắt 19 lỗi thật) — quyết định GIỮ; e2e mở rộng đợt 7 |
+| §21 acceptance | ~90/98 có bằng chứng 🟢/🟡 (chi tiết Vòng 2 ở trên); I28/I29-preview verify đợt 7 |
+| Khác tên (không phải thiếu) | resolve_income_expense_dispute_v2 → `mark_income_expense_disputed_v2`; set_cashbook_possession_v2 → `set_cashbook_access_v2` |
+| Defer có lý do | resolver §11.3 (giữ, tie-out ±0 giám sát); V5 lineage §6.2; execution-queue (server CHƯA có writer assign/claim — chỉ projection đọc, là feature mới khi có nhu cầu); resubmit request-linkage; Stage-13 |
+| Chặn bởi owner | 52 locks + 22 phiếu kỳ khoá (→ profit_close CANARY); decision record commission/salary §2.6 (2 key OFF) |
+
+### Đợt 7 (2026-07-24 tối) — đóng nợ Vòng 2 còn lại
+- [x] Huỷ phiếu REVERSED qua UI: nới `approvedShape` phủ `posting_status==='REVERSED'`
+      (statusMutations.ts) → rơi xuống compat cancel như thiết kế. (Server line
+      1768 writers.sql: reverse GIỮ approval_status=APPROVED — điều kiện cũ về
+      lý thuyết đã phủ nhưng chưa từng được test; nay tường minh + e2e.)
+- [x] Mobile parity 2 nút: IncomeExpenseDetailMobile + IncomeExpenseMobilePage —
+      nút Thu/Chi (POST_APPROVED, gồm Thu/Chi LẠI sau hoàn tác), nút Hoàn tác
+      (+ lý do), dialog huỷ posted-aware ("Hoàn tác & Huỷ phiếu" + lý do).
+- [x] Sổ quỹ non-binding hết "0 đ" giả: RPC `list_cashbook_visibility_v2`
+      (migration 20260724160000) — balance_visible bám ĐÚNG predicate RLS
+      `finance_v2_can_read_posting_v1` (KHÔNG bypass super-admin vì view invoker
+      cũng không bypass được); can_manage/can_delete mirror policy UPDATE/DELETE
+      accounts (owner ∨ staff_can ∨ super admin). FE desktop+mobile: "—" + ẩn icon.
+- [x] Sweep hồi quy 3 writer hệ thống sau trigger toàn cục 24/07 (fleet 10 Opus
+      agents + Fable tổng review, kết quả từng luồng):
+      - **Forfeit pair: PASS** — tạo cặp + duyệt cặp trọn vẹn, NON_CASH không sinh
+        posting (a85/a85b short-circuit is_virtual đúng), a00 nuốt batch 2 token
+        cùng xid không 23505, settlement invoice cascade PAID.
+      - **Salary: OFF-by-design nhánh bundle** (gate §2.6 `0A000` vì thiếu decision
+        record salary.settlement.v2 — đúng thiết kế I81) + **PASS writer lương cơ
+        bản** (probe tự-rollback qua cả 3 trigger, a000 bồi default đúng, a85b
+        1 posting). PHÁT HIỆN: chưa tồn tại writer TẠO bundle (chỉ có 3 adapter
+        transition/supersede/post-tranche) — khi owner chốt policy phải build
+        thêm tầng sinh bundle.
+      - **Refund: BUG day-one 7ab** (xem nhật ký lỗi) — đã fix 20260724170000,
+        re-test end-to-end sau fix.
+- [x] I28 ĐẠT (đo 3 mốc T0/T1/T2 per-voucher, cô lập churn song song): ALL_ACTIVE
+      45.000=45.000=45.000; nguồn báo cáo APPROVED 0→45.000→45.000 (nhận 1 lần khi
+      duyệt, post KHÔNG nhảy lần 2); allocation rows luôn = 1; cleanup net 0.
+- [x] I29 preview PASS (finance_v2_pending_kqkd_blockers): pending → count 1 +
+      blocking id đúng phiếu; sau approve-only → rời blocker sang approved_unposted
+      (không chặn); cancel → về baseline. GAP lộ ra đã fix 7aa (xem nhật ký).
+- [x] Cờ sổ quỹ verify PASS: NATHAN đúng 3/21 sổ CUSTODIAN visible, KNOWER/không-
+      binding false; cross-check sổ visible khớp SUM lines từng đồng (TK000008
+      "Chung" masked che đúng −124.117.000); browser "—" + 0 console error.
+      Caveat: nhánh ẩn-icon can_manage=false chỉ verify được tầng RPC (sổ
+      can_manage=false của NATHAN bị RLS ẩn khỏi list nên không có dòng để nhìn).
+- [x] Mobile posted-aware cancel + huỷ REVERSED trên mobile: e2e mới
+      finance-v2-mobile-cancel.spec.ts 2/2 PASS (chạy 2 lần liên tiếp ổn định),
+      balance CANARY 218.000 bất biến.
+- [x] finance-v2.spec.ts 4/4 PASS (2 test cũ + huỷ-REVERSED desktop + mobile
+      parity Thu→Hoàn tác). Gotcha spec: seed phải bằng ketoan — RLS bảng accounts
+      ẩn sổ "CANARY renamed" khỏi chunha (chunha là CUSTODIAN nhưng không owner/
+      shared; app đọc sổ qua RPC list_cashbooks_* nên UI vẫn thấy).
+- [x] Audit tồn dư DEMO: sạch (0 phiếu [E2E] active; ledger=view 100%; CANARY đúng
+      218.000). Residue cũ không khẩn: 1 phiếu [SMOKE 7y] CANCELLED-nhưng-POSTED,
+      sổ "So test sau hotfix" −680.000, 49 token transition mồ côi (phiếu CANCELLED).
+- [x] Console sweep 5 trang × 2 viewport (CHUNHA): 10/10 sạch — 0 console error,
+      0 page error, 0 request 500.
 
 ## NHẬT KÝ LỖI TOÀN ĐỢT (go-live V2 → 24/07) — để dò lại & phân tích mẫu lỗi
 
@@ -147,6 +214,10 @@
 | 7y(2) | 24/07 | **PROD NATHAN**: sửa phiếu chờ duyệt → 23502 items.id NULL | `ie_compat_update_pending_v2` cũng populate_record (7o/7p chỉ vá hàm INSERT) | 140000 (trigger a000 defaults-fill TẦNG BẢNG cho income_expenses + items) | **L1** |
 
 | 7z | 24/07 | **PROD NATHAN**: thanh lý move-out 55000 "does not match the active termination context" | Trigger classify_termination_payment_v1 (26bf179 **21/07 — đợt khoá chuỗi hạch toán, TRƯỚC Thu Chi V2**) đòi invoice.user_id = chủ HĐ; dữ liệu thật có 71 hoá đơn nợ do staff lập hộ (55 HĐ hiệu lực) | 20260724150000 (bỏ ràng buộc người-lập + room của HOÁ ĐƠN; neo = đúng hợp đồng trong context) — verify đúng ca lệch trên DEMO: RPC 200, HĐ TERMINATED | L2 (của đợt trước) |
+| 7aa | 24/07 | Fleet-agent I29: phiếu pending tạo qua COMPAT không lọt blocker close (resolver bỏ sót) | writer compat để `recognition_source_mode` NULL nhưng resolver lọc `= 'BASE'` cứng → 134 APPROVED + 25 UNAPPROVED org thật (17+7 DEMO) vô hình với close gate tương lai. CHƯA gây hại (profit_close FROZEN; báo cáo client không đọc resolver) — bắt được TRƯỚC khi mở close | 20260724170000: resolver `COALESCE(mode,'BASE')` — chữa cả lịch sử lẫn tương lai, không UPDATE hàng loạt (né freeze-guard); smoke probe tự-rollback xác nhận phiếu mode-NULL lọt resolver | **L2** (bắt bởi fleet, chưa ra PROD-error) |
+| 7ab | 24/07 | Fleet-agent refund: hoàn tiền hoá đơn 42804 — luồng VỠ 100% từ 23/07, chưa ai dùng nên chưa ai báo | `reserve_invoice_refund_obligation_v2` day-one: (i) nhét idempotency TEXT vào `correlation_id` UUID → 42804; (ii) `payload_hash_scheme='md5'` vi phạm CHECK chỉ nhận PG_MD5_JSONB_TEXT_V1 → 23514 (lộ ngay khi fix (i)) | 20260724170000: correlation NULL (idempotency đã unique ở reservations) + scheme đúng; smoke reserve HELD tự-rollback trong stage | **L2** (adapter chưa từng chạy = tổ hợp chưa từng test) |
+| 7ac | 24/07 | Fleet-agent refund (sau fix 7ab): adapter duyệt/huỷ refund MỒ CÔI — không RPC public nào gọi, refund birth không tạo approval_request → phiếu tạo xong KẸT UNAPPROVED; TỆ HƠN: cancel v1 huỷ lọt phiếu refund mà BỎ QUÊN reservation HELD (chiếm cap hoá đơn vĩnh viễn) | Thiết kế §8 "public RPC dispatch theo flow owner" chưa nối dây cho INVOICE_REFUND/TERMINATION_REFUND; cancel v1 chỉ check EXISTS flow-owned (mọi flow) rồi huỷ thẳng | 20260724180000: RPC public `decide_owned_income_expense_v2` (approve/cancel, quyền income_expenses.approve, tự tra reservation, canonical op idempotent; post/reverse KHÔNG expose — chưa có đường sinh posting refund) + 190000: cancel v1 assert flow CANONICAL (42501 'owned by system flow') + FE fallback trong financeV2Mutations/statusMutations. Nối dây xong còn 2 lỗi con lộ khi verify TÁCH TRANSACTION: **7ac(c)** birth-boundary tra op create.v2 nhưng refund birth đăng ký op reserve.v2 → 55000 mọi phiếu refund (fix 210000: kiểm bất biến gốc birth_txid ≠ txid hiện tại); **7ac(d)** gọi finish_canonical_op sai chữ ký `v_op.id` → 42703 sau dispatch (fix 220000). VERIFY CUỐI trên PROD-DB/DEMO tách txn: reserve→HELD; cancel v1→42501 guard, HELD giữ; approve→APPROVED+HELD; replay idempotent; cancel→CANCELLED+RELEASED sv2; invoice paid nguyên trạng. | **L2** (wiring gap) + bài học: smoke same-txn KHÔNG phủ được birth-boundary/đoạn sau dispatch — verify phải tách transaction |
+| 7ad | 24/07 | Fleet-agent writers-scope: form quản trị sổ (người chia sẻ TỰ GIỮ SỔ — ca thường nhất) nổ 22P02 "malformed array literal: CUSTODIAN" | `set_cashbook_access_v2` nhánh chống self-role-change: `v_after \|\| 'CUSTODIAN'` — Postgres resolve `text[] \|\| unknown` thành array‖array, parse chuỗi như array literal | 20260724200000: ép `::text` (array‖element); re-verify: repro 200 + binding đúng, guard self-role-change vẫn 42501 sạch, sổ hoàn nguyên | **L2** (nhánh chỉ chạy khi actor ∈ danh sách — tổ hợp chưa từng test) |
 
 ### PHÂN TÍCH MẪU LỖI (trả lời "đang hỏng ở phần nào")
 1. **L1 — `jsonb_populate_record` đè DEFAULT** (7m,7n,7o,7p,7y2 — 5 lần): một kỹ thuật

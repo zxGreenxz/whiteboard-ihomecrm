@@ -119,6 +119,87 @@ async function findVoucherRow(page: Page, name: string) {
   return row;
 }
 
+/** Đọc id phiếu theo tên (sau khi seed). */
+async function getVoucherId(a: SbAuth, name: string): Promise<string> {
+  const [v] = await sbGet(
+    a,
+    `income_expenses?select=id&name=eq.${encodeURIComponent(name)}&limit=1`,
+  );
+  if (!v) throw new Error(`Không tìm thấy phiếu seed: ${name}`);
+  return v.id as string;
+}
+
+/** Duyệt-only V2 qua REST (nhanh, khỏi phải bấm UI) → APPROVED-UNPOSTED. */
+async function approveVoucherRest(a: SbAuth, voucherId: string) {
+  const r = await fetch(`${a.base}/rest/v1/rpc/approve_income_expense_v2`, {
+    method: 'POST',
+    headers: {
+      apikey: a.apikey,
+      Authorization: a.auth,
+      'Content-Type': 'application/json',
+      'Content-Profile': 'public',
+    },
+    body: JSON.stringify({
+      p_voucher: voucherId,
+      p_expected_approval_version: 1,
+      p_idempotency_key: `e2e-approve-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    }),
+  });
+  if (!r.ok) throw new Error(`approve v2 → ${r.status} ${await r.text()}`);
+}
+
+/** Dọn fixture best-effort: POSTED thì hoàn tác trước, rồi compat-cancel về CANCELLED. */
+async function cleanupVoucher(a: SbAuth, voucherId: string) {
+  try {
+    const rows = await sbGet(
+      a,
+      `income_expenses?select=approval_status,posting_status,account_id&id=eq.${voucherId}`,
+    );
+    const st = rows[0] as
+      | { approval_status: string; posting_status: string | null; account_id: string | null }
+      | undefined;
+    if (!st || st.approval_status === 'CANCELLED') return;
+    const hdr = {
+      apikey: a.apikey,
+      Authorization: a.auth,
+      'Content-Type': 'application/json',
+      'Content-Profile': 'public',
+    };
+    if (st.posting_status === 'POSTED') {
+      await fetch(`${a.base}/rest/v1/rpc/reverse_posted_income_expense_v2`, {
+        method: 'POST',
+        headers: hdr,
+        body: JSON.stringify({
+          p_voucher: voucherId,
+          p_cashbook: st.account_id,
+          p_posted_on: new Date().toISOString().slice(0, 10),
+          p_reason: 'e2e cleanup reverse',
+          p_idempotency_key: `e2e-clean-rev-${voucherId}-${Date.now()}`,
+        }),
+      });
+    }
+    await fetch(`${a.base}/rest/v1/rpc/ie_compat_cancel_v2`, {
+      method: 'POST',
+      headers: hdr,
+      body: JSON.stringify({ p_ids: [voucherId], p_reason: 'e2e cleanup' }),
+    });
+  } catch {
+    // best-effort — không chặn kết thúc test.
+  }
+}
+
+/** Mở sheet chi tiết một phiếu trên TRANG MOBILE (viewport ≤767px). */
+async function openMobileDetail(page: Page, name: string) {
+  await page.goto('/income-expense');
+  // Lớp "Tất cả" để thấy phiếu bất kể trạng thái (mặc định lọc Tiền thật).
+  await page.getByRole('button', { name: 'Tất cả', exact: true }).click();
+  await page.getByPlaceholder(/Theo mã phòng/).fill(name);
+  const card = page.locator('.vch', { hasText: name });
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await card.click();
+  await expect(page.getByText('THÔNG TIN THU/CHI')).toBeVisible({ timeout: 15_000 });
+}
+
 // Tổ hợp từng LỌT lưới (P0002 prod 24/07): writer canonical create v1 sinh phiếu
 // CHỜ DUYỆT (chi vượt ngưỡng tự-duyệt) — mọi user DEMO tạo qua form đều tự-duyệt
 // nên UI không bao giờ mở nhánh này; phải gọi RPC trực tiếp với số tiền lớn.
@@ -363,4 +444,213 @@ test('finance-v2-lifecycle', async ({ browser }) => {
 
   expect(errs, `chunha console: ${errs.join(' | ')}`).toEqual([]);
   await ctxChunha.close();
+});
+
+// ---- TEST 3: HUỶ phiếu ĐÃ HOÀN TÁC (REVERSED) qua UI desktop ----------------
+// Regression cho nới `approvedShape` phủ posting_status==='REVERSED'
+// (src/hooks/income-expenses/statusMutations.ts): phiếu Đã-hoàn-tác bấm Huỷ trên
+// UI phải ra CANCELLED (cancel v1 409 → fallback ie_compat_cancel_v2), KHÔNG lỗi.
+// Dialog huỷ là dialog THƯỜNG (không posted-aware) vì phiếu không còn POSTED.
+test('finance-v2 huỷ phiếu REVERSED qua UI (desktop)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const name = `[E2E-V2] reversed-cancel ${Date.now()}`;
+
+  // Seed phiếu Chờ duyệt bằng phiên ketoan (compat, server ép UNAPPROVED).
+  const ctxKetoan = await browser.newContext();
+  const pk = await ctxKetoan.newPage();
+  await login(pk, 'ketoan');
+  const navK = pk.goto('/income-expense');
+  const authK = await captureSupabaseAuth(pk);
+  await navK;
+  await seedPendingVoucher(authK, name);
+  await ctxKetoan.close();
+
+  const ctxChunha = await browser.newContext();
+  const pc = await ctxChunha.newPage();
+  const errs = trackConsoleErrors(pc);
+  let authC: SbAuth | null = null;
+  let voucherId: string | null = null;
+  try {
+    await login(pc, 'chunha');
+    const navC = pc.goto('/income-expense');
+    authC = await captureSupabaseAuth(pc);
+    await navC;
+    voucherId = await getVoucherId(authC, name);
+
+    const row = await findVoucherRow(pc, name);
+
+    // Duyệt-only (V2) → Đã Duyệt - Chưa Thu (không đổi tồn quỹ).
+    await row.getByRole('button', { name: 'Duyệt phiếu (đã thanh toán)' }).click();
+    await Promise.all([
+      pc.waitForResponse(
+        (r) => RPC('approve_income_expense_v2').test(r.url()) && r.status() === 200,
+        { timeout: 30_000 },
+      ),
+      pc.getByRole('button', { name: 'Chỉ duyệt' }).click(),
+    ]);
+    await expect(row.getByText(/Đã Duyệt - Chưa (Thu|Chi)/)).toBeVisible({ timeout: 30_000 });
+
+    // Thu tiền vào sổ (Posting dialog POST_APPROVED, evidence bắt buộc).
+    await row.getByRole('button', { name: /Thu tiền vào sổ|Chi tiền từ sổ/ }).click();
+    await pc.getByRole('combobox', { name: 'Sổ quỹ *' }).click();
+    await pc.getByRole('option', { name: 'CANARY renamed' }).click();
+    await uploadEvidence(pc);
+    await Promise.all([
+      pc.waitForResponse(
+        (r) => RPC('post_approved_income_expense_v2').test(r.url()) && r.status() === 200,
+        { timeout: 30_000 },
+      ),
+      pc.getByRole('dialog').getByRole('button', { name: /^(Thu|Chi)$/ }).click(),
+    ]);
+    await expect(row.getByText(/^Đã (Thu|Chi)$/)).toBeVisible({ timeout: 30_000 });
+
+    // HOÀN TÁC (nút violet, dialog có Textarea lý do) → posting_status=REVERSED.
+    await row.getByRole('button', { name: /Hoàn tác khoản (thu|chi)/ }).click();
+    await pc.getByRole('alertdialog').getByRole('textbox').fill('E2E hoàn tác trước khi huỷ');
+    await pc.getByRole('alertdialog').getByRole('button', { name: 'Hoàn tác' }).click();
+    await expect
+      .poll(
+        async () => {
+          const [st] = await sbGet(
+            authC!,
+            `income_expenses?select=posting_status&id=eq.${voucherId}`,
+          );
+          return st.posting_status;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe('REVERSED');
+
+    // HUỶ phiếu REVERSED: reload lấy state tươi → dialog THƯỜNG (không posted-aware).
+    await pc.reload();
+    const rowR = await findVoucherRow(pc, name);
+    await rowR.getByRole('button', { name: 'Huỷ phiếu' }).click();
+    const cancelDialog = pc.getByRole('alertdialog');
+    // Bằng chứng dialog thường: KHÔNG có nút "Hoàn tác & Huỷ phiếu" của posted-aware.
+    await expect(
+      cancelDialog.getByRole('button', { name: 'Hoàn tác & Huỷ phiếu' }),
+    ).toHaveCount(0);
+    await cancelDialog.getByRole('button', { name: 'Huỷ phiếu' }).click();
+
+    // Assert bằng DB thật (REST), KHÔNG dựa "row biến khỏi list" (≤10s).
+    await expect
+      .poll(
+        async () => {
+          const [st] = await sbGet(
+            authC!,
+            `income_expenses?select=approval_status&id=eq.${voucherId}`,
+          );
+          return st.approval_status;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe('CANCELLED');
+
+    expect(errs, `chunha console: ${errs.join(' | ')}`).toEqual([]);
+  } finally {
+    if (authC && voucherId) await cleanupVoucher(authC, voucherId);
+    await ctxChunha.close();
+  }
+});
+
+// ---- TEST 4: MOBILE parity 2 nút (Thu vào sổ → Hoàn tác) ---------------------
+// Trang mobile render khi viewport ≤767px (usePhoneViewport). Kiểm nút Thu/Chi
+// (aria-label "Thu tiền vào sổ") trên phiếu APPROVED-UNPOSTED trong sheet chi
+// tiết → Posting dialog POST_APPROVED; và nút "Hoàn tác" trên phiếu POSTED.
+test('finance-v2 mobile parity 2 nút (Thu → Hoàn tác)', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const name = `[E2E-V2] mobile parity ${Date.now()}`;
+
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const pc = await ctx.newPage();
+  const errs = trackConsoleErrors(pc);
+  let auth: SbAuth | null = null;
+  let voucherId: string | null = null;
+  try {
+    // Seed phiếu Chờ duyệt bằng phiên ketoan. RLS bảng `accounts` ẨN sổ
+    // "CANARY renamed" khỏi chunha qua REST trực tiếp (chunha chỉ thấy sổ này
+    // trong combobox app, không SELECT bảng accounts được) → seedPendingVoucher
+    // phải chạy bằng ketoan như các test kia, không seed bằng chunha.
+    const ctxKetoan = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const pk = await ctxKetoan.newPage();
+    await login(pk, 'ketoan');
+    const navK = pk.goto('/income-expense');
+    const authK = await captureSupabaseAuth(pk);
+    await navK;
+    await seedPendingVoucher(authK, name);
+    await ctxKetoan.close();
+
+    // Chủ nhà (fleet) có quyền duyệt + là CUSTODIAN sổ CANARY renamed.
+    await login(pc, 'chunha');
+    const nav = pc.goto('/income-expense');
+    auth = await captureSupabaseAuth(pc);
+    await nav;
+
+    // Duyệt qua REST → phiếu APPROVED-UNPOSTED (khỏi bấm UI duyệt).
+    voucherId = await getVoucherId(auth, name);
+    await approveVoucherRest(auth, voucherId);
+    await expect
+      .poll(
+        async () => {
+          const [st] = await sbGet(
+            auth!,
+            `income_expenses?select=approval_status,posting_status&id=eq.${voucherId}`,
+          );
+          return `${st.approval_status}/${st.posting_status ?? 'null'}`;
+        },
+        { timeout: 15_000 },
+      )
+      .toMatch(/^APPROVED\/(UNPOSTED|null)$/);
+
+    // Sheet chi tiết → nút Thu tiền vào sổ (phiếu đã duyệt, chưa ghi sổ).
+    await openMobileDetail(pc, name);
+    await pc.getByRole('button', { name: /Thu tiền vào sổ|Chi tiền từ sổ/ }).click();
+
+    // Posting dialog POST_APPROVED: sổ quỹ + ngày (mặc định hôm nay) + chứng từ.
+    await pc.getByRole('combobox', { name: 'Sổ quỹ *' }).click();
+    await pc.getByRole('option', { name: 'CANARY renamed' }).click();
+    await uploadEvidence(pc);
+    await Promise.all([
+      pc.waitForResponse(
+        (r) => RPC('post_approved_income_expense_v2').test(r.url()) && r.status() === 200,
+        { timeout: 30_000 },
+      ),
+      pc.getByRole('dialog').getByRole('button', { name: /^(Thu|Chi)$/ }).click(),
+    ]);
+    await expect
+      .poll(
+        async () => {
+          const [st] = await sbGet(
+            auth!,
+            `income_expenses?select=posting_status&id=eq.${voucherId}`,
+          );
+          return st.posting_status;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe('POSTED');
+
+    // Mở lại sheet → nút Hoàn tác (mô hình 2 nút trên mobile), nhập lý do.
+    await openMobileDetail(pc, name);
+    await pc.getByRole('button', { name: 'Hoàn tác' }).click();
+    await pc.getByRole('alertdialog').getByRole('textbox').fill('E2E mobile hoàn tác');
+    await pc.getByRole('alertdialog').getByRole('button', { name: 'Hoàn tác' }).click();
+    await expect
+      .poll(
+        async () => {
+          const [st] = await sbGet(
+            auth!,
+            `income_expenses?select=posting_status&id=eq.${voucherId}`,
+          );
+          return st.posting_status;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe('REVERSED');
+
+    expect(errs, `mobile console: ${errs.join(' | ')}`).toEqual([]);
+  } finally {
+    if (auth && voucherId) await cleanupVoucher(auth, voucherId);
+    await ctx.close();
+  }
 });

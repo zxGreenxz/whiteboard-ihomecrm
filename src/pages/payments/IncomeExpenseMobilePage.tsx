@@ -84,10 +84,13 @@ import {
 import {
   useApproveIncomeExpenseV2,
   useApproveAndPostIncomeExpenseV2,
+  usePostApprovedIncomeExpenseV2,
+  useReversePostingV2,
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
+import { Textarea } from "@/components/ui/textarea";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
 
@@ -199,6 +202,15 @@ export default function IncomeExpenseMobilePage() {
   const [approveAttachments, setApproveAttachments] = useState<string[]>([]);
   // V2: mở Posting dialog "Duyệt và Chi/Thu" (chỉ khi route CANONICAL).
   const [approveAndPostOpen, setApproveAndPostOpen] = useState(false);
+  // V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT-CHƯA GHI SỔ (CUSTODIAN, không cần quyền duyệt).
+  const [postApprovedTarget, setPostApprovedTarget] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  // Mô hình 2 nút: HOÀN TÁC phiếu đã ghi sổ (kèm lý do).
+  const [reverseTarget, setReverseTarget] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  const [reverseReason, setReverseReason] = useState("");
+  // Huỷ phiếu ĐÃ CHI: cảnh báo hoàn-tác-tiền + lý do (ghi vào reversal).
+  const [cancelReason, setCancelReason] = useState("");
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   // Nạp giá trị hiện tại của phiếu mỗi khi mở hộp thoại duyệt.
@@ -295,7 +307,20 @@ export default function IncomeExpenseMobilePage() {
   const v2ApproveAndPost = v2ApproveOnly && canWritePosting(approveOrgRoutes);
   const approveV2Mutation = useApproveIncomeExpenseV2();
   const approveAndPostV2Mutation = useApproveAndPostIncomeExpenseV2();
-  const { data: custodianBooks = [] } = useCustodianCashbooksV2(approveAndPostOpen);
+  const postApprovedV2Mutation = usePostApprovedIncomeExpenseV2();
+  const reversePostingV2Mutation = useReversePostingV2();
+  const { data: custodianBooks = [] } = useCustodianCashbooksV2(
+    approveAndPostOpen || !!postApprovedTarget,
+  );
+
+  // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
+  const cancelTargetVoucher = cancelTarget
+    ? vouchers.find((x) => x.id === cancelTarget) ?? null
+    : null;
+  const cancelTargetPosted =
+    (cancelTargetVoucher as { posting_status?: string | null } | null)
+      ?.posting_status === "POSTED";
+  const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
 
   // Duyệt phiếu: nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước
   // (update_income_expense_quick chỉ áp cho phiếu nháp) rồi mới ghi vào tồn quỹ.
@@ -685,6 +710,8 @@ export default function IncomeExpenseMobilePage() {
               onCancel={(id) => setCancelTarget(id)}
               onRestore={(id) => setRestoreTarget(id)}
               onCopy={(v) => setCopyVoucher(v)}
+              onPostApproved={(v) => setPostApprovedTarget(v)}
+              onReversePosting={(v) => setReverseTarget(v)}
             />
           )}
 
@@ -862,26 +889,58 @@ export default function IncomeExpenseMobilePage() {
       {/* Xác nhận huỷ / duyệt */}
       <AlertDialog
         open={!!cancelTarget}
-        onOpenChange={() => setCancelTarget(null)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setCancelTarget(null);
+            setCancelReason("");
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận huỷ phiếu</AlertDialogTitle>
             <AlertDialogDescription>
-              Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng đến tồn
-              quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
+              {cancelTargetPosted ? (
+                <>
+                  Phiếu này <b>đã {cancelTargetIsIncome ? "thu" : "chi"} tiền
+                  thật</b>. Huỷ sẽ tạo bút toán <b>HOÀN TÁC</b> ghi ngày hôm
+                  nay ({cancelTargetIsIncome ? "tiền rời khỏi sổ" : "tiền trả về sổ"},
+                  tồn quỹ thay đổi) rồi mới đánh dấu phiếu <b>Đã huỷ</b>. Bút
+                  toán gốc giữ nguyên trong lịch sử sổ.
+                </>
+              ) : (
+                <>
+                  Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng đến
+                  tồn quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {cancelTargetPosted && (
+            <Textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Lý do hoàn tác/huỷ (ghi vào bút toán hoàn tác — nên nhập)"
+              rows={2}
+            />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (cancelTarget) cancelMutation.mutate(cancelTarget);
+                if (cancelTarget) {
+                  cancelMutation.mutate(
+                    cancelReason.trim()
+                      ? { id: cancelTarget, reason: cancelReason.trim() }
+                      : cancelTarget,
+                  );
+                }
                 setCancelTarget(null);
+                setCancelReason("");
               }}
               className="bg-red-600 hover:bg-red-700"
             >
-              Huỷ phiếu
+              {cancelTargetPosted ? "Hoàn tác & Huỷ phiếu" : "Huỷ phiếu"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1054,6 +1113,98 @@ export default function IncomeExpenseMobilePage() {
             setApproveTarget(null);
           }}
           isSubmitting={approveAndPostV2Mutation.isPending}
+        />
+      )}
+
+      {/* Mô hình 2 nút: xác nhận HOÀN TÁC phiếu đã ghi sổ (kèm lý do). */}
+      <AlertDialog
+        open={!!reverseTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setReverseTarget(null);
+            setReverseReason("");
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Hoàn tác {reverseTarget?.type === "INCOME" ? "khoản thu" : "khoản chi"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Hệ thống tạo bút toán <b>đối dấu ghi ngày hôm nay</b> — tiền{" "}
+              {reverseTarget?.type === "INCOME" ? "rời khỏi" : "trả về"} sổ{" "}
+              <b>{(reverseTarget as { account_name?: string } | null)?.account_name ?? "đã chi"}</b>,{" "}
+              <b>tồn quỹ thay đổi</b>. Phiếu chuyển sang <b>Đã hoàn tác</b> và
+              nằm chờ: có thể <b>Thu/Chi lại</b> (vd đúng sổ khác) hoặc{" "}
+              <b>Huỷ</b>. Bút toán gốc giữ nguyên trong lịch sử.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            value={reverseReason}
+            onChange={(e) => setReverseReason(e.target.value)}
+            placeholder="Lý do hoàn tác (ghi vào bút toán — nên nhập)"
+            rows={2}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={reversePostingV2Mutation.isPending}>
+              Đóng
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-violet-600 hover:bg-violet-700"
+              disabled={reversePostingV2Mutation.isPending}
+              onClick={() => {
+                if (!reverseTarget?.account_id) return;
+                reversePostingV2Mutation.mutate({
+                  voucherId: reverseTarget.id,
+                  cashbookId: reverseTarget.account_id,
+                  reason: reverseReason.trim() || null,
+                });
+                setReverseTarget(null);
+                setReverseReason("");
+              }}
+            >
+              Hoàn tác
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Finance V2 §12.3: Thu/Chi phiếu ĐÃ DUYỆT (CUSTODIAN, không cần quyền duyệt). */}
+      {postApprovedTarget && (
+        <IncomeExpensePostingDialog
+          open={!!postApprovedTarget}
+          onOpenChange={(o) => {
+            if (!o) setPostApprovedTarget(null);
+          }}
+          mode="POST_APPROVED"
+          voucher={{
+            subjectKind: "VOUCHER",
+            subjectId: postApprovedTarget.id,
+            type: (postApprovedTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
+            approvedTotal: postApprovedTarget.total_amount ?? 0,
+            name: postApprovedTarget.name ?? undefined,
+          }}
+          capability={{ isCustodian: custodianBooks.length > 0, canApprove: false }}
+          cashbookOptions={custodianBooks}
+          expectedExecutionRevision={0}
+          expectedApprovalVersion={
+            (postApprovedTarget as { approval_version?: number }).approval_version ?? 1
+          }
+          expectedPostingVersion={
+            (postApprovedTarget as { posting_version?: number }).posting_version ?? 1
+          }
+          onUploadEvidence={(file) =>
+            uploadFinanceEvidence(
+              file,
+              (postApprovedTarget as { organization_id?: string | null }).organization_id,
+            )
+          }
+          onSubmit={async (input) => {
+            await postApprovedV2Mutation.mutateAsync(input);
+            setPostApprovedTarget(null);
+          }}
+          isSubmitting={postApprovedV2Mutation.isPending}
         />
       )}
 
