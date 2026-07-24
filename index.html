@@ -10,7 +10,12 @@
     <meta name="description" content="Cập nhật realtime · đầy đủ thông tin phòng & vị trí toà nhà" />
     <meta name="author" content="CRM" />
 
-    <!-- Standalone-only entry watchdog. Browser tabs keep their current behavior. -->
+    <!-- Standalone-only entry watchdog. Browser tabs keep their current behavior.
+         Án lệ Android 07/2026: đổi mạng WiFi→LTE làm socket chết → fetch entry
+         JS treo LƠ LỬNG (không error, không xong) và cả location.replace() cứu
+         hộ cũng treo theo → splash xoay vô hạn, phải kill app. Vì vậy mọi bước
+         đều có tầng thoát: nhắc mạng chậm (soft) → tự reload (hard) → reload
+         không cập bến thì hiện màn lỗi + nút thử lại (nav). -->
     <script>
       (function () {
         var standalone = false;
@@ -23,23 +28,46 @@
 
         document.documentElement.classList.add('pwa-standalone');
 
+        // Timings cho phép test override qua window.__ihomeWdT (đặt trước khi
+        // script này chạy — addInitScript của Playwright). Prod dùng mặc định.
+        var T = window.__ihomeWdT || {};
         var retryKey = 'ihome:pwa-entry-retry';
-        var retryWindowMs = 120000;
-        var entryTimeoutMs = 30000;
-        var recoveryStarted = false;
-        var timer = window.setTimeout(recoverEntry, entryTimeoutMs);
+        var retryWindowMs = T.retryWindow || 120000;
+        var softTimeoutMs = T.soft || 12000; // nhắc "mạng chậm", spinner vẫn chạy, KHÔNG hủy download đang dở
+        var hardTimeoutMs = T.hard || 30000; // tự reload bust-cache (1 lần / retryWindowMs)
+        var navTimeoutMs = T.nav || 10000;   // reload phát đi mà navigation không cập bến → màn lỗi
+        var autoReloadDone = false;
+        var failedShown = false;
+        var retryBound = false;
+        var timers = [];
+
+        function armTimer(fn, ms) { timers.push(window.setTimeout(fn, ms)); }
+        function clearTimers() {
+          for (var i = 0; i < timers.length; i++) window.clearTimeout(timers[i]);
+          timers = [];
+        }
+
+        armTimer(function () {
+          showRecovery(false, 'Mạng chậm, ứng dụng vẫn đang tải…');
+        }, softTimeoutMs);
+        armTimer(autoReload, hardTimeoutMs);
 
         function onEntryError(event) {
           var target = event.target;
           if (target && target.tagName === 'SCRIPT' && target.type === 'module') {
-            recoverEntry();
+            autoReload();
           }
         }
         window.addEventListener('error', onEntryError, true);
 
         window.__ihomePwaEntryReady = function () {
-          window.clearTimeout(timer);
+          clearTimers();
           window.removeEventListener('error', onEntryError, true);
+          var splash = document.getElementById('app-splash');
+          if (splash) {
+            splash.classList.remove('as-slow', 'as-failed');
+            splash.setAttribute('aria-hidden', 'true');
+          }
           try { window.sessionStorage.removeItem(retryKey); } catch (e) {}
           try {
             var cleanUrl = new URL(window.location.href);
@@ -56,9 +84,17 @@
           return url.toString();
         }
 
-        function recoverEntry() {
-          if (recoveryStarted) return;
-          recoveryStarted = true;
+        function startReload() {
+          clearTimers();
+          armTimer(function () {
+            showRecovery(true, 'Không thể kết nối máy chủ. Kiểm tra mạng rồi bấm tải lại.');
+          }, navTimeoutMs);
+          window.location.replace(cacheBustedUrl());
+        }
+
+        function autoReload() {
+          if (autoReloadDone) return;
+          autoReloadDone = true;
           var shouldReload = false;
           var now = Date.now();
           try {
@@ -69,24 +105,30 @@
             }
           } catch (e) {}
 
-          if (shouldReload) {
-            window.location.replace(cacheBustedUrl());
-            return;
-          }
-          showEntryFailure();
+          if (shouldReload) { startReload(); return; }
+          clearTimers();
+          showRecovery(true, 'Ứng dụng chưa thể khởi động. Hãy kiểm tra kết nối rồi tải lại.');
         }
 
-        function showEntryFailure() {
+        function showRecovery(failed, message) {
           function reveal() {
+            if (!failed && failedShown) return; // không hạ cấp màn lỗi về nhắc mạng chậm
             var splash = document.getElementById('app-splash');
+            var msg = document.getElementById('app-splash-msg');
             var retry = document.getElementById('app-splash-reload');
-            if (!splash || !retry) return;
-            splash.classList.add('as-failed');
+            if (!splash || !msg || !retry) return;
+            if (failed) failedShown = true;
+            msg.textContent = message;
+            splash.classList.add(failed ? 'as-failed' : 'as-slow');
             splash.setAttribute('aria-hidden', 'false');
-            retry.addEventListener('click', function () {
-              try { window.sessionStorage.removeItem(retryKey); } catch (e) {}
-              window.location.replace(cacheBustedUrl());
-            }, { once: true });
+            if (!retryBound) {
+              retryBound = true;
+              retry.addEventListener('click', function () {
+                try { window.sessionStorage.removeItem(retryKey); } catch (e) {}
+                autoReloadDone = true;
+                startReload();
+              });
+            }
           }
 
           if (document.readyState === 'loading') {
@@ -132,6 +174,8 @@
         margin-top: 14px; border: 0; border-radius: 10px; padding: 10px 16px;
         background: #176244; color: #fff; font: inherit; cursor: pointer;
       }
+      /* as-slow: nhắc mạng chậm — spinner VẪN chạy (download tiếp tục phía sau) */
+      #app-splash.as-slow .as-recovery { display: block; }
       #app-splash.as-failed .as-spin { display: none; }
       #app-splash.as-failed .as-recovery { display: block; }
       @keyframes as-spin { to { transform: rotate(360deg); } }
@@ -199,7 +243,7 @@
       </div>
       <div class="as-spin"></div>
       <div class="as-recovery" role="alert">
-        Ứng dụng chưa thể khởi động. Hãy kiểm tra kết nối rồi tải lại.
+        <span id="app-splash-msg">Ứng dụng chưa thể khởi động. Hãy kiểm tra kết nối rồi tải lại.</span>
         <br />
         <button id="app-splash-reload" type="button">Tải lại ứng dụng</button>
       </div>
