@@ -101,9 +101,16 @@ export function UtilityBookMenu({ accounts, valueId, defaultId, onPick, compact,
             style={{
               position: 'fixed',
               left: pos.left,
-              top: pos.top,
-              bottom: pos.bottom,
+              // CSS gốc `.tt-stage { inset: 0 }` neo đủ 4 cạnh — phải TRUNG HOÀ
+              // cạnh không dùng bằng 'auto', nếu không wrapper bị kéo full
+              // chiều cao và menu ghim lên đỉnh viewport (bug tester bắt 24/07).
+              top: pos.top ?? 'auto',
+              bottom: pos.bottom ?? 'auto',
+              right: 'auto',
               zIndex: 300,
+              height: 'auto',
+              minHeight: 0,
+              width: 'auto',
             }}
           >
             <div className="ub-bookpop" style={{ position: 'static' }} role="listbox" ref={popRef}>

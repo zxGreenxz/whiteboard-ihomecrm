@@ -179,6 +179,11 @@ export function useUtilityPayState(
   // Ctrl+V ảnh chứng từ: dán vào khoản đang thao tác (owner yêu cầu 24/07).
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
+      // Desktop panel + mobile sheet cùng mount hook → 2 listener; đánh dấu
+      // event để chỉ MỘT bên xử lý (tránh double toast/double upload).
+      const marked = e as ClipboardEvent & { __utilityPasteHandled?: boolean };
+      if (marked.__utilityPasteHandled) return;
+      marked.__utilityPasteHandled = true;
       const items = e.clipboardData?.items;
       if (!items) return;
       const img = Array.from(items).find((it) => it.type.startsWith('image/'));
