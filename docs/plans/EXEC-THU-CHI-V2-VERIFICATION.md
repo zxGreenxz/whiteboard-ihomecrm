@@ -121,6 +121,47 @@
 - resubmit tạo request engine mới; execution-queue UI; evidence-first posting UI
 - Mục 4 owner: 52 unsafe locks + 22 phiếu kỳ khóa (profit_close đang FROZEN an toàn)
 
+## NHẬT KÝ LỖI TOÀN ĐỢT (go-live V2 → 24/07) — để dò lại & phân tích mẫu lỗi
+
+> Owner yêu cầu 24/07: ghi lại TOÀN BỘ lỗi đã sửa để phân tích "đang hỏng ở phần nào".
+
+| # | Ngày | Triệu chứng (ai báo) | Root cause | Fix | Lớp |
+|---|---|---|---|---|---|
+| 7e-7h | 23/07 | NATHAN: huỷ/sửa phiếu chờ duyệt lỗi; selector sổ sai vai | flow-owned quá rộng; STABLE+FOR SHARE read-only txn; cột 42703/42804 compat | 160000–190000 | L2 |
+| 7i | 23/07 | Duyệt V2 400 (23514 completion_check) | reserve op stamp subject sớm | 220000 | L2 |
+| — | 23/07 | Duyệt V2 500 "no birth provenance" | phiếu cũ/writer cũ không khai sinh | 230000 (a86 + backfill) | L2 |
+| 7j | 23/07 | "Chỉ duyệt" nhưng tiền tự vào sổ (sai §2.2) | bridge a85 không phân biệt writer V2 | 240000 token skip | L2 |
+| — | 23/07 | Evidence "not FINALIZED in tenant" | FE không truyền org → intent đoán membership org khác | FE + org param | L2 |
+| 7k | 23/07 | Inbox không bao giờ hiện nút V2 | RPC inbox thiếu organization_id | 250000 | L2 |
+| 7l | 23/07 | "Duyệt và Chi" từ inbox xong nhưng dòng kẹt mãi | request engine không được đóng bởi writer V2 | 260000 (a87) | L2 |
+| 7m | 24/07 | E2E: tạo phiếu compat 400 (23502 canonical op) | a86 birth khi NEW.id NULL (compat INSERT nêu id NULL) | 20260724010000 | **L1** |
+| 7n-7p | 24/07 | E2E: compat insert nổ lần lượt total/created_at/items.id | `jsonb_populate_record` sinh NULL tường minh đè MỌI DEFAULT | 020000–040000 (generic header+items) | **L1** |
+| 7q-7r | 24/07 | E2E: user thường không đính được chứng từ (403) | policy storage chỉ nhận scheme cũ `<uid>/`; registry không grant | 050000–060000 | L2 |
+| 7s | 24/07 | **PROD NATHAN**: tạo phiếu chi chờ-duyệt P0002 | a86 ĐÈ source_payload_hash của writer v1 → claim lệch | 070000 (birth giữ hash) | L2 |
+| 7t | 24/07 | **PROD NATHAN**: duyệt V2 phiếu v1 → 55000 lifecycle columns | allowlist freeze chỉ biết cột thời v1 | 090000 | L2 |
+| 7u | 24/07 | E2E: phiếu qua 1 lifecycle V2 chết ở lifecycle sau ("frozen") | PK token = (income_expense_id) ĐƠN + grant DO NOTHING → xid stale | 100000 (UPSERT 3 chỗ) | **L3'** |
+| 7v | 24/07 | **PROD**: huỷ phiếu đã chi → 23505 duplicate token | còn writer khác (forfeit) INSERT token trần | 110000 (trigger UPSERT tầng bảng) | **L3'** |
+| — | 24/07 | Owner: muốn huỷ/chi lại phiếu đã chi | UI thiếu flow reversal | FE reverse-then-cancel + mô hình 2 nút + 130000 (generation MAX+1) | feature |
+| 7w | 24/07 | **PROD NATHAN**: đóng điện nước 23502 org NULL | pay_utility_bill quên organization_id; phiếu vượt ngưỡng sinh chờ-duyệt → a86 org NULL | 120000 (a86 bù org + writer gán org) | L2 |
+| 7y(1) | 24/07 | **PROD NATHAN**: thu tiền hoá đơn V5 → 23503 FK postings→voucher | bridge a85 tạo POSTING trong **BEFORE INSERT** (row cha chưa tồn tại); ngủ yên tới khi có INSERT-đã-duyệt đầu tiên sau go-live | 140000 (tách AFTER INSERT bridge a85b) | **L3** |
+| 7y(2) | 24/07 | **PROD NATHAN**: sửa phiếu chờ duyệt → 23502 items.id NULL | `ie_compat_update_pending_v2` cũng populate_record (7o/7p chỉ vá hàm INSERT) | 140000 (trigger a000 defaults-fill TẦNG BẢNG cho income_expenses + items) | **L1** |
+
+### PHÂN TÍCH MẪU LỖI (trả lời "đang hỏng ở phần nào")
+1. **L1 — `jsonb_populate_record` đè DEFAULT** (7m,7n,7o,7p,7y2 — 5 lần): một kỹ thuật
+   dùng ở NHIỀU writer; tôi vá theo TỪNG HÀM bị lộ thay vì quét mọi hàm dùng nó
+   một lần. Đã đóng vĩnh viễn bằng trigger defaults-fill Ở TẦNG BẢNG (140000) —
+   từ nay writer nào đưa NULL tường minh cũng được bù, không phụ thuộc vá hàm.
+2. **L2 — tổ hợp writer × trạng thái mới xuất hiện lần đầu** (7s,7t,7w…): mỗi trigger/
+   guard mới áp TOÀN CỤC nhưng test chỉ chạy luồng đang sửa. Khắc phục quy trình:
+   mọi thay đổi trigger toàn cục phải chạy đủ ma trận writer (v1, compat, V5,
+   utility, forfeit) × trạng thái sinh (tự duyệt / chờ duyệt) — nay đã có trong
+   e2e + smoke in-migration.
+3. **L3 — trigger đặt sai pha** (7y1: BEFORE làm việc của AFTER; 7u/7v: token
+   1-hàng-vĩnh-viễn cho khái niệm per-transaction): lỗi thiết kế nền — khi phát
+   hiện thì fix Ở TẦNG CƠ CHẾ (trigger tầng bảng, tách pha) chứ không vá caller.
+4. Mọi fix từ 7m trở đi đều kèm: smoke in-migration tái hiện đúng ca vỡ + verify
+   REST/e2e độc lập (Opus) + fixture tự dọn + mốc sổ CANARY đối chiếu.
+
 ## Smoke checklist cố định (chạy trước MỌI push main)
 1. Login owner → /income-expense: tạo phiếu chi → Chờ duyệt, tồn quỹ KHÔNG đổi
 2. Duyệt → 2 nút; "Chỉ duyệt" → badge Đã Duyệt-Chưa Chi, tồn KHÔNG đổi
