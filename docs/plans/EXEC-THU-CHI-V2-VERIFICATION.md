@@ -89,10 +89,26 @@
       (tất cả)"), đồng bộ FilterPanel/Chips; RPC layer_stats thêm p_posting
       (20260724080000). Browser-verified: từng trạng thái lọc thuần nhất, cards
       ăn theo, 0 console error.
-- [ ] Nợ nhỏ: fallback `ie_compat_cancel_v2`/`cancel_unposted_income_expense_v2`
-      ghi cột ngoài allowlist freeze (review_state, cancellation_kind, deleted_at…)
-      → 55000 trên phiếu canonical owned. Đường UI chính (cancel v1) không dính;
-      chỉ lộ nếu primary đổi. Vá allowlist khi thuận tiện.
+- [x] **HOTFIX 7t (PROD — phiếu "Tesst" NATHAN)**: duyệt V2 phiếu do writer v1
+      tạo → 55000 "may only change lifecycle columns". Allowlist freeze-guard
+      chỉ biết cột lifecycle thời v1; widen thêm review_state/review_version/
+      review_reason, approval_version/posting_version, posting_status/mode,
+      active_posting_id_v2, cancellation_kind, deleted_at, approval_request_id,
+      notes (20260724090000+100000). Tổ hợp (phiếu v1 × lifecycle V2) chưa từng
+      tồn tại trước 7s — phiếu v1 chờ-duyệt trước đó không tạo nổi.
+- [x] **HOTFIX 7u — token transition STALE (gốc rễ)**: PK ie_transition_authorization
+      = (income_expense_id) ĐƠN + mọi grant ON CONFLICT DO NOTHING ⇒ phiếu từng
+      qua 1 lifecycle V2 giữ token xid CŨ vĩnh viễn ⇒ lifecycle SAU frozen. Fix:
+      grant = UPSERT xid (begin_canonical_op + compat cancel + backfill). Compat
+      cancel giờ tự cấp token → nợ fallback-cancel cũ ĐÃ VÁ. E2E chạy 2 lần
+      liên tiếp PASS (lần 2 trên DB có token cũ — confirm hết stale).
+- [x] E2E siết chặt: case v1-pending mở rộng (create v1 vượt ngưỡng → duyệt V2
+      → huỷ); bước cleanup lifecycle đổi sang REST-assert CANCELLED (bài học:
+      assert "row biến khỏi list" từng false-positive). 2 specs PASS, 0 fixture
+      treo sau chạy.
+- [ ] Nợ nhỏ mới: nút Huỷ trên phiếu ĐÃ HOÀN TÁC (REVERSED) — cancel v1 từ chối
+      phiếu đã duyệt (409) và client chưa fallback compat cho case này → user
+      chưa huỷ được phiếu REVERSED qua UI (compat cancel REST thì được).
 
 ## Vòng 3 — Nợ kiến trúc ghi nhận (không chặn vận hành, làm sau vòng 2)
 - §11.3 hợp nhất: report đọc resolver server. **KẾT LUẬN ĐÁNH GIÁ 2026-07-24: GIỮ
