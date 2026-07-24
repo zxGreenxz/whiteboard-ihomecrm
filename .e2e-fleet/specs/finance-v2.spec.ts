@@ -291,72 +291,31 @@ test('finance-v2-lifecycle', async ({ browser }) => {
   expect(postResp.status()).toBe(200);
   await expect(row.getByText(/^Đã (Thu|Chi)$/)).toBeVisible({ timeout: 30_000 });
 
-  // ---- 4a. Fail-closed §2.2: phiếu ĐÃ GHI SỔ không huỷ thẳng được ----
+  // ---- 4. HUỶ PHIẾU ĐÃ CHI qua UI (hành vi owner yêu cầu 24/07): client tự
+  // HOÀN TÁC (reversal — tiền trả về sổ, giữ dấu vết §2.2) rồi huỷ. Assert
+  // bằng DB thật (REST) — không tin "row biến khỏi list" (từng false-positive).
   await row.getByRole('button', { name: 'Huỷ phiếu' }).click();
   await pc
     .getByRole('alertdialog')
     .getByRole('button', { name: /Huỷ phiếu|Xác nhận/ })
     .click();
-  // Server phải TỪ CHỐI (tiền đã vào sổ — muốn huỷ phải reversal): badge giữ nguyên.
-  await pc.waitForTimeout(3_000);
-  await expect(row.getByText(/^Đã (Thu|Chi)$/)).toBeVisible();
-
-  // ---- 4b. REVERSAL qua RPC v2 (chưa có UI — §21.1) rồi mới huỷ được ----
-  // account_id của phiếu = sổ đã chọn khi seed (CANARY) — khỏi query accounts
-  // (RLS đọc trực tiếp bảng accounts có thể chặn theo vai).
   const [v] = await sbGet(
-    authC,
-    `income_expenses?select=id,account_id&name=eq.${encodeURIComponent(name)}&limit=1`,
-  );
-  const book = { id: v.account_id as string };
-  const rev = await fetch(`${authC.base}/rest/v1/rpc/reverse_posted_income_expense_v2`, {
-    method: 'POST',
-    headers: {
-      apikey: authC.apikey,
-      Authorization: authC.auth,
-      'Content-Type': 'application/json',
-      'Content-Profile': 'public',
-    },
-    body: JSON.stringify({
-      p_voucher: v.id,
-      p_cashbook: book.id,
-      p_posted_on: new Date().toISOString().slice(0, 10),
-      p_reason: 'E2E cleanup reversal',
-      p_idempotency_key: `e2e-rev-${Date.now()}`,
-    }),
-  });
-  expect(rev.status, `reversal: ${await rev.clone().text()}`).toBe(200);
-  await pc.reload();
-  const row2 = await findVoucherRow(pc, name);
-  await expect(row2.getByText('Đã hoàn tác')).toBeVisible({ timeout: 30_000 });
-
-  // ---- 4c. Huỷ phiếu đã hoàn tác — assert bằng DB thật (REST), không tin UI ----
-  // (Bài học: assert "row biến khỏi list" từng false-positive — list refetch làm
-  // row biến dù server chưa hề CANCELLED. UI-huỷ phiếu REVERSED còn là nợ nhỏ:
-  // cancel v1 từ chối phiếu đã duyệt, client chưa fallback compat cho case này.)
-  const [vv] = await sbGet(
     authC,
     `income_expenses?select=id&name=eq.${encodeURIComponent(name)}&limit=1`,
   );
-  const cc = await fetch(`${authC.base}/rest/v1/rpc/ie_compat_cancel_v2`, {
-    method: 'POST',
-    headers: {
-      apikey: authC.apikey,
-      Authorization: authC.auth,
-      'Content-Type': 'application/json',
-      'Content-Profile': 'public',
-    },
-    body: JSON.stringify({ p_ids: [vv.id], p_reason: 'e2e cleanup' }),
-  });
-  expect(cc.status, `compat cancel: ${await cc.clone().text()}`).toBeLessThan(300);
-  const [vFinal] = await sbGet(
-    authC,
-    `income_expenses?select=approval_status&id=eq.${vv.id}`,
-  );
-  expect(vFinal.approval_status).toBe('CANCELLED');
+  await expect
+    .poll(
+      async () => {
+        const [st] = await sbGet(
+          authC,
+          `income_expenses?select=approval_status,posting_status&id=eq.${v.id}`,
+        );
+        return `${st.approval_status}/${st.posting_status}`;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe('CANCELLED/REVERSED');
 
-  // Lỗi 55000 "dùng reversal, không hủy trực tiếp" là fail-closed CỐ Ý ở 4a.
-  const unexpected = errs.filter((e) => !/dùng reversal, không hủy trực tiếp/.test(e));
-  expect(unexpected, `chunha console: ${unexpected.join(' | ')}`).toEqual([]);
+  expect(errs, `chunha console: ${errs.join(' | ')}`).toEqual([]);
   await ctxChunha.close();
 });

@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,6 +129,8 @@ const IncomeExpenseDesktopPage = () => {
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  // Huỷ phiếu ĐÃ CHI: cảnh báo hoàn-tác-tiền + lý do (ghi vào reversal).
+  const [cancelReason, setCancelReason] = useState("");
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] =
     useState<IncomeExpenseWithRelations | null>(null);
@@ -224,6 +227,13 @@ const IncomeExpenseDesktopPage = () => {
   const { data: custodianBooks = [] } = useCustodianCashbooksV2(
     approveAndPostOpen || !!postApprovedTarget,
   );
+
+  // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
+  const cancelTargetVoucher = cancelTarget
+    ? vouchers.find((v) => v.id === cancelTarget) ?? null
+    : null;
+  const cancelTargetPosted = cancelTargetVoucher?.posting_status === "POSTED";
+  const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
 
   const isShareholderPayout = !!approveTarget?.shareholder_id;
   const approvalAccounts = isShareholderPayout
@@ -411,10 +421,15 @@ const IncomeExpenseDesktopPage = () => {
 
   const confirmCancel = useCallback(() => {
     if (cancelTarget) {
-      cancelMutation.mutate(cancelTarget);
+      cancelMutation.mutate(
+        cancelReason.trim()
+          ? { id: cancelTarget, reason: cancelReason.trim() }
+          : cancelTarget,
+      );
     }
     setCancelTarget(null);
-  }, [cancelTarget, cancelMutation]);
+    setCancelReason("");
+  }, [cancelTarget, cancelReason, cancelMutation]);
 
   const confirmCancelBatch = useCallback(() => {
     if (cancelBatchTarget) {
@@ -682,23 +697,47 @@ const IncomeExpenseDesktopPage = () => {
 
       <AlertDialog
         open={!!cancelTarget}
-        onOpenChange={() => setCancelTarget(null)}
+        onOpenChange={() => {
+          setCancelTarget(null);
+          setCancelReason("");
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xác nhận huỷ phiếu</AlertDialogTitle>
             <AlertDialogDescription>
-              Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng đến
-              tồn quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
+              {cancelTargetPosted ? (
+                <>
+                  Phiếu này <b>đã {cancelTargetIsIncome ? "thu" : "chi"} tiền
+                  thật</b>. Huỷ sẽ tạo bút toán <b>HOÀN TÁC</b> ghi ngày hôm
+                  nay — tiền được trả {cancelTargetIsIncome ? "ra khỏi" : "về"}{" "}
+                  sổ và <b>tồn quỹ thay đổi</b> — sau đó phiếu chuyển{" "}
+                  <b>Đã huỷ</b>. Bút toán gốc vẫn giữ nguyên trong lịch sử.
+                  Chỉ Người giữ sổ (CUSTODIAN) của sổ này thực hiện được.
+                </>
+              ) : (
+                <>
+                  Phiếu sẽ được đánh dấu <b>Đã huỷ</b> và không còn ảnh hưởng
+                  đến tồn quỹ tài khoản. Phiếu vẫn được lưu lại trong lịch sử.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {cancelTargetPosted && (
+            <Textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Lý do hoàn tác/huỷ (ghi vào bút toán hoàn tác — nên nhập)"
+              rows={2}
+            />
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmCancel}
               className="bg-red-600 hover:bg-red-700"
             >
-              Huỷ phiếu
+              {cancelTargetPosted ? "Hoàn tác & Huỷ phiếu" : "Huỷ phiếu"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

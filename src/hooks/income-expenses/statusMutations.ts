@@ -227,7 +227,11 @@ export const useCancelIncomeExpense = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    // Nhận id thuần (mọi caller cũ) hoặc {id, reason} — reason ghi vào bút toán
+    // hoàn tác khi huỷ phiếu ĐÃ GHI SỔ (plan: huỷ sau-chi phải có bằng chứng).
+    mutationFn: async (input: string | { id: string; reason?: string | null }) => {
+      const id = typeof input === "string" ? input : input.id;
+      const reason = typeof input === "string" ? null : (input.reason ?? null);
       try {
         if (await trySetTerminationForfeitStatus(id, "CANCELLED")) return true;
       } catch (error: unknown) {
@@ -235,27 +239,56 @@ export const useCancelIncomeExpense = () => {
         throw error;
       }
 
+      const { data: voucher, error: fetchErr } = await (supabase
+        .from("income_expenses") as any)
+        .select("id, type, payment_id, approval_status, account_id, posting_status")
+        .eq("id", id)
+        .maybeSingle();
+      if (fetchErr) {
+        toast.error(fetchErr.message || "Không thể đọc phiếu");
+        throw fetchErr;
+      }
+
+      // Finance V2 §2.2: phiếu ĐÃ GHI SỔ không huỷ trực tiếp — HOÀN TÁC trước
+      // (posting event REVERSAL trả tiền về sổ, giữ dấu vết) rồi mới huỷ.
+      // posting_status chưa vào generated types → đọc qua cast.
+      const postingStatus = (voucher as { posting_status?: string | null })
+        ?.posting_status;
+      if (postingStatus === "POSTED") {
+        const rev = await (supabase.rpc as any)(
+          "reverse_posted_income_expense_v2",
+          {
+            p_voucher: id,
+            p_cashbook: voucher?.account_id ?? null,
+            p_posted_on: new Date().toISOString().split("T")[0],
+            p_reason: reason || "Hoàn tác để huỷ phiếu",
+            p_idempotency_key: `cancel-rev-${id}-${Date.now()}`,
+          },
+        );
+        if (rev.error) {
+          toast.error(
+            rev.error.message ||
+              "Không thể hoàn tác tiền của phiếu đã ghi sổ — chưa huỷ được",
+          );
+          throw rev.error;
+        }
+      }
+
       // Canonical cancel (phiếu flow-owned): transition + audit hash-chain
       // server-side, KHÔNG đụng payments (phiếu canonical không gắn payment).
       // Phiếu legacy → tín hiệu fallback → giữ nguyên đường cũ bên dưới.
       const canonical = await (supabase.rpc as any)("cancel_income_expense_v1", {
         p_voucher_id: id,
-        p_reason: null,
+        p_reason: reason,
       });
       if (!canonical.error) return false;
-      if (!isIeLifecycleFallbackSignal(canonical.error)) {
+      // Phiếu đã duyệt/đã hoàn tác: cancel v1 từ chối (chỉ nhận pending của
+      // maker) — KHÔNG phải lỗi chặn, rơi xuống compat cancel (tự cấp token).
+      const approvedShape =
+        voucher?.approval_status === "APPROVED" || postingStatus === "POSTED";
+      if (!isIeLifecycleFallbackSignal(canonical.error) && !approvedShape) {
         toast.error(canonical.error.message || "Không thể huỷ phiếu thu/chi");
         throw canonical.error;
-      }
-
-      const { data: voucher, error: fetchErr } = await supabase
-        .from("income_expenses")
-        .select("id, type, payment_id, approval_status")
-        .eq("id", id)
-        .maybeSingle() as any;
-      if (fetchErr) {
-        toast.error(fetchErr.message || "Không thể đọc phiếu");
-        throw fetchErr;
       }
 
       // Stage-7 drain: huỷ phiếu legacy qua RPC ie_compat_cancel_v2 (client hết
@@ -263,7 +296,7 @@ export const useCancelIncomeExpense = () => {
       // từ chối 55000 — dùng reversal thay vì huỷ trực tiếp.
       const { error } = await callUnregisteredRpc("ie_compat_cancel_v2", {
         p_ids: [id],
-        p_reason: null,
+        p_reason: reason,
       });
       if (error) {
         toast.error(error.message || "Không thể huỷ phiếu thu/chi");
