@@ -75,6 +75,7 @@ export const FINANCE_V2_MIGRATIONS = Object.freeze([
   "supabase/migrations/20260724200000_finance_v2_access_self_kind_array_fix.sql",
   "supabase/migrations/20260724210000_finance_v2_owned_decision_birth_check.sql",
   "supabase/migrations/20260724220000_finance_v2_owned_decision_finish_fix.sql",
+  "supabase/migrations/20260724230000_finance_v2_pending_noncash_uplift.sql",
 ]);
 
 export const FINANCE_V2_LOCK_NAME = "ihomecrm:finance-v2-rollout:v1";
