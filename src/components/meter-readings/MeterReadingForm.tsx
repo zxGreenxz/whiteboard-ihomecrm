@@ -58,6 +58,7 @@ import {
 import { useUnrecordedMeters } from '@/hooks/useMeters';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
+import { useAuth } from '@/hooks/useAuth';
 import { uploadFile, sanitizeStorageFileName } from '@/lib/storage';
 import { toast } from 'sonner';
 import { ImagePlus, Loader2 } from 'lucide-react';
@@ -93,6 +94,9 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const isEditing = !!reading;
   const bulkCreate = useBulkCreateMeterReadings();
   const updateReading = useUpdateMeterReading();
+
+  // Người đang đăng nhập — dùng làm thư mục gốc khi upload ảnh chỉ số.
+  const { data: currentUser } = useAuth();
 
   // Building & Room selects
   const { data: buildings } = useBuildings();
@@ -224,7 +228,13 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   const handleImageUpload = async (index: number, file: File) => {
     try {
       setUploadingIndex(index);
-      const path = `readings/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
+      // Thư mục gốc PHẢI là uid của chính người upload — policy RESTRICTIVE
+      // storage_pii_org_isolation_insert chặn ghi vào thư mục người/tổ chức khác.
+      if (!currentUser?.id) {
+        toast.error('Phiên đăng nhập đã hết hạn, hãy đăng nhập lại');
+        return;
+      }
+      const path = `${currentUser.id}/readings/${Date.now()}_${sanitizeStorageFileName(file.name)}`;
       const url = await uploadFile(STORAGE_BUCKET, path, file);
       form.setValue(`readings.${index}.meter_image_url`, url);
     } catch (error) {

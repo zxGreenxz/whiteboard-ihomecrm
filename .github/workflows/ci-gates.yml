@@ -121,6 +121,14 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-view-invoker.mjs
 
+      # Gate provenance (AUTHORIZATION-PLAN §20-10): phiếu APPROVED thiếu
+      # approver mà cũng thiếu system_source = có writer legacy sống lại ngoài
+      # đường canonical. Bắt regress thay vì để số liệu audit trôi âm thầm.
+      - name: Approver provenance (chống writer legacy tạo phiếu tự-duyệt)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-approver-provenance.mjs
+
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
   # Cần SUPABASE_ACCESS_TOKEN (Supabase CLI).

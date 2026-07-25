@@ -543,11 +543,17 @@ export async function uploadIdImagesFromUrls(
   const keys = ['front', 'back', 'extra_1', 'extra_2', 'extra_3'];
   const result: Record<string, string> = {};
 
+  // Thư mục gốc PHẢI là uid của người đang nhập — policy RESTRICTIVE
+  // storage_pii_org_isolation_insert chặn ghi vào thư mục người/tổ chức khác.
+  const { data: { session } } = await supabase.auth.getSession();
+  const uid = session?.user?.id;
+  if (!uid) return result;
+
   await Promise.all(
     urls.map(async (url, idx) => {
       const key = keys[idx] ?? `extra_${idx}`;
       const ext = url.split('.').pop()?.split('?')[0] ?? 'jpg';
-      const storagePath = `id-cards/${customerId}/${key}.${ext}`;
+      const storagePath = `${uid}/id-cards/${customerId}/${key}.${ext}`;
 
       const uploadedUrl = await downloadAndUploadImage(url, storagePath);
       // Use uploaded URL if successful, otherwise keep original URL as fallback
