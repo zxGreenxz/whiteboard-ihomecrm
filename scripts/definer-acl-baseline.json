@@ -1,7 +1,7 @@
 {
   "note": "SECURITY DEFINER functions anon-executable — allowlist baseline (Sprint 6 CI gate). Regenerate intentionally when adding a genuine public endpoint.",
   "generated": "2026-07-25",
-  "count": 57,
+  "count": 56,
   "signatures": [
     "_collector_thu_account(uuid)",
     "_termination_pick_account(uuid,uuid)",
@@ -42,7 +42,6 @@
     "log_income_expense_action(uuid,text,text)",
     "log_public_room_events(text,jsonb)",
     "monthly_building_profit(date,date,uuid)",
-    "run_recurring_vouchers_job()",
     "salary_work_ledger(date,uuid)",
     "same_team(uuid)",
     "soft_delete_customer(uuid)",
