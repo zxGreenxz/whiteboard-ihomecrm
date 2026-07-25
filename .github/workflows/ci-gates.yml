@@ -129,6 +129,14 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-approver-provenance.mjs
 
+      # Khoá quyền có trong DB mà FE không có nhãn = quyền VÔ HÌNH: không ai
+      # cấp/thu hồi được từ bảng phân quyền. Ngày 26/07 đã đo lệch đúng 11 khoá.
+      # Chiều ngược lại (nhãn trỏ khoá không có) thì tick vào là bị RPC từ chối.
+      - name: Catalog quyền FE khớp permission_definitions
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-permission-catalog.mjs
+
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
   # Cần SUPABASE_ACCESS_TOKEN (Supabase CLI).

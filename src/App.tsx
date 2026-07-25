@@ -12,6 +12,7 @@ import ErrorBoundary from "./components/errors/ErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { hideAppSplash } from "@/lib/appSplash";
+import { syncAuthQueryCache } from "@/lib/authQueryCache";
 
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
 // đổ về danh sách).
@@ -100,6 +101,7 @@ const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/Payment
 const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
 const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
 const ProfitHubPage = lazy(() => import("./pages/reports/finance/ProfitHubPage"));
+const BusinessPerformanceReportPage = lazy(() => import("./pages/reports/finance/BusinessPerformanceReportPage"));
 const FinancialAnalysisReport = lazy(() => import("./pages/reports/finance/FinancialAnalysisReport"));
 const BanGiaoReport = lazy(() => import("./pages/reports/finance/BanGiaoReport"));
 const BanGiaoCycleReport = lazy(() => import("./pages/reports/finance/BanGiaoCycleReport"));
@@ -109,7 +111,10 @@ const GeneralSettingsPage = lazy(() => import("./pages/settings/GeneralSettingsP
 const CategoriesPage = lazy(() => import("./pages/settings/CategoriesPage"));
 const TemplatesPage = lazy(() => import("./pages/settings/TemplatesPage"));
 const SignaturesPage = lazy(() => import("./pages/settings/SignaturesPage"));
-const StaffPage = lazy(() => import("./pages/settings/StaffPage"));
+const OrganizationPage = lazy(() => import("./pages/settings/OrganizationPage"));
+const MembersPage = lazy(() => import("./pages/settings/MembersPage"));
+const RolesPage = lazy(() => import("./pages/settings/RolesPage"));
+const AcceptInvitation = lazy(() => import("./pages/auth/AcceptInvitation"));
 const AdminUsersPage = lazy(() => import("./pages/admin/UsersPage"));
 const BankAccountsPage = lazy(() => import("./pages/settings/categories/BankAccountsPage"));
 const AutoDebtPage = lazy(() => import("./pages/settings/categories/AutoDebtPage"));
@@ -210,9 +215,8 @@ const queryClient = new QueryClient({
 // → useAuth/useSession dùng staleTime: Infinity, không round-trip mạng.
 // CẢNH BÁO: chỉ được code SYNC trong callback này — `await supabase.*` ở đây
 // gây deadlock (supabase-js giữ lock nội bộ khi dispatch sự kiện auth).
-supabase.auth.onAuthStateChange((_event, session) => {
-  queryClient.setQueryData(['auth', 'user'], session?.user ?? null);
-  queryClient.setQueryData(['auth', 'session'], session ?? null);
+supabase.auth.onAuthStateChange((event, session) => {
+  syncAuthQueryCache(queryClient, event, session);
 });
 
 const App = () => (
@@ -407,6 +411,7 @@ const App = () => (
           <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><RequirePermission module="reports_finance" action="payment_schedule"><PaymentScheduleReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/overpayment" element={<ProtectedRoute><RequirePermission module="reports_finance" action="overpayment"><OverpaymentReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/deposits" element={<ProtectedRoute><RequirePermission module="reports_finance" action="deposits_report"><DepositsReport /></RequirePermission></ProtectedRoute>} />
+          <Route path="/reports/finance/business-performance" element={<ProtectedRoute><BusinessPerformanceReportPage /></ProtectedRoute>} />
           <Route path="/reports/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/ban-giao" element={<ProtectedRoute><RequirePermission module="reports_finance" action="handover_report"><BanGiaoReport /></RequirePermission></ProtectedRoute>} />
           <Route path="/reports/finance/thu-ban-giao" element={<ProtectedRoute><RequirePermission module="reports_finance" action="collection_cycle"><BanGiaoCycleReport /></RequirePermission></ProtectedRoute>} />
@@ -464,7 +469,14 @@ const App = () => (
           <Route path="/settings/categories/task-types" element={<ProtectedRoute><RequirePermission module="task_types"><TaskTypesPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/settings/templates" element={<ProtectedRoute><RequirePermission module="templates"><TemplatesPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/settings/signatures" element={<ProtectedRoute><RequirePermission module="templates"><SignaturesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/staff" element={<ProtectedRoute><RequirePermission module="users" action="view"><StaffPage /></RequirePermission></ProtectedRoute>} />
+          {/* === PHÂN QUYỀN (mô hình tổ chức V3, thay trang Nhân viên cũ) === */}
+          <Route path="/settings/organization" element={<ProtectedRoute><RequirePermission module="users" action="view"><OrganizationPage /></RequirePermission></ProtectedRoute>} />
+          <Route path="/settings/members" element={<ProtectedRoute><RequirePermission module="users" action="view"><MembersPage /></RequirePermission></ProtectedRoute>} />
+          <Route path="/settings/roles" element={<ProtectedRoute><RequirePermission module="users" action="view"><RolesPage /></RequirePermission></ProtectedRoute>} />
+          {/* Đường cũ: giữ lại làm chuyển hướng để link đã lưu / bookmark không gãy. */}
+          <Route path="/settings/staff" element={<Navigate to="/settings/members" replace />} />
+          {/* Nhận lời mời — cần đăng nhập đúng email đã được mời. */}
+          <Route path="/invite/:token" element={<ProtectedRoute><AcceptInvitation /></ProtectedRoute>} />
 
           {/* === TÀI KHOẢN === */}
           <Route path="/account/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

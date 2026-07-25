@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
+import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusinessPerformance';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
 import {
@@ -51,6 +52,8 @@ import {
   Share2,
   MessageSquare,
   Sparkles,
+  Landmark,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -66,6 +69,8 @@ interface NavItem {
   module?: string;
   /** Action cần — mặc định "view". */
   action?: ActionKey;
+  /** Business Performance chỉ hiện sau khi roster tổ chức tải thành công và không rỗng. */
+  requiresBusinessPerformanceOrganization?: boolean;
   /**
    * Với NHÂN VIÊN (không phải admin của module): mở `selfHref` ở TAB MỚI thay vì
    * điều hướng in-app. Dùng cho "Bảng lương" → trang "Lương của tôi" trọn-màn QUEST.
@@ -166,6 +171,7 @@ const navigationGroups: NavGroup[] = [
         items: [
           // Mỗi báo cáo gate theo action riêng của module reports_finance —
           // khớp đúng RequirePermission của route tương ứng trong App.tsx.
+          { title: 'Trung tâm tài chính', href: '/reports/finance/business-performance', icon: BarChart3, requiresBusinessPerformanceOrganization: true },
           { title: 'Phân tích tài chính', href: '/reports/finance/analysis', icon: BarChart3, module: 'reports_finance', action: 'analysis' },
           { title: 'Tài khoản theo ngày', href: '/reports/finance/daily-cashbook', icon: Book, module: 'reports_finance', action: 'daily_cashbook' },
           { title: 'Dòng tiền', href: '/reports/finance/cash-flow', icon: TrendingUp, module: 'reports_finance', action: 'cash_flow' },
@@ -187,7 +193,9 @@ const navigationGroups: NavGroup[] = [
           { title: 'Cài đặt chung', href: '/settings/general', icon: Settings, module: 'settings' },
           { title: 'Danh mục khác', href: '/settings/categories', icon: List, module: 'categories' },
           { title: 'Mẫu biểu', href: '/settings/templates', icon: FileText, module: 'templates' },
-          { title: 'Nhân viên', href: '/settings/staff', icon: UserCog, module: 'users' },
+          { title: 'Tổ chức', href: '/settings/organization', icon: Landmark, module: 'users' },
+          { title: 'Thành viên', href: '/settings/members', icon: UserCog, module: 'users' },
+          { title: 'Mẫu vai trò', href: '/settings/roles', icon: ShieldCheck, module: 'users' },
           // Quản trị AI Copilot: super admin = full (kill switch/entitlements/
           // providers/chi phí); owner/user thường = tab Sử dụng (gate trong page)
           { title: 'Trợ lý AI', href: '/settings/ai-copilot', icon: Sparkles, module: 'ai_copilot' },
@@ -219,19 +227,27 @@ const Sidebar = ({ className }: SidebarProps) => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
+  const businessPerformanceOrganizations = useBusinessPerformanceOrganizations();
+  const canShowBusinessPerformance =
+    businessPerformanceOrganizations.isSuccess &&
+    (businessPerformanceOrganizations.data?.length ?? 0) > 0;
 
   // Admin Bảng lương = có quyền chốt/quản lý/chi lương (hoặc superadmin). Nhân viên
   // thường (self-view) sẽ mở "Lương của tôi" ở tab mới thay vì vào trang quản lý.
   const salaryAdmin =
-    !!(perms as any)?.__superadmin ||
+    !!perms?.__superadmin ||
     canUse(perms, 'salary', 'lock') ||
     canUse(perms, 'salary', 'manage_salary') ||
     canUse(perms, 'salary', 'distribute');
 
   // Mục chỉ hiện khi có quyền XEM tương ứng (đúng quyền route guard kiểm).
   // Mục không khai báo `module` (Bảng tin, trang cá nhân) luôn hiện.
-  const canShow = (item: NavItem) =>
-    !item.module || canUse(perms, item.module, item.action ?? 'view');
+  const canShow = (item: NavItem) => {
+    if (item.requiresBusinessPerformanceOrganization) {
+      return canShowBusinessPerformance;
+    }
+    return !item.module || canUse(perms, item.module, item.action ?? 'view');
+  };
 
   // Lọc cây điều hướng theo quyền: ẩn mục thiếu quyền, ẩn luôn section/nhóm
   // rỗng (không còn mục con nào để hiện).

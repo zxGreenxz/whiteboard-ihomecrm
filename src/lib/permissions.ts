@@ -4,12 +4,11 @@
 // với action CHI TIẾT theo từng chức năng trên từng trang (gia hạn/chuyển
 // nhượng/thanh lý HĐ, duyệt/huỷ hoá đơn, chốt/chi lợi nhuận, từng báo cáo…).
 //
-// - Lưu trữ: vẫn là JSONB { "<module>": { "<action>": true } } trong
-//   roles.permissions / staff_assignments.permissions — KHÔNG đổi schema DB.
-// - RLS chỉ enforce 4 action chuẩn (view/create/edit/delete) + vài action cũ;
-//   các action chi tiết mới là gate phía FE. Khi key chi tiết CHƯA tồn tại
-//   trong JSONB cũ, FE fallback về action gốc (xem canFeature) để nhân viên
-//   hiện hữu không mất quyền.
+// - Hình dạng vẫn là { "<module>": { "<action>": true } }, nhưng từ 2026-07-26
+//   nó được DỰNG từ role_permissions/overrides chứ không đọc JSONB nữa.
+// - Nguồn quyền: RPC get_my_permissions() đọc mô hình tổ chức
+//   (organization_memberships + role_bindings + member_permission_overrides).
+//   Khoá không có trong map = KHÔNG có quyền. Không còn suy diễn từ khoá khác.
 // - Tổ chức hiển thị theo TRANG nằm ở src/lib/permissionPages.ts (catalog).
 
 import type { Json } from "@/integrations/supabase/types";
@@ -105,7 +104,18 @@ export type ActionKey =
   // Báo cáo chu kỳ Thu → Bàn giao (theo tòa quản lý)
   | "collection_cycle"
   // AI Copilot: cho phép agent điều khiển UI (experimental — pilot)
-  | "ui_control";
+  | "ui_control"
+  // ===== Khoá của mô hình phân quyền mới (2026-07-26) =====
+  // 11 khoá này CÓ trong permission_definitions nhưng trước đây không có nhãn
+  // tiếng Việt nào ở FE, nên bảng phân quyền không hiển thị được chúng —
+  // người dùng không có cách nào cấp/thu hồi. Đã đối chiếu: 219 khoá DB vs 208
+  // khoá FE, thiếu đúng 11 khoá này.
+  | "emergency_override"          // approvals — cửa thoát của chủ sở hữu
+  | "manage_custody"              // cashbooks — giao/nhận giữ sổ
+  | "post"                        // cashbooks — ghi sổ (hạch toán)
+  | "reverse"                     // income_expenses — đảo bút toán
+  | "self_approve_within_limit"   // income_expenses — tự duyệt dưới ngưỡng
+  | "pay_manager";                // shareholder_profit — chi lương quản lý
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -134,7 +144,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     label: "Tổng quan",
     modules: [
       { key: "dashboard",     label: "Bảng tin", core: ["view"], extra: ["view_finance"] },
-      { key: "notifications", label: "Thông báo", core: ["view", "delete"] },
+      { key: "notifications", label: "Thông báo", core: ["view", "create", "edit", "delete"] },
       // LƯU Ý (PLAN.md F14): quyền này để phân quyền STAFF; kill switch/pilot
       // thật nằm ở ai_copilot_entitlements + ai_copilot_settings (server).
       { key: "ai_copilot",    label: "AI Copilot", core: ["view"], extra: ["ui_control"] },
@@ -163,7 +173,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       {
         key: "sale_phong",
         label: "Sale Phòng",
-        core: ["view"],
+        core: ["view", "edit"],
         extra: ["manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "manage_pass_listings", "create_deposit", "view_analytics"],
       },
     ],
@@ -183,11 +193,12 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "finance",
     label: "Tài chính",
     modules: [
-      { key: "cashbooks",       label: "Sổ quỹ", extra: ["share"] },
+      { key: "cashbooks",       label: "Sổ quỹ", extra: ["share", "manage_custody", "post"] },
       { key: "meter_readings",  label: "Ghi chỉ số", extra: ["export"] },
       { key: "invoices",        label: "Hoá đơn",    extra: ["approve", "cancel", "record_payment", "print", "export"] },
       { key: "thu_tien",        label: "Thu tiền (mobile)", core: ["view"], extra: ["collect", "undo", "report"] },
-      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "cancel", "print", "export", "all_buildings", "restricted_create", "restricted_view"] },
+      { key: "income_expenses", label: "Thu chi",    extra: ["approve", "cancel", "print", "export", "all_buildings", "restricted_create", "restricted_view", "reverse", "self_approve_within_limit"] },
+      { key: "approvals",       label: "Duyệt khẩn cấp", core: [], extra: ["emergency_override"] },
       { key: "excess_amounts",  label: "Tiền thừa" },
     ],
   },
@@ -199,7 +210,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         key: "shareholder_profit",
         label: "Lợi nhuận cổ đông",
         core: ["view"],
-        extra: ["lock", "unlock", "distribute", "manage_shareholders", "export"],
+        extra: ["lock", "unlock", "distribute", "manage_shareholders", "pay_manager", "export"],
       },
       {
         key: "salary",
@@ -254,7 +265,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
       { key: "hotline",        label: "Hotline" },
       { key: "categories",     label: "Danh mục khác" },
       { key: "templates",      label: "Biểu mẫu / Chữ ký" },
-      { key: "settings",       label: "Cài đặt chung", core: ["view", "edit"] },
+      { key: "settings",       label: "Cài đặt chung" },
       { key: "users",          label: "Phân quyền nhân viên", extra: ["manage_templates"] },
     ],
   },
@@ -342,6 +353,12 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   handover_report: "BC Bàn giao tiền & Đối soát",
   reconcile:      "Chốt số / đối soát sổ",
   collection_cycle: "BC Chu kỳ Thu — Bàn giao",
+  emergency_override: "Duyệt khẩn cấp (cửa thoát chủ sở hữu)",
+  manage_custody: "Giao / nhận giữ sổ quỹ",
+  post:           "Ghi sổ (hạch toán)",
+  reverse:        "Đảo bút toán",
+  self_approve_within_limit: "Tự duyệt phiếu dưới ngưỡng",
+  pay_manager:    "Chi lương quản lý",
   ui_control:     "AI điều khiển trang (experimental)",
 };
 
@@ -398,27 +415,21 @@ export function can(
 }
 
 /**
- * Check 1 action chi tiết với fallback legacy.
+ * Check 1 action chi tiết trên permission map.
  *
- * Permissions cũ (trước redesign 2026-06-11) KHÔNG có các key chi tiết
- * (renew/convert/lock…). Để nhân viên hiện hữu không mất quyền, khi key chi
- * tiết CHƯA tồn tại trong JSONB (undefined) thì rơi về action gốc (thường là
- * edit/create/view của cùng module, hoặc module khác — vd thu_tien.view rơi về
- * invoices.record_payment). Key đã được set tường minh (true/false) thì dùng
- * đúng giá trị đó.
+ * Sau cutover V3 (2026-07-26): get_my_permissions() trả ĐÚNG tập khoá mà mô
+ * hình tổ chức cho phép, nên "khoá vắng mặt" = KHÔNG có quyền, chấm hết.
+ * Cơ chế suy diễn cũ đã gỡ — nó lấy quyền từ một action khác, tức cấp ngầm
+ * thứ máy chủ vừa từ chối.
  */
 export function canFeature(
   perms: PermissionsMap | null | undefined,
   moduleKey: string,
   action: ActionKey,
-  fallback?: { module?: string; action: ActionKey },
 ): boolean {
   if (!perms) return false;
   if ((perms as any).__superadmin) return true;
-  const v = perms[moduleKey]?.[action];
-  if (v !== undefined) return !!v;
-  if (!fallback) return false;
-  return !!perms[fallback.module ?? moduleKey]?.[fallback.action];
+  return !!perms[moduleKey]?.[action];
 }
 
 /** Đếm số (module, action) = true. Loại sentinel __superadmin khỏi đếm. */

@@ -1,11 +1,68 @@
 # PLAN — Chuyển hẳn phân quyền sang mô hình tổ chức, cắt hệ cũ một lần
 
-> **Bản 4 — 2026-07-25 (khuya), sau THI CÔNG T1–T3 + vòng kiểm chứng 179 agent.** Xem §0ter — có 3 việc CHẶN Ngày G.
-> Bản 3 (sau review lần 2): Bản 1 sai 3 chỗ (§0); bản 3 đính chính thêm 3 điểm và bổ sung 2 finding mới (§0bis).
+> **Bản 5 — 2026-07-26. TOÀN BỘ T1–T7 ĐÃ THI CÔNG XONG.** Xem §0quater.
+> Bản 4 (25/07 khuya): sau thi công T1–T3 + vòng kiểm chứng 179 agent — §0ter.
+> Bản 3 (sau review lần 2): Bản 1 sai 3 chỗ (§0); đính chính thêm 3 điểm + 2 finding mới (§0bis).
 > **Quyết định owner đã chốt**: xong tới đâu áp tới đó (không hẹn cửa sổ) · cho phép DENY cấp vai trò · 2 cổ đông chưa có tài khoản để mời sau · chỉ `nguyentamca165@gmail.com` là chủ, còn lại là quản lý · giữ bảng cũ 30 ngày rồi xoá.
 > **Tiền đề**: Đợt 1 hardening đã xong (`0d1da42`).
 
 ---
+
+## 0quater. Bản 5 — ĐÃ XONG TOÀN BỘ
+
+Ngày G (25/07) cắt hệ cũ: `dd7cceb` (74 policy sang dạng mảng) · `fdc6d96` (11 helper
+đổi ruột) · `8154be3` (get_my_permissions + ngắt 2 trigger đồng bộ).
+
+Sau đó (26/07):
+
+| Bước | Việc | Commit |
+|---|---|---|
+| T4 ghi | 4 RPC: sửa phân quyền · mẫu vai trò · mời · nhận lời mời | `c91bbbe` |
+| T5a | 7 RPC đọc cho màn quản trị + `scope_label_v1` | (migration `20260726020000`) |
+| T5b | 4 màn giao diện + 3 thành phần dùng chung + trang nhận lời mời | (bản này) |
+
+### Ba điều phát hiện khi thi công, không có trong plan
+
+**1. Bảng phân quyền chỉ `is_super_admin()` đọc được.**
+Cả 13 bảng của mô hình mới có ĐÚNG một policy SELECT, điều kiện `is_super_admin()`.
+Nghĩa là chủ sở hữu tổ chức — dù có `users.view` — đọc thẳng bảng vẫn ra 0 dòng.
+Plan §8 giả định giao diện query bảng trực tiếp; thực tế phải thêm cả một tầng RPC
+đọc (`list_organization_members_v1`, `get_member_authorization_v1`,
+`list_organization_roles_v1`, `list_authorization_catalog_v1`,
+`get_organization_profile_v1`, + 2 hàm ghi phụ). Giữ policy chặt và mở qua
+SECURITY DEFINER là lựa chọn cố ý: mỗi hàm tự kiểm quyền trong đúng tổ chức người gọi.
+
+**2. Catalog nhãn FE thiếu 11 khoá — quyền tồn tại nhưng VÔ HÌNH.**
+Đối chiếu: DB 219 khoá `TENANT` đang hoạt động, FE chỉ có nhãn cho 208. 11 khoá
+thiếu nhãn (`approvals.emergency_override`, `cashbooks.manage_custody`,
+`cashbooks.post`, `income_expenses.reverse`,
+`income_expenses.self_approve_within_limit`, `notifications.create/edit`,
+`sale_phong.edit`, `settings.create/delete`, `shareholder_profit.pay_manager`)
+không hiện trên bảng phân quyền nên KHÔNG AI cấp hay thu hồi được. Đã bổ sung đủ
+219/219 và thêm cổng CI `scripts/check-permission-catalog.mjs` chặn lệch hai chiều.
+
+**3. Cơ chế suy diễn quyền (`fallback`) đã thành lỗ hổng.**
+Trước cutover, khoá chi tiết vắng mặt trong JSONB thì FE rơi về quyền gốc
+(vd `sale_phong.manage_tokens` rơi về `sale_phong.edit`). Nay
+`get_my_permissions()` trả ĐÚNG tập khoá mô hình tổ chức cho phép — "vắng mặt"
+nghĩa là KHÔNG có quyền. Giữ `fallback` lại chỉ tạo đường cấp ngầm thứ máy chủ
+vừa từ chối. Đã gỡ 38 khai báo `fallback` khỏi catalog và bỏ tham số khỏi
+`canFeature`. Ba bài test cũ kỳ vọng NGƯỢC LẠI đã được viết lại theo ngữ nghĩa mới.
+
+### Dữ liệu di sản mà giao diện phải chịu đựng
+
+- **Một bản ghi vai trò cho MỖI toà.** Chủ sở hữu org thật có 18 bản ghi "Super
+  Admin" giống hệt nhau; joey 8; nathan 10; bosshuy 13. Giao diện GỘP theo vai trò
+  khi hiển thị; vì RPC ghi theo ngữ nghĩa THAY THẾ nên lần lưu đầu tự chuẩn hoá
+  (đã chứng minh trên DEMO: 2 bản ghi → 1, quyền giữ nguyên 111).
+- **4 bản ghi vai trò có 0 phạm vi** trong org DEMO — không cấp được gì (bộ đánh
+  giá đòi có cạnh phạm vi). Giao diện nói rõ "chưa gán phạm vi — không có tác dụng"
+  thay vì để trống.
+- **Vai trò "Super Admin" có 0 quyền** nhưng vẫn có người mang. Quyền thật của chủ
+  đến từ "Chủ sở hữu tổ chức" (214 quyền). 18 bản ghi kia là gánh nặng chết.
+- **joey có 53 ngoại lệ, nathan 50** (di sản bước hoà giải 25/07). Bung sẵn tất cả
+  trong hộp thoại cho ra 53 vùng cuộn / 5.476 nút DOM — đã đo, không thao tác nổi.
+  Đổi sang dòng gọn, bung khi bấm Sửa: còn 1.306 nút.
 
 ## 0ter. Bản 4 — sau THI CÔNG T1–T3 và vòng kiểm chứng 179 agent
 

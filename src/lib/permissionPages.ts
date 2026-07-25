@@ -1,11 +1,13 @@
 // Catalog phân quyền THEO TRANG — nguồn sự thật cho UI bảng phân quyền mới
-// (PagePermissionMatrix). Mỗi PAGE = 1 tab dọc, liệt kê TỪNG CHỨC NĂNG trên
+// (PermissionPicker). Mỗi PAGE = 1 nhóm gập, liệt kê TỪNG CHỨC NĂNG trên
 // trang đó; mỗi chức năng map về 1 key lưu trữ `module.action` trong JSONB
 // permissions (registry: src/lib/permissions.ts).
 //
-// - `fallback`: hành vi legacy — JSONB cũ chưa có key chi tiết thì FE rơi về
-//   quyền gốc (xem canFeature). Catalog khai báo fallback ở đây để cả UI hiển
-//   thị "giá trị hiệu lực" lẫn gate runtime dùng chung 1 định nghĩa.
+// - KHÔNG còn cơ chế suy diễn quyền (gỡ 2026-07-26, cutover phân quyền V3).
+//   Trước đây một key chi tiết chưa có trong JSONB sẽ rơi về quyền gốc (vd
+//   sale_phong.manage_tokens rơi về sale_phong.edit). Nay get_my_permissions()
+//   trả ĐÚNG tập khoá mà mô hình tổ chức cho phép, nên không còn "chưa có key"
+//   — giữ cơ chế đó lại chỉ tạo đường cấp quyền ngầm mà máy chủ đã từ chối.
 // - `tier`: "view" (chỉ đọc) / "manage" (thao tác thường ngày) / "elevated"
 //   (nhạy cảm — duyệt, thanh lý, chốt LN, phân quyền…). Preset & nút nhanh
 //   per-page dựa vào tier.
@@ -31,8 +33,6 @@ export interface PageFeature {
   /** Mô tả ngắn hiển thị dưới label (tuỳ chọn). */
   desc?: string;
   tier: FeatureTier;
-  /** Quyền legacy để fallback khi key chưa tồn tại trong JSONB cũ. */
-  fallback?: { module?: string; action: ActionKey };
   /** Nhóm hiển thị trong trang (tuỳ chọn — vd tách "Khu vực" khỏi "Toà nhà"). */
   section?: string;
 }
@@ -58,7 +58,7 @@ const f = (
   action: ActionKey,
   label: string,
   tier: FeatureTier,
-  opts?: { desc?: string; fallback?: { module?: string; action: ActionKey }; section?: string },
+  opts?: { desc?: string; section?: string },
 ): PageFeature => ({ module, action, label, tier, ...opts });
 
 const crud = (module: string, noun: string, section?: string): PageFeature[] => [
@@ -82,7 +82,6 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("dashboard", "view", "Xem bảng tin", "view"),
           f("dashboard", "view_finance", "Xem số liệu tài chính (doanh thu, công nợ)", "view", {
             desc: "Ẩn/hiện các thẻ KPI doanh thu, công nợ và biểu đồ tài chính.",
-            fallback: { action: "view" },
           }),
         ],
       },
@@ -104,6 +103,8 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/notifications",
         features: [
           f("notifications", "view", "Xem thông báo", "view"),
+          f("notifications", "create", "Tạo thông báo gửi người khác", "manage"),
+          f("notifications", "edit", "Sửa thông báo đã gửi", "manage"),
           f("notifications", "delete", "Xoá thông báo", "manage"),
         ],
       },
@@ -170,21 +171,13 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Quản trị kênh công khai Phòng trống (/r/:token).",
         features: [
           f("sale_phong", "view", "Vào trang quản trị Sale Phòng", "view"),
-          f("sale_phong", "manage_tokens", "Quản lý link chia sẻ (tạo/thu hồi/xoá)", "manage", {
-            fallback: { action: "edit" },
-          }),
-          f("sale_phong", "manage_settings", "Cài đặt hiển thị (soon days, hotline…)", "manage", {
-            fallback: { action: "edit" },
-          }),
-          f("sale_phong", "manage_images", "Quản lý hình ảnh sale", "manage", {
-            fallback: { action: "edit" },
-          }),
-          f("sale_phong", "edit_floor_plan", "Sửa sơ đồ toạ độ phòng", "manage", {
-            fallback: { action: "edit" },
-          }),
+          f("sale_phong", "edit", "Sửa thông tin phòng đăng bán", "manage"),
+          f("sale_phong", "manage_tokens", "Quản lý link chia sẻ (tạo/thu hồi/xoá)", "manage"),
+          f("sale_phong", "manage_settings", "Cài đặt hiển thị (soon days, hotline…)", "manage"),
+          f("sale_phong", "manage_images", "Quản lý hình ảnh sale", "manage"),
+          f("sale_phong", "edit_floor_plan", "Sửa sơ đồ toạ độ phòng", "manage"),
           f("sale_phong", "manage_pass_listings", "Quản lý phòng khách nhờ sale (pass)", "manage", {
             desc: "Đăng phòng đang có khách lên trang công khai với SĐT khách + chính sách sale riêng.",
-            fallback: { action: "edit" },
           }),
           f("sale_phong", "create_deposit", "Tạo cọc nhanh trên trang công khai", "elevated", {
             desc: "Nút 'Tạo cọc giữ phòng' trên /r/:token khi đăng nhập — phòng tự chuyển ĐÃ CỌC.",
@@ -206,9 +199,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/leads",
         features: [
           ...crud("leads", "khách hẹn"),
-          f("leads", "convert", "Chuyển đổi lead → cọc / khách", "manage", {
-            fallback: { action: "edit" },
-          }),
+          f("leads", "convert", "Chuyển đổi lead → cọc / khách", "manage"),
           f("leads", "export", "Xuất danh sách khách hẹn", "manage"),
         ],
       },
@@ -219,12 +210,8 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Gồm cả nhật ký hoàn/bỏ cọc (/finance/refund-log).",
         features: [
           ...crud("deposits", "phiếu cọc"),
-          f("deposits", "convert", "Chuyển cọc thành hợp đồng", "manage", {
-            fallback: { action: "edit" },
-          }),
-          f("deposits", "refund", "Hoàn cọc / bỏ cọc", "manage", {
-            fallback: { action: "edit" },
-          }),
+          f("deposits", "convert", "Chuyển cọc thành hợp đồng", "manage"),
+          f("deposits", "refund", "Hoàn cọc / bỏ cọc", "manage"),
           f("deposits", "print", "In phiếu cọc", "manage"),
         ],
       },
@@ -236,18 +223,10 @@ export const PAGE_GROUPS: PageGroup[] = [
         features: [
           ...crud("contracts", "hợp đồng"),
           f("contracts", "approve", "Duyệt hợp đồng", "elevated"),
-          f("contracts", "renew", "Gia hạn hợp đồng", "manage", {
-            fallback: { action: "edit" },
-          }),
-          f("contracts", "transfer", "Chuyển nhượng / chuyển phòng", "manage", {
-            fallback: { action: "edit" },
-          }),
-          f("contracts", "terminate", "Thanh lý / trả phòng", "elevated", {
-            fallback: { action: "edit" },
-          }),
-          f("contracts", "handover", "Biên bản bàn giao tài sản", "manage", {
-            fallback: { action: "edit" },
-          }),
+          f("contracts", "renew", "Gia hạn hợp đồng", "manage"),
+          f("contracts", "transfer", "Chuyển nhượng / chuyển phòng", "manage"),
+          f("contracts", "terminate", "Thanh lý / trả phòng", "elevated"),
+          f("contracts", "handover", "Biên bản bàn giao tài sản", "manage"),
           f("contracts", "print", "In hợp đồng", "manage"),
           f("contracts", "export", "Xuất danh sách hợp đồng", "manage"),
         ],
@@ -259,9 +238,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Gồm trang chi tiết, form tạo/sửa và hồ sơ CT01.",
         features: [
           ...crud("customers", "cư dân"),
-          f("customers", "import", "Nhập cư dân từ file CSV", "manage", {
-            fallback: { action: "create" },
-          }),
+          f("customers", "import", "Nhập cư dân từ file CSV", "manage"),
           f("customers", "print", "In hồ sơ / CT01", "manage"),
           f("customers", "export", "Xuất danh sách cư dân", "manage"),
         ],
@@ -284,8 +261,12 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/finance/cashbooks",
         features: [
           ...crud("cashbooks", "sổ quỹ"),
-          f("cashbooks", "share", "Chia sẻ sổ quỹ cho người khác", "manage", {
-            fallback: { action: "edit" },
+          f("cashbooks", "share", "Chia sẻ sổ quỹ cho người khác", "manage"),
+          f("cashbooks", "manage_custody", "Giao / nhận quyền giữ sổ quỹ", "elevated", {
+            desc: "Bàn giao sổ quỹ giữa hai người. Việc bàn giao vẫn cần CẢ HAI bên xác nhận — quyền này chỉ mở được nút khởi tạo.",
+          }),
+          f("cashbooks", "post", "Ghi sổ (hạch toán vào sổ quỹ)", "elevated", {
+            desc: "Đẩy phiếu đã duyệt vào số dư sổ quỹ. Chỉ người đang GIỮ sổ mới ghi được, kể cả khi có quyền này.",
           }),
         ],
       },
@@ -305,12 +286,9 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Danh sách + chi tiết + in hoá đơn.",
         features: [
           ...crud("invoices", "hoá đơn"),
-          f("invoices", "approve", "Duyệt hoá đơn", "elevated", {
-            fallback: { action: "edit" },
-          }),
+          f("invoices", "approve", "Duyệt hoá đơn", "elevated"),
           f("invoices", "cancel", "Huỷ hoá đơn", "manage", {
             // Legacy: nút huỷ hoá đơn trước đây gate bằng invoices.delete.
-            fallback: { action: "delete" },
           }),
           f("invoices", "record_payment", "Thu tiền (ghi nhận thanh toán)", "manage"),
           f("invoices", "print", "In hoá đơn", "manage"),
@@ -323,18 +301,10 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/thu-tien",
         desc: "Lưới ô phòng thu tiền nhanh theo kỳ & toà.",
         features: [
-          f("thu_tien", "view", "Vào trang Thu tiền", "view", {
-            fallback: { module: "invoices", action: "record_payment" },
-          }),
-          f("thu_tien", "collect", "Thu đủ / thu một phần", "manage", {
-            fallback: { module: "invoices", action: "record_payment" },
-          }),
-          f("thu_tien", "undo", "Hoàn tác phiếu thu", "manage", {
-            fallback: { module: "invoices", action: "record_payment" },
-          }),
-          f("thu_tien", "report", "Xem báo cáo thu tiền", "view", {
-            fallback: { module: "invoices", action: "view" },
-          }),
+          f("thu_tien", "view", "Vào trang Thu tiền", "view"),
+          f("thu_tien", "collect", "Thu đủ / thu một phần", "manage"),
+          f("thu_tien", "undo", "Hoàn tác phiếu thu", "manage"),
+          f("thu_tien", "report", "Xem báo cáo thu tiền", "view"),
         ],
       },
       {
@@ -344,9 +314,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         features: [
           ...crud("income_expenses", "phiếu thu chi"),
           f("income_expenses", "approve", "Duyệt phiếu thu chi", "elevated"),
-          f("income_expenses", "cancel", "Huỷ phiếu thu chi", "manage", {
-            fallback: { action: "edit" },
-          }),
+          f("income_expenses", "cancel", "Huỷ phiếu thu chi", "manage"),
           f("income_expenses", "print", "In phiếu thu chi", "manage"),
           f("income_expenses", "export", "Xuất danh sách thu chi", "manage"),
           f("income_expenses", "all_buildings", "Ghi thu chi cho MỌI toà nhà", "elevated", {
@@ -354,6 +322,15 @@ export const PAGE_GROUPS: PageGroup[] = [
           }),
           f("income_expenses", "restricted_create", "Tạo phiếu với hạng mục HẠN CHẾ", "elevated", {
             desc: "Thấy & chọn hạng mục đánh dấu 'hạn chế' (vd Quản Lý) trong picker khi tạo phiếu. Mặc định ẩn.",
+          }),
+          f("approvals", "emergency_override", "Duyệt khẩn cấp (cửa thoát chủ sở hữu)", "elevated", {
+            desc: "Gỡ kẹt phiếu do HỆ THỐNG sinh ở hạng mục đặc biệt (cọc / hoa hồng / thưởng) — nhóm này không ai tự duyệt được. Mọi lần dùng đều ghi nhật ký kèm lý do. Trang /approvals không cần quyền vì đã lọc theo người đăng nhập.",
+          }),
+          f("income_expenses", "reverse", "Đảo bút toán phiếu đã ghi sổ", "elevated", {
+            desc: "Sinh phiếu ngược để huỷ tác động của phiếu đã hạch toán. Không xoá phiếu gốc — dấu vết được giữ nguyên.",
+          }),
+          f("income_expenses", "self_approve_within_limit", "Tự duyệt phiếu chi dưới ngưỡng", "elevated", {
+            desc: "Người lập được tự duyệt phiếu chi khi số tiền dưới ngưỡng cấu hình. Trên ngưỡng vẫn phải người có quyền Duyệt.",
           }),
           f("income_expenses", "restricted_view", "Xem & sửa phiếu hạng mục HẠN CHẾ", "elevated", {
             desc: "Thấy & sửa các phiếu thuộc hạng mục 'hạn chế' trong bảng + cộng vào tổng. Người khác bị ẩn hoàn toàn (kể cả truy vấn trực tiếp).",
@@ -379,17 +356,12 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/finance/shareholder-profit",
         features: [
           f("shareholder_profit", "view", "Xem trang lợi nhuận cổ đông", "view"),
-          f("shareholder_profit", "lock", "Chốt lợi nhuận tháng", "elevated", {
-            fallback: { action: "edit" },
-          }),
-          f("shareholder_profit", "unlock", "Mở khoá tháng đã chốt", "elevated", {
-            fallback: { action: "edit" },
-          }),
-          f("shareholder_profit", "distribute", "Chi lợi nhuận cho cổ đông", "elevated", {
-            fallback: { action: "create" },
-          }),
-          f("shareholder_profit", "manage_shareholders", "Quản lý cổ đông & tỷ lệ", "elevated", {
-            fallback: { action: "edit" },
+          f("shareholder_profit", "lock", "Chốt lợi nhuận tháng", "elevated"),
+          f("shareholder_profit", "unlock", "Mở khoá tháng đã chốt", "elevated"),
+          f("shareholder_profit", "distribute", "Chi lợi nhuận cho cổ đông", "elevated"),
+          f("shareholder_profit", "manage_shareholders", "Quản lý cổ đông & tỷ lệ", "elevated"),
+          f("shareholder_profit", "pay_manager", "Chi lương quản lý từ lợi nhuận", "elevated", {
+            desc: "Sinh phiếu chi lương quản lý trong kỳ đã chốt.",
           }),
           f("shareholder_profit", "export", "Xuất dữ liệu lợi nhuận", "manage"),
         ],
@@ -401,10 +373,10 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Tính lương quản lý từ việc thật + đầu tư + HH Sale; chốt tháng; quản lý tự xem.",
         features: [
           f("salary", "view", "Xem bảng lương quản lý", "view"),
-          f("salary", "lock", "Chốt lương tháng", "elevated", { fallback: { action: "edit" } }),
-          f("salary", "unlock", "Mở khoá tháng lương", "elevated", { fallback: { action: "edit" } }),
-          f("salary", "distribute", "Trả lương (ghi phiếu chi)", "elevated", { fallback: { action: "create" } }),
-          f("salary", "manage_salary", "Cấu hình lương, quy tắc thưởng, quản lý", "elevated", { fallback: { action: "edit" } }),
+          f("salary", "lock", "Chốt lương tháng", "elevated"),
+          f("salary", "unlock", "Mở khoá tháng lương", "elevated"),
+          f("salary", "distribute", "Trả lương (ghi phiếu chi)", "elevated"),
+          f("salary", "manage_salary", "Cấu hình lương, quy tắc thưởng, quản lý", "elevated"),
           f("salary", "export", "Xuất bảng lương", "manage"),
         ],
       },
@@ -426,12 +398,8 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/assets",
         features: [
           ...crud("assets", "tài sản"),
-          f("assets", "move", "Di chuyển tài sản", "manage", {
-            fallback: { action: "edit" },
-          }),
-          f("assets", "maintain", "Tạo phiếu bảo trì / sửa chữa", "manage", {
-            fallback: { action: "edit" },
-          }),
+          f("assets", "move", "Di chuyển tài sản", "manage"),
+          f("assets", "maintain", "Tạo phiếu bảo trì / sửa chữa", "manage"),
         ],
       },
       {
@@ -471,9 +439,7 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/tasks",
         features: [
           ...crud("tasks", "công việc"),
-          f("tasks", "complete", "Hoàn thành công việc", "manage", {
-            fallback: { action: "edit" },
-          }),
+          f("tasks", "complete", "Hoàn thành công việc", "manage"),
           f("tasks", "approve", "Duyệt / nghiệm thu công việc", "elevated"),
         ],
       },
@@ -496,14 +462,14 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Bật/tắt từng báo cáo bất động sản.",
         features: [
           f("reports_real_estate", "view", "Vào trang báo cáo BĐS", "view"),
-          f("reports_real_estate", "vacant_rooms", "Báo cáo Phòng trống", "view", { fallback: { action: "view" } }),
-          f("reports_real_estate", "expiring", "Báo cáo HĐ sắp hết hạn", "view", { fallback: { action: "view" } }),
-          f("reports_real_estate", "renewals_transfers", "Báo cáo Gia hạn & chuyển nhượng", "view", { fallback: { action: "view" } }),
-          f("reports_real_estate", "occupancy", "Báo cáo Lấp đầy", "view", { fallback: { action: "view" } }),
-          f("reports_real_estate", "promotions", "Báo cáo Khuyến mãi", "view", { fallback: { action: "view" } }),
-          f("reports_real_estate", "new_leases", "Báo cáo Cho thuê mới", "view", { fallback: { action: "view" } }),
-          f("reports_real_estate", "terminations", "Báo cáo Bỏ trả / thanh lý", "view", { fallback: { action: "view" } }),
-          f("reports_real_estate", "expense_ratio", "Báo cáo Tỉ lệ chi phí", "view", { fallback: { action: "view" } }),
+          f("reports_real_estate", "vacant_rooms", "Báo cáo Phòng trống", "view"),
+          f("reports_real_estate", "expiring", "Báo cáo HĐ sắp hết hạn", "view"),
+          f("reports_real_estate", "renewals_transfers", "Báo cáo Gia hạn & chuyển nhượng", "view"),
+          f("reports_real_estate", "occupancy", "Báo cáo Lấp đầy", "view"),
+          f("reports_real_estate", "promotions", "Báo cáo Khuyến mãi", "view"),
+          f("reports_real_estate", "new_leases", "Báo cáo Cho thuê mới", "view"),
+          f("reports_real_estate", "terminations", "Báo cáo Bỏ trả / thanh lý", "view"),
+          f("reports_real_estate", "expense_ratio", "Báo cáo Tỉ lệ chi phí", "view"),
           f("reports_real_estate", "export", "Xuất báo cáo BĐS", "manage"),
         ],
       },
@@ -514,21 +480,21 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Bật/tắt từng báo cáo tài chính.",
         features: [
           f("reports_finance", "view", "Vào trang báo cáo tài chính", "view"),
-          f("reports_finance", "analysis", "Báo cáo Phân tích tài chính", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "daily_cashbook", "Báo cáo Sổ quỹ ngày", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "cash_flow", "Báo cáo Dòng tiền", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "profit_distribution", "Báo cáo Phân bổ lợi nhuận (KQKD)", "view", { fallback: { action: "view" } }),
+          f("reports_finance", "analysis", "Báo cáo Phân tích tài chính", "view"),
+          f("reports_finance", "daily_cashbook", "Báo cáo Sổ quỹ ngày", "view"),
+          f("reports_finance", "cash_flow", "Báo cáo Dòng tiền", "view"),
+          f("reports_finance", "profit_distribution", "Báo cáo Phân bổ lợi nhuận (KQKD)", "view"),
           // debt/customer_debt: 2 BC công nợ đã xoá (Phase 7) — không hiển thị
           // trong UI cấu hình mới; key legacy trong JSON role cũ được bỏ qua.
-          f("reports_finance", "payment_schedule", "Báo cáo Lịch thanh toán", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "overpayment", "Báo cáo Tiền thừa", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "deposits_report", "Báo cáo Danh sách cọc", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "handover_report", "Báo cáo Bàn giao tiền & Đối soát sổ", "view", { fallback: { action: "view" } }),
-          f("reports_finance", "reconcile", "Chốt số / đối soát sổ quỹ", "manage", { fallback: { action: "handover_report" } }),
-          // Self-view cho người thu tiền: fallback về invoices.record_payment
+          f("reports_finance", "payment_schedule", "Báo cáo Lịch thanh toán", "view"),
+          f("reports_finance", "overpayment", "Báo cáo Tiền thừa", "view"),
+          f("reports_finance", "deposits_report", "Báo cáo Danh sách cọc", "view"),
+          f("reports_finance", "handover_report", "Báo cáo Bàn giao tiền & Đối soát sổ", "view"),
+          f("reports_finance", "reconcile", "Chốt số / đối soát sổ quỹ", "manage"),
+          // Self-view cho người thu tiền.
           // (đúng quyền cho vào /thu-tien) → quản lý xem chu kỳ của MÌNH được, mà
           // KHÔNG mở các báo cáo tài chính khác (vẫn theo reports_finance.view).
-          f("reports_finance", "collection_cycle", "Báo cáo Chu kỳ Thu — Bàn giao (theo tòa QL)", "view", { fallback: { module: "invoices", action: "record_payment" } }),
+          f("reports_finance", "collection_cycle", "Báo cáo Chu kỳ Thu — Bàn giao (theo tòa QL)", "view"),
           f("reports_finance", "export", "Xuất báo cáo tài chính", "manage"),
         ],
       },
@@ -581,7 +547,9 @@ export const PAGE_GROUPS: PageGroup[] = [
         route: "/settings/general",
         features: [
           f("settings", "view", "Xem cài đặt chung", "view"),
+          f("settings", "create", "Thêm mục cấu hình mới", "manage"),
           f("settings", "edit", "Sửa cài đặt chung", "manage"),
+          f("settings", "delete", "Xoá mục cấu hình", "elevated"),
         ],
       },
       {
@@ -594,9 +562,7 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("users", "create", "Thêm nhân viên mới", "elevated"),
           f("users", "edit", "Sửa thông tin / quyền nhân viên", "elevated"),
           f("users", "delete", "Xoá nhân viên", "elevated"),
-          f("users", "manage_templates", "Quản lý mẫu phân quyền", "elevated", {
-            fallback: { action: "edit" },
-          }),
+          f("users", "manage_templates", "Quản lý mẫu phân quyền", "elevated"),
         ],
       },
     ],
@@ -636,18 +602,16 @@ export function findFeature(module: string, action: ActionKey): PageFeature | un
 }
 
 /**
- * Giá trị HIỆU LỰC của 1 feature trên 1 permission map: key tường minh nếu có,
- * nếu chưa có (JSONB cũ) thì theo fallback legacy.
+ * Giá trị HIỆU LỰC của 1 feature: khoá có trong map thì bật, không có thì tắt.
  */
 export function featureValue(perms: PermsLike, ft: PageFeature): boolean {
   const p = asPerms(perms);
   if (isSuperAdminPerms(p)) return true;
-  return canFeature(p, ft.module, ft.action, ft.fallback);
+  return canFeature(p, ft.module, ft.action);
 }
 
 /**
- * Gate runtime chuẩn cho FE: check theo catalog (tự áp fallback legacy).
- * Nếu (module, action) không có trong catalog → can() thường.
+ * Gate runtime chuẩn cho FE.
  */
 export function canUse(
   perms: PermsLike,
@@ -657,15 +621,11 @@ export function canUse(
   const p = asPerms(perms);
   if (!p) return false;
   if (isSuperAdminPerms(p)) return true;
-  const ft = findFeature(module, action);
-  return canFeature(p, module, action, ft?.fallback);
+  return canFeature(p, module, action);
 }
 
 /**
- * Diff 2 permission maps theo GIÁ TRỊ HIỆU LỰC của từng feature trong catalog
- * (đã tính fallback legacy). Dùng thay diffPermissions (so key thô) ở UI phân
- * quyền — tránh diff "ảo" khi template cũ chưa có key chi tiết còn bản staff
- * đã materialize key tường minh cùng giá trị hiệu lực.
+ * Diff 2 permission maps theo từng feature trong catalog.
  */
 export function diffFeatures(a: PermsLike, b: PermsLike): PageFeature[] {
   // featureValue đã xử lý sentinel __superadmin (mọi feature = true) nên so
@@ -680,7 +640,7 @@ export function pageStats(perms: PermsLike, page: PermissionPage) {
   return { granted, total: page.features.length };
 }
 
-/** Set toàn bộ feature của 1 trang. Ghi key TƯỜNG MINH (materialize fallback). */
+/** Set toàn bộ feature của 1 trang. */
 export function setPageAll(perms: PermissionsMap, page: PermissionPage, value: boolean): PermissionsMap {
   const next: PermissionsMap = { ...perms };
   for (const ft of page.features) {

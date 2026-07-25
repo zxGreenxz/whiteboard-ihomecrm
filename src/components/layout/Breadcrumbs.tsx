@@ -65,6 +65,7 @@ const routeLabels: Record<string, string> = {
   '/reports/finance/payment-schedule': 'Lịch thanh toán',
   '/reports/finance/overpayment': 'Tiền thừa',
   '/reports/finance/deposits': 'Danh sách tiền cọc',
+  '/reports/finance/business-performance': 'Trung tâm Tài chính & Hiệu quả',
   '/reports/finance/analysis': 'Phân tích tài chính',
   '/reports/finance/ban-giao': 'Bàn giao tiền & Đối soát sổ',
   '/reports/finance/thu-ban-giao': 'Chu kỳ Thu — Bàn giao',
@@ -89,7 +90,9 @@ const routeLabels: Record<string, string> = {
   '/settings/categories/task-types': 'Loại công việc',
   '/settings/templates': 'Mẫu biểu',
   '/settings/signatures': 'Mẫu chữ ký',
-  '/settings/staff': 'Nhân viên',
+  '/settings/organization': 'Tổ chức',
+  '/settings/members': 'Thành viên',
+  '/settings/roles': 'Mẫu vai trò',
   '/settings/ai-copilot': 'Trợ lý AI',
 
   // Tài khoản
