@@ -41,15 +41,26 @@ const DialogContent = React.forwardRef<
     closeClassName?: string;
     /** Ẩn hẳn nút X mặc định (khi muốn tự render nút đóng riêng). */
     hideClose?: boolean;
+    /**
+     * Cho phép đóng bằng click ra ngoài khung / phím Esc. Mặc định modal khoá
+     * cứng (chỉ đóng bằng nút X) để tránh mất dữ liệu form đang nhập dở; bật
+     * cờ này cho các dialog chỉ-đọc/giới thiệu, nhất là trên mobile khi nút X
+     * có thể nằm ngoài vùng nhìn thấy.
+     */
+    dismissable?: boolean;
   }
->(({ className, children, closeClassName, hideClose, ...props }, ref) => (
+>(({ className, children, closeClassName, hideClose, dismissable, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
       ref={ref}
-      onPointerDownOutside={(e) => e.preventDefault()}
-      onInteractOutside={(e) => e.preventDefault()}
-      onEscapeKeyDown={(e) => e.preventDefault()}
+      {...(dismissable
+        ? {}
+        : {
+            onPointerDownOutside: (e: Event) => e.preventDefault(),
+            onInteractOutside: (e: Event) => e.preventDefault(),
+            onEscapeKeyDown: (e: KeyboardEvent) => e.preventDefault(),
+          })}
       className={cn(
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className,

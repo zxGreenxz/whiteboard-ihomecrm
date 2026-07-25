@@ -59,9 +59,9 @@ const Dashboard = () => {
   // Run scheduled notification checks
   useScheduledNotifications();
 
-  // Onboarding wizard state
-  const { isCompleted: onboardingCompleted, isLoading: onboardingLoading } = useOnboardingState();
-  const showOnboarding = !onboardingLoading && !onboardingCompleted;
+  // Onboarding wizard: chỉ bật ở lần đăng nhập đầu tiên (hook tự latch, chỉ
+  // trả true khi chắc chắn user chưa từng onboard).
+  const { shouldShow: showOnboarding } = useOnboardingState();
 
   return (
     <MainLayout>

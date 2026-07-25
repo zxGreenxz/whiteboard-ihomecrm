@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -35,7 +35,7 @@ import {
 import { useCreateBuilding } from '@/hooks/useBuildings';
 import { useCreateRoom } from '@/hooks/useRooms';
 import { useCreateService } from '@/hooks/useServices';
-import { useUpdateIndividualSetting } from '@/hooks/useSettings';
+import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 
@@ -49,26 +49,60 @@ const STEPS = [
   { id: 'complete', title: 'Hoàn thành', icon: CheckCircle2 },
 ] as const;
 
-// Query CÔ LẬP, key ổn định (KHÔNG kèm user?.id) + không bao giờ refetch nền:
-// cờ onboarding gần như bất biến (đã true là mãi true). Bản cũ dùng
-// useIndividualSetting (key có user?.id) trên trang Dashboard bị REFETCH LOOP
-// ~1.6 lần/giây (poll vô hạn onboarding_completed dù cờ đã true) — key ổn định
-// + refetchOnMount:false chặn mọi kiểu trigger (remount/enable-flap). markCompleted
-// ghi qua mutation cũ RỒI set-cache trực tiếp để UI tắt wizard tức thì.
+// Query CÔ LẬP + không bao giờ refetch nền: cờ onboarding gần như bất biến (đã
+// true là mãi true). Bản cũ dùng useIndividualSetting (staleTime 5 phút) trên
+// Dashboard bị REFETCH LOOP ~1.6 lần/giây — staleTime Infinity +
+// refetchOnMount:false chặn mọi kiểu trigger (remount/enable-flap). Key có kèm
+// userId nhưng query chỉ chạy khi đã có userId nên không flap qua lại.
 const ONBOARDING_QK = ['onboarding-completed-flag'] as const;
+
+const onboardingQueryKey = (userId: string) => [...ONBOARDING_QK, userId] as const;
+
+/**
+ * Cờ local theo user: chặn wizard bật lại ngay cả khi ghi xuống `settings` hỏng
+ * (mất mạng / RLS chặn). Không thay thế cờ DB — DB vẫn là nguồn sự thật khi đổi
+ * máy — chỉ là lưới an toàn trên chính thiết bị đã xem wizard.
+ */
+const localFlagKey = (userId: string) => `onboarding_completed:${userId}`;
+
+function readLocalFlag(userId?: string): boolean {
+  if (!userId) return false;
+  try {
+    return localStorage.getItem(localFlagKey(userId)) === '1';
+  } catch {
+    return false; // chế độ riêng tư chặn storage
+  }
+}
+
+function writeLocalFlag(userId: string) {
+  try {
+    localStorage.setItem(localFlagKey(userId), '1');
+  } catch {
+    // Quota đầy / chế độ riêng tư — vẫn còn cờ dưới DB.
+  }
+}
 
 export function useOnboardingState() {
   const queryClient = useQueryClient();
-  const updateSetting = useUpdateIndividualSetting(ONBOARDING_KEY);
+  const { data: user } = useAuth();
+  const userId = user?.id;
 
-  const { data: completed, isLoading } = useQuery({
-    queryKey: ONBOARDING_QK,
+  const { data: completed } = useQuery({
+    queryKey: userId ? onboardingQueryKey(userId) : ONBOARDING_QK,
+    // GOTCHA: chạy trước khi có session thì RLS trả 0 dòng → cache "false"
+    // VĨNH VIỄN (staleTime Infinity) → wizard bật lại mỗi lần đăng nhập.
+    enabled: !!userId,
     queryFn: async (): Promise<boolean> => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('settings')
         .select('value')
+        // BẮT BUỘC lọc user_id: policy admin-bypass (is_admin()) cho admin đọc
+        // settings của MỌI user → thiếu filter thì maybeSingle() vỡ với lỗi
+        // "multiple rows returned" → coi như chưa onboard → wizard hiện mãi.
+        .eq('user_id', userId!)
         .eq('key', ONBOARDING_KEY)
         .maybeSingle();
+      if (error) throw error;
       return data?.value === true;
     },
     staleTime: Infinity,
@@ -79,20 +113,49 @@ export function useOnboardingState() {
     retry: 1,
   });
 
-  return {
-    isCompleted: completed === true,
-    isLoading,
-    markCompleted: () => {
-      queryClient.setQueryData(ONBOARDING_QK, true); // tắt wizard ngay
-      updateSetting.mutate(true); // ghi bền xuống settings
-    },
-  };
+  const seenLocally = readLocalFlag(userId);
+
+  /** Trả về false khi chưa có session (chưa ghi được cờ) để nơi gọi thử lại. */
+  const markCompleted = useCallback((): boolean => {
+    if (!userId) return false;
+    writeLocalFlag(userId);
+    queryClient.setQueryData(onboardingQueryKey(userId), true);
+    // Ghi bền, IM LẶNG: đây là cờ nội bộ, không phải thao tác user lưu dữ liệu
+    // nên không bắn toast "đã cập nhật" như useUpdateIndividualSetting.
+    void supabase
+      .from('settings')
+      .upsert({ user_id: userId, key: ONBOARDING_KEY, value: true }, { onConflict: 'user_id,key' })
+      .then(({ error }) => {
+        if (error) console.warn('[onboarding] không ghi được cờ onboarding_completed', error.message);
+      });
+    return true;
+  }, [queryClient, userId]);
+
+  // Latch: chỉ hiện wizard khi CHẮC CHẮN user chưa từng onboard (query đã trả
+  // đúng false). Query lỗi / chưa có session → không hiện, thà bỏ sót còn hơn
+  // đập vào mặt user cũ. Đã bật rồi thì giữ nguyên tới khi user tự đóng —
+  // markCompleted() (gọi ngay lúc mở) không được làm wizard biến mất giữa chừng.
+  const [shouldShow, setShouldShow] = useState(false);
+  useEffect(() => {
+    if (userId && !seenLocally && completed === false) setShouldShow(true);
+  }, [userId, seenLocally, completed]);
+
+  return { shouldShow, markCompleted };
 }
 
 export default function OnboardingWizard() {
   const [open, setOpen] = useState(true);
   const [currentStep, setCurrentStep] = useState(0);
   const { markCompleted } = useOnboardingState();
+
+  // CHỈ hiện ở lần đăng nhập ĐẦU TIÊN: đánh dấu đã xem ngay khi wizard mở, chứ
+  // không đợi user bấm "Bỏ qua"/"Hoàn thành". Reload giữa chừng, đóng tab, hay
+  // trên mobile khi nút X trôi ra ngoài màn hình → phiên sau vẫn không bật lại.
+  const markedRef = useRef(false);
+  useEffect(() => {
+    if (markedRef.current) return;
+    markedRef.current = markCompleted(); // false khi session chưa sẵn sàng → thử lại
+  }, [markCompleted]);
 
   // Form states
   const [buildingName, setBuildingName] = useState('');
@@ -299,7 +362,10 @@ export default function OnboardingWizard() {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleSkip(); }}>
-      <DialogContent className="sm:max-w-[560px]">
+      {/* dismissable: bấm ra ngoài khung / Esc là tắt, không cần tìm nút X —
+          trên mobile wizard cao hơn màn hình nên X dễ nằm ngoài vùng nhìn thấy.
+          max-h + scroll để nội dung dài vẫn cuộn được trong khung. */}
+      <DialogContent dismissable className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {(() => {
