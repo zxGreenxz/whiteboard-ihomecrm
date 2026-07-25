@@ -78,6 +78,7 @@ import {
 } from "@/lib/financeV2Route";
 import {
   getVoucherDisplayState,
+  isNonCashVoucher,
   type VoucherDisplayInput,
   type VoucherTone,
 } from "@/lib/financeV2VoucherState";
@@ -1045,7 +1046,9 @@ export default function IncomeExpenseMobilePage() {
             >
               Đóng
             </AlertDialogCancel>
-            {v2ApproveAndPost && (
+            {/* 7af: phiếu NỘI BỘ (bút toán không tiền, sổ ảo) không bao giờ được
+                chào ghi tiền vào sổ quỹ thật — chỉ còn nút "Duyệt". */}
+            {v2ApproveAndPost && !isNonCashVoucher(approveTarget) && (
               <Button
                 variant="outline"
                 className="border-blue-600 text-blue-700 hover:bg-blue-50"

@@ -206,19 +206,15 @@ export const useTerminateForfeit = () => {
       queryClient.invalidateQueries({ queryKey: ["excess-amount"] });
       // Banner "cọc chờ duyệt" trên trang HĐ cập nhật ngay, khỏi F5.
       queryClient.invalidateQueries({ queryKey: ["contract-pending-forfeit"] });
-      // B1 (audit 03/07): bỏ cọc là luồng TRÌ HOÃN — cọc chỉ vào doanh thu và
-      // hoá đơn thanh lý chỉ tất toán khi phiếu "Doanh thu bỏ cọc" được DUYỆT
-      // ở trang Thu chi. Toast phải nhắc + dẫn thẳng tới đó, không im lặng.
-      toast.success("Đã thanh lý (bỏ cọc) — CÒN 1 BƯỚC: duyệt phiếu cọc", {
+      // 7af (25/07, hướng A): bỏ cọc KHÔNG còn bước duyệt tay — writer tự duyệt
+      // cặp bút toán nội bộ và tất toán hoá đơn thanh lý ngay trong cùng lệnh.
+      // Toast chỉ báo kết quả, không dẫn sang Thu chi nữa.
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["income-expenses"] });
+      toast.success("Đã thanh lý (bỏ cọc) — xong, không cần duyệt thêm", {
         description:
-          'Phiếu thu "Doanh thu bỏ cọc" đang CHỜ DUYỆT. Vào Thu chi bấm Duyệt thì cọc mới vào doanh thu và hoá đơn thanh lý mới tất toán.',
-        duration: 12000,
-        action: {
-          label: "Mở Thu chi",
-          onClick: () => {
-            window.location.href = "/income-expense";
-          },
-        },
+          "Cọc khách bỏ đã vào doanh thu và hoá đơn thanh lý đã tất toán. Sổ quỹ không đổi vì đây là bút toán nội bộ.",
+        duration: 8000,
       });
     },
     onError: (error: any) => {

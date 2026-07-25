@@ -86,6 +86,22 @@ export interface VoucherDisplayInput extends VoucherLifecycleState {
   type: VoucherType;
 }
 
+/**
+ * Phiếu NỘI BỘ (bút toán không tiền): không bao giờ được chào "Duyệt và Thu/Chi".
+ *
+ * 7af (25/07): cặp bút toán bỏ cọc từng lọt vào luồng tiền thật vì bỏ trống
+ * posting_mode ⇒ màn Thu chi hiện nút ghi tiền vào SỔ QUỸ THẬT cho một bút toán
+ * chạy trên sổ ảo. Server đã chặn, nhưng UI không được mời làm việc sai ngay từ
+ * đầu. Nhận diện theo dấu bản chất của phiếu, không theo nguồn sinh phiếu.
+ */
+export function isNonCashVoucher(
+  v: Pick<VoucherLifecycleState, "posting_mode" | "posting_status"> | null | undefined,
+): boolean {
+  return (
+    v?.posting_mode === "NON_CASH" || v?.posting_status === "NOT_APPLICABLE"
+  );
+}
+
 /** Kết quả mô hình hiển thị. */
 export interface VoucherDisplayState {
   /** Nhãn tiếng Việt canonical (không bao giờ là "Nháp"). */
