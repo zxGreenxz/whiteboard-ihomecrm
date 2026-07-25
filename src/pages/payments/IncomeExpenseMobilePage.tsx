@@ -1094,6 +1094,8 @@ export default function IncomeExpenseMobilePage() {
             type: (approveTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
             approvedTotal: approveTarget.total_amount ?? 0,
             name: approveTarget.name ?? undefined,
+            defaultCashbookId: approveTarget.account_id ?? null,
+            attachments: approveTarget.attachments ?? null,
           }}
           capability={{ isCustodian: custodianBooks.length > 0, canApprove: true }}
           cashbookOptions={custodianBooks}
@@ -1187,6 +1189,8 @@ export default function IncomeExpenseMobilePage() {
             type: (postApprovedTarget.type as "INCOME" | "EXPENSE") ?? "EXPENSE",
             approvedTotal: postApprovedTarget.total_amount ?? 0,
             name: postApprovedTarget.name ?? undefined,
+            defaultCashbookId: postApprovedTarget.account_id ?? null,
+            attachments: postApprovedTarget.attachments ?? null,
           }}
           capability={{ isCustodian: custodianBooks.length > 0, canApprove: false }}
           cashbookOptions={custodianBooks}

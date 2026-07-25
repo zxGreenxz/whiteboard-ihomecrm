@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Upload, X, FileText } from 'lucide-react';
@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DateSegmentInput } from '@/components/ui/date-segment-input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { StorageImage } from '@/components/ui/storage-image';
+import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { formatVND } from '@/lib/utils';
 import {
   buildIncomeExpensePostingSchema,
@@ -60,6 +62,23 @@ export interface PostingVoucherSummary {
    * SYSTEM_REFERENCE thì truyền false.
    */
   requiresEvidence?: boolean;
+  /**
+   * Sổ quỹ đang ghi trên phiếu — dùng để CHỌN SẴN ô "Sổ quỹ" khi mở hộp thoại.
+   * Chỉ là gợi ý: người chi vẫn đổi được, và tiền đi theo sổ tại thời điểm bấm
+   * lưu. Nếu sổ này không nằm trong `cashbookOptions` (actor không giữ sổ đó)
+   * thì ô để trống — chọn sẵn một sổ không được phép chỉ dẫn tới 42501.
+   */
+  defaultCashbookId?: string | null;
+  /**
+   * Ảnh đính kèm sẵn trên phiếu (income_expenses.attachments) — hiển thị để đối
+   * chiếu ngay trong hộp thoại.
+   *
+   * LƯU Ý: đây KHÔNG phải chứng từ chi. Chứng từ chi là bản ghi evidence riêng
+   * (intent → upload → finalize) mà server kiểm FINALIZED theo tenant; ảnh đính
+   * kèm chỉ là file trong bucket của phiếu. Vì vậy chúng chỉ xem được, không tự
+   * động thoả điều kiện "phải có chứng từ".
+   */
+  attachments?: string[] | null;
 }
 
 /** Capability server trả cho actor trên phiếu/sổ đang xét. */
@@ -115,42 +134,80 @@ function EvidencePlaceholderUpload({
   onChange,
   disabled,
   onUpload,
+  existingAttachments = [],
 }: {
   value: string[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
   onUpload?: (file: File) => Promise<string | null>;
+  /** Ảnh đã đính kèm từ lúc tạo phiếu — xem lại tại chỗ, không phải chứng từ chi. */
+  existingAttachments?: string[];
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setBusy(true);
-    try {
-      const added: string[] = [];
-      for (const file of Array.from(files)) {
-        if (onUpload) {
-          const id = await onUpload(file);
-          if (id) added.push(id);
-        } else {
-          // Chưa nối luồng thật — id tạm chỉ để dựng giao diện.
-          added.push(`local:${genIdempotencyKey()}`);
+  const handleFiles = useCallback(
+    async (files: FileList | File[] | null) => {
+      const list = files ? Array.from(files as ArrayLike<File>) : [];
+      if (list.length === 0) return;
+      setBusy(true);
+      try {
+        const added: string[] = [];
+        for (const file of list) {
+          if (onUpload) {
+            const id = await onUpload(file);
+            if (id) added.push(id);
+          } else {
+            // Chưa nối luồng thật — id tạm chỉ để dựng giao diện.
+            added.push(`local:${genIdempotencyKey()}`);
+          }
         }
+        if (added.length > 0) onChange([...value, ...added]);
+      } finally {
+        setBusy(false);
+        if (inputRef.current) inputRef.current.value = '';
       }
-      if (added.length > 0) onChange([...value, ...added]);
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  };
+    },
+    [onChange, onUpload, value],
+  );
+
+  // Ctrl+V dán ảnh ngay trong ô chứng từ (đối xứng AttachmentUpload lúc tạo phiếu).
+  const pasteHandlers = useClipboardImagePaste({
+    onFiles: handleFiles,
+    enabled: !disabled && !busy,
+    multiple: true,
+  });
 
   const removeAt = (idx: number) => {
     onChange(value.filter((_, i) => i !== idx));
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" {...pasteHandlers}>
+      {existingAttachments.length > 0 && (
+        <div className="space-y-1 rounded-md border border-dashed bg-muted/30 p-2">
+          <p className="text-xs text-muted-foreground">
+            Ảnh đính kèm từ lúc tạo phiếu ({existingAttachments.length}) — xem để
+            đối chiếu; chứng từ chi vẫn cần tải ở dưới.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {existingAttachments.map((url, idx) => (
+              <div
+                key={`${url}-${idx}`}
+                className="h-16 w-16 overflow-hidden rounded border bg-background"
+                title={`Ảnh đính kèm ${idx + 1}`}
+              >
+                <StorageImage
+                  value={url}
+                  alt={`Ảnh đính kèm ${idx + 1}`}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <input
         ref={inputRef}
         type="file"
@@ -160,16 +217,21 @@ function EvidencePlaceholderUpload({
         onChange={(e) => handleFiles(e.target.files)}
         disabled={disabled || busy}
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={disabled || busy}
-        onClick={() => inputRef.current?.click()}
-      >
-        <Upload className="h-4 w-4 mr-1" />
-        {busy ? 'Đang tải...' : 'Thêm chứng từ'}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled || busy}
+          onClick={() => inputRef.current?.click()}
+        >
+          <Upload className="h-4 w-4 mr-1" />
+          {busy ? 'Đang tải...' : 'Thêm chứng từ'}
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          hoặc đưa chuột vào đây rồi bấm Ctrl+V để dán ảnh
+        </span>
+      </div>
 
       {value.length > 0 && (
         <ul className="space-y-1">
@@ -180,7 +242,9 @@ function EvidencePlaceholderUpload({
             >
               <span className="flex items-center gap-2 truncate">
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">{id}</span>
+                <span className="truncate" title={id}>
+                  Chứng từ {idx + 1}
+                </span>
               </span>
               {!disabled && (
                 <button
@@ -254,11 +318,26 @@ export default function IncomeExpensePostingDialog({
     [requireEvidence, allowAmount, voucher.remainingAmount],
   );
 
+  /**
+   * Sổ chọn sẵn: ưu tiên sổ đang ghi trên phiếu (nếu actor thật sự giữ sổ đó),
+   * sau đó mới tới quy tắc cũ "chỉ có đúng 1 sổ thì chọn luôn".
+   * KHÔNG chọn sẵn sổ nằm ngoài quyền giữ sổ — server sẽ từ chối 42501.
+   */
+  const defaultCashbookId = voucher.defaultCashbookId ?? null;
+  const cashbookOnVoucherAllowed =
+    !!defaultCashbookId && cashbookOptions.some((c) => c.id === defaultCashbookId);
+  const resolvedCashbookId = useMemo(() => {
+    if (cashbookOnVoucherAllowed) return defaultCashbookId as string;
+    if (cashbookOptions.length === 1) return cashbookOptions[0].id;
+    return '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashbookOnVoucherAllowed, defaultCashbookId, cashbookOptions]);
+
   const form = useForm<IncomeExpensePostingFormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       postedOn: todayIso(),
-      cashbookId: cashbookOptions.length === 1 ? cashbookOptions[0].id : '',
+      cashbookId: resolvedCashbookId,
       evidenceIds: [],
       amount: allowAmount ? voucher.remainingAmount : undefined,
     },
@@ -277,12 +356,25 @@ export default function IncomeExpensePostingDialog({
     if (!open) return;
     form.reset({
       postedOn: todayIso(),
-      cashbookId: cashbookOptions.length === 1 ? cashbookOptions[0].id : '',
+      cashbookId: resolvedCashbookId,
       evidenceIds: [],
       amount: allowAmount ? voucher.remainingAmount : undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, voucher.subjectId, mode]);
+
+  /**
+   * Danh sách sổ nạp BẤT ĐỒNG BỘ (query chỉ bật khi dialog mở) nên lúc reset ở
+   * trên `cashbookOptions` thường còn rỗng ⇒ mọi giá trị chọn sẵn đều rơi mất.
+   * Khi danh sách về, điền lại — nhưng CHỈ khi ô còn trống, để không bao giờ
+   * đè lên sổ người dùng vừa tự chọn.
+   */
+  useEffect(() => {
+    if (!open || !resolvedCashbookId) return;
+    if (form.getValues('cashbookId')) return;
+    form.setValue('cashbookId', resolvedCashbookId, { shouldValidate: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, resolvedCashbookId]);
 
   const submit = form.handleSubmit(async (values) => {
     const input: PostFinanceExecutionInput = {
@@ -355,6 +447,18 @@ export default function IncomeExpensePostingDialog({
                       }))}
                     />
                   </FormControl>
+                  {defaultCashbookId && !cashbookOnVoucherAllowed && (
+                    <p className="text-xs text-amber-700">
+                      Sổ quỹ ghi trên phiếu không nằm trong các sổ bạn đang giữ —
+                      hãy chọn đúng sổ bạn thực {baseWord.toLowerCase()}.
+                    </p>
+                  )}
+                  {cashbookOnVoucherAllowed && (
+                    <p className="text-xs text-muted-foreground">
+                      Đang chọn sẵn sổ ghi trên phiếu. Đổi sổ khác cũng được —
+                      tiền đi theo sổ tại thời điểm bấm “{title}”.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -411,6 +515,7 @@ export default function IncomeExpensePostingDialog({
                       value={field.value ?? []}
                       onChange={field.onChange}
                       onUpload={onUploadEvidence}
+                      existingAttachments={voucher.attachments ?? []}
                     />
                   </FormControl>
                   <FormMessage />
