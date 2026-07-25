@@ -1,8 +1,75 @@
 # PLAN — Chuyển hẳn phân quyền sang mô hình tổ chức, cắt hệ cũ một lần
 
-> **Bản 3 — 2026-07-25 (tối), sau vòng review độc lập lần 2.** Bản 1 sai 3 chỗ (§0); bản 3 đính chính thêm 3 điểm và bổ sung 2 finding mới (§0bis).
+> **Bản 4 — 2026-07-25 (khuya), sau THI CÔNG T1–T3 + vòng kiểm chứng 179 agent.** Xem §0ter — có 3 việc CHẶN Ngày G.
+> Bản 3 (sau review lần 2): Bản 1 sai 3 chỗ (§0); bản 3 đính chính thêm 3 điểm và bổ sung 2 finding mới (§0bis).
 > **Quyết định owner đã chốt**: xong tới đâu áp tới đó (không hẹn cửa sổ) · cho phép DENY cấp vai trò · 2 cổ đông chưa có tài khoản để mời sau · chỉ `nguyentamca165@gmail.com` là chủ, còn lại là quản lý · giữ bảng cũ 30 ngày rồi xoá.
 > **Tiền đề**: Đợt 1 hardening đã xong (`0d1da42`).
+
+---
+
+## 0ter. Bản 4 — sau THI CÔNG T1–T3 và vòng kiểm chứng 179 agent
+
+> Trạng thái: **T1, T2, T3 đã thi công lên production và kiểm chứng xong.**
+> **Ngày G bị CHẶN** bởi 3 việc dưới đây. Chưa cutover.
+
+### Đã lên production (đã verify)
+
+| Commit | Nội dung | Bằng chứng |
+|---|---|---|
+| `c5cd476` | T1 evaluator đường đọc + 9 index + bảng sao lưu rollback · T2 đồng bộ 232 ngoại lệ | **11.653 quyết định** đọc-vs-ghi khớp tuyệt đối, 0 lệch 2 chiều |
+| `20a59ae` | T3 đo hiệu năng | EXPLAIN ANALYZE trên org thật |
+| `2e7be65` | Vá P0 + 5 key catalog | 92 cặp call-site, 0 thiếu; catalog 219 key |
+
+Kết quả đối chiếu quyền cấp tổ chức sau đồng bộ: **owner 214/214 · bosshuy 214/214 · joey & nathan 208/214** (6 chênh còn lại là loại trừ có chủ đích).
+
+### ⛔ CHẶN 1 — Đòn bẩy trung tâm của plan KHÔNG ĐỦ (hiệu năng)
+
+Plan dựa trên "giữ chữ ký 11 helper, chỉ đổi ruột, 337 tham chiếu tự đổi nguồn, **không đụng policy nào**". Đo thực tế bác bỏ điều đó:
+
+| Đường | Cũ | Mới | |
+|---|---|---|---|
+| Hằng số — `can_access_org_entity`, 192 policy, 1 lần/truy vấn | 6,7 ms | 10,5 ms | 1,57× — chấp nhận |
+| **Theo dòng — `can_do_on_building`, 74 policy, 892 hoá đơn** | 453 ms | **5.555 ms** | **11× — hỏng** |
+
+Đã tối ưu 2 vòng (15.541 → 5.230 ms/1070 lời gọi) vẫn không đạt. Điểm mấu chốt:
+
+- Viết **thẳng trong policy** `building_id = ANY(buildings_for_v3('invoices.view'))` → **16,4 ms**, tức **nhanh hơn hệ hiện tại 30 lần** (planner tính mảng một lần rồi so thành viên).
+- Bọc **cùng biểu thức đó** trong hàm `SECURITY DEFINER` → **12.364 ms**, tệ nhất, vì `SECURITY DEFINER` **không inline được** nên thân hàm chạy lại từng dòng.
+
+**Sửa plan:** Ngày G phải gồm **viết lại biểu thức của 74 policy** sang dạng mảng. Việc này script hoá được và làm hệ nhanh hơn hôm nay 30 lần, nhưng phạm vi Ngày G đổi thành *192 tham chiếu qua helper + 74 policy sửa thật*.
+
+### ⛔ CHẶN 2 — `can_access_org_entity` vẫn "mù tổ chức" sau cutover
+
+`has_any_scope_v3` khi không kèm toà/sổ chỉ hỏi "user này có membership ACTIVE nào cho quyền này" — **không ràng buộc org của DÒNG dữ liệu**. Nhiều bảng chỉ có đúng một hàng rào là `can_access_org_entity(res,act)`. Đổi nguồn helper **không** đóng lỗ xuyên tổ chức cho nhóm bảng đó.
+
+**Thêm bước T5b vào plan** (plan thiếu hẳn): với bảng có `organization_id`, policy phải kèm `organization_id = ANY(public.my_org_ids())`. Nếu chưa làm hết, tối thiểu phải liệt kê và owner ký nhận danh sách bảng còn hở.
+
+### ⛔ CHẶN 3 — 6 chênh lệch quyền cần owner quyết
+
+joey & nathan, mỗi người:
+- **Mất** `cashbooks.create/delete/edit` — hệ cũ (RLS) cho, nhưng app không có đường ghi thẳng vào `accounts`; writer canonical vốn đã từ chối ⇒ khôi phục = cấp quyền **mới**.
+- **Thêm** `income_expenses.approve` [ELEVATED], `shareholder_profit.view`, `thu_tien.collect` — **đã live trên đường ghi** (vai trò "Quản Lý Tòa" canonical có ALLOW), chỉ UI cũ giấu. Thêm CẤM mới là thay đổi quyền thật.
+
+### Sửa ánh xạ §4.3 (từ kiểm chứng)
+
+| Helper | Sửa gì |
+|---|---|
+| `same_team` | **LOẠI khỏi danh sách.** Nó đọc `team_members`, không đọc `staff_assignments`. Đổi ruột sang kiểm quyền là sai ngữ nghĩa. Danh sách thật là **10 helper**, không phải 11. |
+| `can_access_org_entity` | Phải map sang `has_any_scope_v3`, **KHÔNG** phải `can_v3` — `can_v3` có tầng chặn cứng khi thiếu `required_dimensions`, sẽ deny 2 key / 6 policy (`income_expenses.create/edit`). |
+| `current_visible_owner_ids` | **42** tham chiếu (không phải 41 — thiếu policy trên `storage.objects`). Cần hàm riêng trả `uuid[]`, `can_v3`/`buildings_for_v3` không diễn đạt được vì nó trả danh sách **người**. |
+| `can_access_building` | Map `can_v3('buildings.view', b)`. Đã đo tương đương trên 10/10 actor; lệch duy nhất 1 toà demo. Dùng bởi **36 hàm** (không phải 22), gồm RPC ghi tiền. |
+
+### Lỗi của chính tôi đã tìm và vá trong quá trình thi công
+
+1. **Ánh xạ ngây thơ sẽ khoá sạch 3/4 người dùng org thật** — `can_access_org_entity` nghĩa là "có quyền ở *bất kỳ* phân công nào", không đòi phạm vi tổ chức; joey/nathan/bosshuy chỉ có phạm vi BUILDING. Đã đổi thiết kế sang trả *tập phạm vi*.
+2. **Trục sổ quỹ nới hơn đường ghi** ở 5 quyền có `required_dimensions=['BUILDING']` (owner 105 cặp, partner 42 cặp). Đã đối xứng hoá.
+3. **Hàm `probe_scoped_buildings` đếm cả cạnh CẤM** thành "được truy cập". Đã lọc chỉ cạnh CHO.
+4. **Phương án "thêm phạm vi TỔ CHỨC vào binding" bị bác bỏ** — đo được nó cấp thêm ngoài ý muốn joey +6, nathan +5, gồm `income_expenses.approve` [ELEVATED].
+5. **Regex quét catalog của tôi quá hẹp** — bỏ sót 3/5 key vì trong thân hàm đối số không có `::text`. Agent bắt được.
+
+### P0 đã vá luôn (độc lập cutover)
+
+`run_recurring_vouchers_job()` — SECURITY DEFINER, không guard `auth.uid()`, **anon gọi được**, thân hàm sinh phiếu hàng loạt. Đúng mẫu "wrapper phá vỡ revoke" (§9.3-6): hàm gốc đã bị thu hồi từ 20260710130500 nhưng wrapper vượt qua. Gate không bắt vì nó nằm trong baseline lịch sử, không phải hàm mới. Đã revoke; chỉ pg_cron gọi nên an toàn.
 
 ---
 
