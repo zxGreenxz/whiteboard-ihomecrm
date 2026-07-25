@@ -1,8 +1,41 @@
 # PLAN — Chuyển hẳn phân quyền sang mô hình tổ chức, cắt hệ cũ một lần
 
-> **Bản 2 — 2026-07-25 (chiều).** Bản 1 có ba nhận định sai, đã đính chính ở §0.
+> **Bản 3 — 2026-07-25 (tối), sau vòng review độc lập lần 2.** Bản 1 sai 3 chỗ (§0); bản 3 đính chính thêm 3 điểm và bổ sung 2 finding mới (§0bis).
 > **Quyết định owner đã chốt**: xong tới đâu áp tới đó (không hẹn cửa sổ) · cho phép DENY cấp vai trò · 2 cổ đông chưa có tài khoản để mời sau · chỉ `nguyentamca165@gmail.com` là chủ, còn lại là quản lý · giữ bảng cũ 30 ngày rồi xoá.
 > **Tiền đề**: Đợt 1 hardening đã xong (`0d1da42`).
+
+---
+
+## 0bis. Vòng review 2 — đính chính bản 2 và 2 finding mới
+
+Chạy thêm 4 truy vấn xác minh trên catalog live. Kết quả:
+
+### Đính chính (đều theo hướng **rủi ro nhẹ hơn** bản 2 tưởng)
+
+| Bản 2 viết | Thực tế đo được | Ảnh hưởng plan |
+|---|---|---|
+| "Vai trò Super Admin rỗng, **18 người** đang gán → có thể mất quyền, **chặn cutover**" | 18 binding đó **của DUY NHẤT `nguyentamca165`** (OWNER), tất cả **đều có scope**, và người này đã có vai trò "Chủ sở hữu tổ chức" = 214 quyền | Vai trò rỗng này **vô hại** — không ai mất quyền. Hạ từ "Cao — chặn cutover" xuống **"Thấp — dọn rác"**. |
+| "Ngữ nghĩa `current_visible_owner_ids` lệch — rủi ro **Cao**" | Đồ thị nhân viên cũ == danh sách thành viên tổ chức, **khớp tuyệt đối**: nguyentamca165 10/10, joey 4/4, nathan 4/4, bosshuy 4/4 | Ánh xạ an toàn, có bằng chứng số. Hạ rủi ro xuống **Thấp** (vẫn giữ cổng đối chiếu bóng). |
+| *(không nêu)* | 214 policy `TO public` dùng helper — nhưng helper kiểm `auth.uid()` bên trong nên anon (chưa đăng nhập) luôn nhận `false`. Không phải lỗ hổng | Đổi ruột helper **không làm lộ dữ liệu cho anon**. Xác nhận an toàn. |
+
+### Finding mới 1 — CÓ THỂ GÃY PRODUCTION nếu bỏ sót ⚠
+
+**`settings.create` và `settings.delete` không có trong catalog 214 key.**
+
+- 89 cặp `(resource, action)` được policy truyền vào helper. 87 cặp khớp catalog; **2 cặp không**: `settings.create`, `settings.delete`.
+- Catalog chỉ có `settings.view` + `settings.edit`. Nhưng policy đang gọi `can_do_on_building('settings','create'|'delete')`.
+- Helper **cũ** tự xử lý không cần key catalog. Nhưng ruột **mới** (`can_v3('settings.create')`) sẽ trả `false` ngay ở tầng "quyền phải tồn tại & đang bật" → **mất quyền tạo/xoá cấu hình sau Ngày G**.
+- **Xử lý (thêm vào §5 việc 6)**: hoặc thêm 2 key `settings.create`/`settings.delete` vào `permission_definitions`, hoặc gộp create/delete-settings vào `settings.edit` và sửa 2 policy. Quyết định lúc T2, kiểm bằng đối chiếu bóng ở T3.
+- *(Đã kiểm: mọi lời gọi helper đều dùng string literal, không có đối số biến, nên 89 cặp là danh sách đóng — không cặp nào lọt regex.)*
+
+### Finding mới 2 — mở rộng phạm vi test (không chặn, nhưng phải phủ)
+
+**71 hàm — không chỉ 337 policy — cũng gọi 11 helper.**
+
+Đổi ruột helper đồng thời đổi hành vi của 71 function, gồm nhiều RPC quan trọng: `approve_voucher`, `unapprove_voucher`, `terminate_contract_move_out/forfeit`, `transfer_contract`, `renew_contract`, `record_invoice_payment_v2`, `create/approve/cancel_income_expense_v1`, và **cả nhóm báo cáo** `fa_monthly_pnl`, `fa_occupancy_monthly`, `occupancy_snapshot_v2`, `pra_*` (thống kê phòng công khai).
+
+- Về mặt nhất quán đây là **điều tốt** — 71 hàm đó cũng nên dùng model mới thay vì đọc bảng cũ.
+- Nhưng test ở T3 phải phủ **cả nhóm này**, không chỉ 337 policy. Đặc biệt báo cáo `fa_*`/`occupancy_*` có thể lệch số **âm thầm** (không lỗi, chỉ ra sai) nếu ngữ nghĩa "toà nào tôi thấy" đổi. Thêm vào ma trận kiểm thử §10: chạy lại toàn bộ báo cáo tài chính/vận hành trước-sau, so từng con số.
 
 ---
 
@@ -224,11 +257,12 @@ Ba thay đổi hành vi: bỏ "lấy dòng đầu tiên" · bỏ nhánh `legacy_
 
 | # | Vấn đề | Số liệu | Xử lý |
 |---|---|---|---|
-| 1 | **Vai trò "Super Admin" rỗng nhưng có 18 binding** | 0 quyền / 18 binding | Sau cutover, 18 binding này cấp **0 quyền**. Kiểm ai đang giữ; xoá vai trò rỗng hoặc gán quyền đúng. **Chặn cutover nếu chưa xong.** |
+| 1 | **Vai trò "Super Admin" rỗng, 18 binding** | 0 quyền / 18 binding, **tất cả của mình `nguyentamca165` (OWNER)** | *(Review 2 đã đo)* Vô hại — người này đã có vai trò "Chủ sở hữu tổ chức" = 214 quyền, nên 18 binding rỗng không cấp/cắt gì. Chỉ cần **dọn rác**: xoá vai trò rỗng + 18 binding. **Không còn chặn cutover.** |
 | 2 | **4 binding không có phạm vi** | 4 | Binding không phạm vi = cấp 0 quyền (v3 INNER JOIN scope). Gán phạm vi hoặc đóng. Thêm ràng buộc cấm tái diễn. |
 | 3 | **Ngoại lệ per-staff chưa đồng bộ** | 5/9 người JSONB lệch mẫu | Sinh override CHO/CẤM từ diff, đúng `scope_mode`. Key không map được → bảng ngoại lệ, owner duyệt tay. **Không đoán.** |
 | 4 | **`legacy_owner_allowlist`** | 5 dòng | Đã xác minh: **4 dòng là code chết** (nguyentamca165 được super_admin bắt trước; joey/nathan/bosshuy có quyền nhân viên nên hàm dừng sớm). Chỉ tài khoản **demo** thật sự dùng nhánh này. → Xoá 4 dòng ngay (không đổi hành vi), dòng demo xoá tại Ngày G khi OWNER membership thay thế. |
 | 5 | **Cổ đông/quản lý LN ngoài mô hình** | 3 cổ đông có tài khoản · 2 quản lý LN · 2 cổ đông chưa có tài khoản | 5 người có tài khoản → membership `PARTNER` + vai trò tương ứng. 2 người chưa có tài khoản: **để ngoài, mời sau** (owner đã chốt). |
+| 6 | **`settings.create` / `settings.delete` thiếu trong catalog** *(finding review 2)* | 2 key / catalog chỉ có view+edit | Policy đang gọi 2 action này qua helper; ruột mới sẽ trả `false` → mất quyền tạo/xoá cấu hình. Thêm 2 key vào `permission_definitions` **hoặc** gộp vào `settings.edit` + sửa 2 policy. **Chặn cutover nếu chưa xong.** |
 
 ---
 
@@ -441,6 +475,8 @@ Bảng so sánh `4 thành viên org thật × 214 quyền × {toàn tổ chức,
 | Chủ cuối | Hạ chủ sở hữu duy nhất | Chặn |
 | Hiệu năng | 10 truy vấn nóng | p95 ≤ baseline + 20% |
 | Tiền | Đối soát trước/sau | Tổng org thật bất biến |
+| **Báo cáo** *(review 2)* | Chạy lại **71 hàm** dùng helper, đặc biệt `fa_*`, `occupancy_*`, `pra_*` | Từng con số trước = sau |
+| **Catalog** *(review 2)* | Mọi cặp `(resource,action)` trong policy có key trong `permission_definitions` | 0 cặp thiếu (sau khi vá `settings.create/delete`) |
 | UI | Hạm đội browser: 4 vai trò × luồng chính | Không lỗi console, quyền hiển thị = quyền thật |
 
 ---
@@ -450,8 +486,10 @@ Bảng so sánh `4 thành viên org thật × 214 quyền × {toàn tổ chức,
 | Rủi ro | Mức | Chặn bằng |
 |---|---|---|
 | Hiệu năng RLS xấu đi (192 policy dùng chung 1 hàm) | **Cao** | `STABLE` + CTE materialized + index; cổng p95 ở T3; sẵn phương án mảng |
-| Ngữ nghĩa `current_visible_owner_ids` lệch | **Cao** | Đối chiếu bóng bằng số, không suy luận |
-| Vai trò "Super Admin" rỗng làm 18 người mất quyền | **Cao** | §6 việc 1 — **chặn cutover nếu chưa xong** |
+| **`settings.create/delete` thiếu catalog → mất quyền cấu hình** *(review 2)* | **Cao** | §5 việc 6 — **chặn cutover nếu chưa xong** |
+| **71 hàm (không chỉ policy) đổi hành vi; báo cáo có thể lệch số âm thầm** *(review 2)* | **Cao** | Chạy lại toàn bộ báo cáo tài chính/vận hành trước-sau, so từng con số ở T3 |
+| Ngữ nghĩa `current_visible_owner_ids` lệch | ~~Cao~~ **Thấp** *(review 2 đo khớp 10/10, 4/4)* | Đối chiếu bóng bằng số, không suy luận |
+| Vai trò "Super Admin" rỗng | ~~Cao~~ **Thấp** *(review 2: của 1 người đã có 214 quyền)* | Dọn rác ở §5 việc 1 |
 | Reconcile ngoại lệ đoán sai | Trung bình | Key không map được → bảng ngoại lệ, owner duyệt tay |
 | Ngày G lỗi giữa chừng | Trung bình | Một transaction + backup helper + rollback < 1 phút |
 | UI mới thiếu tính năng so với màn cũ | Thấp | Đối chiếu tính năng ở T5 trước khi xoá `StaffPage` |
