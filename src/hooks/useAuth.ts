@@ -129,6 +129,7 @@ export const useRegister = () => {
   const { toast } = useToast();
 
   return useMutation({
+    mutationKey: ['auth', 'register'],
     mutationFn: async (data: RegisterData) => {
       // Convert phone to email format if user registers with phone
       const authEmail = data.email ? data.email : phoneToEmail(data.phone);
@@ -175,6 +176,7 @@ export const useLogin = () => {
   const { toast } = useToast();
 
   return useMutation({
+    mutationKey: ['auth', 'login'],
     mutationFn: async (data: LoginData) => {
       // Normalize identifier (phone → email format, or keep email as-is)
       const email = normalizeIdentifier(data.identifier);
@@ -220,6 +222,7 @@ export const useLogout = () => {
   const { toast } = useToast();
 
   return useMutation({
+    mutationKey: ['auth', 'logout'],
     mutationFn: async () => {
       // scope 'local': chỉ đăng xuất thiết bị này. Mặc định 'global' thu hồi
       // session ở MỌI thiết bị — 1 phiên (tab khác / máy khác / phiên test)
@@ -268,6 +271,7 @@ export const useForgotPassword = () => {
   const { toast } = useToast();
 
   return useMutation({
+    mutationKey: ['auth', 'forgot-password'],
     mutationFn: async (data: ForgotPasswordData) => {
       const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
         redirectTo: `${window.location.origin}/reset-password`,
@@ -304,6 +308,7 @@ export const useResetPassword = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['auth', 'reset-password'],
     mutationFn: async (data: ResetPasswordData) => {
       const { error } = await supabase.auth.updateUser({
         password: data.password,
