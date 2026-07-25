@@ -23,6 +23,7 @@ export type Database = {
           id: string
           organization_id: string | null
           user_id: string
+          v2_classified_at: string | null
         }
         Insert: {
           account_id: string
@@ -31,6 +32,7 @@ export type Database = {
           id?: string
           organization_id?: string | null
           user_id: string
+          v2_classified_at?: string | null
         }
         Update: {
           account_id?: string
@@ -39,6 +41,7 @@ export type Database = {
           id?: string
           organization_id?: string | null
           user_id?: string
+          v2_classified_at?: string | null
         }
         Relationships: [
           {
@@ -53,6 +56,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_shared_users_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -743,11 +753,15 @@ export type Database = {
           building_id: string | null
           cashbook_id: string | null
           category_id: string | null
+          closed_at: string | null
+          closed_by_membership_id: string | null
           id: string
           maker_membership_id: string
           maker_user_id: string
           matched_rule_id: string
           organization_id: string
+          outcome_kind: string | null
+          outcome_reason: string | null
           payload_hash: string
           payload_snapshot: Json
           posted_at: string | null
@@ -770,11 +784,15 @@ export type Database = {
           building_id?: string | null
           cashbook_id?: string | null
           category_id?: string | null
+          closed_at?: string | null
+          closed_by_membership_id?: string | null
           id?: string
           maker_membership_id: string
           maker_user_id: string
           matched_rule_id: string
           organization_id: string
+          outcome_kind?: string | null
+          outcome_reason?: string | null
           payload_hash: string
           payload_snapshot: Json
           posted_at?: string | null
@@ -797,11 +815,15 @@ export type Database = {
           building_id?: string | null
           cashbook_id?: string | null
           category_id?: string | null
+          closed_at?: string | null
+          closed_by_membership_id?: string | null
           id?: string
           maker_membership_id?: string
           maker_user_id?: string
           matched_rule_id?: string
           organization_id?: string
+          outcome_kind?: string | null
+          outcome_reason?: string | null
           payload_hash?: string
           payload_snapshot?: Json
           posted_at?: string | null
@@ -1649,6 +1671,13 @@ export type Database = {
             referencedRelation: "accounts"
             referencedColumns: ["organization_id", "id"]
           },
+          {
+            foreignKeyName: "authorization_scopes_organization_id_cashbook_id_fkey"
+            columns: ["organization_id", "cashbook_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["organization_id", "id"]
+          },
         ]
       }
       auto_debt_config: {
@@ -1782,6 +1811,13 @@ export type Database = {
             columns: ["default_account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "building_fee_accounts_default_account_id_fkey"
+            columns: ["default_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -2116,6 +2152,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "buildings_default_account_id_tk_fkey"
+            columns: ["default_account_id_tk"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "buildings_default_account_id_tt_fkey"
             columns: ["default_account_id_tt"]
             isOneToOne: false
@@ -2127,6 +2170,13 @@ export type Database = {
             columns: ["default_account_id_tt"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "buildings_default_account_id_tt_fkey"
+            columns: ["default_account_id_tt"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -2324,6 +2374,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_handovers_from_account_id_fkey"
+            columns: ["from_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cash_handovers_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
@@ -2342,6 +2399,13 @@ export type Database = {
             columns: ["to_account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_handovers_to_account_id_fkey"
+            columns: ["to_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -2451,6 +2515,13 @@ export type Database = {
             referencedColumns: ["organization_id", "id"]
           },
           {
+            foreignKeyName: "cashbook_possession_bindings_organization_id_cashbook_id_fkey"
+            columns: ["organization_id", "cashbook_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
             foreignKeyName: "cashbook_possession_bindings_organization_id_membership_id_fkey"
             columns: ["organization_id", "membership_id"]
             isOneToOne: false
@@ -2524,6 +2595,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cashbook_reconciliations_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -4379,6 +4457,101 @@ export type Database = {
           },
         ]
       }
+      finance_evidence_objects: {
+        Row: {
+          bucket_id: string
+          byte_size: number | null
+          created_at: string
+          finalized_at: string | null
+          id: string
+          mime_type: string | null
+          object_name: string
+          organization_id: string
+          provenance_kind: string
+          sha256: string | null
+          state: string
+          upload_token_hash: string | null
+          uploader_membership_id: string | null
+          uploader_user_id: string | null
+        }
+        Insert: {
+          bucket_id: string
+          byte_size?: number | null
+          created_at?: string
+          finalized_at?: string | null
+          id?: string
+          mime_type?: string | null
+          object_name: string
+          organization_id: string
+          provenance_kind: string
+          sha256?: string | null
+          state: string
+          upload_token_hash?: string | null
+          uploader_membership_id?: string | null
+          uploader_user_id?: string | null
+        }
+        Update: {
+          bucket_id?: string
+          byte_size?: number | null
+          created_at?: string
+          finalized_at?: string | null
+          id?: string
+          mime_type?: string | null
+          object_name?: string
+          organization_id?: string
+          provenance_kind?: string
+          sha256?: string | null
+          state?: string
+          upload_token_hash?: string | null
+          uploader_membership_id?: string | null
+          uploader_user_id?: string | null
+        }
+        Relationships: []
+      }
+      finance_evidence_system_sources: {
+        Row: {
+          collection_id: string | null
+          created_at: string
+          evidence_id: string
+          id: string
+          organization_id: string
+          payment_id: string | null
+          source_kind: string
+          source_snapshot_hash: string | null
+          tender_id: string | null
+        }
+        Insert: {
+          collection_id?: string | null
+          created_at?: string
+          evidence_id: string
+          id?: string
+          organization_id: string
+          payment_id?: string | null
+          source_kind: string
+          source_snapshot_hash?: string | null
+          tender_id?: string | null
+        }
+        Update: {
+          collection_id?: string | null
+          created_at?: string
+          evidence_id?: string
+          id?: string
+          organization_id?: string
+          payment_id?: string | null
+          source_kind?: string
+          source_snapshot_hash?: string | null
+          tender_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_evidence_system_sources_evidence_fkey"
+            columns: ["organization_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "finance_evidence_objects"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       floors: {
         Row: {
           building_id: string
@@ -4734,6 +4907,362 @@ export type Database = {
           },
         ]
       }
+      income_expense_posting_evidence: {
+        Row: {
+          created_at: string
+          evidence_id: string
+          evidence_snapshot_hash: string | null
+          id: string
+          inherited_from_link_id: string | null
+          organization_id: string
+          posting_id: string
+          relation_kind: string
+        }
+        Insert: {
+          created_at?: string
+          evidence_id: string
+          evidence_snapshot_hash?: string | null
+          id?: string
+          inherited_from_link_id?: string | null
+          organization_id: string
+          posting_id: string
+          relation_kind: string
+        }
+        Update: {
+          created_at?: string
+          evidence_id?: string
+          evidence_snapshot_hash?: string | null
+          id?: string
+          inherited_from_link_id?: string | null
+          organization_id?: string
+          posting_id?: string
+          relation_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expense_posting_evidence_evidence_fkey"
+            columns: ["organization_id", "evidence_id"]
+            isOneToOne: false
+            referencedRelation: "finance_evidence_objects"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "income_expense_posting_evidence_inherited_from_fkey"
+            columns: ["inherited_from_link_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_posting_evidence"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_posting_evidence_posting_fkey"
+            columns: ["posting_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      income_expense_posting_lines: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          line_kind: string
+          organization_id: string
+          posting_id: string
+          signed_amount: number
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          line_kind: string
+          organization_id: string
+          posting_id: string
+          signed_amount: number
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          line_kind?: string
+          organization_id?: string
+          posting_id?: string
+          signed_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_ie_posting_lines_account"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_posting_lines_account"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_posting_lines_account"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_posting_lines_posting_id_fkey"
+            columns: ["posting_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      income_expense_postings: {
+        Row: {
+          account_id: string
+          amount_basis: string
+          approval_request_id: string | null
+          approval_version: number
+          created_at: string
+          direction: string
+          event_kind: string
+          evidence_waiver: string | null
+          external_source_id: string | null
+          external_source_kind: string | null
+          external_source_line_id: string | null
+          gross_amount: number
+          id: string
+          idempotency_key: string
+          legacy_provenance: Json | null
+          net_cash_effect: number
+          organization_id: string
+          posted_by_membership_id: string
+          posted_by_user_id: string
+          posted_on: string
+          posting_generation: number
+          posting_subject_id: string
+          posting_subject_kind: string
+          replaces_posting_id: string | null
+          reversal_of_id: string | null
+          reversal_reason: string | null
+          source_kind: string
+          source_version_or_hash: string | null
+          voucher_amount_snapshot: number
+          voucher_id: string | null
+        }
+        Insert: {
+          account_id: string
+          amount_basis: string
+          approval_request_id?: string | null
+          approval_version: number
+          created_at?: string
+          direction: string
+          event_kind: string
+          evidence_waiver?: string | null
+          external_source_id?: string | null
+          external_source_kind?: string | null
+          external_source_line_id?: string | null
+          gross_amount: number
+          id?: string
+          idempotency_key: string
+          legacy_provenance?: Json | null
+          net_cash_effect: number
+          organization_id: string
+          posted_by_membership_id: string
+          posted_by_user_id: string
+          posted_on: string
+          posting_generation: number
+          posting_subject_id: string
+          posting_subject_kind?: string
+          replaces_posting_id?: string | null
+          reversal_of_id?: string | null
+          reversal_reason?: string | null
+          source_kind: string
+          source_version_or_hash?: string | null
+          voucher_amount_snapshot: number
+          voucher_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          amount_basis?: string
+          approval_request_id?: string | null
+          approval_version?: number
+          created_at?: string
+          direction?: string
+          event_kind?: string
+          evidence_waiver?: string | null
+          external_source_id?: string | null
+          external_source_kind?: string | null
+          external_source_line_id?: string | null
+          gross_amount?: number
+          id?: string
+          idempotency_key?: string
+          legacy_provenance?: Json | null
+          net_cash_effect?: number
+          organization_id?: string
+          posted_by_membership_id?: string
+          posted_by_user_id?: string
+          posted_on?: string
+          posting_generation?: number
+          posting_subject_id?: string
+          posting_subject_kind?: string
+          replaces_posting_id?: string | null
+          reversal_of_id?: string | null
+          reversal_reason?: string | null
+          source_kind?: string
+          source_version_or_hash?: string | null
+          voucher_amount_snapshot?: number
+          voucher_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_ie_postings_account"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_account"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_account"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_approval_request"
+            columns: ["approval_request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_replaces"
+            columns: ["replaces_posting_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_reversal_of"
+            columns: ["reversal_of_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_voucher"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_voucher"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_ie_postings_voucher"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
+      income_expense_recognition_adjustments: {
+        Row: {
+          adjustment_kind: string
+          adjustment_period: string
+          allocation_snapshot: Json | null
+          created_at: string
+          created_by_membership_id: string | null
+          created_by_user_id: string | null
+          id: string
+          idempotency_key: string
+          organization_id: string
+          original_period: string | null
+          reason: string | null
+          related_close_run_id: string | null
+          related_revision_id: string | null
+          signed_amount: number
+          source_payload_hash: string | null
+          voucher_id: string
+        }
+        Insert: {
+          adjustment_kind: string
+          adjustment_period: string
+          allocation_snapshot?: Json | null
+          created_at?: string
+          created_by_membership_id?: string | null
+          created_by_user_id?: string | null
+          id?: string
+          idempotency_key: string
+          organization_id: string
+          original_period?: string | null
+          reason?: string | null
+          related_close_run_id?: string | null
+          related_revision_id?: string | null
+          signed_amount: number
+          source_payload_hash?: string | null
+          voucher_id: string
+        }
+        Update: {
+          adjustment_kind?: string
+          adjustment_period?: string
+          allocation_snapshot?: Json | null
+          created_at?: string
+          created_by_membership_id?: string | null
+          created_by_user_id?: string | null
+          id?: string
+          idempotency_key?: string
+          organization_id?: string
+          original_period?: string | null
+          reason?: string | null
+          related_close_run_id?: string | null
+          related_revision_id?: string | null
+          signed_amount?: number
+          source_payload_hash?: string | null
+          voucher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expense_recognition_adjustments_close_run_fkey"
+            columns: ["related_close_run_id"]
+            isOneToOne: false
+            referencedRelation: "profit_close_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expense_recognition_adjustments_voucher_fkey"
+            columns: ["voucher_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "income_expense_recognition_adjustments_voucher_fkey"
+            columns: ["voucher_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
       income_expense_templates: {
         Row: {
           code: string | null
@@ -4803,6 +5332,7 @@ export type Database = {
           is_restricted: boolean
           name: string
           organization_id: string | null
+          system_only: boolean
           type: string
           updated_at: string
           user_id: string
@@ -4819,6 +5349,7 @@ export type Database = {
           is_restricted?: boolean
           name: string
           organization_id?: string | null
+          system_only?: boolean
           type: string
           updated_at?: string
           user_id: string
@@ -4835,6 +5366,7 @@ export type Database = {
           is_restricted?: boolean
           name?: string
           organization_id?: string | null
+          system_only?: boolean
           type?: string
           updated_at?: string
           user_id?: string
@@ -4852,15 +5384,21 @@ export type Database = {
       income_expenses: {
         Row: {
           account_id: string | null
+          active_posting_id_v2: string | null
           approval_request_id: string | null
           approval_status: string
+          approval_version: number
           approved_at: string | null
           approved_by: string | null
           attachments: Json
+          birth_operation_id: string | null
+          birth_txid: unknown
           building_id: string
           business_result_accounting: boolean | null
+          cancellation_kind: string | null
           change_account_id: string | null
           change_amount: number
+          change_field_mask: Json | null
           code: string | null
           collect_distance_m: number | null
           collect_geofence_status: string | null
@@ -4881,6 +5419,8 @@ export type Database = {
           idempotency_key: string | null
           invoice_id: string | null
           kqkd_amount: number
+          maker_membership_id: string | null
+          maker_user_id: string | null
           name: string
           notes: string | null
           organization_id: string
@@ -4889,9 +5429,14 @@ export type Database = {
           payment_id: string | null
           posted_at_v2: string | null
           posting_id: string | null
+          posting_mode: string | null
+          posting_status: string | null
+          posting_version: number
           profit_manager_id: string | null
           receive_bank_account: string | null
           receive_bank_name: string | null
+          recognition_date: string | null
+          recognition_source_mode: string | null
           repeat_auto_approve: boolean
           repeat_count: number
           repeat_cycle: string | null
@@ -4901,6 +5446,11 @@ export type Database = {
           repeat_remaining: number
           reversal_of_income_expense_id: string | null
           reversed_by_posting_id: string | null
+          review_deadline: string | null
+          review_owner_membership_id: string | null
+          review_reason: string | null
+          review_state: string | null
+          review_version: number
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
@@ -4923,15 +5473,21 @@ export type Database = {
         }
         Insert: {
           account_id?: string | null
+          active_posting_id_v2?: string | null
           approval_request_id?: string | null
           approval_status?: string
+          approval_version?: number
           approved_at?: string | null
           approved_by?: string | null
           attachments?: Json
+          birth_operation_id?: string | null
+          birth_txid?: unknown
           building_id: string
           business_result_accounting?: boolean | null
+          cancellation_kind?: string | null
           change_account_id?: string | null
           change_amount?: number
+          change_field_mask?: Json | null
           code?: string | null
           collect_distance_m?: number | null
           collect_geofence_status?: string | null
@@ -4952,6 +5508,8 @@ export type Database = {
           idempotency_key?: string | null
           invoice_id?: string | null
           kqkd_amount?: number
+          maker_membership_id?: string | null
+          maker_user_id?: string | null
           name: string
           notes?: string | null
           organization_id: string
@@ -4960,9 +5518,14 @@ export type Database = {
           payment_id?: string | null
           posted_at_v2?: string | null
           posting_id?: string | null
+          posting_mode?: string | null
+          posting_status?: string | null
+          posting_version?: number
           profit_manager_id?: string | null
           receive_bank_account?: string | null
           receive_bank_name?: string | null
+          recognition_date?: string | null
+          recognition_source_mode?: string | null
           repeat_auto_approve?: boolean
           repeat_count?: number
           repeat_cycle?: string | null
@@ -4972,6 +5535,11 @@ export type Database = {
           repeat_remaining?: number
           reversal_of_income_expense_id?: string | null
           reversed_by_posting_id?: string | null
+          review_deadline?: string | null
+          review_owner_membership_id?: string | null
+          review_reason?: string | null
+          review_state?: string | null
+          review_version?: number
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
@@ -4994,15 +5562,21 @@ export type Database = {
         }
         Update: {
           account_id?: string | null
+          active_posting_id_v2?: string | null
           approval_request_id?: string | null
           approval_status?: string
+          approval_version?: number
           approved_at?: string | null
           approved_by?: string | null
           attachments?: Json
+          birth_operation_id?: string | null
+          birth_txid?: unknown
           building_id?: string
           business_result_accounting?: boolean | null
+          cancellation_kind?: string | null
           change_account_id?: string | null
           change_amount?: number
+          change_field_mask?: Json | null
           code?: string | null
           collect_distance_m?: number | null
           collect_geofence_status?: string | null
@@ -5023,6 +5597,8 @@ export type Database = {
           idempotency_key?: string | null
           invoice_id?: string | null
           kqkd_amount?: number
+          maker_membership_id?: string | null
+          maker_user_id?: string | null
           name?: string
           notes?: string | null
           organization_id?: string
@@ -5031,9 +5607,14 @@ export type Database = {
           payment_id?: string | null
           posted_at_v2?: string | null
           posting_id?: string | null
+          posting_mode?: string | null
+          posting_status?: string | null
+          posting_version?: number
           profit_manager_id?: string | null
           receive_bank_account?: string | null
           receive_bank_name?: string | null
+          recognition_date?: string | null
+          recognition_source_mode?: string | null
           repeat_auto_approve?: boolean
           repeat_count?: number
           repeat_cycle?: string | null
@@ -5043,6 +5624,11 @@ export type Database = {
           repeat_remaining?: number
           reversal_of_income_expense_id?: string | null
           reversed_by_posting_id?: string | null
+          review_deadline?: string | null
+          review_owner_membership_id?: string | null
+          review_reason?: string | null
+          review_state?: string | null
+          review_version?: number
           room_id?: string | null
           rounding_account_id?: string | null
           rounding_amount?: number | null
@@ -5079,6 +5665,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "income_expenses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_active_posting_id_v2_fkey"
+            columns: ["active_posting_id_v2"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "income_expenses_building_id_fkey"
             columns: ["building_id"]
             isOneToOne: false
@@ -5104,6 +5704,13 @@ export type Database = {
             columns: ["change_account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_change_account_id_fkey"
+            columns: ["change_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -5230,6 +5837,13 @@ export type Database = {
             columns: ["rounding_account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_rounding_account_id_fkey"
+            columns: ["rounding_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -5895,6 +6509,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "invoice_payment_tenders_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "invoice_payment_tenders_change_account_id_fkey"
             columns: ["change_account_id"]
             isOneToOne: false
@@ -5906,6 +6527,13 @@ export type Database = {
             columns: ["change_account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_change_account_id_fkey"
+            columns: ["change_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -5955,6 +6583,13 @@ export type Database = {
             columns: ["rounding_account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_payment_tenders_rounding_account_id_fkey"
+            columns: ["rounding_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -8134,39 +8769,58 @@ export type Database = {
       }
       organization_invitations: {
         Row: {
+          accepted_by: string | null
           created_at: string
           email_normalized: string
           expires_at: string
           id: string
           intended_member_type: string
+          intended_role_id: string | null
+          intended_scope_ids: string[]
           invited_by: string | null
           organization_id: string
+          revoked_at: string | null
           status: string
           token_hash: string
         }
         Insert: {
+          accepted_by?: string | null
           created_at?: string
           email_normalized: string
           expires_at: string
           id?: string
           intended_member_type: string
+          intended_role_id?: string | null
+          intended_scope_ids?: string[]
           invited_by?: string | null
           organization_id: string
+          revoked_at?: string | null
           status?: string
           token_hash: string
         }
         Update: {
+          accepted_by?: string | null
           created_at?: string
           email_normalized?: string
           expires_at?: string
           id?: string
           intended_member_type?: string
+          intended_role_id?: string | null
+          intended_scope_ids?: string[]
           invited_by?: string | null
           organization_id?: string
+          revoked_at?: string | null
           status?: string
           token_hash?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "organization_invitations_intended_role_id_fkey"
+            columns: ["intended_role_id"]
+            isOneToOne: false
+            referencedRelation: "organization_roles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "organization_invitations_organization_id_fkey"
             columns: ["organization_id"]
@@ -9312,6 +9966,7 @@ export type Database = {
         Row: {
           amount: number
           approval_request_id: string | null
+          consumed_posting_id: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -9319,12 +9974,18 @@ export type Database = {
           payout_voucher_id: string
           profit_allocation_id: string
           reservation_source: string
+          reservation_state: string | null
+          reversed_posting_id: string | null
           shareholder_id: string
           source_payload_hash: string | null
+          state_changed_at: string | null
+          state_reason: string | null
+          state_version: number | null
         }
         Insert: {
           amount: number
           approval_request_id?: string | null
+          consumed_posting_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -9332,12 +9993,18 @@ export type Database = {
           payout_voucher_id: string
           profit_allocation_id: string
           reservation_source: string
+          reservation_state?: string | null
+          reversed_posting_id?: string | null
           shareholder_id: string
           source_payload_hash?: string | null
+          state_changed_at?: string | null
+          state_reason?: string | null
+          state_version?: number | null
         }
         Update: {
           amount?: number
           approval_request_id?: string | null
+          consumed_posting_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -9345,8 +10012,13 @@ export type Database = {
           payout_voucher_id?: string
           profit_allocation_id?: string
           reservation_source?: string
+          reservation_state?: string | null
+          reversed_posting_id?: string | null
           shareholder_id?: string
           source_payload_hash?: string | null
+          state_changed_at?: string | null
+          state_reason?: string | null
+          state_version?: number | null
         }
         Relationships: [
           {
@@ -9364,10 +10036,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "profit_payout_reservations_consumed_posting_fk"
+            columns: ["consumed_posting_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "profit_payout_reservations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profit_payout_reservations_reversed_posting_fk"
+            columns: ["reversed_posting_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
             referencedColumns: ["id"]
           },
           {
@@ -10292,6 +10978,82 @@ export type Database = {
           },
         ]
       }
+      salary_cash_authorizations: {
+        Row: {
+          bundle_id: string
+          ceiling_amount: number
+          created_at: string
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          bundle_id: string
+          ceiling_amount: number
+          created_at?: string
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          bundle_id?: string
+          ceiling_amount?: number
+          created_at?: string
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_cash_authorizations_bundle_fk"
+            columns: ["bundle_id"]
+            isOneToOne: false
+            referencedRelation: "salary_settlement_bundles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salary_earning_consumptions: {
+        Row: {
+          bundle_id: string
+          consumption_state: string
+          created_at: string
+          id: string
+          organization_id: string
+          reason: string | null
+          source_id: string
+          source_kind: string
+          state_version: number
+        }
+        Insert: {
+          bundle_id: string
+          consumption_state?: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          reason?: string | null
+          source_id: string
+          source_kind: string
+          state_version?: number
+        }
+        Update: {
+          bundle_id?: string
+          consumption_state?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          reason?: string | null
+          source_id?: string
+          source_kind?: string
+          state_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_earning_consumptions_bundle_fk"
+            columns: ["bundle_id"]
+            isOneToOne: false
+            referencedRelation: "salary_settlement_bundles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       salary_holidays: {
         Row: {
           created_at: string
@@ -10431,6 +11193,139 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "legacy_payment_receipt_semantics"
             referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
+      salary_settlement_bundles: {
+        Row: {
+          cash_due: number | null
+          created_at: string
+          id: string
+          organization_id: string
+          parent_voucher_id: string | null
+          planned_rent_offset: number | null
+          policy_kind: string | null
+          policy_version: string | null
+          salary_period: string | null
+          snapshot: Json | null
+          snapshot_hash: string | null
+          source_revision: string | null
+          staff_id: string | null
+          state: string
+        }
+        Insert: {
+          cash_due?: number | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          parent_voucher_id?: string | null
+          planned_rent_offset?: number | null
+          policy_kind?: string | null
+          policy_version?: string | null
+          salary_period?: string | null
+          snapshot?: Json | null
+          snapshot_hash?: string | null
+          source_revision?: string | null
+          staff_id?: string | null
+          state?: string
+        }
+        Update: {
+          cash_due?: number | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          parent_voucher_id?: string | null
+          planned_rent_offset?: number | null
+          policy_kind?: string | null
+          policy_version?: string | null
+          salary_period?: string | null
+          snapshot?: Json | null
+          snapshot_hash?: string | null
+          source_revision?: string | null
+          staff_id?: string | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_settlement_bundles_parent_voucher_fk"
+            columns: ["parent_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_settlement_bundles_parent_voucher_fk"
+            columns: ["parent_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_settlement_bundles_parent_voucher_fk"
+            columns: ["parent_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
+      salary_settlement_tranches: {
+        Row: {
+          account_id: string | null
+          active_posting_id: string | null
+          amount: number
+          bundle_id: string
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          organization_id: string
+          posted_on: string | null
+          sequence: number
+          state_version: number
+          tranche_state: string
+        }
+        Insert: {
+          account_id?: string | null
+          active_posting_id?: string | null
+          amount: number
+          bundle_id: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          organization_id: string
+          posted_on?: string | null
+          sequence: number
+          state_version?: number
+          tranche_state?: string
+        }
+        Update: {
+          account_id?: string | null
+          active_posting_id?: string | null
+          amount?: number
+          bundle_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          organization_id?: string
+          posted_on?: string | null
+          sequence?: number
+          state_version?: number
+          tranche_state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_settlement_tranches_active_posting_fk"
+            columns: ["active_posting_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_postings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salary_settlement_tranches_bundle_fk"
+            columns: ["bundle_id"]
+            isOneToOne: false
+            referencedRelation: "salary_settlement_bundles"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -11531,6 +12426,135 @@ export type Database = {
           },
         ]
       }
+      termination_move_out_authorizations: {
+        Row: {
+          approval_request_id: string | null
+          contract_id: string | null
+          created_at: string
+          id: string
+          offset_voucher_id: string | null
+          organization_id: string
+          pair_version: number
+          revenue_voucher_id: string | null
+          source_hash: string | null
+          state: string
+          termination_id: string | null
+        }
+        Insert: {
+          approval_request_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          id?: string
+          offset_voucher_id?: string | null
+          organization_id: string
+          pair_version?: number
+          revenue_voucher_id?: string | null
+          source_hash?: string | null
+          state?: string
+          termination_id?: string | null
+        }
+        Update: {
+          approval_request_id?: string | null
+          contract_id?: string | null
+          created_at?: string
+          id?: string
+          offset_voucher_id?: string | null
+          organization_id?: string
+          pair_version?: number
+          revenue_voucher_id?: string | null
+          source_hash?: string | null
+          state?: string
+          termination_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "termination_move_out_authorizations_offset_voucher_fk"
+            columns: ["offset_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_move_out_authorizations_offset_voucher_fk"
+            columns: ["offset_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_move_out_authorizations_offset_voucher_fk"
+            columns: ["offset_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+          {
+            foreignKeyName: "termination_move_out_authorizations_revenue_voucher_fk"
+            columns: ["revenue_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_move_out_authorizations_revenue_voucher_fk"
+            columns: ["revenue_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_move_out_authorizations_revenue_voucher_fk"
+            columns: ["revenue_voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
+      termination_move_out_settlement_lines: {
+        Row: {
+          amount: number
+          authorization_id: string
+          created_at: string
+          funding_kind: string
+          id: string
+          invoice_id: string | null
+          materialized_payment_id: string | null
+          organization_id: string
+          source_hash: string | null
+        }
+        Insert: {
+          amount: number
+          authorization_id: string
+          created_at?: string
+          funding_kind: string
+          id?: string
+          invoice_id?: string | null
+          materialized_payment_id?: string | null
+          organization_id: string
+          source_hash?: string | null
+        }
+        Update: {
+          amount?: number
+          authorization_id?: string
+          created_at?: string
+          funding_kind?: string
+          id?: string
+          invoice_id?: string | null
+          materialized_payment_id?: string | null
+          organization_id?: string
+          source_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "termination_move_out_settlement_lines_authorization_fk"
+            columns: ["authorization_id"]
+            isOneToOne: false
+            referencedRelation: "termination_move_out_authorizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           assigned_by: string | null
@@ -12364,6 +13388,80 @@ export type Database = {
         }
         Relationships: []
       }
+      accounts_with_balance_v2: {
+        Row: {
+          account_number: string | null
+          bank_account_holder: string | null
+          bank_name: string | null
+          branch: string | null
+          code: string | null
+          created_at: string | null
+          current_amount: number | null
+          deleted_at: string | null
+          description: string | null
+          id: string | null
+          initial_amount: number | null
+          initial_date: string | null
+          is_default: boolean | null
+          is_virtual: boolean | null
+          lock_date: string | null
+          name: string | null
+          organization_id: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          account_number?: string | null
+          bank_account_holder?: string | null
+          bank_name?: string | null
+          branch?: string | null
+          code?: string | null
+          created_at?: string | null
+          current_amount?: never
+          deleted_at?: string | null
+          description?: string | null
+          id?: string | null
+          initial_amount?: number | null
+          initial_date?: string | null
+          is_default?: boolean | null
+          is_virtual?: boolean | null
+          lock_date?: string | null
+          name?: string | null
+          organization_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          account_number?: string | null
+          bank_account_holder?: string | null
+          bank_name?: string | null
+          branch?: string | null
+          code?: string | null
+          created_at?: string | null
+          current_amount?: never
+          deleted_at?: string | null
+          description?: string | null
+          id?: string | null
+          initial_amount?: number | null
+          initial_date?: string | null
+          is_default?: boolean | null
+          is_virtual?: boolean | null
+          lock_date?: string | null
+          name?: string | null
+          organization_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       active_payment_receipts: {
         Row: {
           account_id: string | null
@@ -12602,6 +13700,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts_with_balance"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "income_expenses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_with_balance_v2"
             referencedColumns: ["id"]
           },
           {
@@ -12992,6 +14097,10 @@ export type Database = {
         Args: { p_building_id: string; p_user_id: string }
         Returns: string
       }
+      accept_organization_invitation_v1: {
+        Args: { p_token: string }
+        Returns: Json
+      }
       accessible_account_ids: { Args: never; Returns: string[] }
       accessible_building_ids: { Args: never; Returns: string[] }
       accessible_contract_ids: { Args: never; Returns: string[] }
@@ -13000,6 +14109,10 @@ export type Database = {
       add_cycle: {
         Args: { anchor: string; cycle: string; k: number }
         Returns: string
+      }
+      adopt_voucher_attachments_as_evidence_v2: {
+        Args: { p_voucher: string }
+        Returns: Json
       }
       ai_copilot_perms_for: { Args: { p_user: string }; Returns: Json }
       append_fee_attachment: {
@@ -13017,6 +14130,10 @@ export type Database = {
         }
         Returns: Json
       }
+      approve_and_post_income_expense_v2: {
+        Args: { input: Json }
+        Returns: Json
+      }
       approve_contract_termination_v1: {
         Args: { p_note?: string; p_termination_id: string }
         Returns: Json
@@ -13028,6 +14145,14 @@ export type Database = {
       approve_income_expense_v1: {
         Args: { p_voucher_id: string }
         Returns: undefined
+      }
+      approve_income_expense_v2: {
+        Args: {
+          p_expected_approval_version: number
+          p_idempotency_key: string
+          p_voucher: string
+        }
+        Returns: Json
       }
       approve_invoice_v1: {
         Args: { p_invoice_id: string }
@@ -13175,6 +14300,114 @@ export type Database = {
         Args: { p_idempotency_key: string; p_invoice_ids: string[] }
         Returns: Json
       }
+      business_performance_occupancy_monthly_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_end_date: string
+          p_organization_id: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          month: string
+          occupancy_pct: number
+          occupied_rooms: number
+          total_rooms: number
+        }[]
+      }
+      business_performance_occupancy_snapshot_v1: {
+        Args: {
+          p_as_of_date: string
+          p_building_ids: string[]
+          p_organization_id: string
+        }
+        Returns: {
+          available: number
+          building_id: string
+          building_name: string
+          committed_pct: number
+          generated_at: string
+          maintenance: number
+          missed_revenue: number
+          occupancy_pct: number
+          occupied: number
+          reserved: number
+          total: number
+          unavailable: number
+        }[]
+      }
+      business_performance_organizations_v1: {
+        Args: never
+        Returns: {
+          authorization_version: number
+          authorized_buildings: Json
+          authorized_physical_building_count: number
+          organization_id: string
+          organization_name: string
+        }[]
+      }
+      business_performance_pnl_v1: {
+        Args: {
+          p_basis: string
+          p_building_ids: string[]
+          p_end_date: string
+          p_organization_id: string
+          p_start_date: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          expense: number
+          is_virtual: boolean
+          month: string
+          net: number
+          revenue: number
+        }[]
+      }
+      business_performance_snapshot_v1: {
+        Args: { p_building_ids: string[]; p_organization_id: string }
+        Returns: {
+          active_contracts: number
+          aging_1_30: number
+          aging_31_60: number
+          aging_61_90: number
+          aging_not_due: number
+          aging_over_90: number
+          avg_rent: number
+          building_id: string
+          building_name: string
+          deposit_held: number
+          receivable_total: number
+          rooms_available: number
+          rooms_maintenance: number
+          rooms_occupied: number
+          rooms_reserved: number
+          rooms_unavailable: number
+          total_rooms: number
+          vacancy_loss_month: number
+        }[]
+      }
+      business_performance_upcoming_vacancy_v1: {
+        Args: {
+          p_as_of_date: string
+          p_building_ids: string[]
+          p_organization_id: string
+          p_window_days: number
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          contract_id: string
+          contract_number: string
+          days_remaining: number
+          effective_end_date: string
+          extension_applied: boolean
+          rent_price: number
+          room_id: string
+          room_name: string
+        }[]
+      }
       calculate_lead_score: { Args: { lead_id: string }; Returns: number }
       can_access_building: { Args: { _building_id: string }; Returns: boolean }
       can_access_org_entity: {
@@ -13247,8 +14480,26 @@ export type Database = {
       }
       cancel_period_fee: { Args: { p_voucher_id: string }; Returns: Json }
       cancel_reconciliation: { Args: { p_id: string }; Returns: Json }
+      cancel_unposted_income_expense_v2: {
+        Args: {
+          p_expected_approval_version: number
+          p_expected_review_version: number
+          p_idempotency_key: string
+          p_reason: string
+          p_voucher: string
+        }
+        Returns: Json
+      }
       cancel_utility_bill: { Args: { p_voucher_id: string }; Returns: Json }
       cashbook_opening_balance: {
+        Args: {
+          p_account_id?: string
+          p_before_date: string
+          p_building_id?: string
+        }
+        Returns: number
+      }
+      cashbook_opening_balance_v2: {
         Args: {
           p_account_id?: string
           p_before_date: string
@@ -13265,11 +14516,33 @@ export type Database = {
         }
         Returns: Json
       }
+      cashbook_period_totals_v2: {
+        Args: {
+          p_account_id?: string
+          p_building_id?: string
+          p_end?: string
+          p_start?: string
+        }
+        Returns: Json
+      }
       cashbook_settlement_report: {
         Args: { p_from: string; p_to: string }
         Returns: Json
       }
       cashflow_by_day: {
+        Args: {
+          p_account_id?: string
+          p_building_id?: string
+          p_end: string
+          p_start: string
+        }
+        Returns: {
+          day: string
+          expense: number
+          income: number
+        }[]
+      }
+      cashflow_by_day_v2: {
         Args: {
           p_account_id?: string
           p_building_id?: string
@@ -13356,6 +14629,10 @@ export type Database = {
         Args: { p_idempotency_key: string; p_payload: Json }
         Returns: Json
       }
+      create_finance_evidence_upload_intent_v2: {
+        Args: { p_organization_id?: string }
+        Returns: Json
+      }
       create_income_expense_v1: {
         Args: {
           p_account_id: string
@@ -13377,15 +14654,21 @@ export type Database = {
         }
         Returns: {
           account_id: string | null
+          active_posting_id_v2: string | null
           approval_request_id: string | null
           approval_status: string
+          approval_version: number
           approved_at: string | null
           approved_by: string | null
           attachments: Json
+          birth_operation_id: string | null
+          birth_txid: unknown
           building_id: string
           business_result_accounting: boolean | null
+          cancellation_kind: string | null
           change_account_id: string | null
           change_amount: number
+          change_field_mask: Json | null
           code: string | null
           collect_distance_m: number | null
           collect_geofence_status: string | null
@@ -13406,6 +14689,8 @@ export type Database = {
           idempotency_key: string | null
           invoice_id: string | null
           kqkd_amount: number
+          maker_membership_id: string | null
+          maker_user_id: string | null
           name: string
           notes: string | null
           organization_id: string
@@ -13414,9 +14699,14 @@ export type Database = {
           payment_id: string | null
           posted_at_v2: string | null
           posting_id: string | null
+          posting_mode: string | null
+          posting_status: string | null
+          posting_version: number
           profit_manager_id: string | null
           receive_bank_account: string | null
           receive_bank_name: string | null
+          recognition_date: string | null
+          recognition_source_mode: string | null
           repeat_auto_approve: boolean
           repeat_count: number
           repeat_cycle: string | null
@@ -13426,6 +14716,11 @@ export type Database = {
           repeat_remaining: number
           reversal_of_income_expense_id: string | null
           reversed_by_posting_id: string | null
+          review_deadline: string | null
+          review_owner_membership_id: string | null
+          review_reason: string | null
+          review_state: string | null
+          review_version: number
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
@@ -13452,6 +14747,17 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      create_income_expense_v2: { Args: { payload: Json }; Returns: Json }
+      create_invoice_refund_obligation_v2: {
+        Args: {
+          p_amount: number
+          p_idempotency_key?: string
+          p_invoice_id: string
+          p_reason?: string
+          p_refund_class?: string
+        }
+        Returns: Json
       }
       create_invoice_v1: {
         Args: {
@@ -13637,6 +14943,15 @@ export type Database = {
         }
         Returns: Json
       }
+      decide_owned_income_expense_v2: {
+        Args: {
+          p_decision: string
+          p_idempotency_key: string
+          p_reason: string
+          p_voucher: string
+        }
+        Returns: Json
+      }
       delete_meter_reading_v1: { Args: { p_id: string }; Returns: undefined }
       delete_room_pass_listing: { Args: { p_id: string }; Returns: undefined }
       delete_staff_member: { Args: { p_staff_id: string }; Returns: undefined }
@@ -13683,6 +14998,24 @@ export type Database = {
           refund_amount: number
           total_deposit: number
           total_fees: number
+        }[]
+      }
+      explain_authorization_v1: {
+        Args: {
+          p_building?: string
+          p_cashbook?: string
+          p_membership: string
+          p_permission_keys?: string[]
+        }
+        Returns: {
+          action: string
+          duoc_phep: boolean
+          ly_do: string
+          ly_do_ma: string
+          nguon: string
+          permission_key: string
+          resource: string
+          sensitivity: string
         }[]
       }
       fa_accrual_allocations: {
@@ -13861,6 +15194,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      finalize_finance_evidence_v2: {
+        Args: { p_evidence_id: string }
+        Returns: Json
+      }
+      finance_v2_pending_kqkd_blockers: {
+        Args: { p_org: string; p_period: string }
+        Returns: Json
+      }
       fmt_bonus_k: { Args: { amt: number }; Returns: string }
       gen_contract_public_code: { Args: { len?: number }; Returns: string }
       generate_code: {
@@ -13905,6 +15246,18 @@ export type Database = {
         }[]
       }
       get_acceptance_geofence_config: { Args: never; Returns: Json }
+      get_approval_request_detail_compat_v2: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      get_authorization_context_v1: {
+        Args: { p_organization_id?: string }
+        Returns: Json
+      }
+      get_cashbook_access_admin_v2: {
+        Args: { p_cashbook_id: string }
+        Returns: Json
+      }
       get_change_breakdown_v2: {
         Args: {
           p_billing_month?: string
@@ -13985,6 +15338,16 @@ export type Database = {
         Args: { p_building_ids?: string[]; p_status?: string }
         Returns: Json
       }
+      get_finance_v2_client_flags_v1: {
+        Args: never
+        Returns: {
+          access_route: string
+          organization_id: string
+          posting_route: string
+          read_semantics_route: string
+          workflow_route: string
+        }[]
+      }
       get_held_deposit_summary: {
         Args: { p_building_ids?: string[]; p_threshold?: number }
         Returns: {
@@ -14001,6 +15364,7 @@ export type Database = {
         }[]
       }
       get_ie_auto_approve_threshold_v1: { Args: never; Returns: number }
+      get_income_expense_detail_v2: { Args: { p_id: string }; Returns: Json }
       get_income_expense_history: {
         Args: { p_id: string }
         Returns: {
@@ -14026,6 +15390,7 @@ export type Database = {
           p_internal_sources?: string[]
           p_item_type_ids?: string[]
           p_kqkd_only?: boolean
+          p_posting?: string
           p_room_ids?: string[]
           p_source_manual?: boolean
           p_sources?: string[]
@@ -14046,6 +15411,7 @@ export type Database = {
           pending_total: number
         }[]
       }
+      get_income_expense_stats_v2: { Args: { p_filters?: Json }; Returns: Json }
       get_invoice_statistics_v2: {
         Args: {
           p_billing_month?: string
@@ -14221,6 +15587,18 @@ export type Database = {
         Args: { _building_id: string }
         Returns: boolean
       }
+      ie_compat_cancel_v2: {
+        Args: { p_ids: string[]; p_reason?: string }
+        Returns: Json
+      }
+      ie_compat_insert_v2: {
+        Args: { p_items?: Json; p_row: Json }
+        Returns: Json
+      }
+      ie_compat_update_pending_v2: {
+        Args: { p_id: string; p_items?: Json; p_patch: Json }
+        Returns: Json
+      }
       ie_form_buildings: {
         Args: never
         Returns: {
@@ -14273,6 +15651,16 @@ export type Database = {
         Returns: undefined
       }
       ie_type_is_restricted: { Args: { _type_id: string }; Returns: boolean }
+      invite_organization_member_v1: {
+        Args: {
+          p_email: string
+          p_expires_days?: number
+          p_member_type?: string
+          p_role_id?: string
+          p_scope_ids?: string[]
+        }
+        Returns: Json
+      }
       invoice_active_payment_methods: {
         Args: { p_invoice_ids: string[] }
         Returns: {
@@ -14338,11 +15726,104 @@ export type Database = {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
       }
+      list_cashbook_visibility_v2: {
+        Args: never
+        Returns: {
+          balance_visible: boolean
+          can_delete: boolean
+          can_manage: boolean
+          cashbook_id: string
+        }[]
+      }
+      list_cashbooks_for_expense_v2: {
+        Args: never
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
+      list_cashbooks_for_income_v2: {
+        Args: never
+        Returns: {
+          id: string
+          name: string
+          possession_kind: string
+        }[]
+      }
+      list_cashbooks_with_balance_v2: {
+        Args: never
+        Returns: {
+          current_amount: number
+          id: string
+          name: string
+        }[]
+      }
+      list_finance_execution_queue_v2: {
+        Args: never
+        Returns: {
+          assigned_cashbook_id: string
+          execution_subject_id: string
+          execution_subject_kind: string
+          my_candidate_cashbooks: string[]
+          organization_id: string
+          parent_voucher_id: string
+          revision: number
+          scope_id: string
+          state: string
+        }[]
+      }
+      list_income_expenses_v2: {
+        Args: { p_filters?: Json }
+        Returns: {
+          account_id: string
+          approval_status: string
+          created_at: string
+          id: string
+          maker_user_id: string
+          name: string
+          notes: string
+          organization_id: string
+          posting_mode: string
+          posting_status: string
+          recognition_date: string
+          review_state: string
+          system_source: string
+          total_amount: number
+          type: string
+          voucher_date: string
+        }[]
+      }
+      list_my_cashbook_access_v2: {
+        Args: never
+        Returns: {
+          cashbook_id: string
+          cashbook_name: string
+          possession_kind: string
+          since: string
+        }[]
+      }
+      list_my_pending_approvals_compat_v2: {
+        Args: never
+        Returns: {
+          amount: number
+          building_id: string
+          cashbook_id: string
+          id: string
+          state: string
+          subject_id: string
+          subject_type: string
+          submitted_at: string
+          system_source: string
+        }[]
+      }
       list_my_pending_approvals_v1: {
         Args: never
         Returns: {
           amount: number
+          approval_version: number
           maker_name: string
+          organization_id: string
+          posting_version: number
           request_id: string
           request_version: number
           step_no: number
@@ -14390,6 +15871,17 @@ export type Database = {
           p_manager_id: string
           p_note: string
           p_voucher_date: string
+        }
+        Returns: Json
+      }
+      mark_income_expense_disputed_v2: {
+        Args: {
+          p_deadline: string
+          p_expected_review_version: number
+          p_idempotency_key: string
+          p_owner_membership: string
+          p_reason: string
+          p_voucher: string
         }
         Returns: Json
       }
@@ -14508,6 +16000,7 @@ export type Database = {
         Args: { _action: string; _table: string }
         Returns: string[]
       }
+      post_approved_income_expense_v2: { Args: { input: Json }; Returns: Json }
       pra_by_token: {
         Args: {
           p_building_ids?: string[]
@@ -14794,6 +16287,15 @@ export type Database = {
         Args: { p_reason?: string; p_termination_id: string }
         Returns: undefined
       }
+      reject_invalid_income_expense_v2: {
+        Args: {
+          p_expected_review_version: number
+          p_idempotency_key: string
+          p_reason: string
+          p_voucher: string
+        }
+        Returns: Json
+      }
       renew_contract: {
         Args: {
           p_contract_id: string
@@ -14820,6 +16322,16 @@ export type Database = {
       }
       request_cancel_handover: {
         Args: { p_handover_id: string; p_reason: string }
+        Returns: Json
+      }
+      request_income_expense_changes_v2: {
+        Args: {
+          p_expected_review_version: number
+          p_field_mask: Json
+          p_idempotency_key: string
+          p_reason: string
+          p_voucher: string
+        }
         Returns: Json
       }
       request_opening_balance_adjustment_v1: {
@@ -14897,6 +16409,15 @@ export type Database = {
         Args: { p_idempotency_key: string; p_invoice_id: string }
         Returns: Json
       }
+      resubmit_income_expense_v2: {
+        Args: {
+          p_expected_review_version: number
+          p_idempotency_key: string
+          p_patch: Json
+          p_voucher: string
+        }
+        Returns: Json
+      }
       reverse_customer_credit_application_v1: {
         Args: {
           p_application_id: string
@@ -14919,6 +16440,16 @@ export type Database = {
           p_idempotency_key: string
           p_payment_id: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      reverse_posted_income_expense_v2: {
+        Args: {
+          p_cashbook: string
+          p_idempotency_key: string
+          p_posted_on: string
+          p_reason: string
+          p_voucher: string
         }
         Returns: Json
       }
@@ -14978,6 +16509,16 @@ export type Database = {
         Returns: undefined
       }
       seed_default_settings: { Args: { p_user_id: string }; Returns: undefined }
+      set_cashbook_access_v2: {
+        Args: {
+          p_cashbook_id: string
+          p_custodians: string[]
+          p_expected_revision: number
+          p_idempotency_key: string
+          p_knowers: string[]
+        }
+        Returns: Json
+      }
       set_cashbook_shared_users_v1: {
         Args: { p_cashbook_id: string; p_user_ids: string[] }
         Returns: Json
@@ -15317,15 +16858,21 @@ export type Database = {
         }
         Returns: {
           account_id: string | null
+          active_posting_id_v2: string | null
           approval_request_id: string | null
           approval_status: string
+          approval_version: number
           approved_at: string | null
           approved_by: string | null
           attachments: Json
+          birth_operation_id: string | null
+          birth_txid: unknown
           building_id: string
           business_result_accounting: boolean | null
+          cancellation_kind: string | null
           change_account_id: string | null
           change_amount: number
+          change_field_mask: Json | null
           code: string | null
           collect_distance_m: number | null
           collect_geofence_status: string | null
@@ -15346,6 +16893,8 @@ export type Database = {
           idempotency_key: string | null
           invoice_id: string | null
           kqkd_amount: number
+          maker_membership_id: string | null
+          maker_user_id: string | null
           name: string
           notes: string | null
           organization_id: string
@@ -15354,9 +16903,14 @@ export type Database = {
           payment_id: string | null
           posted_at_v2: string | null
           posting_id: string | null
+          posting_mode: string | null
+          posting_status: string | null
+          posting_version: number
           profit_manager_id: string | null
           receive_bank_account: string | null
           receive_bank_name: string | null
+          recognition_date: string | null
+          recognition_source_mode: string | null
           repeat_auto_approve: boolean
           repeat_count: number
           repeat_cycle: string | null
@@ -15366,6 +16920,11 @@ export type Database = {
           repeat_remaining: number
           reversal_of_income_expense_id: string | null
           reversed_by_posting_id: string | null
+          review_deadline: string | null
+          review_owner_membership_id: string | null
+          review_reason: string | null
+          review_state: string | null
+          review_version: number
           room_id: string | null
           rounding_account_id: string | null
           rounding_amount: number | null
@@ -15461,6 +17020,16 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      update_member_authorization_v1: {
+        Args: {
+          p_expected_version: number
+          p_membership: string
+          p_overrides?: Json
+          p_reason?: string
+          p_role_bindings?: Json
+        }
+        Returns: Json
+      }
       update_meter_reading_v1: {
         Args: {
           p_current_reading?: number
@@ -15533,6 +17102,16 @@ export type Database = {
           p_building_id: string
           p_provider_code?: string
           p_utility_type: string
+        }
+        Returns: Json
+      }
+      upsert_organization_role_v1: {
+        Args: {
+          p_expected_version?: number
+          p_name?: string
+          p_permissions?: Json
+          p_reason?: string
+          p_role_id?: string
         }
         Returns: Json
       }
@@ -15766,6 +17345,15 @@ export type Database = {
       vn_workdays: { Args: { p_month: string }; Returns: string[] }
       withdraw_financial_request_v1: {
         Args: { p_reason?: string; p_request_id: string }
+        Returns: Json
+      }
+      withdraw_income_expense_v2: {
+        Args: {
+          p_expected_approval_version: number
+          p_expected_review_version: number
+          p_idempotency_key: string
+          p_voucher: string
+        }
         Returns: Json
       }
       zalo_broadcast: {
