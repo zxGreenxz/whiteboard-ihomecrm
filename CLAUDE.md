@@ -59,8 +59,25 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
    chế độ headed. **Không tự ý mở cửa sổ trình duyệt khi user không yêu cầu.**
 3. **Tự động hoàn thiện dữ liệu nếu cần**: nếu tính năng cần seed/cleanup dữ liệu (vd phải có meter trước mới test ghi chỉ số được), dùng Supabase Management API với PAT trong `CLAUDE.local.md` để chuẩn bị state đủ test, không hỏi user.
 4. **Sửa lỗi → re-test → lặp lại** đến khi tính năng chạy đúng. Không tuyên bố "đã xong" khi chưa thấy nó hoạt động trong browser.
-5. **Commit** với message Việt-Anh trộn theo style hiện có (`feat(scope): mô tả`, `fix(scope): mô tả`). Stage file cụ thể, **không** dùng `git add -A`.
-6. **Push** lên `origin/main` ngay khi commit (repo này deploy thẳng từ main qua Vercel).
+5. **Commit** với message Việt-Anh trộn theo style hiện có (`feat(scope): mô tả`, `fix(scope): mô tả`).
+   Stage **đúng những file mình vừa sửa trong phiên**, liệt kê tên cụ thể —
+   **không** `git add -A`, **không** `git add .`. Cây làm việc của repo này
+   thường xuyên có hàng chục file dở dang từ phiên khác; gom nhầm chúng vào
+   commit của mình là lỗi nặng.
+6. **Push lên `origin/main` NGAY sau khi commit — tự làm, không hỏi lại user.**
+   Repo deploy thẳng từ main qua Vercel nên việc chưa push = việc chưa xong.
+
+   GOTCHA: nhánh local thường **không phải** `main` (vd đang ở
+   `fix/v5-collection-completion-...`), nên `git push origin main` sẽ fail
+   *"tip is behind its remote counterpart"* — đó là đang đẩy nhánh `main` local
+   cũ, không phải commit vừa tạo. Luôn push bằng:
+
+   ```bash
+   git push origin HEAD:main
+   ```
+
+   Kiểm tra trước bằng `git merge-base --is-ancestor origin/main HEAD` để chắc
+   là fast-forward; nếu không phải thì fetch + rebase rồi push lại.
 
 ## Quy ước commit
 

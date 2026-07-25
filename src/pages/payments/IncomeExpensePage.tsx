@@ -80,6 +80,7 @@ import {
   useReversePostingV2,
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
+  adoptVoucherAttachmentsAsEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 
@@ -908,6 +909,7 @@ const IncomeExpenseDesktopPage = () => {
           expectedPostingVersion={
             (approveTarget as { posting_version?: number }).posting_version ?? 1
           }
+          onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(
               file,
@@ -995,6 +997,7 @@ const IncomeExpenseDesktopPage = () => {
           expectedExecutionRevision={0}
           expectedApprovalVersion={postApprovedTarget.approval_version ?? 1}
           expectedPostingVersion={postApprovedTarget.posting_version ?? 1}
+          onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(file, postApprovedTarget.organization_id)
           }

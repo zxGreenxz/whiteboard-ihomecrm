@@ -179,6 +179,35 @@ export async function uploadFinanceEvidence(
   return evidence_id;
 }
 
+/**
+ * 7ai: dùng LUÔN ảnh đã đính kèm trên phiếu làm chứng từ chi — không bắt tải lại.
+ *
+ * Ảnh đính kèm (`income_expenses.attachments`) và chứng từ (`finance_evidence_objects`)
+ * là hai bản ghi khác nhau; RPC lập bản ghi chứng từ FINALIZED trỏ vào đúng file
+ * đã có trong storage. Chỉ nhận file nằm trong attachments của chính phiếu đó.
+ *
+ * Không ném lỗi: chứng từ tự-nhận là tiện ích, hỏng thì người dùng vẫn tải tay.
+ */
+export async function adoptVoucherAttachmentsAsEvidence(
+  voucherId: string,
+): Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] }> {
+  const { data, error } = await rpc("adopt_voucher_attachments_as_evidence_v2", {
+    p_voucher: voucherId,
+  });
+  if (error) {
+    console.warn("[financeV2] adopt_voucher_attachments_as_evidence_v2:", error.message);
+    return { evidenceIds: [], skipped: [] };
+  }
+  const payload = (data ?? {}) as {
+    evidence_ids?: string[];
+    skipped?: { url: string; reason: string }[];
+  };
+  return {
+    evidenceIds: payload.evidence_ids ?? [],
+    skipped: payload.skipped ?? [],
+  };
+}
+
 /** Binding sổ của CHÍNH actor (CUSTODIAN/KNOWER) — nguồn lọc selector §12.6. */
 export function useMyCashbookAccessV2() {
   return useQuery({

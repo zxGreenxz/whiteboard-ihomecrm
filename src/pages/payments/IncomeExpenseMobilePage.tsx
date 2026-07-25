@@ -89,6 +89,7 @@ import {
   useReversePostingV2,
   useCustodianCashbooksV2,
   uploadFinanceEvidence,
+  adoptVoucherAttachmentsAsEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -1106,6 +1107,7 @@ export default function IncomeExpenseMobilePage() {
           expectedPostingVersion={
             (approveTarget as { posting_version?: number }).posting_version ?? 1
           }
+          onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(
               file,
@@ -1201,6 +1203,7 @@ export default function IncomeExpenseMobilePage() {
           expectedPostingVersion={
             (postApprovedTarget as { posting_version?: number }).posting_version ?? 1
           }
+          onAdoptAttachments={adoptVoucherAttachmentsAsEvidence}
           onUploadEvidence={(file) =>
             uploadFinanceEvidence(
               file,

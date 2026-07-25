@@ -108,6 +108,14 @@ export interface IncomeExpensePostingDialogProps {
   /** Không gọi API trực tiếp — assemble input rồi trả về caller. */
   onSubmit: (input: PostFinanceExecutionInput) => void | Promise<void>;
   isSubmitting?: boolean;
+  /**
+   * 7ai: biến ảnh ĐÃ đính kèm trên phiếu thành chứng từ hợp lệ (không tải lại).
+   * Gọi 1 lần khi mở hộp thoại nếu phiếu có ảnh và chưa chọn chứng từ nào —
+   * nhờ vậy người chi bấm lưu được ngay, chỉ thêm ảnh khi cần bổ sung.
+   */
+  onAdoptAttachments?: (
+    voucherId: string,
+  ) => Promise<{ evidenceIds: string[]; skipped: { url: string; reason: string }[] }>;
 }
 
 /** Sinh idempotency key khi server không cấp (chống double-post lúc retry UI). */
@@ -135,13 +143,20 @@ function EvidencePlaceholderUpload({
   disabled,
   onUpload,
   existingAttachments = [],
+  adoptedCount = 0,
+  adopting = false,
+  adoptSkipped = [],
 }: {
   value: string[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
   onUpload?: (file: File) => Promise<string | null>;
-  /** Ảnh đã đính kèm từ lúc tạo phiếu — xem lại tại chỗ, không phải chứng từ chi. */
+  /** Ảnh đã đính kèm từ lúc tạo phiếu. */
   existingAttachments?: string[];
+  /** Bao nhiêu ảnh trong số đó đã được nhận làm chứng từ (7ai). */
+  adoptedCount?: number;
+  adopting?: boolean;
+  adoptSkipped?: { url: string; reason: string }[];
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -187,9 +202,21 @@ function EvidencePlaceholderUpload({
       {existingAttachments.length > 0 && (
         <div className="space-y-1 rounded-md border border-dashed bg-muted/30 p-2">
           <p className="text-xs text-muted-foreground">
-            Ảnh đính kèm từ lúc tạo phiếu ({existingAttachments.length}) — xem để
-            đối chiếu; chứng từ chi vẫn cần tải ở dưới.
+            {adopting
+              ? `Đang nhận ${existingAttachments.length} ảnh đính kèm làm chứng từ…`
+              : adoptedCount > 0
+                ? `Dùng ${adoptedCount}/${existingAttachments.length} ảnh đính kèm sẵn làm chứng từ — bấm lưu được ngay, cần bổ sung thì thêm ở dưới.`
+                : `Ảnh đính kèm từ lúc tạo phiếu (${existingAttachments.length}) — chưa dùng làm chứng từ được, hãy thêm chứng từ ở dưới.`}
           </p>
+          {adoptSkipped.length > 0 && (
+            <p className="text-xs text-amber-700">
+              {adoptSkipped.length} ảnh không dùng lại được
+              {adoptSkipped.some((s) => s.reason === 'ATTACHED')
+                ? ' (đã dùng cho lần ghi sổ trước — mỗi lần chi cần chứng từ riêng)'
+                : ''}
+              .
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {existingAttachments.map((url, idx) => (
               <div
@@ -244,6 +271,7 @@ function EvidencePlaceholderUpload({
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="truncate" title={id}>
                   Chứng từ {idx + 1}
+                  {idx < adoptedCount && ' — ảnh đính kèm sẵn'}
                 </span>
               </span>
               {!disabled && (
@@ -292,6 +320,7 @@ export default function IncomeExpensePostingDialog({
   onUploadEvidence,
   onSubmit,
   isSubmitting = false,
+  onAdoptAttachments,
 }: IncomeExpensePostingDialogProps) {
   const isExpense = voucher.type === 'EXPENSE';
   const allowAmount = voucher.subjectKind === 'SALARY_AUTHORIZATION';
@@ -375,6 +404,53 @@ export default function IncomeExpensePostingDialog({
     form.setValue('cashbookId', resolvedCashbookId, { shouldValidate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, resolvedCashbookId]);
+
+  /**
+   * 7ai: ảnh đã đính kèm trên phiếu ĐƯỢC DÙNG LUÔN làm chứng từ. Chạy 1 lần mỗi
+   * lần mở, chỉ khi phiếu có ảnh và chưa có chứng từ nào được chọn — người chi
+   * mở lên là bấm lưu được ngay, muốn bổ sung thì thêm ảnh mới.
+   */
+  const attachments = useMemo(
+    () => voucher.attachments ?? [],
+    [voucher.attachments],
+  );
+  const [adoptedIds, setAdoptedIds] = useState<string[]>([]);
+  const [adoptSkipped, setAdoptSkipped] = useState<
+    { url: string; reason: string }[]
+  >([]);
+  const [adopting, setAdopting] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setAdoptedIds([]);
+      setAdoptSkipped([]);
+      return;
+    }
+    if (attachments.length === 0 || !onAdoptAttachments) return;
+    if ((form.getValues('evidenceIds') ?? []).length > 0) return;
+
+    let cancelled = false;
+    setAdopting(true);
+    onAdoptAttachments(voucher.subjectId)
+      .then((res) => {
+        if (cancelled) return;
+        setAdoptedIds(res.evidenceIds);
+        setAdoptSkipped(res.skipped ?? []);
+        if (
+          res.evidenceIds.length > 0 &&
+          (form.getValues('evidenceIds') ?? []).length === 0
+        ) {
+          form.setValue('evidenceIds', res.evidenceIds, { shouldValidate: true });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAdopting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, voucher.subjectId, mode, attachments.length]);
 
   const submit = form.handleSubmit(async (values) => {
     const input: PostFinanceExecutionInput = {
@@ -515,7 +591,10 @@ export default function IncomeExpensePostingDialog({
                       value={field.value ?? []}
                       onChange={field.onChange}
                       onUpload={onUploadEvidence}
-                      existingAttachments={voucher.attachments ?? []}
+                      existingAttachments={attachments}
+                      adoptedCount={adoptedIds.length}
+                      adopting={adopting}
+                      adoptSkipped={adoptSkipped}
                     />
                   </FormControl>
                   <FormMessage />
