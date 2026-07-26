@@ -165,6 +165,23 @@ function number(value: number | string | null | undefined): number {
   return Number(value) || 0;
 }
 
+/**
+ * Soft-delete sổ quỹ do fixture E2E tạo (đúng cách app xoá sổ). Chỉ nhận tên
+ * mang tiền tố fixture và chỉ đụng org DEMO — sổ thật không thể lọt vào.
+ */
+export async function cleanupFleetCashbook(name: string): Promise<void> {
+  if (!name.startsWith('E2E Fleet ')) {
+    throw new Error(`Từ chối dọn sổ quỹ không thuộc fixture E2E: ${name}`);
+  }
+  await runSql(`
+UPDATE public.accounts
+SET deleted_at = now()
+WHERE organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+  AND name = ${sqlLiteral(name)}
+  AND deleted_at IS NULL;
+`);
+}
+
 export async function getAccountingPreflight(
   plannedRent: number,
   plannedDeposit: number,
@@ -736,8 +753,10 @@ SELECT app_private.end_accounting_chain_write_v1();
 DELETE FROM public.notifications notification
 WHERE notification.invoice_id IN (SELECT id FROM _e2e_invoices)
    OR notification.contract_id IN (SELECT id FROM _e2e_contracts);
-DELETE FROM public.invoice_audit_log audit
-WHERE audit.invoice_id IN (SELECT id FROM _e2e_invoices);
+-- invoice_audit_log (26/07): trigger a00_audit_append_only chặn DELETE (55000)
+-- — cùng án lệ canonical_write_operations phía trên. Bảng KHÔNG có FK tới
+-- invoices nên dòng audit mồ côi của fixture vô hại; xoá sẽ làm cleanup nổ
+-- và rollback toàn bộ (bỏ lại contract/invoice/collection rác trong org DEMO).
 DELETE FROM public.invoice_items item
 WHERE item.invoice_id IN (SELECT id FROM _e2e_invoices);
 DELETE FROM public.invoices invoice
