@@ -179,13 +179,13 @@ export default function ProfitOverviewTab() {
   return (
     <>
       <ProfitHubSlot name="kpis">
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Tổng LN đã chốt (luỹ kế)</div>
           <div className="ph-kpi__value">{formatCurrency(totals.lockedProfit)}</div>
           <div className="ph-kpi__sub">trước chia cổ đông</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">
             {shName ? `Được chia · ${shName}` : "Tổng được chia cổ đông"}
           </div>
@@ -195,13 +195,13 @@ export default function ProfitOverviewTab() {
           </div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Đã ứng / đã chia</div>
           <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(totals.paid)}</div>
           <div className="ph-kpi__sub">đã chi qua phiếu</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Còn phải trả</div>
           <div className="ph-kpi__value">{formatCurrency(totals.remaining)}</div>
           <div className="ph-kpi__sub ph-kpi__sub--mint">{remainingHolders} cổ đông còn số dư</div>

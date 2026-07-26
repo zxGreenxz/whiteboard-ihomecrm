@@ -53,7 +53,8 @@
 
 /* ---------- Hero (dải xanh đậm) ---------- */
 .ph-hero { background: linear-gradient(135deg, var(--ph-hero-a) 0%, var(--ph-hero-b) 100%); }
-.ph-hero__inner { max-width: 1240px; margin: 0 auto; padding: 20px 24px 18px; }
+/* Full-bleed: nội dung chạy hết bề ngang vùng main, chỉ chừa padding mép. */
+.ph-hero__inner { width: 100%; padding: 20px 24px 18px; }
 .ph-hero__top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 .ph-brand { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
@@ -148,7 +149,11 @@
 .ph-kpi__sub--gold { color: var(--ph-gold); font-weight: 600; }
 .ph-kpi__row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .ph-kpi__div { width: 1px; align-self: stretch; background: rgba(255, 255, 255, 0.14); }
-.ph-kpi__grow { flex: 1; min-width: 220px; }
+/* Trang chạy full width: 4 ô KPI dàn đều hết bề ngang thay vì dồn về trái. */
+.ph-kpi--flex { flex: 1 1 auto; }
+/* Tab báo cáo: phép tính Thu − Chi = LN giữ sát trái, cụm cột 6 tháng ép mép phải. */
+.ph-kpi__div--push { margin-left: auto; }
+.ph-kpi__grow { min-width: 220px; }
 
 .ph-op {
   width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.1);
@@ -208,7 +213,7 @@ button.ph-chip:hover { filter: brightness(1.12); }
 .ph-chip--push { margin-left: auto; }
 
 /* ---------- Thân trang ---------- */
-.ph-body { max-width: 1240px; margin: 0 auto; padding: 16px 24px 36px; }
+.ph-body { width: 100%; padding: 16px 24px 36px; }
 .ph-stack { display: flex; flex-direction: column; gap: 14px; }
 
 .ph-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

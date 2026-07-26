@@ -1142,7 +1142,7 @@ function ProfitDistributionDesktop() {
               </div>
             )}
           </div>
-          <div className="ph-kpi__div" />
+          <div className="ph-kpi__div ph-kpi__div--push" />
           <div className="ph-kpi ph-kpi__grow">
             <div className="ph-kpi__label">Lợi nhuận 6 tháng gần nhất</div>
             <div className="ph-spark__bars">

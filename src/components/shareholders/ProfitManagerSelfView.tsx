@@ -77,25 +77,25 @@ export default function ProfitManagerSelfView({ me }: { me: ProfitManager }) {
   return (
     <>
       <ProfitHubSlot name="kpis">
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Quản lý điều hành</div>
           <div className="ph-kpi__value">{me.name}</div>
           <div className="ph-kpi__sub">{scopeNames ? `phụ trách ${scopeNames}` : "chưa gán nhà nào"}</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Được nhận (luỹ kế)</div>
           <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(summary?.accrued ?? 0)}</div>
           <div className="ph-kpi__sub">từ {allocations.length} kỳ chốt</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Đã trả / đã lấy</div>
           <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(summary?.paid ?? 0)}</div>
           <div className="ph-kpi__sub">{payouts.length} phiếu chi lương</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Còn lại</div>
           <div className="ph-kpi__value">{formatCurrency(summary?.remaining ?? 0)}</div>
           <div className="ph-kpi__sub ph-kpi__sub--mint">

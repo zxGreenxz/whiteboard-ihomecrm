@@ -527,7 +527,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   return (
     <>
       <ProfitHubSlot name="kpis">
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Kỳ chốt</div>
           <div className="ph-kpi__row" style={{ marginTop: 3 }}>
             <div className="ph-kpi__value" style={{ marginTop: 0 }}>{periodToLabel(period)}</div>
@@ -545,19 +545,19 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Tổng quỹ sau lương</div>
           <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(totalDistributable)}</div>
           <div className="ph-kpi__sub">LN tự tính + điều chỉnh − lương ĐH</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Đã phân bổ cổ đông</div>
           <div className="ph-kpi__value">{formatCurrency(totalShareholderAllocated)}</div>
           <div className="ph-kpi__sub">theo tỷ lệ từng nhà</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Chưa phân bổ</div>
           <div className={`ph-kpi__value${hasAnyResidual ? " ph-kpi__value--gold" : " ph-kpi__value--mint"}`}>
             {formatCurrency(totalUnallocated)}

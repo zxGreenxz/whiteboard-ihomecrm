@@ -99,25 +99,25 @@ export default function ShareConfigTab() {
   return (
     <>
       <ProfitHubSlot name="kpis">
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Cổ đông</div>
           <div className="ph-kpi__value">{shareholders.length}</div>
           <div className="ph-kpi__sub">{linkedShareholders} đã gán user đăng nhập</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Quản lý điều hành</div>
           <div className="ph-kpi__value">{managers.length}</div>
           <div className="ph-kpi__sub">{salaryRules.length} quy tắc lương đang áp dụng</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Tòa nhà</div>
           <div className="ph-kpi__value">{buildings.length}</div>
           <div className="ph-kpi__sub">{buildingsWithShare.size} tòa đã gán cổ đông</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Tỷ lệ gán đủ 100%</div>
           <div className="ph-kpi__value ph-kpi__value--mint">
             {fullyAssigned}/{buildingsWithShare.size} tòa

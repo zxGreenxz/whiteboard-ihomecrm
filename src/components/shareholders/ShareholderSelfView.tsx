@@ -84,7 +84,7 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
   return (
     <>
       <ProfitHubSlot name="kpis">
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Cổ đông</div>
           <div className="ph-kpi__value">{me.name}</div>
           <div className="ph-kpi__sub">
@@ -92,19 +92,19 @@ export default function ShareholderSelfView({ me }: { me: Shareholder }) {
           </div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Được chia (luỹ kế)</div>
           <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(summary?.accrued ?? 0)}</div>
           <div className="ph-kpi__sub">từ {allocations.length} kỳ chốt</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Đã ứng / đã lấy</div>
           <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(summary?.paid ?? 0)}</div>
           <div className="ph-kpi__sub">{distributions.length} phiếu chi</div>
         </div>
         <div className="ph-kpi__div" />
-        <div className="ph-kpi">
+        <div className="ph-kpi ph-kpi--flex">
           <div className="ph-kpi__label">Còn lại</div>
           <div className="ph-kpi__value">{formatCurrency(summary?.remaining ?? 0)}</div>
           <div className="ph-kpi__sub ph-kpi__sub--mint">
