@@ -299,21 +299,38 @@
     <meta property="og:title" content="Danh sách phòng trống realtime" />
     <meta property="og:description" content="Cập nhật realtime · đầy đủ thông tin phòng & vị trí toà nhà" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://ptcrm.vercel.app/og-image.png" />
-    <meta property="og:image:width" content="1731" />
-    <meta property="og:image:height" content="909" />
+    <meta property="og:image" content="https://ptcrm.vercel.app/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:image" content="https://ptcrm.vercel.app/og-image.png" />
+    <meta name="twitter:image" content="https://ptcrm.vercel.app/og-image.jpg" />
+
+    <!-- Preconnect Supabase TRƯỚC fonts: useAuth đọc session từ localStorage nên
+         request mạng đầu tiên của app là data query — dựng sẵn DNS+TCP+TLS ở đây
+         tiết kiệm ~100–300 ms cold load trên 4G. -->
+    <link rel="preconnect" href="https://tryymsxyyckgbrmmvozx.supabase.co" crossorigin />
 
     <!-- Fonts gộp 1 request (tránh CSS @import render-blocking + nối tiếp trong
-         các kit mobile): Baloo 2 (nhãn QR) + Be Vietnam Pro + Space Mono (app kit). -->
+         các kit mobile): Baloo 2 (nhãn QR) + Be Vietnam Pro + Space Mono (app kit).
+         Nạp NON-BLOCKING (preload → đổi rel khi CSS về): font CSS không được phép
+         chặn first paint của #app-splash — nếu request này dính dead-socket (án lệ
+         Android 07/2026) mà render-blocking thì user thấy màn trắng thay vì splash
+         + màn cứu hộ watchdog. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap"
-      rel="stylesheet"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap"
+      />
+    </noscript>
   </head>
 
   <body>
