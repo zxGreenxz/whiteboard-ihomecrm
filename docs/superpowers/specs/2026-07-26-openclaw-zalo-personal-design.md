@@ -1,0 +1,806 @@
+# OpenClaw Zalo Personal - Production Design
+
+**Trang thai:** Da duoc chu san pham duyet tat ca cac phan thiet ke ngay 2026-07-26; cho duyet lai tai lieu da commit truoc khi lap implementation plan.
+
+**Muc tieu:** Xay dung mot trung tam van hanh Zalo ca nhan bang OpenClaw cho iHome CRM, su dung that cho cong ty hien tai, ho tro tra loi khach hang, gui chu dong co kiem soat va gui vao cac nhom sale noi bo. He thong moi phai tach hoan toan khoi kenh Zalo cu va san sang cho mo hinh moi organization co mot tai khoan Zalo rieng.
+
+**Kien truc chot:** Supabase la control plane va nguon du lieu chuan; chinh VPS Vultr Seoul hien co cua cong ty chay OpenClaw cell va bridge trong stack cach ly khoi 9Router; mot Cloudflare R2 private rieng luu media ben vung. Trinh duyet khong ket noi truc tiep OpenClaw Gateway. Moi lenh gui di qua outbox, policy engine va relay duoc kiem soat.
+
+---
+
+## 1. Quyet dinh da khoa
+
+Nhung quyet dinh duoi day khong duoc mo lai trong implementation neu chu san pham khong yeu cau thay doi:
+
+- Chon **OpenClaw**, khong chon Hermes, vi he sinh thai ket noi Zalo Personal hien tai cua OpenClaw ro rang va truong thanh hon cho bai toan nay. Day van la ket noi Zalo ca nhan khong chinh thuc, khong co bao dam tu Zalo ve do on dinh hay an toan tai khoan.
+- Route moi la chinh xac `/openclaw-zalo` va co giao dien van hanh rieng.
+- Khong sua, import, tai su dung, dual-write hay phu thuoc vao `worker/**`, cac bang/ham/view `zalo_*`, route `/chat-zalo`, `src/hooks/useZaloChat.ts` hoac `src/components/chat-zalo/**`.
+- Tai khoan ket noi phai la **mot tai khoan Zalo moi**, khong phai tai khoan dang ket noi voi worker cu.
+- Moi organization co toi da mot tai khoan Zalo Personal active va mot OpenClaw cell active. Cong ty hien tai chay nhu mot tenant binh thuong; khi co cong ty moi, quan tri vien cua organization do tu quet QR tai khoan Zalo cua ho.
+- QR dang nhap duoc thuc hien ngay trong CRM. Nguoi dung khong can SSH, VPS, Docker hay CLI.
+- He thong la production, khong phai demo. Organization DEMO chi duoc dung cho fixture va test tu dong; cong ty that chi duoc ghi trong smoke test cuoi co kiem soat.
+- Chuc nang production gom: tra loi khi khach nhan nhan truoc; gui theo lich/gui chu dong co consent va gioi han; tim/ket ban/lien he dau tien o trang thai mac dinh tat; gui theo lich hoac su kien CRM vao nhom sale noi bo duoc allowlist.
+- Khong tu dong tra loi moi tin nhan trong nhom. Tin nhan nhom co the duoc hien thi de theo doi, nhung automation chi duoc gui vao nhom da phep boi lich hoac su kien CRM da cau hinh.
+- Supabase la nguon su that duy nhat cho du lieu nghiep vu `openclaw_*`. Khong chay PostgreSQL tren VPS OpenClaw.
+- Dung chinh VPS Vultr Seoul hien co cua 9Router; khong tao/mua VPS moi va khong doi IP/region sau khi session Zalo da on dinh.
+- 9Router va `cli-proxy-api` khong bi sua, restart, recreate, mount chung volume, dung chung secret hay dua vao Docker network noi bo cua OpenClaw. Cac stack chi chia se host OS/Vultr.
+- OpenClaw khong phu thuoc 9Router/`cli-proxy-api` de chay AI. Model provider duoc cau hinh doc lap bang OpenAI-compatible runtime secret; ngung/go 9Router sau nay khong lam OpenClaw mat kenh neu provider doc lap con healthy.
+- Media ben vung dat trong mot bucket Cloudflare R2 private rieng. Khong tai su dung bucket/Worker `ihome-files` hoac sale-image hien co.
+- Host da duoc kiem tra read-only ngay 2026-07-26: 16 vCPU, khoang 64 GB RAM, khoang 1.2 TB disk; tai hien tai rat thap. Stack OpenClaw dau tien bi hard-cap tong cong 4 vCPU, 8 GB RAM va 20 GB local disk de khong lan tai nguyen sang dich vu cu.
+- Mot cell dau tien chay production. Moi cell them vao van can soak/capacity review va cach ly rieng; quyet dinh mo rong dua tren metric, khong dua tren cam giac host dang du.
+- Nguoi dung phai thay canh bao ro rang rang ket noi Zalo Personal la khong chinh thuc va co nguy co bi Zalo gioi han, day session hoac khoa tai khoan.
+
+## 2. Pham vi va ngoai pham vi
+
+### 2.1 Trong pham vi ban dau
+
+1. Ket noi/ngat/ket noi lai tai khoan Zalo moi bang QR trong CRM.
+2. Hop thu den theo conversation, tin nhan van ban va media, danh dau chua doc, tim kiem va phan cong nguoi xu ly.
+3. AI phan loai y dinh va tao ban nhap tra loi theo tri thuc da phe duyet.
+4. Che do human handoff/takeover, draft-only va auto-reply duoc quan ly rieng.
+5. Automation tra loi inbound khi khach hang nhan truoc.
+6. Gui chu dong cho nguoi nhan co consent theo lich va gio yen lang.
+7. Workflow tim/ket ban/lien he dau tien co UI, nhung mac dinh bi khoa boi feature flag va policy gate.
+8. Quan ly nhom sale: dong bo danh sach nhom tu tai khoan, allowlist nhom, gui theo lich va gui tu su kien CRM da cho phep.
+9. Tri thuc noi bo theo organization, co draft/published va lich su phien ban.
+10. Outbox, delivery attempt, audit, canh bao, dead letter, UNKNOWN va nut dung khan cap.
+11. Trang Operations de theo doi cell, session, queue, media, egress va loi.
+12. Desktop va mobile production, phan quyen day du, empty/loading/error/offline states.
+
+### 2.2 Mac dinh tat cho den khi hoan thanh huong dan
+
+- Auto-reply tu AI.
+- Gui chu dong.
+- Gui vao nhom sale.
+- Tim/ket ban/lien he dau tien.
+- Moi automation moi tao.
+
+Khi nguoi dung vao tung tinh nang, wizard phai giai thich rui ro va huong dan cau hinh gio hoat dong, doi tuong, tan suat, consent, nhom dich, nguoi co quyen dung, mau tin va cach xu ly loi. Automation chi co the bat sau khi tat ca buoc bat buoc hop le va nguoi co quyen xac nhan.
+
+### 2.3 Ngoai pham vi
+
+- Khong mo browser terminal, shell, filesystem, SQL editor, arbitrary HTTP tool hoac arbitrary OpenClaw tool cho AI.
+- Khong broadcast khong consent, quet hang loat Zalo ID, spam ket ban hoac tim nguoi dung khong co nguon hop le.
+- Khong auto-reply theo moi chatter cua nhom sale.
+- Khong cho phep nhap raw Zalo command, raw Gateway request hay script tu giao dien.
+- Khong dong bo du lieu voi Zalo cu, khong migrate lich su `zalo_*`, khong fallback sang worker cu.
+- Khong host database chinh, object storage ben vung hay dashboard quan tri cong khai tren VPS.
+- Khong cam ket rang tai khoan Zalo se khong bi gioi han/khoa va khong tu dong vuot captcha, xac minh hoac co che phong chong abuse cua Zalo.
+- Khong provisioning tai nguyen co tinh phi truoc khi design spec va implementation plan da qua cong duyet bat buoc.
+
+## 3. Kien truc tong the
+
+```text
+React/Vercel: /openclaw-zalo
+  | Supabase session; RLS read; guarded RPC/Edge mutation
+  v
+Supabase control plane - canonical openclaw_* data
+  - Auth, organization membership, permissions, RLS
+  - accounts, QR commands, policies, consent, groups
+  - conversations, messages, knowledge, schedules
+  - outbox, delivery attempts, runtime leases, audit
+  - narrow runtime API; short-lived object tickets
+  |                                  \
+  | per-cell workload credential      \ object-scoped ticket
+  v                                    v
+Existing Vultr Seoul           Dedicated media gateway
+  - shared host, isolated stack  - Cloudflare Worker/R2 binding
+  - one isolated cell/org        - private R2 bucket
+  - OpenClaw zalouser adapter     - no public bucket/domain
+  - policy-aware bridge           - exact-key authorization
+  - encrypted session volume
+  - bounded SQLite/event spool
+  - outbound-only/private Gateway
+  - no 9Router network/volume/secret
+```
+
+### 3.1 Trust boundaries
+
+- Browser chi duoc doc du lieu ma RLS cho phep va goi RPC/Edge API co schema xac dinh. Browser khong nhan Gateway token, workload token, model API key, R2 credential hay session Zalo.
+- Supabase Edge control plane giu quyen server can thiet va chi mo cac operation nghiep vu hep. Khong dua `service_role` hoac generic database credential vao OpenClaw cell.
+- Moi cell su dung mot workload credential rieng, anh xa co dinh toi `organization_id`, `account_id`, `cell_id` va tap operation duoc phep. Credential co the rotate/revoke ma khong anh huong tenant khac.
+- Workload credential chi dung de doi short-lived token toi Edge (TTL toi da 5 phut). Moi request runtime co audience, operation, timestamp, nonce, body hash, `organization_id/account_id/cell_id`, runtime fencing token va signature; Edge reject clock skew >60 giay, nonce da dung, replay, sai audience/operation hay stale lease.
+- Gateway cua OpenClaw khong mo port public. Bridge va cell giao tiep tren Docker network noi bo; giao tiep ra ngoai la outbound HTTPS.
+- Media gateway giu R2 binding. Cell va browser chi nhan ticket ngan han, gan voi exact object key, operation, content length/type va organization.
+- Model AI chi nhan context da loc va tra ve structured draft/classification. Model khong co quyen giao tin truc tiep toi channel.
+
+### 3.2 Cach ly tenant va cell
+
+- Moi bang moi co `organization_id NOT NULL`.
+- Moi parent co `UNIQUE (organization_id, id)`; child reference bang composite foreign key co `organization_id`.
+- Moi query, lease, idempotency key, object key, log va metric deu co tenant/account scope.
+- Moi organization co container, Docker network, encrypted volume, workload secret, session, spool va cell lease rieng.
+- Khong mount Docker socket vao cell; khong mount source repo; filesystem root read-only neu OpenClaw runtime cho phep; chi session/spool/temp media la writable.
+- Runtime lease co fencing token tang dan. Cell cu khong the gui sau khi cell moi da nhan lease.
+
+## 4. Thanh phan va ranh gioi module
+
+### 4.1 CRM operations cockpit
+
+Route `/openclaw-zalo` co sau khu vuc:
+
+1. **Tong quan** - tinh trang ket noi, volume tin nhan, queue lag, automation, consent, nhom sale va canh bao.
+2. **Hop thu** - conversation list, thread, draft AI, send, takeover, assignment, media va recipient status.
+3. **Tu dong hoa** - inbound reply, proactive sequence, friend/first-contact gates, policy wizard, test preview va versioning.
+4. **Tri thuc** - nguon noi dung, ban nhap/published, preview retrieval, phien ban va audit.
+5. **Lich & Nhom sale** - lich gui, calendar, danh sach nhom duoc dong bo, allowlist, CRM event trigger va template.
+6. **Van hanh** - account/session/cell, queue, UNKNOWN/dead-letter, media, retention, health, logs da redact va emergency controls.
+
+Thanh command bar ton tai tren desktop va mobile, luon hien:
+
+- Organization/tai khoan hien tai.
+- Connection health va lan heartbeat cuoi.
+- Configured mode va effective mode.
+- Trang thai outbound pause.
+- Nut `DUNG TOAN BO GUI` co xac nhan, ly do va audit.
+
+Desktop dung `MainLayout fullBleed`. Mobile dung shell full-screen rieng qua `usePhoneViewport()`; khong nen desktop co lai va khong bat scroll ngang trang.
+
+### 4.2 Supabase control plane
+
+Control plane co bon vai tro rieng:
+
+- **Canonical storage:** luu toan bo text, metadata, policy, queue, audit va reference media.
+- **Authorization:** Auth, organization membership, permission, RLS va operation-specific RPC/Edge API.
+- **Coordination:** command, lease, fencing, idempotency, control version va Realtime invalidation.
+- **Policy enforcement:** consent, quiet hours, suppressions, campaign status, takeover, mode, rate/cap va kill switches.
+
+### 4.3 OpenClaw cell
+
+Moi cell chi lam bon viec:
+
+1. Duy tri session Zalo Personal cua mot account.
+2. Chuyen inbound event sang normalized envelope va gui toi runtime API.
+3. Nhan job da duoc policy engine cho phep, goi channel adapter mot lan va bao cao ket qua.
+4. Chay AI draft/classification trong sandbox khong co quyen send truc tiep.
+
+Cell khong tu quyet dinh consent, quiet hours, campaign enable, takeover, group allowlist hay retry UNKNOWN.
+
+### 4.4 Policy-aware bridge
+
+Bridge la boundary bat buoc giua OpenClaw va Supabase/channel adapter:
+
+- Xac thuc workload credential va runtime lease.
+- Normalize/dedupe inbound.
+- Claim outbox theo lease ngan, kiem tra lai policy ngay truoc dispatch.
+- Ghi delivery attempt va audit.
+- Phan loai loi thanh retryable, terminal hoac ambiguous.
+- Tam dung outbound neu session/cell/queue/policy khong an toan.
+- Khong co generic SQL, generic HTTP proxy hoac admin endpoint.
+
+### 4.5 Private media gateway
+
+- Bucket rieng, private, khong public custom domain va khong public listing.
+- Upload ticket rang buoc `organization_id`, exact key, max size, MIME allowlist, checksum va TTL.
+- Download/stream ticket rang buoc user/session, exact key, disposition va TTL.
+- Gateway xac minh magic bytes, size va checksum; khong tin file extension/Content-Type tu client.
+- Anh inbound toi da 5 MB co the auto-cache. Video/file lon chi luu khi policy cho phep hoac user chon giu.
+- Temp media tren VPS bi xoa sau khi upload/processing; khong xem VPS disk la backup.
+
+## 5. Mo hinh du lieu `openclaw_*`
+
+### 5.1 Danh muc logic
+
+| Nhom | Bang chinh | Muc dich |
+|---|---|---|
+| Account/runtime | `openclaw_accounts`, `openclaw_account_connections`, `openclaw_runtime_cells`, `openclaw_runtime_leases`, `openclaw_qr_challenges` | Account, QR, session generation, health va fencing |
+| Inbox | `openclaw_contacts`, `openclaw_sales_groups`, `openclaw_targets`, `openclaw_conversations`, `openclaw_conversation_members`, `openclaw_messages`, `openclaw_message_media`, `openclaw_inbound_events` | Peer/group targets, text/metadata va dedupe inbound |
+| Safety | `openclaw_consents`, `openclaw_suppressions`, `openclaw_policies`, `openclaw_policy_versions`, `openclaw_control_states`, `openclaw_takeovers` | Consent, quiet hours, limit, stop, effective mode va handoff |
+| Automation | `openclaw_automations`, `openclaw_automation_versions`, `openclaw_campaigns`, `openclaw_campaign_runs`, `openclaw_schedules`, `openclaw_crm_event_subscriptions` | Rules, versions, campaigns, schedule va event triggers |
+| Sales groups | `openclaw_sales_group_allowlists` | Exact group allowlist va freshness policy; target group dung FK toi `openclaw_targets` |
+| Knowledge | `openclaw_knowledge_sources`, `openclaw_knowledge_versions`, `openclaw_knowledge_chunks` | Nguon tri thuc va retrieval theo tenant |
+| Delivery | `openclaw_outbox`, `openclaw_delivery_attempts`, `openclaw_dead_letters` | Send state machine, retry va operator resolution |
+| Operations | `openclaw_audit_events`, `openclaw_health_events`, `openclaw_retention_holds` | Audit, incident va legal hold |
+
+Danh muc tren la contract logic bat buoc. Implementation plan co the tach mot bang thanh bang con chi khi ghi ro mapping va invariant tuong duong truoc migration; moi bang van phai giu prefix `openclaw_`, tenant key va khong co quan he voi `zalo_*`.
+
+### 5.2 Invariant bat buoc
+
+- `organization_id` khong lay tu body do browser/workload tu khai; server suy ra tu membership hoac workload identity.
+- Account chi co mot connection generation effective tai mot thoi diem.
+- QR challenge mot lan, TTL chinh xac 120 giay tu `issued_at`. Payload duoc ma hoa o application layer trong row server-only, khong nam trong RLS read/Realtime; Edge endpoint giai ma va tra mot lan qua HTTPS. Browser chi giu trong memory. Payload bi xoa khi used/expired.
+- Inbound event co idempotency key theo account va provider event identity/fingerprint. Duplicate khong tao message/automation lan hai.
+- Message giu ca `source_timestamp` va `received_at`; UI sap xep hop ly nhung audit khong mat thu tu den.
+- Conversation, recipient, group, automation, schedule, outbox va attempt deu dung composite FK de ngan cross-tenant reference.
+- Outbox co unique business idempotency key; mot CRM event/schedule occurrence chi tao toi da mot send intent cho mot target.
+- Schedule luu timezone ro rang; cong ty hien tai mac dinh `Asia/Ho_Chi_Minh`, khong suy dien theo timezone cua browser.
+- Policy version va content/template version duoc dong bang tren outbox item de audit dung quyet dinh luc enqueue.
+- Truoc khi dispatch phai doc lai `session_generation`, `control_version`, `takeover_version`, effective mode, suppression va runtime fencing token.
+- Media row chi chua object key/metadata/checksum, khong chua blob hoac base64.
+- Audit append-only: moi organization co sequence va `previous_hash/event_hash`; browser/runtime khong co update/delete. Daily hash root duoc ky boi key ngoai database va anchor vao object R2 key bat bien/no-overwrite de phat hien sua/xoa evidence, gom ca UNKNOWN resolution va control changes.
+
+### 5.3 Uniqueness, target va idempotency contract
+
+- Partial unique index bao dam moi organization chi co mot `openclaw_accounts` active; moi account chi co mot runtime lease effective, mot connection generation effective va mot QR challenge `PENDING` chua het han. TTL dung DB clock, khong dung clock browser/cell.
+- Stable provider identity co unique key `(organization_id, account_id, provider_contact_id)`, `(organization_id, account_id, provider_group_id)` va `(organization_id, account_id, provider_conversation_id)`; rename khong tao target moi.
+- `openclaw_targets` co `kind IN ('PEER','SALES_GROUP')`, `account_id`, provider target ID va FK toi dung contact/group; CHECK XOR cam row vua peer vua group. Outbox chi reference target nay bang composite FK gom organization va account.
+- `organization_id` va `account_id` cua row canonical la immutable. Root mutation nhan selected organization tu UI context, server xac minh active membership/quyen; child mutation suy ra tenant/account tu trusted parent lookup, khong tin ID/body rieng le.
+- Typed CRM event mang `(organization_id, event_type, source_table, source_id, source_version, occurred_at)`; source lookup phai xac minh cung organization truoc khi tao occurrence.
+- Inbound idempotency key scope `(organization_id, account_id, provider_event_id)`; neu provider khong co ID, dung canonical fingerprint gom provider conversation/sender/source timestamp/type/content checksum va giu payload hash de phat hien collision.
+- Manual send key scope `(organization_id, actor_id, client_operation_id)`; schedule/CRM key scope `(organization_id, campaign_or_schedule_id, occurrence_id, target_id)`. Same key/same hash tra lai ket qua cu; same key/khac hash reject va audit.
+- Transaction ingest phai atomically insert inbound event/message, update conversation va tao automation work/outbox intent, hoac de lai durable recovery marker; khong co crash window tao message ma mat trigger hay trigger hai lan.
+- Runtime ingest nhan batch toi da 100 events hoac 256 KiB/call; khong mot network round-trip moi event trong history/reconnect.
+- Queue claim la atomic SQL transaction ngan dung `FOR UPDATE SKIP LOCKED`/`UPDATE ... RETURNING`, batch bounded; external Zalo/model/R2 call luon nam ngoai transaction va completion dung CAS moi.
+- State/status dung CHECK/enum va transition RPC CAS; direct update trang thai bi revoke. Delete parent dung `RESTRICT` hoac soft-delete cho evidence-bearing row, khong cascade lam mat audit/delivery.
+
+### 5.4 Cursor va Realtime contract
+
+- Conversation cursor la `(last_message_received_at, id)`; message/history cursor canonical la `(received_at, id)`. `source_timestamp` chi dung display/grouping, khong lam cursor duy nhat.
+- Index hot path bat dau bang `(organization_id, account_id, ...)`, sau do cursor/filter columns. Target/consent/suppression lookup co index phu hop pre-dispatch.
+- Moi composite FK va moi column dung trong RLS/policy lookup phai co index; active/queued/non-deleted hot paths dung partial index. Column equality dat truoc range/cursor column trong composite index.
+- Supabase Realtime publication la allowlist ro rang cho safe account-health, conversation va message tables/columns. QR challenge, session/runtime secret metadata, policy evidence nhay cam, delivery raw attempt, audit raw va retention hold khong nam trong publication.
+- Khi doi organization/account, logout hoac membership/quyen bi revoke, frontend dong channel, huy query, xoa cache OpenClaw va refetch voi session moi. RLS van la enforcement cuoi; Realtime khong duoc xem la authorization.
+
+### 5.5 RLS va quyen ghi
+
+- Bat RLS tren tat ca bang `openclaw_*`.
+- Dung `FORCE ROW LEVEL SECURITY` tren tenant tables tru cac truong hop migration/owner duoc ghi ro. `anon` khong co privilege; `authenticated` chi co `SELECT` tren safe read tables theo RLS va khong co direct INSERT/UPDATE/DELETE tren canonical/sensitive tables.
+- Browser direct DML bi revoke tren account connection, QR, canonical inbound/message, policy version, consent evidence, suppressions, outbox, delivery attempt, runtime lease, audit va retention hold. Moi browser mutation di qua exact RPC/Edge endpoint.
+- Mutation nhay cam chi qua versioned RPC/Edge API co Zod/SQL validation, membership recheck va audit.
+- Runtime cell khong co database role; no chi goi Edge runtime API. `service_role` chi o Supabase Edge secret, endpoint van bat buoc derive workload/tenant, validate operation va khong tin bypass RLS.
+- Moi `SECURITY DEFINER` function do non-login owner chuyen dung so huu, schema-qualify object, `SET search_path = pg_catalog, public`, `REVOKE ALL ... FROM PUBLIC` va `GRANT EXECUTE` chinh xac. Khong cap generic execute/maintenance role cho browser.
+- SQL test bat buoc co it nhat hai organization va chung minh user/workload tenant A khong doc, ghi, reference, claim lease hoac download object tenant B.
+- RLS helper/hot policy dung `(select auth.uid())` hoac indexed security-definer helper de tranh per-row recomputation; query plan/`EXPLAIN` bat buoc cho inbox cursor, outbox claim va pre-dispatch policy lookup.
+- Test them anon, membership inactive/revoked, mot user active o hai org, forged health/message/cell, wrong account trong cung org va definer-function cross-tenant.
+- Khong tao view neu khong can. Moi migration dung VIEW phai chay `node scripts/check-view-invoker.mjs` va view phai co `security_invoker=true`.
+
+## 6. Phan quyen
+
+Module quyen moi tach khoi `chat_zalo`:
+
+- `openclaw_zalo.view`
+- `openclaw_zalo.send`
+- `openclaw_zalo.manage_connections`
+- `openclaw_zalo.manage_automation`
+- `openclaw_zalo.manage_knowledge`
+- `openclaw_zalo.manage_handoff`
+- `openclaw_zalo.manage_operations`
+- `openclaw_zalo.audit`
+
+Quy tac:
+
+- `view` khong ham y `send`.
+- `send` chi cho phep gui thu cong khi policy/effective mode cho phep.
+- `manage_connections` moi duoc tao QR, disconnect, rotate/relogin va chap nhan canh bao rui ro account.
+- `manage_automation` moi duoc publish/bat/tat automation, schedule va sales-group trigger.
+- `manage_knowledge` moi duoc create/edit/publish/archive source/version; user chi co `view` duoc doc list, published content va retrieval preview da redact.
+- `manage_handoff` moi duoc takeover/release conversation cua nguoi khac; nguoi dang duoc assign co the takeover conversation cua minh neu policy cho phep.
+- `manage_operations` moi duoc resolve UNKNOWN, replay item hop le, pause mode/account va dung toan bo gui.
+- `audit` moi duoc xem actor, policy decision va delivery evidence day du; noi dung nhay cam van bi redact theo truong.
+- Moi quyen duoc recheck tai server tai thoi diem mutation, khong tin cache frontend.
+- Thieu `view`: route redirect ve `/` ma khong render noi dung OpenClaw truoc. Co `view` nhung thieu quyen manage: khu vuc van hien read-only; action bi disable voi ly do/quyen can thiet, khong goi mutation.
+- Tat ca user co `view` deu thay trang thai `GLOBAL_STOP`; chi user co `manage_operations` thay nut action enabled. Nhan nut la `DUNG TOAN BO GUI CUA CONG TY`, chi tac dong organization hien tai.
+- Gui thu cong vao group can dong thoi `send`, exact group ID con trong allowlist va policy effective cho phep. `manage_automation` moi duoc thay doi allowlist; `send` khong the tu them group.
+
+## 7. Luong nghiep vu
+
+### 7.1 Ket noi QR
+
+1. User co `manage_connections` chon ket noi tai khoan moi va chap nhan disclosure version `UNOFFICIAL_ZALO_PERSONAL_V1`: connector khong chinh thuc; nguy co session bi day/tai khoan bi gioi han hoac khoa; can consent/chong spam; session va noi dung nhay cam can duoc bao ve; nut dung khan cap va fallback Zalo native.
+2. Control plane tao QR command ngan han cho cell dung organization/account.
+3. Cell tao QR va post payload toi Edge endpoint server-only; Edge ma hoa application-layer trong challenge row khong RLS/Realtime. Browser short-poll Edge endpoint va chi render payload trong memory.
+4. QR het han chinh xac sau 120 giay tu `issued_at`; refresh tao challenge moi, xoa payload va vo hieu challenge cu.
+5. Khi dang nhap thanh cong, cell ma hoa session vao volume rieng, tang `session_generation`, cap nhat health va xoa QR material.
+6. Account vao `CONNECTED_DRAFT_ONLY`. Khong auto/proactive/group send cho den khi wizard lien quan duoc hoan tat.
+7. Neu Zalo day session hoac can xac minh, effective mode tu chuyen pause, queue khong dispatch va UI yeu cau reconnect.
+
+Quy tac QR/disclosure:
+
+- Acknowledgement luu theo organization/account, actor, disclosure version, thoi gian va IP/device metadata da redact. Huy dialog thi account van disconnected va khong tao challenge.
+- Disclosure lai bat buoc khi version thay doi hoac reconnect sau trang thai `LIMITED`/nghi session theft. Banner rui ro gon van hien trong command bar; acknowledgement khong an no vinh vien.
+- Challenge bind voi initiating user ID, Supabase auth session hash, organization/account, browser nonce va permission `manage_connections`; moi short-poll recheck session/quyen, rate-limit va atomic compare-and-consume.
+- Tren man hinh <=767 px, UI noi ro QR phai duoc quet boi Zalo tren mot thiet bi khac. Khong cam ket scan cung dien thoai; UI cung cap huong dan mo CRM tren desktop/tablet va khong tao deep link co the bo qua QR.
+- Disconnect/reconnect vo hieu moi challenge/command/ticket dang ton tai, tang `session_generation`, revoke workload/session references cu, xoa session material cu an toan va thu Zalo logout neu adapter ho tro. Neu khong the xac nhan logout, audit residual session risk va bat buoc QR moi.
+
+### 7.2 Inbound va auto-reply
+
+```text
+Zalo event -> cell -> normalized envelope -> runtime API
+           -> dedupe -> conversation/message canonical write
+           -> automation eligibility -> AI draft/classification
+           -> policy decision -> outbox or human draft
+```
+
+- Customer message luon duoc ghi truoc khi automation chay.
+- Prompt/content tu customer la du lieu khong tin cay, khong phai instruction he thong.
+- Retrieval chi lay knowledge `published` cung organization va dung scope duoc phep.
+- AI output phai khop schema; invalid output thanh draft loi, khong gui.
+- Auto-reply chi enqueue neu automation published, account healthy, conversation khong takeover, recipient khong suppressed va limit hop le.
+- Khi human takeover active, AI co the tao draft neu nguoi dung muon nhung khong auto-send.
+
+### 7.3 Gui thu cong va gui chu dong
+
+- Gui thu cong van di qua outbox va policy engine; khong co bypass truc tiep tu browser toi Gateway.
+- Gui chu dong can consent/evidence hop le, schedule window va limit da hoan tat trong wizard.
+- Quiet hours va frequency cap duoc tinh server-side theo recipient, account, automation va organization.
+- Neu chua cau hinh limit, gia tri effective la `0` va automation khong gui; wizard de xuat muc bao thu nhung owner phai xac nhan.
+- Unsubscribe/stop request tao suppression ngay va co do uu tien cao hon schedule/campaign.
+- First-contact/friend workflow chi co the bat khi server feature flag, adapter capability, risk acknowledgement, recipient source/evidence va limit gate deu hop le. Mac dinh deployment dau tien tat.
+
+### 7.4 Gui vao nhom sale
+
+1. Cell dong bo danh sach nhom tai khoan co tham gia, gom stable group ID, ten snapshot, thanh vien count/freshness neu adapter cung cap.
+2. User co `manage_automation` chon tung nhom sale cua cong ty va them vao allowlist. Khong allowlist theo ten pattern.
+3. User cau hinh mot trong hai nguon:
+   - Lich gui co timezone, template version va occurrence id.
+   - CRM event trong catalog allowlisted v1: `lead_created_or_assigned`, `room_became_available` va `sales_task_due`. Implementation plan phai map tung event toi source canonical hien co hoac tao typed domain-event emission idempotent; khong duoc thay bang generic database trigger/webhook.
+4. Preview hien nhom dich, su kien/lich, mau tin, data duoc chen, gioi han va effective mode.
+5. Khi trigger xay ra, control plane dedupe occurrence, render template tu field allowlist, chay policy va tao outbox target type `SALES_GROUP`.
+6. Ngay truoc dispatch, bridge kiem tra lai group con trong allowlist, snapshot/freshness hop le, campaign chua cancel va global/account/group pause khong active.
+7. Inbound chatter trong nhom khong tu kich hoat reply. Neu hien thi trong Inbox, no duoc danh dau `GROUP_READ_ONLY` tru khi user gui thu cong co `send`.
+
+Khong co generic database trigger, arbitrary webhook payload, raw SQL condition hay template expression co the thuc thi code.
+
+### 7.5 Knowledge
+
+- Nguon v1: noi dung nhap tay, FAQ/chinh sach duoc phe duyet va du lieu CRM co connector field allowlist ro rang.
+- Khong crawl web tuy y; khong ingest secret, auth token, ghi chu noi bo cam chia se hoac toan bo record khach hang vao prompt.
+- Moi knowledge version co sensitivity `CUSTOMER_SAFE`, `INTERNAL_REVIEW_ONLY` hoac `RESTRICTED`. Auto-reply chi retrieve `CUSTOMER_SAFE`; `INTERNAL_REVIEW_ONLY` chi tao draft can human approval; `RESTRICTED` khong duoc dua vao model context.
+- Source co `DRAFT`, `PUBLISHED`, `ARCHIVED`; automation chi doc published version.
+- Preview retrieval hien doan nao se vao context; publish tao version bat bien va audit.
+- Xoa source ngan retrieval moi; retention/audit cu van theo policy va legal hold.
+- Sau generation, outbound content policy/DLP quet secret canary, cross-customer PII, internal-only phrases, system-prompt leakage, URL va field khong duoc phep. Match thi block auto-send va chuyen human review; target/policy khong bao gio lay tu output model.
+
+## 8. Outbox, retry va nut dung
+
+### 8.1 State machine
+
+```text
+QUEUED -> LEASED -> DISPATCHING -> SENT
+                                 -> FAILED
+                                 -> UNKNOWN
+                                 -> DEAD_LETTER
+```
+
+- `LEASED` het han truoc khi dispatch co the duoc claim lai neu fencing token van hop le.
+- Moi claim sinh `claim_token` UUID va `claim_generation`, dung DB clock cho `lease_expires_at`. Moi transition la compare-and-swap tren item state, claim token/generation, runtime fencing token, session/control/takeover version va DB-time lease.
+- Khi adapter chua duoc goi va loi duoc phan loai retryable, item quay lai `QUEUED` voi exponential backoff va jitter.
+- Khi adapter tra terminal rejection, item thanh `FAILED` hoac `DEAD_LETTER` theo attempt policy.
+- Neu mat ket noi/timeout sau khi co kha nang Zalo da nhan lenh gui, item thanh `UNKNOWN`.
+- `DISPATCHING` khong bao gio duoc worker khac reclaim de gui lai. Neu process chet hoac lease het han o trang thai nay, DB sweeper CAS item sang `UNKNOWN`; late completion chi duoc chap nhan neu claim/session/fencing/control versions van khop, nguoc lai dua vao quarantine audit.
+- `UNKNOWN` **khong bao gio tu retry**. Operator co `manage_operations` xem evidence, doi chieu conversation va chon mark sent, mark failed hoac tao mot send intent moi co xac nhan.
+- Resolution UNKNOWN la mot CAS mot lan voi `resolution_version`; hai operator/concurrent retry chi co mot nguoi thanh cong.
+- Moi attempt co request hash, adapter result da redact, start/end time, cell/session generation va fencing token.
+
+### 8.2 Thu tu kill switch
+
+```text
+GLOBAL_STOP (organization-wide)
+> ORG / ACCOUNT / MODE_PAUSE
+> CAMPAIGN_CANCEL
+> HUMAN_TAKEOVER
+> RECIPIENT / GROUP_SUPPRESSION
+> policy allow
+```
+
+- Stop/pause co hieu luc voi item chua dispatch, ke ca item da lease.
+- `GLOBAL_STOP` la stop toan bo outbound trong **organization hien tai**, luu trong `openclaw_control_states` co `organization_id` va monotonic `control_version`; no khong phai platform-wide va khong bao gio tac dong tenant khac.
+- Platform operator co the stop bridge/cell o tang ha tang trong su co toan host, nhung khong co tenant UI/RPC nao dieu khien platform-wide stop.
+- UI phan biet configured mode va effective mode; effective mode co the bi ha xuong do health/policy ma khong sua cau hinh nguoi dung.
+- Release stop can nguoi co quyen, ly do, confirmation va audit; khong tu release sau restart.
+
+## 9. Bao mat va an toan AI
+
+### 9.1 Secret/session
+
+- QR plaintext chi duoc ton tai trong challenge row application-encrypted va live browser memory. QR/session/workload/model/object secret khong vao Git, frontend bundle, localStorage, analytics, automated screenshot/video artifact hay log; E2E mask/skip QR capture. Manual user thay QR tren man hinh la hanh vi bat buoc cua login.
+- Secret runtime duoc inject bang Docker secret/root-owned file, permission toi thieu va co rotation runbook.
+- Session volume ma hoa at rest. Khong backup session bang snapshot khong ma hoa; khi mat volume, recovery chinh la re-login QR.
+- Session file ma hoa AES-256-GCM voi per-cell key tu root-only/rootless-service secret nam ngoai session volume; atomic temp-write+fsync+rename, unique nonce, auth tag va fail-closed khi decrypt loi. Khong bao gio fallback plaintext.
+- Reboot unlock dung secret source duoc provision lai boi runbook; rotation tao key moi va re-encrypt atomic hoac buoc QR re-login. Ma hoa chi giam rui ro offline disk theft/backup leakage, khong bao ve khi root/kernel host da bi compromise.
+- Log mac dinh redact token, cookie, QR, phone/UID day du, signed URL, prompt content nhay cam va raw adapter payload.
+
+### 9.2 AI boundary
+
+- OpenClaw agent khong co shell, browser, filesystem, SQL, arbitrary HTTP, package install hay direct channel-delivery tool.
+- Model chi co structured input/output cho classification, knowledge query va draft generation.
+- System/developer policy nam ngoai customer content; quote, HTML, file va metadata cua customer luon duoc danh dau untrusted.
+- AI output khong the sua target, organization, group ID, consent, limit, schedule, policy version hay kill-switch state.
+- Send recipient va target lay tu server-side intent, khong lay tu text do model sinh.
+- Prompt injection test phai bao gom yeu cau tiet lo system prompt, secrets, goi URL noi bo, doi group/recipient va bo qua human takeover.
+
+### 9.3 Media/SSRF
+
+- Khong cho adapter/model fetch arbitrary URL do message content chi dinh.
+- Media fetch chi toi hostname/protocol duoc adapter allowlist; resolve va pin IP tai connect-time, revalidate moi redirect, strip credential/cookie/header nhay cam va gioi han redirect. Reject moi dia chi IPv4/IPv6 khong globally routable, gom loopback, link-local, RFC1918, CGNAT, multicast, unspecified, documentation/reserved, ULA va cloud metadata.
+- Co byte cap, timeout, content sniffing, decompression cap va quarantine cho type khong hop le.
+- V1 chi render inline anh raster da decode/transcode an toan voi `nosniff`. SVG/HTML khong render inline; PDF/file hoat dong chi download attachment sau malware scan/quarantine verdict va browser sandbox policy.
+- Browser download qua object-scoped authorization; cross-org, changed-key, expired va anonymous request bi 401/403.
+
+### 9.4 Consent va chong spam
+
+- Moi proactive recipient phai co consent/evidence hoac business relationship rule duoc owner xac nhan theo policy cong ty.
+- Recipient/group suppression co hieu luc ngay.
+- Limit server-side khong the bi frontend hoac AI tang vuot platform ceiling.
+- Guardrail khoi tao cho mot account: toi da 1 outbound moi 3 giay, burst 2, 30 outbound/gio, 200 outbound/ngay, 10 auto-reply/peer/gio va 100 recipients cho mot approved batch.
+- Proactive mac dinh toi da 1 tin/peer/ngay va 4 tin/peer/thang; quiet hours 20:00-08:00 theo timezone organization. Support reply inbound co the hoat dong ngoai quiet hours neu policy owner cho phep.
+- Trong 72 gio dau sau connect/reconnect moi hoac sau LIMITED, account o warm-up: cac account-wide cap giam con mot phan ba, lam tron xuong; auto-reply co random floor delay 3-8 giay.
+- Cac so tren la guardrail noi bo bao thu, khong phai quota Zalo duoc bao dam. UI chi cho giam; tang ceiling can code/config review, test va rollout gate moi.
+- Wizard giai thich rui ro; platform ceiling duoc version hoa va chi co the thay doi qua code/review, khong qua form thong thuong.
+- Risk acknowledgement theo account duoc audit; canh bao khong bi an vinh vien.
+
+## 10. Retention, luu tru va egress
+
+### 10.1 Retention
+
+- Message, conversation content, AI draft/output da luu: 180 ngay tu `received_at/sent_at/created_at`; active conversation metadata khong bi xoa neu van can cho inbox, nhung noi dung het han bi tombstone.
+- Published knowledge/template/automation version: giu khi active va 365 ngay sau archive/unpublish. `RESTRICTED` source khong duoc luu trong prompt log.
+- Consent evidence, suppression va risk acknowledgement: giu suot khi account/organization active va toi thieu 365 ngay sau lan send/account removal; suppression khong bi xoa theo message retention de tranh tai lien he.
+- Audit, policy/control version, delivery/UNKNOWN evidence va security event: 365 ngay; daily hash anchors giu cung thoi han hoac lau hon.
+- QR payload xoa ngay khi used/expired; challenge metadata da redact 7 ngay. Connection/runtime health 90 ngay. Local operational logs toi da 14 ngay/1 GiB; spool toi da 24 gio/1 GiB va xoa ngay sau canonical acknowledgement.
+- Media R2: 90 ngay mac dinh. Delete dung tombstone/grace period 7 ngay de phuc hoi accidental delete truoc physical object deletion.
+- Legal hold la typed target theo organization va descendants (conversation/messages/media/outbox/evidence), do active owner co `audit` + `manage_operations` tao/release voi reason, optional expiry va audit. Hold ghi de retention theo tung table/object.
+- Job retention chay theo batch nho, idempotent; R2 delete `404` duoc coi la success, object deletion/DB failure de lai tombstone retry. Audit purge chi qua maintenance role/RPC, ghi purge evidence va daily anchor, khong qua user DML.
+
+### 10.2 Egress va query discipline
+
+- Supabase chi luu text/metadata; khong blob/base64 trong Postgres, Realtime hay JSON response.
+- Khong dung `select('*')` trong UI hot path. Dung selected columns, cursor pagination va lazy-load thread/media.
+- Realtime chi subscribe organization/account/active-thread can thiet; invalidation batched/debounced, khong refetch O(N^2).
+- Media stream truc tiep qua gateway/R2, khong proxy blob qua Supabase.
+- Incoming image toi da 5 MB co the cache tu dong; video/file lon can policy/hanh dong ro rang.
+- Dashboard Operations hien Supabase egress trend, R2 storage/request trend, VPS outbound va queue/media backlog.
+
+### 10.3 Baseline tai thoi diem thiet ke
+
+Snapshot da kiem tra ngay 2026-07-26:
+
+- Supabase Pro egress `6.472 / 250 GB` (khoang 2.589%).
+- Cached egress `0.166 / 250 GB`.
+- Storage `1.085 / 100 GB`.
+- PostgreSQL database khoang 136 MB.
+- Legacy `zalo_messages` khoang 2.4 MB va `zalo_conversations` khoang 1.8 MB; chi la bang chung capacity, khong duoc tai su dung.
+- Supabase overage tham khao: 0.09 USD/GB uncached, 0.03 USD/GB cached.
+- Vultr tinh outbound, inbound mien phi theo tai lieu tham khao. Quota transfer cua goi host da nang cap khong the xac minh chi bang SSH; implementation preflight phai ghi quota tu Vultr portal/API vao runbook va alert o 60%/80%.
+- R2 Standard co free tier 10 GB, storage tham khao 0.015 USD/GB-thang va khong tinh Internet egress theo tai lieu hien tai.
+
+Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao hard-coded commercial assumptions.
+
+## 11. VPS va van hanh
+
+### 11.1 Topology dau tien
+
+- Dung host Vultr Seoul hien co. Baseline read-only ngay 2026-07-26: Ubuntu 26.04 LTS, 16 vCPU, 64,996,679,680 bytes RAM (khoang 64 GB), root disk 1,288,032,935,936 bytes (khoang 1.2 TB), load average `0.35/0.14/0.10` tai thoi diem do.
+- Dich vu dang chay gom container `9router` va `cli-proxy-api`. Baseline luc do: 9Router khoang 263 MiB RAM, CLI proxy khoang 58 MiB RAM; ca hai gan nhu 0% CPU. So lieu la baseline van hanh, khong phai cam ket tai luon thap.
+- Chay mot **rootless Docker daemon/Compose stack rieng** duoi service user `openclaw-runner`, socket/data-root rieng; khong dung rootful Docker daemon/socket dang chay 9Router. Project name, network, volume, secret, label va log path deu prefix rieng. Khong public Gateway port.
+- Dat rootless data-root tren fixed-size 20 GiB filesystem/mount rieng `/srv/openclaw-runtime`; image layers, writable layers, volumes, spool, temp va logs deu nam trong mount nay. Systemd slice enforce tong `CPUQuota=400%`, `MemoryMax=8G`, `TasksMax` va service-specific sublimits.
+- Disk budget: engine images/writable layers toi da 10 GiB va GC co kiem soat; temp media 5 GiB; spool 1 GiB; session/config 1 GiB; logs 1 GiB; 2 GiB headroom. ENOSPC trong mount chi lam OpenClaw fail/pause, khong duoc fill root filesystem.
+- Khong sua compose/command/image/volume/network/resource setting cua `9router` va `cli-proxy-api`; deployment OpenClaw **khong restart rootful Docker daemon**. Neu mot thay doi host/daemon/firewall toan cuc bat buoc, no nam ngoai rollout nay va can owner duyet maintenance task rieng.
+- Khong thay doi host-wide UFW/Docker firewall trong rollout OpenClaw. Preflight phai inventory port bindings, Docker networks, systemd units, health endpoints va current 9Router/CLI reachability; OpenClaw chi them rule egress/namespace rieng va khong expose inbound port.
+- Egress cell/bridge default deny toi host va RFC1918/link-local/metadata/loopback/multicast/ULA, cong 9Router/CLI, Docker socket va management ports. Allowlist chi DNS/NTP, Zalo endpoints, Supabase Edge, private media gateway va model endpoint; connect-time IP pinning + DNS revalidation.
+- Negative connectivity test tu moi container phai fail toi host gateway, 9Router/CLI published ports, Docker API, cloud metadata va private subnets khong nam allowlist. Neu test fail thi block rollout.
+- Network/volume/secret theo cell. Mot cell production dau tien; khong pre-provision nhieu tenant chua ton tai.
+- Local encrypted SQLite/event spool chi la buffer, hard cap `1 GiB` hoac `24 gio` du lieu, cham nguong nao truoc.
+- Temp media hard cap 5 GiB, xoa sau durable upload/processing; logs rotate o 1 GiB/14 ngay. Cap-attempt/ENOSPC test phai chung minh 9Router/CLI van healthy.
+
+### 11.2 Spool durability va RPO
+
+- SQLite spool dung WAL, `synchronous=FULL`, monotonic local sequence, per-record checksum va atomic transaction. Adapter event phai vao durable spool truoc normalization/Edge call; row chi xoa sau canonical acknowledgement tu Supabase.
+- Khong drop oldest text/event de giu cap. O 80% cap: pause outbound, history sync va media prefetch; o 95%: chi nhan minimal inbound envelope; o 100%: stop intake neu adapter cho phep, ghi `INBOUND_GAP_STARTED` va alert P1. Khong ghi vuot fixed filesystem.
+- Sau recovery, sync lai toi da 48 gio recent history hoac tu canonical watermark cuoi, dedupe va danh dau `HISTORY_SYNC`; history sync khong kich hoat AI/automation/push.
+- Normal-operation target: inbound canonical p95 <=60 giay. Sau canonical ack, RPO message text/metadata la 0 doi voi mat VPS. Trong Supabase outage, unflushed events chi durable tren local spool toi da 24 gio/1 GiB.
+- Simultaneous Supabase outage + mat/corrupt shared VPS truoc flush co the mat unflushed inbound neu Zalo khong replay/history du. Day la residual risk duoc chap nhan cua unofficial connector; incident phai hien exact gap window va yeu cau doi chieu Zalo native.
+
+### 11.3 Health va circuit breaker
+
+- Cell/bridge heartbeat toi control plane moi 30 giay; sau 90 giay khong heartbeat thi account `STALE` va outbound effective pause.
+- Pause outbound khi session invalid, runtime lease/fencing khong hop le, spool/runtime mount vuot 80%, clock drift >2 giay trong 2 phut, policy API unavailable >60 giay, queue lag p95 >30 giay trong 5 phut, hoac UNKNOWN >3 item/10 phut hay >2% voi minimum 20 attempts.
+- Inbound co the buffer khi Supabase/R2 loi trong quota; outbound khong dispatch neu khong the recheck policy va ghi attempt evidence.
+- Queue lag, UNKNOWN rate, adapter error, reconnect count, CPU/RAM/disk, spool age/bytes va media failure co alert.
+- Preflight do baseline 9Router/CLI health latency va error trong it nhat 30 phut. Co-tenant guard kich hoat neu p95 latency tang >20% trong 5 phut hoac error >1% trong 5 phut; cung kich hoat neu tong RAM host >75%/15 phut, swap >10%, one-minute load >12/15 phut, root disk free <max(200 GiB,20%).
+- Khi co-tenant/host guard kich hoat: pause outbound, AI va media processing ngay; giu minimal inbound spool. Neu con vi pham sau 10 phut, stop OpenClaw cell/bridge process trong rootless stack, giu session volume va alert P1. Khong stop/restart 9Router/CLI.
+- Clear condition phai dat lien tuc 15 phut; health-generated pause khong auto-resume outbound. User co `manage_operations` review incident va resume; manual/global stop khong bao gio bi health logic release.
+- External Cloudflare watchdog probe health endpoint moi 60 giay, timeout 10 giay; sau ba lan fail phai ghi incident va gui CRM push/email toi owner/admin trong 3 phut, ngay ca khi ca host/rootless engine down.
+- Transfer quota phai biet truoc khi mo production proactive/group media; unknown quota block gate. 60% billing-cycle warning, 80% tat auto-cache video/file, 90% pause noncritical proactive/group media, 100% pause moi outbound co media. Supabase/R2 usage co forecast 7/30 ngay va canh bao 60/80/90% quota/budget.
+- Khong log raw message o metric/logging pipeline.
+
+### 11.4 Nguong capacity va nang cap
+
+- Soak mot cell it nhat bay ngay voi traffic that co gioi han truoc khi cho phep cell thu hai.
+- Workload envelope cell dau tien: 100 active conversations, burst inbound 30 message/phut trong 15 phut, AI concurrency 4, media image <=5 MB o 10 image/phut va guardrail outbound toi da 200/ngay. Pass neu queue lag p95 <30 giay, heartbeat fresh, CPU/RAM OpenClaw <70% cap va 9Router/CLI p95 latency regression <=20%, error <=1%.
+- Baseline tai nguyen cho thay host du de **pilot mot cell trong envelope tren**, khong phai cam ket moi traffic deu du. Tang cap OpenClaw hoac them cell chi khi metric chung minh can thiet va van giu it nhat 50% RAM host, 50% CPU capacity va max(200 GiB,20%) disk headroom cho host/dich vu khac.
+- Truoc moi cell moi, do lai `docker stats`, CPU/RAM/disk/load, queue lag va latency 9Router/CLI proxy; khong suy dien tu baseline cu.
+- Neu OpenClaw memory >75% hard cap, CPU >70% cap lien tuc 15 phut, queue lag p95 >30 giay do tai nguyen hoac OOM/restart lap lai, toi uu/tang cap rieng stack trong headroom host truoc khi them tenant.
+- Neu media/temp disk tang nhanh, sua retention/streaming truoc khi tang disk; VPS khong tro thanh kho media.
+- Moi tenant moi can capacity review, workload credential, volume/network rieng va RLS/E2E tenant test.
+- Giu IP va region Seoul on dinh cho session Zalo. Chuyen host/region chi la runbook co chu y, can pause outbound, backup canonical state, fencing va QR re-login neu can.
+
+### 11.5 Backup va recovery
+
+- Truoc khi mo auto/proactive/group send production, Supabase backup/PITR phai duoc xac minh dat canonical DB RPO <=15 phut va RTO <=4 gio. Neu goi hien tai khong dat, he thong chi o draft/manual limited mode cho den khi owner duyet PITR/backup tuong duong.
+- R2 dung immutable UUID object keys/no-overwrite va tombstone 7 ngay; durable object RPO 0 sau upload verify, restore RTO <=4 gio cho accidental delete trong grace window.
+- OpenClaw stack duoc xem la replaceable runtime tren shared host. Cau hinh deploy va runbook nam trong repo, secret nam ngoai repo; replacement cua OpenClaw khong dong nghia replacement cua 9Router.
+- Secret inventory/rotation runbook luu chi reference/owner, khong secret value. Mat session volume co account recovery RTO <=60 phut khi owner san sang quet QR; khong cam ket restore cookie/session backup.
+- Khong backup SQLite spool nhu canonical database. Sau mat VPS: provision lai, restore config/secrets an toan, re-login Zalo, acquire fencing lease moi, sync history 48 gio va doi chieu outbox/UNKNOWN/gap.
+- Truoc production va moi quy, restore drill phai phuc hoi mot backup test, rotate workload/session key, simulate accidental R2 delete va ghi actual RPO/RTO.
+- Pre/post deployment/rollback capture container ID, image digest, `StartedAt`, `RestartCount`, port/network/volume mounts va authenticated health/latency cua 9Router/CLI. `StartedAt`/restart count/config cua co-tenant phai khong doi va SLO van dat.
+- Legacy drill con chung minh `/chat-zalo`, worker cu va `zalo_*` co zero DML/dual-write tu OpenClaw trong toan bo rollout/rollback.
+
+### 11.6 Chuyen sang Vultr moi sau nay
+
+- Host portability la requirement: Compose/config/runbook khong hard-code host IP, database/media nam ngoai VPS, object keys va canonical IDs khong doi khi chuyen host.
+- Planned migration target RTO <=60 phut: `GLOBAL_STOP` organization, drain/freeze QUEUED/LEASED, chuyen `DISPATCHING` qua UNKNOWN neu can, deploy rootless stack tren VPS moi, cap workload credential moi, acquire fencing lease moi, revoke credential/lease may cu, QR re-login, history sync 48 gio, controlled smoke va resume.
+- Mac dinh khong copy raw Zalo session sang IP/host moi; owner quet QR lai de giam nguy co session theft/device anomaly. Session migration chi duoc dung neu adapter co contract va test ro rang sau nay.
+- Supabase/R2 khong can copy. Chi config artifact va secret duoc provision lai qua runbook; local spool cu phai flush/doi chieu truoc cutover hoac gap duoc ghi ro.
+- Quy tac giu IP/region on dinh ap dung cho planned steady state. Disaster recovery/migration duoc phep doi IP/region voi pause, fencing, credential revoke, QR re-login va audit.
+
+## 12. UI/UX va trang thai bat buoc
+
+### 12.1 Huong thiet ke
+
+- Bao toan ngon ngu thiet ke iHome CRM nhung tao operations cockpit ro rang, dam va de doc; khong sao chep UI `/chat-zalo`.
+- Trang thai luon co icon + text, khong chi mau.
+- Risk, effective pause, UNKNOWN va global stop la visual priority cao.
+- Controls tren mobile toi thieu 44 px, khong scroll ngang toan trang, composer an toan voi keyboard/viewport.
+
+### 12.2 Trang thai can co
+
+- Chua co account; QR dang tao; QR het han; dang cho quet; dang xac minh; connected draft-only; reconnect required; session kicked.
+- Cell healthy/degraded/stale/offline; Supabase/R2 partial outage; spool pressure; queue delayed.
+- Inbox empty, no permission, loading, paginated loading, out-of-order/duplicate safely handled, media unavailable.
+- Automation draft/incomplete/published/paused/blocked by policy; preview test va explanation cho ly do khong gui.
+- Sales group not synced, stale, not allowlisted, removed/renamed, paused, invalid target.
+- Outbox queued/leased/dispatching/sent/failed/unknown/dead-letter.
+- Permission-denied co thong diep ro va khong nhay noi dung nhay cam truoc khi auth load xong.
+- Emergency stop thanh cong/that bai, co retry va khong optimistic release.
+
+### 12.3 Wizard gioi han theo tung tinh nang
+
+Moi wizard bat buoc co:
+
+1. Giai thich tinh nang va rui ro Zalo ca nhan.
+2. Chon doi tuong/nhom dich tu nguon da xac minh.
+3. Khai bao consent/business basis va suppression behavior.
+4. Chon gio hoat dong, timezone, tan suat va hard stop.
+5. Soan template/knowledge, preview voi du lieu mau da redact.
+6. Chon draft-only, can human approval hay auto theo policy.
+7. Chay validation/dry-run khong gui.
+8. Xac nhan boi user co quyen; publish version bat bien va audit.
+
+Required fields theo mode:
+
+| Mode | Truong bat buoc rieng |
+|---|---|
+| Inbound reply | conversation/recipient scope, published knowledge, delay, draft/human/auto mode, per-peer cap |
+| Proactive existing-thread | recipient set, consent evidence, schedule/quiet hours, template, per-peer/account cap |
+| Sales-group schedule | exact allowlisted group, schedule/timezone, template version, account/group cap |
+| CRM-event to sales group | typed event, exact group, field allowlist/mapping, dedupe key, template version |
+| First-contact/friend | server feature flag, adapter capability, recipient source/evidence, enhanced disclosure va risk cap; mac dinh blocked |
+
+- Wizard auto-save draft sau moi buoc, cho phep resume; validation loi gan dung field/buoc va khong mat data.
+- Dry-run hien target count, sample render da redact, policy decision va ly do block; khong tao outbox.
+- Publish dung optimistic version. Neu draft/policy/group/knowledge da doi, server tra stale-version conflict va bat review lai, khong silent overwrite.
+
+### 12.4 Observable UI acceptance
+
+- **Inbox:** search tra dung conversation theo safe normalized text/identity; unread count tang/giam idempotent; assignment concurrent dung optimistic version; master/detail pagination giu stable order; media loading/failure co retry va khong lam mat text; delivery status chi theo canonical outbox; empty/error retry co the phuc hoi.
+- **Knowledge:** user `view` xem list/published/retrieval preview; `manage_knowledge` create/edit/validate/publish/archive. Empty content/invalid source bi chan; publish tao immutable version; stale edit tra conflict; retrieval preview thanh cong, khong co ket qua va loi deu co state rieng.
+- **Risk:** QR/automation publish bi chan neu disclosure version chua acknowledged; cancel khong mutation. Banner luon hien; version change va LIMITED reconnect bat acknowledge lai.
+- **Groups/schedule:** group snapshot fresh toi da 24 gio de automation dispatch. Qua nguong thi target `STALE`, pause va yeu cau sync; rename cung provider ID chi cap nhat label; removed/inaccessible disable target. Missed occurrence mac dinh `SKIPPED_MISSED`, khong catch-up tu dong. Edit recurring series tao version cho future occurrences; pause/cancel khong thay doi past evidence.
+- **Operations:** `DEGRADED`, `STALE`, queue delayed va quota pressure hien threshold, window, last-fresh timestamp va action dang ap dung. Filter/drilldown khong hien raw secret/content; resume chi enabled khi clear condition dat va user co quyen. Dead-letter replay chay validation/policy moi va tao intent moi, khong sua attempt cu.
+- **Permissions:** thieu route `view` redirect `/` khong content flash; action manage bi disabled co explanation. Global-stop state visible cho `view`, button enabled chi cho `manage_operations`.
+- **Responsive:** breakpoint chinh xac <=767 px dung `usePhoneViewport()`. Mobile bottom nav co `Tong quan`, `Hop thu`, `Tu dong`, `Them`; `Them` mo `Tri thuc`, `Lich & Nhom sale`, `Van hanh`. Inbox la master/detail co nut back; operations tables thanh cards; calendar thanh agenda; wizard thanh stepper full-screen. Desktop >=768 px hien day du sau khu vuc va multi-column cockpit.
+
+## 13. Error handling va tinh nhat quan
+
+- UI khong bao `SENT` dua tren optimistic response; chi hien sent khi canonical outbox duoc bridge xac nhan.
+- Network retry cua browser chi retry operation idempotent; mutation tao intent dung client operation id.
+- Realtime chi la invalidation/latency optimization, khong la nguon su that. Reconnect phai refetch cursor/current state.
+- Supabase unavailable: cell buffer inbound trong quota, pause outbound; UI hien degraded.
+- R2 unavailable: text co the tiep tuc neu khong can media; media duoc spool trong quota; khong gui message tham chieu object chua durable neu policy yeu cau durable media.
+- Model provider unavailable/quota/invalid schema: auto-send AI pause, draft hien loi/retry va manual non-AI send van hoat dong qua policy. Khong fallback sang 9Router/CLI proxy; chi resume khi provider/model health, quota va output-schema test dat.
+- Session kick: effective pause, huy QR cu, khong auto-relogin bang credential khac.
+- Two-cell race: chi fencing token hien tai co the claim/dispatch/complete; late completion tu cell cu bi quarantine va audit.
+- Group ID/recipient mismatch: fail closed, khong fallback theo ten/so dien thoai gan giong.
+- Retention delete failure: retry co trang thai, khong xoa metadata truoc khi object deletion outcome duoc ghi.
+
+## 14. Ke hoach kiem thu da duyet
+
+### 14.1 Unit va property-based
+
+- Policy: consent, quiet hours, frequency cap, group allowlist, feature gate va kill-switch precedence.
+- State machines: account connection, QR TTL, automation version, outbox, UNKNOWN/dead-letter, takeover va retention.
+- Idempotency/dedupe voi duplicate, out-of-order, delayed event va concurrent claim.
+- Redaction: QR, token, cookie, phone/UID, signed object ticket, adapter payload va prompt content.
+- Template/CRM field allowlist va timezone/DST behavior.
+- Dung Vitest va fast-check cho invariant, khong chi example test.
+
+### 14.2 SQL/RLS
+
+- Migration apply/rollback trong moi truong test.
+- Hai organization, nhieu role, negative test cho read/write/FK/RPC/lease/audit/media authorization.
+- Anon, inactive/revoked membership, one-user-two-org, wrong account same org, forged parent/health/message/cell va definer-function cross-tenant.
+- Partial unique race cho account/cell/QR; DB-clock TTL boundary; organization/account immutability va typed target XOR/FK.
+- Claim token/generation CAS races, same key/different payload, crash-window transaction, concurrent UNKNOWN resolution.
+- Realtime publication allowlist, equal cursor timestamps, delayed insert, membership revoke va organization/account cache switch.
+- Browser direct DML revoke tren bang nhay cam.
+- Composite FK ngan reference cheo organization.
+- `node scripts/check-view-invoker.mjs` sau moi migration cham VIEW.
+- Regenerate Supabase types sau migration va khong lan `as any`.
+
+### 14.3 Fake Zalo adapter va service integration
+
+- Duplicate/out-of-order inbound.
+- Restart voi spool con du lieu.
+- Supabase outage, R2 outage va recovery.
+- Session kick/QR expiry/reconnect.
+- Hai cell tranh lease va fencing.
+- Same-cell concurrent workers, lease expiry before adapter call, stop/control bump sau preflight, crash o DISPATCHING va stale late completion.
+- Timeout sau adapter handoff tao UNKNOWN va khong auto retry.
+- Group removed/renamed/not allowlisted.
+- Policy thay doi sau enqueue nhung truoc dispatch.
+- Prompt injection va media SSRF/decompression/size cases.
+- QR initiating-session/replay/rate-limit, workload token audience/nonce/replay/clock-skew va disconnect credential/session revocation.
+- R2 expired/replayed ticket, wrong tenant/exact key, content-length/checksum mismatch, MIME/magic-byte mismatch, active content quarantine, partial upload va object-delete/DB-failure recovery.
+- Spool checksum/WAL restart, 80/95/100% behavior, fixed-filesystem ENOSPC va simultaneous Supabase outage + host-loss gap reporting/history reconciliation.
+
+Khong dung tai khoan Zalo that trong test tu dong.
+
+### 14.4 Headless E2E
+
+Playwright fleet phai test desktop va mobile cho:
+
+- Permission route/sidebar/launcher va no-content-flash.
+- QR happy path/fake adapter, expiry va reconnect.
+- QR risk disclosure/acknowledgement, same-phone guidance, permission bind va no-QR test artifact leakage.
+- Inbox search, unread, assignment race, pagination/order, media retry, draft, manual send intent, takeover/release va delivery status.
+- Automation wizard, dry-run, publish, pause va blocked explanations.
+- Knowledge create/edit/validate/publish/archive, retrieval preview, stale conflict va permission denied.
+- Schedule, CRM event dedupe, sales group allowlist va emergency stop.
+- UNKNOWN/dead-letter resolution va partial outage states.
+- Cursor pagination, selected columns, debounced Realtime va clean console.
+
+Moi automated suite (Vitest service, SQL, R2 va E2E) phai co hard guard chi ghi organization DEMO `dddd0000-0000-4000-8000-000000000001`, test runtime/bucket prefix rieng va tu cleanup fixture. Organization that `aaaa0000-0000-4000-8000-000000000001` chi doc; moi attempt ghi production ID phai fail fast truoc network/database mutation.
+
+Playwright bat buoc dung `trackConsoleErrors` tu `.e2e-fleet/specs/auth.ts` va assert danh sach loi console sau loc bang rong; production smoke cung ghi/kiem tra console ma khong luu QR/message content.
+
+### 14.5 Load/egress
+
+- Kiem tra 10k conversation metadata va thread dai bang cursor pagination.
+- Luu/kiem tra `EXPLAIN (ANALYZE, BUFFERS)` tren test dataset cho inbox cursor, target/consent/suppression pre-dispatch va `SKIP LOCKED` outbox claim; khong seq scan ngoai bang nho co chu y.
+- Chung minh khong `select('*')` hot path, khong blob/base64 va khong O(N^2) refetch.
+- Batch/debounce Realtime invalidation, active-thread subscription va bounded query size.
+- Queue throughput/lag voi mot cell; spool cap 1 GB/24 gio; media size/lifecycle.
+- Chay workload envelope Section 11.4 va assert queue p95 <30 giay, OpenClaw <70% resource cap, 9Router/CLI latency regression <=20% va error <=1%.
+- Fill fixed 20 GiB runtime filesystem den ENOSPC trong test co kiem soat; OpenClaw pause/fail trong boundary, host root disk va co-tenant van healthy.
+- Theo doi Supabase egress, Vultr outbound va R2 request/storage trong soak.
+
+### 14.6 Lenh verification bat buoc
+
+```bash
+npx vitest run src/lib/openclaw-zalo src/hooks/openclaw-zalo src/components/openclaw-zalo src/pages/openclaw-zalo
+npm run test:openclaw:services
+npm run test:openclaw:sql
+npm run test:openclaw:r2
+npm run typecheck:baseline
+npx tsc --noEmit -p tsconfig.app.json
+npm run gen:types > src/integrations/supabase/types.ts
+# Re-add/verify the generated-file comment header required by this repo.
+node scripts/check-view-invoker.mjs          # neu migration cham VIEW
+cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/openclaw-zalo.spec.ts
+```
+
+Implementation plan phai tao ba npm scripts `test:openclaw:services`, `test:openclaw:sql`, `test:openclaw:r2` truoc khi dung checklist nay. Browser mac dinh headless; khong tu mo headed browser.
+
+### 14.7 Smoke test production co kiem soat
+
+Chi sau khi automated tests, reviewer va rollout gates xanh:
+
+1. Dung cong ty that, tai khoan Zalo moi va mot nhom sale do owner kiem soat.
+2. Ket noi QR; draft-only; gui mot tin thu cong toi recipient/nhom duoc owner chon.
+3. Bat mot inbound auto-reply pham vi hep, mot proactive schedule toi recipient existing-thread co consent va mot group schedule/su kien co gioi han.
+4. Xac minh audit, outbox, media, stop switch, disconnect/reconnect va khong co tac dong toi Zalo cu.
+5. Sau smoke, mac dinh pause/tat moi automation/schedule/group trigger vua tao va cleanup target test. Chi de live neu owner xac nhan ro trong rollout gate sau khi review metric/evidence.
+6. Dung ngay neu co session warning, UNKNOWN bat thuong, Zalo limitation, console error hoac co-tenant SLO regression.
+
+## 15. Trinh tu rollout
+
+1. **Foundation:** migrations/RLS/RPC, permissions, fake adapter, frontend shell sau feature flag.
+2. **Infrastructure:** private R2/gateway, shared Vultr stack isolation, bridge/cell hardening, observability.
+3. **Connection:** QR va account health voi tai khoan moi; effective mode draft-only.
+4. **Shadow:** ingest inbound, AI draft va human send; khong auto-send.
+5. **Limited inbound automation:** mot tap conversation duoc owner chon, gioi han thap, theo doi UNKNOWN/session.
+6. **Proactive:** chi recipient consent va wizard da hoan tat.
+7. **Sales groups:** mot nhom owner-controlled, sau do allowlist them nhom neu soak on dinh.
+8. **Multi-organization:** chi onboarding organization thu hai sau tenant isolation E2E va capacity review.
+
+Exit/go-no-go toi thieu:
+
+| Gate | Dieu kien de di tiep |
+|---|---|
+| Foundation | SQL/RLS/grant/claim tests xanh; migration additive; generated types sach; zero reference/DML `zalo_*` |
+| Infrastructure | Egress negative, ENOSPC, watchdog, co-tenant pre/post invariants va restore drill xanh; transfer quota da biet |
+| Connection | Disclosure + QR + revoke/reconnect xanh; session secret khong ro ri; account draft-only |
+| Shadow | 48 gio inbound/draft; no auto-send; queue p95 <30s; zero unexpected UNKNOWN |
+| Limited inbound | 72 gio warm-up, policy/DLP dung, session healthy, UNKNOWN <= threshold, co-tenant SLO dat |
+| Proactive | Consent/suppression/quiet hours/caps xanh; owner-controlled smoke cleanup hoan tat |
+| Sales groups | Exact allowlist, freshness, schedule/event dedupe, no wrong-target send va owner group smoke xanh |
+| Multi-org | Full 2-org negative fleet, workload/cell isolation va seven-day capacity soak xanh |
+
+Rollback contract:
+
+1. Set organization `GLOBAL_STOP`, stop claim moi; item `LEASED` hop le quay queue/freeze, item `DISPATCHING` khong co ack sang UNKNOWN.
+2. Disable frontend/runtime feature flags, revoke workload/object tickets va stop chi rootless OpenClaw stack.
+3. Migrations production la additive/forward-compatible; rollback khong drop bang/evidence. New tables giu inert cho forensics/retention; corrective migration dung forward fix.
+4. R2 gateway deny new OpenClaw tickets; giu objects theo retention. Khong xoa session/queue/evidence trong rollback khan cap.
+5. Verify pre/post 9Router/CLI container ID, image, StartedAt, RestartCount, network/volume/ports va health; verify `/chat-zalo`, worker cu, `zalo_*` zero DML/dual-write.
+6. Reconcile QUEUED/UNKNOWN va audit truoc moi resume. Rollback drill phai hoan thanh trong 30 phut khong restart co-tenant.
+
+## 16. Tich hop repo va pham vi file
+
+Code moi uu tien nam trong:
+
+- `src/pages/openclaw-zalo/`
+- `src/components/openclaw-zalo/`
+- `src/hooks/openclaw-zalo/`
+- `src/lib/openclaw-zalo/`
+- `supabase/migrations/` voi chi `openclaw_*` va permission moi
+- service/runtime/gateway directory moi se duoc chot trong implementation plan
+- `.e2e-fleet/specs/openclaw-zalo.spec.ts`
+
+Integration additive co the can sua:
+
+- `src/App.tsx`
+- `src/components/layout/Sidebar.tsx`
+- `src/components/layout/Breadcrumbs.tsx`
+- `src/pages/home/launcherTiles.ts`
+- `src/lib/permissions.ts` de mo rong `ActionKey` va module catalog
+- `src/lib/permissionPages.ts` de hien thi trang/feature permission moi
+
+Nhung file tren dang co the co thay doi khong lien quan cua user; implementation phai doc current state, patch toi thieu, khong revert va stage exact files.
+
+## 17. Tieu chi nghiem thu
+
+Feature chi duoc coi la production-ready khi tat ca dieu sau dung:
+
+- `/openclaw-zalo` hoat dong desktop/mobile voi permissions, loading/error/empty/degraded states va clean console.
+- Co the ket noi tai khoan Zalo moi bang QR trong CRM ma khong dung CLI.
+- Zalo cu `/chat-zalo`, worker cu va bang `zalo_*` khong bi sua, goi, dual-write hay anh huong khi rollout/rollback.
+- Supabase la canonical; moi row tenant-scoped; SQL/RLS 2-org negative tests xanh.
+- Browser/cell khong chua `service_role`, generic DB/R2/Gateway admin credential.
+- AI chi tao classification/draft; moi send di qua outbox/policy relay.
+- Model provider doc lap co health/quota/schema gate; ngung 9Router khong lam OpenClaw route AI bi hong va khi model loi auto-send fail closed.
+- Inbound reply, manual send, proactive schedule va sales-group schedule/CRM trigger chay trong controlled smoke test.
+- Nhom sale chi gui khi exact group ID o allowlist; khong auto-reply chatter.
+- UNKNOWN khong auto retry; kill switches co dung precedence va recheck truoc dispatch.
+- QR/session/secrets khong xuat hien trong log, Realtime, analytics, local storage, Git hoac automated screenshot/video artifact; live QR chi hien trong authenticated connect view dung TTL.
+- Media private, exact-object authorized, SSRF-protected va retention hoat dong.
+- Spool/resource caps, health pause, session kick, outage va two-cell fencing da duoc test.
+- Vitest/property, type checks, service tests, SQL tests, R2 tests va headless Playwright lien quan xanh.
+- Co independent reviewer, rollback drill, runbook provisioning/recovery/rotation va audit evidence.
+- Commit chi gom file lien quan va duoc push `origin/main` sau moi gate theo quy uoc repo.
+
+## 18. Rui ro con lai va cach chap nhan
+
+| Rui ro | Xu ly |
+|---|---|
+| Zalo Personal connector khong chinh thuc, co the thay doi/bi khoa | Canh bao va acknowledgement, tai khoan moi, rollout nho, effective pause, reconnect runbook; khong cam ket zero-risk |
+| Send outcome mo ho sau timeout | Trang thai UNKNOWN, khong auto retry, operator reconciliation |
+| Prompt injection/noi dung doc hai | AI khong co direct send/tool, structured schema, untrusted-content boundary, tests |
+| Cross-tenant leakage | Organization key moi row, composite FK, RLS, scoped workload, 2-org negative tests |
+| Spam/gui nham | Consent, suppressions, wizard, hard ceiling, exact target, preview, kill switches |
+| VPS/supabase/R2 outage | Fail closed outbound, bounded spool inbound/media, health alert, replaceable runtime |
+| Chi phi egress/media tang | Metadata-only Supabase, private R2, cursor/query discipline, retention va usage dashboard |
+| Shared-host resource contention voi 9Router | Hard cap OpenClaw 4 vCPU/8 GiB/20 GiB, host guard, baseline latency va rollback rieng; khong sua/restart container cu |
+| Root/kernel/VPS compromise anh huong ca OpenClaw va 9Router | Non-root, drop capabilities, no Docker socket, network/secret/volume tach va hardening giam rui ro nhung khong tao trust boundary tuyet doi; day la residual risk duoc chap nhan khi dung chung host |
+
+## 19. Tai lieu tham khao da kiem tra
+
+- OpenClaw Docker: <https://docs.openclaw.ai/install/docker>
+- OpenClaw Zalo Personal channel: <https://docs.openclaw.ai/channels/zalouser>
+- Supabase egress: <https://supabase.com/docs/guides/platform/manage-your-usage/egress>
+- Supabase database/storage size: <https://supabase.com/docs/guides/platform/manage-your-usage/storage-size>
+- Cloudflare R2 pricing: <https://developers.cloudflare.com/r2/pricing/>
+- Vultr FAQ/transfer: <https://www.vultr.com/resources/faq/>
+- Trang Hermes/VPS do chu san pham cung cap de tham khao: <https://tino.vn/vps-hermes>
+
+Tai lieu tham khao duoc kiem tra ngay 2026-07-26. Ket noi Zalo Personal la unofficial; tai lieu ky thuat khong thay the dieu khoan su dung hien hanh cua Zalo.
+
+---
+
+## 20. Cong tiep theo sau khi chu san pham duyet spec da commit
+
+1. Dung `superpowers:writing-plans` de lap implementation plan chi tiet theo TDD, migration, frontend, runtime, gateway, provisioning va rollout gates.
+2. Thuc thi bang cac agent co file ownership khong chong lan; write agent khong dung chung file.
+3. Moi task implementation di theo test-first, verification, independent review va exact-file commit.
+4. Chi tao service/volume/network/secret va bucket R2 theo plan; khong tao VPS moi, giu VPS 9Router va container hien co nguyen trang.
