@@ -13,7 +13,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "typecheck:baseline": "node scripts/check-ts-baseline.mjs",
-    "gen:types": "supabase gen types typescript --project-id tryymsxyyckgbrmmvozx --schema public",
+    "gen:types": "node scripts/gen-supabase-types.mjs",
     "preview": "vite preview",
     "docs:dev": "npm --prefix docs-site run dev",
     "docs:build": "npm --prefix docs-site run build",

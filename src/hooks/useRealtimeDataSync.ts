@@ -3,7 +3,7 @@
 //
 // Mount 1 lần ở App (component <RealtimeDataSync/>). Lắng nghe
 // postgres_changes trên các bảng nghiệp vụ (đã ADD vào publication
-// supabase_realtime — migration 20260704120000) và khi có thay đổi:
+// supabase_realtime qua các migration realtime) và khi có thay đổi:
 //   1. Invalidate các query key liên quan → trang đang mở refetch tại chỗ
 //      (giữ data cũ trên màn trong lúc fetch, không nháy "Đang tải").
 //   2. Re-prefetch trang đầu của domain đó (prefetchDomain) → cache prefetch
@@ -13,9 +13,9 @@
 // tác bulk (sinh hoá đơn hàng loạt, import thu chi…) bắn 1 event/dòng — gộp
 // cơn bão đó về 1 lần invalidate, tuyệt đối không refetch theo từng event.
 //
-// RLS vẫn kiểm soát: mỗi client chỉ nhận event của dòng nó SELECT được
-// (payload bị bỏ qua — chỉ dùng làm tín hiệu). Sự kiện DELETE chỉ mang PK;
-// các bảng này xoá mềm (deleted_at → UPDATE) nên không thành vấn đề.
+// Payload realtime bị bỏ qua hoàn toàn — event chỉ là tín hiệu invalidate cache.
+// Không dựa vào payload hoặc việc nhận event DELETE để phân quyền; dữ liệu refetch
+// vẫn đi qua query/RPC authorization hiện có. Các bảng này chủ yếu xoá mềm (UPDATE).
 // =============================================================
 
 import { useEffect } from "react";
@@ -26,20 +26,70 @@ import { useAuth } from "@/hooks/useAuth";
 // App (entry chunk), import tĩnh sẽ phồng bundle đầu vô ích.
 import type { PrefetchDomain } from "@/lib/prefetchPages";
 
+type SyncTable =
+  | "invoices"
+  | "income_expenses"
+  | "contracts"
+  | "rooms"
+  | "buildings"
+  | "jobs"
+  | "customers";
+
+type BusinessPerformanceSubtype =
+  | "organizations"
+  | "pnl"
+  | "snapshot"
+  | "occupancy-snapshot"
+  | "upcoming-vacancy"
+  | "occupancy-trend-12m";
+
+type BusinessPerformanceInvalidationRule =
+  | {
+      subtype: "pnl";
+      basis?: "ACCRUAL" | "VOUCHER_DATE";
+    }
+  | {
+      subtype: Exclude<BusinessPerformanceSubtype, "pnl">;
+    };
+
 interface SyncEntry {
-  table: string;
+  table: SyncTable;
   /** Prefix query key sẽ invalidate khi bảng đổi. */
   keys: readonly (readonly unknown[])[];
   /** Domain prefetch cần hâm lại (nếu là trang được prefetch từ màn chính). */
   domain?: PrefetchDomain;
 }
 
+const BUSINESS_PERFORMANCE_OCCUPANCY_RULES = [
+  { subtype: "snapshot" },
+  { subtype: "occupancy-snapshot" },
+  { subtype: "upcoming-vacancy" },
+  { subtype: "occupancy-trend-12m" },
+] as const satisfies readonly BusinessPerformanceInvalidationRule[];
+
+const BUSINESS_PERFORMANCE_INVALIDATION_RULES = {
+  invoices: [
+    { subtype: "pnl", basis: "ACCRUAL" },
+    { subtype: "snapshot" },
+  ],
+  income_expenses: [{ subtype: "pnl" }],
+  contracts: BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
+  rooms: BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
+  buildings: [
+    { subtype: "organizations" },
+    { subtype: "pnl" },
+    ...BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
+  ],
+} as const satisfies Partial<
+  Record<SyncTable, readonly BusinessPerformanceInvalidationRule[]>
+>;
+
 // dashboard-summary đi kèm invoices/income_expenses/contracts để KPI màn
 // chính cũng nhảy số theo (RPC có staleTime 5ph — realtime rút ngắn độ trễ).
 //
 // LƯU Ý BẢO TRÌ: invalidate khớp theo PREFIX mảng — key cùng phần tử đầu được
 // phủ sẵn (vd ["income-expenses","stats",…], ["income-expenses","accrual-month",…]).
-// Nhưng mọi màn đọc từ 5 bảng này bằng key CÓ PHẦN TỬ ĐẦU KHÁC thì PHẢI liệt kê
+// Nhưng mọi màn đọc từ các bảng này bằng key CÓ PHẦN TỬ ĐẦU KHÁC thì PHẢI liệt kê
 // tường minh ở đây, nếu không nó sẽ kẹt dữ liệu cũ khi thay đổi đến từ client
 // khác. Thêm màn/hook mới đọc các bảng này ⇒ nhớ bổ sung key tương ứng.
 // (Xem docs/he-thong/realtime-sync.md để biết đầy đủ bản đồ bảng → query key.)
@@ -59,6 +109,7 @@ const SYNC_TABLES: SyncEntry[] = [
       ["dashboard-alerts"],
       ["recent-activities"],
       ["dashboard-summary"],
+      ["business-performance"],
     ],
     domain: "invoices",
   },
@@ -86,6 +137,7 @@ const SYNC_TABLES: SyncEntry[] = [
       ["manager-salary-payouts"],
       ["change-breakdown"], // sổ thối
       ["commission-prefill"],
+      ["business-performance"],
     ],
     domain: "income-expenses",
   },
@@ -102,8 +154,14 @@ const SYNC_TABLES: SyncEntry[] = [
       ["dashboard-alerts"],
       ["recent-activities"],
       ["dashboard-summary"],
+      ["business-performance"],
     ],
     domain: "contracts",
+  },
+  { table: "rooms", keys: [["business-performance"]] },
+  {
+    table: "buildings",
+    keys: [["business-performance"]],
   },
   { table: "jobs", keys: [["jobs"]], domain: "jobs" },
   { table: "customers", keys: [["customers"], ["customer-stats"]] },
@@ -111,8 +169,44 @@ const SYNC_TABLES: SyncEntry[] = [
 
 const DEBOUNCE_MS = 800;
 
+function matchesBusinessPerformanceRule(
+  queryKey: readonly unknown[],
+  rules: readonly BusinessPerformanceInvalidationRule[],
+): boolean {
+  const subtype = queryKey[2];
+  return rules.some((rule) => {
+    if (rule.subtype !== subtype) return false;
+    return rule.subtype !== "pnl" || !rule.basis || queryKey[4] === rule.basis;
+  });
+}
+
+function getBusinessPerformanceRules(
+  table: SyncTable,
+): readonly BusinessPerformanceInvalidationRule[] | undefined {
+  return BUSINESS_PERFORMANCE_INVALIDATION_RULES[
+    table as keyof typeof BUSINESS_PERFORMANCE_INVALIDATION_RULES
+  ];
+}
+
+function flushBusinessPerformance(
+  qc: QueryClient,
+  pendingTables: ReadonlySet<SyncTable>,
+) {
+  const rules = Array.from(pendingTables).flatMap(
+    (table) => getBusinessPerformanceRules(table) ?? [],
+  );
+  if (rules.length === 0) return;
+
+  qc.invalidateQueries({
+    queryKey: ["business-performance"],
+    predicate: (query) =>
+      matchesBusinessPerformanceRule(query.queryKey, rules),
+  });
+}
+
 function flushEntry(qc: QueryClient, entry: SyncEntry) {
   for (const key of entry.keys) {
+    if (key[0] === "business-performance") continue;
     qc.invalidateQueries({ queryKey: key as unknown[] });
   }
   // Hâm lại cache prefetch — chỉ khi tab đang mở (nền thì thôi, mở lại
@@ -138,12 +232,32 @@ export function useRealtimeDataSync() {
     hubActive = true;
 
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const pendingBusinessPerformanceTables = new Set<SyncTable>();
+    let businessPerformanceTimer: ReturnType<typeof setTimeout> | undefined;
     let channel = supabase.channel(`crm-data-sync-${userId}`);
     for (const entry of SYNC_TABLES) {
       channel = channel.on(
         "postgres_changes",
         { event: "*", schema: "public", table: entry.table },
         () => {
+          if (getBusinessPerformanceRules(entry.table)) {
+            pendingBusinessPerformanceTables.add(entry.table);
+            if (businessPerformanceTimer) {
+              clearTimeout(businessPerformanceTimer);
+            }
+            businessPerformanceTimer = setTimeout(() => {
+              businessPerformanceTimer = undefined;
+              const pendingTables = new Set(pendingBusinessPerformanceTables);
+              pendingBusinessPerformanceTables.clear();
+              flushBusinessPerformance(qc, pendingTables);
+            }, DEBOUNCE_MS);
+          }
+
+          const hasTableScopedWork =
+            entry.domain ||
+            entry.keys.some((key) => key[0] !== "business-performance");
+          if (!hasTableScopedWork) return;
+
           const prev = timers.get(entry.table);
           if (prev) clearTimeout(prev);
           timers.set(
@@ -161,6 +275,8 @@ export function useRealtimeDataSync() {
     return () => {
       hubActive = false;
       timers.forEach((t) => clearTimeout(t));
+      if (businessPerformanceTimer) clearTimeout(businessPerformanceTimer);
+      pendingBusinessPerformanceTables.clear();
       supabase.removeChannel(channel);
     };
   }, [userId, qc]);

@@ -1,0 +1,178 @@
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
+
+const temporaryDirectories: string[] = [];
+
+type WrapperModule = typeof import('../gen-supabase-types.mjs');
+
+async function loadWrapper(): Promise<WrapperModule> {
+  // The query keeps the shebang-bearing CLI module inside Vitest's Vite transform pipeline.
+  return import('../gen-supabase-types.mjs?vitest');
+}
+
+async function makeTemporaryDirectory() {
+  const directory = await mkdtemp(join(tmpdir(), 'gen-supabase-types-'));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
+describe('gen-supabase-types wrapper', () => {
+  test('reads the project ref and PAT from repository configuration', async () => {
+    const { extractSupabaseAccessToken, resolveProjectRef } = await loadWrapper();
+    const fakePat = 'sbp_test_PAT-1234567890';
+
+    expect(
+      resolveProjectRef({
+        configToml: 'project_id = "tryymsxyyckgbrmmvozx"\n',
+        linkedProjectRef: '',
+        packageJson: '{}',
+      }),
+    ).toBe('tryymsxyyckgbrmmvozx');
+    expect(extractSupabaseAccessToken({ environment: {}, localConfig: `PAT: ${fakePat}` })).toBe(
+      fakePat,
+    );
+  });
+
+  test('normalizes generated output and restores the exact repository header', async () => {
+    const { GENERATED_TYPES_HEADER, buildGeneratedTypesFile } = await loadWrapper();
+    const generated = '\uFEFFexport type Json = string\r\n\r\nexport type Database = {}\r\n';
+
+    expect(buildGeneratedTypesFile(generated)).toBe(
+      `${GENERATED_TYPES_HEADER}\nexport type Json = string\n\nexport type Database = {}\n`,
+    );
+    expect(() => buildGeneratedTypesFile('Supabase CLI warning only\n')).toThrow(
+      /valid TypeScript database types/i,
+    );
+  });
+
+  test('builds a pinned, shell-free CLI invocation on Windows and POSIX', async () => {
+    const { SUPABASE_CLI_VERSION, buildSupabaseCliInvocation } = await loadWrapper();
+    const generatorArgs = [
+      'gen',
+      'types',
+      'typescript',
+      '--project-id',
+      'tryymsxyyckgbrmmvozx',
+      '--schema',
+      'public',
+    ];
+    const posixArgs = [
+      '--yes',
+      `supabase@${SUPABASE_CLI_VERSION}`,
+      ...generatorArgs,
+    ];
+
+    expect(SUPABASE_CLI_VERSION).toBe('2.109.1');
+    expect(
+      buildSupabaseCliInvocation('tryymsxyyckgbrmmvozx', 'win32', {
+        execPath: 'C:\\Program Files\\nodejs\\node.exe',
+        npmExecPath: 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+      }),
+    ).toEqual({
+      command: 'C:\\Program Files\\nodejs\\node.exe',
+      args: [
+        'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+        'exec',
+        '--yes',
+        '--package',
+        `supabase@${SUPABASE_CLI_VERSION}`,
+        '--',
+        'supabase',
+        ...generatorArgs,
+      ],
+      shell: false,
+    });
+    expect(buildSupabaseCliInvocation('tryymsxyyckgbrmmvozx', 'linux')).toEqual({
+      command: 'npx',
+      args: posixArgs,
+      shell: false,
+    });
+  });
+
+  test('writes generated types atomically and clears the child PAT environment', async () => {
+    const { GENERATED_TYPES_HEADER, generateSupabaseTypes } = await loadWrapper();
+    const repoRoot = await makeTemporaryDirectory();
+    const fakePat = 'sbp_test_secret-1234567890';
+    const targetDirectory = join(repoRoot, 'src', 'integrations', 'supabase');
+    await mkdir(join(repoRoot, 'supabase'), { recursive: true });
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(
+      join(repoRoot, 'supabase', 'config.toml'),
+      'project_id = "tryymsxyyckgbrmmvozx"\n',
+      'utf8',
+    );
+    await writeFile(join(repoRoot, 'package.json'), '{"name":"test"}\n', 'utf8');
+    await writeFile(join(repoRoot, 'CLAUDE.local.md'), `Supabase PAT: ${fakePat}\n`, 'utf8');
+
+    let childEnvironment: NodeJS.ProcessEnv | undefined;
+    await generateSupabaseTypes({
+      repoRoot,
+      environment: { PATH: process.env.PATH },
+      platform: 'win32',
+      runCli: async ({ command, args, env, shell }) => {
+        childEnvironment = env;
+        expect(command).toBe(process.execPath);
+        expect(args[0]).toMatch(/npm-cli\.js$/);
+        expect(args).toContain('tryymsxyyckgbrmmvozx');
+        expect(shell).toBe(false);
+        expect(env.SUPABASE_ACCESS_TOKEN).toBe(fakePat);
+        expect(env.SUPABASE_PAT).toBeUndefined();
+        return {
+          exitCode: 0,
+          stdout: 'export type Json = string\r\nexport type Database = {}\r\n',
+          stderr: '',
+        };
+      },
+    });
+
+    expect(childEnvironment?.SUPABASE_ACCESS_TOKEN).toBeUndefined();
+    expect(await readFile(join(targetDirectory, 'types.ts'), 'utf8')).toBe(
+      `${GENERATED_TYPES_HEADER}\nexport type Json = string\nexport type Database = {}\n`,
+    );
+    expect((await readdir(targetDirectory)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  test('redacts PAT failures and removes a temporary file when replacement fails', async () => {
+    const { atomicWriteUtf8, generateSupabaseTypes } = await loadWrapper();
+    const repoRoot = await makeTemporaryDirectory();
+    const fakePat = 'sbp_test_secret-0987654321';
+    const targetDirectory = join(repoRoot, 'src', 'integrations', 'supabase');
+    await mkdir(join(repoRoot, 'supabase'), { recursive: true });
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(
+      join(repoRoot, 'supabase', 'config.toml'),
+      'project_id = "tryymsxyyckgbrmmvozx"\n',
+      'utf8',
+    );
+    await writeFile(join(repoRoot, 'package.json'), '{}\n', 'utf8');
+    await writeFile(join(repoRoot, 'CLAUDE.local.md'), fakePat, 'utf8');
+    await writeFile(join(targetDirectory, 'types.ts'), 'original\n', 'utf8');
+
+    let childEnvironment: NodeJS.ProcessEnv | undefined;
+    const failure = generateSupabaseTypes({
+      repoRoot,
+      environment: {},
+      runCli: async ({ env }) => {
+        childEnvironment = env;
+        return { exitCode: 1, stdout: '', stderr: `request failed for ${fakePat}` };
+      },
+    });
+    await expect(failure).rejects.toThrow(/\[REDACTED\]/);
+    await expect(failure).rejects.not.toThrow(fakePat);
+    expect(childEnvironment?.SUPABASE_ACCESS_TOKEN).toBeUndefined();
+    expect(await readFile(join(targetDirectory, 'types.ts'), 'utf8')).toBe('original\n');
+
+    const blockedTarget = join(targetDirectory, 'blocked-target');
+    await mkdir(blockedTarget);
+    await expect(atomicWriteUtf8(blockedTarget, 'replacement\n')).rejects.toThrow();
+    expect((await readdir(targetDirectory)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+});

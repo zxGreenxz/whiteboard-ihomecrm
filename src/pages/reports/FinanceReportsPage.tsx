@@ -9,13 +9,33 @@ import {
   BarChart3,
   HandCoins,
   Repeat,
+  type LucideIcon,
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useBusinessPerformanceOrganizations } from "@/hooks/reports/useBusinessPerformance";
 
-const reports = [
+interface FinanceReport {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  path: string;
+  color: string;
+  bgColor: string;
+}
+
+const businessPerformanceReport: FinanceReport = {
+  title: "Trung tâm Tài chính & Hiệu quả",
+  description: "Tổng hợp doanh thu, chi phí, lợi nhuận và KPI vận hành trong một trung tâm phân tích thống nhất",
+  icon: BarChart3,
+  path: "/reports/finance/business-performance",
+  color: "text-violet-600",
+  bgColor: "bg-violet-50",
+};
+
+const reports: FinanceReport[] = [
   {
     title: "Phân tích tài chính",
     description: "Doanh thu, chi phí, lợi nhuận, KPI vận hành — biểu đồ & bảng phân tích toàn diện",
@@ -91,6 +111,14 @@ const reports = [
 ];
 
 const FinanceReportsPage = () => {
+  const businessPerformanceOrganizations = useBusinessPerformanceOrganizations();
+  const canShowBusinessPerformance =
+    businessPerformanceOrganizations.isSuccess &&
+    (businessPerformanceOrganizations.data?.length ?? 0) > 0;
+  const visibleReports = canShowBusinessPerformance
+    ? [businessPerformanceReport, ...reports]
+    : reports;
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -99,13 +127,13 @@ const FinanceReportsPage = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Báo cáo Tài chính</h1>
             <p className="text-muted-foreground">
-              9 loại báo cáo phân tích tài chính và dòng tiền
+              {visibleReports.length} loại báo cáo phân tích tài chính và dòng tiền
             </p>
           </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {reports.map((report) => {
+          {visibleReports.map((report) => {
             const Icon = report.icon;
             return (
               <Link key={report.path} to={report.path}>

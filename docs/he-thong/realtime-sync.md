@@ -15,7 +15,7 @@
 
 | Hub | File | Bảng lắng nghe | Dùng cho |
 |---|---|---|---|
-| **Data sync trung tâm** | [useRealtimeDataSync.ts](src/hooks/useRealtimeDataSync.ts) | `invoices, income_expenses, contracts, jobs, customers` | Mọi màn nghiệp vụ chính |
+| **Data sync trung tâm** | [useRealtimeDataSync.ts](src/hooks/useRealtimeDataSync.ts) | `invoices, income_expenses, contracts, jobs, customers, rooms, buildings` | Mọi màn nghiệp vụ chính |
 | **Zalo** | `useZaloRealtime` (domain [18](18-zalo-chat.md)) | `zalo_conversations, zalo_messages, zalo_accounts, zalo_labels` | Chat Zalo |
 
 Cả 2 chỉ dùng event làm **tín hiệu** (bỏ payload) rồi invalidate cache React Query — KHÔNG
@@ -23,9 +23,11 @@ Cả 2 chỉ dùng event làm **tín hiệu** (bỏ payload) rồi invalidate ca
 
 ### Điều kiện chạy (phía DB)
 
-Bảng phải nằm trong publication `supabase_realtime`. Đã bật ở migration
-[20260704120000_realtime_business_tables.sql](supabase/migrations/20260704120000_realtime_business_tables.sql)
-cho đúng 5 bảng trên (idempotent). Zalo bật riêng ở các migration `20260626000002/03/07`.
+Bảng phải nằm trong publication `supabase_realtime`. Năm bảng gốc được bật ở migration
+[20260704120000_realtime_business_tables.sql](supabase/migrations/20260704120000_realtime_business_tables.sql);
+`rooms` và `buildings` được bổ sung idempotent ở
+[20260726030000_business_performance_realtime_sources.sql](../../supabase/migrations/20260726030000_business_performance_realtime_sources.sql).
+Zalo bật riêng ở các migration `20260626000002/03/07`.
 
 > **Chưa có realtime** (mọi thay đổi chỉ thấy khi F5 / hết staleTime): `building_utility_accounts`,
 > `accounts`, `payments`, `meter_readings`, `contract_terminations`, các bảng lương v5… Nếu
@@ -44,11 +46,11 @@ mở trùng channel). Channel đặt tên theo user: `crm-data-sync-${userId}`.
 ```mermaid
 sequenceDiagram
     participant A as Client A (thao tác)
-    participant DB as Supabase (WALRUS/RLS)
+    participant DB as Supabase Realtime
     participant B as Client B (đang xem)
     A->>DB: UPDATE/INSERT/DELETE 1 bảng nghiệp vụ
     Note over A: mutation.onSuccess<br/>invalidate key CỦA MÌNH (tức thì)
-    DB-->>B: postgres_changes (chỉ dòng B SELECT được — RLS)
+    DB-->>B: postgres_changes (tín hiệu; payload bị bỏ qua)
     Note over B: hub gộp debounce 800ms/bảng
     B->>B: invalidateQueries(các key của bảng đó)
     B->>B: prefetchDomain (nếu tab visible)
@@ -67,17 +69,17 @@ sequenceDiagram
   → gộp về 1 lần invalidate.
 - **Re-prefetch** trang đầu của domain (`prefetchDomain`) chỉ khi `document.visibilityState
   === "visible"` — tab nền để staleTime tự lo.
-- **RLS lọc theo JWT**: mỗi client chỉ nhận event của dòng nó SELECT được. Test cross-client
-  phải chạm đúng dòng thuộc user đang quan sát.
+- **Event không phải ranh giới phân quyền**: hub bỏ payload và chỉ invalidate cache. Dữ liệu mới
+  vẫn phải đi qua query/RPC authorization hiện có; không dựa vào việc nhận event DELETE để cấp quyền.
 - **Xoá = soft delete / đổi status**: thu chi "xoá" thực chất là UPDATE
   `approval_status='CANCELLED'` — vẫn là event trên `income_expenses`, hub vẫn nhận (event
-  `*`). Không phụ thuộc hard DELETE (vốn chỉ mang PK).
+  `*`). Payload hard DELETE không được hub đọc hoặc dùng làm dữ liệu.
 
 ---
 
 ## 3. Bản đồ bảng → query key (nguồn sự thật: `SYNC_TABLES`)
 
-Cập nhật 2026-07-07. Xem trực tiếp [useRealtimeDataSync.ts](src/hooks/useRealtimeDataSync.ts).
+Xem trực tiếp [useRealtimeDataSync.ts](src/hooks/useRealtimeDataSync.ts).
 
 ### `income_expenses`
 | Query key | Màn / hook | Ghi chú |
@@ -98,18 +100,27 @@ Cập nhật 2026-07-07. Xem trực tiếp [useRealtimeDataSync.ts](src/hooks/us
 | `["shareholder-distributions"] / ["manager-salary-payouts"]` | chia LN / chi lương | |
 | `["change-breakdown"]` | sổ thối | |
 | `["commission-prefill"]` | prefill form HH | ưu tiên thấp |
+| `["business-performance"]` | Business Performance | invalidate `pnl` cho cả `ACCRUAL` và `VOUCHER_DATE` |
 
 ### `invoices`
 `["invoices"]`, `["invoice"]` (số ít — chi tiết), `["invoices-legacy"]`, `["invoice-statistics"]`,
 `["invoice-totals-by-ids"]`, `["first-invoice-details"]`, `["invoice-rent-periods"]`,
 `["invoice-collectors"]`, `["unpaid-invoices"]`, `["dashboard-alerts"]`, `["recent-activities"]`,
-`["dashboard-summary"]`.
+`["dashboard-summary"]`, `["business-performance"]` (`snapshot` + `pnl` khi basis là `ACCRUAL`).
 
 ### `contracts`
 `["contracts"]` (prefix phủ paged/stats/dashboard-counts), `["contracts-legacy"]`,
 **`["deposit-dashboard"]`** (đọc `contracts` + `contract_terminations` — phải gắn ở ĐÂY mới
 live theo thay đổi HĐ), `["unpaid-invoices"]`, `["dashboard-alerts"]`, `["recent-activities"]`,
-`["dashboard-summary"]`.
+`["dashboard-summary"]`, `["business-performance"]` (`snapshot`, `occupancy-snapshot`,
+`upcoming-vacancy`, `occupancy-trend-12m`).
+
+### Business Performance realtime
+- `rooms` → `snapshot`, `occupancy-snapshot`, `upcoming-vacancy`, `occupancy-trend-12m`.
+- `buildings` → toàn bộ sáu subtype: `organizations`, `pnl`, `snapshot`, `occupancy-snapshot`,
+  `upcoming-vacancy`, `occupancy-trend-12m`.
+
+Các root báo cáo legacy ở §5 giữ nguyên; hai bảng này cũng không invalidate `occupancy-dashboard`.
 
 ### `jobs` / `customers`
 `["jobs"]` · `["customers"]`, `["customer-stats"]`.
@@ -136,6 +147,8 @@ mở lại trang:
 `financial-analysis` (fa_*), `reports/*`, `profit-verification`, `settlement-report`,
 `collection-cycle`, `monthly-building-profit`, `profit-*`.
 
+Business Performance là root độc lập; ma trận subtype ở §3 không thêm các root legacy kể trên.
+
 Nếu tương lai muốn cho live, cân nhắc kỹ chi phí (xem đợt tối ưu burst request 05/07).
 
 ---
@@ -160,14 +173,15 @@ thao tác ([useIncomeExpenses.ts](src/hooks/useIncomeExpenses.ts)).
 
 ## 7. ✅ Quy tắc bảo trì (đọc trước khi thêm màn mới)
 
-1. Màn mới đọc từ 1 trong 5 bảng realtime bằng query key có **phần tử đầu mới**? → **thêm key
+1. Màn mới đọc từ 1 trong 7 bảng realtime bằng query key có **phần tử đầu mới**? → **thêm key
    đó vào entry bảng tương ứng** trong `SYNC_TABLES`, và cập nhật §3 tài liệu này.
 2. Key gắn theo **bảng queryFn THỰC ĐỌC**, không theo tên tính năng (bài học §4).
 3. Mutation mới đụng bảng nghiệp vụ → invalidate đủ key trong `onSuccess` (client thao tác) +
    xác nhận hub phủ (cross-client).
 4. Cần live một bảng CHƯA có realtime → ADD vào publication (migration) TRƯỚC, rồi thêm entry.
 5. Báo cáo aggregate nặng → cân nhắc để staleTime, không nhồi vào hub (§5).
-6. Test cross-client phải chạm dòng thuộc **đúng user đang quan sát** (RLS lọc event).
+6. Test cross-client xác minh cả tín hiệu invalidate và kết quả refetch đã qua authorization;
+   không dùng việc nhận/không nhận event làm bằng chứng phân quyền.
 
 ---
 

@@ -41,11 +41,13 @@ export function BuildingFilterSelect({
   id,
   "aria-label": ariaLabel,
 }: BuildingFilterSelectProps) {
-  const { data: fetchedBuildings = [] } = useBuildings();
+  const { data: fetchedBuildings = [] } = useBuildings({
+    enabled: buildingsProp === undefined,
+  });
 
   const options = React.useMemo(() => {
-    const list = (buildingsProp ?? (fetchedBuildings as any[]))
-      .map((b) => ({ id: b.id as string, name: (b.name ?? "") as string }))
+    const list = (buildingsProp ?? fetchedBuildings)
+      .map((b) => ({ id: b.id, name: b.name ?? "" }))
       .sort((a, b) =>
         a.name.localeCompare(b.name, "vi", { numeric: true, sensitivity: "base" }),
       );
