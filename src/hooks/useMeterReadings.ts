@@ -186,8 +186,12 @@ export const useMeterReadingsList = (
       const to = from + pagination.pageSize - 1;
       query = query.range(from, to);
 
-      // Order by reading_date desc
-      query = query.order("reading_date", { ascending: false });
+      // Order by reading_date desc; tiebreaker created_at giữ phân trang ổn
+      // định sau khi view meter_readings_detailed bỏ ORDER BY nội tại
+      // (migration 20260726130000).
+      query = query
+        .order("reading_date", { ascending: false })
+        .order("created_at", { ascending: false });
 
       const { data, error, count } = await query;
 

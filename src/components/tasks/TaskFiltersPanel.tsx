@@ -54,6 +54,11 @@ export function TaskFiltersPanel({
     });
   };
 
+  // Trục "Ngày hoàn thành": useJobs CỐ Ý không áp cửa sổ mặc định (phiếu đang
+  // làm có completion_time NULL, cắt cửa sổ là giấu sạch) → dropdown khoảng
+  // thời gian không tác dụng, khoá lại kẻo nhãn "90 ngày gần đây" nói dối.
+  const byCompletionTime = filters.date_field === "completion_time";
+
   const roomValue =
     roomNameFromIds(rooms || [], filters.room_ids) ??
     (filters.room_id
@@ -156,6 +161,34 @@ export function TaskFiltersPanel({
             { value: "completion_time", label: "Theo ngày hoàn thành" },
           ]}
         />
+
+        {/* Cửa sổ thời gian — jobs tích luỹ vô hạn nên mặc định chỉ tải 90
+            ngày gần nhất (việc ĐANG MỞ luôn hiện dù cũ hơn); "Toàn bộ lịch sử"
+            để xem cả việc đã đóng cũ hơn. Đặt Từ/Đến ngày thì cửa sổ này bị bỏ
+            qua (query theo khoảng đã đặt). */}
+        <div className="space-y-1">
+          <SearchableSelect
+            value={byCompletionTime ? "all" : (filters.time_range ?? "90d")}
+            onValueChange={(v) =>
+              // "90d" là mặc định → ghi null cho object filter/persisted gọn,
+              // và query key khớp với filter cũ đã lưu (không có time_range).
+              handleChange({ time_range: v === "all" ? "all" : null })
+            }
+            disabled={byCompletionTime}
+            className="h-9 text-sm"
+            placeholder="Khoảng thời gian"
+            options={[
+              { value: "90d", label: "90 ngày gần đây" },
+              { value: "all", label: "Toàn bộ lịch sử" },
+            ]}
+          />
+          {byCompletionTime && (
+            <p className="text-[11px] leading-tight text-muted-foreground">
+              Trục “Ngày hoàn thành” không áp cửa sổ 90 ngày — giới hạn bằng
+              Từ/Đến ngày.
+            </p>
+          )}
+        </div>
 
         {/* Từ ngày */}
         <DateInput

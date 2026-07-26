@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useMemo, useState, lazy, Suspense } from "react";
 import MainLayout from "@/components/layout/MainLayout";
 import { ClipboardList, Plus, SlidersHorizontal, Search, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -74,51 +74,60 @@ function TaskManagementDesktopPage() {
   const { data: allJobs = [], isLoading, isError, error, refetch } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
 
-  // Tab filter
-  // - MINE: phiếu mà mình là người thực hiện (assignee_id = me)
-  // - WATCHING: phiếu KHÔNG giao cho mình (mình đang theo dõi/giám sát).
-  //   Super admin thấy hết qua RLS bypass nên tab này bao gồm cả phiếu do user khác tạo.
-  //   Staff thường chỉ thấy phiếu mình tạo/được giao → tab này tự thu hẹp về "mình tạo cho người khác".
   const myUserId = authUser?.id ?? null;
-  const isAssignedToMe = (job: any) =>
-    myUserId &&
-    (job.assignee_id === myUserId || job.profiles?.id === myUserId);
-  const isWatching = (job: any) => !!myUserId && !isAssignedToMe(job);
-
-  const tabFiltered = (allJobs as JobWithRelations[]).filter((job) => {
-    if (activeTab === "MINE") return isAssignedToMe(job);
-    if (activeTab === "WATCHING") return isWatching(job);
-    return true;
-  });
-
-  const tabCounts = {
-    ALL: (allJobs as JobWithRelations[]).length,
-    MINE: (allJobs as JobWithRelations[]).filter(isAssignedToMe).length,
-    WATCHING: (allJobs as JobWithRelations[]).filter(isWatching).length,
-  };
-
-  // Status filter (từ stat card click)
-  const statusFiltered = tabFiltered.filter((job) => {
-    if (statusFilter === null) return true;
-    return job.status === statusFilter;
-  });
-
-  // Search filter: title + code + assignee (cả tên có profile và tên text)
   const q = searchQuery.trim().toLowerCase();
-  const searchFiltered = q
-    ? statusFiltered.filter((job) => {
-        const assigneeName = (
-          job.profiles?.full_name ||
-          job.assignee_name ||
-          ""
-        ).toLowerCase();
-        return (
-          job.title.toLowerCase().includes(q) ||
-          job.code.toLowerCase().includes(q) ||
-          assigneeName.includes(q)
-        );
-      })
-    : statusFiltered;
+
+  // Gom 5 lượt .filter() trên allJobs (tab + 2 đếm tab + trạng thái + tìm kiếm)
+  // vào 1 useMemo — trước đây chạy lại mỗi render (mỗi phím gõ, mở/đóng dialog).
+  const { tabFiltered, tabCounts, searchFiltered } = useMemo(() => {
+    const jobs = allJobs as JobWithRelations[];
+
+    // Tab filter
+    // - MINE: phiếu mà mình là người thực hiện (assignee_id = me)
+    // - WATCHING: phiếu KHÔNG giao cho mình (mình đang theo dõi/giám sát).
+    //   Super admin thấy hết qua RLS bypass nên tab này bao gồm cả phiếu do user khác tạo.
+    //   Staff thường chỉ thấy phiếu mình tạo/được giao → tab này tự thu hẹp về "mình tạo cho người khác".
+    const isAssignedToMe = (job: JobWithRelations) =>
+      !!myUserId &&
+      (job.assignee_id === myUserId || job.profiles?.id === myUserId);
+    const isWatching = (job: JobWithRelations) => !!myUserId && !isAssignedToMe(job);
+
+    const tabFiltered = jobs.filter((job) => {
+      if (activeTab === "MINE") return isAssignedToMe(job);
+      if (activeTab === "WATCHING") return isWatching(job);
+      return true;
+    });
+
+    const tabCounts = {
+      ALL: jobs.length,
+      MINE: jobs.filter(isAssignedToMe).length,
+      WATCHING: jobs.filter(isWatching).length,
+    };
+
+    // Status filter (từ stat card click)
+    const statusFiltered = tabFiltered.filter((job) => {
+      if (statusFilter === null) return true;
+      return job.status === statusFilter;
+    });
+
+    // Search filter: title + code + assignee (cả tên có profile và tên text)
+    const searchFiltered = q
+      ? statusFiltered.filter((job) => {
+          const assigneeName = (
+            job.profiles?.full_name ||
+            job.assignee_name ||
+            ""
+          ).toLowerCase();
+          return (
+            job.title.toLowerCase().includes(q) ||
+            job.code.toLowerCase().includes(q) ||
+            assigneeName.includes(q)
+          );
+        })
+      : statusFiltered;
+
+    return { tabFiltered, tabCounts, searchFiltered };
+  }, [allJobs, myUserId, activeTab, statusFilter, q]);
 
   // Client-side pagination
   const { data: paginatedData, total: totalCount } = paginateJobs(

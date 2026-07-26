@@ -30,7 +30,9 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
   const createHandover = useCreateAssetHandover();
   // Bàn giao tài sản (nhận/trả) thao tác trên HĐ đang hiệu lực → chỉ kéo
   // HĐ ACTIVE server-side thay vì full bảng.
-  const { data: contractsData } = useContracts({ statuses: ["ACTIVE"] });
+  // enabled: open — dialog mounted sẵn (đóng) không fetch, đỡ kéo cả bảng HĐ
+  // full-PII mỗi lần tải trang.
+  const { data: contractsData } = useContracts({ statuses: ["ACTIVE"], enabled: open });
   const contracts = contractsData ?? [];
 
   const form = useForm<HandoverFormValues>({

@@ -14,6 +14,7 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useAuth } from '@/hooks/useAuth';
 import { ownCashAccountId } from '@/lib/cashAccount';
@@ -58,19 +59,28 @@ export const useUnhandedVouchers = (sourceAccountId?: string) => {
     queryKey: ['handover-vouchers', accountId],
     enabled: !!accountId,
     queryFn: async (): Promise<UnhandedVoucher[]> => {
-      const { data, error } = await (supabase as any)
-        .from('income_expenses')
-        .select('id, code, name, type, total_amount, voucher_date, room:rooms(name), building:buildings(name)')
-        .eq('account_id', accountId)
-        .in('type', ['INCOME', 'EXPENSE'])
-        .eq('approval_status', 'APPROVED')
-        .is('deleted_at', null)
-        .is('handover_id', null)
-        .or('handover_transfer_id.is.null,type.eq.INCOME')
-        .order('voucher_date', { ascending: false })
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as UnhandedVoucher[];
+      // PAGED: vượt 1000 phiếu chưa bàn giao mà không phân trang là sót phiếu
+      // âm thầm khi bàn giao tiền mặt (fail-open trên tiền — bug cap-1000).
+      const data = await fetchAllRows<UnhandedVoucher>(
+        (from, to) =>
+          (supabase as any)
+            .from('income_expenses')
+            .select('id, code, name, type, total_amount, voucher_date, room:rooms(name), building:buildings(name)')
+            .eq('account_id', accountId)
+            .in('type', ['INCOME', 'EXPENSE'])
+            .eq('approval_status', 'APPROVED')
+            .is('deleted_at', null)
+            .is('handover_id', null)
+            .or('handover_transfer_id.is.null,type.eq.INCOME')
+            .order('voucher_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true }) // tiebreaker cho .range() ổn định
+            .range(from, to),
+        { label: 'handover.unhanded' },
+      );
+      // fetchAllRows fail-closed: null = lỗi query → throw, không coi là rỗng.
+      if (data === null) throw new Error('Lỗi tải phiếu chưa bàn giao');
+      return data;
     },
   });
 

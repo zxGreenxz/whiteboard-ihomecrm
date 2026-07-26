@@ -2,6 +2,16 @@
 export const JOB_STATUSES = ['IN_PROGRESS', 'COMPLETED'] as const;
 export type JobStatus = typeof JOB_STATUSES[number];
 
+// Trạng thái ĐÃ ĐÓNG — hết vòng đời, chỉ còn giá trị tra cứu. Thêm trạng thái
+// đóng mới (vd huỷ) PHẢI khai ở đây, kẻo nó bị coi là việc còn tồn đọng.
+export const CLOSED_JOB_STATUSES: readonly JobStatus[] = ['COMPLETED'];
+
+// Trạng thái ĐANG MỞ (việc còn tồn đọng). useJobs KHÔNG áp cửa sổ thời gian
+// mặc định cho nhóm này: việc mở tạo lâu hơn cửa sổ vẫn phải hiện ra.
+export const OPEN_JOB_STATUSES: readonly JobStatus[] = JOB_STATUSES.filter(
+  (s) => !CLOSED_JOB_STATUSES.includes(s),
+);
+
 // Job priority enum
 export const JOB_PRIORITIES = ['NORMAL', 'LOW', 'URGENT'] as const;
 export type JobPriority = typeof JOB_PRIORITIES[number];
@@ -25,10 +35,12 @@ export const VALID_TRANSITIONS: Record<JobStatus, JobStatus[]> = {
   COMPLETED: [],
 };
 
-// Job row from database
+// Job row từ list select — CHỈ các cột JOB_LIST_SELECT trong useJobs kéo về.
+// Các cột audit chỉ-để-GHI qua mutation (user_id, visible_to_customer,
+// completion_attachments, completion_lat/lng/distance_m/geofence_status/address,
+// started_at, updated_at) KHÔNG nằm trong payload list — cần thì query theo id.
 export interface Job {
   id: string;
-  user_id: string;
   code: string;
   title: string;
   description: string | null;
@@ -40,32 +52,19 @@ export interface Job {
   assignee_name: string | null;
   deadline: string | null;
   status: JobStatus;
-  visible_to_customer: boolean;
   attachments: string[] | null;
   completion_time: string | null;
   completion_description: string | null;
-  completion_attachments: string[] | null;
-  // Audit geo-fence khi hoàn thành (xem useCompleteJob / JobCaptureCamera)
-  completion_lat: number | null;
-  completion_lng: number | null;
-  completion_distance_m: number | null;
-  completion_geofence_status: string | null;
-  completion_address: string | null;
-  started_at: string | null;
   created_at: string;
-  updated_at: string;
 }
 
-// Toà nhà kèm địa chỉ + toạ độ (đủ để vẽ watermark + so geo-fence)
+// Toà nhà kèm toạ độ — đủ để JobCaptureCamera so geo-fence khi hoàn thành
+// (địa chỉ trên watermark lấy từ reverse-geocode GPS, không dùng cột địa chỉ).
 export interface JobBuildingRef {
   id: string;
   name: string;
   latitude: number | null;
   longitude: number | null;
-  street_address: string | null;
-  ward: string | null;
-  district: string | null;
-  province: string | null;
 }
 
 // Job with joined relations (for display)
@@ -93,6 +92,14 @@ export interface TaskFilters {
    * khi cần đối chiếu với bảng lương — lương bucket theo NGÀY HOÀN THÀNH.
    */
   date_field?: "created_at" | "completion_time" | null;
+  /**
+   * Cửa sổ thời gian khi KHÔNG đặt Từ/Đến ngày: null/undefined = 90 ngày gần
+   * nhất (jobs tích luỹ vô hạn, không bound thì list kéo trọn bảng), "all" =
+   * toàn bộ lịch sử (useJobs phân trang fetchAllRows nên không dính cap 1000).
+   * Cửa sổ CHỈ cắt việc đã đóng — việc đang mở (OPEN_JOB_STATUSES) luôn hiện.
+   * Đặt Từ/Đến ngày thì cửa sổ này bị bỏ qua.
+   */
+  time_range?: "90d" | "all" | null;
 }
 
 export const defaultTaskFilters: TaskFilters = {

@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { toast } from "sonner";
-import { TaskFilters } from "@/types/jobs";
+import { TaskFilters, JobWithRelations, OPEN_JOB_STATUSES } from "@/types/jobs";
 
 /** 'YYYY-MM-DD' → ngày kế tiếp, để dựng cận trên nửa mở [start, next). */
 const nextDayISO = (d: string): string => {
@@ -11,67 +12,119 @@ const nextDayISO = (d: string): string => {
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
 };
 
+// jobs là bảng nuôi lương, tích luỹ vô hạn — không có cửa sổ mặc định thì list
+// kéo trọn bảng (bị prefetchJobs kích lúc idle + realtime re-warm liên tục).
+// Cửa sổ CHỈ cắt việc ĐÃ ĐÓNG: việc đang mở luôn hiện dù tạo lâu hơn cửa sổ.
+// Muốn xem việc đã đóng cũ hơn: chọn "Toàn bộ lịch sử" (time_range="all") hoặc
+// đặt Từ/Đến ngày.
+const DEFAULT_WINDOW_DAYS = 90;
+
+/** 'YYYY-MM-DD' theo giờ VN của n ngày trước — cận dưới cửa sổ mặc định. */
+const daysAgoISO = (n: number): string => {
+  const t = new Date(Date.now() + 7 * 3_600_000 - n * 86_400_000);
+  return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}-${String(t.getUTCDate()).padStart(2, "0")}`;
+};
+
+// CHỈ select cột UI thật sự đọc (TaskTable/TasksMobilePage/TaskDetail/
+// TaskComplete/MyDay). Các cột audit chỉ-để-GHI (user_id, visible_to_customer,
+// completion_attachments, completion_lat/lng/…, started_at, updated_at) không
+// kéo về theo list. buildings cần latitude/longitude cho geo-fence khi hoàn
+// thành (JobCaptureCamera); địa chỉ watermark lấy từ reverse-geocode nên không
+// cần cột địa chỉ. Đổi cột ở đây nhớ sửa Job/JobBuildingRef trong types/jobs.ts.
+const JOB_LIST_SELECT = `
+  id, code, title, description, building_id, room_id, job_type_id, priority,
+  assignee_id, assignee_name, deadline, status, attachments,
+  completion_time, completion_description, created_at,
+  buildings(id, name, latitude, longitude),
+  rooms(id, name),
+  job_types(id, name),
+  profiles!jobs_assignee_id_fkey(id, full_name)
+`;
+
 // Options factory dùng chung cho hook + prefetch (src/lib/prefetchPages.ts)
 // — queryKey/queryFn 1 nguồn duy nhất, prefetch lệch key là vô dụng.
 export const jobsQuery = (filters?: TaskFilters) => ({
     queryKey: ["jobs", filters] as const,
     gcTime: 15 * 60_000, // ấm lâu cho prefetch (mặc định 5')
     queryFn: async () => {
-      let query = supabase
-        .from("jobs")
-        .select(`
-          *,
-          buildings(id, name, latitude, longitude, street_address, ward, district, province),
-          rooms(id, name),
-          job_types(id, name),
-          profiles!jobs_assignee_id_fkey(id, full_name)
-        `)
-        .order("created_at", { ascending: false });
-
-      if (filters?.building_id) {
-        query = query.eq("building_id", filters.building_id);
-      }
-      if (filters?.room_ids?.length) {
-        query = query.in("room_id", filters.room_ids);
-      } else if (filters?.room_id) {
-        query = query.eq("room_id", filters.room_id);
-      }
-      if (filters?.job_type_id) {
-        query = query.eq("job_type_id", filters.job_type_id);
-      }
-      if (filters?.priority) {
-        query = query.eq("priority", filters.priority);
-      }
-      if (filters?.assignee_id) {
-        query = query.eq("assignee_id", filters.assignee_id);
-      }
-      if (filters?.status) {
-        query = query.eq("status", filters.status);
-      }
       // Trục ngày: mặc định "ngày tạo" (giữ hành vi cũ), đổi được sang "ngày
       // hoàn thành" để đối chiếu với bảng lương — lương bucket theo
       // completion_time nên lọc theo created_at cho ra danh sách LỆCH.
       const dateCol = filters?.date_field === "completion_time" ? "completion_time" : "created_at";
-      // Neo mốc vào +07:00. Trước đây so cột TIMESTAMPTZ với chuỗi 'YYYY-MM-DD'
-      // trần → Postgres đọc là UTC midnight: .gte mất 7h đầu ngày, .lte mất 17h
-      // cuối ngày (tức cả ngày làm việc cuối kỳ). Dùng .lt ngày-kế-tiếp.
-      if (filters?.start_date) {
-        query = query.gte(dateCol, `${filters.start_date}T00:00:00+07:00`);
-      }
-      if (filters?.end_date) {
-        query = query.lt(dateCol, `${nextDayISO(filters.end_date)}T00:00:00+07:00`);
-      }
+      // Cửa sổ mặc định 90 ngày CHỈ áp khi user không đặt Từ/Đến ngày, không
+      // chọn "Toàn bộ lịch sử", và trục là created_at — trục completion_time
+      // KHÔNG áp vì phiếu đang làm có completion_time NULL, .gte sẽ giấu sạch.
+      const useDefaultWindow =
+        !filters?.start_date &&
+        !filters?.end_date &&
+        filters?.time_range !== "all" &&
+        dateCol === "created_at";
+      // Tính MỘT lần: fetchAllRows gọi build() nhiều lượt, mốc trôi giữa các
+      // trang (qua nửa đêm) sẽ làm lệch tập kết quả khi phân trang.
+      const windowFrom = `${daysAgoISO(DEFAULT_WINDOW_DAYS)}T00:00:00+07:00`;
 
-      const { data, error } = await query;
+      const build = (from: number, to: number) => {
+        let query = supabase.from("jobs").select(JOB_LIST_SELECT);
 
-      if (error) {
+        if (filters?.building_id) {
+          query = query.eq("building_id", filters.building_id);
+        }
+        if (filters?.room_ids?.length) {
+          query = query.in("room_id", filters.room_ids);
+        } else if (filters?.room_id) {
+          query = query.eq("room_id", filters.room_id);
+        }
+        if (filters?.job_type_id) {
+          query = query.eq("job_type_id", filters.job_type_id);
+        }
+        if (filters?.priority) {
+          query = query.eq("priority", filters.priority);
+        }
+        if (filters?.assignee_id) {
+          query = query.eq("assignee_id", filters.assignee_id);
+        }
+        if (filters?.status) {
+          query = query.eq("status", filters.status);
+        }
+        // Neo mốc vào +07:00. Trước đây so cột TIMESTAMPTZ với chuỗi 'YYYY-MM-DD'
+        // trần → Postgres đọc là UTC midnight: .gte mất 7h đầu ngày, .lte mất 17h
+        // cuối ngày (tức cả ngày làm việc cuối kỳ). Dùng .lt ngày-kế-tiếp.
+        if (filters?.start_date) {
+          query = query.gte(dateCol, `${filters.start_date}T00:00:00+07:00`);
+        }
+        if (filters?.end_date) {
+          query = query.lt(dateCol, `${nextDayISO(filters.end_date)}T00:00:00+07:00`);
+        }
+        if (useDefaultWindow) {
+          // Cửa sổ cắt việc ĐÃ ĐÓNG, KHÔNG cắt việc đang mở: .gte(created_at)
+          // trần từng giấu âm thầm việc tồn đọng tạo >90 ngày khỏi trang Quản
+          // lý công việc (và làm số đếm trên tab thiếu theo) — đúng nhóm cần
+          // chú ý nhất. Giá trị enum không có ký tự đặc biệt nên .in.(A,B) là
+          // đủ, không cần bọc nháy.
+          query = query.or(
+            `created_at.gte.${windowFrom},status.in.(${OPEN_JOB_STATUSES.join(",")})`,
+          );
+        }
+
+        // Order ổn định + tiebreaker duy nhất — giao kèo của fetchAllRows.
+        return query
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to);
+      };
+
+      // fetchAllRows phân trang tới hết: trong cửa sổ có >1000 job vẫn đủ, và
+      // nhánh "Toàn bộ lịch sử" không dính cap 1000 của PostgREST (trước đây
+      // vượt cap là job cũ BIẾN MẤT ÂM THẦM khỏi trang Quản lý công việc).
+      const rows = await fetchAllRows<any>(build, { label: "jobs.list" });
+
+      if (rows === null) {
         // KHÔNG nuốt lỗi: throw để vào isError + retry (trước trả [] làm hiện
         // "Chưa có việc" GIẢ khi RLS/timeout/5xx). Giống fix useInvoices.
-        console.error("useJobs error:", error);
-        throw error;
+        throw new Error("Không tải được danh sách công việc");
       }
 
-      return data || [];
+      return rows as JobWithRelations[];
     },
   });
 

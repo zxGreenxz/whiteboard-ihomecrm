@@ -114,7 +114,9 @@ export default function MyDayPage() {
     },
   ].filter((group) => group.missions.length > 0), [activeMissions, completedToday]);
 
-  const jobsQ = useJobs({ assignee_id: authUser?.id ?? undefined, status: "IN_PROGRESS" } as any);
+  // time_range "all": việc ĐANG MỞ giao cho mình phải thấy hết kể cả tạo >90
+  // ngày trước (cửa sổ mặc định của useJobs chỉ dành cho trang danh sách).
+  const jobsQ = useJobs({ assignee_id: authUser?.id ?? undefined, status: "IN_PROGRESS", time_range: "all" } as any);
   const myJobs: any[] = Array.isArray(jobsQ.data) ? (jobsQ.data as any[]).slice(0, 5) : [];
 
   const coordIds = useMemo(() => {

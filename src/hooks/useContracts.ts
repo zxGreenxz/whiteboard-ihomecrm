@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendlyError";
@@ -90,6 +91,22 @@ const CONTRACT_SELECT = `
 // bảng. Không truyền → giữ nguyên hành vi cũ (fetch tất cả).
 // =============================================
 
+// Select rút gọn cho 2 dialog consumer duy nhất (GenerateInvoiceDialog +
+// AssetHandoverDialog): đúng cột dialog đọc, bỏ full-PII khách (CMND/STK/
+// địa chỉ…) của CONTRACT_SELECT. Cần thêm cột → dùng useContract(id) (select đủ).
+const CONTRACT_DIALOG_SELECT = `
+  id, status, room_id, rent_price, contract_number,
+  room:rooms!contracts_room_id_fkey ( id, name, building_id ),
+  contract_customers!contract_customers_contract_id_fkey (
+    id, is_representative,
+    customer:customers!contract_customers_customer_id_fkey ( id, full_name )
+  ),
+  contract_services (
+    id, service_id, unit_price,
+    service:services ( id, name, pricing_type )
+  )
+`;
+
 export const useContracts = (opts?: {
   statuses?: ContractStatus[];
   // enabled: cho dialog mounted-sẵn-nhưng-đóng gate fetch (vd GenerateInvoiceDialog)
@@ -105,24 +122,30 @@ export const useContracts = (opts?: {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
-      let query = (supabase as any)
-        .from("contracts")
-        .select(CONTRACT_SELECT)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
+      // PAGED: org thật tiến sát trần 1000 HĐ ACTIVE — không phân trang là
+      // GenerateInvoiceDialog sinh THIẾU hoá đơn âm thầm (bug cap-1000).
+      const data = await fetchAllRows<ContractWithRelations>(
+        (from, to) => {
+          let query = (supabase as any)
+            .from("contracts")
+            .select(CONTRACT_DIALOG_SELECT)
+            .is("deleted_at", null);
 
-      if (opts?.statuses?.length) {
-        query = query.in("status", opts.statuses);
-      }
+          if (opts?.statuses?.length) {
+            query = query.in("status", opts.statuses);
+          }
 
-      const { data, error } = await query;
+          return query
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: true }) // tiebreaker cho .range() ổn định
+            .range(from, to);
+        },
+        { label: "contracts.dialog" },
+      );
 
-      if (error) {
-        console.error("useContracts error:", error);
-        throw error;
-      }
-
-      return (data || []) as ContractWithRelations[];
+      // fetchAllRows fail-closed: null = lỗi query → throw cho React Query retry.
+      if (data === null) throw new Error("Lỗi tải danh sách hợp đồng");
+      return data;
     },
   });
 };

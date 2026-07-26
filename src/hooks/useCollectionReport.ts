@@ -18,6 +18,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllRows } from '@/lib/supabaseFetchAll';
 import type { InvoiceWithRelations } from '@/types/invoice';
 
 // Cột/embeds ĐÚNG những gì /thu-tien dùng. name_sort giữ lại vì sort client
@@ -45,15 +46,24 @@ export const useThuTienInvoices = (billing_month: string) =>
     queryKey: ['invoices', 'thu-tien', billing_month],
     queryFn: async (): Promise<InvoiceWithRelations[]> => {
       // Filter y hệt useInvoices({billing_month}) mặc định: bỏ đã xoá + đã huỷ.
-      const { data, error } = await (supabase
-        .from('invoices')
-        .select(THU_TIEN_SELECT) as any)
-        .is('deleted_at', null)
-        .neq('status', 'CANCELLED')
-        .eq('billing_month', billing_month)
-        .order('created_at', { ascending: false });
-      if (error) throw error; // không nuốt lỗi (pattern perf round 06-30)
-      return (data || []) as InvoiceWithRelations[];
+      // PAGED: nguồn DUY NHẤT của /thu-tien — vượt 1000 HĐ/kỳ mà không phân
+      // trang là phòng biến mất khỏi grid + báo cáo cộng thiếu (bug cap-1000).
+      const data = await fetchAllRows<InvoiceWithRelations>(
+        (from, to) =>
+          (supabase
+            .from('invoices')
+            .select(THU_TIEN_SELECT) as any)
+            .is('deleted_at', null)
+            .neq('status', 'CANCELLED')
+            .eq('billing_month', billing_month)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true }) // tiebreaker cho .range() ổn định
+            .range(from, to),
+        { label: 'thu-tien.invoices' },
+      );
+      // không nuốt lỗi (pattern perf round 06-30): null từ fetchAllRows = lỗi query
+      if (data === null) throw new Error('Lỗi tải hoá đơn kỳ thu tiền');
+      return data;
     },
   });
 

@@ -4,7 +4,6 @@ import { getSessionUserId } from "@/lib/authSession";
 import { toast } from "sonner";
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns";
 import { getRepresentativeName } from "@/lib/contractCustomerHelpers";
-import { fetchAllRows } from "@/lib/supabaseFetchAll";
 
 export interface DashboardStats {
   totalRooms: number;
@@ -131,26 +130,15 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
       const rangeStart = startOfMonth(subMonths(new Date(), months - 1));
       const rangeEnd = endOfMonth(new Date());
 
-      const entries = await fetchAllRows<{
-        id: string;
-        revenue_date: string;
-        pnl_amount: number | null;
-      }>(
-        (from, to) => {
-          let query = (supabase as any)
-            .from("invoice_pnl_cash_entries")
-            .select("id, revenue_date, pnl_amount")
-            .gte("revenue_date", format(rangeStart, "yyyy-MM-dd"))
-            .lte("revenue_date", format(rangeEnd, "yyyy-MM-dd"));
-          if (buildingId) query = query.eq("building_id", buildingId);
-          return query
-            .order("revenue_date", { ascending: true })
-            .order("id", { ascending: true })
-            .range(from, to);
-        },
-        { label: "dashboard.revenue-chart" },
-      );
-      if (entries === null) throw new Error("Không thể tải dữ liệu doanh thu");
+      // RPC gộp theo tháng server-side (20260726132000) — bản cũ fetchAllRows
+      // toàn bộ bút toán P&L cả kỳ về client chỉ để cộng ra 12 con số.
+      // Range vẫn do client tính để giữ đúng múi giờ máy user.
+      const { data: monthRows, error } = await supabase.rpc("revenue_by_month", {
+        p_start: format(rangeStart, "yyyy-MM-dd"),
+        p_end: format(rangeEnd, "yyyy-MM-dd"),
+        p_building_id: buildingId ?? undefined,
+      });
+      if (error) throw error;
 
       // Khởi tạo đủ 12 tháng (tháng không có bút toán P&L vẫn hiện 0).
       const byMonth = new Map<string, number>();
@@ -160,12 +148,12 @@ export const useRevenueChart = (months: number = 12, buildingId?: string | null)
         byMonth.set(key, 0);
         data.push({ month: key, revenue: 0 });
       }
-      for (const entry of entries) {
-        const d = new Date(`${entry.revenue_date}T00:00:00`);
+      for (const row of monthRows ?? []) {
+        const d = new Date(`${row.month_start}T00:00:00`);
         if (Number.isNaN(d.getTime())) continue;
         const key = format(d, "MM/yyyy");
         if (byMonth.has(key)) {
-          byMonth.set(key, (byMonth.get(key) || 0) + (Number(entry.pnl_amount) || 0));
+          byMonth.set(key, (byMonth.get(key) || 0) + (Number(row.revenue) || 0));
         }
       }
       for (const row of data) {

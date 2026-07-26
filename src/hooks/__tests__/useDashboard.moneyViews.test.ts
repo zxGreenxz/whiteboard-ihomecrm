@@ -100,34 +100,29 @@ afterEach(() => {
 });
 
 describe("dashboard money views", () => {
-  it("paginates signed invoice P&L entries without the PostgREST 1000-row cap", async () => {
-    const entries = [
-      ...Array.from({ length: 1001 }, (_, index) => ({
-        id: `june-${index}`,
-        building_id: "building-1",
-        revenue_date: "2026-06-15",
-        pnl_amount: 1,
-      })),
-      {
-        id: "july-refund",
-        building_id: "building-1",
-        revenue_date: "2026-07-10",
-        pnl_amount: -200,
-      },
-    ];
-    const pnlBuilder = makeQueryBuilder(entries);
-    mocks.from.mockReturnValue(pnlBuilder);
+  it("gộp doanh thu theo tháng server-side qua RPC revenue_by_month (miễn nhiễm cap-1000)", async () => {
+    // RPC aggregate server-side (20260726132000) thay đường fetchAllRows cũ —
+    // signed refund (-200) vẫn phải cộng đúng dấu, tháng thiếu vẫn hiện 0.
+    mocks.rpc.mockResolvedValue({
+      data: [
+        { month_start: "2026-06-01", revenue: 1001 },
+        { month_start: "2026-07-01", revenue: -200 },
+      ],
+      error: null,
+    });
 
     const query = useRevenueChart(2, "building-1") as unknown as {
       queryFn: () => Promise<Array<{ month: string; revenue: number }>>;
     };
     const chart = await query.queryFn();
 
-    expect(mocks.from).toHaveBeenCalledWith("invoice_pnl_cash_entries");
-    expect(pnlBuilder.eq).toHaveBeenCalledWith("building_id", "building-1");
-    expect(pnlBuilder.order).toHaveBeenCalledWith("revenue_date", { ascending: true });
-    expect(pnlBuilder.order).toHaveBeenCalledWith("id", { ascending: true });
-    expect(pnlBuilder.range).toHaveBeenCalledTimes(3);
+    expect(mocks.from).not.toHaveBeenCalled();
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).toHaveBeenCalledWith("revenue_by_month", {
+      p_start: "2026-06-01",
+      p_end: "2026-07-31",
+      p_building_id: "building-1",
+    });
     expect(chart.find((row) => row.month === "06/2026")?.revenue).toBe(1001);
     expect(chart.find((row) => row.month === "07/2026")?.revenue).toBe(-200);
   });
