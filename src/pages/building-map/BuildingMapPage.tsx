@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from "react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,8 +34,22 @@ const BuildingMapDesktop = () => {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   const { data: buildings = [], isLoading: buildingsLoading } = useBuildings();
-  const { data: allRooms = [], isLoading: roomsLoading } = useRooms();
+  // Chỉ kéo phòng của toà đang chọn — kéo MỌI toà vừa thừa vừa dính cap 1000
+  // dòng PostgREST → org lớn THIẾU phòng âm thầm trên sơ đồ. Chưa chọn toà
+  // (chờ auto-select bên dưới) thì khỏi fetch.
+  const { data: rooms = [], isLoading: roomsLoading } = useRooms(
+    selectedBuildingId || undefined,
+    { enabled: !!selectedBuildingId }
+  );
   const { data: floors = [], isLoading: floorsLoading } = useFloors(selectedBuildingId || undefined);
+
+  // Auto-select first building if none selected — trong effect, KHÔNG setState
+  // giữa thân render (gây double render toàn trang).
+  useEffect(() => {
+    if (!selectedBuildingId && buildings.length > 0) {
+      setSelectedBuildingId(buildings[0].id);
+    }
+  }, [selectedBuildingId, buildings]);
 
   // Dropdown toà nhà (đơn-chọn vì bản đồ vẽ 1 toà): gõ được cả TÊN KHU VỰC
   // để thu hẹp nhanh — thay cho dropdown "Khu vực" riêng trước đây.
@@ -72,19 +86,15 @@ const BuildingMapDesktop = () => {
       contractByRoomId.get(room.id)?.activeContract?.end_date
     );
 
-  // Filter rooms by building, floor, status, and search query
+  // Filter rooms by floor, status, and search query (query đã scope theo toà)
   const filteredRooms = useMemo(() => {
-    let rooms = allRooms;
-
-    if (selectedBuildingId) {
-      rooms = rooms.filter(r => r.building_id === selectedBuildingId);
-    }
+    let scoped = rooms;
 
     if (selectedFloor !== "all") {
-      rooms = rooms.filter(r => r.floor === parseInt(selectedFloor));
+      scoped = scoped.filter(r => r.floor === parseInt(selectedFloor));
     }
 
-    const enrichedRooms = rooms.map(room => {
+    const enrichedRooms = scoped.map(room => {
       const contract = contractByRoomId.get(room.id);
       return {
         ...room,
@@ -112,7 +122,7 @@ const BuildingMapDesktop = () => {
     }
 
     return result;
-  }, [allRooms, selectedBuildingId, selectedFloor, selectedStatus, searchQuery, contractByRoomId]);
+  }, [rooms, selectedFloor, selectedStatus, searchQuery, contractByRoomId]);
 
   // Group rooms by floor for display
   const roomsByFloor = useMemo(() => {
@@ -129,14 +139,8 @@ const BuildingMapDesktop = () => {
       .sort(([a], [b]) => Number(a) - Number(b));
   }, [filteredRooms, selectedFloor]);
 
-  // Statistics
+  // Statistics — all rooms for the selected building (before status/search filters)
   const stats = useMemo(() => {
-    // Use all rooms for the selected building (before status/search filters)
-    let rooms = allRooms;
-    if (selectedBuildingId) {
-      rooms = rooms.filter(r => r.building_id === selectedBuildingId);
-    }
-
     const enriched = rooms.map(room => ({
       ...room,
       displayStatus: getRoomStatus(room),
@@ -150,17 +154,13 @@ const BuildingMapDesktop = () => {
     const maintenance = enriched.filter(r => r.displayStatus === "MAINTENANCE").length;
 
     return { total, occupied, available, reserved, expiring, maintenance };
-  }, [allRooms, selectedBuildingId, contractByRoomId]);
+  }, [rooms, contractByRoomId]);
 
-  const handleRoomClick = (roomId: string) => {
+  // useCallback: RoomCard đã memo — handler mới mỗi render sẽ vô hiệu memo.
+  const handleRoomClick = useCallback((roomId: string) => {
     setSelectedRoomId(roomId);
     setDetailDialogOpen(true);
-  };
-
-  // Auto-select first building if none selected
-  if (!selectedBuildingId && buildings.length > 0) {
-    setSelectedBuildingId(buildings[0].id);
-  }
+  }, []);
 
   return (
     <MainLayout>
@@ -347,7 +347,7 @@ const BuildingMapDesktop = () => {
                         status={room.displayStatus}
                         tenantName={room.tenantName}
                         daysUntilExpiry={room.daysUntilExpiry}
-                        onClick={() => handleRoomClick(room.id)}
+                        onClick={handleRoomClick}
                       />
                     ))}
                   </div>
@@ -375,7 +375,7 @@ const BuildingMapDesktop = () => {
                                 status={room.displayStatus}
                                 tenantName={room.tenantName}
                                 daysUntilExpiry={room.daysUntilExpiry}
-                                onClick={() => handleRoomClick(room.id)}
+                                onClick={handleRoomClick}
                               />
                             ))}
                           </div>

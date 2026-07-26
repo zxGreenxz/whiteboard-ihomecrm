@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Check, MessageCircle } from 'lucide-react';
 import { collectStatus, cellSubTextNamed, fmtK, repCustomer, zaloUrl } from '@/lib/collect';
 import type { InvoiceWithRelations } from '@/types/invoice';
@@ -11,8 +12,10 @@ interface Props {
   onPart: (inv: InvoiceWithRelations) => void;
 }
 
-/** Ô phòng = 1 hoá đơn (layout "Ô vừa" — .icell). Nền tô theo trạng thái thu. */
-export function RoomCell({ inv, collectors = [], canRecordPayment, onOpen, onPart }: Props) {
+/** Ô phòng = 1 hoá đơn (layout "Ô vừa" — .icell). Nền tô theo trạng thái thu.
+ *  Memo: lưới 50–300 ô — mở/đóng drawer chỉ đổi state ngoài, ô không đổi phải
+ *  bail out (đòi hỏi onOpen/onPart từ trang là useCallback ổn định). */
+export const RoomCell = memo(function RoomCell({ inv, collectors = [], canRecordPayment, onOpen, onPart }: Props) {
   const st = collectStatus(inv);
   const rep = repCustomer(inv);
   const stop = (e: React.MouseEvent) => e.stopPropagation();
@@ -60,6 +63,6 @@ export function RoomCell({ inv, collectors = [], canRecordPayment, onOpen, onPar
       </div>
     </div>
   );
-}
+});
 
 export default RoomCell;

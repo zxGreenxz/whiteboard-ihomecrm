@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
@@ -12,7 +13,8 @@ interface RoomCardProps {
   status: RoomStatus;
   tenantName?: string;
   daysUntilExpiry?: number;
-  onClick?: () => void;
+  /** Nhận id để trang truyền MỘT handler ổn định cho mọi ô (giữ memo hiệu lực). */
+  onClick?: (id: string) => void;
 }
 
 const STATUS_CONFIG = {
@@ -53,7 +55,9 @@ const STATUS_CONFIG = {
   },
 };
 
-export function RoomCard({
+// Memo: sơ đồ vẽ hàng trăm ô — gõ search/mở dialog không được re-render ô không đổi.
+export const RoomCard = memo(function RoomCard({
+  id,
   name,
   price,
   status,
@@ -67,7 +71,7 @@ export function RoomCard({
   return (
     <Card
       className={`${config.color} border-2 cursor-pointer transition-all hover:shadow-md`}
-      onClick={onClick}
+      onClick={() => onClick?.(id)}
     >
       <CardContent className="p-4">
         <div className="space-y-2">
@@ -104,4 +108,4 @@ export function RoomCard({
       </CardContent>
     </Card>
   );
-}
+});

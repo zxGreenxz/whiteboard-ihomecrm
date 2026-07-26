@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, HandCoins, Plug, Repeat } from 'lucide-react';
 import './thu-tien.css';
@@ -197,10 +197,14 @@ const ThuTien = () => {
   const next = idx >= 0 && idx < list.length - 1 ? list[idx + 1] : null;
 
   // ── Open/close helpers (mount → rAF set .show; close → bỏ .show rồi unmount) ──
-  const openRoom = (inv: InvoiceWithRelations, mode: 'view' | 'keypad') => {
+  // Handler ô phòng bọc useCallback: RoomCell đã memo — arrow mới mỗi render sẽ
+  // vô hiệu memo, mở/đóng drawer lại re-render cả lưới 50–300 ô.
+  const openRoom = useCallback((inv: InvoiceWithRelations, mode: 'view' | 'keypad') => {
     setDrawer({ id: inv.id, mode, show: false });
     requestAnimationFrame(() => setDrawer((d) => ({ ...d, show: true })));
-  };
+  }, []);
+  const openCellView = useCallback((inv: InvoiceWithRelations) => openRoom(inv, 'view'), [openRoom]);
+  const openCellKeypad = useCallback((inv: InvoiceWithRelations) => openRoom(inv, 'keypad'), [openRoom]);
   const closeDrawer = () => {
     setDrawer((d) => ({ ...d, show: false }));
     window.setTimeout(() => setDrawer((d) => ({ ...d, id: null })), 320);
@@ -348,8 +352,8 @@ const ThuTien = () => {
                 canRecordPayment={canRecordPayment}
                 emptyIcon={emptyIcon}
                 emptyMessage={emptyMessage}
-                onOpen={(inv) => openRoom(inv, 'view')}
-                onPart={(inv) => openRoom(inv, 'keypad')}
+                onOpen={openCellView}
+                onPart={openCellKeypad}
               />
             )}
           </div>

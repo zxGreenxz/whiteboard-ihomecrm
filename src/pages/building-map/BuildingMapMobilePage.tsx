@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Search, Boxes, X } from "lucide-react";
 import { differenceInDays } from "date-fns";
@@ -70,14 +70,21 @@ export default function BuildingMapMobilePage() {
   const [detail, setDetail] = useState<EnrichedRoom | null>(null);
 
   const { data: buildings = [] } = useBuildings();
-  const { data: allRooms = [] } = useRooms();
+  // Chỉ kéo phòng toà đang chọn — kéo mọi toà dính cap 1000 dòng PostgREST,
+  // org lớn thiếu phòng âm thầm (đồng bộ cách fix ở desktop BuildingMapPage).
+  const { data: buildingRooms = [] } = useRooms(selectedBuildingId || undefined, {
+    enabled: !!selectedBuildingId,
+  });
   const { data: floors = [] } = useFloors(selectedBuildingId || undefined);
   const { data: roomsWithContracts = [] } = useRoomsWithActiveContracts(selectedBuildingId || undefined);
 
-  // Auto-chọn toà đầu tiên (đồng bộ desktop)
-  if (!selectedBuildingId && buildings.length > 0) {
-    setSelectedBuildingId(buildings[0].id);
-  }
+  // Auto-chọn toà đầu tiên (đồng bộ desktop) — trong effect, KHÔNG setState
+  // giữa thân render (gây double render toàn trang).
+  useEffect(() => {
+    if (!selectedBuildingId && buildings.length > 0) {
+      setSelectedBuildingId(buildings[0].id);
+    }
+  }, [selectedBuildingId, buildings]);
 
   const contractByRoomId = useMemo(() => {
     const map = new Map<string, (typeof roomsWithContracts)[number]>();
@@ -88,9 +95,7 @@ export default function BuildingMapMobilePage() {
   const building = buildings.find((b) => b.id === selectedBuildingId);
 
   const enrichedAll: EnrichedRoom[] = useMemo(() => {
-    let rooms = allRooms as any[];
-    if (selectedBuildingId) rooms = rooms.filter((r) => r.building_id === selectedBuildingId);
-    return rooms.map((room) => {
+    return (buildingRooms as any[]).map((room) => {
       const c = contractByRoomId.get(room.id);
       const end = c?.activeContract?.end_date;
       return {
@@ -106,7 +111,7 @@ export default function BuildingMapMobilePage() {
         roomType: room.room_type ?? undefined,
       };
     });
-  }, [allRooms, selectedBuildingId, contractByRoomId]);
+  }, [buildingRooms, contractByRoomId]);
 
   const stats = useMemo(() => {
     const total = enrichedAll.length;
