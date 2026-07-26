@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
@@ -78,6 +78,8 @@ export const useCustomers = (
 ) => {
   return useQuery({
     enabled: options?.enabled ?? true,
+    // Giữ trang cũ khi đổi filter/search/trang để bảng không nhảy về "Đang tải".
+    placeholderData: keepPreviousData,
     queryKey: ["customers", filters, pagination],
     queryFn: async (): Promise<PaginatedData<Customer>> => {
       const user = await getSessionUser();
@@ -228,6 +230,8 @@ export const useCustomer = (id: string) => {
 
 export const useCustomerStats = (filters?: CustomerFilters) => {
   return useQuery({
+    // Giữ số cũ khi đổi filter/search để 2 thẻ đếm không nháy về 0.
+    placeholderData: keepPreviousData,
     queryKey: ["customer-stats", filters],
     queryFn: async (): Promise<CustomerStats> => {
       const user = await getSessionUser();

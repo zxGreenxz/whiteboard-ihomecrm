@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users } from 'lucide-react';
 import { usePhoneViewport } from '@/hooks/use-mobile';
@@ -43,6 +43,10 @@ function CustomersDesktopPage() {
   // (match HĐ đang hiệu lực qua contract_customers trong useCustomers).
   const [buildingIds, setBuildingIds] = usePersistedState<string[]>('flt:customers:buildingIds', []);
   const [searchQuery, setSearchQuery] = usePersistedState('flt:customers:search', '');
+  // Search đẩy xuống server (list + RPC stats) → debounce 350ms như mobile để
+  // mỗi phím không bắn 2 request; input vẫn hiển thị searchQuery nên gõ phản
+  // hồi tức thì. Khởi tạo từ giá trị khôi phục để F5 không fetch 2 lần.
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchQuery.trim());
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -58,6 +62,24 @@ function CustomersDesktopPage() {
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Về trang 1 khi GIÁ TRỊ DEBOUNCED đổi, KHÔNG phải mỗi phím: chỉ debouncedSearch
+  // vào queryKey, nên setPage(1) ngay trong handler gõ bắn thêm 1 request key
+  // trung gian (trang 1 + từ khoá CŨ) hoàn toàn phí. Bỏ qua lần chạy đầu để
+  // không xoá trang đang xem khi khôi phục search từ sessionStorage.
+  const searchPageResetRef = useRef(false);
+  useEffect(() => {
+    if (!searchPageResetRef.current) {
+      searchPageResetRef.current = true;
+      return;
+    }
+    setPage(1);
+  }, [debouncedSearch, setPage]);
+
   // Build effective filters — lọc toà đi theo server-side (building_id) để
   // count/phân trang/stats khớp nhau; lọc client trên trang đã phân trang
   // từng làm list còn 1 dòng nhưng vẫn báo "477 mục / 48 trang".
@@ -67,9 +89,9 @@ function CustomersDesktopPage() {
       building_id: buildingIds.length === 1 ? buildingIds[0] : undefined,
       status: activeTab,
       statFilter: activeStatFilter,
-      search: searchQuery || undefined,
+      search: debouncedSearch || undefined,
     }),
-    [filters, buildingIds, activeTab, activeStatFilter, searchQuery]
+    [filters, buildingIds, activeTab, activeStatFilter, debouncedSearch]
   );
 
   // Stats filters (same as effective but without statFilter to get all counts)
@@ -78,9 +100,9 @@ function CustomersDesktopPage() {
       ...filters,
       building_id: buildingIds.length === 1 ? buildingIds[0] : undefined,
       status: activeTab,
-      search: searchQuery || undefined,
+      search: debouncedSearch || undefined,
     }),
-    [filters, buildingIds, activeTab, searchQuery]
+    [filters, buildingIds, activeTab, debouncedSearch]
   );
 
   // Data fetching
@@ -132,12 +154,12 @@ function CustomersDesktopPage() {
     [setPage]
   );
 
+  // Chỉ cập nhật ô nhập; reset trang do effect trên debouncedSearch lo.
   const handleSearch = useCallback(
     (query: string) => {
       setSearchQuery(query);
-      setPage(1);
     },
-    [setPage]
+    [setSearchQuery]
   );
 
   const handleAdd = useCallback(() => {

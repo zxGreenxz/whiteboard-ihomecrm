@@ -4,7 +4,7 @@
 // Uses new schema with billing_month (YYYY-MM) and building_id on invoices.
 // =============================================
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
 import { isCanonicalFallbackSignal } from '@/lib/canonicalFallback';
@@ -243,7 +243,11 @@ export const useInvoices = (
   filters?: InvoiceFilters,
   pagination?: InvoicePaginationParams,
 ) => {
-  return useQuery(invoicesListQuery(filters, pagination));
+  return useQuery({
+    ...invoicesListQuery(filters, pagination),
+    // Giữ trang cũ khi đổi filter/search/trang để bảng không nhảy về "Đang tải".
+    placeholderData: keepPreviousData,
+  });
 };
 
 // Legacy hook for backwards compatibility (returns array directly)

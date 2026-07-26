@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from "react";
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -113,6 +113,11 @@ const IncomeExpenseDesktopPage = () => {
   }, []);
 
   const [searchQuery, setSearchQuery] = usePersistedState("flt:income-expense:search", "");
+  // Search đẩy xuống server (list + stats RPC + rooms-lookup) → debounce 350ms
+  // như mobile để mỗi phím không bắn đồng thời list + RPC stats; input vẫn hiển
+  // thị searchQuery nên gõ phản hồi tức thì. Khởi tạo từ giá trị khôi phục để
+  // F5 không fetch 2 lần.
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchQuery);
   const [viewMode, setViewMode] = usePersistedState<"individual" | "batch">("flt:income-expense:viewMode", "individual");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isBatchFormOpen, setIsBatchFormOpen] = useState(false);
@@ -153,17 +158,38 @@ const IncomeExpenseDesktopPage = () => {
   const [cancelBatchTarget, setCancelBatchTarget] = useState<string | null>(null);
 
   const pagination = usePagination(20);
+  // setPage là useCallback ổn định, còn `pagination` là object MỚI mỗi render —
+  // đưa cả object vào deps effect dưới là reset trang mỗi render.
+  const { setPage } = pagination;
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Về trang 1 khi GIÁ TRỊ DEBOUNCED đổi, KHÔNG phải mỗi phím: chỉ debouncedSearch
+  // vào queryKey, nên setPage(1) ngay trong handler gõ bắn thêm 1 request key
+  // trung gian (trang 1 + từ khoá CŨ) hoàn toàn phí. Bỏ qua lần chạy đầu để
+  // không xoá trang đang xem khi khôi phục search từ sessionStorage.
+  const searchPageResetRef = useRef(false);
+  useEffect(() => {
+    if (!searchPageResetRef.current) {
+      searchPageResetRef.current = true;
+      return;
+    }
+    setPage(1);
+  }, [debouncedSearch, setPage]);
 
   // Tìm kiếm: ưu tiên MÃ PHÒNG → nếu không có phòng nào mới tìm theo số tiền
   // (±5.000đ) hoặc tên/mã phiếu như cũ.
   const buildingIds = filters.building_ids ?? [];
-  const trimmedSearch = searchQuery.trim();
+  const trimmedSearch = debouncedSearch.trim();
   const roomCode = isRoomCodeQuery(trimmedSearch) ? trimmedSearch : null;
   const { data: roomLookup } = useRoomIdsByCode(
     roomCode,
     buildingIds.length ? buildingIds : undefined
   );
-  const parsedSearch = resolveSearch(searchQuery, roomLookup);
+  const parsedSearch = resolveSearch(debouncedSearch, roomLookup);
 
   const effectiveFilters: IncomeExpenseFilters = {
     ...filters,
@@ -179,10 +205,13 @@ const IncomeExpenseDesktopPage = () => {
     room_ids: parsedSearch.roomIds ?? filters.room_ids,
   };
 
+  // keepPreviousData: màn danh sách phân trang — giữ trang cũ để bảng không nhảy
+  // về skeleton mỗi lần đổi trang/filter (opt-in ở consumer, xem useIncomeExpenses).
   const { data: listResult, isLoading } = useIncomeExpenses(
     effectiveFilters,
     { page: pagination.page, pageSize: pagination.pageSize },
-    parsedSearch.text
+    parsedSearch.text,
+    { keepPreviousData: true }
   );
 
   const { data: batchResult, isLoading: isBatchLoading } =
@@ -206,7 +235,7 @@ const IncomeExpenseDesktopPage = () => {
       : null;
 
   const { data: stats, isLoading: isStatsLoading } =
-    useIncomeExpenseStats(effectiveFilters);
+    useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
 
   const cancelMutation = useCancelIncomeExpense();
   const restoreMutation = useRestoreIncomeExpense();
@@ -271,12 +300,12 @@ const IncomeExpenseDesktopPage = () => {
     [pagination]
   );
 
+  // Chỉ cập nhật ô nhập; reset trang do effect trên debouncedSearch lo.
   const handleSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearchQuery(e.target.value);
-      pagination.setPage(1);
     },
-    [pagination]
+    [setSearchQuery]
   );
 
   const handleAddVoucher = useCallback(() => {

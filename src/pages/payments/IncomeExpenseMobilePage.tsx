@@ -250,10 +250,13 @@ export default function IncomeExpenseMobilePage() {
     room_ids: parsed.roomIds ?? filters.room_ids,
   };
 
+  // keepPreviousData: màn danh sách phân trang — giữ trang cũ để danh sách không
+  // nháy skeleton mỗi lần "Tải thêm"/đổi filter (opt-in, xem useIncomeExpenses).
   const { data: listResult, isLoading } = useIncomeExpenses(
     effectiveFilters,
     { page: pagination.page, pageSize: pagination.pageSize },
     parsed.text,
+    { keepPreviousData: true },
   );
   const { data: batchResult, isLoading: isBatchLoading } =
     useIncomeExpenseBatches(
@@ -264,7 +267,7 @@ export default function IncomeExpenseMobilePage() {
       { enabled: viewMode === "batch" },
     );
   const { data: stats, isLoading: isStatsLoading } =
-    useIncomeExpenseStats(effectiveFilters);
+    useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
 
   const vouchers = listResult?.data ?? [];
   const totalCount = listResult?.totalCount ?? 0;

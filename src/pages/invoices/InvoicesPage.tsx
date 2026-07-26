@@ -60,9 +60,30 @@ const InvoicesDesktopPage = () => {
 
   // Search
   const [searchQuery, setSearchQuery] = usePersistedState('flt:invoices:search', '');
+  // Search đẩy xuống server (list + rooms-lookup) → debounce 350ms như mobile
+  // để không bắn query mỗi phím; input vẫn hiển thị searchQuery nên gõ phản hồi
+  // tức thì. Khởi tạo từ giá trị khôi phục để F5 không fetch 2 lần.
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchQuery.trim());
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   // Pagination
   const { page, pageSize, setPage, setPageSize } = usePagination(20);
+
+  // Về trang 1 khi GIÁ TRỊ DEBOUNCED đổi, KHÔNG phải mỗi phím: chỉ debouncedSearch
+  // vào queryKey, nên setPage(1) ngay trong handler gõ bắn thêm 1 request key
+  // trung gian (trang 1 + từ khoá CŨ) hoàn toàn phí. Bỏ qua lần chạy đầu để
+  // không xoá trang đang xem khi khôi phục search từ sessionStorage.
+  const searchPageResetRef = useRef(false);
+  useEffect(() => {
+    if (!searchPageResetRef.current) {
+      searchPageResetRef.current = true;
+      return;
+    }
+    setPage(1);
+  }, [debouncedSearch, setPage]);
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -92,15 +113,14 @@ const InvoicesDesktopPage = () => {
 
   // Tìm kiếm: ưu tiên MÃ PHÒNG → nếu không có phòng nào mới tìm theo số tiền
   // (±5.000đ) hoặc số HĐ / tên khách.
-  const trimmedSearch = searchQuery.trim();
-  const roomCode = isRoomCodeQuery(trimmedSearch) ? trimmedSearch : null;
+  const roomCode = isRoomCodeQuery(debouncedSearch) ? debouncedSearch : null;
   const lookupBuildingIds = filters.building_ids?.length
     ? filters.building_ids
     : filters.building_id
       ? [filters.building_id]
       : undefined;
   const { data: roomLookup } = useRoomIdsByCode(roomCode, lookupBuildingIds);
-  const resolvedSearch = resolveSearch(searchQuery, roomLookup);
+  const resolvedSearch = resolveSearch(debouncedSearch, roomLookup);
 
   // Merge search into filters
   const effectiveFilters: InvoiceFilters = {
@@ -183,12 +203,12 @@ const InvoicesDesktopPage = () => {
     [setPage],
   );
 
+  // Chỉ cập nhật ô nhập; reset trang do effect trên debouncedSearch lo.
   const handleSearch = useCallback(
     (query: string) => {
       setSearchQuery(query);
-      setPage(1);
     },
-    [setPage],
+    [setSearchQuery],
   );
 
   // Bấm thẻ phương thức (TM/TK/TT/Cấn trừ) → lọc bảng theo method; bấm lại = bỏ lọc.

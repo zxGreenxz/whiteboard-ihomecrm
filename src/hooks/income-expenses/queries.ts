@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { VOUCHER_SOURCES } from "@/lib/voucherSources";
 import { monthToStartDate, monthToEndDate } from "@/lib/monthPeriod";
 import { getAllIeTypesCached, type IeTypeLite } from "@/lib/ieTypesCache";
 import { AMOUNT_SEARCH_TOLERANCE } from "@/lib/roomCodeSearch";
+import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import type {
   IncomeExpenseFilters,
   IncomeExpenseItem,
@@ -92,38 +93,57 @@ async function getItemTypeSiblingIds(
   return Array.from(categoryIds!);
 }
 
+// Khoảng ngày của filter "kỳ áp dụng": [đầu-tháng-start, cuối-tháng-end].
+// Nếu chỉ có 1 đầu, coi khoảng = đúng tháng đó (start=end).
+// Trả null nếu không có filter kỳ.
+function periodRangeFromFilters(
+  periodStartMonth?: string | null,
+  periodEndMonth?: string | null
+): { start: string; end: string } | null {
+  if (!periodStartMonth && !periodEndMonth) return null;
+  const startM = periodStartMonth || periodEndMonth!;
+  const endM = periodEndMonth || periodStartMonth!;
+  return {
+    start: monthToStartDate(startM), // 'YYYY-MM-01'
+    end: monthToEndDate(endM), // ngày cuối tháng
+  };
+}
+
 // Trả về danh sách voucher_id có ÍT NHẤT 1 item mà kỳ áp dụng [start_date,
 // end_date] GIAO với khoảng [periodStartMonth, periodEndMonth] (theo tháng).
 // Overlap: item.start_date <= cuối-tháng-periodEnd AND item.end_date >= đầu-tháng-periodStart.
 // Chỉ xét item CÓ kỳ (item null-period bị loại — "lọc kỳ" ngụ ý item đã gán kỳ).
 // Trả null nếu không có filter kỳ; [] nếu có filter nhưng không voucher nào match.
+//
+// CHỈ dùng cho stats RPC: p_voucher_ids đi qua POST body nên không dính giới
+// hạn URL. List/batches lọc kỳ qua embedded inner-join (ITEM_PERIOD_INNER_JOIN)
+// thay vì `.in("id", [...])` — cùng bài học URL-400 của ITEM_TYPE_INNER_JOIN.
+// fetchAllRows vì bảng item vượt 1000 dòng là danh sách voucher bị cắt âm thầm;
+// lỗi tải THROW để React Query hiện lỗi thật, không thành "rỗng" giả.
 async function getVoucherIdsByItemPeriod(
   periodStartMonth?: string | null,
   periodEndMonth?: string | null
 ): Promise<string[] | null> {
-  if (!periodStartMonth && !periodEndMonth) return null;
-  // Nếu chỉ có 1 đầu, coi khoảng = đúng tháng đó (start=end).
-  const startM = periodStartMonth || periodEndMonth!;
-  const endM = periodEndMonth || periodStartMonth!;
-  const rangeStart = monthToStartDate(startM); // 'YYYY-MM-01'
-  const rangeEnd = monthToEndDate(endM); // ngày cuối tháng
+  const range = periodRangeFromFilters(periodStartMonth, periodEndMonth);
+  if (!range) return null;
 
-  const { data, error } = await supabase
-    .from("income_expense_items")
-    .select("income_expense_id")
-    .not("start_date", "is", null)
-    .not("end_date", "is", null)
-    .lte("start_date", rangeEnd)
-    .gte("end_date", rangeStart);
-
-  if (error) {
-    console.error("getVoucherIdsByItemPeriod error:", error);
-    return [];
-  }
-  const ids = Array.from(
-    new Set(((data ?? []) as any[]).map((r) => r.income_expense_id))
+  const rows = await fetchAllRows<{ income_expense_id: string }>(
+    (from, to) =>
+      supabase
+        .from("income_expense_items")
+        .select("income_expense_id")
+        .not("start_date", "is", null)
+        .not("end_date", "is", null)
+        .lte("start_date", range.end)
+        .gte("end_date", range.start)
+        .order("id", { ascending: true }) // id PK = order ổn định cho phân trang
+        .range(from, to),
+    { label: "ie-period-voucher-ids" }
   );
-  return ids;
+  if (rows === null) {
+    throw new Error("getVoucherIdsByItemPeriod: lỗi tải item theo kỳ áp dụng");
+  }
+  return Array.from(new Set(rows.map((r) => r.income_expense_id)));
 }
 
 // Fragment thêm vào select để lọc hạng mục qua embedded INNER join trên
@@ -133,6 +153,14 @@ async function getVoucherIdsByItemPeriod(
 const ITEM_TYPE_INNER_JOIN =
   ", _itemTypeFilter:income_expense_items!inner(income_expense_type_id)";
 
+// Fragment lọc "kỳ áp dụng" — embed thứ hai với alias RIÊNG: mỗi embed !inner
+// là một EXISTS độc lập, giữ đúng ngữ nghĩa GIAO của bản cũ ("có ≥1 item đúng
+// hạng mục" VÀ "có ≥1 item giao kỳ" — không bắt buộc cùng 1 item). Trước đây
+// nhánh kỳ resolve ra voucher_id rồi `.in("id", [...])` → vừa dính cap 1000 khi
+// đếm item, vừa nhồi hàng nghìn UUID vào URL GET (nguồn lỗi 400 đã có án lệ).
+const ITEM_PERIOD_INNER_JOIN =
+  ", _periodFilter:income_expense_items!inner(start_date, end_date)";
+
 // Kế hoạch lọc cấp item (hạng mục + kỳ áp dụng) cho query income_expenses.
 type ItemFilterPlan = {
   // true = filter cấp item chắc chắn rỗng → caller trả kết quả rỗng ngay.
@@ -140,29 +168,30 @@ type ItemFilterPlan = {
   // null = không lọc hạng mục; ngược lại tập type_id sibling (NHỎ) áp qua
   // embedded inner-join (_itemTypeFilter.income_expense_type_id).
   typeSiblingIds: string[] | null;
-  // null = không lọc kỳ; ngược lại voucher_id thoả kỳ, áp .in("id", ...).
-  // (Kỳ áp dụng hiếm dùng & tập thường nhỏ nên vẫn resolve ra voucher_id.)
-  periodVoucherIds: string[] | null;
+  // null = không lọc kỳ; ngược lại khoảng ngày áp lên embed _periodFilter.
+  periodRange: { start: string; end: string } | null;
 };
 
-// Gộp filter cấp item. Kết hợp hạng mục (inner-join) + kỳ (.in id) trên cùng
-// query = GIAO, giữ đúng ngữ nghĩa intersection của bản cũ.
+// Gộp filter cấp item. Kết hợp hạng mục + kỳ (2 embed inner-join độc lập) trên
+// cùng query = GIAO, giữ đúng ngữ nghĩa intersection của bản cũ.
 async function planItemFilters(
   filters: IncomeExpenseFilters
 ): Promise<ItemFilterPlan> {
-  const [typeSiblingIds, periodVoucherIds] = await Promise.all([
-    getItemTypeSiblingIds(filters),
-    getVoucherIdsByItemPeriod(filters.period_start_month, filters.period_end_month),
-  ]);
-  const empty =
-    (typeSiblingIds !== null && typeSiblingIds.length === 0) ||
-    (periodVoucherIds !== null && periodVoucherIds.length === 0);
-  return { empty, typeSiblingIds, periodVoucherIds };
+  const typeSiblingIds = await getItemTypeSiblingIds(filters);
+  const periodRange = periodRangeFromFilters(
+    filters.period_start_month,
+    filters.period_end_month
+  );
+  const empty = typeSiblingIds !== null && typeSiblingIds.length === 0;
+  return { empty, typeSiblingIds, periodRange };
 }
 
-// Phần nối thêm vào chuỗi select khi có lọc hạng mục.
+// Phần nối thêm vào chuỗi select khi có lọc cấp item.
 function itemFilterJoinSelect(plan: ItemFilterPlan): string {
-  return plan.typeSiblingIds !== null ? ITEM_TYPE_INNER_JOIN : "";
+  return (
+    (plan.typeSiblingIds !== null ? ITEM_TYPE_INNER_JOIN : "") +
+    (plan.periodRange !== null ? ITEM_PERIOD_INNER_JOIN : "")
+  );
 }
 
 // Áp filter cấp item lên một query income_expenses đã khởi tạo.
@@ -171,8 +200,14 @@ function applyItemFilterToQuery<T>(query: T, plan: ItemFilterPlan): T {
   if (plan.typeSiblingIds !== null) {
     q = q.in("_itemTypeFilter.income_expense_type_id", plan.typeSiblingIds);
   }
-  if (plan.periodVoucherIds !== null) {
-    q = q.in("id", plan.periodVoucherIds);
+  if (plan.periodRange !== null) {
+    // Item null-period bị loại ("lọc kỳ" ngụ ý item đã gán kỳ). lte/gte với
+    // NULL vốn đã false — giữ .not is null cho tường minh ngữ nghĩa.
+    q = q
+      .not("_periodFilter.start_date", "is", null)
+      .not("_periodFilter.end_date", "is", null)
+      .lte("_periodFilter.start_date", plan.periodRange.end)
+      .gte("_periodFilter.end_date", plan.periodRange.start);
   }
   return q as T;
 }
@@ -494,15 +529,22 @@ export const incomeExpensesListQuery = (
 
 // options.enabled: trang Phân bổ LN gate list tiền-mặt khi đang ở chế độ DỒN
 // TÍCH (mặc định) — list 1000 dòng + items chỉ được đọc ở nhánh !accrualMode.
+//
+// options.keepPreviousData: OPT-IN, MẶC ĐỊNH TẮT. Chỉ bật ở màn Thu chi (bảng
+// phân trang, đổi trang/filter liên tục) để bảng không nhảy về skeleton. TUYỆT
+// ĐỐI không bật cho consumer báo cáo tiền chỉ gate bằng isLoading (Phân bổ lợi
+// nhuận, tab Chi phí): giữ-data-cũ ở đó = hiện SỐ KỲ CŨ dưới nhãn kỳ MỚI suốt
+// thời gian fetch, không chỉ báo nào.
 export const useIncomeExpenses = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
   searchQuery?: string,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; keepPreviousData?: boolean }
 ) => {
   return useQuery({
     ...incomeExpensesListQuery(filters, pagination, searchQuery),
     enabled: options?.enabled ?? true,
+    placeholderData: options?.keepPreviousData ? keepPreviousData : undefined,
   });
 };
 
@@ -555,8 +597,19 @@ export const incomeExpenseStatsQuery = (
         internalCount: 0, internalIncome: 0, internalExpense: 0,
         pendingCount: 0, pendingTotal: 0,
       };
-      const itemPlan = await planItemFilters(filters);
-      if (itemPlan.empty) {
+      // Kỳ áp dụng: RPC vẫn cần danh sách voucher_id (p_voucher_ids) — đi qua
+      // POST body nên không dính giới hạn URL như `.in()` trên GET.
+      const [itemPlan, periodVoucherIds] = await Promise.all([
+        planItemFilters(filters),
+        getVoucherIdsByItemPeriod(
+          filters.period_start_month,
+          filters.period_end_month
+        ),
+      ]);
+      if (
+        itemPlan.empty ||
+        (periodVoucherIds !== null && periodVoucherIds.length === 0)
+      ) {
         return EMPTY_STATS;
       }
 
@@ -606,7 +659,7 @@ export const incomeExpenseStatsQuery = (
           p_amount_tol: AMOUNT_SEARCH_TOLERANCE,
           p_verified: filters.verified_status ?? null,
           p_item_type_ids: itemPlan.typeSiblingIds,
-          p_voucher_ids: itemPlan.periodVoucherIds,
+          p_voucher_ids: periodVoucherIds,
           p_sources: groupSources,
           p_source_manual: filters.source_group === 'Nhập tay',
           p_internal_sources: INTERNAL_SOURCES,
@@ -643,12 +696,19 @@ export const incomeExpenseStatsQuery = (
     },
   });
 
+// opts.keepPreviousData: OPT-IN, MẶC ĐỊNH TẮT — cùng ràng buộc như
+// useIncomeExpenses. Bật ở màn Thu chi để 3 thẻ tổng không nháy về 0; KHÔNG bật
+// ở báo cáo Phân bổ lợi nhuận / tab Chi phí (đổi tháng/toà là số kỳ cũ đứng
+// dưới nhãn kỳ mới).
 export const useIncomeExpenseStats = (
   filters: IncomeExpenseFilters,
-  opts?: { businessResultOnly?: boolean }
+  opts?: { businessResultOnly?: boolean; keepPreviousData?: boolean }
 ) => {
   const businessResultOnly = opts?.businessResultOnly ?? false;
-  return useQuery(incomeExpenseStatsQuery(filters, businessResultOnly));
+  return useQuery({
+    ...incomeExpenseStatsQuery(filters, businessResultOnly),
+    placeholderData: opts?.keepPreviousData ? keepPreviousData : undefined,
+  });
 };
 
 // Nhật ký thao tác (huỷ / khôi phục) của 1 phiếu — đọc qua RPC SECURITY DEFINER
@@ -671,6 +731,9 @@ export const useIncomeExpenseHistory = (id: string | null, enabled = true) => {
 // Danh sách phiếu tổng (group by batch_id)
 // options.enabled: trang Thu chi gate theo viewMode — chỉ fetch khi user đang
 // xem tab Phiếu tổng (batches KHÔNG được prefetch nên gate không phí request).
+// keepPreviousData giữ ở MỨC HOOK (khác 2 hook trên): consumer duy nhất là màn
+// Thu chi (IncomeExpensePage + IncomeExpenseMobilePage) — bảng phân trang, không
+// có consumer báo cáo tiền nào đọc hook này.
 export const useIncomeExpenseBatches = (
   filters: IncomeExpenseFilters,
   pagination: { page: number; pageSize: number },
@@ -679,6 +742,8 @@ export const useIncomeExpenseBatches = (
 ) => {
   return useQuery({
     enabled: options?.enabled ?? true,
+    // Giữ trang cũ khi đổi filter/search/trang để bảng không nhảy về skeleton.
+    placeholderData: keepPreviousData,
     queryKey: [
       "income-expense-batches",
       "list",
@@ -713,96 +778,139 @@ export const useIncomeExpenseBatches = (
         return { data: [], totalCount: 0 };
       }
 
-      // 1. Lấy batches (kèm filter type nếu có)
-      let batchQuery = supabase
-        .from("income_expense_batches")
-        .select("*")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-      if (filters.type) batchQuery = batchQuery.eq("type", filters.type);
+      // Cap 1000 dòng của PostgREST + `.in()` quá dài trả 400: batch/link/phiếu
+      // con đều tích luỹ vô hạn (tenant thật đã ~1.356 phiếu) nên mọi tầng dưới
+      // đây đều fetchAllRows và/hoặc chunk `.in()` (mẫu useInvoiceCollectors).
+      // Lỗi tải ở bất kỳ tầng nào đều THROW — trả rỗng là màn "không có phiếu
+      // tổng" GIẢ kèm tổng tiền sai.
+      const CHUNK = 100;
+      const chunkIds = (ids: string[]): string[][] => {
+        const out: string[][] = [];
+        for (let i = 0; i < ids.length; i += CHUNK) out.push(ids.slice(i, i + CHUNK));
+        return out;
+      };
 
-      const { data: batches, error: batchError } = await batchQuery;
-      if (batchError) {
-        console.error("useIncomeExpenseBatches batch error:", batchError);
-        return { data: [], totalCount: 0 };
+      // 1. Lấy batches (kèm filter type nếu có)
+      const batches = await fetchAllRows<any>(
+        (from, to) => {
+          let batchQuery = supabase
+            .from("income_expense_batches")
+            .select("*")
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false }); // tiebreaker duy nhất cho phân trang ổn định
+          if (filters.type) batchQuery = batchQuery.eq("type", filters.type);
+          return batchQuery.range(from, to);
+        },
+        { label: "ie-batches" }
+      );
+      if (batches === null) {
+        throw new Error("useIncomeExpenseBatches: lỗi tải danh sách phiếu tổng");
       }
-      if (!batches || batches.length === 0) {
+      if (batches.length === 0) {
         return { data: [], totalCount: 0 };
       }
 
       const batchIds = (batches as any[]).map((b: any) => b.id);
 
-      // 2. Lấy junction rows
-      const { data: links, error: linkError } = await supabase
-        .from("income_expense_batch_items")
-        .select("batch_id, income_expense_id")
-        .in("batch_id", batchIds);
-      if (linkError) {
-        console.error("useIncomeExpenseBatches link error:", linkError);
-        return { data: [], totalCount: 0 };
+      // 2. Lấy junction rows — chunk theo batch_id, và fetchAllRows từng chunk
+      //    vì 100 batch vẫn có thể chứa >1000 link.
+      const linkChunks = await Promise.all(
+        chunkIds(batchIds).map((ids) =>
+          fetchAllRows<{ batch_id: string; income_expense_id: string }>(
+            (from, to) =>
+              supabase
+                .from("income_expense_batch_items")
+                .select("batch_id, income_expense_id")
+                .in("batch_id", ids)
+                // PK (batch_id, income_expense_id) = order ổn định duy nhất
+                .order("batch_id", { ascending: true })
+                .order("income_expense_id", { ascending: true })
+                .range(from, to),
+            { label: "ie-batch-links" }
+          )
+        )
+      );
+      const links: { batch_id: string; income_expense_id: string }[] = [];
+      for (const chunk of linkChunks) {
+        if (chunk === null) {
+          throw new Error("useIncomeExpenseBatches: lỗi tải liên kết batch↔phiếu");
+        }
+        links.push(...chunk);
       }
 
-      const voucherIds = ((links ?? []) as any[]).map((l) => l.income_expense_id);
+      const voucherIds = links.map((l) => l.income_expense_id);
       if (voucherIds.length === 0) {
         // Có batch nhưng không có voucher con → không hiển thị
         return { data: [], totalCount: 0 };
       }
 
-      // 3. Lấy phiếu con (kèm joins) + filter
-      let voucherQuery = supabase
-        .from("income_expenses")
-        .select(
-          `
+      // 3. Lấy phiếu con (kèm joins) + filter — chunk `.in("id")`: mỗi chunk
+      //    ≤100 id (id là PK) nên không thể chạm cap 1000.
+      const buildVoucherChunkQuery = (ids: string[]) => {
+        let voucherQuery = supabase
+          .from("income_expenses")
+          .select(
+            `
           *,
           building:buildings!income_expenses_building_id_fkey ( id, name ),
           room:rooms!income_expenses_room_id_fkey ( id, name ),
           tenant:tenants!income_expenses_tenant_id_fkey ( id, full_name ),
           account:accounts!income_expenses_account_id_fkey ( id, name, is_virtual )${itemFilterJoinSelect(itemPlan)}
         `
-        )
-        .is("deleted_at", null)
-        .in("id", voucherIds);
+          )
+          .is("deleted_at", null)
+          .in("id", ids);
 
-      voucherQuery = applyItemFilterToQuery(voucherQuery, itemPlan);
-      if (filters.building_ids?.length) {
-        voucherQuery = voucherQuery.in("building_id", filters.building_ids);
-      }
-      if (filters.building_id) voucherQuery = voucherQuery.eq("building_id", filters.building_id);
-      if (filters.room_ids?.length) {
-        voucherQuery = voucherQuery.in("room_id", filters.room_ids);
-      } else if (filters.room_id) {
-        voucherQuery = voucherQuery.eq("room_id", filters.room_id);
-      }
-      if (filters.account_id) voucherQuery = voucherQuery.or(
-        `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`
+        voucherQuery = applyItemFilterToQuery(voucherQuery, itemPlan);
+        if (filters.building_ids?.length) {
+          voucherQuery = voucherQuery.in("building_id", filters.building_ids);
+        }
+        if (filters.building_id) voucherQuery = voucherQuery.eq("building_id", filters.building_id);
+        if (filters.room_ids?.length) {
+          voucherQuery = voucherQuery.in("room_id", filters.room_ids);
+        } else if (filters.room_id) {
+          voucherQuery = voucherQuery.eq("room_id", filters.room_id);
+        }
+        if (filters.account_id) voucherQuery = voucherQuery.or(
+          `account_id.eq.${filters.account_id},change_account_id.eq.${filters.account_id}`
+        );
+        if (filters.start_date) voucherQuery = voucherQuery.gte("voucher_date", filters.start_date);
+        if (filters.end_date) voucherQuery = voucherQuery.lte("voucher_date", filters.end_date);
+        if (filters.creator_id) voucherQuery = voucherQuery.eq("user_id", filters.creator_id);
+        if (filters.amount_target != null) {
+          voucherQuery = voucherQuery
+            .gte("total_amount", filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
+            .lte("total_amount", filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
+        }
+        if (filters.verified_status === "VERIFIED") {
+          voucherQuery = voucherQuery.not("verified_at", "is", null);
+        } else if (filters.verified_status === "UNVERIFIED") {
+          voucherQuery = voucherQuery.is("verified_at", null);
+        }
+        return voucherQuery;
+      };
+
+      const voucherResults = await Promise.all(
+        chunkIds(voucherIds).map((ids) => buildVoucherChunkQuery(ids))
       );
-      if (filters.start_date) voucherQuery = voucherQuery.gte("voucher_date", filters.start_date);
-      if (filters.end_date) voucherQuery = voucherQuery.lte("voucher_date", filters.end_date);
-      if (filters.creator_id) voucherQuery = voucherQuery.eq("user_id", filters.creator_id);
-      if (filters.amount_target != null) {
-        voucherQuery = voucherQuery
-          .gte("total_amount", filters.amount_target - AMOUNT_SEARCH_TOLERANCE)
-          .lte("total_amount", filters.amount_target + AMOUNT_SEARCH_TOLERANCE);
-      }
-      if (filters.verified_status === "VERIFIED") {
-        voucherQuery = voucherQuery.not("verified_at", "is", null);
-      } else if (filters.verified_status === "UNVERIFIED") {
-        voucherQuery = voucherQuery.is("verified_at", null);
+      const vouchers: any[] = [];
+      for (const r of voucherResults) {
+        if (r.error) {
+          console.error("useIncomeExpenseBatches voucher error:", r.error);
+          throw r.error;
+        }
+        vouchers.push(...((r.data ?? []) as any[]));
       }
 
-      const { data: vouchers, error: voucherError } = await voucherQuery;
-      if (voucherError) {
-        console.error("useIncomeExpenseBatches voucher error:", voucherError);
-        return { data: [], totalCount: 0 };
-      }
-
-      // 4. Lấy items của tất cả phiếu con
-      const fetchedVoucherIds = ((vouchers ?? []) as any[]).map((v) => v.id);
-      const allItems =
-        fetchedVoucherIds.length === 0
-          ? []
-          : (
-              await supabase
+      // 4. Lấy items của tất cả phiếu con — chunk + fetchAllRows (100 phiếu có
+      //    thể có >1000 item).
+      const fetchedVoucherIds = vouchers.map((v) => v.id);
+      const itemChunks = await Promise.all(
+        chunkIds(fetchedVoucherIds).map((ids) =>
+          fetchAllRows<any>(
+            (from, to) =>
+              supabase
                 .from("income_expense_items")
                 .select(
                   `
@@ -810,8 +918,20 @@ export const useIncomeExpenseBatches = (
           income_expense_type:income_expense_types!income_expense_items_income_expense_type_id_fkey ( id, name, category, is_deposit )
         `
                 )
-                .in("income_expense_id", fetchedVoucherIds)
-            ).data ?? [];
+                .in("income_expense_id", ids)
+                .order("id", { ascending: true }) // id PK = order ổn định
+                .range(from, to),
+            { label: "ie-batch-voucher-items" }
+          )
+        )
+      );
+      const allItems: any[] = [];
+      for (const chunk of itemChunks) {
+        if (chunk === null) {
+          throw new Error("useIncomeExpenseBatches: lỗi tải chi tiết phiếu con");
+        }
+        allItems.push(...chunk);
+      }
 
       const itemsByVoucherId = new Map<string, IncomeExpenseItem[]>();
       for (const item of allItems as any[]) {
@@ -835,7 +955,7 @@ export const useIncomeExpenseBatches = (
 
       // 5. Map vouchers → IncomeExpenseWithRelations
       const voucherMap = new Map<string, IncomeExpenseWithRelations>();
-      for (const v of (vouchers ?? []) as any[]) {
+      for (const v of vouchers) {
         voucherMap.set(v.id, {
           id: v.id,
           user_id: v.user_id,
@@ -892,7 +1012,7 @@ export const useIncomeExpenseBatches = (
 
       // 6. Group voucherIds theo batch
       const voucherIdsByBatch = new Map<string, string[]>();
-      for (const link of (links ?? []) as any[]) {
+      for (const link of links) {
         if (!voucherIdsByBatch.has(link.batch_id)) {
           voucherIdsByBatch.set(link.batch_id, []);
         }
