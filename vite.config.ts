@@ -3,6 +3,37 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+// Các gói @radix-ui mà ENTRY import tĩnh (qua Toaster/Tooltip/Label/Checkbox/
+// Slot của màn auth) — đo bằng build chẩn đoán 2026-07-26: tách mỗi gói Radix
+// thành 1 chunk riêng rồi đọc danh sách <link rel="modulepreload"> trong
+// dist/index.html. Nếu entry thêm/bớt component Radix thì đo lại theo cách đó;
+// thiếu 1 helper trong danh sách này sẽ kéo cả vendor-ui-lazy vào preload boot.
+const RADIX_ENTRY_CORE = new Set([
+  "primitive",
+  "react-arrow",
+  "react-checkbox",
+  "react-collection",
+  "react-compose-refs",
+  "react-context",
+  "react-dismissable-layer",
+  "react-id",
+  "react-label",
+  "react-popper",
+  "react-portal",
+  "react-presence",
+  "react-primitive",
+  "react-slot",
+  "react-toast",
+  "react-tooltip",
+  "react-use-callback-ref",
+  "react-use-controllable-state",
+  "react-use-escape-keydown",
+  "react-use-layout-effect",
+  "react-use-previous",
+  "react-use-size",
+  "react-visually-hidden",
+]);
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -40,12 +71,22 @@ export default defineConfig(({ mode }) => ({
           if (/[\\/]node_modules[\\/]@tanstack[\\/]react-query/.test(id)) {
             return "vendor-query";
           }
-          // UI kit + form stack: dùng bởi entry (auth/MainLayout) nên vốn đã
-          // nằm trong chunk đầu — tách riêng để deploy app-code KHÔNG bust
-          // cache ~30 gói ổn định này (an toàn với ghi chú recharts bên dưới:
-          // các gói này được import tĩnh từ entry, không phá lazy).
-          if (/[\\/]node_modules[\\/](@radix-ui|lucide-react|cmdk|vaul|embla-carousel|embla-carousel-react)[\\/]/.test(id)) {
-            return "vendor-ui";
+          // Radix tách 2 tầng — MainLayout là chunk LAZY nên phần lớn Radix
+          // không cần nằm trên critical path /login:
+          //   - vendor-ui-core: đúng các gói entry import tĩnh (danh sách đo
+          //     ở RADIX_ENTRY_CORE trên đầu file) — bị modulepreload lúc boot
+          //     nên phải giữ nhỏ.
+          //   - vendor-ui-lazy: phần @radix-ui còn lại + cmdk — vẫn gom 1
+          //     chunk ổn định để cache dài hạn giữa các lần deploy, nhưng chỉ
+          //     tải khi page lazy đầu tiên cần tới.
+          // lucide-react KHÔNG đưa vào manualChunks: icon để Rollup rải theo
+          // chunk sử dụng, tránh preload cả bộ icon toàn app lúc boot.
+          const rdx = id.match(/[\\/]node_modules[\\/]@radix-ui[\\/]([^\\/]+)[\\/]/);
+          if (rdx) {
+            return RADIX_ENTRY_CORE.has(rdx[1]) ? "vendor-ui-core" : "vendor-ui-lazy";
+          }
+          if (/[\\/]node_modules[\\/]cmdk[\\/]/.test(id)) {
+            return "vendor-ui-lazy";
           }
           if (/[\\/]node_modules[\\/](react-hook-form|@hookform|zod)[\\/]/.test(id)) {
             return "vendor-forms";

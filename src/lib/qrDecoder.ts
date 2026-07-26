@@ -4,8 +4,8 @@
 // 3 engine xếp theo thứ tự thử (mỗi engine có điểm mạnh riêng):
 //   1) Native BarcodeDetector — nhanh nhất, robust với ảnh thực tế. Chỉ có
 //      trên Chrome/Edge desktop + Chrome Android.
-//   2) jsQR multi-scale — nhanh, nhẹ; tốt với QR sạch, kém với pixel-grid
-//      noise (ảnh chụp màn hình) hoặc QR dense (version cao).
+//   2) jsQR (lazy-loaded) multi-scale — nhanh, nhẹ; tốt với QR sạch, kém với
+//      pixel-grid noise (ảnh chụp màn hình) hoặc QR dense (version cao).
 //   3) ZXing (lazy-loaded) — chậm hơn nhưng robust nhất: chịu được
 //      screen-photo noise, blur, perspective, dense QR. Bật TRY_HARDER.
 //
@@ -19,8 +19,6 @@
 //   - decodeQrFromFile(file)        : decode File → string | null
 //   - decodeQrFromRoi(source, roi)  : core pipeline trong 1 ROI (camera frame)
 // =============================================
-
-import jsQR from 'jsqr';
 
 type DecodeSource =
   | HTMLImageElement
@@ -107,15 +105,37 @@ function rasterize(
   return { canvas, imageData };
 }
 
-function tryJsQr(data: ImageData): string | null {
-  const r = jsQR(data.data, data.width, data.height, {
-    inversionAttempts: 'attemptBoth',
-  });
-  return r?.data || null;
+// Lazy-load jsqr (~46 kB gzip) — pipeline ưu tiên BarcodeDetector native nên
+// trên Chrome jsQR thường không chạy; đừng bắt chunk form khách trả phí parse.
+let jsqrPromise: Promise<typeof import('jsqr')> | null = null;
+function getJsQr() {
+  // Không memoize promise BỊ REJECT: chunk 404 (deploy mới) hay rớt mạng 1 lần
+  // mà giữ lại promise hỏng thì jsQR chết cả session dù mạng đã hồi.
+  if (!jsqrPromise) {
+    jsqrPromise = import('jsqr').catch((err) => {
+      jsqrPromise = null;
+      throw err;
+    });
+  }
+  return jsqrPromise;
+}
+
+async function tryJsQr(data: ImageData): Promise<string | null> {
+  try {
+    const jsQR = (await getJsQr()).default;
+    const r = jsQR(data.data, data.width, data.height, {
+      inversionAttempts: 'attemptBoth',
+    });
+    return r?.data || null;
+  } catch {
+    // Lỗi tải chunk jsqr → coi như tier này không decode được (giống tryZxing),
+    // pipeline vẫn chạy tiếp các tier khác thay vì abort + toast lỗi thô.
+    return null;
+  }
 }
 
 /** Otsu binarize + jsQR — cứu QR nền màu/contrast yếu. */
-function tryJsQrOtsu(data: ImageData): string | null {
+async function tryJsQrOtsu(data: ImageData): Promise<string | null> {
   const px = data.data;
   const n = data.width * data.height;
   const hist = new Uint32Array(256);
@@ -223,14 +243,14 @@ async function decodeQrCore(
     const r = rasterize(source, target, roi);
     if (!r) continue;
     cache.set(target, r);
-    const hit = tryJsQr(r.imageData);
+    const hit = await tryJsQr(r.imageData);
     if (hit) return hit;
   }
 
   // ---- jsQR + Otsu trên scale 1600 ----
   const otsuRaster = cache.get(1600) || rasterize(source, 1600, roi);
   if (otsuRaster) {
-    const hit = tryJsQrOtsu(otsuRaster.imageData);
+    const hit = await tryJsQrOtsu(otsuRaster.imageData);
     if (hit) return hit;
   }
 

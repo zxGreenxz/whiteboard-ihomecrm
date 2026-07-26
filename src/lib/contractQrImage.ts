@@ -4,8 +4,6 @@
 // Ảnh xuất ra = QR (trên) + nhãn "Phòng <mã>" (pill hồng) + tên toà (chữ tím).
 // =============================================
 
-import QRCode from 'qrcode';
-
 export const QR_SIZE = 480;
 
 export interface ContractQrLabels {
@@ -21,7 +19,10 @@ export function buildPublicContractUrl(publicCode: string): string {
 }
 
 /** Tạo ảnh QR thuần (PNG dataURL) cho 1 URL. */
-export function createQrDataUrl(url: string): Promise<string> {
+export async function createQrDataUrl(url: string): Promise<string> {
+  // Lazy-load qrcode (~12,6 kB gzip): QR chỉ sinh khi user bấm, đừng để lib
+  // lọt vào chunk danh sách hợp đồng import tĩnh file này.
+  const { default: QRCode } = await import('qrcode');
   return QRCode.toDataURL(url, {
     width: QR_SIZE,
     margin: 2,
