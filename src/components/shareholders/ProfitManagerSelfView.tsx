@@ -1,18 +1,11 @@
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell,
-} from "recharts";
-import { Wallet, HandCoins, Scale, TrendingUp } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { StatCard } from "./StatCard";
-import { colorAt, currentYear } from "./shareholderUtils";
+import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
+import { DonutBreakdown, MiniBars } from "./profitCharts";
+import { currentYear } from "./shareholderUtils";
 import { useMyShareBuildings } from "@/hooks/useShareholders";
 import {
   useProfitManagerAllocations,
@@ -61,114 +54,131 @@ export default function ProfitManagerSelfView({ me }: { me: ProfitManager }) {
         const amount = allocYear
           .filter((a) => monthOf(a.period_month) === m)
           .reduce((s, a) => s + a.amount, 0);
-        return { month: `T${m}`, amount };
+        return { label: `T${m}`, value: amount, empty: amount === 0 };
       }),
     [allocYear]
   );
+  const highlightMonth =
+    month !== ALL ? Number(month) - 1 : year === currentYear() ? new Date().getMonth() : undefined;
 
   const byBuilding = useMemo(() => {
     const m = new Map<string, number>();
     for (const a of allocScoped) m.set(a.building_id ?? "?", (m.get(a.building_id ?? "?") ?? 0) + a.amount);
     return Array.from(m.entries())
       .map(([bid, value]) => ({ name: buildingName(bid), value }))
-      .filter((x) => x.value !== 0);
+      .filter((x) => x.value !== 0)
+      .sort((a, b) => b.value - a.value);
   }, [allocScoped, buildings]);
 
+  const scopeNames = byBuilding.map((b) => b.name).slice(0, 3).join(" · ");
   const years = [currentYear() + 1, currentYear(), currentYear() - 1, currentYear() - 2];
+  const paidTotal = payouts.reduce((s, p) => s + p.total_amount, 0);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Lương điều hành của tôi — {me.name}</h2>
-        <p className="text-sm text-muted-foreground">Theo dõi lương điều hành được nhận, đã trả và số còn lại.</p>
-      </div>
+    <>
+      <ProfitHubSlot name="kpis">
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Quản lý điều hành</div>
+          <div className="ph-kpi__value">{me.name}</div>
+          <div className="ph-kpi__sub">{scopeNames ? `phụ trách ${scopeNames}` : "chưa gán nhà nào"}</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Được nhận (luỹ kế)</div>
+          <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(summary?.accrued ?? 0)}</div>
+          <div className="ph-kpi__sub">từ {allocations.length} kỳ chốt</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Đã trả / đã lấy</div>
+          <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(summary?.paid ?? 0)}</div>
+          <div className="ph-kpi__sub">{payouts.length} phiếu chi lương</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Còn lại</div>
+          <div className="ph-kpi__value">{formatCurrency(summary?.remaining ?? 0)}</div>
+          <div className="ph-kpi__sub ph-kpi__sub--mint">
+            Lương năm {year}: {formatCurrency(salaryThisYear)}
+          </div>
+        </div>
+      </ProfitHubSlot>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Được nhận (luỹ kế)" value={formatCurrency(summary?.accrued ?? 0)} icon={Wallet} tone="green" />
-        <StatCard label="Đã trả / đã lấy" value={formatCurrency(summary?.paid ?? 0)} icon={HandCoins} tone="amber" />
-        <StatCard label="Còn lại" value={formatCurrency(summary?.remaining ?? 0)} icon={Scale} tone={(summary?.remaining ?? 0) >= 0 ? "blue" : "red"} />
-        <StatCard label={`Lương năm ${year}`} value={formatCurrency(salaryThisYear)} icon={TrendingUp} tone="default" />
-      </div>
+      <div className="ph-stack">
+        <div className="ph-toolbar">
+          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+            <SelectTrigger className="ph-control" aria-label="Chọn năm"><SelectValue /></SelectTrigger>
+            <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger className="ph-control" aria-label="Chọn tháng"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Cả năm</SelectItem>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <SelectItem key={m} value={String(m)}>Tháng {m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-          <SelectTrigger className="w-[110px]"><SelectValue /></SelectTrigger>
-          <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
-        </Select>
-        <Select value={month} onValueChange={setMonth}>
-          <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Cả năm</SelectItem>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <SelectItem key={m} value={String(m)}>Tháng {m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        <div className="ph-grid-2">
+          <div className="ph-card ph-card__pad">
+            <div className="ph-card__title">Lương điều hành theo tháng — {year}</div>
+            <MiniBars
+              data={monthlyChart}
+              height={110}
+              tone="orange"
+              digits={1}
+              highlight={highlightMonth}
+              footnote="Đơn vị: triệu ₫ · theo quy tắc lương đang áp dụng cho từng nhà"
+            />
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Lương điều hành theo tháng — {year}</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={monthlyChart}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="amount" fill="#f97316" name="Được nhận" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          <div className="ph-card ph-card__pad">
+            <div className="ph-card__title">
+              Theo nhà — {year}{month === ALL ? "" : ` · T${month}`}
+            </div>
+            <DonutBreakdown data={byBuilding} caption={`NĂM ${year}`} />
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Theo nhà — {year}{month === ALL ? "" : ` · T${month}`}</CardTitle></CardHeader>
-          <CardContent>
-            {byBuilding.length === 0 ? (
-              <div className="h-[260px] grid place-items-center text-muted-foreground text-sm">Chưa có dữ liệu</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={byBuilding} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={(e: any) => e.name}>
-                    {byBuilding.map((_, i) => <Cell key={i} fill={colorAt(i)} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">Lịch sử đã trả / đã lấy</CardTitle></CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ngày</TableHead>
-                  <TableHead>Diễn giải</TableHead>
-                  <TableHead className="text-right">Số tiền</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+        <div className="ph-card">
+          <div className="ph-card__head">
+            <div className="ph-card__title">Lịch sử đã trả / đã lấy</div>
+          </div>
+          <div className="ph-tbl__scroll">
+            <table className="ph-tbl">
+              <thead>
+                <tr>
+                  <th style={{ width: 120 }}>Ngày</th>
+                  <th>Diễn giải</th>
+                  <th className="num" style={{ width: 140 }}>Số tiền</th>
+                </tr>
+              </thead>
+              <tbody>
                 {payouts.length === 0 && (
-                  <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">Chưa có khoản trả nào</TableCell></TableRow>
+                  <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--ph-ink-4)" }}>Chưa có khoản trả nào</td></tr>
                 )}
                 {payouts.map((d) => (
-                  <TableRow key={d.id}>
-                    <TableCell>{d.voucher_date}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{d.name}</TableCell>
-                    <TableCell className="text-right tabular-nums text-amber-600">{formatCurrency(d.total_amount)}</TableCell>
-                  </TableRow>
+                  <tr key={d.id}>
+                    <td>{d.voucher_date}</td>
+                    <td>{d.name}</td>
+                    <td className="num neg strong">{formatCurrency(d.total_amount)}</td>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+          {payouts.length > 0 && (
+            <div className="ph-card__foot">
+              <b>Tổng đã trả (luỹ kế)</b>
+              <b style={{ fontVariantNumeric: "tabular-nums", color: "var(--ph-amber-d)" }}>
+                {formatCurrency(paidTotal)}
+              </b>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }

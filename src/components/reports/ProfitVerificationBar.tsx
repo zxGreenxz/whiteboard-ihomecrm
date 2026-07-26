@@ -4,6 +4,7 @@ import { useProfitVerification } from "@/hooks/useProfitVerification";
 import {
   calculateProfitVerificationInvariant,
   resolveProfitVerificationVisualState,
+  type ProfitVerificationVisualState,
 } from "@/lib/profitVerification";
 
 /**
@@ -53,6 +54,9 @@ export interface ProfitVerificationBarProps {
   /** Báo trạng thái CÓ LỆCH (cờ đỏ) lên parent — mobile dùng để ẩn thanh, chỉ hiện
    *  chấm đỏ ở ô Lợi nhuận khi lệch. Truyền setState (identity ổn định). */
   onIssueChange?: (hasIssue: boolean) => void;
+  /** Trạng thái ĐẦY ĐỦ (gồm LOADING/WARNING) — desktop dựng chip kiểm chứng trên
+   *  dải hero xanh. Truyền callback identity ổn định (useCallback/setState). */
+  onStateChange?: (state: ProfitVerificationVisualState) => void;
 }
 
 export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
@@ -101,10 +105,13 @@ export function ProfitVerificationBar(props: ProfitVerificationBarProps) {
 
   // Cờ đỏ tổng hợp (cùng điều kiện icon AlertTriangle ở header) — báo lên parent.
   const hasIssue = visualState === "ERROR" || visualState === "UNAVAILABLE";
-  const { onIssueChange } = props;
+  const { onIssueChange, onStateChange } = props;
   useEffect(() => {
     onIssueChange?.(hasIssue);
   }, [hasIssue, onIssueChange]);
+  useEffect(() => {
+    onStateChange?.(visualState);
+  }, [visualState, onStateChange]);
 
   return (
     <div className="rounded-lg border bg-white text-[13px] leading-relaxed">

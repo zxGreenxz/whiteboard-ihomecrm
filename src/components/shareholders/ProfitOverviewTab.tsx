@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -8,21 +7,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from "recharts";
-import { TrendingUp, Wallet, HandCoins, Scale, Plus, Briefcase } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { StatCard } from "./StatCard";
-import { colorAt, currentYear } from "./shareholderUtils";
+import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
+import { DonutBreakdown, HBars, MiniBars } from "./profitCharts";
+import { currentYear } from "./shareholderUtils";
 import { useShareholders } from "@/hooks/useShareholders";
 import { useProfitManagers } from "@/hooks/useProfitManagers";
 import { useBuildings } from "@/hooks/useBuildings";
@@ -111,10 +99,17 @@ export default function ProfitOverviewTab() {
         const profit = allocYear
           .filter((a) => monthOf(a.period_month) === m)
           .reduce((s, a) => s + a.amount, 0);
-        return { month: `T${m}`, profit };
+        return { label: `T${m}`, value: profit, empty: profit === 0 };
       }),
     [allocYear]
   );
+  // Tô đậm tháng đang xem (bộ lọc tháng) hoặc tháng hiện tại khi xem cả năm.
+  const highlightMonth =
+    month !== ALL
+      ? Number(month) - 1
+      : year === currentYear()
+        ? new Date().getMonth()
+        : undefined;
 
   const byBuildingChart = useMemo(() => {
     const m = new Map<string, number>();
@@ -124,7 +119,8 @@ export default function ProfitOverviewTab() {
     }
     return [...m.entries()]
       .map(([bid, value]) => ({ name: buildingName(bid), value }))
-      .filter((x) => x.value !== 0);
+      .filter((x) => x.value !== 0)
+      .sort((a, b) => b.value - a.value);
   }, [allocScoped]);
 
   // ---- KPI: settlement luỹ kế, lọc theo cổ đông ----
@@ -166,239 +162,289 @@ export default function ProfitOverviewTab() {
     () =>
       shareholders
         .map((s) => ({ name: s.name, value: summary[s.id]?.remaining ?? 0 }))
-        .filter((x) => x.value !== 0),
+        .filter((x) => x.value !== 0)
+        .sort((a, b) => b.value - a.value),
     [shareholders, summary]
   );
+  const remainingHolders = remainingChart.length;
 
   const years = [currentYear() + 1, currentYear(), currentYear() - 1, currentYear() - 2];
   const shName = shId === ALL ? null : shareholders.find((s) => s.id === shId)?.name ?? null;
   const scopeLabel = shName ? ` · ${shName}` : "";
   const monthsToShow =
     month === ALL ? Array.from({ length: 12 }, (_, i) => i + 1) : [Number(month)];
+  const grandTotal = allocYear.reduce((s, a) => s + a.amount, 0);
+  const payRatio = totals.lockedProfit > 0 ? Math.round((totals.accrued / totals.lockedProfit) * 100) : null;
 
   return (
-    <div className="space-y-4">
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Tổng LN đã chốt (luỹ kế)" value={formatCurrency(totals.lockedProfit)} icon={TrendingUp} tone="blue" sub="Trước chia cổ đông" />
-        <StatCard label={shName ? `Được chia · ${shName}` : "Tổng được chia cổ đông"} value={formatCurrency(totals.accrued)} icon={Wallet} tone="green" />
-        <StatCard label="Đã ứng / đã chia" value={formatCurrency(totals.paid)} icon={HandCoins} tone="amber" />
-        <StatCard label="Còn phải trả" value={formatCurrency(totals.remaining)} icon={Scale} tone={totals.remaining >= 0 ? "default" : "red"} />
-      </div>
+    <>
+      <ProfitHubSlot name="kpis">
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Tổng LN đã chốt (luỹ kế)</div>
+          <div className="ph-kpi__value">{formatCurrency(totals.lockedProfit)}</div>
+          <div className="ph-kpi__sub">trước chia cổ đông</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">
+            {shName ? `Được chia · ${shName}` : "Tổng được chia cổ đông"}
+          </div>
+          <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(totals.accrued)}</div>
+          <div className="ph-kpi__sub">
+            {payRatio !== null ? `${payRatio}% LN đã chốt` : "theo tỷ lệ từng nhà"}
+          </div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Đã ứng / đã chia</div>
+          <div className="ph-kpi__value ph-kpi__value--gold">{formatCurrency(totals.paid)}</div>
+          <div className="ph-kpi__sub">đã chi qua phiếu</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Còn phải trả</div>
+          <div className="ph-kpi__value">{formatCurrency(totals.remaining)}</div>
+          <div className="ph-kpi__sub ph-kpi__sub--mint">{remainingHolders} cổ đông còn số dư</div>
+        </div>
+      </ProfitHubSlot>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-          <SelectTrigger className="w-[110px]"><SelectValue /></SelectTrigger>
-          <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
-        </Select>
-        <Select value={month} onValueChange={setMonth}>
-          <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Cả năm</SelectItem>
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <SelectItem key={m} value={String(m)}>Tháng {m}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={shId} onValueChange={setShId}>
-          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Cổ đông" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Tất cả cổ đông</SelectItem>
-            {shareholders.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button className="ml-auto" onClick={() => { setDistShareholder(shId === ALL ? null : shId); setDistOpen(true); }}>
-          <Plus className="h-4 w-4 mr-2" /> Chi lợi nhuận
-        </Button>
-      </div>
+      <div className="ph-stack">
+        <div className="ph-toolbar">
+          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+            <SelectTrigger className="ph-control" aria-label="Chọn năm"><SelectValue /></SelectTrigger>
+            <SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>Năm {y}</SelectItem>)}</SelectContent>
+          </Select>
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger className="ph-control" aria-label="Chọn tháng"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Cả năm</SelectItem>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <SelectItem key={m} value={String(m)}>Tháng {m}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={shId} onValueChange={setShId}>
+            <SelectTrigger className="ph-control" aria-label="Chọn cổ đông">
+              <SelectValue placeholder="Cổ đông" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Tất cả cổ đông</SelectItem>
+              {shareholders.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button
+            className="ph-btn-primary ml-auto"
+            onClick={() => { setDistShareholder(shId === ALL ? null : shId); setDistOpen(true); }}
+          >
+            ＋ Chi lợi nhuận
+          </Button>
+        </div>
 
-      {/* Charts (số ĐƯỢC CHIA cho cổ đông) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">LN được chia theo tháng — {year}{scopeLabel}</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={monthlyChart}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                <Bar dataKey="profit" fill="#3b82f6" name="Được chia" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+        {/* Biểu đồ (số ĐƯỢC CHIA cho cổ đông) */}
+        <div className="ph-grid-2">
+          <div className="ph-card ph-card__pad">
+            <div className="ph-card__title">LN được chia theo tháng — {year}{scopeLabel}</div>
+            <MiniBars
+              data={monthlyChart}
+              highlight={highlightMonth}
+              footnote="Đơn vị: triệu ₫ · số ĐƯỢC CHIA cho cổ đông (đã trừ lương điều hành)"
+            />
+          </div>
 
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Cơ cấu LN được chia theo nhà — {year}{month === ALL ? "" : ` · T${month}`}{scopeLabel}</CardTitle></CardHeader>
-          <CardContent>
-            {byBuildingChart.length === 0 ? (
-              <div className="h-[260px] grid place-items-center text-muted-foreground text-sm">Chưa có dữ liệu</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={byBuildingChart} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={(e: any) => e.name}>
-                    {byBuildingChart.map((_, i) => <Cell key={i} fill={colorAt(i)} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          <div className="ph-card ph-card__pad">
+            <div className="ph-card__title">
+              Cơ cấu LN được chia theo nhà — {year}{month === ALL ? "" : ` · T${month}`}{scopeLabel}
+            </div>
+            <DonutBreakdown data={byBuildingChart} caption="ĐƯỢC CHIA" />
+          </div>
+        </div>
 
-      {/* Ma trận Nhà × Tháng (số ĐƯỢC CHIA) */}
-      <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base">LN được chia Nhà × Tháng — {year}{scopeLabel}</CardTitle></CardHeader>
-        <CardContent>
+        {/* Ma trận Nhà × Tháng (số ĐƯỢC CHIA) */}
+        <div className="ph-card">
+          <div className="ph-card__head">
+            <div className="ph-card__title">LN được chia Nhà × Tháng — {year}{scopeLabel}</div>
+          </div>
           {buildingIdsInYear.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chưa có phần chia cho cổ đông trong {month === ALL ? `năm ${year}` : `tháng ${month}/${year}`}.</p>
+            <div className="ph-empty">
+              Chưa có phần chia cho cổ đông trong {month === ALL ? `năm ${year}` : `tháng ${month}/${year}`}.
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 bg-background z-10">Tháng</TableHead>
+            <div className="ph-tbl__scroll">
+              <table className="ph-tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 70 }}>Tháng</th>
                     {buildingIdsInYear.map((bid) => (
-                      <TableHead key={bid} className="text-right min-w-[110px]">{buildingName(bid)}</TableHead>
+                      <th key={bid} className="num">{buildingName(bid)}</th>
                     ))}
-                    <TableHead className="text-right font-semibold">Tổng chia</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+                    <th className="num">Tổng chia</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {monthsToShow.map((m) => {
                     const rowTotal = buildingIdsInYear.reduce((s, bid) => s + (cell(bid, m) ?? 0), 0);
                     if (rowTotal === 0 && !buildingIdsInYear.some((bid) => cell(bid, m) != null)) return null;
                     return (
-                      <TableRow key={m}>
-                        <TableCell className="font-medium sticky left-0 bg-background z-10">T{m}</TableCell>
+                      <tr key={m} className={m === (highlightMonth ?? -1) + 1 ? "is-current" : undefined}>
+                        <td className="name">T{m}</td>
                         {buildingIdsInYear.map((bid) => {
                           const v = cell(bid, m);
                           return (
-                            <TableCell key={bid} className="text-right tabular-nums">
-                              {v == null ? <span className="text-muted-foreground">—</span> : formatCurrency(v)}
-                            </TableCell>
+                            <td key={bid} className="num">
+                              {v == null ? <span style={{ color: "var(--ph-ink-4)" }}>—</span> : formatCurrency(v)}
+                            </td>
                           );
                         })}
-                        <TableCell className="text-right font-semibold tabular-nums">{formatCurrency(rowTotal)}</TableCell>
-                      </TableRow>
+                        <td className="num strong">{formatCurrency(rowTotal)}</td>
+                      </tr>
                     );
                   })}
-                </TableBody>
-              </Table>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>Σ {year}</td>
+                    {buildingIdsInYear.map((bid) => (
+                      <td key={bid} className="num">
+                        {formatCurrency(
+                          monthsToShow.reduce((s, m) => s + (cell(bid, m) ?? 0), 0)
+                        )}
+                      </td>
+                    ))}
+                    <td className="num" style={{ fontWeight: 800, color: "var(--ph-green-d)" }}>
+                      {formatCurrency(grandTotal)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Theo cổ đông */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Theo cổ đông (luỹ kế)</CardTitle></CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Cổ đông</TableHead>
-                    <TableHead className="text-right">Được chia</TableHead>
-                    <TableHead className="text-right">Đã ứng</TableHead>
-                    <TableHead className="text-right">Còn lại</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+        {/* Theo cổ đông */}
+        <div className="ph-grid-2-wide">
+          <div className="ph-card">
+            <div className="ph-card__head">
+              <div className="ph-card__title">Theo cổ đông (luỹ kế)</div>
+            </div>
+            <div className="ph-tbl__scroll">
+              <table className="ph-tbl">
+                <thead>
+                  <tr>
+                    <th>Cổ đông</th>
+                    <th className="num">Được chia</th>
+                    <th className="num">Đã ứng</th>
+                    <th className="num">Còn lại</th>
+                    <th style={{ width: 58 }} />
+                  </tr>
+                </thead>
+                <tbody>
                   {shareholders.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Chưa có cổ đông</TableCell></TableRow>
+                    <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--ph-ink-4)" }}>Chưa có cổ đông</td></tr>
                   )}
                   {shareholders.map((s) => {
                     const r = summary[s.id] ?? { accrued: 0, paid: 0, remaining: 0 };
                     const active = shId !== ALL && shId === s.id;
                     return (
-                      <TableRow key={s.id} className={active ? "bg-emerald-50/60" : undefined}>
-                        <TableCell className="font-medium">
-                          <button type="button" className="hover:underline" onClick={() => setShId(active ? ALL : s.id)}>{s.name}</button>
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-emerald-600">{formatCurrency(r.accrued)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-amber-600">{formatCurrency(r.paid)}</TableCell>
-                        <TableCell className={`text-right tabular-nums font-semibold ${r.remaining < 0 ? "text-red-600" : ""}`}>{formatCurrency(r.remaining)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => { setDistShareholder(s.id); setDistOpen(true); }}>Chi</Button>
-                        </TableCell>
-                      </TableRow>
+                      <tr key={s.id} className={active ? "is-current" : undefined}>
+                        <td className="name">
+                          <button
+                            type="button"
+                            className="ph-row__link"
+                            onClick={() => setShId(active ? ALL : s.id)}
+                          >
+                            {s.name}
+                          </button>
+                        </td>
+                        <td className="num pos">{formatCurrency(r.accrued)}</td>
+                        <td className="num neg">{formatCurrency(r.paid)}</td>
+                        <td className={`num strong${r.remaining < 0 ? " bad" : ""}`}>{formatCurrency(r.remaining)}</td>
+                        <td className="num">
+                          <Button
+                            className="ph-mini-btn"
+                            onClick={() => { setDistShareholder(s.id); setDistOpen(true); }}
+                          >
+                            Chi
+                          </Button>
+                        </td>
+                      </tr>
                     );
                   })}
-                </TableBody>
-              </Table>
+                </tbody>
+                {shareholders.length > 0 && (
+                  <tfoot>
+                    <tr>
+                      <td>Tổng</td>
+                      <td className="num pos">{formatCurrency(totals.accrued)}</td>
+                      <td className="num neg">{formatCurrency(totals.paid)}</td>
+                      <td className="num" style={{ fontWeight: 800 }}>{formatCurrency(totals.remaining)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Còn lại theo cổ đông</CardTitle></CardHeader>
-          <CardContent>
-            {remainingChart.length === 0 ? (
-              <div className="h-[260px] grid place-items-center text-muted-foreground text-sm">Chưa có dữ liệu</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={remainingChart} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1_000_000).toFixed(0)}M`} />
-                  <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={80} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Bar dataKey="value" fill="#10b981" name="Còn lại" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          <div className="ph-card ph-card__pad">
+            <div className="ph-card__title">Còn lại theo cổ đông</div>
+            <HBars data={remainingChart} />
+            <div className="ph-hint">Số còn phải trả = được chia luỹ kế − đã ứng/đã chia</div>
+          </div>
+        </div>
 
-      {/* Lương điều hành (luỹ kế) */}
-      {managers.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Briefcase className="h-4 w-4 text-orange-600" /> Lương điều hành (luỹ kế)
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={() => { setPayoutManager(null); setPayoutOpen(true); }}>
-              <Plus className="h-4 w-4 mr-1" /> Chi lương điều hành
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Quản lý</TableHead>
-                    <TableHead className="text-right">Được nhận</TableHead>
-                    <TableHead className="text-right">Đã trả</TableHead>
-                    <TableHead className="text-right">Còn lại</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+        {/* Lương điều hành (luỹ kế) */}
+        {managers.length > 0 && (
+          <div className="ph-card">
+            <div className="ph-card__head">
+              <div className="ph-card__title">Lương điều hành (luỹ kế)</div>
+              <div className="ph-card__push">
+                <Button
+                  className="ph-control ph-control--strong"
+                  onClick={() => { setPayoutManager(null); setPayoutOpen(true); }}
+                >
+                  ＋ Chi lương điều hành
+                </Button>
+              </div>
+            </div>
+            <div className="ph-tbl__scroll">
+              <table className="ph-tbl">
+                <thead>
+                  <tr>
+                    <th>Quản lý</th>
+                    <th className="num">Được nhận</th>
+                    <th className="num">Đã trả</th>
+                    <th className="num">Còn lại</th>
+                    <th style={{ width: 58 }} />
+                  </tr>
+                </thead>
+                <tbody>
                   {managers.map((m) => {
                     const r = managerSummary[m.id] ?? { accrued: 0, paid: 0, remaining: 0 };
                     return (
-                      <TableRow key={m.id}>
-                        <TableCell className="font-medium">{m.name}</TableCell>
-                        <TableCell className="text-right tabular-nums text-orange-600">{formatCurrency(r.accrued)}</TableCell>
-                        <TableCell className="text-right tabular-nums text-amber-600">{formatCurrency(r.paid)}</TableCell>
-                        <TableCell className={`text-right tabular-nums font-semibold ${r.remaining < 0 ? "text-red-600" : ""}`}>{formatCurrency(r.remaining)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => { setPayoutManager(m.id); setPayoutOpen(true); }}>Chi</Button>
-                        </TableCell>
-                      </TableRow>
+                      <tr key={m.id}>
+                        <td className="name">{m.name}</td>
+                        <td className="num exp">{formatCurrency(r.accrued)}</td>
+                        <td className="num neg">{formatCurrency(r.paid)}</td>
+                        <td className={`num strong${r.remaining < 0 ? " bad" : r.remaining === 0 ? " pos" : ""}`}>
+                          {formatCurrency(r.remaining)}
+                        </td>
+                        <td className="num">
+                          <Button
+                            className="ph-mini-btn"
+                            onClick={() => { setPayoutManager(m.id); setPayoutOpen(true); }}
+                          >
+                            Chi
+                          </Button>
+                        </td>
+                      </tr>
                     );
                   })}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
+      </div>
 
       <ProfitDistributeDialog
         open={distOpen}
@@ -412,6 +458,6 @@ export default function ProfitOverviewTab() {
         managers={managers}
         defaultManagerId={payoutManager}
       />
-    </div>
+    </>
   );
 }

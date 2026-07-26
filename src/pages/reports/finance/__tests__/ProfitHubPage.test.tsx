@@ -66,14 +66,28 @@ vi.mock("@/components/layout/MainLayout", () => ({
     createElement("main", null, children),
 }));
 
-vi.mock("@/components/ui/tabs", () => ({
-  Tabs: ({ children }: { children?: ReactNode }) =>
+// Khung hero + tab pill (Radix Tabs) chỉ mount tab ĐANG mở. Test này soi "trang
+// dựng ra những tab nào theo quyền" nên mock khung để mọi panel cùng render, kèm
+// nhãn tab để khẳng định thứ tự/label.
+vi.mock("@/pages/reports/finance/ProfitHubShell", () => ({
+  default: ({
+    tabs,
+    children,
+  }: {
+    tabs?: { value: string; label: string }[];
+    children?: ReactNode;
+  }) =>
+    createElement(
+      Fragment,
+      null,
+      (tabs ?? []).map((t) =>
+        createElement("span", { key: t.value, "data-tab": t.value }, t.label),
+      ),
+      children,
+    ),
+  ProfitHubTabPanel: ({ children }: { children?: ReactNode }) =>
     createElement(Fragment, null, children),
-  TabsList: ({ children }: { children?: ReactNode }) =>
-    createElement(Fragment, null, children),
-  TabsTrigger: ({ children }: { children?: ReactNode }) =>
-    createElement("span", null, children),
-  TabsContent: ({ children }: { children?: ReactNode }) =>
+  ProfitHubSlot: ({ children }: { children?: ReactNode }) =>
     createElement(Fragment, null, children),
 }));
 

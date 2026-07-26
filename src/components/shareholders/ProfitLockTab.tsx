@@ -14,8 +14,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
 import {
   Select,
   SelectContent,
@@ -511,11 +511,72 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   }, [rows]);
   const years = [currentYear() + 1, currentYear(), currentYear() - 1, currentYear() - 2];
 
+  // ---- Dải KPI trên hero (thiết kế Claude Design tab "Chốt LN tháng") ----
+  const lockedRowCount = rows.filter((row) => row.current_snapshot?.status === "LOCKED").length;
+  const organizationName =
+    organizations.find((o) => o.organization_id === organizationId)?.organization_name ?? "—";
+  const residualNote = rows
+    .filter((row) => hasUnallocatedProfitResidual(row.unallocated_profit))
+    .map(
+      (row) =>
+        `${dispositionLabel(
+          row.unallocated_disposition ?? row.current_snapshot?.unallocated_disposition ?? null,
+        )} · ${row.building_name}`,
+    );
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+    <>
+      <ProfitHubSlot name="kpis">
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Kỳ chốt</div>
+          <div className="ph-kpi__row" style={{ marginTop: 3 }}>
+            <div className="ph-kpi__value" style={{ marginTop: 0 }}>{periodToLabel(period)}</div>
+            {hasAnyLockedSnapshot && !hasUnlocked ? (
+              <div className="ph-pill-mint">✓ Đã chốt toàn bộ</div>
+            ) : hasAnyLockedSnapshot ? (
+              <div className="ph-state ph-state--lg ph-state--warn">Chốt một phần</div>
+            ) : (
+              <div className="ph-state ph-state--lg ph-state--muted">Chưa chốt</div>
+            )}
+            {preview?.is_stale && <div className="ph-state ph-state--lg ph-state--danger">Đã lệch nguồn</div>}
+          </div>
+          <div className="ph-kpi__sub">
+            {lockedRowCount}/{rows.length} nhà · {organizationName}
+          </div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Tổng quỹ sau lương</div>
+          <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(totalDistributable)}</div>
+          <div className="ph-kpi__sub">LN tự tính + điều chỉnh − lương ĐH</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Đã phân bổ cổ đông</div>
+          <div className="ph-kpi__value">{formatCurrency(totalShareholderAllocated)}</div>
+          <div className="ph-kpi__sub">theo tỷ lệ từng nhà</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Chưa phân bổ</div>
+          <div className={`ph-kpi__value${hasAnyResidual ? " ph-kpi__value--gold" : " ph-kpi__value--mint"}`}>
+            {formatCurrency(totalUnallocated)}
+          </div>
+          <div className="ph-kpi__sub" title={residualNote.join(" · ")}>
+            {residualNote.length > 0 ? residualNote[0] : "Đã phân bổ hết"}
+            {residualNote.length > 1 ? ` (+${residualNote.length - 1})` : ""}
+          </div>
+        </div>
+        <div className="ph-kpi" style={{ marginLeft: "auto", textAlign: "right" }}>
+          <div className="ph-kpi__label">{canLock ? "Source hash" : "Snapshot state hash"}</div>
+          <div className="ph-hash" title={displayedHash}>{shortHash(displayedHash)}</div>
+        </div>
+      </ProfitHubSlot>
+
+      <div className="ph-stack">
+      <div className="ph-toolbar">
         <Select value={organizationId} onValueChange={setOrganizationId}>
-          <SelectTrigger className="min-w-[220px]">
+          <SelectTrigger className="ph-control" aria-label="Chọn tổ chức">
             <SelectValue placeholder="Chọn tổ chức" />
           </SelectTrigger>
           <SelectContent>
@@ -530,7 +591,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </SelectContent>
         </Select>
         <Select value={String(month)} onValueChange={(value) => setMonth(Number(value))}>
-          <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="ph-control" aria-label="Chọn tháng"><SelectValue /></SelectTrigger>
           <SelectContent>
             {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
               <SelectItem key={value} value={String(value)}>Tháng {value}</SelectItem>
@@ -538,7 +599,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </SelectContent>
         </Select>
         <Select value={String(year)} onValueChange={(value) => setYear(Number(value))}>
-          <SelectTrigger className="w-[110px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="ph-control" aria-label="Chọn năm"><SelectValue /></SelectTrigger>
           <SelectContent>
             {years.map((value) => (
               <SelectItem key={value} value={String(value)}>{value}</SelectItem>
@@ -546,10 +607,9 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </SelectContent>
         </Select>
 
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ph-toolbar__push" style={{ gap: 8 }}>
           <Button
-            variant="outline"
-            size="sm"
+            className="ph-control ph-control--strong"
             onClick={() => {
               void stateQuery.refetch();
               if (canLock) void previewQuery.refetch();
@@ -562,20 +622,24 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               resetMutation.isPending
             }
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${previewQuery.isFetching || stateQuery.isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${previewQuery.isFetching || stateQuery.isFetching ? "animate-spin" : ""}`} />
             Tải lại số nguồn
           </Button>
 
           {canReclose && canLock && !recloseMode && (
-            <Button onClick={() => setRecloseMode(true)} disabled={rows.length === 0}>
-              <RefreshCw className="mr-2 h-4 w-4" />
+            <Button
+              className="ph-btn-primary"
+              onClick={() => setRecloseMode(true)}
+              disabled={rows.length === 0}
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
               Chốt lại tháng {periodToLabel(period)}
             </Button>
           )}
 
           {recloseMode && (
             <Button
-              variant="outline"
+              className="ph-control ph-control--strong"
               onClick={() => {
                 setRecloseMode(false);
                 setOverallReason("");
@@ -589,6 +653,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
 
           {isEditing && (
             <Button
+              className="ph-btn-primary"
               onClick={openCloseConfirmation}
               disabled={
                 rows.length === 0 ||
@@ -600,7 +665,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 closeMutation.isPending
               }
             >
-              <Lock className="mr-2 h-4 w-4" />
+              <Lock className="mr-1.5 h-3.5 w-3.5" />
               {recloseMode
                 ? "Xác nhận chốt lại"
                 : `Chốt tháng ${periodToLabel(period)}`}
@@ -609,7 +674,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
 
           {hasSnapshots && canUnlock && (
             <Button
-              variant="destructive"
+              className="ph-control ph-control--danger"
               onClick={() => {
                 if (!state?.state_hash || state.snapshot_ids.length === 0) return;
                 setResetGuard({
@@ -627,7 +692,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 closeMutation.isPending
               }
             >
-              <RotateCcw className="mr-2 h-4 w-4" />
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
               Đặt lại tháng
             </Button>
           )}
@@ -706,35 +771,31 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader className="space-y-2 pb-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-base">Lợi nhuận theo nhà — {periodToLabel(period)}</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Công thức: <strong>LN tự tính + Điều chỉnh − Lương điều hành = Quỹ sau lương</strong>;
-                quỹ này được tách thành phần đã phân bổ cho cổ đông và phần chưa phân bổ.
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="flex items-center justify-end gap-2">
-                {hasAnyLockedSnapshot && !hasUnlocked ? (
-                  <Badge className="bg-emerald-600">Đã chốt toàn bộ</Badge>
-                ) : hasAnyLockedSnapshot ? (
-                  <Badge variant="secondary">Chốt một phần</Badge>
-                ) : (
-                  <Badge variant="outline">Chưa chốt</Badge>
-                )}
-                {preview?.is_stale && <Badge variant="destructive">Đã lệch nguồn</Badge>}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {canLock ? "Source hash" : "Snapshot state hash"}: <span className="font-mono" title={displayedHash}>{shortHash(displayedHash)}</span>
-              </p>
+      <div className="ph-card">
+        <div className="ph-card__head" style={{ alignItems: "flex-start" }}>
+          <div>
+            <div className="ph-card__title">Lợi nhuận theo nhà — {periodToLabel(period)}</div>
+            <div className="ph-card__note">
+              Công thức: <b>LN tự tính + Điều chỉnh − Lương điều hành = Quỹ sau lương</b> → tách phần
+              đã phân bổ cổ đông và phần chưa phân bổ.
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
+          <div className="ph-card__push">
+            {hasAnyLockedSnapshot && !hasUnlocked ? (
+              <span className="ph-state ph-state--lg">Đã chốt toàn bộ</span>
+            ) : hasAnyLockedSnapshot ? (
+              <span className="ph-state ph-state--lg ph-state--warn">Chốt một phần</span>
+            ) : (
+              <span className="ph-state ph-state--lg ph-state--muted">Chưa chốt</span>
+            )}
+            {preview?.is_stale && <span className="ph-state ph-state--lg ph-state--danger">Đã lệch nguồn</span>}
+            <span style={{ fontFamily: "var(--ph-mono)", fontSize: 10.5, color: "var(--ph-ink-4)" }}>
+              hash {shortHash(displayedHash)}
+            </span>
+          </div>
+        </div>
+        <div>
+          <div className="ph-tblwrap">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -988,79 +1049,68 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </div>
 
           {rows.length > 0 && (
-            <div className="mt-4 grid gap-3 rounded-lg border bg-muted/30 px-4 py-3 sm:grid-cols-3">
+            <div className="ph-grid-3" style={{ borderTop: "1px solid var(--ph-line)", background: "#FAFBFA", padding: "12px 18px" }}>
               <div>
-                <p className="text-xs text-muted-foreground">Tổng quỹ sau lương</p>
-                <p className={`text-lg font-semibold tabular-nums ${totalDistributable < 0 ? "text-red-600" : ""}`}>
+                <div style={{ fontSize: 10.5, color: "var(--ph-ink-4)", fontWeight: 600 }}>Tổng quỹ sau lương</div>
+                <div className={`ph-lock-total${totalDistributable < 0 ? " bad" : ""}`}>
                   {formatCurrency(totalDistributable)}
-                </p>
+                </div>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Đã phân bổ cho cổ đông</p>
-                <p className="text-lg font-semibold tabular-nums">
-                  {formatCurrency(totalShareholderAllocated)}
-                </p>
+                <div style={{ fontSize: 10.5, color: "var(--ph-ink-4)", fontWeight: 600 }}>Đã phân bổ cho cổ đông</div>
+                <div className="ph-lock-total">{formatCurrency(totalShareholderAllocated)}</div>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Chưa phân bổ</p>
-                <p className={`text-lg font-semibold tabular-nums ${hasAnyResidual ? "text-amber-700" : "text-emerald-700"}`}>
+                <div style={{ fontSize: 10.5, color: "var(--ph-ink-4)", fontWeight: 600 }}>Chưa phân bổ</div>
+                <div className={`ph-lock-total${hasAnyResidual ? " warn" : " ok"}`}>
                   {formatCurrency(totalUnallocated)}
-                </p>
+                </div>
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {managerTotals.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Lương điều hành theo preview server</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="ph-grid-2-lock">
+        {managerTotals.length > 0 && (
+          <div className="ph-card ph-card__pad">
+            <div className="ph-card__title">Lương điều hành theo preview</div>
+            <div className="ph-grid-2" style={{ marginTop: 12, gap: 10 }}>
               {managerTotals.map((manager) => (
-                <div key={manager.id} className="rounded-lg border p-3">
-                  <p className="truncate text-xs text-muted-foreground">{manager.name}</p>
-                  <p className="font-semibold tabular-nums text-orange-600">
+                <div key={manager.id} className="ph-tile">
+                  <div className="ph-tile__label">{manager.name}</div>
+                  <div className="ph-tile__value ph-tile__value--expense">
                     {formatCurrency(manager.amount)}
-                  </p>
+                  </div>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
 
-      {shareholderTotals.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Xem trước chia cho cổ đông</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {shareholderTotals.length > 0 && (
+          <div className="ph-card ph-card__pad">
+            <div className="ph-card__title">Xem trước chia cho cổ đông — {periodToLabel(period)}</div>
+            <div className="ph-grid-4" style={{ marginTop: 12 }}>
               {shareholderTotals.map((shareholder) => (
-                <div key={shareholder.id} className="rounded-lg border p-3">
-                  <p className="truncate text-xs text-muted-foreground">{shareholder.name}</p>
-                  <p className="font-semibold tabular-nums">
-                    {formatCurrency(shareholder.amount)}
-                  </p>
+                <div key={shareholder.id} className="ph-tile">
+                  <div className="ph-tile__label">{shareholder.name}</div>
+                  <div className="ph-tile__value">{formatCurrency(shareholder.amount)}</div>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
+      </div>
 
       {isEditing && rows.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              {recloseMode ? "Lý do chốt lại" : "Ghi chú lần chốt"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="ph-card ph-card__pad">
+          <div className="ph-card__title">
+            {recloseMode ? "Lý do chốt lại" : "Ghi chú lần chốt"}
+          </div>
+          <div>
             <Textarea
+              className="ph-note-box"
               value={overallReason}
               onChange={(event) => {
                 setOverallReason(event.target.value);
@@ -1078,9 +1128,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             {overallReasonError && (
               <p className="mt-1 text-xs text-destructive">{overallReasonError}</p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
+      </div>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
@@ -1159,6 +1210,6 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

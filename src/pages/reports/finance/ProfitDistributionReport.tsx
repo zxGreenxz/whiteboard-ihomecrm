@@ -1,6 +1,10 @@
-import { useState, useMemo, type ReactNode } from "react";
-import { DollarSign, LayoutGrid, Plus, Settings2 } from "lucide-react";
+import { useCallback, useState, useMemo, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, LayoutGrid, Plus, Settings2 } from "lucide-react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
+import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
+import { useFaMonthlyPnl } from "@/hooks/useFinancialAnalysis";
+import { toMillions } from "@/components/shareholders/profitCharts";
+import type { ProfitVerificationVisualState } from "@/lib/profitVerification";
 import { usePersistedState } from "@/hooks/usePersistedState";
 import ProfitDistributionMobile from "./ProfitDistributionMobile";
 import {
@@ -33,9 +37,6 @@ import {
 } from "@/lib/fixedExpenseCategories";
 import { useBuildings } from "@/hooks/useBuildings";
 import { BuildingFilterSelect } from "@/components/buildings/BuildingFilterSelect";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -45,7 +46,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
 
 
@@ -167,27 +168,14 @@ const COL_VALUE: Record<ColKey, (r: DisplayRow) => string> = {
   phan_loai: (r) => r.typeName,
 };
 
-const StatCard = ({
-  label,
-  value,
-  bg,
-  ring,
-}: {
-  label: string;
-  value: number;
-  bg: string;
-  ring: string;
-}) => (
-  <div className="flex-1 rounded-lg border bg-card p-4 flex items-center justify-between">
-    <div className={`h-12 w-12 rounded-full ${ring} flex items-center justify-center ${bg}`}>
-      <DollarSign className="h-6 w-6" />
-    </div>
-    <div className="text-right">
-      <div className="text-2xl font-bold">{formatCurrency(value)}</div>
-      <div className="text-sm text-muted-foreground">{label}</div>
-    </div>
-  </div>
-);
+// Mã 2 ký tự cho ô đầu dòng CHI (mock: TN / ĐI / NC / IN / VS…): chữ cái đầu của
+// 2 từ đầu, hoặc 2 chữ cái đầu nếu hạng mục chỉ có 1 từ.
+const typeCode = (name: string): string => {
+  const words = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "—";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+};
 
 // Bản nội dung (không MainLayout) — render trong tab "Phân bổ lợi nhuận" của ProfitHubPage.
 // Rẽ nhánh desktop ↔ mobile bằng usePhoneViewport (khởi tạo đồng bộ → không nháy bảng).
@@ -523,7 +511,9 @@ function ProfitDistributionDesktop() {
         all.push({
           key: `missing-${note.roomId}`,
           monthLabel,
-          description: "⚠️ Chưa có hoá đơn tháng này (còn hợp đồng)",
+          // Nhãn "Còn hợp đồng" nay là badge đỏ riêng bên cạnh (xem renderPanel)
+          // nên mô tả không lặp lại nữa.
+          description: "Chưa có hoá đơn tháng này",
           buildingName: note.buildingName,
           roomName: note.roomName,
           roomId: note.roomId,
@@ -773,7 +763,6 @@ function ProfitDistributionDesktop() {
   const resetCols = () => setColOverrides({});
 
   const visibleToggleCols = TOGGLE_COLUMNS.filter((c) => visible(c.key));
-  const colCount = visibleToggleCols.length + 2; // Mô tả + cột số tiền
 
   // Bộ lọc "Loại" ghim 1 bên → ẩn hẳn panel còn lại.
   const showThu = voucherType !== "EXPENSE";
@@ -789,114 +778,183 @@ function ProfitDistributionDesktop() {
     return out;
   }, []);
 
+  // Nút ◀ ▶ trên dải hero — lùi/tiến 1 tháng (không giới hạn 24 tháng như dropdown).
+  const stepMonth = (delta: number) => setMonthStr(format(addMonths(monthDate, delta), "MM-yyyy"));
+
+  // Cột LN 6 tháng gần nhất trên hero. 5 tháng trước lấy từ RPC fa_monthly_pnl
+  // (aggregate server, không dính cap 1000); tháng ĐANG XEM dùng chính số của
+  // trang để cột cao nhất luôn khớp con số Lợi nhuận in ngay bên cạnh.
+  const { data: faMonths = [] } = useFaMonthlyPnl(
+    format(startOfMonth(addMonths(monthDate, -5)), "yyyy-MM-dd"),
+    endDate,
+    buildingFilter,
+    accrualMode,
+  );
+  const profitSeries = useMemo(() => {
+    const byMonth = new Map<string, number>();
+    for (const r of faMonths) {
+      const k = String(r.month).slice(0, 7);
+      byMonth.set(k, (byMonth.get(k) ?? 0) + r.net);
+    }
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = addMonths(monthDate, i - 5);
+      const current = i === 5;
+      return {
+        label: `T${d.getMonth() + 1}`,
+        value: current ? displayDiff : byMonth.get(format(d, "yyyy-MM")) ?? 0,
+        current,
+      };
+    });
+  }, [faMonths, monthDate, displayDiff]);
+  const prevMonthProfit = profitSeries[4]?.value ?? 0;
+  const momPct =
+    prevMonthProfit !== 0 ? ((displayDiff - prevMonthProfit) / Math.abs(prevMonthProfit)) * 100 : null;
+  const prevMonthLabel = format(addMonths(monthDate, -1), "MM/yyyy");
+  const sparkMax = Math.max(1, ...profitSeries.map((p) => Math.abs(p.value)));
+
+  // Số đếm cho dòng chip cảnh báo trên hero.
+  const incomeCount = shownIncomeRows.filter((r) => !r.isNote).length;
+  const expenseCount = displayExpenseRows.filter((r) => !r.isNote).length;
+  const buildingCount = useMemo(() => {
+    const names = new Set<string>();
+    for (const r of [...incomeRows, ...expenseRows]) if (r.buildingName) names.add(r.buildingName);
+    return names.size;
+  }, [incomeRows, expenseRows]);
+  const missingInvoiceCount = incomeRows.filter((r) => r.isMissingInvoice).length;
+  const vacantNoteCount = incomeRows.filter((r) => r.isNote && r.isVacant).length;
+  const missingExpenseCount = displayExpenseRows.filter((r) => r.isMissingExpense).length;
+  const expenseRatio = displayIncome > 0 ? Math.round((displayExpense / displayIncome) * 100) : 0;
+  const marginPct = displayIncome > 0 ? Math.round((displayDiff / displayIncome) * 100) : 0;
+
+  // Chip "Kiểm chứng" trên hero soi lại trạng thái của thanh kiểm chứng ở thân
+  // trang (nguồn duy nhất — không gọi lại RPC).
+  const [verifyState, setVerifyState] = useState<ProfitVerificationVisualState>("LOADING");
+  const [verifiedAt, setVerifiedAt] = useState<string | null>(null);
+  const handleVerifyState = useCallback((s: ProfitVerificationVisualState) => {
+    setVerifyState(s);
+    setVerifiedAt(s === "LOADING" ? null : format(new Date(), "HH:mm"));
+  }, []);
+
+  // Dòng phụ dưới mô tả — gộp các cột đang bật (bảng 3 cột của bản thiết kế
+  // không còn cột riêng, thông tin "Tháng · Toà · Phòng · Phân loại · Kỳ" dồn
+  // xuống đây). Cột đã nằm ở ô mã bên trái thì không lặp lại.
+  const subParts = (r: DisplayRow, side: "income" | "expense", hasTag: boolean): string[] => {
+    const out: string[] = [];
+    if (visible("thang")) out.push(r.monthLabel);
+    if (visible("toa_nha") && r.buildingName) out.push(r.buildingName);
+    if (visible("phong") && !(side === "income" && hasTag) && r.roomName) out.push(r.roomName);
+    if (visible("phan_loai") && r.typeName && r.typeName !== "—") out.push(r.typeName);
+    if (visible("ky") && r.periodLabel && r.periodLabel !== "—") out.push(r.periodLabel);
+    return out;
+  };
+
   const renderPanel = (
+    side: "income" | "expense",
     title: string,
-    amountLabel: string,
     total: number,
     data: DisplayRow[],
-    accentText: string,
-    accentHeader: string,
     headerAction?: ReactNode,
-  ) => (
-    <div className="rounded-md border flex flex-col min-w-0">
-      <div className={`flex items-center justify-between gap-2 px-4 py-2.5 border-b ${accentHeader}`}>
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{title}</span>
-          <span className="text-xs text-muted-foreground">
-            {data.filter((r) => !r.isNote).length} khoản
-          </span>
+  ) => {
+    // Ô mã 40×32 đầu dòng: cột Thu là SỐ PHÒNG, cột Chi là mã hạng mục — theo
+    // đúng toggle cột tương ứng nên popover "Cột" vẫn điều khiển được.
+    const hasTag = side === "income" ? visible("phong") : visible("phan_loai");
+    const gridStyle = { gridTemplateColumns: hasTag ? "44px 1fr auto" : "1fr auto" };
+    const realCount = data.filter((r) => !r.isNote).length;
+
+    return (
+      <div className={`ph-panel ph-panel--${side}`}>
+        <div className="ph-panel__head">
+          <div className="ph-panel__name">{title}</div>
+          <div className="ph-panel__count">{realCount} khoản</div>
           {headerAction}
+          {!hideTotals && <div className="ph-panel__total">{formatCurrency(total)}</div>}
         </div>
-        {!hideTotals && (
-          <span className={`font-semibold ${accentText}`}>{formatCurrency(total)}</span>
-        )}
-      </div>
-      <div className="overflow-auto max-h-[60vh]">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {visible("thang") && <TableHead className="whitespace-nowrap">Tháng</TableHead>}
-              <TableHead>Mô tả</TableHead>
-              {visible("toa_nha") && <TableHead>Tòa nhà</TableHead>}
-              {visible("phong") && <TableHead className="font-semibold">Phòng</TableHead>}
-              {visible("ky") && <TableHead className="whitespace-nowrap">Kỳ</TableHead>}
-              {visible("phan_loai") && <TableHead>Phân loại</TableHead>}
-              <TableHead className="text-right whitespace-nowrap">{amountLabel}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell colSpan={colCount}><Skeleton className="h-6 w-full" /></TableCell>
-                </TableRow>
-              ))
-            ) : data.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={colCount} className="text-center py-8 text-muted-foreground">
-                  Không có khoản nào
-                </TableCell>
-              </TableRow>
-            ) : (
-              data.map((r) => {
-                const clickable = !!r.invoiceId;
-                const note = noteFor(r);
-                // HĐ tháng đầu: tô NỀN NHẠT cả dòng theo trạng thái — xanh khi HĐ
-                // & cọc đều đủ, đỏ khi còn thiếu (dung sai 1đ cho làm tròn).
-                // Dòng thanh lý (tách riêng) KHÔNG nhận block HĐ tháng đầu/prorate
-                // — tránh render đúp khi hoá đơn có cả nhóm thu thường cùng HĐ.
-                const fd = r.invoiceId && !isLiquidationRow(r) ? firstInvoiceDetails?.get(r.invoiceId) : null;
-                const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
-                const depFull = fd ? fd.depositTotal - fd.depositPaid < 1 : false;
-                const firstFull = invFull && depFull;
-                // Hoá đơn KHÔNG đủ ngày (prorate — khách vào/rời giữa tháng, có đoạn
-                // trống) → nền XANH LÁ nhạt + ghi chú kỳ tiền phòng.
-                const rp = r.invoiceId && !isLiquidationRow(r) ? rentPeriods?.get(r.invoiceId) : null;
-                // Thứ tự ưu tiên nền: hạng mục chi thiếu phiếu (VÀNG NHẠT) → thiếu
-                // hoá đơn (ĐỎ) → phòng trống (vàng cam) → HĐ không đủ ngày (xanh lá)
-                // → HĐ tháng đầu (xanh đậm/đỏ theo đã trả).
-                const rowClass = r.isMissingExpense
-                  ? `bg-amber-50 hover:bg-amber-100${canCreate ? " cursor-pointer select-none" : ""}`
-                  : r.isMissingInvoice
-                  ? "bg-red-100 hover:bg-red-200"
+
+        <div className="ph-row ph-row--head" style={gridStyle}>
+          {hasTag && <div>{side === "income" ? "Phòng" : "Loại"}</div>}
+          <div>Mô tả</div>
+          <div style={{ textAlign: "right" }}>Số tiền</div>
+        </div>
+
+        <div className="ph-panel__scroll">
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div className="ph-row" style={gridStyle} key={i}>
+                {hasTag && <Skeleton className="h-8 w-10 rounded-lg" />}
+                <Skeleton className="h-6 w-full" />
+                <Skeleton className="h-6 w-24" />
+              </div>
+            ))
+          ) : data.length === 0 ? (
+            <div className="ph-empty">Không có khoản nào</div>
+          ) : (
+            data.map((r) => {
+              const clickable = !!r.invoiceId;
+              const note = noteFor(r);
+              // HĐ tháng đầu: tô NỀN NHẠT cả dòng theo trạng thái — xanh khi HĐ
+              // & cọc đều đủ, hồng khi còn thiếu (dung sai 1đ cho làm tròn).
+              // Dòng thanh lý (tách riêng) KHÔNG nhận block HĐ tháng đầu/prorate
+              // — tránh render đúp khi hoá đơn có cả nhóm thu thường cùng HĐ.
+              const fd = r.invoiceId && !isLiquidationRow(r) ? firstInvoiceDetails?.get(r.invoiceId) : null;
+              const invFull = fd ? fd.rentServiceTotal - fd.rentServicePaid < 1 : false;
+              const depFull = fd ? fd.depositTotal - fd.depositPaid < 1 : false;
+              const firstFull = invFull && depFull;
+              // Hoá đơn KHÔNG đủ ngày (prorate — khách vào/rời giữa tháng, có đoạn
+              // trống) → nền XANH LÁ nhạt + ghi chú kỳ tiền phòng.
+              const rp = r.invoiceId && !isLiquidationRow(r) ? rentPeriods?.get(r.invoiceId) : null;
+              // Thứ tự ưu tiên nền: hạng mục chi thiếu phiếu (VÀNG NHẠT) → thiếu
+              // hoá đơn (ĐỎ) → phòng trống (vàng cam) → HĐ không đủ ngày (xanh lá)
+              // → HĐ tháng đầu (xanh khi đủ / hồng khi còn thiếu).
+              const state = r.isMissingExpense
+                ? "is-missing-expense"
+                : r.isMissingInvoice
+                  ? "is-missing-invoice"
                   : r.isVacant
-                  ? `${clickable ? "cursor-pointer select-none " : ""}bg-amber-100 hover:bg-amber-200`
-                  : rp
-                    ? `${clickable ? "cursor-pointer select-none " : ""}bg-green-50 hover:bg-green-100`
-                    : fd
-                      ? `${clickable ? "cursor-pointer select-none " : ""}${
-                          firstFull
-                            ? "bg-emerald-50 hover:bg-emerald-100"
-                            : "bg-rose-50 hover:bg-rose-100"
-                        }`
+                    ? "is-vacant"
+                    : rp || (fd && firstFull)
+                      ? "is-prorate"
+                      : fd
+                        ? "is-first-due"
+                        : "";
+              const rowClickable = clickable || (r.isMissingExpense && canCreate);
+              const detailBlock = fd || (!fd && rp);
+              const sub = subParts(r, side, hasTag);
+
+              return (
+                <div
+                  key={r.key}
+                  style={gridStyle}
+                  className={`ph-row${detailBlock ? " ph-row--tall" : ""}${
+                    rowClickable ? " ph-row--click" : ""
+                  }${state ? ` ${state}` : ""}`}
+                  onClick={
+                    r.isMissingExpense && canCreate ? () => openCreateMissingExpense(r) : undefined
+                  }
+                  onDoubleClick={clickable ? () => openDetail(r.invoiceId!) : undefined}
+                  title={
+                    r.isMissingExpense && canCreate
+                      ? "Bấm để tạo phiếu chi cho hạng mục này"
                       : clickable
-                        ? "cursor-pointer select-none hover:bg-muted/50"
-                        : undefined;
-                return (
-                  <TableRow
-                    key={r.key}
-                    className={rowClass}
-                    onClick={
-                      r.isMissingExpense && canCreate
-                        ? () => openCreateMissingExpense(r)
+                        ? "Bấm tên hoá đơn: xem chi tiết hoá đơn · bấm số tiền: xem các lần thu"
                         : undefined
-                    }
-                    onDoubleClick={clickable ? () => openDetail(r.invoiceId!) : undefined}
-                    title={
-                      r.isMissingExpense && canCreate
-                        ? "Bấm để tạo phiếu chi cho hạng mục này"
-                        : clickable
-                          ? "Bấm tên hoá đơn: xem chi tiết hoá đơn · bấm số tiền: xem các lần thu"
-                          : undefined
-                    }
-                  >
-                    {visible("thang") && <TableCell className="whitespace-nowrap">{r.monthLabel}</TableCell>}
-                    <TableCell>
+                  }
+                >
+                  {hasTag && (
+                    <div
+                      className={`ph-tag${side === "expense" ? " ph-tag--code" : ""}`}
+                      title={side === "income" ? r.roomName ?? "—" : r.typeName}
+                    >
+                      {side === "income" ? r.roomName ?? "—" : typeCode(r.typeName)}
+                    </div>
+                  )}
+
+                  <div className="ph-row__main">
+                    <div className="ph-row__desc">
                       {clickable ? (
                         // Bấm tên HĐ → chi tiết hoá đơn (như trang /invoices).
                         <button
                           type="button"
-                          className="text-left hover:underline underline-offset-2 hover:text-emerald-700"
+                          className="ph-row__link"
                           onClick={(e) => {
                             e.stopPropagation();
                             openInvoiceModal(
@@ -910,75 +968,69 @@ function ProfitDistributionDesktop() {
                       ) : (
                         displayDescription(r)
                       )}
-                      {r.isMissingExpense && (
-                        <span className="ml-1 text-xs font-medium text-amber-600">(chưa có phiếu)</span>
-                      )}
+                      {fd && <span className="ph-inline ph-inline--first">HĐ tháng đầu</span>}
+                      {r.isMissingInvoice && <span className="ph-inline ph-inline--alert">Còn hợp đồng</span>}
+                      {r.isMissingExpense && <span className="ph-inline ph-inline--soft"> (chưa có phiếu)</span>}
                       {r.groupCount && r.groupCount > 1 && (
-                        <span className="ml-1 text-xs text-muted-foreground">({r.groupCount} lần)</span>
+                        <span className="ph-inline ph-inline--soft"> ({r.groupCount} lần)</span>
                       )}
-                      {r.notKqkd && (
-                        <span className="ml-1 text-xs text-amber-600">(không KQKD)</span>
-                      )}
-                      {fd && (
-                        // HĐ tháng đầu (ký HĐ): kỳ tiền phòng + đã thu/tổng của HĐ
-                        // và của cọc; số "đã thu" tô xanh khi đủ, đỏ khi thiếu.
-                        <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                          {(fd.rentFrom || fd.rentTo) && (
-                            <div>
-                              <span className="text-foreground/70">Kỳ phòng:</span>{" "}
-                              {fmtDay(fd.rentFrom)} → {fmtDay(fd.rentTo)}
-                            </div>
-                          )}
-                          <div>
-                            {/* invoiceTotal = tiền phòng + dịch vụ (đã trừ giảm
-                                trừ), KHÔNG gồm cọc — cọc là phiếu thu riêng. */}
-                            <span className="text-foreground/70">Tiền Phòng + Dịch Vụ:</span>{" "}
-                            đã thu{" "}
-                            <span className={`font-medium ${invFull ? "text-emerald-600" : "text-rose-600"}`}>
-                              {fmtCompact(fd.rentServicePaid)}
-                            </span>{" "}
-                            / {fmtCompact(fd.rentServiceTotal)}
+                      {r.notKqkd && <span className="ph-inline ph-inline--soft"> (không KQKD)</span>}
+                    </div>
+
+                    {sub.length > 0 && <div className="ph-row__sub">{sub.join(" · ")}</div>}
+
+                    {fd && (
+                      // HĐ tháng đầu (ký HĐ): kỳ tiền phòng + đã thu/tổng của HĐ
+                      // và của cọc; số "đã thu" tô xanh khi đủ, đỏ khi thiếu.
+                      <>
+                        {(fd.rentFrom || fd.rentTo) && (
+                          <div className="ph-row__detail">
+                            Kỳ phòng: {fmtDay(fd.rentFrom)} → {fmtDay(fd.rentTo)}
                           </div>
-                          {fd.depositTotal > 0 && (
-                            <div>
-                              <span className="text-foreground/70">Cọc:</span>{" "}
-                              đã đóng{" "}
-                              <span className={`font-medium ${depFull ? "text-emerald-600" : "text-rose-600"}`}>
-                                {fmtCompact(fd.depositPaid)}
-                              </span>{" "}
-                              / {fmtCompact(fd.depositTotal)}
-                              {fd.depositInInvoice > 0 && (
-                                <span> ({fmtCompact(fd.depositInInvoice)} trong HĐ)</span>
-                              )}
-                            </div>
-                          )}
+                        )}
+                        {/* rentServiceTotal = tiền phòng + dịch vụ (đã trừ giảm trừ),
+                            KHÔNG gồm cọc — cọc là phiếu thu riêng. */}
+                        <div className="ph-row__detail">
+                          Tiền Phòng + DV: đã thu{" "}
+                          <b className={invFull ? "ph-money-ok" : "ph-money-bad"}>
+                            {fmtCompact(fd.rentServicePaid)}
+                          </b>{" "}
+                          / {fmtCompact(fd.rentServiceTotal)}
                         </div>
-                      )}
-                      {/* HĐ không đủ ngày mà KHÔNG phải HĐ tháng đầu (fd) → vẫn ghi
-                          chú kỳ tiền phòng để thấy khách chỉ ở 1 đoạn trong tháng. */}
-                      {!fd && rp && (
-                        <div className="mt-1 text-xs text-emerald-700">
-                          <span className="text-foreground/70">Tiền phòng tính từ:</span>{" "}
-                          {fmtDay(rp.rentFrom)} → {fmtDay(rp.rentTo)}
-                        </div>
-                      )}
-                    </TableCell>
-                    {visible("toa_nha") && <TableCell>{r.buildingName || "—"}</TableCell>}
-                    {visible("phong") && (
-                      <TableCell className="font-semibold">{r.roomName || "—"}</TableCell>
+                        {fd.depositTotal > 0 && (
+                          <div className="ph-row__detail">
+                            Cọc: đã đóng{" "}
+                            <b className={depFull ? "ph-money-ok" : "ph-money-bad"}>
+                              {fmtCompact(fd.depositPaid)}
+                            </b>{" "}
+                            / {fmtCompact(fd.depositTotal)}
+                            {fd.depositInInvoice > 0 && ` (${fmtCompact(fd.depositInInvoice)} trong HĐ)`}
+                          </div>
+                        )}
+                      </>
                     )}
-                    {visible("ky") && (
-                      <TableCell className="whitespace-nowrap">{r.periodLabel}</TableCell>
+                    {/* HĐ không đủ ngày mà KHÔNG phải HĐ tháng đầu (fd) → vẫn ghi
+                        chú kỳ tiền phòng để thấy khách chỉ ở 1 đoạn trong tháng. */}
+                    {!fd && rp && (
+                      <div className="ph-row__detail">
+                        Tiền phòng tính từ: {fmtDay(rp.rentFrom)} → {fmtDay(rp.rentTo)}
+                      </div>
                     )}
-                    {visible("phan_loai") && <TableCell>{r.typeName}</TableCell>}
-                    <TableCell className={`text-right whitespace-nowrap font-medium ${accentText}`}>
+                  </div>
+
+                  {r.isMissingExpense && canCreate ? (
+                    <div style={{ textAlign: "right" }}>
+                      <span className="ph-row__cta">＋ Tạo phiếu chi</span>
+                    </div>
+                  ) : (
+                    <div className={`ph-row__amt${r.isNote ? " ph-row__amt--none" : ""}`}>
                       {r.isNote ? (
                         "—"
                       ) : clickable ? (
                         // Bấm số tiền → các lần thu (phiếu thu) — như nhấp đôi dòng.
                         <button
                           type="button"
-                          className="hover:underline underline-offset-2"
+                          className="ph-row__link"
                           onClick={(e) => {
                             e.stopPropagation();
                             openDetail(r.invoiceId!);
@@ -989,84 +1041,193 @@ function ProfitDistributionDesktop() {
                       ) : (
                         formatCurrency(r.amount)
                       )}
-                      {note && <div className={`text-xs font-normal ${note.cls}`}>{note.text}</div>}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+                      {note && (
+                        <div
+                          className={`ph-row__note ${
+                            note.cls === "text-amber-600" ? "ph-row__note--short" : "ph-row__note--over"
+                          }`}
+                        >
+                          {note.text}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {data.length > 8 && (
+          <div className="ph-panel__foot">{data.length} dòng — cuộn để xem thêm</div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
-      <div className="space-y-4">
-        {/* 3 Stat cards — có thể ẩn qua popover "Cột" (lưu server) */}
-        {!hideStatCards && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard label="Doanh thu" value={displayIncome} ring="ring-1 ring-emerald-200" bg="bg-emerald-100 text-emerald-700" />
-            <StatCard label="Chi phí" value={displayExpense} ring="ring-1 ring-orange-200" bg="bg-orange-100 text-orange-700" />
-            <StatCard label="Lợi nhuận" value={displayDiff} ring="ring-1 ring-blue-200" bg="bg-blue-100 text-blue-700" />
-          </div>
-        )}
-
-        {/* B5: thanh kiểm chứng — desktop + mobile dùng chung.
-            buildingIds: khi user KHÔNG lọc toà phải truyền TOÀN BỘ toà của org
-            hiện hành (không phải null) — RPC kiểm chứng (fa engine, layer stats)
-            là SECURITY DEFINER quét MỌI building user thấy, gồm cả org khác
-            (V2-PRE-1: org DEMO lọt vào engine ⇒ lệch −17,3tr oan). */}
-        <ProfitVerificationBar
-          ym={ym}
-          startDate={startDate}
-          endDate={endDate}
-          buildingIds={
-            buildingIds.length > 0
-              ? buildingIds
-              : buildingOptions.length > 0
-                ? buildingOptions.map((b) => b.id)
-                : undefined
-          }
-          monthLabel={monthLabel}
-          accrualMode={accrualMode}
-          pnlOnly={pnlOnly}
-          totalIncome={displayIncome}
-          totalExpense={displayExpense}
-          shownIncomeSum={shownIncomeSum}
-          shownExpenseSum={shownExpenseSum}
-          hiddenCount={hiddenCount}
-          hiddenIncomeSum={hiddenIncomeSum}
-          hiddenExpenseSum={hiddenExpenseSum}
-          capWarning={capWarning}
-          pendingCount={pendingInfo.count}
-          pendingIncome={pendingInfo.income}
-          pendingExpense={pendingInfo.expense}
-        />
-
-        {/* Filters */}
-        <div className="flex flex-wrap items-end gap-3">
+      {/* ---- Phần đổ lên dải hero xanh (bộ lọc kỳ · KPI · chip cảnh báo) ---- */}
+      <ProfitHubSlot name="actions">
+        <div className="ph-stepper">
+          <button
+            type="button"
+            className="ph-stepper__btn"
+            onClick={() => stepMonth(-1)}
+            aria-label="Tháng trước"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
           <SearchableSelect
             value={monthStr}
             onValueChange={setMonthStr}
-            className="w-[140px]"
-            options={monthOptions.map((m) => ({ value: m, label: m }))}
+            className="ph-stepper__label ph-stepper__select"
+            align="center"
+            aria-label="Chọn tháng"
+            options={monthOptions.map((m) => ({ value: m, label: `Tháng ${m.replace("-", "/")}` }))}
           />
+          <button
+            type="button"
+            className="ph-stepper__btn"
+            onClick={() => stepMonth(1)}
+            aria-label="Tháng sau"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
 
-          <BuildingFilterSelect
-            value={buildingIds}
-            onChange={(ids) => setBuildingIds(ids)}
-            buildings={buildingOptions}
-            className="w-[260px]"
-            placeholder="Tất cả toà nhà"
-          />
+        <BuildingFilterSelect
+          value={buildingIds}
+          onChange={(ids) => setBuildingIds(ids)}
+          buildings={buildingOptions}
+          className="ph-ghost"
+          placeholder="Tất cả tòa nhà"
+        />
 
+        {canCreate && (
+          <button type="button" className="ph-cta" onClick={openCreateExpense}>
+            ＋ Tạo phiếu
+          </button>
+        )}
+      </ProfitHubSlot>
+
+      {!hideStatCards && (
+        <ProfitHubSlot name="kpis">
+          <div className="ph-kpi">
+            <div className="ph-kpi__label">Doanh thu</div>
+            <div className="ph-kpi__value ph-kpi__value--mint">{formatCurrency(displayIncome)}</div>
+            <div className="ph-kpi__sub">
+              {incomeCount} khoản thu{buildingCount > 0 ? ` · ${buildingCount} tòa nhà` : ""}
+            </div>
+          </div>
+          <div className="ph-op">−</div>
+          <div className="ph-kpi">
+            <div className="ph-kpi__label">Chi phí</div>
+            <div className="ph-kpi__value ph-kpi__value--peach">{formatCurrency(displayExpense)}</div>
+            <div className="ph-kpi__sub">
+              {expenseCount} khoản chi{displayIncome > 0 ? ` · ${expenseRatio}% doanh thu` : ""}
+            </div>
+          </div>
+          <div className="ph-op">=</div>
+          <div className="ph-kpi">
+            <div className="ph-kpi__label">Lợi nhuận</div>
+            <div className="ph-kpi__row">
+              <div className="ph-kpi__value ph-kpi__value--lg">{formatCurrency(displayDiff)}</div>
+              {displayIncome > 0 && <div className="ph-pill-mint">Biên {marginPct}%</div>}
+            </div>
+            {momPct !== null && (
+              <div className="ph-kpi__sub ph-kpi__sub--mint">
+                {momPct >= 0 ? "▲ +" : "▼ "}
+                {momPct.toFixed(1).replace(".", ",")}% so với T{prevMonthLabel}
+              </div>
+            )}
+          </div>
+          <div className="ph-kpi__div" />
+          <div className="ph-kpi ph-kpi__grow">
+            <div className="ph-kpi__label">Lợi nhuận 6 tháng gần nhất</div>
+            <div className="ph-spark__bars">
+              {profitSeries.map((p, i) => (
+                <div
+                  key={p.label}
+                  className={`ph-spark__bar${
+                    p.current ? " ph-spark__bar--cur" : i === 4 ? " ph-spark__bar--prev" : ""
+                  }`}
+                  style={{ height: Math.max(4, Math.round((Math.abs(p.value) / sparkMax) * 62)) }}
+                  title={`${p.label}: ${formatCurrency(p.value)}`}
+                >
+                  {p.current && <div className="ph-spark__cap">{toMillions(p.value)}tr</div>}
+                </div>
+              ))}
+            </div>
+            <div className="ph-spark__labels">
+              {profitSeries.map((p) => (
+                <div key={p.label} className={`ph-spark__label${p.current ? " ph-spark__label--cur" : ""}`}>
+                  {p.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </ProfitHubSlot>
+      )}
+
+      <ProfitHubSlot name="chips">
+        {missingInvoiceCount > 0 && (
+          <span className="ph-chip ph-chip--red">
+            <span className="ph-chip__dot" />
+            {missingInvoiceCount} phòng thiếu hoá đơn
+          </span>
+        )}
+        {vacantNoteCount > 0 && (
+          <span className="ph-chip ph-chip--amber">
+            <span className="ph-chip__dot" />
+            {vacantNoteCount} phòng trống
+          </span>
+        )}
+        {missingExpenseCount > 0 && (
+          <span className="ph-chip ph-chip--yellow">
+            <span className="ph-chip__dot" />
+            {missingExpenseCount} chi cố định chưa có phiếu
+          </span>
+        )}
+        {pendingInfo.count > 0 && (
+          <span className="ph-chip">
+            {pendingInfo.count} phiếu chờ duyệt · {toMillions(pendingInfo.income + pendingInfo.expense, 1)}tr
+          </span>
+        )}
+        <button
+          type="button"
+          className={`ph-chip ph-chip--push ${
+            verifyState === "OK"
+              ? "ph-chip--ok"
+              : verifyState === "ERROR" || verifyState === "UNAVAILABLE"
+                ? "ph-chip--red"
+                : "ph-chip--amber"
+          }`}
+          onClick={() =>
+            document.getElementById("ph-verify")?.scrollIntoView({ behavior: "smooth", block: "center" })
+          }
+          title="Xem chi tiết thanh kiểm chứng"
+        >
+          {verifyState !== "OK" && <span className="ph-chip__dot" />}
+          {verifyState === "OK"
+            ? `✓ Kiểm chứng khớp${verifiedAt ? ` · ${verifiedAt}` : ""}`
+            : verifyState === "LOADING"
+              ? "Đang kiểm chứng…"
+              : verifyState === "WARNING"
+                ? "Kiểm chứng: cần xem lại"
+                : "Kiểm chứng LỆCH"}
+        </button>
+      </ProfitHubSlot>
+
+      <div className="ph-stack">
+        {/* Thanh công cụ — kỳ/toà đã nằm trên hero, đây là bộ lọc phụ của sổ. */}
+        <div className="ph-toolbar">
           <SearchableSelect
             value={roomId}
             onValueChange={setRoomId}
-            className="w-[160px]"
+            className="ph-control"
             placeholder="Chọn phòng"
+            aria-label="Lọc phòng"
             options={[
               { value: 'all', label: 'Tất cả phòng' },
             ]}
@@ -1075,43 +1236,40 @@ function ProfitDistributionDesktop() {
           <SearchableSelect
             value={voucherType}
             onValueChange={setVoucherType}
-            className="w-[180px]"
+            className="ph-control"
             placeholder="Loại thu chi"
+            aria-label="Lọc loại phiếu"
             options={[
-              { value: 'all', label: 'Tất cả loại' },
-              { value: 'INCOME', label: 'Thu' },
-              { value: 'EXPENSE', label: 'Chi' },
+              { value: 'all', label: 'Thu & Chi' },
+              { value: 'INCOME', label: 'Chỉ khoản thu' },
+              { value: 'EXPENSE', label: 'Chỉ khoản chi' },
             ]}
           />
 
-          <div className="flex items-center gap-2 h-9">
-            <Switch
-              id="pnl-only"
-              checked={!pnlOnly}
-              onCheckedChange={(v) => setPnlOnly(!v)}
-            />
-            <Label htmlFor="pnl-only" className="text-sm text-muted-foreground whitespace-nowrap">
-              Hiện cả khoản không hạch toán KQKD (cọc…)
-            </Label>
-          </div>
+          <div className="ph-toolbar__push">
+            <div className="ph-switch">
+              <Switch
+                id="accrual-mode"
+                checked={accrualMode}
+                onCheckedChange={(v) => setAccrualMode(v)}
+              />
+              <Label htmlFor="accrual-mode" className="cursor-pointer font-medium" title="Chia đều số tiền của hạng mục ra các tháng trong kỳ áp dụng, thay vì ghi trọn vào ngày phiếu">
+                Kỳ phân bổ
+              </Label>
+            </div>
 
-          <div className="flex items-center gap-2 h-9">
-            <Switch
-              id="accrual-mode"
-              checked={accrualMode}
-              onCheckedChange={(v) => setAccrualMode(v)}
-            />
-            <Label htmlFor="accrual-mode" className="text-sm text-muted-foreground whitespace-nowrap">
-              Phân bổ theo kỳ áp dụng
-            </Label>
-          </div>
+            <div className="ph-switch">
+              <Switch id="pnl-only" checked={pnlOnly} onCheckedChange={(v) => setPnlOnly(v)} />
+              <Label htmlFor="pnl-only" className="cursor-pointer font-medium" title="Tắt để xem cả khoản KHÔNG hạch toán kết quả kinh doanh (tiền cọc, bút toán nội bộ…)">
+                Chỉ KQKD
+              </Label>
+            </div>
 
-          {/* Ẩn/hiện cột */}
-          <div className="ml-auto">
+            {/* Ẩn/hiện cột */}
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-2" aria-label="Hiển thị cột">
-                  <LayoutGrid className="h-4 w-4" />
+                <Button className="ph-control ph-control--strong" aria-label="Hiển thị cột">
+                  <LayoutGrid className="h-3.5 w-3.5" />
                   Cột ({visibleToggleCols.length}/{TOGGLE_COLUMNS.length})
                 </Button>
               </PopoverTrigger>
@@ -1129,7 +1287,7 @@ function ProfitDistributionDesktop() {
                         setUiPref.mutate({ key: "pd_hideStatCards", value: !hideStatCards })
                       }
                     />
-                    <span>Thẻ thống kê</span>
+                    <span>Dải KPI trên đầu trang</span>
                   </Label>
                   <Label
                     htmlFor="pd-show-totals"
@@ -1187,24 +1345,45 @@ function ProfitDistributionDesktop() {
           </div>
         </div>
 
+        {/* Chú thích màu nền dòng — đúng 5 trạng thái của sổ */}
+        <div className="ph-legend">
+          <span className="ph-legend__title">Chú thích:</span>
+          <span className="ph-legend__item">
+            <span className="ph-legend__sw" style={{ background: "#FEF6DE", border: "1px solid #F3DFA8" }} />
+            Phòng trống / thanh lý
+          </span>
+          <span className="ph-legend__item">
+            <span className="ph-legend__sw" style={{ background: "#FDECEC", border: "1px solid #F5C8C8" }} />
+            Thiếu hoá đơn
+          </span>
+          <span className="ph-legend__item">
+            <span className="ph-legend__sw" style={{ background: "#FFFBEB", border: "1px solid #F1D48A" }} />
+            Chi cố định chưa có phiếu
+          </span>
+          <span className="ph-legend__item">
+            <span className="ph-legend__sw" style={{ background: "#FDF0F3", border: "1px solid #F6CBD6" }} />
+            HĐ tháng đầu còn thiếu
+          </span>
+          <span className="ph-legend__item">
+            <span className="ph-legend__sw" style={{ background: "#F1FAF4", border: "1px solid #C8E8D3" }} />
+            HĐ không đủ ngày / đã đủ
+          </span>
+        </div>
+
         {/* Sổ 2 cột: Thu | Chi */}
-        <div className={`grid gap-4 ${showThu && showChi ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-          {showThu && renderPanel("Khoản thu", "Doanh thu", displayIncome, shownIncomeRows, "text-emerald-700", "bg-emerald-50")}
+        <div className={showThu && showChi ? "ph-grid-2" : undefined}>
+          {showThu && renderPanel("income", "Khoản thu", displayIncome, shownIncomeRows)}
           {showChi &&
             renderPanel(
+              "expense",
               "Khoản chi",
-              "Chi phí",
               displayExpense,
               displayExpenseRows,
-              "text-orange-700",
-              "bg-orange-50",
               canCreate || (canEditBuildings && singleBuilding && !singleBuilding.is_virtual) ? (
                 <>
                   {canCreate && (
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-orange-700 hover:bg-orange-100"
+                      className="ph-panel__act"
                       title={`Tạo phiếu chi tháng ${monthLabel}`}
                       aria-label="Tạo phiếu chi"
                       onClick={openCreateExpense}
@@ -1214,9 +1393,7 @@ function ProfitDistributionDesktop() {
                   )}
                   {canEditBuildings && singleBuilding && !singleBuilding.is_virtual && (
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-orange-700 hover:bg-orange-100"
+                      className="ph-panel__act"
                       title={`Cài đặt cảnh báo thiếu phiếu chi — ${singleBuilding.name}`}
                       aria-label="Cài đặt cảnh báo thiếu phiếu chi"
                       onClick={() => setMissingCfgOpen(true)}
@@ -1229,10 +1406,46 @@ function ProfitDistributionDesktop() {
             )}
         </div>
 
-        <div className="text-sm text-muted-foreground">
+        {/* B5: thanh kiểm chứng — desktop + mobile dùng chung. Chip "Kiểm chứng"
+            trên hero là bản rút gọn của thanh này (bấm chip cuộn xuống đây).
+            buildingIds: khi user KHÔNG lọc toà phải truyền TOÀN BỘ toà của org
+            hiện hành (không phải null) — RPC kiểm chứng (fa engine, layer stats)
+            là SECURITY DEFINER quét MỌI building user thấy, gồm cả org khác
+            (V2-PRE-1: org DEMO lọt vào engine ⇒ lệch −17,3tr oan). */}
+        <div className="ph-verify" id="ph-verify">
+          <ProfitVerificationBar
+            ym={ym}
+            startDate={startDate}
+            endDate={endDate}
+            buildingIds={
+              buildingIds.length > 0
+                ? buildingIds
+                : buildingOptions.length > 0
+                  ? buildingOptions.map((b) => b.id)
+                  : undefined
+            }
+            monthLabel={monthLabel}
+            accrualMode={accrualMode}
+            pnlOnly={pnlOnly}
+            totalIncome={displayIncome}
+            totalExpense={displayExpense}
+            shownIncomeSum={shownIncomeSum}
+            shownExpenseSum={shownExpenseSum}
+            hiddenCount={hiddenCount}
+            hiddenIncomeSum={hiddenIncomeSum}
+            hiddenExpenseSum={hiddenExpenseSum}
+            capWarning={capWarning}
+            pendingCount={pendingInfo.count}
+            pendingIncome={pendingInfo.income}
+            pendingExpense={pendingInfo.expense}
+            onStateChange={handleVerifyState}
+          />
+        </div>
+
+        <div className="ph-hint">
           Tổng {incomeRows.filter((r) => !r.isNote).length + expenseRows.length} khoản
           {!accrualMode && (result?.totalCount ?? 0) > LIST_LIMIT && (
-            <span className="ml-1 text-amber-600">
+            <span style={{ color: "var(--ph-amber-d)", marginLeft: 4 }}>
               (hiển thị {LIST_LIMIT} đầu trên tổng {result?.totalCount} — số tổng ở thẻ vẫn đủ)
             </span>
           )}

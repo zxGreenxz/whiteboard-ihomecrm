@@ -1,7 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import MainLayout from "@/components/layout/MainLayout";
-import { PieChart } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import ProfitHubShell, { ProfitHubTabPanel } from "@/pages/reports/finance/ProfitHubShell";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { useMyShareholder } from "@/hooks/useShareholders";
@@ -89,6 +88,13 @@ export default function ProfitHubPage() {
   }
 
   const visibleTabs = tabs.filter((t) => revealSecret || !t.secret);
+  // Tab đang mở — tự rơi về tab đầu khi danh sách đổi (bật/tắt easter egg, quyền
+  // tải xong) để không kẹt ở value không còn tồn tại.
+  const [tabValue, setTabValue] = useState<string | null>(null);
+  const activeTab =
+    tabValue && visibleTabs.some((t) => t.value === tabValue)
+      ? tabValue
+      : visibleTabs[0]?.value;
 
   // Chờ cả perms + me + manager trước khi dựng tab để thứ tự tab (và tab mặc định)
   // ổn định — tránh "Tổng quan" nhảy vào sau khiến trang mở nhầm tab.
@@ -109,33 +115,32 @@ export default function ProfitHubPage() {
   }
 
   return (
-    <MainLayout
-      title="Báo cáo Lợi Nhuận"
-      subtitle="Báo cáo Tài chính → Lợi nhuận"
-      icon={PieChart}
-      onIconClick={handleIconClick}
-    >
-      {loading ? (
-        <p className="text-muted-foreground">Đang tải...</p>
-      ) : visibleTabs.length > 0 ? (
-        <Tabs key={revealSecret ? "revealed" : "hidden"} defaultValue={visibleTabs[0].value} className="space-y-4">
-          <TabsList>
-            {visibleTabs.map((t) => (
-              <TabsTrigger key={t.value} value={t.value}>{t.label}</TabsTrigger>
-            ))}
-          </TabsList>
-          {visibleTabs.map((t) => (
-            <TabsContent key={t.value} value={t.value}>{t.node}</TabsContent>
-          ))}
-        </Tabs>
-      ) : myManager ? (
-        // Quản lý điều hành thuần (không quyền báo cáo) → tự xem lương của mình.
-        <ProfitManagerSelfView me={myManager} />
-      ) : (
-        <p className="text-muted-foreground">
-          Bạn không có quyền xem báo cáo này. Liên hệ quản trị.
-        </p>
-      )}
+    <MainLayout>
+      <ProfitHubShell
+        // Chờ đủ quyền rồi mới dựng thanh tab — nếu không tab sẽ "mọc" dần theo
+        // từng query (vd "Chốt LN tháng" chỉ có sau khi profitCloseOrganizations về).
+        tabs={
+          loading ? [] : visibleTabs.map((t) => ({ value: t.value, label: t.label, secret: t.secret }))
+        }
+        value={activeTab}
+        onValueChange={setTabValue}
+        onIconClick={handleIconClick}
+      >
+        {loading ? (
+          <p className="ph-empty">Đang tải...</p>
+        ) : visibleTabs.length > 0 ? (
+          visibleTabs.map((t) => (
+            <ProfitHubTabPanel key={t.value} value={t.value}>
+              {t.node}
+            </ProfitHubTabPanel>
+          ))
+        ) : myManager ? (
+          // Quản lý điều hành thuần (không quyền báo cáo) → tự xem lương của mình.
+          <ProfitManagerSelfView me={myManager} />
+        ) : (
+          <p className="ph-empty">Bạn không có quyền xem báo cáo này. Liên hệ quản trị.</p>
+        )}
+      </ProfitHubShell>
     </MainLayout>
   );
 }

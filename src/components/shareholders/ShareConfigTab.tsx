@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { ProfitHubSlot } from "@/pages/reports/finance/ProfitHubShell";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, KeyRound, AlertTriangle, Building2, Briefcase } from "lucide-react";
+import { Pencil, Trash2, KeyRound, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAdminUsers } from "@/hooks/useAdminUsers";
@@ -81,147 +80,207 @@ export default function ShareConfigTab() {
     return `${value} · ${basis} · ${r.building_ids.length} nhà`;
   };
 
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base">Cổ đông &amp; tỷ lệ theo tòa</CardTitle>
-          <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Thêm cổ đông
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {shareholders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chưa có cổ đông nào. Bấm "Thêm cổ đông" để gán user + chọn tòa.</p>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {shareholders.map((s) => {
-                const rows = sharesByShareholder.get(s.id) ?? [];
-                return (
-                  <div key={s.id} className="rounded-lg border p-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{s.name}</p>
-                        {s.auth_user_id ? (
-                          <span className="text-xs text-emerald-600 flex items-center gap-1">
-                            <KeyRound className="h-3 w-3" /> {userEmail(s.auth_user_id)}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-amber-600 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" /> Chưa gán user — cổ đông không đăng nhập được
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" onClick={() => { setEditing(s); setFormOpen(true); }}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteId(s.id)}>
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </div>
+  // KPI hero: đếm cổ đông/quản lý + toà đã gán đủ 100% (cảnh báo toà còn hở).
+  const linkedShareholders = shareholders.filter((s) => s.auth_user_id).length;
+  const buildingsWithShare = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of shares) m.set(s.building_id, (m.get(s.building_id) ?? 0) + s.percent);
+    return m;
+  }, [shares]);
+  const fullyAssigned = [...buildingsWithShare.values()].filter((p) => Math.abs(p - 100) < 0.005).length;
+  // Tòa lệch 100%: thiếu → "còn X% chưa gán", dư → "vượt X%" (đừng in số âm).
+  const partial = [...buildingsWithShare.entries()]
+    .filter(([, p]) => Math.abs(p - 100) >= 0.005)
+    .map(([bid, p]) => {
+      const gap = Math.round(Math.abs(100 - p) * 100) / 100;
+      return `${buildingName(bid)} ${p}% — ${p < 100 ? `còn ${gap}% chưa gán` : `vượt ${gap}%`}`;
+    });
 
-                    {rows.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">Chưa gán tòa nào.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {rows.map((r) => (
-                          <Badge key={r.building_id} variant="outline" className="gap-1 font-normal">
-                            <Building2 className="h-3 w-3" />
-                            {buildingName(r.building_id)}
-                            <span className="font-semibold text-blue-600">{r.percent}%</span>
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+  return (
+    <>
+      <ProfitHubSlot name="kpis">
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Cổ đông</div>
+          <div className="ph-kpi__value">{shareholders.length}</div>
+          <div className="ph-kpi__sub">{linkedShareholders} đã gán user đăng nhập</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Quản lý điều hành</div>
+          <div className="ph-kpi__value">{managers.length}</div>
+          <div className="ph-kpi__sub">{salaryRules.length} quy tắc lương đang áp dụng</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Tòa nhà</div>
+          <div className="ph-kpi__value">{buildings.length}</div>
+          <div className="ph-kpi__sub">{buildingsWithShare.size} tòa đã gán cổ đông</div>
+        </div>
+        <div className="ph-kpi__div" />
+        <div className="ph-kpi">
+          <div className="ph-kpi__label">Tỷ lệ gán đủ 100%</div>
+          <div className="ph-kpi__value ph-kpi__value--mint">
+            {fullyAssigned}/{buildingsWithShare.size} tòa
+          </div>
+          {partial.length > 0 ? (
+            <div className="ph-kpi__sub ph-kpi__sub--gold" title={partial.join(" · ")}>
+              {partial[0]}
+              {partial.length > 1 ? ` (+${partial.length - 1})` : ""}
             </div>
+          ) : (
+            <div className="ph-kpi__sub ph-kpi__sub--mint">Mọi tòa đã gán đủ</div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </ProfitHubSlot>
+
+      <div className="ph-stack">
+      <div className="ph-card">
+        <div className="ph-card__head">
+          <div className="ph-card__title">Cổ đông &amp; tỷ lệ theo tòa</div>
+          <div className="ph-card__push">
+            <Button className="ph-btn-primary" onClick={() => { setEditing(null); setFormOpen(true); }}>
+              ＋ Thêm cổ đông
+            </Button>
+          </div>
+        </div>
+        {shareholders.length === 0 ? (
+          <div className="ph-empty">Chưa có cổ đông nào. Bấm "Thêm cổ đông" để gán user + chọn tòa.</div>
+        ) : (
+          <div className="ph-grid-2" style={{ padding: "0 18px 18px", gap: 12 }}>
+            {shareholders.map((s) => {
+              const rows = sharesByShareholder.get(s.id) ?? [];
+              return (
+                <div key={s.id} className="ph-person">
+                  <div className="ph-person__top">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="ph-person__name">{s.name}</div>
+                      {s.auth_user_id ? (
+                        <div className="ph-person__meta ph-person__meta--ok">
+                          <KeyRound className="h-3 w-3" /> {userEmail(s.auth_user_id)}
+                        </div>
+                      ) : (
+                        <div className="ph-person__meta ph-person__meta--warn">
+                          <AlertTriangle className="h-3 w-3" /> Chưa gán user — cổ đông không đăng nhập được
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <Button
+                        className="ph-iconbtn"
+                        aria-label={`Sửa ${s.name}`}
+                        onClick={() => { setEditing(s); setFormOpen(true); }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        className="ph-iconbtn ph-iconbtn--danger"
+                        aria-label={`Xoá ${s.name}`}
+                        onClick={() => setDeleteId(s.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {rows.length === 0 ? (
+                    <div className="ph-rule__meta" style={{ marginTop: 10 }}>Chưa gán tòa nào.</div>
+                  ) : (
+                    <div className="ph-chipset">
+                      {rows.map((r) => (
+                        <span key={r.building_id} className="ph-pct">
+                          {buildingName(r.building_id)} <b>{r.percent}%</b>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Lương điều hành — trừ khỏi LN từng nhà trước khi chia cổ đông */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
+      <div className="ph-card">
+        <div className="ph-card__head">
           <div>
-            <CardTitle className="text-base">Lương điều hành</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Trừ khỏi lợi nhuận từng nhà <strong>trước</strong> khi chia cho cổ đông.
-            </p>
-          </div>
-          <Button size="sm" onClick={() => { setEditingMgr(null); setMgrFormOpen(true); }}>
-            <Plus className="h-4 w-4 mr-1" /> Thêm quản lý
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {managers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chưa có quản lý điều hành nào. Bấm "Thêm quản lý" để gán user + cấu hình lương.</p>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {managers.map((m) => {
-                const rows = rulesByManager.get(m.id) ?? [];
-                return (
-                  <div key={m.id} className="rounded-lg border p-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate flex items-center gap-1">
-                          <Briefcase className="h-3.5 w-3.5 text-muted-foreground" /> {m.name}
-                        </p>
-                        {m.auth_user_id ? (
-                          <span className="text-xs text-emerald-600 flex items-center gap-1">
-                            <KeyRound className="h-3 w-3" /> {userEmail(m.auth_user_id)}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-amber-600 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" /> Chưa gán user — quản lý không đăng nhập được
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" onClick={() => { setEditingMgr(m); setMgrFormOpen(true); }}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteMgrId(m.id)}>
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {rows.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">Chưa có quy tắc lương.</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {rows.map((r) => (
-                          <div key={r.id} className="rounded-md bg-muted/50 px-2 py-1.5 text-xs">
-                            <div className="font-medium text-foreground">
-                              {r.label || (r.form === "FIXED" ? "Tiền thực" : "Phần trăm")}
-                            </div>
-                            <div className="text-muted-foreground">{ruleLabel(r)}</div>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {r.building_ids.slice(0, 6).map((bid) => (
-                                <Badge key={bid} variant="outline" className="gap-1 font-normal">
-                                  <Building2 className="h-3 w-3" />
-                                  {buildingName(bid)}
-                                </Badge>
-                              ))}
-                              {r.building_ids.length > 6 && (
-                                <Badge variant="outline" className="font-normal">+{r.building_ids.length - 6}</Badge>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="ph-card__title">Lương điều hành</div>
+            <div className="ph-card__note">
+              Trừ khỏi lợi nhuận từng nhà <b>trước</b> khi chia cho cổ đông.
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+          <div className="ph-card__push">
+            <Button className="ph-btn-primary" onClick={() => { setEditingMgr(null); setMgrFormOpen(true); }}>
+              ＋ Thêm quản lý
+            </Button>
+          </div>
+        </div>
+        {managers.length === 0 ? (
+          <div className="ph-empty">Chưa có quản lý điều hành nào. Bấm "Thêm quản lý" để gán user + cấu hình lương.</div>
+        ) : (
+          <div className="ph-grid-2" style={{ padding: "0 18px 18px", gap: 12 }}>
+            {managers.map((m) => {
+              const rows = rulesByManager.get(m.id) ?? [];
+              return (
+                <div key={m.id} className="ph-person">
+                  <div className="ph-person__top">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="ph-person__name">{m.name}</div>
+                      {m.auth_user_id ? (
+                        <div className="ph-person__meta ph-person__meta--ok">
+                          <KeyRound className="h-3 w-3" /> {userEmail(m.auth_user_id)}
+                        </div>
+                      ) : (
+                        <div className="ph-person__meta ph-person__meta--warn">
+                          <AlertTriangle className="h-3 w-3" /> Chưa gán user — quản lý không đăng nhập được
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <Button
+                        className="ph-iconbtn"
+                        aria-label={`Sửa ${m.name}`}
+                        onClick={() => { setEditingMgr(m); setMgrFormOpen(true); }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        className="ph-iconbtn ph-iconbtn--danger"
+                        aria-label={`Xoá ${m.name}`}
+                        onClick={() => setDeleteMgrId(m.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {rows.length === 0 ? (
+                    <div className="ph-rule__meta" style={{ marginTop: 10 }}>Chưa có quy tắc lương.</div>
+                  ) : (
+                    rows.map((r) => (
+                      <div key={r.id} className="ph-rule">
+                        <div className="ph-rule__name">
+                          {r.label || (r.form === "FIXED" ? "Tiền thực" : "Phần trăm")}
+                        </div>
+                        <div className="ph-rule__meta">{ruleLabel(r)}</div>
+                        <div className="ph-rule__tags">
+                          {r.building_ids.slice(0, 6).map((bid) => (
+                            <span key={bid} className="ph-rule__tag">{buildingName(bid)}</span>
+                          ))}
+                          {r.building_ids.length > 6 && (
+                            <span className="ph-rule__tag">+{r.building_ids.length - 6}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      </div>
 
       <ShareholderForm open={formOpen} onOpenChange={(o) => { setFormOpen(o); if (!o) setEditing(null); }} shareholder={editing} />
       <ProfitManagerForm open={mgrFormOpen} onOpenChange={(o) => { setMgrFormOpen(o); if (!o) setEditingMgr(null); }} manager={editingMgr} />
@@ -266,6 +325,6 @@ export default function ShareConfigTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
