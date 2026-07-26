@@ -15425,6 +15425,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_member_authorization_v1: {
+        Args: { p_membership: string }
+        Returns: Json
+      }
       get_meter_reading_stats: {
         Args: { p_building_id?: string; p_month?: string }
         Returns: {
@@ -15490,6 +15494,7 @@ export type Database = {
         }[]
       }
       get_or_create_deposit_account: { Args: never; Returns: string }
+      get_organization_profile_v1: { Args: never; Returns: Json }
       get_overpayment_summary: {
         Args: { p_building_ids?: string[] }
         Returns: Json
@@ -15726,6 +15731,7 @@ export type Database = {
         Args: { p_attachments: Json; p_completion: Json }
         Returns: boolean
       }
+      list_authorization_catalog_v1: { Args: never; Returns: Json }
       list_cashbook_visibility_v2: {
         Args: never
         Returns: {
@@ -15835,6 +15841,8 @@ export type Database = {
           voucher_type: string
         }[]
       }
+      list_organization_members_v1: { Args: never; Returns: Json }
+      list_organization_roles_v1: { Args: never; Returns: Json }
       lock_cashbook_period_v1: {
         Args: { p_cashbook_id: string; p_lock_date: string; p_unlock?: boolean }
         Returns: Json
@@ -16418,6 +16426,13 @@ export type Database = {
         }
         Returns: Json
       }
+      revenue_by_month: {
+        Args: { p_building_id?: string; p_end: string; p_start: string }
+        Returns: {
+          month_start: string
+          revenue: number
+        }[]
+      }
       reverse_customer_credit_application_v1: {
         Args: {
           p_application_id: string
@@ -16451,6 +16466,10 @@ export type Database = {
           p_reason: string
           p_voucher: string
         }
+        Returns: Json
+      }
+      revoke_organization_invitation_v1: {
+        Args: { p_invitation: string }
         Returns: Json
       }
       room_sort_key: { Args: { p_name: string }; Returns: string }
@@ -17071,6 +17090,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      update_organization_profile_v1: {
+        Args: { p_name: string }
+        Returns: Json
       }
       update_period_fee: {
         Args: {

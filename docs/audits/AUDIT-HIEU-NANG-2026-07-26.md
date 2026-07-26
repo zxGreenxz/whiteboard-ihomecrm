@@ -118,3 +118,39 @@ Chuỗi ~8 CTE với window function quét income_expenses bằng `LIKE 'tiền 
 4. **Nhóm RLS set-based (migration):** H8, H9, M9 — theo đúng mẫu 20260702150000 đã verify; sau migration chạy `node scripts/check-view-invoker.mjs` + EXPLAIN ANALYZE đối chứng số đo cũ.
 5. **Nhóm cap-1000 / unbounded:** H4, H5, M4, M10, L5, L6 — dùng `fetchAllRows`/chunk `.in()`/RPC aggregate; chạy `node scripts/reconcile-money.mjs` sau khi đụng các luồng tiền.
 6. **Nhóm SQL nặng:** H10 (backfill bảng legacy), M7 (RPC revenue_by_month), M8 (4 index) — cần đo EXPLAIN ANALYZE trước/sau trên DB thật.
+
+---
+
+## 6. Addendum thực hiện — 2026-07-26 (đo lại trên DB production, có PAT)
+
+Session thực hiện có `CLAUDE.local.md` nên đã đo được những gì audit gốc chưa đo. Toàn bộ EXPLAIN ANALYZE impersonate staff scoped NATHAN (10 toà) trên DB thật.
+
+### RLS set-based (H8/H9/M9) — migration `20260726130000`
+
+| Query | Trước | Sau | Ghi chú |
+|---|---|---|---|
+| `count(*)` customers (504 dòng) | **2.610 ms** | **11,6 ms** | ~5 ms/dòng chỉ cho kiểm quyền — TỆ HƠN ước tính audit |
+| `count(*)` meter_readings_detailed (744 dòng quét) | **4.086 ms** | **~44 ms** | gồm cả bỏ Sort do ORDER BY nội view |
+| `select *` jobs (182 dòng) | **1.059 ms** | **~47 ms** | |
+
+Ngữ nghĩa kiểm chứng: số dòng NATHAN thấy được khớp CHÍNH XÁC trước/sau (494/474/147); user DEMO thấy 0 khách ngoài org demo (cách ly tenant nguyên vẹn). Bẫy syntax đã gặp: `= ANY((SELECT fn()))` bị Postgres hiểu thành ANY-subquery → phải dùng `IN (SELECT unnest(fn()))` (đúng pattern org_boundary sẵn có). `check-view-invoker` 12/12 xanh.
+
+### M8 (4 index) — migration `20260726131000` · M7 (RPC) — `20260726132000`
+
+Index reversal_of/source_payment_id/org+collection_date đã tạo; index `payment_id` partial `deleted_at` thay bằng partial `payment_id IS NOT NULL` (phủ cả query legacy-reversal thiếu điều kiện deleted_at). `get_invoice_statistics_v2` sau đổi index: ~50 ms — không regress. `revenue_by_month(p_start, p_end, p_building_id)` SECURITY INVOKER thay đường `fetchAllRows` của `useRevenueChart` (range vẫn client tính — giữ múi giờ user).
+
+### H10 — **HOÃN CÓ CĂN CỨ** (tiền đề audit sai với thực tế)
+
+Đo thật 2026-07-26: `payments.collection_id IS NULL` có `max(created_at)` = **hôm nay 04:29 UTC** và `invoice_payment_collections` mới có **1 dòng** — tức luồng "legacy" **vẫn là luồng ghi chính hàng ngày**, v5 collection chưa thật sự cutover (nhánh `fix/v5-collection-completion` còn đang hoàn thiện). Backfill bảng frozen lúc này = báo cáo thiếu phiếu mới âm thầm — đúng loại bug audit đang diệt. Chi phí thật của view cũng chỉ **46–48 ms/request** (không phải giây). → Làm lại H10 SAU khi v5 collection cutover thật và luồng legacy ngừng ghi; khi đó cần kèm RLS cho bảng frozen (mirror `payments_select_rbac`) + join live `payments.reversed_at`.
+
+### Behavior delta đã biết của migration RLS (ghi nhận có chủ ý, không sửa)
+
+Review hoài nghi phát hiện phép thay `can_access_building(building_id)` → `has_full_building_scope() OR building_id IN (SELECT accessible_building_ids())` **không còn tương đương tuyệt đối** sau cutover `20260725210000`: nhánh org-wide của `can_v3` trả TRUE với mọi toà kể cả đã soft-delete, còn `buildings_for_v3` lọc `b.deleted_at IS NULL`. Nghĩa là staff có quyền org-wide (không phải super admin) sẽ **không còn thấy** dòng meters/meter_readings/jobs/vehicles thuộc toà đã xoá mềm. Comment "≡ theo chứng minh 20260702150000" trong migration là chứng minh cho thân helper CŨ — đã stale.
+
+Đo blast radius thật trên prod: **0 dòng bị ảnh hưởng** (6 toà soft-deleted, không toà nào còn jobs/meter_readings/meters/vehicles), và staff org-wide duy nhất là tài khoản DEMO. Giữ nguyên vì đồng bộ với hành vi sẵn có của `rooms`/`contracts` (cùng pattern từ 20260702150000) và ẩn dữ liệu của toà đã xoá là hành vi hợp lý. Nếu sau này cần cho staff org-wide thấy lại, sửa `buildings_for_v3` chứ đừng revert migration này.
+
+### Ghi chú kiểm chứng khác
+
+- `reconcile-money.mjs`: **INCONCLUSIVE** — kỳ nhiều phiếu nhất chỉ 348 dòng (≤1000) nên không kích hoạt được trần cap-1000 để chứng minh đường phân trang trên dữ liệu thật; các fix `fetchAllRows` đúng theo hợp đồng helper (đã có property test riêng).
+- Bundle sau tách vendor-ui (đo `vite build` thật): boot 829 → **647 kB raw** (~237 → **191 kB gzip**); phần Radix bị preload 262,8 → 61,6 kB raw (71,6 → 21,5 gzip). Thực tế entry cần **23 gói** Radix (5 component + 18 helper nội bộ) chứ không phải ~5 như audit ước — danh sách tối thiểu đã ghi trong `vite.config.ts` kèm cách đo lại.
+- H4: chọn phương án cửa sổ 90 ngày mặc định + select rút gọn + `fetchAllRows`, KÈM đổi hành vi có chủ ý: trang Công việc mặc định chỉ hiện 90 ngày gần nhất, có lựa chọn "Toàn bộ lịch sử" trong panel filter.
