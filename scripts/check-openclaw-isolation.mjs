@@ -26,7 +26,12 @@ const YAML_GENERIC_SEND = [
   {
     rule: "stock-generic-send",
     pattern:
-      /^[ \t]*["']?(?:method|rpcName|rpcMethod)["']?[ \t]*[:=][ \t]*(?:["']send["']|send)[ \t]*(?:#.*)?$/gim,
+      /^[ \t]*(?:-[ \t]+)?["']?(?:method|rpcName|rpcMethod)["']?[ \t]*[:=][ \t]*(?:["']send["']|send)[ \t]*(?:#.*)?$/gim,
+  },
+  {
+    rule: "stock-generic-send",
+    pattern:
+      /^[ \t]*(?:["']?[a-z0-9_.-]+["']?[ \t]*:[ \t]*)?\{(?:[ \t]*|[^{}\r\n#]*?,[ \t]*)["']?(?:method|rpcName|rpcMethod)["']?[ \t]*:[ \t]*(?:["']send["']|send)(?=[ \t]*[,}])[^{}\r\n#]*\}[ \t]*(?:#.*)?$/gim,
   },
 ];
 
@@ -419,6 +424,7 @@ function getTerminalName(node) {
   if (!node) return null;
   const expression = unwrapExpression(node);
   if (ts.isIdentifier(expression) || ts.isPrivateIdentifier(expression)) return expression.text;
+  if (ts.isCallExpression(expression)) return getTerminalName(expression.expression);
   if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
   if (ts.isElementAccessExpression(expression)) return getStaticString(expression.argumentExpression);
   return null;
@@ -544,7 +550,7 @@ function scanCodeSemantics(source, relativePath, approvedDeliveryPath, findings)
         DIRECT_DELIVERY_METHODS.has(calleeName) ||
         (calleeName === "send" && /(?:adapter|sender|provider|channel)$/i.test(receiverName ?? "")) ||
         (calleeName === "execute" &&
-          /tool$/i.test(receiverName ?? "") &&
+          receiverName !== null &&
           (TOOL_DELIVERY_VERBS.has(firstArgument) || toolDeliveryAction))
       ) {
         addNodeFinding(

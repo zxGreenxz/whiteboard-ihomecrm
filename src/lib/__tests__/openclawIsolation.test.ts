@@ -214,12 +214,19 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         `messageTool.execute({ action: "send", payload });`,
         'messageTool.execute({ ["action"]: `de${"liv"}er`, payload });',
       ].join("\n"),
+      "services/openclaw-zalo-bridge/src/factory-delivery.ts": [
+        `getProvider().send(payload);`,
+        `createAdapter()["send"](payload);`,
+        `getTool().execute("send", payload);`,
+        `dispatcher.execute({ action: "send", payload });`,
+      ].join("\n"),
       "services/openclaw-zalo-bridge/src/non-delivery-controls.ts": [
         `socket.send(payload);`,
         `classificationTool.execute(payload);`,
         `classificationTool.execute("classify", payload);`,
         `messageTool.execute({ action: "classify", payload });`,
         `messageTool.execute({ ["action"]: "status", payload });`,
+        `dispatcher.execute({ action: "classify", payload });`,
         `const packageName = "zalo";`,
         'import(`@openclaw/${packageName}user`);',
         `const verb = "se";`,
@@ -259,6 +266,19 @@ describe("OpenClaw Zalo isolation guardrail", () => {
       "services/openclaw-zalo-bridge/src/object-tool-delivery.ts",
       "direct-adapter-tool-delivery",
     );
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/factory-delivery.ts",
+      "direct-adapter-tool-delivery",
+    );
+    expect(
+      findings
+        .filter(
+          (finding) =>
+            finding.file === "services/openclaw-zalo-bridge/src/factory-delivery.ts" &&
+            finding.rule === "direct-adapter-tool-delivery",
+        )
+        .map((finding) => finding.line),
+    ).toEqual([1, 2, 3, 4]);
     expect(
       findings.filter(
         (finding) =>
@@ -276,6 +296,9 @@ describe("OpenClaw Zalo isolation guardrail", () => {
       `upstreamProvider?.["send"](payload);`,
       `messageTool["execute"]("deliver", payload);`,
       'messageTool.execute({ ["action"]: `se${"n"}d`, payload });',
+      `getProvider().send(payload);`,
+      `createAdapter()["send"](payload);`,
+      `dispatcher.execute({ action: "send", payload });`,
     ].join("\n");
     const root = makeFixture({
       "services/openclaw-zalo-cell/src/adversarial.ts": approvedSource,
@@ -457,6 +480,11 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         `rpcName = "send" # exact generic RPC`,
         `'rpcMethod': 'send'`,
       ].join("\n"),
+      "infra/openclaw-zalo/config/rpc-sequence.yaml": `- "method": "send" # sequence entry`,
+      "infra/openclaw-zalo/config/rpc-flow.yaml": [
+        `rpc: { method: send }`,
+        `rpc: { timeout: 1000, "rpcMethod": "send" }`,
+      ].join("\n"),
       "infra/openclaw-zalo/config/status.yaml": [
         `method: status`,
         `rpcName = classify`,
@@ -476,6 +504,36 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         rule: "stock-generic-send",
       }),
     );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        file: "infra/openclaw-zalo/config/rpc-sequence.yaml",
+        rule: "stock-generic-send",
+      }),
+    );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        file: "infra/openclaw-zalo/config/rpc-flow.yaml",
+        rule: "stock-generic-send",
+      }),
+    );
+    expect(
+      findings
+        .filter(
+          (finding) =>
+            finding.file === "infra/openclaw-zalo/config/rpc-sequence.yaml" &&
+            finding.rule === "stock-generic-send",
+        )
+        .map((finding) => finding.line),
+    ).toEqual([1]);
+    expect(
+      findings
+        .filter(
+          (finding) =>
+            finding.file === "infra/openclaw-zalo/config/rpc-flow.yaml" &&
+            finding.rule === "stock-generic-send",
+        )
+        .map((finding) => finding.line),
+    ).toEqual([1, 2]);
     expect(
       findings.filter(
         (finding) => finding.file === "infra/openclaw-zalo/config/status.yaml",
