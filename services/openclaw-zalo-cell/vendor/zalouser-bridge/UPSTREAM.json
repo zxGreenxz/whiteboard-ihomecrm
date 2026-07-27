@@ -1,0 +1,713 @@
+{
+  "schema": 1,
+  "package": "@openclaw/zalouser",
+  "version": "2026.7.1",
+  "sourceCommit": "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4",
+  "sourceSubtree": "extensions/zalouser",
+  "tarball": {
+    "url": "https://registry.npmjs.org/@openclaw/zalouser/-/zalouser-2026.7.1.tgz",
+    "lock": {
+      "size": 2341459,
+      "sha1": "ddd42ffa571e93a881ca5c95203eb7a49713f6c6",
+      "sha256": "e4022d5dc39009460523b796445c089caedce7e875a816d0e4cd18e8a48a0089",
+      "sha512": "92583404e3930efe3153292003fa53643b11ac8f5dcda82adb73a53eea422eb1628c339e6cfc4661a61d58348fcb8cc12405a38e74ab832081fb93ae08cbd91b",
+      "sri": "sha512-klg0BOOTDv4xUykgA/pTZDsRrI9dzagq23OlPupCLrFijDOebPxGYaYdWDSPy4zBJAWjjnSrgyCB+5OuCMvZGw=="
+    },
+    "counts": {
+      "regularFiles": 3169,
+      "packageOwnedFiles": 25,
+      "bundledFiles": 3144,
+      "dependencyPackageRoots": 38
+    }
+  },
+  "attestation": {
+    "subject": "pkg:npm/%40openclaw/zalouser@2026.7.1",
+    "subjectSha512": "92583404e3930efe3153292003fa53643b11ac8f5dcda82adb73a53eea422eb1628c339e6cfc4661a61d58348fcb8cc12405a38e74ab832081fb93ae08cbd91b"
+  },
+  "npmSignature": {
+    "keyId": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+    "algorithm": "ecdsa-sha2-nistp256",
+    "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEY6Ya7W++7aUPzvMTrezH6Ycx3c+HOKYCcNGybJZSCJq/fd7Qa8uuAKtdIkUQtQiEKERhAmE5lMMJhP8OkDOa2g=="
+  },
+  "slsa": {
+    "uriSan": "https://github.com/openclaw/openclaw/.github/workflows/plugin-npm-release.yml@refs/heads/release/2026.7.1",
+    "oidcIssuer": "https://token.actions.githubusercontent.com",
+    "workflowEvent": "workflow_dispatch",
+    "repository": "openclaw/openclaw",
+    "ref": "refs/heads/release/2026.7.1",
+    "environment": "npm-release",
+    "buildType": "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1",
+    "resolvedCommit": "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4",
+    "leafCertificateSha256": "9049091963146e23f13feede0d1dcfdae76e353b343bb37f0d8690527a722038",
+    "fulcioRootDerSha256": "3ba7b6cc4e95469d4d334b49cb257ad8537076fa84b0ca87ff4ecfe6a54680c1",
+    "fulcioIntermediateDerSha256": "15d795348226b4649f750f5802592c393bee7cc53c3b86982175b7ad087efe47",
+    "rekorKeyIdBase64": "wNI9atQGlz+VWfO6LRygH4QUfY/8W4RFwiT5i5WRgB0=",
+    "rekorSpkiSha256": "c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d"
+  },
+  "openclawOci": {
+    "indexDigest": "sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c",
+    "linuxAmd64Digest": "sha256:165b4992f1b4b74ffdd7a02c887ba006f9f5dc951eca420eef573a8b233b543f",
+    "linuxArm64ReferenceDigest": "sha256:38b611f494cb32e15aaf456d54c6b6be55db9098c90632aed0bfad4a70009707"
+  },
+  "sourceManifest": [
+    {
+      "sourcePath": "extensions/zalouser/README.md",
+      "outputPath": "upstream/package/README.md",
+      "mode": "100644",
+      "size": 2565,
+      "gitBlobOid": "59b3b254f9896339b807d9bfd76ed39338938f50",
+      "sha256": "f5b43f0fbaeee7245dbf8705bb159341126225eceb63485e6f9ac5db2f919ab9"
+    },
+    {
+      "sourcePath": "extensions/zalouser/api.ts",
+      "outputPath": "upstream/package/api.ts",
+      "mode": "100644",
+      "size": 492,
+      "gitBlobOid": "9816cc28ff08a0eeef2214e72cfd4e7227d51afb",
+      "sha256": "1cf3c529fd641c05b30b0b9539700d7147fa93faa904d9748861a45ae1d6b2e4"
+    },
+    {
+      "sourcePath": "extensions/zalouser/channel-plugin-api.ts",
+      "outputPath": "upstream/package/channel-plugin-api.ts",
+      "mode": "100644",
+      "size": 207,
+      "gitBlobOid": "00e7a5a8595c503804a1eabccc9f643a225100f0",
+      "sha256": "305a5edbd7f3639b8b883a2a3e2da938213519d25b0656fdbb78d254c5bbf023"
+    },
+    {
+      "sourcePath": "extensions/zalouser/contract-api.ts",
+      "outputPath": "upstream/package/contract-api.ts",
+      "mode": "100644",
+      "size": 139,
+      "gitBlobOid": "09e577852c4343f0c75be6d1c3495903f154954f",
+      "sha256": "adac2931ef146efa039dabe8ec3b163266d19be9790f25fd872089f705e8460b"
+    },
+    {
+      "sourcePath": "extensions/zalouser/doctor-contract-api.ts",
+      "outputPath": "upstream/package/doctor-contract-api.ts",
+      "mode": "100644",
+      "size": 151,
+      "gitBlobOid": "35980450a7f0f0ee70b4a11885312073557265a5",
+      "sha256": "cef5275296fc50ca2480730b054f8f6ba97f6798311209b27b878348e81fe434"
+    },
+    {
+      "sourcePath": "extensions/zalouser/index.ts",
+      "outputPath": "upstream/package/index.ts",
+      "mode": "100644",
+      "size": 992,
+      "gitBlobOid": "8ee33c5de6cc3faa54020755e2169d80a07f43f3",
+      "sha256": "412fcdc55373a8b81c0a921c879cc3c2dc8e4dae927db6dd0ad1ac7f39e8b8d7"
+    },
+    {
+      "sourcePath": "extensions/zalouser/npm-shrinkwrap.json",
+      "outputPath": "upstream/package/npm-shrinkwrap.json",
+      "mode": "100644",
+      "size": 16421,
+      "gitBlobOid": "70737aed2108f2b0ae7ec853f0ca58cdb1661ee1",
+      "sha256": "e6dbdf36505ad0a7d00a734beaa30e44167a74c4eefc23e0fae746bb5e94998e"
+    },
+    {
+      "sourcePath": "extensions/zalouser/openclaw.plugin.json",
+      "outputPath": "upstream/package/openclaw.plugin.json",
+      "mode": "100644",
+      "size": 489,
+      "gitBlobOid": "2cb842c0f1cce6ac476901640128e89e95bd4153",
+      "sha256": "c447586fe90700b6f5ddef481fee5a90580eded16a2485ed5309883851ccec05"
+    },
+    {
+      "sourcePath": "extensions/zalouser/package.json",
+      "outputPath": "upstream/package/package.json",
+      "mode": "100644",
+      "size": 1589,
+      "gitBlobOid": "5c088932fe50514242a03c66e05c17bbaf16bdb6",
+      "sha256": "d45ec2acec89f4ee4fa5dd57582b28ec18b6efa78a68499bd269da76a94f6d72"
+    },
+    {
+      "sourcePath": "extensions/zalouser/runtime-api.ts",
+      "outputPath": "upstream/package/runtime-api.ts",
+      "mode": "100644",
+      "size": 2236,
+      "gitBlobOid": "2b1f6293ea1827d1699f5c8a62c5451554f00b36",
+      "sha256": "a0a63193a95404ccd806db36c34369434acbfdf4d6165e389bc763558271cfb4"
+    },
+    {
+      "sourcePath": "extensions/zalouser/secret-contract-api.ts",
+      "outputPath": "upstream/package/secret-contract-api.ts",
+      "mode": "100644",
+      "size": 175,
+      "gitBlobOid": "8efcbe1f767903a74f531ab354af3c0959b1247a",
+      "sha256": "15cfead7c97b4a8bbd30653add5b2a7909bbce84842f290ee6f1358411be46e4"
+    },
+    {
+      "sourcePath": "extensions/zalouser/setup-entry.ts",
+      "outputPath": "upstream/package/setup-entry.ts",
+      "mode": "100644",
+      "size": 335,
+      "gitBlobOid": "1b86b2216473a4804ce381e9de2333f18d33350d",
+      "sha256": "e16fcecce7f5f9d5e4450dc4d6fc4249e9d5bc541f38434e8363505ea601d69d"
+    },
+    {
+      "sourcePath": "extensions/zalouser/setup-plugin-api.ts",
+      "outputPath": "upstream/package/setup-plugin-api.ts",
+      "mode": "100644",
+      "size": 139,
+      "gitBlobOid": "891b8987ec978d9661430a4067982ed2d7922510",
+      "sha256": "b30eef86ba2d2705f69711f6d4123b93c7071c5cb6799232b08cfb6be5be2f44"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/accounts.runtime.ts",
+      "outputPath": "upstream/package/src/accounts.runtime.ts",
+      "mode": "100644",
+      "size": 128,
+      "gitBlobOid": "d53fd55540c3dc2c4d324dc6e0c23fcaf349b5ec",
+      "sha256": "5557e14a99fe76c1cfa7e2787f492f46ee64b05b6bd57099867c3bd4adc3634a"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/accounts.test-mocks.ts",
+      "outputPath": "upstream/package/src/accounts.test-mocks.ts",
+      "mode": "100644",
+      "size": 649,
+      "gitBlobOid": "d251309a437adb448c9aff7d1f317a3d707c80cd",
+      "sha256": "8e6bc9a520651d32f15f4a0c0114b0aabf9d5c3c797466ca0b873c4bef2e0603"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/accounts.test.ts",
+      "outputPath": "upstream/package/src/accounts.test.ts",
+      "mode": "100644",
+      "size": 8130,
+      "gitBlobOid": "5abfb37a8906b30a2f1f4f222eea305d035b393d",
+      "sha256": "ee9798b9c927ea87f9b13dfbd6c38d6b750b7e5c205c77f29a5e6e589e351c28"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/accounts.ts",
+      "outputPath": "upstream/package/src/accounts.ts",
+      "mode": "100644",
+      "size": 4331,
+      "gitBlobOid": "dc7057e4cf44281f8a1fa7b941f936f1f3158742",
+      "sha256": "d3ec36e1bf3163247c5facd080ffdfc468a57dad0bcdd6473ef4d0b52b5c0c84"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel-api.ts",
+      "outputPath": "upstream/package/src/channel-api.ts",
+      "mode": "100644",
+      "size": 896,
+      "gitBlobOid": "c2aaf3d64bb5c12b09e2754330d101496fa5365c",
+      "sha256": "23d34b3c8c9a26e23733d625fc4a8341b188b5a5aba53228e4abd710142bcd00"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.adapters.ts",
+      "outputPath": "upstream/package/src/channel.adapters.ts",
+      "mode": "100644",
+      "size": 16275,
+      "gitBlobOid": "89fb477a09ec8308269642eaf164153db2576e27",
+      "sha256": "ee1ba43120b78c64a0a3e1ae18e67129438de3b0332c2411f5c1f5fb4692f928"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.directory.test.ts",
+      "outputPath": "upstream/package/src/channel.directory.test.ts",
+      "mode": "100644",
+      "size": 1886,
+      "gitBlobOid": "b8801f96dab8b814aac92d42439df0930a35ff12",
+      "sha256": "4c55ac415e6dce1172eb231d3784b5d8f7d29698c9f685080b94e95c01b4e2dd"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.runtime.ts",
+      "outputPath": "upstream/package/src/channel.runtime.ts",
+      "mode": "100644",
+      "size": 437,
+      "gitBlobOid": "a4d27eebcc978800ccb40cc5959cd0ba427276f6",
+      "sha256": "a22b984b3c6c4dad6376476b619f45dff2550f3b7e0e47651fc6b22a2446a60e"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.sendpayload.test.ts",
+      "outputPath": "upstream/package/src/channel.sendpayload.test.ts",
+      "mode": "100644",
+      "size": 13023,
+      "gitBlobOid": "674bcf0672c51515f0d659df8b5a5d4d0ab44715",
+      "sha256": "48698d8e5969396bd99b0524e1ef4731149b68aa02a4d0dc6d440484ea01e54e"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.setup.test.ts",
+      "outputPath": "upstream/package/src/channel.setup.test.ts",
+      "mode": "100644",
+      "size": 1219,
+      "gitBlobOid": "584beb535cdcb504aa1d08d4a64060fd93608390",
+      "sha256": "5d9134e7c7d3b2a1fe68cd7274f7c7d62985991b676035a35f2e862d806e4be5"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.setup.ts",
+      "outputPath": "upstream/package/src/channel.setup.ts",
+      "mode": "100644",
+      "size": 538,
+      "gitBlobOid": "de8fe9283e1b9bc8b4d5069392aeeaf79af19f62",
+      "sha256": "ce9d2a97869aa50ebbac33f0901ceacc6f140998898901dfd26f7ac928933f65"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.test.ts",
+      "outputPath": "upstream/package/src/channel.test.ts",
+      "mode": "100644",
+      "size": 11914,
+      "gitBlobOid": "00148c26d320d9533f93445ef469505998562207",
+      "sha256": "88680f4402a2694d861fa7a9d7ce0bfa07d7926a885615bbda4862fce2dbbd68"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/channel.ts",
+      "outputPath": "upstream/package/src/channel.ts",
+      "mode": "100644",
+      "size": 8291,
+      "gitBlobOid": "2172853d2ff46e2182f15ec1e69bed09f30591aa",
+      "sha256": "081efc5f979c22c4dbd151e0d8b831f86a67792bea846be4dfde21654ac90e0d"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/config-schema.ts",
+      "outputPath": "upstream/package/src/config-schema.ts",
+      "mode": "100644",
+      "size": 1149,
+      "gitBlobOid": "5214e682c91bc23f7a2745ffb13ee7388a1d47f5",
+      "sha256": "f590aefe6f847b4dddf697922ce9177f484cecc98995a71acb47f43e97fa867a"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/directory.ts",
+      "outputPath": "upstream/package/src/directory.ts",
+      "mode": "100644",
+      "size": 1534,
+      "gitBlobOid": "ab3b498ba29831dfa59a85aba5dea03804e0cc01",
+      "sha256": "1354ae8f580a42e8d00bbf8e252780db398b517760da00f04f8303c1a178e117"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/doctor-contract.ts",
+      "outputPath": "upstream/package/src/doctor-contract.ts",
+      "mode": "100644",
+      "size": 4966,
+      "gitBlobOid": "10f40cf433901f274ed554c701fc1a9f2f1bbfc7",
+      "sha256": "a882f724590e8931a63cbfba4062ea4dcbf1649824c25b3d2c77d47034a0a8c1"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/doctor.test.ts",
+      "outputPath": "upstream/package/src/doctor.test.ts",
+      "mode": "100644",
+      "size": 2502,
+      "gitBlobOid": "e57042316bbb2a3d076488b6157bf581e2f379ec",
+      "sha256": "e743bac30430b4b3b533239426923b47b760dbab7e9f0e77ceedb8ae7410a2a4"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/doctor.ts",
+      "outputPath": "upstream/package/src/doctor.ts",
+      "mode": "100644",
+      "size": 1394,
+      "gitBlobOid": "90e509374c5d4484a2a14a48409dc688fe5b6119",
+      "sha256": "885927f5d015a29fc65da7c0c0865205d996bc08db7a21c661fad1ffebd21e80"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/group-policy.test.ts",
+      "outputPath": "upstream/package/src/group-policy.test.ts",
+      "mode": "100644",
+      "size": 1992,
+      "gitBlobOid": "0603df232c1fa099fef6f296a7279a0b35260b4e",
+      "sha256": "6f301650ed2dbd50a4dadffbebc21a734d80b21f2c8313c84d77953be5a65a61"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/group-policy.ts",
+      "outputPath": "upstream/package/src/group-policy.ts",
+      "mode": "100644",
+      "size": 2304,
+      "gitBlobOid": "ad2a84419357754feb45e311a6b752e20779fb3c",
+      "sha256": "5a03fb08faa9705bece667db1ba6c8555ed708a9951b6f4b6d89f8380ca1c3bb"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/message-sid.test.ts",
+      "outputPath": "upstream/package/src/message-sid.test.ts",
+      "mode": "100644",
+      "size": 2063,
+      "gitBlobOid": "0a95eac9cb5b2871678861b774a32e8ad738b3c5",
+      "sha256": "d14cef68f9f7aa494fab792b13729fefcaeca8ac6c4ab8aa7cfe8831bdcf1cad"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/message-sid.ts",
+      "outputPath": "upstream/package/src/message-sid.ts",
+      "mode": "100644",
+      "size": 2461,
+      "gitBlobOid": "e67f1ae2efa6c62756003651ab709602b5e2fc47",
+      "sha256": "6d8344254f3700c819753b60c6b7d5e1af73f40c070c6712b71fd570508da121"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/monitor.account-scope.test.ts",
+      "outputPath": "upstream/package/src/monitor.account-scope.test.ts",
+      "mode": "100644",
+      "size": 3800,
+      "gitBlobOid": "40c3bb3c2248ca45e1b59d113a8023d5b0520d5a",
+      "sha256": "8f8db23b7f0ddfca19a00155385794acbca44635109320b299f7fbc452457ab3"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/monitor.group-gating.test.ts",
+      "outputPath": "upstream/package/src/monitor.group-gating.test.ts",
+      "mode": "100644",
+      "size": 31991,
+      "gitBlobOid": "33eb95f6d3a5053821e36610e3d3ca041ac4596b",
+      "sha256": "2a8e2d5ed4e4c9eb9420ab7bf88527ad30a709fa05533f8fb58c7b31a8bedf42"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/monitor.send.test-mocks.ts",
+      "outputPath": "upstream/package/src/monitor.send.test-mocks.ts",
+      "mode": "100644",
+      "size": 854,
+      "gitBlobOid": "7ded7625dac72e73ebcd20f3d302e2f86724c4bb",
+      "sha256": "00e5450e4fccb87f587f1473717f60066bc77deed431b8af1ecaddff5ef22181"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/monitor.ts",
+      "outputPath": "upstream/package/src/monitor.ts",
+      "mode": "100644",
+      "size": 33165,
+      "gitBlobOid": "80315d7f7b0aaf5a924305bf4ba0764f297383d2",
+      "sha256": "a92ea6742d21f79d16382372514d09511297b1dcb9ac3479a31a18472a4d9450"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/probe.test.ts",
+      "outputPath": "upstream/package/src/probe.test.ts",
+      "mode": "100644",
+      "size": 2111,
+      "gitBlobOid": "5bdcdbdd76d2083318d89bcd7bd07328836a7473",
+      "sha256": "573971c03e691e95e0e7cb6f87ed1df4fe32c8cc8efb38ca2c020852895ecfd8"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/probe.ts",
+      "outputPath": "upstream/package/src/probe.ts",
+      "mode": "100644",
+      "size": 1088,
+      "gitBlobOid": "468d4e7b0b36b0dc89b288284daccf5070152eb4",
+      "sha256": "21845b81c76882ae13dd67874c5b432893e0e1812c3b0f3a474e271af087834a"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/qr-temp-file.ts",
+      "outputPath": "upstream/package/src/qr-temp-file.ts",
+      "mode": "100644",
+      "size": 788,
+      "gitBlobOid": "7d94c21626d1c6df30acac45021ad308bf0ad401",
+      "sha256": "2a175fd9afe5626f57f4bdcbd73dc8871235e3b2bd8fa3576f2a8d49167baf7f"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/reaction.test.ts",
+      "outputPath": "upstream/package/src/reaction.test.ts",
+      "mode": "100644",
+      "size": 751,
+      "gitBlobOid": "c76114ae2c8e0642bc16fed77e32702553b192e0",
+      "sha256": "62e5e90d1c925c3c2e0cfb7af8f546b1b0c9886606ecac3e55d3fd0549f375fa"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/reaction.ts",
+      "outputPath": "upstream/package/src/reaction.ts",
+      "mode": "100644",
+      "size": 963,
+      "gitBlobOid": "5be19acc1608ea8608e6a1519308806091d82ffb",
+      "sha256": "51e6181706bb8ec2f2a370cc8876093a6293f9bf8501d7834b73e61b1c5de2ac"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/runtime.ts",
+      "outputPath": "upstream/package/src/runtime.ts",
+      "mode": "100644",
+      "size": 453,
+      "gitBlobOid": "ce9cf387a6da85dfe80117da4371d62222dbf489",
+      "sha256": "1641e7ffb379acab1f5f3bbd0ce2fc037fc0a2d4914e20129bd7cda4513ae0f2"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/security-audit.test.ts",
+      "outputPath": "upstream/package/src/security-audit.test.ts",
+      "mode": "100644",
+      "size": 3046,
+      "gitBlobOid": "e1a10874362e89d9e66b877abee2c41449bb73da",
+      "sha256": "3f222fd9a7126e1a3f4ab7685a33778c56f76d6be1c68e4908b46d8eb197422d"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/security-audit.ts",
+      "outputPath": "upstream/package/src/security-audit.ts",
+      "mode": "100644",
+      "size": 3116,
+      "gitBlobOid": "1ca90a2a136b6c00e83b791be6442085b180e7f8",
+      "sha256": "d8ec91360b6702484bfb828664053d59be5ffca8347716f49c9fcb4a24915296"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/send-receipt.ts",
+      "outputPath": "upstream/package/src/send-receipt.ts",
+      "mode": "100644",
+      "size": 1094,
+      "gitBlobOid": "09a0d6d7beeb626777f204ef900e3d90d061d05a",
+      "sha256": "a4a84a8e2fe0c397f008a745a7fae66afabc415811e08d38499144d5e21ae877"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/send.test.ts",
+      "outputPath": "upstream/package/src/send.test.ts",
+      "mode": "100644",
+      "size": 14501,
+      "gitBlobOid": "a7e4cfb5379ab7bfb386e49d7e8d8fdd019d70f9",
+      "sha256": "5e3fea9f32d987640d78a208ade019546e3923f551eef667cff009a3d3ae08cb"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/send.ts",
+      "outputPath": "upstream/package/src/send.ts",
+      "mode": "100644",
+      "size": 7610,
+      "gitBlobOid": "24595a1a03fc5eac932adeb3285f49e21a6e5d2d",
+      "sha256": "06e8665dbdc0b349e9422ed25510729cce942d6ee6d75a80c3e4714e2e46deb1"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/session-route.test.ts",
+      "outputPath": "upstream/package/src/session-route.test.ts",
+      "mode": "100644",
+      "size": 688,
+      "gitBlobOid": "8afd88b4267734d9756b5f66743f27b456a7848e",
+      "sha256": "d1ad9a66df8e509273abc69778daa65b1ae7fbb3ceb0fcc0d03eb40fad9d0baa"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/session-route.ts",
+      "outputPath": "upstream/package/src/session-route.ts",
+      "mode": "100644",
+      "size": 3851,
+      "gitBlobOid": "bb1533ea89dda9027b0875c613fe005cd0f2f5b5",
+      "sha256": "fa5c1c647b13bf400f4646803a9dc25db45afe53e81cd69f93e0b3a3750748e7"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/setup-core.ts",
+      "outputPath": "upstream/package/src/setup-core.ts",
+      "mode": "100644",
+      "size": 1083,
+      "gitBlobOid": "1262ab1aa5294edd6a5321bacce5337abe75caf0",
+      "sha256": "f864d1cacfd60804481735e5f2ae7055a2fb60e690471a8fc58f1dcf7023de45"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/setup-surface.test.ts",
+      "outputPath": "upstream/package/src/setup-surface.test.ts",
+      "mode": "100644",
+      "size": 11884,
+      "gitBlobOid": "47446cd0c939850fc46e187a8f66bdd77e8e25d4",
+      "sha256": "2dc82a7ed0f16e5cd7ce2c07742f1d686ea89d20126e90a8e7c11738ddca67ec"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/setup-surface.ts",
+      "outputPath": "upstream/package/src/setup-surface.ts",
+      "mode": "100644",
+      "size": 16101,
+      "gitBlobOid": "bc93bfa2b81c8a850c86ba5c86f6355b16bb64b2",
+      "sha256": "461f9fcf7b707c108fa7aa024c3a71d23a469d22b37638e458e39318f36dcc09"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/setup-test-helpers.ts",
+      "outputPath": "upstream/package/src/setup-test-helpers.ts",
+      "mode": "100644",
+      "size": 1628,
+      "gitBlobOid": "a00a69240510988c9c001667a1006ed94be00a62",
+      "sha256": "738065d1f37f047df1b532c40dc889359e717e9c783ac73b5e0b0698d3dae3e8"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/shared.ts",
+      "outputPath": "upstream/package/src/shared.ts",
+      "mode": "100644",
+      "size": 2781,
+      "gitBlobOid": "488114fdc9055b6c71a2103d3017fd3f34fb7175",
+      "sha256": "3a6b6af1fd9cb3a24c2227e289b03f357af1b02df3d47c92ded8f9245b2d78ea"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/status-issues.test.ts",
+      "outputPath": "upstream/package/src/status-issues.test.ts",
+      "mode": "100644",
+      "size": 987,
+      "gitBlobOid": "858326e06b72040322dcc1848f9172d043e884ee",
+      "sha256": "d9d1d1058c9a715599d6bf3bde9ee5f848559d48edb58116b56dbd0ff17f8827"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/status-issues.ts",
+      "outputPath": "upstream/package/src/status-issues.ts",
+      "mode": "100644",
+      "size": 1584,
+      "gitBlobOid": "bf93197298918802426031b87b09097faa7ebd47",
+      "sha256": "e0bd8ad1f03501b47a70fd94657ce5ec85435e072b0cd28a886b387db4d9d765"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/test-helpers.ts",
+      "outputPath": "upstream/package/src/test-helpers.ts",
+      "mode": "100644",
+      "size": 693,
+      "gitBlobOid": "b607913427a0b14b760323d4f509aafbe45076d5",
+      "sha256": "61dcd7e23649c05bd5b36dfeebd6dfcc967ebaa5e64153e5e7ec5f7287ef85ca"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/text-styles.test.ts",
+      "outputPath": "upstream/package/src/text-styles.test.ts",
+      "mode": "100644",
+      "size": 6646,
+      "gitBlobOid": "5dcb4569ddd1bb1c4fd1156a6ddf57f25e0c7db4",
+      "sha256": "5cb431ef72452050732247fde99187c574607d14ce4d52b7b42582019e660c00"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/text-styles.ts",
+      "outputPath": "upstream/package/src/text-styles.ts",
+      "mode": "100644",
+      "size": 14656,
+      "gitBlobOid": "44eced707c6c978f5fdbe15d13608112b78ca83c",
+      "sha256": "37be3f7802bf080ada998fd91664e295f7c1bb519756628a85f7f0a1aa706233"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/tool.test.ts",
+      "outputPath": "upstream/package/src/tool.test.ts",
+      "mode": "100644",
+      "size": 7115,
+      "gitBlobOid": "86034f11fb1b273991c653e162718a5f86f1b9b0",
+      "sha256": "6f3c53c9b1fa32ab3067810755938600a840815fba1c918404ee019de5cc5498"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/tool.ts",
+      "outputPath": "upstream/package/src/tool.ts",
+      "mode": "100644",
+      "size": 6740,
+      "gitBlobOid": "1fc17631622f92d4b0ab8d4b19c5ac5d259550d1",
+      "sha256": "ebb4ac5dc29ac9cf26ddc3ba51fa542af20530031a67cb0e184ad446278988ee"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/types.ts",
+      "outputPath": "upstream/package/src/types.ts",
+      "mode": "100644",
+      "size": 2895,
+      "gitBlobOid": "3ac504156fc0e5d37b0af3ea0f09628370c5e02c",
+      "sha256": "6a42a36492d5b0fd05c24b3f555b5b5a7ebcb482fe7609a5721f7a7dedf410ad"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zalo-js.credentials.test.ts",
+      "outputPath": "upstream/package/src/zalo-js.credentials.test.ts",
+      "mode": "100644",
+      "size": 16373,
+      "gitBlobOid": "26414d2c736d656ff9ad3478a232a07dd4cd34a4",
+      "sha256": "1434304eacb5080683f1b1c724434c3340fe3f4d12260123939e7fe37b03bea4"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zalo-js.test-mocks.ts",
+      "outputPath": "upstream/package/src/zalo-js.test-mocks.ts",
+      "mode": "100644",
+      "size": 3944,
+      "gitBlobOid": "98e82d6ff360fc874c517977b53dc02c819355c4",
+      "sha256": "321dcb50fe09d8bed191f79708f9647cabbdb7a059ec911b571d910b7c7b4fa9"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zalo-js.ts",
+      "outputPath": "upstream/package/src/zalo-js.ts",
+      "mode": "100644",
+      "size": 56927,
+      "gitBlobOid": "1605cf880e846af21800b5ef9f3d85127914a13b",
+      "sha256": "be7ef1796695f918b5e900243f449901f60ac54683a99e7c7aa300adf42daf04"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zalo-quote-metadata.test.ts",
+      "outputPath": "upstream/package/src/zalo-quote-metadata.test.ts",
+      "mode": "100644",
+      "size": 3519,
+      "gitBlobOid": "b8ce6152e84745db8a801ef25f63d4168b394d7d",
+      "sha256": "fee9934b4180a6f7bcfa7fce9b9475a0c1f128767a3ed8eacd28c99dd7bf684d"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zca-client.test.ts",
+      "outputPath": "upstream/package/src/zca-client.test.ts",
+      "mode": "100644",
+      "size": 905,
+      "gitBlobOid": "8d53c521aa384890af418fd248f7f12b9573be1d",
+      "sha256": "bb5be1821e0220a454633af173c979d157d9f3c4bef569282c559b36f728f924"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zca-client.ts",
+      "outputPath": "upstream/package/src/zca-client.ts",
+      "mode": "100644",
+      "size": 6085,
+      "gitBlobOid": "46860852407fad1514a26d0349cad990f7d8c28d",
+      "sha256": "ef268ee513fd9136d96a047ed9096bd3aa02dfc2d8fde29aa9aca83e56ebb084"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zca-constants.ts",
+      "outputPath": "upstream/package/src/zca-constants.ts",
+      "mode": "100644",
+      "size": 1189,
+      "gitBlobOid": "3c0a76ce22b7847aabebd0ec1b2e20748743c3e0",
+      "sha256": "206dd412e2b5a921de34c156ba5cde36d515f41e7a6dac931689946243340db0"
+    },
+    {
+      "sourcePath": "extensions/zalouser/src/zca-js-exports.d.ts",
+      "outputPath": "upstream/package/src/zca-js-exports.d.ts",
+      "mode": "100644",
+      "size": 631,
+      "gitBlobOid": "efb33207da8e64ffd389dcd06cac4cc065bab336",
+      "sha256": "16d578f2172d6b150585e1b11707ec794734241790103dc7bd48effe7860998d"
+    },
+    {
+      "sourcePath": "extensions/zalouser/test-api.ts",
+      "outputPath": "upstream/package/test-api.ts",
+      "mode": "100644",
+      "size": 635,
+      "gitBlobOid": "f60e0095350da82e672a6d953af35fb04a196920",
+      "sha256": "a3108d6d6cd5f117c68d40fe042675d5ca265e2ce8db2e3cfa7a1f490a1efbc9"
+    },
+    {
+      "sourcePath": "extensions/zalouser/tsconfig.json",
+      "outputPath": "upstream/package/tsconfig.json",
+      "mode": "100644",
+      "size": 358,
+      "gitBlobOid": "b8a85a99ac3dc4997c603c8d61f57b469f6a3123",
+      "sha256": "859abb6696060604e9fdbf464e090843c0de1d3811e1609e21dcd33db004317f"
+    }
+  ],
+  "provenanceInputs": [
+    {
+      "path": "upstream/provenance/npm-registry-metadata.json",
+      "endpoint": "https://registry.npmjs.org/@openclaw%2Fzalouser/2026.7.1",
+      "cap": 65536,
+      "size": 2617,
+      "sha256": "a7142c42bf895229ddf2b74dc2381ec34767056efe6b96e632891ff442ee4e06"
+    },
+    {
+      "path": "upstream/provenance/npm-registry-keys.json",
+      "endpoint": "https://registry.npmjs.org/-/npm/v1/keys",
+      "cap": 65536,
+      "size": 580,
+      "sha256": "faf23d8753d5bb79df250f10391ac89b63ecf7743e48487a544a99c847f9c8df"
+    },
+    {
+      "path": "upstream/provenance/npm-attestation-bundles.json",
+      "endpoint": "https://registry.npmjs.org/-/npm/v1/attestations/@openclaw%2fzalouser@2026.7.1",
+      "cap": 262144,
+      "size": 15645,
+      "sha256": "bed90b7c252549f0c999a6b3cc4c529dd047bc71030c8f317eef7239e3757eba"
+    },
+    {
+      "path": "upstream/provenance/sigstore-trusted-root.json",
+      "endpoint": "https://tuf-repo-cdn.sigstore.dev/targets/6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66.trusted_root.json",
+      "cap": 65536,
+      "size": 6787,
+      "sha256": "6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66"
+    }
+  ],
+  "rootCompliance": [
+    {
+      "sourcePath": "LICENSE",
+      "outputPath": "upstream/LICENSE.openclaw",
+      "mode": "100644",
+      "size": 1170,
+      "gitBlobOid": "ebaebf7c416761a32f932ad70ebe5d1d2e214f68",
+      "sha256": "73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d"
+    },
+    {
+      "sourcePath": "THIRD_PARTY_NOTICES.md",
+      "outputPath": "upstream/THIRD_PARTY_NOTICES.openclaw.md",
+      "mode": "100644",
+      "size": 1575,
+      "gitBlobOid": "6b6721901b7590d20774ba0504d975e1be70a57a",
+      "sha256": "c84200f7a9bb8b3abc8563520433316716a9eb83915cfe7c3063d5e6fce5e7ca"
+    }
+  ],
+  "licenseManifestSchema": 1,
+  "licenseManifestPath": "licenses/manifest.json",
+  "licenseManifestSha256": "009f6805ccd48036b61879994bae5ee122d749147a3a7f1e14e7e16e6766c1ad",
+  "licensePackageRootCount": 38,
+  "licenseCarrierCount": 39,
+  "mInputAggregate": {
+    "schema": 1,
+    "domain": "ihome-openclaw-m-inputs-v1",
+    "pathCount": 87,
+    "sha256": "a557490f92523b6e27c096bb335ec77745ce3f5bba09780dfc2d9b0f19e4a3e0"
+  }
+}

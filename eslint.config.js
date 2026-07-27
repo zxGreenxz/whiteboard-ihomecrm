@@ -5,7 +5,14 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  {
+    ignores: [
+      "dist",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**",
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

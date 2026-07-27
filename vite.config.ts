@@ -50,7 +50,13 @@ export default defineConfig(({ mode }) => ({
     // .e2e-fleet/*.spec.ts are Playwright specs (see .e2e-fleet/playwright.config.ts),
     // not vitest unit tests — keep them out of `vitest run` so the CI quality gate
     // does not fail on Playwright-only APIs (test.use, FLEET_BASE_URL, ...).
-    exclude: [...configDefaults.exclude, ".e2e-fleet/**"],
+    exclude: [
+      ...configDefaults.exclude,
+      ".e2e-fleet/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**",
+    ],
   },
   build: {
     rollupOptions: {
