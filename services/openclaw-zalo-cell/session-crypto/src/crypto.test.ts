@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +16,7 @@ import {
   type FileSystemOperations,
   type PathEntry,
   type RandomBytes,
+  type SessionCryptoStoreConfiguration,
 } from "./crypto.js";
 import { SessionCryptoDaemon } from "./daemon.js";
 
@@ -58,6 +60,20 @@ function mutateEnvelope(
   return Buffer.from(JSON.stringify(value), "utf8");
 }
 
+function envelopeVersion(envelope: Uint8Array): string {
+  return createHash("sha256").update(envelope).digest("hex");
+}
+
+function countingRandom(): RandomBytes {
+  let nonce = 0;
+  let suffix = 0;
+  return (size) => {
+    if (size === 12) return Buffer.alloc(12, ++nonce);
+    if (size === 8) return Buffer.alloc(8, ++suffix);
+    throw new Error(`Unexpected randomness request for ${size} bytes`);
+  };
+}
+
 describe("AES-256-GCM envelope", () => {
   it("round trips session bytes without placing plaintext in the ciphertext envelope", () => {
     const plaintext = Buffer.from("fixture-plaintext-alpha", "utf8");
@@ -79,26 +95,18 @@ describe("AES-256-GCM envelope", () => {
     });
   });
 
-  it("retries an injected duplicate nonce and never reuses it", () => {
-    const firstNonce = Buffer.alloc(12, 0x41);
-    const secondNonce = Buffer.alloc(12, 0x42);
-    const engine = createEngine({
-      randomBytes: sequenceRandom(firstNonce, firstNonce, secondNonce),
-    });
+  it("uses an injected 12-byte nonce source for standalone envelope fixtures", () => {
+    const nonce = Buffer.alloc(12, 0x41);
+    const engine = createEngine({ randomBytes: sequenceRandom(nonce) });
 
-    const first = inspectEnvelope(engine.encrypt("session.json", Buffer.from("one")));
-    const second = inspectEnvelope(engine.encrypt("session.json", Buffer.from("two")));
+    const metadata = inspectEnvelope(engine.encrypt("session.json", Buffer.from("one")));
 
-    expect(first.nonce).not.toBe(second.nonce);
-    expect(first.nonce).toBe(firstNonce.toString("base64"));
-    expect(second.nonce).toBe(secondNonce.toString("base64"));
+    expect(metadata.nonce).toBe(nonce.toString("base64"));
   });
 
   it("fails closed for the wrong key, generation, cell, path, or authentication tag", () => {
-    const sameKeyAcrossGenerations = createEngine({
-      keys: new Map([["g1", KEY_A], ["g2", KEY_A]]),
-    });
-    const envelope = sameKeyAcrossGenerations.encrypt(
+    const engine = createEngine();
+    const envelope = engine.encrypt(
       "sessions/a.json",
       Buffer.from("fixture-plaintext-beta"),
     );
@@ -117,7 +125,7 @@ describe("AES-256-GCM envelope", () => {
     });
 
     expect(() => wrongKeyEngine.decrypt("sessions/a.json", envelope)).toThrow(SessionCryptoError);
-    expect(() => sameKeyAcrossGenerations.decrypt("sessions/a.json", substitutedGeneration)).toThrow(
+    expect(() => engine.decrypt("sessions/a.json", substitutedGeneration)).toThrow(
       /authentication/i,
     );
     expect(() => createEngine().decrypt("sessions/a.json", unknownGeneration)).toThrow(
@@ -191,6 +199,44 @@ describe("AES-256-GCM envelope", () => {
           keys: new Map([["g1", Buffer.alloc(31)]]),
         }),
     ).toThrow(/32 bytes/i);
+  });
+
+  it("rejects duplicate AES key bytes assigned to different generations", () => {
+    expect(
+      () =>
+        new SessionCryptoEngine({
+          activeGeneration: "g1",
+          cellId: CELL_A,
+          keys: new Map([
+            ["g1", KEY_A],
+            ["g2", Buffer.from(KEY_A)],
+          ]),
+        }),
+    ).toThrow(/duplicate key bytes/i);
+  });
+
+  it("rejects an envelope above the reader limit before it can be persisted", () => {
+    const plaintext = Buffer.from("bounded-envelope-fixture");
+    const reference = createEngine({
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x35)),
+    }).encrypt("session.json", plaintext);
+    const exactBoundary = new SessionCryptoEngine({
+      activeGeneration: "g1",
+      cellId: CELL_A,
+      keys: new Map([["g1", KEY_A]]),
+      maxEnvelopeBytes: reference.length,
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x36)),
+    });
+    const belowBoundary = new SessionCryptoEngine({
+      activeGeneration: "g1",
+      cellId: CELL_A,
+      keys: new Map([["g1", KEY_A]]),
+      maxEnvelopeBytes: reference.length - 1,
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x37)),
+    });
+
+    expect(exactBoundary.encrypt("session.json", plaintext)).toHaveLength(reference.length);
+    expect(() => belowBoundary.encrypt("session.json", plaintext)).toThrow(/envelope.*limit/i);
   });
 });
 
@@ -295,12 +341,13 @@ describe("logical path and root safety", () => {
   );
 });
 
-type FailurePoint = "write" | "file-fsync" | "rename" | "dir-fsync";
+type FailurePoint = "write" | "file-fsync" | "rename" | "dir-fsync" | "second-dir-fsync";
 
 class OrderedFileSystem implements FileSystemOperations {
   readonly events: string[] = [];
   readonly files = new Map<string, Buffer>();
   readonly directories = new Set<string>();
+  private directorySyncCount = 0;
 
   constructor(private readonly failure?: FailurePoint) {}
 
@@ -311,11 +358,15 @@ class OrderedFileSystem implements FileSystemOperations {
 
   async open(filePath: string, flags: string | number, mode?: number): Promise<FileHandleOperations> {
     const directoryHandle = flags === "r";
+    if (!directoryHandle && typeof flags === "number" && this.files.has(filePath)) {
+      throw Object.assign(new Error("already exists"), { code: "EEXIST" });
+    }
     this.events.push(
       directoryHandle
         ? `open-dir:${filePath}`
         : `open-temp:${filePath}:${String(flags)}:${String(mode)}`,
     );
+    if (!directoryHandle) this.files.set(filePath, Buffer.alloc(0));
     let bytes = Buffer.alloc(0);
 
     return {
@@ -332,6 +383,12 @@ class OrderedFileSystem implements FileSystemOperations {
         }
         if (directoryHandle && this.failure === "dir-fsync") {
           throw new Error("injected directory fsync failure");
+        }
+        if (directoryHandle) {
+          this.directorySyncCount += 1;
+          if (this.failure === "second-dir-fsync" && this.directorySyncCount === 2) {
+            throw new Error("injected second directory fsync failure");
+          }
         }
       },
       close: async () => {
@@ -385,7 +442,6 @@ describe("durable persistent writes", () => {
     await durableAtomicWrite(fs, target, Buffer.from("ciphertext"), randomBytes);
 
     expect(fs.events).toEqual([
-      `mkdir:${parent}`,
       expect.stringMatching(`^open-temp:${temporary.replaceAll("\\", "\\\\")}:\\d+:384$`),
       `write:${temporary}`,
       `fsync-file:${temporary}`,
@@ -451,7 +507,14 @@ class MemoryFileSystem extends OrderedFileSystem {
   }
 }
 
-function createStoreFixture(options: { failure?: FailurePoint; random?: Buffer[] } = {}) {
+function createStoreFixture(options: {
+  activeGeneration?: string;
+  failure?: FailurePoint;
+  keys?: ReadonlyMap<string, Uint8Array>;
+  maxEnvelopeBytes?: number;
+  random?: Buffer[];
+  randomBytes?: RandomBytes;
+} = {}) {
   const base = path.resolve("memory-store");
   const plaintextRoot = path.join(base, "plain");
   const persistentRoot = path.join(base, "cipher");
@@ -459,31 +522,298 @@ function createStoreFixture(options: { failure?: FailurePoint; random?: Buffer[]
   fs.directories.add(base);
   fs.directories.add(plaintextRoot);
   fs.directories.add(persistentRoot);
+  fs.directories.add(path.join(plaintextRoot, "account"));
+  fs.directories.add(path.join(persistentRoot, "account"));
   const randomValues = options.random ?? [Buffer.alloc(12, 0x51), Buffer.alloc(8, 0x61)];
 
   return {
     fs,
     plaintextRoot,
     persistentRoot,
-    create: () =>
+    create: () => {
+      const configuration: SessionCryptoStoreConfiguration = {
+        activeGeneration: options.activeGeneration ?? "g1",
+        cellId: CELL_A,
+        keys: options.keys ?? new Map([["g1", KEY_A], ["g2", KEY_B]]),
+        persistentRoot,
+        plaintextRoot,
+      };
+      if (options.maxEnvelopeBytes !== undefined) {
+        configuration.maxEnvelopeBytes = options.maxEnvelopeBytes;
+      }
+      return SessionCryptoStore.create(
+        configuration,
+        {
+          fs,
+          isTmpfsRoot: async (candidate) => candidate === plaintextRoot,
+          platform: "linux",
+          randomBytes: options.randomBytes ?? sequenceRandom(...randomValues),
+        },
+      );
+    },
+  };
+}
+
+describe("session store and rotation", () => {
+  it("returns a stable ciphertext envelope version for compare-and-swap", async () => {
+    const fixture = createStoreFixture();
+    const store = await fixture.create();
+
+    const written = await store.writeSession("session.json", Buffer.from("fixture-cas-initial"), null);
+    const persisted = fixture.fs.files.get(path.join(fixture.persistentRoot, "session.json"))!;
+
+    expect(written.envelopeVersion).toBe(envelopeVersion(persisted));
+  });
+
+  it("serializes same-path writers so only one stale expected version can commit", async () => {
+    const fixture = createStoreFixture({ randomBytes: countingRandom() });
+    const store = await fixture.create();
+    const initial = await store.writeSession("session.json", Buffer.from("fixture-cas-base"), null);
+
+    const results = await Promise.allSettled([
+      store.writeSession(
+        "session.json",
+        Buffer.from("fixture-cas-contender-a"),
+        initial.envelopeVersion,
+      ),
+      store.writeSession(
+        "session.json",
+        Buffer.from("fixture-cas-contender-b"),
+        initial.envelopeVersion,
+      ),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    expect(rejected?.reason).toMatchObject({ code: "ENVELOPE_CONFLICT" });
+  });
+
+  it("does not restore plaintext when the expected envelope version is stale", async () => {
+    const fixture = createStoreFixture({ randomBytes: countingRandom() });
+    const persistentPath = path.join(fixture.persistentRoot, "session.json");
+    const plaintextPath = path.join(fixture.plaintextRoot, "session.json");
+    const envelope = createEngine({
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x41)),
+    }).encrypt("session.json", Buffer.from("fixture-restore-current"));
+    fixture.fs.files.set(persistentPath, envelope);
+    fixture.fs.files.set(plaintextPath, Buffer.from("fixture-restore-previous"));
+    const store = await fixture.create();
+
+    await expect(store.restoreToPlaintext("session.json", "0".repeat(64))).rejects.toMatchObject({
+      code: "ENVELOPE_CONFLICT",
+    });
+    expect(fixture.fs.files.get(plaintextPath)).toEqual(Buffer.from("fixture-restore-previous"));
+  });
+
+  it("rotates only to the configured active generation and later persists remain on it", async () => {
+    const fixture = createStoreFixture({
+      activeGeneration: "g2",
+      randomBytes: countingRandom(),
+    });
+    const logicalPath = "session.json";
+    const persistentPath = path.join(fixture.persistentRoot, logicalPath);
+    const plaintextPath = path.join(fixture.plaintextRoot, logicalPath);
+    const oldEnvelope = createEngine({
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x44)),
+    }).encrypt(logicalPath, Buffer.from("fixture-before-active-rotation"));
+    fixture.fs.files.set(persistentPath, oldEnvelope);
+    fixture.fs.files.set(plaintextPath, Buffer.from("fixture-after-active-rotation"));
+    const store = await fixture.create();
+
+    const rotated = await store.rotateSession(logicalPath, envelopeVersion(oldEnvelope));
+    const persisted = await store.persistFromPlaintext(logicalPath, rotated.envelopeVersion);
+
+    expect(rotated.generation).toBe("g2");
+    expect(persisted.generation).toBe("g2");
+  });
+
+  it("rejects rotation when ciphertext already uses the configured active generation", async () => {
+    const fixture = createStoreFixture({ activeGeneration: "g2", randomBytes: countingRandom() });
+    const engine = new SessionCryptoEngine({
+      activeGeneration: "g2",
+      cellId: CELL_A,
+      keys: new Map([["g1", KEY_A], ["g2", KEY_B]]),
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x45)),
+    });
+    const envelope = engine.encrypt("session.json", Buffer.from("fixture-already-active"));
+    fixture.fs.files.set(path.join(fixture.persistentRoot, "session.json"), envelope);
+    const store = await fixture.create();
+
+    await expect(
+      store.rotateSession("session.json", envelopeVersion(envelope)),
+    ).rejects.toMatchObject({ code: "ROTATION_GENERATION_UNCHANGED" });
+  });
+
+  it("reserves nonces durably across restarted store instances", async () => {
+    const fixture = createStoreFixture();
+    const sharedNonce = Buffer.alloc(12, 0x52);
+    let secondNonceCall = 0;
+    const firstStore = await SessionCryptoStore.create(
+      {
+        activeGeneration: "g1",
+        cellId: CELL_A,
+        keys: new Map([["g1", KEY_A], ["g2", KEY_B]]),
+        persistentRoot: fixture.persistentRoot,
+        plaintextRoot: fixture.plaintextRoot,
+      },
+      {
+        fs: fixture.fs,
+        isTmpfsRoot: async (candidate) => candidate === fixture.plaintextRoot,
+        platform: "linux",
+        randomBytes: (size) =>
+          size === 12 ? sharedNonce : Buffer.alloc(8, 0x53),
+      },
+    );
+    const secondStore = await SessionCryptoStore.create(
+      {
+        activeGeneration: "g1",
+        cellId: CELL_A,
+        keys: new Map([["g1", KEY_A], ["g2", KEY_B]]),
+        persistentRoot: fixture.persistentRoot,
+        plaintextRoot: fixture.plaintextRoot,
+      },
+      {
+        fs: fixture.fs,
+        isTmpfsRoot: async (candidate) => candidate === fixture.plaintextRoot,
+        platform: "linux",
+        randomBytes: (size) => {
+          if (size === 8) return Buffer.alloc(8, 0x54);
+          secondNonceCall += 1;
+          return secondNonceCall === 1 ? sharedNonce : Buffer.alloc(12, 0x55);
+        },
+      },
+    );
+
+    const first = await firstStore.writeSession("first.json", Buffer.from("fixture-first"), null);
+    const second = await secondStore.writeSession("second.json", Buffer.from("fixture-second"), null);
+
+    expect(first.nonce).not.toBe(second.nonce);
+  });
+
+  it("never reuses the persisted previous nonce after restart even without an old reservation", async () => {
+    const fixture = createStoreFixture();
+    const previousNonce = Buffer.alloc(12, 0x56);
+    const oldEnvelope = createEngine({
+      randomBytes: sequenceRandom(previousNonce),
+    }).encrypt("session.json", Buffer.from("fixture-previous-nonce"));
+    fixture.fs.files.set(path.join(fixture.persistentRoot, "session.json"), oldEnvelope);
+    let nonceCall = 0;
+    const store = await SessionCryptoStore.create(
+      {
+        activeGeneration: "g1",
+        cellId: CELL_A,
+        keys: new Map([["g1", KEY_A], ["g2", KEY_B]]),
+        persistentRoot: fixture.persistentRoot,
+        plaintextRoot: fixture.plaintextRoot,
+      },
+      {
+        fs: fixture.fs,
+        isTmpfsRoot: async (candidate) => candidate === fixture.plaintextRoot,
+        platform: "linux",
+        randomBytes: (size) => {
+          if (size === 8) return Buffer.alloc(8, 0x57);
+          nonceCall += 1;
+          return nonceCall === 1 ? previousNonce : Buffer.alloc(12, 0x58);
+        },
+      },
+    );
+
+    const persisted = await store.writeSession(
+      "session.json",
+      Buffer.from("fixture-new-nonce"),
+      envelopeVersion(oldEnvelope),
+    );
+
+    expect(persisted.nonce).not.toBe(previousNonce.toString("base64"));
+  });
+
+  it("rejects missing or unsafe parent directories instead of recursively creating them", async () => {
+    const fixture = createStoreFixture({ randomBytes: countingRandom() });
+    const store = await fixture.create();
+
+    await expect(
+      store.writeSession("missing/session.json", Buffer.from("fixture-parent-missing"), null),
+    ).rejects.toThrow(/pre-existing directory/i);
+    expect(fixture.fs.events.some((event) => event.startsWith("mkdir:"))).toBe(false);
+  });
+
+  it("rejects an unowned or broadly accessible parent directory", async () => {
+    const fixture = createStoreFixture({ randomBytes: countingRandom() });
+    const unsafeParent = path.join(fixture.persistentRoot, "unsafe");
+    fixture.fs.directories.add(unsafeParent);
+    fixture.fs.unsafeEntries.set(unsafeParent, { kind: "directory", mode: 0o777, uid: 9999 });
+    const store = await fixture.create();
+
+    await expect(
+      store.writeSession("unsafe/session.json", Buffer.from("fixture-unsafe-parent"), null),
+    ).rejects.toThrow(/owner|mode/i);
+  });
+
+  it("rejects an unowned or broadly accessible configured session root", async () => {
+    const fixture = createStoreFixture();
+    fixture.fs.unsafeEntries.set(fixture.persistentRoot, {
+      kind: "directory",
+      mode: 0o755,
+      uid: 9999,
+    });
+
+    let rejection: unknown;
+    try {
+      await fixture.create();
+    } catch (error) {
+      rejection = error;
+    }
+    expect(rejection).toBeInstanceOf(SessionCryptoError);
+    expect(String((rejection as Error | undefined)?.message)).toMatch(/root.*owner|root.*mode/i);
+  });
+
+  it("fails explicitly when the store runtime is not Linux", async () => {
+    const fixture = createStoreFixture();
+
+    await expect(
       SessionCryptoStore.create(
         {
           activeGeneration: "g1",
           cellId: CELL_A,
           keys: new Map([["g1", KEY_A], ["g2", KEY_B]]),
-          persistentRoot,
-          plaintextRoot,
+          persistentRoot: fixture.persistentRoot,
+          plaintextRoot: fixture.plaintextRoot,
         },
         {
-          fs,
-          isTmpfsRoot: async (candidate) => candidate === plaintextRoot,
-          randomBytes: sequenceRandom(...randomValues),
+          fs: fixture.fs,
+          isTmpfsRoot: async () => true,
+          platform: "win32",
+          randomBytes: countingRandom(),
         },
       ),
-  };
-}
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_PLATFORM" });
+  });
 
-describe("session store and rotation", () => {
+  it("preserves the last good ciphertext when a new envelope exceeds the store limit", async () => {
+    const oldEnvelope = createEngine({
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x59)),
+    }).encrypt("session.json", Buffer.from("small"));
+    const fixture = createStoreFixture({
+      maxEnvelopeBytes: oldEnvelope.length + 8,
+      randomBytes: countingRandom(),
+    });
+    const persistentPath = path.join(fixture.persistentRoot, "session.json");
+    fixture.fs.files.set(persistentPath, oldEnvelope);
+    const store = await fixture.create();
+
+    await expect(
+      store.writeSession(
+        "session.json",
+        Buffer.alloc(1024, 0x61),
+        envelopeVersion(oldEnvelope),
+      ),
+    ).rejects.toMatchObject({ code: "ENVELOPE_TOO_LARGE" });
+    expect(fixture.fs.files.get(persistentPath)).toEqual(oldEnvelope);
+  });
+
   it("persists plaintext only from tmpfs and stores authenticated ciphertext in the persistent root", async () => {
     const fixture = createStoreFixture();
     const logicalPath = "account/session.json";
@@ -493,7 +823,7 @@ describe("session store and rotation", () => {
     fixture.fs.files.set(plaintextPath, plaintext);
     const store = await fixture.create();
 
-    const persisted = await store.persistFromPlaintext(logicalPath);
+    const persisted = await store.persistFromPlaintext(logicalPath, null);
     const ciphertext = fixture.fs.files.get(persistentPath);
 
     expect(persisted.generation).toBe("g1");
@@ -529,7 +859,7 @@ describe("session store and rotation", () => {
     fixture.fs.files.set(persistentPath, envelope);
     const store = await fixture.create();
 
-    await store.restoreToPlaintext(logicalPath);
+    await store.restoreToPlaintext(logicalPath, envelopeVersion(envelope));
 
     expect(fixture.fs.files.get(plaintextPath)).toEqual(plaintext);
     expect(fixture.fs.files.get(persistentPath)).toEqual(envelope);
@@ -544,7 +874,11 @@ describe("session store and rotation", () => {
       const store = await fixture.create();
 
       await expect(
-        store.writeSession("account/session.json", Buffer.from("fixture-plaintext-epsilon")),
+        store.writeSession(
+          "account/session.json",
+          Buffer.from("fixture-plaintext-epsilon"),
+          null,
+        ),
       ).rejects.toThrow(
         new RegExp(kind, "i"),
       );
@@ -553,20 +887,17 @@ describe("session store and rotation", () => {
 
   it("rotates to a new generation and nonce while retaining decryptability", async () => {
     const fixture = createStoreFixture({
-      random: [
-        Buffer.alloc(12, 0x71),
-        Buffer.alloc(8, 0x72),
-        Buffer.alloc(12, 0x73),
-        Buffer.alloc(8, 0x74),
-      ],
+      activeGeneration: "g2",
+      random: [Buffer.alloc(12, 0x73), Buffer.alloc(8, 0x74)],
     });
     const store = await fixture.create();
-    await store.writeSession("session.json", Buffer.from("fixture-plaintext-zeta"));
-    const before = inspectEnvelope(
-      fixture.fs.files.get(path.join(fixture.persistentRoot, "session.json"))!,
-    );
+    const oldEnvelope = createEngine({
+      randomBytes: sequenceRandom(Buffer.alloc(12, 0x71)),
+    }).encrypt("session.json", Buffer.from("fixture-plaintext-zeta"));
+    fixture.fs.files.set(path.join(fixture.persistentRoot, "session.json"), oldEnvelope);
+    const before = inspectEnvelope(oldEnvelope);
 
-    const rotated = await store.rotateSession("session.json", "g2");
+    const rotated = await store.rotateSession("session.json", envelopeVersion(oldEnvelope));
     const afterEnvelope = fixture.fs.files.get(path.join(fixture.persistentRoot, "session.json"))!;
     const after = inspectEnvelope(afterEnvelope);
 
@@ -580,6 +911,7 @@ describe("session store and rotation", () => {
 
   it("preserves the recoverable old generation when rotation fails before rename", async () => {
     const fixture = createStoreFixture({
+      activeGeneration: "g2",
       failure: "rename",
       random: [Buffer.alloc(12, 0x01), Buffer.alloc(8, 0x02)],
     });
@@ -589,7 +921,9 @@ describe("session store and rotation", () => {
     const persistentPath = path.join(fixture.persistentRoot, "session.json");
     fixture.fs.files.set(persistentPath, oldEnvelope);
 
-    await expect(store.rotateSession("session.json", "g2")).rejects.toThrow(/rename/i);
+    await expect(
+      store.rotateSession("session.json", envelopeVersion(oldEnvelope)),
+    ).rejects.toThrow(/rename/i);
 
     expect(inspectEnvelope(fixture.fs.files.get(persistentPath)!).generation).toBe("g1");
     expect((await store.readSession("session.json")).plaintext).toEqual(
@@ -599,20 +933,19 @@ describe("session store and rotation", () => {
 
   it("reports an explicit fatal ambiguity if rotation fails after rename", async () => {
     const fixture = createStoreFixture({
-      failure: "dir-fsync",
+      activeGeneration: "g2",
+      failure: "second-dir-fsync",
       random: [Buffer.alloc(12, 0x21), Buffer.alloc(8, 0x22)],
     });
     const store = await fixture.create();
     const engine = createEngine({ randomBytes: sequenceRandom(Buffer.alloc(12, 0x23)) });
     const persistentPath = path.join(fixture.persistentRoot, "session.json");
-    fixture.fs.files.set(
-      persistentPath,
-      engine.encrypt("session.json", Buffer.from("fixture-plaintext-theta")),
-    );
+    const oldEnvelope = engine.encrypt("session.json", Buffer.from("fixture-plaintext-theta"));
+    fixture.fs.files.set(persistentPath, oldEnvelope);
 
-    await expect(store.rotateSession("session.json", "g2")).rejects.toBeInstanceOf(
-      AmbiguousDurabilityError,
-    );
+    await expect(
+      store.rotateSession("session.json", envelopeVersion(oldEnvelope)),
+    ).rejects.toBeInstanceOf(AmbiguousDurabilityError);
     expect(inspectEnvelope(fixture.fs.files.get(persistentPath)!).generation).toBe("g2");
   });
 
@@ -627,9 +960,25 @@ describe("session store and rotation", () => {
     );
     const daemon = new SessionCryptoDaemon(await fixture.create());
 
-    const result = await daemon.execute({ operation: "persist", path: logicalPath });
+    const result = await daemon.handle({
+      expectedEnvelopeVersion: null,
+      id: "integrated-persist",
+      operation: "persist",
+      path: logicalPath,
+      version: 1,
+    });
 
-    expect(result).toEqual({ generation: "g1", operation: "persist", path: logicalPath });
+    expect(result).toMatchObject({
+      id: "integrated-persist",
+      ok: true,
+      result: {
+        envelopeVersion: expect.stringMatching(/^[0-9a-f]{64}$/),
+        generation: "g1",
+        operation: "persist",
+        path: logicalPath,
+      },
+      version: 1,
+    });
     expect(JSON.stringify(result)).not.toContain("fixture-plaintext-iota");
   });
 });

@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./dist/daemon.js",
   "types": "./dist/daemon.d.ts",
+  "bin": {
+    "openclaw-session-crypto": "./dist/daemon.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/daemon.d.ts",
@@ -20,7 +23,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run --config package.json src/crypto.test.ts",
+    "test": "vitest run --config package.json src/crypto.test.ts src/daemon.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

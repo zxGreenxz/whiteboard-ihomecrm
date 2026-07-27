@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   createCipheriv,
   createDecipheriv,
+  createHash,
   randomBytes as nodeRandomBytes,
 } from "node:crypto";
 import { TextDecoder } from "node:util";
@@ -17,13 +18,15 @@ const NODE_ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32;
 const NONCE_LENGTH = 12;
 const TAG_LENGTH = 16;
-const MAX_ENVELOPE_BYTES = 64 * 1024 * 1024;
+export const DEFAULT_MAX_ENVELOPE_BYTES = 64 * 1024 * 1024;
 const MAX_NONCE_ATTEMPTS = 32;
 const AAD_DOMAIN = Buffer.from("ihome-openclaw-session-aad-v1\0", "utf8");
 
 export type RandomBytes = (size: number) => Uint8Array;
 export type PathEntry = {
   kind: "directory" | "file" | "missing" | "reparse" | "symlink";
+  mode?: number;
+  uid?: number;
 };
 
 export interface FileHandleOperations {
@@ -55,6 +58,7 @@ export interface SessionCryptoEngineOptions {
   activeGeneration: string;
   cellId: string;
   keys: ReadonlyMap<string, Uint8Array>;
+  maxEnvelopeBytes?: number;
   randomBytes?: RandomBytes;
 }
 
@@ -64,8 +68,10 @@ export interface SessionCryptoStoreConfiguration extends SessionCryptoEngineOpti
 }
 
 export interface SessionCryptoStoreDependencies {
+  expectedOwnerUid?: number;
   fs?: FileSystemOperations;
   isTmpfsRoot?: (candidate: string) => Promise<boolean>;
+  platform?: NodeJS.Platform;
   randomBytes?: RandomBytes;
 }
 
@@ -78,6 +84,7 @@ export interface EnvelopeMetadata {
   algorithm: typeof ALGORITHM_LABEL;
   ciphertextLength: number;
   generation: string;
+  envelopeVersion: string;
   nonce: string;
   nonceLength: number;
   tag: string;
@@ -228,9 +235,12 @@ function decodeCanonicalBase64(field: string, value: string, allowEmpty: boolean
   return decoded;
 }
 
-function parseEnvelope(envelopeBytes: Uint8Array): ParsedEnvelope {
+function parseEnvelope(
+  envelopeBytes: Uint8Array,
+  maxEnvelopeBytes = DEFAULT_MAX_ENVELOPE_BYTES,
+): ParsedEnvelope {
   const bytes = Buffer.from(envelopeBytes);
-  if (bytes.length === 0 || bytes.length > MAX_ENVELOPE_BYTES) {
+  if (bytes.length === 0 || bytes.length > maxEnvelopeBytes) {
     throw new SessionCryptoError("MALFORMED_ENVELOPE", "Ciphertext envelope has an invalid length");
   }
 
@@ -282,6 +292,7 @@ function parseEnvelope(envelopeBytes: Uint8Array): ParsedEnvelope {
     ciphertextBytes,
     ciphertextLength: ciphertextBytes.length,
     generation,
+    envelopeVersion: createHash("sha256").update(bytes).digest("hex"),
     nonce: value.nonce,
     nonceBytes,
     nonceLength: nonceBytes.length,
@@ -296,6 +307,7 @@ function publicMetadata(envelope: ParsedEnvelope): EnvelopeMetadata {
   return {
     algorithm: envelope.algorithm,
     ciphertextLength: envelope.ciphertextLength,
+    envelopeVersion: envelope.envelopeVersion,
     generation: envelope.generation,
     nonce: envelope.nonce,
     nonceLength: envelope.nonceLength,
@@ -313,13 +325,21 @@ export class SessionCryptoEngine {
   private readonly activeGeneration: string;
   private readonly cellId: string;
   private readonly keys = new Map<string, Buffer>();
+  private readonly maxEnvelopeBytes: number;
   private readonly randomBytes: RandomBytes;
-  private readonly usedNonces = new Set<string>();
 
   constructor(options: SessionCryptoEngineOptions) {
     this.cellId = validateCellId(options.cellId);
     this.activeGeneration = validateGeneration(options.activeGeneration);
+    this.maxEnvelopeBytes = options.maxEnvelopeBytes ?? DEFAULT_MAX_ENVELOPE_BYTES;
+    if (!Number.isSafeInteger(this.maxEnvelopeBytes) || this.maxEnvelopeBytes <= 0) {
+      throw new SessionCryptoError(
+        "INVALID_ENVELOPE_LIMIT",
+        "Ciphertext envelope limit must be a positive safe integer",
+      );
+    }
     this.randomBytes = options.randomBytes ?? nodeRandomBytes;
+    const keyFingerprints = new Set<string>();
 
     for (const [generationValue, keyValue] of options.keys) {
       const generation = validateGeneration(generationValue);
@@ -330,6 +350,14 @@ export class SessionCryptoEngine {
           `AES-256-GCM key for generation ${generation} must be exactly 32 bytes`,
         );
       }
+      const fingerprint = key.toString("hex");
+      if (keyFingerprints.has(fingerprint)) {
+        throw new SessionCryptoError(
+          "DUPLICATE_KEY_BYTES",
+          "Different key generations must not use duplicate key bytes",
+        );
+      }
+      keyFingerprints.add(fingerprint);
       this.keys.set(generation, key);
     }
     if (!this.keys.has(this.activeGeneration)) {
@@ -358,27 +386,44 @@ export class SessionCryptoEngine {
         throw new SessionCryptoError("INVALID_RANDOMNESS", "Random source returned an invalid nonce length");
       }
       const encoded = nonce.toString("base64");
-      if (!this.usedNonces.has(encoded) && encoded !== forbiddenNonce) {
-        this.usedNonces.add(encoded);
-        return nonce;
-      }
+      if (encoded !== forbiddenNonce) return nonce;
     }
     throw new SessionCryptoError(
       "NONCE_EXHAUSTED",
-      "Random source repeatedly returned an already-used AES-GCM nonce",
+      "Random source repeatedly returned a forbidden AES-GCM nonce",
     );
   }
 
-  encrypt(
+  getActiveGeneration(): string {
+    return this.activeGeneration;
+  }
+
+  inspect(envelopeBytes: Uint8Array): EnvelopeMetadata {
+    return publicMetadata(parseEnvelope(envelopeBytes, this.maxEnvelopeBytes));
+  }
+
+  encryptWithNonce(
     logicalPathValue: string,
     plaintext: Uint8Array,
-    generationValue = this.activeGeneration,
-    forbiddenNonce?: string,
+    generationValue: string,
+    nonceValue: Uint8Array,
+  ): Buffer {
+    const nonce = Buffer.from(nonceValue);
+    if (nonce.length !== NONCE_LENGTH) {
+      throw new SessionCryptoError("INVALID_NONCE", "AES-GCM nonce must be exactly 12 bytes");
+    }
+    return this.encryptInternal(logicalPathValue, plaintext, generationValue, nonce);
+  }
+
+  private encryptInternal(
+    logicalPathValue: string,
+    plaintext: Uint8Array,
+    generationValue: string,
+    nonce: Buffer,
   ): Buffer {
     const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
     const generation = validateGeneration(generationValue);
     const key = this.keyFor(generation);
-    const nonce = this.nextNonce(forbiddenNonce);
     const aad = buildAdditionalAuthenticatedData(this.cellId, logicalPath, generation);
     const cipher = createCipheriv(NODE_ALGORITHM, key, nonce, { authTagLength: TAG_LENGTH });
     cipher.setAAD(aad);
@@ -392,12 +437,29 @@ export class SessionCryptoEngine {
       tag: tag.toString("base64"),
       version: ENVELOPE_VERSION,
     };
-    return Buffer.from(JSON.stringify(envelope), "utf8");
+    const serialized = Buffer.from(JSON.stringify(envelope), "utf8");
+    if (serialized.length > this.maxEnvelopeBytes) {
+      throw new SessionCryptoError(
+        "ENVELOPE_TOO_LARGE",
+        "Ciphertext envelope exceeds the configured reader limit",
+      );
+    }
+    return serialized;
+  }
+
+  encrypt(
+    logicalPathValue: string,
+    plaintext: Uint8Array,
+    generationValue = this.activeGeneration,
+    forbiddenNonce?: string,
+  ): Buffer {
+    const nonce = this.nextNonce(forbiddenNonce);
+    return this.encryptInternal(logicalPathValue, plaintext, generationValue, nonce);
   }
 
   decrypt(logicalPathValue: string, envelopeBytes: Uint8Array): DecryptedSession {
     const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
-    const envelope = parseEnvelope(envelopeBytes);
+    const envelope = parseEnvelope(envelopeBytes, this.maxEnvelopeBytes);
     const key = this.keyFor(envelope.generation);
     const aad = buildAdditionalAuthenticatedData(this.cellId, logicalPath, envelope.generation);
 
@@ -422,7 +484,7 @@ export class SessionCryptoEngine {
   }
 
   rotate(logicalPath: string, envelopeBytes: Uint8Array, newGenerationValue: string): Buffer {
-    const existing = parseEnvelope(envelopeBytes);
+    const existing = parseEnvelope(envelopeBytes, this.maxEnvelopeBytes);
     const decrypted = this.decrypt(logicalPath, envelopeBytes);
     const newGeneration = validateGeneration(newGenerationValue);
     if (newGeneration === existing.generation) {
@@ -432,6 +494,22 @@ export class SessionCryptoEngine {
       );
     }
     return this.encrypt(logicalPath, decrypted.plaintext, newGeneration, existing.nonce);
+  }
+
+  rotateToActiveWithNonce(
+    logicalPath: string,
+    envelopeBytes: Uint8Array,
+    nonce: Uint8Array,
+  ): Buffer {
+    const existing = parseEnvelope(envelopeBytes, this.maxEnvelopeBytes);
+    if (existing.generation === this.activeGeneration) {
+      throw new SessionCryptoError(
+        "ROTATION_GENERATION_UNCHANGED",
+        "Ciphertext already uses the configured active key generation",
+      );
+    }
+    const decrypted = this.decrypt(logicalPath, envelopeBytes);
+    return this.encryptWithNonce(logicalPath, decrypted.plaintext, this.activeGeneration, nonce);
   }
 }
 
@@ -528,6 +606,7 @@ async function assertTargetComponentsAreSafe(
   root: string,
   targetPath: string,
   inspectPath: (candidate: string) => Promise<PathEntry>,
+  options: { expectedOwnerUid?: number; requireExistingParents?: boolean } = {},
 ): Promise<void> {
   const relative = path.relative(root, targetPath);
   const segments = relative.split(path.sep).filter(Boolean);
@@ -541,11 +620,31 @@ async function assertTargetComponentsAreSafe(
         `Logical session path contains a ${entry.kind} component`,
       );
     }
-    if (index < segments.length - 1 && entry.kind === "file") {
+    if (index < segments.length - 1 && entry.kind !== "directory") {
+      if (entry.kind === "missing" && options.requireExistingParents) {
+        throw new SessionCryptoError(
+          "PARENT_DIRECTORY_MISSING",
+          "Every parent of a session file must be a pre-existing directory",
+        );
+      }
       throw new SessionCryptoError(
         "UNSAFE_PATH_COMPONENT",
         "Logical session path contains a file where a directory is required",
       );
+    }
+    if (entry.kind === "directory" && index < segments.length - 1) {
+      if (entry.uid !== undefined && options.expectedOwnerUid !== undefined && entry.uid !== options.expectedOwnerUid) {
+        throw new SessionCryptoError(
+          "UNSAFE_DIRECTORY_OWNER",
+          "Session parent directory has an unexpected owner",
+        );
+      }
+      if (entry.mode !== undefined && (entry.mode & 0o077) !== 0) {
+        throw new SessionCryptoError(
+          "UNSAFE_DIRECTORY_MODE",
+          "Session parent directory mode exposes data outside the service owner",
+        );
+      }
     }
   }
 }
@@ -570,7 +669,6 @@ export async function durableAtomicWrite(
   randomBytes: RandomBytes = nodeRandomBytes,
 ): Promise<void> {
   const directoryPath = path.dirname(targetPath);
-  await fs.mkdir(directoryPath, { mode: 0o700, recursive: true });
   const suffix = Buffer.from(randomBytes(8));
   if (suffix.length !== 8) {
     throw new SessionCryptoError("INVALID_RANDOMNESS", "Random source returned an invalid temp suffix");
@@ -683,8 +781,8 @@ const defaultFileSystem: FileSystemOperations = {
     try {
       const stats = await nodeFs.lstat(candidate);
       if (stats.isSymbolicLink()) return { kind: "symlink" };
-      if (stats.isDirectory()) return { kind: "directory" };
-      if (stats.isFile()) return { kind: "file" };
+      if (stats.isDirectory()) return { kind: "directory", mode: stats.mode & 0o777, uid: stats.uid };
+      if (stats.isFile()) return { kind: "file", mode: stats.mode & 0o777, uid: stats.uid };
       return { kind: "reparse" };
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") return { kind: "missing" };
@@ -699,19 +797,142 @@ const defaultFileSystem: FileSystemOperations = {
   unlink: (filePath) => nodeFs.unlink(filePath),
 };
 
+export type ExpectedEnvelopeVersion = string | null;
+
+interface CurrentEnvelope {
+  bytes: Buffer;
+  metadata: EnvelopeMetadata;
+}
+
+function validateExpectedEnvelopeVersion(value: ExpectedEnvelopeVersion): void {
+  if (value !== null && !/^[0-9a-f]{64}$/.test(value)) {
+    throw new SessionCryptoError(
+      "INVALID_EXPECTED_ENVELOPE_VERSION",
+      "Expected envelope version must be null or a lowercase SHA-256 digest",
+    );
+  }
+}
+
+function assertExpectedEnvelope(
+  expected: ExpectedEnvelopeVersion,
+  current: CurrentEnvelope | null,
+): void {
+  validateExpectedEnvelopeVersion(expected);
+  if (expected === null ? current !== null : current?.metadata.envelopeVersion !== expected) {
+    throw new SessionCryptoError(
+      "ENVELOPE_CONFLICT",
+      "Ciphertext changed since the caller observed it",
+    );
+  }
+}
+
+async function fsyncDirectory(fs: FileSystemOperations, directoryPath: string): Promise<void> {
+  let handle: FileHandleOperations | undefined;
+  try {
+    handle = await fs.open(directoryPath, "r");
+    await handle.sync();
+    await handle.close();
+  } catch (error) {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        // The caller receives a fatal ambiguous-durability error below.
+      }
+    }
+    throw new AmbiguousDurabilityError(
+      "Directory durability could not be confirmed; explicit recovery is required",
+      { cause: error },
+    );
+  }
+}
+
+async function reserveUniqueNonce(
+  fs: FileSystemOperations,
+  persistentRoot: string,
+  generation: string,
+  randomBytes: RandomBytes,
+  forbiddenNonce?: string,
+): Promise<Buffer> {
+  const noFollow = fsConstants.O_NOFOLLOW ?? 0;
+  const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | noFollow;
+
+  for (let attempt = 0; attempt < MAX_NONCE_ATTEMPTS; attempt += 1) {
+    const nonce = Buffer.from(randomBytes(NONCE_LENGTH));
+    if (nonce.length !== NONCE_LENGTH) {
+      throw new SessionCryptoError("INVALID_RANDOMNESS", "Random source returned an invalid nonce length");
+    }
+    const encoded = nonce.toString("base64");
+    if (encoded === forbiddenNonce) continue;
+
+    const reservationPath = path.join(
+      persistentRoot,
+      `.openclaw-nonce-v1-${generation}-${nonce.toString("hex")}.reserve`,
+    );
+    let handle: FileHandleOperations;
+    try {
+      handle = await fs.open(reservationPath, flags, 0o600);
+    } catch (error) {
+      if (isNodeError(error) && error.code === "EEXIST") continue;
+      throw new SessionCryptoError(
+        "NONCE_RESERVATION_FAILED",
+        "Unable to create a durable AES-GCM nonce reservation",
+        { cause: error },
+      );
+    }
+
+    try {
+      await handle.writeFile(
+        Buffer.from(`openclaw-nonce-reservation-v1\n${generation}\n${encoded}\n`, "utf8"),
+      );
+      await handle.sync();
+      await handle.close();
+      await fsyncDirectory(fs, persistentRoot);
+      return nonce;
+    } catch (error) {
+      try {
+        await handle.close();
+      } catch {
+        // The reservation is deliberately retained to burn this nonce.
+      }
+      if (error instanceof AmbiguousDurabilityError) throw error;
+      throw new SessionCryptoError(
+        "NONCE_RESERVATION_FAILED",
+        "AES-GCM nonce reservation could not be durably recorded",
+        { cause: error },
+      );
+    }
+  }
+
+  throw new SessionCryptoError(
+    "NONCE_EXHAUSTED",
+    "Unable to reserve a unique AES-GCM nonce after repeated collisions",
+  );
+}
+
 export class SessionCryptoStore {
+  private readonly pathLocks = new Map<string, Promise<void>>();
+
   private constructor(
     private readonly engine: SessionCryptoEngine,
     private readonly fs: FileSystemOperations,
     private readonly plaintextRoot: string,
     private readonly persistentRoot: string,
     private readonly randomBytes: RandomBytes,
+    private readonly expectedOwnerUid: number,
   ) {}
 
   static async create(
     configuration: SessionCryptoStoreConfiguration,
     dependencies: SessionCryptoStoreDependencies = {},
   ): Promise<SessionCryptoStore> {
+    const platform = dependencies.platform ?? process.platform;
+    if (platform !== "linux") {
+      throw new SessionCryptoError(
+        "UNSUPPORTED_PLATFORM",
+        "Session crypto runtime is supported only on Linux",
+      );
+    }
     const fs = dependencies.fs ?? defaultFileSystem;
     const roots = await assertSafeRootConfiguration(
       {
@@ -725,25 +946,80 @@ export class SessionCryptoStore {
       },
     );
     const randomBytes = dependencies.randomBytes ?? configuration.randomBytes ?? nodeRandomBytes;
-    const engine = new SessionCryptoEngine({
+    const expectedOwnerUid =
+      dependencies.expectedOwnerUid ??
+      (typeof process.getuid === "function" ? process.getuid() : 0);
+    for (const root of [roots.plaintextRoot, roots.persistentRoot]) {
+      const entry = await fs.inspectPath(root);
+      if (entry.uid !== undefined && entry.uid !== expectedOwnerUid) {
+        throw new SessionCryptoError(
+          "UNSAFE_ROOT_OWNER",
+          "Configured session root has an unexpected owner",
+        );
+      }
+      if (entry.mode !== undefined && (entry.mode & 0o077) !== 0) {
+        throw new SessionCryptoError(
+          "UNSAFE_ROOT_MODE",
+          "Configured session root mode exposes data outside the service owner",
+        );
+      }
+    }
+    const engineOptions: SessionCryptoEngineOptions = {
       activeGeneration: configuration.activeGeneration,
       cellId: configuration.cellId,
       keys: configuration.keys,
       randomBytes,
-    });
+    };
+    if (configuration.maxEnvelopeBytes !== undefined) {
+      engineOptions.maxEnvelopeBytes = configuration.maxEnvelopeBytes;
+    }
+    const engine = new SessionCryptoEngine(engineOptions);
     return new SessionCryptoStore(
       engine,
       fs,
       roots.plaintextRoot,
       roots.persistentRoot,
       randomBytes,
+      expectedOwnerUid,
     );
+  }
+
+  private async serializePath<T>(logicalPath: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.pathLocks.get(logicalPath) ?? Promise.resolve();
+    let release = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const tail = previous.then(() => gate);
+    this.pathLocks.set(logicalPath, tail);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.pathLocks.get(logicalPath) === tail) this.pathLocks.delete(logicalPath);
+    }
   }
 
   private async readFromRoot(root: string, logicalPathValue: string): Promise<Buffer> {
     const { targetPath } = resolveLogicalTarget(root, logicalPathValue);
-    await assertTargetComponentsAreSafe(root, targetPath, (candidate) => this.fs.inspectPath(candidate));
+    await assertTargetComponentsAreSafe(
+      root,
+      targetPath,
+      (candidate) => this.fs.inspectPath(candidate),
+      { expectedOwnerUid: this.expectedOwnerUid, requireExistingParents: true },
+    );
     return this.fs.readFile(targetPath);
+  }
+
+  private async readCurrentEnvelope(logicalPath: string): Promise<CurrentEnvelope | null> {
+    try {
+      const bytes = await this.readFromRoot(this.persistentRoot, logicalPath);
+      return { bytes, metadata: this.engine.inspect(bytes) };
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") return null;
+      throw error;
+    }
   }
 
   private async writeToRoot(
@@ -752,45 +1028,117 @@ export class SessionCryptoStore {
     bytes: Uint8Array,
   ): Promise<void> {
     const { targetPath } = resolveLogicalTarget(root, logicalPathValue);
-    await assertTargetComponentsAreSafe(root, targetPath, (candidate) => this.fs.inspectPath(candidate));
+    await assertTargetComponentsAreSafe(
+      root,
+      targetPath,
+      (candidate) => this.fs.inspectPath(candidate),
+      { expectedOwnerUid: this.expectedOwnerUid, requireExistingParents: true },
+    );
     await durableAtomicWrite(this.fs, targetPath, bytes, this.randomBytes);
   }
 
-  async writeSession(logicalPathValue: string, plaintext: Uint8Array): Promise<EnvelopeMetadata> {
-    const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
-    const envelope = this.engine.encrypt(logicalPath, plaintext);
+  private async writeSessionUnlocked(
+    logicalPath: string,
+    plaintext: Uint8Array,
+    expectedEnvelopeVersion: ExpectedEnvelopeVersion,
+  ): Promise<EnvelopeMetadata> {
+    const current = await this.readCurrentEnvelope(logicalPath);
+    assertExpectedEnvelope(expectedEnvelopeVersion, current);
+    const nonce = await reserveUniqueNonce(
+      this.fs,
+      this.persistentRoot,
+      this.engine.getActiveGeneration(),
+      this.randomBytes,
+      current?.metadata.nonce,
+    );
+    const envelope = this.engine.encryptWithNonce(
+      logicalPath,
+      plaintext,
+      this.engine.getActiveGeneration(),
+      nonce,
+    );
     await this.writeToRoot(this.persistentRoot, logicalPath, envelope);
-    return inspectEnvelope(envelope);
+    return this.engine.inspect(envelope);
   }
 
-  async persistFromPlaintext(logicalPathValue: string): Promise<EnvelopeMetadata> {
+  async writeSession(
+    logicalPathValue: string,
+    plaintext: Uint8Array,
+    expectedEnvelopeVersion: ExpectedEnvelopeVersion,
+  ): Promise<EnvelopeMetadata> {
     const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
-    const plaintext = await this.readFromRoot(this.plaintextRoot, logicalPath);
-    return this.writeSession(logicalPath, plaintext);
+    return this.serializePath(logicalPath, () =>
+      this.writeSessionUnlocked(logicalPath, plaintext, expectedEnvelopeVersion),
+    );
+  }
+
+  async persistFromPlaintext(
+    logicalPathValue: string,
+    expectedEnvelopeVersion: ExpectedEnvelopeVersion,
+  ): Promise<EnvelopeMetadata> {
+    const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
+    return this.serializePath(logicalPath, async () => {
+      const plaintext = await this.readFromRoot(this.plaintextRoot, logicalPath);
+      return this.writeSessionUnlocked(logicalPath, plaintext, expectedEnvelopeVersion);
+    });
   }
 
   async readSession(logicalPathValue: string): Promise<DecryptedSession> {
     const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
-    const envelope = await this.readFromRoot(this.persistentRoot, logicalPath);
-    return this.engine.decrypt(logicalPath, envelope);
+    return this.serializePath(logicalPath, async () => {
+      const current = await this.readCurrentEnvelope(logicalPath);
+      if (!current) {
+        throw new SessionCryptoError("CIPHERTEXT_MISSING", "Ciphertext session file is missing");
+      }
+      return this.engine.decrypt(logicalPath, current.bytes);
+    });
   }
 
-  async restoreToPlaintext(logicalPathValue: string): Promise<EnvelopeMetadata> {
+  async restoreToPlaintext(
+    logicalPathValue: string,
+    expectedEnvelopeVersion: string,
+  ): Promise<EnvelopeMetadata> {
     const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
-    const decrypted = await this.readSession(logicalPath);
-    await this.writeToRoot(this.plaintextRoot, logicalPath, decrypted.plaintext);
-    const { plaintext: _plaintext, ...metadata } = decrypted;
-    return metadata;
+    return this.serializePath(logicalPath, async () => {
+      const current = await this.readCurrentEnvelope(logicalPath);
+      assertExpectedEnvelope(expectedEnvelopeVersion, current);
+      if (!current) {
+        throw new SessionCryptoError("CIPHERTEXT_MISSING", "Ciphertext session file is missing");
+      }
+      const decrypted = this.engine.decrypt(logicalPath, current.bytes);
+      await this.writeToRoot(this.plaintextRoot, logicalPath, decrypted.plaintext);
+      const { plaintext: _plaintext, ...metadata } = decrypted;
+      return metadata;
+    });
   }
 
   async rotateSession(
     logicalPathValue: string,
-    newGeneration: string,
+    expectedEnvelopeVersion: string,
   ): Promise<EnvelopeMetadata> {
     const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
-    const existing = await this.readFromRoot(this.persistentRoot, logicalPath);
-    const rotated = this.engine.rotate(logicalPath, existing, newGeneration);
-    await this.writeToRoot(this.persistentRoot, logicalPath, rotated);
-    return inspectEnvelope(rotated);
+    return this.serializePath(logicalPath, async () => {
+      const current = await this.readCurrentEnvelope(logicalPath);
+      assertExpectedEnvelope(expectedEnvelopeVersion, current);
+      if (!current) {
+        throw new SessionCryptoError("CIPHERTEXT_MISSING", "Ciphertext session file is missing");
+      }
+      if (current.metadata.generation === this.engine.getActiveGeneration()) {
+        throw new SessionCryptoError(
+          "ROTATION_GENERATION_UNCHANGED",
+          "Ciphertext already uses the configured active key generation",
+        );
+      }
+      const nonce = await reserveUniqueNonce(
+        this.fs,
+        this.persistentRoot,
+        this.engine.getActiveGeneration(),
+        this.randomBytes,
+        current.metadata.nonce,
+      );
+      const rotated = this.engine.rotateToActiveWithNonce(logicalPath, current.bytes, nonce);
+      await this.writeToRoot(this.persistentRoot, logicalPath, rotated);
+      return this.engine.inspect(rotated);
+    });
   }
 }
