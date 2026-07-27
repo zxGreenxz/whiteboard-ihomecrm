@@ -85,13 +85,26 @@
 .ph-stepper__label {
   padding: 6px 12px; font-weight: 600; font-size: 12.5px; color: #fff; white-space: nowrap;
 }
-/* Nhãn tháng cũng là combobox (nhảy nhanh 24 tháng) — bỏ viền/nền, giấu mũi tên. */
+/* Nhãn tháng cũng là combobox (nhảy nhanh 24 tháng) — bỏ viền/nền, giấu mũi tên.
+   min-width giữ đủ chỗ cho "Tháng 06/2026": popover của SearchableSelect ăn đúng
+   bề rộng trigger nên trigger hẹp là danh sách bị xén chữ. */
 .ph .ph-stepper__select {
-  height: auto; width: auto; min-width: 0; border: 0; border-radius: 0; background: transparent;
+  height: auto; width: auto; min-width: 132px; border: 0; border-radius: 0; background: transparent;
+  justify-content: center;
 }
 .ph .ph-stepper__select:hover { background: rgba(255, 255, 255, 0.08); }
 .ph .ph-stepper__select svg { display: none; }
 .ph .ph-stepper__select > span { color: #fff; }
+
+/* Bản nền sáng của bộ bước tháng (nằm trong thanh công cụ, không ở hero). */
+.ph-stepper--light { border-color: var(--ph-line-2); background: #fff; }
+.ph-stepper--light .ph-stepper__btn { color: var(--ph-ink-4); padding: 7px 10px; }
+.ph-stepper--light .ph-stepper__btn:hover { color: var(--ph-ink); background: #f3f6f4; }
+.ph-stepper--light .ph-stepper__btn:first-child { border-right-color: var(--ph-line-2); }
+.ph-stepper--light .ph-stepper__btn:last-child { border-left-color: var(--ph-line-2); }
+.ph .ph-stepper--light .ph-stepper__select { padding: 7px 12px; font-size: 12px; }
+.ph .ph-stepper--light .ph-stepper__select > span { color: var(--ph-ink); }
+.ph .ph-stepper--light .ph-stepper__select:hover { background: #f3f6f4; }
 
 /* Điều khiển "ma" trên nền tối (ô chọn toà, nút phụ).
    Các class dưới đây được truyền vào component shadcn (SearchableSelect,
@@ -229,6 +242,7 @@ button.ph-chip:hover { filter: brightness(1.12); }
 }
 .ph .ph-control:hover { background: #fafcfb; color: var(--ph-ink); }
 .ph .ph-control svg { color: var(--ph-ink-4); opacity: 1; }
+.ph .ph-control--wide { min-width: 240px; }
 .ph .ph-control--danger { color: var(--ph-red-d); border-color: #f0b9b9; font-weight: 600; }
 .ph .ph-control--strong { font-weight: 600; color: var(--ph-ink-2); }
 .ph .ph-btn-primary {
@@ -503,3 +517,13 @@ button.ph-chip:hover { filter: brightness(1.12); }
 
 /* Thanh kiểm chứng nhúng trong trang giữ nền trắng nhưng bo góc theo hệ mới. */
 .ph-verify > div { border-radius: 12px; border-color: var(--ph-line); }
+
+/* Dropdown của các ô lọc trong trang này. SearchableSelect ghim
+   `width: var(--radix-popover-trigger-width)` bằng INLINE STYLE → trigger hẹp
+   là nhãn dài bị xén còn "Tháng…", "1", "3"… Cho popover nở theo nội dung,
+   tối thiểu bằng trigger. KHÔNG scope dưới .ph vì popover portal ra body. */
+.ph-dd {
+  width: auto !important;
+  min-width: var(--radix-popover-trigger-width);
+  max-width: min(420px, 90vw);
+}

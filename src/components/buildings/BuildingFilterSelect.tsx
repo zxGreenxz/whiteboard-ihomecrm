@@ -17,6 +17,8 @@ export interface BuildingFilterSelectProps {
   buildings?: { id: string; name: string }[];
   placeholder?: string;
   className?: string;
+  /** Class cho dropdown (vd nới rộng hơn trigger để không xén tên toà). */
+  contentClassName?: string;
   disabled?: boolean;
   align?: "start" | "center" | "end";
   id?: string;
@@ -27,7 +29,7 @@ export interface BuildingFilterSelectProps {
  * Ô lọc toà nhà ĐƠN-chọn, danh sách PHẲNG (không nhóm theo khu vực): mọi toà
  * user thấy được (theo RLS) xếp A→Z so khớp tự nhiên, cộng mục "Tất cả toà
  * nhà". Thay BuildingMultiSelect ở các ô LỌC toàn app — multi-select + nhóm
- * khu chỉ còn dùng cho scope/cấu hình (StaffPage, ProfitManagerForm,
+ * khu chỉ còn dùng cho scope/cấu hình (phân quyền, ProfitManagerForm,
  * ManageAreasDialog).
  */
 export function BuildingFilterSelect({
@@ -36,6 +38,7 @@ export function BuildingFilterSelect({
   buildings: buildingsProp,
   placeholder = "Tất cả toà nhà",
   className,
+  contentClassName,
   disabled,
   align = "start",
   id,
@@ -70,6 +73,7 @@ export function BuildingFilterSelect({
       placeholder={multi ? `${value.length} toà nhà` : placeholder}
       searchPlaceholder="Tìm toà nhà..."
       className={className}
+      contentClassName={contentClassName}
       disabled={disabled}
       align={align}
       id={id}

@@ -1067,50 +1067,7 @@ function ProfitDistributionDesktop() {
 
   return (
     <>
-      {/* ---- Phần đổ lên dải hero xanh (bộ lọc kỳ · KPI · chip cảnh báo) ---- */}
-      <ProfitHubSlot name="actions">
-        <div className="ph-stepper">
-          <button
-            type="button"
-            className="ph-stepper__btn"
-            onClick={() => stepMonth(-1)}
-            aria-label="Tháng trước"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <SearchableSelect
-            value={monthStr}
-            onValueChange={setMonthStr}
-            className="ph-stepper__label ph-stepper__select"
-            align="center"
-            aria-label="Chọn tháng"
-            options={monthOptions.map((m) => ({ value: m, label: `Tháng ${m.replace("-", "/")}` }))}
-          />
-          <button
-            type="button"
-            className="ph-stepper__btn"
-            onClick={() => stepMonth(1)}
-            aria-label="Tháng sau"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <BuildingFilterSelect
-          value={buildingIds}
-          onChange={(ids) => setBuildingIds(ids)}
-          buildings={buildingOptions}
-          className="ph-ghost"
-          placeholder="Tất cả tòa nhà"
-        />
-
-        {canCreate && (
-          <button type="button" className="ph-cta" onClick={openCreateExpense}>
-            ＋ Tạo phiếu
-          </button>
-        )}
-      </ProfitHubSlot>
-
+      {/* ---- Phần đổ lên dải hero xanh (KPI · chip cảnh báo) ---- */}
       {!hideStatCards && (
         <ProfitHubSlot name="kpis">
           <div className="ph-kpi">
@@ -1220,12 +1177,50 @@ function ProfitDistributionDesktop() {
       </ProfitHubSlot>
 
       <div className="ph-stack">
-        {/* Thanh công cụ — kỳ/toà đã nằm trên hero, đây là bộ lọc phụ của sổ. */}
+        {/* Thanh công cụ: kỳ · toà · phòng · loại phiếu — cùng 1 hàng, hero chỉ còn số. */}
         <div className="ph-toolbar">
+          <div className="ph-stepper ph-stepper--light">
+            <button
+              type="button"
+              className="ph-stepper__btn"
+              onClick={() => stepMonth(-1)}
+              aria-label="Tháng trước"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <SearchableSelect
+              value={monthStr}
+              onValueChange={setMonthStr}
+              className="ph-stepper__label ph-stepper__select"
+              contentClassName="ph-dd"
+              align="center"
+              aria-label="Chọn tháng"
+              options={monthOptions.map((m) => ({ value: m, label: `Tháng ${m.replace("-", "/")}` }))}
+            />
+            <button
+              type="button"
+              className="ph-stepper__btn"
+              onClick={() => stepMonth(1)}
+              aria-label="Tháng sau"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <BuildingFilterSelect
+            value={buildingIds}
+            onChange={(ids) => setBuildingIds(ids)}
+            buildings={buildingOptions}
+            className="ph-control ph-control--wide"
+            contentClassName="ph-dd"
+            placeholder="Tất cả tòa nhà"
+          />
+
           <SearchableSelect
             value={roomId}
             onValueChange={setRoomId}
             className="ph-control"
+            contentClassName="ph-dd"
             placeholder="Chọn phòng"
             aria-label="Lọc phòng"
             options={[
@@ -1237,6 +1232,7 @@ function ProfitDistributionDesktop() {
             value={voucherType}
             onValueChange={setVoucherType}
             className="ph-control"
+            contentClassName="ph-dd"
             placeholder="Loại thu chi"
             aria-label="Lọc loại phiếu"
             options={[
@@ -1342,6 +1338,12 @@ function ProfitDistributionDesktop() {
                 </div>
               </PopoverContent>
             </Popover>
+
+            {canCreate && (
+              <button type="button" className="ph-btn-primary" onClick={openCreateExpense}>
+                ＋ Tạo phiếu
+              </button>
+            )}
           </div>
         </div>
 
