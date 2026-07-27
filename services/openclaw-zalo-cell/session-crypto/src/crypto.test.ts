@@ -264,6 +264,9 @@ describe("logical path and root safety", () => {
     "accounts/session.json.",
     "accounts/NUL",
     "accounts/aux.txt",
+    ".openclaw-nonce-v1-g2-deadbeef.reserve",
+    ".session-crypto-writer.sqlite",
+    ".session-crypto-writer.sqlite-journal",
   ])("rejects unsafe logical path %j", (logicalPath) => {
     expect(() => normalizeLogicalSessionPath(logicalPath)).toThrow(SessionCryptoError);
   });

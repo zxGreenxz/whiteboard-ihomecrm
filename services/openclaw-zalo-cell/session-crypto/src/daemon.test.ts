@@ -1,5 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -53,6 +55,126 @@ function asyncLines(...lines: string[]): AsyncIterable<string> {
   };
 }
 
+function asyncChunks(...chunks: Array<string | Uint8Array>): AsyncIterable<string | Uint8Array> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const chunk of chunks) yield chunk;
+    },
+  };
+}
+
+function errno(code: string): Error & { code: string } {
+  return Object.assign(new Error(code), { code });
+}
+
+function createLeaseHarness(...roots: string[]) {
+  const rootEntries = new Map<
+    string,
+    { kind: "directory" | "file" | "other" | "symlink"; mode: number; uid: number }
+  >(
+    roots.map((root) => [root, { kind: "directory" as const, mode: 0o700, uid: 1000 }]),
+  );
+  const databaseEntries = new Map<
+    string,
+    { kind: "file" | "symlink"; mode: number; uid: number }
+  >();
+  const activeLocks = new Map<string, symbol>();
+  const identities = new Map<string, { cellId: string; persistentRoot: string }>();
+  const events: string[] = [];
+  const localRoots = new Map(roots.map((root) => [root, true]));
+  const resolvedRoots = new Map(roots.map((root) => [root, root]));
+
+  const operations = {
+    getuid: () => 1000,
+    async inspectPath(candidate: string) {
+      const entry = rootEntries.get(candidate) ?? databaseEntries.get(candidate);
+      if (!entry) throw errno("ENOENT");
+      return { ...entry };
+    },
+    async isLocalFileSystem(candidate: string) {
+      return localRoots.get(candidate) ?? false;
+    },
+    async openDatabase(candidate: string) {
+      events.push(`open:${candidate}`);
+      const owner = Symbol(candidate);
+      let closed = false;
+      const release = () => {
+        if (activeLocks.get(candidate) === owner) activeLocks.delete(candidate);
+      };
+      return {
+        close() {
+          if (closed) return;
+          closed = true;
+          release();
+          events.push(`close:${candidate}`);
+        },
+        exec(sql: string) {
+          events.push(`exec:${sql}`);
+          if (sql === "BEGIN EXCLUSIVE") {
+            if (activeLocks.has(candidate) && activeLocks.get(candidate) !== owner) {
+              throw errno("SQLITE_BUSY");
+            }
+            activeLocks.set(candidate, owner);
+          } else if (sql === "COMMIT" || sql === "ROLLBACK") {
+            release();
+          }
+        },
+        prepare(sql: string) {
+          if (sql.startsWith("SELECT")) {
+            return {
+              get: () => identities.get(candidate),
+              run: () => {
+                throw new Error("SELECT cannot run");
+              },
+            };
+          }
+          if (sql.startsWith("INSERT")) {
+            return {
+              get: () => undefined,
+              run: (cellId: string, persistentRoot: string) => {
+                identities.set(candidate, { cellId, persistentRoot });
+              },
+            };
+          }
+          throw new Error(`unexpected SQL: ${sql}`);
+        },
+      };
+    },
+    async prepareFile(candidate: string) {
+      events.push(`prepare:${candidate}`);
+      if (!databaseEntries.has(candidate)) {
+        databaseEntries.set(candidate, { kind: "file", mode: 0o600, uid: 1000 });
+      }
+    },
+    async realpath(candidate: string) {
+      const resolved = resolvedRoots.get(candidate);
+      if (!resolved) throw errno("ENOENT");
+      return resolved;
+    },
+  };
+
+  return {
+    crash() {
+      activeLocks.clear();
+    },
+    activeLocks,
+    databaseEntries,
+    databasePath(root: string) {
+      return `${root}/.session-crypto-writer.sqlite`;
+    },
+    events,
+    identities,
+    operations,
+    rootEntries,
+    setLocal(root: string, local: boolean) {
+      localRoots.set(root, local);
+    },
+    setResolvedRoot(root: string, candidate: string) {
+      resolvedRoots.set(root, candidate);
+    },
+  };
+}
+
 describe("runtime bootstrap contracts", () => {
   it("publishes a real executable and stdio bootstrap without network listeners", async () => {
     const packageJson = JSON.parse(
@@ -63,9 +185,610 @@ describe("runtime bootstrap contracts", () => {
     expect(packageJson.bin).toEqual({
       "openclaw-session-crypto": "./dist/daemon.js",
     });
+    expect(packageJson.engines).toEqual({ node: ">=22.13.0" });
     expect(runtimeExport("runStdioDaemon")).toBeTypeOf("function");
     expect(runtimeExport("runSessionCryptoProcess")).toBeTypeOf("function");
     expect(source).not.toMatch(/node:(?:http|https|net|tls|dgram|http2)/);
+  });
+
+  it("enforces one active writer with an exclusive SQLite transaction", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) =>
+        Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const harness = createLeaseHarness("/srv/openclaw-session");
+
+    const first = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+      harness.operations,
+    );
+    await expect(
+      acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+        harness.operations,
+      ),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_ACTIVE" });
+
+    await first.release();
+    expect(harness.activeLocks.size).toBe(0);
+    expect(harness.events).toContain("exec:PRAGMA locking_mode = EXCLUSIVE");
+    expect(harness.events).toContain("exec:BEGIN EXCLUSIVE");
+  });
+
+  it.each([5, 6, 261, 262])(
+    "classifies node:sqlite contention errcode %i and closes the rejected handle",
+    async (errcode) => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    const active = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: root },
+      harness.operations,
+    );
+    const nativeBusyOperations = {
+      ...harness.operations,
+      async openDatabase(candidate: string) {
+        const database = await harness.operations.openDatabase(candidate);
+        return {
+          ...database,
+          exec(sql: string) {
+            if (sql === "PRAGMA journal_mode = DELETE") {
+              throw Object.assign(new Error("database is locked"), {
+                code: "ERR_SQLITE_ERROR",
+                errcode,
+                errstr: "database is locked",
+              });
+            }
+            database.exec(sql);
+          },
+        };
+      },
+    };
+
+    await expect(
+      acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: root },
+        nativeBusyOperations,
+      ),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_ACTIVE" });
+    expect(harness.events.filter((event) => event === `close:${harness.databasePath(root)}`)).toHaveLength(1);
+
+    await active.release();
+    expect(harness.events.filter((event) => event === `close:${harness.databasePath(root)}`)).toHaveLength(2);
+    },
+  );
+
+  it("retries close after a failed release without replaying a successful rollback", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    let closeAttempts = 0;
+    const operations = {
+      ...harness.operations,
+      async openDatabase(candidate: string) {
+        const database = await harness.operations.openDatabase(candidate);
+        return {
+          ...database,
+          close() {
+            closeAttempts += 1;
+            if (closeAttempts === 1) throw errno("EBUSY");
+            database.close();
+          },
+        };
+      },
+    };
+    const lease = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: root },
+      operations,
+    );
+
+    await expect(lease.release()).rejects.toMatchObject({
+      code: "WRITER_LEASE_RELEASE_FAILED",
+    });
+    expect(harness.events.filter((event) => event === "exec:ROLLBACK")).toHaveLength(1);
+    await lease.release();
+    await lease.release();
+
+    expect(closeAttempts).toBe(2);
+    expect(harness.events.filter((event) => event === "exec:ROLLBACK")).toHaveLength(1);
+    expect(harness.events.filter((event) => event === `close:${harness.databasePath(root)}`)).toHaveLength(1);
+  });
+
+  it("retries rollback and close when neither cleanup step completed", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    let closeAttempts = 0;
+    let rollbackAttempts = 0;
+    const operations = {
+      ...harness.operations,
+      async openDatabase(candidate: string) {
+        const database = await harness.operations.openDatabase(candidate);
+        return {
+          ...database,
+          close() {
+            closeAttempts += 1;
+            if (closeAttempts === 1) throw errno("EBUSY");
+            database.close();
+          },
+          exec(sql: string) {
+            if (sql === "ROLLBACK") {
+              rollbackAttempts += 1;
+              if (rollbackAttempts === 1) throw errno("SQLITE_IOERR");
+            }
+            database.exec(sql);
+          },
+        };
+      },
+    };
+    const lease = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: root },
+      operations,
+    );
+
+    await expect(lease.release()).rejects.toMatchObject({
+      code: "WRITER_LEASE_RELEASE_FAILED",
+    });
+    expect(harness.activeLocks.size).toBe(1);
+    await lease.release();
+
+    expect(rollbackAttempts).toBe(2);
+    expect(closeAttempts).toBe(2);
+    expect(harness.activeLocks.size).toBe(0);
+  });
+
+  it("closes real SQLite contenders before reacquire and immediate temp-root cleanup", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: daemonModule.WriterLeaseOperations,
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const logicalRoot = "/srv/openclaw-session";
+    const logicalDatabase = `${logicalRoot}/.session-crypto-writer.sqlite`;
+    const temporaryRoot = await mkdtemp(join(tmpdir(), "openclaw-sqlite-lease-"));
+    const databasePath = join(temporaryRoot, "writer.sqlite");
+    let databasePrepared = false;
+    let databaseHandlesOpened = 0;
+    let databaseHandlesClosed = 0;
+    const databaseEvents: string[] = [];
+    const operations: daemonModule.WriterLeaseOperations = {
+      getuid: () => 1000,
+      async inspectPath(candidate) {
+        if (candidate === logicalRoot) {
+          return { kind: "directory", mode: 0o700, uid: 1000 };
+        }
+        if (candidate === logicalDatabase && databasePrepared) {
+          return { kind: "file", mode: 0o600, uid: 1000 };
+        }
+        throw errno("ENOENT");
+      },
+      async isLocalFileSystem(candidate) {
+        return candidate === logicalRoot;
+      },
+      async openDatabase(candidate) {
+        expect(candidate).toBe(logicalDatabase);
+        const { DatabaseSync } = await import("node:sqlite");
+        const database = new DatabaseSync(databasePath);
+        const handleId = ++databaseHandlesOpened;
+        return {
+          close() {
+            database.close();
+            databaseHandlesClosed += 1;
+            databaseEvents.push(`${handleId}:close`);
+          },
+          exec(sql) {
+            databaseEvents.push(`${handleId}:exec:${sql}`);
+            database.exec(sql);
+          },
+          prepare(sql) {
+            const statement = database.prepare(sql);
+            return {
+              get: (...params) => statement.get(...params),
+              run: (...params) => statement.run(...params),
+            };
+          },
+        };
+      },
+      async prepareFile(candidate) {
+        expect(candidate).toBe(logicalDatabase);
+        if (databasePrepared) return;
+        const handle = await open(databasePath, "wx", 0o600);
+        await handle.close();
+        databasePrepared = true;
+      },
+      async realpath(candidate) {
+        return candidate;
+      },
+    };
+    let first: { release(): Promise<void> } | undefined;
+    let replacement: { release(): Promise<void> } | undefined;
+    let cleanupComplete = false;
+
+    try {
+      first = await acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: logicalRoot },
+        operations,
+      );
+      await expect(
+        acquireWriterLease(
+          { cellId: CELL_ID, persistentRoot: logicalRoot },
+          operations,
+        ),
+      ).rejects.toMatchObject({ code: "WRITER_LEASE_ACTIVE" });
+      expect(databaseHandlesOpened).toBe(2);
+      expect(databaseHandlesClosed).toBe(1);
+      expect(databaseEvents).toContain("2:close");
+
+      await first.release();
+      await first.release();
+      expect(databaseHandlesClosed).toBe(2);
+      expect(databaseEvents.indexOf("1:exec:ROLLBACK")).toBeLessThan(
+        databaseEvents.indexOf("1:close"),
+      );
+      first = undefined;
+      replacement = await acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: logicalRoot },
+        operations,
+      );
+      await replacement.release();
+      await replacement.release();
+      expect(databaseHandlesOpened).toBe(3);
+      expect(databaseHandlesClosed).toBe(3);
+      expect(databaseEvents.indexOf("3:exec:ROLLBACK")).toBeLessThan(
+        databaseEvents.indexOf("3:close"),
+      );
+      replacement = undefined;
+
+      const { DatabaseSync } = await import("node:sqlite");
+      const probe = new DatabaseSync(databasePath);
+      try {
+        expect(probe.prepare("PRAGMA journal_mode").get()).toMatchObject({
+          journal_mode: "delete",
+        });
+      } finally {
+        probe.close();
+      }
+
+      await rm(temporaryRoot, { recursive: true });
+      cleanupComplete = true;
+    } finally {
+      await replacement?.release().catch(() => undefined);
+      await first?.release().catch(() => undefined);
+      if (!cleanupComplete) {
+        await rm(temporaryRoot, { force: true, recursive: true }).catch(() => undefined);
+      }
+    }
+  });
+
+  it("reacquires after crash and still allows only one concurrent replacement", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) =>
+        Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const harness = createLeaseHarness("/srv/openclaw-session");
+    await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+      harness.operations,
+    );
+    harness.crash();
+
+    const attempts = await Promise.allSettled([
+      acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+        harness.operations,
+      ),
+      acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+        harness.operations,
+      ),
+    ]);
+    const winners = attempts.filter(
+      (result): result is PromiseFulfilledResult<{ release(): Promise<void> }> =>
+        result.status === "fulfilled",
+    );
+    const losers = attempts.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect(losers[0]!.reason).toMatchObject({
+      code: expect.stringMatching(/^WRITER_LEASE_/),
+    });
+    await winners[0]!.value.release();
+  });
+
+  it("keeps different persistent roots independent and binds each root to its cell", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const harness = createLeaseHarness("/srv/root-a", "/srv/root-b");
+
+    const leases = await Promise.all([
+      acquireWriterLease({ cellId: "cell-a", persistentRoot: "/srv/root-a" }, harness.operations),
+      acquireWriterLease({ cellId: "cell-b", persistentRoot: "/srv/root-b" }, harness.operations),
+    ]);
+
+    expect(harness.activeLocks.size).toBe(2);
+    await Promise.all(leases.map((lease) => lease.release()));
+    await expect(
+      acquireWriterLease({ cellId: "cell-c", persistentRoot: "/srv/root-a" }, harness.operations),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it.each([
+    ["root alias", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.setResolvedRoot("/srv/openclaw-session", "/srv/other");
+    }],
+    ["root type", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.rootEntries.get("/srv/openclaw-session")!.kind = "file";
+    }],
+    ["root owner", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.rootEntries.get("/srv/openclaw-session")!.uid = 0;
+    }],
+    ["root mode", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.rootEntries.get("/srv/openclaw-session")!.mode = 0o755;
+    }],
+    ["remote filesystem", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.setLocal("/srv/openclaw-session", false);
+    }],
+    ["database symlink", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.databaseEntries.set(harness.databasePath("/srv/openclaw-session"), {
+        kind: "symlink",
+        mode: 0o600,
+        uid: 1000,
+      });
+    }],
+    ["database owner", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.databaseEntries.set(harness.databasePath("/srv/openclaw-session"), {
+        kind: "file",
+        mode: 0o600,
+        uid: 0,
+      });
+    }],
+    ["database mode", (harness: ReturnType<typeof createLeaseHarness>) => {
+      harness.databaseEntries.set(harness.databasePath("/srv/openclaw-session"), {
+        kind: "file",
+        mode: 0o644,
+        uid: 1000,
+      });
+    }],
+  ])("fails closed on writer lease %s mismatch", async (_label, mutate) => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) =>
+        Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const harness = createLeaseHarness("/srv/openclaw-session");
+    mutate(harness);
+
+    await expect(
+      acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+        harness.operations,
+      ),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("rejects an unsafe cell identifier before opening the lease database", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) =>
+        Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const harness = createLeaseHarness("/srv/openclaw-session");
+
+    await expect(
+      acquireWriterLease(
+        { cellId: "../unsafe", persistentRoot: "/srv/openclaw-session" },
+        harness.operations,
+      ),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+    expect(harness.events).toEqual([]);
+  });
+
+  it("an expired database handle cannot release a replacement lease after crash recovery", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const harness = createLeaseHarness("/srv/openclaw-session");
+    const expired = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+      harness.operations,
+    );
+    harness.crash();
+    const replacement = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+      harness.operations,
+    );
+
+    await expired.release();
+    await expect(
+      acquireWriterLease(
+        { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+        harness.operations,
+      ),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_ACTIVE" });
+    await replacement.release();
+  });
+
+  it("holds the writer lease before consuming stdin and releases it after shutdown", async () => {
+    const runSessionCryptoProcess = runtimeExport<
+      (options: Record<string, unknown>) => Promise<number>
+    >("runSessionCryptoProcess");
+    expect(runSessionCryptoProcess).toBeTypeOf("function");
+    if (!runSessionCryptoProcess) return;
+    const harness = createLeaseHarness("/srv/openclaw-session");
+    const output: string[] = [];
+    const keyBytes = Buffer.from(
+      JSON.stringify({
+        activeGeneration: "g2",
+        keys: { g2: Buffer.alloc(32, 0x22).toString("base64") },
+        version: 1,
+      }),
+    );
+    const input = {
+      async *[Symbol.asyncIterator]() {
+        expect(harness.activeLocks.size).toBe(1);
+        yield Buffer.from(`${JSON.stringify(validRequest("persist"))}\n`, "utf8");
+      },
+    };
+
+    const exitCode = await runSessionCryptoProcess({
+      argv: [
+        "--cell-id",
+        CELL_ID,
+        "--plaintext-root",
+        "/run/openclaw-session",
+        "--persistent-root",
+        "/srv/openclaw-session",
+      ],
+      createStore: async () => ({
+        persistFromPlaintext: async () => metadata(),
+        restoreToPlaintext: async () => metadata(),
+        rotateSession: async () => metadata(),
+      }),
+      keyFileOperations: {
+        getuid: () => 1000,
+        open: async () => ({
+          close: async () => undefined,
+          readFile: async () => keyBytes,
+          stat: async () => ({ kind: "file", mode: 0o400, size: keyBytes.length, uid: 1000 }),
+        }),
+      },
+      lines: input,
+      platform: "linux",
+      writeLine: async (line: string) => {
+        output.push(line);
+      },
+      writerLeaseOperations: harness.operations,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output.map((line) => JSON.parse(line))).toEqual([
+      expect.objectContaining({ ok: true }),
+    ]);
+    expect(harness.activeLocks.size).toBe(0);
+  });
+
+  it("reports a duplicate writer as a sanitized fatal startup error", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    const runSessionCryptoProcess = runtimeExport<
+      (options: Record<string, unknown>) => Promise<number>
+    >("runSessionCryptoProcess");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    expect(runSessionCryptoProcess).toBeTypeOf("function");
+    if (!acquireWriterLease || !runSessionCryptoProcess) return;
+    const harness = createLeaseHarness("/srv/openclaw-session");
+    const active = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: "/srv/openclaw-session" },
+      harness.operations,
+    );
+    const output: string[] = [];
+    const canary = "WRITER-LEASE-CANARY";
+    const keyBytes = Buffer.from(
+      JSON.stringify({
+        activeGeneration: "g2",
+        keys: { g2: Buffer.alloc(32, 0x22).toString("base64") },
+        version: 1,
+      }),
+    );
+
+    const exitCode = await runSessionCryptoProcess({
+      argv: [
+        "--cell-id",
+        CELL_ID,
+        "--plaintext-root",
+        "/run/openclaw-session",
+        "--persistent-root",
+        "/srv/openclaw-session",
+      ],
+      createStore: async () => ({
+        persistFromPlaintext: async () => metadata(),
+        restoreToPlaintext: async () => metadata(),
+        rotateSession: async () => metadata(),
+      }),
+      keyFileOperations: {
+        getuid: () => 1000,
+        open: async () => ({
+          close: async () => undefined,
+          readFile: async () => keyBytes,
+          stat: async () => ({ kind: "file", mode: 0o400, size: keyBytes.length, uid: 1000 }),
+        }),
+      },
+      lines: asyncChunks(Buffer.from(canary)),
+      platform: "linux",
+      writeLine: async (line: string) => {
+        output.push(line);
+      },
+      writerLeaseOperations: harness.operations,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toHaveLength(1);
+    expect(output[0]).not.toContain(canary);
+    expect(JSON.parse(output[0]!)).toMatchObject({
+      error: { code: "WRITER_LEASE_ACTIVE", fatal: true },
+      ok: false,
+    });
+    await active.release();
   });
 
   it("accepts only trusted non-secret startup cell and root arguments", () => {
@@ -114,7 +837,7 @@ describe("runtime bootstrap contracts", () => {
         open(candidate: string, flags: number): Promise<{
           close(): Promise<void>;
           readFile(): Promise<Buffer>;
-          stat(): Promise<{ kind: string; mode: number; uid: number }>;
+          stat(): Promise<{ kind: string; mode: number; size: number; uid: number }>;
         }>;
       }) => Promise<{ activeGeneration: string; keys: ReadonlyMap<string, Uint8Array> }>
     >("loadRuntimeKeyring");
@@ -141,7 +864,7 @@ describe("runtime bootstrap contracts", () => {
                 version: 1,
               }),
             ),
-          stat: async () => ({ kind: "file", mode: 0o400, uid: 1000 }),
+          stat: async () => ({ kind: "file", mode: 0o400, size: 200, uid: 1000 }),
         };
       },
     });
@@ -151,10 +874,41 @@ describe("runtime bootstrap contracts", () => {
     expect(keyring.keys.get("g2")).toEqual(Buffer.alloc(32, 0x22));
   });
 
+  it("rejects an oversized key file from descriptor stat before reading bytes", async () => {
+    const loadRuntimeKeyring = runtimeExport<
+      (operations: {
+        getuid(): number;
+        open(candidate: string, flags: number): Promise<{
+          close(): Promise<void>;
+          readFile(): Promise<Buffer>;
+          stat(): Promise<{ kind: string; mode: number; size: number; uid: number }>;
+        }>;
+      }) => Promise<unknown>
+    >("loadRuntimeKeyring");
+    expect(loadRuntimeKeyring).toBeTypeOf("function");
+    if (!loadRuntimeKeyring) return;
+    let reads = 0;
+
+    await expect(
+      loadRuntimeKeyring({
+        getuid: () => 1000,
+        open: async () => ({
+          close: async () => undefined,
+          readFile: async () => {
+            reads += 1;
+            return Buffer.from("KEY-FILE-CANARY");
+          },
+          stat: async () => ({ kind: "file", mode: 0o400, size: 64 * 1024 + 1, uid: 1000 }),
+        }),
+      }),
+    ).rejects.toMatchObject({ code: "KEY_FILE_FORMAT" });
+    expect(reads).toBe(0);
+  });
+
   it.each([
-    ["symlink", { kind: "symlink", mode: 0o400, uid: 1000 }],
-    ["permissions", { kind: "file", mode: 0o440, uid: 1000 }],
-    ["owner", { kind: "file", mode: 0o400, uid: 0 }],
+    ["symlink", { kind: "symlink", mode: 0o400, size: 2, uid: 1000 }],
+    ["permissions", { kind: "file", mode: 0o440, size: 2, uid: 1000 }],
+    ["owner", { kind: "file", mode: 0o400, size: 2, uid: 0 }],
   ])("rejects an unsafe key file: %s", async (_label, stat) => {
     const loadRuntimeKeyring = runtimeExport<
       (operations: {
@@ -225,6 +979,54 @@ describe("runtime bootstrap contracts", () => {
 });
 
 describe("versioned daemon protocol", () => {
+  it("bounds an oversized NDJSON request while streaming and continues at the next line", async () => {
+    const runStdioByteStream = runtimeExport<
+      (options: {
+        daemon: unknown;
+        input: AsyncIterable<string | Uint8Array>;
+        writeLine(line: string): Promise<void>;
+      }) => Promise<number>
+    >("runStdioByteStream");
+    expect(runStdioByteStream).toBeTypeOf("function");
+    if (!runStdioByteStream) return;
+    const canary = "STDIO-OVERSIZE-CANARY";
+    const oversized = Buffer.from(canary.repeat(4_000), "utf8");
+    let calls = 0;
+    const store = {
+      persistFromPlaintext: async () => {
+        calls += 1;
+        return metadata();
+      },
+      restoreToPlaintext: async () => metadata(),
+      rotateSession: async () => metadata(),
+    };
+    const output: string[] = [];
+
+    const exitCode = await runStdioByteStream({
+      daemon: new daemonModule.SessionCryptoDaemon(store),
+      input: asyncChunks(
+        oversized.subarray(0, 40_000),
+        oversized.subarray(40_000),
+        Buffer.from(`\n${JSON.stringify(validRequest("persist"))}\n`, "utf8"),
+      ),
+      writeLine: async (line) => {
+        output.push(line);
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(calls).toBe(1);
+    expect(output).toHaveLength(2);
+    expect(output.join("\n")).not.toContain(canary);
+    expect(output.map((line) => JSON.parse(line))).toEqual([
+      expect.objectContaining({
+        error: expect.objectContaining({ code: "MALFORMED_REQUEST", fatal: false }),
+        ok: false,
+      }),
+      expect.objectContaining({ ok: true }),
+    ]);
+  });
+
   it("runtime-validates exact command schemas and forbids generation/root/key fields", () => {
     const parseRuntimeRequest = runtimeExport<(value: unknown) => unknown>("parseRuntimeRequest");
     expect(parseRuntimeRequest).toBeTypeOf("function");

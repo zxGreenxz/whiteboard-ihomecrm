@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { constants as fsConstants, promises as nodeFs } from "node:fs";
-import { createInterface } from "node:readline";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { TextDecoder } from "node:util";
 
@@ -21,9 +21,21 @@ export const SESSION_KEY_PATH = "/run/secrets/openclaw_session_key";
 const MAX_KEY_FILE_BYTES = 64 * 1024;
 const MAX_REQUEST_BYTES = 64 * 1024;
 const LINUX_O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0x20000;
+const WRITER_LEASE_DATABASE = ".session-crypto-writer.sqlite";
 const ENVELOPE_VERSION_PATTERN = /^[0-9a-f]{64}$/;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 const SAFE_GENERATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SAFE_CELL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const LOCAL_WRITER_FILE_SYSTEM_TYPES = new Set([
+  0x0000ef53, // ext2/3/4
+  0x2fc12fc1, // zfs
+  0x3153464a, // jfs
+  0x52654973, // reiserfs
+  0x58465342, // xfs
+  0x794c7630, // overlayfs
+  0x9123683e, // btrfs
+  0xf2f52010, // f2fs
+]);
 
 export interface StartupConfiguration {
   cellId: string;
@@ -39,6 +51,7 @@ export interface RuntimeKeyring {
 export interface KeyFileStat {
   kind: "file" | "other" | "symlink";
   mode: number;
+  size: number;
   uid: number;
 }
 
@@ -51,6 +64,43 @@ export interface KeyFileHandle {
   close(): Promise<void>;
   readFile(): Promise<Buffer>;
   stat(): Promise<KeyFileStat>;
+}
+
+type SqlInputValue = null | number | bigint | string | NodeJS.ArrayBufferView;
+
+export interface WriterLeasePathStat {
+  kind: "directory" | "file" | "other" | "symlink";
+  mode: number;
+  uid: number;
+}
+
+export interface WriterLeaseStatement {
+  get(...params: SqlInputValue[]): unknown;
+  run(...params: SqlInputValue[]): unknown;
+}
+
+export interface WriterLeaseDatabase {
+  close(): void;
+  exec(sql: string): void;
+  prepare(sql: string): WriterLeaseStatement;
+}
+
+export interface WriterLeaseOperations {
+  getuid(): number;
+  inspectPath(candidate: string): Promise<WriterLeasePathStat>;
+  isLocalFileSystem(candidate: string): Promise<boolean>;
+  openDatabase(candidate: string): Promise<WriterLeaseDatabase>;
+  prepareFile(candidate: string): Promise<void>;
+  realpath(candidate: string): Promise<string>;
+}
+
+export interface WriterLeaseConfiguration {
+  cellId: string;
+  persistentRoot: string;
+}
+
+export interface WriterLease {
+  release(): Promise<void>;
 }
 
 export type RuntimeRequest = {
@@ -107,6 +157,12 @@ export interface StdioDaemonOptions {
   writeLine(line: string): Promise<void>;
 }
 
+export interface StdioByteStreamOptions {
+  daemon: SessionCryptoDaemon;
+  input: AsyncIterable<string | Uint8Array>;
+  writeLine(line: string): Promise<void>;
+}
+
 export interface RuntimeProcessOptions {
   argv: readonly string[];
   createStore?: (
@@ -117,6 +173,7 @@ export interface RuntimeProcessOptions {
   lines: AsyncIterable<string | Uint8Array>;
   platform?: NodeJS.Platform;
   storeDependencies?: SessionCryptoStoreDependencies;
+  writerLeaseOperations?: WriterLeaseOperations;
   writeLine(line: string): Promise<void>;
 }
 
@@ -167,12 +224,257 @@ const defaultKeyFileOperations: KeyFileOperations = {
         return {
           kind: stats.isSymbolicLink() ? "symlink" : stats.isFile() ? "file" : "other",
           mode: stats.mode & 0o777,
+          size: stats.size,
           uid: stats.uid,
         };
       },
     };
   },
 };
+
+async function syncDirectory(candidate: string): Promise<void> {
+  const handle = await nodeFs.open(candidate, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+const defaultWriterLeaseOperations: WriterLeaseOperations = {
+  getuid() {
+    if (typeof process.getuid !== "function") {
+      throw new SessionCryptoError("UNSUPPORTED_PLATFORM", "Runtime is supported only on Linux");
+    }
+    return process.getuid();
+  },
+  async inspectPath(candidate) {
+    const stats = await nodeFs.lstat(candidate);
+    if (stats.isSymbolicLink()) return { kind: "symlink", mode: stats.mode & 0o777, uid: stats.uid };
+    if (stats.isDirectory()) return { kind: "directory", mode: stats.mode & 0o777, uid: stats.uid };
+    if (stats.isFile()) return { kind: "file", mode: stats.mode & 0o777, uid: stats.uid };
+    return { kind: "other", mode: stats.mode & 0o777, uid: stats.uid };
+  },
+  async isLocalFileSystem(candidate) {
+    const stats = await nodeFs.statfs(candidate);
+    return LOCAL_WRITER_FILE_SYSTEM_TYPES.has(stats.type >>> 0);
+  },
+  async openDatabase(candidate) {
+    const { DatabaseSync } = await import("node:sqlite");
+    const database = new DatabaseSync(candidate);
+    return {
+      close: () => database.close(),
+      exec: (sql) => database.exec(sql),
+      prepare(sql) {
+        const statement = database.prepare(sql);
+        return {
+          get: (...params) => statement.get(...params),
+          run: (...params) => statement.run(...params),
+        };
+      },
+    };
+  },
+  async prepareFile(candidate) {
+    const flags = fsConstants.O_RDWR | fsConstants.O_CREAT | fsConstants.O_EXCL | LINUX_O_NOFOLLOW;
+    let handle;
+    try {
+      handle = await nodeFs.open(candidate, flags, 0o600);
+      await handle.sync();
+      await handle.close();
+      handle = undefined;
+      await syncDirectory(path.posix.dirname(candidate));
+    } catch (error) {
+      if (handle) {
+        try {
+          await handle.close();
+        } catch {
+          // The primary creation error remains authoritative.
+        }
+      }
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+    }
+  },
+  realpath: (candidate) => nodeFs.realpath(candidate),
+};
+
+function isErrorCode(error: unknown, ...codes: string[]): boolean {
+  return error instanceof Error && "code" in error && codes.includes(String(error.code));
+}
+
+function isWriterLeaseContentionError(error: unknown): boolean {
+  if (isErrorCode(error, "SQLITE_BUSY", "SQLITE_LOCKED")) return true;
+  if (
+    !(error instanceof Error) ||
+    !("code" in error) ||
+    String(error.code) !== "ERR_SQLITE_ERROR" ||
+    !("errcode" in error)
+  ) {
+    return false;
+  }
+  if (typeof error.errcode !== "number" || !Number.isInteger(error.errcode) || error.errcode < 0) {
+    return false;
+  }
+  const baseErrorCode = error.errcode & 0xff;
+  return baseErrorCode === 5 || baseErrorCode === 6;
+}
+
+function writerLeaseUnsafe(message: string, cause?: unknown): SessionCryptoError {
+  return new SessionCryptoError("WRITER_LEASE_UNSAFE", message, cause === undefined ? undefined : { cause });
+}
+
+async function closeWriterDatabase(
+  database: WriterLeaseDatabase,
+  state: { closed: boolean; transactionActive: boolean },
+): Promise<unknown[]> {
+  const errors: unknown[] = [];
+  if (state.closed) return errors;
+  if (state.transactionActive) {
+    try {
+      database.exec("ROLLBACK");
+      state.transactionActive = false;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  try {
+    database.close();
+    state.closed = true;
+  } catch (error) {
+    errors.push(error);
+  }
+  return errors;
+}
+
+export async function acquireWriterLease(
+  configuration: WriterLeaseConfiguration,
+  operations: WriterLeaseOperations = defaultWriterLeaseOperations,
+): Promise<WriterLease> {
+  if (!SAFE_CELL_ID_PATTERN.test(configuration.cellId)) {
+    throw writerLeaseUnsafe("Writer lease cell identifier is invalid");
+  }
+  if (!path.posix.isAbsolute(configuration.persistentRoot)) {
+    throw writerLeaseUnsafe("Writer lease root must be an absolute Linux path");
+  }
+  const resolvedRoot = path.posix.resolve(configuration.persistentRoot);
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = await operations.realpath(resolvedRoot);
+  } catch (error) {
+    throw writerLeaseUnsafe("Writer lease root cannot be resolved", error);
+  }
+  if (canonicalRoot !== resolvedRoot) {
+    throw writerLeaseUnsafe("Writer lease root resolves through an alias");
+  }
+
+  const expectedUid = operations.getuid();
+  let rootStat: WriterLeasePathStat;
+  try {
+    rootStat = await operations.inspectPath(canonicalRoot);
+  } catch (error) {
+    throw writerLeaseUnsafe("Writer lease root cannot be inspected", error);
+  }
+  if (
+    rootStat.kind !== "directory" ||
+    rootStat.uid !== expectedUid ||
+    (rootStat.mode & 0o077) !== 0
+  ) {
+    throw writerLeaseUnsafe("Writer lease root type, owner, or mode is unsafe");
+  }
+  try {
+    if (!(await operations.isLocalFileSystem(canonicalRoot))) {
+      throw writerLeaseUnsafe("Writer lease requires a verified local filesystem");
+    }
+  } catch (error) {
+    if (error instanceof SessionCryptoError) throw error;
+    throw writerLeaseUnsafe("Writer lease filesystem type cannot be verified", error);
+  }
+
+  const databasePath = path.posix.join(canonicalRoot, WRITER_LEASE_DATABASE);
+  try {
+    await operations.prepareFile(databasePath);
+  } catch (error) {
+    throw writerLeaseUnsafe("Writer lease database cannot be safely prepared", error);
+  }
+  let databaseStat: WriterLeasePathStat;
+  try {
+    databaseStat = await operations.inspectPath(databasePath);
+  } catch (error) {
+    throw writerLeaseUnsafe("Writer lease database cannot be inspected", error);
+  }
+  if (
+    databaseStat.kind !== "file" ||
+    databaseStat.uid !== expectedUid ||
+    databaseStat.mode !== 0o600
+  ) {
+    throw writerLeaseUnsafe("Writer lease database type, owner, or mode is unsafe");
+  }
+
+  let database: WriterLeaseDatabase;
+  try {
+    database = await operations.openDatabase(databasePath);
+  } catch (error) {
+    throw new SessionCryptoError("WRITER_LEASE_IO", "Writer lease database cannot be opened", {
+      cause: error,
+    });
+  }
+
+  let transactionActive = false;
+  try {
+    database.exec("PRAGMA busy_timeout = 0");
+    database.exec("PRAGMA journal_mode = DELETE");
+    database.exec("PRAGMA locking_mode = EXCLUSIVE");
+    database.exec("BEGIN EXCLUSIVE");
+    transactionActive = true;
+    database.exec(
+      "CREATE TABLE IF NOT EXISTS writer_identity (version INTEGER PRIMARY KEY, cell_id TEXT NOT NULL, persistent_root TEXT NOT NULL)",
+    );
+    const identity = database
+      .prepare("SELECT cell_id AS cellId, persistent_root AS persistentRoot FROM writer_identity WHERE version = 1")
+      .get() as { cellId?: unknown; persistentRoot?: unknown } | undefined;
+    if (!identity) {
+      database
+        .prepare("INSERT INTO writer_identity (version, cell_id, persistent_root) VALUES (1, ?, ?)")
+        .run(configuration.cellId, canonicalRoot);
+    } else if (identity.cellId !== configuration.cellId || identity.persistentRoot !== canonicalRoot) {
+      throw writerLeaseUnsafe("Writer lease database identity does not match this cell and root");
+    }
+    database.exec("COMMIT");
+    transactionActive = false;
+    database.exec("BEGIN EXCLUSIVE");
+    transactionActive = true;
+  } catch (error) {
+    await closeWriterDatabase(database, { closed: false, transactionActive });
+    if (error instanceof SessionCryptoError) throw error;
+    if (isWriterLeaseContentionError(error)) {
+      throw new SessionCryptoError("WRITER_LEASE_ACTIVE", "Another writer owns this persistent root");
+    }
+    throw new SessionCryptoError("WRITER_LEASE_IO", "Writer lease acquisition failed", {
+      cause: error,
+    });
+  }
+
+  const cleanupState = { closed: false, transactionActive: true };
+  let releaseAttempt: Promise<void> | undefined;
+  return {
+    release() {
+      if (cleanupState.closed) return Promise.resolve();
+      if (releaseAttempt) return releaseAttempt;
+      releaseAttempt = (async () => {
+        const errors = await closeWriterDatabase(database, cleanupState);
+        if (errors.length > 0) {
+          throw new SessionCryptoError(
+            "WRITER_LEASE_RELEASE_FAILED",
+            "Writer lease cleanup failed",
+            { cause: new AggregateError(errors) },
+          );
+        }
+      })().finally(() => {
+        releaseAttempt = undefined;
+      });
+      return releaseAttempt;
+    },
+  };
+}
 
 export function parseStartupArguments(argv: readonly string[]): StartupConfiguration {
   const allowed = new Set(["--cell-id", "--plaintext-root", "--persistent-root"]);
@@ -227,6 +529,9 @@ export async function loadRuntimeKeyring(
     }
     if (stat.uid !== operations.getuid()) {
       throw new SessionCryptoError("KEY_FILE_OWNER", "Runtime key file owner is invalid");
+    }
+    if (!Number.isSafeInteger(stat.size) || stat.size <= 0 || stat.size > MAX_KEY_FILE_BYTES) {
+      throw new SessionCryptoError("KEY_FILE_FORMAT", "Runtime key file has an invalid length");
     }
     bytes = await handle.readFile();
   } catch (error) {
@@ -349,6 +654,10 @@ const publicErrors = new Map<string, string>([
   ["ROTATION_GENERATION_UNCHANGED", "Ciphertext already uses the active generation"],
   ["UNKNOWN_KEY_GENERATION", "Ciphertext key generation is unavailable"],
   ["UNSUPPORTED_PLATFORM", "Session crypto runtime is supported only on Linux"],
+  ["WRITER_LEASE_ACTIVE", "Another session crypto writer already owns this persistent root"],
+  ["WRITER_LEASE_IO", "Session crypto writer lease could not be established"],
+  ["WRITER_LEASE_RELEASE_FAILED", "Session crypto writer lease cleanup failed"],
+  ["WRITER_LEASE_UNSAFE", "Session crypto writer lease path is unsafe"],
 ]);
 
 const nonFatalErrors = new Set([
@@ -444,20 +753,77 @@ export class SessionCryptoDaemon {
 export async function runStdioDaemon(options: StdioDaemonOptions): Promise<number> {
   for await (const rawLine of options.lines) {
     const line = typeof rawLine === "string" ? rawLine : Buffer.from(rawLine).toString("utf8");
-    let value: unknown;
-    let response: RuntimeResponse;
-    if (Buffer.byteLength(line, "utf8") > MAX_REQUEST_BYTES) {
-      response = errorResponse("MALFORMED_REQUEST", null);
-    } else {
-      try {
-        value = JSON.parse(line) as unknown;
-        response = await options.daemon.handle(value);
-      } catch {
-        response = errorResponse("MALFORMED_REQUEST", null);
-      }
-    }
+    const response = await responseForLine(options.daemon, line);
     await options.writeLine(JSON.stringify(response));
     if (!response.ok && response.error.fatal) return 1;
+  }
+  return 0;
+}
+
+async function responseForLine(daemon: SessionCryptoDaemon, line: string): Promise<RuntimeResponse> {
+  if (Buffer.byteLength(line, "utf8") > MAX_REQUEST_BYTES) {
+    return errorResponse("MALFORMED_REQUEST", null);
+  }
+  try {
+    return daemon.handle(JSON.parse(line) as unknown);
+  } catch {
+    return errorResponse("MALFORMED_REQUEST", null);
+  }
+}
+
+export async function runStdioByteStream(options: StdioByteStreamOptions): Promise<number> {
+  let buffered: Buffer[] = [];
+  let bufferedBytes = 0;
+  let oversized = false;
+
+  const emitLine = async (): Promise<number | undefined> => {
+    let response: RuntimeResponse;
+    if (oversized) {
+      response = errorResponse("MALFORMED_REQUEST", null);
+    } else {
+      let lineBytes = Buffer.concat(buffered, bufferedBytes);
+      if (lineBytes.at(-1) === 0x0d) lineBytes = lineBytes.subarray(0, -1);
+      response = await responseForLine(options.daemon, lineBytes.toString("utf8"));
+    }
+    buffered = [];
+    bufferedBytes = 0;
+    oversized = false;
+    await options.writeLine(JSON.stringify(response));
+    return !response.ok && response.error.fatal ? 1 : undefined;
+  };
+
+  for await (const rawChunk of options.input) {
+    const chunk =
+      typeof rawChunk === "string"
+        ? Buffer.from(rawChunk, "utf8")
+        : Buffer.isBuffer(rawChunk)
+          ? rawChunk
+          : Buffer.from(rawChunk.buffer, rawChunk.byteOffset, rawChunk.byteLength);
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf(0x0a, offset);
+      const end = newline < 0 ? chunk.length : newline;
+      const segment = chunk.subarray(offset, end);
+      if (!oversized) {
+        if (bufferedBytes + segment.length > MAX_REQUEST_BYTES) {
+          buffered = [];
+          bufferedBytes = 0;
+          oversized = true;
+        } else if (segment.length > 0) {
+          buffered.push(segment);
+          bufferedBytes += segment.length;
+        }
+      }
+      if (newline < 0) break;
+      const exitCode = await emitLine();
+      if (exitCode !== undefined) return exitCode;
+      offset = newline + 1;
+    }
+  }
+
+  if (oversized || bufferedBytes > 0) {
+    const exitCode = await emitLine();
+    if (exitCode !== undefined) return exitCode;
   }
   return 0;
 }
@@ -488,11 +854,19 @@ export async function runSessionCryptoProcess(options: RuntimeProcessOptions): P
       },
       storeDependencies,
     );
-    return runStdioDaemon({
-      daemon: new SessionCryptoDaemon(store),
-      lines: options.lines,
-      writeLine: options.writeLine,
-    });
+    const writerLease = await acquireWriterLease(
+      { cellId: startup.cellId, persistentRoot: startup.persistentRoot },
+      options.writerLeaseOperations,
+    );
+    try {
+      return await runStdioByteStream({
+        daemon: new SessionCryptoDaemon(store),
+        input: options.lines,
+        writeLine: options.writeLine,
+      });
+    } finally {
+      await writerLease.release();
+    }
   } catch (error) {
     await options.writeLine(JSON.stringify(sanitizedError(error, null)));
     return 1;
@@ -509,8 +883,7 @@ async function writeStdoutLine(line: string): Promise<void> {
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<number> {
-  const lines = createInterface({ crlfDelay: Infinity, input: process.stdin });
-  return runSessionCryptoProcess({ argv, lines, writeLine: writeStdoutLine });
+  return runSessionCryptoProcess({ argv, lines: process.stdin, writeLine: writeStdoutLine });
 }
 
 const directEntry = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;

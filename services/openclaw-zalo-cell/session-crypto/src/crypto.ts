@@ -183,6 +183,16 @@ export function normalizeLogicalSessionPath(logicalPath: string): string {
       "Logical session path contains an empty, dot, or traversal segment",
     );
   }
+  const firstSegment = segments[0]!;
+  if (
+    firstSegment.startsWith(".openclaw-") ||
+    firstSegment.startsWith(".session-crypto-writer.sqlite")
+  ) {
+    throw new SessionCryptoError(
+      "INVALID_LOGICAL_PATH",
+      "Logical session path collides with reserved crypto metadata",
+    );
+  }
   const reservedWindowsName = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
   if (
     segments.some(
