@@ -85,7 +85,11 @@ describe("OpenClaw Zalo isolation guardrail", () => {
       "services/openclaw-zalo-bridge/src/optional-adapter.ts": `adapter?.send(payload);`,
       "services/openclaw-zalo-bridge/src/bracket-tool.ts": `tool["execute"]("send", payload);`,
       "services/openclaw-zalo-bridge/src/secrets/not-generated.ts": `const table = "zalo_must_fail";`,
-      "services/openclaw-zalo-bridge/test/not-a-contract.test.ts": `import "@openclaw/zalouser";`,
+      "services/openclaw-zalo-bridge/test/not-a-contract.test.ts": [
+        `import "@openclaw/zalouser";`,
+        `client.call("send", payload);`,
+        `adapter.send(payload);`,
+      ].join("\n"),
       "services/openclaw-zalo-bridge/worker/queue.ts": `export const queue = true;`,
       "services/openclaw-egress-broker/src/legacy.sql": `select zalo_legacy from old_table;`,
       "infra/openclaw-zalo/config/chat.ts": `const route = "/chat-zalo";`,
@@ -120,6 +124,18 @@ describe("OpenClaw Zalo isolation guardrail", () => {
     );
     expectFinding(
       "services/openclaw-zalo-bridge/src/bracket-tool.ts",
+      "direct-adapter-tool-delivery",
+    );
+    expectFinding(
+      "services/openclaw-zalo-bridge/test/not-a-contract.test.ts",
+      "direct-zalouser-package",
+    );
+    expectFinding(
+      "services/openclaw-zalo-bridge/test/not-a-contract.test.ts",
+      "stock-generic-send",
+    );
+    expectFinding(
+      "services/openclaw-zalo-bridge/test/not-a-contract.test.ts",
       "direct-adapter-tool-delivery",
     );
     expectFinding(
