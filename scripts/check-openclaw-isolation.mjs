@@ -9,17 +9,25 @@ const ALWAYS_FORBIDDEN = [
   { rule: "legacy-worker-path", pattern: /\bworker[\\/]/gi },
 ];
 
-const RESTRICTED_DELIVERY = [
+const RESTRICTED_PACKAGE = [
   { rule: "direct-zalouser-package", pattern: /@openclaw[\\/]zalouser\b/gi },
+];
+
+const RESTRICTED_DELIVERY = [
   {
     rule: "stock-generic-send",
     pattern:
-      /(?:\b(?:call|invoke|request|rpc)\s*\(\s*["']send["']|\b(?:method|rpc(?:Name|Method)?)\s*[:=]\s*["']send["']|\bopenclaw(?:\s+|[./:-])(?:message\s+)?send\b)/gi,
+      /(?:\b(?:call|invoke|request|rpc)\s*\(\s*["']send["']|(?:["'](?:method|rpcName|rpcMethod)["']|\b(?:method|rpcName|rpcMethod)\b)\s*[:=]\s*["']send["']|\bopenclaw(?:\s+|[./:-])(?:message\s+)?send\b)/gi,
   },
   {
     rule: "direct-adapter-tool-delivery",
     pattern:
-      /\b(?:[a-z0-9_]*(?:adapter|tool)|adapter|tool)\s*\.\s*(?:send|sendText|sendMedia|sendLink|sendReaction|deliver|execute)\s*\(/gi,
+      /\b[a-z0-9_$]*adapter\s*(?:(?:\?\.|\.)\s*(?:send|sendText|sendMedia|sendLink|sendReaction|deliver)|(?:\?\.)?\s*\[\s*["'](?:send|sendText|sendMedia|sendLink|sendReaction|deliver)["']\s*\])\s*\(/gi,
+  },
+  {
+    rule: "direct-adapter-tool-delivery",
+    pattern:
+      /\b[a-z0-9_$]*tool\s*(?:(?:\?\.|\.)\s*execute|(?:\?\.)?\s*\[\s*["']execute["']\s*\])\s*\(\s*["'](?:send|deliver|sendText|sendMedia|sendLink|sendReaction|business[-_. ]?send)["'](?=\s*[),])/gi,
   },
 ];
 
@@ -206,12 +214,17 @@ export function scanOpenClawFiles(root = process.cwd()) {
     if (SKIPPED_FILES.has(relativePath) || !isFile(file)) continue;
 
     scanPatterns(relativePath, relativePath, ALWAYS_FORBIDDEN, findings);
+    const approvedDeliveryPath = isApprovedDeliveryPath(relativePath);
+    if (!approvedDeliveryPath) {
+      scanPatterns(relativePath, relativePath, RESTRICTED_PACKAGE, findings);
+    }
 
     const source = readTextFile(file);
     if (source === null) continue;
 
     scanPatterns(source, relativePath, ALWAYS_FORBIDDEN, findings);
-    if (!isApprovedDeliveryPath(relativePath)) {
+    if (!approvedDeliveryPath) {
+      scanPatterns(source, relativePath, RESTRICTED_PACKAGE, findings);
       scanPatterns(source, relativePath, RESTRICTED_DELIVERY, findings);
     }
   }

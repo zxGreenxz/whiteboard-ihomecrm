@@ -39,6 +39,8 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         `export const delivery = adapter.send(payload);`,
         `export const rpc = tool.execute("send", payload);`,
       ].join("\n"),
+      "services/openclaw-zalo-cell/vendor/@openclaw/zalouser/index.js": `export const installed = true;`,
+      "services/openclaw-zalo-cell/package.json": `{"dependencies":{"@openclaw/zalouser":"file:vendor/zalouser.tgz"}}`,
       "services/openclaw-zalo-bridge/src/adapters/zalouser-bridge-rpc-adapter.ts": [
         `import "@openclaw/zalouser";`,
         `export const delivery = adapter.send(payload);`,
@@ -57,6 +59,7 @@ describe("OpenClaw Zalo isolation guardrail", () => {
       "supabase/migrations/20260727010000_openclaw_catalog_foundation.sql": `create table openclaw_zalo_accounts;`,
       "supabase/functions/_shared/openclaw/constants.ts": `export const CHANNEL = "zalouser";`,
       "supabase/functions/openclaw-control/index.ts": `export const channel = "zalouser";`,
+      "services/openclaw-zalo-bridge/src/classification.ts": `classificationTool.execute(payload);`,
       "infra/openclaw-zalo/secrets/runtime.env": `LEGACY_TABLE=zalo_ignored_secret`,
       "src/lib/legacy.ts": `const old = "zalo_legacy";`,
     });
@@ -76,6 +79,11 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         `client.call("send", payload);`,
         `adapter.sendText(payload);`,
       ].join("\n"),
+      "services/openclaw-zalo-bridge/package.json": `{"dependencies":{"@openclaw/zalouser":"2026.7.1"}}`,
+      "services/openclaw-zalo-bridge/vendor/@openclaw/zalouser/index.js": `export const installed = true;`,
+      "services/openclaw-zalo-bridge/src/quoted-rpc.ts": `const request = {"method":"send"};`,
+      "services/openclaw-zalo-bridge/src/optional-adapter.ts": `adapter?.send(payload);`,
+      "services/openclaw-zalo-bridge/src/bracket-tool.ts": `tool["execute"]("send", payload);`,
       "services/openclaw-zalo-bridge/src/secrets/not-generated.ts": `const table = "zalo_must_fail";`,
       "services/openclaw-zalo-bridge/test/not-a-contract.test.ts": `import "@openclaw/zalouser";`,
       "services/openclaw-zalo-bridge/worker/queue.ts": `export const queue = true;`,
@@ -88,18 +96,44 @@ describe("OpenClaw Zalo isolation guardrail", () => {
 
     const findings = scanOpenClawFiles(root);
 
-    expect(findings.length).toBeGreaterThanOrEqual(10);
-    expect(findings.some((finding) => finding.rule === "legacy-zalo-identifier")).toBe(true);
-    expect(findings.some((finding) => finding.rule === "legacy-chat-zalo-path")).toBe(true);
-    expect(findings.some((finding) => finding.rule === "legacy-use-zalo-chat")).toBe(true);
-    expect(findings.some((finding) => finding.rule === "legacy-worker-path")).toBe(true);
-    expect(findings.some((finding) => finding.rule === "direct-zalouser-package")).toBe(true);
-    expect(findings.some((finding) => finding.rule === "stock-generic-send")).toBe(true);
-    expect(findings.some((finding) => finding.rule === "direct-adapter-tool-delivery")).toBe(true);
-    expect(
-      findings.some(
-        (finding) => finding.file === "services/openclaw-zalo-bridge/src/secrets/not-generated.ts",
-      ),
-    ).toBe(true);
+    const expectFinding = (file: string, rule: string) => {
+      expect(findings).toContainEqual(expect.objectContaining({ file, rule }));
+    };
+
+    expectFinding("src/lib/openclaw-zalo/bad.ts", "direct-zalouser-package");
+    expectFinding("src/lib/openclaw-zalo/bad.ts", "legacy-chat-zalo-path");
+    expectFinding("src/lib/openclaw-zalo/bad.ts", "legacy-use-zalo-chat");
+    expectFinding("services/openclaw-zalo-bridge/src/not-approved.ts", "stock-generic-send");
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/not-approved.ts",
+      "direct-adapter-tool-delivery",
+    );
+    expectFinding("services/openclaw-zalo-bridge/package.json", "direct-zalouser-package");
+    expectFinding(
+      "services/openclaw-zalo-bridge/vendor/@openclaw/zalouser/index.js",
+      "direct-zalouser-package",
+    );
+    expectFinding("services/openclaw-zalo-bridge/src/quoted-rpc.ts", "stock-generic-send");
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/optional-adapter.ts",
+      "direct-adapter-tool-delivery",
+    );
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/bracket-tool.ts",
+      "direct-adapter-tool-delivery",
+    );
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/secrets/not-generated.ts",
+      "legacy-zalo-identifier",
+    );
+    expectFinding("services/openclaw-zalo-bridge/worker/queue.ts", "legacy-worker-path");
+    expectFinding("services/openclaw-egress-broker/src/legacy.sql", "legacy-zalo-identifier");
+    expectFinding("infra/openclaw-zalo/config/chat.ts", "legacy-chat-zalo-path");
+    expectFinding("contracts/openclaw-zalo/bad.schema.json", "legacy-use-zalo-chat");
+    expectFinding(
+      "supabase/migrations/20260727010000_openclaw_catalog_foundation.sql",
+      "legacy-zalo-identifier",
+    );
+    expectFinding("supabase/functions/openclaw-control/index.ts", "legacy-worker-path");
   });
 });
