@@ -32,7 +32,7 @@
 - Committed reviewed `licenses/manifest.json` is the independent source of truth, not generated from internal notice/tgz. It contains exact 38 package name/version/SPDX selections and exact 39 source carrier paths/sizes/SHA-256/output paths; `UPSTREAM.json` and `FORK.json` bind its SHA-256 and counts. Internal `THIRD_PARTY_NOTICES.md` and carrier tree are rendered/verified from it, and an independent document/artifact review must approve the manifest and rendered outputs before pack evidence is accepted.
 - Internal `THIRD_PARTY_NOTICES.md` contains the upstream root notice verbatim plus the exact inventory, carrier paths, the pako exception, and the Spark-md5 selection. `FORK.json.artifactMembers` is the exact sorted file-by-file path/type/mode/size/SHA-256 manifest for the tgz, while `runtimeReachabilityAllowlist` is the exact sorted required runtime JS/JSON/package-metadata set. The tgz uses exact archive paths `package/LICENSE`, `package/THIRD_PARTY_NOTICES.md`, and `package/licenses/**`; structural bans remain absolute, category pruning cannot remove an allowlisted runtime member, and no unlisted member is allowed. Clean install/load, upstream-compatible, and differential runtime tests must pass.
 - Docker installs only the verified internal tgz and never resolves registry ZaloUser during image build/runtime. The Dockerfile has exactly two stages, `install` and `runtime`; it never runs `npm ci` or compiles session-crypto. Before `R`, the Node gate clean-builds session-crypto twice and commits exactly `dist/package.json`, `dist/crypto.js`, and `dist/daemon.js`; `dist/package.json` is exact bytes `{"type":"module"}\n`. The install stage runs the Node `>=24.15.0 <25` assertion first in the same `RUN --network=none`, then installs the local tgz with one newly created, initially empty cache and no reuse/fallback. The runtime stage copies only the installed fork, those three reviewed dist blobs, and runtime config. Base-image acquisition remains the separate pinned `--pull` operation; only application `RUN`/install work is networkless, so the design does not claim air-gapped base acquisition. `FORK.json.installedTree` binds the sorted installed path/type/mode/size/SHA-256 manifest plus file/directory counts and root hash. Verification cross-checks `openclaw plugins list --json`, plugin inspect output, installed `package.json`, all loader/discovery roots, and duplicate/shadow candidates; upstream and fork packages may not coexist.
-- Reproducible image gates accept only exact `-ReviewedTree` and an absolute verified `-BuildxPath`. Buildx is exactly `0.13.1`, with binary SHA-256 `6b113e84cbc3cd645646aa82f00a7f7d3737cc10375b4341e0aca0de0c997c75` on Windows or `3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c` on Linux; BuildKit is exactly `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`. Context-root v2 and evidence bind the exact three session-crypto dist Git blobs, while final-rootfs evidence binds their installed hashes and rejects d.ts/tests/source/locks/tsconfig/node_modules/compiler/cache. Two fresh builders must produce byte-identical OCI archives and byte-identical extracted OCI layout/index/blob sets, not merely matching manifest/config/layer digest lists. `build-evidence.schema.v1.json` is closed at every object level, and the PowerShell 7.3 helper is self-contained, checked-native, fail-fast, and performs the dependency-free Node assertion before creating work/artifact/evidence or invoking its first Node/npm/npx/vendor subcommand.
+- Reproducible image gates accept only exact `-ReviewedTree` and an absolute verified `-BuildxPath`. Buildx is exactly `0.13.1`, with binary SHA-256 `6b113e84cbc3cd645646aa82f00a7f7d3737cc10375b4341e0aca0de0c997c75` on Windows or `3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c` on Linux; BuildKit is exactly `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`. Context-root v2 and evidence bind the exact three session-crypto dist Git blobs, while final-rootfs evidence binds their installed hashes and rejects d.ts/tests/source/locks/tsconfig/node_modules/compiler/cache. Two fresh builders must produce byte-identical OCI archives and byte-identical extracted OCI layout/index/blob sets, not merely matching manifest/config/layer digest lists. `build-evidence.schema.v1.json` is closed at every object level, and the PowerShell 7.3 helper is self-contained, checked-native, fail-fast, and accepts only official stable `process.version` bytes matching `^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$` with numeric minor at least `15` before creating work/artifact/evidence or invoking its first Node/npm/npx/vendor subcommand; prerelease/build suffixes fail.
 - The vendor package exposes `vendor:prepare`; it must not define npm lifecycle script `prepare`, because `npm ci` may invoke lifecycle hooks before the qualifying gate intends to prepare source. The session-crypto package/lock keep reviewed `engines.node >=22.13.0` as their runtime/library minimum; Node `>=24.15.0 <25` is a separate build/gate requirement and must not rewrite that engine range.
 - The production Compose file publishes no Gateway port. OpenClaw and bridge communicate only on a private internal Docker network.
 - Do not enable OpenClaw's Docker sandbox backend because it mounts the Docker socket. The cell receives no Docker socket, shell tool, browser tool, arbitrary HTTP tool, filesystem tool, or SQL tool.
@@ -920,7 +920,7 @@ Add session-at-rest tests proving plaintext credentials and session files exist 
 
 Add a session-crypto build contract. `tsconfig.build.json` names only `src/crypto.ts` and `src/daemon.ts` as build inputs and disables declarations/source maps; tests and every other source are excluded. A clean build deletes prior `dist`, emits exactly `crypto.js` and `daemon.js`, then atomically writes exact UTF-8 bytes `{"type":"module"}\n` as `dist/package.json`. `verify:dist` performs two independent clean builds, requires byte-identical path/size/SHA-256 manifests, compares the result with the three committed dist blobs, and rejects stale or extra output. The reviewed runtime closure is exactly those three files; no d.ts, test, source, lock, tsconfig, node_modules, compiler, or cache may enter the context or final rootfs. Keep session-crypto `engines.node >=22.13.0` unchanged while enforcing Node `>=24.15.0 <25` in build/gate entrypoints.
 
-Add command-contract fixtures for `.dockerignore`, `image-lock.json`, `build-evidence.schema.v1.json`, the exact two-stage Dockerfile, `export-reviewed-tree.mjs`, normalization/build helpers, image-contract tests, `vite.config.ts`, and `eslint.config.js`. Task 2 must add precise root Vitest/ESLint exclusions for immutable `vendor/zalouser-bridge/upstream/package/**` and binary/generated artifact paths so the committed upstream `*.test.ts` snapshot and tgz are not traversed by root `npx vitest run`/`eslint .`; the exclusions must not hide `vendor/zalouser-bridge/test/**` contract tests. Negative fixtures delete/broaden these rules and catch accidental traversal or hidden owned tests. Pre-`R` development is non-qualifying. After exact-`R` clean preflight, the qualifying exporter must be obtained from the exact `R` blob and must enumerate `git ls-tree -rz --full-tree R`, consume objects through `git cat-file --batch`, reject non-blob/unapproved modes, preserve `100644`/`100755`, verify Git object size/SHA-1 plus content size/SHA-256, write a deterministic export manifest, and re-hash every output before any `npm ci`, verifier, or build. Working-tree reads, `git checkout`, and `git archive` are forbidden qualifying paths; `git -c core.autocrlf=false archive` appears only in negative/diagnostic fixtures. Context-root v2 uses raw UTF-8 path sorting and `preimage = UTF8("ihome-openclaw-context-root-v2\\0") || UTF8("count\\0" + decimal(1 + inputCount) + "\\0") || record("lock", lockType, lockMode, "image-lock.json", lockSha256) || each record("input", type, mode, path, sha256)`, where `record(role,type,mode,path,sha256) = UTF8(role + "\\0" + type + "\\0" + mode + "\\0" + path + "\\0" + lowercaseHexSha256 + "\\0")`. Golden vector: empty lock SHA `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`; `Dockerfile` `FROM scratch\n` blob/`100644` SHA `bb57c7da220a8753d7bdabac0d3afdb6efa742e4c736c5bc93ab40dfd5e23b9b`; `scripts/install.sh` `#!/bin/sh\nexit 0\n` blob/`100755` SHA `306c6ca7407560340797866e077e053627ad409277d1b9da58106fce4cf717cb`; root `925be74a4fe381076871348887a653659ada468fa21333d5d22585be9e381f4e`. M-aggregate fixtures verify the exact 87-path count, RFC 8785 null projection, domain/record grammar and golden root, separately check the final `UPSTREAM.json` blob, and reject self-referential final-blob hashes, omitted paths, wrong projection fields, duplicate JSON keys, or projection substitution during review. Node-contract fixtures require the dependency-free assertion before the first Node/npm/npx/vendor/helper call, accept `24.15.0` and later `24.x`, reject `22.20.x`, `24.14.x`, and `25.x`, and prove rejection leaves no worktree, build context, artifact, or evidence. Docker negatives reject any stage count other than two, any session-crypto `npm ci`/build, a context input outside the exact three dist blobs, reused/nonempty vendor cache, a Node assertion after install, missing `RUN --network=none`, or claims that pinned base-image pull is air-gapped. Evidence-child fixtures require the exact reviewed verifier to validate the copied evidence, closed schema, reviewed tree, and retained absolute OCI candidate before staging. Detached-evidence cleanup fixtures for Task 2, E27, and E29 dirty the child worktree and inject primary/cleanup failures; they require canonical temp-contained paths, checked `git worktree remove --force`, primary-error preservation, and cleanup failure propagation when no primary error. Other negatives cover wrong builder pins, network/fallback install, mutable state, non-minimal rootfs, non-identical OCI, installed/discovery mismatch, handoff/schema/review tampering, source/evidence mixing, ignored-only final evidence, a Task 29 bundle/deploy before approved E29, or native failure followed by a sentinel.
+Add command-contract fixtures for `.dockerignore`, `image-lock.json`, `build-evidence.schema.v1.json`, the exact two-stage Dockerfile, `export-reviewed-tree.mjs`, normalization/build helpers, image-contract tests, `vite.config.ts`, and `eslint.config.js`. Task 2 must add precise root Vitest/ESLint exclusions for immutable `vendor/zalouser-bridge/upstream/package/**` and binary/generated artifact paths so the committed upstream `*.test.ts` snapshot and tgz are not traversed by root `npx vitest run`/`eslint .`; the exclusions must not hide `vendor/zalouser-bridge/test/**` contract tests. Negative fixtures delete/broaden these rules and catch accidental traversal or hidden owned tests. Pre-`R` development is non-qualifying. After exact-`R` clean preflight, the qualifying exporter must be obtained from the exact `R` blob and must enumerate `git ls-tree -rz --full-tree R`, consume objects through `git cat-file --batch`, reject non-blob/unapproved modes, preserve `100644`/`100755`, verify Git object size/SHA-1 plus content size/SHA-256, write a deterministic export manifest, and re-hash every output before any `npm ci`, verifier, or build. Working-tree reads, `git checkout`, and `git archive` are forbidden qualifying paths; `git -c core.autocrlf=false archive` appears only in negative/diagnostic fixtures. Context-root v2 uses raw UTF-8 path sorting and `preimage = UTF8("ihome-openclaw-context-root-v2\\0") || UTF8("count\\0" + decimal(1 + inputCount) + "\\0") || record("lock", lockType, lockMode, "image-lock.json", lockSha256) || each record("input", type, mode, path, sha256)`, where `record(role,type,mode,path,sha256) = UTF8(role + "\\0" + type + "\\0" + mode + "\\0" + path + "\\0" + lowercaseHexSha256 + "\\0")`. Golden vector: empty lock SHA `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`; `Dockerfile` `FROM scratch\n` blob/`100644` SHA `bb57c7da220a8753d7bdabac0d3afdb6efa742e4c736c5bc93ab40dfd5e23b9b`; `scripts/install.sh` `#!/bin/sh\nexit 0\n` blob/`100755` SHA `306c6ca7407560340797866e077e053627ad409277d1b9da58106fce4cf717cb`; root `925be74a4fe381076871348887a653659ada468fa21333d5d22585be9e381f4e`. M-aggregate fixtures verify the exact 87-path count, RFC 8785 null projection, domain/record grammar and golden root, separately check the final `UPSTREAM.json` blob, and reject self-referential final-blob hashes, omitted paths, wrong projection fields, duplicate JSON keys, or projection substitution during review. Node-contract fixtures require the dependency-free stable-version assertion before the first Node/npm/npx/vendor/helper call, accept only official stable `v24.15.0` and later stable `v24.x.y`, reject `v22.20.0`, `v24.14.x`, `v25.x`, `v24.15.0-rc.1`, `v24.15.0-pre`, and any build/prerelease suffix, and prove rejection leaves no worktree, build context, artifact, or evidence. Docker negatives reject any stage count other than two, any session-crypto `npm ci`/build, a context input outside the exact three dist blobs, reused/nonempty vendor cache, a Node assertion after install, missing `RUN --network=none`, or claims that pinned base-image pull is air-gapped. Evidence-child fixtures require the exact reviewed verifier to validate the copied evidence, closed schema, reviewed tree, and retained absolute OCI candidate before staging. Detached-evidence cleanup fixtures for Task 2, E27, and E29 dirty the child worktree and inject primary/cleanup failures; they require canonical temp-contained paths, checked `git worktree remove --force`, primary-error preservation, and cleanup failure propagation when no primary error. Other negatives cover wrong builder pins, network/fallback install, mutable state, non-minimal rootfs, non-identical OCI, installed/discovery mismatch, handoff/schema/review tampering, source/evidence mixing, ignored-only final evidence, a Task 29 bundle/deploy before approved E29, or native failure followed by a sentinel.
 
 - [ ] **Step 2: Run the tests and verify they fail**
 
@@ -932,7 +932,7 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge ci
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge test
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run typecheck
@@ -981,7 +981,7 @@ After all tracked source, patches, overlay, rendered legal files/carriers, `FORK
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npm --prefix services/openclaw-zalo-cell/session-crypto ci
 npm --prefix services/openclaw-zalo-cell/session-crypto test
 npm --prefix services/openclaw-zalo-cell/session-crypto run typecheck
@@ -1038,7 +1038,7 @@ COPY --chown=node:node vendor/zalouser-bridge/FORK.json /opt/openclaw-cell/vendo
 COPY --chown=node:node vendor/zalouser-bridge/artifacts/openclaw-zalouser-2026.7.1.tgz /opt/openclaw-cell/vendor/openclaw-zalouser-2026.7.1.tgz
 COPY --chown=node:node scripts/install-vendored-zalouser.sh /opt/openclaw-cell/install-vendored-zalouser.sh
 COPY --chown=node:node scripts/normalize-openclaw-install.mjs /opt/openclaw-cell/normalize-openclaw-install.mjs
-RUN --network=none node -e 'const [major,minor]=process.versions.node.split(".").map(Number);if(major!==24||minor<15){console.error("Node >=24.15.0 <25 is required");process.exit(1)}' \
+RUN --network=none node -e 'const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error("Official stable Node >=24.15.0 <25 is required");process.exit(1)}' \
     && test "$SOURCE_DATE_EPOCH" = "1785062400" \
     && test ! -e /tmp/npm-empty \
     && mkdir /tmp/npm-empty \
@@ -1069,7 +1069,7 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R = $env:OPENCLAW_REVIEWED_R_SHA
 if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
 $buildxPath = (Resolve-Path -LiteralPath $env:OPENCLAW_BUILDX_PATH -ErrorAction Stop).Path
@@ -1162,22 +1162,38 @@ Candidate evidence re-hashes every `UPSTREAM.json.provenanceInputs` Git blob fro
 
 - [ ] **Step 5: Create the evidence-only child E**
 
-After the reviewed-`R` run succeeds, resolve both verified candidate evidence and the retained OCI archive from absolute paths under the source worktree's `.release/`, reject either file or their parent path if it is a reparse point/symlink, and hash both before copying. Create the detached-child path as a canonical generated child of the canonical non-reparse temp root, then add the worktree at exact `R`, copy and re-hash exactly one tracked file as `services/openclaw-zalo-cell/build-evidence.json`, and invoke the exact reviewed child-worktree `verify-image-lock.mjs` against that copy, the closed schema, exact `$R`, and the retained absolute candidate archive before staging. Only verifier success may commit `E`. Prove `E^ == R` and the committed diff is exactly that evidence path; the OCI archive remains external and uncommitted. Cleanup must use checked `git worktree remove --force` so a dirty child is still removed; a cleanup error fails when it is the only error, while a simultaneous cleanup error is reported without masking the primary exception. Only after confirmed path and registration removal may the source branch fast-forward from `R` to `E`. No relative path may be interpreted inside the child worktree, and no source, artifact, lock, tooling, config, plan, or archive file may differ.
+After the reviewed-`R` run succeeds, this fenced block independently rebinds and validates exact `R`, then recomputes the absolute source, `.release/`, candidate-evidence, and retained-OCI paths plus their hashes without using any Step 4 variable. It proves canonical containment, leaf/container types, and that the source/release chain and both candidates are not reparse points/symlinks before hashing or verification. Create the detached-child path as a canonical generated child of the canonical non-reparse temp root, then add the worktree at exact `R`, copy and re-hash exactly one tracked file as `services/openclaw-zalo-cell/build-evidence.json`, and invoke the exact reviewed child-worktree `verify-image-lock.mjs` against that copy, the closed schema, exact `$R`, and the retained absolute candidate archive before staging. Only verifier success may commit `E`. Prove `E^ == R` and the committed diff is exactly that evidence path; the OCI archive remains external and uncommitted. Cleanup must use checked `git worktree remove --force` so a dirty child is still removed; a cleanup error fails when it is the only error, while a simultaneous cleanup error is reported without masking the primary exception. Only after confirmed path and registration removal may the source branch fast-forward from `R` to `E`. No relative path may be interpreted inside the child worktree, and no source, artifact, lock, tooling, config, plan, or archive file may differ.
 
 ```powershell
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
+$R = $env:OPENCLAW_REVIEWED_R_SHA
+if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
 $sourceRoot = (Resolve-Path -LiteralPath '.').Path
-$releaseRoot = Join-Path $sourceRoot 'services/openclaw-zalo-cell/.release'
-$candidateEvidence = Join-Path $releaseRoot 'task2-build-evidence.json'
-$candidateArchive = Join-Path $releaseRoot 'openclaw-zalo-cell-linux-amd64.oci.tar'
+$servicesRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot 'services'))
+$cellRoot = [IO.Path]::GetFullPath((Join-Path $servicesRoot 'openclaw-zalo-cell'))
+$releaseRoot = [IO.Path]::GetFullPath((Join-Path $cellRoot '.release'))
+$releaseRelative = [IO.Path]::GetRelativePath($sourceRoot, $releaseRoot)
+if ([IO.Path]::IsPathRooted($releaseRelative) -or $releaseRelative -eq '..' -or $releaseRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Task 2 release root escaped the source worktree' }
+$candidateEvidence = [IO.Path]::GetFullPath((Join-Path $releaseRoot 'task2-build-evidence.json'))
+$candidateArchive = [IO.Path]::GetFullPath((Join-Path $releaseRoot 'openclaw-zalo-cell-linux-amd64.oci.tar'))
+foreach ($candidatePath in @($candidateEvidence, $candidateArchive)) {
+  $candidateRelative = [IO.Path]::GetRelativePath($releaseRoot, $candidatePath)
+  if ([IO.Path]::IsPathRooted($candidateRelative) -or $candidateRelative -eq '.' -or $candidateRelative -eq '..' -or $candidateRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Task 2 candidate escaped the canonical release root' }
+}
+$sourceItem = Get-Item -LiteralPath $sourceRoot -ErrorAction Stop
+$servicesItem = Get-Item -LiteralPath $servicesRoot -ErrorAction Stop
+$cellItem = Get-Item -LiteralPath $cellRoot -ErrorAction Stop
 $releaseItem = Get-Item -LiteralPath $releaseRoot -ErrorAction Stop
 $candidateItem = Get-Item -LiteralPath $candidateEvidence -ErrorAction Stop
 $candidateArchiveItem = Get-Item -LiteralPath $candidateArchive -ErrorAction Stop
-if ($candidateItem.PSIsContainer -or $candidateArchiveItem.PSIsContainer) { throw 'Task 2 candidates must be files' }
-if (($releaseItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($candidateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($candidateArchiveItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Task 2 candidate paths must not traverse a reparse point' }
+if (-not $sourceItem.PSIsContainer -or -not $servicesItem.PSIsContainer -or -not $cellItem.PSIsContainer -or -not $releaseItem.PSIsContainer) { throw 'Task 2 source and release ancestors must be directories' }
+if ($candidateItem.PSIsContainer -or $candidateArchiveItem.PSIsContainer) { throw 'Task 2 candidates must be leaf files' }
+foreach ($checkedItem in @($sourceItem, $servicesItem, $cellItem, $releaseItem, $candidateItem, $candidateArchiveItem)) {
+  if ($checkedItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Task 2 source, release, and candidate paths must not traverse a reparse point' }
+}
 $candidateSha256 = (Get-FileHash -LiteralPath $candidateEvidence -Algorithm SHA256).Hash.ToLowerInvariant()
 $candidateArchiveSha256 = (Get-FileHash -LiteralPath $candidateArchive -Algorithm SHA256).Hash.ToLowerInvariant()
 if ((git rev-parse HEAD).Trim() -ne $R) { throw 'Evidence child must start from R' }
@@ -2039,7 +2055,7 @@ Extend `scripts/gen-supabase-types.mjs` with a tested `SUPABASE_TYPES_SOURCE=loc
 Add:
 
 ```json
-"test:openclaw:services": "node -e \"const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}\" && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:upstream && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run vendor:prepare && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run typecheck && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge test && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run build && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run pack && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:artifact && npm --prefix services/openclaw-zalo-cell/session-crypto run verify:dist && npm --prefix services/openclaw-zalo-cell/session-crypto test && npm --prefix services/openclaw-zalo-cell/session-crypto run typecheck && npm --prefix services/openclaw-zalo-bridge run build && npm --prefix services/openclaw-zalo-bridge test && npm --prefix services/openclaw-zalo-bridge run typecheck && npm --prefix services/openclaw-zalo-maintenance run build && npm --prefix services/openclaw-zalo-maintenance test && npm --prefix services/openclaw-zalo-maintenance run typecheck && npm --prefix services/openclaw-egress-broker run build && npm --prefix services/openclaw-egress-broker test && npm --prefix services/openclaw-egress-broker run typecheck && npm --prefix infra/openclaw-zalo-watchdog run build && npm --prefix infra/openclaw-zalo-watchdog test && npm --prefix infra/openclaw-zalo-watchdog run typecheck && vitest run supabase/functions/_shared/openclaw supabase/functions/openclaw-control supabase/functions/openclaw-qr supabase/functions/openclaw-runtime-token supabase/functions/openclaw-runtime supabase/functions/openclaw-object-tickets supabase/functions/openclaw-watchdog",
+"test:openclaw:services": "node -e \"const m=/^v24\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}\" && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:upstream && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run vendor:prepare && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run typecheck && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge test && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run build && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run pack && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:artifact && npm --prefix services/openclaw-zalo-cell/session-crypto run verify:dist && npm --prefix services/openclaw-zalo-cell/session-crypto test && npm --prefix services/openclaw-zalo-cell/session-crypto run typecheck && npm --prefix services/openclaw-zalo-bridge run build && npm --prefix services/openclaw-zalo-bridge test && npm --prefix services/openclaw-zalo-bridge run typecheck && npm --prefix services/openclaw-zalo-maintenance run build && npm --prefix services/openclaw-zalo-maintenance test && npm --prefix services/openclaw-zalo-maintenance run typecheck && npm --prefix services/openclaw-egress-broker run build && npm --prefix services/openclaw-egress-broker test && npm --prefix services/openclaw-egress-broker run typecheck && npm --prefix infra/openclaw-zalo-watchdog run build && npm --prefix infra/openclaw-zalo-watchdog test && npm --prefix infra/openclaw-zalo-watchdog run typecheck && vitest run supabase/functions/_shared/openclaw supabase/functions/openclaw-control supabase/functions/openclaw-qr supabase/functions/openclaw-runtime-token supabase/functions/openclaw-runtime supabase/functions/openclaw-object-tickets supabase/functions/openclaw-watchdog",
 "test:openclaw:sql": "npm run test:openclaw:sql:local",
 "test:openclaw:sql:local": "vitest run src/lib/__tests__/openclawZaloMigrations.test.ts scripts/__tests__/openclaw-sql-harness.test.mjs scripts/__tests__/openclaw-concurrency-harness.test.mjs && node scripts/test-openclaw-migrations.mjs --local && node scripts/test-openclaw-sql.mjs --local && node scripts/test-openclaw-concurrency.mjs --local",
 "test:openclaw:sql:live-demo": "node scripts/test-openclaw-sql.mjs --live-demo && node scripts/test-openclaw-concurrency.mjs --live-demo",
@@ -2636,7 +2652,7 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npx vitest run infra/openclaw-zalo/test
 ```
 
@@ -2660,7 +2676,7 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npx vitest run infra/openclaw-zalo/test
 npm --prefix services/openclaw-egress-broker test
 npm --prefix services/openclaw-egress-broker run typecheck
@@ -2679,7 +2695,7 @@ Expected: source contracts PASS. A fresh read-only reviewer approves exact `R19`
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $buildxPath = (Resolve-Path -LiteralPath $env:OPENCLAW_BUILDX_PATH -ErrorAction Stop).Path
 & services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1 -ReviewedTree $R19 -BuildxPath $buildxPath -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path (Get-Location).Path 'services/openclaw-zalo-cell/.release/task19-build-evidence.json') -ReleaseArtifactPath (Join-Path (Get-Location).Path 'services/openclaw-zalo-cell/.release/openclaw-zalo-cell-linux-amd64.oci.tar')
 ```
@@ -3091,9 +3107,9 @@ git commit -m "test(openclaw-zalo): them e2e headless voi fake adapter" -m "Co-A
 
 Assert exactly three top-level gates and two SQL helpers exist: `test:openclaw:services`, `test:openclaw:sql`, `test:openclaw:r2`, `test:openclaw:sql:local`, and `test:openclaw:sql:live-demo`; the top-level SQL gate must be the local/static alias and no pull-request workflow may reference the protected live-DEMO helper. The command contract parses root scripts, workflow steps, `vite.config.ts`, and `eslint.config.js`; it proves every nested package suite is excluded from root Vitest/ESLint traversal and executed exactly once by its owning top-level gate, with no stdout redirection into `src/integrations/supabase/types.ts`.
 
-Require Node `>=24.15.0 <25` plus `npm ci`, `verify:upstream`, `vendor:prepare`, `typecheck`, `test`, `build`, `pack`, and `verify:artifact` coverage for the vendored fork; package.json must not define lifecycle `prepare`. The planned `test:openclaw:services` JSON value starts with the same dependency-free Node assertion before its first `npm`/vendor action. CI pins `actions/setup-node` to exact `24.15.0` and runs that assertion before the first `npm ci`; floating `24`, `24.x`, `latest`, or an assertion after install is rejected. Other nested package gates retain their build/test/typecheck coverage. Session-crypto uses `verify:dist` for the exact three reviewed prebuilt runtime files while its package/lock engine remains `>=22.13.0`. The vendor gate verifies provenance/source/artifact/license/runtime/internal-only install and never contacts npm during Docker installation. The command contract also preserves the existing Edge, SQL, R2, smoke, migration, and coverage ownership requirements.
+Require an official stable Node `v24.<minor>.<patch>` with integer minor at least `15`, no prerelease/build suffix, plus `npm ci`, `verify:upstream`, `vendor:prepare`, `typecheck`, `test`, `build`, `pack`, and `verify:artifact` coverage for the vendored fork; package.json must not define lifecycle `prepare`. The planned `test:openclaw:services` JSON value starts with the same dependency-free Node assertion before its first `npm`/vendor action. CI pins `actions/setup-node` to exact `24.15.0` and runs that assertion before the first `npm ci`; floating `24`, `24.x`, `latest`, or an assertion after install is rejected. Other nested package gates retain their build/test/typecheck coverage. Session-crypto uses `verify:dist` for the exact three reviewed prebuilt runtime files while its package/lock engine remains `>=22.13.0`. The vendor gate verifies provenance/source/artifact/license/runtime/internal-only install and never contacts npm during Docker installation. The command contract also preserves the existing Edge, SQL, R2, smoke, migration, and coverage ownership requirements.
 
-The command contract parses `.gitattributes`, `.dockerignore`, `image-lock.json`, `build-evidence.schema.v1.json`, the exact two-stage Dockerfile, `export-reviewed-tree.mjs`, normalization/install scripts, `build-reproducible-image.ps1`, `verify-image-lock.mjs`, image-contract tests, root scripts, CI, and the Task 29 runbook lifecycle as one gate. Positive coverage requires exact `-ReviewedTree` Git-plumbing export obtained from the exact reviewed blob, `git ls-tree -rz --full-tree`, `git cat-file --batch`, complete manifest/output re-hash before install, absolute pinned `-BuildxPath`, helper self-preflight, context-root v2 golden vector, exact three-blob session input/final-rootfs binding, buildx/BuildKit hashes, Node-first `RUN --network=none`, one newly created empty vendor cache/no reuse/fallback, no Docker session build/install, minimal final rootfs, installedTree plus list/inspect/package/discovery checks, two fresh builders, exact flags/exporter, byte-identical OCI archives/layout/index/blobs, closed schema, tamper-evident review reports, promoted handoff, exact reviewed-verifier-before-stage, exact cleanup, and checked-native fail-fast. Node fixtures accept `24.15.0` and later `24.x`, reject `22.20.x`, `24.14.x`, and `25.x`, and prove failure precedes all work/artifact/evidence. Negative fixtures remove/corrupt each requirement, reject `git archive`/checkout/reserialized source paths, reject source/evidence mixing, inject dirty-worktree/primary/cleanup failures into Task 2/E27/E29 detached lifecycles, reject ignored-only Task 29 evidence, reject an OCI archive in E29, reject bundle/Edge/Worker/VPS actions before independent E29 approval, and reject a later sentinel after native failure. Task 27's source-only preflight is non-qualifying; exact `R27` review precedes the qualifying `-ReviewedTree $R27` build and evidence-only `E27` review. Task 29 similarly requires exact `R29`, qualifying `-ReviewedTree $R29`, one-file direct child `E29`, independent E29 approval, then an E29-bound bundle/deploy while image evidence remains bound to R29.
+The command contract parses `.gitattributes`, `.dockerignore`, `image-lock.json`, `build-evidence.schema.v1.json`, the exact two-stage Dockerfile, `export-reviewed-tree.mjs`, normalization/install scripts, `build-reproducible-image.ps1`, `verify-image-lock.mjs`, image-contract tests, root scripts, CI, and the Task 29 runbook lifecycle as one gate. Positive coverage requires exact `-ReviewedTree` Git-plumbing export obtained from the exact reviewed blob, `git ls-tree -rz --full-tree`, `git cat-file --batch`, complete manifest/output re-hash before install, absolute pinned `-BuildxPath`, helper self-preflight, context-root v2 golden vector, exact three-blob session input/final-rootfs binding, buildx/BuildKit hashes, Node-first `RUN --network=none`, one newly created empty vendor cache/no reuse/fallback, no Docker session build/install, minimal final rootfs, installedTree plus list/inspect/package/discovery checks, two fresh builders, exact flags/exporter, byte-identical OCI archives/layout/index/blobs, closed schema, tamper-evident review reports, promoted handoff, exact reviewed-verifier-before-stage, exact cleanup, and checked-native fail-fast. Node fixtures accept only official stable `v24.15.0` and later stable `v24.x.y`, reject `v22.20.0`, `v24.14.x`, `v25.x`, `v24.15.0-rc.1`, `v24.15.0-pre`, and every build/prerelease suffix, and prove failure precedes all work/artifact/evidence. Negative fixtures remove/corrupt each requirement, reject `git archive`/checkout/reserialized source paths, reject source/evidence mixing, require Task 2 Step 5 and E27 Step 7 to rebind their reviewed SHA and recompute/validate absolute release candidates without prior-step variables, verify archive item/reparse state before hashing, and inject dirty-worktree/primary/cleanup failures into Task 2/E27/E29 detached lifecycles, reject ignored-only Task 29 evidence, reject an OCI archive in E29, reject bundle/Edge/Worker/VPS actions before independent E29 approval, and reject a later sentinel after native failure. Task 27's source-only preflight is non-qualifying; exact `R27` review precedes the qualifying `-ReviewedTree $R27` build and evidence-only `E27` review. Task 29 similarly requires exact `R29`, qualifying `-ReviewedTree $R29`, one-file direct child `E29`, independent E29 approval, then an E29-bound bundle/deploy while image evidence remains bound to R29.
 
 - [ ] **Step 2: Run tests and verify failure**
 
@@ -3103,7 +3119,7 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npx vitest run src/lib/__tests__/openclawFullContract.test.ts scripts/__tests__/openclawCommandContract.test.mjs
 ```
 
@@ -3124,7 +3140,7 @@ isolation -> app typecheck/baseline -> OpenClaw frontend Vitest
 
 Production secrets, real Zalo credentials, Supabase service-role values, R2 keys, and Vultr SSH keys must never be available to pull-request CI. `test:openclaw:sql:live-demo` and both deploy scripts are forbidden in PR CI. The E2E job uses the explicit local/preview environment from Task 26 and never inherits the fleet production default.
 
-Every CI job that can reach Node/npm/npx/vendor/image-helper work uses exact `actions/setup-node` `node-version: 24.15.0`, then runs the dependency-free version assertion as its first Node command and only afterward runs `npm ci`. A failed assertion must leave caches, `.work/`, `.release/`, Docker builders, archives, and evidence untouched.
+Every CI job that can reach Node/npm/npx/vendor/image-helper work uses exact `actions/setup-node` `node-version: 24.15.0`, then runs the same exact stable-version regex/minor assertion as its first Node command and only afterward runs `npm ci`; prerelease/build-suffixed Node versions fail. A failed assertion must leave caches, `.work/`, `.release/`, Docker builders, archives, and evidence untouched.
 
 Extend root `test.exclude` and ESLint ignores with the exact package-owned paths `services/openclaw-zalo-cell/vendor/zalouser-bridge/**`, `services/openclaw-zalo-cell/session-crypto/**`, `services/openclaw-zalo-bridge/**`, `services/openclaw-zalo-maintenance/**`, `services/openclaw-egress-broker/**`, `infra/openclaw-media-gateway/**`, `infra/openclaw-zalo-watchdog/**`, and Deno-owned `supabase/functions/**`. Root Vitest remains bounded to the explicitly listed app/script tests; nested/Edge gates own their files. `openclawCommandContract.test.mjs` fails on missing exclusions, duplicate traversal, an unowned suite, a vendor gate that skips provenance/artifact verification, or another package gate that skips build/test/typecheck.
 
@@ -3140,7 +3156,7 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npm ci
 node scripts/check-openclaw-isolation.mjs
 $env:SUPABASE_TYPES_SOURCE = 'local'
@@ -3205,7 +3221,7 @@ Only after the independent `R27` review is approved, start from exact `R27` with
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R27 = $env:OPENCLAW_REVIEWED_R27_SHA
 if ($R27 -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R27_SHA must be exact reviewed R27' }
 $sourceRoot = (Resolve-Path -LiteralPath '.').Path
@@ -3243,18 +3259,44 @@ Expected: the exact-`R27` helper exits 0, the candidate evidence and OCI archive
 
 - [ ] **Step 7: Commit and independently review evidence-only E27**
 
-Copy only the verified candidate evidence into a detached worktree at exact `R27`, re-hash it, validate the closed schema and embedded `R27` review bytes, and commit direct child `E27`. The generated child path must be canonical and contained by the canonical non-reparse temp root. Prove `E27^ == R27` and the committed diff contains only `services/openclaw-zalo-cell/build-evidence.json`. Cleanup uses checked `git worktree remove --force`, including for a dirty child; cleanup failure must fail when no primary error exists and must be reported without masking a primary error. Fast-forward only after both the directory and Git registration are confirmed absent.
+Copy only the verified candidate evidence into a detached worktree at exact `R27`, re-hash it, validate the closed schema and embedded `R27` review bytes, and commit direct child `E27`. This Step 7 block independently rebinds and validates exact `R27`, recomputes the canonical absolute source/release/evidence/archive paths and both hashes, checks each candidate is a leaf, and rejects reparse/symlink components across the relevant source-to-release ancestry before either hash or verifier runs; it consumes no variable that exists only in Step 6. The generated child path must be canonical and contained by the canonical non-reparse temp root. Prove `E27^ == R27` and the committed diff contains only `services/openclaw-zalo-cell/build-evidence.json`. Cleanup uses checked `git worktree remove --force`, including for a dirty child; cleanup failure must fail when no primary error exists and must be reported without masking a primary error. Fast-forward only after both the directory and Git registration are confirmed absent.
 
 ```powershell
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
+$R27 = $env:OPENCLAW_REVIEWED_R27_SHA
+if ($R27 -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R27_SHA must be exact reviewed R27' }
+$sourceRoot = (Resolve-Path -LiteralPath '.').Path
+$servicesRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot 'services'))
+$cellRoot = [IO.Path]::GetFullPath((Join-Path $servicesRoot 'openclaw-zalo-cell'))
+$releaseRoot = [IO.Path]::GetFullPath((Join-Path $cellRoot '.release'))
+$releaseRelative = [IO.Path]::GetRelativePath($sourceRoot, $releaseRoot)
+if ([IO.Path]::IsPathRooted($releaseRelative) -or $releaseRelative -eq '..' -or $releaseRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Task 27 release root escaped the source worktree' }
+$candidateEvidence = [IO.Path]::GetFullPath((Join-Path $releaseRoot 'task27-build-evidence.json'))
+$candidateArchive = [IO.Path]::GetFullPath((Join-Path $releaseRoot 'task27-openclaw-zalo-cell-linux-amd64.oci.tar'))
+foreach ($candidatePath in @($candidateEvidence, $candidateArchive)) {
+  $candidateRelative = [IO.Path]::GetRelativePath($releaseRoot, $candidatePath)
+  if ([IO.Path]::IsPathRooted($candidateRelative) -or $candidateRelative -eq '.' -or $candidateRelative -eq '..' -or $candidateRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Task 27 candidate escaped the canonical release root' }
+}
+$sourceItem = Get-Item -LiteralPath $sourceRoot -ErrorAction Stop
+$servicesItem = Get-Item -LiteralPath $servicesRoot -ErrorAction Stop
+$cellItem = Get-Item -LiteralPath $cellRoot -ErrorAction Stop
 $releaseItem = Get-Item -LiteralPath $releaseRoot -ErrorAction Stop
 $candidateItem = Get-Item -LiteralPath $candidateEvidence -ErrorAction Stop
-if (($releaseItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($candidateItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Task 27 candidate evidence path must not be a reparse point' }
-if ((Get-FileHash -LiteralPath $candidateEvidence -Algorithm SHA256).Hash.ToLowerInvariant() -ne $candidateEvidenceSha256) { throw 'Task 27 candidate evidence changed before E27' }
-if ((Get-FileHash -LiteralPath $candidateArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $candidateArchiveSha256) { throw 'Task 27 candidate archive changed before E27' }
+$candidateArchiveItem = Get-Item -LiteralPath $candidateArchive -ErrorAction Stop
+if (-not $sourceItem.PSIsContainer -or -not $servicesItem.PSIsContainer -or -not $cellItem.PSIsContainer -or -not $releaseItem.PSIsContainer) { throw 'Task 27 source and release ancestors must be directories' }
+if ($candidateItem.PSIsContainer -or $candidateArchiveItem.PSIsContainer) { throw 'Task 27 candidates must be leaf files' }
+foreach ($checkedItem in @($sourceItem, $servicesItem, $cellItem, $releaseItem, $candidateItem, $candidateArchiveItem)) {
+  if ($checkedItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Task 27 source, release, and candidate paths must not traverse a reparse point' }
+}
+$candidateEvidenceSha256 = (Get-FileHash -LiteralPath $candidateEvidence -Algorithm SHA256).Hash.ToLowerInvariant()
+$candidateArchiveSha256 = (Get-FileHash -LiteralPath $candidateArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ((git rev-parse HEAD).Trim() -ne $R27) { throw 'Evidence-only E27 must start from exact reviewed R27' }
+if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'R27 worktree is not completely clean before E27 creation' }
+git diff --cached --quiet
+if ($LASTEXITCODE -ne 0) { throw 'R27 index is not empty before E27 creation' }
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $tempRootItem = Get-Item -LiteralPath $tempRoot -ErrorAction Stop
 if ($tempRootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Temp root must not be a reparse point' }
@@ -3268,6 +3310,7 @@ try {
   $e27Destination = Join-Path $e27Worktree 'services/openclaw-zalo-cell/build-evidence.json'
   Copy-Item -LiteralPath $candidateEvidence -Destination $e27Destination -ErrorAction Stop
   if ((Get-FileHash -LiteralPath $e27Destination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $candidateEvidenceSha256) { throw 'Copied E27 evidence hash mismatch' }
+  if ((Get-FileHash -LiteralPath $candidateArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $candidateArchiveSha256) { throw 'Task 27 candidate archive changed before E27 verification' }
   Push-Location $e27Worktree
   try {
     node services/openclaw-zalo-cell/scripts/verify-image-lock.mjs --evidence services/openclaw-zalo-cell/build-evidence.json --schema services/openclaw-zalo-cell/build-evidence.schema.v1.json --reviewed-tree $R27 --release-artifact $candidateArchive
@@ -3392,7 +3435,7 @@ The production artifact contract requires the exact reviewed `services/openclaw-
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npx vitest run scripts/__tests__/apply-openclaw-reviewed-migrations.test.mjs scripts/__tests__/production-openclaw-smoke.test.mjs scripts/__tests__/deploy-openclaw-edge-bundle.test.mjs scripts/__tests__/openclawCommandContract.test.mjs
 ```
 
@@ -3412,7 +3455,7 @@ Run the complete secret-free/local/ephemeral Tasks 27-28 matrix before any share
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 npm ci
 node scripts/check-openclaw-isolation.mjs
 $env:SUPABASE_TYPES_SOURCE = 'local'
@@ -3474,7 +3517,7 @@ This is the first production-environment mutation. It changes only additive proj
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R29 = $env:OPENCLAW_REVIEWED_R29_SHA
 if ($R29 -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R29_SHA must be exact reviewed R29' }
 if ((git rev-parse HEAD).Trim() -ne $R29) { throw 'HEAD is not exact reviewed R29' }
@@ -3512,7 +3555,7 @@ Run the canonical cell image gate only from clean exact `R29`. Build with exact 
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R29 = $env:OPENCLAW_REVIEWED_R29_SHA
 if ($R29 -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R29_SHA must be exact reviewed R29' }
 if ((git rev-parse HEAD).Trim() -ne $R29) { throw 'HEAD is not exact reviewed R29' }
@@ -3545,7 +3588,7 @@ Create `E29` as a detached direct child of `R29`. Copy only candidate evidence i
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R29 = $env:OPENCLAW_REVIEWED_R29_SHA
 $sourceRoot = (Resolve-Path -LiteralPath '.').Path
 $releaseRoot = Join-Path $sourceRoot 'services/openclaw-zalo-cell/.release'
@@ -3624,7 +3667,7 @@ Require approved `E29` as the final deployment identity while preserving the cel
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R29 = $env:OPENCLAW_REVIEWED_R29_SHA
 $E29 = $env:OPENCLAW_REVIEWED_E29_SHA
 if ($R29 -notmatch '^[0-9a-f]{40}$' -or $E29 -notmatch '^[0-9a-f]{40}$') { throw 'Exact reviewed R29 and E29 SHAs are required' }
@@ -3651,7 +3694,7 @@ Deploy the six Edge functions in this exact order, with the watchdog Edge endpoi
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R29 = $env:OPENCLAW_REVIEWED_R29_SHA
 $reviewedSha = $env:OPENCLAW_REVIEWED_E29_SHA
 if ((git rev-parse HEAD).Trim() -ne $reviewedSha -or (git rev-parse "$reviewedSha^").Trim() -ne $R29) { throw 'Edge/Worker deployment requires approved E29 direct child of R29' }
@@ -3742,7 +3785,7 @@ Run exactly:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R29 = $env:OPENCLAW_REVIEWED_R29_SHA
 $E29 = $env:OPENCLAW_DEPLOYED_SHA
 if ($env:OPENCLAW_REVIEWED_E29_SHA -ne $E29) { throw 'Approved E29 and deployed SHA differ' }
@@ -3802,7 +3845,7 @@ try {
   if ((git hash-object $r29Helper).Trim() -ne $helperBlob) { throw 'Detached R29 helper bytes do not match the reviewed blob' }
   Push-Location $r29Worktree
   try {
-    node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+    node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
     if ((git rev-parse HEAD).Trim() -ne $R29) { throw 'Detached final verifier is not exact R29' }
     if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Detached R29 verifier worktree is not clean' }
     & $r29Helper -ReviewedTree $R29 -BuildxPath $buildxPath -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -BaselineEvidencePath (Join-Path $sourceRoot 'services/openclaw-zalo-cell/build-evidence.json') -EvidencePath $finalEvidence -ReleaseArtifactPath $finalArchive
@@ -3865,7 +3908,7 @@ The shared schema is already applied and flags remain controlled by Task 29. Req
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 if ($env:OPENCLAW_AUTHORIZED_LIVE_DEMO -ne '1') { throw 'Authorized live-DEMO environment is required' }
 if ($env:OPENCLAW_PROJECT_REF -ne 'tryymsxyyckgbrmmvozx') { throw 'Unexpected Supabase project ref' }
 if ($env:OPENCLAW_DEMO_ORG_ID -ne 'dddd0000-0000-4000-8000-000000000001') { throw 'Unexpected DEMO organization' }
