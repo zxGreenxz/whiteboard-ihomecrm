@@ -44,7 +44,8 @@
   min-height: calc(100vh - 4rem);
 }
 @media (min-width: 1024px) {
-  .ph { margin: -1.5rem; }
+  /* Desktop đã bỏ thanh header trên cùng (logo/tài khoản dồn vào sidebar). */
+  .ph { margin: -1.5rem; min-height: 100vh; }
 }
 
 .ph *,

@@ -99,8 +99,8 @@ export default function FinancialAnalysisReport() {
           </div>
         </div>
 
-        {/* Bộ lọc chung — sticky dưới header (h-16) */}
-        <div className="sticky top-16 z-30 -mx-4 lg:-mx-6 bg-background/95 backdrop-blur border-b px-4 lg:px-6 py-3 flex flex-wrap items-end gap-3">
+        {/* Bộ lọc chung — sticky dưới header mobile (h-16); desktop không còn header. */}
+        <div className="sticky top-16 lg:top-0 z-30 -mx-4 lg:-mx-6 bg-background/95 backdrop-blur border-b px-4 lg:px-6 py-3 flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Kỳ phân tích</span>
             <SearchableSelect

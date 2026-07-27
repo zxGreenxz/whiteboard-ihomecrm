@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import Header from './Header';
 import Sidebar from './Sidebar';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import NotificationBell from './NotificationBell';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { useAuth } from '@/hooks/useAuth';
+import { SIDEBAR_EASING, useSidebarState } from './useSidebarState';
 import { LucideIcon } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -17,8 +20,9 @@ interface MainLayoutProps {
   onIconClick?: () => void;
   /**
    * Trang chiếm trọn chiều cao (vd Chat Zalo): bỏ thanh breadcrumbs + bỏ padding,
-   * cố định vùng nội dung = chiều cao viewport trừ header (h-16 = 4rem) và không
-   * cho cuộn trang — để bên trong tự quản lý cuộn từng cột.
+   * cố định vùng nội dung = chiều cao viewport (desktop) hoặc viewport trừ thanh
+   * header mobile (h-16 = 4rem), và không cho cuộn trang — để bên trong tự quản
+   * lý cuộn từng cột.
    */
   fullBleed?: boolean;
 }
@@ -26,45 +30,71 @@ interface MainLayoutProps {
 /**
  * MainLayout Component
  *
- * Main application layout with:
- * - Header (sticky at top)
- * - Sidebar (desktop: always visible, mobile: drawer)
- * - Content area with breadcrumbs
- * - Responsive design
- * - Optional page title with icon
- * - fullBleed: bố cục full-height không padding/breadcrumbs (chat…)
+ * Bố cục chính của app:
+ * - Desktop (≥ lg): KHÔNG có thanh header trên cùng. Logo, tài khoản và nút
+ *   đăng xuất nằm trong sidebar; sidebar mặc định là rail 72px chỉ-icon, rê
+ *   chuột vào là bung 264px NỔI ĐÈ lên nội dung (bảng không bị xô lệch), nút
+ *   ghim / Ctrl+⌘B khoá trạng thái mở và khi đó sidebar đẩy nội dung.
+ *   Xem `useSidebarState` cho ngưỡng tự-thu-theo-màn-hình và cách lưu trạng thái.
+ * - Mobile (< lg): sidebar luôn là drawer (rail 72px quá hẹp cho ngón tay), mở
+ *   bằng nút ☰ trên thanh header mobile.
  */
 const MainLayout = ({ children, title, subtitle, icon: Icon, onIconClick, fullBleed = false }: MainLayoutProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { data: user } = useAuth();
+  const sidebar = useSidebarState(user?.id);
 
-  const closeMobileMenu = () => setMobileMenuOpen(false);
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <Header onMenuClick={toggleMobileMenu} />
+      {/* Header — chỉ còn trên mobile (desktop đã dồn hết vào sidebar) */}
+      <div className="lg:hidden">
+        <Header onMenuClick={toggleMobileMenu} />
+      </div>
 
       <div className="flex">
-        {/* Desktop Sidebar - Always visible on large screens */}
-        <div className="hidden lg:block">
-          <Sidebar />
+        {/*
+          Ô giữ chỗ trong luồng bố cục: rộng đúng bằng phần sidebar CHIẾM CHỖ.
+          Khi chỉ mở tạm bằng chuột, ô này vẫn là 72px nên bảng phía sau đứng yên
+          tuyệt đối — panel nổi đè lên trên.
+        */}
+        <div
+          className="hidden flex-none lg:block"
+          style={{
+            width: sidebar.flowWidth,
+            transition: `width ${sidebar.durationMs}ms ${SIDEBAR_EASING}`,
+          }}
+        >
+          <Sidebar
+            className="fixed left-0 top-0 z-40 h-screen"
+            collapsed={!sidebar.panelExpanded}
+            floating={sidebar.floating}
+            pinned={sidebar.pinned}
+            durationMs={sidebar.durationMs}
+            onToggle={sidebar.toggle}
+            onPointerEnter={sidebar.onPointerEnter}
+            onPointerLeave={sidebar.onPointerLeave}
+            notificationSlot={<NotificationBell />}
+          />
         </div>
 
         {/* Mobile Sidebar - Sheet/Drawer */}
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetContent side="left" className="p-0 w-64">
-            <div className="pt-4">
-              <Sidebar />
-            </div>
+          <SheetContent side="left" className="w-[264px] p-0">
+            {/* Radix Dialog đòi title cho screen reader — ẩn khỏi mắt thường. */}
+            <SheetTitle className="sr-only">Điều hướng</SheetTitle>
+            {/* Chuông đã có sẵn trên thanh header mobile — không lặp lại trong drawer. */}
+            <Sidebar className="border-r-0" />
           </SheetContent>
         </Sheet>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-x-hidden">
+        <main className="min-w-0 flex-1 overflow-x-hidden">
           {fullBleed ? (
-            /* Full-height: không breadcrumbs/padding; cố định = viewport - header */
-            <div className="h-[calc(100vh-4rem)] overflow-hidden">{children}</div>
+            /* Full-height: không breadcrumbs/padding; cố định = viewport (desktop)
+               hoặc viewport - header mobile */
+            <div className="h-[calc(100vh-4rem)] overflow-hidden lg:h-screen">{children}</div>
           ) : (
             /* Page Content (breadcrumbs removed) */
             <div className="p-4 lg:p-6">

@@ -35,6 +35,8 @@ vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ data: { id: "user-a", email: "user@example.com" } }),
+  // Sidebar dựng luôn khối tài khoản + nút đăng xuất ở chân (desktop đã bỏ header).
+  useLogout: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/hooks/useProfile", () => ({

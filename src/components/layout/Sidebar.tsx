@@ -6,6 +6,15 @@ import { prefetchOnIntent } from '@/lib/prefetchIntent';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAuth, useLogout } from '@/hooks/useAuth';
+import { useProfile } from '@/hooks/useProfile';
+import {
+  SIDEBAR_EASING,
+  SIDEBAR_FULL_WIDTH,
+  SIDEBAR_RAIL_WIDTH,
+  SIDEBAR_TRANSITION_MS,
+} from './useSidebarState';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusinessPerformance';
 import { canUse } from '@/lib/permissionPages';
@@ -54,6 +63,10 @@ import {
   Sparkles,
   Landmark,
   ShieldCheck,
+  PanelLeft,
+  Pin,
+  PinOff,
+  LogOut,
 } from 'lucide-react';
 
 interface NavItem {
@@ -221,12 +234,63 @@ const navigationGroups: NavGroup[] = [
 
 interface SidebarProps {
   className?: string;
+  /**
+   * Thu về RAIL 72px chỉ-icon. Mặc định false = panel 264px đầy đủ (drawer
+   * mobile và mọi chỗ render sidebar không có chrome thu gọn).
+   */
+  collapsed?: boolean;
+  /** Panel đang NỔI ĐÈ lên nội dung (mở tạm bằng chuột, chưa ghim) → đổ bóng. */
+  floating?: boolean;
+  /** Đã ghim mở — đổi icon nút ghim + aria-pressed. */
+  pinned?: boolean;
+  /** Thời lượng chuyển động; 0 khi user bật prefers-reduced-motion. */
+  durationMs?: number;
+  onToggle?: () => void;
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
+  /**
+   * Chuông thông báo. Truyền từ MainLayout để Sidebar không kéo theo hook
+   * notifications (và supabase client) vào những nơi chỉ render cây điều hướng.
+   */
+  notificationSlot?: React.ReactNode;
 }
 
-const Sidebar = ({ className }: SidebarProps) => {
+const Sidebar = ({
+  className,
+  collapsed = false,
+  floating = false,
+  pinned = false,
+  durationMs = SIDEBAR_TRANSITION_MS,
+  onToggle,
+  onPointerEnter,
+  onPointerLeave,
+  notificationSlot,
+}: SidebarProps) => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { data: perms, isLoading: permsLoading } = useMyPermissions();
+  const { data: user } = useAuth();
+  const { data: profile } = useProfile();
+  const logoutMutation = useLogout();
+
+  // Chữ mờ nhanh hơn width một nhịp để không thấy chữ "bò" theo mép panel.
+  const fadeMs = durationMs === 0 ? 0 : 140;
+  const fadeLabel = cn(
+    'transition-opacity [transition-duration:var(--sb-fade)]',
+    collapsed && 'pointer-events-none opacity-0'
+  );
+
+  const getUserInitials = () => {
+    if (profile?.full_name) {
+      const names = profile.full_name.trim().split(/\s+/);
+      if (names.length >= 2) {
+        return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+      }
+      return profile.full_name.substring(0, 2).toUpperCase();
+    }
+    return user?.email?.substring(0, 2).toUpperCase() || 'U';
+  };
+
   const businessPerformanceOrganizations = useBusinessPerformanceOrganizations();
   const canShowBusinessPerformance =
     businessPerformanceOrganizations.isSuccess &&
@@ -308,9 +372,11 @@ const Sidebar = ({ className }: SidebarProps) => {
           'w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
           active && 'bg-sidebar-accent text-sidebar-primary font-medium'
         )}
+        // Ở rail chỉ còn icon: nhãn phải có title để vẫn đọc được khi hover.
+        title={collapsed ? item.title : undefined}
       >
-        <Icon className="h-4 w-4" />
-        <span className="text-sm">{item.title}</span>
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className={cn('truncate text-sm', fadeLabel)}>{item.title}</span>
       </Button>
     );
 
@@ -345,7 +411,9 @@ const Sidebar = ({ className }: SidebarProps) => {
     return (
       <Collapsible
         key={section.title}
-        open={isOpen}
+        // Ở rail, menu con XỔ DỌC không dùng được (icon con thụt lề sẽ lệch trục
+        // icon cha). Thu hết về một hàng icon; rê chuột bung panel là mở lại.
+        open={isOpen && !collapsed}
         onOpenChange={() => toggleSection(section.title)}
       >
         <CollapsibleTrigger asChild>
@@ -355,15 +423,19 @@ const Sidebar = ({ className }: SidebarProps) => {
               'w-full justify-between gap-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               hasActiveItem && 'text-sidebar-primary'
             )}
+            title={collapsed ? section.title : undefined}
           >
-            <div className="flex items-center gap-2">
-              <Icon className="h-4 w-4" />
-              <span className="text-sm font-medium">{section.title}</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className={cn('truncate text-sm font-medium', fadeLabel)}>
+                {section.title}
+              </span>
             </div>
             <ChevronDown
               className={cn(
-                'h-4 w-4 transition-transform',
-                isOpen && 'rotate-180'
+                'h-4 w-4 shrink-0 transition-transform',
+                isOpen && !collapsed && 'rotate-180',
+                fadeLabel
               )}
             />
           </Button>
@@ -375,58 +447,197 @@ const Sidebar = ({ className }: SidebarProps) => {
     );
   };
 
+  const toggleLabel = pinned ? 'Thu gọn sidebar (Ctrl/⌘ + B)' : 'Ghim sidebar mở (Ctrl/⌘ + B)';
+
   return (
     <aside
       className={cn(
-        'flex flex-col w-64 h-[calc(100vh-4rem)] bg-sidebar text-sidebar-foreground',
+        'flex h-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground',
         className
       )}
+      style={{
+        width: collapsed ? SIDEBAR_RAIL_WIDTH : SIDEBAR_FULL_WIDTH,
+        // Chỉ animate width/box-shadow/opacity — không đụng tới nội dung bên trong.
+        transitionProperty: 'width, box-shadow',
+        transitionDuration: `${durationMs}ms`,
+        transitionTimingFunction: SIDEBAR_EASING,
+        boxShadow: floating ? '0 20px 44px -18px rgba(6, 40, 28, 0.42)' : undefined,
+      }}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
     >
-      <ScrollArea className="flex-1 px-3 py-4">
-        {permsLoading ? (
-          // Chưa biết quyền — hiện skeleton thay vì nháy toàn bộ menu rồi co lại.
-          <div className="space-y-2 px-1">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-8 w-full" />
-            ))}
-          </div>
-        ) : (
-          <nav className="space-y-4">
-            {visibleGroups.map((group) => (
-              <div key={group.label}>
-                <p className="px-3 mb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-                  {group.label}
-                </p>
-                <div className="space-y-1">
-                  {group.items.map((section) =>
-                    'items' in section ? renderSection(section) : renderNavItem(section)
-                  )}
-                </div>
-              </div>
-            ))}
-          </nav>
-        )}
-      </ScrollArea>
-
-      {/* Footer info */}
-      <div className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-3 mb-2">
-          <Link to="/faq" className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground flex items-center gap-1">
-            <HelpCircle className="h-3 w-3" />
-            FAQ
+      {/*
+        Bọc trong khối RỘNG CỐ ĐỊNH 264px: khi aside co về rail, mọi thứ bên
+        trong bị xén chứ KHÔNG bố trí lại → icon giữ nguyên toạ độ X tuyệt đối,
+        chỉ phần chữ mờ dần. Đây là chi tiết quyết định cảm giác "mượt".
+      */}
+      <div
+        className="flex h-full flex-col"
+        style={{ width: SIDEBAR_FULL_WIDTH, ['--sb-fade' as string]: `${fadeMs}ms` }}
+      >
+        {/*
+          Logo + nút ghim (thay cho thanh header trên cùng đã bỏ ở desktop).
+          Không có `onToggle` (drawer mobile) thì cả ô logo là link về trang chủ
+          và bỏ hẳn nút ghim — chỗ đó dành cho nút đóng của Sheet.
+        */}
+        <div className="flex h-[60px] flex-none items-center gap-2 border-b border-sidebar-border pl-5 pr-3">
+          {onToggle ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={!collapsed}
+              aria-label={toggleLabel}
+              title={toggleLabel}
+              className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary text-white shadow-sm transition-opacity hover:opacity-90"
+            >
+              <PanelLeft className="h-[18px] w-[18px]" />
+            </button>
+          ) : (
+            <Link
+              to="/"
+              aria-label="Về trang chủ"
+              className="grid h-8 w-8 flex-none place-items-center rounded-lg bg-primary text-white shadow-sm"
+            >
+              <PanelLeft className="h-[18px] w-[18px]" />
+            </Link>
+          )}
+          <Link
+            to="/"
+            aria-label="Về trang chủ"
+            className={cn('flex min-w-0 flex-1 flex-col leading-tight', fadeLabel)}
+            tabIndex={collapsed ? -1 : undefined}
+          >
+            <span className="truncate text-[15px] font-bold text-primary">CRM</span>
+            <span className="-mt-0.5 truncate text-[10px] text-muted-foreground">
+              Quản lý bất động sản
+            </span>
           </Link>
-          <Link to="/changelog" className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground flex items-center gap-1">
-            <History className="h-3 w-3" />
-            Lịch sử cập nhật
-          </Link>
-          <Link to="/app-guide" className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground flex items-center gap-1">
-            <Smartphone className="h-3 w-3" />
-            Hướng dẫn App
-          </Link>
+          {onToggle && (
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-pressed={pinned}
+              aria-label={toggleLabel}
+              title={toggleLabel}
+              tabIndex={collapsed ? -1 : undefined}
+              className={cn(
+                'grid h-[30px] w-[30px] flex-none place-items-center rounded-md border border-sidebar-border transition-colors hover:bg-sidebar-accent hover:text-sidebar-primary',
+                pinned ? 'bg-primary/10 text-primary' : 'text-muted-foreground',
+                fadeLabel
+              )}
+            >
+              {pinned ? (
+                <PinOff className="h-[15px] w-[15px]" />
+              ) : (
+                <Pin className="h-[15px] w-[15px]" />
+              )}
+            </button>
+          )}
         </div>
-        <div className="text-xs text-sidebar-foreground/70">
-          <p className="font-medium text-sidebar-foreground">CRM v1.0.0</p>
-          <p>Quản lý bất động sản</p>
+
+        <ScrollArea className="flex-1 px-3 py-4">
+          {permsLoading ? (
+            // Chưa biết quyền — hiện skeleton thay vì nháy toàn bộ menu rồi co lại.
+            <div className="space-y-2 px-1">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : (
+            <nav className="space-y-4">
+              {visibleGroups.map((group) => (
+                <div key={group.label}>
+                  <p
+                    className={cn(
+                      'px-3 mb-1 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider truncate',
+                      fadeLabel
+                    )}
+                  >
+                    {group.label}
+                  </p>
+                  <div className="space-y-1">
+                    {group.items.map((section) =>
+                      'items' in section ? renderSection(section) : renderNavItem(section)
+                    )}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          )}
+        </ScrollArea>
+
+        {/* Footer: liên kết phụ + chuông + tài khoản */}
+        <div className="flex-none border-t border-sidebar-border py-2">
+          <div className={cn('flex items-center gap-3 px-4 pb-1', fadeLabel)}>
+            <Link
+              to="/faq"
+              tabIndex={collapsed ? -1 : undefined}
+              className="flex items-center gap-1 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+            >
+              <HelpCircle className="h-3 w-3" />
+              FAQ
+            </Link>
+            <Link
+              to="/changelog"
+              tabIndex={collapsed ? -1 : undefined}
+              className="flex items-center gap-1 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+            >
+              <History className="h-3 w-3" />
+              Lịch sử
+            </Link>
+            <Link
+              to="/app-guide"
+              tabIndex={collapsed ? -1 : undefined}
+              className="flex items-center gap-1 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+            >
+              <Smartphone className="h-3 w-3" />
+              Hướng dẫn App
+            </Link>
+          </div>
+
+          {/*
+            Chuông nằm ở x=36 (trùng trục icon điều hướng) nên huy hiệu chưa đọc
+            VẪN THẤY ĐƯỢC khi sidebar đang ở rail.
+          */}
+          {notificationSlot && <div className="px-4 pt-1.5">{notificationSlot}</div>}
+
+          <div className="flex items-center gap-1 px-3">
+            <Link
+              to="/account/profile"
+              tabIndex={collapsed ? -1 : undefined}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-sidebar-accent"
+              title={profile?.email || user?.email || 'Tài khoản của bạn'}
+            >
+              <Avatar className="h-8 w-8 flex-none ring-2 ring-primary/20">
+                <AvatarImage src={profile?.avatar_url || undefined} />
+                <AvatarFallback className="bg-primary text-xs font-semibold text-white">
+                  {getUserInitials()}
+                </AvatarFallback>
+              </Avatar>
+              <span className={cn('flex min-w-0 flex-col leading-tight', fadeLabel)}>
+                <span className="truncate text-[13px] font-semibold">
+                  {profile?.full_name || 'User'}
+                </span>
+                <span className="truncate text-[10px] text-muted-foreground">
+                  {profile?.email || user?.email}
+                </span>
+              </span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              tabIndex={collapsed ? -1 : undefined}
+              aria-label="Đăng xuất"
+              title="Đăng xuất"
+              className={cn(
+                'grid h-8 w-8 flex-none place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50',
+                fadeLabel
+              )}
+            >
+              <LogOut className="h-[17px] w-[17px]" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>
