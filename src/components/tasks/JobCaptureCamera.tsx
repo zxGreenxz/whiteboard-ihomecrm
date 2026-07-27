@@ -15,6 +15,7 @@ import {
   type WatermarkModel,
 } from '@/lib/captureWatermark';
 import { distanceMeters, isValidLatLng } from '@/lib/geo';
+import { acquireGpsFix, type GpsPhase } from '@/lib/gpsFix';
 import { reverseGeocode, GEOCODE_ATTRIBUTION } from '@/lib/reverseGeocode';
 
 export interface JobCaptureBuilding {
@@ -48,7 +49,7 @@ interface JobCaptureCameraProps {
   onCaptured: (result: JobCaptureResult) => void;
 }
 
-type GeoState = 'locating' | 'ok' | 'denied' | 'unavailable';
+type GeoState = GpsPhase;
 type CamState = 'starting' | 'live' | 'error';
 
 interface Gps {
@@ -126,6 +127,10 @@ export default function JobCaptureCamera({
   const [addrLoading, setAddrLoading] = useState(false);
   const lastGeoRef = useRef<{ lat: number; lng: number } | null>(null);
   const [preview, setPreview] = useState<{ url: string; result: JobCaptureResult } | null>(null);
+  /** Tăng lên để bắt lại vị trí từ đầu (nút "Thử lấy vị trí lại"). */
+  const [retryGeoTick, setRetryGeoTick] = useState(0);
+  /** Đã bấm chụp 1 lần khi chưa có vị trí → lần bấm sau mới cho chụp (không CHẶN). */
+  const [noGpsArmed, setNoGpsArmed] = useState(false);
 
   const buildingHasCoords = isValidLatLng(building?.latitude, building?.longitude);
   const liveDistance =
@@ -201,33 +206,22 @@ export default function JobCaptureCamera({
     };
   }, [open]);
 
-  // ---- Geolocation watch (LUÔN chạy để lấy địa chỉ; geofence chỉ điều khiển
-  //      việc so khoảng cách) ----
+  // ---- Geolocation (LUÔN chạy để lấy địa chỉ; geofence chỉ điều khiển việc so
+  //      khoảng cách). Dùng acquireGpsFix: tái dùng fix của lần mở camera trước
+  //      + tự hạ chuẩn sang định vị wifi/cell khi GPS timeout trong nhà, nếu
+  //      không thì chụp nhanh 6 mục = 6 ảnh KHÔNG toạ độ (bug 158PVC 27/07). ----
   useEffect(() => {
     if (!open) return;
     setGeoAddress(null);
     lastGeoRef.current = null;
-    if (!('geolocation' in navigator)) {
-      setGeoState('unavailable');
-      return;
-    }
     setGeoState('locating');
-    const id = navigator.geolocation.watchPosition(
-      (pos) => {
-        setGps({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        });
-        setGeoState('ok');
-      },
-      (err) => {
-        setGeoState(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable');
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 },
-    );
-    return () => navigator.geolocation.clearWatch(id);
-  }, [open]);
+    setGps(null);
+    const stop = acquireGpsFix((fix, phase) => {
+      setGeoState(phase);
+      if (fix) setGps({ lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy });
+    });
+    return stop;
+  }, [open, retryGeoTick]);
 
   // ---- Reverse-geocode địa chỉ từ GPS (debounce + ngưỡng dịch chuyển 20m) ----
   useEffect(() => {
@@ -260,10 +254,29 @@ export default function JobCaptureCamera({
     return () => clearInterval(t);
   }, [open, preview]);
 
+  // Có vị trí rồi thì bỏ trạng thái "đã cảnh báo thiếu GPS"
+  useEffect(() => {
+    if (gps) setNoGpsArmed(false);
+  }, [gps]);
+  useEffect(() => {
+    if (!open) setNoGpsArmed(false);
+  }, [open]);
+
+  /** Ảnh chụp lúc này sẽ KHÔNG được tính là bằng chứng tại toà (server đòi ≥1 ảnh 'ok'). */
+  const gpsMissing = !gps && geofenceEnabled;
+
   // ---- Chụp ----
   const handleCapture = useCallback(async () => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0) return;
+    // Chưa có toạ độ: lần bấm ĐẦU chỉ cảnh báo + bắt lại vị trí, lần bấm sau vẫn
+    // cho chụp (luật: không bao giờ CHẶN, chỉ để người dùng biết mình đang mất
+    // bằng chứng tại toà thay vì phát hiện lúc bấm Hoàn tất).
+    if (gpsMissing && !noGpsArmed) {
+      setNoGpsArmed(true);
+      setRetryGeoTick((t) => t + 1);
+      return;
+    }
     const at = new Date();
     const frozenGps = gps;
     const frozenDistance =
@@ -316,7 +329,7 @@ export default function JobCaptureCamera({
         capturedAt: at.toISOString(), // cùng `at` đã vẽ watermark ở dòng trên
       },
     });
-  }, [gps, geoAddress, building, buildingHasCoords, geofenceEnabled, radiusM]);
+  }, [gps, geoAddress, building, buildingHasCoords, geofenceEnabled, radiusM, gpsMissing, noGpsArmed]);
 
   const handleRetake = useCallback(() => {
     if (preview) URL.revokeObjectURL(preview.url);
@@ -394,6 +407,25 @@ export default function JobCaptureCamera({
             </div>
           )}
 
+          {/* Cảnh báo THIẾU VỊ TRÍ ngay tại chỗ chụp — để không phát hiện muộn
+              lúc bấm Hoàn tất khi mọi mục đã ✓ (bug 158PVC 27/07). */}
+          {!preview && camState === 'live' && gpsMissing && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 w-[86%] max-w-sm rounded-xl bg-amber-500/95 px-3 py-2.5 text-[13px] leading-snug text-white shadow-lg">
+              <div className="font-semibold">Chưa bắt được vị trí</div>
+              <div className="mt-0.5 text-white/95">
+                Ảnh chụp lúc này KHÔNG tính là bằng chứng tại toà. Ra chỗ thoáng (sân, vỉa hè,
+                cạnh cửa sổ) vài giây rồi chụp — cả buổi chỉ cần bắt được 1 lần.
+              </div>
+              <button
+                type="button"
+                onClick={() => setRetryGeoTick((t) => t + 1)}
+                className="mt-2 rounded-lg bg-white/20 px-2.5 py-1 text-xs font-medium hover:bg-white/30"
+              >
+                Thử lấy vị trí lại
+              </button>
+            </div>
+          )}
+
           {/* Nút đóng */}
           <button
             type="button"
@@ -444,11 +476,18 @@ export default function JobCaptureCamera({
             </div>
           ) : (
             camState === 'live' && (
-              <div className="absolute inset-x-0 bottom-0 h-28 flex items-center justify-center pointer-events-none">
+              <div className="absolute inset-x-0 bottom-0 h-28 flex flex-col items-center justify-center gap-1.5 pointer-events-none">
+                {gpsMissing && noGpsArmed && (
+                  <span className="rounded-full bg-black/70 px-3 py-1 text-[11px] text-amber-200">
+                    Bấm lần nữa để chụp dù chưa có vị trí
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={handleCapture}
-                  className="pointer-events-auto rounded-full bg-white/95 ring-4 ring-white/40 flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+                  className={`pointer-events-auto rounded-full flex items-center justify-center active:scale-95 transition-transform shadow-lg ${
+                    gpsMissing ? 'bg-amber-300 ring-4 ring-amber-400/40' : 'bg-white/95 ring-4 ring-white/40'
+                  }`}
                   style={{ height: '4.5rem', width: '4.5rem' }}
                   aria-label="Chụp ảnh"
                 >

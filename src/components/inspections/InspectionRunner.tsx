@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getSessionUserId } from "@/lib/authSession";
 import { v5Copy } from "@/lib/v5Copy";
 import {
+  fetchGeoOkCount,
   type InspectionSessionState,
   sha256File,
   useCompleteInspection,
@@ -22,6 +23,9 @@ import {
   useStartInspection,
   useSubmitInspectionPhoto,
 } from "@/hooks/useMyDay";
+
+/** Dòng "còn thiếu" do server trả về khi chưa có ảnh nào trong bán kính toà. */
+const GEO_MISSING = "Cần ≥1 ảnh trong bán kính toà";
 
 interface Props {
   open: boolean;
@@ -52,11 +56,17 @@ export default function InspectionRunner({
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState<string[] | null>(null);
   const [nowTs, setNowTs] = useState(() => Date.now());
+  /** Số ảnh đã được chấm "trong bán kính toà" — server đòi ≥1 mới chốt ngày công. */
+  const [geoOkCount, setGeoOkCount] = useState(0);
 
   useEffect(() => {
-    if (!open) { setSess(null); setSlotCounts({}); setMissing(null); setHasIssue(false); setIssueNote(""); return; }
+    if (!open) { setSess(null); setSlotCounts({}); setMissing(null); setHasIssue(false); setIssueNote(""); setGeoOkCount(0); return; }
     startM.mutateAsync({ buildingId, type, pairedIncomeExpenseId })
-      .then((s) => { setSess(s); setSlotCounts(s.slot_counts ?? {}); })
+      .then(async (s) => {
+        setSess(s);
+        setSlotCounts(s.slot_counts ?? {});
+        setGeoOkCount(await fetchGeoOkCount(s.session_id)); // resume phiên dở: biết ngay còn thiếu vị trí không
+      })
       .catch(() => { toast.error("Không mở được phiên — thử lại nhé"); onOpenChange(false); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, buildingId, type]);
@@ -81,13 +91,25 @@ export default function InspectionRunner({
   }, [sess, nowTs]);
   const dwellRemainMin = sess ? Math.max(0, Math.ceil((sess.reqs.dwell_min_seconds - dwellLiveSec) / 60)) : 0;
 
-  // Banner "còn thiếu": dòng dwell thay bằng số live (đứng chờ là tự đếm lùi, hết thì tự biến mất)
+  // Banner "còn thiếu" cập nhật LIVE theo việc vừa làm: dwell đếm lùi theo giờ
+  // thật, mục vừa chụp thì rụng khỏi danh sách, có ảnh trong bán kính thì dòng
+  // GPS tự biến mất — người dùng thấy mình đang tiến tới đâu, không phải bấm
+  // Hoàn tất lại mới biết.
   const missingLive = useMemo(() => {
     if (!missing) return null;
+    const doneLabels = new Set((sess?.checklist ?? []).filter((c) => c.done).map((c) => c.label));
     return missing
-      .map((m) => (m.startsWith("Ở lại thêm") ? (dwellRemainMin > 0 ? `Ở lại thêm ${dwellRemainMin} phút nữa` : null) : m))
+      .map((m) => {
+        if (m.startsWith("Ở lại thêm")) return dwellRemainMin > 0 ? `Ở lại thêm ${dwellRemainMin} phút nữa` : null;
+        if (m === GEO_MISSING) return geoOkCount > 0 ? null : m;
+        if (m.startsWith("Còn ") && m.endsWith("ảnh nữa")) {
+          const need = (sess?.reqs.photos_min ?? 0) - (sess?.photos_count ?? 0);
+          return need > 0 ? `Còn ${need} ảnh nữa` : null;
+        }
+        return doneLabels.has(m) ? null : m;
+      })
       .filter((m): m is string => !!m);
-  }, [missing, dwellRemainMin]);
+  }, [missing, dwellRemainMin, geoOkCount, sess]);
 
   const handleCaptured = async (result: JobCaptureResult) => {
     if (!sess || !cameraSlot) return;
@@ -117,6 +139,21 @@ export default function InspectionRunner({
           photos_count: s.photos_count + 1,
           checklist: s.checklist.map((c) => (c.key === slot ? { ...c, done: true } : c)),
         } : s);
+        // Báo NGAY nếu ảnh không có bằng chứng vị trí — đừng để tới lúc bấm
+        // Hoàn tất mới biết, khi mọi mục đã ✓ và không còn gì để bấm chụp.
+        if (res.geofence_status === "ok") {
+          setGeoOkCount((n) => n + 1);
+        } else if (res.geofence_status === "out_of_range") {
+          toast.warning(
+            `Ảnh này cách toà ${Math.round(res.distance_m ?? 0)}m — ngoài bán kính. Cần ≥1 ảnh chụp sát toà để chốt ngày công.`,
+            { duration: 7000 },
+          );
+        } else {
+          toast.warning(
+            "Ảnh đã lưu nhưng CHƯA bắt được vị trí. Ra chỗ thoáng (sân/vỉa hè) chụp thêm 1 tấm — cả buổi chỉ cần 1 ảnh có vị trí.",
+            { duration: 7000 },
+          );
+        }
       }
     } catch (e: any) {
       const detail = e?.message ? ` (${e.message})` : "";
@@ -192,7 +229,28 @@ export default function InspectionRunner({
                 Cần ≥{type === "QUICK" ? 2 : sess.reqs.photos_min} ảnh
                 {type === "FULL" && <> · tại toà ≥{Math.round(sess.reqs.dwell_min_seconds / 60)} phút (đã ở {Math.floor(dwellLiveSec / 60)}p)</>}
                 {" · "}đã chụp {sess.photos_count} ảnh · {doneCount}/{sess.checklist.length} mục
+                {geoOkCount > 0 && <> · <span className="text-emerald-600">{geoOkCount} ảnh có vị trí ✓</span></>}
               </div>
+
+              {/* Thiếu bằng chứng vị trí — hiện NGAY từ ảnh đầu tiên, kèm việc cần làm */}
+              {!missing && sess.photos_count > 0 && geoOkCount === 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+                  <div className="font-medium">Còn thiếu 1 ảnh có vị trí tại toà</div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Ảnh đã chụp chưa bắt được GPS (hay gặp khi đứng trong nhà/hầm bơm). Ra chỗ
+                    thoáng — sân, vỉa hè, cạnh cửa sổ — chụp thêm 1 tấm bất kỳ là đủ. Mục đã ✓ vẫn
+                    chụp thêm được.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="sm" disabled={busy} onClick={() => setCameraSlot(sess.checklist[0]?.key ?? "gps")}>
+                      <Camera className="mr-1 h-3.5 w-3.5" /> Chụp ảnh có vị trí
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={reportDevice}>
+                      <ShieldAlert className="mr-1 h-3.5 w-3.5" /> GPS trục trặc — báo chủ duyệt
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 {sess.checklist.map((item) => (
@@ -233,6 +291,18 @@ export default function InspectionRunner({
                   <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
                     {missingLive.map((m) => <li key={m}>{m}</li>)}
                   </ul>
+                  {/* Dòng "cần ≥1 ảnh trong bán kính" KHÔNG ứng với mục checklist nào —
+                      không có nút thì người dùng bí thật sự (mọi mục đã ✓). */}
+                  {missingLive.includes(GEO_MISSING) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button size="sm" disabled={busy} onClick={() => setCameraSlot(sess.checklist[0]?.key ?? "gps")}>
+                        <Camera className="mr-1 h-3.5 w-3.5" /> Chụp ảnh có vị trí
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busy} onClick={reportDevice}>
+                        <ShieldAlert className="mr-1 h-3.5 w-3.5" /> GPS trục trặc — báo chủ duyệt
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
               {missing && missingLive && missingLive.length === 0 && (

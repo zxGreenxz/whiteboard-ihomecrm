@@ -239,9 +239,27 @@ export function useSubmitInspectionPhoto() {
         p_exif_time: new Date().toISOString(),
       });
       if (error) throw error;
-      return data as { accepted: boolean; reason?: string; message?: string; geofence_status?: string };
+      return data as {
+        accepted: boolean; reason?: string; message?: string;
+        geofence_status?: string; distance_m?: number | null;
+      };
     },
   });
+}
+
+/**
+ * Số ảnh của phiên ĐÃ được chấm 'ok' (trong bán kính toà) — server đòi ≥1 mới
+ * chốt được ngày công. Đọc thẳng bảng (RLS chỉ trả phiên của mình) để mở lại
+ * phiên dở vẫn biết mình còn thiếu bằng chứng vị trí hay không.
+ */
+export async function fetchGeoOkCount(sessionId: string): Promise<number> {
+  const { count, error } = await (supabase as any)
+    .from("inspection_photos")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", sessionId)
+    .eq("geofence_status", "ok");
+  if (error) return 0;
+  return count ?? 0;
 }
 
 export function useCompleteInspection() {
