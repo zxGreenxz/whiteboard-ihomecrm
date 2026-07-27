@@ -701,13 +701,13 @@
   ],
   "licenseManifestSchema": 1,
   "licenseManifestPath": "licenses/manifest.json",
-  "licenseManifestSha256": "009f6805ccd48036b61879994bae5ee122d749147a3a7f1e14e7e16e6766c1ad",
+  "licenseManifestSha256": "d1c0f4462e31f03195fe0a21870c35a69fe98337e173d26d1934bdb40c39e158",
   "licensePackageRootCount": 38,
   "licenseCarrierCount": 39,
   "mInputAggregate": {
     "schema": 1,
     "domain": "ihome-openclaw-m-inputs-v1",
     "pathCount": 87,
-    "sha256": "a557490f92523b6e27c096bb335ec77745ce3f5bba09780dfc2d9b0f19e4a3e0"
+    "sha256": "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b"
   }
 }

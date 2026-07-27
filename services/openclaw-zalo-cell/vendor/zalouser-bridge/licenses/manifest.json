@@ -363,6 +363,14 @@
       "outputPath": "licenses/gopd@1.2.0/LICENSE"
     },
     {
+      "package": "hasown@2.0.4",
+      "selectedSpdx": "MIT",
+      "sourcePath": "package/node_modules/hasown/LICENSE",
+      "size": 1083,
+      "sha256": "bf9b0d665be2a689851eea667ca9f42066ea1d903b38349c51e6a44b2577680a",
+      "outputPath": "licenses/hasown@2.0.4/LICENSE"
+    },
+    {
       "package": "has-symbols@1.1.0",
       "selectedSpdx": "MIT",
       "sourcePath": "package/node_modules/has-symbols/LICENSE",
@@ -377,14 +385,6 @@
       "size": 1067,
       "sha256": "e2560e002e13281578c75c850061d9255c33d16d732939e8c2db64c2506642fa",
       "outputPath": "licenses/has-tostringtag@1.0.2/LICENSE"
-    },
-    {
-      "package": "hasown@2.0.4",
-      "selectedSpdx": "MIT",
-      "sourcePath": "package/node_modules/hasown/LICENSE",
-      "size": 1083,
-      "sha256": "bf9b0d665be2a689851eea667ca9f42066ea1d903b38349c51e6a44b2577680a",
-      "outputPath": "licenses/hasown@2.0.4/LICENSE"
     },
     {
       "package": "json-bigint@1.0.0",
