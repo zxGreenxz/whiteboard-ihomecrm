@@ -288,7 +288,7 @@ Chạy hằng ngày: quét HĐ `ACTIVE` (EXTENDED đã ngưng dùng — HĐ gia 
 Hàm reconcile **idempotent**, là nguồn sự thật duy nhất cho cờ `RESERVED`:
 
 1. **Bỏ qua nếu phòng có HĐ hiệu lực** (`contracts.status IN ('ACTIVE','EXTENDED')`, chưa xoá — check DB-side vẫn phòng hờ `EXTENDED` dù FE không còn ghi status này) — HĐ sở hữu `OCCUPIED`, reconcile không can thiệp.
-2. **Predicate "đang có cọc giữ chỗ"** (OR 2 nhánh):
+2. **Predicate "đang có cọc giữ chỗ"** — từ [20260727120000_public_rooms_hide_held_by_deposit.sql](supabase/migrations/20260727120000_public_rooms_hide_held_by_deposit.sql) tách thành helper dùng chung **`room_has_holding_deposit(room_id)`** (OR 2 nhánh):
    - `deposits`: cùng `room_id`, `deleted_at IS NULL`, `contract_id IS NULL`, `status IN ('PENDING','CONFIRMED')`;
    - `income_expenses`: cùng `room_id`, `deleted_at IS NULL`, `contract_id IS NULL`, `type='INCOME'`, `approval_status <> 'CANCELLED'` (**kể cả phiếu chưa duyệt**), có item cọc (`ie_has_deposit_item`).
 3. Chỉ chuyển 2 chiều `AVAILABLE → RESERVED` (có cọc) và `RESERVED → AVAILABLE` (hết cọc). **Không đụng** `OCCUPIED/MAINTENANCE/UNAVAILABLE`.
@@ -309,6 +309,8 @@ Touchpoint FE (bucket "Đã cọc" tách riêng toàn hệ):
 - [useDashboard.ts](src/hooks/useDashboard.ts) — đếm `rooms.status='RESERVED'` riêng, **trừ khỏi "Còn trống"**.
 - [roomStatus.ts](src/lib/roomStatus.ts) — `getRoomDisplayStatus`: không HĐ hiệu lực + `room.status='RESERVED'` → hiển thị `RESERVED`.
 - Trang công khai `/r/:token` ([README](src/pages/phong-trong/README.md)) — map `RESERVED` → `rented` (ẩn khỏi danh sách phòng trống).
+
+**Cọc trên phòng "Sắp trống" cũng khoá phòng** (vá 2026-07-27, [20260727120000](supabase/migrations/20260727120000_public_rooms_hide_held_by_deposit.sql) — ca 103/102LVT): phòng còn HĐ hiệu lực nhưng sắp trống (hết hạn / `expected_move_out_date` trong cửa sổ `soon_days`) **không thể** mang cờ `RESERVED` vì bước 1 ở trên RETURN sớm; đồng thời trong `get_public_available_rooms`/`get_my_available_rooms` nhánh `'soon'` (suy từ contracts) đứng **trước** nhánh đọc `rooms.status` nên cờ `RESERVED` có cũng vô dụng. → Tạo cọc giữ chỗ xong phòng **vẫn hiện "Sắp trống"** cho sale/khách, dễ cọc trùng. Vá bằng cách gọi thẳng `room_has_holding_deposit(rm.id)` trong 2 RPC, **sau** nhánh `'pass'` và **trước** `'soon'` → `status_public='rented'` (ẩn). Khi HĐ mới được tạo, trigger §4.4 gắn phiếu cọc vào HĐ → predicate tắt, phòng do HĐ mới sở hữu, không kẹt.
 
 > **Cảnh báo (lỗ hổng vòng đời)**: predicate **không xét hạn giữ chỗ** → cọc giữ chỗ quá hạn vẫn giữ phòng `RESERVED` vô hạn. Với nguồn cọc giữ chỗ hiện hành (phiếu IE mồ côi), "Giữ phòng đến ngày X" chỉ được ghi vào **description của item** (§5.4), không có cột riêng để reconcile xét. Phiếu cọc mồ côi của phòng **ký HĐ thẳng** (không qua trigger link vì lệch tenant/cửa sổ 7 ngày, hoặc bị CANCELLED sót) có thể **tái-RESERVED** phòng khi HĐ đó thanh lý và phòng về `AVAILABLE` (trigger `trg_room_status_reconcile`). Cần huỷ (CANCELLED) phiếu giữ chỗ cũ thủ công khi khách bỏ.
 

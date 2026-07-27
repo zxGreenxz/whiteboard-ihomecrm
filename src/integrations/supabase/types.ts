@@ -16472,6 +16472,10 @@ export type Database = {
         Args: { p_invitation: string }
         Returns: Json
       }
+      room_has_holding_deposit: {
+        Args: { p_room_id: string }
+        Returns: boolean
+      }
       room_sort_key: { Args: { p_name: string }; Returns: string }
       run_recurring_vouchers_job: { Args: never; Returns: undefined }
       salary_payout_v1: {
