@@ -70,9 +70,25 @@ export default function MySalaryPage() {
 
   const me = managers.find((m) => m.id === myMgr.staff_id) || managers[0];
 
-  if (phone) return <SalarySelfMobile m={me} period={period} onExit={() => window.close()} />;
-
   const canNext = effPeriod < ceiling;
+
+  if (phone) {
+    // Nhãn tháng suy TRỰC TIẾP từ effPeriod: React Query còn giữ data tháng cũ
+    // một nhịp khi đổi tháng → pill sẽ hiện sai nếu lấy label từ data.
+    const [pyNum, pmNum] = effPeriod.split("-").map((x) => parseInt(x, 10));
+    return (
+      <SalarySelfMobile
+        m={me}
+        period={{ label: `Tháng ${pmNum}`, year: pyNum }}
+        onExit={() => window.close()}
+        canPrev
+        canNext={canNext}
+        onPrevMonth={() => setOverride(shiftMonth(effPeriod, -1))}
+        onNextMonth={() => { if (canNext) setOverride(shiftMonth(effPeriod, 1)); }}
+      />
+    );
+  }
+
   return (
     <SalarySelfDesktop
       m={me}

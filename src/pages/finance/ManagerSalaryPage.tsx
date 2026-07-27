@@ -87,7 +87,11 @@ export default function ManagerSalaryPage() {
   // Nhân viên (không phải admin): mặc định hiển thị tháng lùi theo chốt lương +
   // override admin. Admin giữ điều hướng tháng tự do.
   const { data: staffMonth } = useStaffDisplayMonth(myMgr?.staff_id, !isAdmin);
-  const effPeriod = !isAdmin && staffMonth ? staffMonth : periodMonth;
+  // Nhân viên vẫn được LÙI về tháng cũ; trần (không vượt quá) = staffMonth.
+  const [selfOverride, setSelfOverride] = useState<string | null>(null);
+  const selfCeiling = staffMonth || currentPeriodMonth();
+  const selfPeriod = selfOverride || staffMonth || periodMonth;
+  const effPeriod = isAdmin ? periodMonth : selfPeriod;
 
   // Chế độ lương đang áp dụng (cũ/v5) — công tắc ở /reports/coverage tab Cài đặt v5.
   // Chỉ ĐỔI SỐ LIỆU (base=chuyên cần, thưởng=chuỗi, ngày công=ticked) cho tháng CHƯA chốt;
@@ -195,7 +199,18 @@ export default function ManagerSalaryPage() {
     if (myLoading || isLoading) return <MobileSalaryBoot />;
     if (!myMgr || managers.length === 0) return <MobileSalaryEmpty />;
     const meMobile = managers.find((m) => m.id === myMgr.staff_id) || managers[0];
-    return <SalarySelfMobile m={meMobile} period={period} />;
+    const [syNum, smNum] = effPeriod.split("-").map((x) => parseInt(x, 10));
+    const selfCanNext = effPeriod < selfCeiling;
+    return (
+      <SalarySelfMobile
+        m={meMobile}
+        period={{ label: `Tháng ${smNum}`, year: syNum }}
+        canPrev
+        canNext={selfCanNext}
+        onPrevMonth={() => setSelfOverride(shiftMonth(effPeriod, -1))}
+        onNextMonth={() => { if (selfCanNext) setSelfOverride(shiftMonth(effPeriod, 1)); }}
+      />
+    );
   }
 
   // ===== DESKTOP =====

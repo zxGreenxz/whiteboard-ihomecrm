@@ -20,6 +20,14 @@ const RANK_NAMES = ["Tân binh", "Đồng", "Bạc", "Vàng", "Vô địch"];
 
 interface ScreenProps { m: SalManager; period: { label: string; year: number }; }
 
+// Điều hướng kỳ lương (giống bản desktop). Không truyền → pill tháng tĩnh như cũ.
+interface PeriodNavProps {
+  onPrevMonth?: () => void;
+  onNextMonth?: () => void;
+  canPrev?: boolean;
+  canNext?: boolean;
+}
+
 // Khoản trong chip "bóc tách thu nhập" — mỗi khoản mở 1 sheet chi tiết riêng.
 type DetailKey = "base" | "bonus" | "invest" | "commission" | "advance" | "room";
 
@@ -58,7 +66,7 @@ function FeedRow({ r }: { r: SalLedgerRow }) {
 }
 
 // ───────────────────────────── màn HOME (Lương) ─────────────────────────────
-function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, onGoList }: ScreenProps & {
+function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, onGoList, onPrevMonth, onNextMonth, canPrev, canNext }: ScreenProps & PeriodNavProps & {
   onExit: () => void; onOpenChart: () => void; onOpenDetail: (item: DetailKey) => void; onGoInvest: () => void; onGoList: () => void;
 }) {
   const c = m.calc!;
@@ -66,6 +74,9 @@ function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, 
   const earned = useCountUp(gross, [gross]);
   const net = c.takehome - m.paid;
   const periodText = `${period.label}/${period.year}`;
+  // Có nút lùi/tiến tháng → rút gọn nhãn ("T7/2026") cho vừa hàng trên điện thoại.
+  const navMonth = !!(onPrevMonth || onNextMonth);
+  const periodShort = `T${(period.label || "").replace(/\D/g, "")}/${period.year}`;
   const goal = m.incomeGoal || 0;
 
   // Chặng nhiệm vụ (mốc tới mục tiêu thu nhập) — chung nguồn với "hạng".
@@ -112,8 +123,9 @@ function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, 
           style={{ backgroundImage: "radial-gradient(rgba(255,210,63,.10) 1px, transparent 1px)", backgroundSize: "16px 16px" }} />
 
         {/* top: avatar + tên + period */}
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="relative flex items-center justify-between gap-2">
+          {/* min-w-0 để tên dài tự cắt (…) thay vì đẩy cụm chuyển tháng tràn ra ngoài */}
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="relative">
               <span className="w-[46px] h-[46px] rounded-full grid place-items-center font-extrabold text-[16px] tabular-nums"
                 style={{ background: "rgba(255,210,63,.16)", border: "2px solid #FFD23F", color: "#FFD23F" }}>
@@ -132,11 +144,31 @@ function HomeScreen({ m, period, onExit, onOpenChart, onOpenDetail, onGoInvest, 
             </div>
           </div>
           <div className="flex items-center gap-[7px] shrink-0">
-            <span className="inline-flex items-center gap-[6px] text-[11px] font-semibold text-[#EDEAF7] px-[11px] py-[6px] rounded-full"
-              style={{ background: "rgba(255,255,255,.12)" }}>
-              <span className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: "#FFD23F" }} />
-              {periodText}
-            </span>
+            {navMonth ? (
+              <div className="inline-flex items-center rounded-full overflow-hidden"
+                style={{ background: "rgba(255,255,255,.12)" }}>
+                <button onClick={onPrevMonth} disabled={!canPrev} title="Tháng trước" aria-label="Tháng trước"
+                  className="w-[26px] h-[30px] grid place-items-center bg-transparent border-0 shrink-0"
+                  style={{ color: canPrev ? "#EDEAF7" : "#6F6494", cursor: canPrev ? "pointer" : "default" }}>
+                  <ChevronLeft size={16} strokeWidth={2.4} />
+                </button>
+                <span className="inline-flex items-center gap-[5px] text-[11px] font-bold text-[#EDEAF7] tabular-nums px-[3px]">
+                  <span className="w-[5px] h-[5px] rounded-full animate-pulse" style={{ background: "#FFD23F" }} />
+                  {periodShort}
+                </span>
+                <button onClick={onNextMonth} disabled={!canNext} title="Tháng sau" aria-label="Tháng sau"
+                  className="w-[26px] h-[30px] grid place-items-center bg-transparent border-0 shrink-0"
+                  style={{ color: canNext ? "#EDEAF7" : "#6F6494", cursor: canNext ? "pointer" : "default" }}>
+                  <ChevronRight size={16} strokeWidth={2.4} />
+                </button>
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-[6px] text-[11px] font-semibold text-[#EDEAF7] px-[11px] py-[6px] rounded-full"
+                style={{ background: "rgba(255,255,255,.12)" }}>
+                <span className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: "#FFD23F" }} />
+                {periodText}
+              </span>
+            )}
             <button onClick={onExit} title="Quay lại" aria-label="Quay lại"
               className="w-8 h-8 rounded-full grid place-items-center shrink-0"
               style={{ background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.18)", color: "#EDEAF7" }}>
@@ -601,7 +633,7 @@ const NAV: { key: ScreenKey; label: string; Icon: LucideIcon }[] = [
   { key: "invest", label: "Đầu tư", Icon: TrendingUp },
 ];
 
-export default function SalarySelfMobile({ m, period, onExit }: ScreenProps & { onExit?: () => void }) {
+export default function SalarySelfMobile({ m, period, onExit, onPrevMonth, onNextMonth, canPrev, canNext }: ScreenProps & PeriodNavProps & { onExit?: () => void }) {
   const navigate = useNavigate();
   const [screen, setScreen] = useState<ScreenKey>("home");
   const [sheet, setSheet] = useState<{ kind: "chart" } | { kind: "detail"; item: DetailKey } | null>(null);
@@ -626,7 +658,8 @@ export default function SalarySelfMobile({ m, period, onExit }: ScreenProps & { 
           {screen === "home" && (
             <HomeScreen m={m} period={period} onExit={exit}
               onOpenChart={() => setSheet({ kind: "chart" })} onOpenDetail={(item) => setSheet({ kind: "detail", item })}
-              onGoInvest={() => setScreen("invest")} onGoList={() => setScreen("list")} />
+              onGoInvest={() => setScreen("invest")} onGoList={() => setScreen("list")}
+              onPrevMonth={onPrevMonth} onNextMonth={onNextMonth} canPrev={canPrev} canNext={canNext} />
           )}
           {screen === "list" && <ListScreen m={m} period={period} onBack={() => setScreen("home")} />}
           {screen === "invest" && <InvestScreen m={m} period={period} onBack={() => setScreen("home")} />}
