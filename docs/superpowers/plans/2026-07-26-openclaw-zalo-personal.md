@@ -3402,7 +3402,7 @@ Expected: FAIL because the reviewed migration/apply router, durable rollout engi
 
 `apply-openclaw-reviewed-migrations.mjs` accepts only the exact reviewed commit, project/org confirmations, and 12-file SHA-256 manifest. It reads migration bytes from `git show REVIEWED_SHA:supabase/migrations/FILE_NAME`, compares the local reviewed blob, applies one file at a time, verifies recorded remote migration identity after each success, and performs no fixture DML. It never invokes the live-DEMO harness. `production-openclaw-smoke.mjs` is a strict dependency-injected command router whose gate/readiness/lookup operations are read-only and whose mutation operations derive organization/account/target/version from trusted rows.
 
-The rollout router exposes exact durable commands: `--create-reviewed-deploy-bundle`, `--verify-reviewed-deploy-bundle`, `--begin-rollout`, `--resume-rollout`, `--record-observation`, `--check-gates`, `--verify-stage-evidence`, `--advance-stage`, `--lookup-canonical-cell`, `--bind-owner-qr`, `--bind-owner-inbound`, `--exercise-stop-switch`, `--manual-send`, `--limited-auto-reply`, `--proactive-schedule`, `--sales-group-schedule`, `--crm-event-to-group`, `--disconnect`, `--verify-run`, `--pause-and-cleanup`, and `--release-stop`. Bundle creation accepts only independently approved `E29` Git blobs, the committed evidence-only `build-evidence.json` whose reviewed-tree binding is exact `R29`, and the external promoted cell OCI archive whose hash/digest matches that evidence; verification reopens the tar and checks the embedded archive bytes/hash/digest plus `E29^==R29`. Every other mutating command requires literal PROD confirmation, a preallocated UUID run ID, expected rollout/control versions, and an existing cleanup-intent row. Machine reasons use `production-smoke:COMMAND_MODE:RUN_ID` from allowlisted command data; raw caller/provider text never becomes evidence.
+The rollout router exposes exact durable commands: `--create-reviewed-deploy-bundle`, `--verify-reviewed-deploy-bundle`, `--verify-final-image-reproduction`, `--begin-rollout`, `--resume-rollout`, `--record-observation`, `--check-gates`, `--verify-stage-evidence`, `--advance-stage`, `--lookup-canonical-cell`, `--bind-owner-qr`, `--bind-owner-inbound`, `--exercise-stop-switch`, `--manual-send`, `--limited-auto-reply`, `--proactive-schedule`, `--sales-group-schedule`, `--crm-event-to-group`, `--disconnect`, `--verify-run`, `--pause-and-cleanup`, and `--release-stop`. Bundle creation accepts only independently approved `E29` Git blobs, the committed evidence-only `build-evidence.json` whose reviewed-tree binding is exact `R29`, and the external promoted cell OCI archive whose hash/digest matches that evidence; verification reopens the tar and checks the embedded archive bytes/hash/digest plus `E29^==R29`. Final-image reproduction is read-only and compares the new R29-built candidate against committed E29 evidence, the E29-bound bundle, and the remote image digest. Every other mutating command requires literal PROD confirmation, a preallocated UUID run ID, expected rollout/control versions, and an existing cleanup-intent row. Machine reasons use `production-smoke:COMMAND_MODE:RUN_ID` from allowlisted command data; raw caller/provider text never becomes evidence.
 
 Extend `deploy-edge-fn.mjs` with no-network `--emit-artifact-manifest` and deploy-time `--expect-artifact-sha256`. The manifest binds reviewed SHA, function name, exact entrypoint, bundled file list, and bundle SHA-256. Deploy output must return a version/deployment ID and server-observed artifact hash for readback. No deploy command accepts a dirty-worktree bundle.
 
@@ -3769,10 +3769,74 @@ npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run build
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run pack
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:artifact
 npm --prefix services/openclaw-zalo-cell/session-crypto ci
+$sourceRoot = (Resolve-Path -LiteralPath '.').Path
+$releaseRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot 'services/openclaw-zalo-cell/.release'))
+$releaseRelative = [IO.Path]::GetRelativePath($sourceRoot, $releaseRoot)
+if ([IO.Path]::IsPathRooted($releaseRelative) -or $releaseRelative -eq '..' -or $releaseRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Final verification output escaped the E29 source workspace' }
+New-Item -ItemType Directory -Path $releaseRoot -Force -ErrorAction Stop | Out-Null
+$releaseItem = Get-Item -LiteralPath $releaseRoot -ErrorAction Stop
+if ($releaseItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Final verification release root must not be a reparse point' }
+$finalEvidence = Join-Path $releaseRoot 'final-verify-build-evidence.json'
+$finalArchive = Join-Path $releaseRoot 'final-verify-openclaw-zalo-cell-linux-amd64.oci.tar'
+if (Test-Path -LiteralPath $finalEvidence) { throw 'Stale final verification evidence exists' }
+if (Test-Path -LiteralPath $finalArchive) { throw 'Stale final verification archive exists' }
 $buildxPath = (Resolve-Path -LiteralPath $env:OPENCLAW_BUILDX_PATH -ErrorAction Stop).Path
-& services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1 -ReviewedTree $R29 -BuildxPath $buildxPath -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -BaselineEvidencePath 'services/openclaw-zalo-cell/build-evidence.json' -EvidencePath (Join-Path (Get-Location).Path 'services/openclaw-zalo-cell/.release/final-verify-build-evidence.json') -ReleaseArtifactPath (Join-Path (Get-Location).Path 'services/openclaw-zalo-cell/.release/openclaw-zalo-cell-linux-amd64.oci.tar')
-if (git status --porcelain) { throw 'Tracked worktree changed during final image verification' }
-node scripts/production-openclaw-smoke.mjs --verify-reviewed-deploy-bundle --bundle $env:OPENCLAW_REVIEWED_DEPLOY_BUNDLE --expected-reviewed-sha $E29 --expected-cell-reviewed-tree $R29 --expected-cell-evidence services/openclaw-zalo-cell/.release/final-verify-build-evidence.json --baseline-cell-evidence services/openclaw-zalo-cell/build-evidence.json
+if (-not [IO.Path]::IsPathFullyQualified($buildxPath)) { throw 'OPENCLAW_BUILDX_PATH must resolve to an absolute path' }
+$helperRel = 'services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1'
+$helperBlob = (git rev-parse "$R29`:$helperRel").Trim()
+if ($helperBlob -notmatch '^[0-9a-f]{40}$') { throw 'Reviewed R29 helper blob ID is invalid' }
+if ((git cat-file -t $helperBlob).Trim() -ne 'blob') { throw 'Reviewed R29 helper is not a blob' }
+$helperSize = [int64](git cat-file -s $helperBlob)
+$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+$tempRootItem = Get-Item -LiteralPath $tempRoot -ErrorAction Stop
+if ($tempRootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Temp root must not be a reparse point' }
+$r29Worktree = [IO.Path]::GetFullPath((Join-Path $tempRoot ('ihome-openclaw-final-r29-' + [guid]::NewGuid().ToString('N'))))
+$r29Relative = [IO.Path]::GetRelativePath($tempRoot, $r29Worktree)
+if ([IO.Path]::IsPathRooted($r29Relative) -or $r29Relative -eq '..' -or $r29Relative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Detached final R29 path escaped canonical temp root' }
+$primaryError = $null
+$cleanupError = $null
+try {
+  git worktree add --detach $r29Worktree $R29
+  $r29Helper = Join-Path $r29Worktree $helperRel
+  if ((Get-Item -LiteralPath $r29Helper -ErrorAction Stop).Length -ne $helperSize) { throw 'Detached R29 helper byte size mismatch' }
+  if ((git hash-object $r29Helper).Trim() -ne $helperBlob) { throw 'Detached R29 helper bytes do not match the reviewed blob' }
+  Push-Location $r29Worktree
+  try {
+    node -e "const [major,minor]=process.versions.node.split('.').map(Number);if(major!==24||minor<15){console.error('Node >=24.15.0 <25 is required');process.exit(1)}"
+    if ((git rev-parse HEAD).Trim() -ne $R29) { throw 'Detached final verifier is not exact R29' }
+    if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Detached R29 verifier worktree is not clean' }
+    & $r29Helper -ReviewedTree $R29 -BuildxPath $buildxPath -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -BaselineEvidencePath (Join-Path $sourceRoot 'services/openclaw-zalo-cell/build-evidence.json') -EvidencePath $finalEvidence -ReleaseArtifactPath $finalArchive
+    if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Final image helper mutated detached R29 source' }
+  } finally {
+    Pop-Location
+  }
+} catch {
+  $primaryError = $_
+} finally {
+  try {
+    $registeredPaths = @(git worktree list --porcelain | Where-Object { $_ -like 'worktree *' } | ForEach-Object { [IO.Path]::GetFullPath($_.Substring(9)) })
+    if (($registeredPaths -contains $r29Worktree) -or (Test-Path -LiteralPath $r29Worktree)) {
+      git worktree remove --force $r29Worktree
+      if ($LASTEXITCODE -ne 0) { throw 'Forced detached final R29 worktree removal failed' }
+    }
+    if (Test-Path -LiteralPath $r29Worktree) { throw 'Detached final R29 path remains after forced removal' }
+    $remainingPaths = @(git worktree list --porcelain | Where-Object { $_ -like 'worktree *' } | ForEach-Object { [IO.Path]::GetFullPath($_.Substring(9)) })
+    if ($remainingPaths -contains $r29Worktree) { throw 'Detached final R29 registration remains after forced removal' }
+  } catch {
+    $cleanupError = $_
+  }
+  if ($null -ne $primaryError) {
+    if ($null -ne $cleanupError) { [Console]::Error.WriteLine('Detached final R29 cleanup also failed: ' + $cleanupError.Exception.Message) }
+    throw $primaryError
+  }
+  if ($null -ne $cleanupError) { throw $cleanupError }
+}
+if ((git rev-parse HEAD).Trim() -ne $E29) { throw 'Main source context left exact E29 during final image verification' }
+if (git status --porcelain) { throw 'E29 source worktree changed during final image verification' }
+if (-not (Test-Path -LiteralPath $finalEvidence -PathType Leaf) -or -not (Test-Path -LiteralPath $finalArchive -PathType Leaf)) { throw 'Final R29 verification outputs are missing' }
+node services/openclaw-zalo-cell/scripts/verify-image-lock.mjs --evidence $finalEvidence --schema services/openclaw-zalo-cell/build-evidence.schema.v1.json --reviewed-tree $R29 --release-artifact $finalArchive
+node scripts/production-openclaw-smoke.mjs --verify-final-image-reproduction --reviewed-sha $E29 --cell-reviewed-tree $R29 --candidate-evidence $finalEvidence --candidate-archive $finalArchive --baseline-cell-evidence services/openclaw-zalo-cell/build-evidence.json --bundle $env:OPENCLAW_REVIEWED_DEPLOY_BUNDLE --expected-remote-image-digest $env:OPENCLAW_REMOTE_CELL_IMAGE_DIGEST
+if ((git rev-parse HEAD).Trim() -ne $E29 -or (git status --porcelain)) { throw 'Final reproduction verification mutated E29 source' }
 npm --prefix services/openclaw-zalo-bridge ci
 npm --prefix services/openclaw-zalo-maintenance ci
 npm --prefix services/openclaw-egress-broker ci
@@ -3791,7 +3855,7 @@ npx playwright test specs/openclaw-zalo.spec.ts
 Pop-Location
 ```
 
-Expected: all commands PASS and injected native failure prevents later sentinels; root Vitest/ESLint do not traverse package-owned suites; command contracts prove exact clean context, pinned builder/exporter/timestamps, promoted archive and final bundle/load chain; generated types match the applied schema; reproduced context/helper/archive/manifest/config/layer/mtime/package evidence matches Task 29; E2E rejects production and cleans only isolated fixtures.
+Expected: all commands PASS and injected native failure prevents later sentinels; root Vitest/ESLint do not traverse package-owned suites; command contracts prove clean exact E29 main context, exact reviewed R29 helper blob executed only inside the canonical detached R29 worktree, forced cleanup/error preservation, pinned builder/exporter/timestamps, promoted archive and final bundle/load chain. From E29, the closed-schema verifier and final-reproduction command require candidate archive hash/image digest plus installed-tree, three-file session, provenance/trust, manifest/config/layer/mtime/package fields to match committed E29 evidence, the E29-bound deploy bundle, and the remote loaded image. No tracked evidence commit or source mutation occurs; generated types match the applied schema; E2E rejects production and cleans only isolated fixtures.
 
 - [ ] **Step 3: Run the protected live-DEMO matrix only in the authorized environment**
 
