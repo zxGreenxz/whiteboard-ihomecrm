@@ -1,10 +1,10 @@
 # OpenClaw Zalo Personal - Production Design
 
-**Trang thai:** Da duoc chu san pham duyet tat ca cac phan thiet ke ngay 2026-07-26; cho duyet lai tai lieu da commit truoc khi lap implementation plan.
+**Trang thai:** Chu san pham da chot **Phuong an 1 - vendored integrity-pinned ZaloUser fork** ngay 2026-07-27. Spec nay da khoa kien truc; sau written spec review, cong viec chuyen sang implementation theo plan da cap nhat.
 
 **Muc tieu:** Xay dung mot trung tam van hanh Zalo ca nhan bang OpenClaw cho iHome CRM, su dung that cho cong ty hien tai, ho tro tra loi khach hang, gui chu dong co kiem soat va gui vao cac nhom sale noi bo. He thong moi phai tach hoan toan khoi kenh Zalo cu va san sang cho mo hinh moi organization co mot tai khoan Zalo rieng.
 
-**Kien truc chot:** Supabase la control plane va nguon du lieu chuan; chinh VPS Vultr Seoul hien co cua cong ty chay OpenClaw cell va bridge trong stack cach ly khoi 9Router; mot Cloudflare R2 private rieng luu media ben vung. Trinh duyet khong ket noi truc tiep OpenClaw Gateway. Moi lenh gui di qua outbox, policy engine va relay duoc kiem soat.
+**Kien truc chot:** Supabase la control plane va nguon du lieu chuan; chinh VPS Vultr Seoul hien co cua cong ty chay OpenClaw 2026.7.1, mot fork noi bo `@openclaw/zalouser` giu plugin ID/channel `zalouser`, va bridge trong stack cach ly khoi 9Router; mot Cloudflare R2 private rieng luu media ben vung. Trinh duyet khong ket noi truc tiep cell control endpoint. Moi business send chi di qua outbox, policy engine, private RPC `zalouser.bridge.send` va provider-entrypoint authorization cua fork.
 
 ---
 
@@ -13,6 +13,11 @@
 Nhung quyet dinh duoi day khong duoc mo lai trong implementation neu chu san pham khong yeu cau thay doi:
 
 - Chon **OpenClaw**, khong chon Hermes, vi he sinh thai ket noi Zalo Personal hien tai cua OpenClaw ro rang va truong thanh hon cho bai toan nay. Day van la ket noi Zalo ca nhan khong chinh thuc, khong co bao dam tu Zalo ve do on dinh hay an toan tai khoan.
+- Giu OpenClaw `2026.7.1`. Fork noi bo giu package name `@openclaw/zalouser`, package version tuong thich `2026.7.1`, plugin ID va channel `zalouser`; khong tao goi hook bo sung va khong cai song song ZaloUser tu registry.
+- Upstream ZaloUser duoc khoa bang npm SRI `sha512-klg0BOOTDv4xUykgA/pTZDsRrI9dzagq23OlPupCLrFijDOebPxGYaYdWDSPy4zBJAWjjnSrgyCB+5OuCMvZGw==`, shasum `ddd42ffa571e93a881ca5c95203eb7a49713f6c6`, git head `2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`, OpenClaw OCI index digest `sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c`, `linux/amd64` digest `sha256:165b4992f1b4b74ffdd7a02c887ba006f9f5dc951eca420eef573a8b233b543f` va reference `linux/arm64` digest `sha256:38b611f494cb32e15aaf456d54c6b6be55db9098c90632aed0bfad4a70009707`.
+- Vendor source nam tai `services/openclaw-zalo-cell/vendor/zalouser-bridge/`. Repo commit exact `extensions/zalouser` source snapshot tai git head tren vi published tarball khong chua TypeScript source/tests; build reproducible verify ca npm tarball va snapshot, ap dung committed patch series + bridge source overlay, giu root/dependency licenses + third-party notices, va tao mot internal tgz duy nhat. Evidence ghi upstream SRI, patch-series SHA-256, built-tgz SHA-256 va image digest.
+- Docker chi duoc cai internal tgz da verify; build/runtime khong duoc tai hoac cai registry ZaloUser, khong duoc de upstream va fork cung ton tai, va installed package list phai co duy nhat plugin `zalouser` da khoa digest.
+- Deterministic image gate khong duoc dua vao host environment, dirty checkout hay shared BuildKit cache. Dockerfile co deny-by-default `.dockerignore`; helper tao clean context tu exact allowlist + input SHA-256 manifest. Manifest khong tu hash chinh no: reviewed `image-lock.json` duoc hash rieng, con domain-separated context-root hash bind lock hash voi ordered path/content hashes cua moi input con lai. Context khong cho `node_modules`, `.work`, `.state`, build output/evidence, log, secret, dirty/untracked file hay symlink/reparse point. Dockerfile khai bao `ARG SOURCE_DATE_EPOCH`, khong persist no bang `ENV`, va chi truyen `1785062400` vao deterministic build/pack steps. Hai build `linux/amd64` dung two fresh isolated builders voi pinned BuildKit `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`, verified buildx/BuildKit versions, `--no-cache --pull --build-arg SOURCE_DATE_EPOCH=1785062400 --provenance=false --sbom=false`, va pinned OCI exporter `oci-mediatypes=true,compression=gzip,compression-level=6,force-compression=true,rewrite-timestamp=true`. Sau khi so manifest/config/layer digests va package epoch, helper atomically promotes dung mot verified archive toi explicit gitignored release path, bind hash/digest vao release-scoped evidence/transfer manifest, va khong xoa no truoc artifact handoff.
 - Route moi la chinh xac `/openclaw-zalo` va co giao dien van hanh rieng.
 - Khong sua, import, tai su dung, dual-write hay phu thuoc vao `worker/**`, cac bang/ham/view `zalo_*`, route `/chat-zalo`, `src/hooks/useZaloChat.ts` hoac `src/components/chat-zalo/**`.
 - Tai khoan ket noi phai la **mot tai khoan Zalo moi**, khong phai tai khoan dang ket noi voi worker cu.
@@ -86,7 +91,8 @@ Supabase control plane - canonical openclaw_* data
 Existing Vultr Seoul           Dedicated media gateway
   - shared host, isolated stack  - Cloudflare Worker/R2 binding
   - one isolated cell/org        - private R2 bucket
-  - OpenClaw zalouser adapter     - no public bucket/domain
+  - OpenClaw + vendored zalouser  - no public bucket/domain
+  - fork-owned listener/send RPC
   - policy-aware bridge           - exact-key authorization
   - encrypted session volume
   - bounded SQLite/event spool
@@ -101,6 +107,8 @@ Existing Vultr Seoul           Dedicated media gateway
 - Moi cell su dung mot workload credential rieng, anh xa co dinh toi `organization_id`, `account_id`, `cell_id` va tap operation duoc phep. Credential co the rotate/revoke ma khong anh huong tenant khac.
 - Workload credential chi dung de doi short-lived token toi Edge (TTL toi da 5 phut). Moi request runtime co audience, operation, timestamp, nonce, body hash, `organization_id/account_id/cell_id`, runtime fencing token va signature; Edge reject clock skew >60 giay, nonce da dung, replay, sai audience/operation hay stale lease.
 - Gateway cua OpenClaw khong mo port public. Bridge va cell giao tiep tren Docker network noi bo; giao tiep ra ngoai la outbound HTTPS.
+- Fork so huu hai seam local hep: inbound listener awaited va private RPC `zalouser.bridge.send`. Stock generic `send` RPC, message tool, pairing notification, direct adapter/tool/business-send path bi deny neu khong co authorized fork context; khong seam nao duoc fail open thanh provider business frame.
+- Bridge mang complete canonical payload, `OutboundAuthorizationMarker` va private claim token toi fork. Fork chi goi `/authorize-send` sau khi da dong bang exact ordered provider batch va ngay truoc provider I/O dau tien; authorization failure khong duoc phat frame.
 - Media gateway giu R2 binding. Cell va browser chi nhan ticket ngan han, gan voi exact object key, operation, content length/type va organization.
 - Model AI chi nhan context da loc va tra ve structured draft/classification. Model khong co quyen giao tin truc tiep toi channel.
 
@@ -150,19 +158,21 @@ Control plane co bon vai tro rieng:
 Moi cell chi lam bon viec:
 
 1. Duy tri session Zalo Personal cua mot account.
-2. Chuyen inbound event sang normalized envelope va gui toi runtime API.
-3. Nhan job da duoc policy engine cho phep, goi channel adapter mot lan va bao cao ket qua.
+2. Provider callback la void/non-awaited; fork-owned internal listener chuyen full raw + normalized inbound envelope/media manifest toi bridge va doi durable SQLite acknowledgement truoc khi danh dau internal listener success hoac cho phep OpenClaw dispatch/queue.
+3. Nhan business-send duy nhat qua private RPC `zalouser.bridge.send`; fork dong bang exact ordered text/media/chunk batch, authorize ngay truoc provider I/O va bao cao provider handoff evidence.
 4. Chay AI draft/classification trong sandbox khong co quyen send truc tiep.
 
-Cell khong tu quyet dinh consent, quiet hours, campaign enable, takeover, group allowlist hay retry UNKNOWN.
+Built-in ZaloUser/OpenClaw reply, pairing notification co noi dung, stock generic `send` RPC, message tool va direct business adapters/tools deu tat. Cell khong tu quyet dinh consent, quiet hours, campaign enable, takeover, group allowlist hay retry UNKNOWN. Provider typing, seen va delivery receipt duoc phan loai ro la control traffic, khong phai business content send, va khong duoc tai su dung de mang text/media.
 
 ### 4.4 Policy-aware bridge
 
 Bridge la boundary bat buoc giua OpenClaw va Supabase/channel adapter:
 
 - Xac thuc workload credential va runtime lease.
-- Normalize/dedupe inbound.
+- Nhan full raw + normalized inbound envelope va media manifest tu fork listener; commit SQLite WAL + `synchronous=FULL` truoc internal listener success. Day khong phai provider-level acknowledgement.
+- Normalize/dedupe inbound theo stable provider ID chinh xac; neu provider ID thieu thi dung heuristic fingerprint voi at-least-once semantics va collision telemetry, khong im lang gop collision.
 - Claim outbox theo lease ngan, kiem tra lai policy ngay truoc dispatch.
+- Goi duy nhat `zalouser.bridge.send` voi complete canonical payload + marker; khong goi stock generic `send` RPC cho business traffic.
 - Ghi delivery attempt va audit.
 - Phan loai loi thanh retryable, terminal hoac ambiguous.
 - Tam dung outbound neu session/cell/queue/policy khong an toan.
@@ -184,7 +194,7 @@ Bridge la boundary bat buoc giua OpenClaw va Supabase/channel adapter:
 | Nhom | Bang chinh | Muc dich |
 |---|---|---|
 | Account/runtime | `openclaw_accounts`, `openclaw_account_connections`, `openclaw_runtime_cells`, `openclaw_runtime_leases`, `openclaw_qr_challenges` | Account, QR, session generation, health va fencing |
-| Inbox | `openclaw_contacts`, `openclaw_sales_groups`, `openclaw_targets`, `openclaw_conversations`, `openclaw_conversation_members`, `openclaw_messages`, `openclaw_message_media`, `openclaw_inbound_events` | Peer/group targets, text/metadata va dedupe inbound |
+| Inbox | `openclaw_contacts`, `openclaw_sales_groups`, `openclaw_targets`, `openclaw_conversations`, `openclaw_conversation_members`, `openclaw_messages`, `openclaw_message_media`, `openclaw_inbound_events`, `openclaw_inbound_provider_identities` | Peer/group targets, text/metadata, stable-ID mapping va dedupe inbound |
 | Safety | `openclaw_consents`, `openclaw_suppressions`, `openclaw_policies`, `openclaw_policy_versions`, `openclaw_control_states`, `openclaw_takeovers` | Consent, quiet hours, limit, stop, effective mode va handoff |
 | Automation | `openclaw_automations`, `openclaw_automation_versions`, `openclaw_campaigns`, `openclaw_campaign_runs`, `openclaw_schedules`, `openclaw_crm_event_subscriptions` | Rules, versions, campaigns, schedule va event triggers |
 | Sales groups | `openclaw_sales_group_allowlists` | Exact group allowlist va freshness policy; target group dung FK toi `openclaw_targets` |
@@ -216,7 +226,9 @@ Danh muc tren la contract logic bat buoc. Implementation plan co the tach mot ba
 - `openclaw_targets` co `kind IN ('PEER','SALES_GROUP')`, `account_id`, provider target ID va FK toi dung contact/group; CHECK XOR cam row vua peer vua group. Outbox chi reference target nay bang composite FK gom organization va account.
 - `organization_id` va `account_id` cua row canonical la immutable. Root mutation nhan selected organization tu UI context, server xac minh active membership/quyen; child mutation suy ra tenant/account tu trusted parent lookup, khong tin ID/body rieng le.
 - Typed CRM event mang `(organization_id, event_type, source_table, source_id, source_version, occurred_at)`; source lookup phai xac minh cung organization truoc khi tao occurrence.
-- Inbound idempotency key scope `(organization_id, account_id, provider_event_id)`; neu provider khong co ID, dung canonical fingerprint gom provider conversation/sender/source timestamp/type/content checksum va giu payload hash de phat hien collision.
+- Canonical stable identity la `(organization_id, account_id, event_kind, stable_id_kind, stable_id_value)`, voi `stable_id_kind IN ('PROVIDER_EVENT_ID','PROVIDER_MESSAGE_ID')`. `provider_event_id` la primary identity khi co; neu no null va `provider_message_id` co tren message-bearing event thi message ID la primary. `provider_message_id` dong thoi la secondary uniqueness cho moi message-bearing event.
+- Khi ca hai ID co mat, he thong atomically persist mapping hai chieu event-ID/message-ID toi cung mot inbound event, `event_kind` va canonical payload hash. Replay chi dedupe khi tat ca mapping + kind + payload hash trung khop. Reuse mot ID trong cung organization/account cho kind khac, pair khac hoac payload khac fail closed, quarantine va append collision audit; khong bao gio merge. Cung gia tri ID o account/organization khac la identity doc lap va khong duoc cross-dedupe.
+- Fallback fingerprint chi duoc dung khi **ca `provider_event_id` va `provider_message_id` deu null**. Key scope `(organization_id, account_id, event_kind, fallback_fingerprint)`; fingerprint gom provider conversation/sender/source timestamp/type/content/media checksum va giu payload hash de phat hien same-fingerprint/different-payload collision.
 - Manual send key scope `(organization_id, actor_id, client_operation_id)`; schedule/CRM key scope `(organization_id, campaign_or_schedule_id, occurrence_id, target_id)`. Same key/same hash tra lai ket qua cu; same key/khac hash reject va audit.
 - Transaction ingest phai atomically insert inbound event/message, update conversation va tao automation work/outbox intent, hoac de lai durable recovery marker; khong co crash window tao message ma mat trigger hay trigger hai lan.
 - Runtime ingest nhan batch toi da 100 events hoac 256 KiB/call; khong mot network round-trip moi event trong history/reconnect.
@@ -295,13 +307,20 @@ Quy tac QR/disclosure:
 ### 7.2 Inbound va auto-reply
 
 ```text
-Zalo event -> cell -> normalized envelope -> runtime API
-           -> dedupe -> conversation/message canonical write
-           -> automation eligibility -> AI draft/classification
-           -> policy decision -> outbox or human draft
+Zalo provider callback (void/non-awaited) -> fork-owned internal listener
+  -> full raw + normalized envelope + media manifest
+  -> local bridge SQLite WAL/FULL commit
+  -> listener success -> any OpenClaw dispatch/queue
+  -> runtime API -> canonical write/dedupe
+  -> automation eligibility -> AI draft/classification
+  -> policy decision -> outbox or human draft
 ```
 
-- Customer message luon duoc ghi truoc khi automation chay.
+- Bridge phai commit event bytes, normalized envelope, media manifest, checksum va local sequence truoc internal listener success. Fork khong dispatch/queue cho OpenClaw va built-in reply khong chay truoc durable commit nay; provider callback khong cho provider-level ack.
+- Stable-ID precedence va conflict xu ly dung Section 5.3: event ID primary, message ID secondary cho message-bearing event, both-present mapping bat bien; cross-kind/pair/payload reuse fail closed. Fingerprint chi chay khi ca hai stable ID null va van la heuristic at-least-once.
+- Customer message luon duoc ghi canonical truoc khi automation chay. Media manifest la mot phan cua durable event; media bytes co the con `PENDING` sau manifest commit va duoc fetch/upload theo bounded workflow.
+- Khong cam ket zero loss cho event ma provider chua callback hoac callback bi mat truoc khi fork nhan. Sau khi callback da vao listener, durability guarantee bat dau tai SQLite commit; incident/recovery van doi chieu provider history neu co gap.
+- Built-in ZaloUser/OpenClaw replies bi tat vinh vien trong bridge mode, khong chi trong pre-commit window. Sau WAL/FULL success, sau canonical ingest, va sau automation tao no-send/draft/outbox, fork van khong emit built-in reply hay pairing notification/business content; chi mot outbox dispatch rieng qua `zalouser.bridge.send` moi co the bat dau business delivery.
 - Prompt/content tu customer la du lieu khong tin cay, khong phai instruction he thong.
 - Retrieval chi lay knowledge `published` cung organization va dung scope duoc phep.
 - AI output phai khop schema; invalid output thanh draft loi, khong gui.
@@ -310,7 +329,11 @@ Zalo event -> cell -> normalized envelope -> runtime API
 
 ### 7.3 Gui thu cong va gui chu dong
 
-- Gui thu cong van di qua outbox va policy engine; khong co bypass truc tiep tu browser toi Gateway.
+- Gui thu cong van di qua outbox va policy engine; khong co bypass truc tiep tu browser toi cell/Gateway.
+- Bridge chi goi private RPC `zalouser.bridge.send` voi complete `CanonicalSendPayloadV1` + `OutboundAuthorizationMarker`. Fork tao exact ordered provider batch cho text, media va chunks truoc khi bat dau authorization.
+- Fork goi `/authorize-send` ngay truoc provider I/O dau tien. Marker thieu, deny, error, timeout, stale, replay hoac payload-hash mismatch phai tao **zero provider frames**.
+- Stock generic `send` RPC, message tool, pairing notification, direct adapter/tool va moi business-send path khac bi deny neu khong nam trong authorized fork context. Cac path `send.ts` gom text/media/link/reaction, channel adapters va tools deu phai co negative coverage.
+- Neu da co kha nang provider handoff, timeout/disconnect/ack loss tao `UNKNOWN`; khong auto retry. Typing, seen va delivery receipt la control traffic co schema/rate/audit rieng, khong duoc chua business payload va khong thay the authorize-send.
 - Gui chu dong can consent/evidence hop le, schedule window va limit da hoan tat trong wizard.
 - Quiet hours va frequency cap duoc tinh server-side theo recipient, account, automation va organization.
 - Neu chua cau hinh limit, gia tri effective la `0` va automation khong gui; wizard de xuat muc bao thu nhung owner phai xac nhan.
@@ -357,6 +380,7 @@ QUEUED -> LEASED -> DISPATCHING -> SENT
 - Khi adapter chua duoc goi va loi duoc phan loai retryable, item quay lai `QUEUED` voi exponential backoff va jitter.
 - Khi adapter tra terminal rejection, item thanh `FAILED` hoac `DEAD_LETTER` theo attempt policy.
 - Neu mat ket noi/timeout sau khi co kha nang Zalo da nhan lenh gui, item thanh `UNKNOWN`.
+- `DISPATCHING` chi bat dau khi `/authorize-send` CAS thanh cong ngay truoc provider I/O dau tien cua exact ordered batch. Marker missing/deny/error/timeout/stale/replay/hash mismatch giu item pre-handoff va phai chung minh zero provider frames; chi loi da xac nhan truoc handoff moi duoc safe retry.
 - `DISPATCHING` khong bao gio duoc worker khac reclaim de gui lai. Neu process chet hoac lease het han o trang thai nay, DB sweeper CAS item sang `UNKNOWN`; late completion chi duoc chap nhan neu claim/session/fencing/control versions van khop, nguoc lai dua vao quarantine audit.
 - `UNKNOWN` **khong bao gio tu retry**. Operator co `manage_operations` xem evidence, doi chieu conversation va chon mark sent, mark failed hoac tao mot send intent moi co xac nhan.
 - Resolution UNKNOWN la mot CAS mot lan voi `resolution_version`; hai operator/concurrent retry chi co mot nguoi thanh cong.
@@ -393,6 +417,7 @@ GLOBAL_STOP (organization-wide)
 ### 9.2 AI boundary
 
 - OpenClaw agent khong co shell, browser, filesystem, SQL, arbitrary HTTP, package install hay direct channel-delivery tool.
+- Message tool, stock generic delivery RPC, pairing notification va direct ZaloUser adapter/tool send bi deny; AI khong co authorized fork context de goi `zalouser.bridge.send`.
 - Model chi co structured input/output cho classification, knowledge query va draft generation.
 - System/developer policy nam ngoai customer content; quote, HTML, file va metadata cua customer luon duoc danh dau untrusted.
 - AI output khong the sua target, organization, group ID, consent, limit, schedule, policy version hay kill-switch state.
@@ -475,10 +500,10 @@ Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao 
 
 ### 11.2 Spool durability va RPO
 
-- SQLite spool dung WAL, `synchronous=FULL`, monotonic local sequence, per-record checksum va atomic transaction. Adapter event phai vao durable spool truoc normalization/Edge call; row chi xoa sau canonical acknowledgement tu Supabase.
+- SQLite spool dung WAL, `synchronous=FULL`, monotonic local sequence, per-record checksum va atomic transaction. Fork listener gui full raw + normalized envelope/media manifest; bridge commit durable truoc internal listener success va truoc OpenClaw dispatch/queue. Provider callback van void/non-awaited. Row chi xoa sau canonical acknowledgement tu Supabase.
 - Khong drop oldest text/event de giu cap. O 80% cap: pause outbound, history sync va media prefetch; o 95%: chi nhan minimal inbound envelope; o 100%: stop intake neu adapter cho phep, ghi `INBOUND_GAP_STARTED` va alert P1. Khong ghi vuot fixed filesystem.
 - Sau recovery, sync lai toi da 48 gio recent history hoac tu canonical watermark cuoi, dedupe va danh dau `HISTORY_SYNC`; history sync khong kich hoat AI/automation/push.
-- Normal-operation target: inbound canonical p95 <=60 giay. Sau canonical ack, RPO message text/metadata la 0 doi voi mat VPS. Trong Supabase outage, unflushed events chi durable tren local spool toi da 24 gio/1 GiB.
+- Normal-operation target: inbound canonical p95 <=60 giay. Sau listener acknowledgement, local RPO cho accepted event envelope/manifest la 0 doi voi process crash trong durability model da test; sau canonical ack, RPO message text/metadata la 0 doi voi mat VPS. Guarantee khong bao phu event truoc provider callback; trong Supabase outage, unflushed events chi durable tren local spool toi da 24 gio/1 GiB.
 - Simultaneous Supabase outage + mat/corrupt shared VPS truoc flush co the mat unflushed inbound neu Zalo khong replay/history du. Day la residual risk duoc chap nhan cua unofficial connector; incident phai hien exact gap window va yeu cau doi chieu Zalo native.
 
 ### 11.3 Health va circuit breaker
@@ -620,6 +645,13 @@ Required fields theo mode:
 
 ### 14.3 Fake Zalo adapter va service integration
 
+- Vendored fork integrity: upstream npm SRI/shasum/gitHead, exact committed source snapshot, patch-series SHA-256, built-tgz SHA-256, internal-only install va deterministic `linux/amd64` image digest. Image test dung deny-by-default clean context, fixed build arg, pinned BuildKit/buildx contract, two fresh builders, no cache, pull base, two isolated OCI outputs voi `rewrite-timestamp=true`, verify source epoch trong package metadata, va promote mot exact verified archive cho rollout.
+- Command-contract tests reject Dockerfile/helper neu thieu `.dockerignore`/clean-context allowlist, tao self-referential lock, khong bind reviewed lock hash vao context-root hash, cho host `node_modules`/dirty/untracked/secret/build-evidence vao context, thieu `ARG SOURCE_DATE_EPOCH`, dung persistent `ENV`, thieu pinned BuildKit digest/version, `--build-arg`, `--no-cache`, `--pull`, pinned OCI media/compression/compatibility options, `rewrite-timestamp=true`, fresh-builder isolation, distinct OCI destinations, manifest/config/layer comparison, package-metadata epoch verification, promoted archive hash/digest/handoff, release evidence lam dirty tracked files, safe exact-name cleanup, hoac fail-fast native-command handling.
+- Inbound listener ordering tai `extensions/zalouser/src/monitor.ts` va `extensions/zalouser/src/zalo-js.ts`: provider callback void/non-awaited, full raw/normalized envelope + media manifest, WAL/FULL commit before internal success/dispatch, exact event-ID-primary/message-ID-secondary mapping, fallback only khi ca hai ID null, media `PENDING`, crash/ENOSPC/corrupt spool.
+- Stable-ID tests: event ID only, message ID only, both present, exact replay, mismatched pair, same stable ID/different payload, reuse across event kinds in one account, va same textual ID across two accounts/organizations without cross-dedupe.
+- Success-path reply-disable tests: after WAL/FULL commit and after each canonical no-send/draft/outbox outcome, built-in reply, pairing notification and other business-content emit counters remain zero; an outbox row alone emits nothing until authorized `zalouser.bridge.send` is explicitly invoked.
+- Outbound choke-point coverage tai `extensions/zalouser/src/send.ts` (gom text/media/link/reaction), `extensions/zalouser/src/channel.adapters.ts` va `extensions/zalouser/src/tool.ts`: chi `zalouser.bridge.send`, exact ordered batch, authorize immediately before provider I/O, zero frames cho missing/deny/error/timeout/stale/replay/hash mismatch, UNKNOWN sau possible handoff.
+- Negative tests cho stock generic `send` RPC, message tool, pairing notification va direct adapter/tool/business-send; positive/negative tests phan loai typing/seen/delivery receipts la control traffic.
 - Duplicate/out-of-order inbound.
 - Restart voi spool con du lieu.
 - Supabase outage, R2 outage va recovery.
@@ -669,6 +701,8 @@ Playwright bat buoc dung `trackConsoleErrors` tu `.e2e-fleet/specs/auth.ts` va a
 
 ```bash
 npx vitest run src/lib/openclaw-zalo src/hooks/openclaw-zalo src/components/openclaw-zalo src/pages/openclaw-zalo
+npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge ci
+npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify
 npm run test:openclaw:services
 npm run test:openclaw:sql
 npm run test:openclaw:r2
@@ -695,19 +729,21 @@ Chi sau khi automated tests, reviewer va rollout gates xanh:
 
 ## 15. Trinh tu rollout
 
-1. **Foundation:** migrations/RLS/RPC, permissions, fake adapter, frontend shell sau feature flag.
-2. **Infrastructure:** private R2/gateway, shared Vultr stack isolation, bridge/cell hardening, observability.
-3. **Connection:** QR va account health voi tai khoan moi; effective mode draft-only.
-4. **Shadow:** ingest inbound, AI draft va human send; khong auto-send.
-5. **Limited inbound automation:** mot tap conversation duoc owner chon, gioi han thap, theo doi UNKNOWN/session.
-6. **Proactive:** chi recipient consent va wizard da hoan tat.
-7. **Sales groups:** mot nhom owner-controlled, sau do allowlist them nhom neu soak on dinh.
-8. **Multi-organization:** chi onboarding organization thu hai sau tenant isolation E2E va capacity review.
+1. **Fork gate:** verify upstream source/tarball locks, patch-series hash, exact internal tgz hash, inbound listener ordering, outbound choke points va deterministic `linux/amd64` image; chi khi gate duong tinh xanh moi mo foundation.
+2. **Foundation:** migrations/RLS/RPC, permissions, fake adapter, frontend shell sau feature flag.
+3. **Infrastructure:** private R2/gateway, shared Vultr stack isolation, bridge/cell hardening, observability.
+4. **Connection:** QR va account health voi tai khoan moi; effective mode draft-only.
+5. **Shadow:** ingest inbound, AI draft va human send; khong auto-send.
+6. **Limited inbound automation:** mot tap conversation duoc owner chon, gioi han thap, theo doi UNKNOWN/session.
+7. **Proactive:** chi recipient consent va wizard da hoan tat.
+8. **Sales groups:** mot nhom owner-controlled, sau do allowlist them nhom neu soak on dinh.
+9. **Multi-organization:** chi onboarding organization thu hai sau tenant isolation E2E va capacity review.
 
-Exit/go-no-go toi thieu:
+Exit gate toi thieu:
 
 | Gate | Dieu kien de di tiep |
 |---|---|
+| Fork | Upstream SRI/shasum/gitHead/image digests, source snapshot, patch-series SHA-256, built-tgz SHA-256 va image digest khop; deny-by-default clean context; pinned BuildKit/buildx/exporter; two fresh no-cache/pull builds voi fixed epoch + rewritten timestamps tao OCI archives co manifest/config/layers giong nhau; exact promoted archive ton tai va hash/digest khop handoff manifest; listener/outbound choke-point tests xanh; image chi co internal fork `zalouser` |
 | Foundation | SQL/RLS/grant/claim tests xanh; migration additive; generated types sach; zero reference/DML `zalo_*` |
 | Infrastructure | Egress negative, ENOSPC, watchdog, co-tenant pre/post invariants va restore drill xanh; transfer quota da biet |
 | Connection | Disclosure + QR + revoke/reconnect xanh; session secret khong ro ri; account draft-only |
@@ -735,7 +771,9 @@ Code moi uu tien nam trong:
 - `src/hooks/openclaw-zalo/`
 - `src/lib/openclaw-zalo/`
 - `supabase/migrations/` voi chi `openclaw_*` va permission moi
-- service/runtime/gateway directory moi se duoc chot trong implementation plan
+- `services/openclaw-zalo-cell/vendor/zalouser-bridge/` cho upstream lock, exact source acquisition, committed patches, bridge overlay, tests, license/notice va built internal tgz
+- `services/openclaw-zalo-cell/` cho immutable image/install verification/session crypto; khong co thu muc hook package rieng
+- `services/openclaw-zalo-bridge/`, `services/openclaw-zalo-maintenance/`, `services/openclaw-egress-broker/` va `infra/openclaw-*` theo implementation plan
 - `.e2e-fleet/specs/openclaw-zalo.spec.ts`
 
 Integration additive co the can sua:
@@ -759,6 +797,12 @@ Feature chi duoc coi la production-ready khi tat ca dieu sau dung:
 - Supabase la canonical; moi row tenant-scoped; SQL/RLS 2-org negative tests xanh.
 - Browser/cell khong chua `service_role`, generic DB/R2/Gateway admin credential.
 - AI chi tao classification/draft; moi send di qua outbox/policy relay.
+- Image production chi cai internal verified `@openclaw/zalouser` tgz giu ID/channel `zalouser`; upstream SRI, patch-series SHA-256, built-tgz SHA-256 va architecture-specific image digest khop immutable evidence, khong co registry ZaloUser song song.
+- Reproducible image evidence den tu reviewed helper dung deny-by-default clean input manifest, exact fixed epoch, pinned BuildKit/buildx/exporter options, `rewrite-timestamp=true`, separate fresh builders, empty cache, `--pull` va distinct OCI archives; verifier so manifest/config/layers va package metadata, promotes exact verified archive cho checked bundle/load, va khong chap nhan dirty context, cached/tag-only builds hay artifact missing/tamper.
+- Fork listener commit full inbound envelope/media manifest vao SQLite WAL/FULL truoc internal success/dispatch; provider callback la void/non-awaited, stable provider ID exact dedupe, missing ID at-least-once + collision telemetry, media bytes co the `PENDING`, va khong co zero-loss/provider-ack claim truoc callback.
+- Stable-ID precedence/mapping duoc persisted va tenant-scoped; both-present mismatch, cross-kind reuse hoac same-ID/different-payload fail closed + collision audit, trong khi fallback fingerprint chi ap dung khi ca hai stable ID null.
+- Built-in replies va pairing/business notifications van tat sau successful commit va sau canonical automation/draft/outbox processing; outbox creation khong tu emit provider frame.
+- Moi business send chi qua `zalouser.bridge.send`; exact ordered provider batch authorize ngay truoc first provider I/O. Pre-handoff authorization failure tao zero frames; possible handoff ambiguity tao UNKNOWN va khong auto retry. Stock generic RPC/message/tool/adapter business sends bi deny.
 - Model provider doc lap co health/quota/schema gate; ngung 9Router khong lam OpenClaw route AI bi hong va khi model loi auto-send fail closed.
 - Inbound reply, manual send, proactive schedule va sales-group schedule/CRM trigger chay trong controlled smoke test.
 - Nhom sale chi gui khi exact group ID o allowlist; khong auto-reply chatter.
@@ -783,6 +827,9 @@ Feature chi duoc coi la production-ready khi tat ca dieu sau dung:
 | Chi phi egress/media tang | Metadata-only Supabase, private R2, cursor/query discipline, retention va usage dashboard |
 | Shared-host resource contention voi 9Router | Hard cap OpenClaw 4 vCPU/8 GiB/20 GiB, host guard, baseline latency va rollback rieng; khong sua/restart container cu |
 | Root/kernel/VPS compromise anh huong ca OpenClaw va 9Router | Non-root, drop capabilities, no Docker socket, network/secret/volume tach va hardening giam rui ro nhung khong tao trust boundary tuyet doi; day la residual risk duoc chap nhan khi dung chung host |
+| Provider event mat truoc callback hoac provider khong replay day du | Khong tuyen bo zero loss truoc callback; sau accepted callback fork doi WAL/FULL commit, incident hien gap window va doi chieu Zalo native/history neu co |
+| Ca hai provider stable ID deu thieu gay fingerprint collision | At-least-once semantics, luu payload hash/collision telemetry, quarantine conflict va khong im lang hop nhat hai event khac nhau |
+| Fork lech upstream hoac supply-chain drift | Pin SRI/shasum/gitHead/source, committed patch series, license/notice, reproducible tgz/image hashes, full choke-point tests va independent review moi lan rebase |
 
 ## 19. Tai lieu tham khao da kiem tra
 
@@ -798,9 +845,9 @@ Tai lieu tham khao duoc kiem tra ngay 2026-07-26. Ket noi Zalo Personal la unoff
 
 ---
 
-## 20. Cong tiep theo sau khi chu san pham duyet spec da commit
+## 20. Owner approval va chuyen sang implementation
 
-1. Dung `superpowers:writing-plans` de lap implementation plan chi tiet theo TDD, migration, frontend, runtime, gateway, provisioning va rollout gates.
-2. Thuc thi bang cac agent co file ownership khong chong lan; write agent khong dung chung file.
-3. Moi task implementation di theo test-first, verification, independent review va exact-file commit.
-4. Chi tao service/volume/network/secret va bucket R2 theo plan; khong tao VPS moi, giu VPS 9Router va container hien co nguyen trang.
+1. Chu san pham da tra loi `Chot phuong an 1` ngay 2026-07-27: vendored integrity-pinned ZaloUser fork giu `@openclaw/zalouser` va ID/channel `zalouser`.
+2. Written spec review phai xac nhan lai trust boundaries, exact upstream locks, vendor file ownership, inbound durability ordering, outbound choke-point coverage va artifact evidence.
+3. Sau review xanh, chuyen sang implementation plan 30 task; Task 2 la positive fork gate va Tasks 3-29 chi mo khi gate nay pass.
+4. Moi task implementation di theo test-first, verification, independent review va exact-file commit; khong tao VPS moi, khong cham legacy Zalo/9Router/CLI.
