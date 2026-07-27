@@ -1,0 +1,2 @@
+services/openclaw-zalo-cell/vendor/zalouser-bridge/** -text
+services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/*.tgz binary
