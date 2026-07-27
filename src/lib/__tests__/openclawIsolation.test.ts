@@ -485,6 +485,13 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         `rpc: { method: send }`,
         `rpc: { timeout: 1000, "rpcMethod": "send" }`,
       ].join("\n"),
+      "infra/openclaw-zalo/config/rpc-flow-sequence.yaml": `- { method: send }`,
+      "infra/openclaw-zalo/config/rpc-flow-list.yaml": `rpcs: [{ rpcMethod: "send" }]`,
+      "infra/openclaw-zalo/config/rpc-flow-clean.yaml": [
+        `- { method: status }`,
+        `rpcs: [{ rpcMethod: "classify" }]`,
+        `note: method should send later`,
+      ].join("\n"),
       "infra/openclaw-zalo/config/status.yaml": [
         `method: status`,
         `rpcName = classify`,
@@ -516,6 +523,18 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         rule: "stock-generic-send",
       }),
     );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        file: "infra/openclaw-zalo/config/rpc-flow-sequence.yaml",
+        rule: "stock-generic-send",
+      }),
+    );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        file: "infra/openclaw-zalo/config/rpc-flow-list.yaml",
+        rule: "stock-generic-send",
+      }),
+    );
     expect(
       findings
         .filter(
@@ -534,6 +553,11 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         )
         .map((finding) => finding.line),
     ).toEqual([1, 2]);
+    expect(
+      findings.filter(
+        (finding) => finding.file === "infra/openclaw-zalo/config/rpc-flow-clean.yaml",
+      ),
+    ).toEqual([]);
     expect(
       findings.filter(
         (finding) => finding.file === "infra/openclaw-zalo/config/status.yaml",

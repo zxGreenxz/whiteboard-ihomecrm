@@ -31,7 +31,7 @@ const YAML_GENERIC_SEND = [
   {
     rule: "stock-generic-send",
     pattern:
-      /^[ \t]*(?:["']?[a-z0-9_.-]+["']?[ \t]*:[ \t]*)?\{(?:[ \t]*|[^{}\r\n#]*?,[ \t]*)["']?(?:method|rpcName|rpcMethod)["']?[ \t]*:[ \t]*(?:["']send["']|send)(?=[ \t]*[,}])[^{}\r\n#]*\}[ \t]*(?:#.*)?$/gim,
+      /(?:^|[{\[,])[ \t]*["']?(?:method|rpcName|rpcMethod)["']?[ \t]*:[ \t]*(?:["']send["']|send)(?=[ \t]*(?:[,}\]#]|$))/gim,
   },
 ];
 
