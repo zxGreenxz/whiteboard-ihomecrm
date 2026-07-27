@@ -313,6 +313,7 @@ export const useCreateCustomer = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       toast.success("Dữ liệu đã được TẠO thành công");
     },
     onError: (error: any) => {
@@ -327,6 +328,59 @@ export const useCreateCustomer = () => {
     },
   });
 };
+
+// Đồng bộ danh sách xe khai inline trong form khách hàng với bảng `vehicles`.
+// Chỉ đụng 4 cột khai được ở form (loại/dòng/màu/biển số) — xe tạo từ trang
+// Phương tiện còn toà/phòng/chủ xe/vé/ảnh nên KHÔNG ghi đè các cột đó.
+// Dòng bị gỡ khỏi form ⇒ soft-delete (giống nút Xoá ở trang Phương tiện).
+async function syncCustomerVehicles(
+  customerId: string,
+  vehicles: NonNullable<CustomerFormData["vehicles"]>,
+): Promise<void> {
+  const user = await getSessionUser();
+  if (!user) throw new Error("Not authenticated");
+  const sb = supabase as any;
+
+  const { data: existing, error: loadError } = await sb
+    .from("vehicles")
+    .select("id")
+    .eq("customer_id", customerId)
+    .is("deleted_at", null);
+  if (loadError) throw loadError;
+
+  const fields = (v: (typeof vehicles)[number]) => ({
+    vehicle_type: v.vehicle_type,
+    vehicle_name: v.vehicle_name,
+    color: v.color || null,
+    license_plate: v.license_plate,
+  });
+
+  const keptIds = new Set(vehicles.map((v) => v.id).filter(Boolean) as string[]);
+  const removedIds = ((existing || []) as { id: string }[])
+    .map((v) => v.id)
+    .filter((vid) => !keptIds.has(vid));
+
+  if (removedIds.length > 0) {
+    const { error } = await sb
+      .from("vehicles")
+      .update({ deleted_at: new Date().toISOString() })
+      .in("id", removedIds);
+    if (error) throw error;
+  }
+
+  for (const v of vehicles.filter((x) => x.id)) {
+    const { error } = await sb.from("vehicles").update(fields(v)).eq("id", v.id);
+    if (error) throw error;
+  }
+
+  const added = vehicles.filter((v) => !v.id);
+  if (added.length > 0) {
+    const { error } = await sb.from("vehicles").insert(
+      added.map((v) => ({ ...fields(v), user_id: user.id, customer_id: customerId })),
+    );
+    if (error) throw error;
+  }
+}
 
 // =============================================
 // useUpdateCustomer - Update mutation
@@ -344,7 +398,7 @@ export const useUpdateCustomer = () => {
       id: string;
       data: Partial<CustomerFormData>;
     }) => {
-      // Remove vehicles from update payload (handled separately)
+      // vehicles không phải cột của customers — đồng bộ riêng bên dưới.
       const { vehicles, ...customerData } = formData;
 
       const { data, error } = await supabase
@@ -355,11 +409,17 @@ export const useUpdateCustomer = () => {
         .single();
 
       if (error) throw error;
+
+      // `undefined` = caller không đụng tới xe (vd form khác chỉ sửa vài cột)
+      // ⇒ giữ nguyên. Mảng rỗng mới nghĩa là "xoá hết xe".
+      if (vehicles) await syncCustomerVehicles(id, vehicles);
+
       return data as unknown as Customer;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["customer-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
       if (data?.id) {
         queryClient.invalidateQueries({ queryKey: ["customers", data.id] });
       }

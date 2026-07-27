@@ -7,6 +7,7 @@ import {
   useCreateCustomer,
   useUpdateCustomer,
 } from '@/hooks/useCustomers';
+import { useVehicles } from '@/hooks/useVehicles';
 import type { CustomerFormData } from '@/types/customer';
 
 /**
@@ -21,6 +22,12 @@ export default function CustomerFormPage() {
 
   // Load existing data in edit mode
   const { data: customer, isLoading } = useCustomer(id || '');
+  // Xe của khách, để sửa/xoá ngay trong form thay vì phải sang trang Phương tiện.
+  const { data: vehiclesData, isLoading: isLoadingVehicles } = useVehicles(
+    { customer_id: id },
+    undefined,
+    { enabled: isEdit },
+  );
   const createMutation = useCreateCustomer();
   const updateMutation = useUpdateCustomer();
 
@@ -80,10 +87,19 @@ export default function CustomerFormPage() {
         representative: customer.representative ?? undefined,
         business_registration_url: customer.business_registration_url ?? undefined,
         headquarters_address: customer.headquarters_address ?? undefined,
+        vehicles: (vehiclesData?.data ?? []).map((v) => ({
+          id: v.id,
+          vehicle_type: v.vehicle_type,
+          vehicle_name: v.vehicle_name ?? '',
+          color: v.color ?? '',
+          license_plate: v.license_plate ?? '',
+        })),
       }
     : undefined;
 
-  if (isEdit && isLoading) {
+  // CustomerForm chỉ đọc defaultValues lúc mount ⇒ phải chờ cả xe về, kẻo
+  // form mount với danh sách xe rỗng rồi lưu đè thành "xoá hết xe".
+  if (isEdit && (isLoading || isLoadingVehicles)) {
     return (
       <MainLayout title="Đang tải..." icon={Pencil}>
         <div className="p-8 text-center text-muted-foreground">Đang tải dữ liệu khách hàng...</div>

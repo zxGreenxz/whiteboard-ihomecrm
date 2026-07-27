@@ -116,6 +116,8 @@ export default function CustomerVehiclesSection() {
             type="button"
             variant="ghost"
             size="icon"
+            aria-label="Xoá phương tiện"
+            title="Xoá phương tiện"
             className="h-9 w-9 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0"
             onClick={() => remove(index)}
           >
