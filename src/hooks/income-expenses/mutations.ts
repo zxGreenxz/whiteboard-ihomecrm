@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
-import { requireBuildingOrganizationId } from "@/lib/buildingOrganization";
 import { addCycle, type RepeatCycle } from "@/lib/recurring";
 import { isIeCreateFallbackSignal } from "@/lib/canonicalFallback";
 import type {
@@ -106,7 +105,13 @@ export const useCreateIncomeExpense = () => {
       const meta = (user.user_metadata ?? {}) as Record<string, any>;
       const creatorName: string =
         meta.full_name || meta.name || user.email || "Người dùng";
-      const organizationId = await requireBuildingOrganizationId(input.building_id);
+      // KHÔNG đọc buildings.organization_id ở client: RLS `buildings_select_rbac`
+      // chỉ mở cho ai có scope `buildings.view` trên toà đó, còn màn Thu/Chi cố ý
+      // cho chọn MỌI toà khi có `income_expenses.all_buildings` (ie_form_buildings).
+      // Người chỉ có all_buildings sẽ đọc buildings ra 0 dòng → trước đây văng
+      // "Tòa nhà chưa được gắn tổ chức" dù server cho phép tạo. ie_compat_insert_v2
+      // là SECURITY DEFINER và tự suy organization_id (accounts → buildings →
+      // membership), đồng thời STRIP organization_id do client gửi.
       const accountingClassFor =
         await loadIncomeExpenseAccountingClassResolver(
           input.items.map((item) => item.income_expense_type_id),
@@ -119,7 +124,6 @@ export const useCreateIncomeExpense = () => {
           type: input.type,
           name: input.name,
           building_id: input.building_id,
-          organization_id: organizationId,
           room_id: input.room_id ?? null,
           tenant_id: input.tenant_id ?? null,
           contract_id: input.contract_id ?? null,

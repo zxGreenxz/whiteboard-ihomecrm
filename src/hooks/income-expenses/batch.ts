@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { toast } from "sonner";
 import type { IncomeExpenseBatchFormValues } from "@/lib/incomeExpenseValidation";
-import { requireBuildingOrganizationId } from "@/lib/buildingOrganization";
 import type { ImportIncomeExpenseRow } from "./types";
 import { loadIncomeExpenseAccountingClassResolver } from "./accountingClass";
 
@@ -50,7 +49,9 @@ export const useImportIncomeExpenses = () => {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         try {
-          const organizationId = await requireBuildingOrganizationId(row.building_id);
+          // organization_id do server suy (ie_compat_insert_v2 SECURITY DEFINER,
+          // strip field client gửi) — không đọc buildings ở client vì RLS chỉ mở
+          // cho ai có scope buildings.view, còn Thu/Chi cho phép all_buildings.
           // Phiếu + item trong MỘT call server-side (birth UNAPPROVED — §8).
           const { error: compatError } = await compatRpc("ie_compat_insert_v2", {
             p_row: {
@@ -58,7 +59,6 @@ export const useImportIncomeExpenses = () => {
               type: row.type,
               name: row.name,
               building_id: row.building_id,
-              organization_id: organizationId,
               voucher_date: row.voucher_date,
             },
             p_items: [
@@ -148,7 +148,6 @@ export const useCreateIncomeExpenseBatch = () => {
       const childVouchers: { id: string }[] = [];
       try {
         for (const item of input.items) {
-          const organizationId = await requireBuildingOrganizationId(item.building_id);
           const { data: created, error: voucherError } = await compatRpc(
             "ie_compat_insert_v2",
             {
@@ -158,7 +157,6 @@ export const useCreateIncomeExpenseBatch = () => {
                 type: input.type,
                 name: `${input.shared_name} - ${item.type_name ?? ""}`.trim(),
                 building_id: item.building_id,
-                organization_id: organizationId,
                 room_id: item.room_id ?? null,
                 account_id: input.account_id,
                 payer_name: input.payer_name ?? null,
