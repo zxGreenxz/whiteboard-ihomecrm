@@ -1,0 +1,31 @@
+{
+  "name": "@ihome/openclaw-session-crypto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/daemon.js",
+  "types": "./dist/daemon.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/daemon.d.ts",
+      "default": "./dist/daemon.js"
+    },
+    "./crypto": {
+      "types": "./dist/crypto.d.ts",
+      "default": "./dist/crypto.js"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --config package.json src/crypto.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "22.16.5",
+    "typescript": "5.8.3",
+    "vitest": "4.1.10"
+  }
+}
