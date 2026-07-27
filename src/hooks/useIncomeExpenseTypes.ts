@@ -172,6 +172,12 @@ export const useCreateIncomeExpenseType = () => {
 
       if (!user) throw new Error("User not authenticated");
 
+      // organization_id do DB tự gắn (trigger trg_autofill_org trên
+      // income_expense_types, thêm 27/07/2026). ĐỪNG đoán org ở client: màn
+      // Thu/Chi cho chọn mọi toà khi có income_expenses.all_buildings nên client
+      // không đọc được buildings.organization_id qua RLS. Trước khi có trigger,
+      // hạng mục tạo ở đây sinh ra với organization_id = NULL → create_income_
+      // expense_v1 từ chối 42501 → phiếu rơi sang compat và kẹt "Chờ duyệt".
       const { data, error } = await supabase
         .from("income_expense_types" as any)
         .insert({

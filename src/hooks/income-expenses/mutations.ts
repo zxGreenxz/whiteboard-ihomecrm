@@ -34,6 +34,15 @@ const compatRpc = (
  * URL https tuyệt đối. Ngoài phạm vi đó → đi thẳng ie_compat_insert_v2 (không
  * thử canonical để khỏi ăn lỗi validation writer thành lỗi user).
  */
+/**
+ * ĐÚNG hai thông báo quyền-sổ mà create_income_expense_v1 raise (42501) và
+ * compat V2 xử lý được (v1 chưa biết KNOWER). Mọi 42501 khác của v1 — hạng mục
+ * không thuộc tổ chức, phòng/hợp đồng lệch toà, mất quyền tạo trên toà, hết tư
+ * cách thành viên — là lỗi thật, phải hiện cho người dùng thấy.
+ */
+const V1_CASHBOOK_FALLBACK_MESSAGE =
+  /(Không có quyền sử dụng sổ quỹ này|Quyền sử dụng sổ quỹ đã bị thu hồi)/;
+
 const isCanonicalCreateEligible = (input: CreateIncomeExpenseInput): boolean => {
   if ((input.repeat_cycle ?? "NONE") !== "NONE") return false;
   if (input.repeat_infinity) return false;
@@ -86,14 +95,22 @@ export const useCreateIncomeExpense = () => {
           p_idempotency_key: `ie-create-${crypto.randomUUID()}`,
         });
         if (!canonical.error) return canonical.data;
-        // Fallback hợp lệ: (a) tín hiệu route/lớp phiếu chuẩn, HOẶC (b) lỗi quyền-sổ
-        // của v1 — writer v1 chỉ biết CUSTODIAN/OPERATOR, chưa biết KNOWER (V2).
+        // Fallback hợp lệ: (a) tín hiệu route/lớp phiếu chuẩn, HOẶC (b) ĐÚNG hai
+        // lỗi quyền-sổ của v1 — writer v1 chỉ biết CUSTODIAN/OPERATOR (legacy
+        // accounts.user_id + account_shared_users), chưa biết KNOWER (V2).
         // Compat RPC re-check §9.2 server-side (CUSTODIAN thu+chi, KNOWER chỉ thu)
-        // nên đây KHÔNG phải bypass quyền: nếu thật sự không có quyền, compat trả
-        // 42501 với thông báo tiếng Việt rõ nghĩa.
+        // nên đây KHÔNG phải bypass quyền.
+        //
+        // GOTCHA án lệ 27/07/2026: điều kiện cũ là `code === '42501' ||
+        // /sổ quỹ|Quyền/i.test(msg)` — nuốt MỌI lỗi 42501 của v1, kể cả lỗi DỮ
+        // LIỆU. Hạng mục tạo tay bị thiếu organization_id làm v1 raise 42501
+        // "Loại hạng mục 1 không thuộc tổ chức hoặc sai chiều thu/chi"; FE nuốt
+        // im rồi rơi sang compat (ép UNAPPROVED, KHÔNG chạy thang ngưỡng) nên
+        // phiếu chi 250k < ngưỡng 300k vẫn nằm "Chờ duyệt" mà không báo gì.
+        // canonicalFallback.ts đã ghi rõ: 42501 là từ chối THẬT, phải nổi lên.
         const msg = canonical.error.message ?? "";
         const v1CashbookPermission =
-          canonical.error.code === "42501" || /sổ quỹ|Quyền/i.test(msg);
+          canonical.error.code === "42501" && V1_CASHBOOK_FALLBACK_MESSAGE.test(msg);
         if (!isIeCreateFallbackSignal(canonical.error) && !v1CashbookPermission) {
           toast.error(msg || "Không thể tạo phiếu thu/chi");
           throw canonical.error;
