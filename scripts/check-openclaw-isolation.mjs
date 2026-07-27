@@ -22,6 +22,14 @@ const RAW_RESTRICTED_FALLBACK = [
   },
 ];
 
+const YAML_GENERIC_SEND = [
+  {
+    rule: "stock-generic-send",
+    pattern:
+      /^[ \t]*["']?(?:method|rpcName|rpcMethod)["']?[ \t]*[:=][ \t]*(?:["']send["']|send)[ \t]*(?:#.*)?$/gim,
+  },
+];
+
 const CODE_SCRIPT_KINDS = new Map([
   [".js", ts.ScriptKind.JS],
   [".jsx", ts.ScriptKind.JSX],
@@ -375,6 +383,15 @@ function getStaticString(node) {
   if (!node) return null;
   const expression = unwrapExpression(node);
   if (ts.isStringLiteralLike(expression)) return expression.text;
+  if (ts.isTemplateExpression(expression)) {
+    let value = expression.head.text;
+    for (const span of expression.templateSpans) {
+      const substitution = getStaticString(span.expression);
+      if (substitution === null) return null;
+      value += substitution + span.literal.text;
+    }
+    return value;
+  }
   if (
     ts.isBinaryExpression(expression) &&
     expression.operatorToken.kind === ts.SyntaxKind.PlusToken
@@ -427,6 +444,20 @@ function getAssignmentKey(node) {
   if (ts.isPropertyAccessExpression(target)) return target.name.text;
   if (ts.isElementAccessExpression(target)) return getStaticString(target.argumentExpression);
   return null;
+}
+
+function hasToolDeliveryAction(node) {
+  const expression = node ? unwrapExpression(node) : null;
+  return Boolean(
+    expression &&
+      ts.isObjectLiteralExpression(expression) &&
+      expression.properties.some(
+        (property) =>
+          ts.isPropertyAssignment(property) &&
+          getPropertyName(property.name)?.toLowerCase() === "action" &&
+          TOOL_DELIVERY_VERBS.has(getStaticString(property.initializer)),
+      ),
+  );
 }
 
 function addNodeFinding(sourceFile, node, relativePath, rule, match, findings) {
@@ -496,6 +527,7 @@ function scanCodeSemantics(source, relativePath, approvedDeliveryPath, findings)
       const calleeName = getTerminalName(node.expression);
       const receiverName = getReceiverName(node.expression);
       const firstArgument = getStaticString(node.arguments[0]);
+      const toolDeliveryAction = hasToolDeliveryAction(node.arguments[0]);
 
       if (GENERIC_RPC_CALLEES.has(calleeName) && firstArgument === "send") {
         addNodeFinding(
@@ -513,7 +545,7 @@ function scanCodeSemantics(source, relativePath, approvedDeliveryPath, findings)
         (calleeName === "send" && /(?:adapter|sender|provider|channel)$/i.test(receiverName ?? "")) ||
         (calleeName === "execute" &&
           /tool$/i.test(receiverName ?? "") &&
-          TOOL_DELIVERY_VERBS.has(firstArgument))
+          (TOOL_DELIVERY_VERBS.has(firstArgument) || toolDeliveryAction))
       ) {
         addNodeFinding(
           sourceFile,
@@ -667,6 +699,9 @@ export function scanOpenClawFiles(root = process.cwd()) {
       scanPatterns(canonicalSource, relativePath, ALWAYS_FORBIDDEN, findings);
       scanPatterns(canonicalSource, relativePath, RESTRICTED_PACKAGE, findings);
       scanPatterns(canonicalSource, relativePath, RAW_RESTRICTED_FALLBACK, findings);
+      if ([".yaml", ".yml"].includes(extname(relativePath).toLowerCase())) {
+        scanPatterns(canonicalSource, relativePath, YAML_GENERIC_SEND, findings);
+      }
     }
   }
 

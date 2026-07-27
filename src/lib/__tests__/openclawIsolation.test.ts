@@ -206,12 +206,26 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         arbitraryAlias["sendMedia"](payload);
         messageTool["execute"]("deliver", payload);
       `,
-      "services/openclaw-zalo-bridge/src/non-delivery-controls.ts": `
-        socket.send(payload);
-        classificationTool.execute(payload);
-        classificationTool.execute("classify", payload);
-        statusReporter.report(payload);
-      `,
+      "services/openclaw-zalo-bridge/src/static-templates.ts": [
+        'import(`@openclaw/${"zalo"}user`);',
+        'client.call(`${"se"}nd`, payload);',
+      ].join("\n"),
+      "services/openclaw-zalo-bridge/src/object-tool-delivery.ts": [
+        `messageTool.execute({ action: "send", payload });`,
+        'messageTool.execute({ ["action"]: `de${"liv"}er`, payload });',
+      ].join("\n"),
+      "services/openclaw-zalo-bridge/src/non-delivery-controls.ts": [
+        `socket.send(payload);`,
+        `classificationTool.execute(payload);`,
+        `classificationTool.execute("classify", payload);`,
+        `messageTool.execute({ action: "classify", payload });`,
+        `messageTool.execute({ ["action"]: "status", payload });`,
+        `const packageName = "zalo";`,
+        'import(`@openclaw/${packageName}user`);',
+        `const verb = "se";`,
+        'client.call(`${verb}nd`, payload);',
+        `statusReporter.report(payload);`,
+      ].join("\n"),
     });
 
     const findings = scanOpenClawFiles(root);
@@ -233,6 +247,18 @@ describe("OpenClaw Zalo isolation guardrail", () => {
       "services/openclaw-zalo-bridge/src/delivery-aliases.ts",
       "direct-adapter-tool-delivery",
     );
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/static-templates.ts",
+      "direct-zalouser-package",
+    );
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/static-templates.ts",
+      "stock-generic-send",
+    );
+    expectFinding(
+      "services/openclaw-zalo-bridge/src/object-tool-delivery.ts",
+      "direct-adapter-tool-delivery",
+    );
     expect(
       findings.filter(
         (finding) =>
@@ -242,12 +268,15 @@ describe("OpenClaw Zalo isolation guardrail", () => {
   });
 
   it("allows adversarial package and delivery forms only in the exact approved seams", () => {
-    const approvedSource = String.raw`
-      import("@openclaw\u002fzalouser");
-      client?.["call"]?.(("s" + "end"), payload);
-      upstreamProvider?.["send"](payload);
-      messageTool["execute"]("deliver", payload);
-    `;
+    const approvedSource = [
+      String.raw`import("@openclaw\u002fzalouser");`,
+      'import(`@openclaw/${"zalo"}user`);',
+      `client?.["call"]?.(("s" + "end"), payload);`,
+      'client.call(`${"se"}nd`, payload);',
+      `upstreamProvider?.["send"](payload);`,
+      `messageTool["execute"]("deliver", payload);`,
+      'messageTool.execute({ ["action"]: `se${"n"}d`, payload });',
+    ].join("\n");
     const root = makeFixture({
       "services/openclaw-zalo-cell/src/adversarial.ts": approvedSource,
       "services/openclaw-zalo-bridge/src/adapters/zalouser-bridge-rpc-adapter.ts": approvedSource,
@@ -420,17 +449,38 @@ describe("OpenClaw Zalo isolation guardrail", () => {
     }
   });
 
-  it("canonicalizes escaped package references in non-code configuration", () => {
+  it("detects escaped packages and generic send methods in non-code configuration", () => {
     const root = makeFixture({
       "infra/openclaw-zalo/config/package.yaml": String.raw`package: "@openclaw\x2f\u007aalouser"`,
+      "infra/openclaw-zalo/config/rpc.yaml": [
+        `method: send`,
+        `rpcName = "send" # exact generic RPC`,
+        `'rpcMethod': 'send'`,
+      ].join("\n"),
+      "infra/openclaw-zalo/config/status.yaml": [
+        `method: status`,
+        `rpcName = classify`,
+      ].join("\n"),
     });
 
-    expect(scanOpenClawFiles(root)).toContainEqual(
+    const findings = scanOpenClawFiles(root);
+    expect(findings).toContainEqual(
       expect.objectContaining({
         file: "infra/openclaw-zalo/config/package.yaml",
         rule: "direct-zalouser-package",
       }),
     );
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        file: "infra/openclaw-zalo/config/rpc.yaml",
+        rule: "stock-generic-send",
+      }),
+    );
+    expect(
+      findings.filter(
+        (finding) => finding.file === "infra/openclaw-zalo/config/status.yaml",
+      ),
+    ).toEqual([]);
   });
 
   it("returns findings in exact code-point order", () => {
