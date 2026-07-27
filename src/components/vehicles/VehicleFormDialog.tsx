@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -30,7 +30,11 @@ import { vehicleSchema, type VehicleFormValues } from '@/lib/vehicleValidation';
 import { useCreateVehicle, useUpdateVehicle } from '@/hooks/useVehicles';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useRooms } from '@/hooks/useRooms';
-import { useCustomers } from '@/hooks/useCustomers';
+import { useCustomers, useCustomer } from '@/hooks/useCustomers';
+import {
+  SearchableSelect,
+  type SearchableSelectOption,
+} from '@/components/ui/searchable-select';
 import ImageUploadZone from '@/components/customers/ImageUploadZone';
 import type { Vehicle } from '@/types/vehicle';
 
@@ -76,15 +80,70 @@ export default function VehicleFormDialog({
   });
 
   const selectedBuildingId = form.watch('building_id');
+  const selectedRoomId = form.watch('room_id');
+  const selectedCustomerId = form.watch('customer_id');
   const { data: roomsData = [] } = useRooms(selectedBuildingId);
   const rooms = Array.isArray(roomsData) ? roomsData : [];
 
-  const { data: customersData } = useCustomers(undefined, { page: 1, pageSize: 500 });
+  // Đã chọn toà/phòng ⇒ mặc định chỉ hiện khách đang ở đó (theo HĐ còn hiệu
+  // lực). Cho phép tắt vì xe có thể đứng tên khách không nằm trong HĐ phòng đó.
+  const [showAllCustomers, setShowAllCustomers] = useState(false);
+  const locationFilterActive =
+    !showAllCustomers && !!(selectedBuildingId || selectedRoomId);
+
+  const { data: customersData, isFetching: isFetchingCustomers } = useCustomers(
+    locationFilterActive
+      ? { building_id: selectedBuildingId, room_id: selectedRoomId }
+      : undefined,
+    { page: 1, pageSize: 500 },
+  );
   const customers = customersData?.data ?? [];
+
+  // Khách đang chọn có thể nằm ngoài danh sách đã lọc (vd sửa xe cũ, hoặc khách
+  // không có HĐ ở toà/phòng này) — nạp riêng để trigger vẫn hiện đúng tên.
+  const selectedInList = customers.some((c) => c.id === selectedCustomerId);
+  const { data: selectedCustomer } = useCustomer(
+    selectedCustomerId && !selectedInList ? selectedCustomerId : '',
+  );
+
+  const customerOptions = useMemo(() => {
+    const label = (c: { full_name: string | null; phone: string | null }) =>
+      `${c.full_name || 'Không tên'}${c.phone ? ` (${c.phone})` : ''}`;
+    const opts: SearchableSelectOption[] = [
+      { value: '__none__', label: '-- Không chọn --' },
+      ...customers.map((c) => ({ value: c.id, label: label(c), keywords: c.phone || '' })),
+    ];
+    if (selectedCustomer && !selectedInList) {
+      opts.splice(1, 0, {
+        value: selectedCustomer.id,
+        label: label(selectedCustomer),
+        keywords: selectedCustomer.phone || '',
+      });
+    }
+    // Lọc theo toà/phòng mà không ra ai: dropdown chỉ còn "-- Không chọn --"
+    // nên CommandEmpty không bật — phải tự nói lý do, kẻo tưởng lỗi mất data.
+    if (locationFilterActive && customers.length === 0) {
+      opts.push({
+        value: '__empty__',
+        label: isFetchingCustomers
+          ? 'Đang tải...'
+          : 'Không có khách trong toà/phòng này',
+        disabled: true,
+      });
+    }
+    return opts;
+  }, [
+    customers,
+    selectedCustomer,
+    selectedInList,
+    locationFilterActive,
+    isFetchingCustomers,
+  ]);
 
   // Reset form when dialog opens/closes or vehicle changes
   useEffect(() => {
     if (open) {
+      setShowAllCustomers(false);
       if (vehicle) {
         form.reset({
           vehicle_type: vehicle.vehicle_type,
@@ -343,25 +402,40 @@ export default function VehicleFormDialog({
                 name="customer_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Khách hàng</FormLabel>
-                    <Select
-                      onValueChange={(val) => field.onChange(val === '__none__' ? undefined : val)}
-                      value={field.value || '__none__'}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Chọn khách hàng" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="__none__">-- Không chọn --</SelectItem>
-                        {customers.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.full_name} {c.phone ? `(${c.phone})` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-between gap-2">
+                      <FormLabel>Khách hàng</FormLabel>
+                      {(selectedBuildingId || selectedRoomId) && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs"
+                          onClick={() => setShowAllCustomers((v) => !v)}
+                        >
+                          {locationFilterActive
+                            ? `Đang lọc theo ${selectedRoomId ? 'phòng' : 'toà nhà'} — xem tất cả`
+                            : 'Lọc theo toà/phòng đã chọn'}
+                        </Button>
+                      )}
+                    </div>
+                    <FormControl>
+                      <SearchableSelect
+                        value={field.value || '__none__'}
+                        onValueChange={(val) =>
+                          field.onChange(val === '__none__' ? undefined : val)
+                        }
+                        options={customerOptions}
+                        placeholder="Chọn khách hàng"
+                        searchPlaceholder="Gõ tên hoặc SĐT để tìm..."
+                        emptyText={
+                          isFetchingCustomers
+                            ? 'Đang tải...'
+                            : locationFilterActive
+                              ? 'Không có khách trong toà/phòng này'
+                              : 'Không tìm thấy khách hàng'
+                        }
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

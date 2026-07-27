@@ -301,6 +301,7 @@ export const useCreateCustomer = () => {
           customer_id: (data as any).id,
           vehicle_type: v.vehicle_type,
           vehicle_name: v.vehicle_name,
+          color: v.color || null,
           license_plate: v.license_plate,
         }));
 

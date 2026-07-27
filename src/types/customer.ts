@@ -129,6 +129,7 @@ export interface CustomerFormData {
 export interface InlineVehicle {
   vehicle_type: string;
   vehicle_name: string;
+  color?: string;
   license_plate: string;
 }
 

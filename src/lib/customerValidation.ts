@@ -46,6 +46,7 @@ export const customerIndividualSchema = z.object({
       z.object({
         vehicle_type: z.string(),
         vehicle_name: z.string(),
+        color: z.string().optional(),
         license_plate: z.string(),
       }),
     )
@@ -87,6 +88,7 @@ export const customerOrganizationSchema = z.object({
       z.object({
         vehicle_type: z.string(),
         vehicle_name: z.string(),
+        color: z.string().optional(),
         license_plate: z.string(),
       }),
     )
