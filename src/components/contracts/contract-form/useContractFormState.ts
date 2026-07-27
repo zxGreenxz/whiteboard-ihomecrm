@@ -26,7 +26,7 @@ import {
   type FirstInvoiceItem,
 } from "@/lib/firstInvoiceBuilder";
 import { useOrphanDepositVouchers } from "@/hooks/useDeposits";
-import { useAccounts } from "@/hooks/useAccounts";
+import { useAccounts, type Account } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
 import {
   nextDepositUid,
@@ -41,6 +41,36 @@ interface UseContractFormStateParams {
   contract?: ContractWithRelations;
   prefill?: ContractPrefill;
 }
+
+/** Sổ quỹ được phép nhận tiền cọc: CHỈ sổ THẬT, không bao giờ là sổ ảo.
+ *
+ * `create_contract_v2` chặn sổ ảo bằng `NOT accounts.is_virtual` rồi ném 42501
+ * "Sổ quỹ cọc không thuộc tổ chức" — và 42501 lại hiện thành toast "Không đủ
+ * quyền", nên user tưởng mình bị khoá quyền chứ không phải chọn nhầm sổ.
+ *
+ * ÁN LỆ 27/07/2026 (tk joey, phòng 503 158PVC): sổ đứng đầu danh sách của joey
+ * là "Cấn trừ thanh lý (nội bộ)" — sổ ảo — nên form tự chọn nó, mọi lần lưu HĐ
+ * đều đỏ. Chủ nhà không dính vì sổ đầu danh sách của họ là sổ thật.
+ */
+export const selectDepositAccounts = (accounts: Account[]): Account[] =>
+  accounts.filter((a) => !a.is_virtual);
+
+/** Sổ quỹ mặc định cho dòng cọc mới: ƯU TIÊN sổ của CHÍNH user hiện tại (staff
+ *  route cọc vào sổ mình, không vào sổ owner). Fallback sổ bất kỳ nếu user chưa
+ *  có sổ riêng (vd owner thấy mọi sổ). Chỉ nhận danh sách đã lọc sổ ảo. */
+export const pickDefaultDepositAccountId = (
+  accounts: Account[],
+  userId: string | undefined,
+): string => {
+  const mine = accounts.filter((a) => a.user_id === userId);
+  return (
+    mine.find((a) => a.is_default)?.id ??
+    mine[0]?.id ??
+    accounts.find((a) => a.is_default)?.id ??
+    accounts[0]?.id ??
+    ""
+  );
+};
 
 /**
  * Toàn bộ state + derived values + handlers của form HĐ — tách CƠ HỌC từ
@@ -127,27 +157,23 @@ export function useContractFormState({
 
   // RPC creates deposit receipts atomically; the form only needs accounts for
   // selecting the real cashbook of each receipt row.
-  const { data: accounts = [] } = useAccounts({ enabled: open });
+  const { data: allAccounts = [] } = useAccounts({ enabled: open });
   const { data: authUser } = useAuth();
+
+  const accounts = useMemo(
+    () => selectDepositAccounts(allAccounts),
+    [allAccounts],
+  );
 
   // Danh sách dòng "Đã đặt cọc": mỗi dòng = 1 lần khách đưa cọc → 1 phiếu thu
   // cọc (is_deposit) vào SỔ QUỸ THẬT đã chọn (sổ CỌC chỉ là sổ ảo theo dõi).
   const [depositRows, setDepositRows] = useState<DepositRow[]>([]);
   // Cờ user đã tự sửa ô "Tiền cọc" → ngừng auto mặc định = tiền thuê.
   const [depositTouched, setDepositTouched] = useState(false);
-  // Sổ quỹ mặc định cho dòng cọc mới: ƯU TIÊN sổ của CHÍNH user hiện tại
-  // (staff route cọc vào sổ mình, không vào sổ owner). Fallback sổ bất kỳ nếu
-  // user chưa có sổ riêng (vd owner thấy mọi sổ).
-  const defaultDepositAccountId = useMemo(() => {
-    const mine = accounts.filter((a) => a.user_id === authUser?.id);
-    return (
-      mine.find((a) => a.is_default)?.id ??
-      mine[0]?.id ??
-      accounts.find((a) => a.is_default)?.id ??
-      accounts[0]?.id ??
-      ""
-    );
-  }, [accounts, authUser?.id]);
+  const defaultDepositAccountId = useMemo(
+    () => pickDefaultDepositAccountId(accounts, authUser?.id),
+    [accounts, authUser?.id],
+  );
 
   // Commission voucher modal — open after successful create (not edit)
   const [commissionContractId, setCommissionContractId] = useState<string | null>(null);

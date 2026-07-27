@@ -67,6 +67,20 @@ const POSTGRES_CODE_MAP: Record<string, FriendlyError> = {
 };
 
 /**
+ * 42501 do CHÍNH Postgres sinh (RLS chặn / thiếu GRANT) — user không tự sửa
+ * được, chỉ báo chung "liên hệ quản trị viên".
+ *
+ * KHÁC với 42501 do RPC nghiệp vụ của mình `RAISE EXCEPTION ... ERRCODE 42501`:
+ * các message đó ("Sổ quỹ cọc không thuộc tổ chức", "Khách hàng không thuộc tổ
+ * chức", "Không có quyền ghi tiền cọc vào sổ đã chọn"…) nói đúng chỗ sai và user
+ * sửa được ngay. Nuốt chúng vào "Tài khoản của bạn chưa được cấp quyền" là đánh
+ * lừa — án lệ 27/07/2026: joey chọn nhầm sổ ảo khi tạo HĐ, toast báo thiếu
+ * quyền, mất nửa ngày dò phân quyền trong khi chỉ cần đổi sổ quỹ.
+ */
+const RAW_PG_PERMISSION_MESSAGE =
+  /permission denied|row-level security|must be owner|insufficient privilege/;
+
+/**
  * Convert raw error → friendly { title, description }.
  *
  * @param error Supabase error / generic Error / unknown
@@ -78,7 +92,12 @@ export function friendlyError(error: any, fallbackTitle = 'Có lỗi xảy ra'):
   }
 
   const code = String(error?.code ?? '').trim();
-  const msg = String(error?.message ?? '').toLowerCase();
+  const rawMsg = String(error?.message ?? '').trim();
+  const msg = rawMsg.toLowerCase();
+
+  if (code === '42501' && rawMsg && !RAW_PG_PERMISSION_MESSAGE.test(msg)) {
+    return { title: fallbackTitle, description: rawMsg };
+  }
 
   if (code && POSTGRES_CODE_MAP[code]) {
     return POSTGRES_CODE_MAP[code];
