@@ -706,7 +706,24 @@
 .tt-stage .ub-bookbtn-nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tt-stage .ub-bookbtn-cv { width: 12px; height: 12px; flex-shrink: 0; color: var(--ink-faint); }
 .tt-stage .ub-bookbtn:disabled { opacity: .5; cursor: default; }
-.tt-stage .ub-bookpop { position: absolute; top: calc(100% + 5px); left: 0; z-index: 120; min-width: 190px; max-width: 260px; max-height: 260px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-3); padding: 5px; }
+/* Wrapper PORTAL của popup: chỉ mượn TOKEN màu của .tt-stage, phải trung hoà
+   nền/padding/overflow/flex của stage — không thì nó vẽ nguyên mảng nền màn
+   hình đè lên bảng (bug user báo 28/07). pointer-events: none để phần rỗng
+   quanh popup không nuốt click xuống bảng. */
+.tt-stage.ub-bookportal {
+  position: fixed; inset: auto; z-index: 300;
+  display: block; width: auto; height: auto; min-height: 0;
+  padding: 0; background: none; overflow: visible; pointer-events: none;
+}
+.tt-stage.ub-bookportal .ub-bookpop { pointer-events: auto; }
+
+.tt-stage .ub-bookpop { position: static; min-width: 190px; max-width: 260px; max-height: 300px; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-3); padding: 5px; }
+/* Chỉ DANH SÁCH cuộn — ô lọc luôn nằm yên ở đầu. */
+.tt-stage .ub-booklist { overflow-y: auto; overscroll-behavior: contain; }
+.tt-stage .ub-booksearch { display: flex; align-items: center; gap: 6px; padding: 4px 8px 7px; border-bottom: 1px solid var(--line-2); margin-bottom: 4px; }
+.tt-stage .ub-booksearch svg { width: 13px; height: 13px; color: var(--ink-faint); flex-shrink: 0; }
+.tt-stage .ub-booksearch-in { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.tt-stage .ub-booksearch-in::placeholder { color: var(--ink-faint); font-weight: 600; }
 .tt-stage .ub-bookpop-empty { padding: 10px 12px; font-size: 12px; color: var(--ink-3); }
 .tt-stage .ub-bookopt { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-family: var(--font); font-size: 12.5px; font-weight: 600; color: var(--ink); background: transparent; border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
 .tt-stage .ub-bookopt:hover { background: var(--surface-2); }
