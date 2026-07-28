@@ -243,14 +243,71 @@ describe("reviewed upstream and legal inputs", () => {
       process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = manifestSha256;
       process.env.OPENCLAW_REVIEWED_R_SHA = reviewedTree;
       try {
-        await expect(
-          verifyCommittedInputs({
-            vendorRoot: detachedVendorRoot,
-            reviewedExportManifestPath: undefined,
-            reviewedExportManifestSha256: undefined,
-            reviewedTree: undefined,
-          }),
-        ).rejects.toThrow(/reviewed export manifest path is required/i);
+        const invalidExplicitBindings = [
+          {
+            label: "missing manifest path",
+            options: {
+              reviewedExportManifestPath: undefined,
+              reviewedExportManifestSha256: manifestSha256,
+              reviewedTree,
+            },
+            expected: /reviewed export manifest path is required/i,
+          },
+          {
+            label: "missing reviewed tree",
+            options: {
+              reviewedExportManifestPath: manifestPath,
+              reviewedExportManifestSha256: manifestSha256,
+              reviewedTree: undefined,
+            },
+            expected: /reviewed export tree is required/i,
+          },
+          {
+            label: "missing manifest SHA-256",
+            options: {
+              reviewedExportManifestPath: manifestPath,
+              reviewedExportManifestSha256: undefined,
+              reviewedTree,
+            },
+            expected: /reviewed export manifest SHA-256 is required/i,
+          },
+          {
+            label: "empty manifest path",
+            options: {
+              reviewedExportManifestPath: "",
+              reviewedExportManifestSha256: manifestSha256,
+              reviewedTree,
+            },
+            expected: /reviewed export manifest path is required/i,
+          },
+          {
+            label: "empty reviewed tree",
+            options: {
+              reviewedExportManifestPath: manifestPath,
+              reviewedExportManifestSha256: manifestSha256,
+              reviewedTree: "",
+            },
+            expected: /reviewed export tree is required/i,
+          },
+          {
+            label: "empty manifest SHA-256",
+            options: {
+              reviewedExportManifestPath: manifestPath,
+              reviewedExportManifestSha256: "",
+              reviewedTree,
+            },
+            expected: /reviewed export manifest SHA-256 is required/i,
+          },
+        ] as const;
+        for (const testCase of invalidExplicitBindings) {
+          await expect(
+            verifyCommittedInputs({
+              vendorRoot: detachedVendorRoot,
+              ...testCase.options,
+            }),
+            testCase.label,
+          ).rejects.toThrow(testCase.expected);
+        }
       } finally {
         const restore = (key: string, value: string | undefined) => {
           if (value === undefined) delete process.env[key];
