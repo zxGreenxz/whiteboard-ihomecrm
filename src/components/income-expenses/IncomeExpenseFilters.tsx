@@ -126,9 +126,15 @@ export function IncomeExpenseFiltersBar({
       />
 
       {/* Tòa nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
+      {/*
+        includeVirtual: phiếu thu chi GHI ĐƯỢC vào toà ảo ("Kho Văn Phòng
+        Chung") qua form, nên ô lọc phải chọn được nó — thiếu cờ này thì 101
+        phiếu của nó không lọc ra được ở đây (đo trên prod 27/07/2026).
+      */}
       <BuildingFilterSelect
         value={buildingIds}
         onChange={handleBuildingIdsChange}
+        includeVirtual
         className="w-full sm:w-[260px] h-9 text-sm"
       />
 

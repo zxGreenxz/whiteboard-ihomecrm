@@ -15,6 +15,13 @@ export interface BuildingFilterSelectProps {
   onChange: (ids: string[]) => void;
   /** Nguồn toà nhà. Mặc định tự useBuildings() — RLS đã cắt theo scope staff. */
   buildings?: { id: string; name: string }[];
+  /**
+   * Cho chọn cả TOÀ ẢO (is_virtual) — bucket tài chính gom thu/chi không thuộc
+   * toà vật lý, hiện là "Kho Văn Phòng Chung". Chỉ bật ở ô lọc thu chi & báo
+   * cáo tài chính; các màn quản lý toà nhà giữ mặc định ẩn.
+   * Bỏ qua khi truyền sẵn `buildings`.
+   */
+  includeVirtual?: boolean;
   placeholder?: string;
   className?: string;
   /** Class cho dropdown (vd nới rộng hơn trigger để không xén tên toà). */
@@ -36,6 +43,7 @@ export function BuildingFilterSelect({
   value,
   onChange,
   buildings: buildingsProp,
+  includeVirtual = false,
   placeholder = "Tất cả toà nhà",
   className,
   contentClassName,
@@ -46,6 +54,7 @@ export function BuildingFilterSelect({
 }: BuildingFilterSelectProps) {
   const { data: fetchedBuildings = [] } = useBuildings({
     enabled: buildingsProp === undefined,
+    includeVirtual,
   });
 
   const options = React.useMemo(() => {
