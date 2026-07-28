@@ -36,6 +36,7 @@ import { useRooms } from '@/hooks/useRooms';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
+import { useToast } from '@/hooks/use-toast';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { computePreviousDebt, getContractDiscountSlot } from '@/lib/invoiceHelpers';
@@ -109,6 +110,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   const [meterId, setMeterId] = useState<string | null>(null);
 
   const createMutation = useCreateInvoice();
+  const { toast } = useToast();
   // Chỉ kéo HĐ ACTIVE server-side — dialog lập hoá đơn không cần HĐ đã thanh
   // lý/nháp (filter client giữ lại như chốt chặn phụ).
   // enabled: open — dialog mounted sẵn (đóng) không fetch, đỡ kéo cả bảng HĐ
@@ -474,6 +476,10 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     //    (tránh 409 do unique reading_code / chỉ số trùng).
     const consumption =
       (Number(data.current_reading) || 0) - (Number(data.prev_reading) || 0);
+    // [A5] Lý do KHÔNG chốt được chỉ số. Cố ý KHÔNG toast ở đây: hoá đơn mãi
+    // tới dòng createMutation.mutate bên dưới mới được tạo, và nó vẫn có thể
+    // fail (unique billing_month / RLS). Báo ở đây là nói sai "đã tạo hoá đơn".
+    let readingWarn: string | null = null;
     if (meterId && data.current_reading != null && consumption >= 0) {
       const { data: existing } = await (supabase as any)
         .from('meter_readings')
@@ -484,7 +490,12 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         .limit(1);
       if (!existing || existing.length === 0) {
         const user = await getSessionUser();
-        if (user) {
+        if (!user) {
+          // Trước đây im lặng tuyệt đối. Nhánh này hoá đơn cũng sẽ fail
+          // (useCreateInvoice tự getSessionUser rồi throw 'Not authenticated'),
+          // nên toast không bao giờ chạy — vẫn ghi log để còn dấu vết.
+          console.error('Skip ghi chỉ số: không lấy được phiên đăng nhập');
+        } else {
           const { error: readingErr } = await supabase
             .from('meter_readings')
             .insert({
@@ -502,10 +513,18 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
               recorded_by: user.id,
             } as any);
           if (readingErr) {
-            console.warn('Skip ghi chỉ số (đã tồn tại hoặc lỗi):', readingErr.message);
+            console.error('Ghi chỉ số điện thất bại:', readingErr);
+            readingWarn = readingErr.message;
           }
         }
       }
+    } else if (data.current_reading != null && Number(data.current_reading) > 0) {
+      // Có nhập chỉ số nhưng không chốt được. Hai nhánh này trước đây im lặng
+      // tuyệt đối — không cả console.warn — nên hoá đơn và sổ chỉ số lệch nhau
+      // mà không ai biết.
+      readingWarn = !meterId
+        ? 'phòng chưa gắn công tơ điện'
+        : 'chỉ số mới nhỏ hơn chỉ số cũ';
     }
 
     // 2) Build items. Nếu user điền period_start/end → prorate rent + nước + PDV
@@ -614,7 +633,24 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
       items,
     };
 
-    createMutation.mutate(invoiceFormData, { onSuccess: handleClose });
+    createMutation.mutate(invoiceFormData, {
+      onSuccess: () => {
+        // [A5] Chỉ báo SAU khi hoá đơn đã tạo thật, nên câu "đã tạo hoá đơn" là
+        // đúng. TOAST_LIMIT = 1 (use-toast.ts) nên toast destructive này chiếm
+        // chỗ toast thành công phát trước đó — cảnh báo thắng, đúng như luồng
+        // Excel đã làm (ExcelInvoiceDialog.tsx:207-213).
+        if (readingWarn) {
+          toast({
+            variant: 'destructive',
+            title: 'Chưa lưu được chỉ số điện',
+            description:
+              `Đã tạo hoá đơn nhưng KHÔNG lưu được chỉ số điện (${readingWarn}). ` +
+              'Tiền điện trên hoá đơn và sổ chỉ số đang lệch nhau — vui lòng ghi chỉ số thủ công.',
+          });
+        }
+        handleClose();
+      },
+    });
   };
 
   return (
