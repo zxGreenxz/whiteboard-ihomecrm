@@ -4,7 +4,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
 import { NetworkStatus } from "../NetworkStatus";
 
-export function InterfacesTab({ site }: { site: NetworkBuilding }) {
+export function InterfacesTab({ site, isDemo = true }: { site: NetworkBuilding; isDemo?: boolean }) {
   return (
     <section className="nc-panel">
       <div className="nc-panel-heading"><div><p className="nc-eyebrow">MikroTik</p><h3>Cổng giao tiếp</h3></div><span>WAN/uplink được bảo vệ khỏi thao tác ghi</span></div>
@@ -19,7 +19,7 @@ export function InterfacesTab({ site }: { site: NetworkBuilding }) {
             <TableCell>{item.rxMbps} / {item.txMbps} Mbps</TableCell>
             <TableCell><progress max={100} value={item.utilizationPercent} aria-label={`Sử dụng ${item.name}`} /> {item.utilizationPercent}%</TableCell>
             <TableCell>{item.errors} / {item.discards}</TableCell>
-            <TableCell>{item.protected ? <span className="nc-inline-icon"><LockKeyhole /> Đã khoá</span> : item.status === "up" ? "Cho phép mô phỏng tắt/bật" : "Không khả dụng khi link down"}</TableCell>
+            <TableCell>{item.protected ? <span className="nc-inline-icon"><LockKeyhole /> Đã khoá</span> : item.status === "up" ? (isDemo ? "Cho phép mô phỏng tắt/bật" : "Cho phép tắt/bật có kiểm soát") : "Không khả dụng khi link down"}</TableCell>
           </TableRow>
         ))}</TableBody>
       </Table>

@@ -1,11 +1,31 @@
 import { describe, expect, it } from "vitest";
 
 import { DemoNetworkCenterRepository } from "@/lib/network-center/demoRepository";
-import { synchronizeDemoNetworkCenterRepository } from "@/lib/network-center/repositoryLifecycle";
+import {
+  createAsyncDemoNetworkCenterRepository,
+  synchronizeDemoNetworkCenterRepository,
+} from "@/lib/network-center/repositoryLifecycle";
 
 const actor = { id: "user-1", label: "Nguyễn An" };
 
 describe("network center repository lifecycle", () => {
+  it("exposes an asynchronous adapter without changing the deterministic demo service", async () => {
+    const service = new DemoNetworkCenterRepository([
+      { id: "building-a", name: "Tòa A", roomsCount: 10 },
+    ]);
+    const repository = createAsyncDemoNetworkCenterRepository(service);
+    const site = await repository.getBuilding("building-a");
+
+    expect(site?.buildingName).toBe("Tòa A");
+    await repository.updateSettings("building-a", { pollingSeconds: 120 }, actor);
+    synchronizeDemoNetworkCenterRepository(service, [
+      { id: "building-a", name: "Tòa A đổi tên", roomsCount: 11 },
+    ]);
+
+    expect((await repository.getBuilding("building-a"))?.settings.pollingSeconds).toBe(120);
+    expect((await repository.getBuilding("building-a"))?.buildingName).toBe("Tòa A đổi tên");
+  });
+
   it("creates identical snapshots and an empty diff when sanitized config is unchanged", () => {
     const repository = new DemoNetworkCenterRepository([
       { id: "building-a", name: "Tòa A", roomsCount: 10 },

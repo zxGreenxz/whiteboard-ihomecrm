@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   NETWORK_ACTION_DEFINITIONS,
   NETWORK_CENTER_TABS,
+  backupAgeText,
   deriveFleetView,
   filterFleet,
   selectPriorityIncidents,
+  summarizeAruba,
   summarizeFleet,
   validateNetworkAction,
 } from "@/lib/network-center/model";
@@ -28,6 +30,25 @@ afterEach(() => {
 });
 
 describe("network center deterministic model", () => {
+  it("shows a truthful empty backup label instead of a negative age", () => {
+    expect(backupAgeText(-1)).toBe("Chưa có bản");
+    expect(backupAgeText(0)).toBe("0 giờ");
+    expect(backupAgeText(12)).toBe("12 giờ");
+  });
+
+  it("uses fleet Aruba aggregates until detail pagination provides exact health", () => {
+    const fleet = new DemoNetworkCenterRepository(buildings).listFleet();
+    const site = fleet[0];
+    site.arubaTotal = 500;
+    site.arubaOnline = null;
+    expect(summarizeAruba(site)).toEqual({ total: 500, online: null });
+    delete site.arubaTotal;
+    expect(summarizeAruba(site)).toEqual({
+      total: site.arubaNodes.length,
+      online: site.arubaNodes.filter((node) => node.status === "online").length,
+    });
+  });
+
   it("generates stable state from accessible physical buildings only", () => {
     const first = new DemoNetworkCenterRepository(buildings).listFleet();
     const second = new DemoNetworkCenterRepository(buildings).listFleet();

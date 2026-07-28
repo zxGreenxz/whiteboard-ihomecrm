@@ -1,9 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { useProfile } from "@/hooks/useProfile";
+import { supabase } from "@/integrations/supabase/client";
 import { canUse } from "@/lib/permissionPages";
 import type {
   MaintenanceInput,
@@ -13,17 +15,34 @@ import type {
 } from "@/lib/network-center/contracts";
 import { resolveNetworkActor } from "@/lib/network-center/actorIdentity";
 import { DemoNetworkCenterRepository } from "@/lib/network-center/demoRepository";
-import { synchronizeDemoNetworkCenterRepository } from "@/lib/network-center/repositoryLifecycle";
+import { networkCenterQueryKeys } from "@/lib/network-center/queryKeys";
+import {
+  createAsyncDemoNetworkCenterRepository,
+  synchronizeDemoNetworkCenterRepository,
+} from "@/lib/network-center/repositoryLifecycle";
+import {
+  NETWORK_CENTER_REALTIME_TABLES,
+  resolveNetworkCenterMode,
+  resolveNetworkCenterRealtimeTarget,
+  selectNetworkCenterRepository,
+} from "@/lib/network-center/runtime";
+import { supabaseNetworkCenterRepository } from "@/lib/network-center/supabaseRepository";
 
 const EXECUTE_DISABLED_MESSAGE =
-  "Tài khoản chỉ có quyền xem. Cần network_center.execute để thay đổi dữ liệu mô phỏng cục bộ.";
+  "Tài khoản chỉ có quyền xem. Cần network_center.execute để thực thi thao tác.";
+const REALTIME_DEBOUNCE_MS = 150;
 
-export function useNetworkCenter() {
+function normalizeId(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+export function useNetworkCenter(selectedBuildingId?: string) {
+  const queryClient = useQueryClient();
   const buildingsQuery = useBuildings();
   const permissionsQuery = useMyPermissions();
   const authQuery = useAuth();
   const profileQuery = useProfile();
-  const [, forceRefresh] = useState(0);
+  const mode = resolveNetworkCenterMode(import.meta.env.VITE_NETWORK_CENTER_MODE);
 
   const physicalBuildings = useMemo<PhysicalBuildingRecord[]>(
     () =>
@@ -31,76 +50,326 @@ export function useNetworkCenter() {
         id: string;
         name: string;
         rooms_count?: number | null;
+        organization_id?: string | null;
       }) => ({
         id: building.id,
         name: building.name,
         roomsCount: building.rooms_count ?? 0,
+        organizationId: building.organization_id ?? undefined,
       })),
     [buildingsQuery.data],
   );
 
   const buildingSignature = physicalBuildings
-    .map((building) => `${building.id}:${building.name}:${building.roomsCount ?? 0}`)
+    .map((building) => (
+      `${building.id}:${building.name}:${building.roomsCount ?? 0}:${building.organizationId ?? ""}`
+    ))
     .join("|");
-
-  const [repository] = useState(() => new DemoNetworkCenterRepository([]));
-  const repositorySignature = useRef("");
-  if (repositorySignature.current !== buildingSignature) {
-    synchronizeDemoNetworkCenterRepository(repository, physicalBuildings);
-    repositorySignature.current = buildingSignature;
+  const demoServiceRef = useRef<DemoNetworkCenterRepository | null>(null);
+  if (!demoServiceRef.current) {
+    demoServiceRef.current = new DemoNetworkCenterRepository([]);
   }
+  const demoSignatureRef = useRef("");
+  if (mode === "demo" && demoSignatureRef.current !== buildingSignature) {
+    synchronizeDemoNetworkCenterRepository(demoServiceRef.current, physicalBuildings);
+    demoSignatureRef.current = buildingSignature;
+  }
+  const demoRepository = useMemo(
+    () => createAsyncDemoNetworkCenterRepository(demoServiceRef.current!),
+    [],
+  );
+  const repository = selectNetworkCenterRepository(
+    mode,
+    supabaseNetworkCenterRepository,
+    demoRepository,
+  );
 
   const actor = resolveNetworkActor(authQuery.data, profileQuery.data);
-  const canExecute = Boolean(actor.id) && canUse(permissionsQuery.data, "network_center", "execute");
-  const refresh = () => forceRefresh((version) => version + 1);
+  const canView = Boolean(actor.id) && canUse(permissionsQuery.data, "network_center", "view");
+  const canExecute = Boolean(actor.id) && canUse(
+    permissionsQuery.data,
+    "network_center",
+    "execute",
+  );
+  const organizationIds = useMemo(
+    () => physicalBuildings
+      .map((building) => building.organizationId)
+      .filter((value): value is string => Boolean(value)),
+    [physicalBuildings],
+  );
+  const fleetKey = useMemo(
+    () => networkCenterQueryKeys.fleet(actor.id || "anonymous", organizationIds),
+    [actor.id, organizationIds],
+  );
+  const fleetQuery = useQuery({
+    queryKey: fleetKey,
+    queryFn: () => repository.listFleet(),
+    enabled: canView && !buildingsQuery.isLoading && !permissionsQuery.isLoading,
+  });
+  const fleet = useMemo(() => fleetQuery.data ?? [], [fleetQuery.data]);
+
+  const physicalBuildingById = useMemo(
+    () => new Map(physicalBuildings.map((building) => [normalizeId(building.id), building])),
+    [physicalBuildings],
+  );
+  const normalizedSelectedBuildingId = normalizeId(selectedBuildingId);
+  const selectedOrganizationId = physicalBuildingById.get(normalizedSelectedBuildingId)
+    ?.organizationId ?? "unscoped";
+  const buildingKey = useMemo(
+    () => networkCenterQueryKeys.building(
+      actor.id || "anonymous",
+      selectedOrganizationId,
+      normalizedSelectedBuildingId || "none",
+    ),
+    [actor.id, normalizedSelectedBuildingId, selectedOrganizationId],
+  );
+  const buildingQuery = useQuery({
+    queryKey: buildingKey,
+    queryFn: async () => {
+      const fallback = fleet.find(
+        (building) => normalizeId(building.buildingId) === normalizedSelectedBuildingId,
+      );
+      if (!fallback) return null;
+      return repository.getBuilding(normalizedSelectedBuildingId, fallback);
+    },
+    enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
+  });
+
+  const availableBuildings = useMemo<PhysicalBuildingRecord[]>(
+    () => fleet.map((building) => ({
+      id: building.buildingId,
+      name: building.buildingName,
+      roomsCount: building.roomsCount,
+      organizationId: physicalBuildingById.get(normalizeId(building.buildingId))?.organizationId,
+    })),
+    [fleet, physicalBuildingById],
+  );
+
+  const invalidateBuilding = useCallback(async (buildingId: string) => {
+    const normalizedBuildingId = normalizeId(buildingId);
+    const organizationId = physicalBuildingById.get(normalizedBuildingId)?.organizationId
+      ?? "unscoped";
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: fleetKey, exact: true }),
+      queryClient.invalidateQueries({
+        queryKey: networkCenterQueryKeys.building(
+          actor.id || "anonymous",
+          organizationId,
+          normalizedBuildingId,
+        ),
+        exact: true,
+      }),
+    ]);
+  }, [actor.id, fleetKey, physicalBuildingById, queryClient]);
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: (variables: { buildingId: string; incidentId: string; requestId: string }) =>
+      repository.acknowledgeIncident(
+        variables.buildingId,
+        variables.incidentId,
+        actor,
+        variables.requestId,
+      ),
+    onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
+  });
+  const createMaintenanceMutation = useMutation({
+    mutationFn: (variables: {
+      buildingId: string;
+      input: MaintenanceInput;
+      requestId: string;
+    }) => repository.createMaintenance(
+      variables.buildingId,
+      variables.input,
+      actor,
+      variables.requestId,
+    ),
+    onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
+  });
+  const cancelMaintenanceMutation = useMutation({
+    mutationFn: (variables: {
+      buildingId: string;
+      maintenanceId: string;
+      requestId: string;
+    }) => repository.cancelMaintenance(
+      variables.buildingId,
+      variables.maintenanceId,
+      actor,
+      variables.requestId,
+    ),
+    onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
+  });
+  const captureConfigurationMutation = useMutation({
+    mutationFn: (variables: { buildingId: string; label: string; requestId: string }) =>
+      repository.captureConfiguration(
+        variables.buildingId,
+        variables.label,
+        actor,
+        variables.requestId,
+      ),
+    onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
+  });
+  const executeActionMutation = useMutation({
+    mutationFn: (variables: {
+      buildingId: string;
+      request: NetworkActionRequest;
+      requestId: string;
+    }) => repository.executeAction(
+      variables.buildingId,
+      variables.request,
+      actor,
+      variables.requestId,
+    ),
+    onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
+  });
+  const updateSettingsMutation = useMutation({
+    mutationFn: (variables: {
+      buildingId: string;
+      settings: Partial<NetworkSettings>;
+      requestId: string;
+      expectedVersion: number;
+    }) => repository.updateSettings(
+      variables.buildingId,
+      variables.settings,
+      actor,
+      variables.requestId,
+      variables.expectedVersion,
+    ),
+    onSuccess: (_, variables) => invalidateBuilding(variables.buildingId),
+  });
+
+  useEffect(() => {
+    if (mode !== "production" || !canView || !actor.id) return undefined;
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let invalidateFleet = false;
+    const pendingBuildingIds = new Set<string>();
+    const flush = () => {
+      timeout = undefined;
+      const promises: Array<Promise<unknown>> = [];
+      if (invalidateFleet) {
+        promises.push(queryClient.invalidateQueries({ queryKey: fleetKey, exact: true }));
+      }
+      for (const buildingId of pendingBuildingIds) {
+        const organizationId = physicalBuildingById.get(buildingId)?.organizationId ?? "unscoped";
+        promises.push(queryClient.invalidateQueries({
+          queryKey: networkCenterQueryKeys.building(actor.id, organizationId, buildingId),
+          exact: true,
+        }));
+      }
+      invalidateFleet = false;
+      pendingBuildingIds.clear();
+      void Promise.allSettled(promises);
+    };
+    const schedule = (table: (typeof NETWORK_CENTER_REALTIME_TABLES)[number], payload: unknown) => {
+      const target = resolveNetworkCenterRealtimeTarget(
+        table,
+        payload,
+        normalizedSelectedBuildingId || undefined,
+      );
+      invalidateFleet ||= target.invalidateFleet;
+      target.buildingIds.forEach((buildingId) => pendingBuildingIds.add(buildingId));
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(flush, REALTIME_DEBOUNCE_MS);
+    };
+
+    let channel = supabase.channel(`network-center-${actor.id}`);
+    for (const table of NETWORK_CENTER_REALTIME_TABLES) {
+      channel = channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table },
+        (payload) => schedule(table, payload),
+      );
+    }
+    channel.subscribe();
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+      void supabase.removeChannel(channel);
+    };
+  }, [
+    actor.id,
+    canView,
+    fleetKey,
+    mode,
+    normalizedSelectedBuildingId,
+    physicalBuildingById,
+    queryClient,
+  ]);
+
   const requireExecute = () => {
     if (!canExecute) throw new Error(EXECUTE_DISABLED_MESSAGE);
   };
 
   return {
+    mode,
+    isDemo: mode === "demo",
     buildingsQuery,
     permissionsQuery,
     authQuery,
     profileQuery,
+    fleetQuery,
+    buildingQuery,
     physicalBuildings,
-    fleet: repository.listFleet(),
+    availableBuildings,
+    fleet,
+    selectedBuilding: buildingQuery.data ?? null,
     actor,
+    canView,
     canExecute,
     executeDisabledMessage: EXECUTE_DISABLED_MESSAGE,
-    getBuilding: (buildingId: string) => repository.getBuilding(buildingId),
-    acknowledgeIncident(buildingId: string, incidentId: string) {
+    async acknowledgeIncident(buildingId: string, incidentId: string) {
       requireExecute();
-      repository.acknowledgeIncident(buildingId, incidentId, actor);
-      refresh();
+      return acknowledgeMutation.mutateAsync({
+        buildingId,
+        incidentId,
+        requestId: crypto.randomUUID(),
+      });
     },
-    createMaintenance(buildingId: string, input: MaintenanceInput) {
+    async createMaintenance(buildingId: string, input: MaintenanceInput) {
       requireExecute();
-      const maintenance = repository.createMaintenance(buildingId, input, actor);
-      refresh();
-      return maintenance;
+      return createMaintenanceMutation.mutateAsync({
+        buildingId,
+        input,
+        requestId: crypto.randomUUID(),
+      });
     },
-    cancelMaintenance(buildingId: string, maintenanceId: string) {
+    async cancelMaintenance(buildingId: string, maintenanceId: string) {
       requireExecute();
-      repository.cancelMaintenance(buildingId, maintenanceId, actor);
-      refresh();
+      return cancelMaintenanceMutation.mutateAsync({
+        buildingId,
+        maintenanceId,
+        requestId: crypto.randomUUID(),
+      });
     },
-    captureConfiguration(buildingId: string, label: string) {
+    async captureConfiguration(buildingId: string, label: string) {
       requireExecute();
-      const revision = repository.captureConfiguration(buildingId, label, actor);
-      refresh();
-      return revision;
+      return captureConfigurationMutation.mutateAsync({
+        buildingId,
+        label,
+        requestId: crypto.randomUUID(),
+      });
     },
     compareRevisions: repository.compareRevisions.bind(repository),
-    executeAction(buildingId: string, request: NetworkActionRequest) {
+    async executeAction(buildingId: string, request: NetworkActionRequest) {
       requireExecute();
-      const job = repository.executeAction(buildingId, request, actor);
-      refresh();
-      return job;
+      return executeActionMutation.mutateAsync({
+        buildingId,
+        request,
+        requestId: crypto.randomUUID(),
+      });
     },
-    updateSettings(buildingId: string, settings: Partial<NetworkSettings>) {
+    async updateSettings(
+      buildingId: string,
+      settings: Partial<NetworkSettings>,
+      expectedVersion: number,
+    ) {
       requireExecute();
-      repository.updateSettings(buildingId, settings, actor);
-      refresh();
+      return updateSettingsMutation.mutateAsync({
+        buildingId,
+        settings,
+        requestId: crypto.randomUUID(),
+        expectedVersion,
+      });
     },
   };
 }

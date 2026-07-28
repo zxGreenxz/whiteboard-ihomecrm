@@ -87,6 +87,7 @@ describe("network center audit and change details", () => {
     const site = createSiteWithStructuredAction();
     const controller = {
       canExecute: true,
+      isDemo: true,
       executeDisabledMessage: "",
       compareRevisions: () => ({ fromRevisionId: "a", toRevisionId: "b", changeCount: 0, lines: [] }),
       captureConfiguration: () => undefined,
@@ -172,6 +173,7 @@ describe("network center audit and change details", () => {
     const site = createSiteWithStructuredAction();
     const controller = {
       canExecute: true,
+      isDemo: true,
       executeDisabledMessage: "",
       compareRevisions: () => ({ fromRevisionId: "a", toRevisionId: "b", changeCount: 0, lines: [] }),
       captureConfiguration: () => undefined,

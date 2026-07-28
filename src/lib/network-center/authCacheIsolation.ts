@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 const IDENTITY_SCOPED_QUERY_KEYS = [
   ["my-permissions"],
   ["buildings"],
+  ["network-center"],
 ] as const;
 
 export function createAuthIdentityCacheIsolator(queryClient: QueryClient) {

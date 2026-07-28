@@ -2,7 +2,11 @@ import { expect, test } from '@playwright/test';
 
 import { login, trackConsoleErrors } from './auth';
 
+const DEMO_MODE = process.env.FLEET_NETWORK_CENTER_MODE === 'demo';
+
 test.describe('Network Center deterministic frontend', () => {
+  test.skip(!DEMO_MODE, 'Local-only interaction coverage requires explicit demo mode');
+
   test('renders fleet, preserves URL-backed tabs, and runs local-only interactions', async ({ page }) => {
     const consoleErrors = trackConsoleErrors(page);
     await login(page, 'chunha');
@@ -60,22 +64,25 @@ test.describe('Network Center deterministic frontend', () => {
     await page.getByRole('button', { name: 'Tạo bảo trì' }).click();
     await page.getByLabel('Lý do').fill('Kiểm tra kết nối định kỳ');
     await page.getByRole('button', { name: 'Tạo mô phỏng cục bộ' }).click();
-    await expect(page.getByText('Kiểm tra kết nối định kỳ', { exact: true })).toBeVisible();
+    await expect(page.locator('.nc-maintenance-banner').getByText('Kiểm tra kết nối định kỳ', { exact: true })).toBeVisible();
 
     await tabList.getByRole('tab', { name: 'Sao lưu & so sánh', exact: true }).click();
     const revisionRowsBefore = await page.locator('tbody tr').count();
     await page.getByRole('button', { name: 'Chụp cấu hình' }).click();
     await expect.poll(() => page.locator('tbody tr').count()).toBe(revisionRowsBefore + 1);
     await page.getByRole('button', { name: 'So sánh hai bản' }).click();
-    await expect(page.getByRole('heading', { name: 'So sánh cấu hình đã làm sạch' })).toBeVisible();
+    const diffDialog = page.getByRole('dialog', { name: 'So sánh cấu hình đã làm sạch' });
+    await expect(diffDialog).toBeVisible();
     await expect(page.getByText(/hai bản cấu hình khác nhau.*Thông tin xác thực/i)).toBeVisible();
-    await page.keyboard.press('Escape');
+    await diffDialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(diffDialog).toBeHidden();
 
     await tabList.getByRole('tab', { name: 'Cấu hình', exact: true }).click();
     await page.getByRole('button', { name: 'Thao tác MikroTik' }).click();
     await expect(page.getByText('kiểm tra đầu vào → sao lưu → thực hiện → kiểm tra sau → hoàn tất', { exact: false })).toBeVisible();
-    await expect(page.getByText('Trước / Sau', { exact: true })).toBeVisible();
-    await expect(page.getByText('Kiểm tra sau', { exact: true })).toBeVisible();
+    const actionPreview = page.getByLabel('Xem trước thao tác');
+    await expect(actionPreview.getByText('Trước / Sau', { exact: true })).toBeVisible();
+    await expect(actionPreview.getByText('Kiểm tra sau', { exact: true })).toBeVisible();
     await page.getByLabel('Lý do thao tác').fill('Làm mới DNS sau kiểm tra định kỳ');
     await page.getByRole('button', { name: 'Kiểm tra và mô phỏng cục bộ' }).click();
     await expect(page.getByText(/không có thiết bị thật nào bị thay đổi/i)).toBeVisible();
@@ -183,5 +190,42 @@ test.describe('Network Center deterministic frontend', () => {
     ));
     expect(backupSummaryFontSize).toBeGreaterThanOrEqual(16);
     expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toEqual([]);
+  });
+});
+
+test.describe('Network Center production repository', () => {
+  test.skip(DEMO_MODE, 'Production repository coverage is disabled in explicit demo mode');
+
+  test('shows live unprovisioned state without silently falling back to demo', async ({ page }) => {
+    const consoleErrors = trackConsoleErrors(page);
+    await login(page, 'chunha');
+    await page.goto('/network-center');
+
+    await expect(page.getByRole('heading', { name: 'Trung tâm mạng', exact: true })).toBeVisible();
+    await expect(page.getByText('Dữ liệu trực tiếp', { exact: true })).toBeVisible();
+    await expect(page.getByText('Dữ liệu mô phỏng', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.nc-building-link').first()).toBeVisible();
+
+    await page.locator('.nc-building-link').first().click();
+    await expect(page).toHaveURL(/\/network-center\/buildings\//);
+    await expect(page.getByText('Chưa kết nối', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('-1 giờ', { exact: false })).toHaveCount(0);
+    expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toEqual([]);
+  });
+
+  test('keeps RPC errors visible instead of fabricating demo fleet data', async ({ page }) => {
+    await login(page, 'chunha');
+    await page.route('**/rest/v1/rpc/network_center_list_fleet_v1', async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'forced-network-center-failure' }),
+      });
+    });
+    await page.goto('/network-center');
+
+    await expect(page.getByRole('heading', { name: 'Không tải được toà nhà' })).toBeVisible();
+    await expect(page.getByText(/không tự tạo dữ liệu thay thế/i)).toBeVisible();
+    await expect(page.getByText('Dữ liệu mô phỏng', { exact: true })).toHaveCount(0);
   });
 });

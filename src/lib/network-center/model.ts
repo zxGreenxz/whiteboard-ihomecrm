@@ -29,6 +29,25 @@ export type NetworkCenterTab = (typeof NETWORK_CENTER_TABS)[number]["value"];
 export const isNetworkCenterTab = (value: string | null): value is NetworkCenterTab =>
   NETWORK_CENTER_TABS.some((tab) => tab.value === value);
 
+export function backupAgeText(hours: number): string {
+  return hours < 0 ? "Chưa có bản" : `${hours} giờ`;
+}
+
+export interface ArubaSummary {
+  total: number;
+  online: number | null;
+}
+
+/** Uses fleet aggregates when detail pagination has not been loaded yet. */
+export function summarizeAruba(site: NetworkBuilding): ArubaSummary {
+  const total = site.arubaTotal ?? site.arubaNodes.length;
+  const online = site.arubaOnline
+    ?? (site.arubaTotal === undefined
+      ? site.arubaNodes.filter((node) => node.status === "online").length
+      : null);
+  return { total, online };
+}
+
 export function isMaintenanceActive(
   maintenance: MaintenanceWindow | null,
   now: number | Date = Date.now(),

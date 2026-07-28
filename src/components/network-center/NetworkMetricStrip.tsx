@@ -11,7 +11,7 @@ const metrics = [
   { key: "activeMaintenance", label: "Đang bảo trì", icon: Wrench, tone: "info" },
 ] as const;
 
-export function NetworkMetricStrip({ summary }: { summary: FleetSummary }) {
+export function NetworkMetricStrip({ summary, isDemo = false }: { summary: FleetSummary; isDemo?: boolean }) {
   return (
     <section className="nc-kpis" aria-label="Chỉ số toàn hệ thống">
       {metrics.map((metric) => {
@@ -20,7 +20,7 @@ export function NetworkMetricStrip({ summary }: { summary: FleetSummary }) {
           <article className={`nc-kpi nc-tone-${metric.tone}`} key={metric.key}>
             <span className="nc-kpi-label"><Icon aria-hidden="true" /> {metric.label}</span>
             <strong>{summary[metric.key]}</strong>
-            <small><Clock3 aria-hidden="true" /> Cập nhật mô phỏng ổn định</small>
+            <small><Clock3 aria-hidden="true" /> {isDemo ? "Cập nhật mô phỏng ổn định" : "Cập nhật từ worker và Realtime"}</small>
           </article>
         );
       })}

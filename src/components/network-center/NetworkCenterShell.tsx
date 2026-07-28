@@ -11,12 +11,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { PhysicalBuildingRecord } from "@/lib/network-center/contracts";
+import type { NetworkCenterMode } from "@/lib/network-center/runtime";
 import { NetworkStatus } from "./NetworkStatus";
 
 interface NetworkCenterShellProps {
   buildings: PhysicalBuildingRecord[];
   selectedBuildingId?: string;
   canExecute: boolean;
+  mode: NetworkCenterMode;
   children: ReactNode;
 }
 
@@ -24,6 +26,7 @@ export function NetworkCenterShell({
   buildings,
   selectedBuildingId,
   canExecute,
+  mode,
   children,
 }: NetworkCenterShellProps) {
   const navigate = useNavigate();
@@ -56,7 +59,7 @@ export function NetworkCenterShell({
         </div>
 
         <div className="nc-header-tools">
-          <div className="nc-demo-label"><Database aria-hidden="true" /> Dữ liệu mô phỏng</div>
+          <div className="nc-demo-label"><Database aria-hidden="true" /> {mode === "demo" ? "Dữ liệu mô phỏng" : "Dữ liệu trực tiếp"}</div>
           <NetworkStatus kind={canExecute ? "execute" : "view-only"} />
           <div className="nc-building-picker">
             <span><Building2 aria-hidden="true" /> Chuyển toà nhà</span>

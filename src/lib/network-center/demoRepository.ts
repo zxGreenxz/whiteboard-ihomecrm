@@ -11,7 +11,6 @@ import type {
   NetworkActor,
   NetworkAuditAction,
   NetworkBuilding,
-  NetworkCenterRepository,
   NetworkHealth,
   NetworkIncident,
   NetworkJob,
@@ -285,10 +284,12 @@ function generateBuilding(building: PhysicalBuildingRecord): NetworkBuilding {
     mttrMinutes: seeded(seed, 8, 12, 56),
     activeClients,
     router: {
+      id: `demo-router-${building.id}`,
       identity: `MT-${seed.toString(16).slice(0, 6).toUpperCase()}`,
       model: MODELS[seed % MODELS.length],
       firmware,
       targetFirmware: "7.20.1",
+      lifecycleStatus: "ONLINE",
       wanStatus: wan.status,
       lastSeenLabel: wan.status === "down" ? "4 phút trước" : `${seeded(seed, 9, 6, 55)} giây trước`,
       cpuPercent: seeded(seed, 10, 8, 72),
@@ -299,6 +300,8 @@ function generateBuilding(building: PhysicalBuildingRecord): NetworkBuilding {
     interfaces,
     clients: makeClients(seed, activeClients),
     arubaNodes,
+    arubaTotal: arubaNodes.length,
+    arubaOnline: arubaNodes.filter((node) => node.status === "online").length,
     incidents: makeIncidents(seed, building.id, health),
     maintenance: null,
     revisions: [],
@@ -311,13 +314,14 @@ function generateBuilding(building: PhysicalBuildingRecord): NetworkBuilding {
       dependencyGrouping: true,
       changesPaused: false,
     },
+    settingsVersion: 1,
   };
   site.revisions = makeSeedRevisions(seed, site);
   site.audit = makeAudit(seed, site);
   return site;
 }
 
-export class DemoNetworkCenterRepository implements NetworkCenterRepository {
+export class DemoNetworkCenterRepository {
   private buildings: PhysicalBuildingRecord[] = [];
   private states = new Map<string, NetworkBuilding>();
   private revisionSequence = 0;
@@ -539,11 +543,20 @@ export class DemoNetworkCenterRepository implements NetworkCenterRepository {
     return clone(job);
   }
 
-  updateSettings(buildingId: string, settings: Partial<NetworkSettings>, actor: NetworkActor): void {
+  updateSettings(
+    buildingId: string,
+    settings: Partial<NetworkSettings>,
+    actor: NetworkActor,
+    expectedVersion?: number,
+  ): void {
     const site = this.requireBuilding(buildingId);
     this.requireActor(actor);
+    if (expectedVersion !== undefined && expectedVersion !== site.settingsVersion) {
+      throw new Error("Cài đặt đã thay đổi; vui lòng tải lại trước khi lưu");
+    }
     const nextSettings = validateNetworkSettings({ ...site.settings, ...settings });
     site.settings = nextSettings;
+    site.settingsVersion += 1;
     this.appendAudit(site, actor, {
       actionType: "update_settings",
       action: "Cập nhật cài đặt",

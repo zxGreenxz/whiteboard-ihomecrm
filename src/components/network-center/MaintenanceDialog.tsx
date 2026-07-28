@@ -21,19 +21,22 @@ interface MaintenanceDialogProps {
   buildingName: string;
   canExecute: boolean;
   disabledReason: string;
-  onCreate: (input: { durationMinutes: number; reason: string }) => void;
+  isDemo?: boolean;
+  onCreate: (input: { durationMinutes: number; reason: string }) => Promise<unknown>;
 }
 
-export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabledReason, onCreate }: MaintenanceDialogProps) {
+export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabledReason, isDemo = false, onCreate }: MaintenanceDialogProps) {
   const [open, setOpen] = useState(false);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const resetDraft = useCallback(() => {
     setDurationMinutes(60);
     setReason("");
     setError("");
+    setSubmitting(false);
   }, []);
 
   useEffect(() => {
@@ -46,14 +49,17 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabl
     if (!nextOpen) resetDraft();
   };
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+    setSubmitting(true);
     try {
-      onCreate({ durationMinutes, reason });
+      await onCreate({ durationMinutes, reason });
       changeOpen(false);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không thể tạo bảo trì mô phỏng");
+      setError(caught instanceof Error ? caught.message : "Không thể tạo cửa sổ bảo trì");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -72,9 +78,11 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabl
       </DialogTrigger>
       <DialogContent className="network-center network-center-dialog nc-dialog">
         <DialogHeader>
-          <DialogTitle>Tạo cửa sổ bảo trì mô phỏng cục bộ</DialogTitle>
+          <DialogTitle>{isDemo ? "Tạo cửa sổ bảo trì mô phỏng cục bộ" : "Tạo cửa sổ bảo trì"}</DialogTitle>
           <DialogDescription>
-            Chỉ cập nhật bộ nhớ demo của {buildingName}; không tắt cảnh báo hay thay đổi hệ thống thật.
+            {isDemo
+              ? `Chỉ cập nhật bộ nhớ demo của ${buildingName}; không thay đổi hệ thống thật.`
+              : `Tạo maintenance window cho ${buildingName}; worker vẫn ghi nhận trạng thái nhưng cảnh báo phù hợp sẽ được giảm nhiễu.`}
           </DialogDescription>
         </DialogHeader>
         <form className="nc-form" onSubmit={submit}>
@@ -101,7 +109,9 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabl
           {error ? <p className="nc-form-error" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => changeOpen(false)}>Huỷ</Button>
-            <Button type="submit" disabled={!canExecute}>Tạo mô phỏng cục bộ</Button>
+            <Button type="submit" disabled={!canExecute || submitting}>
+              {submitting ? "Đang tạo…" : isDemo ? "Tạo mô phỏng cục bộ" : "Tạo bảo trì"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

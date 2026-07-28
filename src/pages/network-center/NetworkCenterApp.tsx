@@ -1,4 +1,4 @@
-import { Route, Routes, useMatch, useParams } from "react-router-dom";
+import { Route, Routes, useMatch } from "react-router-dom";
 
 import { BuildingWorkspace } from "@/components/network-center/BuildingWorkspace";
 import { FleetOverview } from "@/components/network-center/FleetOverview";
@@ -13,22 +13,38 @@ import { useNetworkCenter, type NetworkCenterController } from "@/hooks/network-
 import "./networkCenter.css";
 
 export default function NetworkCenterApp() {
-  const controller = useNetworkCenter();
   const buildingMatch = useMatch("/network-center/buildings/:buildingId");
+  const controller = useNetworkCenter(buildingMatch?.params.buildingId);
 
-  if (controller.buildingsQuery.isLoading || controller.permissionsQuery.isLoading) {
+  if (
+    controller.authQuery.isLoading
+    || controller.buildingsQuery.isLoading
+    || controller.permissionsQuery.isLoading
+    || controller.fleetQuery.isLoading
+  ) {
     return <NetworkCenterLoading />;
   }
-  if (controller.buildingsQuery.isError) {
-    return <NetworkCenterError retry={() => controller.buildingsQuery.refetch()} />;
+  if (
+    controller.authQuery.isError
+    || controller.buildingsQuery.isError
+    || controller.permissionsQuery.isError
+    || controller.fleetQuery.isError
+  ) {
+    return <NetworkCenterError retry={() => {
+      void controller.authQuery.refetch();
+      void controller.buildingsQuery.refetch();
+      void controller.permissionsQuery.refetch();
+      void controller.fleetQuery.refetch();
+    }} />;
   }
-  if (!controller.physicalBuildings.length) return <NetworkCenterEmpty />;
+  if (!controller.availableBuildings.length) return <NetworkCenterEmpty />;
 
   return (
     <NetworkCenterShell
-      buildings={controller.physicalBuildings}
+      buildings={controller.availableBuildings}
       selectedBuildingId={buildingMatch?.params.buildingId}
       canExecute={controller.canExecute}
+      mode={controller.mode}
     >
       <Routes>
         <Route index element={<FleetOverview controller={controller} />} />
@@ -40,9 +56,11 @@ export default function NetworkCenterApp() {
 }
 
 function BuildingRoute({ controller }: { controller: NetworkCenterController }) {
-  const { buildingId = "" } = useParams<{ buildingId: string }>();
-  const site = controller.getBuilding(buildingId);
-  return site
-    ? <BuildingWorkspace site={site} controller={controller} />
+  if (controller.buildingQuery.isLoading) return <NetworkCenterLoading />;
+  if (controller.buildingQuery.isError) {
+    return <NetworkCenterError retry={() => void controller.buildingQuery.refetch()} />;
+  }
+  return controller.selectedBuilding
+    ? <BuildingWorkspace site={controller.selectedBuilding} controller={controller} />
     : <NetworkCenterNotFound building />;
 }

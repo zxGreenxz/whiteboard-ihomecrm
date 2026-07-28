@@ -2,17 +2,21 @@ import { Activity, DatabaseBackup, Network, Users } from "lucide-react";
 
 import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
+import { summarizeAruba } from "@/lib/network-center/model";
 import { MaintenanceDialog } from "../MaintenanceDialog";
 import { NetworkActionDialog } from "../NetworkActionDialog";
 import { NetworkStatus } from "../NetworkStatus";
 
 export function OverviewTab({ site, controller }: { site: NetworkBuilding; controller: NetworkCenterController }) {
-  const arubaOnline = site.arubaNodes.filter((node) => node.status === "online").length;
+  const aruba = summarizeAruba(site);
+  const arubaOnline = aruba.online ?? 0;
   const openIncidents = site.incidents.filter((incident) => incident.status !== "resolved").length;
   const wanTone = site.router.wanStatus === "up" ? "good" : "bad";
-  const arubaTone = site.arubaNodes.some((node) => node.status === "offline")
-    ? "bad"
-    : site.arubaNodes.some((node) => node.status === "slow") ? "warn" : "good";
+  const arubaTone = aruba.online === null
+    ? "info"
+    : site.arubaNodes.some((node) => node.status === "offline")
+      ? "bad"
+      : site.arubaNodes.some((node) => node.status === "slow") ? "warn" : "good";
   const incidentTone = openIncidents === 0
     ? "good"
     : site.incidents.some((incident) => incident.status !== "resolved" && ["critical", "high"].includes(incident.severity)) ? "bad" : "warn";
@@ -23,9 +27,9 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
         <article className={`nc-kpi nc-tone-${wanTone}`}><span className="nc-kpi-label"><Network /> WAN</span><strong>{site.router.wanStatus.toUpperCase()}</strong><small>{site.router.downloadMbps}/{site.router.uploadMbps} Mbps</small></article>
         <article className="nc-kpi nc-tone-info"><span className="nc-kpi-label"><Activity /> CPU / RAM</span><strong>{site.router.cpuPercent}/{site.router.memoryPercent}%</strong><small>{site.router.lastSeenLabel}</small></article>
         <article className="nc-kpi nc-tone-info"><span className="nc-kpi-label"><Users /> Client</span><strong>{site.activeClients}</strong><small>{site.clients.length} mẫu hiển thị</small></article>
-        <article className={`nc-kpi nc-tone-${arubaTone}`}><span className="nc-kpi-label"><Network /> Aruba</span><strong>{arubaOnline}/{site.arubaNodes.length}</strong><small>Chỉ hiển thị</small></article>
+        <article className={`nc-kpi nc-tone-${arubaTone}`}><span className="nc-kpi-label"><Network /> Aruba</span><strong>{aruba.online === null ? "—" : arubaOnline}/{aruba.total}</strong><small>Chỉ hiển thị</small></article>
         <article className={`nc-kpi nc-tone-${incidentTone}`}><span className="nc-kpi-label"><Activity /> Sự cố</span><strong>{openIncidents}</strong><small>đang theo dõi</small></article>
-        <article className={`nc-kpi nc-tone-${backupTone}`}><span className="nc-kpi-label"><DatabaseBackup /> Backup</span><strong>{site.backupAgeHours}h</strong><small>Mã mô phỏng cục bộ {site.revisions[0]?.hash.slice(-8)}</small></article>
+        <article className={`nc-kpi nc-tone-${backupTone}`}><span className="nc-kpi-label"><DatabaseBackup /> Backup</span><strong>{site.backupAgeHours < 0 ? "Chưa có" : `${site.backupAgeHours}h`}</strong><small>{site.revisions[0] ? `${controller.isDemo ? "Mã mô phỏng" : "SHA-256"} ${site.revisions[0].hash.slice(-8)}` : "Chưa có snapshot"}</small></article>
       </section>
 
       <div className="nc-building-layout">
@@ -48,6 +52,7 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
             site={site}
             canExecute={controller.canExecute}
             disabledReason={controller.executeDisabledMessage}
+            isDemo={controller.isDemo}
             onExecute={(request) => controller.executeAction(site.buildingId, request)}
           />
           <MaintenanceDialog
@@ -55,9 +60,15 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
             buildingName={site.buildingName}
             canExecute={controller.canExecute}
             disabledReason={controller.executeDisabledMessage}
+            isDemo={controller.isDemo}
             onCreate={(input) => controller.createMaintenance(site.buildingId, input)}
           />
-          <div className="nc-safe-copy"><strong>Chỉ mô phỏng cục bộ</strong><span>Các nút ghi chỉ đổi bộ nhớ demo; không gọi thiết bị thật, không đổi tuyến WAN mặc định hoặc firewall.</span></div>
+          <div className="nc-safe-copy">
+            <strong>{controller.isDemo ? "Chỉ mô phỏng cục bộ" : "Thực thi có kiểm soát"}</strong>
+            <span>{controller.isDemo
+              ? "Các nút ghi chỉ đổi bộ nhớ demo; không gọi thiết bị thật."
+              : "Worker gọi thiết bị thật qua WireGuard; không cho phép CLI tùy ý, đổi tuyến WAN mặc định hoặc sắp xếp lại firewall."}</span>
+          </div>
           <div className="nc-safe-copy"><strong>Aruba chỉ để theo dõi</strong><span>Không có thao tác ghi hoặc thông tin đăng nhập Aruba trong trình duyệt.</span></div>
         </aside>
       </div>

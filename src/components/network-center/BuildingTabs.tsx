@@ -33,14 +33,14 @@ export function BuildingTabs({ site, controller }: { site: NetworkBuilding; cont
         </TabsList>
       </div>
       <TabsContent value="overview"><OverviewTab site={site} controller={controller} /></TabsContent>
-      <TabsContent value="interfaces"><InterfacesTab site={site} /></TabsContent>
-      <TabsContent value="clients"><ClientsTab site={site} /></TabsContent>
-      <TabsContent value="topology"><TopologyTab site={site} /></TabsContent>
+      <TabsContent value="interfaces"><InterfacesTab site={site} isDemo={controller.isDemo} /></TabsContent>
+      <TabsContent value="clients"><ClientsTab site={site} isDemo={controller.isDemo} /></TabsContent>
+      <TabsContent value="topology"><TopologyTab site={site} isDemo={controller.isDemo} /></TabsContent>
       <TabsContent value="incidents"><IncidentsTab site={site} controller={controller} /></TabsContent>
       <TabsContent value="configuration"><ConfigurationTab site={site} controller={controller} /></TabsContent>
       <TabsContent value="backups"><BackupsTab site={site} controller={controller} /></TabsContent>
-      <TabsContent value="changes"><ChangesTab site={site} /></TabsContent>
-      <TabsContent value="audit"><AuditTab site={site} /></TabsContent>
+      <TabsContent value="changes"><ChangesTab site={site} isDemo={controller.isDemo} /></TabsContent>
+      <TabsContent value="audit"><AuditTab site={site} isDemo={controller.isDemo} /></TabsContent>
       <TabsContent value="settings"><SettingsTab site={site} controller={controller} /></TabsContent>
     </Tabs>
   );

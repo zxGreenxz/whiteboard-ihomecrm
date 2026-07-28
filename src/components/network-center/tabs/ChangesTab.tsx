@@ -40,10 +40,10 @@ function StructuredFields({
   );
 }
 
-export function ChangesTab({ site }: { site: NetworkBuilding }) {
+export function ChangesTab({ site, isDemo = true }: { site: NetworkBuilding; isDemo?: boolean }) {
   return (
     <section className="nc-panel">
-      <div className="nc-panel-heading"><div><p className="nc-eyebrow">Mô phỏng cục bộ · không gọi router thật</p><h3>Thay đổi</h3></div><strong>{site.jobs.length} lần thực hiện mô phỏng</strong></div>
+      <div className="nc-panel-heading"><div><p className="nc-eyebrow">{isDemo ? "Mô phỏng cục bộ · không gọi router thật" : "Hàng đợi worker · có backup và kiểm tra sau"}</p><h3>Thay đổi</h3></div><strong>{site.jobs.length} lần thực hiện</strong></div>
       {site.jobs.length ? (
         <ol className="nc-job-list" aria-live="polite">
           {site.jobs.map((job) => {
@@ -62,7 +62,7 @@ export function ChangesTab({ site }: { site: NetworkBuilding }) {
                 const StageStatusIcon = currentStageStatus.icon;
                 return <li className={`nc-stage-${stage.status}`} key={stage.key}><StageStatusIcon /><div><strong>{stage.label}</strong><span>{currentStageStatus.label}</span><p>{stage.detail}</p></div></li>;
               })}</ol>
-              <div className="nc-job-result"><strong>Kết quả mô phỏng:</strong> {job.result}</div>
+              <div className="nc-job-result"><strong>{isDemo ? "Kết quả mô phỏng:" : "Kết quả worker:"}</strong> {job.result}</div>
             </li>
           );})}
         </ol>

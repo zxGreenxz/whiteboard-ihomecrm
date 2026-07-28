@@ -30,7 +30,8 @@ interface NetworkActionDialogProps {
   site: NetworkBuilding;
   canExecute: boolean;
   disabledReason: string;
-  onExecute: (request: NetworkActionRequest) => NetworkJob;
+  isDemo?: boolean;
+  onExecute: (request: NetworkActionRequest) => Promise<NetworkJob>;
 }
 
 const initialFieldsFor = (type: NetworkActionType): Record<string, string | number | boolean> => {
@@ -42,7 +43,7 @@ const initialFieldsFor = (type: NetworkActionType): Record<string, string | numb
   );
 };
 
-export function NetworkActionDialog({ site, canExecute, disabledReason, onExecute }: NetworkActionDialogProps) {
+export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo = false, onExecute }: NetworkActionDialogProps) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<NetworkActionType>("flush_dns_cache");
   const [reason, setReason] = useState("");
@@ -50,6 +51,7 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, onExecut
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<NetworkJob | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const definition = useMemo(
     () => NETWORK_ACTION_DEFINITIONS.find((candidate) => candidate.type === type)!,
     [type],
@@ -65,6 +67,7 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, onExecut
     setConfirmation("");
     setError("");
     setResult(null);
+    setSubmitting(false);
   }, []);
 
   useEffect(() => {
@@ -85,14 +88,17 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, onExecut
     if (!nextOpen) resetDraft();
   };
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setResult(null);
     setError("");
+    setSubmitting(true);
     try {
-      setResult(onExecute({ type, reason, fields, confirmation }));
+      setResult(await onExecute({ type, reason, fields, confirmation }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Không thể mô phỏng thao tác");
+      setError(caught instanceof Error ? caught.message : "Không thể thực thi thao tác");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -111,9 +117,12 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, onExecut
       </DialogTrigger>
       <DialogContent className="network-center network-center-dialog nc-dialog nc-dialog-wide">
         <DialogHeader>
-          <DialogTitle>Mô phỏng thao tác MikroTik cục bộ</DialogTitle>
+          <DialogTitle>{isDemo ? "Mô phỏng thao tác MikroTik cục bộ" : "Thao tác MikroTik"}</DialogTitle>
           <DialogDescription>
-            Chỉ thay đổi bộ nhớ demo trong trình duyệt, không gọi router thật. Luồng: kiểm tra đầu vào → sao lưu → thực hiện → kiểm tra sau → hoàn tất.
+            {isDemo
+              ? "Chỉ thay đổi bộ nhớ demo trong trình duyệt, không gọi router thật."
+              : "Yêu cầu được kiểm tra, đưa vào hàng đợi worker và thực thi trực tiếp trên MikroTik mục tiêu."}
+            {" "}Luồng: kiểm tra đầu vào → sao lưu → thực hiện → kiểm tra sau → hoàn tất.
           </DialogDescription>
         </DialogHeader>
         <form className="nc-form" onSubmit={submit}>
@@ -199,11 +208,13 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, onExecut
                 <strong>{result.result}</strong>
                 <ol>{result.stages.map((stage) => <li key={stage.key}>✓ {stage.label}: {stage.detail}</li>)}</ol>
               </>
-            ) : "Kết quả mô phỏng cục bộ sẽ xuất hiện tại đây."}
+            ) : isDemo ? "Kết quả mô phỏng cục bộ sẽ xuất hiện tại đây." : "Trạng thái hàng đợi sẽ xuất hiện tại đây."}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => changeOpen(false)}>Đóng</Button>
-            <Button type="submit" disabled={!canExecute}>Kiểm tra và mô phỏng cục bộ</Button>
+            <Button type="submit" disabled={!canExecute || submitting}>
+              {submitting ? "Đang gửi…" : isDemo ? "Kiểm tra và mô phỏng cục bộ" : "Kiểm tra và thực thi"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

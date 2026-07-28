@@ -30,11 +30,13 @@ export function FleetOverview({ controller }: { controller: NetworkCenterControl
         <div>
           <p className="nc-eyebrow">Toàn hệ thống / {controller.fleet.length} toà vật lý</p>
           <h2>Bảng điều hành mạng</h2>
-          <p>Mỗi toà dùng một MikroTik; dữ liệu Aruba chỉ để theo dõi. Mọi số liệu bên dưới đều là mô phỏng cục bộ.</p>
+          <p>{controller.isDemo
+            ? "Mỗi toà dùng một MikroTik; dữ liệu Aruba chỉ để theo dõi. Mọi số liệu bên dưới đều là mô phỏng cục bộ."
+            : "Mỗi toà dùng một MikroTik; Aruba không giới hạn tổng số và luôn chỉ hiển thị. Trạng thái bên dưới lấy trực tiếp từ control plane."}</p>
         </div>
       </section>
 
-      <NetworkMetricStrip summary={view.summary} />
+      <NetworkMetricStrip summary={view.summary} isDemo={controller.isDemo} />
       <FleetFilters
         filters={filters}
         resultCount={view.fleet.length}

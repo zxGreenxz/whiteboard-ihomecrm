@@ -23,7 +23,7 @@ import type { ConfigDiff, ConfigRevision } from "@/lib/network-center/contracts"
 interface ConfigDiffDialogProps {
   siteId: string;
   revisions: ConfigRevision[];
-  compare: (fromRevisionId: string, toRevisionId: string) => ConfigDiff;
+  compare: (fromRevisionId: string, toRevisionId: string) => Promise<ConfigDiff>;
 }
 
 export function ConfigDiffDialog({ siteId, revisions, compare }: ConfigDiffDialogProps) {
@@ -35,6 +35,7 @@ export function ConfigDiffDialog({ siteId, revisions, compare }: ConfigDiffDialo
   const [toId, setToId] = useState(initialToId);
   const [diff, setDiff] = useState<ConfigDiff | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setOpen(false);
@@ -42,6 +43,7 @@ export function ConfigDiffDialog({ siteId, revisions, compare }: ConfigDiffDialo
     setToId(initialToId);
     setDiff(null);
     setError("");
+    setLoading(false);
   }, [initialFromId, initialToId, revisionSignature, siteId]);
 
   const changeOpen = (nextOpen: boolean) => {
@@ -64,13 +66,16 @@ export function ConfigDiffDialog({ siteId, revisions, compare }: ConfigDiffDialo
     setError("");
   };
 
-  const showDiff = () => {
+  const showDiff = async () => {
+    setLoading(true);
     try {
-      setDiff(compare(fromId, toId));
+      setDiff(await compare(fromId, toId));
       setError("");
     } catch (caught) {
       setDiff(null);
       setError(caught instanceof Error ? caught.message : "Không thể so sánh");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -89,7 +94,9 @@ export function ConfigDiffDialog({ siteId, revisions, compare }: ConfigDiffDialo
         <div className="nc-diff-controls">
           <RevisionSelect label="Bản gốc" value={fromId} revisions={revisions} onChange={changeFrom} />
           <RevisionSelect label="Bản so sánh" value={toId} revisions={revisions} onChange={changeTo} />
-          <Button onClick={showDiff}>Hiện kết quả so sánh</Button>
+          <Button onClick={() => void showDiff()} disabled={loading || !fromId || !toId}>
+            {loading ? "Đang so sánh…" : "Hiện kết quả so sánh"}
+          </Button>
         </div>
         {error ? <p className="nc-form-error" role="alert">{error}</p> : null}
         {diff ? (

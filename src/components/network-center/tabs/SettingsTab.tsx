@@ -12,30 +12,28 @@ import { ExecuteButton } from "../ExecuteGuard";
 export function SettingsTab({ site, controller }: { site: NetworkBuilding; controller: NetworkCenterController }) {
   const [draft, setDraft] = useState<NetworkSettings>(site.settings);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
     setDraft(site.settings);
     setError("");
-  }, [
-    site.buildingId,
-    site.settings.alertSensitivity,
-    site.settings.backupHour,
-    site.settings.changesPaused,
-    site.settings.dependencyGrouping,
-    site.settings.pollingSeconds,
-  ]);
-  const save = () => {
+    setSaving(false);
+  }, [site.buildingId, site.settings]);
+  const save = async () => {
     setError("");
+    setSaving(true);
     try {
       const validated = validateNetworkSettings(draft);
-      controller.updateSettings(site.buildingId, validated);
+      await controller.updateSettings(site.buildingId, validated, site.settingsVersion);
       setDraft(validated);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Cài đặt không hợp lệ");
+    } finally {
+      setSaving(false);
     }
   };
   return (
     <section className="nc-panel">
-      <div className="nc-panel-heading"><div><p className="nc-eyebrow">Chính sách theo toà nhà</p><h3>Cài đặt</h3></div><ExecuteButton canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} onClick={save}><Save data-icon="inline-start" /> Lưu cài đặt</ExecuteButton></div>
+      <div className="nc-panel-heading"><div><p className="nc-eyebrow">Chính sách theo toà nhà</p><h3>Cài đặt</h3></div><ExecuteButton canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} disabled={saving} onClick={() => void save()}><Save data-icon="inline-start" /> {saving ? "Đang lưu…" : "Lưu cài đặt"}</ExecuteButton></div>
       <div className="nc-settings-grid">
         <div className="nc-field"><Label htmlFor="polling-seconds">Chu kỳ kiểm tra (giây)</Label><Input id="polling-seconds" type="number" min={30} max={300} value={draft.pollingSeconds} onChange={(event) => setDraft((current) => ({ ...current, pollingSeconds: Number(event.target.value) }))} disabled={!controller.canExecute} /></div>
         <div className="nc-field"><Label htmlFor="backup-hour">Giờ backup</Label><Input id="backup-hour" type="time" value={draft.backupHour} onChange={(event) => setDraft((current) => ({ ...current, backupHour: event.target.value }))} disabled={!controller.canExecute} /></div>
@@ -44,7 +42,9 @@ export function SettingsTab({ site, controller }: { site: NetworkBuilding; contr
         <SettingSwitch label="Tạm dừng thay đổi" icon={<Pause />} checked={draft.changesPaused} disabled={!controller.canExecute} onChange={(checked) => setDraft((current) => ({ ...current, changesPaused: checked }))} />
       </div>
       {error ? <p className="nc-form-error" role="alert">{error}</p> : null}
-      {controller.canExecute ? <p className="nc-footnote">Nút lưu chỉ cập nhật bộ nhớ mô phỏng cục bộ, không ghi cấu hình lên thiết bị thật.</p> : null}
+      {controller.canExecute ? <p className="nc-footnote">{controller.isDemo
+        ? "Nút lưu chỉ cập nhật bộ nhớ mô phỏng cục bộ, không ghi cấu hình lên thiết bị thật."
+        : "Cài đặt được ghi vào control plane; worker áp dụng chu kỳ theo dõi và kill switch thay đổi theo phiên bản mới nhất."}</p> : null}
       {!controller.canExecute ? <p className="nc-footnote">{controller.executeDisabledMessage}</p> : null}
     </section>
   );

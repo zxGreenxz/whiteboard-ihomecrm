@@ -1,4 +1,5 @@
 import { ArrowRight, Check } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { NetworkIncident } from "@/lib/network-center/contracts";
@@ -10,10 +11,23 @@ interface IncidentRailProps {
   buildingNames: Map<string, string>;
   canExecute: boolean;
   disabledReason: string;
-  onAcknowledge: (buildingId: string, incidentId: string) => void;
+  onAcknowledge: (buildingId: string, incidentId: string) => Promise<void>;
 }
 
 export function IncidentRail({ incidents, buildingNames, canExecute, disabledReason, onAcknowledge }: IncidentRailProps) {
+  const [pendingIncidentId, setPendingIncidentId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const acknowledge = async (buildingId: string, incidentId: string) => {
+    setPendingIncidentId(incidentId);
+    setError("");
+    try {
+      await onAcknowledge(buildingId, incidentId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Không thể xác nhận sự cố");
+    } finally {
+      setPendingIncidentId(null);
+    }
+  };
   return (
     <aside className="nc-panel nc-incident-rail" aria-labelledby="incident-rail-title">
       <div className="nc-panel-heading">
@@ -40,14 +54,16 @@ export function IncidentRail({ incidents, buildingNames, canExecute, disabledRea
                   disabledReason={disabledReason}
                   variant="outline"
                   size="sm"
-                  onClick={() => onAcknowledge(incident.buildingId, incident.id)}
+                  disabled={pendingIncidentId === incident.id}
+                  onClick={() => void acknowledge(incident.buildingId, incident.id)}
                 >
-                  <Check data-icon="inline-start" aria-hidden="true" /> Xác nhận
+                  <Check data-icon="inline-start" aria-hidden="true" /> {pendingIncidentId === incident.id ? "Đang xác nhận…" : "Xác nhận"}
                 </ExecuteButton>
               ) : null}
             </div>
           </article>
         )) : <p className="nc-empty-copy">Không có sự cố đang mở.</p>}
+        {error ? <p className="nc-form-error" role="alert">{error}</p> : null}
       </div>
     </aside>
   );

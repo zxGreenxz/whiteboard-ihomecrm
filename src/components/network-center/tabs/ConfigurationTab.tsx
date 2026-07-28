@@ -11,9 +11,11 @@ export function ConfigurationTab({ site, controller }: { site: NetworkBuilding; 
       <section className="nc-panel">
         <div className="nc-panel-heading">
           <div><p className="nc-eyebrow">Trạng thái mong muốn</p><h3>Cấu hình an toàn</h3></div>
-          <NetworkActionDialog site={site} canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} onExecute={(request) => controller.executeAction(site.buildingId, request)} />
+          <NetworkActionDialog site={site} canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} isDemo={controller.isDemo} onExecute={(request) => controller.executeAction(site.buildingId, request)} />
         </div>
-        <p className="nc-footnote">Mọi thao tác trong màn hình này chỉ mô phỏng cục bộ trong bộ nhớ trình duyệt.</p>
+        <p className="nc-footnote">{controller.isDemo
+          ? "Mọi thao tác trong màn hình này chỉ mô phỏng cục bộ trong bộ nhớ trình duyệt."
+          : "Mọi thao tác được kiểm tra quyền, backup trước thay đổi và ghi audit trước khi worker thực thi."}</p>
         <dl className="nc-definition-grid">
           <div><dt>Định danh router</dt><dd>{site.router.identity}</dd></div>
           <div><dt>RouterOS</dt><dd>{site.router.firmware} · chuẩn {site.router.targetFirmware}</dd></div>

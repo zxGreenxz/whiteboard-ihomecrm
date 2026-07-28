@@ -7,13 +7,16 @@ export interface PhysicalBuildingRecord {
   id: string;
   name: string;
   roomsCount?: number;
+  organizationId?: string;
 }
 
 export interface RouterSummary {
+  id: string | null;
   identity: string;
   model: string;
   firmware: string;
   targetFirmware: string;
+  lifecycleStatus: "UNPROVISIONED" | "PROVISIONING" | "ONLINE" | "OFFLINE" | "DISABLED";
   wanStatus: "up" | "down";
   lastSeenLabel: string;
   cpuPercent: number;
@@ -212,12 +215,16 @@ export interface NetworkBuilding {
   interfaces: InterfaceRecord[];
   clients: ClientRecord[];
   arubaNodes: ArubaNode[];
+  /** Fleet-level aggregate; detail pages fill exact online state after cursor pagination. */
+  arubaTotal?: number;
+  arubaOnline?: number | null;
   incidents: NetworkIncident[];
   maintenance: MaintenanceWindow | null;
   revisions: ConfigRevision[];
   jobs: NetworkJob[];
   audit: AuditRecord[];
   settings: NetworkSettings;
+  settingsVersion: number;
 }
 
 export interface FleetFilters {
@@ -243,14 +250,48 @@ export interface MaintenanceInput {
 }
 
 export interface NetworkCenterRepository {
-  replaceBuildings(buildings: PhysicalBuildingRecord[]): void;
-  listFleet(): NetworkBuilding[];
-  getBuilding(buildingId: string): NetworkBuilding | null;
-  acknowledgeIncident(buildingId: string, incidentId: string, actor: NetworkActor): void;
-  createMaintenance(buildingId: string, input: MaintenanceInput, actor: NetworkActor): MaintenanceWindow;
-  cancelMaintenance(buildingId: string, maintenanceId: string, actor: NetworkActor): void;
-  captureConfiguration(buildingId: string, label: string, actor: NetworkActor): ConfigRevision;
-  compareRevisions(buildingId: string, fromRevisionId: string, toRevisionId: string): ConfigDiff;
-  executeAction(buildingId: string, request: NetworkActionRequest, actor: NetworkActor): NetworkJob;
-  updateSettings(buildingId: string, settings: Partial<NetworkSettings>, actor: NetworkActor): void;
+  listFleet(): Promise<NetworkBuilding[]>;
+  getBuilding(buildingId: string, fallback?: NetworkBuilding): Promise<NetworkBuilding | null>;
+  acknowledgeIncident(
+    buildingId: string,
+    incidentId: string,
+    actor: NetworkActor,
+    requestId?: string,
+  ): Promise<void>;
+  createMaintenance(
+    buildingId: string,
+    input: MaintenanceInput,
+    actor: NetworkActor,
+    requestId?: string,
+  ): Promise<MaintenanceWindow>;
+  cancelMaintenance(
+    buildingId: string,
+    maintenanceId: string,
+    actor: NetworkActor,
+    requestId?: string,
+  ): Promise<void>;
+  captureConfiguration(
+    buildingId: string,
+    label: string,
+    actor: NetworkActor,
+    requestId?: string,
+  ): Promise<void>;
+  compareRevisions(
+    buildingId: string,
+    fromRevisionId: string,
+    toRevisionId: string,
+  ): Promise<ConfigDiff>;
+  executeAction(
+    buildingId: string,
+    request: NetworkActionRequest,
+    actor: NetworkActor,
+    requestId?: string,
+  ): Promise<NetworkJob>;
+  updateSettings(
+    buildingId: string,
+    settings: Partial<NetworkSettings>,
+    actor: NetworkActor,
+    requestId?: string,
+    expectedVersion?: number,
+  ): Promise<void>;
 }

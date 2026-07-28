@@ -3,13 +3,13 @@ import { CheckCircle2, LockKeyhole, ShieldCheck } from "lucide-react";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
 
-const checks = [
+const checks = (isDemo: boolean) => [
   ["Thông tin đăng nhập", "Không được tải vào giao diện"],
   ["CLI tuỳ ý", "Bị khoá"],
   ["Thao tác ghi Aruba", "Bị khoá"],
-  ["NTP", "Đồng bộ mô phỏng"],
-  ["Tính toàn vẹn backup", "Mã mô phỏng hợp lệ"],
-  ["Độ mới tiến trình", "Không áp dụng trong giao diện demo"],
+  ["NTP", isDemo ? "Đồng bộ mô phỏng" : "Theo thời gian worker"],
+  ["Tính toàn vẹn backup", isDemo ? "Mã mô phỏng hợp lệ" : "SHA-256 đã xác minh"],
+  ["Độ mới tiến trình", isDemo ? "Không áp dụng trong giao diện demo" : "Theo heartbeat worker"],
 ];
 
 function StructuredFields({
@@ -34,16 +34,16 @@ function StructuredFields({
   );
 }
 
-export function AuditTab({ site }: { site: NetworkBuilding }) {
+export function AuditTab({ site, isDemo = true }: { site: NetworkBuilding; isDemo?: boolean }) {
   return (
     <div className="nc-tab-stack">
       <section className="nc-security-grid">
-        {checks.map(([label, value]) => <article key={label}><ShieldCheck /><span>{label}</span><strong>{value}</strong></article>)}
+        {checks(isDemo).map(([label, value]) => <article key={label}><ShieldCheck /><span>{label}</span><strong>{value}</strong></article>)}
       </section>
       <section className="nc-panel">
-        <div className="nc-panel-heading"><div><p className="nc-eyebrow">Nhật ký mô phỏng theo trình tự</p><h3>Nhật ký & Bảo mật</h3></div><span><LockKeyhole /> Không chứa dữ liệu bí mật hoặc lệnh CLI gốc</span></div>
+        <div className="nc-panel-heading"><div><p className="nc-eyebrow">{isDemo ? "Nhật ký mô phỏng theo trình tự" : "Nhật ký bất biến theo trình tự"}</p><h3>Nhật ký & Bảo mật</h3></div><span><LockKeyhole /> Không chứa dữ liệu bí mật hoặc lệnh CLI gốc</span></div>
         <Table>
-          <TableCaption className="sr-only">Nhật ký thao tác và kiểm tra bảo mật mô phỏng cục bộ</TableCaption>
+          <TableCaption className="sr-only">Nhật ký thao tác và kiểm tra bảo mật</TableCaption>
           <TableHeader><TableRow><TableHead scope="col">Thời điểm</TableHead><TableHead scope="col">Người thực hiện</TableHead><TableHead scope="col">Hành động</TableHead><TableHead scope="col">Mục tiêu</TableHead><TableHead scope="col">Chi tiết</TableHead><TableHead scope="col">Kết quả</TableHead></TableRow></TableHeader>
           <TableBody>{site.audit.map((record) => (
             <TableRow key={record.id}>
@@ -59,7 +59,7 @@ export function AuditTab({ site }: { site: NetworkBuilding }) {
               <TableCell>
                 <span className="nc-inline-icon"><CheckCircle2 /> {record.outcome === "success" ? "Thành công" : "Thông tin"}</span>
                 <div className="mt-2">
-                  <strong>Kết quả mô phỏng:</strong>
+                  <strong>{isDemo ? "Kết quả mô phỏng:" : "Kết quả ghi nhận:"}</strong>
                   <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
                     <dt>Trạng thái</dt><dd>{record.outcome}</dd>
                     <dt>Kiểm tra</dt><dd>{record.validation}</dd>
