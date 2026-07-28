@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { spawn } from 'node:child_process';
 import { open, readFile, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
