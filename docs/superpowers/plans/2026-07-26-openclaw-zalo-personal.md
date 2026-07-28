@@ -183,7 +183,7 @@ The lists below establish ownership boundaries for twelve ordered OpenClaw migra
 - `infra/openclaw-zalo/env/runtime.env.example`
 - `infra/openclaw-zalo/systemd/user/{openclaw-stack@.service,openclaw-host-guard.service,openclaw-host-guard.timer,openclaw-gc.service,openclaw-gc.timer}`
 - `infra/openclaw-zalo/systemd/system/user-openclaw-runner.slice.conf.tmpl`
-- `infra/openclaw-zalo/scripts/{preflight-host,provision-rootless,render-cell,deploy-cell,verify-isolation,smoke-cell,rollback-cell,snapshot-cotenants,rotate-secrets,restore-drill,migrate-cell}.sh`
+- `infra/openclaw-zalo/scripts/{preflight-host,provision-rootless,render-cell,deploy-cell,verify-isolation,smoke-cell,rollback-cell,snapshot-host-baseline,rotate-secrets,restore-drill,migrate-cell}.sh`
 - `infra/openclaw-zalo/test/recovery-drill.test.ts`
 
 ### 3.6 Frontend files to create
@@ -212,7 +212,7 @@ The lists below establish ownership boundaries for twelve ordered OpenClaw migra
 - `contracts/openclaw-zalo/golden-vectors.json`
 - `infra/openclaw-zalo-watchdog/{package.json,package-lock.json,wrangler.toml,src/index.ts,src/index.test.ts}`
 - `src/lib/__tests__/openclawFullContract.test.ts`
-- `scripts/__tests__/{openclawCommandContract,openclaw-cotenants,production-openclaw-smoke}.test.mjs`
+- `scripts/__tests__/{openclawCommandContract,openclaw-host-isolation,production-openclaw-smoke}.test.mjs`
 - `scripts/production-openclaw-smoke.mjs`
 - `docs/openclaw-zalo/runbooks/{deploy,operations,backup-restore,vps-migration,rollback,secret-rotation,capacity,load-test-results,production-smoke}.md`
 
@@ -2646,14 +2646,14 @@ git commit -m "feat(openclaw-zalo): them dispatch policy ai va zalouser" -m "Co-
 - Create: `infra/openclaw-zalo/systemd/user/openclaw-gc.service`
 - Create: `infra/openclaw-zalo/systemd/user/openclaw-gc.timer`
 - Create: `infra/openclaw-zalo/systemd/system/user-openclaw-runner.slice.conf.tmpl`
-- Create: `infra/openclaw-zalo/scripts/{preflight-host,provision-rootless,render-cell,deploy-cell,verify-isolation,smoke-cell,rollback-cell,snapshot-cotenants,rotate-secrets}.sh`
+- Create: `infra/openclaw-zalo/scripts/{preflight-host,provision-rootless,render-cell,deploy-cell,verify-isolation,smoke-cell,rollback-cell,snapshot-host-baseline,rotate-secrets}.sh`
 - Create: `infra/openclaw-zalo/test/{compose-contract,script-contract}.test.ts`
 
 - [ ] **Step 1: Write failing infrastructure contract tests**
 
 Assert a separate rootless Docker data root/socket/service user, one Compose project per cell, no host ports, no Docker socket, no source mount, read-only root filesystems, `cap_drop: [ALL]`, `no-new-privileges`, and two networks: an internal-only application network for cell/bridge/maintenance and a separate external network attached only to the dual-homed egress broker. App containers must have no direct default route and set HTTP(S)/WebSocket proxy configuration to the broker. Named volumes are limited to encrypted session backing/spool/temp; plaintext paths are tmpfs. No mount may cover `/home/node/.openclaw/npm/projects`, the installed `zalouser` package, `/opt/openclaw-cell/vendor`, or the container entrypoint. The cell image must COPY the reviewed `scripts/entrypoint.sh`; `.dockerignore` and `image-lock.json` must include its exact path/hash; image-vs-running-container inspection must reproduce the final post-Task-19 image digest plus Task 2's upstream SRI, patch-series SHA-256, built-tgz SHA-256, and installed-package digest/list. Tests reject a host-mounted entrypoint, registry resolution, a second ZaloUser package, a mutable tag, or a hidden vendored artifact. Session canary tests cover AES-256-GCM persist/restart/tamper/rotation.
 
-Snapshot tests must compare 9Router and `cli-proxy-api` container IDs, images, networks, mounts, restart counts, and health before/after OpenClaw deployment.
+Host-baseline tests must compare only the dedicated VPS OpenClaw/rootless container IDs, images, networks, mounts, restart counts, port bindings, systemd state and root/runtime filesystem usage before/after deployment. They also record authenticated health/latency/error from `https://ai.chillhome.io.vn` without inspecting the external 9Router host, and prove deploy assets contain no SSH/Docker credential for that host.
 
 - [ ] **Step 2: Run tests and verify failure**
 
@@ -2677,7 +2677,7 @@ The version-controlled `allowlist.yaml` contains exact reviewed FQDN/port entrie
 
 - [ ] **Step 4: Implement safe deploy and rollback scripts**
 
-Scripts must resolve explicit paths, snapshot co-tenants, verify transfer quota is recorded, render config without printing secrets, deploy only the OpenClaw Compose project, run health/isolation checks, and rollback only OpenClaw services. `smoke-cell.sh --session-encryption` uses a synthetic canary. `verify-isolation.sh --session-encryption --cell-id dddd2000-0000-4000-8000-000000000001` is the documented DEMO contract vector; production substitutes the canonical cell ID loaded from trusted runtime metadata, never free-form caller input. Any mismatch aborts and leaves existing containers untouched.
+Scripts must resolve explicit paths, snapshot the dedicated-host/OpenClaw baseline, verify transfer quota is recorded, render config without printing secrets, deploy only the OpenClaw Compose project, run health/isolation checks, and rollback only OpenClaw services. `smoke-cell.sh --session-encryption` uses a synthetic canary. `verify-isolation.sh --session-encryption --cell-id dddd2000-0000-4000-8000-000000000001` is the documented DEMO contract vector; production substitutes the canonical cell ID loaded from trusted runtime metadata, never free-form caller input. Any mismatch aborts and leaves existing containers untouched.
 
 - [ ] **Step 5: Run source contract tests, then commit and review R19**
 
@@ -2730,7 +2730,7 @@ Repeat Task 2 Step 5 with the absolute Task 19 candidate path: detached worktree
 
 The watchdog test must call only the dedicated `openclaw-watchdog` Edge endpoint, mark heartbeat stale after 90 seconds, record an incident through `openclaw_record_watchdog_health_v1` idempotently, notify the owner once per fingerprint/repeat window, and never expose or call the OpenClaw Gateway. Worker-to-Edge authentication uses a dedicated Ed25519-signed envelope binding audience `openclaw-watchdog-edge`, operation `health.record`, method/path, timestamp with at most 60-second skew, one-time nonce, and body SHA-256. Edge verifies the dedicated key generation and replay store before any DB call, rejects browser origins and Supabase browser JWTs, and calls only `openclaw_service_record_watchdog_health_v1`. Forgery, replay, stale clock, body mismatch, wrong operation/audience/key generation, cross-organization payload, and raw-secret logging are mandatory negative tests. Host-guard source tests own and execute the exact shell/unit/timer paths listed above.
 
-Runbook source tests must require RPO/RTO gates, exact GLOBAL_STOP/drain/fence/revoke/relogin sequence, restore drill evidence, co-tenant comparison, and quota thresholds.
+Runbook source tests must require RPO/RTO gates, exact GLOBAL_STOP/drain/fence/revoke/relogin sequence, restore drill evidence, dedicated-host baseline comparison, authenticated external model-endpoint probe, no 9Router-host credential, and quota thresholds.
 
 - [ ] **Step 2: Run tests and verify failure**
 
@@ -2744,13 +2744,13 @@ Schedule every minute with a 10-second timeout. After three consecutive failures
 
 Set `[functions.openclaw-watchdog] verify_jwt = false` in `supabase/config.toml`; the handler's signed-envelope verification is mandatory custom auth and must complete before any database call. Update `supabase/functions/README.md` with its exact entrypoint `openclaw-watchdog/index.ts`, signed Worker audience/operation, secret names without values, deploy order, and negative tests. The watchdog package defines `build`, `test`, `typecheck`, and `deploy`; `deploy` runs `wrangler deploy --minify --keep-vars` only after local gates and emits a machine-readable Worker deployment version plus bundle SHA-256.
 
-The host guard pauses outbound, AI, and media immediately if 9Router/CLI p95 latency regresses more than 20 percent for five minutes, their error rate exceeds 1 percent for five minutes, host RAM exceeds 75 percent for 15 minutes, swap exceeds 10 percent, one-minute load exceeds 12 for 15 minutes, or root free disk falls below `max(200 GiB,20%)`. It preserves minimal inbound spool; if the condition remains for ten minutes, it stops only the rootless OpenClaw cell/bridge. Clear conditions must hold 15 minutes and require `manage_operations` manual resume.
+The dedicated-host guard pauses outbound, AI, and media immediately if the authenticated model endpoint p95 regresses more than 20 percent for five minutes or its error rate exceeds 1 percent for five minutes; it also trips when host available memory stays below 512 MiB for 15 minutes, swap used exceeds 1 GiB for 15 minutes, host CPU exceeds 90 percent for 15 minutes, OOM/restart repeats, or root free disk falls below `max(10 GiB,20%)`. It preserves minimal inbound spool; if the condition remains for ten minutes, it stops only the rootless OpenClaw cell/bridge. Clear conditions must hold 15 minutes and require `manage_operations` manual resume. The guard has no SSH/Docker credential or mutation path to the external 9Router host.
 
 - [ ] **Step 4: Implement recovery and migration procedures**
 
 The restore drill must verify Supabase canonical DB RPO <=15 minutes and RTO <=4 hours before auto/proactive/group production, simulate accidental R2 delete inside the seven-day grace period, rotate workload/token/audit keys, rotate the AES session key by atomic decrypt/re-encrypt or force QR re-login, prove no plaintext session snapshot exists, and record actual RPO/RTO without secrets.
 
-The VPS migration script/runbook must perform: organization GLOBAL_STOP, drain/freeze, move expired DISPATCHING to UNKNOWN, snapshot old co-tenants, provision a new rootless cell, rotate workload credentials, acquire a higher fencing lease, revoke old credential/lease, QR re-login, sync 48-hour history, reconcile gaps/UNKNOWN, controlled smoke, and resume. Target RTO is <=60 minutes; Supabase and R2 are not copied.
+The VPS migration script/runbook must perform: organization GLOBAL_STOP, drain/freeze, move expired DISPATCHING to UNKNOWN, snapshot the old dedicated-host/OpenClaw baseline, provision a new rootless cell, rotate workload credentials, acquire a higher fencing lease, revoke old credential/lease, QR re-login, sync 48-hour history, reconcile gaps/UNKNOWN, controlled smoke, and resume. Target RTO is <=60 minutes; Supabase and R2 are not copied.
 
 - [ ] **Step 5: Run tests**
 
@@ -3364,17 +3364,17 @@ if ((git rev-parse HEAD).Trim() -ne $E27) { throw 'Source branch did not fast-fo
 
 A second fresh read-only reviewer byte-compares committed evidence to the retained candidate hash, revalidates the schema, embedded exact-`R27` approval report, reviewed SHA, promoted archive hash/digest, and one-file parent/diff proof, then approves exact `E27` with empty findings. Task 28, pre-production review, rollout, and every downstream consumer may use only approved `E27`; neither `R27` alone nor uncommitted `.release/` candidates qualify.
 
-### Task 28: Run Load, Egress, Recovery, And Co-Tenant Non-Regression Tests
+### Task 28: Run Load, Egress, Recovery, And Dedicated-Host Non-Regression Tests
 
 **Files:**
 - Create: `services/openclaw-zalo-bridge/test/load-egress.test.ts`
 - Create: `infra/openclaw-zalo/test/recovery-drill.test.ts`
-- Create: `scripts/__tests__/openclaw-cotenants.test.mjs`
+- Create: `scripts/__tests__/openclaw-host-isolation.test.mjs`
 - Create: `docs/openclaw-zalo/runbooks/load-test-results.md`
 
 - [ ] **Step 1: Write failing capacity and recovery assertions**
 
-Assert normal-operation inbound canonical p95 <=60 seconds, queue lag p95 <30 seconds for five minutes, bounded batch sizes, no O(N^2) Realtime refetch, spool pressure thresholds, no media blobs in Supabase JSON, private-ticket behavior, and unchanged synthetic co-tenant fixtures. Seed 10,000 conversation metadata rows and long threads only in the disposable local/ephemeral database; save `EXPLAIN (ANALYZE, BUFFERS)` evidence for inbox cursor, target/consent/suppression preflight, and `SKIP LOCKED` claim, rejecting unintended sequential scans on hot paths. Task 28 must not contact the shared Vultr host, shared Supabase project, production Worker/R2, or real organizations.
+Assert normal-operation inbound canonical p95 <=60 seconds, queue lag p95 <30 seconds for five minutes, bounded batch sizes, no O(N^2) Realtime refetch, spool pressure thresholds, no media blobs in Supabase JSON, private-ticket behavior, and unchanged synthetic dedicated-host/rootless baseline fixtures. Seed 10,000 conversation metadata rows and long threads only in the disposable local/ephemeral database; save `EXPLAIN (ANALYZE, BUFFERS)` evidence for inbox cursor, target/consent/suppression preflight, and `SKIP LOCKED` claim, rejecting unintended sequential scans on hot paths. Task 28 must not contact the production Vultr host, shared Supabase project, production Worker/R2, external 9Router host, or real organizations.
 
 - [ ] **Step 2: Run tests and verify failure**
 
@@ -3382,18 +3382,18 @@ Run:
 
 ```powershell
 npm --prefix services/openclaw-zalo-bridge test -- load-egress
-npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-cotenants.test.mjs
+npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-host-isolation.test.mjs
 ```
 
-Expected: FAIL until the soak fixtures and co-tenant snapshots are wired.
+Expected: FAIL until the soak fixtures and dedicated-host baseline snapshots are wired.
 
 - [ ] **Step 3: Execute bounded soak and recovery drills**
 
 Run a seven-day simulated/fake-adapter soak with the approved first-cell envelope: 100 active conversations, a 30-message/minute inbound burst for 15 minutes, AI concurrency `1`, images <=5 MiB at 10/minute, and outbound capped at 200/day. Record synthetic CPU/RAM/disk/swap, queue lag, UNKNOWN, reconnects, spool bytes/age, database egress counters, R2 request/storage counters, and broker bytes. Pass only when queue p95 <30 seconds, heartbeat remains fresh, and OpenClaw CPU/RAM remain below 70 percent of cap without sustained swap growth. In disposable containers/namespaces only, inject process loss, local Supabase outage, fake R2 outage, session kick, corrupt spool page, expired ticket, a bounded 20-GiB-equivalent ENOSPC fixture, media redirect/DNS-rebinding attacks, and old-cell fencing. Verify inbound bounded buffering, explicit gap reporting/history reconciliation, outbound fail-closed behavior, temp-media cleanup, and dedicated-host invariants. The equivalent live rootless process-loss/ENOSPC drill is deferred to Task 29 after the reviewed-SHA gate.
 
-- [ ] **Step 4: Verify co-tenant non-regression**
+- [ ] **Step 4: Verify dedicated-host and external-endpoint non-regression**
 
-Run the relevant local/preview headless PWA/auth/finance suites plus `openclaw-cotenants.test.mjs` against a checked-in redacted baseline fixture and dependency-injected container/process client. The test proves the drill code would reject a changed ID/image/network/mount/restart counter, but it performs no SSH and never restarts or mutates legacy containers. Task 29 repeats the comparison against the live read-only snapshot before and after its isolated shared-host drill.
+Run the relevant local/preview headless PWA/auth/finance suites plus `openclaw-host-isolation.test.mjs` against a checked-in redacted dedicated-host baseline fixture and dependency-injected rootless container/process client. The test proves the drill code rejects unexpected OpenClaw ID/image/network/mount/restart/port/systemd/root-disk deltas, missing model-endpoint SLO evidence, or any 9Router-host credential; it performs no SSH and mutates no production service. Task 29 repeats the comparison against live read-only dedicated-host and authenticated external-endpoint baselines before and after its isolated rootless drill.
 
 - [ ] **Step 5: Record evidence and run gates**
 
@@ -3401,7 +3401,7 @@ Run:
 
 ```powershell
 npm --prefix services/openclaw-zalo-bridge test
-npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-cotenants.test.mjs
+npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-host-isolation.test.mjs
 node scripts/check-view-invoker.mjs
 ```
 
@@ -3410,8 +3410,8 @@ Expected: PASS with redacted results saved to `docs/openclaw-zalo/runbooks/load-
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add services/openclaw-zalo-bridge/test/load-egress.test.ts infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-cotenants.test.mjs docs/openclaw-zalo/runbooks/load-test-results.md
-git commit -m "test(openclaw-zalo): xac minh capacity recovery va co-tenant" -m "Co-Authored-By: Codex <noreply@openai.com>"
+git add services/openclaw-zalo-bridge/test/load-egress.test.ts infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-host-isolation.test.mjs docs/openclaw-zalo/runbooks/load-test-results.md
+git commit -m "test(openclaw-zalo): xac minh capacity recovery va dedicated host" -m "Co-Authored-By: Codex <noreply@openai.com>"
 ```
 
 ### Task 29: Execute Reviewed Production Rollout And Controlled Smoke
@@ -3496,7 +3496,7 @@ npm run test:openclaw:services
 npm run test:openclaw:sql
 npm run test:openclaw:r2
 npm --prefix services/openclaw-zalo-bridge test -- load-egress
-npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-cotenants.test.mjs
+npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-host-isolation.test.mjs
 Push-Location .e2e-fleet
 $env:FLEET_WORKERS = '8'
 $env:FLEET_BASE_URL = 'http://127.0.0.1:4173'
@@ -3721,11 +3721,11 @@ npm --prefix infra/openclaw-zalo-watchdog run deploy -- --expected-bundle-sha256
 
 Read back and persist exact `R29`, approved/deployed `E29`, their parent relation, the one-file evidence diff, every Edge function version/deployment ID/artifact hash, media Worker deployment version/bundle hash/route, watchdog Worker deployment version/bundle hash, R2 private-bucket settings, and all four image digests. Create `ihome-openclaw-media-private` only if absent; verify no public R2 URL, `workers_dev=false`, exact route `openclaw-media.chillhome.io.vn/*`, signed watchdog negative paths, and redacted health. Any hash/version/identity mismatch stops before SSH or QR.
 
-- [ ] **Step 7: Transfer the reviewed bundle, provision rootless runtime, and run the live shared-host drill**
+- [ ] **Step 7: Transfer the reviewed bundle, provision rootless runtime, and run the live dedicated-host drill**
 
 The runbook defines `Invoke-NativeChecked`, `Invoke-NativeJsonChecked`, and `Invoke-SmokeChecked` before the first command. `OPENCLAW_VULTR_HOST`, `OPENCLAW_VULTR_HOST_KEY_SHA256`, and a root-owned known-hosts file are required; the script verifies the presented key fingerprint without trusting `ssh-keyscan` output. `scp` transfers only the final approved-`E29` tar created in Step 6, whose SHA-256, `E29^==R29` relation, and embedded cell archive hash/digest are recorded in the transfer manifest, to `/srv/openclaw-runtime/releases/E29/deploy.tar`. Root verifies the bundle and embedded archive hashes before extraction, then creates the fixed filesystem/service user/rootless prerequisites/systemd slice and exits. As `openclaw-runner`, a checked command loads only that exact archive into the private rootless daemon, inspects the loaded `linux/amd64` image digest against the `R29`-bound evidence committed by `E29`, and aborts before Compose on missing/tampered/wrong bytes. Every image load, Compose render/deploy, fault drill, and runtime check uses checked wrappers and the private rootless socket.
 
-Run read-only preflight and co-tenant snapshots before mutation. Deploy only the isolated project, then perform the real shared-host process-loss, bounded ENOSPC, session-crypto restart/tamper/rotation, egress-negative, and co-tenant comparison drill moved from Task 28. The fault injection targets only the rootless OpenClaw slice/filesystem; 9Router/CLI IDs, images, start times, restart counts, networks, mounts, latency, and errors must remain unchanged. Restore the OpenClaw stack, prove zero residual fault state, and abort before QR on any co-tenant delta.
+Run read-only dedicated-host/OpenClaw and authenticated model-endpoint baselines before mutation. Deploy only the isolated project, then perform the real rootless process-loss, bounded ENOSPC, session-crypto restart/tamper/rotation, egress-negative, and dedicated-host comparison drill moved from Task 28. Fault injection targets only the rootless OpenClaw slice and fixed runtime filesystem; it must not alter host root, SSH/systemd/rootless control plane outside the target units, or the external model-endpoint SLO. Deployment carries no SSH/Docker credential for the 9Router host and never inspects its containers. Restore the OpenClaw stack, prove zero residual fault state, and abort before QR on any unexpected host or endpoint delta.
 
 Resolve the canonical cell from trusted DB state and use the returned value, never free-form caller input:
 
@@ -3736,7 +3736,7 @@ if (-not $canonicalCellId) { throw 'Canonical cell lookup returned no cellId' }
 Invoke-NativeChecked -FilePath 'ssh' -ArgumentList @('-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', "UserKnownHostsFile=$env:OPENCLAW_KNOWN_HOSTS_FILE", "openclaw-runner@$env:OPENCLAW_VULTR_HOST", "infra/openclaw-zalo/scripts/verify-isolation.sh --session-encryption --cell-id $canonicalCellId") -Label 'live isolation verification'
 ```
 
-Before QR, run a side-effect-free fork readiness probe that proves `zalouser.bridge.send` is registered, the generic `send` method and message/direct-adapter business paths are denied, no provider frame is emitted, and the running package/tgz/image hashes match reviewed evidence. Record only content-free host baseline, reviewed bundle SHA-256, upstream/patch/tgz/package/image digests, tmpfs/ciphertext/key-generation evidence, fault results, and co-tenant comparison. Infrastructure gate must pass before connection.
+Before QR, run a side-effect-free fork readiness probe that proves `zalouser.bridge.send` is registered, the generic `send` method and message/direct-adapter business paths are denied, no provider frame is emitted, and the running package/tgz/image hashes match reviewed evidence. Record only content-free dedicated-host and authenticated model-endpoint baselines, reviewed bundle SHA-256, upstream/patch/tgz/package/image digests, tmpfs/ciphertext/key-generation evidence, fault results, and host-isolation comparison. Infrastructure gate must pass before connection.
 
 - [ ] **Step 8: Persist WAITING_OWNER_QR, bind the owner's real QR action, and observe shadow**
 
@@ -3744,13 +3744,13 @@ Begin/resume the canonical rollout run at the reviewed SHA and persist `WAITING_
 
 Connection verification requires canonical separation: `connection_state='CONNECTED'`, a separately acceptable session-risk state, and `effective_mode='DRAFT_ONLY'`. No persisted or expected connection state named `CONNECTED_DRAFT_ONLY` is allowed. Automation/proactive/group flags remain off.
 
-Keep shadow mode for at least 48 hours through durable `--record-observation` calls that can run from CI/manual invocations across process restarts. Only content-free inbound/draft/health/queue/UNKNOWN/co-tenant metrics are stored; no auto-send occurs. `--verify-stage-evidence --stage shadow --min-continuous-green-hours 48` and expected-version `--advance-stage` must pass before the inbound-owner checkpoint.
+Keep shadow mode for at least 48 hours through durable `--record-observation` calls that can run from CI/manual invocations across process restarts. Only content-free inbound/draft/health/queue/UNKNOWN/dedicated-host/model-endpoint metrics are stored; no auto-send occurs. `--verify-stage-evidence --stage shadow --min-continuous-green-hours 48` and expected-version `--advance-stage` must pass before the inbound-owner checkpoint.
 
 - [ ] **Step 9: Persist WAITING_OWNER_INBOUND and accumulate at least 72 continuous green LIMITED hours**
 
 Persist `WAITING_OWNER_INBOUND` with the exact approved existing-thread peer and checkpoint timestamp. The script waits/resumes without synthesizing traffic. The owner or approved peer sends a real inbound message through Zalo; a later `--bind-owner-inbound` call finds a matching canonical inbound event after the checkpoint, verifies consent/peer/account/session, and stores only event/message IDs, hashes, and timestamps.
 
-Advance to `LIMITED_OBSERVING`, enable only the approved limited auto-reply scope, and keep one-reply ceilings plus 3-8 second warm-up delay. Run `--record-observation` repeatedly from short-lived invocations. Every observation rechecks DLP/policy/session/health, queue p95, UNKNOWN threshold, rate caps, co-tenant SLO, and exact reviewed artifacts. A failed or stale interval atomically clears/pauses `continuous_green_started_at`; it never counts around a gap.
+Advance to `LIMITED_OBSERVING`, enable only the approved limited auto-reply scope, and keep one-reply ceilings plus 3-8 second warm-up delay. Run `--record-observation` repeatedly from short-lived invocations. Every observation rechecks DLP/policy/session/health, queue p95, UNKNOWN threshold, rate caps, dedicated-host pressure, authenticated model-endpoint SLO, and exact reviewed artifacts. A failed or stale interval atomically clears/pauses `continuous_green_started_at`; it never counts around a gap.
 
 Only after DB time proves at least 72 continuous green hours may these commands succeed:
 
@@ -3769,11 +3769,11 @@ Run one manual send, one limited reply bound to a fresh approved-peer inbound, o
 
 Disconnect increments session generation, waits for signed media-generation revocation acknowledgement, removes old session material, and persists another `WAITING_OWNER_QR` checkpoint. After the owner acknowledges the renewed disclosure when canonical LIMITED/session-theft history requires it and scans a fresh QR, resume/bind the real QR evidence and verify `connection_state='CONNECTED'`, separate session risk, and `effective_mode='DRAFT_ONLY'`. Automation is not restored automatically.
 
-Every cleanup retains immutable audit/delivery/rollout evidence, deletes only tagged smoke fixtures, and proves zero residual `QUEUED`/`LEASED`/`DISPATCHING` rows. The script stops immediately on session warning, console error, unexpected UNKNOWN, provider limitation, missing cleanup proof, artifact drift, session-encryption failure, or co-tenant regression.
+Every cleanup retains immutable audit/delivery/rollout evidence, deletes only tagged smoke fixtures, and proves zero residual `QUEUED`/`LEASED`/`DISPATCHING` rows. The script stops immediately on session warning, console error, unexpected UNKNOWN, provider limitation, missing cleanup proof, artifact drift, session-encryption failure, dedicated-host pressure, or model-endpoint regression.
 
 - [ ] **Step 11: Freeze deployed evidence for Task 30**
 
-Record exact source/input commit `R29`, exact approved/deployed evidence commit `E29`, proof `E29^==R29`, the one-file `build-evidence.json` diff, both independent approval digests, aggregate migration manifest SHA-256, six Edge versions/hashes, two Worker versions/hashes, release-time mandatory attestation/SLSA proof, bounded redirect/final URL/size/count/SRI/SHA-1 locks, git head/75-blob source manifest, reviewed license-manifest SHA/counts, legal-output hashes, artifact-member/reachability manifests, install/load/upstream-compatible/differential results, patch-series SHA-256, built-tgz SHA-256, installed fork digest/list, clean-context manifest SHA-256, reviewed helper SHA-256, pinned buildx/BuildKit image/version and exporter options, source epoch/layer mtimes, both OCI archive hashes, matching manifest/config/layer digests, package-metadata epoch, external promoted archive path/hash/digest, final E29-bound deploy-bundle/transfer-manifest SHA-256, remote loaded image digest, architecture-specific bridge/maintenance/egress image digests, canonical cell ID, owner checkpoint IDs, continuous observation windows, smoke cleanup proofs, and co-tenant before/after hashes in the canonical rollout/audit stores. Store no content or secrets. Do not commit or cherry-pick a plan-only or post-rollout script change; Task 30 reviews this final implementation/runbook/evidence set at deployed `E29` while re-verifying that the cell image evidence binds exact `R29`.
+Record exact source/input commit `R29`, exact approved/deployed evidence commit `E29`, proof `E29^==R29`, the one-file `build-evidence.json` diff, both independent approval digests, aggregate migration manifest SHA-256, six Edge versions/hashes, two Worker versions/hashes, release-time mandatory attestation/SLSA proof, bounded redirect/final URL/size/count/SRI/SHA-1 locks, git head/75-blob source manifest, reviewed license-manifest SHA/counts, legal-output hashes, artifact-member/reachability manifests, install/load/upstream-compatible/differential results, patch-series SHA-256, built-tgz SHA-256, installed fork digest/list, clean-context manifest SHA-256, reviewed helper SHA-256, pinned buildx/BuildKit image/version and exporter options, source epoch/layer mtimes, both OCI archive hashes, matching manifest/config/layer digests, package-metadata epoch, external promoted archive path/hash/digest, final E29-bound deploy-bundle/transfer-manifest SHA-256, remote loaded image digest, architecture-specific bridge/maintenance/egress image digests, canonical cell ID, owner checkpoint IDs, continuous observation windows, smoke cleanup proofs, and dedicated-host/model-endpoint before/after hashes in the canonical rollout/audit stores. Store no content or secrets. Do not commit or cherry-pick a plan-only or post-rollout script change; Task 30 reviews this final implementation/runbook/evidence set at deployed `E29` while re-verifying that the cell image evidence binds exact `R29`.
 
 ### Task 30: Verify The Deployed SHA, Review Evidence, And Hand Off
 
@@ -3899,7 +3899,7 @@ npm --prefix infra/openclaw-zalo-watchdog ci
 npm run test:openclaw:services
 npm run test:openclaw:sql
 npm run test:openclaw:r2
-npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-cotenants.test.mjs
+npx vitest run infra/openclaw-zalo/test/recovery-drill.test.ts scripts/__tests__/openclaw-host-isolation.test.mjs
 Push-Location .e2e-fleet
 $env:FLEET_WORKERS = '8'
 $env:FLEET_BASE_URL = 'http://127.0.0.1:4173'
@@ -3932,11 +3932,11 @@ Expected: PASS with rollback-only DEMO fixtures, redacted output, exact migratio
 
 Review the deployed implementation, not merely plan prose. Trace every spec section 1-20 to concrete deployed files, tests, runbook commands, and canonical evidence: legacy isolation; one account/cell/org; composite FK/FORCE RLS/deny-by-default; permissions; QR/disclosure; atomic inbound decision/work; outbox/CAS/UNKNOWN; organization-scoped `GLOBAL_STOP`; AI/DLP; private media/SSRF; maintenance principal/routes; retention/audit anchors; rootless isolation; watchdog auth; backup/recovery; UI/mobile; DEMO-only automated writes; reviewed production schema apply; owner checkpoints; 48-hour shadow; at least 72 continuous green LIMITED observation; bounded outbound smoke; cleanup proofs; and reconnect returning canonical `CONNECTED` plus separate session risk and `DRAFT_ONLY` effective mode.
 
-Verify Task 29 evidence is content-free and continuous: no QR/message/template/provider content, no secrets, no missing observation gap hidden inside the 72-hour interval, no unexpected UNKNOWN, no co-tenant regression, no upstream/source/patch/tgz/package/image drift, and zero residual smoke work. Recompute the clean-context/helper hashes and confirm pinned buildx/BuildKit/exporter options, source epoch/layer mtimes, both OCI archive hashes, manifest/config/layers, package epoch, promoted archive bytes, final bundle/transfer manifest, and remote loaded image digest match Task 29 exactly. Dirty context, mutable builders, cached tags, missing/tampered handoff bytes, ad hoc builds, or a native failure followed by later mutation invalidate completion. Confirm no production mutation occurred before the reviewed-SHA gate and no post-rollout plan-only commit/cherry-pick changed deployment.
+Verify Task 29 evidence is content-free and continuous: no QR/message/template/provider content, no secrets, no missing observation gap hidden inside the 72-hour interval, no unexpected UNKNOWN, no dedicated-host/model-endpoint regression, no upstream/source/patch/tgz/package/image drift, and zero residual smoke work. Recompute the clean-context/helper hashes and confirm pinned buildx/BuildKit/exporter options, source epoch/layer mtimes, both OCI archive hashes, manifest/config/layers, package epoch, promoted archive bytes, final bundle/transfer manifest, and remote loaded image digest match Task 29 exactly. Dirty context, mutable builders, cached tags, missing/tampered handoff bytes, ad hoc builds, or a native failure followed by later mutation invalidate completion. Confirm no production mutation occurred before the reviewed-SHA gate and no post-rollout plan-only commit/cherry-pick changed deployment.
 
 - [ ] **Step 5: Obtain an independent implementation/runbook/evidence review**
 
-Use a fresh `reviewer` agent with `fork_turns="none"`. Give it the exact deployed SHA, approved spec, full implementation diff/history, migrations and SHA-256 manifest, CI commands/results, upstream/source/patch/tgz/package/image evidence, runbooks, owner checkpoints, rollout observations, smoke cleanup proofs, and co-tenant comparison. It must inspect security, correctness, operability, evidence continuity, and test gaps; return findings ordered by severity; and must not edit files or review only this plan.
+Use a fresh `reviewer` agent with `fork_turns="none"`. Give it the exact deployed SHA, approved spec, full implementation diff/history, migrations and SHA-256 manifest, CI commands/results, upstream/source/patch/tgz/package/image evidence, runbooks, owner checkpoints, rollout observations, smoke cleanup proofs, and dedicated-host/model-endpoint comparison. It must inspect security, correctness, operability, evidence continuity, and test gaps; return findings ordered by severity; and must not edit files or review only this plan.
 
 - [ ] **Step 6: Resolve findings without rewriting deployed history**
 
@@ -3944,7 +3944,7 @@ If the reviewer finds a valid implementation/runbook/migration/artifact issue, T
 
 - [ ] **Step 7: Hand off the verified deployment**
 
-Deliver the exact deployed SHA, migration-manifest SHA-256, Edge/Worker versions, upstream/source/patch/tgz/package locks, clean-context/helper hashes, pinned builder/exporter contract, source epoch/layer mtimes, OCI manifest/config/layer/package evidence, promoted archive and final bundle/transfer/load hashes, other image digests, final rollout stage/version, owner checkpoints, continuous-green duration, smoke/cleanup results, co-tenant comparison, accepted risks, and runbook links. State explicitly that automated writes remain DEMO-only outside controlled smoke, legacy Zalo is untouched, UNKNOWN has no automatic retry, and `GLOBAL_STOP` remains organization-scoped. No plan-only commit or push follows rollout.
+Deliver the exact deployed SHA, migration-manifest SHA-256, Edge/Worker versions, upstream/source/patch/tgz/package locks, clean-context/helper hashes, pinned builder/exporter contract, source epoch/layer mtimes, OCI manifest/config/layer/package evidence, promoted archive and final bundle/transfer/load hashes, other image digests, final rollout stage/version, owner checkpoints, continuous-green duration, smoke/cleanup results, dedicated-host/model-endpoint comparison, accepted risks, and runbook links. State explicitly that automated writes remain DEMO-only outside controlled smoke, legacy Zalo is untouched, UNKNOWN has no automatic retry, and `GLOBAL_STOP` remains organization-scoped. No plan-only commit or push follows rollout.
 
 ## 6. Coverage Checklist
 
@@ -3969,7 +3969,7 @@ Deliver the exact deployed SHA, migration-manifest SHA-256, Edge/Worker versions
 | Outbox lease/CAS/UNKNOWN/dead letter | 7, 9, 11, 18, 25 |
 | AI boundary, knowledge sensitivity, DLP | 6, 18, 24 |
 | Private R2/media/SSRF/tickets | 5, 11, 13, 16 |
-| Rootless Vultr isolation and co-tenant safety | 2, 17, 19, 20, 28 |
+| Rootless dedicated-Vultr isolation and host/external-endpoint safety | 2, 17, 19, 20, 28 |
 | Spool durability, health, quotas, RPO/RTO | 17, 20, 28, 29 |
 | Replaceable VPS migration | 20, 29 |
 | Desktop/mobile states and accessibility | 22-25, 26 |

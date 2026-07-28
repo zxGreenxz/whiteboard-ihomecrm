@@ -548,12 +548,12 @@ Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao 
 - Dat rootless data-root tren fixed-size 20 GiB filesystem/mount rieng `/srv/openclaw-runtime`; image layers, writable layers, volumes, spool, temp va logs deu nam trong mount nay. Tier hien tai enforce `CPUQuota=180%`, `MemoryHigh=2200M`, `MemoryMax=2800M`, `MemorySwapMax=2G`, `TasksMax=512` cho toan stack va sublimit nho hon cho tung service, de lai headroom cho kernel/SSH/systemd. Sau nang cap, reviewed config change co the tang limit; khong tu dong doi theo plan portal.
 - Disk budget: engine images/writable layers toi da 10 GiB va GC co kiem soat; temp media 5 GiB; spool 1 GiB; session/config 1 GiB; logs 1 GiB; 2 GiB headroom. ENOSPC trong mount chi lam OpenClaw fail/pause, khong duoc fill root filesystem.
 - Khong sua compose/command/image/volume/network/resource setting cua `9router` va `cli-proxy-api` o host khac; deployment OpenClaw **khong co quyen Docker/SSH** vao host 9Router. Neu mot thay doi host/daemon/firewall toan cuc bat buoc, no nam ngoai rollout nay va can owner duyet maintenance task rieng.
-- Khong thay doi host-wide UFW/Docker firewall trong rollout OpenClaw. Preflight phai inventory port bindings, Docker networks, systemd units, health endpoints va current 9Router/CLI reachability; OpenClaw chi them rule egress/namespace rieng va khong expose inbound port.
+- Khong thay doi host-wide UFW/Docker firewall trong rollout OpenClaw. Preflight phai inventory port bindings, Docker networks, systemd units va health endpoints tren VPS OpenClaw chuyen dung, dong thoi do read-only authenticated health/latency cua model endpoint ben ngoai; OpenClaw chi them rule egress/namespace rieng va khong expose inbound port. Deployment khong duoc co SSH/Docker credential toi host 9Router.
 - Egress cell/bridge default deny toi host va RFC1918/link-local/metadata/loopback/multicast/ULA, cong 9Router/CLI, Docker socket va management ports. Allowlist chi DNS/NTP, Zalo endpoints, Supabase Edge, private media gateway va model endpoint; connect-time IP pinning + DNS revalidation.
-- Negative connectivity test tu moi container phai fail toi host gateway, 9Router/CLI published ports, Docker API, cloud metadata va private subnets khong nam allowlist. Neu test fail thi block rollout.
+- Negative connectivity test tu moi container phai fail toi host gateway, Docker API, cloud metadata, private subnets khong nam allowlist va moi dia chi management 9Router/CLI neu duoc cau hinh lam deny fixture. Neu test fail thi block rollout.
 - Network/volume/secret theo cell. Mot cell production dau tien; khong pre-provision nhieu tenant chua ton tai.
 - Local encrypted SQLite/event spool chi la buffer, hard cap `1 GiB` hoac `24 gio` du lieu, cham nguong nao truoc.
-- Temp media hard cap 5 GiB, xoa sau durable upload/processing; logs rotate o 1 GiB/14 ngay. Cap-attempt/ENOSPC test phai chung minh 9Router/CLI van healthy.
+- Temp media hard cap 5 GiB, xoa sau durable upload/processing; logs rotate o 1 GiB/14 ngay. Cap-attempt/ENOSPC test phai chung minh chi fixed runtime filesystem bi tac dong, host root/systemd/rootless control plane van healthy va authenticated model-endpoint probe khong bi regression.
 
 ### 11.2 Spool durability va RPO
 
@@ -561,7 +561,7 @@ Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao 
 - Khong drop oldest text/event de giu cap. O 80% cap: pause outbound, history sync va media prefetch; o 95%: chi nhan minimal inbound envelope; o 100%: stop intake neu adapter cho phep, ghi `INBOUND_GAP_STARTED` va alert P1. Khong ghi vuot fixed filesystem.
 - Sau recovery, sync lai toi da 48 gio recent history hoac tu canonical watermark cuoi, dedupe va danh dau `HISTORY_SYNC`; history sync khong kich hoat AI/automation/push.
 - Normal-operation target: inbound canonical p95 <=60 giay. Sau listener acknowledgement, local RPO cho accepted event envelope/manifest la 0 doi voi process crash trong durability model da test; sau canonical ack, RPO message text/metadata la 0 doi voi mat VPS. Guarantee khong bao phu event truoc provider callback; trong Supabase outage, unflushed events chi durable tren local spool toi da 24 gio/1 GiB.
-- Simultaneous Supabase outage + mat/corrupt shared VPS truoc flush co the mat unflushed inbound neu Zalo khong replay/history du. Day la residual risk duoc chap nhan cua unofficial connector; incident phai hien exact gap window va yeu cau doi chieu Zalo native.
+- Simultaneous Supabase outage + mat/corrupt dedicated VPS truoc flush co the mat unflushed inbound neu Zalo khong replay/history du. Day la residual risk duoc chap nhan cua unofficial connector; incident phai hien exact gap window va yeu cau doi chieu Zalo native.
 
 ### 11.3 Health va circuit breaker
 
@@ -569,8 +569,8 @@ Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao 
 - Pause outbound khi session invalid, runtime lease/fencing khong hop le, spool/runtime mount vuot 80%, clock drift >2 giay trong 2 phut, policy API unavailable >60 giay, queue lag p95 >30 giay trong 5 phut, hoac UNKNOWN >3 item/10 phut hay >2% voi minimum 20 attempts.
 - Inbound co the buffer khi Supabase/R2 loi trong quota; outbound khong dispatch neu khong the recheck policy va ghi attempt evidence.
 - Queue lag, UNKNOWN rate, adapter error, reconnect count, CPU/RAM/disk, spool age/bytes va media failure co alert.
-- Preflight do baseline 9Router/CLI health latency va error trong it nhat 30 phut. Co-tenant guard kich hoat neu p95 latency tang >20% trong 5 phut hoac error >1% trong 5 phut; cung kich hoat neu tong RAM host >75%/15 phut, swap >10%, one-minute load >12/15 phut, root disk free <max(200 GiB,20%).
-- Khi co-tenant/host guard kich hoat: pause outbound, AI va media processing ngay; giu minimal inbound spool. Neu con vi pham sau 10 phut, stop OpenClaw cell/bridge process trong rootless stack, giu session volume va alert P1. Khong stop/restart 9Router/CLI.
+- Preflight do baseline read-only authenticated model-endpoint health/latency/error trong it nhat 30 phut va baseline tai nguyen cua VPS OpenClaw chuyen dung. Dedicated-host guard kich hoat neu model endpoint p95 tang >20% trong 5 phut hoac error >1% trong 5 phut, host available memory <512 MiB trong 15 phut, swap used >1 GiB trong 15 phut, host CPU >90% trong 15 phut, co OOM/restart lap lai, hoac root disk free <`max(10 GiB,20%)`.
+- Khi dedicated-host guard kich hoat: pause outbound, AI va media processing ngay; giu minimal inbound spool. Neu con vi pham sau 10 phut, stop chi OpenClaw cell/bridge trong rootless stack, giu session volume va alert P1. Guard khong co credential hay quyen stop/restart host 9Router/CLI ben ngoai.
 - Clear condition phai dat lien tuc 15 phut; health-generated pause khong auto-resume outbound. User co `manage_operations` review incident va resume; manual/global stop khong bao gio bi health logic release.
 - External Cloudflare watchdog probe health endpoint moi 60 giay, timeout 10 giay; sau ba lan fail phai ghi incident va gui CRM push/email toi owner/admin trong 3 phut, ngay ca khi ca host/rootless engine down.
 - Transfer quota phai biet truoc khi mo production proactive/group media; unknown quota block gate. 60% billing-cycle warning, 80% tat auto-cache video/file, 90% pause noncritical proactive/group media, 100% pause moi outbound co media. Supabase/R2 usage co forecast 7/30 ngay va canh bao 60/80/90% quota/budget.
@@ -580,8 +580,8 @@ Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao 
 
 - Soak mot cell it nhat bay ngay voi traffic that co gioi han truoc khi cho phep cell thu hai.
 - Workload envelope cell dau tien: 100 active conversations, burst inbound 30 message/phut trong 15 phut, AI concurrency `1`, media image <=5 MB o 10 image/phut va guardrail outbound toi da 200/ngay. Pass neu queue lag p95 <30 giay, heartbeat fresh, CPU/RAM OpenClaw <70% cap va model endpoint p95/error van trong SLO da ghi; load test khong co quyen inspect hay mutate host 9Router.
-- Baseline tai nguyen cho thay host du de **pilot mot cell trong envelope tren**, khong phai cam ket moi traffic deu du. Tang cap OpenClaw hoac them cell chi khi metric chung minh can thiet va van giu it nhat 50% RAM host, 50% CPU capacity va max(200 GiB,20%) disk headroom cho host/dich vu khac.
-- Truoc moi cell moi, do lai `docker stats`, CPU/RAM/disk/load, queue lag va latency 9Router/CLI proxy; khong suy dien tu baseline cu.
+- Baseline tai nguyen cho thay host du de **pilot mot cell trong envelope tren**, khong phai cam ket moi traffic deu du. Tang cap OpenClaw hoac them cell chi khi metric chung minh can thiet va van giu it nhat 512 MiB available memory, 20% CPU capacity va `max(10 GiB,20%)` root-disk headroom cho host/control plane.
+- Truoc moi cell moi, do lai `docker stats`, CPU/RAM/disk/load, queue lag va read-only authenticated latency/error cua model endpoint; khong suy dien tu baseline cu va khong inspect host/container 9Router.
 - Neu OpenClaw memory >75% hard cap, CPU >70% cap lien tuc 15 phut, queue lag p95 >30 giay do tai nguyen hoac OOM/restart lap lai, toi uu/tang cap rieng stack trong headroom host truoc khi them tenant.
 - Neu media/temp disk tang nhanh, sua retention/streaming truoc khi tang disk; VPS khong tro thanh kho media.
 - Moi tenant moi can capacity review, workload credential, volume/network rieng va RLS/E2E tenant test.
@@ -754,8 +754,8 @@ Playwright bat buoc dung `trackConsoleErrors` tu `.e2e-fleet/specs/auth.ts` va a
 - Chung minh khong `select('*')` hot path, khong blob/base64 va khong O(N^2) refetch.
 - Batch/debounce Realtime invalidation, active-thread subscription va bounded query size.
 - Queue throughput/lag voi mot cell; spool cap 1 GB/24 gio; media size/lifecycle.
-- Chay workload envelope Section 11.4 va assert queue p95 <30 giay, OpenClaw <70% resource cap, 9Router/CLI latency regression <=20% va error <=1%.
-- Fill fixed 20 GiB runtime filesystem den ENOSPC trong test co kiem soat; OpenClaw pause/fail trong boundary, host root disk va co-tenant van healthy.
+- Chay workload envelope Section 11.4 va assert queue p95 <30 giay, OpenClaw <70% resource cap, authenticated model-endpoint latency regression <=20% va error <=1%.
+- Fill fixed 20 GiB runtime filesystem den ENOSPC trong test co kiem soat; OpenClaw pause/fail trong boundary, host root disk, SSH/systemd va rootless control plane van healthy.
 - Theo doi Supabase egress, Vultr outbound va R2 request/storage trong soak.
 
 ### 14.6 Lenh verification bat buoc
@@ -788,13 +788,13 @@ Chi sau khi automated tests, reviewer va rollout gates xanh:
 3. Bat mot inbound auto-reply pham vi hep, mot proactive schedule toi recipient existing-thread co consent va mot group schedule/su kien co gioi han.
 4. Xac minh audit, outbox, media, stop switch, disconnect/reconnect va khong co tac dong toi Zalo cu.
 5. Sau smoke, mac dinh pause/tat moi automation/schedule/group trigger vua tao va cleanup target test. Chi de live neu owner xac nhan ro trong rollout gate sau khi review metric/evidence.
-6. Dung ngay neu co session warning, UNKNOWN bat thuong, Zalo limitation, console error hoac co-tenant SLO regression.
+6. Dung ngay neu co session warning, UNKNOWN bat thuong, Zalo limitation, console error, dedicated-host pressure hoac model-endpoint SLO regression.
 
 ## 15. Trinh tu rollout
 
 1. **Fork gate:** verify upstream source/tarball locks, patch-series hash, exact internal tgz hash, inbound listener ordering, outbound choke points va deterministic `linux/amd64` image; chi khi gate duong tinh xanh moi mo foundation.
 2. **Foundation:** migrations/RLS/RPC, permissions, fake adapter, frontend shell sau feature flag.
-3. **Infrastructure:** private R2/gateway, shared Vultr stack isolation, bridge/cell hardening, observability.
+3. **Infrastructure:** private R2/gateway, dedicated Vultr host isolation, bridge/cell hardening, observability.
 4. **Connection:** QR va account health voi tai khoan moi; effective mode draft-only.
 5. **Shadow:** ingest inbound, AI draft va human send; khong auto-send.
 6. **Limited inbound automation:** mot tap conversation duoc owner chon, gioi han thap, theo doi UNKNOWN/session.
@@ -808,10 +808,10 @@ Exit gate toi thieu:
 |---|---|
 | Fork | Bounded same-registry HTTPS redirect + fixed URL/size/3169-entry/SRI/SHA-1 locks, mandatory online attestation/SLSA, exact 75-blob source snapshot, root license/notice hashes, reviewed `licenses/manifest.json` cho exact 38 dependency roots + 39 carriers, approved rendered notice/carriers, exact `FORK.json.artifactMembers` + runtime reachability allowlist, patch-series SHA-256, built-tgz SHA-256 va image digest khop; offline/network/metadata failure khong mo gate; verifier reject carrier/root/notice/member/path/case/traversal/symlink drift; install/load/upstream-compatible/differential tests xanh; deny-by-default clean context; pinned BuildKit/buildx/exporter; two fresh no-cache/pull builds voi fixed epoch + rewritten timestamps tao OCI archives co manifest/config/layers giong nhau; exact promoted archive ton tai va hash/digest khop handoff manifest; listener/outbound choke-point tests xanh; image chi co internal fork `zalouser` |
 | Foundation | SQL/RLS/grant/claim tests xanh; migration additive; generated types sach; zero reference/DML `zalo_*` |
-| Infrastructure | Egress negative, ENOSPC, watchdog, co-tenant pre/post invariants va restore drill xanh; transfer quota da biet |
+| Infrastructure | Egress negative, ENOSPC, watchdog, dedicated-host pre/post invariants, external model-endpoint probe va restore drill xanh; transfer quota da biet |
 | Connection | Disclosure + QR + revoke/reconnect xanh; session secret khong ro ri; account draft-only |
 | Shadow | 48 gio inbound/draft; no auto-send; queue p95 <30s; zero unexpected UNKNOWN |
-| Limited inbound | 72 gio warm-up, policy/DLP dung, session healthy, UNKNOWN <= threshold, co-tenant SLO dat |
+| Limited inbound | 72 gio warm-up, policy/DLP dung, session healthy, UNKNOWN <= threshold, dedicated-host va model-endpoint SLO dat |
 | Proactive | Consent/suppression/quiet hours/caps xanh; owner-controlled smoke cleanup hoan tat |
 | Sales groups | Exact allowlist, freshness, schedule/event dedupe, no wrong-target send va owner group smoke xanh |
 | Multi-org | Full 2-org negative fleet, workload/cell isolation va seven-day capacity soak xanh |
@@ -822,8 +822,8 @@ Rollback contract:
 2. Disable frontend/runtime feature flags, revoke workload/object tickets va stop chi rootless OpenClaw stack.
 3. Migrations production la additive/forward-compatible; rollback khong drop bang/evidence. New tables giu inert cho forensics/retention; corrective migration dung forward fix.
 4. R2 gateway deny new OpenClaw tickets; giu objects theo retention. Khong xoa session/queue/evidence trong rollback khan cap.
-5. Verify pre/post 9Router/CLI container ID, image, StartedAt, RestartCount, network/volume/ports va health; verify `/chat-zalo`, worker cu, `zalo_*` zero DML/dual-write.
-6. Reconcile QUEUED/UNKNOWN va audit truoc moi resume. Rollback drill phai hoan thanh trong 30 phut khong restart co-tenant.
+5. Verify pre/post OpenClaw container ID, image, `StartedAt`, `RestartCount`, network/volume/ports, dedicated-host baseline va authenticated model-endpoint health; prove deployment has no SSH/Docker credential toi host 9Router; verify `/chat-zalo`, worker cu, `zalo_*` zero DML/dual-write.
+6. Reconcile QUEUED/UNKNOWN va audit truoc moi resume. Rollback drill phai hoan thanh trong 30 phut, chi mutate rootless OpenClaw stack va de host control plane sach fault state.
 
 ## 16. Tich hop repo va pham vi file
 
