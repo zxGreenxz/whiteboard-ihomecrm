@@ -687,7 +687,7 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  IF EXISTS (
+  IF p_action_type <> 'CAPTURE_SNAPSHOT' AND EXISTS (
     SELECT 1
     FROM public.network_site_settings settings
     WHERE settings.organization_id = p_organization_id
@@ -935,6 +935,16 @@ BEGIN
     WHERE command.status IN ('QUEUED', 'RETRY_WAIT')
       AND command.available_at <= v_now
       AND command.attempt_count < command.max_attempts
+      AND (
+        command.action_type = 'CAPTURE_SNAPSHOT'
+        OR EXISTS (
+          SELECT 1
+          FROM public.network_site_settings settings
+          WHERE settings.organization_id = command.organization_id
+            AND settings.building_id = command.building_id
+            AND NOT settings.changes_paused
+        )
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM public.network_device_leases lease

@@ -227,6 +227,9 @@ or on material change. Current projections update every successful poll.
   display snapshot, sanitized parameters, requested actor, request hash,
   idempotency key, status, result, rollback, and reconciliation state.
 - Confirmation text is validated and discarded; it is never persisted.
+- Command rows are read only through sanitized RPC DTOs and are not a Realtime
+  publication because active rows contain worker lease credentials. Append-only
+  command events are the browser-safe invalidation signal.
 
 `network_command_attempts`
 
@@ -309,10 +312,17 @@ RPCs:
 - list assigned connection metadata without secrets;
 - claim commands;
 - renew command/device leases;
+- discover/upsert RouterOS interfaces and display-only Aruba inventory in
+  bounded batches, returning stable external-key-to-UUID mappings;
 - ingest bounded telemetry/current-state batches;
 - append command stages/results;
 - upsert incidents and snapshots;
 - request retention/rollup work.
+
+Aruba discovery has no total device quota. Each request is capped at 256 Aruba
+rows and can be repeated as many times as needed; discovered management
+addresses are display metadata only and never create a credential or write
+capability.
 
 The worker resolves `credential_ref` from a root-owned `0600` configuration file
 or secret store on Vultr. Logs redact credentials, raw configuration, addresses

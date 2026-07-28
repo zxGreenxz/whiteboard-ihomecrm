@@ -235,6 +235,18 @@ CREATE INDEX IF NOT EXISTS network_client_sessions_building_cursor_idx
 CREATE INDEX IF NOT EXISTS network_client_sessions_fingerprint_idx
   ON public.network_client_sessions (organization_id, building_id, client_fingerprint, first_seen_at DESC);
 
+-- These legacy iHomeCRM tables use globally unique UUID primary keys, but a
+-- tenant-bound child foreign key also needs a matching composite unique key.
+-- Add the identity keys before creating network_client_links.
+CREATE UNIQUE INDEX IF NOT EXISTS network_center_rooms_org_id_uidx
+  ON public.rooms (organization_id, id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS network_center_contracts_org_id_uidx
+  ON public.contracts (organization_id, id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS network_center_customers_org_id_uidx
+  ON public.customers (organization_id, id);
+
 CREATE TABLE IF NOT EXISTS public.network_client_links (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL,

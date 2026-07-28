@@ -30,6 +30,22 @@ const operationsSql = existsSync(operationsMigrationPath)
   ? readFileSync(operationsMigrationPath, "utf8").replace(/\r\n/g, "\n")
   : "";
 
+const rpcMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260729040000_network_center_rls_rpcs_realtime.sql",
+);
+
+const rpcSql = existsSync(rpcMigrationPath)
+  ? readFileSync(rpcMigrationPath, "utf8").replace(/\r\n/g, "\n")
+  : "";
+
+function sqlFunctionBody(sql: string, functionName: string): string {
+  const start = sql.search(new RegExp(`CREATE OR REPLACE FUNCTION\\s+(?:public|app_private)\\.${functionName}\\b`, "i"));
+  if (start < 0) return "";
+  const next = sql.slice(start + 1).search(/CREATE OR REPLACE FUNCTION\s+(?:public|app_private)\./i);
+  return next < 0 ? sql.slice(start) : sql.slice(start, start + 1 + next);
+}
+
 describe("Network Center permission and inventory migration", () => {
   it("exists as one forward transaction and refreshes the API schema", () => {
     expect(existsSync(inventoryMigrationPath), `Missing migration: ${inventoryMigrationPath}`).toBe(true);
@@ -284,5 +300,132 @@ describe("Network Center durable operations and command queue migration", () => 
     }
     expect((operationsSql.match(/ENABLE ROW LEVEL SECURITY/gi) ?? []).length).toBeGreaterThanOrEqual(12);
     expect((operationsSql.match(/REVOKE ALL ON TABLE public\.network_/gi) ?? []).length).toBeGreaterThanOrEqual(12);
+  });
+});
+
+describe("Network Center RLS, RPC, worker, and Realtime migration", () => {
+  it("exists as one forward transaction and patches the live UI contract", () => {
+    expect(existsSync(rpcMigrationPath), `Missing migration: ${rpcMigrationPath}`).toBe(true);
+    expect(rpcSql.match(/^BEGIN;$/gim)).toHaveLength(1);
+    expect(rpcSql.match(/^COMMIT;$/gim)).toHaveLength(1);
+    expect(rpcSql).toMatch(/NOTIFY pgrst, 'reload schema';\s*$/i);
+    for (const column of [
+      "backup_time_local",
+      "alert_sensitivity",
+      "dependency_grouping",
+      "session_type",
+      "rx_bps",
+      "tx_bps",
+      "randomized_mac",
+      "request_hash",
+    ]) {
+      expect(rpcSql).toContain(column);
+    }
+  });
+
+  it("opens read-only RLS paths through building-scoped view permission", () => {
+    expect((rpcSql.match(/ENABLE ROW LEVEL SECURITY/gi) ?? []).length).toBeGreaterThanOrEqual(20);
+    expect(rpcSql).toContain("can_do_on_building('network_center', 'view'");
+    expect(rpcSql).toContain("can_do_on_building('network_center', 'execute'");
+    expect(rpcSql).toMatch(/GRANT SELECT ON TABLE public\.network_device_current TO authenticated/i);
+    expect(rpcSql).not.toMatch(/GRANT\s+(?:INSERT|UPDATE|DELETE|ALL)[^;]+TO authenticated/i);
+  });
+
+  it("provides sanitized public reads and unlimited cursor-paginated Aruba", () => {
+    for (const rpc of [
+      "network_center_list_fleet_v1",
+      "network_center_get_building_v1",
+      "network_center_list_aruba_v1",
+      "network_center_list_clients_v1",
+      "network_center_list_commands_v1",
+      "network_center_list_audit_v1",
+      "network_center_compare_snapshots_v1",
+    ]) {
+      expect(rpcSql).toContain(`public.${rpc}`);
+    }
+    const arubaRpc = sqlFunctionBody(rpcSql, "network_center_list_aruba_v1");
+    expect(arubaRpc).toContain("device_kind = 'ARUBA'");
+    expect(arubaRpc).toMatch(/p_limit\s+NOT BETWEEN\s+1\s+AND\s+100/i);
+    expect(arubaRpc).toMatch(/ROW\([^)]*sort_order[^)]*id[^)]*\)\s*>\s*ROW/i);
+    expect(arubaRpc).not.toMatch(/\bOFFSET\b|credential_ref|management_username/i);
+    expect(rpcSql).not.toMatch(/aruba[^\n]{0,80}(quota|max_devices|hard_limit)/i);
+  });
+
+  it("exposes immediate idempotent mutations without approval or persisted confirmation", () => {
+    for (const rpc of [
+      "network_center_ack_incident_v1",
+      "network_center_create_maintenance_v1",
+      "network_center_cancel_maintenance_v1",
+      "network_center_request_snapshot_v1",
+      "network_center_execute_action_v1",
+      "network_center_update_settings_v1",
+    ]) {
+      expect(rpcSql).toContain(`public.${rpc}`);
+    }
+    expect(rpcSql).toMatch(/auth\.uid\(\)/i);
+    expect(rpcSql).toMatch(/FOR UPDATE/gi);
+    expect(rpcSql).toMatch(/request_hash\s+IS DISTINCT FROM/i);
+    expect(rpcSql).toMatch(/p_confirmation\s+IS DISTINCT FROM/i);
+    expect(rpcSql).not.toMatch(/pending_approval|approved_by|rejected_by|confirmation_(text|value)/i);
+  });
+
+  it("grants only narrow worker RPCs to service_role and bounds ingestion", () => {
+    for (const rpc of [
+      "network_center_worker_heartbeat_v1",
+      "network_center_worker_list_connections_v1",
+      "network_center_worker_claim_v1",
+      "network_center_worker_renew_v1",
+      "network_center_worker_ingest_v1",
+      "network_center_worker_inventory_v1",
+      "network_center_worker_command_event_v1",
+      "network_center_worker_complete_v1",
+      "network_center_worker_upsert_incident_v1",
+      "network_center_worker_snapshot_v1",
+      "network_center_worker_maintenance_v1",
+    ]) {
+      expect(rpcSql).toContain(`public.${rpc}`);
+      expect(rpcSql).toMatch(new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${rpc}[\\s\\S]{0,300} TO service_role`, "i"));
+      expect(rpcSql).toMatch(new RegExp(`REVOKE ALL ON FUNCTION public\\.${rpc}[\\s\\S]{0,300} FROM PUBLIC, anon, authenticated`, "i"));
+    }
+    expect(rpcSql).toMatch(/octet_length\(p_payload::text\)\s*>\s*524288/i);
+    expect(rpcSql).toMatch(/jsonb_array_length\([\s\S]{0,120}?\)\s*>\s*256/i);
+    expect(rpcSql).toMatch(/FOR UPDATE SKIP LOCKED/i);
+  });
+
+  it("does not lease reconciliation work beyond the requested worker batch", () => {
+    const claimRpc = sqlFunctionBody(rpcSql, "network_center_worker_claim_v1");
+    expect(claimRpc).toMatch(
+      /IF\s+jsonb_array_length\(v_regular\)\s*<\s*p_limit\s+THEN/i,
+    );
+    expect(claimRpc).toMatch(
+      /p_limit\s*-\s*jsonb_array_length\(v_regular\)/i,
+    );
+  });
+
+  it("publishes only safe invalidation tables", () => {
+    for (const table of [
+      "network_device_current",
+      "network_interface_current",
+      "network_incidents",
+      "network_command_events",
+      "network_worker_heartbeats",
+    ]) {
+      expect(rpcSql).toMatch(new RegExp(`ALTER PUBLICATION supabase_realtime ADD TABLE public\\.${table}`, "i"));
+    }
+    for (const table of [
+      "network_device_connections",
+      "network_device_samples",
+      "network_interface_samples",
+      "network_client_links",
+      "network_config_snapshots",
+      "network_audit_events",
+      "network_outbox_events",
+      "network_commands",
+    ]) {
+      expect(rpcSql).not.toMatch(new RegExp(`ALTER PUBLICATION supabase_realtime ADD TABLE public\\.${table}`, "i"));
+    }
+    expect(rpcSql).toMatch(
+      /ALTER PUBLICATION supabase_realtime DROP TABLE public\.network_commands/i,
+    );
   });
 });

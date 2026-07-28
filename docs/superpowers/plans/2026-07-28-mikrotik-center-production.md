@@ -391,14 +391,18 @@ validates bounded inputs, writes audit atomically, and returns a sanitized DTO.
 - [ ] **Step 5: Create internal worker RPCs**
 
 Implement atomic claim with `FOR UPDATE SKIP LOCKED`, lease renewal, heartbeat,
-bounded batch ingest/upsert, incident/snapshot writes, stage/result append, and
-retention/rollup invocation. Revoke them from browser roles.
+bounded batch ingest/upsert, RouterOS-interface and Aruba discovery with stable
+external-key mappings, incident/snapshot writes, stage/result append, and
+retention/rollup invocation. Discovery batches are bounded but Aruba has no
+total device quota. Revoke every worker RPC from browser roles.
 
 - [ ] **Step 6: Add safe Realtime publication**
 
-Add only current projections, incidents, commands, command events, and worker
-heartbeats. Do not publish raw telemetry, connections, client links, raw
-snapshots, audit payloads, or credential references.
+Add only current projections, incidents, command events, and worker heartbeats.
+Do not publish `network_commands`: active rows contain worker lease credentials,
+so command events trigger a sanitized RPC refetch instead. Do not publish raw
+telemetry, connections, client links, raw snapshots, audit payloads, or
+credential references.
 
 - [ ] **Step 7: Extend cross-tenant probes**
 
@@ -485,7 +489,7 @@ tables, constraints, policies, functions, and grants after each migration.
 
 Production buildings receive unprovisioned router/settings rows only. Synthetic
 telemetry fixtures are restricted to organization
-`dddd0000-0000-0000-0000-000000000001`.
+`dddd0000-0000-4000-8000-000000000001`.
 
 - [ ] **Step 3: Regenerate types**
 
