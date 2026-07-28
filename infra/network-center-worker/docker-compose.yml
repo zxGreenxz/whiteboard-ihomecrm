@@ -1,0 +1,43 @@
+services:
+  network-center-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ihome-network-center-worker:${NETWORK_CENTER_IMAGE_TAG:-local}
+    container_name: ihome-network-center-worker
+    user: "10001:10001"
+    init: true
+    network_mode: host
+    restart: unless-stopped
+    read_only: true
+    stop_grace_period: 30s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
+    volumes:
+      - type: bind
+        source: ${NETWORK_CENTER_SECRET_DIR_HOST:?set NETWORK_CENTER_SECRET_DIR_HOST}
+        target: /run/secrets/network-center
+        read_only: true
+      - type: bind
+        source: ${NETWORK_CENTER_BACKUP_DIR_HOST:?set NETWORK_CENTER_BACKUP_DIR_HOST}
+        target: /var/lib/network-center/backups
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      NETWORK_CENTER_WORKER_SECRET_FILE: /run/secrets/network-center/worker-secret
+      NETWORK_CENTER_CREDENTIALS_FILE: /run/secrets/network-center/router-credentials.json
+      NETWORK_CENTER_BACKUP_DIR: /var/lib/network-center/backups
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 0.50
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
