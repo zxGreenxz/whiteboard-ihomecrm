@@ -145,10 +145,10 @@ insert into public.permission_definitions
    accepted_possession_kinds, required_dimensions)
 values
   ('network_center.view', 'network_center', 'view', 'VIEW', 'TENANT',
-   array['ORGANIZATION','AREA','BUILDING'], true, 'ANY', false, '{}'::text[],
+   array['ORGANIZATION','AREA','BUILDING'], true, 'ANY_MATCH', false, '{}'::text[],
    array['BUILDING']),
   ('network_center.execute', 'network_center', 'execute', 'MANAGE', 'TENANT',
-   array['ORGANIZATION','AREA','BUILDING'], true, 'ANY', false, '{}'::text[],
+   array['ORGANIZATION','AREA','BUILDING'], true, 'ANY_MATCH', false, '{}'::text[],
    array['BUILDING'])
 on conflict (key) do update set
   is_active = excluded.is_active,
