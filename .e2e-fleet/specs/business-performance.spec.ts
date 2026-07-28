@@ -2515,7 +2515,7 @@ test.describe("Trung tâm Tài chính & Hiệu quả kinh doanh", () => {
 
     expect(new URL(page.url()).pathname).toBe(PROFIT_HUB_ROUTE);
     await expect(
-      page.getByRole("heading", {
+      page.locator("main").getByRole("button", {
         name: "Báo cáo Lợi Nhuận",
         exact: true,
       }),
