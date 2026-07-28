@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,6 +10,15 @@ import {
 } from "../apply-business-performance-gated-data.mjs";
 
 describe("business-performance gated-data rollout", () => {
+  it("keeps the importable rollout module free of a Windows-unsafe shebang", () => {
+    const source = readFileSync(
+      new URL("../apply-business-performance-gated-data.mjs", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).not.toMatch(/^#!/);
+  });
+
   it("pins the four migrations in timestamp order and one atomic payload", () => {
     expect(BUSINESS_PERFORMANCE_GATED_DATA_MIGRATIONS).toEqual([
       "supabase/migrations/20260728010000_business_performance_month_snapshots.sql",
