@@ -49,6 +49,202 @@ function exactKeys(object, expected, label) {
   }
 }
 
+function parseJsonStrict(bytes, label) {
+  const text = Buffer.from(bytes).toString("utf8");
+  if (text.charCodeAt(0) === 0xfeff) throw new Error(`${label} contains a BOM`);
+  let offset = 0;
+  const skipWhitespace = () => {
+    while (offset < text.length && /[\u0009\u000a\u000d\u0020]/.test(text[offset])) offset += 1;
+  };
+  const parseString = () => {
+    const start = offset;
+    if (text[offset] !== '"') throw new Error(`${label} contains an invalid JSON string`);
+    offset += 1;
+    while (offset < text.length) {
+      const code = text.charCodeAt(offset);
+      if (code === 0x22) {
+        offset += 1;
+        return JSON.parse(text.slice(start, offset));
+      }
+      if (code === 0x5c) {
+        offset += 1;
+        if (offset >= text.length) throw new Error(`${label} contains an unterminated JSON escape`);
+        const escape = text[offset];
+        if (escape === "u") {
+          if (!/^[0-9a-fA-F]{4}$/.test(text.slice(offset + 1, offset + 5))) {
+            throw new Error(`${label} contains an invalid Unicode escape`);
+          }
+          offset += 5;
+        } else if ('"\\/bfnrt'.includes(escape)) {
+          offset += 1;
+        } else {
+          throw new Error(`${label} contains an invalid JSON escape`);
+        }
+        continue;
+      }
+      if (code < 0x20) throw new Error(`${label} contains a control character in a JSON string`);
+      offset += 1;
+    }
+    throw new Error(`${label} contains an unterminated JSON string`);
+  };
+  const parseValue = () => {
+    skipWhitespace();
+    const token = text[offset];
+    if (token === '"') return parseString();
+    if (token === "{") {
+      offset += 1;
+      skipWhitespace();
+      const keys = new Set();
+      if (text[offset] === "}") {
+        offset += 1;
+        return;
+      }
+      while (offset < text.length) {
+        skipWhitespace();
+        const key = parseString();
+        if (keys.has(key)) throw new Error(`${label} contains a duplicate JSON key: ${key}`);
+        keys.add(key);
+        skipWhitespace();
+        if (text[offset] !== ":") throw new Error(`${label} contains a malformed JSON object`);
+        offset += 1;
+        parseValue();
+        skipWhitespace();
+        if (text[offset] === "}") {
+          offset += 1;
+          return;
+        }
+        if (text[offset] !== ",") throw new Error(`${label} contains a malformed JSON object`);
+        offset += 1;
+      }
+      throw new Error(`${label} contains an unterminated JSON object`);
+    }
+    if (token === "[") {
+      offset += 1;
+      skipWhitespace();
+      if (text[offset] === "]") {
+        offset += 1;
+        return;
+      }
+      while (offset < text.length) {
+        parseValue();
+        skipWhitespace();
+        if (text[offset] === "]") {
+          offset += 1;
+          return;
+        }
+        if (text[offset] !== ",") throw new Error(`${label} contains a malformed JSON array`);
+        offset += 1;
+      }
+      throw new Error(`${label} contains an unterminated JSON array`);
+    }
+    const start = offset;
+    while (offset < text.length && !/[\u0009\u000a\u000d\u0020,\]}]/.test(text[offset])) offset += 1;
+    if (start === offset) throw new Error(`${label} contains an invalid JSON value`);
+    const value = JSON.parse(text.slice(start, offset));
+    if (typeof value === "number" && (!Number.isFinite(value) || !Number.isSafeInteger(value))) {
+      throw new Error(`${label} contains a non-I-JSON number`);
+    }
+    return value;
+  };
+  parseValue();
+  skipWhitespace();
+  if (offset !== text.length) throw new Error(`${label} contains trailing bytes`);
+  return JSON.parse(text);
+}
+
+function assertReviewIdentity(value, label) {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 256 ||
+    /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    throw new Error(`${label} is invalid`);
+  }
+}
+
+function reviewEvidenceFromBytes(bytes, expected) {
+  if (!expected || !["M", "R"].includes(expected.checkpoint)) {
+    throw new Error("expected review checkpoint must be M or R");
+  }
+  if (!REVIEWED_TREE.test(expected.reviewedSha)) throw new Error("expected reviewed SHA is invalid");
+  const report = parseJsonStrict(bytes, `${expected.checkpoint} review report`);
+  const keys = [
+    "checkpoint",
+    "decision",
+    "findings",
+    "reviewedSha",
+    "reviewerIdentity",
+    "reviewerRole",
+    "reviewerRunId",
+    "schema",
+  ];
+  exactKeys(report, keys, `${expected.checkpoint} review report`);
+  if (report.schema !== 1) throw new Error("review report schema must be 1");
+  if (report.checkpoint !== expected.checkpoint) throw new Error("review report checkpoint mismatch");
+  if (report.reviewedSha !== expected.reviewedSha) throw new Error("review report SHA mismatch");
+  if (report.reviewerRole !== "reviewer") throw new Error("review report role must be reviewer");
+  if (report.decision !== "APPROVED") throw new Error("review report decision must be APPROVED");
+  if (!Array.isArray(report.findings) || report.findings.length !== 0) {
+    throw new Error("review report findings must be empty");
+  }
+  assertReviewIdentity(report.reviewerIdentity, "reviewer identity");
+  assertReviewIdentity(report.reviewerRunId, "reviewer run ID");
+  const canonical = Buffer.from(`${JSON.stringify(report)}\n`, "utf8");
+  if (!bytes.equals(canonical)) throw new Error("review report bytes are not canonical");
+  return {
+    checkpoint: report.checkpoint,
+    report_base64: bytes.toString("base64"),
+    report_size: bytes.length,
+    report_sha256: sha256(bytes),
+    reviewed_sha: report.reviewedSha,
+    reviewer_role: report.reviewerRole,
+    reviewer_identity: report.reviewerIdentity,
+    reviewer_run_id: report.reviewerRunId,
+    decision: report.decision,
+    findings: report.findings,
+  };
+}
+
+export function validateEmbeddedReviewRecord(record, expected) {
+  const keys = [
+    "checkpoint",
+    "report_base64",
+    "report_size",
+    "report_sha256",
+    "reviewed_sha",
+    "reviewer_role",
+    "reviewer_identity",
+    "reviewer_run_id",
+    "decision",
+    "findings",
+  ];
+  exactKeys(record, keys, `${expected.checkpoint} embedded review`);
+  if (typeof record.report_base64 !== "string" || record.report_base64.length === 0) {
+    throw new Error("embedded review base64 is invalid");
+  }
+  const bytes = Buffer.from(record.report_base64, "base64");
+  if (bytes.toString("base64") !== record.report_base64) {
+    throw new Error("embedded review base64 is not canonical");
+  }
+  const computed = reviewEvidenceFromBytes(bytes, expected);
+  for (const key of keys) {
+    if (JSON.stringify(record[key]) !== JSON.stringify(computed[key])) {
+      throw new Error(`${expected.checkpoint} embedded review ${key} mismatch`);
+    }
+  }
+  return computed;
+}
+
+export async function readCanonicalReviewReport(reportPath, expected) {
+  if (!isAbsolute(reportPath)) throw new Error("review report path must be absolute");
+  const item = await lstat(reportPath);
+  if (!item.isFile() || item.isSymbolicLink()) {
+    throw new Error("review report must be a regular non-symlink file");
+  }
+  return reviewEvidenceFromBytes(await readFile(reportPath), expected);
+}
+
 function assertPortablePath(path, label) {
   if (
     typeof path !== "string" ||
@@ -354,6 +550,9 @@ function validateSchemaValue(value, schema, path = "$", rootSchema = schema) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
       throw new Error(`${path} has too few items`);
     }
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+      throw new Error(`${path} must contain at most ${schema.maxItems} items`);
+    }
     for (const [index, item] of value.entries()) {
       validateSchemaValue(item, schema.items, `${path}[${index}]`, rootSchema);
     }
@@ -407,6 +606,151 @@ async function promoteFile(source, destination) {
   return sourceHash;
 }
 
+function assertJsonEqual(actual, expected, label) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${label} mismatch`);
+  }
+}
+
+export async function verifyEvidenceFile({
+  root,
+  lockPath,
+  evidencePath,
+  schemaPath,
+  reviewedTree,
+  releaseArtifactPath,
+}) {
+  if (!REVIEWED_TREE.test(reviewedTree)) throw new Error("invalid reviewed tree");
+  if (!isAbsolute(releaseArtifactPath)) throw new Error("release artifact path must be absolute");
+  const evidenceItem = await lstat(evidencePath);
+  const schemaItem = await lstat(schemaPath);
+  const archiveItem = await lstat(releaseArtifactPath);
+  for (const [item, label] of [
+    [evidenceItem, "evidence"],
+    [schemaItem, "evidence schema"],
+    [archiveItem, "release artifact"],
+  ]) {
+    if (!item.isFile() || item.isSymbolicLink()) {
+      throw new Error(`${label} must be a regular non-symlink file`);
+    }
+  }
+
+  const evidenceBytes = await readFile(evidencePath);
+  const evidence = parseJsonStrict(evidenceBytes, "build evidence");
+  const canonicalEvidence = Buffer.from(`${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+  if (!evidenceBytes.equals(canonicalEvidence)) throw new Error("build evidence bytes are not canonical");
+  const schema = parseJsonStrict(await readFile(schemaPath), "build evidence schema");
+  validateJsonSchema(evidence, schema);
+  if (evidence.reviewed_tree !== reviewedTree) throw new Error("build evidence reviewed tree mismatch");
+  exactKeys(evidence.reviews, ["M", "R"], "build evidence reviews");
+  validateEmbeddedReviewRecord(evidence.reviews.M, {
+    checkpoint: "M",
+    reviewedSha: evidence.reviews.M.reviewed_sha,
+  });
+  validateEmbeddedReviewRecord(evidence.reviews.R, {
+    checkpoint: "R",
+    reviewedSha: reviewedTree,
+  });
+  if (evidence.reviews.M.reviewed_sha === reviewedTree) {
+    throw new Error("embedded M and R reviewed SHAs must be distinct");
+  }
+
+  const lockResult = await verifyImageLock({ root, lockPath });
+  if (evidence.image_lock.sha256 !== lockResult.lockSha256) {
+    throw new Error("build evidence image lock hash mismatch");
+  }
+  if (evidence.image_lock.algorithm !== lockResult.lock.algorithm) {
+    throw new Error("build evidence context algorithm mismatch");
+  }
+  if (evidence.image_lock.context_root_sha256 !== lockResult.contextRootSha256) {
+    throw new Error("build evidence context root mismatch");
+  }
+  if (evidence.source_date_epoch !== lockResult.lock.source_date_epoch) {
+    throw new Error("build evidence source epoch mismatch");
+  }
+  if (evidence.platform !== lockResult.lock.platform) {
+    throw new Error("build evidence platform mismatch");
+  }
+  if (evidence.base_image.reference !== lockResult.lock.base_image) {
+    throw new Error("build evidence base image mismatch");
+  }
+  if (evidence.buildkit.image !== lockResult.lock.buildkit_image) {
+    throw new Error("build evidence BuildKit image mismatch");
+  }
+  if (
+    evidence.buildx.version !== lockResult.lock.buildx.version ||
+    ![
+      lockResult.lock.buildx.windows_amd64_sha256,
+      lockResult.lock.buildx.linux_amd64_sha256,
+    ].includes(evidence.buildx.sha256)
+  ) {
+    throw new Error("build evidence buildx lock mismatch");
+  }
+  if (!isAbsolute(evidence.buildx.path)) throw new Error("build evidence buildx path must be absolute");
+  const buildxItem = await lstat(evidence.buildx.path);
+  if (!buildxItem.isFile() || buildxItem.isSymbolicLink()) {
+    throw new Error("build evidence buildx path must be a regular non-symlink file");
+  }
+  if ((await hashFile(evidence.buildx.path)).sha256 !== evidence.buildx.sha256) {
+    throw new Error("build evidence buildx binary hash mismatch");
+  }
+
+  if (!isAbsolute(evidence.oci.promoted_archive_path)) {
+    throw new Error("build evidence promoted archive path must be absolute");
+  }
+  const canonicalArchive = resolve(releaseArtifactPath);
+  if (resolve(evidence.oci.promoted_archive_path) !== canonicalArchive) {
+    throw new Error("build evidence promoted archive path mismatch");
+  }
+  const archiveHash = await hashFile(canonicalArchive);
+  for (const [field, value] of [
+    ["archive_a_sha256", evidence.oci.archive_a_sha256],
+    ["archive_b_sha256", evidence.oci.archive_b_sha256],
+    ["promoted_archive_sha256", evidence.oci.promoted_archive_sha256],
+  ]) {
+    if (value !== archiveHash.sha256) throw new Error(`build evidence ${field} mismatch`);
+  }
+  const inspectedOci = await inspectOciArchive(canonicalArchive);
+  for (const key of [
+    "index_sha256",
+    "manifest_digest",
+    "config_digest",
+    "layer_digests",
+    "blob_manifest_sha256",
+  ]) {
+    assertJsonEqual(evidence.oci[key], inspectedOci[key], `build evidence OCI ${key}`);
+  }
+  if (evidence.image_digest !== inspectedOci.manifest_digest) {
+    throw new Error("build evidence image digest mismatch");
+  }
+
+  const fork = parseJsonStrict(
+    await readFile(resolve(root, "vendor/zalouser-bridge/FORK.json")),
+    "FORK.json",
+  );
+  assertJsonEqual(evidence.installed_fork.entries, fork.installedTree.entries, "installed fork entries");
+  if (
+    evidence.installed_fork.file_count !== fork.installedTree.fileCount ||
+    evidence.installed_fork.directory_count !== fork.installedTree.directoryCount ||
+    evidence.installed_fork.root_sha256 !== fork.installedTree.sha256
+  ) {
+    throw new Error("installed fork summary mismatch");
+  }
+  const expectedSession = lockResult.lock.inputs.filter(({ path }) => SESSION_DIST.includes(path));
+  assertJsonEqual(evidence.session_crypto.inputs, expectedSession, "session crypto inputs");
+  assertJsonEqual(evidence.session_crypto.installed, expectedSession, "session crypto installed files");
+  const expectedClosure = sha256(
+    Buffer.from(
+      expectedSession.map(({ path, sha256: digest }) => `${path}\0${digest}\0`).join(""),
+      "utf8",
+    ),
+  );
+  if (evidence.session_crypto.closure_sha256 !== expectedClosure) {
+    throw new Error("session crypto closure mismatch");
+  }
+  return { evidence_sha256: sha256(evidenceBytes), archive_sha256: archiveHash.sha256 };
+}
+
 function parseArgs(argv) {
   const result = {};
   for (let index = 0; index < argv.length; index += 2) {
@@ -418,20 +762,67 @@ function parseArgs(argv) {
   return result;
 }
 
+async function readReviewsFromArgs(args) {
+  const required = [
+    "m-reviewed-tree",
+    "reviewed-tree",
+    "m-review-report",
+    "r-review-report",
+  ];
+  const present = required.filter((key) => args[key]);
+  if (present.length === 0) return undefined;
+  for (const key of required) if (!args[key]) throw new Error(`--${key} is required`);
+  if (!REVIEWED_TREE.test(args["m-reviewed-tree"])) throw new Error("invalid M reviewed tree");
+  if (!REVIEWED_TREE.test(args["reviewed-tree"])) throw new Error("invalid reviewed tree");
+  if (args["m-reviewed-tree"] === args["reviewed-tree"]) {
+    throw new Error("M and R reviewed trees must be distinct");
+  }
+  return {
+    M: await readCanonicalReviewReport(args["m-review-report"], {
+      checkpoint: "M",
+      reviewedSha: args["m-reviewed-tree"],
+    }),
+    R: await readCanonicalReviewReport(args["r-review-report"], {
+      checkpoint: "R",
+      reviewedSha: args["reviewed-tree"],
+    }),
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const root = resolve(args.root ?? dirname(args.lock ?? "image-lock.json"));
+  const scriptCellRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const root = resolve(args.root ?? (args.lock ? dirname(args.lock) : scriptCellRoot));
   const lockPath = resolve(args.lock ?? resolve(root, "image-lock.json"));
+  if (!args["oci-a"] && !args["oci-b"] && args.evidence) {
+    for (const key of ["schema", "reviewed-tree", "release-artifact"]) {
+      if (!args[key]) throw new Error(`--${key} is required with --evidence`);
+    }
+    const result = await verifyEvidenceFile({
+      root,
+      lockPath,
+      evidencePath: resolve(args.evidence),
+      schemaPath: resolve(args.schema),
+      reviewedTree: args["reviewed-tree"],
+      releaseArtifactPath: args["release-artifact"],
+    });
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
   const lockResult = await verifyImageLock({ root, lockPath });
+  const reviews = await readReviewsFromArgs(args);
   if (!args["oci-a"] && !args["oci-b"]) {
-    process.stdout.write(`${JSON.stringify(lockResult)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...lockResult, ...(reviews ? { reviews } : {}) })}\n`);
     return;
   }
 
   const required = [
     "oci-a",
     "oci-b",
+    "m-reviewed-tree",
     "reviewed-tree",
+    "m-review-report",
+    "r-review-report",
     "schema",
     "evidence",
     "release-artifact",
@@ -439,6 +830,8 @@ async function main() {
     "buildx-sha256",
   ];
   for (const key of required) if (!args[key]) throw new Error(`--${key} is required`);
+  if (!reviews) throw new Error("canonical M/R review reports are required");
+  if (!REVIEWED_TREE.test(args["m-reviewed-tree"])) throw new Error("invalid M reviewed tree");
   if (!REVIEWED_TREE.test(args["reviewed-tree"])) throw new Error("invalid reviewed tree");
   if (!isAbsolute(args["buildx-path"])) throw new Error("buildx path must be absolute");
   if (!HEX_64.test(args["buildx-sha256"])) throw new Error("invalid buildx sha256");
@@ -456,6 +849,7 @@ async function main() {
   const evidence = {
     schema_version: 1,
     reviewed_tree: args["reviewed-tree"],
+    reviews,
     source_date_epoch: lockResult.lock.source_date_epoch,
     platform: lockResult.lock.platform,
     image_digest: oci.manifest_digest,

@@ -7,6 +7,16 @@ param(
   [string]$ReviewedTree,
 
   [Parameter(Mandatory = $true)]
+  [ValidatePattern('^[0-9a-f]{40}$')]
+  [string]$MReviewedTree,
+
+  [Parameter(Mandatory = $true)]
+  [string]$MReviewReportPath,
+
+  [Parameter(Mandatory = $true)]
+  [string]$RReviewReportPath,
+
+  [Parameter(Mandatory = $true)]
   [string]$BuildxPath,
 
   [Parameter(Mandatory = $true)]
@@ -55,6 +65,23 @@ if (-not [IO.Path]::IsPathFullyQualified($EvidencePath)) {
 }
 if (-not [IO.Path]::IsPathFullyQualified($ReleaseArtifactPath)) {
   throw 'ReleaseArtifactPath must be absolute'
+}
+if ($MReviewedTree -eq $ReviewedTree) {
+  throw 'MReviewedTree and ReviewedTree must be distinct'
+}
+foreach ($reviewReportPath in @($MReviewReportPath, $RReviewReportPath)) {
+  if (-not [IO.Path]::IsPathFullyQualified($reviewReportPath)) {
+    throw 'Review report paths must be absolute'
+  }
+  $reviewReportItem = Get-Item -LiteralPath $reviewReportPath -Force -ErrorAction Stop
+  if ($reviewReportItem.PSIsContainer -or ($reviewReportItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'Review reports must be regular non-reparse files'
+  }
+}
+$resolvedMReviewReport = (Resolve-Path -LiteralPath $MReviewReportPath -ErrorAction Stop).Path
+$resolvedRReviewReport = (Resolve-Path -LiteralPath $RReviewReportPath -ErrorAction Stop).Path
+if ($resolvedMReviewReport -eq $resolvedRReviewReport) {
+  throw 'M and R review reports must be distinct files'
 }
 
 $resolvedBuildx = (Resolve-Path -LiteralPath $BuildxPath -ErrorAction Stop).Path
@@ -123,7 +150,11 @@ try {
   Invoke-NativeChecked -FilePath $nodePath -Arguments @(
     $verifierPath,
     '--root', $contextRoot,
-    '--lock', (Join-Path $contextRoot 'image-lock.json')
+    '--lock', (Join-Path $contextRoot 'image-lock.json'),
+    '--m-reviewed-tree', $MReviewedTree,
+    '--reviewed-tree', $ReviewedTree,
+    '--m-review-report', $resolvedMReviewReport,
+    '--r-review-report', $resolvedRReviewReport
   ) | Out-Null
 
   Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
@@ -176,7 +207,10 @@ try {
     '--lock', (Join-Path $contextRoot 'image-lock.json'),
     '--oci-a', $ociA,
     '--oci-b', $ociB,
+    '--m-reviewed-tree', $MReviewedTree,
     '--reviewed-tree', $ReviewedTree,
+    '--m-review-report', $resolvedMReviewReport,
+    '--r-review-report', $resolvedRReviewReport,
     '--schema', $schemaPath,
     '--evidence', $EvidencePath,
     '--release-artifact', $ReleaseArtifactPath,

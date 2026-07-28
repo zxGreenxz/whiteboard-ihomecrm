@@ -91,7 +91,7 @@ describe("reviewed upstream and legal inputs", () => {
     const result = verifySigstoreAttestations({
       vendorRoot,
       upstream: JSON.parse(readFileSync(resolve(vendorRoot, "UPSTREAM.json"), "utf8")),
-      tarballBytes: readFileSync(resolve(vendorRoot, ".work/upstream.tgz")),
+      tarballBytes: readFileSync(resolve(vendorRoot, ".work/verified-upstream.tgz")),
     });
 
     expect(result).toMatchObject({ npm: "verified", slsa: "verified", rekorEntries: 2 });
@@ -108,7 +108,7 @@ describe("reviewed upstream and legal inputs", () => {
       verifySigstoreAttestations({
         vendorRoot,
         upstream,
-        tarballBytes: readFileSync(resolve(vendorRoot, ".work/upstream.tgz")),
+        tarballBytes: readFileSync(resolve(vendorRoot, ".work/verified-upstream.tgz")),
         attestations: tampered,
       }),
     ).toThrow(/DSSE|payload|signature/i);

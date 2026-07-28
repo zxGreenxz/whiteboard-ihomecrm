@@ -278,6 +278,118 @@ test("build evidence schema is closed at every object level", async () => {
   }
 });
 
+test("build evidence binds exact canonical M and R approval reports", async (t) => {
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  assert.ok(schema.required.includes("reviews"));
+  assert.deepEqual(schema.properties.reviews.required, ["M", "R"]);
+  assert.equal(schema.properties.reviews.additionalProperties, false);
+  assert.equal(schema.properties.reviews.properties.M.$ref, "#/$defs/reviewRecord");
+  assert.equal(schema.properties.reviews.properties.R.$ref, "#/$defs/reviewRecord");
+
+  const reviewSchema = schema.$defs.reviewRecord;
+  assert.equal(reviewSchema.additionalProperties, false);
+  assert.deepEqual(reviewSchema.required, [
+    "checkpoint",
+    "report_base64",
+    "report_size",
+    "report_sha256",
+    "reviewed_sha",
+    "reviewer_role",
+    "reviewer_identity",
+    "reviewer_run_id",
+    "decision",
+    "findings",
+  ]);
+  assert.equal(reviewSchema.properties.decision.const, "APPROVED");
+  assert.equal(reviewSchema.properties.findings.maxItems, 0);
+
+  const {
+    readCanonicalReviewReport,
+    validateEmbeddedReviewRecord,
+    validateJsonSchema,
+  } = await loadScript("scripts/verify-image-lock.mjs");
+  assert.throws(
+    () =>
+      validateJsonSchema(["tampered finding"], {
+        type: "array",
+        maxItems: 0,
+        items: {},
+      }),
+    /at most 0 items/i,
+  );
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-review-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const reviewedSha = "a".repeat(40);
+  const report = {
+    checkpoint: "M",
+    decision: "APPROVED",
+    findings: [],
+    reviewedSha,
+    reviewerIdentity: "/root/review-m",
+    reviewerRole: "reviewer",
+    reviewerRunId: "M-review-run",
+    schema: 1,
+  };
+  const canonicalBytes = Buffer.from(`${JSON.stringify(report)}\n`);
+  const reportPath = join(fixture, "m-review.json");
+  await writeFile(reportPath, canonicalBytes);
+
+  const embedded = await readCanonicalReviewReport(reportPath, {
+    checkpoint: "M",
+    reviewedSha,
+  });
+  assert.deepEqual(
+    embedded,
+    {
+      checkpoint: "M",
+      report_base64: canonicalBytes.toString("base64"),
+      report_size: canonicalBytes.length,
+      report_sha256: sha256(canonicalBytes),
+      reviewed_sha: reviewedSha,
+      reviewer_role: "reviewer",
+      reviewer_identity: "/root/review-m",
+      reviewer_run_id: "M-review-run",
+      decision: "APPROVED",
+      findings: [],
+    },
+  );
+  assert.deepEqual(
+    validateEmbeddedReviewRecord(embedded, {
+      checkpoint: "M",
+      reviewedSha,
+    }),
+    {
+      checkpoint: "M",
+      report_base64: canonicalBytes.toString("base64"),
+      report_size: canonicalBytes.length,
+      report_sha256: sha256(canonicalBytes),
+      reviewed_sha: reviewedSha,
+      reviewer_role: "reviewer",
+      reviewer_identity: "/root/review-m",
+      reviewer_run_id: "M-review-run",
+      decision: "APPROVED",
+      findings: [],
+    },
+  );
+  assert.throws(
+    () =>
+      validateEmbeddedReviewRecord(
+        { ...embedded, report_sha256: "0".repeat(64) },
+        { checkpoint: "M", reviewedSha },
+      ),
+    /report_sha256 mismatch/i,
+  );
+
+  await writeFile(
+    reportPath,
+    `{"checkpoint":"M","decision":"REJECTED","decision":"APPROVED","findings":[],"reviewedSha":"${reviewedSha}","reviewerIdentity":"/root/review-m","reviewerRole":"reviewer","reviewerRunId":"M-review-run","schema":1}\n`,
+  );
+  await assert.rejects(
+    readCanonicalReviewReport(reportPath, { checkpoint: "M", reviewedSha }),
+    /duplicate JSON key/i,
+  );
+});
+
 test("PowerShell helper pins builders and makes the verifier the promotion gate", async () => {
   const script = await readCell("scripts/build-reproducible-image.ps1");
 
@@ -300,6 +412,10 @@ test("PowerShell helper pins builders and makes the verifier the promotion gate"
   assert.match(script, /rewrite-timestamp=true/);
   assert.match(script, /verify-image-lock\.mjs/);
   assert.match(script, /'--release-artifact', \$ReleaseArtifactPath/);
+  assert.match(script, /\[string\]\$MReviewReportPath/);
+  assert.match(script, /\[string\]\$RReviewReportPath/);
+  assert.match(script, /'--m-review-report', \$resolvedMReviewReport/);
+  assert.match(script, /'--r-review-report', \$resolvedRReviewReport/);
   assert.doesNotMatch(script, /Invoke-Expression|cmd\s+\/c|Start-Process/);
 });
 

@@ -18,7 +18,14 @@ stable 24.x line, and an absolute verified buildx 0.13.1 binary. It creates two
 fresh pinned BuildKit builders and accepts the result only when both OCI archives
 are byte-identical. `--pull` may acquire the pinned base image; all application
 installation commands inside the Docker build run with `--network=none`.
+The helper also requires exact `-MReviewedTree`, `-MReviewReportPath`, and
+`-RReviewReportPath` inputs. Both report paths must be absolute regular files;
+their canonical bytes, hashes, reviewer identity, approval decision, and empty
+findings are validated before either builder starts and embedded in the evidence.
 
 `build-evidence.json` is intentionally absent from source checkpoint R. It is
 created only by the qualifying build and committed later as the sole file in the
-evidence-only child checkpoint E.
+evidence-only child checkpoint E. The child verifier revalidates the closed
+schema, both embedded review reports, exact R, image lock, retained OCI archive,
+OCI descriptors, installed fork manifest, and session-crypto closure before the
+evidence file may be staged.

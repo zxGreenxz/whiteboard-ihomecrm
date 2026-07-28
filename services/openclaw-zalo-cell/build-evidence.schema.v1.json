@@ -7,6 +7,7 @@
   "required": [
     "schema_version",
     "reviewed_tree",
+    "reviews",
     "source_date_epoch",
     "platform",
     "image_digest",
@@ -23,6 +24,15 @@
   "properties": {
     "schema_version": { "type": "integer", "const": 1 },
     "reviewed_tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "reviews": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["M", "R"],
+      "properties": {
+        "M": { "$ref": "#/$defs/reviewRecord" },
+        "R": { "$ref": "#/$defs/reviewRecord" }
+      }
+    },
     "source_date_epoch": { "type": "string", "const": "1785062400" },
     "platform": { "type": "string", "const": "linux/amd64" },
     "image_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
@@ -192,6 +202,34 @@
     }
   },
   "$defs": {
+    "reviewRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpoint",
+        "report_base64",
+        "report_size",
+        "report_sha256",
+        "reviewed_sha",
+        "reviewer_role",
+        "reviewer_identity",
+        "reviewer_run_id",
+        "decision",
+        "findings"
+      ],
+      "properties": {
+        "checkpoint": { "type": "string", "enum": ["M", "R"] },
+        "report_base64": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
+        "report_size": { "type": "integer" },
+        "report_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "reviewed_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "reviewer_role": { "type": "string", "const": "reviewer" },
+        "reviewer_identity": { "type": "string", "pattern": "^.+$" },
+        "reviewer_run_id": { "type": "string", "pattern": "^.+$" },
+        "decision": { "type": "string", "const": "APPROVED" },
+        "findings": { "type": "array", "maxItems": 0, "items": {} }
+      }
+    },
     "fileRecord": {
       "type": "object",
       "additionalProperties": false,
