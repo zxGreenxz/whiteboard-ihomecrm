@@ -254,6 +254,51 @@ describe("reviewed upstream and legal inputs", () => {
             expected: /reviewed export manifest path is required/i,
           },
           {
+            label: "only manifest path supplied",
+            options: {
+              reviewedExportManifestPath: manifestPath,
+            },
+            expected: /reviewed export tree is required/i,
+          },
+          {
+            label: "only reviewed tree supplied",
+            options: {
+              reviewedTree,
+            },
+            expected: /reviewed export manifest path is required/i,
+          },
+          {
+            label: "only manifest SHA-256 supplied",
+            options: {
+              reviewedExportManifestSha256: manifestSha256,
+            },
+            expected: /reviewed export manifest path is required/i,
+          },
+          {
+            label: "manifest path and reviewed tree supplied",
+            options: {
+              reviewedExportManifestPath: manifestPath,
+              reviewedTree,
+            },
+            expected: /reviewed export manifest SHA-256 is required/i,
+          },
+          {
+            label: "manifest path and SHA-256 supplied",
+            options: {
+              reviewedExportManifestPath: manifestPath,
+              reviewedExportManifestSha256: manifestSha256,
+            },
+            expected: /reviewed export tree is required/i,
+          },
+          {
+            label: "reviewed tree and SHA-256 supplied",
+            options: {
+              reviewedExportManifestSha256: manifestSha256,
+              reviewedTree,
+            },
+            expected: /reviewed export manifest path is required/i,
+          },
+          {
             label: "missing manifest path",
             options: {
               reviewedExportManifestPath: undefined,
