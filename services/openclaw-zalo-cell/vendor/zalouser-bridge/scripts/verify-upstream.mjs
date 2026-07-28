@@ -6,8 +6,15 @@ import {
   verify as verifySignature,
 } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import {
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
@@ -32,6 +39,21 @@ function fail(message) {
 
 function expectEqual(actual, expected, label) {
   if (actual !== expected) fail(`${label} mismatch`);
+}
+
+function exactKeys(value, expected, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail(`${label} must be an object`);
+  }
+  const actual = Object.keys(value).sort((left, right) =>
+    Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+  );
+  const wanted = [...expected].sort((left, right) =>
+    Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+  );
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
+    fail(`${label} has unknown or missing properties`);
+  }
 }
 
 function decodeBase64(value, label) {
@@ -843,6 +865,130 @@ function readReviewedRecords(repoRoot, commit, paths) {
   });
 }
 
+function gitBlobOid(bytes) {
+  return createHash("sha1")
+    .update(Buffer.from(`blob ${bytes.length}\0`, "ascii"))
+    .update(bytes)
+    .digest("hex");
+}
+
+function exportedPath(exportRoot, portablePath) {
+  const candidate = resolve(exportRoot, ...portablePath.split("/"));
+  const rel = relative(exportRoot, candidate);
+  if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) {
+    throw new Error(`reviewed export path escaped root: ${portablePath}`);
+  }
+  return candidate;
+}
+
+function readReviewedExportRecords(exportRoot, manifestPath, reviewedTree, paths, expectedManifestSha256) {
+  if (!isAbsolute(manifestPath)) throw new Error("reviewed export manifest path must be absolute");
+  if (!/^[0-9a-f]{40}$/.test(reviewedTree ?? "")) {
+    throw new Error("reviewed export tree must be an exact 40-hex commit");
+  }
+  const manifestInfo = lstatSync(manifestPath);
+  if (!manifestInfo.isFile() || manifestInfo.isSymbolicLink()) {
+    throw new Error("reviewed export manifest must be a regular non-symlink file");
+  }
+  const manifestBytes = readFileSync(manifestPath);
+  if (expectedManifestSha256 !== undefined) {
+    if (!/^[0-9a-f]{64}$/.test(expectedManifestSha256)) {
+      throw new Error("reviewed export manifest SHA-256 is invalid");
+    }
+    if (sha256(manifestBytes) !== expectedManifestSha256) {
+      throw new Error("reviewed export manifest SHA-256 mismatch");
+    }
+  }
+  const manifest = parseJsonStrict(manifestBytes, "reviewed export manifest");
+  const canonicalBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  if (!manifestBytes.equals(canonicalBytes)) {
+    throw new Error("reviewed export manifest bytes are not canonical");
+  }
+  exactKeys(
+    manifest,
+    ["schema_version", "git_object_format", "reviewed_tree", "entries"],
+    "reviewed export manifest",
+  );
+  if (
+    manifest.schema_version !== 1 ||
+    manifest.git_object_format !== "sha1" ||
+    manifest.reviewed_tree !== reviewedTree ||
+    !Array.isArray(manifest.entries) ||
+    manifest.entries.length === 0
+  ) {
+    throw new Error("reviewed export manifest identity mismatch");
+  }
+
+  const byPath = new Map();
+  const collisionKeys = new Set();
+  let previousPath;
+  for (const [index, entry] of manifest.entries.entries()) {
+    exactKeys(
+      entry,
+      [
+        "path",
+        "type",
+        "mode",
+        "git_object_id",
+        "git_object_size",
+        "content_size",
+        "content_sha256",
+      ],
+      `reviewed export entry ${index}`,
+    );
+    validateArchivePath(entry.path);
+    if (
+      entry.type !== "blob" ||
+      !["100644", "100755"].includes(entry.mode) ||
+      !/^[0-9a-f]{40}$/.test(entry.git_object_id ?? "") ||
+      !Number.isSafeInteger(entry.git_object_size) ||
+      entry.git_object_size < 0 ||
+      entry.content_size !== entry.git_object_size ||
+      !/^[0-9a-f]{64}$/.test(entry.content_sha256 ?? "")
+    ) {
+      throw new Error(`reviewed export entry is invalid: ${entry.path}`);
+    }
+    if (previousPath !== undefined && compareUtf8Paths({ path: previousPath }, entry) >= 0) {
+      throw new Error("reviewed export entries are not raw UTF-8 path sorted");
+    }
+    previousPath = entry.path;
+    const collisionKey = entry.path.normalize("NFC").toLowerCase();
+    if (entry.path !== entry.path.normalize("NFC") || collisionKeys.has(collisionKey)) {
+      throw new Error(`reviewed export path collision: ${entry.path}`);
+    }
+    collisionKeys.add(collisionKey);
+    byPath.set(entry.path, entry);
+  }
+
+  return paths.map((path) => {
+    const entry = byPath.get(path);
+    if (!entry) throw new Error(`missing reviewed export path: ${path}`);
+    const absolute = exportedPath(exportRoot, path);
+    const info = lstatSync(absolute);
+    if (!info.isFile() || info.isSymbolicLink()) {
+      throw new Error(`reviewed export path is not a regular file: ${path}`);
+    }
+    const bytes = readFileSync(absolute);
+    const oid = gitBlobOid(bytes);
+    const contentSha256 = sha256(bytes);
+    if (
+      bytes.length !== entry.content_size ||
+      oid !== entry.git_object_id ||
+      contentSha256 !== entry.content_sha256
+    ) {
+      throw new Error(`reviewed export content mismatch: ${path}`);
+    }
+    return {
+      bytes,
+      mode: entry.mode,
+      oid,
+      path,
+      sha256: contentSha256,
+      size: bytes.length,
+    };
+  });
+}
+
 function compareUtf8Paths(left, right) {
   return Buffer.compare(Buffer.from(left.path, "utf8"), Buffer.from(right.path, "utf8"));
 }
@@ -961,10 +1107,28 @@ export async function verifyCommittedInputs(options = {}) {
   const expectedVendorRoot = resolve(repoRoot, VENDOR_REL);
   if (vendorRoot !== expectedVendorRoot) throw new Error("vendorRoot does not match repository layout");
   assertGoldenAggregate();
-  const upstreamRecord = readReviewedRecords(repoRoot, M_SHA, [UPSTREAM_REL])[0];
-  const upstream = JSON.parse(upstreamRecord.bytes.toString("utf8"));
+  const reviewedExportManifestPath =
+    options.reviewedExportManifestPath ?? process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST;
+  const reviewedTree = options.reviewedTree ?? process.env.OPENCLAW_REVIEWED_R_SHA;
+  const reviewedExportManifestSha256 =
+    options.reviewedExportManifestSha256 ?? process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256;
+  if (reviewedExportManifestPath && !reviewedExportManifestSha256) {
+    throw new Error("reviewed export manifest SHA-256 is required");
+  }
+  const readRecords = reviewedExportManifestPath
+    ? (paths) =>
+        readReviewedExportRecords(
+          repoRoot,
+          reviewedExportManifestPath,
+          reviewedTree,
+          paths,
+          reviewedExportManifestSha256,
+        )
+    : (paths) => readReviewedRecords(repoRoot, M_SHA, paths);
+  const upstreamRecord = readRecords([UPSTREAM_REL])[0];
+  const upstream = parseJsonStrict(upstreamRecord.bytes, "reviewed UPSTREAM.json");
   const paths = inventoryPaths(upstream);
-  const records = readReviewedRecords(repoRoot, M_SHA, paths);
+  const records = readRecords(paths);
   verifyManifestBindings(records, upstream);
   const aggregateSha256 = computeMInputAggregate(records, upstream);
   if (aggregateSha256 !== EXPECTED_AGGREGATE || aggregateSha256 !== upstream.mInputAggregate.sha256) {
@@ -991,6 +1155,12 @@ export async function verifyCommittedInputs(options = {}) {
     upstream,
     upstreamBlobOid: upstreamRecord.oid,
     upstreamSha256: upstreamRecord.sha256,
+    ...(reviewedExportManifestPath
+      ? {
+          reviewedExportManifestSha256: sha256(readFileSync(reviewedExportManifestPath)),
+          reviewedTree,
+        }
+      : {}),
   };
 }
 

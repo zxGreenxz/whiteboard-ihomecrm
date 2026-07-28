@@ -16,6 +16,7 @@ import {
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
+import ts from "typescript";
 import { prepareVendorTree } from "./prepare.mjs";
 
 export const SOURCE_DATE_EPOCH = 1_785_062_400;
@@ -103,82 +104,198 @@ function copyRegularTree(sourceRoot, outputRoot) {
   walk(sourceRoot, "");
 }
 
-function runtimeDynamicSiteInventory(preparedRoot, runtimeMembers, runtimeSourceInputs) {
-  const sites = [];
-  const sourceRoot = resolve(preparedRoot, "src");
-  const visit = (directory, relativeDirectory) => {
-    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
-      utf8Compare(left.name, right.name),
-    )) {
-      const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
-      const absolute = resolve(directory, entry.name);
-      if (entry.isDirectory()) visit(absolute, relativePath);
-      else if (entry.isFile() && entry.name.endsWith(".ts") && runtimeSourceInputs.has(`src/${relativePath}`)) {
-        const source = readFileSync(absolute, "utf8");
-        const lines = source.split(/\r?\n/);
-        for (let index = 0; index < lines.length; index += 1) {
-          const line = lines[index];
-          const dynamicImport = /\bimport\(\s*([^)]*)\)/.exec(line);
-          if (dynamicImport) {
-            const expression = dynamicImport[1].trim();
-            sites.push({
-              source: `src/${relativePath}`,
-              line: index + 1,
-              operation: "dynamic-import",
-              expression,
-              resolution: "reviewed-finite",
-              expandedMembers: runtimeMembers,
-            });
-          }
-          if (/\b(?:createRequire|require)\s*\(/.test(line)) {
-            sites.push({
-              source: `src/${relativePath}`,
-              line: index + 1,
-              operation: "require",
-              expression: line.trim(),
-              resolution: "reviewed-finite",
-              expandedMembers: runtimeMembers,
-            });
-          }
-          if (/\b(?:readFile|readFileSync|createReadStream|access|stat|statSync)\s*\(/.test(line)) {
-            sites.push({
-              source: `src/${relativePath}`,
-              line: index + 1,
-              operation: "filesystem-read",
-              expression: line.trim(),
-              resolution: "reviewed-finite",
-              expandedMembers: runtimeMembers,
-            });
-          }
-          if (/\bimport\.meta\.resolve\s*\(/.test(line)) {
-            sites.push({
-              source: `src/${relativePath}`,
-              line: index + 1,
-              operation: "import-meta-resolve",
-              expression: line.trim(),
-              resolution: "reviewed-finite",
-              expandedMembers: runtimeMembers,
-            });
-          }
-        }
-      }
+function normalizedMetafilePath(path) {
+  return path.replaceAll("\\", "/");
+}
+
+function artifactOutputPath(path) {
+  const normalized = normalizedMetafilePath(path);
+  const marker = "/package/";
+  const markerIndex = normalized.lastIndexOf(marker);
+  if (markerIndex >= 0) return normalized.slice(markerIndex + 1);
+  if (normalized.startsWith("package/")) return normalized;
+  throw new Error(`esbuild output is outside the package root: ${path}`);
+}
+
+function outputGraph(metafile) {
+  const graph = new Map();
+  const entrypoints = new Map();
+  for (const [rawPath, metadata] of Object.entries(metafile.outputs)) {
+    const path = artifactOutputPath(rawPath);
+    const imports = metadata.imports
+      .filter(({ external }) => !external)
+      .map(({ path: importedPath, kind }) => ({ path: artifactOutputPath(importedPath), kind }));
+    graph.set(path, imports);
+    if (metadata.entryPoint) {
+      const entrypoint = normalizedMetafilePath(metadata.entryPoint);
+      if (entrypoints.has(entrypoint)) throw new Error(`duplicate esbuild entrypoint output: ${entrypoint}`);
+      entrypoints.set(entrypoint, path);
+    }
+  }
+  for (const [path, imports] of graph) {
+    for (const imported of imports) {
+      if (!graph.has(imported.path)) throw new Error(`esbuild output ${path} imports unknown output ${imported.path}`);
+    }
+  }
+  return { entrypoints, graph };
+}
+
+function outputClosure(graph, roots, includeDynamicImports) {
+  const visited = new Set();
+  const visit = (path) => {
+    if (visited.has(path)) return;
+    if (!graph.has(path)) throw new Error(`runtime closure root is not an esbuild output: ${path}`);
+    visited.add(path);
+    for (const imported of graph.get(path)) {
+      if (includeDynamicImports || imported.kind !== "dynamic-import") visit(imported.path);
     }
   };
-  if (existsSync(sourceRoot)) visit(sourceRoot, "");
+  for (const root of roots) visit(root);
+  return [...visited].sort(utf8Compare);
+}
+
+function literalSpecifier(argument) {
+  if (ts.isStringLiteral(argument) || ts.isNoSubstitutionTemplateLiteral(argument)) return argument.text;
+  return null;
+}
+
+const FILESYSTEM_READ_CALLS = new Set([
+  "access",
+  "accessSync",
+  "createReadStream",
+  "lstat",
+  "lstatSync",
+  "open",
+  "openSync",
+  "readFile",
+  "readFileSync",
+  "stat",
+  "statSync",
+]);
+
+function calledIdentifier(expression) {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return null;
+}
+
+function isImportMetaResolve(expression) {
+  return (
+    ts.isPropertyAccessExpression(expression) &&
+    expression.name.text === "resolve" &&
+    ts.isMetaProperty(expression.expression) &&
+    expression.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+    expression.expression.name.text === "meta"
+  );
+}
+
+function assertFiniteCallArgument(node, sourceFile, sourcePath, operation) {
+  if (node.arguments.length !== 1 || literalSpecifier(node.arguments[0]) === null) {
+    const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    throw new Error(`unclassified non-finite ${operation} at ${sourcePath}:${location.line + 1}`);
+  }
+  throw new Error(`unclassified ${operation} requires an explicit reviewed artifact mapping at ${sourcePath}`);
+}
+
+function runtimeReachabilityAnalysis(preparedRoot, metafile) {
+  const { entrypoints, graph } = outputGraph(metafile);
+  const publicRoots = ENTRY_POINTS.map((name) => {
+    const entrypoint = `${name}.ts`;
+    const output = entrypoints.get(entrypoint);
+    if (!output) throw new Error(`public runtime entrypoint has no esbuild output: ${entrypoint}`);
+    return output;
+  });
+  const sites = [];
+  const runtimeSourceInputs = Object.keys(metafile.inputs)
+    .map(normalizedMetafilePath)
+    .filter((path) => path.endsWith(".ts") && !path.startsWith("node_modules/") && existsSync(resolve(preparedRoot, path)))
+    .sort(utf8Compare);
+  for (const sourcePath of runtimeSourceInputs) {
+    const sourceText = readFileSync(resolve(preparedRoot, sourcePath), "utf8");
+    const sourceFile = ts.createSourceFile(sourcePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const requireIdentifiers = new Set(["require"]);
+    const findCreateRequireBindings = (node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        ts.isCallExpression(node.initializer) &&
+        calledIdentifier(node.initializer.expression) === "createRequire"
+      ) {
+        requireIdentifiers.add(node.name.text);
+      }
+      ts.forEachChild(node, findCreateRequireBindings);
+    };
+    findCreateRequireBindings(sourceFile);
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        if (node.arguments.length !== 1) {
+          throw new Error(`unclassified dynamic resolution at ${sourcePath}`);
+        }
+        const specifier = literalSpecifier(node.arguments[0]);
+        if (specifier === null) {
+          const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          throw new Error(`unclassified non-finite dynamic resolution at ${sourcePath}:${location.line + 1}`);
+        }
+        const inputImport = metafile.inputs[sourcePath]?.imports?.find(
+          ({ kind, original }) => kind === "dynamic-import" && original === specifier,
+        );
+        if (!inputImport || inputImport.external) {
+          throw new Error(`dynamic resolution is absent from the esbuild graph: ${sourcePath} -> ${specifier}`);
+        }
+        const targetEntrypoint = normalizedMetafilePath(inputImport.path);
+        const targetOutput = entrypoints.get(targetEntrypoint);
+        if (!targetOutput) {
+          throw new Error(`dynamic resolution has no finite esbuild output: ${sourcePath} -> ${specifier}`);
+        }
+        const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        sites.push({
+          source: sourcePath,
+          line: location.line + 1,
+          column: location.character + 1,
+          operation: "dynamic-import",
+          expression: node.arguments[0].getText(sourceFile),
+          resolution: "literal",
+          expandedMembers: outputClosure(graph, [targetOutput], false),
+        });
+      } else if (ts.isCallExpression(node) && isImportMetaResolve(node.expression)) {
+        assertFiniteCallArgument(node, sourceFile, sourcePath, "import.meta.resolve site");
+      } else if (
+        ts.isCallExpression(node) &&
+        calledIdentifier(node.expression) !== "createRequire" &&
+        requireIdentifiers.has(calledIdentifier(node.expression))
+      ) {
+        assertFiniteCallArgument(node, sourceFile, sourcePath, "require site");
+      } else if (
+        ts.isCallExpression(node) &&
+        FILESYSTEM_READ_CALLS.has(calledIdentifier(node.expression))
+      ) {
+        assertFiniteCallArgument(node, sourceFile, sourcePath, "filesystem read site");
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
   sites.push({
     source: "package.json",
     line: 1,
+    column: 1,
     operation: "package-exports",
     expression: "exports/openclaw.extensions/openclaw.setupEntry",
     resolution: "literal",
-    expandedMembers: ENTRY_POINTS.map((name) => `package/dist/${name}.js`),
+    expandedMembers: outputClosure(graph, publicRoots, false),
   });
-  return sites.sort((left, right) => {
+  sites.sort((left, right) => {
     const bySource = utf8Compare(left.source, right.source);
     if (bySource !== 0) return bySource;
     if (left.line !== right.line) return left.line - right.line;
+    if (left.column !== right.column) return left.column - right.column;
     return utf8Compare(left.operation, right.operation);
   });
+  return {
+    derivedRuntimeSet: outputClosure(graph, publicRoots, true),
+    runtimeDynamicSiteInventory: sites,
+  };
 }
 
 function normalizedPackageJson(preparedRoot) {
@@ -302,6 +419,9 @@ export async function buildPreparedTree({
   );
   const buildResult = await esbuild({
     absWorkingDir: resolvedPreparedRoot,
+    banner: {
+      js: 'import { createRequire as __ihomeCreateRequire } from "node:module";\nvar require = __ihomeCreateRequire(import.meta.url);',
+    },
     bundle: true,
     chunkNames: "chunks/[name]-[hash]",
     entryNames: "[name]",
@@ -332,16 +452,21 @@ export async function buildPreparedTree({
   normalizeTree(packageRoot, sourceDateEpoch);
   const members = regularFileManifest(packageRoot);
   assertRuntimeOutput(packageRoot, members);
-  const runtimeMembers = members.filter((member) => member.path.startsWith("dist/")).map((member) => `package/${member.path}`);
-  const runtimeSourceInputs = new Set(
-    Object.keys(buildResult.metafile.inputs).map((path) => path.replaceAll("\\", "/")),
-  );
+  const runtimeMembers = members
+    .filter((member) => member.path.startsWith("dist/"))
+    .map((member) => `package/${member.path}`)
+    .sort(utf8Compare);
+  const reachability = runtimeReachabilityAnalysis(resolvedPreparedRoot, buildResult.metafile);
+  if (JSON.stringify(reachability.derivedRuntimeSet) !== JSON.stringify(runtimeMembers)) {
+    throw new Error("derived runtime closure does not equal the exact emitted runtime set");
+  }
   return {
     buildResult,
+    derivedRuntimeSet: reachability.derivedRuntimeSet,
     members,
     packageRoot,
     sourceDateEpoch,
-    runtimeDynamicSiteInventory: runtimeDynamicSiteInventory(resolvedPreparedRoot, runtimeMembers, runtimeSourceInputs),
+    runtimeDynamicSiteInventory: reachability.runtimeDynamicSiteInventory,
   };
 }
 

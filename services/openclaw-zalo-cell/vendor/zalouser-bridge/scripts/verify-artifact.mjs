@@ -167,6 +167,8 @@ function verifyDynamicInventory(fork, allowlist) {
       typeof site?.source !== "string" ||
       !Number.isInteger(site?.line) ||
       site.line < 1 ||
+      !Number.isInteger(site?.column) ||
+      site.column < 1 ||
       !["dynamic-import", "require", "filesystem-read", "import-meta-resolve", "package-exports"].includes(site?.operation) ||
       typeof site?.expression !== "string" ||
       !["literal", "reviewed-finite"].includes(site?.resolution) ||
@@ -175,7 +177,7 @@ function verifyDynamicInventory(fork, allowlist) {
     ) {
       throw new Error("FORK runtime dynamic site inventory contains an incomplete record");
     }
-    const identity = `${site.source}\0${site.line}\0${site.operation}`;
+    const identity = `${site.source}\0${site.line}\0${site.column}\0${site.operation}`;
     if (identities.has(identity)) throw new Error(`FORK runtime dynamic site inventory contains a duplicate: ${identity}`);
     identities.add(identity);
     const expanded = [...site.expandedMembers].sort(utf8Compare);
@@ -185,6 +187,44 @@ function verifyDynamicInventory(fork, allowlist) {
     if (expanded.some((path) => !allowlist.includes(path))) throw new Error(`FORK runtime dynamic site expands outside allowlist: ${identity}`);
   }
   if (!inventory.some((site) => site.operation === "package-exports")) throw new Error("FORK package export inventory is missing");
+}
+
+export function verifyRuntimeReachabilityMetadata(fork, actualMemberPaths) {
+  if (!Array.isArray(actualMemberPaths) || actualMemberPaths.some((path) => typeof path !== "string")) {
+    throw new Error("artifact member paths are invalid");
+  }
+  const actualPaths = [...actualMemberPaths].sort(utf8Compare);
+  if (new Set(actualPaths).size !== actualPaths.length) throw new Error("artifact member paths are not unique");
+  const legal = [...(fork.legalMemberExceptions ?? [])].sort(utf8Compare);
+  const metadata = [...(fork.packageMetadataExceptions ?? [])].sort(utf8Compare);
+  const allowlist = [...(fork.runtimeReachabilityAllowlist ?? [])].sort(utf8Compare);
+  const derived = [...(fork.derivedRuntimeSet ?? [])].sort(utf8Compare);
+  for (const [value, sorted, label] of [
+    [fork.legalMemberExceptions, legal, "legal member exceptions"],
+    [fork.packageMetadataExceptions, metadata, "package metadata exceptions"],
+    [fork.runtimeReachabilityAllowlist, allowlist, "runtime reachability allowlist"],
+    [fork.derivedRuntimeSet, derived, "derived runtime set"],
+  ]) {
+    if (
+      !Array.isArray(value) ||
+      value.length === 0 ||
+      value.some((path) => typeof path !== "string") ||
+      new Set(sorted).size !== sorted.length ||
+      canonicalJson(value) !== canonicalJson(sorted)
+    ) {
+      throw new Error(`FORK ${label} is missing, duplicated, or unsorted`);
+    }
+  }
+  const union = [...new Set([...legal, ...metadata, ...allowlist])].sort(utf8Compare);
+  if (canonicalJson(union) !== canonicalJson(actualPaths)) throw new Error("FORK member classifications are not exhaustive");
+  if (legal.length + metadata.length + allowlist.length !== union.length) throw new Error("FORK member classifications overlap");
+  const expectedRuntime = actualPaths.filter((path) => path.startsWith("package/dist/")).sort(utf8Compare);
+  if (canonicalJson(allowlist) !== canonicalJson(expectedRuntime)) throw new Error("FORK runtime allowlist is not the exact dist closure");
+  if (canonicalJson(derived) !== canonicalJson(allowlist)) {
+    throw new Error("FORK derived runtime set does not equal the runtime reachability allowlist");
+  }
+  verifyDynamicInventory(fork, allowlist);
+  return { allowlist, derived, legal, metadata };
 }
 
 function verifyFork(vendorRoot, artifactPath, artifactBytes, entries, installed) {
@@ -202,18 +242,11 @@ function verifyFork(vendorRoot, artifactPath, artifactBytes, entries, installed)
   if (fork.artifactMembersSha256 !== canonicalSha256(entries)) throw new Error("FORK artifact member hash mismatch");
   if (canonicalJson(fork.artifactMembers) !== canonicalJson(entries)) throw new Error("FORK artifact member manifest mismatch");
   const actualPaths = entries.map((entry) => entry.path).sort(utf8Compare);
-  const legal = [...(fork.legalMemberExceptions ?? [])].sort(utf8Compare);
-  const metadata = [...(fork.packageMetadataExceptions ?? [])].sort(utf8Compare);
-  const allowlist = [...(fork.runtimeReachabilityAllowlist ?? [])].sort(utf8Compare);
-  const union = [...new Set([...legal, ...metadata, ...allowlist])].sort(utf8Compare);
-  if (canonicalJson(union) !== canonicalJson(actualPaths)) throw new Error("FORK member classifications are not exhaustive");
-  if (legal.length + metadata.length + allowlist.length !== union.length) throw new Error("FORK member classifications overlap");
+  const { legal, metadata } = verifyRuntimeReachabilityMetadata(fork, actualPaths);
   const expectedLegal = [...expectedLegalMembers(vendorRoot).keys()].sort(utf8Compare);
   if (canonicalJson(legal) !== canonicalJson(expectedLegal)) throw new Error("FORK legal member exceptions mismatch");
   const expectedMetadata = ["package/README.md", "package/openclaw.plugin.json", "package/package.json"].sort(utf8Compare);
   if (canonicalJson(metadata) !== canonicalJson(expectedMetadata)) throw new Error("FORK package metadata exceptions mismatch");
-  const expectedRuntime = actualPaths.filter((path) => path.startsWith("package/dist/")).sort(utf8Compare);
-  if (canonicalJson(allowlist) !== canonicalJson(expectedRuntime)) throw new Error("FORK runtime allowlist is not the exact dist closure");
   const expectedEntrypoints = [
     "api",
     "channel-plugin-api",
@@ -226,7 +259,6 @@ function verifyFork(vendorRoot, artifactPath, artifactBytes, entries, installed)
     "setup-plugin-api",
   ].map((name) => `package/dist/${name}.js`);
   if (canonicalJson(fork.publicEntrypoints) !== canonicalJson(expectedEntrypoints)) throw new Error("FORK public entrypoint manifest mismatch");
-  verifyDynamicInventory(fork, allowlist);
   const patches = patchSeriesMetadata(vendorRoot);
   if (canonicalJson(fork.patches) !== canonicalJson(patches.names) || fork.patchSeriesSha256 !== patches.sha256) throw new Error("FORK patch series mismatch");
   const overlay = bridgeOverlayMetadata(vendorRoot);
@@ -290,10 +322,10 @@ export async function verifyArtifact({
     }
   }
 
-  const npmRoot = resolve(extracted, "npm-install");
+  const npmRoot = resolve(extracted, "managed-project");
   mkdirSync(npmRoot, { recursive: true });
   writeFileSync(resolve(npmRoot, "package.json"), Buffer.from('{"private":true}\n', "utf8"));
-  const cache = resolve(npmRoot, "cache");
+  const cache = resolve(extracted, "npm-cache");
   mkdirSync(cache, { recursive: true });
   execFileSync(
     process.execPath,
@@ -310,9 +342,26 @@ export async function verifyArtifact({
   );
   const installedPackageRoot = resolve(npmRoot, "node_modules/@openclaw/zalouser");
   if (!existsSync(installedPackageRoot)) throw new Error("offline npm install did not materialize @openclaw/zalouser");
-  const installed = installedTree(installedPackageRoot);
+  rmSync(resolve(npmRoot, "node_modules/.package-lock.json"), { force: true });
+  const managedProjectManifest = Buffer.from(
+    `${JSON.stringify({
+      name: "@ihome/openclaw-zalouser-install",
+      private: true,
+      dependencies: { "@openclaw/zalouser": PACKAGE_VERSION },
+    })}\n`,
+    "utf8",
+  );
+  writeFileSync(resolve(npmRoot, "package.json"), managedProjectManifest);
+  const topLevelEntries = readdirSync(npmRoot).sort(utf8Compare);
+  if (canonicalJson(topLevelEntries) !== canonicalJson(["node_modules", "package.json"])) {
+    throw new Error("managed npm project contains unexpected mutable state");
+  }
+  const installed = installedTree(npmRoot);
   const artifactFiles = manifest.map((entry) => ({ ...entry, path: entry.path.slice("package/".length) }));
-  const installedFiles = installed.entries.filter((entry) => entry.type === "file");
+  const installedPrefix = "node_modules/@openclaw/zalouser/";
+  const installedFiles = installed.entries
+    .filter((entry) => entry.type === "file" && entry.path.startsWith(installedPrefix))
+    .map((entry) => ({ ...entry, path: entry.path.slice(installedPrefix.length) }));
   if (canonicalJson(installedFiles) !== canonicalJson(artifactFiles)) throw new Error("installed tree differs from artifact members");
   const installedPackage = JSON.parse(readFileSync(resolve(installedPackageRoot, "package.json"), "utf8"));
   const installedPlugin = JSON.parse(readFileSync(resolve(installedPackageRoot, "openclaw.plugin.json"), "utf8"));

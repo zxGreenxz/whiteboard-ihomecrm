@@ -16,8 +16,8 @@
 - The new route is exactly `/openclaw-zalo` and the new permission resource is exactly `openclaw_zalo`.
 - Never modify, import, query, migrate, or reuse `worker/**`, `zalo_*`, `/chat-zalo`, `src/hooks/useZaloChat.ts`, or `src/components/chat-zalo/**`.
 - Supabase is canonical. The Vultr host stores only OpenClaw session state, bounded SQLite spool data, temporary media, and deploy configuration.
-- The existing Vultr Seoul host is used. Do not create a new VPS, restart/recreate current 9Router or `cli-proxy-api` containers, join their Docker networks, mount their volumes, or share secrets.
-- Initial runtime caps are 4 vCPU, 8 GiB RAM, and a fixed 20 GiB filesystem under `/srv/openclaw-runtime`.
+- The owner-selected dedicated Vultr Seoul VPS is used. It is separate from 9Router; never SSH to, restart/recreate, join networks with, mount volumes from, or share container secrets with the 9Router/`cli-proxy-api` host.
+- The 2026-07-28 host baseline is Ubuntu 26.04, 2 vCPU, 1,675,952 KiB RAM, 6 GiB swap, and a roughly 61 GiB root filesystem. This temporary tier may run Task 2 build/probes and manual preflight only. Task 29 production rollout is blocked until the VPS is upgraded and reverified at no less than 4 vCPU/8 GiB RAM; then runtime caps are 4 vCPU, 8 GiB RAM, and a fixed 20 GiB filesystem under `/srv/openclaw-runtime`.
 - One active Zalo Personal account and one effective cell are allowed per organization. Future organizations get their own account, cell, credential, session, and allowlists.
 - `GLOBAL_STOP` is organization-scoped and precedes all other outbound policy decisions.
 - `UNKNOWN` is terminal for automatic processing. It is never retried; an authorized operator must reconcile it once with CAS.
@@ -46,7 +46,7 @@
 - Connection state, session-risk state, and configured/effective send mode are separate canonical fields. `CONNECTED_DRAFT_ONLY` is display text derived from `connection_state='CONNECTED'` plus `effective_mode='DRAFT_ONLY'`; it is never persisted as a connection state.
 - `DISPATCHING` begins only when the authorize-send CAS wins immediately before the first possible provider handoff. It never returns to `QUEUED`; any sweeper that wins against an unresolved `DISPATCHING` row records `UNKNOWN`. A late completion is accepted only when it wins the same row-lock/CAS and every claim/session/fencing/control/takeover version still matches.
 - Channel runtime and organization maintenance are separate principals. Retention and audit anchoring use an account-independent maintenance credential, lease, generation, and fencing token so they continue after Zalo disconnect, account replacement/removal, or channel-cell outage.
-- The independent model provider is configured with a dedicated OpenAI-compatible base URL and secret that are not routed through or shared with 9Router. Provider outage, quota exhaustion, timeout, or schema failure opens the AI circuit breaker and pauses AI-assisted automatic sends while manual non-AI sends remain available.
+- After the core and release gate pass, the Claw agent uses `https://ai.chillhome.io.vn` as its OpenAI-compatible model endpoint. OpenClaw owns a dedicated runtime base URL/model/API-key secret and consumes only the HTTP API; it never mounts or shares 9Router/`cli-proxy-api` networks, volumes, container secrets, or Docker control, and the endpoint is never used for build, provenance, or code review. Endpoint outage, quota exhaustion, timeout, or schema failure opens the AI circuit breaker and pauses AI-assisted automatic sends while inbox processing and manual non-AI sends remain available; changing providers later is a reviewed runtime-secret/config change that does not alter the Zalo session or control-plane data.
 - Edge verifies gateway receipt signatures and key generations. SQL recomputes canonical receipt/evidence hashes, compares exact persisted claims, performs CAS/idempotency, and stores the full receipt; SQL does not duplicate Ed25519 verification.
 - Browser and Edge callers use public, narrowly granted RPC facades. Canonical `openclaw_*` tables deny direct DML to `authenticated` and `service_role`; private helpers remain under `app_private` and are not called through PostgREST.
 - Cell, bridge, and maintenance containers have no direct Internet route. All outbound HTTPS/WebSocket traffic crosses a dedicated, dual-homed rootless egress broker with a version-controlled FQDN/port allowlist, connect-time IP validation/pinning, DNS revalidation, and private/reserved/metadata/9Router denial.
@@ -1059,7 +1059,7 @@ The first gate commands, before any `npm ci` or executable verifier/build, requi
 
 The Dockerfile has exactly two stages. The `install` stage has one application install `RUN --network=none`: the Node version assertion is the first command, then the source epoch check creates one cache that did not previously exist, proves it is empty, installs only the local tgz with offline/no-fallback flags, and normalizes reviewed OpenClaw install state. No Docker stage runs session-crypto `npm ci`, TypeScript, tests, or any compiler. The `runtime` stage copies only the installed fork closure, exact reviewed `session-crypto/dist/package.json`, `dist/crypto.js`, `dist/daemon.js`, and runtime config, excluding d.ts/tests/source/package lock/tsconfig/node_modules/compiler/cache as well as tgz, `FORK.json`, image lock, scripts, and temporary state. The pinned base image is still acquired separately by BuildKit under `--pull`; `RUN --network=none` constrains application execution and does not claim air-gapped base acquisition. `install-vendored-zalouser.sh` verifies the local tgz and performs no npm metadata/tarball request. Verification requires matching results from `openclaw plugins list --json`, plugin inspect JSON, installed package.json, installedTree, every loader/discovery root, exact final-rootfs hashes for the three session files, and duplicate/shadow scans. The template contains no secrets or customer/provider identifiers.
 
-`build-reproducible-image.ps1` accepts an absolute `-BuildxPath`, rejects PATH lookup, verifies semantic version exactly `0.13.1`, and verifies the platform binary SHA-256: Windows `6b113e84cbc3cd645646aa82f00a7f7d3737cc10375b4341e0aca0de0c997c75`, Linux `3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c`. It creates two fresh `docker-container` builders named `ihome-openclaw-gate-a-<32hex>` and `ihome-openclaw-gate-b-<32hex>` with exact BuildKit `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`; each worker reports `v0.13.2`. In one `try/finally`, it builds the same exact-`-ReviewedTree` context through both builders with `--platform linux/amd64 --no-cache --pull --build-arg SOURCE_DATE_EPOCH=1785062400 --provenance=false --sbom=false` and distinct pinned OCI outputs. Every native call goes through a self-contained checked PowerShell 7.3 wrapper. Cleanup is exact-name and validated-temp-root only.
+`build-reproducible-image.ps1` runs only on the reviewed Linux amd64 host and accepts absolute `-BuildxPath` and `-DockerPath` values; it rejects PATH lookup, verifies buildx semantic version exactly `0.13.1`, verifies Docker client/server exactly `29.1.3` on `linux/amd64`, and pins both platform binary SHA-256 values. The helper also requires the absolute exact-R export root, its canonical export manifest path and SHA-256, exact `M`/`R`, and both canonical approval reports. It re-runs the reviewed exporter verification from the Git-backed source working directory before Docker activity. It creates two fresh `docker-container` builders named `ihome-openclaw-gate-a-<32hex>` and `ihome-openclaw-gate-b-<32hex>` with exact BuildKit `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`; each worker reports `v0.13.2`. In one `try/finally`, it builds the same exact-`-ReviewedTree` context through both builders with `--platform linux/amd64 --no-cache --pull --build-arg SOURCE_DATE_EPOCH=1785062400 --provenance=false --sbom=false` and distinct pinned OCI outputs. Every native call goes through a self-contained checked PowerShell 7.3 wrapper. Cleanup is exact-name and validated-temp-root only.
 
 The helper invokes `verify-image-lock.mjs --oci-a ... --oci-b ...` before cleanup. The verifier requires byte-identical OCI archive bytes, then extracts both safely and requires identical `oci-layout`, `index.json`, file set, path/type/mode/size/SHA-256 manifest, and every blob byte; it separately verifies index/manifest/config/layer digests, mtimes, base digest, installedTree, plugin list/inspect/package/discovery roots, no duplicate/shadow/upstream package, private RPC, and stock-fail/fork-pass behavior. It byte-compares the exact three session-crypto input Git blobs with final-rootfs `dist/package.json`, `dist/crypto.js`, and `dist/daemon.js`, rejects every extra session path, and records both input and installed hashes. It validates `build-evidence.json` against closed `build-evidence.schema.v1.json` (`additionalProperties: false` recursively) and embeds exact canonical `M`/`R` review report bytes as base64 plus size/SHA-256 and reviewed identity fields. It atomically promotes gate A to the explicit source `.release/` path and records exact `M`, `R`, Git-blob provenance inputs including trust root, buildx binary path/hash/version, BuildKit pin, context-root v2, archive/layout/index/blob equality, installed tree, three-file session closure, scenario runtime sets, promoted archive path/hash, and every Task 2 result. Missing/tampered bytes, schema drift, review-report mismatch, lock mismatch, or tracked mutation fails.
 
@@ -1072,10 +1072,17 @@ $PSNativeCommandUseErrorActionPreference = $true
 node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R = $env:OPENCLAW_REVIEWED_R_SHA
 if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
+$M = $env:OPENCLAW_REVIEWED_M_SHA
+if ($M -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_M_SHA must be the exact reviewed M SHA' }
+$mReviewReport = (Resolve-Path -LiteralPath $env:OPENCLAW_M_REVIEW_REPORT -ErrorAction Stop).Path
+$rReviewReport = (Resolve-Path -LiteralPath $env:OPENCLAW_R_REVIEW_REPORT -ErrorAction Stop).Path
 $buildxPath = (Resolve-Path -LiteralPath $env:OPENCLAW_BUILDX_PATH -ErrorAction Stop).Path
 if (-not [IO.Path]::IsPathFullyQualified($buildxPath)) { throw 'OPENCLAW_BUILDX_PATH must resolve to an absolute path' }
+$dockerPath = (Resolve-Path -LiteralPath $env:OPENCLAW_DOCKER_PATH -ErrorAction Stop).Path
+if (-not [IO.Path]::IsPathFullyQualified($dockerPath)) { throw 'OPENCLAW_DOCKER_PATH must resolve to an absolute path' }
 $sourceRoot = (Get-Location).Path
 if ((git rev-parse HEAD).Trim() -ne $R) { throw 'HEAD is not exact reviewed R' }
+if (-not (git merge-base --is-ancestor $M $R)) { throw 'Reviewed M is not an ancestor of reviewed R' }
 if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'R working tree is not completely clean' }
 git diff --cached --quiet
 if ($LASTEXITCODE -ne 0) { throw 'R index is not empty' }
@@ -1128,6 +1135,10 @@ try {
   $exportManifest = Join-Path $bootstrapRoot 'reviewed-tree-manifest.json'
   node $bootstrapExporter export --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
   node $bootstrapExporter verify --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
+  $exportManifestSha256 = (Get-FileHash -LiteralPath $exportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
+  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $exportManifest
+  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $exportManifestSha256
+  $env:OPENCLAW_REVIEWED_R_SHA = $R
 
   Push-Location $exportRoot
   try {
@@ -1144,7 +1155,7 @@ try {
   }
 
   $reviewedImageHelper = Join-Path $exportRoot 'services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1'
-  & $reviewedImageHelper -ReviewedTree $R -BuildxPath $buildxPath -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-linux-amd64.oci.tar')
+  & $reviewedImageHelper -ReviewedTree $R -MReviewedTree $M -MReviewReportPath $mReviewReport -RReviewReportPath $rReviewReport -BuildxPath $buildxPath -DockerPath $dockerPath -ReviewedSourceRoot $exportRoot -ReviewedExportManifestPath $exportManifest -ReviewedExportManifestSha256 $exportManifestSha256 -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-linux-amd64.oci.tar')
 
   if ((git rev-parse HEAD).Trim() -ne $R) { throw 'Source HEAD changed after exported-R run' }
   if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Exported-R run mutated source worktree/index' }
@@ -3475,7 +3486,7 @@ npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run build
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run pack
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:artifact
 npm --prefix services/openclaw-zalo-cell/session-crypto ci
-npx vitest run services/openclaw-zalo-cell/test/image-contract.test.mjs
+node --test services/openclaw-zalo-cell/test/image-contract.test.mjs
 npm --prefix services/openclaw-zalo-bridge ci
 npm --prefix services/openclaw-zalo-maintenance ci
 npm --prefix services/openclaw-egress-broker ci

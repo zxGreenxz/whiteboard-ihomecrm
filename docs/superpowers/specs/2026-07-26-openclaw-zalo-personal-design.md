@@ -4,7 +4,7 @@
 
 **Muc tieu:** Xay dung mot trung tam van hanh Zalo ca nhan bang OpenClaw cho iHome CRM, su dung that cho cong ty hien tai, ho tro tra loi khach hang, gui chu dong co kiem soat va gui vao cac nhom sale noi bo. He thong moi phai tach hoan toan khoi kenh Zalo cu va san sang cho mo hinh moi organization co mot tai khoan Zalo rieng.
 
-**Kien truc chot:** Supabase la control plane va nguon du lieu chuan; chinh VPS Vultr Seoul hien co cua cong ty chay OpenClaw 2026.7.1, mot fork noi bo `@openclaw/zalouser` giu plugin ID/channel `zalouser`, va bridge trong stack cach ly khoi 9Router; mot Cloudflare R2 private rieng luu media ben vung. Trinh duyet khong ket noi truc tiep cell control endpoint. Moi business send chi di qua outbox, policy engine, private RPC `zalouser.bridge.send` va provider-entrypoint authorization cua fork.
+**Kien truc chot:** Supabase la control plane va nguon du lieu chuan; mot VPS Vultr Seoul moi, chuyen dung cho OpenClaw, chay OpenClaw 2026.7.1, mot fork noi bo `@openclaw/zalouser` giu plugin ID/channel `zalouser`, va bridge cach ly hoan toan khoi 9Router; mot Cloudflare R2 private rieng luu media ben vung. Trinh duyet khong ket noi truc tiep cell control endpoint. Moi business send chi di qua outbox, policy engine, private RPC `zalouser.bridge.send` va provider-entrypoint authorization cua fork.
 
 ---
 
@@ -37,11 +37,12 @@ Nhung quyet dinh duoi day khong duoc mo lai trong implementation neu chu san pha
 - Chuc nang production gom: tra loi khi khach nhan nhan truoc; gui theo lich/gui chu dong co consent va gioi han; tim/ket ban/lien he dau tien o trang thai mac dinh tat; gui theo lich hoac su kien CRM vao nhom sale noi bo duoc allowlist.
 - Khong tu dong tra loi moi tin nhan trong nhom. Tin nhan nhom co the duoc hien thi de theo doi, nhung automation chi duoc gui vao nhom da phep boi lich hoac su kien CRM da cau hinh.
 - Supabase la nguon su that duy nhat cho du lieu nghiep vu `openclaw_*`. Khong chay PostgreSQL tren VPS OpenClaw.
-- Dung chinh VPS Vultr Seoul hien co cua 9Router; khong tao/mua VPS moi va khong doi IP/region sau khi session Zalo da on dinh.
-- 9Router va `cli-proxy-api` khong bi sua, restart, recreate, mount chung volume, dung chung secret hay dua vao Docker network noi bo cua OpenClaw. Cac stack chi chia se host OS/Vultr.
-- OpenClaw khong phu thuoc 9Router/`cli-proxy-api` de chay AI. Model provider duoc cau hinh doc lap bang OpenAI-compatible runtime secret; ngung/go 9Router sau nay khong lam OpenClaw mat kenh neu provider doc lap con healthy.
+- Dung VPS Vultr Seoul moi, chuyen dung cho OpenClaw; khong doi IP/region sau khi session Zalo da on dinh. 9Router hien tai nam o endpoint/host khac va chi duoc OpenClaw goi qua HTTP API sau release gate.
+- 9Router va `cli-proxy-api` khong bi sua, restart, recreate, mount chung volume, dung chung secret hay dua vao Docker network noi bo cua OpenClaw. VPS OpenClaw khong tham gia Docker network, volume, socket hay control plane cua 9Router.
+- Sau khi core va release gate hoan tat, OpenClaw dung `https://ai.chillhome.io.vn` lam model endpoint OpenAI-compatible cho Claw agent. Endpoint/base URL, model va API key la runtime secret rieng cua OpenClaw; khong mount/chia se secret, network hay volume cua container 9Router/`cli-proxy-api`, va khong dung endpoint nay cho build, provenance hay code review.
+- Neu `ai.chillhome.io.vn` unavailable, quota/timeout/schema fail hoac 9Router dung, AI draft/AI auto-send fail closed va pause; inbox, durable spool, policy gate va manual non-AI send van hoat dong. Doi model endpoint sau nay chi la thay runtime secret/config da duyet, khong doi Zalo session hay control-plane data.
 - Media ben vung dat trong mot bucket Cloudflare R2 private rieng. Khong tai su dung bucket/Worker `ihome-files` hoac sale-image hien co.
-- Host da duoc kiem tra read-only ngay 2026-07-26: 16 vCPU, khoang 64 GB RAM, khoang 1.2 TB disk; tai hien tai rat thap. Stack OpenClaw dau tien bi hard-cap tong cong 4 vCPU, 8 GB RAM va 20 GB local disk de khong lan tai nguyen sang dich vu cu.
+- Host moi da duoc kiem tra read-only ngay 2026-07-28: Ubuntu 26.04, 2 vCPU, 1,675,952 KiB RAM, 6 GiB swap va root disk 64,831,520,768 bytes. Day la cau hinh dev/release-gate tam thoi theo lua chon cua owner; no **khong dat** capacity production toi thieu. Task 29 bi chan cho toi khi VPS duoc nang len it nhat 4 vCPU/8 GiB RAM. Sau nang cap, stack OpenClaw bi hard-cap 4 vCPU, 8 GiB RAM va 20 GiB local disk.
 - Mot cell dau tien chay production. Moi cell them vao van can soak/capacity review va cach ly rieng; quyet dinh mo rong dua tren metric, khong dua tren cam giac host dang du.
 - Nguoi dung phai thay canh bao ro rang rang ket noi Zalo Personal la khong chinh thuc va co nguy co bi Zalo gioi han, day session hoac khoa tai khoan.
 
@@ -144,8 +145,8 @@ Supabase control plane - canonical openclaw_* data
   |                                  \
   | per-cell workload credential      \ object-scoped ticket
   v                                    v
-Existing Vultr Seoul           Dedicated media gateway
-  - shared host, isolated stack  - Cloudflare Worker/R2 binding
+Dedicated Vultr Seoul          Dedicated media gateway
+  - OpenClaw-only host           - Cloudflare Worker/R2 binding
   - one isolated cell/org        - private R2 bucket
   - OpenClaw + vendored zalouser  - no public bucket/domain
   - fork-owned listener/send RPC
@@ -541,12 +542,12 @@ Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao 
 
 ### 11.1 Topology dau tien
 
-- Dung host Vultr Seoul hien co. Baseline read-only ngay 2026-07-26: Ubuntu 26.04 LTS, 16 vCPU, 64,996,679,680 bytes RAM (khoang 64 GB), root disk 1,288,032,935,936 bytes (khoang 1.2 TB), load average `0.35/0.14/0.10` tai thoi diem do.
-- Dich vu dang chay gom container `9router` va `cli-proxy-api`. Baseline luc do: 9Router khoang 263 MiB RAM, CLI proxy khoang 58 MiB RAM; ca hai gan nhu 0% CPU. So lieu la baseline van hanh, khong phai cam ket tai luon thap.
-- Chay mot **rootless Docker daemon/Compose stack rieng** duoi service user `openclaw-runner`, socket/data-root rieng; khong dung rootful Docker daemon/socket dang chay 9Router. Project name, network, volume, secret, label va log path deu prefix rieng. Khong public Gateway port.
-- Dat rootless data-root tren fixed-size 20 GiB filesystem/mount rieng `/srv/openclaw-runtime`; image layers, writable layers, volumes, spool, temp va logs deu nam trong mount nay. Systemd slice enforce tong `CPUQuota=400%`, `MemoryMax=8G`, `TasksMax` va service-specific sublimits.
+- Dung VPS Vultr Seoul moi, chuyen dung cho OpenClaw. Baseline read-only ngay 2026-07-28: Ubuntu 26.04, 2 vCPU, 1,675,952 KiB RAM, swapfile 6,710,882,304 bytes, root disk 64,831,520,768 bytes voi 45,091,844,096 bytes trong tai thoi diem kiem tra. Rootful va rootless Docker deu khong co workload container truoc khi Task 2 probe chay.
+- Cau hinh hien tai chi duoc phep chay build/probe va manual draft preflight. Production rollout, LIMITED va AI auto-send bi chan cho toi khi portal/SSH cung xac nhan VPS da nang len it nhat 4 vCPU/8 GiB RAM. Khong lay swap lam RAM capacity va khong ha nguong production de vua goi hien tai.
+- Chay mot **rootless Docker daemon/Compose stack rieng** duoi service user `openclaw-runner`, socket/data-root rieng; khong dung rootful Docker daemon/socket. Project name, network, volume, secret, label va log path deu prefix rieng. Khong public Gateway port.
+- Dat rootless data-root tren fixed-size 20 GiB filesystem/mount rieng `/srv/openclaw-runtime`; image layers, writable layers, volumes, spool, temp va logs deu nam trong mount nay. Sau capacity upgrade, systemd slice enforce tong `CPUQuota=400%`, `MemoryMax=8G`, `TasksMax` va service-specific sublimits; truoc upgrade khong chay long-lived production stack.
 - Disk budget: engine images/writable layers toi da 10 GiB va GC co kiem soat; temp media 5 GiB; spool 1 GiB; session/config 1 GiB; logs 1 GiB; 2 GiB headroom. ENOSPC trong mount chi lam OpenClaw fail/pause, khong duoc fill root filesystem.
-- Khong sua compose/command/image/volume/network/resource setting cua `9router` va `cli-proxy-api`; deployment OpenClaw **khong restart rootful Docker daemon**. Neu mot thay doi host/daemon/firewall toan cuc bat buoc, no nam ngoai rollout nay va can owner duyet maintenance task rieng.
+- Khong sua compose/command/image/volume/network/resource setting cua `9router` va `cli-proxy-api` o host khac; deployment OpenClaw **khong co quyen Docker/SSH** vao host 9Router. Neu mot thay doi host/daemon/firewall toan cuc bat buoc, no nam ngoai rollout nay va can owner duyet maintenance task rieng.
 - Khong thay doi host-wide UFW/Docker firewall trong rollout OpenClaw. Preflight phai inventory port bindings, Docker networks, systemd units, health endpoints va current 9Router/CLI reachability; OpenClaw chi them rule egress/namespace rieng va khong expose inbound port.
 - Egress cell/bridge default deny toi host va RFC1918/link-local/metadata/loopback/multicast/ULA, cong 9Router/CLI, Docker socket va management ports. Allowlist chi DNS/NTP, Zalo endpoints, Supabase Edge, private media gateway va model endpoint; connect-time IP pinning + DNS revalidation.
 - Negative connectivity test tu moi container phai fail toi host gateway, 9Router/CLI published ports, Docker API, cloud metadata va private subnets khong nam allowlist. Neu test fail thi block rollout.
@@ -590,11 +591,11 @@ Gia va quota co the thay doi; Operations can hien usage thuc te thay vi dua vao 
 
 - Truoc khi mo auto/proactive/group send production, Supabase backup/PITR phai duoc xac minh dat canonical DB RPO <=15 phut va RTO <=4 gio. Neu goi hien tai khong dat, he thong chi o draft/manual limited mode cho den khi owner duyet PITR/backup tuong duong.
 - R2 dung immutable UUID object keys/no-overwrite va tombstone 7 ngay; durable object RPO 0 sau upload verify, restore RTO <=4 gio cho accidental delete trong grace window.
-- OpenClaw stack duoc xem la replaceable runtime tren shared host. Cau hinh deploy va runbook nam trong repo, secret nam ngoai repo; replacement cua OpenClaw khong dong nghia replacement cua 9Router.
+- OpenClaw stack duoc xem la replaceable runtime tren VPS chuyen dung. Cau hinh deploy va runbook nam trong repo, secret nam ngoai repo; replacement cua VPS OpenClaw khong thay doi 9Router/model endpoint o host khac.
 - Secret inventory/rotation runbook luu chi reference/owner, khong secret value. Mat session volume co account recovery RTO <=60 phut khi owner san sang quet QR; khong cam ket restore cookie/session backup.
 - Khong backup SQLite spool nhu canonical database. Sau mat VPS: provision lai, restore config/secrets an toan, re-login Zalo, acquire fencing lease moi, sync history 48 gio va doi chieu outbox/UNKNOWN/gap.
 - Truoc production va moi quy, restore drill phai phuc hoi mot backup test, rotate workload/session key, simulate accidental R2 delete va ghi actual RPO/RTO.
-- Pre/post deployment/rollback capture container ID, image digest, `StartedAt`, `RestartCount`, port/network/volume mounts va authenticated health/latency cua 9Router/CLI. `StartedAt`/restart count/config cua co-tenant phai khong doi va SLO van dat.
+- Pre/post deployment/rollback capture container ID, image digest, `StartedAt`, `RestartCount`, port/network/volume mounts cua OpenClaw va read-only authenticated health/latency cua model endpoint. Deployment khong co Docker/SSH credential toi host 9Router, nen khong duoc inspect hay mutate container 9Router/CLI.
 - Legacy drill con chung minh `/chat-zalo`, worker cu va `zalo_*` co zero DML/dual-write tu OpenClaw trong toan bo rollout/rollback.
 
 ### 11.6 Chuyen sang Vultr moi sau nay
@@ -669,7 +670,7 @@ Required fields theo mode:
 - Realtime chi la invalidation/latency optimization, khong la nguon su that. Reconnect phai refetch cursor/current state.
 - Supabase unavailable: cell buffer inbound trong quota, pause outbound; UI hien degraded.
 - R2 unavailable: text co the tiep tuc neu khong can media; media duoc spool trong quota; khong gui message tham chieu object chua durable neu policy yeu cau durable media.
-- Model provider unavailable/quota/invalid schema: auto-send AI pause, draft hien loi/retry va manual non-AI send van hoat dong qua policy. Khong fallback sang 9Router/CLI proxy; chi resume khi provider/model health, quota va output-schema test dat.
+- `ai.chillhome.io.vn` unavailable/quota/invalid schema: auto-send AI pause, draft hien loi/retry va manual non-AI send van hoat dong qua policy. Khong fallback sang mot provider khac; chi resume khi endpoint/model health, quota va output-schema test dat.
 - Session kick: effective pause, huy QR cu, khong auto-relogin bang credential khac.
 - Two-cell race: chi fencing token hien tai co the claim/dispatch/complete; late completion tu cell cu bi quarantine va audit.
 - Group ID/recipient mismatch: fail closed, khong fallback theo ten/so dien thoai gan giong.
@@ -866,7 +867,7 @@ Feature chi duoc coi la production-ready khi tat ca dieu sau dung:
 - Stable-ID precedence/mapping duoc persisted va tenant-scoped; both-present mismatch, cross-kind reuse hoac same-ID/different-payload fail closed + collision audit, trong khi fallback fingerprint chi ap dung khi ca hai stable ID null.
 - Built-in replies va pairing/business notifications van tat sau successful commit va sau canonical automation/draft/outbox processing; outbox creation khong tu emit provider frame.
 - Moi business send chi qua `zalouser.bridge.send`; exact ordered provider batch authorize ngay truoc first provider I/O. Pre-handoff authorization failure tao zero frames; possible handoff ambiguity tao UNKNOWN va khong auto retry. Stock generic RPC/message/tool/adapter business sends bi deny.
-- Model provider doc lap co health/quota/schema gate; ngung 9Router khong lam OpenClaw route AI bi hong va khi model loi auto-send fail closed.
+- `ai.chillhome.io.vn` la model endpoint runtime co health/quota/schema gate; khi endpoint hoac 9Router loi/dung, AI auto-send fail closed trong khi inbox va manual non-AI send van hoat dong.
 - Inbound reply, manual send, proactive schedule va sales-group schedule/CRM trigger chay trong controlled smoke test.
 - Nhom sale chi gui khi exact group ID o allowlist; khong auto-reply chatter.
 - UNKNOWN khong auto retry; kill switches co dung precedence va recheck truoc dispatch.
@@ -888,8 +889,8 @@ Feature chi duoc coi la production-ready khi tat ca dieu sau dung:
 | Spam/gui nham | Consent, suppressions, wizard, hard ceiling, exact target, preview, kill switches |
 | VPS/supabase/R2 outage | Fail closed outbound, bounded spool inbound/media, health alert, replaceable runtime |
 | Chi phi egress/media tang | Metadata-only Supabase, private R2, cursor/query discipline, retention va usage dashboard |
-| Shared-host resource contention voi 9Router | Hard cap OpenClaw 4 vCPU/8 GiB/20 GiB, host guard, baseline latency va rollback rieng; khong sua/restart container cu |
-| Root/kernel/VPS compromise anh huong ca OpenClaw va 9Router | Non-root, drop capabilities, no Docker socket, network/secret/volume tach va hardening giam rui ro nhung khong tao trust boundary tuyet doi; day la residual risk duoc chap nhan khi dung chung host |
+| VPS tam thoi 2 vCPU/1.6 GiB khong du capacity production | Chi cho phep build/probe va manual preflight; Task 29 chan cho toi khi portal/SSH xac nhan toi thieu 4 vCPU/8 GiB, sau do hard cap 4 vCPU/8 GiB/20 GiB |
+| Root/kernel/VPS OpenClaw bi compromise | VPS chuyen dung, rootless daemon, non-root, drop capabilities, no Docker socket trong cell, network/secret/volume tach; 9Router o host khac nen khong chung kernel/control plane |
 | Provider event mat truoc callback hoac provider khong replay day du | Khong tuyen bo zero loss truoc callback; sau accepted callback fork doi WAL/FULL commit, incident hien gap window va doi chieu Zalo native/history neu co |
 | Ca hai provider stable ID deu thieu gay fingerprint collision | At-least-once semantics, luu payload hash/collision telemetry, quarantine conflict va khong im lang hop nhat hai event khac nhau |
 | Fork lech upstream hoac supply-chain drift | Pin fixed tarball URL/size/count/SRI/SHA-1/attestation/SLSA, exact 75-blob git source, root license/notice hashes, 38 dependency roots, 39 exact carriers, committed patch series, reproducible tgz/image hashes, full choke-point tests va independent review moi lan rebase |

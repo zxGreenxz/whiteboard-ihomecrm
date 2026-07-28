@@ -1,8 +1,11 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { exportReviewedTree } from "../../../scripts/export-reviewed-tree.mjs";
 import {
   fetchBoundedJson,
   fetchTarballWithRedirects,
@@ -188,6 +191,55 @@ describe("reviewed upstream and legal inputs", () => {
       upstreamBlobOid: "1feb5726487a162aab7310f702e036ecac09bda1",
       upstreamSha256: "989902dd5a1873025b1fef4864c4a6b9874fbaa15216201dc1c75ad053ce31ea",
     });
+  });
+
+  it("rechecks M inputs from a verified exact-R export without relying on a .git directory", async () => {
+    const suppliedManifest = process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST;
+    const suppliedTree = process.env.OPENCLAW_REVIEWED_R_SHA;
+    let detachedVendorRoot = vendorRoot;
+    let manifestPath = suppliedManifest;
+    let reviewedTree = suppliedTree;
+    let temporaryRoot: string | undefined;
+
+    if (!manifestPath || !reviewedTree) {
+      reviewedTree = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+      }).trim();
+      temporaryRoot = mkdtempSync(join(tmpdir(), "ihome-reviewed-export-"));
+      const outputRoot = join(temporaryRoot, "root");
+      manifestPath = join(temporaryRoot, "reviewed-tree-manifest.json");
+      exportReviewedTree({ reviewedTree, outputRoot, manifestPath });
+      detachedVendorRoot = resolve(outputRoot, relative(repoRoot, vendorRoot));
+    }
+
+    try {
+      const manifestSha256 = createHash("sha256")
+        .update(readFileSync(manifestPath))
+        .digest("hex");
+      await expect(
+        verifyCommittedInputs({
+          vendorRoot: detachedVendorRoot,
+          reviewedExportManifestPath: manifestPath,
+          reviewedTree,
+        }),
+      ).rejects.toThrow(/manifest SHA-256 is required/i);
+      const result = await verifyCommittedInputs({
+        vendorRoot: detachedVendorRoot,
+        reviewedExportManifestPath: manifestPath,
+        reviewedExportManifestSha256: manifestSha256,
+        reviewedTree,
+      });
+      expect(result).toMatchObject({
+        aggregateSha256: "72470cdd84ed7d0cbb06152f57f0e4d1439891cf1909f164c8ece4485fc31a6b",
+        inputCount: 87,
+        sourceBlobCount: 75,
+        upstreamBlobOid: "1feb5726487a162aab7310f702e036ecac09bda1",
+        upstreamSha256: "989902dd5a1873025b1fef4864c4a6b9874fbaa15216201dc1c75ad053ce31ea",
+      });
+    } finally {
+      if (temporaryRoot) rmSync(temporaryRoot, { recursive: true, force: true });
+    }
   });
 
   it("keeps the reviewed manifest as the sole legal carrier inventory", () => {

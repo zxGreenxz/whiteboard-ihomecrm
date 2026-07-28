@@ -348,16 +348,34 @@ function packageMetadataMembers(members) {
     .sort(utf8Compare);
 }
 
-function forkMetadata({ vendorRoot, packed, installedTree, runtimeDynamicSiteInventory }) {
+export function forkMetadata({
+  vendorRoot,
+  packed,
+  installedTree,
+  runtimeDynamicSiteInventory,
+  derivedRuntimeSet,
+}) {
   const patches = hashPatchSeries(vendorRoot);
   const overlay = hashBridgeOverlay(vendorRoot);
   const legalMemberExceptions = legalMembers(packed.members);
   const packageMetadataExceptions = packageMetadataMembers(packed.members);
   const exceptions = new Set([...legalMemberExceptions, ...packageMetadataExceptions]);
-  const runtimeReachabilityAllowlist = packed.members
+  const emittedRuntimeSet = packed.members
     .map((member) => member.path)
     .filter((path) => !exceptions.has(path))
     .sort(utf8Compare);
+  if (!Array.isArray(derivedRuntimeSet) || derivedRuntimeSet.length === 0) {
+    throw new Error("derived runtime closure is missing");
+  }
+  const runtimeReachabilityAllowlist = [...derivedRuntimeSet].sort(utf8Compare);
+  if (
+    runtimeReachabilityAllowlist.some((path) => typeof path !== "string") ||
+    new Set(runtimeReachabilityAllowlist).size !== runtimeReachabilityAllowlist.length ||
+    canonicalJson(runtimeReachabilityAllowlist) !== canonicalJson(derivedRuntimeSet) ||
+    canonicalJson(runtimeReachabilityAllowlist) !== canonicalJson(emittedRuntimeSet)
+  ) {
+    throw new Error("derived runtime closure does not equal the exact emitted runtime set");
+  }
   const publicEntrypoints = [
     "api",
     "channel-plugin-api",
@@ -388,6 +406,7 @@ function forkMetadata({ vendorRoot, packed, installedTree, runtimeDynamicSiteInv
     runtimeDynamicSiteInventory,
     runtimeDynamicImportPatterns: ["package/dist/chunks/*.js"],
     runtimeAssetPatterns: [],
+    derivedRuntimeSet: runtimeReachabilityAllowlist,
     runtimeReachabilityAllowlist,
     legalMemberExceptions,
     packageMetadataExceptions,
@@ -448,6 +467,13 @@ export async function buildReproducibleArtifact({ vendorRoot, preparedRoot, sour
   if (!first.bytes.equals(second.bytes) || canonicalJson(first.members) !== canonicalJson(second.members)) {
     throw new Error("two clean artifact builds are not byte-identical");
   }
+  if (
+    canonicalJson(firstBuild.derivedRuntimeSet) !== canonicalJson(secondBuild.derivedRuntimeSet) ||
+    canonicalJson(firstBuild.runtimeDynamicSiteInventory) !==
+      canonicalJson(secondBuild.runtimeDynamicSiteInventory)
+  ) {
+    throw new Error("two clean artifact builds have different runtime reachability evidence");
+  }
   const artifactPath = resolve(vendorRoot, "artifacts", ARTIFACT_NAME);
   atomicWrite(artifactPath, first.bytes, sourceDateEpoch);
   const verified = verifyWithChildProcess({
@@ -462,6 +488,7 @@ export async function buildReproducibleArtifact({ vendorRoot, preparedRoot, sour
     packed: first,
     installedTree: verified.installedTree,
     runtimeDynamicSiteInventory: firstBuild.runtimeDynamicSiteInventory,
+    derivedRuntimeSet: firstBuild.derivedRuntimeSet,
   });
   atomicWrite(resolve(vendorRoot, "FORK.json"), Buffer.from(`${JSON.stringify(fork, null, 2)}\n`, "utf8"), sourceDateEpoch);
   verifyWithChildProcess({

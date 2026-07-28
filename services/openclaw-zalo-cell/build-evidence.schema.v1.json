@@ -8,6 +8,8 @@
     "schema_version",
     "reviewed_tree",
     "reviews",
+    "reviewed_export",
+    "supply_chain",
     "source_date_epoch",
     "platform",
     "image_digest",
@@ -16,7 +18,10 @@
     "buildx",
     "buildkit",
     "docker",
+    "docker_runtime",
     "oci",
+    "plugin_probe",
+    "runtime_reachability",
     "installed_fork",
     "session_crypto",
     "verification"
@@ -33,6 +38,27 @@
         "R": { "$ref": "#/$defs/reviewRecord" }
       }
     },
+    "reviewed_export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_path",
+        "manifest_sha256",
+        "manifest_size",
+        "reviewed_tree",
+        "entry_count",
+        "entries_sha256"
+      ],
+      "properties": {
+        "manifest_path": { "type": "string", "pattern": "^.+$" },
+        "manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "manifest_size": { "type": "integer", "minimum": 1 },
+        "reviewed_tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "entry_count": { "type": "integer", "minimum": 1 },
+        "entries_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "supply_chain": { "$ref": "#/$defs/supplyChain" },
     "source_date_epoch": { "type": "string", "const": "1785062400" },
     "platform": { "type": "string", "const": "linux/amd64" },
     "image_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
@@ -93,6 +119,7 @@
         "version": { "type": "string", "const": "v0.13.2" }
       }
     },
+    "docker_runtime": { "$ref": "#/$defs/dockerRuntime" },
     "docker": {
       "type": "object",
       "additionalProperties": false,
@@ -125,7 +152,10 @@
         "manifest_digest",
         "config_digest",
         "layer_digests",
-        "blob_manifest_sha256"
+        "blob_manifest_sha256",
+        "archive_entry_count",
+        "archive_entries",
+        "rootfs"
       ],
       "properties": {
         "archive_a_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -153,9 +183,18 @@
         "blob_manifest_sha256": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
-        }
+        },
+        "archive_entry_count": { "type": "integer" },
+        "archive_entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ociArchiveEntry" }
+        },
+        "rootfs": { "$ref": "#/$defs/rootfsEvidence" }
       }
     },
+    "plugin_probe": { "$ref": "#/$defs/pluginProbe" },
+    "runtime_reachability": { "$ref": "#/$defs/runtimeReachability" },
     "session_crypto": {
       "type": "object",
       "additionalProperties": false,
@@ -169,7 +208,8 @@
         "installed": {
           "type": "array",
           "minItems": 3,
-          "items": { "$ref": "#/$defs/fileRecord" }
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/runtimeRootfsRecord" }
         },
         "closure_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
@@ -192,16 +232,651 @@
     "verification": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["image_lock", "schema", "normalized_install", "minimal_rootfs"],
+      "required": [
+        "image_lock",
+        "schema",
+        "normalized_install",
+        "minimal_rootfs",
+        "plugin_probe",
+        "runtime_reachability",
+        "reviewed_export",
+        "supply_chain",
+        "rootfs",
+        "private_rpc"
+      ],
       "properties": {
         "image_lock": { "type": "boolean", "const": true },
         "schema": { "type": "boolean", "const": true },
         "normalized_install": { "type": "boolean", "const": true },
-        "minimal_rootfs": { "type": "boolean", "const": true }
+        "minimal_rootfs": { "type": "boolean", "const": true },
+        "plugin_probe": { "type": "boolean", "const": true },
+        "runtime_reachability": { "type": "boolean", "const": true },
+        "reviewed_export": { "type": "boolean", "const": true },
+        "supply_chain": { "type": "boolean", "const": true },
+        "rootfs": { "type": "boolean", "const": true },
+        "private_rpc": { "type": "boolean", "const": true }
       }
     }
   },
   "$defs": {
+    "ociArchiveEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "size", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^(oci-layout|index\\.json|blobs/sha256/[0-9a-f]{64})$" },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "runtimeRootfsRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "size", "sha256", "mtime"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^.+$" },
+        "type": { "type": "string", "enum": ["file", "directory"] },
+        "mode": { "type": "string", "pattern": "^0[67][0-7]{2}$" },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "mtime": { "type": "integer", "const": 1785062400 }
+      }
+    },
+    "rootfsLayerEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "diff_id", "record_count", "records_sha256"],
+      "properties": {
+        "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "diff_id": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "record_count": { "type": "integer" },
+        "records_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "rootfsEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "architecture",
+        "os",
+        "base_layer_count",
+        "delta_layer_count",
+        "diff_ids",
+        "layers",
+        "config_path",
+        "fork_root",
+        "record_count",
+        "session_paths",
+        "records",
+        "records_sha256",
+        "fork_records",
+        "session_records",
+        "config_record"
+      ],
+      "properties": {
+        "architecture": { "type": "string", "const": "amd64" },
+        "os": { "type": "string", "const": "linux" },
+        "base_layer_count": { "type": "integer" },
+        "delta_layer_count": { "type": "integer", "const": 5 },
+        "diff_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        },
+        "layers": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/rootfsLayerEvidence" }
+        },
+        "config_path": { "type": "string", "const": "opt/openclaw-cell/openclaw.json.tmpl" },
+        "fork_root": { "type": "string", "const": "home/node/.openclaw/npm/projects/zalouser" },
+        "record_count": { "type": "integer" },
+        "session_paths": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "string", "pattern": "^opt/openclaw-cell/session-crypto/dist/.+$" }
+        },
+        "records": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/runtimeRootfsRecord" }
+        },
+        "records_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "fork_records": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/runtimeRootfsRecord" }
+        },
+        "session_records": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/runtimeRootfsRecord" }
+        },
+        "config_record": { "$ref": "#/$defs/runtimeRootfsRecord" }
+      }
+    },
+    "gitBlobRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "mode", "git_object_id", "size", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^.+$" },
+        "mode": { "type": "string", "const": "100644" },
+        "git_object_id": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "provenanceInputRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "mode",
+        "git_object_id",
+        "size",
+        "sha256",
+        "endpoint",
+        "cap"
+      ],
+      "properties": {
+        "path": { "type": "string", "pattern": "^services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/provenance/.+\\.json$" },
+        "mode": { "type": "string", "const": "100644" },
+        "git_object_id": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "endpoint": { "type": "string", "pattern": "^https://" },
+        "cap": { "type": "integer" }
+      }
+    },
+    "supplyChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["m_reviewed_tree", "committed_inputs", "upstream", "fork", "proof"],
+      "properties": {
+        "m_reviewed_tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "committed_inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "input_count",
+            "source_blob_count",
+            "aggregate_sha256",
+            "upstream_json",
+            "provenance_inputs"
+          ],
+          "properties": {
+            "input_count": { "type": "integer", "const": 87 },
+            "source_blob_count": { "type": "integer", "const": 75 },
+            "aggregate_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "upstream_json": { "$ref": "#/$defs/gitBlobRecord" },
+            "provenance_inputs": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": { "$ref": "#/$defs/provenanceInputRecord" }
+            }
+          }
+        },
+        "upstream": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "package",
+            "version",
+            "source_commit",
+            "tarball",
+            "attestation_subject",
+            "attestation_subject_sha512",
+            "npm_key_id",
+            "npm_algorithm",
+            "npm_spki_sha256",
+            "slsa",
+            "oci",
+            "source_manifest_count",
+            "source_manifest_sha256",
+            "root_compliance_count",
+            "root_compliance_sha256",
+            "license_manifest",
+            "license_package_root_count",
+            "license_carrier_count"
+          ],
+          "properties": {
+            "package": { "type": "string", "const": "@openclaw/zalouser" },
+            "version": { "type": "string", "const": "2026.7.1" },
+            "source_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "tarball": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "url",
+                "size",
+                "sha1",
+                "sha256",
+                "sha512",
+                "sri",
+                "regular_file_count",
+                "package_owned_file_count",
+                "bundled_file_count",
+                "dependency_package_root_count"
+              ],
+              "properties": {
+                "url": { "type": "string", "const": "https://registry.npmjs.org/@openclaw/zalouser/-/zalouser-2026.7.1.tgz" },
+                "size": { "type": "integer", "const": 2341459 },
+                "sha1": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "sha512": { "type": "string", "pattern": "^[0-9a-f]{128}$" },
+                "sri": { "type": "string", "pattern": "^sha512-" },
+                "regular_file_count": { "type": "integer", "const": 3169 },
+                "package_owned_file_count": { "type": "integer", "const": 25 },
+                "bundled_file_count": { "type": "integer", "const": 3144 },
+                "dependency_package_root_count": { "type": "integer", "const": 38 }
+              }
+            },
+            "attestation_subject": { "type": "string", "const": "pkg:npm/%40openclaw/zalouser@2026.7.1" },
+            "attestation_subject_sha512": { "type": "string", "pattern": "^[0-9a-f]{128}$" },
+            "npm_key_id": { "type": "string", "pattern": "^SHA256:" },
+            "npm_algorithm": { "type": "string", "const": "ecdsa-sha2-nistp256" },
+            "npm_spki_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "slsa": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "uri_san",
+                "oidc_issuer",
+                "workflow_event",
+                "repository",
+                "ref",
+                "environment",
+                "build_type",
+                "resolved_commit",
+                "leaf_certificate_sha256",
+                "fulcio_root_der_sha256",
+                "fulcio_intermediate_der_sha256",
+                "rekor_key_id_base64",
+                "rekor_spki_sha256"
+              ],
+              "properties": {
+                "uri_san": { "type": "string", "pattern": "^https://github.com/openclaw/openclaw/" },
+                "oidc_issuer": { "type": "string", "const": "https://token.actions.githubusercontent.com" },
+                "workflow_event": { "type": "string", "const": "workflow_dispatch" },
+                "repository": { "type": "string", "const": "openclaw/openclaw" },
+                "ref": { "type": "string", "const": "refs/heads/release/2026.7.1" },
+                "environment": { "type": "string", "const": "npm-release" },
+                "build_type": { "type": "string", "pattern": "^https://slsa-framework.github.io/" },
+                "resolved_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+                "leaf_certificate_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "fulcio_root_der_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "fulcio_intermediate_der_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "rekor_key_id_base64": { "type": "string", "pattern": "^.+=$" },
+                "rekor_spki_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+              }
+            },
+            "oci": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["index_digest", "linux_amd64_digest", "linux_arm64_reference_digest"],
+              "properties": {
+                "index_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "linux_amd64_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "linux_arm64_reference_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+              }
+            },
+            "source_manifest_count": { "type": "integer", "const": 75 },
+            "source_manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "root_compliance_count": { "type": "integer", "const": 2 },
+            "root_compliance_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "license_manifest": { "$ref": "#/$defs/gitBlobRecord" },
+            "license_package_root_count": { "type": "integer", "const": 38 },
+            "license_carrier_count": { "type": "integer", "const": 39 }
+          }
+        },
+        "fork": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "package",
+            "version",
+            "plugin_id",
+            "channels",
+            "manifest",
+            "artifact_path",
+            "artifact_size",
+            "artifact_sha256",
+            "artifact_member_count",
+            "artifact_members_sha256",
+            "patch_count",
+            "patch_series_sha256",
+            "bridge_overlay_count",
+            "bridge_overlay_sha256",
+            "license_manifest_sha256",
+            "installed_tree_file_count",
+            "installed_tree_directory_count",
+            "installed_tree_root_sha256"
+          ],
+          "properties": {
+            "package": { "type": "string", "const": "@openclaw/zalouser" },
+            "version": { "type": "string", "const": "2026.7.1" },
+            "plugin_id": { "type": "string", "const": "zalouser" },
+            "channels": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "string", "const": "zalouser" } },
+            "manifest": { "$ref": "#/$defs/gitBlobRecord" },
+            "artifact_path": { "type": "string", "pattern": "openclaw-zalouser-2026.7.1\\.tgz$" },
+            "artifact_size": { "type": "integer" },
+            "artifact_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "artifact_member_count": { "type": "integer" },
+            "artifact_members_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "patch_count": { "type": "integer", "const": 3 },
+            "patch_series_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "bridge_overlay_count": { "type": "integer" },
+            "bridge_overlay_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "license_manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "installed_tree_file_count": { "type": "integer" },
+            "installed_tree_directory_count": { "type": "integer" },
+            "installed_tree_root_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "proof": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "npm_signature",
+            "slsa",
+            "rekor_entries",
+            "dsse_pae_verified",
+            "set_verified",
+            "inclusion_proof_verified",
+            "checkpoint_verified",
+            "certificate_chain_verified",
+            "body_binding_verified",
+            "verified_tarball_sha256"
+          ],
+          "properties": {
+            "npm_signature": { "type": "string", "const": "verified" },
+            "slsa": { "type": "string", "const": "verified" },
+            "rekor_entries": { "type": "integer", "const": 2 },
+            "dsse_pae_verified": { "type": "boolean", "const": true },
+            "set_verified": { "type": "boolean", "const": true },
+            "inclusion_proof_verified": { "type": "boolean", "const": true },
+            "checkpoint_verified": { "type": "boolean", "const": true },
+            "certificate_chain_verified": { "type": "boolean", "const": true },
+            "body_binding_verified": { "type": "boolean", "const": true },
+            "verified_tarball_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "dockerRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "client_version",
+        "server_version",
+        "server_os",
+        "server_arch"
+      ],
+      "properties": {
+        "path": { "type": "string", "pattern": "^.+$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "client_version": { "type": "string", "const": "29.1.3" },
+        "server_version": { "type": "string", "const": "29.1.3" },
+        "server_os": { "type": "string", "const": "linux" },
+        "server_arch": { "type": "string", "const": "amd64" }
+      }
+    },
+    "pluginProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fork", "stock", "differential", "private_rpc"],
+      "properties": {
+        "fork": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "list_sha256",
+            "list_size",
+            "inspect_sha256",
+            "inspect_size",
+            "plugin_count",
+            "plugin",
+            "inspect",
+            "discovery_roots"
+          ],
+          "properties": {
+            "list_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "list_size": { "type": "integer" },
+            "inspect_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "inspect_size": { "type": "integer" },
+            "plugin_count": { "type": "integer" },
+            "plugin": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "version",
+                "source",
+                "root_dir",
+                "origin",
+                "enabled",
+                "status",
+                "channel_ids"
+              ],
+              "properties": {
+                "id": { "type": "string", "const": "zalouser" },
+                "name": { "type": "string", "const": "Zalo Personal" },
+                "version": { "type": "string", "const": "2026.7.1" },
+                "source": { "type": "string", "pattern": "/@openclaw/zalouser/dist/index\\.js$" },
+                "root_dir": { "type": "string", "pattern": "/@openclaw/zalouser$" },
+                "origin": { "type": "string", "const": "global" },
+                "enabled": { "type": "boolean", "const": true },
+                "status": { "type": "string", "const": "loaded" },
+                "channel_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": { "type": "string", "const": "zalouser" }
+                }
+              }
+            },
+            "inspect": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "imported",
+                "package_name",
+                "source",
+                "root_dir",
+                "install_source",
+                "install_spec",
+                "install_path",
+                "resolved_version"
+              ],
+              "properties": {
+                "imported": { "type": "boolean", "const": true },
+                "package_name": { "type": "string", "const": "@openclaw/zalouser" },
+                "source": { "type": "string", "pattern": "/@openclaw/zalouser/dist/index\\.js$" },
+                "root_dir": { "type": "string", "pattern": "/@openclaw/zalouser$" },
+                "install_source": { "type": "string", "const": "npm" },
+                "install_spec": { "type": "string", "const": "@openclaw/zalouser@2026.7.1" },
+                "install_path": { "type": "string", "pattern": "/@openclaw/zalouser$" },
+                "resolved_version": { "type": "string", "const": "2026.7.1" }
+              }
+            },
+            "discovery_roots": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "string", "pattern": "^/home/node/\\.openclaw/npm/projects/zalouser" }
+            }
+          }
+        },
+        "stock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "list_sha256",
+            "list_size",
+            "inspect_stderr_sha256",
+            "inspect_stderr_size",
+            "inspect_exit_code",
+            "plugin_count"
+          ],
+          "properties": {
+            "list_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "list_size": { "type": "integer" },
+            "inspect_stderr_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "inspect_stderr_size": { "type": "integer" },
+            "inspect_exit_code": { "type": "integer", "const": 1 },
+            "plugin_count": { "type": "integer" }
+          }
+        },
+        "differential": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fork_pass", "stock_fail", "plugin_delta"],
+          "properties": {
+            "fork_pass": { "type": "boolean", "const": true },
+            "stock_fail": { "type": "boolean", "const": true },
+            "plugin_delta": { "type": "integer", "const": 1 }
+          }
+        },
+        "private_rpc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method",
+            "scope",
+            "registered_method_count",
+            "denied_without_runtime",
+            "error_code",
+            "provider_frame_count",
+            "stdout_size",
+            "stdout_sha256"
+          ],
+          "properties": {
+            "method": { "type": "string", "const": "zalouser.bridge.send" },
+            "scope": { "type": "string", "const": "operator.write" },
+            "registered_method_count": { "type": "integer", "const": 1 },
+            "denied_without_runtime": { "type": "boolean", "const": true },
+            "error_code": { "type": "string", "const": "PRIVATE_RPC_REQUIRED" },
+            "provider_frame_count": { "type": "integer", "const": 0 },
+            "stdout_size": { "type": "integer" },
+            "stdout_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "runtimeReachability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dynamic_site_inventory",
+        "derived_runtime_set",
+        "runtime_reachability_allowlist",
+        "scenario_traces",
+        "resolved_runtime_set"
+      ],
+      "properties": {
+        "dynamic_site_inventory": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/runtimeDynamicSite" }
+        },
+        "derived_runtime_set": { "$ref": "#/$defs/runtimeMemberArray" },
+        "runtime_reachability_allowlist": { "$ref": "#/$defs/runtimeMemberArray" },
+        "scenario_traces": {
+          "type": "array",
+          "minItems": 16,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/runtimeScenarioTrace" }
+        },
+        "resolved_runtime_set": { "$ref": "#/$defs/runtimeMemberArray" }
+      }
+    },
+    "runtimeMemberArray": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^package/dist/[A-Za-z0-9._/-]+\\.js$"
+      }
+    },
+    "runtimeDynamicSite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "line",
+        "column",
+        "operation",
+        "expression",
+        "resolution",
+        "expandedMembers"
+      ],
+      "properties": {
+        "source": { "type": "string", "pattern": "^.+$" },
+        "line": { "type": "integer" },
+        "column": { "type": "integer" },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "dynamic-import",
+            "require",
+            "filesystem-read",
+            "import-meta-resolve",
+            "package-exports"
+          ]
+        },
+        "expression": { "type": "string", "pattern": "^.+$" },
+        "resolution": { "type": "string", "enum": ["literal", "reviewed-finite"] },
+        "expandedMembers": { "$ref": "#/$defs/runtimeMemberArray" }
+      }
+    },
+    "runtimeScenarioTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "trace_kind",
+        "target_members",
+        "resolved_members",
+        "stdout_size",
+        "stdout_sha256"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string",
+          "enum": [
+            "plugin-discovery",
+            "configuration",
+            "setup",
+            "doctor",
+            "qr-login",
+            "session-restore",
+            "inbound-text",
+            "inbound-media",
+            "outbound-text",
+            "outbound-media",
+            "outbound-link",
+            "outbound-reaction",
+            "control-traffic",
+            "authorization-denial",
+            "unknown-after-handoff",
+            "offline-restart"
+          ]
+        },
+        "trace_kind": { "type": "string", "const": "instrumented-installed-runtime" },
+        "target_members": { "$ref": "#/$defs/runtimeMemberArray" },
+        "resolved_members": { "$ref": "#/$defs/runtimeMemberArray" },
+        "stdout_size": { "type": "integer" },
+        "stdout_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
     "reviewRecord": {
       "type": "object",
       "additionalProperties": false,

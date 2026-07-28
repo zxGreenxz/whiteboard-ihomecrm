@@ -20,6 +20,19 @@ param(
   [string]$BuildxPath,
 
   [Parameter(Mandatory = $true)]
+  [string]$DockerPath,
+
+  [Parameter(Mandatory = $true)]
+  [string]$ReviewedSourceRoot,
+
+  [Parameter(Mandatory = $true)]
+  [string]$ReviewedExportManifestPath,
+
+  [Parameter(Mandatory = $true)]
+  [ValidatePattern('^[0-9a-f]{64}$')]
+  [string]$ReviewedExportManifestSha256,
+
+  [Parameter(Mandatory = $true)]
   [ValidateSet('linux/amd64')]
   [string]$Platform,
 
@@ -57,8 +70,19 @@ Invoke-NativeChecked -FilePath $nodePath -Arguments @(
   'const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error("Official stable Node >=24.15.0 <25 is required");process.exit(1)}'
 ) | Out-Null
 
+$cellRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+
 if (-not [IO.Path]::IsPathFullyQualified($BuildxPath)) {
   throw 'BuildxPath must be absolute; PATH lookup is forbidden'
+}
+if (-not [IO.Path]::IsPathFullyQualified($DockerPath)) {
+  throw 'DockerPath must be absolute; PATH lookup is forbidden'
+}
+if (-not [IO.Path]::IsPathFullyQualified($ReviewedSourceRoot)) {
+  throw 'ReviewedSourceRoot must be absolute'
+}
+if (-not [IO.Path]::IsPathFullyQualified($ReviewedExportManifestPath)) {
+  throw 'ReviewedExportManifestPath must be absolute'
 }
 if (-not [IO.Path]::IsPathFullyQualified($EvidencePath)) {
   throw 'EvidencePath must be absolute'
@@ -105,11 +129,62 @@ if (($buildxVersion -join "`n") -notmatch '(?m)\bv?0\.13\.1\b') {
   throw 'Buildx semantic version must be exactly 0.13.1'
 }
 
-$cellRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if (-not $IsLinux) {
+  throw 'The qualifying Docker runtime probe must run on the reviewed Linux amd64 host'
+}
+$resolvedDocker = (Resolve-Path -LiteralPath $DockerPath -ErrorAction Stop).Path
+$dockerItem = Get-Item -LiteralPath $resolvedDocker -Force
+if ($dockerItem.PSIsContainer -or ($dockerItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+  throw 'DockerPath must be a regular non-reparse file'
+}
+$expectedDockerSha256 = '40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a'
+$actualDockerSha256 = (Get-FileHash -LiteralPath $resolvedDocker -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualDockerSha256 -ne $expectedDockerSha256) {
+  throw 'Docker binary SHA-256 does not match image-lock.json'
+}
+$dockerVersion = Invoke-NativeChecked -FilePath $resolvedDocker -Arguments @(
+  'version', '--format', '{{.Client.Version}}|{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}'
+)
+if (($dockerVersion -join "`n").Trim() -ne '29.1.3|29.1.3|linux|amd64') {
+  throw 'Docker client/server version and platform must be exactly 29.1.3 linux/amd64'
+}
+
+$resolvedReviewedSourceRoot = (Resolve-Path -LiteralPath $ReviewedSourceRoot -ErrorAction Stop).Path
+$reviewedSourceItem = Get-Item -LiteralPath $resolvedReviewedSourceRoot -Force
+if (-not $reviewedSourceItem.PSIsContainer -or ($reviewedSourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+  throw 'ReviewedSourceRoot must be a real non-reparse directory'
+}
+$expectedReviewedSourceRoot = [IO.Path]::GetFullPath((Join-Path $cellRoot '..\..'))
+if ($resolvedReviewedSourceRoot -ne $expectedReviewedSourceRoot) {
+  throw 'ReviewedSourceRoot does not contain this reviewed cell helper'
+}
+$resolvedReviewedExportManifest = (Resolve-Path -LiteralPath $ReviewedExportManifestPath -ErrorAction Stop).Path
+$reviewedManifestItem = Get-Item -LiteralPath $resolvedReviewedExportManifest -Force
+if ($reviewedManifestItem.PSIsContainer -or ($reviewedManifestItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+  throw 'Reviewed export manifest must be a regular non-reparse file'
+}
+$actualReviewedExportManifestSha256 = (Get-FileHash -LiteralPath $resolvedReviewedExportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualReviewedExportManifestSha256 -ne $ReviewedExportManifestSha256) {
+  throw 'Reviewed export manifest SHA-256 mismatch'
+}
+$reviewedExporter = Join-Path $resolvedReviewedSourceRoot 'services/openclaw-zalo-cell/scripts/export-reviewed-tree.mjs'
+Invoke-NativeChecked -FilePath $nodePath -Arguments @(
+  $reviewedExporter,
+  'verify', '--reviewed-tree', $ReviewedTree,
+  '--output-root', $resolvedReviewedSourceRoot,
+  '--manifest', $resolvedReviewedExportManifest
+) | Out-Null
+
 $lockPath = Join-Path $cellRoot 'image-lock.json'
 $verifierPath = Join-Path $cellRoot 'scripts/verify-image-lock.mjs'
 $schemaPath = Join-Path $cellRoot 'build-evidence.schema.v1.json'
 $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json -Depth 16
+if (
+  [string]$lock.docker.version -ne '29.1.3' -or
+  [string]$lock.docker.linux_amd64_sha256 -ne $expectedDockerSha256
+) {
+  throw 'image-lock.json Docker pin does not match the checked native binary'
+}
 $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $workRoot = Join-Path $tempBase ('ihome-openclaw-image-' + [guid]::NewGuid().ToString('N'))
 $contextRoot = Join-Path $workRoot 'context'
@@ -154,7 +229,10 @@ try {
     '--m-reviewed-tree', $MReviewedTree,
     '--reviewed-tree', $ReviewedTree,
     '--m-review-report', $resolvedMReviewReport,
-    '--r-review-report', $resolvedRReviewReport
+    '--r-review-report', $resolvedRReviewReport,
+    '--reviewed-source-root', $resolvedReviewedSourceRoot,
+    '--reviewed-export-manifest', $resolvedReviewedExportManifest,
+    '--reviewed-export-manifest-sha256', $actualReviewedExportManifestSha256
   ) | Out-Null
 
   Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
@@ -215,7 +293,12 @@ try {
     '--evidence', $EvidencePath,
     '--release-artifact', $ReleaseArtifactPath,
     '--buildx-path', $resolvedBuildx,
-    '--buildx-sha256', $actualBuildxSha256
+    '--buildx-sha256', $actualBuildxSha256,
+    '--docker-path', $resolvedDocker,
+    '--docker-sha256', $actualDockerSha256,
+    '--reviewed-source-root', $resolvedReviewedSourceRoot,
+    '--reviewed-export-manifest', $resolvedReviewedExportManifest,
+    '--reviewed-export-manifest-sha256', $actualReviewedExportManifestSha256
   ) | Out-Null
 } catch {
   $primaryError = $_

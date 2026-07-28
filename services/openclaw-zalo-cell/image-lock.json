@@ -10,6 +10,10 @@
     "windows_amd64_sha256": "6b113e84cbc3cd645646aa82f00a7f7d3737cc10375b4341e0aca0de0c997c75",
     "linux_amd64_sha256": "3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c"
   },
+  "docker": {
+    "version": "29.1.3",
+    "linux_amd64_sha256": "40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a"
+  },
   "inputs": [
     {
       "path": ".dockerignore",
@@ -36,8 +40,8 @@
       "path": "scripts/install-vendored-zalouser.sh",
       "type": "blob",
       "mode": "100755",
-      "size": 3483,
-      "sha256": "644b8bff4a7b40a9b9147e776d2490652327c855ffa8339814510cde4bac15c6"
+      "size": 5585,
+      "sha256": "17fe26cfbe2207ac57aa636c33a66fb8bd1b4952d8d53280132d94cc94a6f074"
     },
     {
       "path": "scripts/normalize-openclaw-install.mjs",
@@ -71,15 +75,15 @@
       "path": "vendor/zalouser-bridge/FORK.json",
       "type": "blob",
       "mode": "100644",
-      "size": 56128,
-      "sha256": "9c7e78d94d014f766e55e86579365fb91eb93a3443ab18c79dc12fde2e691ade"
+      "size": 56298,
+      "sha256": "1a520c2d02f1be4acfc8b4f5fd48f1ca7f6576966fd7d2e6d6e2dcac388473d2"
     },
     {
       "path": "vendor/zalouser-bridge/artifacts/openclaw-zalouser-2026.7.1.tgz",
       "type": "blob",
       "mode": "100644",
-      "size": 405298,
-      "sha256": "11338373ebabd2a636d5169e18822df1664cf33e27cee7e723adc4cf638c22e7"
+      "size": 405214,
+      "sha256": "b489752ac0e114e5b068b19d58a438744fd141158dd1ff4ce72a7d8d7c51f919"
     }
   ]
 }

@@ -18,10 +18,14 @@ stable 24.x line, and an absolute verified buildx 0.13.1 binary. It creates two
 fresh pinned BuildKit builders and accepts the result only when both OCI archives
 are byte-identical. `--pull` may acquire the pinned base image; all application
 installation commands inside the Docker build run with `--network=none`.
-The helper also requires exact `-MReviewedTree`, `-MReviewReportPath`, and
-`-RReviewReportPath` inputs. Both report paths must be absolute regular files;
-their canonical bytes, hashes, reviewer identity, approval decision, and empty
-findings are validated before either builder starts and embedded in the evidence.
+The helper also requires the absolute pinned Docker 29.1.3 binary, the exact-R
+export root, its canonical manifest and SHA-256, exact `-MReviewedTree`,
+`-MReviewReportPath`, and `-RReviewReportPath` inputs. Both report paths must be
+absolute regular files; their canonical bytes, hashes, reviewer identity,
+approval decision, and empty findings are validated before either builder starts
+and embedded in the evidence. The Git-backed caller remains the working directory
+so the helper can re-enumerate R and re-hash the complete exported tree before
+the first Docker action.
 
 `build-evidence.json` is intentionally absent from source checkpoint R. It is
 created only by the qualifying build and committed later as the sole file in the

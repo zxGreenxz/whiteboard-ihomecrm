@@ -96,7 +96,7 @@ node -e '
   if (manifest.name !== "@openclaw/zalouser" || manifest.version !== "2026.7.1") process.exit(1);
   if (Object.keys(manifest.dependencies ?? {}).length !== 0) process.exit(1);
 ' "$installed/package.json"
-[ -z "$(find "$staging/node_modules" -mindepth 1 -maxdepth 1 ! -name @openclaw -print -quit)" ] || {
+[ -z "$(find "$staging/node_modules" -mindepth 1 -maxdepth 1 ! -name @openclaw ! -name .package-lock.json -print -quit)" ] || {
   echo "unexpected top-level package was installed" >&2
   exit 1
 }
@@ -104,5 +104,34 @@ node -e '
   echo "unexpected scoped package was installed" >&2
   exit 1
 }
-mv "$installed" "$project"
-rm -rf "$staging"
+node -e '
+  const crypto = require("node:crypto");
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { fileURLToPath, pathToFileURL } = require("node:url");
+  const [lockPath, stagingRoot, artifactPath] = process.argv.slice(1);
+  const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+  if (JSON.stringify(Object.keys(lock).sort()) !== JSON.stringify(["lockfileVersion", "packages", "requires"])) process.exit(1);
+  if (lock.lockfileVersion !== 3 || lock.requires !== true) process.exit(1);
+  if (JSON.stringify(Object.keys(lock.packages ?? {})) !== JSON.stringify(["node_modules/@openclaw/zalouser"])) process.exit(1);
+  const record = lock.packages["node_modules/@openclaw/zalouser"];
+  if (record?.version !== "2026.7.1" || typeof record.resolved !== "string" || !record.resolved.startsWith("file:")) process.exit(1);
+  const resolvedArtifact = path.resolve(fileURLToPath(new URL(record.resolved, pathToFileURL(`${path.resolve(stagingRoot)}/`))));
+  if (resolvedArtifact !== path.resolve(artifactPath)) process.exit(1);
+  const artifactBytes = fs.readFileSync(artifactPath);
+  const expectedIntegrity = `sha512-${crypto.createHash("sha512").update(artifactBytes).digest("base64")}`;
+  if (record.integrity !== expectedIntegrity) process.exit(1);
+  if (JSON.stringify(record.peerDependencies) !== JSON.stringify({ openclaw: ">=2026.7.1" })) process.exit(1);
+  if (JSON.stringify(record.peerDependenciesMeta) !== JSON.stringify({ openclaw: { optional: true } })) process.exit(1);
+' "$staging/node_modules/.package-lock.json" "$staging" "$artifact"
+rm -f "$staging/node_modules/.package-lock.json"
+[ ! -e "$staging/node_modules/.package-lock.json" ] || {
+  echo "mutable npm lock state remains after verification" >&2
+  exit 1
+}
+[ -z "$(find "$staging" -mindepth 1 -maxdepth 1 ! -name package.json ! -name node_modules -print -quit)" ] || {
+  echo "unexpected managed project entry was installed" >&2
+  exit 1
+}
+printf '%s\n' '{"name":"@ihome/openclaw-zalouser-install","private":true,"dependencies":{"@openclaw/zalouser":"2026.7.1"}}' > "$staging/package.json"
+mv "$staging" "$project"
