@@ -388,6 +388,14 @@ test("build evidence binds exact canonical M and R approval reports", async (t) 
     readCanonicalReviewReport(reportPath, { checkpoint: "M", reviewedSha }),
     /duplicate JSON key/i,
   );
+  await writeFile(
+    reportPath,
+    `${JSON.stringify({ schema: 1, ...report })}\n`,
+  );
+  await assert.rejects(
+    readCanonicalReviewReport(reportPath, { checkpoint: "M", reviewedSha }),
+    /not canonical/i,
+  );
 });
 
 test("PowerShell helper pins builders and makes the verifier the promotion gate", async () => {

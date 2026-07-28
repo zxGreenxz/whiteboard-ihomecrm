@@ -190,7 +190,17 @@ function reviewEvidenceFromBytes(bytes, expected) {
   }
   assertReviewIdentity(report.reviewerIdentity, "reviewer identity");
   assertReviewIdentity(report.reviewerRunId, "reviewer run ID");
-  const canonical = Buffer.from(`${JSON.stringify(report)}\n`, "utf8");
+  const canonicalReport = {
+    checkpoint: report.checkpoint,
+    decision: report.decision,
+    findings: report.findings,
+    reviewedSha: report.reviewedSha,
+    reviewerIdentity: report.reviewerIdentity,
+    reviewerRole: report.reviewerRole,
+    reviewerRunId: report.reviewerRunId,
+    schema: report.schema,
+  };
+  const canonical = Buffer.from(`${JSON.stringify(canonicalReport)}\n`, "utf8");
   if (!bytes.equals(canonical)) throw new Error("review report bytes are not canonical");
   return {
     checkpoint: report.checkpoint,
