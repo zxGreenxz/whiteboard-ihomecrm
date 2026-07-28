@@ -149,7 +149,11 @@ test('so quy: lươt trong danh sach khong lam dong menu', async ({ page }) => {
     await list.hover();
     await page.mouse.wheel(0, 200);
     await expect(page.locator('.ub-bookpop')).toBeVisible();
-    expect(await list.evaluate((el) => el.scrollTop), 'đã cuộn được').toBeGreaterThan(0);
+    // Chromium áp scroll ở compositor nên đọc scrollTop ngay sau wheel là ăn
+    // hên xui — poll thay vì đọc một phát (đỏ lai rai trên prod).
+    await expect
+      .poll(() => list.evaluate((el) => el.scrollTop), { message: 'đã cuộn được', timeout: 5_000 })
+      .toBeGreaterThan(0);
   } finally {
     await removeBooks(page, api, ids);
   }
