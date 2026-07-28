@@ -12,6 +12,7 @@ import {
   calculateContractDepositBalance,
   prepareContractCreateRequest,
 } from "@/lib/contractCreateRpc";
+import { applyDepositAdjustmentNote } from "@/lib/contractPriceAdjustment";
 import type { ContractFormState } from "./useContractFormState";
 
 interface UseContractSubmitParams {
@@ -84,6 +85,17 @@ export function useContractSubmit({
       initial_reading: s.initial_reading || undefined,
     }));
 
+    // Cọc lệch tiền thuê → chèn 1 dòng "[Điều chỉnh cọc]" vào ghi chú HĐ để
+    // sau này LỌC / ĐỐI CHIẾU được. Hàm tự gỡ dòng thẻ cũ nên sửa HĐ nhiều lần
+    // vẫn chỉ còn đúng 1 dòng, và cọc quay về = tiền thuê thì dòng đó biến mất.
+    // (Vế còn lại của dấu vết — giá thuê vs giá phòng — do trigger DB
+    //  log_contract_price_history ghi thẳng vào room_price_history.)
+    const notesWithAdjustment = applyDepositAdjustmentNote(
+      data.notes,
+      data.rent_price,
+      data.total_deposit,
+    );
+
     if (isEditMode && contract) {
       // Edit mode: update contract fields
       const updates: Record<string, any> = {
@@ -102,7 +114,7 @@ export function useContractSubmit({
         end_billing_date: data.end_billing_date || null,
         contract_template_id: data.contract_template_id || null,
         invoice_template_id: data.invoice_template_id || null,
-        notes: data.notes || null,
+        notes: notesWithAdjustment,
         discounts:
           data.discount_months && data.discount_amount_per_month
             ? {
@@ -279,7 +291,7 @@ export function useContractSubmit({
           end_billing_date: billingPeriod.end_date,
           contract_template_id: data.contract_template_id || null,
           invoice_template_id: data.invoice_template_id || null,
-          notes: data.notes || null,
+          notes: notesWithAdjustment,
           discounts: discounts ?? null,
           deposit_debt_mode: effectiveDebtMode,
           deposit_debt_reason:

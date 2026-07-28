@@ -11119,6 +11119,80 @@ export type Database = {
           },
         ]
       }
+      room_price_history: {
+        Row: {
+          building_id: string
+          changed_at: string
+          changed_by: string | null
+          contract_id: string | null
+          deposit_after: number | null
+          deposit_before: number | null
+          id: string
+          note: string | null
+          rent_price_after: number | null
+          rent_price_before: number | null
+          room_id: string
+          source: string
+        }
+        Insert: {
+          building_id: string
+          changed_at?: string
+          changed_by?: string | null
+          contract_id?: string | null
+          deposit_after?: number | null
+          deposit_before?: number | null
+          id?: string
+          note?: string | null
+          rent_price_after?: number | null
+          rent_price_before?: number | null
+          room_id: string
+          source: string
+        }
+        Update: {
+          building_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          contract_id?: string | null
+          deposit_after?: number | null
+          deposit_before?: number | null
+          id?: string
+          note?: string | null
+          rent_price_after?: number | null
+          rent_price_before?: number | null
+          room_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_price_history_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "room_price_history_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_price_history_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "room_price_history_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       room_reservation_holds: {
         Row: {
           amount: number

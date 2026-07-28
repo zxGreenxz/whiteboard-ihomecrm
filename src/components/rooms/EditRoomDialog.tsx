@@ -35,6 +35,7 @@ import { useUpdateRoom } from "@/hooks/useRooms";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useFloors } from "@/hooks/useFloors";
 import { Badge } from "@/components/ui/badge";
+import { RoomPriceHistorySection } from "./RoomPriceHistorySection";
 import { X } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -360,6 +361,9 @@ export function EditRoomDialog({
                     )}
                   />
                 </div>
+
+                {/* Dấu vết mọi lần đổi giá — kể cả giá ký lệch trên hợp đồng. */}
+                <RoomPriceHistorySection roomId={room.id} enabled={open} />
               </div>
 
               {/* Status & Description */}

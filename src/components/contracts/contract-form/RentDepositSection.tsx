@@ -8,6 +8,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DateInput } from "@/components/ui/date-input";
 import { CurrencyInput } from "@/components/ui/currency-input";
+import { LockedCurrencyInput } from "@/components/ui/locked-currency-input";
 import { NumberInput } from "@/components/ui/number-input";
 import {
   Select,
@@ -25,9 +26,13 @@ import { Plus, Trash2 } from "lucide-react";
 
 import type { PaymentCycle } from "@/types/contract";
 import { PAYMENT_CYCLE_LABELS } from "@/types/contract";
-import { formatCurrency } from "@/lib/utils";
+// Ô tiền trong form dùng hậu tố "đ" (CurrencyInput), nên hint kèm theo cũng
+// phải là formatVND của utils — KHÔNG dùng formatVND của ./types (ký hiệu ₫).
+import { formatCurrency, formatVND as formatMoneyPlain } from "@/lib/utils";
 import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+
+import { depositAdjustmentHint } from "@/lib/contractPriceAdjustment";
 
 import { formatVND } from "./types";
 import type { ContractFormState } from "./useContractFormState";
@@ -36,7 +41,13 @@ type RentDepositSectionProps = Pick<
   ContractFormState,
   | "form"
   | "isEditMode"
-  | "setDepositTouched"
+  | "roomDefaultRent"
+  | "rentDiffersFromRoom"
+  | "rentUnlocked"
+  | "unlockRent"
+  | "depositUnlocked"
+  | "unlockDeposit"
+  | "depositAdjustment"
   | "depositRemaining"
   | "depositShortfall"
   | "depositDebtMode"
@@ -54,7 +65,13 @@ type RentDepositSectionProps = Pick<
 export function RentDepositSection({
   form,
   isEditMode,
-  setDepositTouched,
+  roomDefaultRent,
+  rentDiffersFromRoom,
+  rentUnlocked,
+  unlockRent,
+  depositUnlocked,
+  unlockDeposit,
+  depositAdjustment,
   depositRemaining,
   depositShortfall,
   depositDebtMode,
@@ -67,13 +84,15 @@ export function RentDepositSection({
   updateDepositRow,
   removeDepositRow,
 }: RentDepositSectionProps) {
+  const depositHint = depositAdjustmentHint(depositAdjustment);
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-foreground border-b pb-2">
         Tiền thuê & Tiền cọc
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Tiền thuê */}
+        {/* Tiền thuê — mặc định = giá niêm yết của phòng, khoá xám; bấm bút
+            chì để ký giá khác. Giá lệch sẽ vào lịch sử giá của phòng. */}
         <FormField
           control={form.control}
           name="rent_price"
@@ -81,13 +100,29 @@ export function RentDepositSection({
             <FormItem>
               <FormLabel>Tiền thuê</FormLabel>
               <FormControl>
-                <CurrencyInput
+                <LockedCurrencyInput
                   value={field.value}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
                   name={field.name}
+                  locked={!rentUnlocked}
+                  onUnlock={unlockRent}
+                  unlockLabel="Sửa tiền thuê"
                 />
               </FormControl>
+              {roomDefaultRent > 0 && (
+                <p
+                  className={
+                    rentDiffersFromRoom
+                      ? "text-xs text-amber-600 dark:text-amber-500"
+                      : "text-xs text-muted-foreground"
+                  }
+                >
+                  {rentDiffersFromRoom
+                    ? `Khác giá mặc định của phòng (${formatMoneyPlain(roomDefaultRent)}) — thay đổi này được ghi vào lịch sử giá của phòng.`
+                    : `Giá mặc định của phòng: ${formatMoneyPlain(roomDefaultRent)}`}
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
@@ -169,7 +204,9 @@ export function RentDepositSection({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Tiền cọc (mặc định = tiền thuê; sửa tay được) */}
+        {/* Tiền cọc — mặc định bám tiền thuê, khoá xám; bấm bút chì để chỉnh
+            theo thoả thuận. Lệch mặc định thì cảnh báo rõ tăng/giảm ngay dưới
+            ô và ghi 1 dòng "[Điều chỉnh cọc]" vào ghi chú HĐ để lọc sau này. */}
         <FormField
           control={form.control}
           name="total_deposit"
@@ -177,16 +214,25 @@ export function RentDepositSection({
             <FormItem>
               <FormLabel>Tiền cọc</FormLabel>
               <FormControl>
-                <CurrencyInput
+                <LockedCurrencyInput
                   value={field.value}
-                  onChange={(v) => {
-                    setDepositTouched(true);
-                    field.onChange(v);
-                  }}
+                  onChange={field.onChange}
                   onBlur={field.onBlur}
                   name={field.name}
+                  locked={!depositUnlocked}
+                  onUnlock={unlockDeposit}
+                  unlockLabel="Sửa tiền cọc"
                 />
               </FormControl>
+              {depositHint ? (
+                <p className="text-xs font-medium text-amber-600 dark:text-amber-500">
+                  {depositHint}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Mặc định bằng tiền thuê — bấm bút chì để chỉnh.
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}
