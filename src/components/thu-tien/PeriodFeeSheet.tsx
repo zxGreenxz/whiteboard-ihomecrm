@@ -167,7 +167,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
     const k = row.key; const paid = EN.paidThisKy(row.accountId); const amount = EN.amountOf(k); const paying = EN.payingKey === k;
     const Icon = row.type === 'electric' ? Zap : Droplet;
     return (
-      <div className="ubc-row" key={k}>
+      <div className="ubc-row" key={k} {...(paid ? {} : EN.pasteProps(k))}>
         <div className="ubc-rowhead">
           <span className={'ubc-ic ' + row.type}><Icon /></span>
           <input className="ubc-code" placeholder={row.type === 'electric' ? 'Mã PE' : 'Mã nước'} value={EN.codeOf(row)} onChange={(e) => EN.setField(row, { code: e.target.value })} onBlur={() => EN.saveMeter(row)} />
@@ -181,7 +181,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           </div>
         ) : (
           <div className="ubc-pay">
-            <input className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onChange={(e) => EN.setAmount(k, parseVN(e.target.value))} />
+            <input className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => EN.setActiveKey(k)} onChange={(e) => EN.setAmount(k, parseVN(e.target.value))} />
             <UtilityBookMenu accounts={EN.myBooks} valueId={EN.bookSel[k] ?? null} defaultId={EN.defaultBookId} onPick={(id) => EN.setBook(k, id)} compact disabled={!canRecordPayment} />
             <button type="button" className={'ub-attach' + (EN.attach[k] ? ' has' : '')} disabled={!canRecordPayment || EN.uploadingKey === k} onClick={() => EN.onAttachClick(k)}>{EN.uploadingKey === k ? <span className="ub-spin dark" /> : <Camera />}</button>
             <button type="button" className="ub-paybtn" disabled={!canRecordPayment || amount <= 0 || paying} onClick={() => EN.submitPay(row, row.buildingName)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
@@ -204,8 +204,11 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
     const single = paidVouchers.length === 1 ? paidVouchers[0] : null;
     const n = S.nOf(b.id); const amount = S.amountOf(b.id); const paying = S.payingKey === b.id; const def = S.defaultAmountOf(b.id);
     const isEditingExp = expectedEdit?.bId === b.id;
+    // Rê chuột vào thẻ + Ctrl+V = đính ảnh (đã có phiếu thì append vào phiếu).
+    const pasteVoucher = paid ? (single ?? paidVouchers[0])?.id ?? null : null;
+    const canPaste = paid ? !!pasteVoucher : !hasDraft;
     return (
-      <div className="ptt-m-card" key={b.id}>
+      <div className="ptt-m-card" key={b.id} {...(canPaste ? S.rowPasteProps(b.id, pasteVoucher) : {})}>
         <div className="ptt-m-cardhead">
           <span className="ud-bldcode">{b.name}</span>
           <input className="ptt-m-code" placeholder={cat!.providerConfig ? 'Mã NCC' : 'Ghi chú'} value={S.codeOf(b.id)} onChange={(e) => S.setField(b.id, { code: e.target.value })} onBlur={() => S.saveConfig(b.id)} />

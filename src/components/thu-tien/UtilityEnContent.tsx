@@ -168,7 +168,7 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                       const paying = S.payingKey === k;
                       const Icon = t === 'electric' ? Zap : Droplet;
                       return (
-                        <tr key={k} className={first ? 'ud-first' : ''}>
+                        <tr key={k} className={first ? 'ud-first' : ''} {...(paid ? {} : S.pasteProps(k))}>
                           <td className="ud-td-bld">
                             {first ? (
                               <div className="ud-bldcell">

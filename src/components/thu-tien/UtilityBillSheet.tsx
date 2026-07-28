@@ -64,7 +64,7 @@ export function UtilityBillSheet({ show, onClose, billingMonth, canRecordPayment
     const paying = S.payingKey === k;
     const Icon = row.type === 'electric' ? Zap : Droplet;
     return (
-      <div className={'ubc-row ' + row.type} key={k}>
+      <div className={'ubc-row ' + row.type} key={k} {...(paid ? {} : S.pasteProps(k))}>
         <div className="ubc-rowhead">
           <span className={'ubc-ic ' + row.type}><Icon /></span>
           <input

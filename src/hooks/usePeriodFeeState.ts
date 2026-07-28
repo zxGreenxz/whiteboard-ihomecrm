@@ -21,6 +21,7 @@ import { getSessionUser } from '@/lib/authSession';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
 import { useAccounts } from '@/hooks/useAccounts';
 import { useUiPreferences, useSetUiPreference } from '@/hooks/useUiPreferences';
+import { useReceiptPasteTarget } from '@/hooks/useReceiptPasteTarget';
 import {
   usePayPeriodFee,
   usePayDraftFeeVoucher,
@@ -220,15 +221,12 @@ export function usePeriodFeeState(
     fileRef.current?.click();
   };
 
-  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  /** Upload + gắn 1 ảnh theo chế độ — dùng chung cho chọn file lẫn Ctrl+V. */
+  const runReceiptUpload = async (file: File, mode: string, bId: string | null) => {
     const err = validateReceiptFile(file);
     if (err) { toast.error(err); return; }
-    const mode = attachModeRef.current;
     const busyKey = mode === 'edit' ? '__edit__' : mode === 'draftpay' ? '__draftpay__'
-      : mode.startsWith('quick:') ? `__quick__${attachKeyRef.current}` : attachKeyRef.current;
+      : mode.startsWith('quick:') ? `__quick__${bId}` : bId;
     if (!busyKey) return;
     setUploadingKey(busyKey);
     try {
@@ -245,12 +243,33 @@ export function usePeriodFeeState(
         await appendMut.mutateAsync({ voucherId, url });
         toast.success('Đã đính ảnh vào phiếu');
       } else {
-        setAttach((a) => ({ ...a, [attachKeyRef.current!]: url }));
+        setAttach((a) => ({ ...a, [bId!]: url }));
         toast.success('Đã đính kèm ảnh phiếu');
       }
     } catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
     finally { setUploadingKey(null); }
   };
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    await runReceiptUpload(file, attachModeRef.current, attachKeyRef.current);
+  };
+
+  // Ctrl+V ảnh chứng từ trên dòng đang RÊ CHUỘT. Key mã hoá luôn chế độ:
+  //   'pay:<bId>'               → ảnh cho phiếu sắp đóng
+  //   'quick:<bId>:<voucherId>' → đính thẳng vào phiếu đã có (append server-side)
+  const uploadingRef = useRef<string | null>(null);
+  uploadingRef.current = uploadingKey;
+  const { pasteProps } = useReceiptPasteTarget((target, file) => {
+    if (uploadingRef.current) return;
+    const [mode, bId, voucherId] = target.split(':');
+    void runReceiptUpload(file, mode === 'quick' ? `quick:${voucherId}` : 'pay', bId);
+  });
+  /** Spread vào dòng/thẻ 1 tòa — rê chuột tới đâu, Ctrl+V đính ảnh vào đó. */
+  const rowPasteProps = (bId: string, voucherId?: string | null) =>
+    pasteProps(voucherId ? `quick:${bId}:${voucherId}` : `pay:${bId}`);
 
   // ── Đóng tiền (TỔNG cả khoảng; chống trùng 2 bước) ──
   const doPay = async (bId: string, force: boolean) => {
@@ -402,6 +421,7 @@ export function usePeriodFeeState(
     setField, setAmount, setBook, setN, saveConfig, saveExpected, setNotApplicable,
     bookSel, attach, uploadingKey, payingKey,
     fileRef, onFileChange, onAttachClick, onEditAttachClick, onQuickAttachClick, onDraftPayAttachClick,
+    rowPasteProps,
     submitPay,
     dupConfirm, confirmPayDup, closeDupConfirm: () => setDupConfirm(null),
     draftTarget, draftPayAttachments, openPayDraft, submitPayDraft,

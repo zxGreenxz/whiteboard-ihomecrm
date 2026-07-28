@@ -279,8 +279,13 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
     const slim = !cat!.providerConfig;
     const isEditingExp = expectedEdit?.bId === b.id;
 
+    // Rê chuột vào dòng + Ctrl+V = đính ảnh: chưa có phiếu → ảnh chờ đóng;
+    // đã có phiếu → append thẳng vào phiếu (như nút camera nhanh). Dòng phiếu
+    // NHÁP không có ô đính ảnh nên cũng không nhận dán.
+    const pasteVoucher = paid ? (single ?? paidVouchers[0])?.id ?? null : null;
+    const canPaste = paid ? !!pasteVoucher : !hasDraft;
     return (
-      <tr key={b.id}>
+      <tr key={b.id} {...(canPaste ? S.rowPasteProps(b.id, pasteVoucher) : {})}>
         <td className="ud-td-bld"><span className="ud-bldcode">{b.name}</span></td>
         {slim ? (
           <td><input className="ud-holder" placeholder="Ghi chú" value={S.codeOf(b.id)} onChange={(e) => S.setField(b.id, { code: e.target.value })} onBlur={() => S.saveConfig(b.id)} /></td>

@@ -13,6 +13,7 @@ import { fmtFull } from '@/lib/collect';
 import { getSessionUser } from '@/lib/authSession';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useReceiptPasteTarget } from '@/hooks/useReceiptPasteTarget';
 import {
   useUtilityAccounts,
   useUtilityPayments,
@@ -145,11 +146,6 @@ export function useUtilityPayState(
     }
   };
 
-  const onAttachClick = (key: string) => {
-    if (uploadingKey) return;
-    attachKeyRef.current = key;
-    fileRef.current?.click();
-  };
   /** Upload 1 file cho khoản `k` — dùng chung cho chọn file lẫn Ctrl+V. */
   const attachFile = useCallback(async (k: string, file: File) => {
     const err = validateReceiptFile(file);
@@ -172,36 +168,23 @@ export function useUtilityPayState(
     if (!file || !k) return;
     await attachFile(k, file);
   };
-  /** Đánh dấu khoản đang thao tác (focus ô Số tiền) — đích của Ctrl+V ảnh. */
-  const setActiveKey = useCallback((key: string) => {
+
+  // Ctrl+V ảnh chứng từ: đích là dòng đang RÊ CHUỘT, hoặc dòng vừa bấm ô Số
+  // tiền. Đích nằm ở biến module (xem useReceiptPasteTarget) vì panel desktop
+  // và sheet mobile cùng mount hook này → 2 instance tranh event 'paste'.
+  const uploadingRef = useRef<string | null>(null);
+  uploadingRef.current = uploadingKey;
+  const { setActiveKey, pasteProps } = useReceiptPasteTarget((k, file) => {
+    if (uploadingRef.current) return;
+    void attachFile(k, file);
+  });
+
+  const onAttachClick = (key: string) => {
+    if (uploadingKey) return;
     attachKeyRef.current = key;
-  }, []);
-  // Ctrl+V ảnh chứng từ: dán vào khoản đang thao tác (owner yêu cầu 24/07).
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      // Desktop panel + mobile sheet cùng mount hook → 2 listener; đánh dấu
-      // event để chỉ MỘT bên xử lý (tránh double toast/double upload).
-      const marked = e as ClipboardEvent & { __utilityPasteHandled?: boolean };
-      if (marked.__utilityPasteHandled) return;
-      marked.__utilityPasteHandled = true;
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      const img = Array.from(items).find((it) => it.type.startsWith('image/'));
-      if (!img) return; // dán text bình thường — không can thiệp
-      const file = img.getAsFile();
-      if (!file) return;
-      e.preventDefault();
-      const k = attachKeyRef.current;
-      if (!k) {
-        toast.info('Chạm vào ô Số tiền (hoặc nút ảnh) của khoản cần đính rồi dán lại');
-        return;
-      }
-      if (uploadingKey) return;
-      void attachFile(k, file);
-    };
-    document.addEventListener('paste', onPaste);
-    return () => document.removeEventListener('paste', onPaste);
-  }, [attachFile, uploadingKey]);
+    setActiveKey(key);
+    fileRef.current?.click();
+  };
 
   const submitPay = async (row: MeterRow, name: string) => {
     const amount = amountOf(row.key);
@@ -260,8 +243,8 @@ export function useUtilityPayState(
     payingKey, submitPay,
     // meters
     addMeter, adding: addMeterMut.isPending, deleteMeter, deleting: deleteMeterMut.isPending,
-    // attach input
-    fileRef, onFileChange, onAttachClick, setActiveKey,
+    // attach input (pasteProps: spread vào dòng để rê chuột + Ctrl+V dán ảnh)
+    fileRef, onFileChange, onAttachClick, setActiveKey, pasteProps,
     // cancel
     cancelTarget, requestCancel, confirmCancel, cancelling: cancelMut.isPending,
     closeCancel: () => setCancelTarget(null),
