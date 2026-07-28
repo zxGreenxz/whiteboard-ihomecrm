@@ -70,9 +70,18 @@ test('vehicle dialog: ô khách hàng lọc được + auto lọc theo toà/phò
 
   await customerTrigger.click();
   // keepPreviousData ⇒ list cũ hiện tạm khi đang refetch; chờ nó thu hẹp thật.
+  // Phải có ÍT NHẤT 1 option ("-- Không chọn --" luôn còn) — nếu chấp nhận cả 0
+  // thì bài đọc trúng lúc dropdown chưa vẽ xong và tưởng là đã lọc.
   await expect
-    .poll(() => page.getByRole('option').count(), { timeout: 20_000 })
-    .toBeLessThan(allCount);
+    .poll(
+      async () => {
+        const texts = await page.getByRole('option').allTextContents();
+        if (texts.some((t) => t.includes('Đang tải'))) return false; // chưa xong
+        return texts.length > 0 && texts.length < allCount;
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
   const byBuilding = await page.getByRole('option').allTextContents();
   console.log(`Khách: tất cả=${allCount} → lọc theo toà=${byBuilding.length}`, byBuilding);
   const realCustomers = byBuilding.filter(
