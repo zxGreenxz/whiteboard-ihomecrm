@@ -1,0 +1,47 @@
+diff --git a/src/monitor.ts b/src/monitor.ts
+--- a/src/monitor.ts
++++ b/src/monitor.ts
+@@ -31,6 +31,7 @@ import {
+   normalizeOptionalLowercaseString,
+   normalizeStringEntries,
+ } from "openclaw/plugin-sdk/string-coerce-runtime";
++import { commitInboundThroughBridge } from "./bridge/inbound-listener.js";
+ import {
+   buildZalouserGroupCandidates,
+   findZalouserGroupEntry,
+@@ -969,10 +970,11 @@ export async function monitorZalouserProvider(
+       accountId: account.accountId,
+       profile: account.profile,
+       abortSignal,
+-      onMessage: (msg) => {
++      onMessage: async (msg) => {
+         if (stopped) {
+           return;
+         }
++        await commitInboundThroughBridge(account.accountId, msg);
+         logVerbose(core, runtime, `[${account.accountId}] inbound message`);
+         statusSink?.({ lastInboundAt: Date.now() });
+         const queueKey = resolveInboundQueueKey(msg);
+diff --git a/src/zalo-js.ts b/src/zalo-js.ts
+--- a/src/zalo-js.ts
++++ b/src/zalo-js.ts
+@@ -1752,7 +1752,7 @@ export async function startZaloListener(params: {
+   accountId: string;
+   profile?: string | null;
+   abortSignal: AbortSignal;
+-  onMessage: (message: ZaloInboundMessage) => void;
++  onMessage: (message: ZaloInboundMessage) => void | Promise<void>;
+   onError: (error: Error) => void;
+ }): Promise<{ stop: () => void }> {
+   const profile = normalizeProfile(params.profile);
+@@ -1800,7 +1800,9 @@ export async function startZaloListener(params: {
+     if (!normalized) {
+       return;
+     }
+-    params.onMessage(normalized);
++    void Promise.resolve(params.onMessage(normalized)).catch((error: unknown) => {
++      failListener(error instanceof Error ? error : new Error(String(error)));
++    });
+   };
+ 
+   const failListener = (error: Error) => {
