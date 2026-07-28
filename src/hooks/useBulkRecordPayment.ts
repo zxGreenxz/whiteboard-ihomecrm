@@ -16,6 +16,7 @@ import {
   type InvoiceCollectionPlanningInput,
   type InvoiceCollectionTenderInput,
 } from '@/lib/paymentRecordRpc';
+import { deriveOverpayPolicy } from '@/lib/collectPlan';
 
 export interface BulkPaymentItem {
   invoice_id: string;
@@ -110,18 +111,6 @@ export const useBulkRecordPayment = () => {
       const voucherIds: string[] = [];
 
       for (const item of params.items) {
-        // TẠM KHÓA: giữ tiền thừa làm credit khách hàng chưa đối soát kế toán xong.
-        // Fail-closed cho tới khi flag customer.credit.apply.v1 thành CANONICAL — bỏ guard này khi đó.
-        const keepAsCredit = !!item.keep_as_credit && (item.change_amount || 0) > 0;
-        if (keepAsCredit) {
-          failures.push({
-            invoice_id: item.invoice_id,
-            invoice_number: item.invoice_number,
-            room_name: item.room_name,
-            message: 'Tính năng giữ tiền thừa làm credit khách hàng đang tạm khóa để đối soát kế toán.',
-          });
-          continue;
-        }
         try {
           const fingerprint = itemFingerprint(params.payment_date, item);
           const cached = attemptsRef.current.get(item.invoice_id);
@@ -156,7 +145,14 @@ export const useBulkRecordPayment = () => {
                 `Tiền dư phải đúng phần vượt còn phải thu (${overpay.toLocaleString('vi-VN')}đ)`,
               );
             }
-            const keepAsCredit = !!item.keep_as_credit && overpay > 0;
+            const overpayPolicy = deriveOverpayPolicy({
+              total: grossTotal,
+              amountTm: Number(item.amount_tm) || 0,
+              remaining,
+              hasContract: !!invoice.contract_id,
+            });
+            const keepAsCredit = overpay > 0
+              && (overpayPolicy.mustKeepAsCredit || !!item.keep_as_credit);
             if (keepAsCredit && !invoice.contract_id) {
               throw new Error('Hóa đơn không gắn hợp đồng nên không thể giữ credit');
             }

@@ -216,7 +216,7 @@ export function planInvoiceCollection(
     } else {
       throw new Error("Số thu vượt còn phải thu; chọn thối lại hoặc giữ credit");
     }
-    if (tmTotal < overpay) {
+    if (normalized.overpay_action === "REFUND" && tmTotal < overpay) {
       throw new Error("Phần thu dư phải nằm trong dòng tiền mặt TM");
     }
   } else if (normalized.overpay_action !== "REJECT") {
@@ -247,17 +247,22 @@ export function planInvoiceCollection(
   const planned = normalized.tenders.map((tender, lineIndex) => {
     let lineChange = 0;
     let lineCredit = 0;
-    if (tender.payment_method === "TM" && (changeLeft > 0 || creditLeft > 0)) {
+    if (tender.payment_method === "TM" && changeLeft > 0) {
       const laterTmTotal = normalized.tenders
         .slice(lineIndex + 1)
         .filter((later) => later.payment_method === "TM")
         .reduce((sum, later) => sum + later.gross_amount, 0);
       lineChange = Math.min(tender.gross_amount, Math.max(changeTotal - laterTmTotal, 0));
+      changeLeft -= lineChange;
+    }
+    if (creditLeft > 0) {
+      const laterGrossTotal = normalized.tenders
+        .slice(lineIndex + 1)
+        .reduce((sum, later) => sum + later.gross_amount, 0);
       lineCredit = Math.min(
         tender.gross_amount - lineChange,
-        Math.max(creditTotal - laterTmTotal, 0),
+        Math.max(creditTotal - laterGrossTotal, 0),
       );
-      changeLeft -= lineChange;
       creditLeft -= lineCredit;
     }
 

@@ -68,6 +68,42 @@ function requirePositiveMoney(value: number, field: string): number {
   return rounded;
 }
 
+const money = (value: number): number => Math.round((Number(value) || 0) * 100) / 100;
+
+export interface InvoiceCreditApplicationInput {
+  subtotal: number;
+  previousDebt: number;
+  requestedDiscount: number;
+  requestedCredit: number;
+}
+
+export interface InvoiceCreditApplication {
+  appliedCredit: number;
+  discountAmount: number;
+  nonCreditDiscount: number;
+  remainingCredit: number;
+}
+
+/** Không tiêu thụ credit vượt số hóa đơn còn lại sau các giảm trừ khác. */
+export function capInvoiceCreditApplication(
+  input: InvoiceCreditApplicationInput,
+): InvoiceCreditApplication {
+  const requestedCredit = Math.max(0, money(input.requestedCredit));
+  const requestedDiscount = Math.max(0, money(input.requestedDiscount));
+  const nonCreditDiscount = Math.max(0, money(requestedDiscount - requestedCredit));
+  const creditCapacity = Math.max(
+    0,
+    money(input.subtotal) + money(input.previousDebt) - nonCreditDiscount,
+  );
+  const appliedCredit = Math.min(requestedCredit, creditCapacity);
+  return {
+    appliedCredit,
+    discountAmount: money(nonCreditDiscount + appliedCredit),
+    nonCreditDiscount,
+    remainingCredit: money(requestedCredit - appliedCredit),
+  };
+}
+
 /** Prepare once for a mutation submission so every retry reuses one key. */
 export function prepareCustomerCreditRequest(
   kind: CustomerCreditMutationKind,

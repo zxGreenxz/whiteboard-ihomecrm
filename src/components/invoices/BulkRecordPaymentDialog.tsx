@@ -48,6 +48,7 @@ import {
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { useInvoice } from '@/hooks/useInvoices';
 import { canEditInvoice } from '@/lib/invoiceUtils';
+import { deriveOverpayPolicy } from '@/lib/collectPlan';
 import type { InvoiceStatus } from '@/types/invoice';
 import EditInvoiceDialog from './EditInvoiceDialog';
 import PaymentsSummaryDialog from './PaymentsSummaryDialog';
@@ -76,6 +77,7 @@ interface RowData {
   change_amount: number;
   change_user_edited: boolean;
   keep_as_credit: boolean;
+  credit_user_edited: boolean;
 
   receipt_image: File | null;
   receipt_preview_url: string | null;
@@ -281,6 +283,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             change_amount: 0,
             change_user_edited: false,
             keep_as_credit: false,
+            credit_user_edited: false,
             receipt_image: null,
             receipt_preview_url: null,
             notes: '',
@@ -314,6 +317,18 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
       if (sumChanged && !row.change_user_edited) {
         const total = row.amount_tm + row.amount_tk + row.amount_tt;
         row.change_amount = Math.max(0, total - row.remaining);
+      }
+      if (sumChanged) {
+        const total = row.amount_tm + row.amount_tk + row.amount_tt;
+        const policy = deriveOverpayPolicy({
+          total,
+          amountTm: row.amount_tm,
+          remaining: row.remaining,
+          hasContract: row.has_contract,
+        });
+        row.keep_as_credit = policy.mustKeepAsCredit
+          || (policy.overpay > 0 && row.credit_user_edited && row.keep_as_credit);
+        if (policy.overpay === 0) row.credit_user_edited = false;
       }
       // Reset error khi user thao tác
       if ('amount_tm' in patch || 'amount_tk' in patch || 'amount_tt' in patch || 'change_amount' in patch) {
@@ -432,9 +447,9 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
             error: `Tiền dư phải đúng ${fmt(overpay)}đ (phần khách đưa vượt còn phải thu).`,
           };
         }
-        if (overpay > r.amount_tm) {
+        if (overpay > r.amount_tm && !r.keep_as_credit) {
           bad = true;
-          return { ...r, error: 'Phần tiền dư phải nằm hoàn toàn trong cột TM.' };
+          return { ...r, error: 'TM của lần thu này không đủ để hoàn phần tiền dư.' };
         }
         if (r.keep_as_credit && overpay > 0 && !r.has_contract) {
           bad = true;
@@ -946,10 +961,20 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
                       >
                         <Checkbox
                           className="h-3 w-3"
-                          checked={false}
-                          disabled
+                          checked={r.keep_as_credit}
+                          disabled={
+                            r.change_amount <= 0
+                            || !r.has_contract
+                            || r.amount_tm < r.change_amount
+                          }
+                          onCheckedChange={(checked) => updateRow(i, {
+                            keep_as_credit: checked === true,
+                            credit_user_edited: true,
+                          })}
                         />
-                        Nợ kỳ sau (tạm khóa)
+                        {r.amount_tm < r.change_amount && r.change_amount > 0
+                          ? 'Nợ kỳ sau (bắt buộc)'
+                          : 'Nợ kỳ sau'}
                       </label>
                     </td>
                     {showAccountColumns && (

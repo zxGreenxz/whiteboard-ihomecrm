@@ -28,6 +28,7 @@ import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
 import {
   buildBulkInvoiceCreditLifecycleRpcArgs,
   buildCreditInvoiceCreateRpcArgs,
+  capInvoiceCreditApplication,
   buildInvoiceCreditLifecycleRpcArgs,
   invokeCustomerCreditRpc,
   prepareCustomerCreditRequest,
@@ -622,26 +623,28 @@ export const useCreateInvoice = () => {
 
       const { items, ...invoiceFields } = formData;
 
-      // TẠM KHÓA: áp dụng credit khách hàng vào hóa đơn chưa đối soát kế toán xong.
-      // Fail-closed cho tới khi flag customer.credit.apply.v1 thành CANONICAL — bỏ guard này khi đó.
-      if ((invoiceFields.applied_credit ?? 0) > 0) {
-        throw new Error('Tính năng áp dụng credit khách hàng vào hóa đơn đang tạm khóa để đối soát kế toán.');
-      }
-
       // Calculate totals from items
       const subtotal = items.reduce(
         (sum, item) => sum + item.unit_price * item.quantity * item.coefficient,
         0,
       );
+      const creditApplication = capInvoiceCreditApplication({
+        subtotal,
+        previousDebt: invoiceFields.previous_debt || 0,
+        requestedDiscount: invoiceFields.discount_amount || 0,
+        requestedCredit: invoiceFields.applied_credit ?? 0,
+      });
+      const discountAmount = creditApplication.discountAmount;
+      const appliedCredit = creditApplication.appliedCredit;
+
       // total = tạm tính − giảm trừ (mình nợ khách) + nợ cũ (khách nợ mình)
       // Làm tròn phần lẻ: <900đ → tròn xuống, ≥900đ → tròn lên bội số 1000
       const total_amount = roundInvoiceTotal(
         subtotal
-        - (invoiceFields.discount_amount || 0)
+        - discountAmount
         + (invoiceFields.previous_debt || 0),
       );
 
-      const appliedCredit = invoiceFields.applied_credit ?? 0;
       const request = prepareCustomerCreditRequest('invoice-create');
       const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
       const creatorName: string =
@@ -658,7 +661,7 @@ export const useCreateInvoice = () => {
         p_due_date: invoiceFields.due_date,
         p_kind: 'MONTHLY',
         p_subtotal: subtotal,
-        p_discount_amount: invoiceFields.discount_amount || 0,
+        p_discount_amount: discountAmount,
         p_total_amount: total_amount,
         p_previous_debt: invoiceFields.previous_debt || 0,
         p_items: items.map((item) => ({

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import * as customerCreditRpcModule from "../customerCreditRpc";
 
 import {
   buildCreditInvoiceCreateRpcArgs,
@@ -38,6 +39,33 @@ describe("customer credit RPC request preparation", () => {
 });
 
 describe("credit-aware writer selection", () => {
+  it("caps applied credit at the invoice amount after non-credit discounts", () => {
+    const cap = (customerCreditRpcModule as any).capInvoiceCreditApplication;
+    expect(cap).toBeTypeOf("function");
+    expect(cap({
+      subtotal: 483_000,
+      previousDebt: 0,
+      requestedDiscount: 500_000,
+      requestedCredit: 500_000,
+    })).toEqual({
+      appliedCredit: 483_000,
+      discountAmount: 483_000,
+      nonCreditDiscount: 0,
+      remainingCredit: 17_000,
+    });
+    expect(cap({
+      subtotal: 483_000,
+      previousDebt: 0,
+      requestedDiscount: 550_000,
+      requestedCredit: 500_000,
+    })).toEqual({
+      appliedCredit: 433_000,
+      discountAmount: 483_000,
+      nonCreditDiscount: 50_000,
+      remainingCredit: 67_000,
+    });
+  });
+
   it("routes invoices with applied credit only to the atomic wrapper", () => {
     expect(selectInvoiceCreateRpc(1)).toBe("create_invoice_with_credit_v1");
     expect(selectInvoiceCreateRpc(0)).toBe("create_invoice_v1");

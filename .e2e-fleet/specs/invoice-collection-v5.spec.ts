@@ -4,6 +4,7 @@ import {
   cleanupAccountingFixture,
   getAccountingPreflight,
   inspectAccountingState,
+  inspectCustomerCreditState,
   type AccountingFixture,
   type AccountingPreflight,
   type AccountingState,
@@ -19,6 +20,7 @@ import {
 const RENT_AMOUNT = 113_000;
 const DEPOSIT_AMOUNT = 47_000;
 const FIRST_TENDER_AMOUNT = 100_000;
+const NON_CASH_OVERPAY = 16_000;
 const ALLOW_PREFLIGHT_SKIP = process.env.FLEET_ACCOUNTING_ALLOW_PREFLIGHT_SKIP === '1';
 const RPC = (name: string) => new RegExp(`/rest/v1/rpc/${name}\\b`);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -292,7 +294,10 @@ async function collectInvoiceThroughUi(
   const firstAccount = dialog.getByText('Sổ quỹ nhận *', { exact: true }).locator('..').getByRole('combobox');
   if (await firstAccount.count()) {
     await firstAccount.click();
-    await page.getByRole('option', { name: fixture.receivingAccountName, exact: true }).click();
+    await page.getByRole('option')
+      .filter({ hasText: fixture.receivingAccountName })
+      .first()
+      .click();
   }
 
   await dialog.getByRole('button', { name: 'Thêm dòng thanh toán' }).click();
@@ -322,19 +327,72 @@ async function collectInvoiceThroughUi(
   return requiredUuid(body?.collection_id, 'collection_id');
 }
 
+async function collectNonCashOverpayThroughUi(
+  page: Page,
+  invoiceId: string,
+  marker: string,
+  invoiceTotal: number,
+): Promise<string> {
+  await page.goto(`/invoices/${invoiceId}`);
+  await expect(page.getByRole('button', { name: 'Ghi nhận thanh toán' })).toBeVisible();
+  await page.getByRole('button', { name: 'Ghi nhận thanh toán' }).click();
+
+  const dialog = page.getByRole('dialog').filter({
+    has: page.getByRole('heading', { name: 'Ghi nhận thanh toán' }),
+  });
+  await expect(dialog).toBeVisible();
+
+  const method = dialog
+    .getByText('Phương thức thanh toán *', { exact: true })
+    .locator('..')
+    .getByRole('combobox');
+  await selectOption(page, method, 'TT');
+  await dialog.locator('#amount').fill(String(invoiceTotal + NON_CASH_OVERPAY));
+
+  await expect(dialog.locator('#change_amount')).toHaveValue(
+    NON_CASH_OVERPAY.toLocaleString('vi-VN'),
+  );
+  await expect(dialog.getByText('Nợ khách — bắt buộc trừ kỳ sau', { exact: true })).toBeVisible();
+  const creditCheckbox = dialog.getByRole('checkbox').first();
+  await expect(creditCheckbox).toBeChecked();
+  await expect(creditCheckbox).toBeDisabled();
+  await expect(dialog.getByText(/làm credit trừ kỳ sau/)).toBeVisible();
+
+  const screenshotPath = process.env.FLEET_SCREENSHOT_PATH;
+  if (screenshotPath) await dialog.screenshot({ path: screenshotPath });
+  await dialog.locator('#notes').fill(marker);
+
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' && RPC('record_invoice_collection_v5').test(response.url()),
+    { timeout: 45_000 },
+  );
+  await dialog.getByRole('button', { name: 'Ghi nhận thanh toán' }).click();
+  const response = await responsePromise;
+  const body = await rpcBody<CollectionRpcBody & { credit_amount?: unknown; change_amount?: unknown }>(
+    response,
+    'record_invoice_collection_v5 non-cash credit',
+  );
+  expect(numeric(body.credit_amount)).toBe(NON_CASH_OVERPAY);
+  expect(numeric(body.change_amount)).toBe(0);
+  expect(body.tenders).toHaveLength(1);
+  await expect(dialog).toBeHidden();
+  return requiredUuid(body.collection_id, 'collection_id');
+}
+
 async function reverseCollectionThroughUi(page: Page, fixture: AccountingFixture, collectionId: string) {
   await page.goto('/reports/finance/profit-distribution');
-  await expect(page.getByRole('heading', { name: 'Báo cáo Lợi Nhuận' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Báo cáo Lợi Nhuận' })).toBeVisible();
   await page.getByRole('tab', { name: 'BC Doanh Thu Chi Phí' }).click();
   await selectOption(page, page.getByRole('combobox', { name: 'Chọn toà nhà' }), fixture.buildingName);
 
   const revenueRow = page
-    .locator('tbody tr')
+    .locator('.ph-panel--income .ph-panel__scroll > .ph-row')
     .filter({ hasText: fixture.roomName })
-    .filter({ has: page.locator('td:last-child button') })
+    .filter({ has: page.locator('.ph-row__amt button') })
     .first();
   await expect(revenueRow).toBeVisible({ timeout: 30_000 });
-  await revenueRow.locator('td').last().getByRole('button').click();
+  await revenueRow.locator('.ph-row__amt').getByRole('button').click();
 
   const paymentsDialog = page.getByRole('dialog').filter({
     has: page.getByRole('heading', { name: 'Các lần thanh toán' }),
@@ -360,7 +418,7 @@ async function reverseCollectionThroughUi(page: Page, fixture: AccountingFixture
   expect(reverseBody?.status).toBe('REVERSED');
   await expect(confirmDialog).toBeHidden();
   await expect(paymentsDialog.getByText('Chưa có phiếu thanh toán nào.', { exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
+  await paymentsDialog.getByRole('button', { name: 'Close' }).click();
   await expect(paymentsDialog).toBeHidden();
 }
 
@@ -408,6 +466,50 @@ test('V5 UI: contract -> first invoice -> multi-tender collection -> reversal', 
       contentType: 'application/json',
     });
     expect(consoleErrors, `console cuối chuỗi: ${consoleErrors.join(' | ')}`).toEqual([]);
+  } finally {
+    await cleanupAccountingFixture(marker, committedContractId);
+  }
+});
+
+test('V5 UI: TT overpay is forced into customer credit for the next period', async ({ page }) => {
+  test.setTimeout(240_000);
+  credentials('chunha');
+
+  const dates = accountingDates();
+  const preflight = await requiredPreflight();
+  const fixture = preflight.fixture;
+  const marker = `[E2E-ACCOUNTING:${Date.now()}-${Math.random().toString(16).slice(2)}]`;
+  const consoleErrors = trackConsoleErrors(page);
+  const browserProjectRefs = trackBrowserSupabaseProjectRefs(page);
+  let committedContractId: string | null = null;
+
+  try {
+    await login(page, 'chunha');
+    await expectBrowserProject(page, browserProjectRefs, preflight.managementProjectRef);
+
+    const created = await createContractThroughUi(page, fixture, marker, dates, (contractId) => {
+      committedContractId = contractId;
+    });
+    const collectionId = await collectNonCashOverpayThroughUi(
+      page,
+      created.invoiceId,
+      marker,
+      created.invoiceTotal,
+    );
+    const credit = await inspectCustomerCreditState(created.invoiceId, collectionId);
+    expect(credit).toMatchObject({
+      collectionGross: created.invoiceTotal + NON_CASH_OVERPAY,
+      collectionApplied: created.invoiceTotal,
+      collectionCredit: NON_CASH_OVERPAY,
+      collectionChange: 0,
+      tenderMethods: ['TT'],
+      tenderCredit: NON_CASH_OVERPAY,
+      lotAmount: NON_CASH_OVERPAY,
+      lotRemaining: NON_CASH_OVERPAY,
+      lotStatus: 'ACTIVE',
+      ledgerBalance: NON_CASH_OVERPAY,
+    });
+    expect(consoleErrors, `console sau thu dư TT: ${consoleErrors.join(' | ')}`).toEqual([]);
   } finally {
     await cleanupAccountingFixture(marker, committedContractId);
   }
