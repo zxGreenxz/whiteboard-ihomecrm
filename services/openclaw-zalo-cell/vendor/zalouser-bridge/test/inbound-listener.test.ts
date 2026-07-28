@@ -1,103 +1,445 @@
-import { describe, expect, it } from "vitest";
-import {
-  commitInboundThroughBridge,
-  createDurableInboundListener,
-  installInboundBridgeCommitter,
-} from "../src/bridge/inbound-listener.js";
+import { createHash } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as inboundBridge from "../src/bridge/inbound-listener.js";
 
-describe("durable inbound bridge listener", () => {
-  it("commits the complete envelope and media manifest before dispatch", async () => {
+type Binding = Readonly<{
+  cellId: string;
+  organizationId: string;
+  sessionGeneration: number;
+}>;
+
+type MediaInput = Readonly<{
+  byteLength: number | null;
+  fetchRef: string | null;
+  kind: "IMAGE" | "VIDEO" | "AUDIO" | "FILE" | "STICKER" | "OTHER";
+  mime: string | null;
+  providerChecksum: string | null;
+  providerMediaId: string | null;
+}>;
+
+type InboundInput = Readonly<{
+  callbackReceivedAt: string;
+  eventKind:
+    | "MESSAGE"
+    | "REACTION"
+    | "DELIVERY_RECEIPT"
+    | "SEEN"
+    | "TYPING"
+    | "MEMBERSHIP"
+    | "OTHER";
+  normalized: Readonly<{
+    media: readonly MediaInput[];
+    replyToProviderMessageId: string | null;
+    text: string | null;
+  }>;
+  providerConversationId: string;
+  providerEventId: string | null;
+  providerEventType: string;
+  providerMessageId: string | null;
+  providerSenderId: string;
+  providerTarget: Readonly<{ kind: "PEER" | "SALES_GROUP"; providerId: string }>;
+  rawEnvelope: unknown;
+  sourceTimestamp: string;
+}>;
+
+const BINDING: Binding = Object.freeze({
+  cellId: "cell-a",
+  organizationId: "organization-a",
+  sessionGeneration: 7,
+});
+
+const COMMITTED_ACK = Object.freeze({
+  durability: Object.freeze({ journalMode: "WAL", synchronous: "FULL" }),
+  status: "committed",
+  version: 1,
+});
+
+const cleanups: Array<() => void> = [];
+
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  vi.useRealTimers();
+});
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function input(overrides: Partial<InboundInput> = {}): InboundInput {
+  return {
+    callbackReceivedAt: "2026-07-27T00:00:01.000Z",
+    eventKind: "MESSAGE",
+    normalized: {
+      media: [],
+      replyToProviderMessageId: null,
+      text: "hello",
+    },
+    providerConversationId: "conversation-1",
+    providerEventId: "event-1",
+    providerEventType: "webchat",
+    providerMessageId: "message-1",
+    providerSenderId: "sender-1",
+    providerTarget: { kind: "PEER", providerId: "peer-1" },
+    rawEnvelope: { a: { nested: "raw" }, z: ["evidence", { a: true, b: 2 }] },
+    sourceTimestamp: "2026-07-27T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function install(
+  committer: (envelope: unknown) => Promise<unknown>,
+  binding: Binding = BINDING,
+): void {
+  const uninstall = inboundBridge.installInboundBridgeCommitter({
+    binding,
+    committer,
+  } as never);
+  cleanups.push(uninstall);
+}
+
+function listener(dispatch: (envelope: unknown) => Promise<void>) {
+  return inboundBridge.createDurableInboundListener({
+    accountId: "account-a",
+    dispatch,
+  } as never) as unknown as (value: InboundInput) => Promise<unknown>;
+}
+
+describe("ZaloUser inbound envelope V1", () => {
+  it("commits the exact complete immutable envelope and canonical hashes before dispatch", async () => {
     const events: string[] = [];
     const committed: unknown[] = [];
-    const listener = createDurableInboundListener({
-      accountId: "account-a",
-      commit: async (record) => {
-        events.push("commit");
-        committed.push(record);
-        return { status: "committed" };
-      },
-      dispatch: async () => {
-        events.push("dispatch");
-      },
+    const media: MediaInput = {
+      byteLength: 12,
+      fetchRef: "zca://media/photo-1",
+      kind: "IMAGE",
+      mime: "image/jpeg",
+      providerChecksum: "provider-checksum-1",
+      providerMediaId: "photo-1",
+    };
+    install(async (envelope) => {
+      events.push("commit");
+      committed.push(envelope);
+      return COMMITTED_ACK;
+    });
+    const onInbound = listener(async () => {
+      events.push("dispatch");
     });
 
-    const result = await listener({
-      content: { text: "hello" },
-      media: [{ contentType: "image/jpeg", name: "a.jpg", size: 12, url: "https://media.invalid/a" }],
-      occurredAt: "2026-07-27T00:00:00.000Z",
-      providerMessageId: "provider-message-1",
-      senderId: "sender-1",
-      threadId: "thread-1",
-    });
+    const result = await onInbound(
+      input({
+        normalized: {
+          media: [media],
+          replyToProviderMessageId: "reply-1",
+          text: "hello",
+        },
+      }),
+    );
+
+    const canonicalRaw = '{"a":{"nested":"raw"},"z":["evidence",{"a":true,"b":2}]}';
+    const canonicalNormalized =
+      '{"mediaManifest":[{"byteLength":12,"byteState":"PENDING","fetchRef":"zca://media/photo-1","index":0,"kind":"IMAGE","mime":"image/jpeg","providerChecksum":"provider-checksum-1","providerMediaId":"photo-1","version":1}],"replyToProviderMessageId":"reply-1","text":"hello"}';
+    const expected = {
+      accountId: "account-a",
+      callbackReceivedAt: "2026-07-27T00:00:01.000Z",
+      cellId: "cell-a",
+      eventKind: "MESSAGE",
+      normalized: {
+        mediaManifest: [
+          {
+            byteLength: 12,
+            byteState: "PENDING",
+            fetchRef: "zca://media/photo-1",
+            index: 0,
+            kind: "IMAGE",
+            mime: "image/jpeg",
+            providerChecksum: "provider-checksum-1",
+            providerMediaId: "photo-1",
+            version: 1,
+          },
+        ],
+        replyToProviderMessageId: "reply-1",
+        text: "hello",
+      },
+      normalizedSha256: sha256(canonicalNormalized),
+      organizationId: "organization-a",
+      providerConversationId: "conversation-1",
+      providerEventId: "event-1",
+      providerEventType: "webchat",
+      providerMessageId: "message-1",
+      providerSenderId: "sender-1",
+      providerTarget: { kind: "PEER", providerId: "peer-1" },
+      rawEnvelope: { a: { nested: "raw" }, z: ["evidence", { a: true, b: 2 }] },
+      rawEnvelopeSha256: sha256(canonicalRaw),
+      sessionGeneration: 7,
+      sourceTimestamp: "2026-07-27T00:00:00.000Z",
+      version: 1,
+    };
 
     expect(events).toEqual(["commit", "dispatch"]);
-    expect(committed).toEqual([
-      expect.objectContaining({
+    expect(committed).toEqual([expected]);
+    expect(committed[0]).not.toHaveProperty("dedupeKey");
+    expect(result).toEqual({ envelope: expected, status: "dispatched" });
+    const envelope = committed[0] as typeof expected;
+    expect(Object.isFrozen(envelope)).toBe(true);
+    expect(Object.isFrozen(envelope.rawEnvelope)).toBe(true);
+    expect(Object.isFrozen(envelope.normalized)).toBe(true);
+    expect(Object.isFrozen(envelope.normalized.mediaManifest)).toBe(true);
+    expect(Object.isFrozen(envelope.normalized.mediaManifest[0])).toBe(true);
+  });
+
+  it.each([
+    ["PEER", "peer-1"],
+    ["SALES_GROUP", "sales-group-1"],
+  ] as const)("preserves a %s provider target", async (kind, providerId) => {
+    const committed: Array<{ providerTarget?: unknown }> = [];
+    install(async (envelope) => {
+      committed.push(envelope as { providerTarget?: unknown });
+      return COMMITTED_ACK;
+    });
+
+    await listener(async () => undefined)(
+      input({ providerTarget: { kind, providerId } }),
+    );
+
+    expect(committed[0]?.providerTarget).toEqual({ kind, providerId });
+  });
+
+  it.each([
+    ["event only", "event-1", null],
+    ["message only", null, "message-1"],
+    ["both", "event-1", "message-1"],
+    ["neither", null, null],
+  ] as const)(
+    "transports the stable-ID matrix without synthesis or fork dedupe: %s",
+    async (_label, providerEventId, providerMessageId) => {
+      const committed: Array<Record<string, unknown>> = [];
+      install(async (envelope) => {
+        committed.push(envelope as Record<string, unknown>);
+        return COMMITTED_ACK;
+      });
+
+      await listener(async () => undefined)(input({ providerEventId, providerMessageId }));
+
+      expect(committed).toHaveLength(1);
+      expect(committed[0]).toMatchObject({ providerEventId, providerMessageId });
+      expect(committed[0]).not.toHaveProperty("dedupeKey");
+      expect(committed[0]).not.toHaveProperty("fingerprint");
+    },
+  );
+
+  it("keeps the same textual provider IDs distinct through organization and account scope", async () => {
+    const committed: Array<Record<string, unknown>> = [];
+    install(async (envelope) => {
+      committed.push(envelope as Record<string, unknown>);
+      return COMMITTED_ACK;
+    });
+    await listener(async () => undefined)(input());
+    await inboundBridge.createDurableInboundListener({
+      accountId: "account-b",
+      dispatch: async () => undefined,
+    } as never)(input() as never);
+    cleanups.pop()?.();
+    install(
+      async (envelope) => {
+        committed.push(envelope as Record<string, unknown>);
+        return COMMITTED_ACK;
+      },
+      { ...BINDING, organizationId: "organization-b" },
+    );
+    await listener(async () => undefined)(input());
+
+    expect(committed.map(({ organizationId, accountId, providerEventId, providerMessageId }) => ({
+      organizationId,
+      accountId,
+      providerEventId,
+      providerMessageId,
+    }))).toEqual([
+      {
         accountId: "account-a",
-        content: { text: "hello" },
-        dedupeKey: expect.stringMatching(/^[a-f0-9]{64}$/),
-        media: [expect.objectContaining({ name: "a.jpg", size: 12 })],
-        providerMessageId: "provider-message-1",
-      }),
+        organizationId: "organization-a",
+        providerEventId: "event-1",
+        providerMessageId: "message-1",
+      },
+      {
+        accountId: "account-b",
+        organizationId: "organization-a",
+        providerEventId: "event-1",
+        providerMessageId: "message-1",
+      },
+      {
+        accountId: "account-a",
+        organizationId: "organization-b",
+        providerEventId: "event-1",
+        providerMessageId: "message-1",
+      },
     ]);
-    expect(result).toMatchObject({ status: "dispatched" });
   });
 
-  it("deduplicates an identical provider message and fails closed on collision or commit failure", async () => {
+  it.each([
+    ["cycle", () => {
+      const cyclic: Record<string, unknown> = {};
+      cyclic.self = cyclic;
+      return cyclic;
+    }],
+    ["non-finite number", () => ({ bad: Number.NaN })],
+    ["undefined", () => ({ bad: undefined })],
+    ["function", () => ({ bad: () => undefined })],
+    ["symbol", () => ({ bad: Symbol("bad") })],
+    ["bigint", () => ({ bad: 1n })],
+    ["unsafe prototype", () => new Date("2026-07-27T00:00:00.000Z")],
+    ["sparse array", () => Array(1)],
+    ["accessor", () => Object.defineProperty({}, "bad", { enumerable: true, get: () => "x" })],
+  ] as const)("rejects non-JSON-safe raw evidence: %s", async (_label, rawEnvelope) => {
+    let commits = 0;
     let dispatches = 0;
-    const message = {
-      content: { text: "hello" },
-      occurredAt: "2026-07-27T00:00:00.000Z",
-      providerMessageId: "provider-message-1",
-      senderId: "sender-1",
-      threadId: "thread-1",
-    };
-    const duplicate = createDurableInboundListener({
-      accountId: "account-a",
-      commit: async () => ({ status: "duplicate" }),
-      dispatch: async () => {
-        dispatches += 1;
-      },
-    });
-    const collision = createDurableInboundListener({
-      accountId: "account-a",
-      commit: async () => ({ status: "collision" }),
-      dispatch: async () => {
-        dispatches += 1;
-      },
-    });
-    const failed = createDurableInboundListener({
-      accountId: "account-a",
-      commit: async () => {
-        throw new Error("wal unavailable");
-      },
-      dispatch: async () => {
-        dispatches += 1;
-      },
-    });
-
-    await expect(duplicate(message)).resolves.toMatchObject({ status: "duplicate" });
-    await expect(collision(message)).rejects.toMatchObject({ code: "INBOUND_ID_COLLISION" });
-    await expect(failed(message)).rejects.toThrow("wal unavailable");
-    expect(dispatches).toBe(0);
-  });
-
-  it("fails closed unless the cell-local bridge committer is installed", async () => {
-    const events: unknown[] = [];
-    const uninstall = installInboundBridgeCommitter(async (request) => {
-      events.push(request);
-      return { status: "committed" };
+    install(async () => {
+      commits += 1;
+      return COMMITTED_ACK;
     });
 
     await expect(
-      commitInboundThroughBridge("account-a", { raw: "complete-provider-envelope" }),
-    ).resolves.toMatchObject({ status: "committed" });
-    expect(events).toEqual([
-      { accountId: "account-a", envelope: { raw: "complete-provider-envelope" } },
-    ]);
-    uninstall();
-    await expect(commitInboundThroughBridge("account-a", {})).rejects.toMatchObject({
-      code: "INBOUND_BRIDGE_UNAVAILABLE",
+      listener(async () => {
+        dispatches += 1;
+      })(input({ rawEnvelope: rawEnvelope() })),
+    ).rejects.toMatchObject({ code: "INBOUND_ENVELOPE_INVALID" });
+    expect({ commits, dispatches }).toEqual({ commits: 0, dispatches: 0 });
+  });
+});
+
+describe("durable bridge acknowledgement and ordering", () => {
+  it("permits dispatch only after an exact committed WAL/FULL acknowledgement", async () => {
+    let resolveCommit!: (value: unknown) => void;
+    const commit = new Promise<unknown>((resolve) => {
+      resolveCommit = resolve;
     });
+    const events: string[] = [];
+    install(async () => {
+      events.push("commit-started");
+      return await commit;
+    });
+    const pending = listener(async () => {
+      events.push("dispatch");
+    })(input());
+
+    await vi.waitFor(() => expect(events).toEqual(["commit-started"]));
+    expect(events).toEqual(["commit-started"]);
+    resolveCommit(COMMITTED_ACK);
+
+    await expect(pending).resolves.toMatchObject({ status: "dispatched" });
+    expect(events).toEqual(["commit-started", "dispatch"]);
+  });
+
+  it("returns an exact duplicate without dispatch", async () => {
+    let dispatches = 0;
+    install(async () => ({ status: "duplicate", version: 1 }));
+
+    await expect(
+      listener(async () => {
+        dispatches += 1;
+      })(input()),
+    ).resolves.toMatchObject({ status: "duplicate" });
+    expect(dispatches).toBe(0);
+  });
+
+  it("fails closed on an exact collision", async () => {
+    let dispatches = 0;
+    install(async () => ({ status: "collision", version: 1 }));
+
+    await expect(
+      listener(async () => {
+        dispatches += 1;
+      })(input()),
+    ).rejects.toMatchObject({ code: "INBOUND_ID_COLLISION" });
+    expect(dispatches).toBe(0);
+  });
+
+  it.each([
+    ["old reduced ack", { status: "committed" }],
+    ["wrong journal", { ...COMMITTED_ACK, durability: { journalMode: "DELETE", synchronous: "FULL" } }],
+    ["wrong synchronous mode", { ...COMMITTED_ACK, durability: { journalMode: "WAL", synchronous: "NORMAL" } }],
+    ["extra acknowledgement evidence", { ...COMMITTED_ACK, localSequence: 1 }],
+    ["duplicate with extra field", { status: "duplicate", version: 1, payloadHash: "unexpected" }],
+    ["unknown status", { status: "ok", version: 1 }],
+    ["null", null],
+  ])("rejects a malformed or corrupt acknowledgement: %s", async (_label, acknowledgement) => {
+    let dispatches = 0;
+    install(async () => acknowledgement);
+
+    await expect(
+      listener(async () => {
+        dispatches += 1;
+      })(input()),
+    ).rejects.toMatchObject({ code: "INBOUND_BRIDGE_INVALID_ACK" });
+    expect(dispatches).toBe(0);
+  });
+
+  it.each([
+    ["rejection", Object.assign(new Error("provider rejected bridge write"), { code: "REJECTED" })],
+    ["timeout", Object.assign(new Error("bridge timeout"), { code: "ETIMEDOUT" })],
+    ["process crash", Object.assign(new Error("bridge process exited"), { code: "EPIPE" })],
+    ["ENOSPC", Object.assign(new Error("no space left on device"), { code: "ENOSPC" })],
+  ])("dispatches nothing when commit fails: %s", async (_label, failure) => {
+    let dispatches = 0;
+    install(async () => {
+      throw failure;
+    });
+
+    await expect(
+      listener(async () => {
+        dispatches += 1;
+      })(input()),
+    ).rejects.toBe(failure);
+    expect(dispatches).toBe(0);
+  });
+
+  it("fails closed when the process-scoped binding or committer is missing", async () => {
+    await expect(
+      listener(async () => {
+        throw new Error("must not dispatch");
+      })(input()),
+    ).rejects.toMatchObject({ code: "INBOUND_BRIDGE_UNAVAILABLE" });
+
+    expect(() => inboundBridge.installInboundBridgeCommitter({
+      binding: BINDING,
+    } as never)).toThrow();
+    expect(() => inboundBridge.installInboundBridgeCommitter({
+      committer: async () => COMMITTED_ACK,
+    } as never)).toThrow();
+    expect(() => inboundBridge.installInboundBridgeCommitter({
+      binding: { ...BINDING, organizationId: "" },
+      committer: async () => COMMITTED_ACK,
+    } as never)).toThrow();
+  });
+
+  it("keeps the provider callback void while its internal Promise catches awaited failure", async () => {
+    const invokeVoidProviderCallback = (
+      inboundBridge as unknown as {
+        invokeVoidProviderCallback(
+          callback: () => void | Promise<void>,
+          failListener: (error: Error) => void,
+        ): void;
+      }
+    ).invokeVoidProviderCallback;
+    let rejectCommit!: (reason: unknown) => void;
+    const commit = new Promise<never>((_resolve, reject) => {
+      rejectCommit = reject;
+    });
+    const failures: Error[] = [];
+    let dispatches = 0;
+    install(async () => await commit);
+
+    const callbackResult = invokeVoidProviderCallback(
+      () => listener(async () => {
+        dispatches += 1;
+      })(input()).then(() => undefined),
+      (error) => failures.push(error),
+    );
+
+    expect(callbackResult).toBeUndefined();
+    expect(failures).toEqual([]);
+    const failure = Object.assign(new Error("WAL write failed"), { code: "ENOSPC" });
+    rejectCommit(failure);
+    await vi.waitFor(() => expect(failures).toEqual([failure]));
+    expect(dispatches).toBe(0);
   });
 });

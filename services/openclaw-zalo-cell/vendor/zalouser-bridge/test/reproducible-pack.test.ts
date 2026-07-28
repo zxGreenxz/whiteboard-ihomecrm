@@ -43,9 +43,12 @@ describe("reviewed patch series", () => {
       execFileSync("git", ["apply", patch], { cwd: preparedRoot });
     }
 
-    expect(readFileSync(resolve(preparedRoot, "src/zalo-js.ts"), "utf8")).toContain(
-      "Promise.resolve(params.onMessage(normalized))",
+    const patchedZaloJs = readFileSync(resolve(preparedRoot, "src/zalo-js.ts"), "utf8");
+    expect(patchedZaloJs).toContain(
+      "const callbackReceivedAt = captureProviderCallbackReceivedAt();",
     );
+    expect(patchedZaloJs).toContain("pending = params.onMessage(normalized);");
+    expect(patchedZaloJs).toContain("Promise.resolve(pending).catch");
     expect(readFileSync(resolve(preparedRoot, "src/monitor.ts"), "utf8")).toContain(
       "await commitInboundThroughBridge",
     );

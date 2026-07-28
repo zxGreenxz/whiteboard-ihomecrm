@@ -1,3 +1,17 @@
+diff --git a/src/types.ts b/src/types.ts
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -1,3 +1,4 @@
+ // Zalouser type declarations define plugin contracts.
+ import type { MessageReceipt } from "openclaw/plugin-sdk/channel-outbound";
++import type { ZaloUserInboundInputV1 } from "./bridge/inbound-listener.js";
+ import type { Style } from "./zca-constants.js";
+@@ -35,4 +36,5 @@ export type ZaloInboundMessage = {
+ export type ZaloInboundMessage = {
++  bridge: ZaloUserInboundInputV1;
+   threadId: string;
+   isGroup: boolean;
+   senderId: string;
 diff --git a/src/monitor.ts b/src/monitor.ts
 --- a/src/monitor.ts
 +++ b/src/monitor.ts
@@ -9,7 +23,7 @@ diff --git a/src/monitor.ts b/src/monitor.ts
  import {
    buildZalouserGroupCandidates,
    findZalouserGroupEntry,
-@@ -969,10 +970,11 @@ export async function monitorZalouserProvider(
+@@ -965,10 +966,14 @@ export async function monitorZalouserProvider(
        accountId: account.accountId,
        profile: account.profile,
        abortSignal,
@@ -18,14 +32,193 @@ diff --git a/src/monitor.ts b/src/monitor.ts
          if (stopped) {
            return;
          }
-+        await commitInboundThroughBridge(account.accountId, msg);
++        const commitResult = await commitInboundThroughBridge(account.accountId, msg.bridge);
++        if (commitResult.status === "duplicate" || stopped || abortSignal.aborted) {
++          return;
++        }
          logVerbose(core, runtime, `[${account.accountId}] inbound message`);
          statusSink?.({ lastInboundAt: Date.now() });
          const queueKey = resolveInboundQueueKey(msg);
 diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 --- a/src/zalo-js.ts
 +++ b/src/zalo-js.ts
-@@ -1752,7 +1752,7 @@ export async function startZaloListener(params: {
+@@ -27,6 +27,7 @@ import {
+   normalizeOptionalString,
+ } from "openclaw/plugin-sdk/string-coerce-runtime";
+ import { sleep, truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
++import { captureProviderCallbackReceivedAt } from "./bridge/inbound-listener.js";
+ import { normalizeZaloReactionIcon } from "./reaction.js";
+ import { createZalouserSendReceipt } from "./send-receipt.js";
+ import type {
+@@ -455,3 +456,113 @@ function extractSendMessageId(result: unknown): string | undefined {
++function nullableProviderString(value: unknown): string | null {
++  return toStringValue(value) || null;
++}
++
++function firstProviderValue(record: Record<string, unknown>, keys: readonly string[]): unknown {
++  for (const key of keys) {
++    const value = record[key];
++    if (value !== undefined && value !== null && value !== "") return value;
++  }
++  return null;
++}
++
++function classifyInboundEventKind(
++  providerEventType: string,
++): ZaloInboundMessage["bridge"]["eventKind"] {
++  const normalized = providerEventType.toLowerCase();
++  if (normalized.includes("reaction")) return "REACTION";
++  if (normalized.includes("deliver")) return "DELIVERY_RECEIPT";
++  if (normalized.includes("seen") || normalized.includes("read")) return "SEEN";
++  if (normalized.includes("typing")) return "TYPING";
++  if (/member|join|leave/u.test(normalized)) return "MEMBERSHIP";
++  if (/message|webchat|text|photo|image|video|audio|voice|file|sticker|link/u.test(normalized)) {
++    return "MESSAGE";
++  }
++  return "OTHER";
++}
++
++function classifyInboundMediaKind(
++  record: Record<string, unknown>,
++  providerEventType: string,
++  mime: string | null,
++): ZaloInboundMessage["bridge"]["normalized"]["media"][number]["kind"] {
++  const hint = [
++    providerEventType,
++    toStringValue(record.kind),
++    toStringValue(record.type),
++    toStringValue(record.mediaType),
++    mime ?? "",
++  ].join(" ").toLowerCase();
++  if (hint.includes("sticker")) return "STICKER";
++  if (/image|photo/u.test(hint)) return "IMAGE";
++  if (hint.includes("video")) return "VIDEO";
++  if (/audio|voice/u.test(hint)) return "AUDIO";
++  if (/file|document|attachment/u.test(hint)) return "FILE";
++  return "OTHER";
++}
++
++function extractInboundMediaInputs(
++  rawContent: unknown,
++  providerEventType: string,
++): ZaloInboundMessage["bridge"]["normalized"]["media"] {
++  const records: Record<string, unknown>[] = [];
++  const append = (value: unknown) => {
++    if (value && typeof value === "object" && !Array.isArray(value)) {
++      records.push(value as Record<string, unknown>);
++    }
++  };
++  if (Array.isArray(rawContent)) {
++    rawContent.forEach(append);
++  } else if (rawContent && typeof rawContent === "object") {
++    const content = rawContent as Record<string, unknown>;
++    for (const key of ["attachments", "attachment", "media", "medias", "files", "photos"]) {
++      const nested = content[key];
++      if (Array.isArray(nested)) nested.forEach(append);
++    }
++    const directEvidenceKeys = [
++      "mediaId",
++      "photoId",
++      "fileId",
++      "mime",
++      "mimeType",
++      "contentType",
++      "byteLength",
++      "fileSize",
++      "checksum",
++      "sha256",
++      "md5",
++    ];
++    const eventSuggestsMedia = /photo|image|video|audio|voice|file|sticker/u.test(
++      providerEventType.toLowerCase(),
++    );
++    if (eventSuggestsMedia || directEvidenceKeys.some((key) => content[key] != null)) append(content);
++  }
++
++  return records.map((record) => {
++    const mime = nullableProviderString(
++      firstProviderValue(record, ["mime", "mimeType", "contentType"]),
++    );
++    return {
++      providerMediaId: nullableProviderString(
++        firstProviderValue(record, ["mediaId", "photoId", "fileId", "id", "msgId", "globalMsgId"]),
++      ),
++      kind: classifyInboundMediaKind(record, providerEventType, mime),
++      mime,
++      byteLength: toNonNegativeInteger(
++        firstProviderValue(record, ["byteLength", "fileSize", "size", "totalSize"]),
++      ),
++      providerChecksum: nullableProviderString(
++        firstProviderValue(record, ["providerChecksum", "checksum", "sha256", "md5"]),
++      ),
++      fetchRef: nullableProviderString(
++        firstProviderValue(
++          record,
++          ["fetchRef", "fileUrl", "downloadUrl", "href", "url", "thumb", "thumbnail"],
++        ),
++      ),
++    };
++  });
++}
++
+ function extractSendMessageId(result: unknown): string | undefined {
+   if (!result || typeof result !== "object") {
+     return undefined;
+@@ -927,5 +1038,10 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
+-function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMessage | null {
++function toInboundMessage(
++  message: Message,
++  ownUserId?: string,
++  callbackReceivedAtInput?: string,
++): ZaloInboundMessage | null {
+   const data = message.data;
++  const callbackReceivedAt = callbackReceivedAtInput ?? captureProviderCallbackReceivedAt();
+   const isGroup = message.type === ThreadType.Group;
+   const senderId = toNumberId(data.uidFrom);
+   const threadId = isGroup
+@@ -963,7 +1079,28 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
+     normalizedOwnUserId && quoteOwnerId && quoteOwnerId === normalizedOwnUserId,
+   );
+   const eventMessage = buildEventMessage(data);
++  const timestampMs = resolveInboundTimestamp(data.ts);
++  const providerEventId = nullableProviderString(data.cliMsgId);
++  const providerMessageId = nullableProviderString(data.msgId);
++  const providerEventType = toStringValue(data.msgType) || "message";
+   return {
++    bridge: {
++      providerEventId,
++      providerMessageId,
++      eventKind: classifyInboundEventKind(providerEventType),
++      providerConversationId: threadId,
++      providerSenderId: senderId,
++      providerTarget: { kind: isGroup ? "SALES_GROUP" : "PEER", providerId: threadId },
++      providerEventType,
++      sourceTimestamp: new Date(timestampMs).toISOString(),
++      callbackReceivedAt,
++      rawEnvelope: message,
++      normalized: {
++        text: content || null,
++        replyToProviderMessageId: quotedGlobalMsgId || null,
++        media: extractInboundMediaInputs(data.content, providerEventType),
++      },
++    },
+     threadId,
+     isGroup,
+     senderId,
+@@ -971,9 +1108,9 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
+     groupName: isGroup ? resolveGroupNameFromMessageData(data) : undefined,
+     content,
+     commandContent,
+-    timestampMs: resolveInboundTimestamp(data.ts),
+-    msgId: typeof data.msgId === "string" ? data.msgId : undefined,
+-    cliMsgId: typeof data.cliMsgId === "string" ? data.cliMsgId : undefined,
++    timestampMs,
++    msgId: providerMessageId ?? undefined,
++    cliMsgId: providerEventId ?? undefined,
+     hasAnyMention,
+     canResolveExplicitMention,
+     wasExplicitlyMentioned,
+@@ -1752,7 +1889,7 @@ export async function startZaloListener(params: {
    accountId: string;
    profile?: string | null;
    abortSignal: AbortSignal;
@@ -34,14 +227,26 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
    onError: (error: Error) => void;
  }): Promise<{ stop: () => void }> {
    const profile = normalizeProfile(params.profile);
-@@ -1800,7 +1800,9 @@ export async function startZaloListener(params: {
+@@ -1799,10 +1936,20 @@ export async function startZaloListener(params: {
+   const onMessage = (incoming: Message) => {
++    const callbackReceivedAt = captureProviderCallbackReceivedAt();
+     if (incoming.isSelf) {
+       return;
+     }
+-    const normalized = toInboundMessage(incoming, ownUserId);
++    const normalized = toInboundMessage(incoming, ownUserId, callbackReceivedAt);
      if (!normalized) {
        return;
      }
 -    params.onMessage(normalized);
-+    void Promise.resolve(params.onMessage(normalized)).catch((error: unknown) => {
++    let pending: void | Promise<void>;
++    try {
++      pending = params.onMessage(normalized);
++    } catch (error) {
++      failListener(error instanceof Error ? error : new Error(String(error)));
++      return;
++    }
++    void Promise.resolve(pending).catch((error: unknown) => {
 +      failListener(error instanceof Error ? error : new Error(String(error)));
 +    });
    };
- 
-   const failListener = (error: Error) => {
