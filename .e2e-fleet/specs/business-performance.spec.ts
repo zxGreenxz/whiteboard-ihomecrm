@@ -38,7 +38,7 @@ const VIEWS = [
   {
     id: "revenue-cost-structure",
     label: "Cơ cấu Thu & Chi",
-    content: /^Chi tiết hạng mục đang được ẩn$/,
+    content: /^Chi tiết hạng mục từ RPC có phân quyền$/,
   },
   {
     id: "trends-comparison",
@@ -62,7 +62,7 @@ const RESTRICTED_CONTENT_MARKERS = [
   "Quan sát thực tế",
   "Doanh thu - Chi phí = Lợi nhuận",
   "Công nợ phải thu hiện tại",
-  "Chi tiết hạng mục đang được ẩn",
+  "Chi tiết hạng mục từ RPC có phân quyền",
   "So sánh kỳ báo cáo",
   "Chưa có dữ liệu xu hướng",
 ] as const;
@@ -79,6 +79,13 @@ const BUSINESS_PERFORMANCE_RPC_NAMES = [
   "business_performance_occupancy_snapshot_v1",
   "business_performance_upcoming_vacancy_v1",
   "business_performance_occupancy_monthly_v1",
+  "business_performance_inventory_history_v1",
+  "business_performance_reporting_roles_v1",
+  "business_performance_set_reporting_role_v1",
+  "business_performance_break_even_v1",
+  "business_performance_invoice_cohort_v1",
+  "business_performance_cash_received_v1",
+  "business_performance_category_breakdown_v1",
 ] as const;
 const BUSINESS_PERFORMANCE_RPC_NAME_SET = new Set<string>(
   BUSINESS_PERFORMANCE_RPC_NAMES,
@@ -86,7 +93,9 @@ const BUSINESS_PERFORMANCE_RPC_NAME_SET = new Set<string>(
 const ORGANIZATIONS_RPC_NAME = "business_performance_organizations_v1";
 const METRIC_RPC_NAME_SET = new Set<string>(
   BUSINESS_PERFORMANCE_RPC_NAMES.filter(
-    (rpcName) => rpcName !== ORGANIZATIONS_RPC_NAME,
+    (rpcName) =>
+      rpcName !== ORGANIZATIONS_RPC_NAME &&
+      rpcName !== "business_performance_set_reporting_role_v1",
   ),
 );
 const RESTRICTED_ALLOWED_RPC_NAME_SET = new Set<string>([
@@ -94,6 +103,7 @@ const RESTRICTED_ALLOWED_RPC_NAME_SET = new Set<string>([
   "business_performance_occupancy_snapshot_v1",
   "business_performance_upcoming_vacancy_v1",
   "business_performance_occupancy_monthly_v1",
+  "business_performance_inventory_history_v1",
 ]);
 const BUSINESS_PERFORMANCE_RPC_PATTERN = /^business_performance_[a-z0-9_]+$/;
 const LEGACY_FINANCE_OCCUPANCY_RPC_PATTERN = /^(?:fa_|occupancy_)/;
@@ -264,7 +274,7 @@ test.describe("RPC building scope helper", () => {
     }
   });
 
-  test("declares exactly the six current business-performance RPCs", () => {
+  test("declares exactly the thirteen current business-performance RPCs", () => {
     expect([...BUSINESS_PERFORMANCE_RPC_NAMES]).toEqual([
       "business_performance_organizations_v1",
       "business_performance_pnl_v1",
@@ -272,6 +282,13 @@ test.describe("RPC building scope helper", () => {
       "business_performance_occupancy_snapshot_v1",
       "business_performance_upcoming_vacancy_v1",
       "business_performance_occupancy_monthly_v1",
+      "business_performance_inventory_history_v1",
+      "business_performance_reporting_roles_v1",
+      "business_performance_set_reporting_role_v1",
+      "business_performance_break_even_v1",
+      "business_performance_invoice_cohort_v1",
+      "business_performance_cash_received_v1",
+      "business_performance_category_breakdown_v1",
     ]);
   });
 
@@ -857,13 +874,14 @@ test.describe("RPC building scope helper", () => {
     ).toThrow(/fa_monthly_pnl_accrual.*fa_snapshot_kpis/);
   });
 
-  test("allows only organization discovery and the three occupancy wrappers for restricted users", () => {
+  test("allows only organization discovery and the four occupancy/history wrappers for restricted users", () => {
     const allowedSignals = {
       rpcRequests: [
         "business_performance_organizations_v1",
         "business_performance_occupancy_snapshot_v1",
         "business_performance_upcoming_vacancy_v1",
         "business_performance_occupancy_monthly_v1",
+        "business_performance_inventory_history_v1",
       ],
     } as RuntimeSignals;
     expect(() =>
@@ -1410,7 +1428,7 @@ function expectRestrictedRpcContract(
   );
   expect(
     disallowedRequests,
-    `${context} used RPCs outside organization discovery and the three occupancy wrappers: ${disallowedRequests.join(", ")}`,
+    `${context} used RPCs outside organization discovery and the four occupancy/history wrappers: ${disallowedRequests.join(", ")}`,
   ).toEqual([]);
 }
 
@@ -1441,7 +1459,7 @@ function expectOnlyCurrentBusinessPerformanceRpcs(
     .map(({ rpcName }) => rpcName);
   expect(
     unsupportedRequests,
-    `${context} used RPCs outside the exact six business-performance wrappers: ${unsupportedRequests.join(", ")}`,
+    `${context} used RPCs outside the exact thirteen business-performance wrappers: ${unsupportedRequests.join(", ")}`,
   ).toEqual([]);
 }
 

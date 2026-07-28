@@ -8,6 +8,10 @@ import type {
   BusinessPerformanceFilters,
   BusinessPerformancePnlRow,
 } from "@/lib/businessPerformance";
+import type {
+  BusinessPerformanceBreakEvenRow,
+  BusinessPerformanceReportingRoleRow,
+} from "@/hooks/reports/useBusinessPerformanceGatedData";
 import * as BuildingPerformanceModule from "../BuildingPerformanceTab";
 
 const { BuildingPerformanceTab } = BuildingPerformanceModule;
@@ -24,6 +28,10 @@ const hookState = vi.hoisted(() => ({
   isLoading: false,
   isError: false,
   refetch: vi.fn(),
+  roles: [] as BusinessPerformanceReportingRoleRow[],
+  breakEven: [] as BusinessPerformanceBreakEvenRow[],
+  gatedRefetch: vi.fn(),
+  mutateAsync: vi.fn(),
 }));
 
 const BUILDING_A_ID = "11111111-1111-4111-8111-111111111111";
@@ -42,6 +50,24 @@ vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
     isLoading: hookState.isLoading,
     isError: hookState.isError,
     refetch: hookState.refetch,
+  }),
+  useBusinessPerformanceReportingRoles: () => ({
+    data: hookState.roles,
+    error: null,
+    isLoading: false,
+    isError: false,
+    refetch: hookState.gatedRefetch,
+  }),
+  useBusinessPerformanceBreakEven: () => ({
+    data: hookState.breakEven,
+    error: null,
+    isLoading: false,
+    isError: false,
+    refetch: hookState.gatedRefetch,
+  }),
+  useSetBusinessPerformanceReportingRole: () => ({
+    mutateAsync: hookState.mutateAsync,
+    isPending: false,
   }),
 }));
 
@@ -77,6 +103,77 @@ function pnlRow(
   };
 }
 
+function breakEvenRow(
+  overrides: Partial<BusinessPerformanceBreakEvenRow> = {},
+): BusinessPerformanceBreakEvenRow {
+  return {
+    building_id: BUILDING_A_ID,
+    building_name: "Tòa A",
+    analysis_window: "SELECTED_MONTH",
+    window_start: "2026-02-01",
+    window_end: "2026-02-01",
+    source_month_count: 1,
+    valid_month_count: 1,
+    revenue: 12_000_000,
+    expense: 5_000_000,
+    net: 7_000_000,
+    gap_to_zero: -7_000_000,
+    r_room: 10_000_000,
+    r_other: 2_000_000,
+    r_pass: 0,
+    f_landlord: 4_000_000,
+    f_other: 1_000_000,
+    v_room: 1_000_000,
+    v_other: 0,
+    e_pass: 0,
+    mapping_coverage_pct: 100,
+    unmapped_amount: 0,
+    outside_model_amount: 0,
+    missing_landlord_months: [],
+    cmr_core: 0.9167,
+    cmr_room: 0.9,
+    r_core_be: 5_454_545,
+    r_total_be: 5_454_545,
+    r_room_be: 3_333_333,
+    break_even_revenue_available: true,
+    break_even_revenue_reason: null,
+    room_break_even_revenue_available: true,
+    room_break_even_revenue_reason: null,
+    capacity_current: 5_000_000,
+    capacity_blocked: 1_000_000,
+    capacity_theory: 6_000_000,
+    invalid_rent_room_count: 0,
+    break_even_occupancy_current: 66.67,
+    break_even_occupancy_theory: 55.56,
+    room_revenue_utilization_pct: 200,
+    break_even_occupancy_available: true,
+    break_even_occupancy_reason: null,
+    capacity_source: "LIVE",
+    capacity_as_of: "2026-02-20T00:00:00.000Z",
+    generated_at: "2026-02-20T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function roleRow(
+  overrides: Partial<BusinessPerformanceReportingRoleRow> = {},
+): BusinessPerformanceReportingRoleRow {
+  return {
+    income_expense_type_id: "44444444-4444-4444-8444-444444444444",
+    type_name: "Tiền nhà",
+    side: "EXPENSE",
+    category: "Chi phí cố định",
+    finance_reporting_role: "LANDLORD_RENT_FIXED",
+    effective_from: "2026-01-01",
+    effective_to: null,
+    confirmed_at: "2026-01-01T00:00:00.000Z",
+    confirmed_by: "55555555-5555-4555-8555-555555555555",
+    suggested_role: "LANDLORD_RENT_FIXED",
+    can_manage: true,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   hookState.rows = [
     pnlRow("2026-02", 12_000_000, 5_000_000),
@@ -87,6 +184,13 @@ beforeEach(() => {
   hookState.isLoading = false;
   hookState.isError = false;
   hookState.refetch.mockReset();
+  hookState.gatedRefetch.mockReset();
+  hookState.mutateAsync.mockReset();
+  hookState.roles = [roleRow()];
+  hookState.breakEven = [
+    breakEvenRow(),
+    breakEvenRow({ analysis_window: "THREE_MONTH_AVERAGE" }),
+  ];
 });
 
 describe("BuildingPerformanceTab responsive layout", () => {
@@ -106,6 +210,52 @@ describe("BuildingPerformanceTab responsive layout", () => {
 });
 
 describe("BuildingPerformanceTab table semantics", () => {
+  it("renders confirmed mapping controls and factual break-even values", () => {
+    const html = renderToStaticMarkup(
+      <BuildingPerformanceTab
+        filters={filters}
+        buildings={authorizedBuildings}
+      />,
+    );
+
+    expect(html).toContain("Cấu hình vai trò tài chính");
+    expect(html).toContain("Tiền nhà");
+    expect(html).toContain("Chi phí thuê chủ nhà cố định");
+    expect(html).toContain("Hòa vốn theo tòa");
+    expect(html).toContain("Doanh thu hòa vốn");
+    expect(html).toContain("5.454.545");
+    expect(html).toContain("66,7%");
+  });
+
+  it("shows the backend reason and never substitutes zero for unavailable break-even", () => {
+    hookState.breakEven = [
+      breakEvenRow({
+        break_even_revenue_available: false,
+        break_even_revenue_reason: "UNMAPPED_AMOUNT",
+        room_break_even_revenue_available: false,
+        room_break_even_revenue_reason: "UNMAPPED_AMOUNT",
+        break_even_occupancy_available: false,
+        break_even_occupancy_reason: "ROOM_BREAK_EVEN_UNAVAILABLE",
+        r_core_be: null,
+        r_total_be: null,
+        r_room_be: null,
+        break_even_occupancy_current: null,
+        break_even_occupancy_theory: null,
+      }),
+    ];
+
+    const html = renderToStaticMarkup(
+      <BuildingPerformanceTab
+        filters={filters}
+        buildings={authorizedBuildings}
+      />,
+    );
+
+    expect(html).toContain("Còn số tiền chưa được mapping");
+    expect(html).toContain("Chưa khả dụng");
+    expect(html).not.toContain("Doanh thu hòa vốn</span><span>0");
+  });
+
   it("uses note semantics for the persistent caveat", () => {
     const html = renderToStaticMarkup(
       <BuildingPerformanceTab

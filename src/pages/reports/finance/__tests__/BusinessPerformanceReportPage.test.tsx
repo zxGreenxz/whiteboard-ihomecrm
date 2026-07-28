@@ -475,6 +475,14 @@ describe("BusinessPerformanceReportPage organization roster authorization", () =
     expect(harness.lazyRegistrations).toBe(7);
   });
 
+  test("does not show the obsolete blanket backend-gate banner", () => {
+    const html = renderPage();
+
+    expect(html).not.toContain("Phạm vi dữ liệu hiện tại");
+    expect(html).not.toContain("backend mapping");
+    expect(html).not.toContain("allocation và snapshot chưa đạt gate");
+  });
+
   test("uses the organization roster as the only page authorization and building authority", () => {
     renderPage();
 
@@ -944,7 +952,7 @@ describe("BusinessPerformanceReportPage organization roster authorization", () =
 
     const html = renderPage();
 
-    expect(html.match(/role="note"/g)).toHaveLength(2);
+    expect(html.match(/role="note"/g)).toHaveLength(1);
   });
 
   test("keeps the mobile report before the limited-access notice", () => {

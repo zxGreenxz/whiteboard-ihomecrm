@@ -21,6 +21,12 @@ describe("DataDefinitionsTab", () => {
     expect(html).toContain("business_performance_organizations_v1");
     expect(html).toContain("business_performance_pnl_v1");
     expect(html).toContain("business_performance_snapshot_v1");
+    expect(html).toContain("business_performance_inventory_history_v1");
+    expect(html).toContain("business_performance_reporting_roles_v1");
+    expect(html).toContain("business_performance_break_even_v1");
+    expect(html).toContain("business_performance_invoice_cohort_v1");
+    expect(html).toContain("business_performance_cash_received_v1");
+    expect(html).toContain("business_performance_category_breakdown_v1");
     expect(html).not.toContain("fa_monthly_pnl_accrual");
     expect(html).not.toContain("fa_snapshot_kpis");
   });

@@ -6,13 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   BusinessPerformanceFilters,
-  BusinessPerformancePnlRow,
 } from "@/lib/businessPerformance";
+import type { BusinessPerformanceCategoryBreakdownRow } from "@/hooks/reports/useBusinessPerformanceGatedData";
 import { RevenueCostStructureTab } from "../RevenueCostStructureTab";
 
 const queryState = vi.hoisted(() => ({
-  pnl: {
-    data: [] as BusinessPerformancePnlRow[],
+  breakdown: {
+    data: [] as BusinessPerformanceCategoryBreakdownRow[],
     isLoading: false,
     isError: false,
     error: null as Error | null,
@@ -21,7 +21,7 @@ const queryState = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
-  useBusinessPerformancePnl: () => queryState.pnl,
+  useBusinessPerformanceCategoryBreakdown: () => queryState.breakdown,
 }));
 
 const filters: BusinessPerformanceFilters = {
@@ -38,20 +38,20 @@ const filters: BusinessPerformanceFilters = {
   organizationId: "organization-a",
 };
 
-function pnlRow(
-  buildingId: string,
-  buildingName: string,
-  revenue: number,
-  expense: number,
-): BusinessPerformancePnlRow {
+function categoryRow(
+  typeId: string,
+  typeName: string,
+  category: string,
+  totalAmount: number,
+): BusinessPerformanceCategoryBreakdownRow {
   return {
     month: "2026-02-01",
-    building_id: buildingId,
-    building_name: buildingName,
-    is_virtual: false,
-    revenue,
-    expense,
-    net: revenue - expense,
+    side: "INCOME",
+    type_id: typeId,
+    type_name: typeName,
+    category,
+    total_amount: totalAmount,
+    voucher_count: 1,
   };
 }
 
@@ -60,10 +60,10 @@ function renderTab() {
 }
 
 beforeEach(() => {
-  queryState.pnl = {
+  queryState.breakdown = {
     data: [
-      pnlRow("building-a", "Tòa A", 100, 40),
-      pnlRow("building-b", "Tòa B", 50, 20),
+      categoryRow("type-a", "Tiền phòng", "Doanh thu cho thuê", 100),
+      categoryRow("type-b", "Phí dịch vụ", "Doanh thu dịch vụ", 50),
     ],
     isLoading: false,
     isError: false,
@@ -87,15 +87,16 @@ describe("RevenueCostStructureTab table semantics", () => {
     );
   });
 
-  it("gives the building detail table an accessible name and scoped headers", () => {
+  it("gives the category detail table an accessible name and scoped headers", () => {
     const html = renderTab();
 
     expect(html).toContain("<caption");
-    expect(html).toContain("Cơ cấu doanh thu theo tòa");
-    expect(html.match(/<th[^>]*scope="col"/g)).toHaveLength(3);
+    expect(html).toContain("Cơ cấu doanh thu theo hạng mục");
+    expect(html.match(/<th[^>]*scope="col"/g)).toHaveLength(4);
     expect(html.match(/<th[^>]*scope="row"/g)).toHaveLength(3);
-    expect(html).toMatch(/<th[^>]*scope="row"[^>]*>Tòa A<\/th>/);
-    expect(html).toMatch(/<th[^>]*scope="row"[^>]*>Tòa B<\/th>/);
+    expect(html).toMatch(/<th[^>]*scope="row"[^>]*>Tiền phòng<\/th>/);
+    expect(html).toMatch(/<th[^>]*scope="row"[^>]*>Phí dịch vụ<\/th>/);
+    expect(html).toContain("Doanh thu cho thuê");
     expect(html).toContain('aria-labelledby="income-structure-table-title"');
   });
 
@@ -115,15 +116,15 @@ describe("RevenueCostStructureTab table semantics", () => {
     const html = renderTab();
 
     expect(html).toMatch(
-      /<div(?=[^>]*role="region")(?=[^>]*tabindex="0")(?=[^>]*aria-label="Cuộn ngang bảng chi tiết cơ cấu doanh thu theo tòa")[^>]*>/,
+      /<div(?=[^>]*role="region")(?=[^>]*tabindex="0")(?=[^>]*aria-label="Cuộn ngang bảng chi tiết cơ cấu doanh thu theo hạng mục")[^>]*>/,
     );
   });
 });
 
 describe("RevenueCostStructureTab query states", () => {
   it("keeps cached structure content with a retryable warning after a transient refetch error", () => {
-    queryState.pnl = {
-      ...queryState.pnl,
+    queryState.breakdown = {
+      ...queryState.breakdown,
       isError: true,
       error: new Error("network timeout"),
     };
@@ -132,12 +133,12 @@ describe("RevenueCostStructureTab query states", () => {
 
     expect(html).toContain("Dữ liệu đang hiển thị có thể đã cũ");
     expect(html).toContain("Thử tải lại");
-    expect(html).toContain("Tòa A");
+    expect(html).toContain("Tiền phòng");
   });
 
   it("blocks cached structure content for a permanent query error", () => {
-    queryState.pnl = {
-      ...queryState.pnl,
+    queryState.breakdown = {
+      ...queryState.breakdown,
       isError: true,
       error: Object.assign(new Error("timeout while checking scope"), {
         code: "42501",
@@ -147,7 +148,7 @@ describe("RevenueCostStructureTab query states", () => {
     const html = renderTab();
 
     expect(html).not.toContain("Dữ liệu đang hiển thị có thể đã cũ");
-    expect(html).not.toContain("Tòa A");
+    expect(html).not.toContain("Tiền phòng");
     expect(html).toContain("Không thể tải cơ cấu Thu/Chi");
     expect(html).toContain("Thử lại");
   });

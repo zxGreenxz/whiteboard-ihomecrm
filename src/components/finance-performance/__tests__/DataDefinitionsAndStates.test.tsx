@@ -93,6 +93,12 @@ describe("DataDefinitionsTab", () => {
       "business_performance_occupancy_snapshot_v1",
       "business_performance_upcoming_vacancy_v1",
       "business_performance_occupancy_monthly_v1",
+      "business_performance_inventory_history_v1",
+      "business_performance_reporting_roles_v1",
+      "business_performance_break_even_v1",
+      "business_performance_invoice_cohort_v1",
+      "business_performance_cash_received_v1",
+      "business_performance_category_breakdown_v1",
     ];
 
     for (const protectedSource of expectedSources) {
@@ -133,14 +139,15 @@ describe("DataDefinitionsTab", () => {
     expect(text).toContain("toàn bộ yêu cầu bị từ chối");
   });
 
-  it("keeps material snapshot caveats and data-quality gates visible", () => {
+  it("documents the delivered snapshot, break-even, cohort and category contracts", () => {
     const html = renderDefinitions("ACCRUAL");
 
     expect(html).toContain("generated_at");
     expect(html).toContain("không phải doanh thu thực tế đã mất");
-    expect(html).toContain("Hòa vốn được ẩn");
-    expect(html).toContain("Cohort hóa đơn");
-    expect(html).toContain("Cơ cấu Thu/Chi theo hạng mục được ẩn");
+    expect(html).toContain("Hòa vốn chỉ trả tỷ lệ khi");
+    expect(html).toContain("Cohort hóa đơn tách");
+    expect(html).toContain("Cơ cấu Thu/Chi theo hạng mục dùng RPC");
+    expect(html).not.toContain("được ẩn cho đến khi");
   });
   it("uses non-assertive notes for static advisories at a UTC month boundary", () => {
     const originalTimeZone = process.env.TZ;

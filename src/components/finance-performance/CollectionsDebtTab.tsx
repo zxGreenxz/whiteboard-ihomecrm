@@ -32,7 +32,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useBusinessPerformanceSnapshot } from "@/hooks/reports/useBusinessPerformance";
+import {
+  useBusinessPerformanceCashReceived,
+  useBusinessPerformanceInvoiceCohort,
+  useBusinessPerformanceSnapshot,
+} from "@/hooks/reports/useBusinessPerformance";
 import {
   aggregateSnapshot,
   type BusinessPerformanceFilters,
@@ -110,6 +114,29 @@ export function CollectionsDebtTab({ filters }: CollectionsDebtTabProps) {
     [snapshotRows],
   );
   const snapshotState = deriveFinanceQueryState(snapshotQuery);
+  const cohortQuery = useBusinessPerformanceInvoiceCohort(filters);
+  const cashQuery = useBusinessPerformanceCashReceived(filters);
+  const cohortState = deriveFinanceQueryState(cohortQuery);
+  const cashState = deriveFinanceQueryState(cashQuery);
+  const cohortRows = cohortQuery.data ?? [];
+  const cashRows = cashQuery.data ?? [];
+  const cohortAvailable =
+    cohortRows.length > 0 && cohortRows.every((row) => row.cohort_available);
+  const cohortTotals = cohortAvailable
+    ? cohortRows.reduce(
+        (total, row) => ({
+          billed: total.billed + (row.billed_current_charge ?? 0),
+          collected: total.collected + (row.collected_current_charge ?? 0),
+          remaining: total.remaining + (row.remaining_current_charge ?? 0),
+        }),
+        { billed: 0, collected: 0, remaining: 0 },
+      )
+    : null;
+  const cashTotal = cashRows.reduce((total, row) => total + row.cash_received, 0);
+  const paymentEventCount = cashRows.reduce(
+    (total, row) => total + row.payment_event_count,
+    0,
+  );
 
   const agingBuckets = snapshot
     ? [
@@ -129,13 +156,159 @@ export function CollectionsDebtTab({ filters }: CollectionsDebtTabProps) {
     <div className="flex flex-col gap-6">
       <Alert role="note">
         <Info aria-hidden="true" />
-        <AlertTitle>Hiện tại — không thay đổi theo tháng phân tích đã chọn</AlertTitle>
+        <AlertTitle>Ba lát cắt riêng, không trộn khái niệm</AlertTitle>
         <AlertDescription>
-          Tuổi nợ, tiền cọc đang giữ và chỉ số hợp đồng dưới đây là dữ liệu live
-          tại thời điểm tải. Chúng không phải số chốt cuối tháng hoặc số thu tiền
-          theo kỳ hóa đơn; nguồn hiện tại chưa trả ngày chốt riêng.
+          Cohort bám tháng phát hành và chỉ tính current charge; tiền thực thu bám
+          ngày payment; tuổi nợ và cọc là snapshot live. Các con số được trình bày
+          tách riêng để không gọi nợ chuyển tiếp hoặc tiền cọc là doanh thu của kỳ.
         </AlertDescription>
       </Alert>
+
+      <section aria-labelledby="collections-cohort-heading" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 id="collections-cohort-heading" className="text-lg font-semibold">
+            Hóa đơn phát hành theo cohort
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Current charge của hóa đơn MONTHLY đã phát hành trong {filters.month}; nợ chuyển tiếp,
+            cọc, settlement và hóa đơn nháp được công bố riêng.
+          </p>
+        </div>
+
+        {cohortState.showLoading ? <FinanceLoadingGrid count={4} /> : null}
+        {cohortState.showStaleWarning ? (
+          <StaleDataWarning onRetry={() => void cohortQuery.refetch()} />
+        ) : null}
+        {cohortState.hasBlockingError ? (
+          <FinanceQueryError
+            title="Không thể tải cohort hóa đơn"
+            error={cohortState.blockingError}
+            onRetry={() => void cohortQuery.refetch()}
+          />
+        ) : null}
+        {cohortState.canRenderData && cohortRows.length === 0 ? (
+          <FinanceEmptyState
+            title="Chưa có dữ liệu cohort"
+            description="Không có dòng cohort cho tháng và phạm vi tòa đã chọn."
+          />
+        ) : null}
+        {cohortState.canRenderData && cohortRows.length > 0 ? (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                title="Current charge đã phát hành"
+                value={cohortTotals ? formatCurrency(cohortTotals.billed) : "Chưa khả dụng"}
+                description="Không gồm nợ chuyển tiếp, cọc kỳ này, khoản nội bộ hoặc settlement."
+                icon={FileSignature}
+              />
+              <SummaryCard
+                title="Đã thu cho current charge"
+                value={cohortTotals ? formatCurrency(cohortTotals.collected) : "Chưa khả dụng"}
+                description="Chỉ hiện khi phân bổ payment vào thành phần hóa đơn đã đầy đủ."
+                icon={CircleDollarSign}
+              />
+              <SummaryCard
+                title="Còn lại current charge"
+                value={cohortTotals ? formatCurrency(cohortTotals.remaining) : "Chưa khả dụng"}
+                description="Current charge đã phát hành trừ phần payment được phân bổ vào current charge."
+                icon={Clock3}
+              />
+              <SummaryCard
+                title="Tỷ lệ thu cohort"
+                value={
+                  cohortTotals && cohortTotals.billed > 0
+                    ? `${((cohortTotals.collected / cohortTotals.billed) * 100).toLocaleString("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+                    : "Chưa khả dụng"
+                }
+                description="Không phải tiền thực thu trong tháng; mẫu số là current charge của cohort phát hành."
+                icon={WalletCards}
+              />
+            </div>
+
+            <div className="overflow-x-auto rounded-md border">
+              <Table>
+                <TableCaption className="sr-only">Cohort hóa đơn theo tòa vật lý.</TableCaption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">Tòa nhà</TableHead>
+                    <TableHead scope="col" className="text-right">Current charge</TableHead>
+                    <TableHead scope="col" className="text-right">Đã thu</TableHead>
+                    <TableHead scope="col" className="text-right">Nợ chuyển tiếp</TableHead>
+                    <TableHead scope="col" className="text-right">Cọc kỳ này</TableHead>
+                    <TableHead scope="col">Chất lượng phân bổ</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cohortRows.map((row) => (
+                    <TableRow key={row.building_id}>
+                      <TableHead scope="row" className="h-auto text-foreground">{row.building_name}</TableHead>
+                      <TableCell className="text-right tabular-nums">
+                        {row.cohort_available ? formatCurrency(row.billed_current_charge ?? 0) : "Chưa khả dụng"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {row.cohort_available ? formatCurrency(row.collected_current_charge ?? 0) : "Chưa khả dụng"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(row.carried_invoice_debt + row.carried_deposit_debt)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(row.current_deposit)}</TableCell>
+                      <TableCell>
+                        {row.cohort_available
+                          ? "Đầy đủ"
+                          : `Thiếu phân bổ thành phần: ${formatCurrency(row.allocation_unknown_amount)}`}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        ) : null}
+      </section>
+
+      <section aria-labelledby="collections-cash-heading" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 id="collections-cash-heading" className="text-lg font-semibold">
+            Tiền thực thu trong tháng
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Tổng payment còn hiệu lực theo payment_date, đã loại reversal và collection bị đảo.
+          </p>
+        </div>
+        {cashState.showLoading ? <FinanceLoadingGrid count={2} /> : null}
+        {cashState.showStaleWarning ? (
+          <StaleDataWarning onRetry={() => void cashQuery.refetch()} />
+        ) : null}
+        {cashState.hasBlockingError ? (
+          <FinanceQueryError
+            title="Không thể tải tiền thực thu"
+            error={cashState.blockingError}
+            onRetry={() => void cashQuery.refetch()}
+          />
+        ) : null}
+        {cashState.canRenderData && cashRows.length === 0 ? (
+          <FinanceEmptyState
+            title="Chưa có payment trong tháng"
+            description="Không có sự kiện payment còn hiệu lực trong tháng và phạm vi tòa đã chọn."
+          />
+        ) : null}
+        {cashState.canRenderData && cashRows.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SummaryCard
+              title="Tiền thực thu trong tháng"
+              value={formatCurrency(cashTotal)}
+              description="Tiền giữ lại theo payment_date; không bao gồm cascade trạng thái công nợ."
+              icon={CircleDollarSign}
+            />
+            <SummaryCard
+              title="Sự kiện payment còn hiệu lực"
+              value={paymentEventCount}
+              description="Số payment sau khi loại reversal và collection đã bị đảo."
+              icon={Clock3}
+            />
+          </div>
+        ) : null}
+      </section>
 
       <section aria-labelledby="collections-live-heading" className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
