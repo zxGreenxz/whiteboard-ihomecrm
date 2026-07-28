@@ -245,6 +245,15 @@ describe("reviewed upstream and legal inputs", () => {
       try {
         const invalidExplicitBindings = [
           {
+            label: "all explicit binding fields missing",
+            options: {
+              reviewedExportManifestPath: undefined,
+              reviewedExportManifestSha256: undefined,
+              reviewedTree: undefined,
+            },
+            expected: /reviewed export manifest path is required/i,
+          },
+          {
             label: "missing manifest path",
             options: {
               reviewedExportManifestPath: undefined,
