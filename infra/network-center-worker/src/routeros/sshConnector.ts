@@ -20,14 +20,14 @@ export const ROUTER_OS_COMMANDS = Object.freeze({
   reboot: "/system/reboot",
 });
 
-const READ_COMMANDS = Object.freeze({
-  identity: "/system/identity/print as-value without-paging",
-  resource: "/system/resource/print as-value without-paging",
-  interfaces: "/interface/print detail as-value without-paging",
-  dhcpClients: "/ip/dhcp-client/print detail as-value without-paging",
-  leases: "/ip/dhcp-server/lease/print detail as-value without-paging",
-  neighbors: "/ip/neighbor/print detail as-value without-paging",
-  dns: "/ip/dns/print as-value without-paging",
+export const ROUTER_OS_READ_COMMANDS = Object.freeze({
+  identity: ":put [/system/identity/print as-value]",
+  resource: ":put [/system/resource/print as-value]",
+  interfaces: "/interface/print detail terse without-paging",
+  dhcpClients: "/ip/dhcp-client/print detail terse without-paging",
+  leases: "/ip/dhcp-server/lease/print detail terse without-paging",
+  neighbors: "/ip/neighbor/print detail terse without-paging",
+  dns: ":put [/ip/dns/print as-value]",
 });
 
 const MAX_COMMAND_OUTPUT_BYTES = 2 * 1024 * 1024;
@@ -90,14 +90,66 @@ export function parseRouterOsRecords(output: string): Array<Record<string, strin
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("Flags:")) continue;
     const record: Record<string, string> = {};
-    for (const field of splitEscaped(trimmed, ";")) {
-      const separator = field.indexOf("=");
-      if (separator <= 0) continue;
-      record[field.slice(0, separator).trim()] = field.slice(separator + 1).trim();
+
+    const semicolonFields = splitEscaped(trimmed, ";");
+    if (semicolonFields.length > 1) {
+      for (const field of semicolonFields) {
+        const separator = field.indexOf("=");
+        if (separator <= 0) continue;
+        record[field.slice(0, separator).trim()] = field.slice(separator + 1).trim();
+      }
+    } else {
+      const fields: Array<{ start: number; key: string; valueStart: number }> = [];
+      let escaped = false;
+      let quoted = false;
+      for (let index = 0; index < trimmed.length; index += 1) {
+        const character = trimmed[index] ?? "";
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (character === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (character === "\"") {
+          quoted = !quoted;
+          continue;
+        }
+        if (quoted || (index > 0 && !/\s/.test(trimmed[index - 1] ?? ""))) continue;
+        let keyEnd = index;
+        while (keyEnd < trimmed.length && /[A-Za-z0-9._-]/.test(trimmed[keyEnd] ?? "")) {
+          keyEnd += 1;
+        }
+        if (keyEnd === index || trimmed[keyEnd] !== "=") continue;
+        fields.push({ start: index, key: trimmed.slice(index, keyEnd), valueStart: keyEnd + 1 });
+        index = keyEnd;
+      }
+
+      if (fields.length > 0) {
+        const prefix = trimmed.slice(0, fields[0]?.start ?? 0).trim().split(/\s+/).filter(Boolean);
+        if (/^\d+$/.test(prefix[0] ?? "")) prefix.shift();
+        if (prefix.length > 0) record[".flags"] = prefix.join("");
+      }
+      for (let index = 0; index < fields.length; index += 1) {
+        const field = fields[index];
+        if (!field) continue;
+        const next = fields[index + 1];
+        let value = trimmed.slice(field.valueStart, next?.start ?? trimmed.length).trim();
+        if (value.startsWith("\"") && value.endsWith("\"") && value.length >= 2) {
+          value = value.slice(1, -1);
+        }
+        record[field.key] = value.replace(/\\(.)/g, "$1");
+      }
     }
     if (Object.keys(record).length > 0) records.push(record);
   }
   return records;
+}
+
+export function routerOsCommandFailed(output: string): boolean {
+  return /^(?:expected end of command|syntax error|bad command name|failure:|script error:)/i
+    .test(output.trimStart());
 }
 
 interface SshConnectorOptions {
@@ -116,6 +168,20 @@ function integer(value: string | undefined): number | null {
 
 function boolean(value: string | undefined): boolean {
   return value === "true" || value === "yes";
+}
+
+function hasFlag(record: Record<string, string>, flag: string): boolean {
+  return record[".flags"]?.includes(flag) ?? false;
+}
+
+export function routerOsInterfaceState(
+  record: Record<string, string>,
+): { enabled: boolean; running: boolean } {
+  const enabled = record.disabled !== "true" && !hasFlag(record, "X");
+  return {
+    enabled,
+    running: enabled && (boolean(record.running) || hasFlag(record, "R")),
+  };
 }
 
 function parseBytes(value: string | undefined): number | null {
@@ -316,7 +382,15 @@ export class SshRouterConnector implements RouterConnector {
             }));
             return;
           }
-          resolve(Buffer.concat(stdout).toString("utf8"));
+          const output = Buffer.concat(stdout).toString("utf8");
+          if (routerOsCommandFailed(output)) {
+            reject(new RouterOperationError("ROUTEROS_COMMAND_REJECTED", {
+              retryable: false,
+              mayHaveExecuted,
+            }));
+            return;
+          }
+          resolve(output);
         }));
       });
     });
@@ -358,12 +432,12 @@ export class SshRouterConnector implements RouterConnector {
   async poll(): Promise<RouterObservation> {
     const [identityOutput, resourceOutput, interfaceOutput, dhcpOutput, leaseOutput, neighborOutput] =
       await Promise.all([
-        this.#execute(READ_COMMANDS.identity),
-        this.#execute(READ_COMMANDS.resource),
-        this.#execute(READ_COMMANDS.interfaces),
-        this.#execute(READ_COMMANDS.dhcpClients),
-        this.#execute(READ_COMMANDS.leases),
-        this.#execute(READ_COMMANDS.neighbors),
+        this.#execute(ROUTER_OS_READ_COMMANDS.identity),
+        this.#execute(ROUTER_OS_READ_COMMANDS.resource),
+        this.#execute(ROUTER_OS_READ_COMMANDS.interfaces),
+        this.#execute(ROUTER_OS_READ_COMMANDS.dhcpClients),
+        this.#execute(ROUTER_OS_READ_COMMANDS.leases),
+        this.#execute(ROUTER_OS_READ_COMMANDS.neighbors),
       ]);
     const identity = parseRouterOsRecords(identityOutput)[0] ?? {};
     const resource = parseRouterOsRecords(resourceOutput)[0] ?? {};
@@ -375,6 +449,7 @@ export class SshRouterConnector implements RouterConnector {
       const name = record.name ?? `interface-${index}`;
       const type = record.type ?? "unknown";
       const role = interfaceRole(name, type);
+      const state = routerOsInterfaceState(record);
       const speed = parseBytes(record.rate ?? record["link-downs"]);
       const metadata: JsonObject = { interfaceKind: interfaceKind(type), sortOrder: index };
       if (record["mac-address"]) metadata.macAddress = record["mac-address"];
@@ -384,9 +459,9 @@ export class SshRouterConnector implements RouterConnector {
         displayName: name,
         role,
         protected: role === "WAN" || role === "MANAGEMENT" || role === "UPLINK",
-        enabled: record.disabled !== "true",
+        enabled: state.enabled,
         sample: {
-          linkState: boolean(record.running) ? "UP" : "DOWN",
+          linkState: state.running ? "UP" : "DOWN",
           rxBytes: integer(record["rx-byte"]) ?? 0,
           txBytes: integer(record["tx-byte"]) ?? 0,
           errorCount: (integer(record["rx-error"]) ?? 0) + (integer(record["tx-error"]) ?? 0),
@@ -486,15 +561,16 @@ export class SshRouterConnector implements RouterConnector {
 
   async healthCheck(): Promise<RouterHealth> {
     const [identity, interfaces, dhcp, dns] = await Promise.all([
-      this.#execute(READ_COMMANDS.identity),
-      this.#execute(READ_COMMANDS.interfaces),
-      this.#execute(READ_COMMANDS.dhcpClients),
-      this.#execute(READ_COMMANDS.dns),
+      this.#execute(ROUTER_OS_READ_COMMANDS.identity),
+      this.#execute(ROUTER_OS_READ_COMMANDS.interfaces),
+      this.#execute(ROUTER_OS_READ_COMMANDS.dhcpClients),
+      this.#execute(ROUTER_OS_READ_COMMANDS.dns),
     ]);
     const interfaceRecords = parseRouterOsRecords(interfaces);
     const wanUp = interfaceRecords.some((record) => {
       const name = record.name ?? "";
-      return interfaceRole(name, record.type ?? "") === "WAN" && boolean(record.running);
+      return interfaceRole(name, record.type ?? "") === "WAN"
+        && routerOsInterfaceState(record).running;
     }) || parseRouterOsRecords(dhcp).some((record) => record.status === "bound");
     const dnsRecord = parseRouterOsRecords(dns)[0] ?? {};
     return {
@@ -509,7 +585,7 @@ export class SshRouterConnector implements RouterConnector {
   }
 
   async renewDhcpLease(): Promise<boolean> {
-    const clients = parseRouterOsRecords(await this.#execute(READ_COMMANDS.dhcpClients));
+    const clients = parseRouterOsRecords(await this.#execute(ROUTER_OS_READ_COMMANDS.dhcpClients));
     if (!clients.some((record) => record.status === "bound")) return false;
     await this.#execute(ROUTER_OS_COMMANDS.renewDhcpLease);
     return true;

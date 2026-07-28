@@ -1,0 +1,49 @@
+# iHomeCRM Network Center - stage 1 (keep LAN recovery)
+# Upload worker-ssh-key.pub before importing this file.
+:local ncWgName "wg-ihome-mgmt"
+:local ncGroup "network-center-worker"
+:local ncUser @@ROUTER_USER@@
+
+:if ([:len [/interface/wireguard find where name=$ncWgName]] = 0) do={
+  /interface/wireguard add name=$ncWgName listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ comment="iHomeCRM Network Center"
+} else={
+  /interface/wireguard set [find where name=$ncWgName] listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ disabled=no
+}
+
+:if ([:len [/ip/address find where interface=$ncWgName and address=@@ROUTER_ADDRESS@@]] = 0) do={
+  /ip/address add address=@@ROUTER_ADDRESS@@ interface=$ncWgName comment="iHomeCRM Network Center"
+}
+
+:if ([:len [/interface/wireguard/peers find where interface=$ncWgName and public-key=@@VPS_WG_PUBLIC_KEY@@]] = 0) do={
+  /interface/wireguard/peers add interface=$ncWgName public-key=@@VPS_WG_PUBLIC_KEY@@ allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s comment="iHomeCRM VPS"
+} else={
+  /interface/wireguard/peers set [find where interface=$ncWgName and public-key=@@VPS_WG_PUBLIC_KEY@@] allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s disabled=no
+}
+
+:if ([:len [/user/group find where name=$ncGroup]] = 0) do={
+  /user/group add name=$ncGroup policy=ssh,ftp,read,write,reboot,test,sensitive
+} else={
+  /user/group set [find where name=$ncGroup] policy=ssh,ftp,read,write,reboot,test,sensitive
+}
+
+:if ([:len [/user find where name=$ncUser]] = 0) do={
+  /user add name=$ncUser group=$ncGroup password=@@ROUTER_PASSWORD@@ comment="iHomeCRM Network Center worker"
+} else={
+  /user set [find where name=$ncUser] group=$ncGroup password=@@ROUTER_PASSWORD@@ disabled=no comment="iHomeCRM Network Center worker"
+}
+
+/user/ssh-keys remove [find where user=$ncUser]
+/user/ssh-keys import public-key-file="network-center-worker.pub" user=$ncUser
+/ip/ssh set strong-crypto=yes
+
+# Stage 1 deliberately keeps the existing LAN recovery CIDR.
+/ip/service set [find where name="ssh"] disabled=no port=22 address=@@RECOVERY_CIDR@@,@@VPS_PEER_ADDRESS@@
+
+:if ([:len [/ip/firewall/filter find where comment="iHomeCRM WG handshake"]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept protocol=udp in-interface=@@WAN_INTERFACE@@ dst-port=@@WG_PORT@@ place-before=0 comment="iHomeCRM WG handshake"
+}
+:if ([:len [/ip/firewall/filter find where comment="iHomeCRM WG management"]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept in-interface=$ncWgName src-address=@@VPS_PEER_ADDRESS@@ place-before=0 comment="iHomeCRM WG management"
+}
+
+:put "NETWORK_CENTER_STAGE1_READY"

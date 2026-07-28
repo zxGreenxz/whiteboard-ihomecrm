@@ -1,0 +1,9 @@
+[Interface]
+Address = @@VPS_ADDRESS_RAW@@
+ListenPort = @@WG_PORT@@
+PrivateKey = @@VPS_WG_PRIVATE_KEY_RAW@@
+
+[Peer]
+# @@ROUTER_IDENTITY_RAW@@
+PublicKey = @@ROUTER_WG_PUBLIC_KEY_RAW@@
+AllowedIPs = @@ROUTER_PEER_ADDRESS_RAW@@

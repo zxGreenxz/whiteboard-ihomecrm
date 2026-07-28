@@ -1,0 +1,10 @@
+# iHomeCRM Network Center - emergency rollback from the original LAN session
+/ip/service set [find where name="ssh"] disabled=no port=22 address=@@RECOVERY_CIDR@@
+/ip/firewall/filter remove [find where comment="iHomeCRM WG management"]
+/ip/firewall/filter remove [find where comment="iHomeCRM WG handshake"]
+/interface/wireguard/peers remove [find where interface="wg-ihome-mgmt"]
+/ip/address remove [find where interface="wg-ihome-mgmt"]
+/interface/wireguard remove [find where name="wg-ihome-mgmt"]
+/user remove [find where name=@@ROUTER_USER@@]
+/user/group remove [find where name="network-center-worker"]
+:put "NETWORK_CENTER_ROLLBACK_APPLIED"
