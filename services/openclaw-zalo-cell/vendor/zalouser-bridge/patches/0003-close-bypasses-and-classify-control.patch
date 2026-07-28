@@ -107,15 +107,27 @@ index 6215936..fc96fc6 100644
    return await sendZaloLink(threadId, url, options);
  }
  
-@@ -106,6 +108,7 @@ export async function sendTypingZalouser(
+@@ -106,6 +108,18 @@ export async function sendTypingZalouser(
    threadId: string,
    options: Pick<ZalouserSendOptions, "profile" | "isGroup"> = {},
  ): Promise<void> {
-+  classifyControlTraffic({ kind: "typing", threadId });
-   await sendZaloTypingEvent(threadId, options);
++  const frame = classifyControlTraffic({
++    version: 1,
++    kind: "typing",
++    sink: {
++      accountProfile: options.profile?.trim() || "default",
++      conversationId: threadId,
++      isGroup: options.isGroup === true,
++    },
++  });
+-  await sendZaloTypingEvent(threadId, options);
++  await sendZaloTypingEvent(frame.sink.conversationId, {
++    profile: frame.sink.accountProfile,
++    isGroup: frame.sink.isGroup,
++  });
  }
  
-@@ -118,7 +121,10 @@ export async function sendReactionZalouser(params: {
+@@ -118,7 +132,10 @@ export async function sendReactionZalouser(params: {
    profile?: string;
    isGroup?: boolean;
  }): Promise<ZalouserSendResult> {
@@ -127,20 +139,50 @@ index 6215936..fc96fc6 100644
    const result = await sendZaloReaction({
      profile: params.profile,
      threadId: params.threadId,
-@@ -141,6 +147,7 @@ export async function sendDeliveredZalouser(params: {
+@@ -141,6 +158,22 @@ export async function sendDeliveredZalouser(params: {
    message: ZaloEventMessage;
    isSeen?: boolean;
  }): Promise<void> {
-+  classifyControlTraffic({ kind: "delivery-receipt", threadId: params.message.idTo });
-   await sendZaloDeliveredEvent(params);
++  const frame = classifyControlTraffic({
++    version: 1,
++    kind: "delivery-receipt",
++    sink: {
++      accountProfile: params.profile?.trim() || "default",
++      conversationId: params.isGroup ? params.message.idTo : params.message.uidFrom,
++      isGroup: params.isGroup === true,
++    },
++    message: params.message,
++    isSeen: params.isSeen === true,
++  });
+-  await sendZaloDeliveredEvent(params);
++  await sendZaloDeliveredEvent({
++    profile: frame.sink.accountProfile,
++    isGroup: frame.sink.isGroup,
++    message: frame.message,
++    isSeen: frame.isSeen,
++  });
  }
  
-@@ -149,6 +156,7 @@ export async function sendSeenZalouser(params: {
+@@ -149,6 +182,20 @@ export async function sendSeenZalouser(params: {
    isGroup?: boolean;
    message: ZaloEventMessage;
  }): Promise<void> {
-+  classifyControlTraffic({ kind: "seen", threadId: params.message.idTo });
-   await sendZaloSeenEvent(params);
++  const frame = classifyControlTraffic({
++    version: 1,
++    kind: "seen",
++    sink: {
++      accountProfile: params.profile?.trim() || "default",
++      conversationId: params.isGroup ? params.message.idTo : params.message.uidFrom,
++      isGroup: params.isGroup === true,
++    },
++    message: params.message,
++  });
+-  await sendZaloSeenEvent(params);
++  await sendZaloSeenEvent({
++    profile: frame.sink.accountProfile,
++    isGroup: frame.sink.isGroup,
++    message: frame.message,
++  });
  }
  
 diff --git a/src/tool.ts b/src/tool.ts
