@@ -62,12 +62,24 @@ function latestPreparedRoot() {
 }
 
 async function loadArtifactScripts() {
-  const [{ buildPreparedTree }, { controlledNpmEnvironment, packArtifact }, { verifyArtifact }] = await Promise.all([
+  const [
+    { buildPreparedTree },
+    { controlledNpmEnvironment, packArtifact },
+    { prepareVendorTree },
+    { verifyArtifact },
+  ] = await Promise.all([
     import("../scripts/build.mjs"),
     import("../scripts/pack.mjs"),
+    import("../scripts/prepare.mjs"),
     import("../scripts/verify-artifact.mjs"),
   ]);
-  return { buildPreparedTree, controlledNpmEnvironment, packArtifact, verifyArtifact };
+  return {
+    buildPreparedTree,
+    controlledNpmEnvironment,
+    packArtifact,
+    prepareVendorTree,
+    verifyArtifact,
+  };
 }
 
 describe("controlled npm child environment", () => {
@@ -162,6 +174,44 @@ describe("reproducible internal artifact", () => {
     expect(first.members.every((member) => member.type === "file")).toBe(true);
     expect(first.members.some((member) => member.path.includes("FORK.json"))).toBe(false);
     expect(first.members.some((member) => /(?:\.ts$|\.test\.|\.map$)/.test(member.path))).toBe(false);
+  });
+
+  it("is byte-identical across independently prepared source roots", async () => {
+    const { buildPreparedTree, packArtifact, prepareVendorTree } = await loadArtifactScripts();
+    const repoRoot = resolve(vendorRoot, "../../../..");
+    const tarballPath = resolve(vendorRoot, ".work/verified-upstream.tgz");
+    const preparedA = await prepareVendorTree({ repoRoot, tarballPath, vendorRoot });
+    const preparedB = await prepareVendorTree({ repoRoot, tarballPath, vendorRoot });
+    temporaryRoots.push(preparedA, preparedB);
+    const root = mkdtempSync(resolve(tmpdir(), "ihome-zalouser-independent-pack-"));
+    temporaryRoots.push(root);
+    const buildA = await buildPreparedTree({
+      vendorRoot,
+      preparedRoot: preparedA,
+      outputRoot: resolve(root, "build-a"),
+      sourceDateEpoch: SOURCE_DATE_EPOCH,
+    });
+    const buildB = await buildPreparedTree({
+      vendorRoot,
+      preparedRoot: preparedB,
+      outputRoot: resolve(root, "build-b"),
+      sourceDateEpoch: SOURCE_DATE_EPOCH,
+    });
+    const packedA = await packArtifact({
+      vendorRoot,
+      packageRoot: buildA.packageRoot,
+      outputPath: resolve(root, "independent-a.tgz"),
+      sourceDateEpoch: SOURCE_DATE_EPOCH,
+    });
+    const packedB = await packArtifact({
+      vendorRoot,
+      packageRoot: buildB.packageRoot,
+      outputPath: resolve(root, "independent-b.tgz"),
+      sourceDateEpoch: SOURCE_DATE_EPOCH,
+    });
+
+    expect(packedA.members).toEqual(packedB.members);
+    expect(readFileSync(packedA.artifactPath)).toEqual(readFileSync(packedB.artifactPath));
   });
 
   it("verifies an offline install and records its exact installed tree", async () => {
