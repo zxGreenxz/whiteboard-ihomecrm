@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS public.network_interfaces (
   CONSTRAINT network_interfaces_metadata_object_check
     CHECK (jsonb_typeof(display_metadata) = 'object'),
   UNIQUE (organization_id, id),
+  UNIQUE (organization_id, building_id, device_id, id),
   UNIQUE (device_id, interface_key)
 );
 
