@@ -12,8 +12,8 @@
   },
   "sourceDateEpoch": 1785062400,
   "artifactPath": "artifacts/openclaw-zalouser-2026.7.1.tgz",
-  "artifactSha256": "b489752ac0e114e5b068b19d58a438744fd141158dd1ff4ce72a7d8d7c51f919",
-  "builtTgzSha256": "b489752ac0e114e5b068b19d58a438744fd141158dd1ff4ce72a7d8d7c51f919",
+  "artifactSha256": "d9a50b340e5595e3e9d64f538257eef9b532cd35b466847d5f32b67344c653d3",
+  "builtTgzSha256": "d9a50b340e5595e3e9d64f538257eef9b532cd35b466847d5f32b67344c653d3",
   "artifactMembers": [
     {
       "path": "package/LICENSE",
@@ -41,35 +41,35 @@
       "type": "file",
       "mode": "0644",
       "size": 1092,
-      "sha256": "9a4986d182f3c93e274b0ffba6e22853d8bd64ae9d17cbdbc128d593a750e89e"
+      "sha256": "428feca7e2dc20aef37cb26918bf6af9f371fe77dde381a56b7e3255bc087fb9"
     },
     {
       "path": "package/dist/channel-plugin-api.js",
       "type": "file",
       "mode": "0644",
       "size": 436,
-      "sha256": "d292b5ccf12d29c78e6f0ea68cae5e85dc92ec6f15d774015e8a519b749e751e"
+      "sha256": "36d05392129b9d689751fe603153ca7e54619be934268320747c05084c83aca3"
     },
     {
-      "path": "package/dist/chunks/accounts.runtime-TJL43OMU.js",
+      "path": "package/dist/chunks/accounts.runtime-E4SL3KAY.js",
       "type": "file",
       "mode": "0644",
       "size": 291,
-      "sha256": "be7d99fcb03c7817e6ffea8d878a84df79ce48a78e8a709ac8cad8e3bbaca7eb"
+      "sha256": "df2d88572518dae899ecc6e4d49cba89d18bb30e38d0e48bb7b9d0677f3d62ce"
     },
     {
-      "path": "package/dist/chunks/channel.runtime-LQWJX3WO.js",
+      "path": "package/dist/chunks/channel.runtime-LQARLAYE.js",
       "type": "file",
       "mode": "0644",
       "size": 1502,
-      "sha256": "57fe4016e92cce1c739411f0fa56b36fc4d9f524b9938a2aed0b3b5d1db273be"
+      "sha256": "937656dc49619c3f3c0c8239cf991d8c4e6142c8797f474e25dffbab8a542364"
     },
     {
-      "path": "package/dist/chunks/chunk-2VNCH7VQ.js",
+      "path": "package/dist/chunks/chunk-4C6HHFAF.js",
       "type": "file",
       "mode": "0644",
-      "size": 20305,
-      "sha256": "014762c32c5a56ed6752af481a227f061a501dda547b25964f62560cc7138abe"
+      "size": 546568,
+      "sha256": "2e324fbc71fd87364932720ea6742c8e9cb08200cbbf33f9776700a4d5b4c8ca"
     },
     {
       "path": "package/dist/chunks/chunk-5JFALIRO.js",
@@ -79,25 +79,18 @@
       "sha256": "d23416994c46753f5d7f0702a2329289084d5124a8dfe787930e21e5576a442b"
     },
     {
-      "path": "package/dist/chunks/chunk-5OP5FFIH.js",
-      "type": "file",
-      "mode": "0644",
-      "size": 217627,
-      "sha256": "a1d3e0dd57b1646c9d439dde8a6c84cee54240dd004e218ad30ab481f70c988c"
-    },
-    {
-      "path": "package/dist/chunks/chunk-7TMAAKVB.js",
+      "path": "package/dist/chunks/chunk-7UPU7Z3Z.js",
       "type": "file",
       "mode": "0644",
       "size": 509,
-      "sha256": "58752c3843e6d27c49877254d389dd1494af9515a447e023d10aacaf6d81ac3d"
+      "sha256": "6a8a4bc8e1db0f5af53ba78f39364f0b02e91461f90360c539e784555eeed164"
     },
     {
-      "path": "package/dist/chunks/chunk-CLHJFNDC.js",
+      "path": "package/dist/chunks/chunk-CCVH6H7O.js",
       "type": "file",
       "mode": "0644",
-      "size": 51450,
-      "sha256": "f464c6937705756838b237b37fababe9c4bde645d3162f680561c9ca5838306f"
+      "size": 26441,
+      "sha256": "ac1e3815c9a4691446db8532eb3128cde3b10e8e80811c90f5755ff789c312f6"
     },
     {
       "path": "package/dist/chunks/chunk-DANA6B7L.js",
@@ -105,6 +98,13 @@
       "mode": "0644",
       "size": 2612,
       "sha256": "f619e273d5ca3cd0c2dac6ea54dce48f9dde0e4051824df5dc16b2e05e4cde60"
+    },
+    {
+      "path": "package/dist/chunks/chunk-G3LUOZUQ.js",
+      "type": "file",
+      "mode": "0644",
+      "size": 217627,
+      "sha256": "5f389d6aa5740d6af0d8b89b503b9e19231e337660c5bf598f86c34e6fc0e1cd"
     },
     {
       "path": "package/dist/chunks/chunk-HIEA2L7E.js",
@@ -121,11 +121,18 @@
       "sha256": "1e688f4f4a719503c9e09c3e73af8b9e213b9b8b5bd0002ef8e8768461b4f252"
     },
     {
-      "path": "package/dist/chunks/chunk-NUZODMBU.js",
+      "path": "package/dist/chunks/chunk-PF272SNK.js",
       "type": "file",
       "mode": "0644",
-      "size": 14764,
-      "sha256": "01b0cb726ca86bb74cafac2010537bcac1f852342f1e238f873edffb8df346ad"
+      "size": 20305,
+      "sha256": "96f3477462369b9f30edf833762e5bb9746545eaada912bbef6ab8f29788714f"
+    },
+    {
+      "path": "package/dist/chunks/chunk-PJC3CS5U.js",
+      "type": "file",
+      "mode": "0644",
+      "size": 51450,
+      "sha256": "4990cad247b0ab0ae9e88e0ae13969274b5b0297326aadd2c87b1a5cc5e5e4bb"
     },
     {
       "path": "package/dist/chunks/chunk-T2PWR2UQ.js",
@@ -135,46 +142,39 @@
       "sha256": "fc2ee787886525fd3013e6d9c29ccd64a11f9fe50ffe877997b2dd9b8f351760"
     },
     {
-      "path": "package/dist/chunks/chunk-UBMWMYXQ.js",
+      "path": "package/dist/chunks/chunk-TMGIZHQH.js",
       "type": "file",
       "mode": "0644",
       "size": 4340,
-      "sha256": "0b6b3e87aba4ab953d180ab95d8db6004ae885c4654eb89209946499dade9e20"
+      "sha256": "4c3f7bc7c6cec06dd7134464cdf6f823a30b02441157627803e8a4bd482834dd"
     },
     {
-      "path": "package/dist/chunks/chunk-UY3BEKXM.js",
+      "path": "package/dist/chunks/chunk-VY7XJ7RA.js",
       "type": "file",
       "mode": "0644",
-      "size": 26441,
-      "sha256": "a0346d32234afdc316b7b404228d7ea65b234f807d0fd839c8cb3db57453b991"
+      "size": 14780,
+      "sha256": "072839e2062f75a27d4f86f80f0e51cc0bb47c27b753d49daf771a18ead34189"
     },
     {
-      "path": "package/dist/chunks/chunk-VXVETCE5.js",
+      "path": "package/dist/chunks/dist-GJOM7BIC.js",
       "type": "file",
       "mode": "0644",
-      "size": 546480,
-      "sha256": "be5db28b1ae77256936c668836a8b492f00e34549a568c556e1a82c79e8e5285"
+      "size": 1381709,
+      "sha256": "1b1de06ad21b6e240799683c69045f4505ca596907e9eb42d039f37a62b4c3b0"
     },
     {
-      "path": "package/dist/chunks/dist-RC2YTH2G.js",
-      "type": "file",
-      "mode": "0644",
-      "size": 1380649,
-      "sha256": "38379f7f070574c19a2416ea7b3a7975b351c4375c970a802467a3cbab3b1b39"
-    },
-    {
-      "path": "package/dist/chunks/monitor-KCI2ZCXG.js",
+      "path": "package/dist/chunks/monitor-GU6DDSW6.js",
       "type": "file",
       "mode": "0644",
       "size": 30390,
-      "sha256": "9a0c95acd9e7e957e0d53a1033912c94c1a713b67b9b831188dafc8e6f42cf87"
+      "sha256": "cc41665bffa5dc982138b2d70bcec1ea0fbfa0378f89b23dcb0f42870bd478be"
     },
     {
-      "path": "package/dist/chunks/setup-surface-NBZ3CEUM.js",
+      "path": "package/dist/chunks/setup-surface-AJ5UMVOK.js",
       "type": "file",
       "mode": "0644",
       "size": 363,
-      "sha256": "7911643a1baaf3c2ea631149b1e88f6243074e272d0300e34c08c2095320edee"
+      "sha256": "51e652183e5b9c68ab8e5e621560c164ac54674837b439c7d7d5baf212d94fd4"
     },
     {
       "path": "package/dist/contract-api.js",
@@ -194,15 +194,15 @@
       "path": "package/dist/index.js",
       "type": "file",
       "mode": "0644",
-      "size": 1208,
-      "sha256": "73c14f35319493ba7e6dd32287297aeae35a51560419d5264df65ab17d5d7089"
+      "size": 1188,
+      "sha256": "209a4516cb6adfddcdd5ab5f1e45be18b2222355407fa33f9689d8923c470b5a"
     },
     {
       "path": "package/dist/runtime-api.js",
       "type": "file",
       "mode": "0644",
       "size": 3050,
-      "sha256": "35d6f684a4edd4dd113bb87116a6ac85b14c9011277991f25f6d20bcc0a0bed7"
+      "sha256": "df6e00ce9dc790028548651e98efc43457e94df86b6bf358c66e40a42a5f10d0"
     },
     {
       "path": "package/dist/secret-contract-api.js",
@@ -223,7 +223,7 @@
       "type": "file",
       "mode": "0644",
       "size": 483,
-      "sha256": "0216e00cb69cbaa0000dd6b9e3692037d9dfa3e22e1b8b9b0668047d0279c7c1"
+      "sha256": "10a6be54950d2b0a64f62488322a5eba33becb7c870ca63687b0fc250c9a5b87"
     },
     {
       "path": "package/licenses/asynckit@0.4.0/LICENSE",
@@ -513,7 +513,7 @@
       "sha256": "1b786cc31ca8ca258cf2dab1c0289cc37f91f98cecb3dd38bdbd417c052d0fc7"
     }
   ],
-  "artifactMembersSha256": "8228f1153bb15bf95669c83bb082cbd1bde4c0e25715243eed20ae9fe53c69d8",
+  "artifactMembersSha256": "d360d843efd7fe25ec800fb98c25a06fbe05ce3f8a65f5085dd843a329d8a5b4",
   "patches": [
     "0001-durable-inbound-bridge-listener.patch",
     "0002-private-bridge-send-rpc.patch",
@@ -573,19 +573,19 @@
       "expandedMembers": [
         "package/dist/api.js",
         "package/dist/channel-plugin-api.js",
-        "package/dist/chunks/chunk-2VNCH7VQ.js",
+        "package/dist/chunks/chunk-4C6HHFAF.js",
         "package/dist/chunks/chunk-5JFALIRO.js",
-        "package/dist/chunks/chunk-5OP5FFIH.js",
-        "package/dist/chunks/chunk-7TMAAKVB.js",
-        "package/dist/chunks/chunk-CLHJFNDC.js",
+        "package/dist/chunks/chunk-7UPU7Z3Z.js",
+        "package/dist/chunks/chunk-CCVH6H7O.js",
         "package/dist/chunks/chunk-DANA6B7L.js",
+        "package/dist/chunks/chunk-G3LUOZUQ.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
         "package/dist/chunks/chunk-NQ2LO4JE.js",
-        "package/dist/chunks/chunk-NUZODMBU.js",
+        "package/dist/chunks/chunk-PF272SNK.js",
+        "package/dist/chunks/chunk-PJC3CS5U.js",
         "package/dist/chunks/chunk-T2PWR2UQ.js",
-        "package/dist/chunks/chunk-UBMWMYXQ.js",
-        "package/dist/chunks/chunk-UY3BEKXM.js",
-        "package/dist/chunks/chunk-VXVETCE5.js",
+        "package/dist/chunks/chunk-TMGIZHQH.js",
+        "package/dist/chunks/chunk-VY7XJ7RA.js",
         "package/dist/contract-api.js",
         "package/dist/doctor-contract-api.js",
         "package/dist/index.js",
@@ -603,9 +603,9 @@
       "expression": "\"./accounts.runtime.js\"",
       "resolution": "literal",
       "expandedMembers": [
-        "package/dist/chunks/accounts.runtime-TJL43OMU.js",
-        "package/dist/chunks/chunk-CLHJFNDC.js",
-        "package/dist/chunks/chunk-HIEA2L7E.js"
+        "package/dist/chunks/accounts.runtime-E4SL3KAY.js",
+        "package/dist/chunks/chunk-HIEA2L7E.js",
+        "package/dist/chunks/chunk-PJC3CS5U.js"
       ]
     },
     {
@@ -616,12 +616,12 @@
       "expression": "\"./channel.runtime.js\"",
       "resolution": "literal",
       "expandedMembers": [
-        "package/dist/chunks/channel.runtime-LQWJX3WO.js",
-        "package/dist/chunks/chunk-2VNCH7VQ.js",
+        "package/dist/chunks/channel.runtime-LQARLAYE.js",
         "package/dist/chunks/chunk-5JFALIRO.js",
-        "package/dist/chunks/chunk-CLHJFNDC.js",
         "package/dist/chunks/chunk-DANA6B7L.js",
-        "package/dist/chunks/chunk-HIEA2L7E.js"
+        "package/dist/chunks/chunk-HIEA2L7E.js",
+        "package/dist/chunks/chunk-PF272SNK.js",
+        "package/dist/chunks/chunk-PJC3CS5U.js"
       ]
     },
     {
@@ -632,12 +632,12 @@
       "expression": "\"./channel.runtime.js\"",
       "resolution": "literal",
       "expandedMembers": [
-        "package/dist/chunks/channel.runtime-LQWJX3WO.js",
-        "package/dist/chunks/chunk-2VNCH7VQ.js",
+        "package/dist/chunks/channel.runtime-LQARLAYE.js",
         "package/dist/chunks/chunk-5JFALIRO.js",
-        "package/dist/chunks/chunk-CLHJFNDC.js",
         "package/dist/chunks/chunk-DANA6B7L.js",
-        "package/dist/chunks/chunk-HIEA2L7E.js"
+        "package/dist/chunks/chunk-HIEA2L7E.js",
+        "package/dist/chunks/chunk-PF272SNK.js",
+        "package/dist/chunks/chunk-PJC3CS5U.js"
       ]
     },
     {
@@ -648,11 +648,11 @@
       "expression": "\"./setup-surface.js\"",
       "resolution": "literal",
       "expandedMembers": [
-        "package/dist/chunks/chunk-CLHJFNDC.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
-        "package/dist/chunks/chunk-NUZODMBU.js",
-        "package/dist/chunks/chunk-UBMWMYXQ.js",
-        "package/dist/chunks/setup-surface-NBZ3CEUM.js"
+        "package/dist/chunks/chunk-PJC3CS5U.js",
+        "package/dist/chunks/chunk-TMGIZHQH.js",
+        "package/dist/chunks/chunk-VY7XJ7RA.js",
+        "package/dist/chunks/setup-surface-AJ5UMVOK.js"
       ]
     },
     {
@@ -663,12 +663,12 @@
       "expression": "\"./monitor.js\"",
       "resolution": "literal",
       "expandedMembers": [
-        "package/dist/chunks/chunk-2VNCH7VQ.js",
-        "package/dist/chunks/chunk-CLHJFNDC.js",
         "package/dist/chunks/chunk-DANA6B7L.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
+        "package/dist/chunks/chunk-PF272SNK.js",
+        "package/dist/chunks/chunk-PJC3CS5U.js",
         "package/dist/chunks/chunk-T2PWR2UQ.js",
-        "package/dist/chunks/monitor-KCI2ZCXG.js"
+        "package/dist/chunks/monitor-GU6DDSW6.js"
       ]
     },
     {
@@ -680,7 +680,7 @@
       "resolution": "literal",
       "expandedMembers": [
         "package/dist/chunks/chunk-HIEA2L7E.js",
-        "package/dist/chunks/dist-RC2YTH2G.js"
+        "package/dist/chunks/dist-GJOM7BIC.js"
       ]
     }
   ],
@@ -691,24 +691,24 @@
   "derivedRuntimeSet": [
     "package/dist/api.js",
     "package/dist/channel-plugin-api.js",
-    "package/dist/chunks/accounts.runtime-TJL43OMU.js",
-    "package/dist/chunks/channel.runtime-LQWJX3WO.js",
-    "package/dist/chunks/chunk-2VNCH7VQ.js",
+    "package/dist/chunks/accounts.runtime-E4SL3KAY.js",
+    "package/dist/chunks/channel.runtime-LQARLAYE.js",
+    "package/dist/chunks/chunk-4C6HHFAF.js",
     "package/dist/chunks/chunk-5JFALIRO.js",
-    "package/dist/chunks/chunk-5OP5FFIH.js",
-    "package/dist/chunks/chunk-7TMAAKVB.js",
-    "package/dist/chunks/chunk-CLHJFNDC.js",
+    "package/dist/chunks/chunk-7UPU7Z3Z.js",
+    "package/dist/chunks/chunk-CCVH6H7O.js",
     "package/dist/chunks/chunk-DANA6B7L.js",
+    "package/dist/chunks/chunk-G3LUOZUQ.js",
     "package/dist/chunks/chunk-HIEA2L7E.js",
     "package/dist/chunks/chunk-NQ2LO4JE.js",
-    "package/dist/chunks/chunk-NUZODMBU.js",
+    "package/dist/chunks/chunk-PF272SNK.js",
+    "package/dist/chunks/chunk-PJC3CS5U.js",
     "package/dist/chunks/chunk-T2PWR2UQ.js",
-    "package/dist/chunks/chunk-UBMWMYXQ.js",
-    "package/dist/chunks/chunk-UY3BEKXM.js",
-    "package/dist/chunks/chunk-VXVETCE5.js",
-    "package/dist/chunks/dist-RC2YTH2G.js",
-    "package/dist/chunks/monitor-KCI2ZCXG.js",
-    "package/dist/chunks/setup-surface-NBZ3CEUM.js",
+    "package/dist/chunks/chunk-TMGIZHQH.js",
+    "package/dist/chunks/chunk-VY7XJ7RA.js",
+    "package/dist/chunks/dist-GJOM7BIC.js",
+    "package/dist/chunks/monitor-GU6DDSW6.js",
+    "package/dist/chunks/setup-surface-AJ5UMVOK.js",
     "package/dist/contract-api.js",
     "package/dist/doctor-contract-api.js",
     "package/dist/index.js",
@@ -720,24 +720,24 @@
   "runtimeReachabilityAllowlist": [
     "package/dist/api.js",
     "package/dist/channel-plugin-api.js",
-    "package/dist/chunks/accounts.runtime-TJL43OMU.js",
-    "package/dist/chunks/channel.runtime-LQWJX3WO.js",
-    "package/dist/chunks/chunk-2VNCH7VQ.js",
+    "package/dist/chunks/accounts.runtime-E4SL3KAY.js",
+    "package/dist/chunks/channel.runtime-LQARLAYE.js",
+    "package/dist/chunks/chunk-4C6HHFAF.js",
     "package/dist/chunks/chunk-5JFALIRO.js",
-    "package/dist/chunks/chunk-5OP5FFIH.js",
-    "package/dist/chunks/chunk-7TMAAKVB.js",
-    "package/dist/chunks/chunk-CLHJFNDC.js",
+    "package/dist/chunks/chunk-7UPU7Z3Z.js",
+    "package/dist/chunks/chunk-CCVH6H7O.js",
     "package/dist/chunks/chunk-DANA6B7L.js",
+    "package/dist/chunks/chunk-G3LUOZUQ.js",
     "package/dist/chunks/chunk-HIEA2L7E.js",
     "package/dist/chunks/chunk-NQ2LO4JE.js",
-    "package/dist/chunks/chunk-NUZODMBU.js",
+    "package/dist/chunks/chunk-PF272SNK.js",
+    "package/dist/chunks/chunk-PJC3CS5U.js",
     "package/dist/chunks/chunk-T2PWR2UQ.js",
-    "package/dist/chunks/chunk-UBMWMYXQ.js",
-    "package/dist/chunks/chunk-UY3BEKXM.js",
-    "package/dist/chunks/chunk-VXVETCE5.js",
-    "package/dist/chunks/dist-RC2YTH2G.js",
-    "package/dist/chunks/monitor-KCI2ZCXG.js",
-    "package/dist/chunks/setup-surface-NBZ3CEUM.js",
+    "package/dist/chunks/chunk-TMGIZHQH.js",
+    "package/dist/chunks/chunk-VY7XJ7RA.js",
+    "package/dist/chunks/dist-GJOM7BIC.js",
+    "package/dist/chunks/monitor-GU6DDSW6.js",
+    "package/dist/chunks/setup-surface-AJ5UMVOK.js",
     "package/dist/contract-api.js",
     "package/dist/doctor-contract-api.js",
     "package/dist/index.js",
@@ -850,14 +850,14 @@
         "type": "file",
         "mode": "0644",
         "size": 1092,
-        "sha256": "9a4986d182f3c93e274b0ffba6e22853d8bd64ae9d17cbdbc128d593a750e89e"
+        "sha256": "428feca7e2dc20aef37cb26918bf6af9f371fe77dde381a56b7e3255bc087fb9"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/channel-plugin-api.js",
         "type": "file",
         "mode": "0644",
         "size": 436,
-        "sha256": "d292b5ccf12d29c78e6f0ea68cae5e85dc92ec6f15d774015e8a519b749e751e"
+        "sha256": "36d05392129b9d689751fe603153ca7e54619be934268320747c05084c83aca3"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks",
@@ -867,25 +867,25 @@
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/accounts.runtime-TJL43OMU.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/accounts.runtime-E4SL3KAY.js",
         "type": "file",
         "mode": "0644",
         "size": 291,
-        "sha256": "be7d99fcb03c7817e6ffea8d878a84df79ce48a78e8a709ac8cad8e3bbaca7eb"
+        "sha256": "df2d88572518dae899ecc6e4d49cba89d18bb30e38d0e48bb7b9d0677f3d62ce"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/channel.runtime-LQWJX3WO.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/channel.runtime-LQARLAYE.js",
         "type": "file",
         "mode": "0644",
         "size": 1502,
-        "sha256": "57fe4016e92cce1c739411f0fa56b36fc4d9f524b9938a2aed0b3b5d1db273be"
+        "sha256": "937656dc49619c3f3c0c8239cf991d8c4e6142c8797f474e25dffbab8a542364"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-2VNCH7VQ.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-4C6HHFAF.js",
         "type": "file",
         "mode": "0644",
-        "size": 20305,
-        "sha256": "014762c32c5a56ed6752af481a227f061a501dda547b25964f62560cc7138abe"
+        "size": 546568,
+        "sha256": "2e324fbc71fd87364932720ea6742c8e9cb08200cbbf33f9776700a4d5b4c8ca"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-5JFALIRO.js",
@@ -895,25 +895,18 @@
         "sha256": "d23416994c46753f5d7f0702a2329289084d5124a8dfe787930e21e5576a442b"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-5OP5FFIH.js",
-        "type": "file",
-        "mode": "0644",
-        "size": 217627,
-        "sha256": "a1d3e0dd57b1646c9d439dde8a6c84cee54240dd004e218ad30ab481f70c988c"
-      },
-      {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-7TMAAKVB.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-7UPU7Z3Z.js",
         "type": "file",
         "mode": "0644",
         "size": 509,
-        "sha256": "58752c3843e6d27c49877254d389dd1494af9515a447e023d10aacaf6d81ac3d"
+        "sha256": "6a8a4bc8e1db0f5af53ba78f39364f0b02e91461f90360c539e784555eeed164"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-CLHJFNDC.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-CCVH6H7O.js",
         "type": "file",
         "mode": "0644",
-        "size": 51450,
-        "sha256": "f464c6937705756838b237b37fababe9c4bde645d3162f680561c9ca5838306f"
+        "size": 26441,
+        "sha256": "ac1e3815c9a4691446db8532eb3128cde3b10e8e80811c90f5755ff789c312f6"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-DANA6B7L.js",
@@ -921,6 +914,13 @@
         "mode": "0644",
         "size": 2612,
         "sha256": "f619e273d5ca3cd0c2dac6ea54dce48f9dde0e4051824df5dc16b2e05e4cde60"
+      },
+      {
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-G3LUOZUQ.js",
+        "type": "file",
+        "mode": "0644",
+        "size": 217627,
+        "sha256": "5f389d6aa5740d6af0d8b89b503b9e19231e337660c5bf598f86c34e6fc0e1cd"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-HIEA2L7E.js",
@@ -937,11 +937,18 @@
         "sha256": "1e688f4f4a719503c9e09c3e73af8b9e213b9b8b5bd0002ef8e8768461b4f252"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-NUZODMBU.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-PF272SNK.js",
         "type": "file",
         "mode": "0644",
-        "size": 14764,
-        "sha256": "01b0cb726ca86bb74cafac2010537bcac1f852342f1e238f873edffb8df346ad"
+        "size": 20305,
+        "sha256": "96f3477462369b9f30edf833762e5bb9746545eaada912bbef6ab8f29788714f"
+      },
+      {
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-PJC3CS5U.js",
+        "type": "file",
+        "mode": "0644",
+        "size": 51450,
+        "sha256": "4990cad247b0ab0ae9e88e0ae13969274b5b0297326aadd2c87b1a5cc5e5e4bb"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-T2PWR2UQ.js",
@@ -951,46 +958,39 @@
         "sha256": "fc2ee787886525fd3013e6d9c29ccd64a11f9fe50ffe877997b2dd9b8f351760"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-UBMWMYXQ.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-TMGIZHQH.js",
         "type": "file",
         "mode": "0644",
         "size": 4340,
-        "sha256": "0b6b3e87aba4ab953d180ab95d8db6004ae885c4654eb89209946499dade9e20"
+        "sha256": "4c3f7bc7c6cec06dd7134464cdf6f823a30b02441157627803e8a4bd482834dd"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-UY3BEKXM.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-VY7XJ7RA.js",
         "type": "file",
         "mode": "0644",
-        "size": 26441,
-        "sha256": "a0346d32234afdc316b7b404228d7ea65b234f807d0fd839c8cb3db57453b991"
+        "size": 14780,
+        "sha256": "072839e2062f75a27d4f86f80f0e51cc0bb47c27b753d49daf771a18ead34189"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-VXVETCE5.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/dist-GJOM7BIC.js",
         "type": "file",
         "mode": "0644",
-        "size": 546480,
-        "sha256": "be5db28b1ae77256936c668836a8b492f00e34549a568c556e1a82c79e8e5285"
+        "size": 1381709,
+        "sha256": "1b1de06ad21b6e240799683c69045f4505ca596907e9eb42d039f37a62b4c3b0"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/dist-RC2YTH2G.js",
-        "type": "file",
-        "mode": "0644",
-        "size": 1380649,
-        "sha256": "38379f7f070574c19a2416ea7b3a7975b351c4375c970a802467a3cbab3b1b39"
-      },
-      {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/monitor-KCI2ZCXG.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/monitor-GU6DDSW6.js",
         "type": "file",
         "mode": "0644",
         "size": 30390,
-        "sha256": "9a0c95acd9e7e957e0d53a1033912c94c1a713b67b9b831188dafc8e6f42cf87"
+        "sha256": "cc41665bffa5dc982138b2d70bcec1ea0fbfa0378f89b23dcb0f42870bd478be"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/setup-surface-NBZ3CEUM.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/setup-surface-AJ5UMVOK.js",
         "type": "file",
         "mode": "0644",
         "size": 363,
-        "sha256": "7911643a1baaf3c2ea631149b1e88f6243074e272d0300e34c08c2095320edee"
+        "sha256": "51e652183e5b9c68ab8e5e621560c164ac54674837b439c7d7d5baf212d94fd4"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/contract-api.js",
@@ -1010,15 +1010,15 @@
         "path": "node_modules/@openclaw/zalouser/dist/index.js",
         "type": "file",
         "mode": "0644",
-        "size": 1208,
-        "sha256": "73c14f35319493ba7e6dd32287297aeae35a51560419d5264df65ab17d5d7089"
+        "size": 1188,
+        "sha256": "209a4516cb6adfddcdd5ab5f1e45be18b2222355407fa33f9689d8923c470b5a"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/runtime-api.js",
         "type": "file",
         "mode": "0644",
         "size": 3050,
-        "sha256": "35d6f684a4edd4dd113bb87116a6ac85b14c9011277991f25f6d20bcc0a0bed7"
+        "sha256": "df6e00ce9dc790028548651e98efc43457e94df86b6bf358c66e40a42a5f10d0"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/secret-contract-api.js",
@@ -1039,7 +1039,7 @@
         "type": "file",
         "mode": "0644",
         "size": 483,
-        "sha256": "0216e00cb69cbaa0000dd6b9e3692037d9dfa3e22e1b8b9b0668047d0279c7c1"
+        "sha256": "10a6be54950d2b0a64f62488322a5eba33becb7c870ca63687b0fc250c9a5b87"
       },
       {
         "path": "node_modules/@openclaw/zalouser/licenses",
@@ -1625,7 +1625,7 @@
     ],
     "fileCount": 72,
     "directoryCount": 46,
-    "sha256": "8094763f40a349e7c0f9157b6e7ade7c7a827468ce8064be8accbb749c653148",
-    "rootSha256": "8094763f40a349e7c0f9157b6e7ade7c7a827468ce8064be8accbb749c653148"
+    "sha256": "cf09595491157b150f94854f3eb14d198bb79f40c5d7729a0d12a3b841631bdc",
+    "rootSha256": "cf09595491157b150f94854f3eb14d198bb79f40c5d7729a0d12a3b841631bdc"
   }
 }

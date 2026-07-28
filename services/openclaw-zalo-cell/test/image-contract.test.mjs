@@ -1425,7 +1425,7 @@ test("supply-chain evidence binds committed M inputs, signatures, and the exact 
   assert.equal(recorded.upstream.source_manifest_count, 75);
   assert.equal(recorded.upstream.license_carrier_count, 39);
   assert.equal(recorded.fork.artifact_member_count, 71);
-  assert.equal(recorded.fork.artifact_sha256, "b489752ac0e114e5b068b19d58a438744fd141158dd1ff4ce72a7d8d7c51f919");
+  assert.equal(recorded.fork.artifact_sha256, "d9a50b340e5595e3e9d64f538257eef9b532cd35b466847d5f32b67344c653d3");
   await assert.rejects(
     validateRecordedSupplyChainEvidence(
       {

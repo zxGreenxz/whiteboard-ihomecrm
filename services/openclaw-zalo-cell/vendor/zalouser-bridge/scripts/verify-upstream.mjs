@@ -1107,12 +1107,30 @@ export async function verifyCommittedInputs(options = {}) {
   const expectedVendorRoot = resolve(repoRoot, VENDOR_REL);
   if (vendorRoot !== expectedVendorRoot) throw new Error("vendorRoot does not match repository layout");
   assertGoldenAggregate();
-  const reviewedExportManifestPath =
-    options.reviewedExportManifestPath ?? process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST;
-  const reviewedTree = options.reviewedTree ?? process.env.OPENCLAW_REVIEWED_R_SHA;
-  const reviewedExportManifestSha256 =
-    options.reviewedExportManifestSha256 ?? process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256;
-  if (reviewedExportManifestPath && !reviewedExportManifestSha256) {
+  const explicitReviewedExportBinding = [
+    "reviewedExportManifestPath",
+    "reviewedTree",
+    "reviewedExportManifestSha256",
+  ].some((key) => Object.prototype.hasOwnProperty.call(options, key));
+  const reviewedExportManifestPath = explicitReviewedExportBinding
+    ? options.reviewedExportManifestPath
+    : process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST;
+  const reviewedTree = explicitReviewedExportBinding
+    ? options.reviewedTree
+    : process.env.OPENCLAW_REVIEWED_R_SHA;
+  const reviewedExportManifestSha256 = explicitReviewedExportBinding
+    ? options.reviewedExportManifestSha256
+    : process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256;
+  const hasReviewedExportBinding =
+    explicitReviewedExportBinding ||
+    Boolean(reviewedExportManifestPath || reviewedTree || reviewedExportManifestSha256);
+  if (hasReviewedExportBinding && !reviewedExportManifestPath) {
+    throw new Error("reviewed export manifest path is required");
+  }
+  if (hasReviewedExportBinding && !reviewedTree) {
+    throw new Error("reviewed export tree is required");
+  }
+  if (hasReviewedExportBinding && !reviewedExportManifestSha256) {
     throw new Error("reviewed export manifest SHA-256 is required");
   }
   const readRecords = reviewedExportManifestPath

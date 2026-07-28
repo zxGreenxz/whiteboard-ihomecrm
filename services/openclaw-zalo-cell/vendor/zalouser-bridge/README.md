@@ -4,7 +4,8 @@ This directory freezes the exact OpenClaw `@openclaw/zalouser@2026.7.1` source s
 its reviewed provenance and license inputs, the ordered iHomeCRM patch series, and the
 reproducible internal artifact.
 
-Use official stable Node 24.15.0 or later within major 24. `npm run verify` reacquires and
+Use official stable Node 24.15.0 or later within major 24 and exact npm 11.12.1;
+the dependency-free preflight rejects any other npm user agent. `npm run verify` reacquires and
 verifies the upstream inputs, prepares a unique ignored work tree from the committed source
 snapshot, applies the patches and bridge overlay, builds and packs twice, then verifies a
 clean offline installed tree. The npm lifecycle name `prepare` is intentionally unused;

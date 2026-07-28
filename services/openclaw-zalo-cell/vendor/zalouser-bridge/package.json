@@ -3,12 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "npm@10.9.3",
+  "packageManager": "npm@11.12.1",
   "engines": {
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "preflight": "node -e \"const m=/^v24\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}\"",
+    "preflight": "node -e \"const m=/^v24\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.exec(process.version);const u=process.env.npm_config_user_agent??'';if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}if(!/^npm\\/11\\.12\\.1(?:\\s|$)/.test(u)){console.error('npm 11.12.1 is required');process.exit(1)}\"",
     "verify:upstream": "npm run preflight --silent && node scripts/verify-upstream.mjs --online",
     "vendor:prepare": "npm run preflight --silent && node scripts/prepare.mjs --tarball .work/verified-upstream.tgz",
     "typecheck": "npm run preflight --silent && tsc --noEmit -p tsconfig.json",

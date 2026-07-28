@@ -217,13 +217,52 @@ describe("reviewed upstream and legal inputs", () => {
       const manifestSha256 = createHash("sha256")
         .update(readFileSync(manifestPath))
         .digest("hex");
-      await expect(
-        verifyCommittedInputs({
-          vendorRoot: detachedVendorRoot,
-          reviewedExportManifestPath: manifestPath,
-          reviewedTree,
-        }),
-      ).rejects.toThrow(/manifest SHA-256 is required/i);
+      const previousManifestSha256 = process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256;
+      process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = manifestSha256;
+      try {
+        await expect(
+          verifyCommittedInputs({
+            vendorRoot: detachedVendorRoot,
+            reviewedExportManifestPath: manifestPath,
+            reviewedTree,
+          }),
+        ).rejects.toThrow(/manifest SHA-256 is required/i);
+      } finally {
+        if (previousManifestSha256 === undefined) {
+          delete process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256;
+        } else {
+          process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = previousManifestSha256;
+        }
+      }
+      const previousBindingEnvironment = {
+        manifestPath: process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST,
+        manifestSha256: process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256,
+        reviewedTree: process.env.OPENCLAW_REVIEWED_R_SHA,
+      };
+      process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST = manifestPath;
+      process.env.OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = manifestSha256;
+      process.env.OPENCLAW_REVIEWED_R_SHA = reviewedTree;
+      try {
+        await expect(
+          verifyCommittedInputs({
+            vendorRoot: detachedVendorRoot,
+            reviewedExportManifestPath: undefined,
+            reviewedExportManifestSha256: undefined,
+            reviewedTree: undefined,
+          }),
+        ).rejects.toThrow(/reviewed export manifest path is required/i);
+      } finally {
+        const restore = (key: string, value: string | undefined) => {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        };
+        restore("OPENCLAW_REVIEWED_EXPORT_MANIFEST", previousBindingEnvironment.manifestPath);
+        restore(
+          "OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256",
+          previousBindingEnvironment.manifestSha256,
+        );
+        restore("OPENCLAW_REVIEWED_R_SHA", previousBindingEnvironment.reviewedTree);
+      }
       const result = await verifyCommittedInputs({
         vendorRoot: detachedVendorRoot,
         reviewedExportManifestPath: manifestPath,
@@ -288,6 +327,9 @@ describe("reviewed upstream and legal inputs", () => {
     const packageJson = JSON.parse(readFileSync(resolve(vendorRoot, "package.json"), "utf8"));
 
     expect(packageJson.private).toBe(true);
+    expect(packageJson.packageManager).toBe("npm@11.12.1");
+    expect(packageJson.scripts.preflight).toContain("npm_config_user_agent");
+    expect(packageJson.scripts.preflight).toContain("npm 11.12.1 is required");
     expect(packageJson.scripts.prepare).toBeUndefined();
     expect(packageJson.scripts["vendor:prepare"]).toContain("scripts/prepare.mjs");
     expect(packageJson.scripts.verify).toContain("verify:upstream");
