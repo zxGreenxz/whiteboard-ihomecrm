@@ -305,6 +305,13 @@ describe("executable patched inbound source", () => {
 
     expect(types).toContain("ZaloUserInboundInputV1");
     expect(types).toContain("bridge: ZaloUserInboundInputV1");
+    expect(zaloJs).toContain("const providerEventId = null;");
+    expect(zaloJs).toContain(
+      'cliMsgId: typeof data.cliMsgId === "string" ? data.cliMsgId : undefined',
+    );
+    expect(zaloJs).not.toContain(
+      "providerEventId = nullableProviderString(data.cliMsgId)",
+    );
     for (const field of [
       "providerEventId",
       "providerMessageId",

@@ -181,7 +181,7 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
    );
    const eventMessage = buildEventMessage(data);
 +  const timestampMs = resolveInboundTimestamp(data.ts);
-+  const providerEventId = nullableProviderString(data.cliMsgId);
++  const providerEventId = null;
 +  const providerMessageId = nullableProviderString(data.msgId);
 +  const providerEventType = toStringValue(data.msgType) || "message";
    return {
@@ -214,7 +214,7 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 -    cliMsgId: typeof data.cliMsgId === "string" ? data.cliMsgId : undefined,
 +    timestampMs,
 +    msgId: providerMessageId ?? undefined,
-+    cliMsgId: providerEventId ?? undefined,
++    cliMsgId: typeof data.cliMsgId === "string" ? data.cliMsgId : undefined,
      hasAnyMention,
      canResolveExplicitMention,
      wasExplicitlyMentioned,
