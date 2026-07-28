@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "sourceMap": false,
+    "newLine": "lf",
+    "types": ["node"]
+  },
+  "files": ["src/crypto.ts", "src/daemon.ts"],
+  "include": []
+}

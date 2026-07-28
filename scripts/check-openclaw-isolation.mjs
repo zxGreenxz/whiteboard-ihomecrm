@@ -85,6 +85,7 @@ const SKIPPED_DIRECTORY_PATHS = [
   "services/openclaw-zalo-cell/.release",
   "services/openclaw-zalo-cell/.state",
   "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work",
+  "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package",
 ];
 
 const SKIPPED_FILES = new Set([

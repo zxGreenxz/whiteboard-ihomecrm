@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ihome.local/schemas/openclaw-zalo-cell-build-evidence-v1.json",
+  "title": "OpenClaw Zalo cell reproducible image evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reviewed_tree",
+    "source_date_epoch",
+    "platform",
+    "image_digest",
+    "image_lock",
+    "base_image",
+    "buildx",
+    "buildkit",
+    "docker",
+    "oci",
+    "installed_fork",
+    "session_crypto",
+    "verification"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "reviewed_tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "source_date_epoch": { "type": "string", "const": "1785062400" },
+    "platform": { "type": "string", "const": "linux/amd64" },
+    "image_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "image_lock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "algorithm", "context_root_sha256"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "const": "services/openclaw-zalo-cell/image-lock.json"
+        },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "algorithm": {
+          "type": "string",
+          "const": "ihome-openclaw-context-root-v2"
+        },
+        "context_root_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "base_image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "digest"],
+      "properties": {
+        "reference": {
+          "type": "string",
+          "const": "ghcr.io/openclaw/openclaw:2026.7.1@sha256:165b4992f1b4b74ffdd7a02c887ba006f9f5dc951eca420eef573a8b233b543f"
+        },
+        "digest": {
+          "type": "string",
+          "const": "sha256:165b4992f1b4b74ffdd7a02c887ba006f9f5dc951eca420eef573a8b233b543f"
+        }
+      }
+    },
+    "buildx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "version", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^.+$" },
+        "version": { "type": "string", "const": "0.13.1" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "buildkit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "version"],
+      "properties": {
+        "image": {
+          "type": "string",
+          "const": "moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6"
+        },
+        "version": { "type": "string", "const": "v0.13.2" }
+      }
+    },
+    "docker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stages", "network_none", "offline_install", "session_dist_paths"],
+      "properties": {
+        "stages": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "enum": ["install", "runtime"] }
+        },
+        "network_none": { "type": "boolean", "const": true },
+        "offline_install": { "type": "boolean", "const": true },
+        "session_dist_paths": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "type": "string", "pattern": "^session-crypto/dist/.+$" }
+        }
+      }
+    },
+    "oci": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archive_a_sha256",
+        "archive_b_sha256",
+        "byte_identical",
+        "promoted_archive_path",
+        "promoted_archive_sha256",
+        "index_sha256",
+        "manifest_digest",
+        "config_digest",
+        "layer_digests",
+        "blob_manifest_sha256"
+      ],
+      "properties": {
+        "archive_a_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "archive_b_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "byte_identical": { "type": "boolean", "const": true },
+        "promoted_archive_path": { "type": "string", "pattern": "^.+$" },
+        "promoted_archive_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "index_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "manifest_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "config_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "layer_digests": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        },
+        "blob_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "session_crypto": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputs", "installed", "closure_sha256"],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/fileRecord" }
+        },
+        "installed": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/fileRecord" }
+        },
+        "closure_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "installed_fork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entries", "file_count", "directory_count", "root_sha256"],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/installedRecord" }
+        },
+        "file_count": { "type": "integer" },
+        "directory_count": { "type": "integer" },
+        "root_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image_lock", "schema", "normalized_install", "minimal_rootfs"],
+      "properties": {
+        "image_lock": { "type": "boolean", "const": true },
+        "schema": { "type": "boolean", "const": true },
+        "normalized_install": { "type": "boolean", "const": true },
+        "minimal_rootfs": { "type": "boolean", "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "fileRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "size", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^session-crypto/dist/.+$" },
+        "type": { "type": "string", "const": "blob" },
+        "mode": { "type": "string", "enum": ["100644", "100755"] },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "installedRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "size", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^.+$" },
+        "type": { "type": "string", "enum": ["file", "directory"] },
+        "mode": { "type": "string", "enum": ["0644", "0755"] },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

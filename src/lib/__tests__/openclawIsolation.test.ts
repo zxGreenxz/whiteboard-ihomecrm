@@ -464,6 +464,32 @@ describe("OpenClaw Zalo isolation guardrail", () => {
     expect(foundFiles).toEqual([...scopedPaths].sort());
   });
 
+  it("skips only the immutable reviewed upstream package snapshot", () => {
+    const root = makeFixture({
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/src/constants.ts":
+        `export const ZALO_INTERNAL_EVENT = "snapshot-owned upstream identifier";`,
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/owned.test.ts":
+        `const table = "zalo_owned_vendor_test";`,
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/0001-owned.patch":
+        `+const table = "zalo_owned_patch";`,
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/owned.ts":
+        `const table = "zalo_owned_overlay";`,
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/manifest.json":
+        `{"legacy":"zalo_owned_artifact_manifest"}`,
+    });
+
+    expect(
+      scanOpenClawFiles(root)
+        .filter((finding) => finding.rule === "legacy-zalo-identifier")
+        .map((finding) => finding.file),
+    ).toEqual([
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/manifest.json",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/0001-owned.patch",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/owned.ts",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/owned.test.ts",
+    ]);
+  });
+
   it("keeps every required OpenClaw ignore entry exactly once", () => {
     const ignoreLines = readFileSync(".gitignore", "utf8").split(/\r?\n/);
 
