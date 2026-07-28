@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
+import { nrm } from "@/lib/fixedExpenseCategories";
 import { toast } from "sonner";
 import {
   type SalManager,
@@ -869,7 +870,7 @@ export const useSalaryPayout = () => {
         const { data: invFresh } = await (supabase
           .from("invoices")
           .select(
-            "id, user_id, invoice_number, building_id, room_id, contract_id, total_amount, remaining_amount, room:rooms!invoices_room_id_fkey(name), building:buildings!invoices_building_id_fkey(name)",
+            "id, user_id, organization_id, invoice_number, building_id, room_id, contract_id, total_amount, remaining_amount, room:rooms!invoices_room_id_fkey(name), building:buildings!invoices_building_id_fkey(name)",
           )
           .eq("id", input.rentInvoice.invoiceId)
           .is("deleted_at", null)
@@ -887,22 +888,55 @@ export const useSalaryPayout = () => {
       // toà chung hệ thống (toà ảo — hiện là "Kho Văn Phòng Chung")
       const { data: chung } = await (supabase
         .from("buildings").select("id, organization_id") as any)
+        .eq("user_id", input.ownerId)
         .eq("is_virtual", true).is("deleted_at", null)
         .order("created_at", { ascending: true }).limit(1).maybeSingle();
+      const organizationId = (chung as { organization_id?: string } | null)
+        ?.organization_id;
+      if (!chung?.id || !organizationId) {
+        throw new Error("Không xác định được tổ chức cho phiếu chi lương");
+      }
 
       // hạng mục "Lương quản lý"
-      let typeId: string;
-      const { data: t } = await (supabase
-        .from("income_expense_types").select("id") as any)
-        .eq("user_id", input.ownerId).eq("type", "expense").eq("name", "Lương quản lý").limit(1).maybeSingle();
-      if (t?.id) typeId = (t as any).id;
-      else {
+      const salaryTypeName = "Lương quản lý";
+      const findSalaryType = async (): Promise<string | null> => {
+        const { data: typeRows, error: typeLookupError } = await (supabase
+          .from("income_expense_types")
+          .select("id, name") as any)
+          .eq("organization_id", organizationId)
+          .eq("type", "expense");
+        if (typeLookupError) throw typeLookupError;
+        return (
+          ((typeRows ?? []) as Array<{ id: string; name: string }>).find(
+            (row) => nrm(row.name) === nrm(salaryTypeName),
+          )?.id ?? null
+        );
+      };
+
+      let typeId = await findSalaryType();
+      if (!typeId) {
         const { data: created, error } = await supabase
           .from("income_expense_types")
-          .insert({ user_id: input.ownerId, name: "Lương quản lý", type: "expense", category: "Lương", is_default: false, is_deposit: false })
+          .insert({
+            user_id: input.ownerId,
+            organization_id: organizationId,
+            name: salaryTypeName,
+            type: "expense",
+            category: "Lương",
+            is_default: false,
+            is_deposit: false,
+          })
           .select("id").single();
-        if (error) throw error;
-        typeId = (created as any).id;
+        if (error?.code === "23505") {
+          typeId = await findSalaryType();
+        } else if (error) {
+          throw error;
+        } else {
+          typeId = (created as { id: string }).id;
+        }
+      }
+      if (!typeId) {
+        throw new Error("Không thể xác định hạng mục Lương quản lý trong tổ chức");
       }
 
       const name = input.note?.trim() || `Lương: ${input.staffName}`;
@@ -913,8 +947,8 @@ export const useSalaryPayout = () => {
           creator_name: creatorName,
           type: "EXPENSE",
           name,
-          building_id: chung ? (chung as any).id : null,
-          organization_id: chung ? (chung as any).organization_id : null,
+          building_id: chung.id,
+          organization_id: organizationId,
           account_id: input.account_id,
           salary_staff_id: input.staffId,
           business_result_accounting: false,
@@ -934,6 +968,7 @@ export const useSalaryPayout = () => {
         {
           income_expense_id: (voucher as any).id,
           income_expense_type_id: typeId,
+          organization_id: organizationId,
           accounting_class: "PNL",
           description: rentCollect > 0 ? `Tiền thực nhận — ${name}` : (input.note ?? null),
           quantity: 1,
@@ -946,6 +981,7 @@ export const useSalaryPayout = () => {
         salItems.push({
           income_expense_id: (voucher as any).id,
           income_expense_type_id: typeId,
+          organization_id: organizationId,
           accounting_class: "PNL",
           description: `Tiền phòng (khấu trừ) · HĐ ${rentInv.invoice_number ?? ""}`.trim(),
           quantity: 1,
@@ -963,17 +999,23 @@ export const useSalaryPayout = () => {
       // để khớp RLS (giống thu tiền thường).
       if (rentCollect > 0 && rentInv) {
         const invOwner = (rentInv as any).user_id as string;
+        const rentOrganizationId = (rentInv as any).organization_id as
+          | string
+          | null;
+        if (!rentOrganizationId) {
+          throw new Error("Không xác định được tổ chức của hóa đơn tiền phòng");
+        }
 
         // loại thu doanh thu (không phải cọc)
         const { data: incTypes } = await (supabase
           .from("income_expense_types")
           .select("id, is_default, name, is_deposit") as any)
+          .eq("organization_id", rentOrganizationId)
           .eq("type", "income").limit(100);
         const revenueTypes = ((incTypes || []) as any[]).filter((x) => !x.is_deposit);
-        const normT = (s?: string) => (s ?? "").trim().toLowerCase();
         const incomeTypeId =
           revenueTypes.find((x) => x.is_default)?.id ||
-          revenueTypes.find((x) => normT(x.name) === "thu tiền hoá đơn" || normT(x.name) === "thu tiền hóa đơn")?.id ||
+          revenueTypes.find((x) => nrm(x.name) === nrm("Thu tiền hóa đơn"))?.id ||
           [...revenueTypes].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))[0]?.id;
         if (!incomeTypeId) throw new Error('Chưa có loại thu (không phải cọc) trong "Loại thu/chi".');
 
@@ -997,6 +1039,7 @@ export const useSalaryPayout = () => {
           .from("income_expenses")
           .insert({
             user_id: invOwner,
+            organization_id: rentOrganizationId,
             type: "INCOME",
             name: `Thu tiền phòng HĐ ${roomNm}${bldNm ? "/" + bldNm : ""} (khấu trừ lương ${input.staffName})`,
             building_id: (rentInv as any).building_id,
@@ -1017,6 +1060,7 @@ export const useSalaryPayout = () => {
         const { error: rItErr } = await supabase.from("income_expense_items").insert({
           income_expense_id: (rentVoucher as any).id,
           income_expense_type_id: incomeTypeId,
+          organization_id: rentOrganizationId,
           accounting_class: "PNL",
           description: `Thu tiền phòng HĐ ${roomNm}`.trim(),
           quantity: 1,

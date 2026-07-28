@@ -42,12 +42,13 @@ export default function CustomerVehiclesSection() {
     <div className="space-y-3">
       {fields.map((field, index) => (
         <div key={field.id} className="flex items-end gap-3">
+          <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-4">
           {/* Loại phương tiện */}
           <FormField
             control={control}
             name={`vehicles.${index}.vehicle_type`}
             render={({ field: f }) => (
-              <FormItem className="flex-1">
+              <FormItem>
                 {index === 0 && <FormLabel>Loại phương tiện</FormLabel>}
                 <Select onValueChange={f.onChange} value={f.value || ''}>
                   <FormControl>
@@ -72,10 +73,24 @@ export default function CustomerVehiclesSection() {
             control={control}
             name={`vehicles.${index}.vehicle_name`}
             render={({ field: f }) => (
-              <FormItem className="flex-1">
+              <FormItem>
                 {index === 0 && <FormLabel>Tên dòng xe</FormLabel>}
                 <FormControl>
                   <Input placeholder="VD: Honda Wave" {...f} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          {/* Màu xe */}
+          <FormField
+            control={control}
+            name={`vehicles.${index}.color`}
+            render={({ field: f }) => (
+              <FormItem>
+                {index === 0 && <FormLabel>Màu xe</FormLabel>}
+                <FormControl>
+                  <Input placeholder="VD: Đen, Trắng, Đỏ" {...f} value={f.value ?? ''} />
                 </FormControl>
               </FormItem>
             )}
@@ -86,7 +101,7 @@ export default function CustomerVehiclesSection() {
             control={control}
             name={`vehicles.${index}.license_plate`}
             render={({ field: f }) => (
-              <FormItem className="flex-1">
+              <FormItem>
                 {index === 0 && <FormLabel>Biển số xe</FormLabel>}
                 <FormControl>
                   <Input placeholder="VD: 59A-12345" {...f} />
@@ -94,12 +109,15 @@ export default function CustomerVehiclesSection() {
               </FormItem>
             )}
           />
+          </div>
 
           {/* Remove button */}
           <Button
             type="button"
             variant="ghost"
             size="icon"
+            aria-label="Xoá phương tiện"
+            title="Xoá phương tiện"
             className="h-9 w-9 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0"
             onClick={() => remove(index)}
           >
@@ -112,7 +130,9 @@ export default function CustomerVehiclesSection() {
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => append({ vehicle_type: 'MOTORBIKE', vehicle_name: '', license_plate: '' })}
+        onClick={() =>
+          append({ vehicle_type: 'MOTORBIKE', vehicle_name: '', color: '', license_plate: '' })
+        }
         className="gap-1"
       >
         <Plus className="h-4 w-4" />

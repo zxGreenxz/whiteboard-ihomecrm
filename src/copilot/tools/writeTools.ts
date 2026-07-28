@@ -36,7 +36,7 @@ type Input = z.infer<typeof inputSchema>;
 async function resolveBuilding(name: string) {
   const { data, error } = await supabase
     .from('buildings')
-    .select('id, name')
+    .select('id, name, organization_id')
     .ilike('name', `%${name}%`)
     .is('deleted_at', null)
     .limit(5);
@@ -44,12 +44,17 @@ async function resolveBuilding(name: string) {
   return data ?? [];
 }
 
-async function resolveType(name: string, ieType: 'INCOME' | 'EXPENSE') {
+async function resolveType(
+  name: string,
+  ieType: 'INCOME' | 'EXPENSE',
+  organizationId: string,
+) {
   // GOTCHA: income_expense_types.type là chữ THƯỜNG ('income'/'expense'),
   // trong khi income_expenses.type là HOA ('INCOME'/'EXPENSE').
   const { data, error } = await supabase
     .from('income_expense_types')
     .select('id, name, type')
+    .eq('organization_id', organizationId)
     .eq('type', ieType.toLowerCase())
     .ilike('name', `%${name}%`)
     .limit(5);
@@ -76,12 +81,15 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
     if (buildings.length > 1) {
       return `Có ${buildings.length} toà khớp "${args.toa_nha}": ${buildings.map((b) => b.name).join(', ')}. Hỏi người dùng chọn toà nào rồi gọi lại với tên chính xác.`;
     }
-    const types = await resolveType(args.hang_muc, ieType);
+    const building = buildings[0];
+    if (!building.organization_id) {
+      throw new Error('Tòa nhà chưa thuộc tổ chức; không thể chọn hạng mục an toàn.');
+    }
+    const types = await resolveType(args.hang_muc, ieType, building.organization_id);
     if (!types.length) return `Không tìm thấy hạng mục ${args.loai} nào khớp "${args.hang_muc}". Hỏi lại người dùng.`;
     if (types.length > 1) {
       return `Có ${types.length} hạng mục khớp "${args.hang_muc}": ${types.map((t) => t.name).join(', ')}. Hỏi người dùng chọn rồi gọi lại với tên chính xác.`;
     }
-    const building = buildings[0];
     const type = types[0];
 
     const preview =
@@ -133,6 +141,7 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
       {
         p_row: {
           user_id: user.id,
+          organization_id: building.organization_id,
           creator_name: `${creatorName} (AI Copilot)`,
           type: ieType,
           name: args.ten_phieu,
@@ -150,6 +159,7 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
         p_items: [
           {
             income_expense_type_id: type.id,
+            organization_id: building.organization_id,
             description: args.ten_phieu,
             quantity: 1,
             unit_price: args.so_tien,

@@ -118,7 +118,7 @@ export function DataDefinitionsTab({ filters }: DataDefinitionsTabProps) {
           </p>
           <p className="text-sm leading-relaxed text-muted-foreground">
             RPC danh sách xác định tổ chức và các tòa vật lý người dùng được phép
-            xem. Năm RPC chỉ số nhận{" "}
+            xem. Mười một RPC chỉ số nhận{" "}
             <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
               organization_id
             </code>{" "}
@@ -164,9 +164,11 @@ export function DataDefinitionsTab({ filters }: DataDefinitionsTabProps) {
                 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
                   business_performance_pnl_v1
                 </code>
-                . Đây là nguồn P&amp;L đang hoạt động trong MVP độc lập; cơ cấu
-                Thu/Chi theo hạng mục chưa phải nguồn dữ liệu hoạt động của báo
-                cáo này.
+                . Cơ cấu Thu/Chi theo hạng mục dùng RPC{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+                  business_performance_category_breakdown_v1
+                </code>{" "}
+                trên cùng cơ sở ghi nhận và phạm vi tòa vật lý.
               </p>
               {isAccrual ? (
                 <div className="flex flex-col gap-2">
@@ -216,6 +218,24 @@ export function DataDefinitionsTab({ filters }: DataDefinitionsTabProps) {
             <Separator />
 
             <div className="flex flex-col gap-2">
+              <h4 className="text-sm font-semibold">Vai trò tài chính và hòa vốn</h4>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Mapping effective-dated đọc từ{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+                  business_performance_reporting_roles_v1
+                </code>
+                ; số hòa vốn tháng chọn và bình quân ba tháng lấy từ{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+                  business_performance_break_even_v1
+                </code>
+                . Hòa vốn chỉ trả tỷ lệ khi mapping, tiền thuê chủ nhà, tỷ lệ đóng góp
+                và công suất đều hợp lệ.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="flex flex-col gap-2">
               <h4 className="text-sm font-semibold">KPI thời điểm hiện tại</h4>
               <p className="text-sm leading-relaxed text-muted-foreground">
                 Phải thu, tuổi nợ, tiền cọc đang giữ và các KPI live lấy từ{" "}
@@ -244,9 +264,28 @@ export function DataDefinitionsTab({ filters }: DataDefinitionsTabProps) {
                 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
                   business_performance_occupancy_monthly_v1
                 </code>
-                . Dữ liệu lịch sử hiện chỉ là ước tính từ giao thoa hợp đồng với
-                tồn kho phòng hiện tại; không ghép thành một chuỗi snapshot liền
-                mạch với snapshot live.
+                . Lịch sử snapshot authoritative lấy từ{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+                  business_performance_inventory_history_v1
+                </code>
+                ; tháng trước rollout hoặc lỡ cutoff giữ trạng thái thiếu và giá trị null.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="flex flex-col gap-2">
+              <h4 className="text-sm font-semibold">Cohort hóa đơn và tiền thực thu</h4>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Cohort hóa đơn tách current charge, nợ chuyển tiếp, cọc và settlement qua{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+                  business_performance_invoice_cohort_v1
+                </code>
+                . Tiền giữ lại theo ngày payment lấy độc lập từ{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
+                  business_performance_cash_received_v1
+                </code>
+                , đã loại reversal và collection bị đảo.
               </p>
             </div>
           </CardContent>
@@ -326,25 +365,21 @@ export function DataDefinitionsTab({ filters }: DataDefinitionsTabProps) {
 
       <Alert role="note">
         <Info aria-hidden="true" />
-        <AlertTitle>
-          Các chỉ số chỉ xuất hiện sau khi đạt đủ điều kiện dữ liệu
-        </AlertTitle>
+        <AlertTitle>Quy tắc fail-closed vẫn áp dụng theo từng dòng</AlertTitle>
         <AlertDescription className="flex flex-col gap-2">
           <p>
-            Hòa vốn được ẩn cho đến khi vai trò tài chính của loại Thu/Chi, hiệu
-            lực mapping và phân bổ fixed/variable/pass-through đã được xác nhận
-            và đối chiếu với KQKD.
+            Hòa vốn chỉ trả tỷ lệ khi vai trò tài chính, tiền thuê chủ nhà, tỷ lệ
+            đóng góp và công suất đạt điều kiện; nếu không, RPC trả lý do cụ thể.
           </p>
           <p>
-            Cohort hóa đơn và tỷ lệ thu được ẩn cho đến khi thành phần hóa đơn
-            cùng payment allocation đạt coverage yêu cầu, không đếm lại nợ
-            chuyển tiếp, tiền cọc hoặc settlement.
+            Cohort hóa đơn tách current charge khỏi nợ chuyển tiếp, tiền cọc và
+            settlement. Thiếu payment allocation làm KPI cohort không khả dụng,
+            nhưng không che số tiền thực thu theo payment date.
           </p>
           <p>
-            Cơ cấu Thu/Chi theo hạng mục được ẩn cho đến khi RPC tự kiểm tra
-            report action, tổ chức, phạm vi tòa và hạng mục hạn chế. Trung tâm
-            không đọc nhãn loại từ RPC legacy chạy dưới quyền definer để tránh
-            lộ thông tin hạng mục bị hạn chế.
+            Cơ cấu Thu/Chi theo hạng mục dùng RPC tự kiểm tra report action, tổ
+            chức, phạm vi tòa và quyền xem hạng mục hạn chế; lỗi truy vấn không
+            được đổi thành danh sách rỗng hoặc tổng 0.
           </p>
         </AlertDescription>
       </Alert>

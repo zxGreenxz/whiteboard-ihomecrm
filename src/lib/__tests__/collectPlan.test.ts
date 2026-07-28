@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import * as collectPlanModule from '../collectPlan';
 import { planCollect, planConflictsWithRemaining, type CollectPlanLine } from '../collectPlan';
 
 const ok = (r: ReturnType<typeof planCollect>) => {
   if (!r.ok) throw new Error('expected ok, got error: ' + r.error);
   return r.plan;
 };
+
+describe('deriveOverpayPolicy', () => {
+  it('phân biệt hoàn tùy chọn và credit bắt buộc theo TM của lần thu hiện tại', () => {
+    const derive = (collectPlanModule as any).deriveOverpayPolicy;
+    expect(derive).toBeTypeOf('function');
+
+    expect(derive({ total: 5_000_000, amountTm: 5_000_000, remaining: 4_000_000, hasContract: true }))
+      .toMatchObject({ overpay: 1_000_000, canRefund: true, mustKeepAsCredit: false, canKeepAsCredit: true });
+    expect(derive({ total: 5_000_000, amountTm: 0, remaining: 4_000_000, hasContract: true }))
+      .toMatchObject({ overpay: 1_000_000, canRefund: false, mustKeepAsCredit: true, canKeepAsCredit: true });
+    expect(derive({ total: 5_000_000, amountTm: 500_000, remaining: 4_000_000, hasContract: false }))
+      .toMatchObject({ overpay: 1_000_000, canRefund: false, mustKeepAsCredit: true, canKeepAsCredit: false });
+  });
+});
 
 describe('planCollect — multi-line', () => {
   it('1 dòng TM đúng số → không thối, không tròn', () => {
@@ -39,16 +54,45 @@ describe('planCollect — multi-line', () => {
     if (!r.ok) expect(r.error).toMatch(/hợp đồng/);
   });
 
-  it('TK vượt remaining → chặn (chỉ TM mới thu dư)', () => {
-    const r = planCollect({ lines: [{ method: 'TK', amount: 5_000_000 }], remaining: 4_000_000 });
+  it('TK vượt remaining → bắt buộc giữ credit trừ kỳ sau', () => {
+    const p = ok(planCollect({
+      lines: [{ method: 'TK', amount: 5_000_000 }],
+      remaining: 4_000_000,
+      hasContract: true,
+    }));
+    expect(p).toMatchObject({
+      amountTk: 5_000_000,
+      change: 1_000_000,
+      keepAsCredit: true,
+    });
+  });
+
+  it('TK thu dư nhưng không có hợp đồng → chặn', () => {
+    const r = planCollect({
+      lines: [{ method: 'TK', amount: 5_000_000 }],
+      remaining: 4_000_000,
+      hasContract: false,
+    });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/TK\/TT vượt/);
+    if (!r.ok) expect(r.error).toMatch(/hợp đồng/);
   });
 
   it('TK đúng remaining + TM dư → thối phần TM dư', () => {
     // TK 4tr (=remaining), TM 1tr dư → tổng 5tr, overpay 1tr (qua TM)
     const p = ok(planCollect({ lines: [{ method: 'TK', amount: 4_000_000 }, { method: 'TM', amount: 1_000_000 }], remaining: 4_000_000 }));
     expect(p).toMatchObject({ amountTk: 4_000_000, amountTm: 1_000_000, change: 1_000_000 });
+  });
+
+  it('phiếu kết hợp có TM nhưng TM không đủ phần dư → bắt buộc credit', () => {
+    const p = ok(planCollect({
+      lines: [
+        { method: 'TM', amount: 500_000 },
+        { method: 'TT', amount: 4_500_000 },
+      ],
+      remaining: 4_000_000,
+      hasContract: true,
+    }));
+    expect(p).toMatchObject({ change: 1_000_000, keepAsCredit: true });
   });
 
   it('thu thiếu < 10K → làm tròn', () => {
@@ -111,7 +155,7 @@ describe('planCollect — invariants (property-based)', () => {
     amount: fc.integer({ min: 0, max: 20_000_000 }),
   });
 
-  it('ok ⇒ change ≤ amountTm và tiền không âm', () => {
+  it('ok ⇒ chỉ hoàn tiền mới yêu cầu change ≤ amountTm và tiền không âm', () => {
     fc.assert(
       fc.property(
         fc.array(lineArb, { minLength: 1, maxLength: 6 }),
@@ -121,7 +165,7 @@ describe('planCollect — invariants (property-based)', () => {
           const r = planCollect({ lines, remaining, keepAsCredit: keep, hasContract: true });
           if (!r.ok) return;
           const p = r.plan;
-          expect(p.change).toBeLessThanOrEqual(p.amountTm);
+          if (!p.keepAsCredit) expect(p.change).toBeLessThanOrEqual(p.amountTm);
           expect(Math.min(p.amountTm, p.amountTk, p.amountTt, p.change, p.rounding)).toBeGreaterThanOrEqual(0);
           // thu dư và thu thiếu loại trừ nhau
           if (p.change > 0) expect(p.rounding).toBe(0);

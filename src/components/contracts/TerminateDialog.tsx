@@ -568,16 +568,16 @@ function StepMoveOut({
   const [pendingData, setPendingData] =
     useState<TerminateMoveOutFormData | null>(null);
 
-  // Auto fill credit (excess_amounts) vào "Tiền phòng thừa" lần đầu khi user
-  // chưa chỉnh tay. Chỉ thực hiện khi credit > 0 và excess_rent chưa được
-  // user gõ (sau khi user gõ "dirty" thì giữ nguyên).
-  const excessDirty = !!form.formState.dirtyFields.excess_rent;
-  useEffect(() => {
-    if (creditBalance > 0 && !excessDirty) {
-      form.setValue("excess_rent", creditBalance);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [creditBalance]);
+  // [A2] KHÔNG auto-fill credit vào "Tiền phòng thừa" nữa.
+  //
+  // Trước đây ô này tự điền = credit của khách, nên MỌI hợp đồng có credit đều
+  // gửi excess_rent > 0 lên server mà người dùng không hề gõ. Server lại từ chối
+  // vì tính năng áp credit (customer.credit.apply.v1) đang ở chế độ SHADOW —
+  // đo được: 30 hợp đồng ACTIVE / 6.695.284đ credit KHÔNG thanh lý được theo
+  // luồng mặc định, và khi lỗi xảy ra hệ thống không để lại dấu vết nào.
+  //
+  // Để mặc định 0 thì thanh lý chạy bình thường, khoản dư giữ nguyên trên sổ
+  // credit và xử lý riêng. Người dùng vẫn gõ tay được nếu tính năng được bật.
 
   // Watch values for real-time settlement calculation
   const depositRefund = form.watch("deposit_refund") || 0;
@@ -822,8 +822,9 @@ function StepMoveOut({
                   {creditBalance > 0 && (
                     <p className="text-[11px] text-blue-700">
                       Khách đang có {formatVND(creditBalance)}đ credit (tiền trả
-                      dư). Chỉ phần nhập ở đây được áp vào quyết toán và trừ
-                      khỏi credit; phần còn lại giữ nguyên.
+                      dư). Mặc định <b>0</b> — tính năng áp credit vào quyết toán
+                      hiện <b>chưa được kích hoạt</b>, nhập số lớn hơn 0 sẽ bị hệ
+                      thống từ chối. Khoản dư giữ nguyên, hoàn hoặc cấn trừ riêng.
                     </p>
                   )}
                   <FormMessage />
@@ -1059,6 +1060,19 @@ function StepMoveOut({
                   <div className="flex justify-between">
                     <span>Tiền thừa (credit) áp vào quyết toán</span>
                     <b className="tabular-nums">{formatVND(excessRent)} đ</b>
+                  </div>
+                )}
+                {/* [A2] Sau khi bỏ auto-fill, excessRent mặc định = 0 nên màn
+                    hình xác nhận cuối cùng sẽ KHÔNG nhắc gì tới credit của
+                    khách. Với thao tác không hoàn tác được, phải nói rõ khoản
+                    đó không nằm trong quyết toán này. */}
+                {creditBalance > excessRent && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+                    Khách còn{" "}
+                    <b>{formatVND(creditBalance - excessRent)} đ</b> tiền trả dư
+                    (credit) KHÔNG nằm trong quyết toán này. Sau khi thanh lý,
+                    khoản đó vẫn treo trên hợp đồng và phải hoàn hoặc cấn trừ
+                    thủ công.
                   </div>
                 )}
                 <div className="flex justify-between border-t pt-1.5">

@@ -3245,7 +3245,7 @@ export type Database = {
             foreignKeyName: "contract_transfers_new_tenant_id_fkey"
             columns: ["new_tenant_id"]
             isOneToOne: false
-            referencedRelation: "tenants"
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
@@ -3259,7 +3259,7 @@ export type Database = {
             foreignKeyName: "contract_transfers_old_tenant_id_fkey"
             columns: ["old_tenant_id"]
             isOneToOne: false
-            referencedRelation: "tenants"
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
@@ -4457,6 +4457,84 @@ export type Database = {
           },
         ]
       }
+      finance_contract_month_snapshots: {
+        Row: {
+          actual_end_date: string | null
+          as_of_timestamp: string
+          building_id: string
+          building_name: string
+          captured_at: string
+          contract_id: string
+          contract_number: string | null
+          contract_status: string
+          effective_end_date: string
+          end_date: string
+          id: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          snapshot_month: string
+          snapshot_run_id: string
+          start_date: string
+        }
+        Insert: {
+          actual_end_date?: string | null
+          as_of_timestamp: string
+          building_id: string
+          building_name: string
+          captured_at: string
+          contract_id: string
+          contract_number?: string | null
+          contract_status: string
+          effective_end_date: string
+          end_date: string
+          id?: string
+          organization_id: string
+          rent_price: number
+          room_id: string
+          room_name: string
+          snapshot_month: string
+          snapshot_run_id: string
+          start_date: string
+        }
+        Update: {
+          actual_end_date?: string | null
+          as_of_timestamp?: string
+          building_id?: string
+          building_name?: string
+          captured_at?: string
+          contract_id?: string
+          contract_number?: string | null
+          contract_status?: string
+          effective_end_date?: string
+          end_date?: string
+          id?: string
+          organization_id?: string
+          rent_price?: number
+          room_id?: string
+          room_name?: string
+          snapshot_month?: string
+          snapshot_run_id?: string
+          start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_contract_month_snapshots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_contract_month_snapshots_snapshot_run_id_fkey"
+            columns: ["snapshot_run_id"]
+            isOneToOne: false
+            referencedRelation: "finance_month_snapshot_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       finance_evidence_objects: {
         Row: {
           bucket_id: string
@@ -4549,6 +4627,367 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "finance_evidence_objects"
             referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      finance_invoice_component_allocations: {
+        Row: {
+          allocation_version: number
+          amount: number
+          collection_id: string
+          component_id: string
+          created_at: string
+          id: string
+          invoice_id: string
+          organization_id: string
+        }
+        Insert: {
+          allocation_version?: number
+          amount: number
+          collection_id: string
+          component_id: string
+          created_at?: string
+          id?: string
+          invoice_id: string
+          organization_id: string
+        }
+        Update: {
+          allocation_version?: number
+          amount?: number
+          collection_id?: string
+          component_id?: string
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_invoice_component_allocations_collection_org_fkey"
+            columns: ["collection_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_payment_collections"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "finance_invoice_component_allocations_component_org_fkey"
+            columns: ["component_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "finance_invoice_components"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "finance_invoice_component_allocations_invoice_org_fkey"
+            columns: ["invoice_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "finance_invoice_component_allocations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_invoice_component_manifests: {
+        Row: {
+          anomaly_code: string | null
+          captured_at: string
+          component_status: string
+          component_total: number
+          component_version: number
+          finalized_at: string | null
+          id: string
+          invoice_id: string
+          invoice_total: number
+          organization_id: string
+          source_updated_at: string
+        }
+        Insert: {
+          anomaly_code?: string | null
+          captured_at?: string
+          component_status: string
+          component_total: number
+          component_version?: number
+          finalized_at?: string | null
+          id?: string
+          invoice_id: string
+          invoice_total: number
+          organization_id: string
+          source_updated_at: string
+        }
+        Update: {
+          anomaly_code?: string | null
+          captured_at?: string
+          component_status?: string
+          component_total?: number
+          component_version?: number
+          finalized_at?: string | null
+          id?: string
+          invoice_id?: string
+          invoice_total?: number
+          organization_id?: string
+          source_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_invoice_component_manifests_invoice_org_fkey"
+            columns: ["invoice_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id", "organization_id"]
+          },
+          {
+            foreignKeyName: "finance_invoice_component_manifests_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_invoice_components: {
+        Row: {
+          amount: number
+          component_kind: string
+          component_order: number
+          created_at: string
+          id: string
+          invoice_id: string
+          manifest_id: string
+          organization_id: string
+        }
+        Insert: {
+          amount: number
+          component_kind: string
+          component_order: number
+          created_at?: string
+          id?: string
+          invoice_id: string
+          manifest_id: string
+          organization_id: string
+        }
+        Update: {
+          amount?: number
+          component_kind?: string
+          component_order?: number
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          manifest_id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_invoice_components_manifest_id_fkey"
+            columns: ["manifest_id"]
+            isOneToOne: false
+            referencedRelation: "finance_invoice_component_manifests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_invoice_components_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_month_snapshot_runs: {
+        Row: {
+          as_of_date: string | null
+          as_of_timestamp: string | null
+          capture_source: string
+          capture_version: number
+          captured_at: string | null
+          contract_count: number | null
+          created_at: string
+          finalized_at: string | null
+          id: string
+          is_late: boolean
+          late_reason: string | null
+          organization_id: string
+          room_count: number | null
+          scheduled_for: string
+          snapshot_month: string
+          source_timezone: string
+          status: string
+          updated_at: string
+          validation_summary: Json | null
+        }
+        Insert: {
+          as_of_date?: string | null
+          as_of_timestamp?: string | null
+          capture_source?: string
+          capture_version?: number
+          captured_at?: string | null
+          contract_count?: number | null
+          created_at?: string
+          finalized_at?: string | null
+          id?: string
+          is_late?: boolean
+          late_reason?: string | null
+          organization_id: string
+          room_count?: number | null
+          scheduled_for: string
+          snapshot_month: string
+          source_timezone?: string
+          status?: string
+          updated_at?: string
+          validation_summary?: Json | null
+        }
+        Update: {
+          as_of_date?: string | null
+          as_of_timestamp?: string | null
+          capture_source?: string
+          capture_version?: number
+          captured_at?: string | null
+          contract_count?: number | null
+          created_at?: string
+          finalized_at?: string | null
+          id?: string
+          is_late?: boolean
+          late_reason?: string | null
+          organization_id?: string
+          room_count?: number | null
+          scheduled_for?: string
+          snapshot_month?: string
+          source_timezone?: string
+          status?: string
+          updated_at?: string
+          validation_summary?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_month_snapshot_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      finance_reporting_role_assignments: {
+        Row: {
+          confirmed_at: string
+          confirmed_by: string
+          created_at: string
+          effective_from: string
+          effective_to: string | null
+          finance_reporting_role: string
+          id: string
+          income_expense_type_id: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          confirmed_at?: string
+          confirmed_by: string
+          created_at?: string
+          effective_from: string
+          effective_to?: string | null
+          finance_reporting_role: string
+          id?: string
+          income_expense_type_id: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          confirmed_at?: string
+          confirmed_by?: string
+          created_at?: string
+          effective_from?: string
+          effective_to?: string | null
+          finance_reporting_role?: string
+          id?: string
+          income_expense_type_id?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_reporting_role_assignments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_reporting_role_assignments_type_org_fkey"
+            columns: ["income_expense_type_id", "organization_id"]
+            isOneToOne: false
+            referencedRelation: "income_expense_types"
+            referencedColumns: ["id", "organization_id"]
+          },
+        ]
+      }
+      finance_room_month_snapshots: {
+        Row: {
+          active_contract_count: number
+          as_of_timestamp: string
+          building_id: string
+          building_name: string
+          captured_at: string
+          id: string
+          listed_rent: number | null
+          occupancy_group: string
+          organization_id: string
+          room_id: string
+          room_name: string
+          room_status: string
+          snapshot_month: string
+          snapshot_run_id: string
+        }
+        Insert: {
+          active_contract_count: number
+          as_of_timestamp: string
+          building_id: string
+          building_name: string
+          captured_at: string
+          id?: string
+          listed_rent?: number | null
+          occupancy_group: string
+          organization_id: string
+          room_id: string
+          room_name: string
+          room_status: string
+          snapshot_month: string
+          snapshot_run_id: string
+        }
+        Update: {
+          active_contract_count?: number
+          as_of_timestamp?: string
+          building_id?: string
+          building_name?: string
+          captured_at?: string
+          id?: string
+          listed_rent?: number | null
+          occupancy_group?: string
+          organization_id?: string
+          room_id?: string
+          room_name?: string
+          room_status?: string
+          snapshot_month?: string
+          snapshot_run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "finance_room_month_snapshots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_room_month_snapshots_snapshot_run_id_fkey"
+            columns: ["snapshot_run_id"]
+            isOneToOne: false
+            referencedRelation: "finance_month_snapshot_runs"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -5319,6 +5758,110 @@ export type Database = {
           },
         ]
       }
+      income_expense_type_merge_audit: {
+        Row: {
+          canonical_before: Json
+          canonical_type_id: string
+          duplicate_before: Json
+          duplicate_type_id: string
+          finance_role_assignments_before: Json
+          finance_role_reference_count: number
+          id: string
+          item_reference_count: number
+          merged_at: string
+          migration_version: string
+          moved_item_ids: string[]
+          normalized_name: string
+          organization_id: string
+          type: string
+        }
+        Insert: {
+          canonical_before: Json
+          canonical_type_id: string
+          duplicate_before: Json
+          duplicate_type_id: string
+          finance_role_assignments_before?: Json
+          finance_role_reference_count: number
+          id?: string
+          item_reference_count: number
+          merged_at?: string
+          migration_version: string
+          moved_item_ids?: string[]
+          normalized_name: string
+          organization_id: string
+          type: string
+        }
+        Update: {
+          canonical_before?: Json
+          canonical_type_id?: string
+          duplicate_before?: Json
+          duplicate_type_id?: string
+          finance_role_assignments_before?: Json
+          finance_role_reference_count?: number
+          id?: string
+          item_reference_count?: number
+          merged_at?: string
+          migration_version?: string
+          moved_item_ids?: string[]
+          normalized_name?: string
+          organization_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expense_type_merge_audit_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      income_expense_type_reference_repair_audit: {
+        Row: {
+          id: string
+          item_before: Json
+          item_id: string
+          migration_version: string
+          repaired_at: string
+          source_organization_id: string
+          source_type_before: Json
+          source_type_id: string
+          target_organization_id: string
+          target_type_before: Json
+          target_type_id: string
+          voucher_id: string
+        }
+        Insert: {
+          id?: string
+          item_before: Json
+          item_id: string
+          migration_version: string
+          repaired_at?: string
+          source_organization_id: string
+          source_type_before: Json
+          source_type_id: string
+          target_organization_id: string
+          target_type_before: Json
+          target_type_id: string
+          voucher_id: string
+        }
+        Update: {
+          id?: string
+          item_before?: Json
+          item_id?: string
+          migration_version?: string
+          repaired_at?: string
+          source_organization_id?: string
+          source_type_before?: Json
+          source_type_id?: string
+          target_organization_id?: string
+          target_type_before?: Json
+          target_type_id?: string
+          voucher_id?: string
+        }
+        Relationships: []
+      }
       income_expense_types: {
         Row: {
           category: string | null
@@ -5331,7 +5874,7 @@ export type Database = {
           is_deposit: boolean
           is_restricted: boolean
           name: string
-          organization_id: string | null
+          organization_id: string
           system_only: boolean
           type: string
           updated_at: string
@@ -5348,7 +5891,7 @@ export type Database = {
           is_deposit?: boolean
           is_restricted?: boolean
           name: string
-          organization_id?: string | null
+          organization_id: string
           system_only?: boolean
           type: string
           updated_at?: string
@@ -5365,7 +5908,7 @@ export type Database = {
           is_deposit?: boolean
           is_restricted?: boolean
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           system_only?: boolean
           type?: string
           updated_at?: string
@@ -14300,6 +14843,158 @@ export type Database = {
         Args: { p_idempotency_key: string; p_invoice_ids: string[] }
         Returns: Json
       }
+      business_performance_break_even_v1: {
+        Args: {
+          p_basis: string
+          p_building_ids: string[]
+          p_month: string
+          p_organization_id: string
+        }
+        Returns: {
+          analysis_window: string
+          break_even_occupancy_available: boolean
+          break_even_occupancy_current: number
+          break_even_occupancy_reason: string
+          break_even_occupancy_theory: number
+          break_even_revenue_available: boolean
+          break_even_revenue_reason: string
+          building_id: string
+          building_name: string
+          capacity_as_of: string
+          capacity_blocked: number
+          capacity_current: number
+          capacity_source: string
+          capacity_theory: number
+          cmr_core: number
+          cmr_room: number
+          e_pass: number
+          expense: number
+          f_landlord: number
+          f_other: number
+          gap_to_zero: number
+          generated_at: string
+          invalid_rent_room_count: number
+          mapping_coverage_pct: number
+          missing_landlord_months: string[]
+          net: number
+          outside_model_amount: number
+          r_core_be: number
+          r_other: number
+          r_pass: number
+          r_room: number
+          r_room_be: number
+          r_total_be: number
+          revenue: number
+          room_break_even_revenue_available: boolean
+          room_break_even_revenue_reason: string
+          room_revenue_utilization_pct: number
+          source_month_count: number
+          unmapped_amount: number
+          v_other: number
+          v_room: number
+          valid_month_count: number
+          window_end: string
+          window_start: string
+        }[]
+      }
+      business_performance_cash_received_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_month: string
+          p_organization_id: string
+        }
+        Returns: {
+          building_id: string
+          building_name: string
+          cash_month: string
+          cash_received: number
+          first_payment_date: string
+          generated_at: string
+          last_payment_date: string
+          payment_event_count: number
+        }[]
+      }
+      business_performance_category_breakdown_v1: {
+        Args: {
+          p_basis: string
+          p_building_ids: string[]
+          p_end_date: string
+          p_organization_id: string
+          p_start_date: string
+        }
+        Returns: {
+          category: string
+          month: string
+          side: string
+          total_amount: number
+          type_id: string
+          type_name: string
+          voucher_count: number
+        }[]
+      }
+      business_performance_inventory_history_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_end_month: string
+          p_organization_id: string
+          p_start_month: string
+        }
+        Returns: {
+          as_of_date: string
+          as_of_timestamp: string
+          availability_reason: string
+          available: number
+          building_id: string
+          building_name: string
+          capacity_blocked: number
+          capacity_current: number
+          capacity_theory: number
+          capture_version: number
+          captured_at: string
+          committed_pct: number
+          invalid_rent_room_count: number
+          is_late: boolean
+          listed_rent_opportunity: number
+          maintenance: number
+          occupancy_pct: number
+          occupied: number
+          reserved: number
+          snapshot_missing: boolean
+          snapshot_month: string
+          snapshot_status: string
+          total: number
+          unavailable: number
+        }[]
+      }
+      business_performance_invoice_cohort_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_cohort_month: string
+          p_organization_id: string
+        }
+        Returns: {
+          allocation_unknown_amount: number
+          allocation_unknown_count: number
+          billed_current_charge: number
+          building_id: string
+          building_name: string
+          carried_deposit_debt: number
+          carried_invoice_debt: number
+          cohort_available: boolean
+          cohort_month: string
+          collected_current_charge: number
+          collection_rate_pct: number
+          component_anomaly_count: number
+          current_deposit: number
+          draft_pending_amount: number
+          draft_pending_count: number
+          generated_at: string
+          invoice_count: number
+          remaining_current_charge: number
+          settlement_amount: number
+          settlement_count: number
+        }[]
+      }
       business_performance_occupancy_monthly_v1: {
         Args: {
           p_building_ids: string[]
@@ -14363,6 +15058,42 @@ export type Database = {
           month: string
           net: number
           revenue: number
+        }[]
+      }
+      business_performance_reporting_roles_v1: {
+        Args: {
+          p_building_ids: string[]
+          p_month: string
+          p_organization_id: string
+        }
+        Returns: {
+          can_manage: boolean
+          category: string
+          confirmed_at: string
+          confirmed_by: string
+          effective_from: string
+          effective_to: string
+          finance_reporting_role: string
+          income_expense_type_id: string
+          side: string
+          suggested_role: string
+          type_name: string
+        }[]
+      }
+      business_performance_set_reporting_role_v1: {
+        Args: {
+          p_effective_from: string
+          p_finance_reporting_role: string
+          p_income_expense_type_id: string
+          p_organization_id: string
+        }
+        Returns: {
+          assignment_id: string
+          confirmed_at: string
+          confirmed_by: string
+          effective_from: string
+          effective_to: string
+          finance_reporting_role: string
         }[]
       }
       business_performance_snapshot_v1: {
@@ -14910,16 +15641,6 @@ export type Database = {
           p_extension_months: number
           p_new_rent_price?: number
           p_notes?: string
-        }
-        Returns: string
-      }
-      create_tenant_transfer: {
-        Args: {
-          p_contract_id: string
-          p_new_tenant_id: string
-          p_reason?: string
-          p_transfer_date?: string
-          p_transfer_fee?: number
         }
         Returns: string
       }
@@ -15906,6 +16627,10 @@ export type Database = {
       }
       my_org_ids: { Args: never; Returns: string[] }
       natural_sort_key: { Args: { p_name: string }; Returns: string }
+      normalize_income_expense_type_name: {
+        Args: { p_name: string }
+        Returns: string
+      }
       nrm_vn: { Args: { s: string }; Returns: string }
       occupancy_snapshot_v2: {
         Args: { p_as_of_date?: string; p_building_ids?: string[] }

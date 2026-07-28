@@ -184,7 +184,16 @@ const InvoicesDesktopPage = () => {
           ? filters.room_ids[0]
           : filters.room_ids?.length
             ? undefined
-            : filters.room_id,      status: filters.status,
+            : filters.room_id,
+      // [A1] get_invoice_statistics_v2 loại hoá đơn CANCELLED khỏi mọi tổng,
+      // TRỪ khi được hỏi đích danh. Bảng dưới lọc theo view_status, nên phải
+      // dịch view "Đã huỷ" thành p_status=CANCELLED — nếu không, chọn tab đó
+      // sẽ ra bảng đầy hoá đơn nhưng thẻ thống kê toàn số 0.
+      status:
+        filters.status ??
+        (filters.view_status === 'cancelled'
+          ? ('CANCELLED' as InvoiceWithRelations['status'])
+          : undefined),
       start_date: filters.date_range?.start,
       end_date: filters.date_range?.end,
       billing_month: filters.billing_month,

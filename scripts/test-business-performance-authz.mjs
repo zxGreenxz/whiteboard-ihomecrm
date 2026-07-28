@@ -34,10 +34,19 @@ export const REQUIRED_CASE_IDS = Object.freeze([
   "analysis_only.occupancy_snapshot_allowed",
   "analysis_only.upcoming_allowed",
   "analysis_only.monthly_allowed",
+  "analysis_only.inventory_history_allowed",
   "analysis_only.pnl_denied",
   "analysis_only.snapshot_denied",
   "restricted.pnl_allowed",
   "restricted.snapshot_allowed",
+  "gated.inventory_history_allowed",
+  "gated.reporting_roles_allowed",
+  "gated.break_even_allowed",
+  "gated.invoice_cohort_allowed",
+  "gated.cash_received_allowed",
+  "gated.category_breakdown_allowed",
+  "gated.mapping_without_categories_edit_denied",
+  "gated.mapping_with_categories_edit_allowed",
   "temporal.pnl_null_start_rejected",
   "temporal.pnl_null_end_rejected",
   "temporal.pnl_reversed_rejected",
@@ -75,6 +84,12 @@ export const REQUIRED_CASE_IDS = Object.freeze([
   "scope.cross_org.occupancy_snapshot_denied",
   "scope.cross_org.upcoming_denied",
   "scope.cross_org.monthly_denied",
+  "scope.cross_org.inventory_history_denied",
+  "scope.cross_org.reporting_roles_denied",
+  "scope.cross_org.break_even_denied",
+  "scope.cross_org.invoice_cohort_denied",
+  "scope.cross_org.cash_received_denied",
+  "scope.cross_org.category_breakdown_denied",
   "scope.mixed.pnl_denied",
   "scope.mixed.snapshot_denied",
   "scope.mixed.occupancy_snapshot_denied",
@@ -303,7 +318,14 @@ SELECT
     WHERE ab.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
       AND ab.building_id = ${demoBuildingSql}
     ORDER BY ab.area_id LIMIT 1) AS demo_area_id,
-  (SELECT user_id FROM public.buildings WHERE id = ${demoBuildingSql}) AS demo_owner_id;
+  (SELECT user_id FROM public.buildings WHERE id = ${demoBuildingSql}) AS demo_owner_id,
+  (SELECT type_row.id
+     FROM public.income_expense_types type_row
+    WHERE type_row.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid
+      AND upper(type_row.type) IN ('INCOME', 'EXPENSE')
+      AND NOT COALESCE(type_row.is_deposit, false)
+    ORDER BY type_row.id
+    LIMIT 1) AS demo_type_id;
 
 DO $bp_preflight$
 BEGIN
@@ -319,6 +341,7 @@ BEGIN
        OR prod_building_id IS NULL
        OR demo_area_id IS NULL
        OR demo_owner_id IS NULL
+       OR demo_type_id IS NULL
   ) THEN
     RAISE EXCEPTION 'Business-performance authz fixture is incomplete';
   END IF;
@@ -329,6 +352,13 @@ BEGIN
      OR to_regprocedure('public.business_performance_occupancy_snapshot_v1(uuid,date,uuid[])') IS NULL
      OR to_regprocedure('public.business_performance_upcoming_vacancy_v1(uuid,date,integer,uuid[])') IS NULL
      OR to_regprocedure('public.business_performance_occupancy_monthly_v1(uuid,date,date,uuid[])') IS NULL
+     OR to_regprocedure('public.business_performance_inventory_history_v1(uuid,date,date,uuid[])') IS NULL
+     OR to_regprocedure('public.business_performance_reporting_roles_v1(uuid,date,uuid[])') IS NULL
+     OR to_regprocedure('public.business_performance_set_reporting_role_v1(uuid,uuid,text,date)') IS NULL
+     OR to_regprocedure('public.business_performance_break_even_v1(uuid,text,date,uuid[])') IS NULL
+     OR to_regprocedure('public.business_performance_invoice_cohort_v1(uuid,date,uuid[])') IS NULL
+     OR to_regprocedure('public.business_performance_cash_received_v1(uuid,date,uuid[])') IS NULL
+     OR to_regprocedure('public.business_performance_category_breakdown_v1(uuid,text,date,date,uuid[])') IS NULL
   ) THEN
     RAISE EXCEPTION 'Business-performance authz migration is not applied';
   END IF;
@@ -380,7 +410,8 @@ BEGIN
     AND override_row.permission_key IN (
       'reports_finance.analysis',
       'reports_finance.view',
-      'income_expenses.restricted_view'
+      'income_expenses.restricted_view',
+      'categories.edit'
     );
 
   DELETE FROM public.member_permission_overrides override_row
@@ -390,7 +421,8 @@ BEGIN
     AND override_row.permission_key IN (
       'reports_finance.analysis',
       'reports_finance.view',
-      'income_expenses.restricted_view'
+      'income_expenses.restricted_view',
+      'categories.edit'
     );
 
   DELETE FROM public.role_permissions permission
@@ -402,7 +434,8 @@ BEGIN
     AND permission.permission_key IN (
       'reports_finance.analysis',
       'reports_finance.view',
-      'income_expenses.restricted_view'
+      'income_expenses.restricted_view',
+      'categories.edit'
     );
 
   DELETE FROM app_private.tenant_emergency_denies deny_row
@@ -413,7 +446,8 @@ BEGIN
       OR deny_row.permission_key IN (
         'reports_finance.analysis',
         'reports_finance.view',
-        'income_expenses.restricted_view'
+        'income_expenses.restricted_view',
+        'categories.edit'
       )
     );
 END
@@ -502,6 +536,46 @@ BEGIN
   FROM pg_temp._bp_authz_fixture fixture;
 END
 $bp_add_override$;
+
+CREATE OR REPLACE FUNCTION pg_temp._bp_add_org_override(
+  p_permission_key text,
+  p_effect text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $bp_add_org_override$
+DECLARE
+  v_override_id uuid := gen_random_uuid();
+  v_scope_id uuid;
+BEGIN
+  SELECT scope.id
+    INTO v_scope_id
+  FROM public.authorization_scopes scope
+  CROSS JOIN pg_temp._bp_authz_fixture fixture
+  WHERE scope.organization_id = fixture.demo_organization_id
+    AND scope.scope_type = 'ORGANIZATION';
+
+  IF v_scope_id IS NULL THEN
+    RAISE EXCEPTION 'Missing DEMO organization authorization scope';
+  END IF;
+
+  INSERT INTO public.member_permission_overrides (
+    id, organization_id, membership_id, permission_key, effect,
+    reason, created_by, scope_mode
+  )
+  SELECT
+    v_override_id, fixture.demo_organization_id, fixture.membership_id,
+    p_permission_key, p_effect, 'business-performance rollback authz test',
+    fixture.actor_id, 'ORGANIZATION'
+  FROM pg_temp._bp_authz_fixture fixture;
+
+  INSERT INTO public.member_override_scopes(organization_id, override_id, scope_id)
+  SELECT fixture.demo_organization_id, v_override_id, v_scope_id
+  FROM pg_temp._bp_authz_fixture fixture;
+END
+$bp_add_org_override$;
 
 CREATE OR REPLACE FUNCTION pg_temp._bp_assert_decision(
   p_case_id text,
@@ -624,6 +698,33 @@ BEGIN
   END;
 END
 $bp_expect_42501$;
+
+CREATE OR REPLACE FUNCTION pg_temp._bp_expect_mapping_42501(
+  p_case_id text,
+  p_statement text
+)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public, pg_temp
+AS $bp_expect_mapping_42501$
+BEGIN
+  BEGIN
+    EXECUTE p_statement;
+    INSERT INTO pg_temp._bp_authz_results(case_id, passed, detail)
+    VALUES (p_case_id, false, jsonb_build_object('expected_sqlstate', '42501'));
+  EXCEPTION
+    WHEN SQLSTATE '42501' THEN
+      IF SQLERRM = 'Business performance mapping access denied' THEN
+        INSERT INTO pg_temp._bp_authz_results(case_id, passed, detail)
+        VALUES (p_case_id, true, jsonb_build_object('sqlstate', SQLSTATE));
+      ELSE
+        RAISE;
+      END IF;
+    WHEN OTHERS THEN
+      RAISE;
+  END;
+END
+$bp_expect_mapping_42501$;
 
 CREATE OR REPLACE FUNCTION pg_temp._bp_expect_success(
   p_case_id text,
@@ -756,7 +857,14 @@ WITH expected_public(signature) AS (
     ('business_performance_snapshot_v1(uuid, uuid[])'),
     ('business_performance_occupancy_snapshot_v1(uuid, date, uuid[])'),
     ('business_performance_upcoming_vacancy_v1(uuid, date, integer, uuid[])'),
-    ('business_performance_occupancy_monthly_v1(uuid, date, date, uuid[])')
+    ('business_performance_occupancy_monthly_v1(uuid, date, date, uuid[])'),
+    ('business_performance_inventory_history_v1(uuid, date, date, uuid[])'),
+    ('business_performance_reporting_roles_v1(uuid, date, uuid[])'),
+    ('business_performance_set_reporting_role_v1(uuid, uuid, text, date)'),
+    ('business_performance_break_even_v1(uuid, text, date, uuid[])'),
+    ('business_performance_invoice_cohort_v1(uuid, date, uuid[])'),
+    ('business_performance_cash_received_v1(uuid, date, uuid[])'),
+    ('business_performance_category_breakdown_v1(uuid, text, date, date, uuid[])')
 ), actual_public AS MATERIALIZED (
   SELECT
     p.oid,
@@ -815,7 +923,7 @@ WITH expected_public(signature) AS (
 INSERT INTO _bp_authz_results(case_id, passed, detail)
 SELECT
   'catalog.wrapper_acl_exact',
-  (SELECT count(*) FROM actual_public) = 6
+  (SELECT count(*) FROM actual_public) = 13
     AND NOT EXISTS (
       SELECT signature FROM expected_public
       EXCEPT
@@ -941,6 +1049,7 @@ SELECT pg_temp._bp_clear_canonical();
 GRANT SELECT ON TABLE pg_temp._bp_authz_fixture TO authenticated;
 GRANT INSERT, SELECT ON TABLE pg_temp._bp_authz_results TO authenticated;
 GRANT EXECUTE ON FUNCTION pg_temp._bp_expect_42501(text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION pg_temp._bp_expect_mapping_42501(text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION pg_temp._bp_expect_success(text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION pg_temp._bp_expect_22023(text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION pg_temp._bp_assert_parity(text, text, text, boolean) TO authenticated;
@@ -1268,6 +1377,13 @@ SELECT pg_temp._bp_expect_success(
     fixture.demo_organization_id, '2026-01-01', '2026-03-31', fixture.demo_building_id
   )
 ) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_success(
+  'analysis_only.inventory_history_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_inventory_history_v1(%L::uuid, %L::date, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.demo_organization_id, '2026-01-01', '2026-03-01', fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
 SELECT pg_temp._bp_expect_42501(
   'analysis_only.pnl_denied',
   format(
@@ -1322,6 +1438,68 @@ SELECT pg_temp._bp_expect_success(
   format(
     'SELECT count(*) FROM public.business_performance_snapshot_v1(%L::uuid, ARRAY[%L::uuid]::uuid[])',
     fixture.demo_organization_id, fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+
+-- Every gated-data RPC must execute for the authorized DEMO scope. Mapping
+-- remains separately protected by categories.edit and is exercised in rollback.
+SELECT pg_temp._bp_expect_success(
+  'gated.inventory_history_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_inventory_history_v1(%L::uuid, %L::date, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.demo_organization_id, '2026-01-01', '2026-03-01', fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_success(
+  'gated.reporting_roles_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_reporting_roles_v1(%L::uuid, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.demo_organization_id, '2026-01-01', fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_success(
+  'gated.break_even_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_break_even_v1(%L::uuid, ''ACCRUAL'', %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.demo_organization_id, '2026-01-01', fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_success(
+  'gated.invoice_cohort_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_invoice_cohort_v1(%L::uuid, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.demo_organization_id, '2026-01-01', fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_success(
+  'gated.cash_received_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_cash_received_v1(%L::uuid, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.demo_organization_id, '2026-01-01', fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_success(
+  'gated.category_breakdown_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_category_breakdown_v1(%L::uuid, ''ACCRUAL'', %L::date, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.demo_organization_id, '2026-01-01', '2026-01-31', fixture.demo_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_mapping_42501(
+  'gated.mapping_without_categories_edit_denied',
+  format(
+    'SELECT count(*) FROM public.business_performance_set_reporting_role_v1(%L::uuid, %L::uuid, ''OUTSIDE_BREAK_EVEN_MODEL'', %L::date)',
+    fixture.demo_organization_id, fixture.demo_type_id, '2099-01-01'
+  )
+) FROM _bp_authz_fixture fixture;
+RESET ROLE;
+SELECT pg_temp._bp_add_org_override('categories.edit', 'ALLOW');
+SET LOCAL ROLE authenticated;
+SELECT pg_temp._bp_expect_success(
+  'gated.mapping_with_categories_edit_allowed',
+  format(
+    'SELECT count(*) FROM public.business_performance_set_reporting_role_v1(%L::uuid, %L::uuid, ''OUTSIDE_BREAK_EVEN_MODEL'', %L::date)',
+    fixture.demo_organization_id, fixture.demo_type_id, '2099-01-01'
   )
 ) FROM _bp_authz_fixture fixture;
 
@@ -1695,6 +1873,48 @@ SELECT pg_temp._bp_expect_42501(
   format(
     'SELECT count(*) FROM public.business_performance_occupancy_monthly_v1(%L::uuid, %L::date, %L::date, ARRAY[%L::uuid]::uuid[])',
     fixture.prod_organization_id, '2026-01-01', '2026-03-31', fixture.prod_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_42501(
+  'scope.cross_org.inventory_history_denied',
+  format(
+    'SELECT count(*) FROM public.business_performance_inventory_history_v1(%L::uuid, %L::date, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.prod_organization_id, '2026-01-01', '2026-03-01', fixture.prod_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_42501(
+  'scope.cross_org.reporting_roles_denied',
+  format(
+    'SELECT count(*) FROM public.business_performance_reporting_roles_v1(%L::uuid, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.prod_organization_id, '2026-01-01', fixture.prod_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_42501(
+  'scope.cross_org.break_even_denied',
+  format(
+    'SELECT count(*) FROM public.business_performance_break_even_v1(%L::uuid, ''ACCRUAL'', %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.prod_organization_id, '2026-01-01', fixture.prod_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_42501(
+  'scope.cross_org.invoice_cohort_denied',
+  format(
+    'SELECT count(*) FROM public.business_performance_invoice_cohort_v1(%L::uuid, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.prod_organization_id, '2026-01-01', fixture.prod_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_42501(
+  'scope.cross_org.cash_received_denied',
+  format(
+    'SELECT count(*) FROM public.business_performance_cash_received_v1(%L::uuid, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.prod_organization_id, '2026-01-01', fixture.prod_building_id
+  )
+) FROM _bp_authz_fixture fixture;
+SELECT pg_temp._bp_expect_42501(
+  'scope.cross_org.category_breakdown_denied',
+  format(
+    'SELECT count(*) FROM public.business_performance_category_breakdown_v1(%L::uuid, ''ACCRUAL'', %L::date, %L::date, ARRAY[%L::uuid]::uuid[])',
+    fixture.prod_organization_id, '2026-01-01', '2026-01-31', fixture.prod_building_id
   )
 ) FROM _bp_authz_fixture fixture;
 

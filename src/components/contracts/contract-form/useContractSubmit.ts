@@ -93,7 +93,10 @@ export function useContractSubmit({
         end_date: data.end_date,
         rent_price: data.rent_price,
         total_deposit: data.total_deposit,
-        deposit_paid: data.deposit_paid ?? 0,
+        // [A3] KHÔNG gửi `deposit_paid` ở chế độ SỬA. Đây là số DẪN XUẤT từ phiếu
+        // thu/chi cọc (recompute_contract_deposit_paid). Form sửa không có ô nhập
+        // cho nó — giá trị ở đây chỉ là ảnh chụp lúc mở dialog, gửi lên sẽ GHI ĐÈ
+        // kết quả recompute đã chạy trong lúc dialog đang mở, làm hỏng sổ cọc.
         payment_cycle: data.payment_cycle,
         start_billing_date: data.start_billing_date || null,
         end_billing_date: data.end_billing_date || null,

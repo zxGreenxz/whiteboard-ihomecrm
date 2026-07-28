@@ -41,10 +41,19 @@ const EXPECTED_CASE_IDS = [
   "analysis_only.occupancy_snapshot_allowed",
   "analysis_only.upcoming_allowed",
   "analysis_only.monthly_allowed",
+  "analysis_only.inventory_history_allowed",
   "analysis_only.pnl_denied",
   "analysis_only.snapshot_denied",
   "restricted.pnl_allowed",
   "restricted.snapshot_allowed",
+  "gated.inventory_history_allowed",
+  "gated.reporting_roles_allowed",
+  "gated.break_even_allowed",
+  "gated.invoice_cohort_allowed",
+  "gated.cash_received_allowed",
+  "gated.category_breakdown_allowed",
+  "gated.mapping_without_categories_edit_denied",
+  "gated.mapping_with_categories_edit_allowed",
   "temporal.pnl_null_start_rejected",
   "temporal.pnl_null_end_rejected",
   "temporal.pnl_reversed_rejected",
@@ -82,6 +91,12 @@ const EXPECTED_CASE_IDS = [
   "scope.cross_org.occupancy_snapshot_denied",
   "scope.cross_org.upcoming_denied",
   "scope.cross_org.monthly_denied",
+  "scope.cross_org.inventory_history_denied",
+  "scope.cross_org.reporting_roles_denied",
+  "scope.cross_org.break_even_denied",
+  "scope.cross_org.invoice_cohort_denied",
+  "scope.cross_org.cash_received_denied",
+  "scope.cross_org.category_breakdown_denied",
   "scope.mixed.pnl_denied",
   "scope.mixed.snapshot_denied",
   "scope.mixed.occupancy_snapshot_denied",
@@ -168,7 +183,7 @@ describe("business-performance authz harness runner", () => {
       "IF (to_regprocedure('app_private.business_performance_analysis_decision_v1(uuid,uuid,uuid)') IS NULL",
     );
     expect(sql).toContain(
-      "OR to_regprocedure('public.business_performance_occupancy_monthly_v1(uuid,date,date,uuid[])') IS NULL\n  ) THEN",
+      "OR to_regprocedure('public.business_performance_category_breakdown_v1(uuid,text,date,date,uuid[])') IS NULL\n  ) THEN",
     );
   });
 
@@ -208,6 +223,13 @@ describe("business-performance authz harness runner", () => {
       "business_performance_occupancy_snapshot_v1",
       "business_performance_upcoming_vacancy_v1",
       "business_performance_occupancy_monthly_v1",
+      "business_performance_inventory_history_v1",
+      "business_performance_reporting_roles_v1",
+      "business_performance_set_reporting_role_v1",
+      "business_performance_break_even_v1",
+      "business_performance_invoice_cohort_v1",
+      "business_performance_cash_received_v1",
+      "business_performance_category_breakdown_v1",
     ]) {
       expect(sql).toContain(`public.${rpc}(`);
     }
@@ -359,6 +381,13 @@ describe("business-performance authz harness runner", () => {
       "business_performance_occupancy_snapshot_v1(uuid, date, uuid[])",
       "business_performance_upcoming_vacancy_v1(uuid, date, integer, uuid[])",
       "business_performance_occupancy_monthly_v1(uuid, date, date, uuid[])",
+      "business_performance_inventory_history_v1(uuid, date, date, uuid[])",
+      "business_performance_reporting_roles_v1(uuid, date, uuid[])",
+      "business_performance_set_reporting_role_v1(uuid, uuid, text, date)",
+      "business_performance_break_even_v1(uuid, text, date, uuid[])",
+      "business_performance_invoice_cohort_v1(uuid, date, uuid[])",
+      "business_performance_cash_received_v1(uuid, date, uuid[])",
+      "business_performance_category_breakdown_v1(uuid, text, date, date, uuid[])",
     ]) {
       expect(sql).toContain(signature);
     }
@@ -375,6 +404,37 @@ describe("business-performance authz harness runner", () => {
     expect(sql).toContain("has_function_privilege('anon'");
     expect(sql).toContain("has_function_privilege('service_role'");
     expect(sql).toContain("acl.grantee = 0");
+  });
+
+  it("executes authorized and cross-organization probes for every gated data RPC", () => {
+    const sql = buildBusinessPerformanceAuthzSql({
+      actorId: ACTOR_ID,
+      demoBuildingId: DEMO_BUILDING_ID,
+      prodBuildingId: PROD_BUILDING_ID,
+    });
+
+    for (const caseId of [
+      "gated.inventory_history_allowed",
+      "gated.reporting_roles_allowed",
+      "gated.break_even_allowed",
+      "gated.invoice_cohort_allowed",
+      "gated.cash_received_allowed",
+      "gated.category_breakdown_allowed",
+      "gated.mapping_without_categories_edit_denied",
+      "gated.mapping_with_categories_edit_allowed",
+      "scope.cross_org.inventory_history_denied",
+      "scope.cross_org.reporting_roles_denied",
+      "scope.cross_org.break_even_denied",
+      "scope.cross_org.invoice_cohort_denied",
+      "scope.cross_org.cash_received_denied",
+      "scope.cross_org.category_breakdown_denied",
+    ]) {
+      expect(sql).toContain(`'${caseId}'`);
+    }
+    expect(sql).toContain("pg_temp._bp_add_org_override('categories.edit', 'ALLOW')");
+    expect(sql).toContain("FROM public.income_expense_types type_row");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION pg_temp._bp_expect_mapping_42501");
+    expect(sql).toContain("SQLERRM = 'Business performance mapping access denied'");
   });
 
   it("normalizes duplicate finance snapshot scope to one exact distinct row", () => {

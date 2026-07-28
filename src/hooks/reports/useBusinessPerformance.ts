@@ -15,6 +15,8 @@ import {
   type BusinessPerformanceSnapshotRow,
 } from "@/lib/businessPerformance";
 
+export * from "./useBusinessPerformanceGatedData";
+
 const BUSINESS_PERFORMANCE_QUERY_KEY = "business-performance";
 const HISTORICAL_STALE_TIME = 5 * 60 * 1000;
 const LIVE_STALE_TIME = 60 * 1000;

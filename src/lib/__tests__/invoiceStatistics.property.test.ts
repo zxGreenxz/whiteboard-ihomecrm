@@ -58,6 +58,12 @@ function getInvoiceStatistics(invoices: InvoiceForStats[], filters: StatisticsFi
   if (filters.status) {
     filtered = filtered.filter(inv => inv.status === filters.status);
   }
+  // [A1] Hoá đơn đã HUỶ không còn là công nợ ⇒ loại khỏi mọi tổng, TRỪ khi
+  // caller hỏi đích danh status='CANCELLED'. Gương của migration
+  // 20260728120000_invoice_statistics_v2_exclude_cancelled.sql.
+  if (filters.status !== 'CANCELLED') {
+    filtered = filtered.filter(inv => inv.status !== 'CANCELLED');
+  }
   if (filters.start_date) {
     filtered = filtered.filter(inv => inv.issue_date >= filters.start_date!);
   }
@@ -115,7 +121,9 @@ describe('Feature: invoice-reimplementation, Property 21: Thống kê hoá đơn
     fc.assert(
       fc.property(invoicesArb, (invoices) => {
         const result = getInvoiceStatistics(invoices, {});
-        const nonDeleted = invoices.filter(inv => inv.deleted_at === null);
+        const nonDeleted = invoices.filter(
+          inv => inv.deleted_at === null && inv.status !== 'CANCELLED',
+        );
         const expectedPaid = nonDeleted.reduce((sum, inv) => sum + inv.paid_amount, 0);
 
         expect(result.total_paid).toBe(expectedPaid);
@@ -128,7 +136,9 @@ describe('Feature: invoice-reimplementation, Property 21: Thống kê hoá đơn
     fc.assert(
       fc.property(invoicesArb, (invoices) => {
         const result = getInvoiceStatistics(invoices, {});
-        const nonDeleted = invoices.filter(inv => inv.deleted_at === null);
+        const nonDeleted = invoices.filter(
+          inv => inv.deleted_at === null && inv.status !== 'CANCELLED',
+        );
         const expectedRemaining = nonDeleted.reduce((sum, inv) => sum + inv.remaining_amount, 0);
 
         expect(result.total_remaining).toBe(expectedRemaining);
@@ -141,7 +151,9 @@ describe('Feature: invoice-reimplementation, Property 21: Thống kê hoá đơn
     fc.assert(
       fc.property(invoicesArb, (invoices) => {
         const result = getInvoiceStatistics(invoices, {});
-        const nonDeleted = invoices.filter(inv => inv.deleted_at === null);
+        const nonDeleted = invoices.filter(
+          inv => inv.deleted_at === null && inv.status !== 'CANCELLED',
+        );
 
         expect(result.total_count).toBe(nonDeleted.length);
       }),
@@ -185,6 +197,29 @@ describe('Feature: invoice-reimplementation, Property 21: Thống kê hoá đơn
           expect(result.total_remaining).toBe(expected.reduce((s, inv) => s + inv.remaining_amount, 0));
         },
       ),
+      { numRuns: 100 },
+    );
+  });
+
+  // [A1] Hoá đơn đã HUỶ không còn là công nợ. Trước 28/07/2026 chúng vẫn được
+  // cộng vào "Phải thu" — đo trên production: 29 hoá đơn / 127.429.166đ công nợ ma.
+  it('cancelled invoices are excluded unless asked for by name', () => {
+    fc.assert(
+      fc.property(invoicesArb, (invoices) => {
+        const alive = invoices.filter(inv => inv.deleted_at === null);
+        const cancelled = alive.filter(inv => inv.status === 'CANCELLED');
+
+        // Không hỏi đích danh ⇒ hoá đơn huỷ không được góp một đồng nào.
+        const general = getInvoiceStatistics(invoices, {});
+        expect(general.total_count).toBe(alive.length - cancelled.length);
+
+        // Hỏi đích danh status='CANCELLED' ⇒ vẫn xem được (view "Đã huỷ").
+        const asked = getInvoiceStatistics(invoices, { status: 'CANCELLED' });
+        expect(asked.total_count).toBe(cancelled.length);
+        expect(asked.total_remaining).toBe(
+          cancelled.reduce((s, inv) => s + inv.remaining_amount, 0),
+        );
+      }),
       { numRuns: 100 },
     );
   });

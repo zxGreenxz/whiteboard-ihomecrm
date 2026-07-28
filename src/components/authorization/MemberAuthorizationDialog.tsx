@@ -107,6 +107,41 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
   );
   const availableKeys = useMemo(() => new Set(permByKey.keys()), [permByKey]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.roleId, r])), [roles]);
+  const scopeById = useMemo(() => new Map(scopes.map((s) => [s.scopeId, s])), [scopes]);
+
+  /**
+   * Phạm vi người này ĐANG PHỤ TRÁCH = hợp của mọi phạm vi đã gán qua vai trò.
+   * Dùng làm mặc định khi thêm ngoại lệ: cấp thêm một quyền hầu như luôn có
+   * nghĩa "ở đúng những toà người đó đang lo", chứ không phải toàn tổ chức.
+   */
+  const phamViPhuTrach = useMemo(
+    () => [...new Set(rows.flatMap((r) => r.scopeIds))],
+    [rows],
+  );
+
+  /**
+   * Lọc phạm vi phụ trách theo scope_kinds của khoá + ép luật hình dạng của máy
+   * chủ (a90_override_edge_shape): ORGANIZATION là cạnh ĐỘC QUYỀN, không được
+   * đứng chung với phạm vi hẹp.
+   */
+  const phamViMacDinhCho = useMemo(
+    () => (key: string): string[] => {
+      const kinds = permByKey.get(key)?.scopeKinds;
+      const hop = phamViPhuTrach.filter((id) => {
+        const s = scopeById.get(id);
+        return !!s && (!kinds?.length || kinds.includes(s.scopeType));
+      });
+      const org = hop.find((id) => scopeById.get(id)?.scopeType === 'ORGANIZATION');
+      return org ? [org] : hop;
+    },
+    [phamViPhuTrach, permByKey, scopeById],
+  );
+
+  /** Mọi toà nhà trong tổ chức — nút tắt "tất cả toà nhà". */
+  const moiToaNha = useMemo(
+    () => scopes.filter((s) => s.scopeType === 'BUILDING').map((s) => s.scopeId),
+    [scopes],
+  );
 
   // Nạp lại mỗi lần mở / đổi người — gộp binding trùng vai trò (xem đầu file).
   useEffect(() => {
@@ -494,17 +529,63 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
                             <div className="grid gap-3 md:grid-cols-2">
                               <div>
                                 <Label className="text-xs">Áp ở đâu</Label>
-                                <ScopePicker
-                                  className="mt-1.5"
-                                  scopes={scopes}
-                                  allowedKinds={pd?.scopeKinds}
-                                  value={o.scopeIds}
-                                  onChange={(v) =>
+                                {(() => {
+                                  const datPhamVi = (v: string[]) =>
                                     setOvs((s) =>
                                       s.map((x, j) => (j === i ? { ...x, scopeIds: v } : x)),
-                                    )
-                                  }
-                                />
+                                    );
+                                  const macDinh = phamViMacDinhCho(o.permissionKey);
+                                  const toaNha = pd?.scopeKinds?.includes('BUILDING')
+                                    ? moiToaNha
+                                    : [];
+                                  const bang = (a: string[], b: string[]) =>
+                                    a.length === b.length && a.every((x) => b.includes(x));
+                                  return (
+                                    <>
+                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant={
+                                            macDinh.length && bang(o.scopeIds, macDinh)
+                                              ? 'default'
+                                              : 'outline'
+                                          }
+                                          disabled={!macDinh.length}
+                                          onClick={() => datPhamVi(macDinh)}
+                                        >
+                                          Toà đang phụ trách ({macDinh.length})
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant={
+                                            toaNha.length && bang(o.scopeIds, toaNha)
+                                              ? 'default'
+                                              : 'outline'
+                                          }
+                                          disabled={!toaNha.length}
+                                          onClick={() => datPhamVi(toaNha)}
+                                        >
+                                          Tất cả toà nhà ({toaNha.length})
+                                        </Button>
+                                      </div>
+                                      {!macDinh.length && (
+                                        <p className="mt-1.5 text-xs text-muted-foreground">
+                                          Người này chưa được giao vai trò ở phạm vi nào hợp với
+                                          quyền này — hãy chọn tay bên dưới.
+                                        </p>
+                                      )}
+                                      <ScopePicker
+                                        className="mt-2"
+                                        scopes={scopes}
+                                        allowedKinds={pd?.scopeKinds}
+                                        value={o.scopeIds}
+                                        onChange={datPhamVi}
+                                      />
+                                    </>
+                                  );
+                                })()}
                               </div>
                               <div>
                                 <Label className="text-xs">Lý do (bắt buộc)</Label>
@@ -654,7 +735,17 @@ export function MemberAuthorizationDialog({ membershipId, open, onOpenChange }: 
               onToggle={(k, bat) =>
                 setOvs((s) =>
                   bat
-                    ? [...s, { permissionKey: k, effect: 'ALLOW', scopeIds: [], reason: '' }]
+                    ? [
+                        ...s,
+                        {
+                          permissionKey: k,
+                          effect: 'ALLOW',
+                          // Mặc định: đúng những toà người này đang phụ trách.
+                          // Muốn rộng hơn thì mở dòng ngoại lệ ra chọn thêm.
+                          scopeIds: phamViMacDinhCho(k),
+                          reason: '',
+                        },
+                      ]
                     : s.filter((o) => o.permissionKey !== k),
                 )
               }

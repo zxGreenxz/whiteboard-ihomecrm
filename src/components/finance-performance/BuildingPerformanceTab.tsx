@@ -1,5 +1,5 @@
-import { type KeyboardEvent, useMemo } from "react";
-import { AlertTriangle, Building2, Calculator, Info, RefreshCw } from "lucide-react";
+import { type KeyboardEvent, useMemo, useState } from "react";
+import { Building2, Calculator, Info, RefreshCw, Save, Settings2 } from "lucide-react";
 
 import { DeltaBadge } from "@/components/finance-analysis/DeltaBadge";
 import {
@@ -24,7 +24,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useBusinessPerformancePnl } from "@/hooks/reports/useBusinessPerformance";
+import {
+  useBusinessPerformanceBreakEven,
+  useBusinessPerformancePnl,
+  useBusinessPerformanceReportingRoles,
+  useSetBusinessPerformanceReportingRole,
+  type BusinessPerformanceBreakEvenRow,
+  type BusinessPerformanceReportingRoleRow,
+  type FinanceReportingRole,
+} from "@/hooks/reports/useBusinessPerformance";
 import { deriveFinanceQueryState } from "@/lib/financeQueryState";
 import {
   type BusinessPerformanceFilters,
@@ -56,6 +64,47 @@ interface BuildingPerformanceRow {
   previous: PeriodValue | null;
   yearAgo: PeriodValue | null;
 }
+
+const ROLE_LABELS: Record<FinanceReportingRole, string> = {
+  ROOM_RENT_REVENUE: "Doanh thu tiền phòng",
+  OTHER_OPERATING_REVENUE: "Doanh thu vận hành khác",
+  PASS_THROUGH_REVENUE: "Thu hộ / pass-through",
+  LANDLORD_RENT_FIXED: "Chi phí thuê chủ nhà cố định",
+  OTHER_FIXED_COST: "Chi phí cố định khác",
+  ROOM_VARIABLE_COST: "Biến phí gắn với phòng",
+  OTHER_VARIABLE_COST: "Biến phí khác",
+  PASS_THROUGH_EXPENSE: "Chi hộ / pass-through",
+  OUTSIDE_BREAK_EVEN_MODEL: "Ngoài mô hình hòa vốn",
+};
+
+const SIDE_ROLES: Record<"INCOME" | "EXPENSE", FinanceReportingRole[]> = {
+  INCOME: [
+    "ROOM_RENT_REVENUE",
+    "OTHER_OPERATING_REVENUE",
+    "PASS_THROUGH_REVENUE",
+    "OUTSIDE_BREAK_EVEN_MODEL",
+  ],
+  EXPENSE: [
+    "LANDLORD_RENT_FIXED",
+    "OTHER_FIXED_COST",
+    "ROOM_VARIABLE_COST",
+    "OTHER_VARIABLE_COST",
+    "PASS_THROUGH_EXPENSE",
+    "OUTSIDE_BREAK_EVEN_MODEL",
+  ],
+};
+
+const BREAK_EVEN_REASON_LABELS: Record<string, string> = {
+  UNMAPPED_AMOUNT: "Còn số tiền chưa được mapping",
+  OUTSIDE_MODEL_AMOUNT: "Có số tiền được xác nhận ngoài mô hình hòa vốn",
+  MISSING_LANDLORD_OR_MONTH: "Thiếu tiền thuê chủ nhà hoặc thiếu kỳ nguồn",
+  CMR_CORE_NOT_POSITIVE: "Tỷ lệ đóng góp KQKD không dương",
+  CMR_ROOM_NOT_POSITIVE: "Tỷ lệ đóng góp tiền phòng không dương",
+  ROOM_BREAK_EVEN_UNAVAILABLE: "Hòa vốn tiền phòng chưa khả dụng",
+  SNAPSHOT_UNAVAILABLE: "Chưa có snapshot công suất đã chốt",
+  INVALID_LISTED_RENT: "Có phòng thiếu giá niêm yết hợp lệ",
+  CAPACITY_NOT_POSITIVE: "Công suất doanh thu không dương",
+};
 
 function monthLabel(month: string) {
   const match = /^(\d{4})-(\d{2})$/.exec(month);
@@ -274,16 +323,269 @@ function BuildingMobileCard({
   );
 }
 
+function ReportingRoleConfiguration({
+  filters,
+  query,
+}: {
+  filters: BusinessPerformanceFilters;
+  query: ReturnType<typeof useBusinessPerformanceReportingRoles>;
+}) {
+  const mutation = useSetBusinessPerformanceReportingRole(filters);
+  const queryState = deriveFinanceQueryState(query);
+  const [draftRoles, setDraftRoles] = useState<Record<string, FinanceReportingRole>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const roleRows = query.data ?? [];
+  const canManage = roleRows.some((row) => row.can_manage);
+  const mappedCount = roleRows.filter((row) => row.finance_reporting_role !== null).length;
+
+  const saveRole = async (row: BusinessPerformanceReportingRoleRow) => {
+    const role = draftRoles[row.income_expense_type_id]
+      ?? row.finance_reporting_role
+      ?? row.suggested_role;
+    if (!role) return;
+    setSaveError(null);
+    try {
+      await mutation.mutateAsync({
+        incomeExpenseTypeId: row.income_expense_type_id,
+        role,
+        effectiveFrom: `${filters.month}-01`,
+      });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Không thể lưu mapping");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Settings2 className="size-5 text-primary" aria-hidden="true" />
+          Cấu hình vai trò tài chính
+        </CardTitle>
+        <CardDescription>
+          {mappedCount}/{roleRows.length} loại Thu/Chi đã có mapping hiệu lực cho kỳ {monthLabel(filters.month)}.
+          {canManage
+            ? " Bạn có thể xác nhận hoặc thay đổi mapping từ đầu tháng này."
+            : " Bạn đang xem ở chế độ chỉ đọc."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {queryState.showLoading ? <FinanceLoadingGrid count={2} /> : null}
+        {queryState.showStaleWarning ? (
+          <StaleDataWarning onRetry={() => void query.refetch()} />
+        ) : null}
+        {queryState.hasBlockingError ? (
+          <FinanceQueryError
+            title="Không thể tải mapping vai trò tài chính"
+            error={queryState.blockingError}
+            onRetry={() => void query.refetch()}
+          />
+        ) : null}
+        {queryState.canRenderData && roleRows.length === 0 ? (
+          <FinanceEmptyState
+            title="Chưa có loại Thu/Chi cần mapping"
+            description="Tổ chức chưa có loại Thu/Chi KQKD ngoài tiền cọc trong kỳ đã chọn."
+          />
+        ) : null}
+        {queryState.canRenderData && roleRows.length > 0 ? (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[44rem] caption-bottom text-sm">
+              <TableCaption className="sr-only">
+                Mapping vai trò tài chính theo loại Thu/Chi cho kỳ {monthLabel(filters.month)}.
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Loại Thu/Chi</TableHead>
+                  <TableHead scope="col">Bên</TableHead>
+                  <TableHead scope="col">Vai trò hòa vốn</TableHead>
+                  <TableHead scope="col">Hiệu lực</TableHead>
+                  {canManage ? <TableHead scope="col" className="text-right">Thao tác</TableHead> : null}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {roleRows.map((row) => {
+                  const selected = draftRoles[row.income_expense_type_id]
+                    ?? row.finance_reporting_role
+                    ?? row.suggested_role
+                    ?? "";
+                  return (
+                    <TableRow key={row.income_expense_type_id}>
+                      <TableHead scope="row" className="h-auto text-foreground">
+                        <div className="font-medium">{row.type_name}</div>
+                        <div className="text-xs font-normal text-muted-foreground">
+                          {row.category ?? "Chưa phân nhóm"}
+                        </div>
+                      </TableHead>
+                      <TableCell>{row.side === "INCOME" ? "Thu" : "Chi"}</TableCell>
+                      <TableCell>
+                        {canManage ? (
+                          <select
+                            aria-label={`Vai trò tài chính cho ${row.type_name}`}
+                            className="h-9 w-full min-w-56 rounded-md border bg-background px-3 text-sm"
+                            value={selected}
+                            onChange={(event) =>
+                              setDraftRoles((current) => ({
+                                ...current,
+                                [row.income_expense_type_id]: event.target.value as FinanceReportingRole,
+                              }))
+                            }
+                          >
+                            <option value="" disabled>Chọn vai trò</option>
+                            {SIDE_ROLES[row.side].map((role) => (
+                              <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span>{row.finance_reporting_role ? ROLE_LABELS[row.finance_reporting_role] : "Chưa mapping"}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.effective_from ? `Từ ${row.effective_from}` : "Chưa xác nhận"}
+                      </TableCell>
+                      {canManage ? (
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!selected || mutation.isPending}
+                            onClick={() => void saveRole(row)}
+                          >
+                            <Save data-icon="inline-start" aria-hidden="true" />
+                            Lưu
+                          </Button>
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </table>
+          </div>
+        ) : null}
+        {saveError ? <p role="alert" className="text-sm text-destructive">{saveError}</p> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function breakEvenReason(row: BusinessPerformanceBreakEvenRow) {
+  const reason = row.break_even_revenue_reason
+    ?? row.room_break_even_revenue_reason
+    ?? row.break_even_occupancy_reason;
+  return reason ? (BREAK_EVEN_REASON_LABELS[reason] ?? reason) : "Chưa khả dụng";
+}
+
+function BreakEvenAnalysis({
+  filters,
+  query,
+}: {
+  filters: BusinessPerformanceFilters;
+  query: ReturnType<typeof useBusinessPerformanceBreakEven>;
+}) {
+  const queryState = deriveFinanceQueryState(query);
+  const rows = query.data ?? [];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Calculator className="size-5 text-primary" aria-hidden="true" />
+          Hòa vốn theo tòa
+        </CardTitle>
+        <CardDescription>
+          So sánh tháng đã chọn với bình quân ba tháng. Tỷ lệ lấp đầy có thể vượt 100% khi doanh thu phòng cần thiết lớn hơn công suất giá niêm yết.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <Alert role="note">
+          <Info aria-hidden="true" />
+          <AlertTitle>Số liệu hòa vốn có kiểm soát</AlertTitle>
+          <AlertDescription>
+            RPC chỉ trả tỷ lệ khi mapping, tiền thuê chủ nhà, tỷ lệ đóng góp và công suất đều hợp lệ; nếu thiếu, bảng giữ nguyên lý do thay vì điền 0.
+          </AlertDescription>
+        </Alert>
+        {queryState.showLoading ? <FinanceLoadingGrid count={4} /> : null}
+        {queryState.showStaleWarning ? (
+          <StaleDataWarning onRetry={() => void query.refetch()} />
+        ) : null}
+        {queryState.hasBlockingError ? (
+          <FinanceQueryError
+            title="Không thể tải phân tích hòa vốn"
+            error={queryState.blockingError}
+            onRetry={() => void query.refetch()}
+          />
+        ) : null}
+        {queryState.canRenderData && rows.length === 0 ? (
+          <FinanceEmptyState
+            title="Chưa có dữ liệu hòa vốn"
+            description={`Không có dòng hòa vốn cho ${monthLabel(filters.month)} trong phạm vi tòa đã chọn.`}
+          />
+        ) : null}
+        {queryState.canRenderData && rows.length > 0 ? (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full min-w-[68rem] caption-bottom text-sm">
+              <TableCaption className="sr-only">Hòa vốn theo tòa và cửa sổ phân tích.</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Tòa / cửa sổ</TableHead>
+                  <TableHead scope="col" className="text-right">LN hiện tại</TableHead>
+                  <TableHead scope="col" className="text-right">Doanh thu hòa vốn</TableHead>
+                  <TableHead scope="col" className="text-right">Tiền phòng hòa vốn</TableHead>
+                  <TableHead scope="col" className="text-right">Lấp đầy hiện tại</TableHead>
+                  <TableHead scope="col" className="text-right">Lấp đầy lý thuyết</TableHead>
+                  <TableHead scope="col">Trạng thái</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={`${row.building_id}:${row.analysis_window}`}>
+                    <TableHead scope="row" className="h-auto text-foreground">
+                      <div>{row.building_name}</div>
+                      <div className="text-xs font-normal text-muted-foreground">
+                        {row.analysis_window === "SELECTED_MONTH" ? "Tháng đã chọn" : "Bình quân 3 tháng"}
+                      </div>
+                    </TableHead>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(row.net)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.break_even_revenue_available ? formatMoney(row.r_total_be) : "Chưa khả dụng"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.room_break_even_revenue_available ? formatMoney(row.r_room_be) : "Chưa khả dụng"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.break_even_occupancy_available ? formatPercent(row.break_even_occupancy_current) : "Chưa khả dụng"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.break_even_occupancy_available ? formatPercent(row.break_even_occupancy_theory) : "Chưa khả dụng"}
+                    </TableCell>
+                    <TableCell>
+                      {row.break_even_revenue_available && row.break_even_occupancy_available
+                        ? `Đủ dữ liệu · mapping ${formatPercent(row.mapping_coverage_pct)}`
+                        : breakEvenReason(row)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </table>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function BuildingPerformanceTab({
   filters,
   buildings,
 }: BuildingPerformanceTabProps) {
-  const pnlQuery = useBusinessPerformancePnl(filters);
   const requestedBuildings = useMemo(() => {
     const requestedIds = new Set(filters.buildingIds);
     return buildings.filter((building) => requestedIds.has(building.id));
   }, [buildings, filters.buildingIds]);
   const hasPhysicalScope = requestedBuildings.length > 0;
+  const pnlQuery = useBusinessPerformancePnl(filters, hasPhysicalScope);
+  const rolesQuery = useBusinessPerformanceReportingRoles(filters, hasPhysicalScope);
+  const breakEvenQuery = useBusinessPerformanceBreakEven(filters, hasPhysicalScope);
   const hasPnlSource = pnlQuery.data !== undefined;
   const pnlState = deriveFinanceQueryState(pnlQuery);
   const rows = useMemo(
@@ -306,15 +608,12 @@ export function BuildingPerformanceTab({
         </CardHeader>
       </Card>
 
-      <Alert role="note">
-        <AlertTriangle aria-hidden="true" />
-        <AlertTitle>Hòa vốn và tiền thuê chủ nhà chưa khả dụng</AlertTitle>
-        <AlertDescription>
-          Báo cáo chủ động không trả về số 0 hoặc tỷ lệ ước đoán cho các chỉ số này.
-          Chúng chỉ được mở khi mapping vai trò tài chính theo hiệu lực ngày đã hoàn tất
-          và backend tổng hợp đã được kiểm chứng, đối soát.
-        </AlertDescription>
-      </Alert>
+      {hasPhysicalScope ? (
+        <>
+          <ReportingRoleConfiguration filters={filters} query={rolesQuery} />
+          <BreakEvenAnalysis filters={filters} query={breakEvenQuery} />
+        </>
+      ) : null}
 
       {pnlState.showLoading ? <FinanceLoadingGrid count={6} /> : null}
       {pnlState.showStaleWarning ? (

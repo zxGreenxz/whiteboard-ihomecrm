@@ -239,8 +239,10 @@ export function IncomeExpenseFilterPanel({
           {/* Tòa nhà — 1 toà hoặc tất cả, danh sách phẳng A→Z */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Tòa nhà</Label>
+            {/* includeVirtual: xem chú thích ở IncomeExpenseFilters.tsx. */}
             <BuildingFilterSelect
               value={draftBuildingIds}
+              includeVirtual
               onChange={(ids) =>
                 patch({
                   building_ids: ids,

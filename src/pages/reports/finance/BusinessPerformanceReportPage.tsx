@@ -717,30 +717,6 @@ function AuthorizedBusinessPerformanceReportPage({
     );
   }
 
-  const dataScopeNotice = isPhone ? (
-    <Alert role="note" className="bg-muted/30 py-2">
-      <Info className="size-4" aria-hidden="true" />
-      <details>
-        <summary className="cursor-pointer text-sm font-medium">
-          Phạm vi dữ liệu hiện tại
-        </summary>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Chỉ số hòa vốn và cohort lịch sử chưa hiển thị khi backend mapping,
-          allocation và snapshot chưa đạt gate; hệ thống không điền số giả.
-        </p>
-      </details>
-    </Alert>
-  ) : (
-    <Alert role="note" className="bg-muted/30 py-3">
-      <Info className="size-4" aria-hidden="true" />
-      <AlertTitle>Phạm vi dữ liệu hiện tại</AlertTitle>
-      <AlertDescription>
-        Các chỉ số hòa vốn và cohort lịch sử chưa hiển thị khi backend mapping,
-        allocation và snapshot chưa đạt gate kiểm soát. Hệ thống không điền số
-        giả cho các phần chưa đủ dữ liệu chuẩn.
-      </AlertDescription>
-    </Alert>
-  );
   const permissionNotice =
     !canViewRestrictedFinance ? (
       <Alert role="note" className="py-2 sm:py-3">
@@ -904,7 +880,6 @@ function AuthorizedBusinessPerformanceReportPage({
           </div>
         </section>
 
-        {!isPhone ? dataScopeNotice : null}
         {!isPhone ? permissionNotice : null}
 
         <div data-testid="business-performance-view-picker">
@@ -940,7 +915,6 @@ function AuthorizedBusinessPerformanceReportPage({
               >
                 {reportContent}
               </section>
-              {dataScopeNotice}
               {permissionNotice}
             </div>
           ) : (

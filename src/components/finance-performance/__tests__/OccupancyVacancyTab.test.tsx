@@ -2,11 +2,13 @@
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BusinessPerformanceInventoryHistoryRow } from "@/hooks/reports/useBusinessPerformanceGatedData";
 
 const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   upcoming: vi.fn(),
   trend: vi.fn(),
+  history: vi.fn(),
 }));
 
 vi.mock("recharts", () => ({
@@ -23,6 +25,7 @@ vi.mock("@/hooks/reports/useBusinessPerformance", () => ({
   useBusinessPerformanceOccupancySnapshot: mocks.snapshot,
   useBusinessPerformanceUpcomingVacancy: mocks.upcoming,
   useBusinessPerformanceOccupancyTrend12m: mocks.trend,
+  useBusinessPerformanceInventoryHistory: mocks.history,
 }));
 
 import { OccupancyVacancyTab } from "../OccupancyVacancyTab";
@@ -103,14 +106,91 @@ function upcomingRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function historyRow(
+  overrides: Partial<BusinessPerformanceInventoryHistoryRow> = {},
+): BusinessPerformanceInventoryHistoryRow {
+  return {
+    snapshot_month: "2026-02-01",
+    building_id: "building-a",
+    building_name: "Empty building",
+    snapshot_status: "FINALIZED",
+    snapshot_missing: false,
+    availability_reason: null,
+    total: 4,
+    occupied: 2,
+    reserved: 1,
+    maintenance: 0,
+    unavailable: 0,
+    available: 1,
+    occupancy_pct: 50,
+    committed_pct: 75,
+    listed_rent_opportunity: 3_000_000,
+    capacity_current: 12_000_000,
+    capacity_blocked: 0,
+    capacity_theory: 12_000_000,
+    invalid_rent_room_count: 0,
+    as_of_date: "2026-02-28",
+    as_of_timestamp: "2026-02-28T16:55:00.000Z",
+    captured_at: "2026-02-28T16:55:01.000Z",
+    is_late: false,
+    capture_version: 1,
+    ...overrides,
+  };
+}
+
 describe("OccupancyVacancyTab", () => {
   beforeEach(() => {
     mocks.snapshot.mockClear();
     mocks.upcoming.mockClear();
     mocks.trend.mockClear();
+    mocks.history.mockClear();
     mocks.snapshot.mockReturnValue(query([snapshotRow()]));
     mocks.upcoming.mockReturnValue(query([]));
     mocks.trend.mockReturnValue(query([trendPoint()]));
+    mocks.history.mockReturnValue(
+      query([
+        historyRow(),
+        historyRow({
+          snapshot_month: "2026-01-01",
+          snapshot_status: "MISSING",
+          snapshot_missing: true,
+          availability_reason: "NO_SNAPSHOT",
+          total: null,
+          occupied: null,
+          reserved: null,
+          maintenance: null,
+          unavailable: null,
+          available: null,
+          occupancy_pct: null,
+          committed_pct: null,
+          listed_rent_opportunity: null,
+          capacity_current: null,
+          capacity_blocked: null,
+          capacity_theory: null,
+          invalid_rent_room_count: null,
+          as_of_date: null,
+          as_of_timestamp: null,
+          captured_at: null,
+          is_late: null,
+          capture_version: null,
+        }),
+      ]),
+    );
+  });
+
+  it("renders authoritative month snapshots and preserves missing months", () => {
+    const html = renderToStaticMarkup(<OccupancyVacancyTab filters={filters} />);
+
+    expect(mocks.history).toHaveBeenCalledWith(
+      filters,
+      "2025-03-01",
+      "2026-02-01",
+    );
+    expect(html).toContain("Lịch sử snapshot cuối tháng");
+    expect(html).toContain("Đã chốt");
+    expect(html).toContain("Chưa có snapshot");
+    expect(html).toContain("50,0%");
+    expect(html).not.toContain("2026-01-01</th><td");
   });
 
   it("passes the organization-bound scope to every occupancy query", () => {
@@ -218,14 +298,14 @@ describe("OccupancyVacancyTab", () => {
     expect(html).toContain("min-[400px]:col-span-2");
   });
 
-  it("uses explicit column and row scopes in all three data tables", () => {
+  it("uses explicit column and row scopes in all four data tables", () => {
     mocks.upcoming.mockReturnValue(query([upcomingRow()]));
 
     const html = renderToStaticMarkup(<OccupancyVacancyTab filters={filters} />);
 
-    expect(html.match(/<table/g)).toHaveLength(3);
-    expect(html.match(/<th[^>]*scope="col"/g)).toHaveLength(20);
-    expect(html.match(/<th[^>]*scope="row"/g)).toHaveLength(3);
+    expect(html.match(/<table/g)).toHaveLength(4);
+    expect(html.match(/<th[^>]*scope="col"/g)).toHaveLength(27);
+    expect(html.match(/<th[^>]*scope="row"/g)).toHaveLength(5);
     expect(html).toMatch(/<th[^>]*scope="row"[^>]*>Empty building<\/th>/);
     expect(html).toMatch(/<th[^>]*scope="row"[^>]*>2\/2026<\/th>/);
     expect(html).toMatch(/<th[^>]*scope="row"[^>]*>Room 101<\/th>/);

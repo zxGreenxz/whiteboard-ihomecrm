@@ -39,6 +39,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { toast } from 'sonner';
 import { deriveInvoiceDepositDue } from '@/lib/paymentRecordRpc';
+import { deriveOverpayPolicy } from '@/lib/collectPlan';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -59,20 +60,7 @@ const paymentSchema = z.object({
   change_account_id: z.string().optional(),
   keep_as_credit: z.boolean().default(false),
   notes: z.string().optional(),
-}).refine(
-  (data) => data.change_amount === 0 || data.keep_as_credit || !!data.change_account_id,
-  { message: 'Vui lòng chọn sổ ghi nhận tiền thối', path: ['change_account_id'] },
-).refine(
-  (data) => {
-    if (data.change_amount === 0) return true;
-    if (data.keep_as_credit) return true;
-    const tmTotal = data.payment_lines
-      .filter((l) => l.payment_method === 'TM')
-      .reduce((s, l) => s + (Number(l.amount) || 0), 0);
-    return tmTotal >= data.change_amount;
-  },
-  { message: 'Tiền thối chỉ áp dụng với phương thức TM và phải ≤ tổng tiền TM', path: ['change_amount'] },
-);
+});
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
 
@@ -104,6 +92,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [changeUserEdited, setChangeUserEdited] = useState(false);
+  const [creditUserEdited, setCreditUserEdited] = useState(false);
   const collectionAttemptRef = useRef<{
     fingerprint: string;
     request: RecordPaymentRPCData | null;
@@ -253,6 +242,13 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     .filter((l: any) => l?.payment_method === 'TM')
     .reduce((s, l: any) => s + (Number(l?.amount) || 0), 0);
 
+  const overpayPolicy = deriveOverpayPolicy({
+    total: totalPaid,
+    amountTm: tmTotal,
+    remaining: outstandingAmount,
+    hasContract: !!invoice?.contract_id,
+  });
+
   // Có phiếu thanh toán cũ (đã lưu) nào dùng TM hoặc TT chưa?
   const priorHasTmTt = useMemo(
     () =>
@@ -354,16 +350,25 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     });
   };
 
-  // Auto-compute tiền thối: chỉ tính khi có line TM. Cap theo tmTotal để không khấu trừ âm.
+  // Auto-compute phần dư cho mọi phương thức. TT/TK không đủ TM để hoàn sẽ được
+  // giữ thành credit bắt buộc; TM vẫn giữ mặc định hoàn như trước.
   useEffect(() => {
     if (changeUserEdited) return;
-    if (tmTotal === 0) {
-      setValue('change_amount', 0);
+    setValue('change_amount', overpayPolicy.overpay);
+  }, [overpayPolicy.overpay, changeUserEdited, setValue]);
+
+  useEffect(() => {
+    if (overpayPolicy.overpay === 0) {
+      setValue('keep_as_credit', false);
+      setCreditUserEdited(false);
       return;
     }
-    const overpaid = Math.max(0, totalPaid - outstandingAmount);
-    setValue('change_amount', Math.min(overpaid, tmTotal));
-  }, [totalPaid, outstandingAmount, tmTotal, changeUserEdited, setValue]);
+    if (overpayPolicy.mustKeepAsCredit) {
+      setValue('keep_as_credit', true);
+      return;
+    }
+    if (!creditUserEdited) setValue('keep_as_credit', false);
+  }, [overpayPolicy.overpay, overpayPolicy.mustKeepAsCredit, creditUserEdited, setValue]);
 
   // Pre-select sổ ghi nhận thối theo user: Hiển→Hiển Thối, Hiệp→Hiệp Thối
   // (user khác: sổ "Thối" đầu tiên — giữ hành vi cũ).
@@ -378,6 +383,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     setReceiptImage(null);
     setReceiptPreview(null);
     setChangeUserEdited(false);
+    setCreditUserEdited(false);
     setUnlockedTkFieldIds(new Set());
     collectionAttemptRef.current = null;
     onOpenChange(false);
@@ -480,11 +486,18 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
         });
         return;
       }
-      if (overpay > 0 && tmTotal < overpay) {
-        toast.error('Phần tiền dư phải nằm hoàn toàn trong các dòng tiền mặt TM');
+      const submitPolicy = deriveOverpayPolicy({
+        total: totalAcrossLines,
+        amountTm: tmTotal,
+        remaining: outstandingAmount,
+        hasContract: !!invoice.contract_id,
+      });
+      const keepAsCredit = overpay > 0
+        && (submitPolicy.mustKeepAsCredit || !!data.keep_as_credit);
+      if (overpay > 0 && !keepAsCredit && tmTotal < overpay) {
+        toast.error('Tiền mặt TM của lần thu này không đủ để hoàn phần tiền dư');
         return;
       }
-      const keepAsCredit = !!data.keep_as_credit && overpay > 0;
       if (keepAsCredit && !invoice.contract_id) {
         toast.error('Hóa đơn không gắn hợp đồng nên không thể giữ tiền dư làm credit');
         return;
@@ -774,8 +787,18 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     placeholder="0"
                   />
                   <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                    <Checkbox checked={false} disabled />
-                    Nợ khách (tạm khóa đối soát)
+                    <Checkbox
+                      checked={watchedKeepAsCredit}
+                      disabled={!overpayPolicy.canKeepAsCredit || overpayPolicy.mustKeepAsCredit}
+                      onCheckedChange={(checked) => {
+                        if (overpayPolicy.mustKeepAsCredit) return;
+                        setCreditUserEdited(true);
+                        setValue('keep_as_credit', checked === true, { shouldValidate: true });
+                      }}
+                    />
+                    {overpayPolicy.mustKeepAsCredit
+                      ? 'Nợ khách — bắt buộc trừ kỳ sau'
+                      : 'Nợ khách (trừ kỳ sau)'}
                   </label>
                 </div>
                 <div className="pt-7">
@@ -1083,8 +1106,18 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                   placeholder="0"
                 />
                 <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                  <Checkbox checked={false} disabled />
-                  Nợ khách (tạm khóa đối soát)
+                  <Checkbox
+                    checked={watchedKeepAsCredit}
+                    disabled={!overpayPolicy.canKeepAsCredit || overpayPolicy.mustKeepAsCredit}
+                    onCheckedChange={(checked) => {
+                      if (overpayPolicy.mustKeepAsCredit) return;
+                      setCreditUserEdited(true);
+                      setValue('keep_as_credit', checked === true, { shouldValidate: true });
+                    }}
+                  />
+                  {overpayPolicy.mustKeepAsCredit
+                    ? 'Nợ khách — bắt buộc trừ kỳ sau'
+                    : 'Nợ khách (trừ kỳ sau)'}
                 </label>
                 <p className="text-xs text-muted-foreground">
                   Tổng đã nhập: {formatVN(totalPaid)} đ — Còn phải thu:{' '}
@@ -1115,7 +1148,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Chỉ áp dụng cho TM. Số tiền thối được ghi vào sổ này để audit — không trừ số dư sổ.
+                Dùng khi hoàn phần dư bằng TM. Số tiền thối được ghi vào sổ này để audit — không trừ số dư sổ.
               </p>
               {errors.change_account_id && (
                 <p className="text-sm text-red-500">{errors.change_account_id.message}</p>

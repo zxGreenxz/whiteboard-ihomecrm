@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { invalidateIeTypesCache } from "@/lib/ieTypesCache";
+import { incomeExpenseTypeErrorMessage } from "@/lib/incomeExpenseTypeErrors";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -43,11 +44,9 @@ export const useIncomeExpenseTypes = (
     staleTime: IE_TYPES_STALE_TIME,
     queryKey: ["income-expense-types", filterType],
     queryFn: async (): Promise<IncomeExpenseType[]> => {
-      // RLS đã mở cho mọi user authenticated (migration 20260511000002),
-      // nên không filter theo user_id ở đây. Nhiều user đã được seed cùng
-      // tên ("Hoa hồng môi giới", "Thưởng nóng Sale", ...) → dedup
-      // client-side theo (lower(name), type), ưu tiên row của user hiện
-      // tại để pencil/sửa thao tác đúng record của họ.
+      // DB canonical theo (organization, type, normalized name). Giữ dedup
+      // client-side trong giai đoạn rollout để phiên đang mở trước migration
+      // không nháy dòng trùng; đây không còn là nguồn bảo đảm tính duy nhất.
       const user = await getSessionUser();
       const currentUserId = user?.id ?? null;
 
@@ -131,9 +130,9 @@ export const useIncomeExpenseTypeCategories = (
 };
 
 /**
- * Các hạng mục được đánh dấu "đặc biệt" (hide_in_report=true) — KHÔNG dedup, trả
- * mọi row khớp để báo cáo Phân bổ lợi nhuận ẩn đúng (dữ liệu có thể trùng tên
- * "Tiền nhà" giữa nhiều type_id). Báo cáo khớp dòng theo type_id HOẶC tên.
+ * Các hạng mục được đánh dấu "đặc biệt" (hide_in_report=true). DB canonical bảo
+ * đảm một ID cho mỗi tên trong tổ chức; báo cáo vẫn khớp thêm theo tên để tương
+ * thích cache/phiên cũ trong giai đoạn rollout.
  */
 export const useHiddenInReportTypes = () => {
   return useQuery({
@@ -172,6 +171,12 @@ export const useCreateIncomeExpenseType = () => {
 
       if (!user) throw new Error("User not authenticated");
 
+      // organization_id do DB tự gắn (trigger trg_autofill_org trên
+      // income_expense_types, thêm 27/07/2026). ĐỪNG đoán org ở client: màn
+      // Thu/Chi cho chọn mọi toà khi có income_expenses.all_buildings nên client
+      // không đọc được buildings.organization_id qua RLS. Trước khi có trigger,
+      // hạng mục tạo ở đây sinh ra với organization_id = NULL → create_income_
+      // expense_v1 từ chối 42501 → phiếu rơi sang compat và kẹt "Chờ duyệt".
       const { data, error } = await supabase
         .from("income_expense_types" as any)
         .insert({
@@ -188,7 +193,9 @@ export const useCreateIncomeExpenseType = () => {
         .single();
 
       if (error) {
-        toast.error(error.message || "Không thể tạo loại thu chi");
+        toast.error(
+          incomeExpenseTypeErrorMessage(error, "Không thể tạo loại thu chi"),
+        );
         throw error;
       }
 
@@ -235,7 +242,9 @@ export const useUpdateIncomeExpenseType = () => {
         .single();
 
       if (error) {
-        toast.error(error.message || "Không thể cập nhật loại thu chi");
+        toast.error(
+          incomeExpenseTypeErrorMessage(error, "Không thể cập nhật loại thu chi"),
+        );
         throw error;
       }
 

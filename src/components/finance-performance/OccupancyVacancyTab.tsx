@@ -49,6 +49,7 @@ import {
 import {
   useBusinessPerformanceOccupancySnapshot,
   useBusinessPerformanceOccupancyTrend12m,
+  useBusinessPerformanceInventoryHistory,
   useBusinessPerformanceUpcomingVacancy,
   type OccupancySnapshotRow,
   type OccupancyTrendPoint,
@@ -72,6 +73,16 @@ const BUSINESS_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 const CANONICAL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function shiftMonth(month: string, delta: number) {
+  const [year, monthValue] = month.split("-").map(Number);
+  const date = new Date(Date.UTC(year, monthValue - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function displayMonth(value: string) {
+  return `${value.slice(5, 7)}/${value.slice(0, 4)}`;
+}
 
 type ValidationResult<T> = {
   data: T | null;
@@ -339,6 +350,13 @@ export function OccupancyVacancyTab({ filters }: OccupancyVacancyTabProps) {
     filters.organizationId,
     buildingIds,
   );
+  const historyStart = shiftMonth(filters.month, -11);
+  const historyEnd = `${filters.month}-01`;
+  const historyQuery = useBusinessPerformanceInventoryHistory(
+    filters,
+    historyStart,
+    historyEnd,
+  );
   const snapshotValidation = useMemo(
     () => validateSnapshotRows(snapshotQuery.data ?? [], buildingIds),
     [buildingIds, snapshotQuery.data],
@@ -360,8 +378,10 @@ export function OccupancyVacancyTab({ filters }: OccupancyVacancyTabProps) {
     upcomingQuery,
     upcomingValidation.error,
   );
+  const historyState = deriveFinanceQueryState(historyQuery);
   const trendRows = trendValidation.data ?? [];
   const upcomingRows = upcomingValidation.data ?? [];
+  const historyRows = historyQuery.data ?? [];
 
   const snapshot = useMemo(() => {
     const rows = snapshotValidation.data ?? [];
@@ -404,9 +424,9 @@ export function OccupancyVacancyTab({ filters }: OccupancyVacancyTabProps) {
         <Info aria-hidden="true" />
         <AlertTitle>Ảnh chụp vận hành hiện tại — ngày {displayDate(asOfDate)}</AlertTitle>
         <AlertDescription>
-          Tháng phân tích đã chọn ({filters.month}) không thay đổi snapshot này.
           Phân loại phòng và danh sách sắp trống dùng dữ liệu live tại ngày hiện
-          tại, không phải số chốt lịch sử của tháng.
+          tại. Lịch sử cuối tháng ở phần riêng chỉ dùng snapshot thật đã ghi nhận
+          từ ngày rollout; tháng bị thiếu không được dựng lại từ dữ liệu mutable.
         </AlertDescription>
       </Alert>
 
@@ -547,6 +567,88 @@ export function OccupancyVacancyTab({ filters }: OccupancyVacancyTabProps) {
               </CardContent>
             </Card>
           </>
+        ) : null}
+      </section>
+
+      <section aria-labelledby="occupancy-history-heading" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 id="occupancy-history-heading" className="text-lg font-semibold">
+            Lịch sử snapshot cuối tháng
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Chuỗi authoritative theo manifest PROVISIONAL / FINALIZED / MISSED. Chỉ tháng có snapshot
+            hợp lệ mới hiển thị số phòng và tỷ lệ.
+          </p>
+        </div>
+        {historyState.showLoading ? <FinanceLoadingGrid count={3} /> : null}
+        {historyState.showStaleWarning ? (
+          <StaleDataWarning onRetry={() => void historyQuery.refetch()} />
+        ) : null}
+        {historyState.hasBlockingError ? (
+          <FinanceQueryError
+            title="Không thể tải lịch sử snapshot cuối tháng"
+            error={historyState.blockingError}
+            onRetry={() => void historyQuery.refetch()}
+          />
+        ) : null}
+        {historyState.canRenderData && historyRows.length === 0 ? (
+          <FinanceEmptyState
+            title="Chưa có lịch sử snapshot"
+            description="Chưa có manifest snapshot trong cửa sổ 12 tháng và phạm vi tòa đã chọn."
+          />
+        ) : null}
+        {historyState.canRenderData && historyRows.length > 0 ? (
+          <div
+            role="region"
+            aria-label="Bảng lịch sử snapshot cuối tháng theo tòa"
+            tabIndex={0}
+            className="overflow-x-auto rounded-md border"
+          >
+            <table className="w-full min-w-[56rem] caption-bottom text-sm">
+              <TableCaption className="sr-only">
+                Lịch sử snapshot phòng cuối tháng; tháng thiếu giữ giá trị trống.
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Tháng / tòa</TableHead>
+                  <TableHead scope="col">Trạng thái</TableHead>
+                  <TableHead scope="col" className="text-right">Tổng phòng</TableHead>
+                  <TableHead scope="col" className="text-right">Đang thuê</TableHead>
+                  <TableHead scope="col" className="text-right">Available</TableHead>
+                  <TableHead scope="col" className="text-right">Lấp đầy</TableHead>
+                  <TableHead scope="col" className="text-right">Giá niêm yết available</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyRows.map((row) => (
+                  <TableRow key={`${row.snapshot_month}:${row.building_id}`}>
+                    <TableHead scope="row" className="h-auto text-foreground">
+                      <div>{displayMonth(row.snapshot_month)}</div>
+                      <div className="text-xs font-normal text-muted-foreground">{row.building_name}</div>
+                    </TableHead>
+                    <TableCell>
+                      {row.snapshot_missing
+                        ? row.snapshot_status === "MISSED" ? "Lỡ cutoff" : "Chưa có snapshot"
+                        : row.snapshot_status === "FINALIZED" ? "Đã chốt" : "Tạm thời"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{row.total ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.occupied ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.available ?? "—"}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.occupancy_pct == null
+                        ? "—"
+                        : `${row.occupancy_pct.toLocaleString("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {row.listed_rent_opportunity == null
+                        ? "—"
+                        : formatCurrency(row.listed_rent_opportunity)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </table>
+          </div>
         ) : null}
       </section>
 

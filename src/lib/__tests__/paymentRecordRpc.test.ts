@@ -184,17 +184,67 @@ describe("collection planning", () => {
     expect(plan.tenders.reduce((sum, line) => sum + line.credit_amount, 0)).toBe(1_000_000);
   });
 
-  it("requires TM to cover the complete overpay", () => {
+  it("allows pure TT/TK overpay only when it is kept as customer credit", () => {
+    const plan = planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      tenders: [
+        { payment_method: "TK", gross_amount: 5_000_000, account_id: "account-tk" },
+      ],
+      overpay_action: "CREDIT",
+      invoice_total_amount: 4_000_000,
+      expected_paid_amount: 0,
+      deposit_due: 0,
+      has_contract: true,
+    });
+
+    expect(plan).toMatchObject({
+      gross_amount: 5_000_000,
+      retained_amount: 5_000_000,
+      applied_amount: 4_000_000,
+      credit_amount: 1_000_000,
+      change_amount: 0,
+    });
+    expect(plan.tenders[0]).toMatchObject({
+      payment_method: "TK",
+      applied_amount: 4_000_000,
+      credit_amount: 1_000_000,
+      change_amount: 0,
+    });
+  });
+
+  it("requires TM in the current collection to cover a cash refund", () => {
     expect(() => planInvoiceCollection({
       ...COLLECTION_INPUT,
       tenders: [
         { payment_method: "TK", gross_amount: 4_500_000, account_id: "account-tk" },
         { payment_method: "TM", gross_amount: 500_000, account_id: "account-tm", change_account_id: "change" },
       ],
+      overpay_action: "REFUND",
       invoice_total_amount: 4_000_000,
       expected_paid_amount: 0,
       deposit_due: 0,
     })).toThrow(/tiền mặt TM/);
+  });
+
+  it("allocates mixed-method credit from the last tender regardless of method", () => {
+    const plan = planInvoiceCollection({
+      ...COLLECTION_INPUT,
+      tenders: [
+        { payment_method: "TM", gross_amount: 500_000, account_id: "account-tm" },
+        { payment_method: "TT", gross_amount: 4_500_000, account_id: "account-tt" },
+      ],
+      overpay_action: "CREDIT",
+      invoice_total_amount: 4_000_000,
+      expected_paid_amount: 0,
+      deposit_due: 0,
+      has_contract: true,
+    });
+
+    expect(plan.tenders[0].credit_amount).toBe(0);
+    expect(plan.tenders[1]).toMatchObject({
+      payment_method: "TT",
+      credit_amount: 1_000_000,
+    });
   });
 
   it("rounds a small revenue residual with an explicit account", () => {

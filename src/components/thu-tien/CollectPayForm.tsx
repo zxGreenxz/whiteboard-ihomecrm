@@ -15,6 +15,7 @@ import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { validateReceiptFile } from '@/lib/receiptUpload';
 import type { CollectMethod } from '@/lib/cashAccount';
 import { fmtFull, fmtShort, todayISO } from '@/lib/collect';
+import { deriveOverpayPolicy } from '@/lib/collectPlan';
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
 const parseVN = (s: string): number => {
@@ -76,6 +77,7 @@ export function CollectPayForm({
   const [receiptPreview, setReceiptPreview] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wasForcedCreditRef = useRef(false);
 
   useEffect(() => () => { if (receiptPreview) URL.revokeObjectURL(receiptPreview); }, [receiptPreview]);
 
@@ -99,12 +101,27 @@ export function CollectPayForm({
 
   const total = lines.reduce((s, l) => s + (l.amount || 0), 0);
   const tmTotal = lines.filter((l) => l.method === 'TM').reduce((s, l) => s + (l.amount || 0), 0);
-  const nonCash = lines.filter((l) => l.method !== 'TM').reduce((s, l) => s + (l.amount || 0), 0);
-  const overpay = Math.max(0, total - remaining);
-  const overByNonCash = nonCash > remaining;
-  const overWithoutTm = overpay > 0 && tmTotal <= 0;
+  const policy = deriveOverpayPolicy({
+    total,
+    amountTm: tmTotal,
+    remaining,
+    hasContract: canCredit,
+  });
+  const overpay = policy.overpay;
   const canAddLine = lines.length < available.length;
-  const canSubmit = total > 0 && !overByNonCash && !overWithoutTm;
+  const canSubmit = total > 0 && (!policy.mustKeepAsCredit || canCredit);
+
+  useEffect(() => {
+    if (policy.mustKeepAsCredit) {
+      setKeepAsCredit(true);
+      wasForcedCreditRef.current = true;
+      return;
+    }
+    if (overpay === 0 || wasForcedCreditRef.current) {
+      setKeepAsCredit(false);
+      wasForcedCreditRef.current = false;
+    }
+  }, [policy.mustKeepAsCredit, overpay]);
 
   // Báo trạng thái lên drawer (nút xanh dưới cùng hiển thị tổng + submit).
   useEffect(() => {
@@ -156,7 +173,7 @@ export function CollectPayForm({
     enabled: !receiptPreview,
   });
 
-  const netToInvoice = keepAsCredit ? total : total - overpay; // hiển thị
+  const netToInvoice = total - overpay; // phần thực áp vào hóa đơn; dư giữ thành credit
 
   return (
     <div className="pf-form">
@@ -222,10 +239,8 @@ export function CollectPayForm({
       </div>
 
       {/* Cảnh báo / tiền thối / nợ khách */}
-      {overByNonCash ? (
-        <p className="pf-hint err">TK/TT vượt quá còn phải thu — chỉ tiền mặt mới được thu dư.</p>
-      ) : overWithoutTm ? (
-        <p className="pf-hint err">Thu dư chỉ áp dụng khi có dòng tiền mặt (TM).</p>
+      {policy.mustKeepAsCredit && !canCredit ? (
+        <p className="pf-hint err">Hóa đơn không có hợp đồng nên không thể giữ tiền dư TT/TK để trừ kỳ sau.</p>
       ) : overpay > 0 ? (
         <div className="pf-change">
           <div className="pf-change-row">
@@ -237,9 +252,14 @@ export function CollectPayForm({
               <input
                 type="checkbox"
                 checked={keepAsCredit}
+                disabled={policy.mustKeepAsCredit}
                 onChange={(e) => setKeepAsCredit(e.target.checked)}
               />
-              <span>Nợ khách (trừ kỳ sau) thay vì thối lại</span>
+              <span>
+                {policy.mustKeepAsCredit
+                  ? 'Nợ khách — bắt buộc trừ kỳ sau'
+                  : 'Nợ khách (trừ kỳ sau) thay vì thối lại'}
+              </span>
             </label>
           )}
           <p className="pf-hint">

@@ -49,6 +49,32 @@ export type CollectPlanResult =
 
 export const DEFAULT_ROUNDING_THRESHOLD = 10_000;
 
+export interface OverpayPolicyInput {
+  total: number;
+  amountTm: number;
+  remaining: number;
+  hasContract: boolean;
+}
+
+export interface OverpayPolicy {
+  overpay: number;
+  canRefund: boolean;
+  mustKeepAsCredit: boolean;
+  canKeepAsCredit: boolean;
+}
+
+/** Chính sách phần dư chỉ dựa trên các tender của lần thu hiện tại. */
+export function deriveOverpayPolicy(input: OverpayPolicyInput): OverpayPolicy {
+  const overpay = Math.max(0, cleanInt(input.total) - cleanInt(input.remaining));
+  const canRefund = overpay > 0 && cleanInt(input.amountTm) >= overpay;
+  return {
+    overpay,
+    canRefund,
+    mustKeepAsCredit: overpay > 0 && !canRefund,
+    canKeepAsCredit: overpay > 0 && input.hasContract,
+  };
+}
+
 /**
  * Plan được tính theo remaining phía client (có thể cũ). Khi ghi, đối chiếu
  * với remaining VỪA ĐỌC từ DB: trả true nếu ghi theo plan sẽ làm sai tiền
@@ -103,27 +129,22 @@ export function planCollect(input: CollectPlanInput): CollectPlanResult {
     };
   }
 
-  // ── Đường multi-line: cho thu dư NHƯNG chỉ qua tiền mặt ──
-  const nonCash = tk + tt;
-  if (nonCash > remaining) {
-    return {
-      ok: false,
-      error: 'Tiền TK/TT vượt quá còn phải thu — chỉ tiền mặt (TM) mới được thu dư để thối/nợ khách.',
-    };
-  }
-
-  const overpay = Math.max(0, total - remaining);
-  if (overpay > 0 && tm <= 0) {
-    return { ok: false, error: 'Thu dư chỉ áp dụng khi có tiền mặt (TM).' };
-  }
-
-  // overpay luôn ≤ tm vì nonCash ≤ remaining ⇒ total − remaining ≤ tm.
-  const change = overpay;
-  const keepAsCredit = !!input.keepAsCredit && change > 0;
+  const policy = deriveOverpayPolicy({
+    total,
+    amountTm: tm,
+    remaining,
+    hasContract: !!input.hasContract,
+  });
+  const change = policy.overpay;
+  // Không đủ TM để hoàn phần dư thì lần thu này bắt buộc giữ credit. Khi TM đủ,
+  // giữ mặc định hoàn tiền nhưng vẫn cho người dùng chủ động chọn credit.
+  const keepAsCredit = change > 0 && (policy.mustKeepAsCredit || !!input.keepAsCredit);
   if (keepAsCredit && !input.hasContract) {
     return {
       ok: false,
-      error: 'Hoá đơn không gắn hợp đồng nên không giữ "nợ khách" được — hãy trả thối thay vì giữ.',
+      error: policy.mustKeepAsCredit
+        ? 'Hoá đơn không gắn hợp đồng nên không thể thu dư bằng TK/TT để trừ kỳ sau.'
+        : 'Hoá đơn không gắn hợp đồng nên không giữ "nợ khách" được — hãy trả thối thay vì giữ.',
     };
   }
 

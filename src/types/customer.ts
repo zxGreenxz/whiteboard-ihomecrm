@@ -127,8 +127,11 @@ export interface CustomerFormData {
 }
 
 export interface InlineVehicle {
+  /** Có id = xe đã tồn tại (chế độ sửa); không id = dòng mới thêm. */
+  id?: string;
   vehicle_type: string;
   vehicle_name: string;
+  color?: string;
   license_plate: string;
 }
 

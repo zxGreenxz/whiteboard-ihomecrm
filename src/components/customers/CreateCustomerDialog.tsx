@@ -33,6 +33,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useCreateCustomer } from "@/hooks/useCustomers";
 import ImageUploadZone from "@/components/customers/ImageUploadZone";
+import CustomerVehiclesSection from "@/components/customers/CustomerVehiclesSection";
 
 const customerSchema = z.object({
   customer_type: z.enum(["INDIVIDUAL", "ORGANIZATION"]),
@@ -69,6 +70,17 @@ const customerSchema = z.object({
   notes: z.string().optional(),
   avatar_url: z.string().optional(),
   id_images: z.record(z.string()).optional(),
+  vehicles: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        vehicle_type: z.string(),
+        vehicle_name: z.string(),
+        color: z.string().optional(),
+        license_plate: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 type CustomerFormValues = z.infer<typeof customerSchema>;
@@ -119,6 +131,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
       notes: "",
       avatar_url: "",
       id_images: {},
+      vehicles: [],
     },
   });
 
@@ -162,6 +175,15 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
           data.id_images && Object.keys(data.id_images).length > 0
             ? data.id_images
             : null,
+        // Bỏ dòng xe trống (bấm "+ Thêm xe" rồi không điền gì).
+        vehicles: (data.vehicles ?? [])
+          .filter((v) => v.vehicle_name?.trim() || v.license_plate?.trim())
+          .map((v) => ({
+            vehicle_type: v.vehicle_type || "MOTORBIKE",
+            vehicle_name: v.vehicle_name || "",
+            color: v.color || "",
+            license_plate: v.license_plate || "",
+          })),
       });
       form.reset();
       onOpenChange(false);
@@ -695,9 +717,7 @@ export function CreateCustomerDialog({ open, onOpenChange }: CreateCustomerDialo
               {/* 2. THÔNG TIN XE */}
               <div className="space-y-4 pt-4 border-t">
                 <h3 className="font-semibold text-sm text-green-600">2. THÔNG TIN XE</h3>
-                <Button type="button" variant="outline" size="sm">
-                  + Thêm xe
-                </Button>
+                <CustomerVehiclesSection />
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t">

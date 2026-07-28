@@ -81,6 +81,19 @@ export interface AccountingState {
   invalidReversalCount: number;
 }
 
+export interface CustomerCreditState {
+  collectionGross: number;
+  collectionApplied: number;
+  collectionCredit: number;
+  collectionChange: number;
+  tenderMethods: string[];
+  tenderCredit: number;
+  lotAmount: number;
+  lotRemaining: number;
+  lotStatus: string;
+  ledgerBalance: number;
+}
+
 function readOptional(url: URL): string | null {
   try {
     return readFileSync(url, 'utf8');
@@ -514,6 +527,57 @@ WHERE invoice.id = ${uuidLiteral(invoiceId)}
   };
 }
 
+export async function inspectCustomerCreditState(
+  invoiceId: string,
+  collectionId: string,
+): Promise<CustomerCreditState> {
+  const rows = await runSql<Record<string, unknown>>(`
+SELECT
+  collection.gross_amount AS collection_gross,
+  collection.applied_amount AS collection_applied,
+  collection.credit_amount AS collection_credit,
+  collection.change_amount AS collection_change,
+  COALESCE((
+    SELECT jsonb_agg(tender.payment_method ORDER BY tender.line_index)
+    FROM public.invoice_payment_tenders tender
+    WHERE tender.collection_id = collection.id
+  ), '[]'::jsonb) AS tender_methods,
+  COALESCE((
+    SELECT sum(tender.credit_amount)
+    FROM public.invoice_payment_tenders tender
+    WHERE tender.collection_id = collection.id
+  ), 0) AS tender_credit,
+  lot.amount AS lot_amount,
+  lot.remaining_amount AS lot_remaining,
+  lot.status AS lot_status,
+  COALESCE((
+    SELECT sum(excess.amount)
+    FROM public.excess_amounts excess
+    WHERE excess.credit_lot_id = lot.id
+  ), 0) AS ledger_balance
+FROM public.invoice_payment_collections collection
+JOIN public.invoices invoice ON invoice.id = collection.invoice_id
+JOIN public.customer_credit_lots lot ON lot.source_collection_id = collection.id
+WHERE collection.id = ${uuidLiteral(collectionId)}
+  AND invoice.id = ${uuidLiteral(invoiceId)}
+  AND invoice.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid;
+`);
+  const row = rows[0];
+  if (!row) throw new Error('Không tìm thấy customer credit E2E trong org DEMO.');
+  return {
+    collectionGross: number(row.collection_gross as string),
+    collectionApplied: number(row.collection_applied as string),
+    collectionCredit: number(row.collection_credit as string),
+    collectionChange: number(row.collection_change as string),
+    tenderMethods: (row.tender_methods as string[]) ?? [],
+    tenderCredit: number(row.tender_credit as string),
+    lotAmount: number(row.lot_amount as string),
+    lotRemaining: number(row.lot_remaining as string),
+    lotStatus: String(row.lot_status ?? ''),
+    ledgerBalance: number(row.ledger_balance as string),
+  };
+}
+
 export async function cleanupAccountingFixture(
   marker: string,
   contractId: string | null,
@@ -619,6 +683,27 @@ WITH RECURSIVE fixture_voucher AS (
 SELECT id FROM fixture_voucher;
 ALTER TABLE _e2e_vouchers ADD PRIMARY KEY (id);
 
+CREATE TEMP TABLE _e2e_postings ON COMMIT DROP AS
+SELECT posting.id
+FROM public.income_expense_postings posting
+WHERE posting.voucher_id IN (SELECT id FROM _e2e_vouchers)
+   OR posting.external_source_id IN (SELECT id FROM _e2e_collections)
+   OR posting.external_source_line_id IN (SELECT id FROM _e2e_tenders);
+ALTER TABLE _e2e_postings ADD PRIMARY KEY (id);
+
+CREATE TEMP TABLE _e2e_evidence ON COMMIT DROP AS
+SELECT DISTINCT evidence.id
+FROM public.finance_evidence_objects evidence
+LEFT JOIN public.finance_evidence_system_sources source
+  ON source.evidence_id = evidence.id
+LEFT JOIN public.income_expense_posting_evidence link
+  ON link.evidence_id = evidence.id
+WHERE source.collection_id IN (SELECT id FROM _e2e_collections)
+   OR source.tender_id IN (SELECT id FROM _e2e_tenders)
+   OR source.payment_id IN (SELECT id FROM _e2e_payments)
+   OR link.posting_id IN (SELECT id FROM _e2e_postings);
+ALTER TABLE _e2e_evidence ADD PRIMARY KEY (id);
+
 CREATE TEMP TABLE _e2e_excess ON COMMIT DROP AS
 SELECT excess.id
 FROM public.excess_amounts excess
@@ -699,12 +784,25 @@ WHERE operation.operation IN ('contract.create.v2', 'invoice.collection.v5')
 
 SELECT app_private.begin_accounting_chain_write_v1();
 
+-- Gỡ ownership của đúng fixture trước khi tháo các FK payload. Guard canonical
+-- từ chối mọi UPDATE/DELETE payload khi ownership còn tồn tại, kể cả core xid.
+-- Ownership là audit append-only; cleanup admin của fixture DEMO phải tạm tắt
+-- trigger trên riêng bảng này trong cùng transaction rồi bật lại ngay. ALTER là
+-- transactional nên bất kỳ lỗi nào phía sau cũng khôi phục trigger tự động.
+ALTER TABLE app_private.income_expense_flow_ownership DISABLE TRIGGER USER;
+DELETE FROM app_private.income_expense_flow_ownership ownership
+WHERE ownership.income_expense_id IN (SELECT id FROM _e2e_vouchers);
+ALTER TABLE app_private.income_expense_flow_ownership ENABLE TRIGGER USER;
+
 UPDATE public.payments
 SET collection_id = NULL, tender_id = NULL, reversed_by_collection_id = NULL
 WHERE id IN (SELECT id FROM _e2e_payments);
 
 UPDATE public.income_expenses
-SET payment_collection_id = NULL, reversal_of_income_expense_id = NULL
+SET payment_collection_id = NULL,
+    reversal_of_income_expense_id = NULL,
+    posting_id = NULL,
+    active_posting_id_v2 = NULL
 WHERE id IN (SELECT id FROM _e2e_vouchers);
 
 UPDATE public.excess_amounts
@@ -726,8 +824,37 @@ WHERE link.contract_id IN (SELECT id FROM _e2e_contracts)
 DELETE FROM app_private.payment_reversals reversal
 WHERE reversal.original_payment_id IN (SELECT id FROM _e2e_payments)
    OR reversal.reversal_voucher_id IN (SELECT id FROM _e2e_vouchers);
-DELETE FROM app_private.income_expense_flow_ownership ownership
-WHERE ownership.income_expense_id IN (SELECT id FROM _e2e_vouchers);
+DELETE FROM public.income_expense_posting_evidence link
+WHERE link.posting_id IN (SELECT id FROM _e2e_postings)
+   OR link.evidence_id IN (SELECT id FROM _e2e_evidence);
+DELETE FROM public.finance_evidence_system_sources source
+WHERE source.evidence_id IN (SELECT id FROM _e2e_evidence)
+   OR source.collection_id IN (SELECT id FROM _e2e_collections)
+   OR source.tender_id IN (SELECT id FROM _e2e_tenders)
+   OR source.payment_id IN (SELECT id FROM _e2e_payments);
+ALTER TABLE public.income_expense_posting_lines DISABLE TRIGGER USER;
+DELETE FROM public.income_expense_posting_lines line
+WHERE line.posting_id IN (SELECT id FROM _e2e_postings);
+ALTER TABLE public.income_expense_posting_lines ENABLE TRIGGER USER;
+ALTER TABLE public.income_expense_postings DISABLE TRIGGER USER;
+DELETE FROM public.income_expense_postings posting
+WHERE posting.id IN (SELECT id FROM _e2e_postings);
+ALTER TABLE public.income_expense_postings ENABLE TRIGGER USER;
+DELETE FROM public.finance_evidence_objects evidence
+WHERE evidence.id IN (SELECT id FROM _e2e_evidence);
+ALTER TABLE public.finance_invoice_component_allocations DISABLE TRIGGER USER;
+DELETE FROM public.finance_invoice_component_allocations allocation
+WHERE allocation.collection_id IN (SELECT id FROM _e2e_collections)
+   OR allocation.invoice_id IN (SELECT id FROM _e2e_invoices);
+ALTER TABLE public.finance_invoice_component_allocations ENABLE TRIGGER USER;
+ALTER TABLE public.finance_invoice_components DISABLE TRIGGER USER;
+DELETE FROM public.finance_invoice_components component
+WHERE component.invoice_id IN (SELECT id FROM _e2e_invoices);
+ALTER TABLE public.finance_invoice_components ENABLE TRIGGER USER;
+ALTER TABLE public.finance_invoice_component_manifests DISABLE TRIGGER USER;
+DELETE FROM public.finance_invoice_component_manifests manifest
+WHERE manifest.invoice_id IN (SELECT id FROM _e2e_invoices);
+ALTER TABLE public.finance_invoice_component_manifests ENABLE TRIGGER USER;
 DELETE FROM public.customer_credit_lots lot
 WHERE lot.id IN (SELECT id FROM _e2e_credit_lots);
 DELETE FROM public.excess_amounts excess
