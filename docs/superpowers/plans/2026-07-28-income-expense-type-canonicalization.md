@@ -12,7 +12,7 @@
 
 ## File map
 
-- Create `supabase/migrations/20260728150000_income_expense_type_canonicalization.sql`: schema, audit, canonical merge, reference rewrites, uniqueness, and writer redefinitions.
+- Create `supabase/migrations/20260728180000_income_expense_type_canonicalization.sql`: schema, merge/repair audits, canonical merge, reference rewrites, uniqueness, and writer redefinitions.
 - Create `src/lib/__tests__/incomeExpenseTypeCanonicalizationMigration.test.ts`: static contract for the migration.
 - Create `src/lib/incomeExpenseTypeErrors.ts`: pure SQL-error-to-message mapping.
 - Create `src/lib/__tests__/incomeExpenseTypeErrors.test.ts`: duplicate and fallback error behavior.
@@ -32,7 +32,7 @@
 
 - [ ] **Step 1: Write the migration contract test**
 
-Read `20260728150000_income_expense_type_canonicalization.sql` and assert all of these independent contracts:
+Read `20260728180000_income_expense_type_canonicalization.sql` and assert all of these independent contracts:
 
 ```ts
 expect(sql).toMatch(/create or replace function public\.normalize_income_expense_type_name/i);
@@ -94,7 +94,7 @@ Expected: fail because the migration, helper, and rollout module do not exist.
 ### Task 2: Build the canonicalization migration core
 
 **Files:**
-- Create: `supabase/migrations/20260728150000_income_expense_type_canonicalization.sql`
+- Create: `supabase/migrations/20260728180000_income_expense_type_canonicalization.sql`
 - Test: `src/lib/__tests__/incomeExpenseTypeCanonicalizationMigration.test.ts`
 
 - [ ] **Step 1: Add the normalization and audit schema**
@@ -124,7 +124,12 @@ ALTER TABLE public.income_expense_types
   ALTER COLUMN organization_id SET NOT NULL;
 ```
 
-Before the merge, reject any item whose parent voucher organization differs from its type organization and reject duplicate groups whose `bool_or(is_deposit)` differs from `bool_and(is_deposit)`.
+Before the merge, reject any item whose own organization differs from its parent
+voucher. For a legacy item whose type organization differs from its voucher,
+create or reuse the same normalized identity in the voucher organization, snapshot
+the move in `income_expense_type_reference_repair_audit`, and include that move in
+the trigger-disabled rewrite and invariant checks. Reject duplicate groups whose
+`bool_or(is_deposit)` differs from `bool_and(is_deposit)`.
 
 - [ ] **Step 3: Build the deterministic temporary map**
 
@@ -179,7 +184,7 @@ ON public.income_expense_types (
 ### Task 3: Make system category writers organization-aware
 
 **Files:**
-- Modify: `supabase/migrations/20260728150000_income_expense_type_canonicalization.sql`
+- Modify: `supabase/migrations/20260728180000_income_expense_type_canonicalization.sql`
 - Test: `src/lib/__tests__/incomeExpenseTypeCanonicalizationMigration.test.ts`
 
 - [ ] **Step 1: Redefine commission seeding**
@@ -283,7 +288,7 @@ Reuse `loadMigrationBodies` and `buildRolloutSql` from `apply-accounting-rollout
 
 ```js
 export const CANONICALIZATION_MIGRATION =
-  "supabase/migrations/20260728150000_income_expense_type_canonicalization.sql";
+  "supabase/migrations/20260728180000_income_expense_type_canonicalization.sql";
 
 export function buildIncomeExpenseTypeCanonicalizationRollout() {
   const migrations = loadMigrationBodies([CANONICALIZATION_MIGRATION]);
@@ -322,7 +327,10 @@ Co-Authored-By: Codex <noreply@openai.com>
 
 - [ ] **Step 1: Run rollback-only live validation**
 
-Load `SUPABASE_PAT` from the root `CLAUDE.local.md` without printing it. Run dry-run, copy its hash, then run `--rollback --expected-sha256 <hash>`. Expected: the actual production duplicate set passes every invariant and the transaction rolls back.
+Load `SUPABASE_PAT` from the root `CLAUDE.local.md` without printing it. Run dry-run,
+copy its hash, then run `--rollback --expected-sha256 <hash>`. Expected: the actual
+production duplicate set and known DEMO-to-PROD legacy type references pass every
+invariant and the transaction rolls back.
 
 - [ ] **Step 2: Run independent review before irreversible apply**
 

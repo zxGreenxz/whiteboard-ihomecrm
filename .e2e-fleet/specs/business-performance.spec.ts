@@ -2320,6 +2320,38 @@ test.describe("Trung tâm Tài chính & Hiệu quả kinh doanh", () => {
         consoleErrors,
         runtimeSignals,
       );
+
+      if (view.id === "revenue-cost-structure") {
+        const expenseTab = page.getByRole("tab", { name: "Chi", exact: true });
+        await expenseTab.click();
+        await expect(expenseTab).toHaveAttribute("aria-selected", "true");
+
+        const expenseTable = page.getByRole("table", {
+          name: /Cơ cấu chi phí theo hạng mục/,
+        });
+        const expenseNames = (await expenseTable.getByRole("rowheader").allTextContents())
+          .map((name) => name.trim())
+          .filter((name) => name !== "Tổng");
+        const normalizedExpenseNames = expenseNames.map((name) =>
+          name
+            .normalize("NFD")
+            .toLocaleLowerCase("vi")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/đ/g, "d")
+            .replace(/\s+/g, " ")
+            .trim(),
+        );
+        expect(new Set(normalizedExpenseNames).size).toBe(
+          normalizedExpenseNames.length,
+        );
+        expect(
+          await page.getByText("Hoa hồng môi giới", { exact: true }).count(),
+        ).toBeLessThanOrEqual(1);
+        expect(
+          await page.getByText("Tiền nhà", { exact: true }).count(),
+        ).toBeLessThanOrEqual(1);
+        expect(consoleErrors).toEqual([]);
+      }
     }
 
     await selectDesktopViewWithCanonicalScope(

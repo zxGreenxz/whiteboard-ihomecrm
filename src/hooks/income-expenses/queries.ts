@@ -25,10 +25,9 @@ import type {
 // rỗng oan. Nay chỉ trả type_id (tập NHỎ) để caller lọc qua embedded inner-join
 // `income_expense_items!inner` — xem ITEM_TYPE_INNER_JOIN / planItemFilters.
 //
-// LƯU Ý: income_expense_types có nhiều row trùng (name, type) do mỗi user được
-// seed riêng; items của phiếu có thể trỏ tới bất kỳ id "sibling" nào cùng
-// (name, type). Vì vậy phải expand selected id → tất cả id cùng (name, type),
-// nếu không sẽ bỏ sót phiếu của user khác.
+// Tương thích rollout: migration canonical đã chuyển mọi item sang một type_id
+// theo tổ chức. Vẫn expand sibling trong thời gian các phiên/catalog cũ có thể
+// tồn tại, nhưng DB unique mới là nguồn bảo đảm tính duy nhất lâu dài.
 async function getItemTypeSiblingIds(
   filters: Pick<
     IncomeExpenseFilters,

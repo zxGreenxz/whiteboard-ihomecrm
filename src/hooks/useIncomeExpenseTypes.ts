@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { invalidateIeTypesCache } from "@/lib/ieTypesCache";
+import { incomeExpenseTypeErrorMessage } from "@/lib/incomeExpenseTypeErrors";
 import { toast } from "sonner";
 
 // --- Types ---
@@ -43,11 +44,9 @@ export const useIncomeExpenseTypes = (
     staleTime: IE_TYPES_STALE_TIME,
     queryKey: ["income-expense-types", filterType],
     queryFn: async (): Promise<IncomeExpenseType[]> => {
-      // RLS đã mở cho mọi user authenticated (migration 20260511000002),
-      // nên không filter theo user_id ở đây. Nhiều user đã được seed cùng
-      // tên ("Hoa hồng môi giới", "Thưởng nóng Sale", ...) → dedup
-      // client-side theo (lower(name), type), ưu tiên row của user hiện
-      // tại để pencil/sửa thao tác đúng record của họ.
+      // DB canonical theo (organization, type, normalized name). Giữ dedup
+      // client-side trong giai đoạn rollout để phiên đang mở trước migration
+      // không nháy dòng trùng; đây không còn là nguồn bảo đảm tính duy nhất.
       const user = await getSessionUser();
       const currentUserId = user?.id ?? null;
 
@@ -194,7 +193,9 @@ export const useCreateIncomeExpenseType = () => {
         .single();
 
       if (error) {
-        toast.error(error.message || "Không thể tạo loại thu chi");
+        toast.error(
+          incomeExpenseTypeErrorMessage(error, "Không thể tạo loại thu chi"),
+        );
         throw error;
       }
 
@@ -241,7 +242,9 @@ export const useUpdateIncomeExpenseType = () => {
         .single();
 
       if (error) {
-        toast.error(error.message || "Không thể cập nhật loại thu chi");
+        toast.error(
+          incomeExpenseTypeErrorMessage(error, "Không thể cập nhật loại thu chi"),
+        );
         throw error;
       }
 

@@ -82,6 +82,16 @@ Current relational references are:
 - `income_expense_items.income_expense_type_id`;
 - `finance_reporting_role_assignments.income_expense_type_id` plus its organization-scoped composite foreign key.
 
+Live rollback validation also found a legacy fixture defect: some DEMO items and
+their vouchers belonged to DEMO while their type IDs pointed at PROD master rows.
+The migration repairs this before canonical merging. It reuses, or creates from
+the source metadata, the same normalized identity inside the voucher organization;
+records every affected item and both master-row snapshots in the append-only
+`income_expense_type_reference_repair_audit`; and then moves only the live type
+foreign key while item user triggers are disabled. Voucher ownership, item
+ownership, amounts, and `accounting_class` remain unchanged. This is a repair of
+invalid organization scoping, never a merge across organizations.
+
 Before moving finance-role assignments, validate that collapsing a duplicate group will not create overlapping effective periods with incompatible roles. Abort the whole transaction with a diagnostic if it would. Assignments with an identical role and effective range are recorded in the audit, reduced deterministically to one row, and moved to the canonical ID; all other non-overlapping assignments move unchanged.
 
 Updating item category IDs must not recalculate posted accounting snapshots or mutate voucher lifecycle state. The migration therefore verifies that all user triggers on `income_expense_items` are enabled, temporarily disables user triggers only for the ID rewrite, preserves `accounting_class` and all amounts, then re-enables them. Constraint triggers remain active. Postconditions compare row counts, amount sums, accounting-class counts, and organization ownership before and after the rewrite.
@@ -113,6 +123,7 @@ The migration is atomic. It aborts without partial changes when any of these gat
 
 - an unscoped category cannot be assigned to an organization;
 - a referenced duplicate belongs to a different organization than its parent record;
+- a cross-organization item reference cannot be mapped to an organization-local type;
 - finance-role mappings conflict after canonicalization;
 - a user trigger needed for normal operation was already disabled;
 - reference counts, monetary sums, accounting snapshots, or duplicate-count postconditions differ unexpectedly.
@@ -130,7 +141,9 @@ Rollout order:
 ## Test strategy
 
 - Static migration tests assert normalization, deterministic ranking, audit insertion, both reference rewrites, trigger safety, metadata merge, unique prevention, and transaction postconditions.
-- Rollback database tests seed duplicate names with case/diacritic/whitespace variants, assign item references, and verify one canonical row with unchanged totals.
+- Rollback database validation compiles the full migration against the live duplicate
+  set, including the audited legacy cross-organization item repair, and rolls the
+  transaction back without retaining changes.
 - Conflict tests prove the migration refuses incompatible finance-role intervals.
 - Hook tests prove create and rename surface a friendly duplicate message for SQLSTATE `23505` while other errors remain unchanged.
 - Writer tests prove commission and fixed-expense flows reuse the organization canonical row.
