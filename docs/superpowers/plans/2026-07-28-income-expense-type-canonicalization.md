@@ -22,6 +22,10 @@
 - Create `scripts/__tests__/income-expense-type-canonicalization-rollout.test.mjs`: CLI, hash, atomic wrapper, and secret-redaction contracts.
 - Modify `.e2e-fleet/specs/business-performance.spec.ts`: assert one visible row per normalized category.
 - Regenerate `src/integrations/supabase/types.ts` after live schema apply.
+- Modify `src/hooks/useManagerSalary.ts`, `src/hooks/useMaintenanceBatch.ts`, and
+  `src/copilot/tools/writeTools.ts`: keep legacy/client type writers in the
+  voucher building or invoice organization.
+- Create organization-scope regression contracts under `src/hooks/__tests__/`.
 
 ### Task 1: Lock the expected behavior with failing tests
 
@@ -352,14 +356,26 @@ Verify the exact generated header remains first and `income_expense_type_merge_a
 
 - [ ] **Step 5: Add the E2E uniqueness assertion**
 
-In the desktop Business Performance Chi structure test, assert visible label counts:
+In the desktop Business Performance Chi structure test, normalize all visible
+expense row headers and assert that the normalized set has the same size as the
+row list. Also assert the two reported names never render more than once:
 
 ```ts
-await expect(page.getByText("Hoa hồng môi giới", { exact: true })).toHaveCount(1);
-await expect(page.getByText("Tiền nhà", { exact: true })).toHaveCount(1);
+expect(new Set(normalizedExpenseNames).size).toBe(normalizedExpenseNames.length);
+expect(await page.getByText("Hoa hồng môi giới", { exact: true }).count())
+  .toBeLessThanOrEqual(1);
+expect(await page.getByText("Tiền nhà", { exact: true }).count())
+  .toBeLessThanOrEqual(1);
 ```
 
-Keep the existing console-error tracker active.
+Keep the existing console-error tracker active. The exact existence/count and
+amount invariants for these two PROD categories are verified through live SQL,
+because the DEMO reporting fixture does not contain an item for every PROD name.
+
+After type regeneration, fix every client writer surfaced by the new non-null
+`organization_id` contract. Salary, maintenance, and Copilot fallbacks must never
+resolve a type from a different organization; mixed-organization batches fail
+closed instead of creating cross-organization item references.
 
 - [ ] **Step 6: Run verification gates**
 

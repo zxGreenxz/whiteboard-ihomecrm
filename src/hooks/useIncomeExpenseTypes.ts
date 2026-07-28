@@ -130,9 +130,9 @@ export const useIncomeExpenseTypeCategories = (
 };
 
 /**
- * Các hạng mục được đánh dấu "đặc biệt" (hide_in_report=true) — KHÔNG dedup, trả
- * mọi row khớp để báo cáo Phân bổ lợi nhuận ẩn đúng (dữ liệu có thể trùng tên
- * "Tiền nhà" giữa nhiều type_id). Báo cáo khớp dòng theo type_id HOẶC tên.
+ * Các hạng mục được đánh dấu "đặc biệt" (hide_in_report=true). DB canonical bảo
+ * đảm một ID cho mỗi tên trong tổ chức; báo cáo vẫn khớp thêm theo tên để tương
+ * thích cache/phiên cũ trong giai đoạn rollout.
  */
 export const useHiddenInReportTypes = () => {
   return useQuery({

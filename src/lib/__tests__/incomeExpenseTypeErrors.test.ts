@@ -24,4 +24,3 @@ describe("incomeExpenseTypeErrorMessage", () => {
     expect(incomeExpenseTypeErrorMessage({}, "fallback")).toBe("fallback");
   });
 });
-

@@ -3245,7 +3245,7 @@ export type Database = {
             foreignKeyName: "contract_transfers_new_tenant_id_fkey"
             columns: ["new_tenant_id"]
             isOneToOne: false
-            referencedRelation: "tenants"
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
@@ -3259,7 +3259,7 @@ export type Database = {
             foreignKeyName: "contract_transfers_old_tenant_id_fkey"
             columns: ["old_tenant_id"]
             isOneToOne: false
-            referencedRelation: "tenants"
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
@@ -5758,6 +5758,110 @@ export type Database = {
           },
         ]
       }
+      income_expense_type_merge_audit: {
+        Row: {
+          canonical_before: Json
+          canonical_type_id: string
+          duplicate_before: Json
+          duplicate_type_id: string
+          finance_role_assignments_before: Json
+          finance_role_reference_count: number
+          id: string
+          item_reference_count: number
+          merged_at: string
+          migration_version: string
+          moved_item_ids: string[]
+          normalized_name: string
+          organization_id: string
+          type: string
+        }
+        Insert: {
+          canonical_before: Json
+          canonical_type_id: string
+          duplicate_before: Json
+          duplicate_type_id: string
+          finance_role_assignments_before?: Json
+          finance_role_reference_count: number
+          id?: string
+          item_reference_count: number
+          merged_at?: string
+          migration_version: string
+          moved_item_ids?: string[]
+          normalized_name: string
+          organization_id: string
+          type: string
+        }
+        Update: {
+          canonical_before?: Json
+          canonical_type_id?: string
+          duplicate_before?: Json
+          duplicate_type_id?: string
+          finance_role_assignments_before?: Json
+          finance_role_reference_count?: number
+          id?: string
+          item_reference_count?: number
+          merged_at?: string
+          migration_version?: string
+          moved_item_ids?: string[]
+          normalized_name?: string
+          organization_id?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "income_expense_type_merge_audit_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      income_expense_type_reference_repair_audit: {
+        Row: {
+          id: string
+          item_before: Json
+          item_id: string
+          migration_version: string
+          repaired_at: string
+          source_organization_id: string
+          source_type_before: Json
+          source_type_id: string
+          target_organization_id: string
+          target_type_before: Json
+          target_type_id: string
+          voucher_id: string
+        }
+        Insert: {
+          id?: string
+          item_before: Json
+          item_id: string
+          migration_version: string
+          repaired_at?: string
+          source_organization_id: string
+          source_type_before: Json
+          source_type_id: string
+          target_organization_id: string
+          target_type_before: Json
+          target_type_id: string
+          voucher_id: string
+        }
+        Update: {
+          id?: string
+          item_before?: Json
+          item_id?: string
+          migration_version?: string
+          repaired_at?: string
+          source_organization_id?: string
+          source_type_before?: Json
+          source_type_id?: string
+          target_organization_id?: string
+          target_type_before?: Json
+          target_type_id?: string
+          voucher_id?: string
+        }
+        Relationships: []
+      }
       income_expense_types: {
         Row: {
           category: string | null
@@ -5770,7 +5874,7 @@ export type Database = {
           is_deposit: boolean
           is_restricted: boolean
           name: string
-          organization_id: string | null
+          organization_id: string
           system_only: boolean
           type: string
           updated_at: string
@@ -5787,7 +5891,7 @@ export type Database = {
           is_deposit?: boolean
           is_restricted?: boolean
           name: string
-          organization_id?: string | null
+          organization_id: string
           system_only?: boolean
           type: string
           updated_at?: string
@@ -5804,7 +5908,7 @@ export type Database = {
           is_deposit?: boolean
           is_restricted?: boolean
           name?: string
-          organization_id?: string | null
+          organization_id?: string
           system_only?: boolean
           type?: string
           updated_at?: string
@@ -15540,16 +15644,6 @@ export type Database = {
         }
         Returns: string
       }
-      create_tenant_transfer: {
-        Args: {
-          p_contract_id: string
-          p_new_tenant_id: string
-          p_reason?: string
-          p_transfer_date?: string
-          p_transfer_fee?: number
-        }
-        Returns: string
-      }
       current_profit_manager_id: { Args: never; Returns: string }
       current_shareholder_id: { Args: never; Returns: string }
       current_visible_owner_ids: { Args: never; Returns: string[] }
@@ -16533,6 +16627,10 @@ export type Database = {
       }
       my_org_ids: { Args: never; Returns: string[] }
       natural_sort_key: { Args: { p_name: string }; Returns: string }
+      normalize_income_expense_type_name: {
+        Args: { p_name: string }
+        Returns: string
+      }
       nrm_vn: { Args: { s: string }; Returns: string }
       occupancy_snapshot_v2: {
         Args: { p_as_of_date?: string; p_building_ids?: string[] }

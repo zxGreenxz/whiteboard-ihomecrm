@@ -63,4 +63,3 @@ describe("income/expense type canonicalization rollout", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 });
-

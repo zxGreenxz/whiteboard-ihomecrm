@@ -1,7 +1,7 @@
 # Canonicalize Income/Expense Types — Design
 
-**Date:** 2026-07-28  
-**Scope:** `income_expense_types` within one organization and one Thu/Chi side  
+**Date:** 2026-07-28
+**Scope:** `income_expense_types` within one organization and one Thu/Chi side
 **Status:** Approved for autonomous implementation by the user's instruction to complete the fix without repeated confirmation gates.
 
 ## Problem
@@ -115,7 +115,15 @@ The two effective legacy writers that still resolve categories by `user_id` must
 
 The auth-user trigger must not create one row per user after uniqueness becomes organization-scoped. It should either resolve/reuse the existing organization category or be removed when organization membership does not yet exist; lazy organization-aware writers remain responsible for ensuring required system categories.
 
-Other current finance writers already query by `organization_id` and will reuse the canonical row once the unique guard exists.
+The live type regeneration exposed three client fallbacks that still resolved a
+type without organization scope: manager-salary payout, multi-building
+maintenance, and the Copilot draft writer. They now derive the organization from
+the actual voucher building/invoice, reject mixed-organization maintenance
+batches, query the canonical type inside that organization, and include
+`organization_id` on every fallback type/voucher/item insert. Concurrent salary
+or maintenance type creation reselects the canonical row after SQLSTATE `23505`.
+Other current finance writers already query by `organization_id` and reuse the
+canonical row once the unique guard exists.
 
 ## Failure handling and rollout
 
