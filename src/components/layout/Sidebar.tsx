@@ -67,6 +67,7 @@ import {
   Pin,
   PinOff,
   LogOut,
+  Network,
 } from 'lucide-react';
 
 interface NavItem {
@@ -170,6 +171,7 @@ const navigationGroups: NavGroup[] = [
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
+      { title: 'Trung tâm mạng', href: '/network-center', icon: Network, module: 'network_center', action: 'view' },
       { title: 'Công việc', href: '/tasks', icon: ClipboardList, module: 'tasks' },
       { title: 'Thông báo', href: '/notifications', icon: Bell, module: 'notifications' },
     ],

@@ -115,7 +115,9 @@ export type ActionKey =
   | "post"                        // cashbooks — ghi sổ (hạch toán)
   | "reverse"                     // income_expenses — đảo bút toán
   | "self_approve_within_limit"   // income_expenses — tự duyệt dưới ngưỡng
-  | "pay_manager";                // shareholder_profit — chi lương quản lý
+  | "pay_manager"                 // shareholder_profit — chi lương quản lý
+  // Trung tâm mạng: thao tác allowlist, không fallback từ quyền quản lý chung.
+  | "execute";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -236,6 +238,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "ops",
     label: "Vận hành & Báo cáo",
     modules: [
+      { key: "network_center", label: "Trung tâm mạng", core: ["view", "execute"] },
       { key: "tasks",      label: "Công việc", extra: ["complete", "approve"] },
       { key: "task_types", label: "Loại công việc" },
       {
@@ -360,6 +363,7 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   self_approve_within_limit: "Tự duyệt phiếu dưới ngưỡng",
   pay_manager:    "Chi lương quản lý",
   ui_control:     "AI điều khiển trang (experimental)",
+  execute:        "Thực thi",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */

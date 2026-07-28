@@ -434,6 +434,16 @@ export const PAGE_GROUPS: PageGroup[] = [
     label: "Vận hành",
     pages: [
       {
+        key: "network_center",
+        label: "Trung tâm mạng",
+        route: "/network-center",
+        desc: "Theo dõi mạng theo toà và chạy các thao tác MikroTik an toàn đã được định kiểu.",
+        features: [
+          f("network_center", "view", "Xem Trung tâm mạng", "view"),
+          f("network_center", "execute", "Thực thi thao tác mạng", "elevated"),
+        ],
+      },
+      {
         key: "tasks",
         label: "Công việc",
         route: "/tasks",

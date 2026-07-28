@@ -13,7 +13,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { hideAppSplash } from "@/lib/appSplash";
 import { syncAuthQueryCache } from "@/lib/authQueryCache";
-
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
 // đổ về danh sách).
 function TenantToCustomerRedirect() {
@@ -43,6 +42,7 @@ import { RequirePermission } from "./components/auth/RequirePermission";
 // bọc chung quanh <Routes> (riêng /r/:token và /thu-tien giữ Suspense cục bộ
 // vì có CSS toàn cục cần cô lập).
 const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"));
+const NetworkCenterApp = lazy(() => import("./pages/network-center/NetworkCenterApp"));
 // AI Copilot — nút nổi + panel chat (gate session/entitlement/quyền bên trong)
 const CopilotLauncher = lazy(() => import("./copilot/CopilotLauncher"));
 // AI Copilot — trang quản trị (super admin: full; user thường: tab Sử dụng)
@@ -209,7 +209,6 @@ const queryClient = new QueryClient({
     },
   },
 });
-
 // Listener auth DUY NHẤT giữ cache ['auth','user'] / ['auth','session'] tươi
 // (INITIAL_SESSION khi boot, SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT, cross-tab)
 // → useAuth/useSession dùng staleTime: Infinity, không round-trip mạng.
@@ -309,6 +308,7 @@ const App = () => (
           {/* /dashboard: Bảng tin — mobile mở màn web-app riêng, desktop về "/". */}
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
           <Route path="/building-map" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingMapPage /></RequirePermission></ProtectedRoute>} />
+          <Route path="/network-center/*" element={<ProtectedRoute><RequirePermission module="network_center" action="view"><NetworkCenterApp /></RequirePermission></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><RequirePermission module="notifications"><NotificationsPage /></RequirePermission></ProtectedRoute>} />
 
           {/* === KÊNH CHAT === */}
