@@ -35,6 +35,25 @@ const CONTEXT_INPUTS = [
   "vendor/zalouser-bridge/artifacts/openclaw-zalouser-2026.7.1.tgz",
 ];
 
+test("root traversal excludes immutable vendor payloads without hiding owned tests", async () => {
+  const repoRoot = resolve(cellRoot, "../..");
+  const viteSource = await readFile(join(repoRoot, "vite.config.ts"), "utf8");
+  const eslintSource = await readFile(join(repoRoot, "eslint.config.js"), "utf8");
+  const exclusions = [
+    "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/**",
+    "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
+    "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**",
+  ];
+  for (const exclusion of exclusions) {
+    assert.match(viteSource, new RegExp(exclusion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(eslintSource, new RegExp(exclusion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.doesNotMatch(viteSource, /vendor\/zalouser-bridge\/\*\*['"]?/);
+  assert.doesNotMatch(eslintSource, /vendor\/zalouser-bridge\/\*\*['"]?/);
+  assert.doesNotMatch(viteSource, /vendor\/zalouser-bridge\/test\//);
+  assert.doesNotMatch(eslintSource, /vendor\/zalouser-bridge\/test\//);
+});
+
 async function readCell(relativePath) {
   return readFile(join(cellRoot, relativePath), "utf8");
 }
@@ -585,6 +604,103 @@ test("PowerShell helper pins builders and makes the verifier the promotion gate"
   assert.doesNotMatch(script, /Invoke-Expression|cmd\s+\/c|Start-Process/);
 });
 
+test("PowerShell helper arms cleanup before either builder create can partially fail", async () => {
+  const script = await readCell("scripts/build-reproducible-image.ps1");
+  const createA = script.indexOf("'create', '--name', $builderA");
+  const createB = script.indexOf("'create', '--name', $builderB");
+  const armA = script.indexOf("$builderACreated = $true");
+  const armB = script.indexOf("$builderBCreated = $true");
+  const cleanup = script.indexOf("foreach ($builderState in @(");
+
+  assert.ok(createA > 0 && createB > createA);
+  assert.ok(armA > 0 && armA < createA);
+  assert.ok(armB > createA && armB < createB);
+  assert.ok(cleanup > createB);
+  assert.match(script.slice(cleanup), /if \(\$builderState\.Created\)/);
+  assert.match(script.slice(cleanup), /'rm', '--force', \[string\]\$builderState\.Name/);
+});
+
+test("evidence-child helper uses absolute verified candidates and exact R to E lifecycle", async () => {
+  const script = await readCell("scripts/create-evidence-child.ps1");
+  const nodeGate = script.indexOf("Official stable Node >=24.15.0 <25 is required");
+  const firstWork = script.indexOf("$sourceRoot =");
+
+  assert.match(script, /^#Requires -Version 7\.3/m);
+  assert.ok(nodeGate > 0 && nodeGate < firstWork);
+  assert.match(script, /\[ValidatePattern\('\^\[0-9a-f\]\{40\}\$'\)\][\s\S]*\$ReviewedTree/);
+  assert.match(script, /IsPathFullyQualified\(\$CandidateEvidencePath\)/);
+  assert.match(script, /IsPathFullyQualified\(\$CandidateArchivePath\)/);
+  assert.match(script, /GetRelativePath\(\$releaseRoot, \$candidateEvidence\)/);
+  assert.match(script, /GetRelativePath\(\$releaseRoot, \$candidateArchive\)/);
+  assert.match(script, /FileAttributes\]::ReparsePoint/);
+  assert.match(script, /'--evidence', \$eDestination/);
+  assert.match(script, /'--schema', \$eSchema/);
+  assert.match(script, /'--release-artifact', \$candidateArchive/);
+  assert.match(script, /git[\s\S]*worktree[\s\S]*add[\s\S]*--detach/);
+  assert.match(script, /git[\s\S]*worktree[\s\S]*remove[\s\S]*--force/);
+  assert.match(script, /rev-parse[\s\S]*\$E\^/);
+  assert.match(script, /services\/openclaw-zalo-cell\/build-evidence\.json/);
+  assert.match(script, /merge[\s\S]*--ff-only[\s\S]*\$E/);
+  assert.doesNotMatch(script, /--evidence['"],?\s*['"]services\//);
+  assert.doesNotMatch(script, /--schema['"],?\s*['"]services\//);
+});
+
+test("evidence verifier rejects relative evidence and schema operands", async (t) => {
+  const { verifyEvidenceFile } = await loadScript("scripts/verify-image-lock.mjs");
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-evidence-absolute-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const evidencePath = join(fixture, "evidence.json");
+  const schemaPath = join(fixture, "schema.json");
+  const archivePath = join(fixture, "candidate.oci.tar");
+  await writeFile(evidencePath, "{}\n");
+  await writeFile(schemaPath, "{}\n");
+  await writeFile(archivePath, "archive\n");
+
+  await assert.rejects(
+    verifyEvidenceFile({
+      root: fixture,
+      lockPath: join(fixture, "image-lock.json"),
+      evidencePath: "relative-evidence.json",
+      schemaPath,
+      reviewedTree: "a".repeat(40),
+      releaseArtifactPath: archivePath,
+    }),
+    /evidence path must be absolute/i,
+  );
+  await assert.rejects(
+    verifyEvidenceFile({
+      root: fixture,
+      lockPath: join(fixture, "image-lock.json"),
+      evidencePath,
+      schemaPath: "relative-schema.json",
+      reviewedTree: "a".repeat(40),
+      releaseArtifactPath: archivePath,
+    }),
+    /schema path must be absolute/i,
+  );
+});
+
+test("qualifying verifier operands reject relative OCI and review paths", async () => {
+  const { assertAbsoluteQualifyingOperands } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const absolute = resolve("C:/tmp/openclaw-operand");
+  const args = {
+    "oci-a": "relative-a.oci.tar",
+    "oci-b": join(absolute, "b.oci.tar"),
+    schema: join(absolute, "schema.json"),
+    evidence: join(absolute, "evidence.json"),
+    "release-artifact": join(absolute, "release.oci.tar"),
+  };
+  assert.throws(
+    () => assertAbsoluteQualifyingOperands(args),
+    /--oci-a path must be absolute/i,
+  );
+  assert.doesNotThrow(() =>
+    assertAbsoluteQualifyingOperands({ ...args, "oci-a": join(absolute, "a.oci.tar") }),
+  );
+});
+
 test("verifier rejects a context mutation without Docker or network", async (t) => {
   const { verifyImageLock } = await loadScript(
     "scripts/verify-image-lock.mjs",
@@ -1091,6 +1207,11 @@ test("qualifying main probes Docker before schema validation and promotion", asy
   assert.match(source.slice(mainStart), /"reviewed-source-root"/);
   assert.match(source.slice(mainStart), /"reviewed-export-manifest"/);
   assert.match(source.slice(mainStart), /"reviewed-export-manifest-sha256"/);
+  assert.match(source.slice(mainStart), /assertAbsoluteQualifyingOperands\(args\)/);
+  assert.ok(
+    source.indexOf("assertAbsoluteQualifyingOperands(args)", mainStart) <
+      source.indexOf("const archive = await compareFiles", mainStart),
+  );
   assert.match(source.slice(mainStart), /reviewed_export:\s*reviewedExport/);
 });
 
@@ -1425,7 +1546,7 @@ test("supply-chain evidence binds committed M inputs, signatures, and the exact 
   assert.equal(recorded.upstream.source_manifest_count, 75);
   assert.equal(recorded.upstream.license_carrier_count, 39);
   assert.equal(recorded.fork.artifact_member_count, 71);
-  assert.equal(recorded.fork.artifact_sha256, "d9a50b340e5595e3e9d64f538257eef9b532cd35b466847d5f32b67344c653d3");
+  assert.equal(recorded.fork.artifact_sha256, "a566e950c4ecef7ff45169a339349fa67777ec4ee92c96d14057ff59e266b44f");
   await assert.rejects(
     validateRecordedSupplyChainEvidence(
       {

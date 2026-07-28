@@ -235,16 +235,16 @@ try {
     '--reviewed-export-manifest-sha256', $actualReviewedExportManifestSha256
   ) | Out-Null
 
+  $builderACreated = $true
   Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
     'create', '--name', $builderA, '--driver', 'docker-container',
     '--driver-opt', "image=$buildkitImage"
   ) | Out-Null
-  $builderACreated = $true
+  $builderBCreated = $true
   Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
     'create', '--name', $builderB, '--driver', 'docker-container',
     '--driver-opt', "image=$buildkitImage"
   ) | Out-Null
-  $builderBCreated = $true
 
   foreach ($builder in @($builderA, $builderB)) {
     $inspection = Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(

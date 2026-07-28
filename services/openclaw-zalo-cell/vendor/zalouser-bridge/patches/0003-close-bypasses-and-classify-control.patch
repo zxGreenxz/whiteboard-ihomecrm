@@ -48,7 +48,7 @@ index 89fb477..10b0989 100644
      const account = resolveZalouserAccountSync({ cfg });
      const authenticated = await checkZcaAuthenticated(account.profile);
 diff --git a/src/monitor.ts b/src/monitor.ts
-index f3abe63..63d3a97 100644
+index 1a10ba4..b1eeccf 100644
 --- a/src/monitor.ts
 +++ b/src/monitor.ts
 @@ -67,6 +67,12 @@ export type ZalouserMonitorResult = {
@@ -81,36 +81,22 @@ index f3abe63..63d3a97 100644
    const tableMode = params.tableMode ?? "code";
    let visibleReplySent = false;
 diff --git a/src/send.ts b/src/send.ts
-index 6215936..fc96fc6 100644
+index cbee547..ccdb950 100644
 --- a/src/send.ts
 +++ b/src/send.ts
-@@ -1,4 +1,5 @@
+@@ -1,6 +1,7 @@
  // Zalouser plugin module implements send behavior.
+ import { createHash } from "node:crypto";
+ import { loadOutboundMediaFromUrl } from "openclaw/plugin-sdk/outbound-media";
 +import { classifyControlTraffic } from "./bridge/control-traffic.js";
- import { requirePrivateRpcContext } from "./bridge/outbound-rpc.js";
- import { createZalouserSendReceipt } from "./send-receipt.js";
- import { parseZalouserTextStyles } from "./text-styles.js";
-@@ -63,6 +64,7 @@ export async function sendMessageZalouser(
-       chunkOptions.mediaUrl
-         ? { kind: "media", url: chunkOptions.mediaUrl }
-         : { kind: "text", text: chunk.text },
-+      "PRIVATE_RPC_REQUIRED",
-     );
-     const result = await sendZaloTextMessage(threadId, chunk.text, chunkOptions);
-     if (!result.ok) {
-@@ -98,7 +100,7 @@ export async function sendLinkZalouser(
-   url: string,
-   options: ZalouserSendOptions = {},
- ): Promise<ZalouserSendResult> {
--  requirePrivateRpcContext({ kind: "link", url });
-+  requirePrivateRpcContext({ kind: "link", url }, "PRIVATE_RPC_REQUIRED");
-   return await sendZaloLink(threadId, url, options);
- }
- 
-@@ -106,6 +108,18 @@ export async function sendTypingZalouser(
+ import { assertAuthorizedProviderCall } from "./bridge/outbound-rpc.js";
+ import type {
+   MediaBusinessFrameV1,
+@@ -89,7 +90,19 @@ export async function sendTypingZalouser(
    threadId: string,
    options: Pick<ZalouserSendOptions, "profile" | "isGroup"> = {},
  ): Promise<void> {
+-  await sendZaloTypingEvent(threadId, options);
 +  const frame = classifyControlTraffic({
 +    version: 1,
 +    kind: "typing",
@@ -120,29 +106,18 @@ index 6215936..fc96fc6 100644
 +      isGroup: options.isGroup === true,
 +    },
 +  });
--  await sendZaloTypingEvent(threadId, options);
 +  await sendZaloTypingEvent(frame.sink.conversationId, {
 +    profile: frame.sink.accountProfile,
 +    isGroup: frame.sink.isGroup,
 +  });
  }
  
-@@ -118,7 +132,10 @@ export async function sendReactionZalouser(params: {
-   profile?: string;
-   isGroup?: boolean;
- }): Promise<ZalouserSendResult> {
--  requirePrivateRpcContext({ kind: "reaction", emoji: params.emoji, providerMessageId: params.msgId });
-+  requirePrivateRpcContext(
-+    { kind: "reaction", emoji: params.emoji, providerMessageId: params.msgId },
-+    "PRIVATE_RPC_REQUIRED",
-+  );
-   const result = await sendZaloReaction({
-     profile: params.profile,
-     threadId: params.threadId,
-@@ -141,6 +158,22 @@ export async function sendDeliveredZalouser(params: {
+ export async function sendReactionZalouser(params: {
+@@ -159,7 +172,23 @@ export async function sendDeliveredZalouser(params: {
    message: ZaloEventMessage;
    isSeen?: boolean;
  }): Promise<void> {
+-  await sendZaloDeliveredEvent(params);
 +  const frame = classifyControlTraffic({
 +    version: 1,
 +    kind: "delivery-receipt",
@@ -154,7 +129,6 @@ index 6215936..fc96fc6 100644
 +    message: params.message,
 +    isSeen: params.isSeen === true,
 +  });
--  await sendZaloDeliveredEvent(params);
 +  await sendZaloDeliveredEvent({
 +    profile: frame.sink.accountProfile,
 +    isGroup: frame.sink.isGroup,
@@ -163,10 +137,12 @@ index 6215936..fc96fc6 100644
 +  });
  }
  
-@@ -149,6 +182,20 @@ export async function sendSeenZalouser(params: {
+ export async function sendSeenZalouser(params: {
+@@ -167,5 +196,19 @@ export async function sendSeenZalouser(params: {
    isGroup?: boolean;
    message: ZaloEventMessage;
  }): Promise<void> {
+-  await sendZaloSeenEvent(params);
 +  const frame = classifyControlTraffic({
 +    version: 1,
 +    kind: "seen",
@@ -177,14 +153,12 @@ index 6215936..fc96fc6 100644
 +    },
 +    message: params.message,
 +  });
--  await sendZaloSeenEvent(params);
 +  await sendZaloSeenEvent({
 +    profile: frame.sink.accountProfile,
 +    isGroup: frame.sink.isGroup,
 +    message: frame.message,
 +  });
  }
- 
 diff --git a/src/tool.ts b/src/tool.ts
 index 1fc1763..e60cab4 100644
 --- a/src/tool.ts

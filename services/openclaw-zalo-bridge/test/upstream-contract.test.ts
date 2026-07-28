@@ -4,8 +4,15 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createDurableInboundListener } from "../../openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/inbound-listener.js";
+import {
+  createDurableInboundListener,
+  installInboundBridgeCommitter,
+} from "../../openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/inbound-listener.js";
 import { createPrivateOutboundRpc } from "../../openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/outbound-rpc.js";
+import {
+  createPreparedOutboundBatch,
+  createSendContext,
+} from "../../openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/send-context.js";
 
 const bridgeTestRoot = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(bridgeTestRoot, "../../..");
@@ -63,7 +70,8 @@ function inspectPrivateSecuritySeams(root: string) {
   return {
     publicEntrypoints: REQUIRED_PUBLIC_ENTRYPOINTS.every((path) => existsSync(resolve(root, path))),
     privateInbound:
-      source("src/zalo-js.ts").includes("Promise.resolve(params.onMessage(normalized))") &&
+      source("src/zalo-js.ts").includes("pending = params.onMessage(normalized)") &&
+      source("src/zalo-js.ts").includes("void Promise.resolve(pending).catch") &&
       source("src/monitor.ts").includes("await commitInboundThroughBridge") &&
       source("src/bridge/inbound-listener.ts").includes("createDurableInboundListener"),
     privateOutbound:
@@ -118,7 +126,7 @@ describe("reviewed OpenClaw ZaloUser upstream contract", () => {
       applyReviewedFork(preparedRoot);
 
       expect(readText(resolve(preparedRoot, "src/zalo-js.ts"))).toContain(
-        "Promise.resolve(params.onMessage(normalized))",
+        "pending = params.onMessage(normalized)",
       );
       expect(readText(resolve(preparedRoot, "src/monitor.ts"))).toContain(
         "await commitInboundThroughBridge",
@@ -161,39 +169,76 @@ describe("reviewed OpenClaw ZaloUser upstream contract", () => {
 
   it("proves the fork seams fail closed before dispatch or provider I/O", async () => {
     const events: string[] = [];
-    const inbound = createDurableInboundListener({
-      accountId: "account-a",
-      commit: async () => {
+    const uninstall = installInboundBridgeCommitter({
+      binding: {
+        cellId: "cell-a",
+        organizationId: "organization-a",
+        sessionGeneration: 1,
+      },
+      committer: async () => {
         events.push("commit");
         throw new Error("WAL unavailable");
       },
+    });
+    const inbound = createDurableInboundListener({
+      accountId: "account-a",
       dispatch: async () => {
         events.push("dispatch");
       },
     });
 
-    await expect(inbound({
-      content: { text: "contract fixture" },
-      occurredAt: "2026-07-27T00:00:00.000Z",
-      providerMessageId: "message-a",
-      senderId: "sender-a",
-      threadId: "thread-a",
-    })).rejects.toThrow("WAL unavailable");
+    try {
+      await expect(inbound({
+        callbackReceivedAt: "2026-07-27T00:00:01.000Z",
+        eventKind: "MESSAGE",
+        normalized: {
+          media: [],
+          replyToProviderMessageId: null,
+          text: "contract fixture",
+        },
+        providerConversationId: "thread-a",
+        providerEventId: "event-a",
+        providerEventType: "webchat",
+        providerMessageId: "message-a",
+        providerSenderId: "sender-a",
+        providerTarget: { kind: "PEER", providerId: "sender-a" },
+        rawEnvelope: { content: "contract fixture" },
+        sourceTimestamp: "2026-07-27T00:00:00.000Z",
+      })).rejects.toThrow("WAL unavailable");
+    } finally {
+      uninstall();
+    }
     expect(events).toEqual(["commit"]);
 
     let providerFrames = 0;
+    const sink = Object.freeze({
+      accountId: "account-a",
+      accountProfile: "profile-a",
+      conversationId: "thread-a",
+      isGroup: false,
+    });
+    const frames = Object.freeze([{ kind: "text" as const, text: "contract fixture" }]);
+    const context = createSendContext({
+      ...sink,
+      expiresAt: 2_000,
+      frames,
+      issuedAt: 1_000,
+      nonce: "contract-nonce",
+    }, Buffer.alloc(32, 0x42));
     const outbound = createPrivateOutboundRpc({
+      prepare: async (request) => createPreparedOutboundBatch(request.sink, request.frames),
       authorize: async () => {
         throw Object.assign(new Error("denied"), { code: "AUTHORIZATION_DENIED" });
       },
-      sendFrame: async () => {
+      sendPrepared: async () => {
         providerFrames += 1;
         return {};
       },
     });
     await expect(outbound.invoke("zalouser.bridge.send", {
-      context: {} as never,
-      frames: [{ kind: "text", text: "contract fixture" }],
+      context,
+      sink,
+      frames,
     })).rejects.toMatchObject({ code: "AUTHORIZATION_DENIED" });
     expect(providerFrames).toBe(0);
   });

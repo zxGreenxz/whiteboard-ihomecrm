@@ -1,17 +1,18 @@
-import type { BusinessFrame, SendContext } from "./send-context.js";
+import type { PrivateBridgeSendRequestV1 } from "./outbound-rpc.js";
+import type { PreparedOutboundBatchV1 } from "./send-context.js";
 
 export function createAuthorizeClient(options: {
-  call(context: SendContext, frames: readonly BusinessFrame[]): Promise<void>;
+  call(request: PrivateBridgeSendRequestV1, batch: PreparedOutboundBatchV1): Promise<void>;
   timeoutMs: number;
 }) {
   if (!Number.isSafeInteger(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new TypeError("timeoutMs must be a positive integer");
   }
-  return async (context: SendContext, frames: readonly BusinessFrame[]) => {
+  return async (request: PrivateBridgeSendRequestV1, batch: PreparedOutboundBatchV1) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        options.call(context, frames),
+        options.call(request, batch),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
             reject(

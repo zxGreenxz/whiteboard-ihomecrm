@@ -1,13 +1,15 @@
 diff --git a/index.ts b/index.ts
+index 8ee33c5..a709105 100644
 --- a/index.ts
 +++ b/index.ts
-@@ -4,5 +4,6 @@ import {
+@@ -4,6 +4,7 @@ import {
    defineBundledChannelEntry,
    loadBundledEntryExportSync,
  } from "openclaw/plugin-sdk/channel-entry-contract";
 +import { registerPrivateOutboundRpc } from "./src/bridge/outbound-rpc.js";
  
  function createZalouserTool(context?: unknown): AnyAgentTool {
+   const createTool = loadBundledEntryExportSync<(context?: unknown) => AnyAgentTool>(
 @@ -31,5 +32,6 @@ export default defineBundledChannelEntry({
    },
    registerFull(api) {
@@ -16,31 +18,703 @@ diff --git a/index.ts b/index.ts
    },
  });
 diff --git a/src/send.ts b/src/send.ts
+index 24595a1..cbee547 100644
 --- a/src/send.ts
 +++ b/src/send.ts
-@@ -1,3 +1,4 @@
+@@ -1,78 +1,66 @@
  // Zalouser plugin module implements send behavior.
-+import { requirePrivateRpcContext } from "./bridge/outbound-rpc.js";
- import { createZalouserSendReceipt } from "./send-receipt.js";
- import { parseZalouserTextStyles } from "./text-styles.js";
-@@ -59,3 +60,8 @@ export async function sendMessageZalouser(
-             textStyles: chunk.styles,
-           };
-+    requirePrivateRpcContext(
-+      chunkOptions.mediaUrl
-+        ? { kind: "media", url: chunkOptions.mediaUrl }
-+        : { kind: "text", text: chunk.text },
-+    );
-     const result = await sendZaloTextMessage(threadId, chunk.text, chunkOptions);
-@@ -91,5 +99,6 @@ export async function sendLinkZalouser(
+-import { createZalouserSendReceipt } from "./send-receipt.js";
+-import { parseZalouserTextStyles } from "./text-styles.js";
++import { createHash } from "node:crypto";
++import { loadOutboundMediaFromUrl } from "openclaw/plugin-sdk/outbound-media";
++import { assertAuthorizedProviderCall } from "./bridge/outbound-rpc.js";
++import type {
++  MediaBusinessFrameV1,
++  PreparedProviderCallV1,
++} from "./bridge/send-context.js";
+ import type { ZaloEventMessage, ZaloSendOptions, ZaloSendResult } from "./types.js";
+ import {
+   sendZaloDeliveredEvent,
+   sendZaloLink,
+   sendZaloReaction,
++  sendZaloPreparedMediaMessage,
+   sendZaloSeenEvent,
+   sendZaloTextMessage,
+   sendZaloTypingEvent,
+ } from "./zalo-js.js";
+-import { TextStyle } from "./zca-constants.js";
+ 
+-type ZalouserSendOptions = ZaloSendOptions & {
+-  /** Persist each concrete platform send before the next internal chunk starts. */
+-  onDeliveryResult?: (result: ZaloSendResult) => Promise<void> | void;
+-};
++type ZalouserSendOptions = ZaloSendOptions;
+ type ZalouserSendResult = ZaloSendResult;
+ 
+-const ZALO_TEXT_LIMIT = 2000;
+-const DEFAULT_TEXT_CHUNK_MODE = "length";
++function privateRpcRequired(): never {
++  throw Object.assign(new Error("business sends require the private bridge RPC"), {
++    code: "PRIVATE_RPC_REQUIRED",
++  });
++}
+ 
+-type StyledTextChunk = {
+-  text: string;
+-  styles?: ZaloSendOptions["textStyles"];
+-};
++function preparedMediaMismatch(message: string): never {
++  throw Object.assign(new Error(message), { code: "PREPARED_MEDIA_MISMATCH" });
++}
+ 
+-type TextChunkMode = NonNullable<ZaloSendOptions["textChunkMode"]>;
++async function loadAndVerifyPreparedMedia(
++  frame: MediaBusinessFrameV1,
++) {
++  const media = await loadOutboundMediaFromUrl(frame.url);
++  if (media.buffer.length !== frame.byteLength) {
++    preparedMediaMismatch("prepared media byte length does not match authorization");
++  }
++  const sha256 = createHash("sha256").update(media.buffer).digest("hex");
++  if (sha256 !== frame.sha256) {
++    preparedMediaMismatch("prepared media SHA-256 does not match authorization");
++  }
++  const contentType = media.contentType?.trim() || null;
++  if (contentType !== frame.contentType) {
++    preparedMediaMismatch("prepared media MIME type does not match authorization");
++  }
++  const name = media.fileName?.trim() || null;
++  if (name !== frame.name) {
++    preparedMediaMismatch("prepared media name does not match authorization");
++  }
++  return media;
++}
+ 
+ export async function sendMessageZalouser(
+   threadId: string,
+   text: string,
+   options: ZalouserSendOptions = {},
+ ): Promise<ZalouserSendResult> {
+-  const { onDeliveryResult, ...transportOptions } = options;
+-  const prepared =
+-    transportOptions.textMode === "markdown"
+-      ? parseZalouserTextStyles(text)
+-      : { text, styles: transportOptions.textStyles };
+-  const textChunkLimit = transportOptions.textChunkLimit ?? ZALO_TEXT_LIMIT;
+-  const chunks = splitStyledText(
+-    prepared.text,
+-    (prepared.styles?.length ?? 0) > 0 ? prepared.styles : undefined,
+-    textChunkLimit,
+-    transportOptions.textChunkMode,
+-  );
+-
+-  let lastResult: ZalouserSendResult | null = null;
+-  for (const [index, chunk] of chunks.entries()) {
+-    const chunkOptions =
+-      index === 0
+-        ? { ...transportOptions, textStyles: chunk.styles }
+-        : {
+-            ...transportOptions,
+-            caption: undefined,
+-            mediaLocalRoots: undefined,
+-            mediaUrl: undefined,
+-            textStyles: chunk.styles,
+-          };
+-    const result = await sendZaloTextMessage(threadId, chunk.text, chunkOptions);
+-    if (!result.ok) {
+-      throw new Error(result.error || "Failed to send Zalouser message");
+-    }
+-    await onDeliveryResult?.(result);
+-    lastResult = result;
+-  }
+-
+-  return (
+-    lastResult ?? {
+-      ok: false,
+-      error: "No message content provided",
+-      receipt: createZalouserSendReceipt({ threadId, kind: "text" }),
+-    }
+-  );
++  void threadId;
++  void text;
++  void options;
++  return privateRpcRequired();
+ }
+ 
+ export async function sendImageZalouser(
+@@ -80,11 +68,10 @@ export async function sendImageZalouser(
+   imageUrl: string,
+   options: ZalouserSendOptions = {},
+ ): Promise<ZalouserSendResult> {
+-  return await sendMessageZalouser(threadId, options.caption ?? "", {
+-    ...options,
+-    caption: undefined,
+-    mediaUrl: imageUrl,
+-  });
++  void threadId;
++  void imageUrl;
++  void options;
++  return privateRpcRequired();
+ }
+ 
+ export async function sendLinkZalouser(
+@@ -92,7 +79,10 @@ export async function sendLinkZalouser(
    url: string,
    options: ZalouserSendOptions = {},
  ): Promise<ZalouserSendResult> {
-+  requirePrivateRpcContext({ kind: "link", url });
-   return await sendZaloLink(threadId, url, options);
+-  return await sendZaloLink(threadId, url, options);
++  void threadId;
++  void url;
++  void options;
++  return privateRpcRequired();
  }
-@@ -112,3 +121,4 @@ export async function sendReactionZalouser(params: {
+ 
+ export async function sendTypingZalouser(
+@@ -111,20 +101,56 @@ export async function sendReactionZalouser(params: {
+   profile?: string;
    isGroup?: boolean;
  }): Promise<ZalouserSendResult> {
-+  requirePrivateRpcContext({ kind: "reaction", emoji: params.emoji, providerMessageId: params.msgId });
-   const result = await sendZaloReaction({
+-  const result = await sendZaloReaction({
+-    profile: params.profile,
+-    threadId: params.threadId,
+-    isGroup: params.isGroup,
+-    msgId: params.msgId,
+-    cliMsgId: params.cliMsgId,
+-    emoji: params.emoji,
+-    remove: params.remove,
+-  });
+-  return {
+-    ok: result.ok,
+-    error: result.error,
+-    receipt: createZalouserSendReceipt({ threadId: params.threadId, kind: "unknown" }),
+-  };
++  void params;
++  return privateRpcRequired();
++}
++
++export async function sendPreparedProviderCallZalouser(
++  call: PreparedProviderCallV1,
++): Promise<{ providerMessageId?: string }> {
++  assertAuthorizedProviderCall(call);
++  const { frame, sink } = call;
++  if (frame.kind === "reaction") {
++    const result = await sendZaloReaction({
++      profile: sink.accountProfile,
++      threadId: sink.conversationId,
++      isGroup: sink.isGroup,
++      msgId: frame.msgId,
++      cliMsgId: frame.cliMsgId,
++      emoji: frame.emoji,
++      remove: frame.remove,
++    }, sink);
++    if (!result.ok) throw new Error(result.error || "Failed to send Zalouser reaction");
++    return {};
++  }
++  if (frame.kind === "link") {
++    const result = await sendZaloLink(
++      sink.conversationId,
++      frame.url,
++      {
++        profile: sink.accountProfile,
++        isGroup: sink.isGroup,
++        caption: frame.caption ?? undefined,
++      },
++      sink,
++    );
++    if (!result.ok) throw new Error(result.error || "Failed to send Zalouser link");
++    return { providerMessageId: result.messageId };
++  }
++  if (frame.kind === "media") {
++    const media = await loadAndVerifyPreparedMedia(frame);
++    const result = await sendZaloPreparedMediaMessage(call, media);
++    if (!result.ok) throw new Error(result.error || "Failed to send Zalouser media");
++    return { providerMessageId: result.messageId };
++  }
++  const result = await sendZaloTextMessage(
++    sink.conversationId,
++    frame.text,
++    { profile: sink.accountProfile, isGroup: sink.isGroup },
++    sink,
++  );
++  if (!result.ok) throw new Error(result.error || "Failed to send Zalouser message");
++  return { providerMessageId: result.messageId };
+ }
+ 
+ export async function sendDeliveredZalouser(params: {
+@@ -143,144 +169,3 @@ export async function sendSeenZalouser(params: {
+ }): Promise<void> {
+   await sendZaloSeenEvent(params);
+ }
+-
+-function splitStyledText(
+-  text: string,
+-  styles: ZaloSendOptions["textStyles"],
+-  limit: number,
+-  mode: ZaloSendOptions["textChunkMode"],
+-): StyledTextChunk[] {
+-  if (text.length === 0) {
+-    return [{ text, styles: undefined }];
+-  }
+-
+-  const chunks: StyledTextChunk[] = [];
+-  for (const range of splitTextRanges(text, limit, mode ?? DEFAULT_TEXT_CHUNK_MODE)) {
+-    const { start, end } = range;
+-    chunks.push({
+-      text: text.slice(start, end),
+-      styles: sliceTextStyles(styles, start, end),
+-    });
+-  }
+-  return chunks;
+-}
+-
+-function sliceTextStyles(
+-  styles: ZaloSendOptions["textStyles"],
+-  start: number,
+-  end: number,
+-): ZaloSendOptions["textStyles"] {
+-  if (!styles || styles.length === 0) {
+-    return undefined;
+-  }
+-
+-  const chunkStyles = styles
+-    .map((style) => {
+-      const overlapStart = Math.max(style.start, start);
+-      const overlapEnd = Math.min(style.start + style.len, end);
+-      if (overlapEnd <= overlapStart) {
+-        return null;
+-      }
+-
+-      if (style.st === TextStyle.Indent) {
+-        return {
+-          start: overlapStart - start,
+-          len: overlapEnd - overlapStart,
+-          st: style.st,
+-          indentSize: style.indentSize,
+-        };
+-      }
+-
+-      return {
+-        start: overlapStart - start,
+-        len: overlapEnd - overlapStart,
+-        st: style.st,
+-      };
+-    })
+-    .filter((style): style is NonNullable<typeof style> => style !== null);
+-
+-  return chunkStyles.length > 0 ? chunkStyles : undefined;
+-}
+-
+-function splitTextRanges(
+-  text: string,
+-  limit: number,
+-  mode: TextChunkMode,
+-): Array<{ start: number; end: number }> {
+-  if (mode === "newline") {
+-    return splitTextRangesByPreferredBreaks(text, limit);
+-  }
+-
+-  const ranges: Array<{ start: number; end: number }> = [];
+-  for (let start = 0; start < text.length; start += limit) {
+-    ranges.push({
+-      start,
+-      end: Math.min(text.length, start + limit),
+-    });
+-  }
+-  return ranges;
+-}
+-
+-function splitTextRangesByPreferredBreaks(
+-  text: string,
+-  limit: number,
+-): Array<{ start: number; end: number }> {
+-  const ranges: Array<{ start: number; end: number }> = [];
+-  let start = 0;
+-
+-  while (start < text.length) {
+-    const maxEnd = Math.min(text.length, start + limit);
+-    let end = maxEnd;
+-    if (maxEnd < text.length) {
+-      end =
+-        findParagraphBreak(text, start, maxEnd) ??
+-        findLastBreak(text, "\n", start, maxEnd) ??
+-        findLastWhitespaceBreak(text, start, maxEnd) ??
+-        maxEnd;
+-    }
+-
+-    if (end <= start) {
+-      end = maxEnd;
+-    }
+-
+-    ranges.push({ start, end });
+-    start = end;
+-  }
+-
+-  return ranges;
+-}
+-
+-function findParagraphBreak(text: string, start: number, end: number): number | undefined {
+-  const slice = text.slice(start, end);
+-  const matches = slice.matchAll(/\n[\t ]*\n+/g);
+-  let lastMatch: RegExpMatchArray | undefined;
+-  for (const match of matches) {
+-    lastMatch = match;
+-  }
+-  if (!lastMatch || lastMatch.index === undefined) {
+-    return undefined;
+-  }
+-  return start + lastMatch.index + lastMatch[0].length;
+-}
+-
+-function findLastBreak(
+-  text: string,
+-  marker: string,
+-  start: number,
+-  end: number,
+-): number | undefined {
+-  const index = text.lastIndexOf(marker, end - 1);
+-  if (index < start) {
+-    return undefined;
+-  }
+-  return index + marker.length;
+-}
+-
+-function findLastWhitespaceBreak(text: string, start: number, end: number): number | undefined {
+-  for (let index = end - 1; index > start; index -= 1) {
+-    if (/\s/.test(text[index])) {
+-      return index + 1;
+-    }
+-  }
+-  return undefined;
+-}
+diff --git a/src/zalo-js.ts b/src/zalo-js.ts
+index c3ac198..1df5f2b 100644
+--- a/src/zalo-js.ts
++++ b/src/zalo-js.ts
+@@ -1,5 +1,5 @@
+ // Zalouser plugin module implements zalo js behavior.
+-import { randomUUID } from "node:crypto";
++import { createHash, randomUUID } from "node:crypto";
+ import fs from "node:fs";
+ import os from "node:os";
+ import path from "node:path";
+@@ -28,6 +28,12 @@ import {
+ } from "openclaw/plugin-sdk/string-coerce-runtime";
+ import { sleep, truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
+ import { captureProviderCallbackReceivedAt } from "./bridge/inbound-listener.js";
++import { assertAuthorizedProviderIo } from "./bridge/outbound-rpc.js";
++import type {
++  MediaBusinessFrameV1,
++  PreparedProviderCallV1,
++  ProviderSinkV1,
++} from "./bridge/send-context.js";
+ import { normalizeZaloReactionIcon } from "./reaction.js";
+ import { createZalouserSendReceipt } from "./send-receipt.js";
+ import type {
+@@ -92,6 +98,8 @@ type ActiveZaloListener = {
+ const activeListeners = new Map<string, ActiveZaloListener>();
+ const groupContextCache = new Map<string, { value: ZaloGroupContext; expiresAt: number }>();
+ 
++type LoadedOutboundMedia = Awaited<ReturnType<typeof loadOutboundMediaFromUrl>>;
++
+ type AccountInfoResponse = Awaited<ReturnType<API["fetchAccountInfo"]>>;
+ 
+ type ApiTypingCapability = {
+@@ -166,6 +174,61 @@ function toErrorMessage(error: unknown): string {
+   return String(error);
+ }
+ 
++function providerSinkMismatch(message: string): never {
++  throw Object.assign(new Error(message), { code: "AUTHORIZED_PROVIDER_SINK_MISMATCH" });
++}
++
++function bindProviderSink(
++  sink: ProviderSinkV1 | undefined,
++  actual: { profile?: string | null; conversationId: string; isGroup?: boolean },
++): ProviderSinkV1 {
++  if (!sink) {
++    assertAuthorizedProviderIo(sink as unknown as ProviderSinkV1);
++    return providerSinkMismatch("authorized provider sink is missing");
++  }
++  const profile = normalizeProfile(actual.profile);
++  if (
++    sink.accountProfile !== profile ||
++    sink.conversationId !== actual.conversationId ||
++    sink.isGroup !== (actual.isGroup === true)
++  ) {
++    return providerSinkMismatch("provider arguments do not match the authorized sink");
++  }
++  return sink;
++}
++
++function verifyPreparedMedia(
++  frame: MediaBusinessFrameV1,
++  media: LoadedOutboundMedia,
++): void {
++  if (!Buffer.isBuffer(media.buffer) || media.buffer.length !== frame.byteLength) {
++    throw Object.assign(new Error("prepared media byte length changed before provider I/O"), {
++      code: "PREPARED_MEDIA_MISMATCH",
++    });
++  }
++  const sha256 = createHash("sha256").update(media.buffer).digest("hex");
++  const contentType = media.contentType?.trim() || null;
++  const name = media.fileName?.trim() || null;
++  if (sha256 !== frame.sha256 || contentType !== frame.contentType || name !== frame.name) {
++    throw Object.assign(new Error("prepared media metadata changed before provider I/O"), {
++      code: "PREPARED_MEDIA_MISMATCH",
++    });
++  }
++}
++
++function exactProviderText(text: string): string {
++  let codePoints = 0;
++  for (const _codePoint of text) {
++    codePoints += 1;
++    if (codePoints > 2_000) {
++      throw Object.assign(new Error("prepared text exceeds 2000 Unicode code points"), {
++        code: "INVALID_PROVIDER_FRAME",
++      });
++    }
++  }
++  return text;
++}
++
+ function clampTextStyles(
+   text: string,
+   styles?: ZaloSendOptions["textStyles"],
+@@ -1414,9 +1477,15 @@ export async function sendZaloTextMessage(
+   threadId: string,
+   text: string,
+   options: ZaloSendOptions = {},
++  providerSink?: ProviderSinkV1,
+ ): Promise<ZaloSendResult> {
+   const profile = normalizeProfile(options.profile);
+   const trimmedThreadId = threadId.trim();
++  const sink = bindProviderSink(providerSink, {
++    profile,
++    conversationId: trimmedThreadId,
++    isGroup: options.isGroup,
++  });
+   if (!trimmedThreadId) {
+     return {
+       ok: false,
+@@ -1424,11 +1493,13 @@ export async function sendZaloTextMessage(
+       receipt: createZalouserSendReceipt({ threadId, kind: "unknown" }),
+     };
+   }
++  const exactText = exactProviderText(text);
++  assertAuthorizedProviderIo(sink);
+ 
+   return await withZaloApi(
+-    profile,
++    sink.accountProfile,
+     async (api) => {
+-      const type = options.isGroup ? ThreadType.Group : ThreadType.User;
++      const type = sink.isGroup ? ThreadType.Group : ThreadType.User;
+ 
+       try {
+         if (options.mediaUrl?.trim()) {
+@@ -1517,7 +1588,7 @@ export async function sendZaloTextMessage(
+           };
+         }
+ 
+-        const payloadText = truncatePayloadText(text);
++        const payloadText = exactText;
+         const textStyles = clampTextStyles(payloadText, options.textStyles);
+         const response = await api.sendMessage(
+           textStyles ? { msg: payloadText, styles: textStyles } : payloadText,
+@@ -1546,6 +1617,113 @@ export async function sendZaloTextMessage(
+   );
+ }
+ 
++export async function sendZaloPreparedMediaMessage(
++  call: PreparedProviderCallV1,
++  media: LoadedOutboundMedia,
++): Promise<ZaloSendResult> {
++  if (call.frame.kind !== "media") {
++    throw Object.assign(new Error("prepared provider call is not media"), {
++      code: "INVALID_PROVIDER_FRAME",
++    });
++  }
++  const frame = call.frame;
++  const sink = call.sink;
++  verifyPreparedMedia(frame, media);
++  const payloadText = frame.caption ?? "";
++  if (truncatePayloadText(payloadText) !== payloadText) {
++    throw Object.assign(new Error("prepared media caption exceeds the provider limit"), {
++      code: "INVALID_PROVIDER_FRAME",
++    });
++  }
++  const fileName = resolveMediaFileName({
++    mediaUrl: frame.url,
++    fileName: media.fileName,
++    contentType: media.contentType,
++    kind: media.kind,
++  });
++  assertAuthorizedProviderIo(sink);
++
++  return await withZaloApi(
++    sink.accountProfile,
++    async (api) => {
++      const type = sink.isGroup ? ThreadType.Group : ThreadType.User;
++      try {
++        if (media.kind === "audio") {
++          let textMessageId: string | undefined;
++          if (payloadText) {
++            const textResponse = await api.sendMessage(payloadText, sink.conversationId, type);
++            textMessageId = extractSendMessageId(textResponse);
++          }
++          const attachmentFileName = fileName.includes(".") ? fileName : `${fileName}.bin`;
++          const uploaded = await api.uploadAttachment(
++            [
++              {
++                data: media.buffer,
++                filename: attachmentFileName as `${string}.${string}`,
++                metadata: { totalSize: media.buffer.length },
++              },
++            ],
++            sink.conversationId,
++            type,
++          );
++          const voiceAsset = resolveUploadedVoiceAsset(uploaded);
++          if (!voiceAsset) throw new Error("Failed to resolve uploaded audio URL for voice message");
++          const response = await api.sendVoice(
++            { voiceUrl: buildZaloVoicePlaybackUrl(voiceAsset) },
++            sink.conversationId,
++            type,
++          );
++          const voiceMessageId = extractSendMessageId(response);
++          return {
++            ok: true,
++            messageId: voiceMessageId ?? textMessageId,
++            receipt: createZalouserSendReceipt({
++              platformMessageIds: [textMessageId, voiceMessageId],
++              threadId: sink.conversationId,
++              kind: "voice",
++            }),
++          };
++        }
++
++        const response = await api.sendMessage(
++          {
++            msg: payloadText,
++            attachments: [
++              {
++                data: media.buffer,
++                filename: fileName.includes(".") ? fileName : `${fileName}.bin`,
++                metadata: { totalSize: media.buffer.length },
++              },
++            ],
++          },
++          sink.conversationId,
++          type,
++        );
++        const messageId = extractSendMessageId(response);
++        return {
++          ok: true,
++          messageId,
++          receipt: createZalouserSendReceipt({
++            messageId,
++            threadId: sink.conversationId,
++            kind: "media",
++          }),
++        };
++      } catch (error) {
++        return {
++          ok: false,
++          error: toErrorMessage(error),
++          receipt: createZalouserSendReceipt({
++            threadId: sink.conversationId,
++            kind: "unknown",
++          }),
++        };
++      }
++    },
++    { shouldPersist: (result) => result.ok },
++  );
++}
++
+ export async function sendZaloTypingEvent(
+   threadId: string,
+   options: Pick<ZaloSendOptions, "profile" | "isGroup"> = {},
+@@ -1596,25 +1774,31 @@ export async function sendZaloReaction(params: {
+   cliMsgId: string;
+   emoji: string;
+   remove?: boolean;
+-}): Promise<{ ok: boolean; error?: string }> {
++}, providerSink?: ProviderSinkV1): Promise<{ ok: boolean; error?: string }> {
+   const profile = normalizeProfile(params.profile);
+   const threadId = params.threadId.trim();
+   const msgId = toStringValue(params.msgId);
+   const cliMsgId = toStringValue(params.cliMsgId);
++  const sink = bindProviderSink(providerSink, {
++    profile,
++    conversationId: threadId,
++    isGroup: params.isGroup,
++  });
+   if (!threadId || !msgId || !cliMsgId) {
+     return { ok: false, error: "threadId, msgId, and cliMsgId are required" };
+   }
++  assertAuthorizedProviderIo(sink);
+   try {
+     return await withZaloApi(
+-      profile,
++      sink.accountProfile,
+       async (api) => {
+-        const type = params.isGroup ? ThreadType.Group : ThreadType.User;
++        const type = sink.isGroup ? ThreadType.Group : ThreadType.User;
+         const icon = params.remove
+           ? { rType: -1, source: 6, icon: "" }
+           : normalizeZaloReactionIcon(params.emoji);
+         await api.addReaction(icon, {
+           data: { msgId, cliMsgId },
+-          threadId,
++          threadId: sink.conversationId,
+           type,
+         });
+         return { ok: true };
+@@ -1655,10 +1839,16 @@ export async function sendZaloLink(
+   threadId: string,
+   url: string,
+   options: ZaloSendOptions = {},
++  providerSink?: ProviderSinkV1,
+ ): Promise<ZaloSendResult> {
+   const profile = normalizeProfile(options.profile);
+   const trimmedThreadId = threadId.trim();
+   const trimmedUrl = url.trim();
++  const sink = bindProviderSink(providerSink, {
++    profile,
++    conversationId: trimmedThreadId,
++    isGroup: options.isGroup,
++  });
+   if (!trimmedThreadId) {
+     return {
+       ok: false,
+@@ -1673,15 +1863,16 @@ export async function sendZaloLink(
+       receipt: createZalouserSendReceipt({ threadId: trimmedThreadId, kind: "card" }),
+     };
+   }
++  assertAuthorizedProviderIo(sink);
+ 
+   try {
+     return await withZaloApi(
+-      profile,
++      sink.accountProfile,
+       async (api) => {
+-        const type = options.isGroup ? ThreadType.Group : ThreadType.User;
++        const type = sink.isGroup ? ThreadType.Group : ThreadType.User;
+         const response = await api.sendLink(
+           { link: trimmedUrl, msg: options.caption },
+-          trimmedThreadId,
++          sink.conversationId,
+           type,
+         );
+         const messageId = String(response.msgId);
+@@ -1690,7 +1881,7 @@ export async function sendZaloLink(
+           messageId,
+           receipt: createZalouserSendReceipt({
+             messageId,
+-            threadId: trimmedThreadId,
++            threadId: sink.conversationId,
+             kind: "card",
+           }),
+         };

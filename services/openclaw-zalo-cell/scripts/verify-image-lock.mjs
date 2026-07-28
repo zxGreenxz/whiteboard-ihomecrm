@@ -2364,6 +2364,8 @@ export async function verifyEvidenceFile({
   releaseArtifactPath,
 }) {
   if (!REVIEWED_TREE.test(reviewedTree)) throw new Error("invalid reviewed tree");
+  if (!isAbsolute(evidencePath)) throw new Error("evidence path must be absolute");
+  if (!isAbsolute(schemaPath)) throw new Error("schema path must be absolute");
   if (!isAbsolute(releaseArtifactPath)) throw new Error("release artifact path must be absolute");
   const evidenceItem = await lstat(evidencePath);
   const schemaItem = await lstat(schemaPath);
@@ -2610,8 +2612,33 @@ async function readReviewedExportFromArgs(args) {
   return validateRecordedReviewedExport(recorded, args["reviewed-tree"]);
 }
 
+export function assertAbsoluteQualifyingOperands(args) {
+  const qualifying = Boolean(args["oci-a"] || args["oci-b"]);
+  const keys = qualifying
+    ? [
+        "oci-a",
+        "oci-b",
+        "schema",
+        "evidence",
+        "release-artifact",
+        "m-review-report",
+        "r-review-report",
+        "reviewed-source-root",
+        "reviewed-export-manifest",
+        "buildx-path",
+        "docker-path",
+      ]
+    : ["evidence", "schema", "release-artifact"];
+  for (const key of keys) {
+    if (args[key] && !isAbsolute(args[key])) {
+      throw new Error(`--${key} path must be absolute`);
+    }
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  assertAbsoluteQualifyingOperands(args);
   const scriptCellRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const root = resolve(args.root ?? (args.lock ? dirname(args.lock) : scriptCellRoot));
   const lockPath = resolve(args.lock ?? resolve(root, "image-lock.json"));
@@ -2622,8 +2649,8 @@ async function main() {
     const result = await verifyEvidenceFile({
       root,
       lockPath,
-      evidencePath: resolve(args.evidence),
-      schemaPath: resolve(args.schema),
+      evidencePath: args.evidence,
+      schemaPath: args.schema,
       reviewedTree: args["reviewed-tree"],
       releaseArtifactPath: args["release-artifact"],
     });
