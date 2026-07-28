@@ -5,13 +5,61 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  commitInboundThroughBridge,
+  installInboundBridgeCommitter,
+  type ZaloUserInboundInputV1,
+} from "../src/bridge/inbound-listener.js";
 
 const vendorRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoots: string[] = [];
+const bridgeCleanups: Array<() => void> = [];
+
+const COMMITTED_ACK = Object.freeze({
+  durability: Object.freeze({ journalMode: "WAL", synchronous: "FULL" }),
+  status: "committed",
+  version: 1,
+});
+
+const BRIDGE_INPUT: ZaloUserInboundInputV1 = Object.freeze({
+  callbackReceivedAt: "2026-07-27T00:00:01.000Z",
+  eventKind: "MESSAGE",
+  normalized: Object.freeze({
+    media: Object.freeze([]),
+    replyToProviderMessageId: null,
+    text: "hello",
+  }),
+  providerConversationId: "conversation-1",
+  providerEventId: "event-1",
+  providerEventType: "webchat",
+  providerMessageId: "message-1",
+  providerSenderId: "sender-1",
+  providerTarget: Object.freeze({ kind: "PEER", providerId: "peer-1" }),
+  rawEnvelope: Object.freeze({ source: "patched-monitor-test" }),
+  sourceTimestamp: "2026-07-27T00:00:00.000Z",
+});
 
 afterEach(() => {
+  for (const cleanup of bridgeCleanups.splice(0).reverse()) cleanup();
   for (const root of temporaryRoots.splice(0)) rmSync(root, { force: true, recursive: true });
 });
+
+function installBridge(committer: (envelope: unknown) => Promise<unknown>): () => void {
+  const uninstall = installInboundBridgeCommitter({
+    binding: {
+      cellId: "cell-a",
+      organizationId: "organization-a",
+      sessionGeneration: 7,
+    },
+    committer,
+  });
+  bridgeCleanups.push(uninstall);
+  return () => {
+    const index = bridgeCleanups.lastIndexOf(uninstall);
+    if (index >= 0) bridgeCleanups.splice(index, 1);
+    uninstall();
+  };
+}
 
 function preparePatchedSource(): string {
   const root = mkdtempSync(resolve(tmpdir(), "ihome-inbound-patched-source-"));
@@ -118,7 +166,7 @@ function parse(root: string, path: string): ts.SourceFile {
 }
 
 describe("executable patched inbound source", () => {
-  it("executes the actual monitor callback with zero queueing before commit and no duplicate dispatch", async () => {
+  it("executes the actual monitor callback through strict bridge acknowledgement gating", async () => {
     const root = preparePatchedSource();
     const monitor = parse(root, "src/monitor.ts");
     const arrow = findObjectPropertyArrow(monitor, "monitorZalouserProvider", "onMessage");
@@ -143,14 +191,9 @@ describe("executable patched inbound source", () => {
       resolveCommit = resolveCommitPromise;
     });
     const events: string[] = [];
-    const commitInputs: unknown[] = [];
     const dependencies = {
       stopped: false,
-      commitInboundThroughBridge: async (_accountId: string, evidence: unknown) => {
-        events.push("commit");
-        commitInputs.push(evidence);
-        return await commit;
-      },
+      commitInboundThroughBridge,
       account: { accountId: "account-a" },
       logVerbose: () => events.push("log"),
       core: {},
@@ -169,25 +212,41 @@ describe("executable patched inbound source", () => {
       groupHistories: new Map(),
     };
     const callback = makeCallback(dependencies);
-    const message = { bridge: { providerEventId: "event-1" } };
+    const message = { bridge: BRIDGE_INPUT };
+    const uninstallCommitted = installBridge(async () => {
+      events.push("commit");
+      return await commit;
+    });
 
     const pending = callback(message) as Promise<void>;
     await vi.waitFor(() => expect(events).toEqual(["commit"]));
-    expect(commitInputs).toEqual([message.bridge]);
     expect(events).toEqual(["commit"]);
-    resolveCommit({ envelope: {}, status: "committed" });
+    resolveCommit(COMMITTED_ACK);
     await pending;
     await vi.waitFor(() => expect(events).toContain("queue"));
     expect(events).toEqual(["commit", "log", "status", "queue"]);
+    uninstallCommitted();
 
     events.length = 0;
-    const duplicateCallback = makeCallback({
-      ...dependencies,
-      commitInboundThroughBridge: async () => ({ envelope: {}, status: "duplicate" }),
-    });
-    await duplicateCallback(message);
-    await Promise.resolve();
+    const uninstallDuplicate = installBridge(async () => ({ status: "duplicate", version: 1 }));
+    await callback(message);
     expect(events).toEqual([]);
+    uninstallDuplicate();
+
+    const deniedCases: Array<readonly [string, () => Promise<unknown>]> = [
+      ["collision", async () => ({ status: "collision", version: 1 })],
+      ["corrupt acknowledgement", async () => ({ status: "committed" })],
+      ["bridge error", async () => { throw new Error("bridge error"); }],
+      ["timeout", async () => { throw Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }); }],
+      ["ENOSPC", async () => { throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" }); }],
+    ];
+    for (const [label, committer] of deniedCases) {
+      events.length = 0;
+      const uninstallDenied = installBridge(committer);
+      await expect(callback(message), label).rejects.toBeInstanceOf(Error);
+      expect(events, label).toEqual([]);
+      uninstallDenied();
+    }
   });
 
   it("executes the actual void provider callback with synchronous receipt capture and failure routing", async () => {
