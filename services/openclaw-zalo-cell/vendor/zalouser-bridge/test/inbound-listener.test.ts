@@ -304,6 +304,82 @@ describe("ZaloUser inbound envelope V1", () => {
     ).rejects.toMatchObject({ code: "INBOUND_ENVELOPE_INVALID" });
     expect({ commits, dispatches }).toEqual({ commits: 0, dispatches: 0 });
   });
+
+  it("rejects raw array properties outside the exact dense index range", async () => {
+    const rawEnvelope: unknown[] = [];
+    Object.defineProperty(rawEnvelope, "4294967295", {
+      configurable: true,
+      enumerable: true,
+      value: "must-not-be-ignored",
+      writable: true,
+    });
+    let commits = 0;
+    install(async () => {
+      commits += 1;
+      return COMMITTED_ACK;
+    });
+
+    await expect(listener(async () => undefined)(input({ rawEnvelope }))).rejects.toMatchObject({
+      code: "INBOUND_ENVELOPE_INVALID",
+    });
+    expect(commits).toBe(0);
+  });
+
+  it("snapshots raw record keys and descriptors once before canonical hashing", async () => {
+    let ownKeyReads = 0;
+    const rawEnvelope = new Proxy({ mustPersist: "x" }, {
+      ownKeys() {
+        ownKeyReads += 1;
+        return ownKeyReads === 1 ? ["mustPersist"] : [];
+      },
+    });
+    let committed: unknown;
+    install(async (envelope) => {
+      committed = envelope;
+      return COMMITTED_ACK;
+    });
+
+    await listener(async () => undefined)(input({ rawEnvelope }));
+
+    expect(committed).toMatchObject({
+      rawEnvelope: { mustPersist: "x" },
+      rawEnvelopeSha256: sha256('{"mustPersist":"x"}'),
+    });
+    expect(ownKeyReads).toBe(1);
+  });
+
+  it("snapshots normalized media without invoking an overridden array map", async () => {
+    const media: MediaInput[] = [];
+    const maliciousMap = vi.fn(() => [{
+      byteLength: null,
+      fetchRef: null,
+      kind: "IMAGE",
+      mime: null,
+      providerChecksum: null,
+      providerMediaId: "injected",
+    }]);
+    Object.defineProperty(media, "map", {
+      configurable: true,
+      enumerable: false,
+      value: maliciousMap,
+      writable: true,
+    });
+    let commits = 0;
+    install(async () => {
+      commits += 1;
+      return COMMITTED_ACK;
+    });
+
+    await expect(listener(async () => undefined)(input({
+      normalized: {
+        media,
+        replyToProviderMessageId: null,
+        text: "hello",
+      },
+    }))).rejects.toMatchObject({ code: "INBOUND_ENVELOPE_INVALID" });
+    expect(maliciousMap).not.toHaveBeenCalled();
+    expect(commits).toBe(0);
+  });
 });
 
 describe("durable bridge acknowledgement and ordering", () => {
@@ -338,6 +414,31 @@ describe("durable bridge acknowledgement and ordering", () => {
         dispatches += 1;
       })(input()),
     ).resolves.toMatchObject({ status: "duplicate" });
+    expect(dispatches).toBe(0);
+  });
+
+  it("snapshots acknowledgement descriptors once before choosing a status", async () => {
+    let statusReads = 0;
+    const target = {
+      durability: { journalMode: "WAL", synchronous: "FULL" },
+      status: "duplicate",
+      version: 1,
+    };
+    const acknowledgement = new Proxy(target, {
+      get(current, property, receiver) {
+        if (property === "status") {
+          statusReads += 1;
+          return statusReads === 1 ? "duplicate" : "committed";
+        }
+        return Reflect.get(current, property, receiver);
+      },
+    });
+    let dispatches = 0;
+    install(async () => acknowledgement);
+
+    await expect(listener(async () => {
+      dispatches += 1;
+    })(input())).rejects.toMatchObject({ code: "INBOUND_BRIDGE_INVALID_ACK" });
     expect(dispatches).toBe(0);
   });
 
@@ -409,6 +510,36 @@ describe("durable bridge acknowledgement and ordering", () => {
       binding: { ...BINDING, organizationId: "" },
       committer: async () => COMMITTED_ACK,
     } as never)).toThrow();
+  });
+
+  it("rejects concurrent bridge replacement and permits explicit uninstall then rotation", async () => {
+    const firstUninstall = inboundBridge.installInboundBridgeCommitter({
+      binding: BINDING,
+      committer: async () => ({ status: "duplicate", version: 1 }),
+    } as never);
+    cleanups.push(firstUninstall);
+
+    expect(() => inboundBridge.installInboundBridgeCommitter({
+      binding: { ...BINDING, sessionGeneration: 8 },
+      committer: async () => COMMITTED_ACK,
+    } as never)).toThrowError(expect.objectContaining({
+      code: "INBOUND_BRIDGE_ALREADY_INSTALLED",
+    }));
+    await expect(inboundBridge.commitInboundThroughBridge("account-a", input() as never))
+      .resolves.toMatchObject({ status: "duplicate" });
+
+    firstUninstall();
+    cleanups.splice(cleanups.lastIndexOf(firstUninstall), 1);
+    const secondUninstall = inboundBridge.installInboundBridgeCommitter({
+      binding: { ...BINDING, sessionGeneration: 8 },
+      committer: async () => COMMITTED_ACK,
+    } as never);
+    cleanups.push(secondUninstall);
+    await expect(inboundBridge.commitInboundThroughBridge("account-a", input() as never))
+      .resolves.toMatchObject({
+        envelope: { sessionGeneration: 8 },
+        status: "committed",
+      });
   });
 
   it("keeps the provider callback void while its internal Promise catches awaited failure", async () => {

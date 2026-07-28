@@ -50,9 +50,42 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
  import { normalizeZaloReactionIcon } from "./reaction.js";
  import { createZalouserSendReceipt } from "./send-receipt.js";
  import type {
-@@ -455,3 +456,113 @@ function extractSendMessageId(result: unknown): string | undefined {
+@@ -455,3 +456,175 @@ function extractSendMessageId(result: unknown): string | undefined {
++function providerScalarString(value: unknown): string {
++  const direct = toStringValue(value);
++  if (direct) return direct;
++  if (!value || typeof value !== "object") return "";
++  try {
++    const toFixed = (value as { toFixed?: unknown }).toFixed;
++    if (typeof toFixed === "function") {
++      const fixed = Reflect.apply(toFixed, value, []);
++      if (typeof fixed === "string" && fixed.trim()) return fixed.trim();
++    }
++  } catch {
++    // Fall back to JSON serialization for provider scalar wrappers without a usable toFixed.
++  }
++  try {
++    const serialized = JSON.stringify(value);
++    if (serialized === undefined) return "";
++    const parsed = JSON.parse(serialized) as unknown;
++    if (typeof parsed === "string") return parsed.trim();
++    if (typeof parsed === "number" && Number.isFinite(parsed)) return String(Math.trunc(parsed));
++  } catch {
++    return "";
++  }
++  return "";
++}
++
 +function nullableProviderString(value: unknown): string | null {
-+  return toStringValue(value) || null;
++  return providerScalarString(value) || null;
++}
++
++function snapshotProviderEnvelope(value: unknown): unknown {
++  const serialized = JSON.stringify(value);
++  if (serialized === undefined) {
++    throw new TypeError("provider envelope is not JSON serializable");
++  }
++  return JSON.parse(serialized) as unknown;
 +}
 +
 +function firstProviderValue(record: Record<string, unknown>, keys: readonly string[]): unknown {
@@ -120,14 +153,24 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 +      "mediaId",
 +      "photoId",
 +      "fileId",
++      "stickerId",
 +      "mime",
 +      "mimeType",
 +      "contentType",
 +      "byteLength",
 +      "fileSize",
++      "hdSize",
 +      "checksum",
 +      "sha256",
 +      "md5",
++      "videoUrl",
++      "voiceUrl",
++      "m4aUrl",
++      "rawUrl",
++      "hdUrl",
++      "normalUrl",
++      "oriUrl",
++      "thumbUrl",
 +    ];
 +    const eventSuggestsMedia = /photo|image|video|audio|voice|file|sticker/u.test(
 +      providerEventType.toLowerCase(),
@@ -141,12 +184,15 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 +    );
 +    return {
 +      providerMediaId: nullableProviderString(
-+        firstProviderValue(record, ["mediaId", "photoId", "fileId", "id", "msgId", "globalMsgId"]),
++        firstProviderValue(
++          record,
++          ["mediaId", "photoId", "fileId", "stickerId", "id", "msgId", "globalMsgId"],
++        ),
 +      ),
 +      kind: classifyInboundMediaKind(record, providerEventType, mime),
 +      mime,
 +      byteLength: toNonNegativeInteger(
-+        firstProviderValue(record, ["byteLength", "fileSize", "size", "totalSize"]),
++        firstProviderValue(record, ["byteLength", "fileSize", "hdSize", "size", "totalSize"]),
 +      ),
 +      providerChecksum: nullableProviderString(
 +        firstProviderValue(record, ["providerChecksum", "checksum", "sha256", "md5"]),
@@ -154,7 +200,23 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 +      fetchRef: nullableProviderString(
 +        firstProviderValue(
 +          record,
-+          ["fetchRef", "fileUrl", "downloadUrl", "href", "url", "thumb", "thumbnail"],
++          [
++            "fetchRef",
++            "fileUrl",
++            "downloadUrl",
++            "videoUrl",
++            "voiceUrl",
++            "m4aUrl",
++            "rawUrl",
++            "hdUrl",
++            "normalUrl",
++            "oriUrl",
++            "thumbUrl",
++            "href",
++            "url",
++            "thumb",
++            "thumbnail",
++          ],
 +        ),
 +      ),
 +    };
@@ -164,7 +226,7 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
  function extractSendMessageId(result: unknown): string | undefined {
    if (!result || typeof result !== "object") {
      return undefined;
-@@ -927,5 +1038,10 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
+@@ -927,5 +1100,10 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
 -function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMessage | null {
 +function toInboundMessage(
 +  message: Message,
@@ -176,12 +238,18 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
    const isGroup = message.type === ThreadType.Group;
    const senderId = toNumberId(data.uidFrom);
    const threadId = isGroup
-@@ -963,7 +1079,28 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
+@@ -944,4 +1122,4 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
+   const quotedGlobalMsgId =
+     data.quote && typeof data.quote === "object"
+-      ? toStringValue((data.quote as { globalMsgId?: unknown }).globalMsgId)
++      ? providerScalarString((data.quote as { globalMsgId?: unknown }).globalMsgId)
+       : "";
+@@ -963,7 +1141,28 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
      normalizedOwnUserId && quoteOwnerId && quoteOwnerId === normalizedOwnUserId,
    );
    const eventMessage = buildEventMessage(data);
 +  const timestampMs = resolveInboundTimestamp(data.ts);
-+  const providerEventId = null;
++  const providerEventId = nullableProviderString(data.actionId);
 +  const providerMessageId = nullableProviderString(data.msgId);
 +  const providerEventType = toStringValue(data.msgType) || "message";
    return {
@@ -195,7 +263,7 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 +      providerEventType,
 +      sourceTimestamp: new Date(timestampMs).toISOString(),
 +      callbackReceivedAt,
-+      rawEnvelope: message,
++      rawEnvelope: snapshotProviderEnvelope(message),
 +      normalized: {
 +        text: content || null,
 +        replyToProviderMessageId: quotedGlobalMsgId || null,
@@ -205,7 +273,7 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
      threadId,
      isGroup,
      senderId,
-@@ -971,9 +1108,9 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
+@@ -971,9 +1170,9 @@ function toInboundMessage(message: Message, ownUserId?: string): ZaloInboundMess
      groupName: isGroup ? resolveGroupNameFromMessageData(data) : undefined,
      content,
      commandContent,
@@ -218,7 +286,7 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
      hasAnyMention,
      canResolveExplicitMention,
      wasExplicitlyMentioned,
-@@ -1752,7 +1889,7 @@ export async function startZaloListener(params: {
+@@ -1752,7 +1951,7 @@ export async function startZaloListener(params: {
    accountId: string;
    profile?: string | null;
    abortSignal: AbortSignal;
@@ -227,20 +295,26 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
    onError: (error: Error) => void;
  }): Promise<{ stop: () => void }> {
    const profile = normalizeProfile(params.profile);
-@@ -1799,10 +1936,20 @@ export async function startZaloListener(params: {
+@@ -1799,10 +1998,20 @@ export async function startZaloListener(params: {
    const onMessage = (incoming: Message) => {
-+    const callbackReceivedAt = captureProviderCallbackReceivedAt();
-     if (incoming.isSelf) {
-       return;
-     }
--    const normalized = toInboundMessage(incoming, ownUserId);
-+    const normalized = toInboundMessage(incoming, ownUserId, callbackReceivedAt);
-     if (!normalized) {
-       return;
-     }
--    params.onMessage(normalized);
 +    let pending: void | Promise<void>;
 +    try {
++      const callbackReceivedAt = captureProviderCallbackReceivedAt();
+-    if (incoming.isSelf) {
+-      return;
+-    }
++      if (incoming.isSelf) {
++        return;
++      }
+-    const normalized = toInboundMessage(incoming, ownUserId);
++      const normalized = toInboundMessage(incoming, ownUserId, callbackReceivedAt);
+-    if (!normalized) {
+-      return;
+-    }
++      if (!normalized) {
++        return;
++      }
+-    params.onMessage(normalized);
 +      pending = params.onMessage(normalized);
 +    } catch (error) {
 +      failListener(error instanceof Error ? error : new Error(String(error)));

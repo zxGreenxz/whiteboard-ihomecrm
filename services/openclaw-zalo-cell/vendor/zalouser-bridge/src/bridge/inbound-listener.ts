@@ -185,6 +185,15 @@ export class InboundBridgeInvalidAcknowledgementError extends Error {
   }
 }
 
+export class InboundBridgeAlreadyInstalledError extends Error {
+  readonly code = "INBOUND_BRIDGE_ALREADY_INSTALLED";
+
+  constructor(message = "an inbound bridge binding is already installed") {
+    super(message);
+    this.name = "InboundBridgeAlreadyInstalledError";
+  }
+}
+
 export class InboundEnvelopeInvalidError extends TypeError {
   readonly code = "INBOUND_ENVELOPE_INVALID";
 
@@ -198,18 +207,6 @@ function invalidEnvelope(message: string): never {
   throw new InboundEnvelopeInvalidError(message);
 }
 
-function isSafeRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== "string") return false;
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor?.enumerable || !("value" in descriptor)) return false;
-  }
-  return true;
-}
-
 function hasExactKeys(record: Record<string, unknown>, expected: readonly string[]): boolean {
   const actual = Object.keys(record).sort();
   const wanted = [...expected].sort();
@@ -221,10 +218,65 @@ function exactRecord(
   value: unknown,
   expectedKeys: readonly string[],
 ): Record<string, unknown> {
-  if (!isSafeRecord(value) || !hasExactKeys(value, expectedKeys)) {
+  const snapshot = snapshotDataRecord(value);
+  if (!snapshot || !hasExactKeys(snapshot, expectedKeys)) {
     return invalidEnvelope(`${name} must be a plain object with exactly: ${expectedKeys.join(", ")}`);
   }
-  return value;
+  return snapshot;
+}
+
+function snapshotDataRecord(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return undefined;
+  const keys = Reflect.ownKeys(value);
+  if (keys.some((key) => typeof key !== "string")) return undefined;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (typeof key !== "string") return undefined;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) return undefined;
+    Object.defineProperty(snapshot, key, {
+      configurable: false,
+      enumerable: true,
+      value: descriptor.value,
+      writable: false,
+    });
+  }
+  return Object.freeze(snapshot);
+}
+
+function snapshotDenseArray(name: string, value: unknown): readonly unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    return invalidEnvelope(`${name} must be a plain array`);
+  }
+  const keys = Reflect.ownKeys(value);
+  const keySet = new Set(keys);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    !lengthDescriptor ||
+    !("value" in lengthDescriptor) ||
+    lengthDescriptor.enumerable ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    return invalidEnvelope(`${name} has an invalid length`);
+  }
+  const length = lengthDescriptor.value as number;
+  if (keys.length !== length + 1 || !keySet.has("length")) {
+    return invalidEnvelope(`${name} must contain exactly its dense indices and length`);
+  }
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const key = String(index);
+    if (!keySet.has(key)) return invalidEnvelope(`${name} contains a sparse array slot`);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      return invalidEnvelope(`${name}[${index}] is not an enumerable data property`);
+    }
+    snapshot.push(descriptor.value);
+  }
+  return Object.freeze(snapshot);
 }
 
 function requiredString(name: string, value: unknown): string {
@@ -285,43 +337,25 @@ function canonicalizeJsonValue(
   ancestors.add(input);
   try {
     if (Array.isArray(input)) {
-      if (Object.getPrototypeOf(input) !== Array.prototype) {
-        return invalidEnvelope(`${path} has an unsafe array prototype`);
-      }
-      const keys = Reflect.ownKeys(input);
-      if (
-        keys.some(
-          (key) =>
-            typeof key !== "string" ||
-            (key !== "length" && !/^(0|[1-9]\d*)$/u.test(key)),
-        )
-      ) {
-        return invalidEnvelope(`${path} has non-JSON array properties`);
-      }
+      const snapshot = snapshotDenseArray(path, input);
       const values: JsonValue[] = [];
       const json: string[] = [];
-      for (let index = 0; index < input.length; index += 1) {
-        if (!Object.prototype.hasOwnProperty.call(input, index)) {
-          return invalidEnvelope(`${path} contains a sparse array slot`);
-        }
-        const descriptor = Object.getOwnPropertyDescriptor(input, String(index));
-        if (!descriptor?.enumerable || !("value" in descriptor)) {
-          return invalidEnvelope(`${path}[${index}] is not an enumerable data property`);
-        }
-        const item = canonicalizeJsonValue(descriptor.value, `${path}[${index}]`, ancestors);
+      for (let index = 0; index < snapshot.length; index += 1) {
+        const item = canonicalizeJsonValue(snapshot[index], `${path}[${index}]`, ancestors);
         values.push(item.value);
         json.push(item.json);
       }
       return { json: `[${json.join(",")}]`, value: Object.freeze(values) as JsonValue[] };
     }
 
-    if (!isSafeRecord(input)) {
+    const snapshot = snapshotDataRecord(input);
+    if (!snapshot) {
       return invalidEnvelope(`${path} has an unsafe prototype, symbol key, or accessor`);
     }
     const output: Record<string, JsonValue> = {};
     const json: string[] = [];
-    for (const key of Object.keys(input).sort()) {
-      const descriptor = Object.getOwnPropertyDescriptor(input, key);
+    for (const key of Object.keys(snapshot).sort()) {
+      const descriptor = Object.getOwnPropertyDescriptor(snapshot, key);
       if (!descriptor || !("value" in descriptor)) {
         return invalidEnvelope(`${path}.${key} is not a data property`);
       }
@@ -387,8 +421,10 @@ function validatedInput(value: unknown): ZaloUserInboundInputV1 {
     "replyToProviderMessageId",
     "media",
   ]);
-  if (!Array.isArray(normalized.media)) return invalidEnvelope("normalized.media must be an array");
-  const media = normalized.media.map((value, index) => {
+  const mediaInput = snapshotDenseArray("normalized.media", normalized.media);
+  const media: ZaloUserInboundMediaInputV1[] = [];
+  for (let index = 0; index < mediaInput.length; index += 1) {
+    const value = mediaInput[index];
     const item = exactRecord(`normalized.media[${index}]`, value, [
       "providerMediaId",
       "kind",
@@ -400,7 +436,7 @@ function validatedInput(value: unknown): ZaloUserInboundInputV1 {
     if (!MEDIA_KINDS.has(item.kind as ZaloUserInboundMediaKindV1)) {
       return invalidEnvelope(`normalized.media[${index}].kind is invalid`);
     }
-    return Object.freeze({
+    media.push(Object.freeze({
       providerMediaId: nullableString(`normalized.media[${index}].providerMediaId`, item.providerMediaId),
       kind: item.kind as ZaloUserInboundMediaKindV1,
       mime: nullableString(`normalized.media[${index}].mime`, item.mime),
@@ -410,8 +446,8 @@ function validatedInput(value: unknown): ZaloUserInboundInputV1 {
         item.providerChecksum,
       ),
       fetchRef: nullableString(`normalized.media[${index}].fetchRef`, item.fetchRef),
-    });
-  });
+    }));
+  }
   return Object.freeze({
     providerEventId: nullableString("providerEventId", record.providerEventId),
     providerMessageId: nullableString("providerMessageId", record.providerMessageId),
@@ -446,17 +482,22 @@ export function buildZaloUserInboundEnvelopeV1(
   const accountId = requiredString("accountId", accountIdValue);
   const input = validatedInput(inputValue);
   const rawEnvelope = canonicalizeJson(input.rawEnvelope, "rawEnvelope");
-  const mediaManifest = input.normalized.media.map((item, index) => Object.freeze({
-    version: 1 as const,
-    index,
-    providerMediaId: item.providerMediaId,
-    kind: item.kind,
-    mime: item.mime,
-    byteLength: item.byteLength,
-    providerChecksum: item.providerChecksum,
-    fetchRef: item.fetchRef,
-    byteState: "PENDING" as const,
-  }));
+  const mediaManifest: ZaloUserInboundMediaManifestEntryV1[] = [];
+  for (let index = 0; index < input.normalized.media.length; index += 1) {
+    const item = input.normalized.media[index];
+    if (!item) return invalidEnvelope(`normalized.media[${index}] is missing`);
+    mediaManifest.push(Object.freeze({
+      version: 1 as const,
+      index,
+      providerMediaId: item.providerMediaId,
+      kind: item.kind,
+      mime: item.mime,
+      byteLength: item.byteLength,
+      providerChecksum: item.providerChecksum,
+      fetchRef: item.fetchRef,
+      byteState: "PENDING" as const,
+    }));
+  }
   const normalizedValue: ZaloUserInboundEnvelopeV1["normalized"] = Object.freeze({
     text: input.normalized.text,
     replyToProviderMessageId: input.normalized.replyToProviderMessageId,
@@ -491,16 +532,17 @@ function invalidAcknowledgement(): never {
 }
 
 function validateAcknowledgement(value: unknown): InboundBridgeAcknowledgementV1 {
-  if (!isSafeRecord(value) || value.version !== 1 || typeof value.status !== "string") {
+  const record = snapshotDataRecord(value);
+  if (!record || record.version !== 1 || typeof record.status !== "string") {
     return invalidAcknowledgement();
   }
-  if (value.status === "committed") {
-    if (!hasExactKeys(value, ["version", "status", "durability"])) {
+  if (record.status === "committed") {
+    if (!hasExactKeys(record, ["version", "status", "durability"])) {
       return invalidAcknowledgement();
     }
-    const durability = value.durability;
+    const durability = snapshotDataRecord(record.durability);
     if (
-      !isSafeRecord(durability) ||
+      !durability ||
       !hasExactKeys(durability, ["journalMode", "synchronous"]) ||
       durability.journalMode !== "WAL" ||
       durability.synchronous !== "FULL"
@@ -513,9 +555,9 @@ function validateAcknowledgement(value: unknown): InboundBridgeAcknowledgementV1
       durability: Object.freeze({ journalMode: "WAL", synchronous: "FULL" }),
     });
   }
-  if (value.status === "duplicate" || value.status === "collision") {
-    if (!hasExactKeys(value, ["version", "status"])) return invalidAcknowledgement();
-    return Object.freeze({ version: 1, status: value.status });
+  if (record.status === "duplicate" || record.status === "collision") {
+    if (!hasExactKeys(record, ["version", "status"])) return invalidAcknowledgement();
+    return Object.freeze({ version: 1, status: record.status });
   }
   return invalidAcknowledgement();
 }
@@ -530,6 +572,7 @@ export function installInboundBridgeCommitter(optionsValue: Readonly<{
     binding: validatedBinding(options.binding),
     committer: options.committer as InboundBridgeCommitter,
   });
+  if (installedInboundBridge) throw new InboundBridgeAlreadyInstalledError();
   installedInboundBridge = installation;
   return () => {
     if (installedInboundBridge === installation) installedInboundBridge = undefined;

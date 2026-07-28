@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  buildZaloUserInboundEnvelopeV1,
   commitInboundThroughBridge,
   installInboundBridgeCommitter,
   type ZaloUserInboundInputV1,
@@ -160,12 +161,228 @@ function compileCallback(
   return module.exports.make as (dependencies: Record<string, unknown>) => (argument: unknown) => unknown;
 }
 
+function compileFunctionSet(
+  sourceFile: ts.SourceFile,
+  entryName: string,
+  candidateFunctionNames: readonly string[],
+  dependencyNames: readonly string[],
+): (dependencies: Record<string, unknown>) => (...arguments_: unknown[]) => unknown {
+  const declarations = dependencyNames
+    .map((name) => `const ${name} = dependencies.${name};`)
+    .join("\n");
+  const functions = sourceFile.statements
+    .filter(
+      (statement): statement is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(statement) &&
+        Boolean(statement.name && candidateFunctionNames.includes(statement.name.text)),
+    )
+    .map((statement) => statement.getText(sourceFile))
+    .join("\n");
+  if (!candidateFunctionNames.includes(entryName) || !functions.includes(`function ${entryName}`)) {
+    throw new Error(`function ${entryName} was not included`);
+  }
+  const source = `export function make(dependencies: any) {\n${declarations}\n${functions}\nreturn ${entryName};\n}`;
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+    reportDiagnostics: true,
+  });
+  const diagnostics = transpiled.diagnostics ?? [];
+  if (diagnostics.length > 0) {
+    throw new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+      getCanonicalFileName: (fileName) => fileName,
+      getCurrentDirectory: () => vendorRoot,
+      getNewLine: () => "\n",
+    }));
+  }
+  const module = { exports: {} as Record<string, unknown> };
+  const evaluate = new Function("module", "exports", transpiled.outputText);
+  evaluate(module, module.exports);
+  return module.exports.make as (
+    dependencies: Record<string, unknown>,
+  ) => (...arguments_: unknown[]) => unknown;
+}
+
 function parse(root: string, path: string): ts.SourceFile {
   const source = readFileSync(resolve(root, path), "utf8");
   return ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 }
 
 describe("executable patched inbound source", () => {
+  it("runs the real provider producer through the strict overlay with exact provider evidence", () => {
+    const root = preparePatchedSource();
+    const zaloJs = parse(root, "src/zalo-js.ts");
+    const makeToInboundMessage = compileFunctionSet(
+      zaloJs,
+      "toInboundMessage",
+      [
+        "classifyInboundEventKind",
+        "classifyInboundMediaKind",
+        "extractInboundMediaInputs",
+        "firstProviderValue",
+        "nullableProviderString",
+        "providerScalarString",
+        "snapshotProviderEnvelope",
+        "toInboundMessage",
+      ],
+      [
+        "ThreadType",
+        "buildEventMessage",
+        "extractMentionIds",
+        "normalizeMessageContent",
+        "resolveGroupNameFromMessageData",
+        "resolveInboundTimestamp",
+        "stripLeadingAtMentionForCommand",
+        "stripOwnMentionsForCommandBody",
+        "toNonNegativeInteger",
+        "toNumberId",
+        "toStringValue",
+      ],
+    );
+    const scalarString = (value: unknown): string => {
+      if (typeof value === "string") return value.trim();
+      if (typeof value === "number" && Number.isFinite(value)) return String(Math.trunc(value));
+      return "";
+    };
+    const toInboundMessage = makeToInboundMessage({
+      ThreadType: { Group: "group" },
+      buildEventMessage: () => undefined,
+      extractMentionIds: () => [],
+      normalizeMessageContent: (value: unknown) =>
+        typeof value === "string"
+          ? value
+          : scalarString((value as Record<string, unknown> | null)?.title),
+      resolveGroupNameFromMessageData: () => "Sales",
+      resolveInboundTimestamp: () => Date.parse("2026-07-27T00:00:00.000Z"),
+      stripLeadingAtMentionForCommand: (value: string) => value,
+      stripOwnMentionsForCommandBody: (value: string) => value,
+      toNonNegativeInteger: (value: unknown) => {
+        const number = typeof value === "number" ? value : Number(value);
+        return Number.isSafeInteger(number) && number >= 0 ? number : null;
+      },
+      toNumberId: scalarString,
+      toStringValue: scalarString,
+    });
+    const exactQuotedId = "900719925474099312345678901";
+    const serializedQuotedId = "9.00719925474099312345678901e+26";
+    const providerBigNumber = Object.freeze({
+      toFixed: () => exactQuotedId,
+      toJSON: () => serializedQuotedId,
+    });
+    class ProviderMessage {
+      readonly isSelf = false;
+      readonly type = "group";
+      readonly data = {
+        actionId: "provider-action-1",
+        content: {
+          hdSize: "2048",
+          m4aUrl: "https://provider.invalid/audio.m4a",
+          stickerId: "sticker-1",
+          title: "provider media",
+        },
+        dName: "Sale One",
+        idTo: "sales-group-1",
+        msgId: "message-1",
+        msgType: "chat.sticker",
+        quote: { globalMsgId: providerBigNumber },
+        ts: 1,
+        uidFrom: "sender-1",
+      };
+    }
+
+    const produced = toInboundMessage(
+      new ProviderMessage(),
+      "own-user-1",
+      "2026-07-27T00:00:01.000Z",
+    ) as { bridge: ZaloUserInboundInputV1 };
+    const envelope = buildZaloUserInboundEnvelopeV1(
+      { cellId: "cell-a", organizationId: "organization-a", sessionGeneration: 7 },
+      "account-a",
+      produced.bridge,
+    );
+
+    expect(envelope).toMatchObject({
+      eventKind: "MESSAGE",
+      providerEventId: "provider-action-1",
+      providerMessageId: "message-1",
+      normalized: {
+        replyToProviderMessageId: exactQuotedId,
+        mediaManifest: [{
+          byteLength: 2048,
+          fetchRef: "https://provider.invalid/audio.m4a",
+          kind: "STICKER",
+          providerMediaId: "sticker-1",
+        }],
+      },
+    });
+    expect(Object.getPrototypeOf(envelope.rawEnvelope)).toBe(Object.prototype);
+    expect(envelope.rawEnvelope).toMatchObject({
+      data: { quote: { globalMsgId: serializedQuotedId } },
+      type: "group",
+    });
+  });
+
+  it("executes the patched event-kind matrix and every declared provider media URL", () => {
+    const root = preparePatchedSource();
+    const zaloJs = parse(root, "src/zalo-js.ts");
+    const classify = compileFunctionSet(
+      zaloJs,
+      "classifyInboundEventKind",
+      ["classifyInboundEventKind"],
+      [],
+    )({}) as (value: string) => string;
+    expect([
+      "chat.reaction",
+      "message.delivered",
+      "chat.seen",
+      "typing",
+      "member.join",
+      "chat.photo",
+      "provider.unknown",
+    ].map(classify)).toEqual([
+      "REACTION",
+      "DELIVERY_RECEIPT",
+      "SEEN",
+      "TYPING",
+      "MEMBERSHIP",
+      "MESSAGE",
+      "OTHER",
+    ]);
+
+    const extractMedia = compileFunctionSet(
+      zaloJs,
+      "extractInboundMediaInputs",
+      [
+        "classifyInboundMediaKind",
+        "extractInboundMediaInputs",
+        "firstProviderValue",
+        "nullableProviderString",
+        "providerScalarString",
+      ],
+      ["toNonNegativeInteger", "toStringValue"],
+    )({
+      toNonNegativeInteger: () => null,
+      toStringValue: (value: unknown) => typeof value === "string" ? value : "",
+    }) as (content: unknown, eventType: string) => Array<{ fetchRef: string | null }>;
+    for (const field of [
+      "videoUrl",
+      "voiceUrl",
+      "m4aUrl",
+      "rawUrl",
+      "hdUrl",
+      "normalUrl",
+      "oriUrl",
+      "thumbUrl",
+    ]) {
+      const expected = `https://provider.invalid/${field}`;
+      expect(extractMedia({ [field]: expected }, "chat.file"), field).toMatchObject([
+        { fetchRef: expected },
+      ]);
+    }
+  });
+
   it("executes the actual monitor callback through strict bridge acknowledgement gating", async () => {
     const root = preparePatchedSource();
     const monitor = parse(root, "src/monitor.ts");
@@ -298,6 +515,50 @@ describe("executable patched inbound source", () => {
     await vi.waitFor(() => expect(failures).toEqual([failure]));
   });
 
+  it("routes synchronous provider normalization failure through failListener without escaping", () => {
+    const root = preparePatchedSource();
+    const zaloJs = parse(root, "src/zalo-js.ts");
+    const arrow = findVariableArrow(zaloJs, "startZaloListener", "onMessage");
+    const makeCallback = compileCallback(zaloJs, arrow, [
+      "captureProviderCallbackReceivedAt",
+      "toInboundMessage",
+      "ownUserId",
+      "params",
+      "failListener",
+    ]);
+    const failure = new Error("provider envelope snapshot failed");
+    const failures: Error[] = [];
+    const onMessage = vi.fn();
+    const callback = makeCallback({
+      captureProviderCallbackReceivedAt: () => "2026-07-27T00:00:01.000Z",
+      toInboundMessage: () => {
+        throw failure;
+      },
+      ownUserId: "own-user-1",
+      params: { onMessage },
+      failListener: (error: Error) => failures.push(error),
+    });
+
+    expect(() => callback({ isSelf: false })).not.toThrow();
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(failures).toEqual([failure]);
+
+    const listenerFailure = new Error("synchronous listener failure");
+    const listenerCallback = makeCallback({
+      captureProviderCallbackReceivedAt: () => "2026-07-27T00:00:01.000Z",
+      toInboundMessage: () => ({ bridge: BRIDGE_INPUT }),
+      ownUserId: "own-user-1",
+      params: {
+        onMessage: () => {
+          throw listenerFailure;
+        },
+      },
+      failListener: (error: Error) => failures.push(error),
+    });
+    expect(() => listenerCallback({ isSelf: false })).not.toThrow();
+    expect(failures).toEqual([failure, listenerFailure]);
+  });
+
   it("patches the provider evidence type and construction inputs while leaving the overlay authoritative", () => {
     const root = preparePatchedSource();
     const types = readFileSync(resolve(root, "src/types.ts"), "utf8");
@@ -305,7 +566,7 @@ describe("executable patched inbound source", () => {
 
     expect(types).toContain("ZaloUserInboundInputV1");
     expect(types).toContain("bridge: ZaloUserInboundInputV1");
-    expect(zaloJs).toContain("const providerEventId = null;");
+    expect(zaloJs).toContain("const providerEventId = nullableProviderString(data.actionId);");
     expect(zaloJs).toContain(
       'cliMsgId: typeof data.cliMsgId === "string" ? data.cliMsgId : undefined',
     );
@@ -324,6 +585,17 @@ describe("executable patched inbound source", () => {
       "rawEnvelope",
       "normalized",
       "media",
+      "actionId",
+      "stickerId",
+      "videoUrl",
+      "voiceUrl",
+      "m4aUrl",
+      "rawUrl",
+      "hdUrl",
+      "normalUrl",
+      "oriUrl",
+      "thumbUrl",
+      "hdSize",
     ]) {
       expect(zaloJs).toContain(field);
     }
