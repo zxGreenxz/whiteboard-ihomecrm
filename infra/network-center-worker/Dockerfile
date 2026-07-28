@@ -1,4 +1,4 @@
-FROM node:20.19.4-bookworm-slim AS build
+FROM node:20.20-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -8,7 +8,7 @@ COPY src ./src
 RUN npm run build \
   && npm prune --omit=dev
 
-FROM node:20.19.4-bookworm-slim AS runtime
+FROM node:20.20-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
     NODE_OPTIONS=--max-old-space-size=384

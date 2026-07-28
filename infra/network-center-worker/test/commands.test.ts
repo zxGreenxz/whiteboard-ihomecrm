@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CommandProcessor } from "../src/commands.js";
+import { CommandCoordinator, CommandProcessor, sanitizeRouterExport } from "../src/commands.js";
 import { InterfaceRegistry, RouterOperationError } from "../src/domain.js";
 import type { RouterConnector } from "../src/routeros/connector.js";
 
@@ -40,7 +40,10 @@ function claim(actionType = "FLUSH_DNS_CACHE") {
   };
 }
 
-function harness(overrides: Partial<RouterConnector> = {}, emergencyStop = false) {
+function harness(
+  overrides: Partial<RouterConnector> = {},
+  emergencyStop: boolean | (() => boolean) = false,
+) {
   const calls: string[] = [];
   const completions: Array<Record<string, unknown>> = [];
   let renewCallback: (() => void | Promise<void>) | undefined;
@@ -58,7 +61,7 @@ function harness(overrides: Partial<RouterConnector> = {}, emergencyStop = false
       return { reachable: true, wanUp: true, dnsOk: true };
     },
     flushDnsCache: async () => { calls.push("flush"); },
-    renewDhcpLease: async () => { calls.push("renew-dhcp"); },
+    renewDhcpLease: async () => { calls.push("renew-dhcp"); return true; },
     cycleAccessPort: async () => { calls.push("cycle-port"); },
     reboot: async () => { calls.push("reboot"); },
     close: async () => { calls.push("close"); },
@@ -74,7 +77,7 @@ function harness(overrides: Partial<RouterConnector> = {}, emergencyStop = false
     connectorFactory: async () => connector,
     backupStore: { save: async () => ({ path: "/backups/safe.backup", sha256: "a".repeat(64), bytes: 3 }) },
     interfaceRegistry: new InterfaceRegistry(),
-    emergencyStop: () => emergencyStop,
+    emergencyStop: typeof emergencyStop === "function" ? emergencyStop : () => emergencyStop,
     clock: {
       now: () => new Date("2026-07-28T00:00:00.000Z"),
       setInterval: (callback) => { renewCallback = callback; return 1; },
@@ -88,6 +91,33 @@ function harness(overrides: Partial<RouterConnector> = {}, emergencyStop = false
 }
 
 describe("command processor", () => {
+  it("bounds redacted exports by UTF-8 bytes for the Edge snapshot envelope", () => {
+    const sanitized = sanitizeRouterExport(`comment=${"á".repeat(600_000)}`);
+    expect(Buffer.byteLength(sanitized, "utf8")).toBeLessThanOrEqual(900_000);
+    expect(sanitized).not.toContain("�");
+    expect(sanitized).toContain("comment=");
+    expect(sanitizeRouterExport(Array.from({ length: 60_000 }, () => "x").join("\n")).split("\n"))
+      .toHaveLength(20_000);
+    expect(sanitizeRouterExport('/system script add source=":local password hunter2"'))
+      .not.toContain("hunter2");
+  });
+
+  it("does not reload connections while the queue is empty", async () => {
+    const calls: string[] = [];
+    const coordinator = new CommandCoordinator({
+      api: {
+        claimCommands: async () => { calls.push("claim"); return []; },
+        listConnections: async () => { calls.push("connections"); return []; },
+        complete: async () => undefined,
+      },
+      processor: {} as CommandProcessor,
+      leaseSeconds: 90,
+      logger: { info() {}, warn() {}, error() {} },
+    });
+    await coordinator.runCycle();
+    expect(calls).toEqual(["claim"]);
+  });
+
   it("renews the lease, backs up, executes an allowlisted action, and post-checks", async () => {
     const test = harness();
     const processing = test.processor.processClaim(claim(), connection);
@@ -126,6 +156,20 @@ describe("command processor", () => {
     expect(paused.completions[0]).toMatchObject({ outcome: "CANCELLED_BY_KILL_SWITCH" });
   });
 
+  it("rechecks the emergency stop after backup and before execution", async () => {
+    let stopped = false;
+    const test = harness({
+      captureBackup: async () => {
+        stopped = true;
+        return { binary: new Uint8Array([1]), redactedExport: "/system identity print" };
+      },
+    }, () => stopped);
+
+    await test.processor.processClaim(claim(), connection);
+    expect(test.calls).not.toContain("flush");
+    expect(test.completions[0]).toMatchObject({ outcome: "CANCELLED_BY_KILL_SWITCH" });
+  });
+
   it("does not replay actions during reconciliation", async () => {
     const test = harness();
     await test.processor.processClaim({ ...claim("REBOOT_ROUTER"), reconciliation: true }, connection);
@@ -147,6 +191,15 @@ describe("command processor", () => {
     });
     await test.processor.processClaim(claim("REBOOT_ROUTER"), connection);
     expect(test.completions[0]).toMatchObject({ outcome: "UNCERTAIN" });
+  });
+
+  it("reports DHCP renew as not applicable without failing PPPoE sites", async () => {
+    const test = harness({ renewDhcpLease: async () => false });
+    await test.processor.processClaim(claim("RENEW_DHCP_LEASE"), connection);
+    expect(test.completions[0]).toMatchObject({
+      outcome: "SUCCEEDED",
+      result: { actionResult: { applied: false, reason: "NO_BOUND_DHCP_CLIENT" } },
+    });
   });
 
   it("deduplicates the same command attempt in one worker process", async () => {

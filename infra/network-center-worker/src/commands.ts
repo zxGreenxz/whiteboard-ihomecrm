@@ -82,16 +82,18 @@ const ALLOWED_ACTIONS = new Set([
 ]);
 
 const DISRUPTIVE_ACTIONS = new Set(["CYCLE_ACCESS_PORT", "REBOOT_ROUTER"]);
-const REDACTED_ASSIGNMENT = /(password|passphrase|private-key|preshared-key|secret|community)(\s*=\s*|=)("(?:[^"\\]|\\.)*"|[^\s;]+)/gi;
+const REDACTED_ASSIGNMENT = /(password|passphrase|private-key|preshared-key|secret|community|source|script|on-event|http-header-field|http-data)(\s*=\s*|=)("(?:[^"\\]|\\.)*"|[^\s;]+)/gi;
 
 export function sanitizeRouterExport(value: string): string {
-  return value
+  const redacted = value
     .replace(/\r/g, "")
     .split("\n")
-    .map((line) => line.replace(REDACTED_ASSIGNMENT, "$1=$2[REDACTED]"))
-    .filter((line) => line.length <= 16_384)
-    .join("\n")
-    .slice(0, 1_000_000);
+    .slice(0, 20_000)
+    .map((line) => line.replace(REDACTED_ASSIGNMENT, "$1$2[REDACTED]").slice(0, 16_384))
+    .join("\n");
+  const bytes = Buffer.from(redacted, "utf8");
+  if (bytes.byteLength <= 900_000) return redacted;
+  return bytes.subarray(0, 900_000).toString("utf8").replace(/�+$/u, "");
 }
 
 function hasNoParameters(parameters: Record<string, unknown>): boolean {
@@ -162,16 +164,17 @@ export class CommandProcessor {
     action: string,
     claim: CommandClaim,
     connector: RouterConnector,
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     switch (action) {
       case "FLUSH_DNS_CACHE":
         if (!hasNoParameters(claim.parameters)) throw new RouterOperationError("INVALID_PARAMETERS", { retryable: false, mayHaveExecuted: false });
         await connector.flushDnsCache();
-        return;
+        return { applied: true };
       case "RENEW_DHCP_LEASE":
         if (!hasNoParameters(claim.parameters)) throw new RouterOperationError("INVALID_PARAMETERS", { retryable: false, mayHaveExecuted: false });
-        await connector.renewDhcpLease();
-        return;
+        return await connector.renewDhcpLease()
+          ? { applied: true }
+          : { applied: false, reason: "NO_BOUND_DHCP_CLIENT" };
       case "CYCLE_ACCESS_PORT": {
         if (!claim.interfaceId) throw new RouterOperationError("INTERFACE_REQUIRED", { retryable: false, mayHaveExecuted: false });
         const interfaceKey = this.#interfaceRegistry.resolve(claim.deviceId, claim.interfaceId);
@@ -186,14 +189,14 @@ export class CommandProcessor {
           throw new RouterOperationError("INVALID_CYCLE_DURATION", { retryable: false, mayHaveExecuted: false });
         }
         await connector.cycleAccessPort(interfaceKey, duration);
-        return;
+        return { applied: true, durationSeconds: duration };
       }
       case "REBOOT_ROUTER":
         if (!hasNoParameters(claim.parameters)) throw new RouterOperationError("INVALID_PARAMETERS", { retryable: false, mayHaveExecuted: false });
         await connector.reboot();
-        return;
+        return { applied: true };
       case "CAPTURE_SNAPSHOT":
-        return;
+        return { applied: false, reason: "SNAPSHOT_ONLY" };
       default:
         throw new RouterOperationError("ACTION_NOT_ALLOWED", { retryable: false, mayHaveExecuted: false });
     }
@@ -213,6 +216,7 @@ export class CommandProcessor {
 
     let connector: RouterConnector | undefined;
     let backupReceipt: BackupReceipt | undefined;
+    let actionResult: Record<string, unknown> = { applied: false };
     let actionStarted = false;
     let leaseError: unknown;
     const renewLease = async () => {
@@ -277,12 +281,20 @@ export class CommandProcessor {
         bytes: backupReceipt.bytes,
       });
       assertLease();
+      if (this.#emergencyStop()) {
+        await this.#finish(claim, {
+          outcome: "CANCELLED_BY_KILL_SWITCH",
+          result: { code: "EMERGENCY_STOP", message: "Network changes were paused before execution" },
+          rollback: { backupSha256: backupReceipt.sha256 },
+        });
+        return;
+      }
 
       if (action !== "CAPTURE_SNAPSHOT") {
         await this.#stage(claim, "EXECUTION_STARTED", { actionType: action });
         actionStarted = true;
-        await this.#performAction(action, claim, connector);
-        await this.#stage(claim, "EXECUTION_COMPLETED", { actionType: action });
+        actionResult = await this.#performAction(action, claim, connector);
+        await this.#stage(claim, "EXECUTION_COMPLETED", { actionType: action, actionResult });
         if (action === "REBOOT_ROUTER") await this.#clock.sleep(5_000);
       }
       assertLease();
@@ -303,7 +315,7 @@ export class CommandProcessor {
       }
       await this.#finish(claim, {
         outcome: "SUCCEEDED",
-        result: { actionType: action, health, backupSha256: backupReceipt.sha256 },
+        result: { actionType: action, actionResult, health, backupSha256: backupReceipt.sha256 },
         rollback: { backupSha256: backupReceipt.sha256 },
       });
     } catch (error) {
@@ -371,9 +383,10 @@ export class CommandCoordinator {
   }
 
   async runCycle(): Promise<void> {
+    const claims = await this.#api.claimCommands(this.#claimLimit, this.#leaseSeconds);
+    if (claims.length === 0) return;
     const connections = await this.#api.listConnections(500);
     const byDevice = new Map(connections.map((connection) => [connection.deviceId, connection]));
-    const claims = await this.#api.claimCommands(this.#claimLimit, this.#leaseSeconds);
     await Promise.all(claims.map(async (claim) => {
       const connection = byDevice.get(claim.deviceId);
       if (!connection) {

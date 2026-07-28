@@ -21,7 +21,7 @@ export interface RouterConnector {
   captureBackup(): Promise<RouterBackup>;
   healthCheck(): Promise<RouterHealth>;
   flushDnsCache(): Promise<void>;
-  renewDhcpLease(): Promise<void>;
+  renewDhcpLease(): Promise<boolean>;
   cycleAccessPort(interfaceExternalKey: string, durationSeconds: number): Promise<void>;
   reboot(): Promise<void>;
   close(): Promise<void>;

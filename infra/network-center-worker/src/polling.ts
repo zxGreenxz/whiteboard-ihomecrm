@@ -30,12 +30,34 @@ interface PollingCoordinatorOptions {
   enforceScheduling?: boolean;
   retryBackoffBaseMs?: number;
   retryBackoffMaximumMs?: number;
+  inventoryRefreshIntervalMs?: number;
 }
 
 interface PollState {
   lastSuccessAt: number | null;
   consecutiveFailures: number;
   retryAt: number;
+  lastReportedReachable: boolean | null;
+}
+
+interface InventoryIds {
+  interfaceIds: Map<string, string>;
+  arubaIds: Map<string, string>;
+  offlineAruba: Array<{ externalKey: string; deviceId: string }>;
+}
+
+interface InventoryCacheEntry {
+  signature: string;
+  refreshedAt: number;
+  interfaceIds: Map<string, string>;
+  arubaIds: Map<string, string>;
+}
+
+interface TelemetryBatch {
+  observedAt: string;
+  devices: Array<Record<string, unknown>>;
+  interfaces: Array<Record<string, unknown>>;
+  clients: Array<Record<string, unknown>>;
 }
 
 const BATCH_LIMIT = 256;
@@ -132,7 +154,9 @@ export class PollingCoordinator {
   readonly #enforceScheduling: boolean;
   readonly #retryBackoffBaseMs: number;
   readonly #retryBackoffMaximumMs: number;
+  readonly #inventoryRefreshIntervalMs: number;
   readonly #states = new Map<string, PollState>();
+  readonly #inventoryCache = new Map<string, InventoryCacheEntry>();
 
   constructor(options: PollingCoordinatorOptions) {
     this.#api = options.api;
@@ -147,6 +171,7 @@ export class PollingCoordinator {
     this.#enforceScheduling = options.enforceScheduling ?? false;
     this.#retryBackoffBaseMs = options.retryBackoffBaseMs ?? 5_000;
     this.#retryBackoffMaximumMs = options.retryBackoffMaximumMs ?? 300_000;
+    this.#inventoryRefreshIntervalMs = options.inventoryRefreshIntervalMs ?? 600_000;
   }
 
   #shouldPoll(connection: NetworkConnection, now: number): boolean {
@@ -161,13 +186,25 @@ export class PollingCoordinator {
   async #syncInventory(
     connection: NetworkConnection,
     observation: RouterObservation,
-  ): Promise<Map<string, string>> {
+  ): Promise<InventoryIds> {
     const interfaces = observation.interfaces.map(inventoryInterface);
     const aruba = observation.aruba.map(inventoryAruba);
+    const signature = createHash("sha256")
+      .update(JSON.stringify({ interfaces, aruba }))
+      .digest("hex");
+    const refreshedAt = this.#now().getTime();
+    const cached = this.#inventoryCache.get(connection.deviceId);
+    if (
+      cached?.signature === signature &&
+      refreshedAt - cached.refreshedAt < this.#inventoryRefreshIntervalMs
+    ) {
+      return { interfaceIds: cached.interfaceIds, arubaIds: cached.arubaIds, offlineAruba: [] };
+    }
     const interfaceChunks = chunkAll(interfaces, BATCH_LIMIT);
     const arubaChunks = chunkAll(aruba, BATCH_LIMIT);
     const batchCount = Math.max(interfaceChunks.length, arubaChunks.length, 1);
-    const externalToId = new Map<string, string>();
+    const interfaceIds = new Map<string, string>();
+    const arubaIds = new Map<string, string>();
 
     for (let index = 0; index < batchCount; index += 1) {
       const mapping: InventoryMapping = await this.#api.inventory({
@@ -175,38 +212,84 @@ export class PollingCoordinator {
         interfaces: interfaceChunks[index] ?? [],
         aruba: arubaChunks[index] ?? [],
       });
+      if (mapping.routerDeviceId !== connection.deviceId) {
+        throw new Error("Inventory response router does not match request");
+      }
       this.#interfaceRegistry.update(connection.deviceId, mapping.interfaces);
-      for (const item of mapping.interfaces) externalToId.set(item.interfaceKey, item.id);
+      for (const item of mapping.interfaces) interfaceIds.set(item.interfaceKey, item.id);
+      for (const item of mapping.aruba) arubaIds.set(item.externalKey, item.id);
     }
-    return externalToId;
+    this.#inventoryCache.set(connection.deviceId, {
+      signature,
+      refreshedAt,
+      interfaceIds,
+      arubaIds,
+    });
+    const offlineAruba = cached
+      ? [...cached.arubaIds.entries()]
+        .filter(([externalKey]) => !arubaIds.has(externalKey))
+        .map(([externalKey, deviceId]) => ({ externalKey, deviceId }))
+      : [];
+    return { interfaceIds, arubaIds, offlineAruba };
   }
 
-  async #syncTelemetry(
+  #buildTelemetry(
     connection: NetworkConnection,
     observation: RouterObservation,
-    interfaceIds: Map<string, string>,
-  ): Promise<void> {
-    const devices = [{
+    inventoryIds: InventoryIds,
+  ): TelemetryBatch {
+    const devices: Array<Record<string, unknown>> = [{
       ...observation.device,
       deviceId: connection.deviceId,
       lastSeenAt: observation.observedAt,
       reachable: true,
-    }];
+    }, ...observation.aruba.flatMap((item) => {
+      const deviceId = inventoryIds.arubaIds.get(item.externalKey);
+      return deviceId ? [{
+        deviceId,
+        lastSeenAt: observation.observedAt,
+        reachable: item.reachable,
+        healthStatus: item.reachable ? "HEALTHY" : "OFFLINE",
+        identity: item.displayName,
+        routerosVersion: null,
+        connectionCount: null,
+      }] : [];
+    }), ...inventoryIds.offlineAruba.map((item) => ({
+      deviceId: item.deviceId,
+      lastSeenAt: observation.observedAt,
+      reachable: false,
+      healthStatus: "OFFLINE",
+      identity: item.externalKey,
+      routerosVersion: null,
+      connectionCount: null,
+    }))];
     const interfaces = observation.interfaces.flatMap((item) => {
-      const interfaceId = interfaceIds.get(item.externalKey);
+      const interfaceId = inventoryIds.interfaceIds.get(item.externalKey);
       return interfaceId ? [telemetryInterface(item, interfaceId)] : [];
     });
     const clients = observation.clients.map((item) => ({
       ...item,
       deviceId: connection.deviceId,
     }));
+    return { observedAt: observation.observedAt, devices, interfaces, clients };
+  }
+
+  async #ingestTelemetry(batches: TelemetryBatch[]): Promise<void> {
+    if (batches.length === 0) return;
+    const devices = batches.flatMap((batch) => batch.devices);
+    const interfaces = batches.flatMap((batch) => batch.interfaces);
+    const clients = batches.flatMap((batch) => batch.clients);
+    const observedAt = batches
+      .map((batch) => batch.observedAt)
+      .sort()
+      .at(-1) ?? this.#now().toISOString();
     const deviceChunks = chunkAll(devices, BATCH_LIMIT);
     const interfaceChunks = chunkAll(interfaces, BATCH_LIMIT);
     const clientChunks = chunkAll(clients, BATCH_LIMIT);
     const batchCount = Math.max(deviceChunks.length, interfaceChunks.length, clientChunks.length, 1);
     for (let index = 0; index < batchCount; index += 1) {
       await this.#api.ingest({
-        observedAt: observation.observedAt,
+        observedAt,
         devices: deviceChunks[index] ?? [],
         interfaces: interfaceChunks[index] ?? [],
         clients: clientChunks[index] ?? [],
@@ -238,21 +321,27 @@ export class PollingCoordinator {
     });
   }
 
-  async #pollConnection(connection: NetworkConnection): Promise<boolean> {
+  async #pollConnection(connection: NetworkConnection): Promise<TelemetryBatch | null> {
     let connector: Pick<RouterConnector, "poll" | "close"> | undefined;
     const now = this.#now();
     try {
       connector = await this.#connectorFactory(connection);
       const observation = await connector.poll();
-      const mapping = await this.#syncInventory(connection, observation);
-      await this.#syncTelemetry(connection, observation, mapping);
-      await this.#incident(connection, true, observation.observedAt);
+      const inventoryIds = await this.#syncInventory(connection, observation);
+      const telemetry = this.#buildTelemetry(connection, observation, inventoryIds);
+      const previous = this.#states.get(connection.deviceId);
+      let lastReportedReachable = previous?.lastReportedReachable ?? null;
+      if (lastReportedReachable === false) {
+        await this.#incident(connection, true, observation.observedAt);
+        lastReportedReachable = true;
+      }
       this.#states.set(connection.deviceId, {
         lastSuccessAt: now.getTime(),
         consecutiveFailures: 0,
         retryAt: 0,
+        lastReportedReachable,
       });
-      return true;
+      return telemetry;
     } catch (error) {
       const previous = this.#states.get(connection.deviceId);
       const failures = (previous?.consecutiveFailures ?? 0) + 1;
@@ -260,25 +349,30 @@ export class PollingCoordinator {
         this.#retryBackoffMaximumMs,
         this.#retryBackoffBaseMs * 2 ** Math.min(failures - 1, 10),
       );
-      this.#states.set(connection.deviceId, {
+      const failedState: PollState = {
         lastSuccessAt: previous?.lastSuccessAt ?? null,
         consecutiveFailures: failures,
         retryAt: now.getTime() + delay,
-      });
+        lastReportedReachable: previous?.lastReportedReachable ?? null,
+      };
       this.#logger.warn("Router polling failed", redactForLog({
         buildingId: connection.buildingId,
         deviceId: connection.deviceId,
         failures,
       }));
       try {
-        await this.#incident(connection, false, now.toISOString());
+        if (failedState.lastReportedReachable !== false) {
+          await this.#incident(connection, false, now.toISOString());
+          failedState.lastReportedReachable = false;
+        }
       } catch (incidentError) {
         this.#logger.error("Unable to record router incident", redactForLog({
           deviceId: connection.deviceId,
           error: incidentError instanceof Error ? incidentError.name : "unknown",
         }));
       }
-      return false;
+      this.#states.set(connection.deviceId, failedState);
+      return null;
     } finally {
       try {
         await connector?.close();
@@ -298,10 +392,15 @@ export class PollingCoordinator {
     );
     let successes = 0;
     let failures = 0;
+    const telemetry: TelemetryBatch[] = [];
     await concurrentMap(connections, this.#maxConcurrency, async (connection) => {
-      if (await this.#pollConnection(connection)) successes += 1;
-      else failures += 1;
+      const batch = await this.#pollConnection(connection);
+      if (batch) {
+        successes += 1;
+        telemetry.push(batch);
+      } else failures += 1;
     });
+    await this.#ingestTelemetry(telemetry);
     await this.#api.heartbeat({
       status: this.#paused() ? "PAUSED" : failures > 0 ? "DEGRADED" : "ONLINE",
       workerVersion: this.#workerVersion,

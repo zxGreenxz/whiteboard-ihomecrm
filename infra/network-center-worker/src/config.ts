@@ -209,12 +209,12 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
     commandPollIntervalMs: integerSetting(env, "NETWORK_CENTER_COMMAND_POLL_INTERVAL_MS", {
       minimum: 1_000,
       maximum: 60_000,
-      fallback: 5_000,
+      fallback: 15_000,
     }),
     heartbeatIntervalMs: integerSetting(env, "NETWORK_CENTER_HEARTBEAT_INTERVAL_MS", {
       minimum: 10_000,
       maximum: 300_000,
-      fallback: 30_000,
+      fallback: 60_000,
     }),
     connectionRefreshIntervalMs: integerSetting(env, "NETWORK_CENTER_CONNECTION_REFRESH_MS", {
       minimum: 10_000,

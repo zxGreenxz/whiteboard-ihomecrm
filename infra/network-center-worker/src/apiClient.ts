@@ -44,8 +44,8 @@ const commandClaimSchema = z.object({
 
 const inventoryMappingSchema = z.object({
   routerDeviceId: z.uuid(),
-  interfaces: z.array(z.object({ interfaceKey: z.string(), id: z.string() })).max(256),
-  aruba: z.array(z.object({ externalKey: z.string(), id: z.string() })).max(256),
+  interfaces: z.array(z.object({ interfaceKey: z.string(), id: z.uuid() })).max(256),
+  aruba: z.array(z.object({ externalKey: z.string(), id: z.uuid() })).max(256),
 }).passthrough();
 
 const responseEnvelope = <T extends z.ZodType>(schema: T) => z.object({
@@ -104,55 +104,62 @@ export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
   async #post<T>(route: string, body: Record<string, unknown>, schema: z.ZodType<T>): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
-    let response: Response;
     try {
-      response = await this.#fetch(`${this.#baseUrl}/${route}`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-network-worker-secret": this.#secret,
-        },
-        body: JSON.stringify({ workerId: this.#workerId, ...body }),
-        signal: controller.signal,
-      });
-    } catch {
-      throw new ApiClientError({ code: "NETWORK_ERROR", retryable: true });
+      let response: Response;
+      try {
+        response = await this.#fetch(`${this.#baseUrl}/${route}`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-network-worker-secret": this.#secret,
+          },
+          body: JSON.stringify({ workerId: this.#workerId, ...body }),
+          signal: controller.signal,
+        });
+      } catch {
+        throw new ApiClientError({ code: "NETWORK_ERROR", retryable: true });
+      }
+
+      if (!response.ok) {
+        try {
+          await response.body?.cancel();
+        } catch {
+          // The response is already unusable; intentionally ignore cancellation errors.
+        }
+        throw new ApiClientError({
+          code: `HTTP_${response.status}`,
+          retryable: isRetryableStatus(response.status),
+          status: response.status,
+        });
+      }
+
+      const declaredLength = Number(response.headers.get("content-length") ?? "0");
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
+        throw new ApiClientError({ code: "RESPONSE_TOO_LARGE", retryable: false, status: response.status });
+      }
+      let raw: string;
+      try {
+        raw = await response.text();
+      } catch {
+        throw new ApiClientError({ code: "NETWORK_ERROR", retryable: true, status: response.status });
+      }
+      if (Buffer.byteLength(raw, "utf8") > MAX_RESPONSE_BYTES) {
+        throw new ApiClientError({ code: "RESPONSE_TOO_LARGE", retryable: false, status: response.status });
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new ApiClientError({ code: "INVALID_RESPONSE", retryable: false, status: response.status });
+      }
+      const result = responseEnvelope(schema).safeParse(parsed);
+      if (!result.success) {
+        throw new ApiClientError({ code: "INVALID_RESPONSE", retryable: false, status: response.status });
+      }
+      return result.data.data;
     } finally {
       clearTimeout(timer);
     }
-
-    if (!response.ok) {
-      try {
-        await response.body?.cancel();
-      } catch {
-        // The response is already unusable; intentionally ignore cancellation errors.
-      }
-      throw new ApiClientError({
-        code: `HTTP_${response.status}`,
-        retryable: isRetryableStatus(response.status),
-        status: response.status,
-      });
-    }
-
-    const declaredLength = Number(response.headers.get("content-length") ?? "0");
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
-      throw new ApiClientError({ code: "RESPONSE_TOO_LARGE", retryable: false, status: response.status });
-    }
-    const raw = await response.text();
-    if (Buffer.byteLength(raw, "utf8") > MAX_RESPONSE_BYTES) {
-      throw new ApiClientError({ code: "RESPONSE_TOO_LARGE", retryable: false, status: response.status });
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new ApiClientError({ code: "INVALID_RESPONSE", retryable: false, status: response.status });
-    }
-    const result = responseEnvelope(schema).safeParse(parsed);
-    if (!result.success) {
-      throw new ApiClientError({ code: "INVALID_RESPONSE", retryable: false, status: response.status });
-    }
-    return result.data.data;
   }
 
   async listConnections(limit = 100): Promise<NetworkConnection[]> {

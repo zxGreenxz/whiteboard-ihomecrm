@@ -39,7 +39,11 @@ export function normalizeHostFingerprint(value: string): string {
 }
 
 export function quoteRouterOsValue(value: string): string {
-  if (value.length < 1 || value.length > 512 || /[\u0000-\u001f\u007f]/.test(value)) {
+  const containsControlCharacter = [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+  if (value.length < 1 || value.length > 512 || containsControlCharacter) {
     throw new TypeError("RouterOS value contains unsafe characters");
   }
   return `"${value
@@ -132,6 +136,17 @@ function parseDurationSeconds(value: string | undefined): number | null {
   const minutes = Number(/(\d+)m/.exec(value)?.[1] ?? 0);
   const seconds = Number(/(\d+)s/.exec(value)?.[1] ?? 0);
   return (((weeks * 7 + days) * 24 + hours) * 60 + minutes) * 60 + seconds;
+}
+
+export function leaseExpiryIso(
+  observedAt: string,
+  expiresAfter: string | undefined,
+  fallbackSeconds: number,
+): string {
+  const parsed = parseDurationSeconds(expiresAfter);
+  const seconds = parsed && parsed > 0 ? parsed : fallbackSeconds;
+  const boundedSeconds = Math.max(30, Math.min(seconds, 31 * 24 * 60 * 60));
+  return new Date(new Date(observedAt).getTime() + boundedSeconds * 1_000).toISOString();
 }
 
 function interfaceRole(name: string, type: string): RouterInterfaceObservation["role"] {
@@ -394,8 +409,13 @@ export class SshRouterConnector implements RouterConnector {
         hostname: record["host-name"] ?? null,
         connectionType: "DHCP",
         sessionType: "LEASE",
+        firstSeenAt: now,
         lastSeenAt: now,
-        expiresAt: null,
+        expiresAt: leaseExpiryIso(
+          now,
+          record["expires-after"],
+          this.#connection.pollIntervalSeconds * 3,
+        ),
         randomizedMac: mac ? ["2", "6", "a", "e"].includes(mac[1] ?? "") : false,
       };
     });
@@ -488,8 +508,11 @@ export class SshRouterConnector implements RouterConnector {
     await this.#execute(ROUTER_OS_COMMANDS.flushDnsCache);
   }
 
-  async renewDhcpLease(): Promise<void> {
+  async renewDhcpLease(): Promise<boolean> {
+    const clients = parseRouterOsRecords(await this.#execute(READ_COMMANDS.dhcpClients));
+    if (!clients.some((record) => record.status === "bound")) return false;
     await this.#execute(ROUTER_OS_COMMANDS.renewDhcpLease);
+    return true;
   }
 
   async cycleAccessPort(interfaceExternalKey: string, durationSeconds: number): Promise<void> {
@@ -500,7 +523,7 @@ export class SshRouterConnector implements RouterConnector {
       throw new RouterOperationError("PROTECTED_INTERFACE", { retryable: false, mayHaveExecuted: false });
     }
     const name = quoteRouterOsValue(interfaceExternalKey);
-    const command = `:local ncPort [/interface/find where name=${name}]; :if ([:len $ncPort] != 1) do={:error \"access port not found\"}; /interface/disable $ncPort; :delay ${durationSeconds}s; /interface/enable $ncPort`;
+    const command = `:local ncPort [/interface/find where name=${name}]; :if ([:len $ncPort] != 1) do={:error "access port not found"}; /interface/disable $ncPort; :delay ${durationSeconds}s; /interface/enable $ncPort`;
     await this.#execute(command, true);
   }
 

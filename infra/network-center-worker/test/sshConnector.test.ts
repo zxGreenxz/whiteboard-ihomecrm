@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ROUTER_OS_COMMANDS,
+  leaseExpiryIso,
   normalizeHostFingerprint,
   parseRouterOsRecords,
   quoteRouterOsValue,
@@ -32,5 +33,11 @@ describe("RouterOS SSH boundary", () => {
       "YWJjZGVmZ2hpamtsbW5vcHFyc3Q",
     );
     expect(() => normalizeHostFingerprint("MD5:aa:bb")).toThrow(/SHA256/i);
+  });
+
+  it("gives dynamic and static leases a bounded current-state expiry", () => {
+    const observedAt = "2026-07-28T00:00:00.000Z";
+    expect(leaseExpiryIso(observedAt, "2m30s", 180)).toBe("2026-07-28T00:02:30.000Z");
+    expect(leaseExpiryIso(observedAt, undefined, 180)).toBe("2026-07-28T00:03:00.000Z");
   });
 });
