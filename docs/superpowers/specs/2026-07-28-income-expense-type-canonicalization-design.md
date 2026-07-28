@@ -71,11 +71,11 @@ Create `income_expense_type_merge_audit` as an append-only migration audit conta
 
 - organization and normalized identity;
 - duplicate ID and canonical ID;
-- pre-merge reference counts;
+- pre-merge reference counts and the exact moved `income_expense_items.id` list;
 - full duplicate/canonical metadata snapshots and finance-role assignment snapshots;
 - merge timestamp and migration version.
 
-The audit stores historical UUID values without a foreign key to the deleted duplicate row.
+The audit stores historical UUID values without a foreign key to the deleted duplicate row. Keeping the exact item-ID list makes a targeted manual restoration possible even though the live rows all point to the canonical ID after rollout.
 
 Current relational references are:
 
