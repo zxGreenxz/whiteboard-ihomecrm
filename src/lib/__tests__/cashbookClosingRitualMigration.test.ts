@@ -133,8 +133,10 @@ describe("Đợt 6 — nghi thức chốt sổ", () => {
     expect(ritual).toContain(
       "REVOKE ALL ON FUNCTION app_private.cashbook_balance_as_of_v1(uuid, date)",
     );
-    expect(ritual).toContain(
-      "REVOKE ALL ON app_private.cashbook_closure_requests\n  FROM PUBLIC, anon, authenticated, service_role",
+    // Dùng bản gộp khoảng trắng: git chuẩn hoá file .sql sang CRLF sau khi
+    // commit, nên khớp chuỗi có "\n" cứng sẽ đỏ giả ngay lần chạy kế tiếp.
+    expect(ritualFlat).toContain(
+      "REVOKE ALL ON app_private.cashbook_closure_requests FROM PUBLIC, anon, authenticated, service_role",
     );
     for (const g of [
       "public.cashbook_closing_blockers_v1(uuid)",

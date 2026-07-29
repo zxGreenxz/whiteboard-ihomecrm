@@ -312,12 +312,16 @@
 .tt-page .is-icon:disabled { opacity: .35; }
 
 /* secondary actions row */
-.tt-page .is-sub-actions { display: flex; gap: 9px; padding: 14px 18px 4px; }
+.tt-page .is-sub-actions { display: flex; flex-wrap: wrap; gap: 9px; padding: 14px 18px 4px; }
 .tt-page .is-sub-btn { flex: 1; border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; cursor: pointer; font-family: var(--font); font-weight: 700; font-size: 13px; color: var(--ink-2); padding: 12px 0; display: flex; align-items: center; justify-content: center; gap: 7px; }
 .tt-page .is-sub-btn:active { background: var(--line-2); }
 .tt-page .is-sub-btn svg { width: 16px; height: 16px; }
 .tt-page .is-sub-btn.on { background: var(--c-partial-bg); border-color: var(--c-partial-line); color: var(--c-partial); }
 .tt-page .is-sub-btn.undo { color: var(--ink-3); }
+/* Đợt 5: nút Hoàn tác bị chặn (kỳ đã đóng) — mờ đi + nêu lý do ngay dưới, để
+   người dùng không bấm rồi mới biết. */
+.tt-page .is-sub-btn:disabled { opacity: .45; cursor: not-allowed; }
+.tt-page .is-sub-hint { flex-basis: 100%; padding: 6px 0 2px; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
 
 /* ===== Confirm dialog ===== */
 .tt-page .confirm { position: absolute; left: 50%; top: 50%; z-index: 70; width: min(82%, 320px); transform: translate(-50%, -46%) scale(.94); opacity: 0; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 22px 22px 18px; box-shadow: 0 20px 60px rgba(27,24,19,.32); text-align: center; transition: opacity .2s, transform .2s cubic-bezier(.22,.61,.36,1); }

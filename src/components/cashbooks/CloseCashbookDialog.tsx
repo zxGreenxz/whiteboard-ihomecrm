@@ -19,13 +19,9 @@ import { AlertTriangle, CheckCircle2, Loader2, Lock } from "lucide-react";
 import {
   useClosingBlockers, useCashbookBalanceAsOf, useProposeCashbookClosing,
 } from "@/hooks/useCashbookClosing";
+import { parseMoneyInput, formatMoney as fmtVND } from "@/lib/moneyInput";
 
 const CONFIRM_WORD = "CHOT SO";
-
-function fmtVND(n: number | null | undefined) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return new Intl.NumberFormat("vi-VN").format(Number(n)) + "đ";
-}
 
 export interface CloseCashbookDialogProps {
   open: boolean;
@@ -57,12 +53,12 @@ export default function CloseCashbookDialog({
 
   const hardBlockers = blockers.filter((b) => b.blocking);
   const warnings = blockers.filter((b) => !b.blocking);
-  const countedNum = counted.trim() === "" ? null : Number(counted.replace(/[^\d.-]/g, ""));
+  const countedNum = parseMoneyInput(counted);
   const diff = countedNum !== null && systemBalance !== null && systemBalance !== undefined
     ? countedNum - systemBalance : null;
 
   const canGoStep2 = hardBlockers.length === 0 && !loadingBlockers;
-  const canGoStep3 = countedNum !== null && !Number.isNaN(countedNum) && !!confirmer;
+  const canGoStep3 = countedNum !== null && !!confirmer;
   const canSubmit = canGoStep3 && typed.trim().toUpperCase() === CONFIRM_WORD;
 
   const confirmerName = useMemo(

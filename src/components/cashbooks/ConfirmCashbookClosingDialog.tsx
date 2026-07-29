@@ -21,11 +21,8 @@ import {
   useCashbookBalanceAsOf, useConfirmCashbookClosing, useCancelCashbookClosing,
   type PendingClosure,
 } from "@/hooks/useCashbookClosing";
+import { parseMoneyInput, formatMoney as fmtVND, sameMoney } from "@/lib/moneyInput";
 
-function fmtVND(n: number | null | undefined) {
-  if (n === null || n === undefined || Number.isNaN(Number(n))) return "—";
-  return new Intl.NumberFormat("vi-VN").format(Number(n)) + "đ";
-}
 
 export interface ConfirmCashbookClosingDialogProps {
   open: boolean;
@@ -52,11 +49,13 @@ export default function ConfirmCashbookClosingDialog({
 
   if (!request) return null;
 
-  const countedNum = counted.trim() === "" ? null : Number(counted.replace(/[^\d.-]/g, ""));
+  const countedNum = parseMoneyInput(counted);
   const declared = Number(request.counted_balance);
+  // So theo ĐỒNG chứ không so === trên số dấu phẩy động: numeric(15,2) qua
+  // jsonb có thể về dạng number hoặc string tuỳ đường, và 0.1+0.2 !== 0.3.
   const drifted = freshSystem !== null && freshSystem !== undefined
-    && Number(freshSystem) !== Number(request.system_balance);
-  const matches = countedNum !== null && countedNum === declared;
+    && !sameMoney(freshSystem, request.system_balance);
+  const matches = countedNum !== null && sameMoney(countedNum, declared);
   const canConfirm = matches && agreed && !drifted && !loadingFresh;
 
   return (
