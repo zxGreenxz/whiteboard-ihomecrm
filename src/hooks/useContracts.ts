@@ -938,9 +938,16 @@ export const useContractsLegacy = (filters?: {
       const user = await getSessionUser();
       if (!user) throw new Error("Not authenticated");
 
+      // HĐ đã xoá mềm KHÔNG được lọt ra: writer canonical lọc `deleted_at IS
+      // NULL` nên nếu form Thu/Chi tự gắn một HĐ đã xoá (effect auto-prefill chỉ
+      // nhìn status='ACTIVE'), phiếu bị từ chối bằng 42501 "Hợp đồng không thuộc
+      // toà/tổ chức của phiếu" — thông báo không hề nhắc tới việc HĐ đã bị xoá,
+      // và người dùng không có cách nào tự gỡ. Đo được 29/07/2026 trên phòng
+      // A101 DEMO (HD-2026-00016 status=ACTIVE, deleted_at=28/07).
       let query = supabase
         .from("contracts")
         .select(LEGACY_CONTRACT_SELECT, { count: "exact" })
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
       if (filters?.status) {
