@@ -48,6 +48,15 @@ const workerIdentitySql = existsSync(workerIdentityMigrationPath)
   ? readFileSync(workerIdentityMigrationPath, "utf8").replace(/\r\n/g, "\n")
   : "";
 
+const resourceLifecycleMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260729131000_network_center_resource_lifecycle.sql",
+);
+
+const resourceLifecycleSql = existsSync(resourceLifecycleMigrationPath)
+  ? readFileSync(resourceLifecycleMigrationPath, "utf8").replace(/\r\n/g, "\n")
+  : "";
+
 function sqlFunctionBody(sql: string, functionName: string): string {
   const start = sql.search(new RegExp(`CREATE OR REPLACE FUNCTION\\s+(?:public|app_private)\\.${functionName}\\b`, "i"));
   if (start < 0) return "";
@@ -468,5 +477,20 @@ describe("Network Center worker identity hardening migration", () => {
       );
     }
     expect(workerIdentitySql).not.toMatch(/GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE|ALL)\s+ON\s+TABLE/i);
+  });
+});
+
+describe("Network Center resource lifecycle hardening migration", () => {
+  it("is additive, transactional and preserves direct execution without approval", () => {
+    expect(
+      existsSync(resourceLifecycleMigrationPath),
+      `Missing migration: ${resourceLifecycleMigrationPath}`,
+    ).toBe(true);
+    expect(resourceLifecycleSql.match(/^BEGIN;$/gim)).toHaveLength(1);
+    expect(resourceLifecycleSql.match(/^COMMIT;$/gim)).toHaveLength(1);
+    expect(resourceLifecycleSql).toMatch(/network_center_enqueue_command_v1/i);
+    expect(resourceLifecycleSql).not.toMatch(
+      /pending_approval|approved_by|rejected_by|maker_checker/i,
+    );
   });
 });
