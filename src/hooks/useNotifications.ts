@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
@@ -13,6 +14,10 @@ export type NotificationType =
   | 'GENERAL_ANNOUNCEMENT'
   | 'DEPOSIT_SHORTFALL'
   | 'SALARY_BONUS'
+  // Hai họ mới của bộ 5 sự kiện (E1…E5). Enum Postgres được bổ sung bằng migration
+  // ALTER TYPE riêng; union TS đi trước nên UI đã có nhãn/màu sẵn khi dòng đầu tiên về.
+  | 'ACTION_REQUIRED'
+  | 'APPROVAL_RESULT'
   | 'CUSTOM';
 
 export type NotificationChannel =
@@ -310,6 +315,63 @@ export function useDeleteAllRead() {
       toast.error('Có lỗi xảy ra khi xóa thông báo: ' + error.message);
     },
   });
+}
+
+/**
+ * Realtime chuông thông báo — KÊNH RIÊNG, cố ý KHÔNG nhét vào hub
+ * `useRealtimeDataSync.ts`. Bốn lý do (§E.1):
+ *
+ *  1. Hub không có chỗ khai `filter`: `SyncEntry` chỉ có `table/keys/domain` và nó
+ *     subscribe `{event:'*', schema, table}`. Không filter ⇒ MỖI thông báo của bất kỳ
+ *     ai cũng đánh thức toàn bộ máy đang mở app và bắt họ refetch 200 dòng.
+ *  2. Một lệnh invalidate `['notifications']` đã phủ cả 3 query key của file này
+ *     (chúng dùng chung prefix), không cần bảng ánh xạ của hub.
+ *  3. Debounce 800 ms của hub trì hoãn chuông một cách vô ích.
+ *  4. `SyncTable` là union ĐÓNG — thêm 1 ca đặc thù vào đó là sửa cấu trúc dùng chung.
+ *
+ * An toàn dữ liệu: Realtime áp RLS của người đăng ký, và từ 20260729130000 policy
+ * `notifications` đã là own-row, nên filter `user_id=eq.<uid>` chỉ là lớp thứ hai.
+ * Chỉ nghe INSERT: đánh dấu đã đọc/xoá đều do chính máy này gây ra và đã invalidate
+ * trong `onSuccess` của mutation.
+ */
+export function useNotificationsRealtime() {
+  const queryClient = useQueryClient();
+  const { data: user } = useAuth();
+  const uid = user?.id ?? null;
+
+  useEffect(() => {
+    if (!uid) return;
+
+    const channel = supabase
+      .channel(`notif-${uid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${uid}`,
+        },
+        () => {
+          // Payload không được dùng — sự kiện chỉ là TÍN HIỆU làm mới cache.
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [uid, queryClient]);
+}
+
+/**
+ * Bọc hook trên thành component rỗng để mount cạnh `<RealtimeDataSync />` trong
+ * `src/App.tsx` (cùng khuôn với hub). Đặt TRONG QueryClientProvider.
+ */
+export function NotificationsRealtime() {
+  useNotificationsRealtime();
+  return null;
 }
 
 /**

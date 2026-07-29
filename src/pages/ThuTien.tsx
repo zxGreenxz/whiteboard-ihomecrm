@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { ArrowLeft, HandCoins, Plug, Repeat } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -38,6 +39,7 @@ const currentMonth = () => {
 
 const ThuTien = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: buildings = [] } = useBuildings();
   const { data: perms } = useMyPermissions();
   // Quyền chi tiết trang Thu tiền (fallback legacy: invoices.record_payment)
@@ -215,14 +217,44 @@ const ThuTien = () => {
     setReport((r) => ({ ...r, show: false }));
     window.setTimeout(() => setReport({ mounted: false, show: false }), 320);
   };
-  const openHandover = () => {
+  // useCallback: được dùng làm dep của effect deep-link bên dưới — arrow mới mỗi
+  // render sẽ bắt effect chạy lại liên tục.
+  const openHandover = useCallback(() => {
     setHandover({ mounted: true, show: false });
     requestAnimationFrame(() => setHandover({ mounted: true, show: true }));
-  };
+  }, []);
   const closeHandover = () => {
     setHandover((h) => ({ ...h, show: false }));
     window.setTimeout(() => setHandover({ mounted: false, show: false }), 320);
   };
+
+  // ── Deep-link `/thu-tien?handover=<uuid>` ────────────────────────────────
+  // Thông báo "Bàn giao tiền mặt chờ bạn xác nhận" (E5). HandoverSheet chỉ nhận
+  // {show, onClose} — không có prop id — nên deep-link mở đúng bảng bàn giao,
+  // phiếu cần xác nhận nằm ngay trong danh sách chờ của bảng đó.
+  // BẮT BUỘC gọi openHandover(): sheet chạy animation 2 pha (mount → rAF bật
+  // .show); setHandover({mounted:true,show:true}) thẳng là mất hiệu ứng trượt.
+  const handledHandoverRef = useRef<string | null>(null);
+  useEffect(() => {
+    const handoverId = searchParams.get('handover');
+    if (!handoverId) {
+      handledHandoverRef.current = null;
+      return;
+    }
+    // Chưa biết quyền (perms đang tải) thì CHƯA kết luận — giữ param, effect
+    // chạy lại khi có dữ liệu, tránh báo "không có quyền" oan.
+    if (!perms) return;
+    if (handledHandoverRef.current === handoverId) return;
+    handledHandoverRef.current = handoverId;
+
+    // Cùng cổng quyền với nút mở bảng bàn giao trên thanh tiêu đề.
+    if (canRecordPayment) openHandover();
+    else toast.info('Bạn không có quyền mở bảng bàn giao tiền mặt.');
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('handover');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, perms, canRecordPayment, openHandover]);
   // "Đóng tiền" giờ là page riêng /thanh-toan (không còn overlay tại chỗ).
   const openUtility = () => navigate('/thanh-toan');
 

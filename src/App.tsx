@@ -11,6 +11,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-
 import ErrorBoundary from "./components/errors/ErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
+import { NotificationsRealtime } from "@/hooks/useNotifications";
 import { hideAppSplash } from "@/lib/appSplash";
 import { syncAuthQueryCache } from "@/lib/authQueryCache";
 
@@ -232,6 +233,9 @@ const App = () => (
         {/* Hub realtime nghiệp vụ: invalidate + hâm cache prefetch khi
             invoices/income_expenses/contracts/jobs/customers đổi. */}
         <RealtimeDataSync />
+        {/* Kênh realtime RIÊNG cho hộp thư: hub trên không khai được filter nên mỗi thông báo
+            của một người sẽ đánh thức tất cả. Kênh này lọc user_id=eq.<uid> ngay ở server. */}
+        <NotificationsRealtime />
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>
           <Routes>

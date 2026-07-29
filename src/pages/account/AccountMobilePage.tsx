@@ -9,6 +9,7 @@ import { useAuth, useLogout } from "@/hooks/useAuth";
 import { useMyPermissions } from "@/hooks/useMyPermissions";
 import { canUse } from "@/lib/permissionPages";
 import { isPushSupported, isSubscribed, enablePush, disablePush } from "@/lib/push";
+import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 import { toast } from "sonner";
 
 const APP_VERSION = "5.2.0";
@@ -234,7 +235,15 @@ export default function AccountMobilePage() {
                   <span className="knob" />
                 </button>
               </div>
+            </div>
 
+            {/* Sở thích thông báo cá nhân — đặt NGAY dưới công tắc push, ở /account/profile.
+                Đây là lối duy nhất 8/10 người nhận thông báo có thể tự tắt loại họ không
+                muốn: họ không có `settings.view` nên /settings/general đóng với họ, và
+                trang đó cũng không có nhánh mobile. */}
+            <NotificationPreferencesCard variant="mobile" />
+
+            <div className="acc-rows">
               <div className="sp-rowcard">
                 <span className="ic" style={{ background: "#f1ebfd", color: "#7c3aed" }}><CreditCard /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>

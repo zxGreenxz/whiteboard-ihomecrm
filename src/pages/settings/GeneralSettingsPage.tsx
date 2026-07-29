@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from "@/components/layout/MainLayout";
+import NotificationOrgConfigCard from '@/components/notifications/NotificationOrgConfigCard';
 import { supabase } from '@/integrations/supabase/client';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt, MapPin } from 'lucide-react';
@@ -477,8 +479,26 @@ function AccountingStandardCard() {
 // Main Page Component
 // =============================================
 
+// Deep-link `?tab=notification` TRƯỚC ĐÂY KHÔNG CHẠY: `<Tabs defaultValue="basic">` là
+// uncontrolled nên URL bị bỏ qua hoàn toàn. Chuyển sang controlled qua useSearchParams để
+// thông báo/menu có thể trỏ thẳng vào đúng tab.
+const SETTINGS_TABS = ['basic', 'contract', 'invoice', 'payment', 'notification'] as const;
+
 const GeneralSettingsPage = () => {
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const requestedTab = searchParams.get('tab') ?? '';
+  const activeTab = (SETTINGS_TABS as readonly string[]).includes(requestedTab)
+    ? requestedTab
+    : 'basic';
+
+  const handleTabChange = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', value);
+    // replace: đổi tab không nên đẻ thêm một mục trong lịch sử — bấm Back phải rời trang.
+    setSearchParams(next, { replace: true });
+  };
 
   // General settings (individual keys)
   const { data: generalSettings, isLoading: loadingGeneral } = useGeneralSettings();
@@ -543,7 +563,7 @@ const GeneralSettingsPage = () => {
         </div>
 
         {/* 5 Tabs */}
-        <Tabs defaultValue="basic">
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="basic">
               <Settings className="h-4 w-4 mr-2" />
@@ -701,13 +721,17 @@ const GeneralSettingsPage = () => {
 
           {/* Tab: Thông báo */}
           <TabsContent value="notification">
-            <SettingsTabContent
-              title="Cấu hình thông báo"
-              description="Các tùy chọn thông báo tự động cho hệ thống"
-              items={NOTIFICATION_SETTINGS}
-              settings={settings}
-              onSettingChange={handleSettingChange}
-            />
+            <div className="space-y-4">
+              <SettingsTabContent
+                title="Cấu hình thông báo"
+                description="Các tùy chọn thông báo tự động cho hệ thống"
+                items={NOTIFICATION_SETTINGS}
+                settings={settings}
+                onSettingChange={handleSettingChange}
+              />
+              {/* Card RỜI (khuôn giống tab Thu chi): nguồn sự thật khác bảng `settings`. */}
+              <NotificationOrgConfigCard />
+            </div>
           </TabsContent>
         </Tabs>
       </div>
