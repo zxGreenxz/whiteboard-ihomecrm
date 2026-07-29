@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
+import { periodBlockMessage } from "@/lib/cashbookClosing";
 
 type RpcError = { code?: string | null; message?: string | null };
 type RpcResult = { error: RpcError | null };
@@ -237,6 +238,32 @@ export const useCancelIncomeExpense = () => {
       } catch (error: unknown) {
         toast.error(errorMessage(error, "Không thể huỷ phiếu thu/chi"));
         throw error;
+      }
+
+      // Đợt 4 — NHÁNH LINH HOẠT ĐỨNG TRƯỚC. Một transaction: đảo bút toán +
+      // đóng phiếu + ghi dấu vết, KHÔNG sinh phiếu đối ứng.
+      //
+      // Không cần hỏi cờ chế độ ở client: cứ thử, server tự từ chối bằng
+      // [STRICT_MODE] (org đang bật Chuẩn kế toán) hoặc [NOT_MANUAL] (phiếu
+      // thuộc luồng khác) và mình rơi xuống thang cũ. Nhờ vậy cờ cũ trong cache
+      // client không bao giờ làm sai hành vi.
+      //
+      // Chỉ thử khi có lý do đủ dài — writer bắt buộc ≥8 ký tự để còn đối soát.
+      if (reason && reason.trim().length >= 8) {
+        const flex = await (supabase.rpc as any)("cancel_income_expense_flex_v1", {
+          p_voucher: id,
+          p_reason: reason.trim(),
+          p_expected_approval_version: null,
+          p_expected_posting_version: null,
+        });
+        if (!flex.error) return false;
+        const flexMsg = flex.error.message ?? "";
+        const canFallBack =
+          flexMsg.includes("[STRICT_MODE]") || flexMsg.includes("[NOT_MANUAL]");
+        if (!canFallBack) {
+          toast.error(periodBlockMessage(flexMsg) ?? flexMsg ?? "Không thể huỷ phiếu thu/chi");
+          throw flex.error;
+        }
       }
 
       const { data: voucher, error: fetchErr } = await (supabase

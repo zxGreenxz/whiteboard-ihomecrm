@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -69,6 +69,10 @@ import IncomeExpenseBatchListMobile from "@/components/income-expenses/IncomeExp
 import IncomeExpenseBatchDetailMobile from "@/components/income-expenses/IncomeExpenseBatchDetailMobile";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import {
+  IE_APPROVAL_STATUS_PARAM_VALUES,
+  IE_LAYER_PARAM_VALUES,
+} from "@/lib/notificationRoutes";
 // Finance V2 (route-aware §9.6/§12): duyệt-only / duyệt+ghi sổ atomic khi org CANONICAL.
 import {
   useFinanceV2Routes,
@@ -95,6 +99,9 @@ import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpen
 import { Textarea } from "@/components/ui/textarea";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
+
+// Khoá sessionStorage của bộ lọc — dùng lại ở effect khôi phục sau deep-link.
+const FILTERS_STORAGE_KEY = "flt:income-expense-mb:filters";
 
 // Màu vch-tag theo tone composite V2 (khớp bảng màu TONE_CLASSES desktop).
 const V2_TAG_STYLES: Record<VoucherTone, { color: string; background: string }> = {
@@ -157,24 +164,12 @@ export default function IncomeExpenseMobilePage() {
   // Vào /income-expense?account_id=xxx (vd "Xem thu chi" từ 1 sổ quỹ) → lọc sẵn
   // theo sổ đó, ĐỒNG BỘ với desktop. Không có param → xem tất cả (RLS lọc).
   // Giữ qua F5 (sessionStorage); ?account_id trên URL vẫn THẮNG nhờ effect dưới.
-  const [filters, setFilters] = usePersistedState<IncomeExpenseFilters>("flt:income-expense-mb:filters", () => {
+  const [filters, setFilters] = usePersistedState<IncomeExpenseFilters>(FILTERS_STORAGE_KEY, () => {
     const accountId = searchParams.get("account_id");
     return accountId
       ? { ...EMPTY_FILTERS, account_id: accountId }
       : EMPTY_FILTERS;
   });
-
-  // Đọc xong thì xoá query để URL sạch — filter chip vẫn hiển thị sổ đang lọc.
-  useEffect(() => {
-    const accountId = searchParams.get("account_id");
-    if (accountId) {
-      setFilters((f) => ({ ...f, account_id: accountId }));
-      const next = new URLSearchParams(searchParams);
-      next.delete("account_id");
-      setSearchParams(next, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const [viewMode, setViewMode] = usePersistedState<"individual" | "batch">("flt:income-expense-mb:viewMode", "individual");
   const [filterOpen, setFilterOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -226,6 +221,88 @@ export default function IncomeExpenseMobilePage() {
   // Trang đầu 15 (khớp MOBILE_FIRST_PAGE_SIZE prefetch từ màn chính — lệch là
   // trật cache key); "Tải thêm" vẫn nới +50.
   const pagination = usePagination(MOBILE_FIRST_PAGE_SIZE);
+  const { setPage } = pagination;
+
+  // ── Deep-link vào trang Thu chi (bản mobile) ─────────────────────────────
+  //  ?account_id=<uuid>                        → lọc theo sổ quỹ (đường cũ)
+  //  ?approval_status=UNAPPROVED&layer=PENDING → thông báo "Phiếu chờ bạn duyệt"
+  //
+  // `layer` là BẮT BUỘC khi lọc theo approval_status: lớp mặc định CASH tự ép
+  // `.eq('approval_status','APPROVED')`, postgrest-js append 2 `.eq` cùng cột
+  // thành AND ⇒ danh sách ra 0 DÒNG.
+  //
+  // Deps [searchParams] (trước là []) để bấm thông báo lúc đang ở sẵn trang này
+  // cũng áp được lọc; chống lặp bằng cách xoá param + nhớ chữ ký đã xử lý.
+  const handledDeepLinkRef = useRef<string | null>(null);
+  // Bộ lọc nằm trong sessionStorage ⇒ ép layer là ghi đè lựa chọn của user.
+  // Chụp chuỗi đã lưu trước khi ép, trả lại khi rời trang.
+  const savedFiltersSnapshotRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const accountId = searchParams.get("account_id");
+    const rawApproval = searchParams.get("approval_status");
+    const rawLayer = searchParams.get("layer");
+    if (!accountId && !rawApproval && !rawLayer) {
+      handledDeepLinkRef.current = null;
+      return;
+    }
+    const signature = `${accountId ?? ""}|${rawApproval ?? ""}|${rawLayer ?? ""}`;
+    if (handledDeepLinkRef.current === signature) return;
+    handledDeepLinkRef.current = signature;
+
+    const approvalStatus =
+      rawApproval && IE_APPROVAL_STATUS_PARAM_VALUES.has(rawApproval)
+        ? (rawApproval as IncomeExpenseFilters["approval_status"])
+        : null;
+    const layer =
+      rawLayer && IE_LAYER_PARAM_VALUES.has(rawLayer)
+        ? (rawLayer as IncomeExpenseFilters["layer"])
+        : null;
+    // Cặp (approval_status, layer) do LINK quyết định hoàn toàn — trộn với giá
+    // trị đang lưu là đẻ tổ hợp mâu thuẫn ⇒ 0 DÒNG (CASH ép `.eq('APPROVED')`
+    // cạnh `.eq('UNAPPROVED')`; PENDING ép `.neq('CANCELLED')` cạnh
+    // `.eq('CANCELLED')`). Thiếu vế nào lấy mặc định trung tính.
+    const hasListIntent = approvalStatus !== null || layer !== null;
+
+    if (hasListIntent && savedFiltersSnapshotRef.current === undefined) {
+      try {
+        savedFiltersSnapshotRef.current = sessionStorage.getItem(FILTERS_STORAGE_KEY);
+      } catch {
+        savedFiltersSnapshotRef.current = null;
+      }
+    }
+
+    setFilters((f) => ({
+      ...f,
+      ...(accountId ? { account_id: accountId } : null),
+      ...(hasListIntent
+        ? { approval_status: approvalStatus ?? "ALL_ACTIVE", layer }
+        : null),
+    }));
+    setPage(1);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("account_id");
+    next.delete("approval_status");
+    next.delete("layer");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setFilters, setSearchParams, setPage]);
+
+  // Rời trang → trả bộ lọc đã lưu về trạng thái trước deep-link. Ghi thẳng
+  // sessionStorage vì lúc unmount không còn effect nào của usePersistedState chạy.
+  useEffect(
+    () => () => {
+      const snapshot = savedFiltersSnapshotRef.current;
+      if (snapshot === undefined) return;
+      try {
+        if (snapshot === null) sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+        else sessionStorage.setItem(FILTERS_STORAGE_KEY, snapshot);
+      } catch {
+        // Storage bị chặn — bỏ qua.
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search), 350);
@@ -921,31 +998,36 @@ export default function IncomeExpenseMobilePage() {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {cancelTargetPosted && (
+          {/* Đợt 4: lý do BẮT BUỘC ở mọi trạng thái — vế đánh đổi của việc cho
+              huỷ thẳng mà không sinh phiếu đối ứng. Giữ y hệt bản desktop. */}
+          <div className="space-y-1">
             <Textarea
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="Lý do hoàn tác/huỷ (ghi vào bút toán hoàn tác — nên nhập)"
+              placeholder="Lý do huỷ (bắt buộc, ít nhất 8 ký tự)"
               rows={2}
             />
-          )}
+            <p className="text-xs text-muted-foreground">
+              Lưu cùng mốc lập / duyệt / huỷ phiếu để đối soát lại khi cần.
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
+              disabled={cancelReason.trim().length < 8}
               onClick={() => {
                 if (cancelTarget) {
-                  cancelMutation.mutate(
-                    cancelReason.trim()
-                      ? { id: cancelTarget, reason: cancelReason.trim() }
-                      : cancelTarget,
-                  );
+                  cancelMutation.mutate({
+                    id: cancelTarget,
+                    reason: cancelReason.trim(),
+                  });
                 }
                 setCancelTarget(null);
                 setCancelReason("");
               }}
               className="bg-red-600 hover:bg-red-700"
             >
-              {cancelTargetPosted ? "Hoàn tác & Huỷ phiếu" : "Huỷ phiếu"}
+              {cancelTargetPosted ? "Huỷ phiếu & trừ khỏi sổ quỹ" : "Huỷ phiếu"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

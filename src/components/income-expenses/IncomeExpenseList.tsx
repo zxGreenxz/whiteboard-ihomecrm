@@ -391,9 +391,19 @@ const IncomeExpenseList = ({
                           className="h-8 w-8 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
                           onClick={() => onReversePosting(voucher)}
                           title={
+                            // Đợt 4: đây CHÍNH LÀ nút "Mở lại" của chủ. Nó gọi
+                            // reverse_posted_income_expense_v2 sẵn có: tiền quay
+                            // về sổ, phiếu ở trạng thái Đã duyệt - chưa chi nên
+                            // sửa được và chi lại được.
+                            //
+                            // CỐ Ý KHÔNG đưa phiếu về "Chờ duyệt":
+                            // unapprove_voucher không reset review_state, mà cả
+                            // hai writer duyệt đều đòi review_state PENDING/
+                            // CHANGES_REQUESTED ⇒ tiền ra khỏi sổ rồi kẹt ở đó
+                            // vĩnh viễn, không ai duyệt lại được.
                             voucher.type === 'INCOME'
-                              ? 'Hoàn tác khoản thu (tiền rời sổ, phiếu chờ thu lại/huỷ)'
-                              : 'Hoàn tác khoản chi (tiền về sổ, phiếu chờ chi lại/huỷ)'
+                              ? 'Mở lại (tiền rời sổ, sửa được rồi thu lại)'
+                              : 'Mở lại (tiền về sổ, sửa được rồi chi lại)'
                           }
                         >
                           <RotateCcw className="h-4 w-4" />
