@@ -494,7 +494,7 @@ git commit -m "fix(network-center): khóa mọi worker RPC theo building assignm
 - Modify: `infra/network-center-worker/src/config.ts`
 - Modify: `infra/network-center-worker/test/sshConnector.test.ts`
 
-- [ ] **Step 1: Write RED stream tests**
+- [x] **Step 1: Write RED stream tests**
 
 Cover: exact limit succeeds; limit+1 aborts before concatenation; zero-progress
 stream hits deadline; source error propagates typed; every path destroys stream
@@ -509,13 +509,13 @@ await expect(readSftpFileBounded(source, {
 expect(source.destroyed).toBe(true);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- boundedSftpRead.test.ts
 ```
 
-- [ ] **Step 3: Implement bounded stream with one terminal cleanup path**
+- [x] **Step 3: Implement bounded stream with one terminal cleanup path**
 
 ```ts
 export const ROUTER_EXPORT_MAX_BYTES = 1 * 1024 * 1024;
@@ -529,14 +529,14 @@ Accumulate the small text export only after checking
 with byte counting. Deadline destroys the stream with a typed error. `finally`
 removes listeners, clears timer, deletes incomplete temp files and closes SFTP.
 
-- [ ] **Step 4: Run GREEN worker tests and typecheck**
+- [x] **Step 4: Run GREEN worker tests and typecheck**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- boundedSftpRead.test.ts sshConnector.test.ts
 npm --prefix infra/network-center-worker run typecheck
 ```
 
-- [ ] **Step 5: Commit Task 6**
+- [x] **Step 5: Commit Task 6**
 
 ```powershell
 git add -- infra/network-center-worker/src/routeros/boundedSftpRead.ts infra/network-center-worker/src/routeros/sshConnector.ts infra/network-center-worker/src/config.ts infra/network-center-worker/test/boundedSftpRead.test.ts infra/network-center-worker/test/sshConnector.test.ts
@@ -556,7 +556,7 @@ git commit -m "fix(network-center): giới hạn byte và deadline SFTP" -m "Co-
 - Modify: `infra/network-center-worker/test/commands.test.ts`
 - Modify: `infra/network-center-worker/docker-compose.yml`
 
-- [ ] **Step 1: Write RED tests with an isolated temp directory**
+- [x] **Step 1: Write RED tests with an isolated temp directory**
 
 Tests prove: encrypted write + hash readback; max 20/device; max age 30 days;
 6 GiB soft/8 GiB hard volume caps; 20 GiB host free reserve; current artifact
@@ -570,13 +570,13 @@ await expect(store.saveVerified(candidate)).rejects.toMatchObject({
 expect(connector.rebootCalls).toBe(0);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- backupStore.test.ts commands.test.ts
 ```
 
-- [ ] **Step 3: Implement `FileBackupStore`**
+- [x] **Step 3: Implement `FileBackupStore`**
 
 ```ts
 export type BackupPolicy = Readonly<{
@@ -598,14 +598,14 @@ oldest-safe-first deletion. Cleanup accepts only normalized descendants of the
 configured backup root. Compose mounts a dedicated writable volume; root
 filesystem stays read-only.
 
-- [ ] **Step 4: Run GREEN and worker suite**
+- [x] **Step 4: Run GREEN and worker suite**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- backupStore.test.ts commands.test.ts
 npm --prefix infra/network-center-worker run typecheck
 ```
 
-- [ ] **Step 5: Commit Task 7**
+- [x] **Step 5: Commit Task 7**
 
 ```powershell
 git add -- infra/network-center-worker/src/backupStore.ts infra/network-center-worker/src/commands.ts infra/network-center-worker/src/config.ts infra/network-center-worker/docker-compose.yml infra/network-center-worker/test/backupStore.test.ts infra/network-center-worker/test/commands.test.ts
