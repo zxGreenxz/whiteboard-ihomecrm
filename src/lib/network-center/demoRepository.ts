@@ -1,4 +1,6 @@
 import type {
+  ArubaPage,
+  ArubaPageCursor,
   ArubaNode,
   AuditRecord,
   ClientRecord,
@@ -355,6 +357,34 @@ export class DemoNetworkCenterRepository {
   getBuilding(buildingId: string): NetworkBuilding | null {
     const site = this.states.get(buildingId);
     return site ? this.cloneForRead(site) : null;
+  }
+
+  listArubaPage(
+    buildingId: string,
+    cursor: ArubaPageCursor | null = null,
+    limit = 100,
+  ): ArubaPage {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 250) {
+      throw new Error("Kích thước trang Aruba phải từ 1 đến 250");
+    }
+    const nodes = this.requireBuilding(buildingId).arubaNodes;
+    let start = 0;
+    if (cursor) {
+      const cursorIndex = nodes.findIndex((node) => node.id === cursor.id);
+      if (cursorIndex < 0 || cursor.sortOrder !== cursorIndex + 1) {
+        throw new Error("Cursor Aruba demo không hợp lệ");
+      }
+      start = cursorIndex + 1;
+    }
+    const end = Math.min(nodes.length, start + limit);
+    const items = clone(nodes.slice(start, end));
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: end < nodes.length && last
+        ? { sortOrder: end, id: last.id }
+        : null,
+    };
   }
 
   acknowledgeIncident(buildingId: string, incidentId: string, actor: NetworkActor): void {

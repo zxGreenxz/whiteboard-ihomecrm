@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type {
+  ArubaPage,
+  ArubaPageCursor,
   ConfigDiff,
   MaintenanceInput,
   MaintenanceWindow,
@@ -11,7 +13,10 @@ import type {
   NetworkSettings,
 } from "./contracts";
 import {
+  NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE,
+  NETWORK_CENTER_ARUBA_PAGE_SIZE,
   NETWORK_CENTER_PAGE_SIZE,
+  mapNetworkCenterArubaPage,
   mapNetworkCenterExecuteResult,
   mapNetworkCenterFleetItem,
   mergeNetworkCenterBuilding,
@@ -28,7 +33,6 @@ import {
   parseNetworkCenterMaintenanceResult,
   parseNetworkCenterSettingsResult,
   parseNetworkCenterSnapshotRequestResult,
-  type NetworkCenterArubaPageDto,
   type NetworkCenterBuildingDto,
 } from "./dto";
 
@@ -100,8 +104,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
     if (!base) return null;
 
     const detail = await this.fetchBuildingDto(normalizedBuildingId);
-    const [aruba, clients, commands, audit] = await Promise.all([
-      this.listAllAruba(normalizedBuildingId),
+    const [clients, commands, audit] = await Promise.all([
       this.call(
         "network_center_list_clients_v1",
         {
@@ -136,12 +139,36 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
     const building = mergeNetworkCenterBuilding(
       base,
       detail,
-      aruba,
+      [],
       clients.items,
       commands.items,
       audit.items,
     );
     return building;
+  }
+
+  async listArubaPage(
+    buildingId: string,
+    cursor: ArubaPageCursor | null = null,
+    limit = NETWORK_CENTER_ARUBA_PAGE_SIZE,
+  ): Promise<ArubaPage> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE) {
+      throw new NetworkCenterRepositoryError(
+        `Kích thước trang Aruba phải từ 1 đến ${NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE}`,
+      );
+    }
+    const normalizedBuildingId = buildingId.trim().toLowerCase();
+    const page = await this.call(
+      "network_center_list_aruba_v1",
+      {
+        p_building_id: normalizedBuildingId,
+        p_after_sort_order: cursor?.sortOrder ?? null,
+        p_after_id: cursor?.id ?? null,
+        p_limit: limit,
+      },
+      parseNetworkCenterArubaPage,
+    );
+    return mapNetworkCenterArubaPage(page);
   }
 
   async acknowledgeIncident(
@@ -289,34 +316,6 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       { p_building_id: normalizedBuildingId },
       parseNetworkCenterBuilding,
     );
-  }
-
-  private async listAllAruba(buildingId: string): Promise<NetworkCenterArubaPageDto["items"]> {
-    const items: NetworkCenterArubaPageDto["items"] = [];
-    const seenCursors = new Set<string>();
-    let cursor: NetworkCenterArubaPageDto["nextCursor"] = null;
-    do {
-      const page = await this.call(
-        "network_center_list_aruba_v1",
-        {
-          p_building_id: buildingId,
-          p_after_sort_order: cursor?.sortOrder ?? null,
-          p_after_id: cursor?.id ?? null,
-          p_limit: NETWORK_CENTER_PAGE_SIZE,
-        },
-        parseNetworkCenterArubaPage,
-      );
-      items.push(...page.items);
-      cursor = page.nextCursor;
-      if (cursor) {
-        const signature = `${cursor.sortOrder}:${cursor.id}`;
-        if (seenCursors.has(signature)) {
-          throw new NetworkCenterRepositoryError("Phân trang Aruba trả về cursor lặp");
-        }
-        seenCursors.add(signature);
-      }
-    } while (cursor);
-    return items;
   }
 
   private async requireBuilding(buildingId: string): Promise<NetworkBuilding> {

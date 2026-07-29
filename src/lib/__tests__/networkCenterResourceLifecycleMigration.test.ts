@@ -251,7 +251,7 @@ describe("Network Center resource lifecycle hardening migration", () => {
     ] as const) {
       expect(sql).toMatch(
         new RegExp(
-          `ON public\\.${table}\\s*\\(\\s*${columns.replaceAll(" ", "\\s*")}\\s*\\)`,
+          `ON public\\.${table}\\s*\\(\\s*${columns.replace(/ /g, "\\s*")}\\s*\\)`,
           "i",
         ),
       );
@@ -298,5 +298,123 @@ describe("Network Center resource lifecycle hardening migration", () => {
       /REVOKE ALL ON FUNCTION app_private\.network_center_retention_v1\(\s*timestamp with time zone\s*\)\s*FROM PUBLIC, anon, authenticated, service_role/i,
     );
     expect(sql).not.toMatch(/GRANT EXECUTE ON FUNCTION app_private\.network_center_retention_v1/i);
+  });
+
+  it("keeps Aruba unlimited while binding observations to stable router-scoped identity", () => {
+    expect(sql).toMatch(/ADD COLUMN(?: IF NOT EXISTS)? aruba_stable_key text/i);
+    expect(sql).toMatch(/ADD COLUMN(?: IF NOT EXISTS)? aruba_identity_source text/i);
+    expect(sql).toMatch(
+      /UNIQUE INDEX[\s\S]{0,220}\(parent_device_id, aruba_stable_key\)[\s\S]{0,180}device_kind = 'ARUBA'/i,
+    );
+    for (const table of [
+      "network_aruba_router_state",
+      "network_aruba_discovery_runs",
+      "network_aruba_discovery_batches",
+      "network_aruba_discovery_candidates",
+      "network_aruba_aliases",
+      "network_aruba_quarantine",
+    ]) {
+      expect(sql).toContain(`app_private.${table}`);
+    }
+    expect(sql).not.toMatch(/max(?:imum)?_aruba|aruba_total_limit|count\(\*\)[^;]{0,300}RAISE[^;]*Aruba/i);
+  });
+
+  it("makes Aruba identity non-null, source-coupled, and router scoped after replacement", () => {
+    expect(sql).toMatch(/ADD COLUMN(?: IF NOT EXISTS)? aruba_discovery_state text/i);
+    expect(sql).toMatch(/aruba_stable_key IS NOT NULL/i);
+    expect(sql).toMatch(/aruba_identity_source IS NOT NULL/i);
+    expect(sql).toMatch(/aruba_discovery_state IN \('DISCOVERED', 'PINNED'\)/i);
+    expect(sql).toMatch(/parent_device_id IS NOT NULL/i);
+    expect(sql).toMatch(
+      /inventory_metadata\s*->>\s*'discovery'\s*=\s*'routeros-neighbor'[\s\S]{0,160}'DISCOVERED'[\s\S]{0,160}'PINNED'/i,
+    );
+    expect(sql).toMatch(/aruba_identity_source = 'SERIAL'[\s\S]{0,220}aruba_stable_key ~ '\^serial:/i);
+    expect(sql).toMatch(/aruba_identity_source = 'HARDWARE_MAC'[\s\S]{0,500}aruba_stable_key ~[\s\S]{0,80}'\^mac:/i);
+    expect(sql).toMatch(/DROP INDEX IF EXISTS public\.network_devices_external_key_uidx/i);
+    expect(sql).toMatch(
+      /CREATE UNIQUE INDEX network_devices_external_key_uidx[\s\S]{0,260}WHERE device_kind <> 'ARUBA'/i,
+    );
+    const parentGuard = functionBody("network_center_guard_aruba_parent_v1");
+    expect(parentGuard).toMatch(/NEW\.device_kind\s*=\s*'ARUBA'/i);
+    expect(parentGuard).toMatch(/parent\.device_kind\s*=\s*'MIKROTIK'/i);
+    expect(sql).toMatch(
+      /CREATE TRIGGER network_devices_aruba_parent_guard[\s\S]{0,260}network_center_guard_aruba_parent_v1/i,
+    );
+  });
+
+  it("enforces one discovery run across batches with bounded churn and per-item quarantine", () => {
+    const inventory = functionBody("network_center_worker_inventory_v1");
+    expect(inventory).not.toBe("");
+    for (const field of [
+      "discoveryRunId",
+      "observedAt",
+      "batchIndex",
+      "batchCount",
+      "stableIdentity",
+      "identitySource",
+      "aliases",
+      "displayOnly",
+      "quarantine",
+    ]) {
+      expect(inventory).toContain(field);
+    }
+    expect(inventory).toMatch(/network_aruba_discovery_batches[\s\S]{0,1200}payload_hash/i);
+    expect(inventory).toMatch(/new_identity_count[\s\S]{0,500}<\s*64/i);
+    expect(inventory).toMatch(/INTERVAL '24 hours'[\s\S]{0,1000}<\s*512/i);
+    expect(inventory).toMatch(/INTERVAL '24 hours'[\s\S]{0,1600}<\s*128/i);
+    expect(inventory).toMatch(/sighting_count\s*>=\s*3/i);
+    expect(inventory).toMatch(/INTERVAL '10 minutes'/i);
+    expect(inventory).toMatch(/ARUBA_(?:STABLE_IDENTITY_INVALID|ITEM_INVALID|IDENTITY_RATE_LIMITED)/i);
+    expect(inventory).toMatch(/inventoryStatus[\s\S]{0,240}DEGRADED/i);
+    expect(inventory).not.toMatch(/Malformed Aruba inventory item[^;]{0,120}RAISE/i);
+  });
+
+  it("ages only discovery lifecycle state in bounded retention windows", () => {
+    const arubaRetention = functionBody("network_center_aruba_retention_v1");
+    const retention = functionBody("network_center_retention_v1");
+    expect(arubaRetention).not.toBe("");
+    expect(arubaRetention).toMatch(/INTERVAL '24 hours'[\s\S]{0,500}'STALE'/i);
+    expect(arubaRetention).toMatch(/INTERVAL '7 days'[\s\S]{0,500}is_active\s*=\s*false/i);
+    expect(arubaRetention).toMatch(/network_aruba_discovery_candidates[\s\S]{0,500}INTERVAL '30 days'/i);
+    expect(arubaRetention).toMatch(/'aruba_discovery_retention_days'\s*,\s*30/i);
+    expect(arubaRetention).toMatch(/aruba_discovery_state\s*=\s*'DISCOVERED'[\s\S]{0,300}INTERVAL '30 days'/i);
+    expect(arubaRetention).toMatch(/DELETE FROM public\.network_devices/i);
+    expect(arubaRetention).toMatch(
+      /UPDATE app_private\.network_aruba_aliases[\s\S]{0,1000}tombstoned_at[\s\S]{0,1000}INTERVAL '30 days'/i,
+    );
+    expect(arubaRetention).toMatch(
+      /SELECT DISTINCT device\.organization_id[\s\S]{0,500}FROM public\.network_devices device[\s\S]{0,300}device_kind = 'ARUBA'/i,
+    );
+    expect(arubaRetention).toMatch(/network_aruba_aliases[\s\S]{0,500}INTERVAL '90 days'/i);
+    expect(arubaRetention).toMatch(/network_aruba_quarantine[\s\S]{0,500}INTERVAL '7 days'/i);
+    expect(arubaRetention).toMatch(/row_number\(\)[\s\S]{0,500}1000/i);
+    expect(retention).toContain("network_center_aruba_retention_v1");
+    expect(sql).toMatch(
+      /REVOKE ALL ON FUNCTION app_private\.network_center_aruba_retention_v1\([\s\S]{0,80}timestamp with time zone[\s\S]{0,80}FROM PUBLIC, anon, authenticated, service_role/i,
+    );
+  });
+
+  it("serves Aruba through keyset pages defaulting to 100 and capped at 250", () => {
+    const listAruba = functionBody("network_center_list_aruba_v1");
+    expect(listAruba).not.toBe("");
+    expect(listAruba).toMatch(/p_limit integer DEFAULT 100/i);
+    expect(listAruba).toMatch(/p_limit IS NULL[\s\S]{0,120}p_limit NOT BETWEEN 1 AND 250/i);
+    expect(listAruba).toMatch(
+      /ROW\(device\.sort_order, device\.id\)\s*>\s*ROW\(p_after_sort_order, p_after_id\)/i,
+    );
+    expect(listAruba).toMatch(/LIMIT p_limit \+ 1/i);
+  });
+
+  it("samples inventory processing time after the router lock and indexes age by tenant timestamp", () => {
+    const inventory = functionBody("network_center_worker_inventory_v1");
+    expect(inventory).toMatch(
+      /SELECT router\.\*[\s\S]{0,500}FOR UPDATE;[\s\S]{0,180}v_now\s*:=\s*clock_timestamp\(\)/i,
+    );
+    expect(inventory).toMatch(
+      /last_seen_at\s*=\s*GREATEST\([\s\S]{0,220}last_seen_at[\s\S]{0,220}EXCLUDED\.last_seen_at/i,
+    );
+    expect(sql).toMatch(
+      /network_devices_aruba_age_idx[\s\S]{0,220}\(\s*organization_id,\s*aruba_discovery_last_seen_at,\s*id\s*\)/i,
+    );
   });
 });

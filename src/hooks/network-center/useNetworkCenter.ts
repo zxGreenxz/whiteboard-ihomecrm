@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
@@ -8,6 +8,8 @@ import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/integrations/supabase/client";
 import { canUse } from "@/lib/permissionPages";
 import type {
+  ArubaNode,
+  ArubaPageCursor,
   MaintenanceInput,
   NetworkActionRequest,
   NetworkSettings,
@@ -130,6 +132,14 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     ),
     [actor.id, normalizedSelectedBuildingId, selectedOrganizationId],
   );
+  const arubaKey = useMemo(
+    () => networkCenterQueryKeys.aruba(
+      actor.id || "anonymous",
+      selectedOrganizationId,
+      normalizedSelectedBuildingId || "none",
+    ),
+    [actor.id, normalizedSelectedBuildingId, selectedOrganizationId],
+  );
   const buildingQuery = useQuery({
     queryKey: buildingKey,
     queryFn: async () => {
@@ -141,6 +151,38 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     },
     enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
   });
+  const arubaQuery = useInfiniteQuery({
+    queryKey: arubaKey,
+    initialPageParam: null as ArubaPageCursor | null,
+    queryFn: ({ pageParam }) => requireRepository().listArubaPage(
+      normalizedSelectedBuildingId,
+      pageParam,
+    ),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    maxPages: 1,
+    enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
+  });
+  const arubaNodes = useMemo<ArubaNode[]>(
+    () => arubaQuery.data?.pages.at(-1)?.items ?? [],
+    [arubaQuery.data],
+  );
+  const selectedBuilding = useMemo(() => {
+    const building = buildingQuery.data;
+    if (!building) return null;
+    const hasLoadedAruba = Boolean(arubaQuery.data?.pages.length);
+    const arubaTotal = Math.max(building.arubaTotal ?? 0, arubaNodes.length);
+    const loadedEveryArubaPage = hasLoadedAruba
+      && !arubaQuery.hasNextPage
+      && arubaNodes.length >= arubaTotal;
+    return {
+      ...building,
+      arubaNodes,
+      arubaTotal,
+      arubaOnline: loadedEveryArubaPage
+        ? arubaNodes.filter((node) => node.status === "online").length
+        : null,
+    };
+  }, [arubaNodes, arubaQuery.data, arubaQuery.hasNextPage, buildingQuery.data]);
 
   const availableBuildings = useMemo<PhysicalBuildingRecord[]>(
     () => fleet.map((building) => ({
@@ -160,6 +202,14 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       queryClient.invalidateQueries({ queryKey: fleetKey, exact: true }),
       queryClient.invalidateQueries({
         queryKey: networkCenterQueryKeys.building(
+          actor.id || "anonymous",
+          organizationId,
+          normalizedBuildingId,
+        ),
+        exact: true,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: networkCenterQueryKeys.aruba(
           actor.id || "anonymous",
           organizationId,
           normalizedBuildingId,
@@ -262,6 +312,10 @@ export function useNetworkCenter(selectedBuildingId?: string) {
           queryKey: networkCenterQueryKeys.building(actor.id, organizationId, buildingId),
           exact: true,
         }));
+        promises.push(queryClient.invalidateQueries({
+          queryKey: networkCenterQueryKeys.aruba(actor.id, organizationId, buildingId),
+          exact: true,
+        }));
       }
       invalidateFleet = false;
       pendingBuildingIds.clear();
@@ -319,11 +373,25 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     physicalBuildings,
     availableBuildings,
     fleet,
-    selectedBuilding: buildingQuery.data ?? null,
+    selectedBuilding,
+    arubaNodes,
+    hasNextArubaPage: Boolean(arubaQuery.hasNextPage),
+    isLoadingAruba: arubaQuery.isLoading,
+    isLoadingMoreAruba: arubaQuery.isFetchingNextPage,
+    arubaPageError: arubaQuery.isError
+      ? "Không thể tải danh sách Aruba. Vui lòng thử lại."
+      : "",
     actor,
     canView,
     canExecute,
     executeDisabledMessage: EXECUTE_DISABLED_MESSAGE,
+    async loadMoreAruba() {
+      if (!arubaQuery.hasNextPage || arubaQuery.isFetchingNextPage) return;
+      await arubaQuery.fetchNextPage();
+    },
+    async retryAruba() {
+      await arubaQuery.refetch();
+    },
     async acknowledgeIncident(buildingId: string, incidentId: string) {
       requireExecute();
       return acknowledgeMutation.mutateAsync({

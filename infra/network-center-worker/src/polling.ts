@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   InterfaceRegistry,
@@ -38,12 +38,15 @@ interface PollState {
   consecutiveFailures: number;
   retryAt: number;
   lastReportedReachable: boolean | null;
+  lastInventoryDegraded: boolean | null;
 }
 
 interface InventoryIds {
   interfaceIds: Map<string, string>;
   arubaIds: Map<string, string>;
   offlineAruba: Array<{ externalKey: string; deviceId: string }>;
+  inventoryDegraded: boolean;
+  quarantinedCount: number;
 }
 
 interface InventoryCacheEntry {
@@ -51,6 +54,8 @@ interface InventoryCacheEntry {
   refreshedAt: number;
   interfaceIds: Map<string, string>;
   arubaIds: Map<string, string>;
+  inventoryDegraded: boolean;
+  quarantinedCount: number;
 }
 
 interface TelemetryBatch {
@@ -58,9 +63,24 @@ interface TelemetryBatch {
   devices: Array<Record<string, unknown>>;
   interfaces: Array<Record<string, unknown>>;
   clients: Array<Record<string, unknown>>;
+  inventoryDegraded: boolean;
 }
 
 const BATCH_LIMIT = 256;
+
+function incidentEventKey(
+  deviceId: string,
+  kind: "unreachable" | "inventory-degraded",
+  resolved: boolean,
+  observedAt: string,
+): string {
+  const transition = resolved ? "resolved" : "open";
+  const digest = createHash("sha256")
+    .update(`${deviceId}:${kind}:${transition}:${observedAt}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `router:${deviceId}:${kind}:${transition}:${digest}`;
+}
 
 async function concurrentMap<T>(
   items: readonly T[],
@@ -105,8 +125,12 @@ function inventoryAruba(
   sortOrder: number,
 ): Record<string, unknown> {
   return {
+    stableIdentity: item.stableIdentity,
+    identitySource: item.identitySource,
     externalKey: item.externalKey,
+    aliases: item.aliases,
     displayName: item.displayName,
+    displayOnly: true,
     model: item.model ?? null,
     serialNumber: null,
     uplinkInterfaceKey: null,
@@ -189,8 +213,9 @@ export class PollingCoordinator {
   ): Promise<InventoryIds> {
     const interfaces = observation.interfaces.map(inventoryInterface);
     const aruba = observation.aruba.map(inventoryAruba);
+    const quarantine = observation.arubaQuarantine ?? [];
     const signature = createHash("sha256")
-      .update(JSON.stringify({ interfaces, aruba }))
+      .update(JSON.stringify({ interfaces, aruba, quarantine }))
       .digest("hex");
     const refreshedAt = this.#now().getTime();
     const cached = this.#inventoryCache.get(connection.deviceId);
@@ -198,19 +223,40 @@ export class PollingCoordinator {
       cached?.signature === signature &&
       refreshedAt - cached.refreshedAt < this.#inventoryRefreshIntervalMs
     ) {
-      return { interfaceIds: cached.interfaceIds, arubaIds: cached.arubaIds, offlineAruba: [] };
+      return {
+        interfaceIds: cached.interfaceIds,
+        arubaIds: cached.arubaIds,
+        offlineAruba: [],
+        inventoryDegraded: cached.inventoryDegraded,
+        quarantinedCount: cached.quarantinedCount,
+      };
     }
     const interfaceChunks = chunkAll(interfaces, BATCH_LIMIT);
     const arubaChunks = chunkAll(aruba, BATCH_LIMIT);
-    const batchCount = Math.max(interfaceChunks.length, arubaChunks.length, 1);
+    const quarantineChunks = chunkAll(quarantine, BATCH_LIMIT);
+    const batchCount = Math.max(
+      interfaceChunks.length,
+      arubaChunks.length,
+      quarantineChunks.length,
+      1,
+    );
+    const discoveryRunId = randomUUID();
     const interfaceIds = new Map<string, string>();
     const arubaIds = new Map<string, string>();
+    let inventoryDegraded = quarantine.length > 0;
+    let quarantinedCount = 0;
+    let receivedQuarantineCount = false;
 
     for (let index = 0; index < batchCount; index += 1) {
       const mapping: InventoryMapping = await this.#api.inventory({
         routerDeviceId: connection.deviceId,
+        discoveryRunId,
+        observedAt: observation.observedAt,
+        batchIndex: index,
+        batchCount,
         interfaces: interfaceChunks[index] ?? [],
         aruba: arubaChunks[index] ?? [],
+        quarantine: quarantineChunks[index] ?? [],
       });
       if (mapping.routerDeviceId !== connection.deviceId) {
         throw new Error("Inventory response router does not match request");
@@ -218,19 +264,33 @@ export class PollingCoordinator {
       this.#interfaceRegistry.update(connection.deviceId, mapping.interfaces);
       for (const item of mapping.interfaces) interfaceIds.set(item.interfaceKey, item.id);
       for (const item of mapping.aruba) arubaIds.set(item.externalKey, item.id);
+      inventoryDegraded ||= mapping.inventoryStatus === "DEGRADED";
+      if (typeof mapping.quarantinedCount === "number") {
+        quarantinedCount += mapping.quarantinedCount;
+        receivedQuarantineCount = true;
+      }
     }
+    if (!receivedQuarantineCount) quarantinedCount = quarantine.length;
     this.#inventoryCache.set(connection.deviceId, {
       signature,
       refreshedAt,
       interfaceIds,
       arubaIds,
+      inventoryDegraded,
+      quarantinedCount,
     });
     const offlineAruba = cached
       ? [...cached.arubaIds.entries()]
         .filter(([externalKey]) => !arubaIds.has(externalKey))
         .map(([externalKey, deviceId]) => ({ externalKey, deviceId }))
       : [];
-    return { interfaceIds, arubaIds, offlineAruba };
+    return {
+      interfaceIds,
+      arubaIds,
+      offlineAruba,
+      inventoryDegraded,
+      quarantinedCount,
+    };
   }
 
   #buildTelemetry(
@@ -271,7 +331,13 @@ export class PollingCoordinator {
       ...item,
       deviceId: connection.deviceId,
     }));
-    return { observedAt: observation.observedAt, devices, interfaces, clients };
+    return {
+      observedAt: observation.observedAt,
+      devices,
+      interfaces,
+      clients,
+      inventoryDegraded: inventoryIds.inventoryDegraded,
+    };
   }
 
   async #ingestTelemetry(batches: TelemetryBatch[]): Promise<void> {
@@ -307,7 +373,12 @@ export class PollingCoordinator {
       .digest("hex");
     await this.#api.upsertIncident({
       deviceId: connection.deviceId,
-      eventKey: `router:${connection.deviceId}:unreachable`,
+      eventKey: incidentEventKey(
+        connection.deviceId,
+        "unreachable",
+        resolved,
+        observedAt,
+      ),
       fingerprint,
       incidentType: "ROUTER_UNREACHABLE",
       severity: "CRITICAL",
@@ -321,25 +392,99 @@ export class PollingCoordinator {
     });
   }
 
+  async #inventoryIncident(
+    connection: NetworkConnection,
+    resolved: boolean,
+    observedAt: string,
+    quarantinedCount: number,
+  ): Promise<void> {
+    const fingerprint = createHash("sha256")
+      .update(`inventory-degraded:${connection.deviceId}`)
+      .digest("hex");
+    await this.#api.upsertIncident({
+      deviceId: connection.deviceId,
+      eventKey: incidentEventKey(
+        connection.deviceId,
+        "inventory-degraded",
+        resolved,
+        observedAt,
+      ),
+      fingerprint,
+      incidentType: "INVENTORY_DEGRADED",
+      severity: "WARNING",
+      title: "Kho thiết bị Aruba có bản ghi cần cách ly",
+      summary: resolved
+        ? "Inventory Aruba đã trở lại trạng thái hợp lệ"
+        : "Telemetry MikroTik vẫn hoạt động; chỉ các bản ghi Aruba lỗi bị cách ly",
+      observedAt,
+      observedValues: { quarantinedCount },
+      resolved,
+    });
+  }
+
   async #pollConnection(connection: NetworkConnection): Promise<TelemetryBatch | null> {
     let connector: Pick<RouterConnector, "poll" | "close"> | undefined;
     const now = this.#now();
     try {
       connector = await this.#connectorFactory(connection);
       const observation = await connector.poll();
-      const inventoryIds = await this.#syncInventory(connection, observation);
+      let inventoryIds: InventoryIds;
+      try {
+        inventoryIds = await this.#syncInventory(connection, observation);
+      } catch (inventoryError) {
+        const cached = this.#inventoryCache.get(connection.deviceId);
+        inventoryIds = {
+          interfaceIds: new Map(cached?.interfaceIds ?? []),
+          arubaIds: new Map(cached?.arubaIds ?? []),
+          offlineAruba: [],
+          inventoryDegraded: true,
+          quarantinedCount: 0,
+        };
+        this.#logger.warn("Inventory synchronization failed", redactForLog({
+          buildingId: connection.buildingId,
+          deviceId: connection.deviceId,
+          error: inventoryError instanceof Error ? inventoryError.name : "unknown",
+        }));
+      }
       const telemetry = this.#buildTelemetry(connection, observation, inventoryIds);
       const previous = this.#states.get(connection.deviceId);
       let lastReportedReachable = previous?.lastReportedReachable ?? null;
-      if (lastReportedReachable === false) {
-        await this.#incident(connection, true, observation.observedAt);
-        lastReportedReachable = true;
+      let lastInventoryDegraded = previous?.lastInventoryDegraded ?? null;
+      if (lastReportedReachable !== true) {
+        try {
+          await this.#incident(connection, true, observation.observedAt);
+          lastReportedReachable = true;
+        } catch (incidentError) {
+          this.#logger.error("Unable to resolve router incident", redactForLog({
+            deviceId: connection.deviceId,
+            error: incidentError instanceof Error ? incidentError.name : "unknown",
+          }));
+        }
+      }
+      const shouldReportInventory = lastInventoryDegraded === null
+        || inventoryIds.inventoryDegraded !== lastInventoryDegraded;
+      if (shouldReportInventory) {
+        try {
+          await this.#inventoryIncident(
+            connection,
+            !inventoryIds.inventoryDegraded,
+            observation.observedAt,
+            inventoryIds.quarantinedCount,
+          );
+          lastInventoryDegraded = inventoryIds.inventoryDegraded;
+        } catch (incidentError) {
+          this.#logger.error("Unable to record inventory incident", redactForLog({
+            deviceId: connection.deviceId,
+            error: incidentError instanceof Error ? incidentError.name : "unknown",
+          }));
+        }
       }
       this.#states.set(connection.deviceId, {
         lastSuccessAt: now.getTime(),
         consecutiveFailures: 0,
         retryAt: 0,
         lastReportedReachable,
+        lastInventoryDegraded,
       });
       return telemetry;
     } catch (error) {
@@ -354,6 +499,7 @@ export class PollingCoordinator {
         consecutiveFailures: failures,
         retryAt: now.getTime() + delay,
         lastReportedReachable: previous?.lastReportedReachable ?? null,
+        lastInventoryDegraded: previous?.lastInventoryDegraded ?? null,
       };
       this.#logger.warn("Router polling failed", redactForLog({
         buildingId: connection.buildingId,
@@ -392,17 +538,23 @@ export class PollingCoordinator {
     );
     let successes = 0;
     let failures = 0;
+    let degradedInventories = 0;
     const telemetry: TelemetryBatch[] = [];
     await concurrentMap(connections, this.#maxConcurrency, async (connection) => {
       const batch = await this.#pollConnection(connection);
       if (batch) {
         successes += 1;
+        if (batch.inventoryDegraded) degradedInventories += 1;
         telemetry.push(batch);
       } else failures += 1;
     });
     await this.#ingestTelemetry(telemetry);
     await this.#api.heartbeat({
-      status: this.#paused() ? "PAUSED" : failures > 0 ? "DEGRADED" : "ONLINE",
+      status: this.#paused()
+        ? "PAUSED"
+        : failures > 0 || degradedInventories > 0
+          ? "DEGRADED"
+          : "ONLINE",
       workerVersion: this.#workerVersion,
       capabilities: ["routeros-ssh", "polling", "commands", "snapshots"],
       queueAgeSeconds: 0,
@@ -410,6 +562,7 @@ export class PollingCoordinator {
         connections: connections.length,
         successfulPolls: successes,
         failedPolls: failures,
+        degradedInventories,
       },
       startedAt: this.#startedAt.toISOString(),
     });

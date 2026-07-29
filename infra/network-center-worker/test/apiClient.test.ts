@@ -42,6 +42,46 @@ describe("worker Edge API client", () => {
     expect(String((error as Error).message)).not.toContain(secret);
   });
 
+  it("validates inventory degradation metadata returned by the database boundary", async () => {
+    const baseUrl = new URL("https://example.test/worker");
+    const validClient = new NetworkCenterApiClient({
+      baseUrl,
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      fetch: async () => Response.json({
+        ok: true,
+        data: {
+          routerDeviceId: "40000000-0000-4000-8000-000000000001",
+          interfaces: [],
+          aruba: [],
+          inventoryStatus: "DEGRADED",
+          quarantinedCount: 3,
+        },
+      }),
+    });
+    await expect(validClient.inventory({})).resolves.toMatchObject({
+      inventoryStatus: "DEGRADED",
+      quarantinedCount: 3,
+    });
+
+    const invalidClient = new NetworkCenterApiClient({
+      baseUrl,
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      fetch: async () => Response.json({
+        ok: true,
+        data: {
+          routerDeviceId: "40000000-0000-4000-8000-000000000001",
+          interfaces: [],
+          aruba: [],
+          inventoryStatus: "TRUST_CALLER",
+          quarantinedCount: -1,
+        },
+      }),
+    });
+    await expect(invalidClient.inventory({})).rejects.toBeInstanceOf(ApiClientError);
+  });
+
   it("keeps the timeout active while reading a slow response body", async () => {
     const client = new NetworkCenterApiClient({
       baseUrl: new URL("https://example.test/worker"),

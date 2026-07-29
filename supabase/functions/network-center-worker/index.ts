@@ -253,8 +253,16 @@ function ingestArgs(body: JsonObject): Record<string, unknown> {
 function inventoryArgs(body: JsonObject): Record<string, unknown> {
   const payload = asBoundedObject(body.payload, "payload", 524_288);
   asUuid(payload.routerDeviceId, "payload.routerDeviceId");
+  asUuid(payload.discoveryRunId, "payload.discoveryRunId");
+  asTimestamp(payload.observedAt, "payload.observedAt");
+  const batchIndex = asInteger(payload.batchIndex, "payload.batchIndex", 0, 4_095);
+  const batchCount = asInteger(payload.batchCount, "payload.batchCount", 1, 4_096);
+  if (batchIndex >= batchCount) {
+    throw new RequestValidationError("payload.batchIndex must be below batchCount");
+  }
   asArray(payload.interfaces ?? [], "payload.interfaces", 256);
   asArray(payload.aruba ?? [], "payload.aruba", 256);
+  asArray(payload.quarantine ?? [], "payload.quarantine", 256);
   return { p_payload: payload };
 }
 

@@ -700,8 +700,9 @@ git commit -m "fix(network-center): giới hạn queue và vòng đời dữ li�
 - Modify: `src/components/network-center/tabs/TopologyTab.tsx`
 - Modify: `src/lib/__tests__/networkCenterSupabaseRepository.test.ts`
 - Modify: `src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts`
+- Create: `scripts/__tests__/network-center-aruba-runtime.sql`
 
-- [ ] **Step 1: Write RED worker tests for stable identity and item isolation**
+- [x] **Step 1: Write RED worker tests for stable identity and item isolation**
 
 ```ts
 it("deduplicates aliases by serial then hardware MAC", async () => {
@@ -722,7 +723,7 @@ it("quarantines one malformed Aruba item without losing valid telemetry", async 
 });
 ```
 
-- [ ] **Step 2: Write RED database/UI pagination tests**
+- [x] **Step 2: Write RED database/UI pagination tests**
 
 Require stable-key unique index, 64-new-identities/poll and 128/day/router with a
 one-time 512/24h enrollment window, `STALE` after 24h, inactive after 7 days,
@@ -730,14 +731,14 @@ discovery-only purge at 30 days, alias tombstones 90 days, quarantine retention
 7 days/1,000 per router, and keyset pages default 100/max 250. Assert there is no
 total Aruba count check or client-side loop that fetches all pages.
 
-- [ ] **Step 3: Run RED suites**
+- [x] **Step 3: Run RED suites**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- polling.test.ts sshConnector.test.ts
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts src/lib/__tests__/networkCenterSupabaseRepository.test.ts
 ```
 
-- [ ] **Step 4: Implement stable observation and per-item quarantine**
+- [x] **Step 4: Implement stable observation and per-item quarantine**
 
 `RouterDeviceObservation` adds:
 
@@ -755,7 +756,7 @@ Serial wins; otherwise normalized unicast hardware MAC. Missing/invalid stable
 identity becomes a redacted quarantine item. Polling sends valid telemetry even
 when inventory is degraded and opens `INVENTORY_DEGRADED` only.
 
-- [ ] **Step 5: Implement database aging/rate protection and incremental UI**
+- [x] **Step 5: Implement database aging/rate protection and incremental UI**
 
 Upsert existing stable identities without consuming the new-identity budget.
 Within one transaction, quarantine excess identities beyond 64/poll or 128/day;
@@ -766,7 +767,7 @@ keeps 90-day alias tombstones.
 Repository returns `{ items, nextCursor }`; `TopologyTab` renders one page and a
 load-more control without constructing an all-inventory array.
 
-- [ ] **Step 6: Run GREEN, property fixture and type checks**
+- [x] **Step 6: Run GREEN, property fixture and type checks**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- polling.test.ts sshConnector.test.ts
@@ -774,6 +775,13 @@ npm --prefix infra/network-center-worker run typecheck
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts src/lib/__tests__/networkCenterSupabaseRepository.test.ts
 npm run typecheck:baseline
 ```
+
+The disposable PostgreSQL proof in
+`scripts/__tests__/network-center-aruba-runtime.sql` must also return `PASS` and
+end with `ROLLBACK`. It covers 64-new/run, exact replay, router-scoped identity,
+the 512 enrollment window, 128/day after enrollment, three sightings across ten
+minutes, the 1,000-row quarantine bound, 253-row keyset pagination, durable sort
+order, parent binding, and discovery/pinned/alias retention.
 
 - [ ] **Step 7: Commit Task 9**
 

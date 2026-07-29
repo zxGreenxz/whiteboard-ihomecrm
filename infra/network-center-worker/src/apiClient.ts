@@ -46,6 +46,8 @@ const inventoryMappingSchema = z.object({
   routerDeviceId: z.uuid(),
   interfaces: z.array(z.object({ interfaceKey: z.string(), id: z.uuid() })).max(256),
   aruba: z.array(z.object({ externalKey: z.string(), id: z.uuid() })).max(256),
+  inventoryStatus: z.enum(["OK", "DEGRADED"]).optional(),
+  quarantinedCount: z.number().int().nonnegative().max(1_000_000).optional(),
 }).passthrough();
 
 const responseEnvelope = <T extends z.ZodType>(schema: T) => z.object({

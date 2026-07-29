@@ -26,6 +26,23 @@ describe("network center repository lifecycle", () => {
     expect((await repository.getBuilding("building-a"))?.buildingName).toBe("Tòa A đổi tên");
   });
 
+  it("paginates demo Aruba nodes with the same stable cursor contract", async () => {
+    const service = new DemoNetworkCenterRepository([
+      { id: "building-a", name: "Tòa A", roomsCount: 10 },
+    ]);
+    const repository = createAsyncDemoNetworkCenterRepository(service);
+    const total = service.getBuilding("building-a")!.arubaNodes.length;
+
+    const first = await repository.listArubaPage("building-a", null, 1);
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await repository.listArubaPage("building-a", first.nextCursor, 1);
+    expect(second.items).toHaveLength(Math.min(1, total - 1));
+    expect(second.items[0]?.id).not.toBe(first.items[0].id);
+    expect(service.getBuilding("building-a")!.arubaNodes).toHaveLength(total);
+  });
+
   it("creates identical snapshots and an empty diff when sanitized config is unchanged", () => {
     const repository = new DemoNetworkCenterRepository([
       { id: "building-a", name: "Tòa A", roomsCount: 10 },

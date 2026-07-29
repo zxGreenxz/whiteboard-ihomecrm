@@ -44,12 +44,21 @@ export interface RouterInterfaceObservation {
 }
 
 export interface ArubaObservation {
+  stableIdentity: string;
+  identitySource: "SERIAL" | "HARDWARE_MAC";
   externalKey: string;
+  aliases: string[];
   displayName: string;
+  displayOnly: true;
   reachable: boolean;
   model?: string | null;
   managementIp?: string | null;
   metadata?: JsonObject;
+}
+
+export interface ArubaQuarantineObservation {
+  code: "ARUBA_STABLE_IDENTITY_INVALID";
+  fingerprint: string;
 }
 
 export interface RouterClientObservation {
@@ -63,12 +72,15 @@ export interface RouterObservation {
   interfaces: RouterInterfaceObservation[];
   clients: RouterClientObservation[];
   aruba: ArubaObservation[];
+  arubaQuarantine?: ArubaQuarantineObservation[];
 }
 
 export interface InventoryMapping {
   routerDeviceId: string;
   interfaces: Array<{ interfaceKey: string; id: string }>;
   aruba: Array<{ externalKey: string; id: string }>;
+  inventoryStatus?: "OK" | "DEGRADED";
+  quarantinedCount?: number;
 }
 
 export type CommandAction =

@@ -3,16 +3,16 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const migrationPath = resolve(
-  import.meta.dirname,
+const migrationPaths = [
   "../../../supabase/migrations/20260729040000_network_center_rls_rpcs_realtime.sql",
-);
-const sql = readFileSync(migrationPath, "utf8");
+  "../../../supabase/migrations/20260729131000_network_center_resource_lifecycle.sql",
+].map((path) => resolve(import.meta.dirname, path));
+const sql = migrationPaths.map((path) => readFileSync(path, "utf8")).join("\n");
 
 function inventoryFunction(): string {
-  const match = sql.match(
-    /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.network_center_worker_inventory_v1\b[\s\S]*?\$fn\$;/i,
-  );
+  const match = [...sql.matchAll(
+    /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.network_center_worker_inventory_v1\b[\s\S]*?\$fn\$;/gi,
+  )].at(-1);
   expect(match, "Missing worker inventory/discovery RPC").not.toBeNull();
   return match![0];
 }
@@ -49,7 +49,7 @@ describe("Network Center worker inventory discovery", () => {
     expect(definition).toMatch(/write_capability[\s\S]*?false/i);
     expect(definition).toMatch(/credential_ref[\s\S]*?NULL/i);
     expect(definition).toMatch(
-      /ON\s+CONFLICT\s*\(\s*organization_id\s*,\s*building_id\s*,\s*device_kind\s*,\s*external_key\s*\)/i,
+      /ON\s+CONFLICT\s*\(\s*parent_device_id\s*,\s*aruba_stable_key\s*\)[\s\S]{0,120}device_kind\s*=\s*'ARUBA'/i,
     );
     expect(definition).toMatch(/'externalKey'[\s\S]*?'id'/i);
   });
@@ -70,12 +70,12 @@ describe("Network Center worker inventory discovery", () => {
 
   it("shows a discovered Aruba management address without inventing a credential", () => {
     const definition = inventoryFunction();
-    const listAruba = sql.match(
-      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.network_center_list_aruba_v1\b[\s\S]*?\$fn\$;/i,
-    )?.[0];
+    const listAruba = [...sql.matchAll(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.network_center_list_aruba_v1\b[\s\S]*?\$fn\$;/gi,
+    )].at(-1)?.[0];
 
     expect(listAruba).toBeDefined();
-    expect(definition).toContain('"managementAddress"');
+    expect(definition).toContain("v_item->>'managementAddress'");
     expect(definition).toMatch(
       /inventory_metadata[\s\S]*?managementAddress/i,
     );

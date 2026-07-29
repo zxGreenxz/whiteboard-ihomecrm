@@ -269,11 +269,29 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     {
       path: "/inventory",
       body: {
-        payload: { routerDeviceId: DEVICE_ID, interfaces: [], aruba: [] },
+        payload: {
+          routerDeviceId: DEVICE_ID,
+          discoveryRunId: SNAPSHOT_ID,
+          observedAt: now,
+          batchIndex: 0,
+          batchCount: 1,
+          interfaces: [],
+          aruba: [],
+          quarantine: [],
+        },
       },
       rpc: "network_center_worker_inventory_v2",
       args: {
-        p_payload: { routerDeviceId: DEVICE_ID, interfaces: [], aruba: [] },
+        p_payload: {
+          routerDeviceId: DEVICE_ID,
+          discoveryRunId: SNAPSHOT_ID,
+          observedAt: now,
+          batchIndex: 0,
+          batchCount: 1,
+          interfaces: [],
+          aruba: [],
+          quarantine: [],
+        },
       },
     },
     {
@@ -393,12 +411,22 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
 
 Deno.test("inventory accepts unlimited Aruba through repeated bounded batches", async () => {
   const { handler, calls } = await createHarness();
+  const observedAt = "2026-07-29T00:00:00.000Z";
   const aruba = Array.from({ length: 256 }, (_, index) => ({
     externalKey: `aruba-${index + 1}`,
     displayName: `Aruba ${index + 1}`,
   }));
   const body = {
-    payload: { routerDeviceId: DEVICE_ID, interfaces: [], aruba },
+    payload: {
+      routerDeviceId: DEVICE_ID,
+      discoveryRunId: SNAPSHOT_ID,
+      observedAt,
+      batchIndex: 0,
+      batchCount: 2,
+      interfaces: [],
+      aruba,
+      quarantine: [],
+    },
   };
 
   const first = await handler(post("/inventory", body));
@@ -416,6 +444,34 @@ Deno.test("inventory accepts unlimited Aruba through repeated bounded batches", 
   }));
   assertEquals(tooMany.status, 400);
   assertEquals(calls.length, 2);
+});
+
+Deno.test("inventory requires coherent discovery-run metadata before RPC", async () => {
+  const { handler, calls } = await createHarness();
+  const base = {
+    routerDeviceId: DEVICE_ID,
+    discoveryRunId: SNAPSHOT_ID,
+    observedAt: "2026-07-29T00:00:00.000Z",
+    batchIndex: 0,
+    batchCount: 1,
+    interfaces: [],
+    aruba: [],
+    quarantine: [],
+  };
+
+  for (const payload of [
+    { ...base, discoveryRunId: undefined },
+    { ...base, observedAt: "not-a-date" },
+    { ...base, batchIndex: 1, batchCount: 1 },
+    { ...base, quarantine: Array.from({ length: 257 }, () => ({
+      code: "ARUBA_STABLE_IDENTITY_INVALID",
+      fingerprint: "a".repeat(64),
+    })) },
+  ]) {
+    const response = await handler(post("/inventory", { payload }));
+    assertEquals(response.status, 400);
+  }
+  assertEquals(calls.length, 0);
 });
 
 Deno.test("invalid stage kinds, UUIDs, timestamps, and RPC failures are sanitized", async () => {

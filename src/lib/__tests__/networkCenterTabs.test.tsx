@@ -120,6 +120,26 @@ describe("network center audit and change details", () => {
     expect(html.indexOf(uplink.name)).toBeLessThan(html.indexOf(site.arubaNodes[0].name));
   });
 
+  it("offers an incremental Aruba load-more control while a server cursor remains", () => {
+    const site = createSiteWithStructuredAction();
+    const controller: NonNullable<
+      Parameters<typeof TopologyTab>[0]["controller"]
+    > = {
+      arubaNodes: site.arubaNodes,
+      hasNextArubaPage: true,
+      isLoadingAruba: false,
+      isLoadingMoreAruba: false,
+      arubaPageError: "",
+      loadMoreAruba: async () => undefined,
+      retryAruba: async () => undefined,
+    };
+
+    const html = renderToStaticMarkup(<TopologyTab site={site} controller={controller} />);
+
+    expect(html).toContain("Xem trang Aruba tiếp theo");
+    expect(html).toContain(`Đang hiển thị ${site.arubaNodes.length} · Tổng ${site.arubaTotal}`);
+  });
+
   it("keeps the incident rail before the building list in source order", () => {
     const repository = new DemoNetworkCenterRepository([
       { id: "building-a", name: "Tòa A", roomsCount: 10 },

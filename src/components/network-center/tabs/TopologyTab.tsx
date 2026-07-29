@@ -1,10 +1,33 @@
 import { Eye, Network } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
 import { NetworkStatus } from "../NetworkStatus";
 
-export function TopologyTab({ site, isDemo = true }: { site: NetworkBuilding; isDemo?: boolean }) {
+type TopologyController = Pick<
+  NetworkCenterController,
+  | "arubaNodes"
+  | "hasNextArubaPage"
+  | "isLoadingAruba"
+  | "isLoadingMoreAruba"
+  | "arubaPageError"
+  | "loadMoreAruba"
+  | "retryAruba"
+>;
+
+export function TopologyTab({
+  site,
+  controller,
+  isDemo = true,
+}: {
+  site: NetworkBuilding;
+  controller?: TopologyController;
+  isDemo?: boolean;
+}) {
   const uplink = site.interfaces.find((networkInterface) => networkInterface.role === "uplink");
+  const arubaNodes = controller?.arubaNodes ?? site.arubaNodes;
+  const total = Math.max(site.arubaTotal ?? 0, arubaNodes.length);
   return (
     <div className="nc-tab-stack">
       <div className="nc-locked-note nc-display-note"><Eye /><p><strong>Aruba chỉ dùng để theo dõi.</strong> Màn hình không có thao tác cấu hình, khởi động lại hoặc dữ liệu đăng nhập Aruba.</p></div>
@@ -23,7 +46,7 @@ export function TopologyTab({ site, isDemo = true }: { site: NetworkBuilding; is
         </div>
         <div className="nc-branch-connector" aria-hidden="true" />
         <div className="nc-aruba-nodes nc-aruba-nodes-full">
-          {site.arubaNodes.map((node) => (
+          {arubaNodes.map((node) => (
             <article className={`nc-aruba-node nc-node-${node.status}`} key={node.id}>
               <strong>{node.name}</strong>
               <span>{node.address}</span>
@@ -32,6 +55,34 @@ export function TopologyTab({ site, isDemo = true }: { site: NetworkBuilding; is
             </article>
           ))}
         </div>
+        {controller?.isLoadingAruba && arubaNodes.length === 0
+          ? <p className="nc-empty-copy">Đang tải danh sách Aruba…</p>
+          : null}
+        {!controller?.isLoadingAruba && !controller?.arubaPageError && arubaNodes.length === 0
+          ? <p className="nc-empty-copy">Chưa phát hiện Aruba trong tòa nhà này.</p>
+          : null}
+        {controller?.arubaPageError
+          ? <p className="nc-empty-copy" role="alert">{controller.arubaPageError}</p>
+          : null}
+        {controller ? (
+          <div className="nc-heading-actions">
+            <strong>Đang hiển thị {arubaNodes.length} · Tổng {total}</strong>
+            {controller.arubaPageError ? (
+              <Button type="button" variant="outline" onClick={() => void controller.retryAruba()}>
+                Thử lại
+              </Button>
+            ) : controller.hasNextArubaPage ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={controller.isLoadingMoreAruba}
+                onClick={() => void controller.loadMoreAruba()}
+              >
+                {controller.isLoadingMoreAruba ? "Đang tải Aruba…" : "Xem trang Aruba tiếp theo"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </div>
   );

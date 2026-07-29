@@ -29,6 +29,14 @@ type RpcCall = (
 type Repository = {
   listFleet(): Promise<NetworkBuilding[]>;
   getBuilding(buildingId: string, fallback?: NetworkBuilding): Promise<NetworkBuilding | null>;
+  listArubaPage(
+    buildingId: string,
+    cursor?: { sortOrder: number; id: string } | null,
+    limit?: number,
+  ): Promise<{
+    items: NetworkBuilding["arubaNodes"];
+    nextCursor: { sortOrder: number; id: string } | null;
+  }>;
   executeAction(
     buildingId: string,
     request: NetworkActionRequest,
@@ -392,9 +400,17 @@ describe("Network Center Supabase repository boundary", () => {
       "building",
       BUILDING_ID,
     ]);
+    expect(networkCenterQueryKeys.aruba(" User-A ", " ORG-A ", BUILDING_ID.toUpperCase())).toEqual([
+      "network-center",
+      "user-a",
+      "org-a",
+      "building",
+      BUILDING_ID,
+      "aruba",
+    ]);
   });
 
-  it("maps complete RPC fixtures and follows every Aruba cursor without a total quota", async () => {
+  it("loads only the first Aruba page with an explicit cursor for incremental loading", async () => {
     const harness = createRpcHarness();
     const repository = new RepositoryConstructor(harness.rpc);
 
@@ -419,8 +435,11 @@ describe("Network Center Supabase repository boundary", () => {
 
     const building = await repository.getBuilding(BUILDING_ID, fleet[0]);
     expect(building).not.toBeNull();
-    expect(building!.arubaNodes).toHaveLength(101);
-    expect(building).toMatchObject({ arubaTotal: 101, arubaOnline: 101 });
+    expect(building!.arubaNodes).toHaveLength(0);
+    expect(building).toMatchObject({
+      arubaTotal: 101,
+      arubaOnline: null,
+    });
     expect(building!.clients).toHaveLength(1);
     expect(building!.clients[0]).toMatchObject({ rxMbps: 1, txMbps: 0.5 });
     expect(building!.jobs).toHaveLength(1);
@@ -434,13 +453,39 @@ describe("Network Center Supabase repository boundary", () => {
       (call) => call.name === "network_center_get_building_v1",
     );
     expect(buildingCalls).toHaveLength(2);
-    expect(arubaCalls).toHaveLength(2);
-    expect(arubaCalls[0].args).toMatchObject({ p_limit: 100, p_after_id: null });
-    expect(arubaCalls[1].args).toMatchObject({
+    expect(arubaCalls).toHaveLength(0);
+
+    const firstPage = await repository.listArubaPage(BUILDING_ID);
+    expect(firstPage.items).toHaveLength(100);
+    expect(firstPage.nextCursor).toEqual({ sortOrder: 100, id: uuidFor(100) });
+    expect(harness.calls.at(-1)?.args).toMatchObject({ p_limit: 100, p_after_id: null });
+
+    const nextPage = await repository.listArubaPage(BUILDING_ID, firstPage.nextCursor);
+    expect(nextPage.items).toHaveLength(1);
+    expect(nextPage.nextCursor).toBeNull();
+    expect(harness.calls.filter((call) => call.name === "network_center_list_aruba_v1")).toHaveLength(2);
+    expect(harness.calls.at(-1)?.args).toMatchObject({
       p_limit: 100,
       p_after_sort_order: 100,
       p_after_id: uuidFor(100),
     });
+  });
+
+  it("accepts bounded Aruba pages up to 250 and rejects a larger request before RPC", async () => {
+    const harness = createRpcHarness();
+    const repository = new RepositoryConstructor(harness.rpc);
+
+    await repository.listArubaPage(BUILDING_ID, null, 250);
+    expect(harness.calls.at(-1)).toMatchObject({
+      name: "network_center_list_aruba_v1",
+      args: { p_limit: 250 },
+    });
+
+    const callsBeforeReject = harness.calls.length;
+    await expect(repository.listArubaPage(BUILDING_ID, null, 251)).rejects.toBeInstanceOf(
+      NetworkCenterRepositoryError,
+    );
+    expect(harness.calls).toHaveLength(callsBeforeReject);
   });
 
   it("rejects null, backend errors, and overfilled bounded pages without leaking raw details", async () => {

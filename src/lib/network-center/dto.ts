@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type {
+  ArubaPage,
   ArubaNode,
   AuditRecord,
   ClientRecord,
@@ -19,6 +20,8 @@ import type {
 } from "./contracts";
 
 export const NETWORK_CENTER_PAGE_SIZE = 100;
+export const NETWORK_CENTER_ARUBA_PAGE_SIZE = 100;
+export const NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE = 250;
 export const NETWORK_CENTER_MAX_FLEET_SIZE = 500;
 
 const uuidSchema = z.string().uuid();
@@ -163,7 +166,7 @@ const arubaCursorSchema = z.object({
 });
 
 const arubaPageSchema = z.object({
-  items: z.array(arubaItemSchema).max(NETWORK_CENTER_PAGE_SIZE),
+  items: z.array(arubaItemSchema).max(NETWORK_CENTER_ARUBA_MAX_PAGE_SIZE),
   nextCursor: arubaCursorSchema.nullable(),
 });
 
@@ -543,6 +546,18 @@ function mapAruba(item: z.infer<typeof arubaItemSchema>, now: number): ArubaNode
   };
 }
 
+export function mapNetworkCenterArubaPage(
+  page: NetworkCenterArubaPageDto,
+  now = Date.now(),
+): ArubaPage {
+  return {
+    items: page.items.map((item) => mapAruba(item, now)),
+    nextCursor: page.nextCursor
+      ? { sortOrder: page.nextCursor.sortOrder!, id: page.nextCursor.id! }
+      : null,
+  };
+}
+
 function mapClient(item: z.infer<typeof clientItemSchema>): ClientRecord {
   const connection = item.connectionType.toLowerCase();
   return {
@@ -704,7 +719,10 @@ export function mergeNetworkCenterBuilding(
   now = Date.now(),
 ): NetworkBuilding {
   const interfaces = detail.interfaces.map(mapInterface);
-  const arubaNodes = arubaItems.map((item) => mapAruba(item, now));
+  const mappedArubaNodes = arubaItems.map((item) => mapAruba(item, now));
+  const arubaNodes = mappedArubaNodes.length > 0 ? mappedArubaNodes : fallback.arubaNodes;
+  const arubaTotal = Math.max(fallback.arubaTotal ?? 0, arubaNodes.length);
+  const loadedAllAruba = arubaNodes.length >= arubaTotal;
   const wan = interfaces.find((item) => item.role === "wan");
   const router = detail.router;
   const lifecycle = normalizeLifecycle(router?.lifecycleStatus);
@@ -737,8 +755,10 @@ export function mergeNetworkCenterBuilding(
     settings: settingsFromDto(detail.settings),
     settingsVersion: detail.settings.version,
     arubaNodes,
-    arubaTotal: arubaNodes.length,
-    arubaOnline: arubaNodes.filter((item) => item.status === "online").length,
+    arubaTotal,
+    arubaOnline: loadedAllAruba
+      ? arubaNodes.filter((item) => item.status === "online").length
+      : fallback.arubaOnline ?? null,
     clients: clientItems.map(mapClient),
     jobs: [],
     audit: [],

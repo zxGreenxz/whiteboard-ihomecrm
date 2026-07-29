@@ -61,6 +61,16 @@ export interface ArubaNode {
   lastSeenLabel: string;
 }
 
+export interface ArubaPageCursor {
+  sortOrder: number;
+  id: string;
+}
+
+export interface ArubaPage {
+  items: ArubaNode[];
+  nextCursor: ArubaPageCursor | null;
+}
+
 export interface NetworkIncident {
   id: string;
   buildingId: string;
@@ -252,6 +262,11 @@ export interface MaintenanceInput {
 export interface NetworkCenterRepository {
   listFleet(): Promise<NetworkBuilding[]>;
   getBuilding(buildingId: string, fallback?: NetworkBuilding): Promise<NetworkBuilding | null>;
+  listArubaPage(
+    buildingId: string,
+    cursor?: ArubaPageCursor | null,
+    limit?: number,
+  ): Promise<ArubaPage>;
   acknowledgeIncident(
     buildingId: string,
     incidentId: string,

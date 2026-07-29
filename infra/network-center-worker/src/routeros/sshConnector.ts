@@ -254,6 +254,103 @@ function isAruba(record: Record<string, string>): boolean {
   ].filter(Boolean).join(" "));
 }
 
+// `serial:` plus the normalized value must fit the 160-byte external-key boundary.
+const ARUBA_SERIAL = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,152}$/;
+const HARDWARE_MAC = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/;
+
+function normalizedArubaSerial(record: Record<string, string>): string | null {
+  const value = (
+    record["serial-number"]
+    ?? record.serial
+    ?? record["serial-no"]
+    ?? ""
+  ).trim();
+  return ARUBA_SERIAL.test(value) ? value.toUpperCase() : null;
+}
+
+function normalizedHardwareMac(value: string | undefined): string | null {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (!HARDWARE_MAC.test(normalized)) return null;
+  const firstOctet = Number.parseInt(normalized.slice(0, 2), 16);
+  if ((firstOctet & 1) !== 0) return null;
+  if (normalized === "00:00:00:00:00:00" || normalized === "ff:ff:ff:ff:ff:ff") {
+    return null;
+  }
+  return normalized;
+}
+
+function safeArubaAlias(value: string | undefined): string | null {
+  const alias = value?.trim() ?? "";
+  if (!alias || alias.length > 160 || /[\u0000-\u001f\u007f]/.test(alias)) return null;
+  return alias;
+}
+
+export function parseArubaNeighbors(records: Record<string, string>[]): {
+  valid: ArubaObservation[];
+  quarantined: Array<{
+    code: "ARUBA_STABLE_IDENTITY_INVALID";
+    fingerprint: string;
+  }>;
+} {
+  const candidates = records.filter(isAruba).map((record) => ({
+    record,
+    serial: normalizedArubaSerial(record),
+    mac: normalizedHardwareMac(record["mac-address"]),
+  }));
+  const serialByMac = new Map<string, string>();
+  for (const candidate of candidates) {
+    if (candidate.serial && candidate.mac) serialByMac.set(candidate.mac, candidate.serial);
+  }
+
+  const valid = new Map<string, ArubaObservation>();
+  const quarantined: Array<{
+    code: "ARUBA_STABLE_IDENTITY_INVALID";
+    fingerprint: string;
+  }> = [];
+  for (const candidate of candidates) {
+    const serial = candidate.serial
+      ?? (candidate.mac ? serialByMac.get(candidate.mac) ?? null : null);
+    const identitySource = serial ? "SERIAL" as const : "HARDWARE_MAC" as const;
+    const stableIdentity = serial ?? candidate.mac;
+    if (!stableIdentity) {
+      quarantined.push({
+        code: "ARUBA_STABLE_IDENTITY_INVALID",
+        fingerprint: createHash("sha256").update(JSON.stringify([
+          candidate.record.identity ?? "",
+          candidate.record["serial-number"] ?? candidate.record.serial ?? "",
+          candidate.record["mac-address"] ?? "",
+        ])).digest("hex"),
+      });
+      continue;
+    }
+
+    const externalKey = identitySource === "SERIAL"
+      ? `serial:${stableIdentity}`
+      : `mac:${stableIdentity}`;
+    const alias = safeArubaAlias(candidate.record.identity);
+    const previous = valid.get(externalKey);
+    const aliases = new Set(previous?.aliases ?? []);
+    if (alias) aliases.add(alias);
+    const displayName = alias
+      ?? previous?.displayName
+      ?? (identitySource === "SERIAL" ? stableIdentity : `Aruba ${stableIdentity}`);
+    valid.set(externalKey, {
+      stableIdentity,
+      identitySource,
+      externalKey,
+      aliases: [...aliases],
+      displayName,
+      displayOnly: true,
+      reachable: true,
+      model: candidate.record.board ?? candidate.record.platform ?? previous?.model ?? null,
+      managementIp: candidate.record.address ?? previous?.managementIp ?? null,
+      metadata: { discovery: "routeros-neighbor" },
+    });
+  }
+
+  return { valid: [...valid.values()], quarantined };
+}
+
 export class SshRouterConnector implements RouterConnector {
   readonly #connection: NetworkConnection;
   readonly #credential: RouterCredential;
@@ -491,16 +588,8 @@ export class SshRouterConnector implements RouterConnector {
       };
     });
 
-    const aruba: ArubaObservation[] = parseRouterOsRecords(neighborOutput)
-      .filter(isAruba)
-      .map((record, index) => ({
-        externalKey: record["mac-address"]?.toLowerCase() ?? record.identity ?? `aruba-${index}`,
-        displayName: record.identity ?? record["mac-address"] ?? `Aruba ${index + 1}`,
-        reachable: true,
-        model: record.board ?? record.platform ?? null,
-        managementIp: record.address ?? null,
-        metadata: { discovery: "routeros-neighbor" },
-      }));
+    const arubaInventory = parseArubaNeighbors(parseRouterOsRecords(neighborOutput));
+    const aruba = arubaInventory.valid;
 
     const totalMemory = parseBytes(resource["total-memory"]);
     const freeMemory = parseBytes(resource["free-memory"]);
@@ -523,7 +612,14 @@ export class SshRouterConnector implements RouterConnector {
       connectionCount: clients.length,
       dhcpBound: dhcpClients.some((record) => record.status === "bound"),
     };
-    return { observedAt: now, device, interfaces, clients, aruba };
+    return {
+      observedAt: now,
+      device,
+      interfaces,
+      clients,
+      aruba,
+      arubaQuarantine: arubaInventory.quarantined,
+    };
   }
 
   async captureBackup(): Promise<RouterBackup> {

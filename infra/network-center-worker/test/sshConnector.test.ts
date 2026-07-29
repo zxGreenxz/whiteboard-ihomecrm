@@ -5,6 +5,7 @@ import {
   ROUTER_OS_READ_COMMANDS,
   leaseExpiryIso,
   normalizeHostFingerprint,
+  parseArubaNeighbors,
   parseRouterOsRecords,
   quoteRouterOsValue,
   routerOsCommandFailed,
@@ -86,5 +87,68 @@ describe("RouterOS SSH boundary", () => {
     expect(routerOsInterfaceState({ ".flags": "X" })).toEqual({ enabled: false, running: false });
     expect(routerOsInterfaceState({ running: "false", disabled: "false" }))
       .toEqual({ enabled: true, running: false });
+  });
+
+  it("deduplicates Aruba aliases by serial first and hardware MAC second", () => {
+    const parsed = parseArubaNeighbors([
+      {
+        identity: "old-name",
+        "serial-number": "ap-001",
+        "mac-address": "AA:BB:CC:DD:EE:01",
+        platform: "Aruba Instant",
+      },
+      {
+        identity: "new-name",
+        "serial-number": "AP-001",
+        "mac-address": "AA:BB:CC:DD:EE:01",
+        platform: "Aruba Instant",
+      },
+      {
+        identity: "mac-only",
+        "mac-address": "AA:BB:CC:DD:EE:02",
+        platform: "HPE Aruba",
+      },
+    ]);
+
+    expect(parsed.quarantined).toEqual([]);
+    expect(parsed.valid).toHaveLength(2);
+    expect(parsed.valid[0]).toMatchObject({
+      stableIdentity: "AP-001",
+      identitySource: "SERIAL",
+      externalKey: "serial:AP-001",
+      displayName: "new-name",
+      displayOnly: true,
+    });
+    expect(parsed.valid[0]?.aliases).toEqual(expect.arrayContaining(["old-name", "new-name"]));
+    expect(parsed.valid[1]).toMatchObject({
+      stableIdentity: "aa:bb:cc:dd:ee:02",
+      identitySource: "HARDWARE_MAC",
+      externalKey: "mac:aa:bb:cc:dd:ee:02",
+      displayOnly: true,
+    });
+  });
+
+  it("quarantines only the malformed Aruba item and never returns its raw identity", () => {
+    const parsed = parseArubaNeighbors([
+      {
+        identity: "valid-ap",
+        "serial-number": "VALID-001",
+        platform: "Aruba Instant",
+      },
+      {
+        identity: "secret malformed name",
+        "mac-address": "01:00:5e:00:00:01",
+        platform: "Aruba Instant",
+      },
+    ]);
+
+    expect(parsed.valid).toHaveLength(1);
+    expect(parsed.quarantined).toHaveLength(1);
+    expect(parsed.quarantined[0]).toMatchObject({
+      code: "ARUBA_STABLE_IDENTITY_INVALID",
+    });
+    expect(parsed.quarantined[0]?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(parsed.quarantined)).not.toContain("secret malformed name");
+    expect(JSON.stringify(parsed.quarantined)).not.toContain("01:00:5e:00:00:01");
   });
 });

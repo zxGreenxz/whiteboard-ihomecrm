@@ -35,7 +35,7 @@ export function BuildingTabs({ site, controller }: { site: NetworkBuilding; cont
       <TabsContent value="overview"><OverviewTab site={site} controller={controller} /></TabsContent>
       <TabsContent value="interfaces"><InterfacesTab site={site} isDemo={controller.isDemo} /></TabsContent>
       <TabsContent value="clients"><ClientsTab site={site} isDemo={controller.isDemo} /></TabsContent>
-      <TabsContent value="topology"><TopologyTab site={site} isDemo={controller.isDemo} /></TabsContent>
+      <TabsContent value="topology"><TopologyTab site={site} controller={controller} isDemo={controller.isDemo} /></TabsContent>
       <TabsContent value="incidents"><IncidentsTab site={site} controller={controller} /></TabsContent>
       <TabsContent value="configuration"><ConfigurationTab site={site} controller={controller} /></TabsContent>
       <TabsContent value="backups"><BackupsTab site={site} controller={controller} /></TabsContent>

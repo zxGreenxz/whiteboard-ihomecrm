@@ -44,8 +44,12 @@ describe("polling coordinator", () => {
         })),
         clients: [],
         aruba: Array.from({ length: 600 }, (_, index) => ({
-          externalKey: `aruba-${index}`,
+          stableIdentity: `SERIAL-${index}`,
+          identitySource: "SERIAL" as const,
+          externalKey: `serial:SERIAL-${index}`,
+          aliases: [`Aruba ${index}`],
           displayName: `Aruba ${index}`,
+          displayOnly: true as const,
           reachable: true,
         })),
       }),
@@ -93,6 +97,187 @@ describe("polling coordinator", () => {
     expect(heartbeatStatuses.at(-1)).toBe("ONLINE");
   });
 
+  it("keeps one discovery run across batches and degrades inventory without declaring a router outage", async () => {
+    const inventoryPayloads: Array<Record<string, unknown>> = [];
+    const ingestPayloads: Array<Record<string, unknown>> = [];
+    const incidents: Array<Record<string, unknown>> = [];
+    const connector: Pick<RouterConnector, "poll" | "close"> = {
+      poll: async () => ({
+        observedAt: "2026-07-28T00:00:00.000Z",
+        device: { reachable: true, identity: "demo" },
+        interfaces: [],
+        clients: [],
+        aruba: Array.from({ length: 300 }, (_, index) => ({
+          stableIdentity: `SERIAL-${index}`,
+          identitySource: "SERIAL" as const,
+          externalKey: `serial:SERIAL-${index}`,
+          aliases: [`Aruba ${index}`],
+          displayName: `Aruba ${index}`,
+          displayOnly: true as const,
+          reachable: true,
+        })),
+        arubaQuarantine: [{
+          code: "ARUBA_STABLE_IDENTITY_INVALID" as const,
+          fingerprint: "a".repeat(64),
+        }],
+      }),
+      close: async () => undefined,
+    };
+    const coordinator = new PollingCoordinator({
+      api: {
+        listConnections: async () => [connection()],
+        heartbeat: async () => undefined,
+        ingest: async (payload: Record<string, unknown>) => { ingestPayloads.push(payload); },
+        inventory: async (payload: Record<string, unknown>) => {
+          inventoryPayloads.push(payload);
+          const batchIndex = Number(payload.batchIndex);
+          return {
+            routerDeviceId: connection().deviceId,
+            interfaces: [],
+            aruba: (payload.aruba as Array<{ externalKey: string }>).map((item) => ({
+              externalKey: item.externalKey,
+              id: `mapped-${item.externalKey}`,
+            })),
+            inventoryStatus: "DEGRADED",
+            quarantinedCount: batchIndex === 0 ? 1 : 2,
+          };
+        },
+        upsertIncident: async (payload: Record<string, unknown>) => { incidents.push(payload); },
+      },
+      connectorFactory: async () => connector,
+      interfaceRegistry: new InterfaceRegistry(),
+      maxConcurrency: 1,
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+      startedAt: new Date("2026-07-27T00:00:00.000Z"),
+      workerVersion: "test",
+      logger: { info() {}, warn() {}, error() {} },
+    });
+
+    await coordinator.runCycle();
+
+    expect(inventoryPayloads).toHaveLength(2);
+    expect(new Set(inventoryPayloads.map((payload) => payload.discoveryRunId)).size).toBe(1);
+    expect(inventoryPayloads[0]?.discoveryRunId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(inventoryPayloads.map((payload) => payload.batchIndex)).toEqual([0, 1]);
+    expect(inventoryPayloads.every((payload) => payload.batchCount === 2)).toBe(true);
+    expect(inventoryPayloads.every(
+      (payload) => payload.observedAt === "2026-07-28T00:00:00.000Z",
+    )).toBe(true);
+    expect(inventoryPayloads.flatMap(
+      (payload) => (payload.quarantine ?? []) as unknown[],
+    )).toHaveLength(1);
+    expect(ingestPayloads.flatMap((payload) => payload.devices as unknown[])).toHaveLength(301);
+    expect(incidents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        incidentType: "INVENTORY_DEGRADED",
+        resolved: false,
+        observedValues: { quarantinedCount: 3 },
+      }),
+    ]));
+    expect(incidents).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ incidentType: "ROUTER_UNREACHABLE", resolved: false }),
+    ]));
+  });
+
+  it("keeps router telemetry when inventory RPC fails and never opens a router outage", async () => {
+    const ingestPayloads: Array<Record<string, unknown>> = [];
+    const incidents: Array<Record<string, unknown>> = [];
+    const heartbeatStatuses: string[] = [];
+    const coordinator = new PollingCoordinator({
+      api: {
+        listConnections: async () => [connection()],
+        heartbeat: async (input: { status: string }) => { heartbeatStatuses.push(input.status); },
+        ingest: async (payload: Record<string, unknown>) => { ingestPayloads.push(payload); },
+        inventory: async () => { throw new Error("inventory control plane unavailable"); },
+        upsertIncident: async (payload: Record<string, unknown>) => { incidents.push(payload); },
+      },
+      connectorFactory: async () => ({
+        poll: async () => ({
+          observedAt: "2026-07-28T00:00:00.000Z",
+          device: { reachable: true, identity: "demo" },
+          interfaces: [],
+          clients: [],
+          aruba: [],
+        }),
+        close: async () => undefined,
+      }),
+      interfaceRegistry: new InterfaceRegistry(),
+      maxConcurrency: 1,
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+      startedAt: new Date("2026-07-27T00:00:00.000Z"),
+      workerVersion: "test",
+      logger: { info() {}, warn() {}, error() {} },
+    });
+
+    await coordinator.runCycle();
+
+    expect(ingestPayloads.flatMap((payload) => payload.devices as unknown[])).toEqual([
+      expect.objectContaining({ deviceId: connection().deviceId, reachable: true }),
+    ]);
+    expect(incidents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ incidentType: "INVENTORY_DEGRADED", resolved: false }),
+    ]));
+    expect(incidents).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ incidentType: "ROUTER_UNREACHABLE", resolved: false }),
+    ]));
+    expect(heartbeatStatuses.at(-1)).toBe("DEGRADED");
+  });
+
+  it("uses distinct idempotency keys to resolve inventory degradation on the next clean poll", async () => {
+    let pollNo = 0;
+    const incidents: Array<Record<string, unknown>> = [];
+    const coordinator = new PollingCoordinator({
+      api: {
+        listConnections: async () => [connection()],
+        heartbeat: async () => undefined,
+        ingest: async () => undefined,
+        inventory: async (payload: Record<string, unknown>) => ({
+          routerDeviceId: connection().deviceId,
+          interfaces: [],
+          aruba: [],
+          inventoryStatus: (payload.quarantine as unknown[]).length > 0 ? "DEGRADED" : "OK",
+          quarantinedCount: (payload.quarantine as unknown[]).length,
+        }),
+        upsertIncident: async (payload: Record<string, unknown>) => { incidents.push(payload); },
+      },
+      connectorFactory: async () => ({
+        poll: async () => {
+          pollNo += 1;
+          return {
+            observedAt: `2026-07-28T00:0${pollNo}:00.000Z`,
+            device: { reachable: true },
+            interfaces: [],
+            clients: [],
+            aruba: [],
+            arubaQuarantine: pollNo === 1
+              ? [{ code: "ARUBA_STABLE_IDENTITY_INVALID" as const, fingerprint: "a".repeat(64) }]
+              : [],
+          };
+        },
+        close: async () => undefined,
+      }),
+      interfaceRegistry: new InterfaceRegistry(),
+      maxConcurrency: 1,
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+      startedAt: new Date("2026-07-27T00:00:00.000Z"),
+      workerVersion: "test",
+      inventoryRefreshIntervalMs: 0,
+      logger: { info() {}, warn() {}, error() {} },
+    });
+
+    await coordinator.runCycle();
+    await coordinator.runCycle();
+
+    const inventoryIncidents = incidents.filter(
+      (item) => item.incidentType === "INVENTORY_DEGRADED",
+    );
+    expect(inventoryIncidents).toHaveLength(2);
+    expect(inventoryIncidents.map((item) => item.resolved)).toEqual([false, true]);
+    expect(new Set(inventoryIncidents.map((item) => item.eventKey)).size).toBe(2);
+  });
+
   it("isolates a failed router and reconnects on the next cycle", async () => {
     let attempts = 0;
     const incidents: Array<Record<string, unknown>> = [];
@@ -124,9 +309,13 @@ describe("polling coordinator", () => {
     await coordinator.runCycle();
 
     expect(attempts).toBe(2);
-    expect(incidents).toHaveLength(2);
-    expect(incidents[0]).toMatchObject({ resolved: false });
-    expect(incidents[1]).toMatchObject({ resolved: true });
+    const routerIncidents = incidents.filter(
+      (item) => item.incidentType === "ROUTER_UNREACHABLE",
+    );
+    expect(routerIncidents).toHaveLength(2);
+    expect(routerIncidents[0]).toMatchObject({ resolved: false });
+    expect(routerIncidents[1]).toMatchObject({ resolved: true });
+    expect(new Set(routerIncidents.map((item) => item.eventKey)).size).toBe(2);
   });
 
   it("reports PAUSED while the emergency stop is active", async () => {
@@ -298,7 +487,15 @@ describe("polling coordinator", () => {
             interfaces: [],
             clients: [],
             aruba: pollNo === 1
-              ? [{ externalKey: "ap-1", displayName: "AP 1", reachable: true }]
+              ? [{
+                stableIdentity: "AP-1",
+                identitySource: "SERIAL" as const,
+                externalKey: "serial:AP-1",
+                aliases: ["AP 1"],
+                displayName: "AP 1",
+                displayOnly: true as const,
+                reachable: true,
+              }]
               : [],
           };
         },
