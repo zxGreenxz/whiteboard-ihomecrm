@@ -783,7 +783,7 @@ the 512 enrollment window, 128/day after enrollment, three sightings across ten
 minutes, the 1,000-row quarantine bound, 253-row keyset pagination, durable sort
 order, parent binding, and discovery/pinned/alias retention.
 
-- [ ] **Step 7: Commit Task 9**
+- [x] **Step 7: Commit Task 9**
 
 ```powershell
 git add -- supabase/migrations/20260729131000_network_center_resource_lifecycle.sql supabase/functions/network-center-worker/index.ts infra/network-center-worker/src/domain.ts infra/network-center-worker/src/routeros/sshConnector.ts infra/network-center-worker/src/polling.ts infra/network-center-worker/test/polling.test.ts infra/network-center-worker/test/sshConnector.test.ts src/lib/network-center/dto.ts src/lib/network-center/supabaseRepository.ts src/components/network-center/tabs/TopologyTab.tsx src/lib/__tests__/networkCenterSupabaseRepository.test.ts src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts
