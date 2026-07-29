@@ -11,10 +11,14 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
   Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
   `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).
-- **Regen Supabase types**: sau khi apply migration đổi schema, chạy
-  `npm run gen:types > src/integrations/supabase/types.ts` rồi thêm lại dòng
-  comment header đầu file. ĐỪNG để types.ts trôi sau migration (gây `as any` lan
-  rộng). PAT đọc từ `CLAUDE.local.md`.
+- **Regen Supabase types**: sau khi apply migration đổi schema, chạy **`npm run gen:types`**
+  — KHÔNG redirect, KHÔNG thêm header tay. `scripts/gen-supabase-types.mjs` GHI THẲNG vào
+  `src/integrations/supabase/types.ts` (outputPath hardcode ở `:192`) và TỰ chèn header
+  (`:9`/`:79`); stdout chỉ có banner npm. Muốn xem drift mà không đụng repo:
+  `cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts`.
+  ĐỪNG để types.ts trôi sau migration (gây `as any` lan rộng). PAT đọc từ `CLAUDE.local.md`.
+  ⚠ Hiện có **drift sẵn ~92 quan hệ** (`network_*`, gồm 65 phân mảnh ngày tự sinh mỗi ngày)
+  — regen sẽ kéo chúng vào diff. Xử riêng, đừng gộp vào PR tính năng.
 - **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
   GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
   chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.

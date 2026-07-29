@@ -50,7 +50,13 @@ export default defineConfig(({ mode }) => ({
     // .e2e-fleet/*.spec.ts are Playwright specs (see .e2e-fleet/playwright.config.ts),
     // not vitest unit tests — keep them out of `vitest run` so the CI quality gate
     // does not fail on Playwright-only APIs (test.use, FLEET_BASE_URL, ...).
-    exclude: [...configDefaults.exclude, ".e2e-fleet/**"],
+    //
+    // .claude/worktrees/** are git worktrees of OTHER branches (gitignored). Without
+    // this, `npx vitest run` picks up their test files and reports them as failures of
+    // the current branch — measured 29/07/2026: 9 file "đỏ" đều từ worktree
+    // mikrotik-center, 0 lỗi thật trong src/. `npx vitest run src` does NOT help
+    // (the argument is a name pattern, not a path filter).
+    exclude: [...configDefaults.exclude, ".e2e-fleet/**", "**/.claude/worktrees/**"],
   },
   build: {
     rollupOptions: {
