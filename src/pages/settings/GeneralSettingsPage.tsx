@@ -27,6 +27,10 @@ import {
   useAcceptanceGeofenceSetting,
   useUpdateAcceptanceGeofenceSetting,
 } from '@/hooks/useSettings';
+import {
+  useAccountingStandard,
+  useSetAccountingStandard,
+} from '@/hooks/useAccountingStandard';
 import { toast } from 'sonner';
 
 // =============================================
@@ -399,6 +403,77 @@ function IeAutoApproveThresholdCard() {
 }
 
 // =============================================
+// Chuẩn kế toán (Đợt 1 — org-wide, chỉ Chủ sở hữu tổ chức đổi được)
+// Nguồn sự thật: app_private.org_accounting_mode (sổ append-only) qua RPC.
+// Liệt kê THEO TỪNG TỔ CHỨC có tên: chủ có 2 org sẽ thấy 2 dòng và không bao
+// giờ bấm nhầm — mẫu cũ suy ra org bằng min(id) nên luôn ghi vào org thật.
+// =============================================
+
+function AccountingStandardCard() {
+  const { data: orgs, isLoading } = useAccountingStandard();
+  const setStandard = useSetAccountingStandard();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Chuẩn kế toán</CardTitle>
+        <CardDescription>
+          <strong>Bật</strong> — cơ chế chặt: phiếu đã ghi sổ là bất biến, muốn sửa
+          phải Huỷ rồi Tạo bản sao, huỷ khoản thu hoá đơn sẽ sinh thêm phiếu đối
+          ứng. <strong>Tắt</strong> — cơ chế linh hoạt cho mô hình nhỏ: người giữ
+          sổ tự sửa/huỷ trong kỳ chưa chốt, huỷ trừ thẳng khỏi sổ quỹ không đẻ
+          phiếu đối ứng, đổi lại kiểm soát bằng chốt & bàn giao sổ quỹ. Chỉ Chủ sở
+          hữu tổ chức thay đổi được.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Đang tải…</p>
+        ) : !orgs || orgs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Bạn chưa thuộc tổ chức nào.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {orgs.map((org) => (
+              <div
+                key={org.organization_id}
+                className="flex items-center justify-between gap-4 rounded-md border border-zinc-200 p-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{org.organization_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {org.strict_mode
+                      ? 'Đang chạy cơ chế CHẶT (chuẩn kế toán).'
+                      : 'Đang chạy cơ chế LINH HOẠT.'}
+                    {!org.can_manage && ' Chỉ Chủ sở hữu tổ chức đổi được.'}
+                  </p>
+                </div>
+                <Switch
+                  checked={org.strict_mode}
+                  disabled={!org.can_manage || setStandard.isPending}
+                  onCheckedChange={(checked) =>
+                    setStandard.mutate({
+                      organizationId: org.organization_id,
+                      strict: checked,
+                    })
+                  }
+                  aria-label={`Chuẩn kế toán cho ${org.organization_name}`}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Mọi lần bật/tắt đều được ghi vào sổ append-only kèm người đổi và thời
+          điểm. Máy chủ mới là nơi quyết định chế độ — giao diện chỉ ẩn/hiện nút.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// =============================================
 // Main Page Component
 // =============================================
 
@@ -619,6 +694,7 @@ const GeneralSettingsPage = () => {
                 settings={settings}
                 onSettingChange={handleSettingChange}
               />
+              <AccountingStandardCard />
               <IeAutoApproveThresholdCard />
             </div>
           </TabsContent>
