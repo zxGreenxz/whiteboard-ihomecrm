@@ -222,7 +222,7 @@ git commit -m "fix(network-center): thêm chế độ off fail-closed" -m "Co-Au
 - Modify: `src/lib/__tests__/networkCenterDatabaseMigration.test.ts`
 - Create: `src/lib/__tests__/networkCenterWorkerIdentityMigration.test.ts`
 
-- [ ] **Step 1: Add RED schema and ACL assertions**
+- [x] **Step 1: Add RED schema and ACL assertions**
 
 ```ts
 for (const table of [
@@ -239,13 +239,13 @@ expect(sql).toMatch(/revoke all on function .* from public, anon, authenticated/
 expect(sql).not.toMatch(/plaintext_secret|worker_secret\s+text/i);
 ```
 
-- [ ] **Step 2: Run RED and verify missing migration failure**
+- [x] **Step 2: Run RED and verify missing migration failure**
 
 ```powershell
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterWorkerIdentityMigration.test.ts
 ```
 
-- [ ] **Step 3: Implement additive tables and indexed invariants**
+- [x] **Step 3: Implement additive tables and indexed invariants**
 
 The migration uses these authoritative keys and states:
 
@@ -279,7 +279,7 @@ Assignments include organization, building, MikroTik device, `can_poll`,
 Indexes begin with `worker_id`; a partial unique prevents two active polling
 owners for one device.
 
-- [ ] **Step 4: Implement service-role-only auth/admin RPC contracts**
+- [x] **Step 4: Implement service-role-only auth/admin RPC contracts**
 
 Create:
 
@@ -296,7 +296,7 @@ EXECUTE only to `service_role`; the private auth helper is callable only from th
 new SECURITY DEFINER worker RPCs and returns worker UUID/capabilities internally,
 never digest/fingerprint to Edge.
 
-- [ ] **Step 5: Run migration/ACL/view gates**
+- [x] **Step 5: Run migration/ACL/view gates**
 
 ```powershell
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterDatabaseMigration.test.ts src/lib/__tests__/networkCenterWorkerIdentityMigration.test.ts
@@ -304,7 +304,7 @@ node scripts/check-definer-acl.mjs
 node scripts/check-view-invoker.mjs
 ```
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
 ```powershell
 git add -- supabase/migrations/20260729130000_network_center_worker_identity.sql src/lib/__tests__/networkCenterDatabaseMigration.test.ts src/lib/__tests__/networkCenterWorkerIdentityMigration.test.ts
