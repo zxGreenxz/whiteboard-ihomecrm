@@ -8,6 +8,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { periodBlockMessage } from "@/lib/cashbookClosing";
 
 export interface AnnotateIncomeExpenseInput {
   voucherId: string;
@@ -48,13 +49,9 @@ export const useAnnotateIncomeExpense = () => {
         },
       );
       if (error) {
-        const msg = error.message ?? "";
-        // Kỳ đã chốt & bàn giao (Đợt 3) — nói rõ vì sao thay vì ném P0001 thô.
-        toast.error(
-          msg.includes("[CASHBOOK_CLOSED]")
-            ? "Sổ quỹ đã chốt & bàn giao — phiếu trong kỳ này không sửa được nữa."
-            : msg || "Không lưu được chứng từ/ghi chú",
-        );
+        // Kỳ đã đóng (Đợt 3) — nói rõ vì sao thay vì ném P0001 thô.
+        const blocked = periodBlockMessage(error.message);
+        toast.error(blocked ?? error.message ?? "Không lưu được chứng từ/ghi chú");
         throw error;
       }
       return data as { id: string; changed: boolean };
