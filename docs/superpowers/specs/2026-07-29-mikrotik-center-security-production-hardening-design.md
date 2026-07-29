@@ -102,9 +102,10 @@ Migration hardening tạo các bảng sau:
 - `network_worker_credentials`: worker UUID, SHA-256 digest duy nhất của secret
   random 32 bytes, safe fingerprint, `not_before`, `expires_at`, `revoked_at`,
   `last_used_at`. Plaintext secret không vào database.
-- `network_worker_building_assignments`: worker UUID, organization UUID,
-  building UUID, active interval và audit actor. Primary/unique key ngăn duplicate
-  assignment và composite FK ngăn cross-tenant building.
+- `network_worker_assignments`: worker UUID, organization UUID, building UUID,
+  MikroTik device UUID, `can_poll`, `can_inventory`, `can_execute`, active
+  interval và audit actor. Composite device/building FK ngăn cross-tenant target;
+  partial unique ngăn hai active polling owners cho cùng device.
 
 Credential mặc định rotate mỗi 90 ngày. Hai credential được overlap tối đa 24
 giờ để rollout không gián đoạn. Revoke có hiệu lực ở request tiếp theo; Edge
@@ -114,26 +115,29 @@ không cache kết quả auth lâu hơn một request trong bản đầu tiên.
 
 1. Worker gửi `x-network-worker-secret`; body không chứa authoritative
    `workerId`.
-2. Edge kiểm tra chiều dài, băm SHA-256 và gọi RPC service-role-only
-   `network_center_authenticate_worker_v2`.
-3. Database chỉ trả về một principal đang active có credential đúng thời gian và
-   chưa revoke. Không khớp hoặc khớp mơ hồ đều fail closed.
-4. Edge inject UUID principal đã xác thực khi gọi worker RPC v2.
-5. Mọi list, claim, renew, stage, complete, telemetry, discovery, incident,
-   snapshot, rollup và heartbeat RPC đều join assignment trước khi đọc/ghi.
+2. Edge kiểm tra chiều dài, băm SHA-256 và truyền digest vào đúng worker RPC v2;
+   Edge không được tự chọn hoặc inject worker UUID.
+3. Mỗi RPC gọi cùng private authentication helper trong PostgreSQL để suy ra đúng
+   một principal active có credential đúng thời gian và chưa revoke. Không khớp
+   hoặc khớp mơ hồ đều fail closed.
+4. Mọi list, claim, renew, stage, complete, telemetry, discovery, incident,
+   snapshot, rollup và heartbeat RPC kiểm tra capability rồi join final
+   device/building assignment trước khi đọc/ghi.
 6. Một `workerId` cũ có thể được nhận tạm như non-authoritative compatibility
    hint trong đúng một rollout; mismatch bị 401 và được audit. Sau cutover, field
    này bị xóa khỏi client và Edge schema.
 
 ### Heartbeat và browser scope
 
-- `network_worker_heartbeats` trở thành internal-only: revoke authenticated
-  SELECT và bỏ khỏi Supabase Realtime publication.
+- `network_worker_heartbeats`/runtime trở thành internal-only: revoke
+  authenticated SELECT và bỏ khỏi Supabase Realtime publication.
+- Worker cập nhật safe `network_worker_building_status` projection theo explicit
+  assignment. Projection có organization/building key, RLS `network_center.view`
+  và là heartbeat source duy nhất được publish Realtime.
 - Fleet/building RPC tổng hợp heartbeat bằng assignment và chỉ trả safe fields:
   status, version, capability, last seen, queue age và assigned building health.
-- UI không subscribe trực tiếp heartbeat. Nó dùng Realtime từ current projection,
-  incidents và command events để invalidate; heartbeat được refetch theo query
-  interval khi trang đang mở.
+- UI không subscribe raw heartbeat. Nó dùng Realtime từ building-status/current
+  projections, incidents và command events chỉ để invalidate scoped queries.
 
 ### Provision, rotate và revoke
 
@@ -159,32 +163,40 @@ và readback row đã redact sau insert/update.
 
 ### SFTP và RouterOS reads
 
-- Text export: tối đa 8 MiB, deadline 30 giây.
-- Binary backup: tối đa 64 MiB, deadline 60 giây.
+- Text export: tối đa 1 MiB, deadline 15 giây.
+- Binary backup: tối đa 16 MiB, deadline 45 giây.
 - Reader dùng bounded stream; dừng trước khi allocation vượt limit, abort khi
-  deadline hết và luôn đóng handle/SFTP session ở mọi terminal path.
+  deadline hết và luôn đóng handle/SFTP session ở mọi terminal path. Binary
+  backup stream vào temp file; không gom toàn file thành một Buffer.
 - Post-read size check vẫn giữ như defense-in-depth nhưng không phải control chính.
 - Timeout/oversize tạo typed worker error, không được giữ lease vô thời hạn.
+- Worker container giữ `0.50 CPU`, `512 MiB`, Node old-space `320 MiB`, poll/command
+  concurrency 3, SFTP artifact concurrency 1 và claim limit 3.
 
 ### Queue admission và retention
 
 Admission nằm trong cùng transaction/advisory lock với enqueue:
 
-- tối đa 1 disruptive command non-terminal cho mỗi device;
-- tối đa 10 command non-terminal cho mỗi actor;
-- tối đa 50 command non-terminal cho mỗi organization;
-- semantic duplicate cooldown 5 phút cho reboot/cycle, 60 giây cho DNS flush,
-  DHCP renew và snapshot;
+- tối đa 2 command non-terminal và chỉ 1 disruptive command cho mỗi device;
+- tối đa 8 command non-terminal cho mỗi actor;
+- tối đa 30 command non-terminal cho mỗi organization;
+- rate tối đa 12/device/giờ, 30/actor/giờ và 120/organization/giờ;
+- semantic duplicate cooldown: reboot 10 phút, access-port cycle 2 phút,
+  DNS/DHCP 30 giây và snapshot 60 giây;
 - idempotency key của một user intent ổn định qua close/reopen/reconnect.
 
 Khi chạm limit, RPC trả typed conflict/rate-limit và không tạo command/event/audit
-orphan. Đây là admission control, không phải approval. Command, attempts và
-command events giữ 36 tháng; audit giữ 84 tháng; cleanup theo batch và tenant.
+orphan. Đây là admission control, không phải approval. Disruptive command hết hạn
+sau 15 phút; DNS/DHCP 30 phút; snapshot 2 giờ. Terminal commands, attempts và
+command events giữ 180 ngày sau khi sanitized summary đã vào audit; active hoặc
+`UNCERTAIN` không purge. Audit tiếp tục append-only và không tự động purge.
 
 ### Backup volume
 
-- Mỗi router giữ tối đa 20 encrypted backups và tối đa 60 ngày.
-- Toàn volume giữ tối đa 16 GiB và luôn dự trữ ít nhất 16 GiB filesystem free.
+- Mỗi router giữ tối đa 20 encrypted backups, luôn giữ hai bản verified mới nhất
+  và tối đa 30 ngày.
+- Volume có soft cap 6 GiB, hard cap 8 GiB và luôn dự trữ ít nhất 20 GiB host
+  filesystem free.
 - Rotation theo trạng thái terminal và oldest-safe-first; không xóa artifact đang
   được command sử dụng hoặc artifact gần nhất đã verify cho từng router.
 - Trước disruptive mutation, worker phải chứng minh pre-backup đã được ghi,
@@ -198,11 +210,14 @@ command events giữ 36 tháng; audit giữ 84 tháng; cleanup theo batch và te
 - Stable identity ưu tiên serial; nếu thiếu dùng normalized hardware MAC. Display
   name/IP/neighbor key chỉ là alias, không tạo identity mới khi stable key trùng.
 - Record không có stable hardware key bị quarantine, không thành durable device.
-- Mỗi MikroTik được tạo tối đa 64 discovery identities mới trong 60 phút; existing
-  identities vẫn refresh bình thường. Phần vượt ngưỡng bị quarantine và tạo
+- Mỗi MikroTik được promote tối đa 64 discovery identities mới mỗi poll và 128
+  mỗi ngày; cửa sổ enrollment đầu tiên cho phép tối đa 512 stable identities
+  trong 24 giờ đầu. Identity mới chỉ promote sau ba sightings trải ít nhất 10 phút.
+  Existing identities vẫn refresh bình thường. Phần vượt ngưỡng bị quarantine và tạo
   incident `INVENTORY_DEGRADED`, không làm router offline.
-- Discovery-only device chuyển `STALE` sau 7 ngày không thấy và purge sau 30 ngày.
-  Device đã pin/enroll không bị purge tự động.
+- Discovery-only device thành offline/stale sau 24 giờ, inactive sau 7 ngày và
+  purge sau 30 ngày. Alias tombstone giữ 90 ngày để ngăn churn lặp lại. Device đã
+  pin/enroll không bị purge tự động.
 - UI luôn dùng keyset pagination; page mặc định 100, tối đa 250. Tổng inventory
   hợp lệ không bị giới hạn.
 
@@ -247,12 +262,12 @@ không có immutable physical key fail closed. Rename không thay đổi protect
 
 ### Bootstrap principal và recovery network
 
-- Managed RouterOS username cố định `ihome-netops`; không nhận arbitrary username.
+- Managed RouterOS username cố định `ihome-nc-worker`; không nhận arbitrary username.
 - User phải có exact ownership comment marker do generator tạo. Nếu username đã
   tồn tại nhưng marker không khớp, bootstrap dừng trước mutation.
 - Rollback chỉ disable/remove user khi exact marker khớp; không đụng unmanaged
   principal.
-- Recovery IPv4 CIDR chỉ nhận RFC1918 `/24` đến `/32` và phải gắn với explicit
+- Recovery IPv4 CIDR chỉ nhận RFC1918 `/28` đến `/32` (mặc định `/32`) và phải gắn với explicit
   non-WAN recovery interface. Public, CGNAT, multicast, loopback, link-local,
   `/0` đến `/23`, hoặc thiếu interface đều bị từ chối.
 - Management firewall rule ràng buộc đồng thời `src-address` và `in-interface`.
@@ -405,12 +420,15 @@ system owner, không phát qua tenant heartbeat row.
 
 ### Wave 2 — Worker cutover
 
-1. Provision `vultr-network-center-01` và explicit assignments cho enabled sites.
+1. Provision `vultr-network-center-01` và explicit device assignments cho enabled
+   sites với `can_poll=false`, `can_inventory=false`, `can_execute=false`.
 2. Issue unique credential vào VPS secret file; verify owner-only permissions.
 3. Provision redacted connection metadata và pinned host key bằng admin script.
 4. Deploy immutable worker image bằng blue-green/systemd ở emergency-stop.
-5. Chạy 7 polling cycles ở read-only, so principal/assignment/telemetry readback.
-6. Xóa global bearer khỏi Edge/VPS và chứng minh old bearer bị 401.
+5. Bật poll/inventory cho DEMO, giữ execute false, rồi chạy 7 polling cycles ở
+   read-only để so principal/assignment/telemetry readback.
+6. Sau clean soak 24 giờ, xóa global bearer khỏi Edge/VPS và chứng minh old
+   bearer bị 401.
 7. Revoke browser heartbeat access và chuyển UI sang scoped aggregate.
 
 ### Wave 3 — Demo router
@@ -424,9 +442,9 @@ system owner, không phát qua tenant heartbeat row.
 
 ### Wave 4 — iHomeCRM và fleet rollout
 
-1. Enable DEMO org, sau đó một building thật ở read-only.
+1. Enable DEMO org, sau đó một building thật ở read-only trong 24 giờ.
 2. Bật execute cho building đó chỉ khi backup reserve và postcondition smoke pass.
-3. Mở dần các assignment còn lại; Aruba vẫn display-only.
+3. Mở dần `1 → 5 → 15` building; Aruba vẫn display-only.
 4. Push verified commit lên `origin/main`; đợi Vercel serve đúng revision.
 5. Chạy headless production E2E ở `https://ptcrm.vercel.app/network-center`.
 
@@ -463,6 +481,10 @@ system owner, không phát qua tenant heartbeat row.
   drift, migration deployer dry-run/readback, `git diff --check` và Playwright
   fleet headless. CI bắt buộc chạy cả nested worker package, Edge tests, queue và
   retention verifiers.
+- Canary capacity gate: worker RSS không quá 384 MiB steady/448 MiB peak,
+  5-minute CPU average dưới 0.35 core, 15-router poll-cycle p95 dưới 45 giây,
+  cleanup statement dưới 2 giây, queue admission p95 dưới 200 ms và oldest online
+  queue age dưới 120 giây.
 
 ### Security closure
 
