@@ -811,9 +811,9 @@ For each bundle, recompute DSSE PAE from the exact payload type and decoded payl
 
 Signature, issuer, source, workflow, ref, build-type, resolved-commit, and subject validation must be performed against those exact committed raw bytes. A network refetch may compare its response bytes/hashes with `M`, but it may never replace or rewrite the committed provenance inputs.
 
-`UPSTREAM.json` also records `licenseManifestSha256`, `licensePackageRootCount=38`, `licenseCarrierCount=39`, and the reviewed manifest schema. `FORK.json` is external control metadata and is forbidden from the tgz, so its manifest cannot self-reference. It fixes package name/version `@openclaw/zalouser@2026.7.1`, plugin ID/channel `zalouser`, the ordered patch list, patch-series SHA-256, bridge-overlay manifest/SHA-256, `licenseManifestSha256`, `artifactMembers` (exact sorted path/type/mode/size/SHA-256 for every internal tgz member), canonical `artifactMembersSha256`, exact public/exports/bin reachability roots, reviewed `runtimeDynamicImportPatterns`, reviewed `runtimeAssetPatterns`, `runtimeReachabilityAllowlist` (exact sorted runtime code/data closure), exact legal-member exceptions, exact package-metadata exceptions, built-tgz SHA-256, source epoch `1785062400`, internal artifact path, and `installedTree` with exact sorted installed path/type/mode/size/SHA-256 entries, file/directory counts, and canonical root hash. Every archive member must be a regular file with `type="file"`; directory, symlink, hardlink, device, FIFO, sparse, duplicate, traversal, and case-colliding entries are structurally forbidden. Static derivation must equal the allowlist; mandatory instrumented scenarios must produce a nonempty resolved set that is a subset of the allowlist. Every runtime-classified artifact member must belong to the allowlist, with only the two explicit legal/metadata exception sets outside it. Neither JSON derives its manifest hash from the internal notice or tgz; the committed reviewed `licenses/manifest.json` is the independent source of truth. Compute patch-series SHA-256 from UTF-8 bytes for `"ihome-zalouser-patch-series-v1\\0"` followed, in `patches/series` order, by each relative path, NUL, raw patch bytes, and NUL. Compute the overlay SHA-256 from `"ihome-zalouser-bridge-overlay-v1\\0"` followed by each ordered `src/bridge/**` relative path, NUL, raw bytes, and NUL. Reject missing/reordered/unlisted patch or overlay files, changed source snapshot/overlay bytes, wrong package metadata, extra tgz files, any packed `FORK.json`, any unlisted artifact member, resolved-unlisted runtime members, artifact runtime members outside the allowlist, missing allowlisted runtime members, path/type/mode/size/SHA-256 mismatch, TypeScript/tests in package-owned packed output, or an unrecorded root/dependency license/notice. Optional statically classified allowlist members may remain untraced when no mandatory scenario reaches them.
+`UPSTREAM.json` also records `licenseManifestSha256`, `licensePackageRootCount=38`, `licenseCarrierCount=39`, and the reviewed manifest schema. `FORK.json` is external control metadata and is forbidden from the tgz, so its manifest cannot self-reference. It fixes package name/version `@openclaw/zalouser@2026.7.1`, plugin ID/channel `zalouser`, the ordered patch list, patch-series SHA-256, bridge-overlay manifest/SHA-256, `licenseManifestSha256`, `artifactMembers` (exact sorted path/type/mode/size/SHA-256 for every internal tgz member), canonical `artifactMembersSha256`, exact public/exports/bin reachability roots, exhaustive source and emitted runtime-site inventories plus their canonical SHA-256 values, `runtimeReachabilityAllowlist` (exact sorted runtime code/data closure), exact legal-member exceptions, exact package-metadata exceptions, built-tgz SHA-256, source epoch `1785062400`, internal artifact path, and `installedTree` with exact sorted path/type/mode/size/SHA-256 entries, file/directory counts, and canonical root hash. Every archive member must be a regular file with `type="file"`; directory, symlink, hardlink, device, FIFO, sparse, duplicate, traversal, and case-colliding entries are structurally forbidden. Static derivation must equal the allowlist; mandatory instrumented scenarios must produce a nonempty resolved set that is a subset of the allowlist. Every runtime-classified artifact member must belong to the allowlist, with only the two explicit legal/metadata exception sets outside it. Neither JSON derives its manifest hash from the internal notice or tgz; the committed reviewed `licenses/manifest.json` is the independent source of truth. Compute patch-series SHA-256 from UTF-8 bytes for `"ihome-zalouser-patch-series-v1\\0"` followed, in `patches/series` order, by each relative path, NUL, raw patch bytes, and NUL. Compute the overlay SHA-256 from `"ihome-zalouser-bridge-overlay-v1\\0"` followed by each ordered `src/bridge/**` relative path, NUL, raw bytes, and NUL. Reject missing/reordered/unlisted patch or overlay files, changed source snapshot/overlay bytes, wrong package metadata, extra tgz files, any packed `FORK.json`, any unlisted artifact member, resolved-unlisted runtime members, artifact runtime members outside the allowlist, missing allowlisted runtime members, path/type/mode/size/SHA-256 mismatch, TypeScript/tests in package-owned packed output, or an unrecorded root/dependency license/notice. Optional statically classified allowlist members may remain untraced when no mandatory scenario reaches them.
 
-`FORK.json.runtimeDynamicSiteInventory` must enumerate every dynamic resolution or file-read site with source location, operation kind, exact static result or reviewed finite pattern, and exhaustive expanded members. Covered operations include non-literal `import()`, `require` and `createRequire`, `import.meta.resolve`, package `exports`/`bin` indirection, computed filesystem reads/assets, and computed module resolution. Any site that is absent, unclassified, non-finite, or not exhaustively expanded fails verification even if no runtime test exercises it.
+`FORK.json.runtimeDynamicSiteInventory` must enumerate every dynamic resolution or file-read candidate across every esbuild code input, including bundled dependencies, with source location, operation kind, exact classification, target, and exhaustive artifact expansion. `bundled-static`, `node-builtin`, the two exact reviewed optional externals, and exact external runtime-input reads are explicit zero-artifact-member classifications; no other empty expansion is allowed. `FORK.json.emittedRuntimeSiteInventory` independently inventories residual dynamic imports, generated `__require` calls, and filesystem reads in every emitted runtime member. The qualifying verifier rebuilds the prepared source universe independently, compares both inventories and their hashes byte-for-byte, and reparses installed JavaScript rather than trusting supplied metadata. Covered operations include `import()`, `require` and `createRequire`, `import.meta.resolve`, every package main/export/bin/OpenClaw entrypoint, computed filesystem reads/assets, and computed module resolution. Any site that is absent, unclassified, non-finite, or not exhaustively classified fails verification even if no runtime test exercises it.
 
 Add compliance fixtures that byte-compare upstream root `LICENSE` to SHA-256 `73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d` and root `THIRD_PARTY_NOTICES.md` to SHA-256 `c84200f7a9bb8b3abc8563520433316716a9eb83915cfe7c3063d5e6fce5e7ca`; require the notice to be copied verbatim as `upstream/THIRD_PARTY_NOTICES.openclaw.md`. `licenses/manifest.json` must independently record every package selection and, for each of all 39 carriers, exact source path, byte size, SHA-256, and output path. Require `licenses/pako@2.2.0/LICENSE` and `licenses/pako@2.2.0/lib/zlib/README`; explicitly select the included Spark-md5 WTFPL branch and reject any network fetch or synthesized absent `LICENSE2`. Internal `THIRD_PARTY_NOTICES.md` must contain the upstream notice verbatim plus the manifest inventory, carrier paths, pako exception, and Spark selection. Every carrier must exist at `licenses/<package>@<version>/<original-path>` with exact bytes. The verifier rejects missing, extra, or changed carriers; dependency-root mismatch; any new notice file; path/case collision; traversal; or symlink entry. The packed compliance entries must be exactly `package/LICENSE`, `package/THIRD_PARTY_NOTICES.md`, and `package/licenses/**`; tests retain required runtime JS/JSON but reject dependency source/tests/fixtures/snapshots/docs/examples, every source map, and every inline `sourceMappingURL`.
 
@@ -908,13 +908,13 @@ zod@4.4.3 | MIT | package/node_modules/zod/LICENSE | 1072 | 3f1189b28e3866e0d979
 
 Add artifact behavior tests with independent static closure and runtime tracing. Before deriving closure, a static analyzer inventories every dynamic resolution/file-read site across the prepared source: non-literal `import()`, `require`/`createRequire`, `import.meta.resolve`, package `exports`/`bin` indirection, computed filesystem reads/assets, and computed module resolution. Each site must resolve to exact members statically or map to an exact reviewed finite pattern whose expansion is exhaustive; an absent, unclassified, open-ended, or incompletely expanded site fails even when runtime never exercises it. The analyzer independently derives the exact runtime code/data closure from all public entrypoints, `package.json` `exports`/`bin`, recursive static imports/requires, and reviewed site expansions without using the allowlist/member manifest; require `derivedRuntimeSet == runtimeReachabilityAllowlist` and require every artifact member classified as runtime code/data to belong to that allowlist. Exact legal carriers and enumerated package metadata are the only non-runtime exceptions.
 
-Clean offline install/load tests instrument module resolution and file/asset reads over the mandatory scenario matrix: discovery/config/setup/doctor; QR and session restore; inbound text/media; outbound text/media/link/reaction; control traffic; authorization denial and UNKNOWN; and offline restart. The aggregate `resolvedRuntimeSet` must be nonempty and a subset of `runtimeReachabilityAllowlist`; every resolved-unlisted member fails. Optional members statically proven in the allowlist may remain untraced, so listed-but-unresolved is not a failure. Dynamic-site classification remains exhaustive and fail-closed regardless of coverage. A negative fixture adds an unexercised/unclassified site and must fail static analysis. The tests load the exact tgz through the pinned OpenClaw plugin loader, require one `zalouser` plugin/channel and the private RPC, cross-check `plugins list --json`, plugin inspect JSON, installed `package.json`, `FORK.json.installedTree`, and every loader/discovery root, and reject duplicate or shadow packages. Differential tests include explicit stock-fail/fork-pass fixtures for the private inbound/outbound authorization seams, plus prepared-tree versus installed-tgz parity for unchanged public behavior. Structural bans cannot be waived, pruning cannot delete an allowlisted member, and no artifact member absent from `FORK.json.artifactMembers` may install or load.
+Clean offline install/load tests instrument module resolution and file/asset reads over the mandatory scenario matrix: discovery/config/setup/doctor; QR and session restore; inbound text/media; authorized outbound text/media; rejected outbound link/reaction bypass attempts; control traffic; authorization denial and UNKNOWN; and offline restart. The aggregate `resolvedRuntimeSet` must be nonempty and a subset of `runtimeReachabilityAllowlist`; every resolved-unlisted member fails. Optional members statically proven in the allowlist may remain untraced, so listed-but-unresolved is not a failure. Dynamic-site classification remains exhaustive and fail-closed regardless of coverage. A negative fixture adds an unexercised/unclassified site and must fail static analysis. The tests load the exact tgz through the pinned OpenClaw plugin loader, require one `zalouser` plugin/channel and the private RPC, cross-check `plugins list --json`, plugin inspect JSON, installed `package.json`, `FORK.json.installedTree`, and every loader/discovery root, and reject duplicate or shadow packages. Differential tests include explicit stock-fail/fork-pass fixtures for the private inbound/outbound authorization seams, plus prepared-tree versus installed-tgz parity for unchanged public behavior. Structural bans cannot be waived, pruning cannot delete an allowlisted member, and no artifact member absent from `FORK.json.artifactMembers` may install or load.
 
 The pinned-host harness tests the actual patched source choke points. Inbound tests cover `extensions/zalouser/src/monitor.ts` and `extensions/zalouser/src/zalo-js.ts`: the provider callback remains void/non-awaited, while the fork's internal listener emits the complete `ZaloUserInboundEnvelopeV1`, awaits the local bridge, and permits no OpenClaw dispatch/queue or built-in reply before WAL/FULL success. Stable-ID cases cover event ID only, message ID only, both present, exact replay, mismatched event/message mapping, same ID with different payload, reuse across event kinds in one account, and the same textual ID in different accounts/organizations without cross-dedupe. Fingerprint is exercised only when both stable IDs are null and remains at-least-once with collision telemetry. Media manifests commit while bytes may remain `PENDING`; bridge error/timeout/crash/ENOSPC/corrupt acknowledgement never marks internal listener success. Tests make no provider-level acknowledgement or pre-callback zero-loss claim.
 
 The same harness must also prove the successful path remains passive: after WAL/FULL commit returns success, after OpenClaw dispatch/queue, and after canonical automation completes as no-send, human draft, or outbox creation, built-in ZaloUser/OpenClaw reply count, pairing notification count, and every non-private-RPC business-content provider frame count remain zero. Creating an outbox does not emit; only a later explicit authorized `zalouser.bridge.send` call may enter the provider path.
 
-Outbound tests cover `extensions/zalouser/src/send.ts` including text/media/link/reaction, `extensions/zalouser/src/channel.adapters.ts`, and `extensions/zalouser/src/tool.ts`. Only `zalouser.bridge.send` may create an authorized business-send context. The fork builds the exact ordered provider batch first and calls `/v1/outbox/authorize-send` immediately before provider I/O. Missing, denied, errored, timed-out, stale, replayed, or hash-mismatched authorization emits zero provider frames. Generic `send`, message tool, pairing notification, and direct adapter/tool calls fail closed. Timeout/disconnect/ack loss after possible handoff returns UNKNOWN evidence and never retries. Typing, seen, and delivery receipts are fixed-schema control traffic and cannot carry business content.
+Outbound tests cover `extensions/zalouser/src/send.ts` for the only supported business parts (`TEXT | MEDIA`), explicitly reject link/reaction before authorization and provider I/O, and cover `extensions/zalouser/src/channel.adapters.ts` plus `extensions/zalouser/src/tool.ts`. Only `zalouser.bridge.send` may create an authorized business-send context. The fork materializes and verifies the complete ordered text/media provider batch first, then calls `/v1/outbox/authorize-send` as the final awaited operation immediately before provider I/O. Missing, denied, errored, timed-out, stale, replayed, or hash-mismatched authorization emits zero provider frames. Generic `send`, message tool, pairing notification, and direct adapter/tool calls fail closed. Timeout/disconnect/ack loss after possible handoff returns UNKNOWN evidence and never retries. Typing, seen, and delivery receipts are fixed-schema control traffic and cannot carry business content.
 
 Add session-at-rest tests proving plaintext credentials and session files exist only in tmpfs, persistent files use AES-256-GCM with a unique nonce/auth tag, decrypt failure is fatal, writes use temp file + fsync + atomic rename + directory fsync, rotation re-encrypts with a new key generation, and no plaintext fallback is possible.
 
@@ -932,7 +932,10 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
+$nodePath = (Resolve-Path -LiteralPath $env:OPENCLAW_NODE_PATH -ErrorAction Stop).Path
+if (-not [IO.Path]::IsPathFullyQualified($nodePath)) { throw 'Pinned Node path must be absolute' }
+& $nodePath --version
+if ($LASTEXITCODE -ne 0) { throw 'Pinned Node authority failed' }
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge ci
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge test
 npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run typecheck
@@ -1059,7 +1062,7 @@ The first gate commands, before any `npm ci` or executable verifier/build, requi
 
 The Dockerfile has exactly two stages. The `install` stage has one application install `RUN --network=none`: the Node version assertion is the first command, then the source epoch check creates one cache that did not previously exist, proves it is empty, installs only the local tgz with offline/no-fallback flags, and normalizes reviewed OpenClaw install state. No Docker stage runs session-crypto `npm ci`, TypeScript, tests, or any compiler. The `runtime` stage copies only the installed fork closure, exact reviewed `session-crypto/dist/package.json`, `dist/crypto.js`, `dist/daemon.js`, and runtime config, excluding d.ts/tests/source/package lock/tsconfig/node_modules/compiler/cache as well as tgz, `FORK.json`, image lock, scripts, and temporary state. The pinned base image is still acquired separately by BuildKit under `--pull`; `RUN --network=none` constrains application execution and does not claim air-gapped base acquisition. `install-vendored-zalouser.sh` verifies the local tgz and performs no npm metadata/tarball request. Verification requires matching results from `openclaw plugins list --json`, plugin inspect JSON, installed package.json, installedTree, every loader/discovery root, exact final-rootfs hashes for the three session files, and duplicate/shadow scans. The template contains no secrets or customer/provider identifiers.
 
-`build-reproducible-image.ps1` runs only on the reviewed Linux amd64 host and accepts absolute `-BuildxPath` and `-DockerPath` values; it rejects PATH lookup, verifies buildx semantic version exactly `0.13.1`, verifies Docker client/server exactly `29.1.3` on `linux/amd64`, and pins both platform binary SHA-256 values. The helper also requires the absolute exact-R export root, its canonical export manifest path and SHA-256, exact `M`/`R`, and both canonical approval reports. It re-runs the reviewed exporter verification from the Git-backed source working directory before Docker activity. It creates two fresh `docker-container` builders named `ihome-openclaw-gate-a-<32hex>` and `ihome-openclaw-gate-b-<32hex>` with exact BuildKit `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`; each worker reports `v0.13.2`. In one `try/finally`, it builds the same exact-`-ReviewedTree` context through both builders with `--platform linux/amd64 --no-cache --pull --build-arg SOURCE_DATE_EPOCH=1785062400 --provenance=false --sbom=false` and distinct pinned OCI outputs. Every native call goes through a self-contained checked PowerShell 7.3 wrapper. Cleanup is exact-name and validated-temp-root only.
+`build-reproducible-image.ps1` runs only on the reviewed Linux amd64 host and requires absolute `-NodePath`, `-GitPath`, `-BuildxPath`, and `-DockerPath` values plus an explicit `-DockerHost` Unix socket URI. It rejects PATH lookup; pins Node `24.15.0`, Git `2.53.0`, buildx `0.13.1`, and Docker client/server `29.1.3` on `linux/amd64`; and re-hashes each authority around security-critical execution. The helper also requires the absolute exact-R export root, its canonical export manifest path and SHA-256, exact `M`/`R`, both canonical approval reports, retained fork OCI A/B paths, a distinct stock-control OCI path, and a retained upstream-tarball path. It re-runs the reviewed exporter verification from the Git-backed source working directory before Docker activity. It creates two fresh `docker-container` builders named `ihome-openclaw-gate-a-<32hex>` and `ihome-openclaw-gate-b-<32hex>` with exact BuildKit `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`; each worker reports `v0.13.2`. In one `try/finally`, it builds the same exact-`-ReviewedTree` context through both builders with `--platform linux/amd64 --no-cache --pull --build-arg SOURCE_DATE_EPOCH=1785062400 --provenance=false --sbom=false`, retains byte-identical fork A/B archives, and builds the stock control with application network disabled. Every native call goes through a checked PowerShell 7.3 wrapper. Cleanup is exact-name and validated-temp-root only.
 
 The helper invokes `verify-image-lock.mjs --oci-a ... --oci-b ...` before cleanup. The verifier requires byte-identical OCI archive bytes, then extracts both safely and requires identical `oci-layout`, `index.json`, file set, path/type/mode/size/SHA-256 manifest, and every blob byte; it separately verifies index/manifest/config/layer digests, mtimes, base digest, installedTree, plugin list/inspect/package/discovery roots, no duplicate/shadow/upstream package, private RPC, and stock-fail/fork-pass behavior. It byte-compares the exact three session-crypto input Git blobs with final-rootfs `dist/package.json`, `dist/crypto.js`, and `dist/daemon.js`, rejects every extra session path, and records both input and installed hashes. It validates `build-evidence.json` against closed `build-evidence.schema.v1.json` (`additionalProperties: false` recursively) and embeds exact canonical `M`/`R` review report bytes as base64 plus size/SHA-256 and reviewed identity fields. It atomically promotes gate A to the explicit source `.release/` path and records exact `M`, `R`, Git-blob provenance inputs including trust root, buildx binary path/hash/version, BuildKit pin, context-root v2, archive/layout/index/blob equality, installed tree, three-file session closure, scenario runtime sets, promoted archive path/hash, and every Task 2 result. Missing/tampered bytes, schema drift, review-report mismatch, lock mismatch, or tracked mutation fails.
 
@@ -1069,7 +1072,12 @@ Run:
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
-node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
+$nodePath = (Resolve-Path -LiteralPath $env:OPENCLAW_NODE_PATH -ErrorAction Stop).Path
+$gitPath = (Resolve-Path -LiteralPath $env:OPENCLAW_GIT_PATH -ErrorAction Stop).Path
+$dockerHost = $env:OPENCLAW_DOCKER_HOST
+if (-not [IO.Path]::IsPathFullyQualified($nodePath) -or -not [IO.Path]::IsPathFullyQualified($gitPath)) { throw 'Pinned Node/Git paths must be absolute' }
+& $nodePath --version
+if ($LASTEXITCODE -ne 0) { throw 'Pinned Node authority failed' }
 $R = $env:OPENCLAW_REVIEWED_R_SHA
 if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
 $M = $env:OPENCLAW_REVIEWED_M_SHA
@@ -1081,23 +1089,24 @@ if (-not [IO.Path]::IsPathFullyQualified($buildxPath)) { throw 'OPENCLAW_BUILDX_
 $dockerPath = (Resolve-Path -LiteralPath $env:OPENCLAW_DOCKER_PATH -ErrorAction Stop).Path
 if (-not [IO.Path]::IsPathFullyQualified($dockerPath)) { throw 'OPENCLAW_DOCKER_PATH must resolve to an absolute path' }
 $sourceRoot = (Get-Location).Path
-if ((git rev-parse HEAD).Trim() -ne $R) { throw 'HEAD is not exact reviewed R' }
-if (-not (git merge-base --is-ancestor $M $R)) { throw 'Reviewed M is not an ancestor of reviewed R' }
-if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'R working tree is not completely clean' }
-git diff --cached --quiet
+if ((& $gitPath --no-replace-objects -C $sourceRoot rev-parse HEAD).Trim() -ne $R) { throw 'HEAD is not exact reviewed R' }
+& $gitPath --no-replace-objects -C $sourceRoot merge-base --is-ancestor $M $R
+if ($LASTEXITCODE -ne 0) { throw 'Reviewed M is not an ancestor of reviewed R' }
+if (@(& $gitPath --no-replace-objects -C $sourceRoot status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'R working tree is not completely clean' }
+& $gitPath --no-replace-objects -C $sourceRoot diff --cached --quiet
 if ($LASTEXITCODE -ne 0) { throw 'R index is not empty' }
 $gitStatePaths = @(
-  (git rev-parse --git-path MERGE_HEAD)
-  (git rev-parse --git-path rebase-merge)
-  (git rev-parse --git-path rebase-apply)
+  (& $gitPath --no-replace-objects -C $sourceRoot rev-parse --git-path MERGE_HEAD)
+  (& $gitPath --no-replace-objects -C $sourceRoot rev-parse --git-path rebase-merge)
+  (& $gitPath --no-replace-objects -C $sourceRoot rev-parse --git-path rebase-apply)
 )
 if (@($gitStatePaths | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'Merge/rebase is in progress' }
 
 $exporterRel = 'services/openclaw-zalo-cell/scripts/export-reviewed-tree.mjs'
-$exporterBlob = (git rev-parse "$R`:$exporterRel").Trim()
+$exporterBlob = (& $gitPath --no-replace-objects -C $sourceRoot rev-parse "$R`:$exporterRel").Trim()
 if ($exporterBlob -notmatch '^[0-9a-f]{40}$') { throw 'Reviewed exporter blob ID is invalid' }
-if ((git cat-file -t $exporterBlob).Trim() -ne 'blob') { throw 'Reviewed exporter is not a blob' }
-$exporterSize = [int64](git cat-file -s $exporterBlob)
+if ((& $gitPath --no-replace-objects -C $sourceRoot cat-file -t $exporterBlob).Trim() -ne 'blob') { throw 'Reviewed exporter is not a blob' }
+$exporterSize = [int64](& $gitPath --no-replace-objects -C $sourceRoot cat-file -s $exporterBlob)
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $bootstrapRoot = Join-Path $tempRoot ('ihome-openclaw-bootstrap-' + [guid]::NewGuid().ToString('N'))
 $exportRoot = Join-Path $tempRoot ('ihome-openclaw-r-' + [guid]::NewGuid().ToString('N'))
@@ -1106,9 +1115,11 @@ New-Item -ItemType Directory -Path $bootstrapRoot -ErrorAction Stop | Out-Null
 New-Item -ItemType Directory -Path $releaseRoot -Force -ErrorAction Stop | Out-Null
 try {
   $bootstrapExporter = Join-Path $bootstrapRoot 'export-reviewed-tree.mjs'
-  $gitPath = (Get-Command git -CommandType Application -ErrorAction Stop).Source
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = $gitPath
+  $startInfo.ArgumentList.Add('--no-replace-objects')
+  $startInfo.ArgumentList.Add('-C')
+  $startInfo.ArgumentList.Add($sourceRoot)
   $startInfo.ArgumentList.Add('cat-file')
   $startInfo.ArgumentList.Add('blob')
   $startInfo.ArgumentList.Add($exporterBlob)
@@ -1130,11 +1141,11 @@ try {
   if ($process.ExitCode -ne 0) { throw "git cat-file exporter bootstrap failed: $stderr" }
   $process.Dispose()
   if ((Get-Item -LiteralPath $bootstrapExporter).Length -ne $exporterSize) { throw 'Reviewed exporter byte size mismatch' }
-  if ((git hash-object $bootstrapExporter).Trim() -ne $exporterBlob) { throw 'Reviewed exporter Git object mismatch' }
+  if ((& $gitPath --no-replace-objects -C $sourceRoot hash-object $bootstrapExporter).Trim() -ne $exporterBlob) { throw 'Reviewed exporter Git object mismatch' }
 
   $exportManifest = Join-Path $bootstrapRoot 'reviewed-tree-manifest.json'
-  node $bootstrapExporter export --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
-  node $bootstrapExporter verify --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
+  & $nodePath $bootstrapExporter export --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
+  & $nodePath $bootstrapExporter verify --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
   $exportManifestSha256 = (Get-FileHash -LiteralPath $exportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
   $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $exportManifest
   $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $exportManifestSha256
@@ -1156,11 +1167,11 @@ try {
   }
 
   $reviewedImageHelper = Join-Path $exportRoot 'services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1'
-  & $reviewedImageHelper -ReviewedTree $R -MReviewedTree $M -MReviewReportPath $mReviewReport -RReviewReportPath $rReviewReport -BuildxPath $buildxPath -DockerPath $dockerPath -ReviewedSourceRoot $exportRoot -ReviewedExportManifestPath $exportManifest -ReviewedExportManifestSha256 $exportManifestSha256 -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-linux-amd64.oci.tar')
+  & $reviewedImageHelper -ReviewedTree $R -ExpectedM $M -MReviewReportPath $mReviewReport -RReviewReportPath $rReviewReport -NodePath $nodePath -GitPath $gitPath -BuildxPath $buildxPath -DockerPath $dockerPath -DockerHost $dockerHost -GitRepositoryRoot $sourceRoot -ReviewedSourceRoot $exportRoot -ReviewedExportManifestPath $exportManifest -ReviewedExportManifestSha256 $exportManifestSha256 -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-a-linux-amd64.oci.tar') -ReproductionArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-b-linux-amd64.oci.tar') -StockOciPath (Join-Path $releaseRoot 'openclaw-zalo-cell-stock-linux-amd64.oci.tar') -RetainedUpstreamTarballPath (Join-Path $releaseRoot 'zalouser-2026.7.1-verified.tgz')
 
-  if ((git rev-parse HEAD).Trim() -ne $R) { throw 'Source HEAD changed after exported-R run' }
-  if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Exported-R run mutated source worktree/index' }
-  git diff --cached --quiet
+  if ((& $gitPath --no-replace-objects -C $sourceRoot rev-parse HEAD).Trim() -ne $R) { throw 'Source HEAD changed after exported-R run' }
+  if (@(& $gitPath --no-replace-objects -C $sourceRoot status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Exported-R run mutated source worktree/index' }
+  & $gitPath --no-replace-objects -C $sourceRoot diff --cached --quiet
   if ($LASTEXITCODE -ne 0) { throw 'Exported-R run mutated source index' }
 } finally {
   if (Test-Path -LiteralPath $exportRoot) { Remove-Item -LiteralPath $exportRoot -Recurse -Force }
@@ -1180,6 +1191,26 @@ After the reviewed-`R` run succeeds, this fenced block independently rebinds and
 if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+$sourceRoot = (Resolve-Path -LiteralPath '.').Path
+$releaseRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot 'services/openclaw-zalo-cell/.release'))
+$reviewedEvidenceHelper = (Resolve-Path -LiteralPath 'services/openclaw-zalo-cell/scripts/create-evidence-child.ps1' -ErrorAction Stop).Path
+& $reviewedEvidenceHelper `
+  -ReviewedTree $env:OPENCLAW_REVIEWED_R_SHA `
+  -ExpectedM $env:OPENCLAW_REVIEWED_M_SHA `
+  -MReviewReportPath (Resolve-Path -LiteralPath $env:OPENCLAW_M_REVIEW_REPORT).Path `
+  -RReviewReportPath (Resolve-Path -LiteralPath $env:OPENCLAW_R_REVIEW_REPORT).Path `
+  -CandidateEvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') `
+  -CandidateArchivePath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-a-linux-amd64.oci.tar') `
+  -CandidateArchiveBPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-b-linux-amd64.oci.tar') `
+  -CandidateStockOciPath (Join-Path $releaseRoot 'openclaw-zalo-cell-stock-linux-amd64.oci.tar') `
+  -UpstreamTarballPath (Join-Path $releaseRoot 'zalouser-2026.7.1-verified.tgz') `
+  -NodePath (Resolve-Path -LiteralPath $env:OPENCLAW_NODE_PATH).Path `
+  -GitPath (Resolve-Path -LiteralPath $env:OPENCLAW_GIT_PATH).Path `
+  -DockerPath (Resolve-Path -LiteralPath $env:OPENCLAW_DOCKER_PATH).Path `
+  -DockerHost $env:OPENCLAW_DOCKER_HOST
+if ($LASTEXITCODE -ne 0) { throw 'Reviewed evidence-child helper failed' }
+return # The reviewed helper above is the sole executable R -> E lifecycle.
+<# Historical pre-helper transcript retained only for traceability; do not execute.
 node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
 $R = $env:OPENCLAW_REVIEWED_R_SHA
 if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
@@ -1265,6 +1296,7 @@ try {
 if ((git rev-parse HEAD).Trim() -ne $R) { throw 'Source branch moved before E fast-forward' }
 git merge --ff-only $E
 if ((git rev-parse HEAD).Trim() -ne $E) { throw 'Source branch did not fast-forward to E' }
+#>
 ```
 
 - [ ] **Step 6: Independently review exact E and unlock Tasks 3-29**
@@ -2543,7 +2575,7 @@ Expected: FAIL because the dispatch/AI modules and dedicated maintenance package
 
 The adapter uses ordinary cell control RPCs only for `web.login.start/wait`, `channels.status/start/stop/logout`, and toolless `agent`. Business delivery uses exactly one private `zalouser.bridge.send` request carrying the complete `CanonicalSendPayloadV1`, exact stable target ID, explicit account profile, canonical idempotency key, and complete short-lived runtime-minted `OutboundAuthorizationMarker`: outbox ID, claim generation, payload hash, fencing token, session generation, control version, takeover version, one-time marker nonce, and expiry. The stock generic `send` method is never used for business traffic and returns denied outside authorized fork context.
 
-The fork constructs one exact ordered provider batch across text, media, chunks, link, and reaction before authorization, then calls `/v1/outbox/authorize-send` immediately before the first provider I/O. Missing authorization, deny, Edge/bridge error, timeout, stale marker, replay, or payload-hash mismatch produces zero provider frames. If every part succeeds, completion returns all provider message IDs in order. Any failure or disconnect after the first possible part handoff makes the entire outbox `UNKNOWN`; it is never retried automatically, even if later parts are known unsent.
+The fork constructs and fully materializes one exact ordered provider batch containing only `TEXT | MEDIA` parts before authorization; link and reaction requests are unsupported bypass attempts and fail before authorization or provider I/O. It verifies every media byte sequence, SHA-256, MIME, and length, then calls `/v1/outbox/authorize-send` as the final awaited operation immediately before the first provider I/O. Missing authorization, deny, Edge/bridge error, timeout, stale marker, replay, or payload-hash mismatch produces zero provider frames. If every part succeeds, completion returns all provider message IDs in order. Any failure or disconnect after the first possible part handoff makes the entire outbox `UNKNOWN`; it is never retried automatically, even if later parts are known unsent.
 
 The vendored fork calls `/v1/outbox/authorize-send` through the local bridge; that CAS rechecks every marker field, stored nonce hash, current DB-time lease, nonce freshness, and canonical payload hash. The fork denies generic `send`, message tool, pairing notification, direct adapter/tool calls, and any `send.ts`/`channel.adapters.ts`/`tool.ts` business path without the unforgeable context created by `zalouser.bridge.send`. Typing, seen, and delivery receipts use content-free control schemas and cannot carry text/media or mint authorization. Never enable name matching. No group chatter is routed into auto-reply.
 

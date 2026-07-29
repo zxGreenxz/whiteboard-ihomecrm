@@ -1,11 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join, relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { exportReviewedTree } from "../../../scripts/export-reviewed-tree.mjs";
 import {
   fetchBoundedJson,
   fetchTarballWithRedirects,
@@ -16,6 +15,72 @@ import {
 
 const vendorRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(vendorRoot, "../../../..");
+const vendorRelative = relative(repoRoot, vendorRoot).replaceAll("\\", "/");
+
+function exportReviewedTreeFixture(reviewedTree: string, outputRoot: string, manifestPath: string): void {
+  const locator = process.platform === "win32" ? "where.exe" : "which";
+  const gitPath = execFileSync(locator, ["git"], { encoding: "utf8" }).split(/\r?\n/u).find(Boolean);
+  if (!gitPath) throw new Error("Unable to locate Git for the test fixture");
+  const gitBlob = (path: string): Buffer => execFileSync(
+    gitPath,
+    ["--no-replace-objects", "-C", repoRoot, "show", `${reviewedTree}:${path}`],
+    { encoding: null, maxBuffer: 64 * 1024 * 1024 },
+  );
+  const upstreamPath = `${vendorRelative}/UPSTREAM.json`;
+  const upstream = JSON.parse(gitBlob(upstreamPath).toString("utf8")) as {
+    licenseManifestPath: string;
+    provenanceInputs: Array<{ path: string }>;
+    rootCompliance: Array<{ outputPath: string }>;
+    sourceManifest: Array<{ outputPath: string }>;
+  };
+  const paths = [...new Set([
+    ".gitattributes",
+    "eslint.config.js",
+    "vite.config.ts",
+    `${vendorRelative}/SHA512SUMS`,
+    `${vendorRelative}/licenses/manifest.json`,
+    ...upstream.rootCompliance.map((item) => `${vendorRelative}/${item.outputPath}`),
+    ...upstream.provenanceInputs.map((item) => `${vendorRelative}/${item.path}`),
+    ...upstream.sourceManifest.map((item) => `${vendorRelative}/${item.outputPath}`),
+    upstreamPath,
+  ])].sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
+  if (paths.length !== 87) throw new Error(`Reviewed export fixture expected 87 inputs, got ${paths.length}`);
+  const entries = paths.map((path) => {
+    const metadata = execFileSync(
+      gitPath,
+      ["--no-replace-objects", "-C", repoRoot, "ls-tree", reviewedTree, "--", path],
+      { encoding: "utf8" },
+    ).trim();
+    const match = /^(100644|100755) blob ([0-9a-f]{40})\t/u.exec(metadata);
+    if (!match) throw new Error(`Unable to resolve reviewed fixture blob: ${path}`);
+    const bytes = gitBlob(path);
+    const objectId = createHash("sha1")
+      .update(Buffer.from(`blob ${bytes.length}\0`, "ascii"))
+      .update(bytes)
+      .digest("hex");
+    if (objectId !== match[2]) throw new Error(`Reviewed fixture blob identity mismatch: ${path}`);
+    const destination = resolve(outputRoot, ...path.split("/"));
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, bytes);
+    chmodSync(destination, match[1] === "100755" ? 0o755 : 0o644);
+    return {
+      path,
+      type: "blob",
+      mode: match[1],
+      git_object_id: objectId,
+      git_object_size: bytes.length,
+      content_size: bytes.length,
+      content_sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+  });
+  mkdirSync(dirname(manifestPath), { recursive: true });
+  writeFileSync(manifestPath, `${JSON.stringify({
+    schema_version: 1,
+    git_object_format: "sha1",
+    reviewed_tree: reviewedTree,
+    entries,
+  }, null, 2)}\n`, "utf8");
+}
 
 describe("reviewed upstream and legal inputs", () => {
   it("follows at most three HTTPS redirects within the npm registry", async () => {
@@ -209,7 +274,7 @@ describe("reviewed upstream and legal inputs", () => {
       temporaryRoot = mkdtempSync(join(tmpdir(), "ihome-reviewed-export-"));
       const outputRoot = join(temporaryRoot, "root");
       manifestPath = join(temporaryRoot, "reviewed-tree-manifest.json");
-      exportReviewedTree({ reviewedTree, outputRoot, manifestPath });
+      exportReviewedTreeFixture(reviewedTree, outputRoot, manifestPath);
       detachedVendorRoot = resolve(outputRoot, relative(repoRoot, vendorRoot));
     }
 

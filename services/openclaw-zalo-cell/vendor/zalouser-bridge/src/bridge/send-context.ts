@@ -10,6 +10,13 @@ export type MediaBusinessFrameV1 = Readonly<{
   name: string | null;
   sha256: string;
 }>;
+export type ObjectMediaBusinessFrameV1 = Readonly<{
+  kind: "media";
+  objectKey: string;
+  byteLength: number;
+  contentType: string;
+  sha256: string;
+}>;
 export type LinkBusinessFrameV1 = Readonly<{
   kind: "link";
   url: string;
@@ -26,6 +33,7 @@ export type ReactionBusinessFrameV1 = Readonly<{
 export type BusinessFrame =
   | TextBusinessFrameV1
   | MediaBusinessFrameV1
+  | ObjectMediaBusinessFrameV1
   | LinkBusinessFrameV1
   | ReactionBusinessFrameV1;
 
@@ -203,11 +211,9 @@ export function snapshotBusinessFrame(value: unknown): BusinessFrame {
   if (base.kind === "media") {
     const record = exactRecord("INVALID_PROVIDER_FRAME", "media frame", base, [
       "kind",
-      "url",
-      "caption",
+      "objectKey",
       "byteLength",
       "contentType",
-      "name",
       "sha256",
     ]);
     const byteLength = safeInteger("INVALID_PROVIDER_FRAME", "media byteLength", record.byteLength);
@@ -220,48 +226,14 @@ export function snapshotBusinessFrame(value: unknown): BusinessFrame {
     }
     return Object.freeze({
       kind: "media",
-      url: requiredString("INVALID_PROVIDER_FRAME", "media url", record.url),
-      caption: nullableString("INVALID_PROVIDER_FRAME", "media caption", record.caption),
+      objectKey: requiredString("INVALID_PROVIDER_FRAME", "media objectKey", record.objectKey),
       byteLength,
-      contentType: nullableString(
-        "INVALID_PROVIDER_FRAME",
-        "media contentType",
-        record.contentType,
-      ),
-      name: nullableString("INVALID_PROVIDER_FRAME", "media name", record.name),
+      contentType: requiredString("INVALID_PROVIDER_FRAME", "media contentType", record.contentType),
       sha256,
     });
   }
-  if (base.kind === "link") {
-    const record = exactRecord("INVALID_PROVIDER_FRAME", "link frame", base, [
-      "kind",
-      "url",
-      "caption",
-    ]);
-    return Object.freeze({
-      kind: "link",
-      url: requiredString("INVALID_PROVIDER_FRAME", "link url", record.url),
-      caption: nullableString("INVALID_PROVIDER_FRAME", "link caption", record.caption),
-    });
-  }
-  if (base.kind === "reaction") {
-    const record = exactRecord("INVALID_PROVIDER_FRAME", "reaction frame", base, [
-      "kind",
-      "msgId",
-      "cliMsgId",
-      "emoji",
-      "remove",
-    ]);
-    if (typeof record.remove !== "boolean") {
-      return fail("INVALID_PROVIDER_FRAME", "reaction remove must be boolean");
-    }
-    return Object.freeze({
-      kind: "reaction",
-      msgId: requiredString("INVALID_PROVIDER_FRAME", "reaction msgId", record.msgId),
-      cliMsgId: requiredString("INVALID_PROVIDER_FRAME", "reaction cliMsgId", record.cliMsgId),
-      emoji: requiredString("INVALID_PROVIDER_FRAME", "reaction emoji", record.emoji),
-      remove: record.remove,
-    });
+  if (base.kind === "link" || base.kind === "reaction") {
+    return fail("UNSUPPORTED_BUSINESS_PART", "link and reaction are not v1 business parts");
   }
   return fail("INVALID_PROVIDER_FRAME", "unknown provider frame kind");
 }

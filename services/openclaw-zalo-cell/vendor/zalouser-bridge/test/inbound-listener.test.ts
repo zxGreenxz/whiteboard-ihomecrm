@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as inboundBridge from "../src/bridge/inbound-listener.js";
+import * as runtimeBootstrap from "../src/bridge/runtime-bootstrap.js";
 
 type Binding = Readonly<{
   cellId: string;
@@ -93,6 +94,9 @@ function install(
   const uninstall = inboundBridge.installInboundBridgeCommitter({
     binding,
     committer,
+    ready: async () => undefined,
+    commitTimeoutMs: 6_000,
+    readinessTimeoutMs: 2_000,
   } as never);
   cleanups.push(uninstall);
 }
@@ -383,6 +387,62 @@ describe("ZaloUser inbound envelope V1", () => {
 });
 
 describe("durable bridge acknowledgement and ordering", () => {
+  it("installs the authenticated production readiness and durable commit client", async () => {
+    const operations: string[] = [];
+    const factory = (runtimeBootstrap as unknown as {
+      createProductionInboundBridge?: (options: unknown) => Parameters<
+        typeof inboundBridge.installInboundBridgeCommitter
+      >[0];
+    }).createProductionInboundBridge;
+    expect(typeof factory).toBe("function");
+    const installation = factory!({
+      binding: {
+        ...BINDING,
+        accountId: "account-a",
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x32),
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: (() => {
+        let value = 0;
+        return () => `inbound-transport-${value += 1}`;
+      })(),
+      fetch: async (_url: string, init: RequestInit) => {
+        const envelope = JSON.parse(String(init.body)) as { operation: string; body: unknown };
+        operations.push(envelope.operation);
+        if (envelope.operation === "inbound.ready") {
+          return new Response(JSON.stringify({ version: 1, status: "READY" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (envelope.operation === "inbound.commit") {
+          expect(envelope.body).toMatchObject({
+            version: 1,
+            organizationId: BINDING.organizationId,
+            accountId: "account-a",
+            cellId: BINDING.cellId,
+          });
+          return new Response(JSON.stringify(COMMITTED_ACK), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        throw new Error(`unexpected operation ${envelope.operation}`);
+      },
+    });
+    const uninstall = inboundBridge.installInboundBridgeCommitter(installation);
+    cleanups.push(uninstall);
+
+    await inboundBridge.ensureInboundBridgeReady("account-a");
+    await expect(inboundBridge.commitInboundThroughBridge("account-a", input() as never))
+      .resolves.toMatchObject({ status: "committed" });
+    expect(operations).toEqual(["inbound.ready", "inbound.commit"]);
+  });
+
   it("permits dispatch only after an exact committed WAL/FULL acknowledgement", async () => {
     let resolveCommit!: (value: unknown) => void;
     const commit = new Promise<unknown>((resolve) => {
@@ -493,6 +553,44 @@ describe("durable bridge acknowledgement and ordering", () => {
     expect(dispatches).toBe(0);
   });
 
+  it("times out a stalled durable commit itself and dispatches nothing", async () => {
+    let dispatches = 0;
+    const uninstall = inboundBridge.installInboundBridgeCommitter({
+      binding: BINDING,
+      committer: async () => await new Promise<never>(() => undefined),
+      ready: async () => undefined,
+      commitTimeoutMs: 5,
+      readinessTimeoutMs: 5,
+    } as never);
+    cleanups.push(uninstall);
+
+    await expect(listener(async () => {
+      dispatches += 1;
+    })(input())).rejects.toMatchObject({ code: "INBOUND_BRIDGE_COMMIT_TIMEOUT" });
+    expect(dispatches).toBe(0);
+  });
+
+  it("checks authenticated bridge readiness before a provider listener may attach", async () => {
+    const readyCalls: unknown[] = [];
+    const ensureReady = (inboundBridge as unknown as {
+      ensureInboundBridgeReady(accountId: string): Promise<void>;
+    }).ensureInboundBridgeReady;
+    expect(typeof ensureReady).toBe("function");
+    const uninstall = inboundBridge.installInboundBridgeCommitter({
+      binding: BINDING,
+      committer: async () => COMMITTED_ACK,
+      ready: async (accountId: string, binding: Binding) => {
+        readyCalls.push({ accountId, binding });
+      },
+      commitTimeoutMs: 6_000,
+      readinessTimeoutMs: 2_000,
+    } as never);
+    cleanups.push(uninstall);
+
+    await expect(ensureReady("account-a")).resolves.toBeUndefined();
+    expect(readyCalls).toEqual([{ accountId: "account-a", binding: BINDING }]);
+  });
+
   it("fails closed when the process-scoped binding or committer is missing", async () => {
     await expect(
       listener(async () => {
@@ -516,12 +614,18 @@ describe("durable bridge acknowledgement and ordering", () => {
     const firstUninstall = inboundBridge.installInboundBridgeCommitter({
       binding: BINDING,
       committer: async () => ({ status: "duplicate", version: 1 }),
+      ready: async () => undefined,
+      commitTimeoutMs: 6_000,
+      readinessTimeoutMs: 2_000,
     } as never);
     cleanups.push(firstUninstall);
 
     expect(() => inboundBridge.installInboundBridgeCommitter({
       binding: { ...BINDING, sessionGeneration: 8 },
       committer: async () => COMMITTED_ACK,
+      ready: async () => undefined,
+      commitTimeoutMs: 6_000,
+      readinessTimeoutMs: 2_000,
     } as never)).toThrowError(expect.objectContaining({
       code: "INBOUND_BRIDGE_ALREADY_INSTALLED",
     }));
@@ -533,6 +637,9 @@ describe("durable bridge acknowledgement and ordering", () => {
     const secondUninstall = inboundBridge.installInboundBridgeCommitter({
       binding: { ...BINDING, sessionGeneration: 8 },
       committer: async () => COMMITTED_ACK,
+      ready: async () => undefined,
+      commitTimeoutMs: 6_000,
+      readinessTimeoutMs: 2_000,
     } as never);
     cleanups.push(secondUninstall);
     await expect(inboundBridge.commitInboundThroughBridge("account-a", input() as never))

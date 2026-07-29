@@ -70,51 +70,140 @@ function errno(code: string): Error & { code: string } {
 function createLeaseHarness(...roots: string[]) {
   const rootEntries = new Map<
     string,
-    { kind: "directory" | "file" | "other" | "symlink"; mode: number; uid: number }
+    {
+      dev: number;
+      ino: number;
+      kind: "directory" | "file" | "other" | "symlink";
+      mode: number;
+      uid: number;
+    }
   >(
-    roots.map((root) => [root, { kind: "directory" as const, mode: 0o700, uid: 1000 }]),
+    roots.map((root, index) => [
+      root,
+      {
+        dev: 1,
+        ino: 10 + index,
+        kind: "directory" as const,
+        mode: 0o700,
+        uid: 1000,
+      },
+    ]),
   );
   const databaseEntries = new Map<
     string,
-    { kind: "file" | "symlink"; mode: number; uid: number }
+    {
+      dev: number;
+      ino: number;
+      kind: "file" | "symlink";
+      mode: number;
+      uid: number;
+    }
   >();
   const activeLocks = new Map<string, symbol>();
   const identities = new Map<string, { cellId: string; persistentRoot: string }>();
   const events: string[] = [];
   const localRoots = new Map(roots.map((root) => [root, true]));
   const resolvedRoots = new Map(roots.map((root) => [root, root]));
+  const descriptorRoots = new Map<number, { path: string; stat: ReturnType<typeof rootEntries.get> }>();
+  let nextDescriptor = 50;
+  let nextInode = 100;
+  let beforeDatabaseOpen: ((candidate: string) => void) | undefined;
+
+  const decodeCandidate = (candidate: string): { descriptor: boolean; path: string } => {
+    const match = /^@lease-fd:(\d+):(.*)$/.exec(candidate);
+    if (!match) return { descriptor: false, path: candidate };
+    const descriptor = descriptorRoots.get(Number(match[1]));
+    if (!descriptor) throw errno("EBADF");
+    return {
+      descriptor: true,
+      path: match[2] ? `${descriptor.path}/${match[2]}` : descriptor.path,
+    };
+  };
+
+  const sameIdentity = (
+    left: { dev: number; ino: number; kind: string; mode: number; uid: number },
+    right: { dev: number; ino: number; kind: string; mode: number; uid: number },
+  ) =>
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.kind === right.kind &&
+    left.mode === right.mode &&
+    left.uid === right.uid;
 
   const operations = {
     getuid: () => 1000,
     async inspectPath(candidate: string) {
-      const entry = rootEntries.get(candidate) ?? databaseEntries.get(candidate);
+      const decoded = decodeCandidate(candidate);
+      const entry = rootEntries.get(decoded.path) ?? databaseEntries.get(decoded.path);
       if (!entry) throw errno("ENOENT");
       return { ...entry };
     },
     async isLocalFileSystem(candidate: string) {
-      return localRoots.get(candidate) ?? false;
+      return localRoots.get(decodeCandidate(candidate).path) ?? false;
     },
-    async openDatabase(candidate: string) {
-      events.push(`open:${candidate}`);
-      const owner = Symbol(candidate);
+    async open(candidate: string, flags: number, mode?: number) {
+      const decoded = decodeCandidate(candidate);
+      const directory = (flags & (fsConstants.O_DIRECTORY ?? 0x10000)) !== 0;
+      const noFollow = (flags & (fsConstants.O_NOFOLLOW ?? 0x20000)) !== 0;
+      const create = (flags & fsConstants.O_CREAT) !== 0;
+      const exclusive = (flags & fsConstants.O_EXCL) !== 0;
+      const current = rootEntries.get(decoded.path) ?? databaseEntries.get(decoded.path);
+      if (noFollow && current?.kind === "symlink") throw errno("ELOOP");
+      if (directory && current?.kind !== "directory") throw errno(current ? "ENOTDIR" : "ENOENT");
+      if (!directory && create && exclusive && current) throw errno("EEXIST");
+      if (!directory && create && !current) {
+        databaseEntries.set(decoded.path, {
+          dev: 1,
+          ino: nextInode++,
+          kind: "file",
+          mode: mode ?? 0o600,
+          uid: 1000,
+        });
+      }
+      const entry = rootEntries.get(decoded.path) ?? databaseEntries.get(decoded.path);
+      if (!entry) throw errno("ENOENT");
+      const descriptor = nextDescriptor++;
+      descriptorRoots.set(descriptor, { path: decoded.path, stat: { ...entry } });
+      let closed = false;
+      return {
+        close: async () => {
+          if (closed) return;
+          closed = true;
+          descriptorRoots.delete(descriptor);
+        },
+        descriptorPath: (relativePath = "") => `@lease-fd:${descriptor}:${relativePath}`,
+        stat: async () => ({ ...descriptorRoots.get(descriptor)!.stat! }),
+        sync: async () => undefined,
+      };
+    },
+    async openDatabase(
+      candidate: string,
+      expected?: { dev: number; ino: number; kind: string; mode: number; uid: number },
+    ) {
+      const decoded = decodeCandidate(candidate);
+      beforeDatabaseOpen?.(decoded.path);
+      const current = databaseEntries.get(decoded.path);
+      if (expected && (!current || !sameIdentity(current, expected))) throw errno("ESTALE");
+      events.push(`open:${decoded.path}`);
+      const owner = Symbol(decoded.path);
       let closed = false;
       const release = () => {
-        if (activeLocks.get(candidate) === owner) activeLocks.delete(candidate);
+        if (activeLocks.get(decoded.path) === owner) activeLocks.delete(decoded.path);
       };
       return {
         close() {
           if (closed) return;
           closed = true;
           release();
-          events.push(`close:${candidate}`);
+          events.push(`close:${decoded.path}`);
         },
         exec(sql: string) {
           events.push(`exec:${sql}`);
           if (sql === "BEGIN EXCLUSIVE") {
-            if (activeLocks.has(candidate) && activeLocks.get(candidate) !== owner) {
+            if (activeLocks.has(decoded.path) && activeLocks.get(decoded.path) !== owner) {
               throw errno("SQLITE_BUSY");
             }
-            activeLocks.set(candidate, owner);
+            activeLocks.set(decoded.path, owner);
           } else if (sql === "COMMIT" || sql === "ROLLBACK") {
             release();
           }
@@ -122,7 +211,7 @@ function createLeaseHarness(...roots: string[]) {
         prepare(sql: string) {
           if (sql.startsWith("SELECT")) {
             return {
-              get: () => identities.get(candidate),
+              get: () => identities.get(decoded.path),
               run: () => {
                 throw new Error("SELECT cannot run");
               },
@@ -132,7 +221,7 @@ function createLeaseHarness(...roots: string[]) {
             return {
               get: () => undefined,
               run: (cellId: string, persistentRoot: string) => {
-                identities.set(candidate, { cellId, persistentRoot });
+                identities.set(decoded.path, { cellId, persistentRoot });
               },
             };
           }
@@ -141,13 +230,24 @@ function createLeaseHarness(...roots: string[]) {
       };
     },
     async prepareFile(candidate: string) {
-      events.push(`prepare:${candidate}`);
-      if (!databaseEntries.has(candidate)) {
-        databaseEntries.set(candidate, { kind: "file", mode: 0o600, uid: 1000 });
+      const decoded = decodeCandidate(candidate);
+      events.push(`prepare:${decoded.path}`);
+      if (!databaseEntries.has(decoded.path)) {
+        databaseEntries.set(decoded.path, {
+          dev: 1,
+          ino: nextInode++,
+          kind: "file",
+          mode: 0o600,
+          uid: 1000,
+        });
+        return true;
       }
+      return false;
     },
     async realpath(candidate: string) {
-      const resolved = resolvedRoots.get(candidate);
+      const decoded = decodeCandidate(candidate);
+      if (decoded.descriptor) return decoded.path;
+      const resolved = resolvedRoots.get(decoded.path);
       if (!resolved) throw errno("ENOENT");
       return resolved;
     },
@@ -166,6 +266,9 @@ function createLeaseHarness(...roots: string[]) {
     identities,
     operations,
     rootEntries,
+    setBeforeDatabaseOpen(hook: ((candidate: string) => void) | undefined) {
+      beforeDatabaseOpen = hook;
+    },
     setLocal(root: string, local: boolean) {
       localRoots.set(root, local);
     },
@@ -384,17 +487,48 @@ describe("runtime bootstrap contracts", () => {
       getuid: () => 1000,
       async inspectPath(candidate) {
         if (candidate === logicalRoot) {
-          return { kind: "directory", mode: 0o700, uid: 1000 };
+          return { dev: 1, ino: 1, kind: "directory", mode: 0o700, uid: 1000 };
         }
         if (candidate === logicalDatabase && databasePrepared) {
-          return { kind: "file", mode: 0o600, uid: 1000 };
+          return { dev: 1, ino: 2, kind: "file", mode: 0o600, uid: 1000 };
         }
         throw errno("ENOENT");
       },
       async isLocalFileSystem(candidate) {
         return candidate === logicalRoot;
       },
-      async openDatabase(candidate) {
+      async open(candidate, flags) {
+        if ((flags & (fsConstants.O_DIRECTORY ?? 0x10000)) !== 0) {
+          expect(candidate).toBe(logicalRoot);
+          return {
+            close: async () => undefined,
+            descriptorPath: (relativePath = "") =>
+              relativePath ? `${logicalRoot}/${relativePath}` : logicalRoot,
+            stat: async () => ({
+              dev: 1,
+              ino: 1,
+              kind: "directory" as const,
+              mode: 0o700,
+              uid: 1000,
+            }),
+            sync: async () => undefined,
+          };
+        }
+        expect(candidate).toBe(logicalDatabase);
+        return {
+          close: async () => undefined,
+          descriptorPath: () => logicalDatabase,
+          stat: async () => ({
+            dev: 1,
+            ino: 2,
+            kind: "file" as const,
+            mode: 0o600,
+            uid: 1000,
+          }),
+          sync: async () => undefined,
+        };
+      },
+      async openDatabase(candidate, _expected) {
         expect(candidate).toBe(logicalDatabase);
         const { DatabaseSync } = await import("node:sqlite");
         const database = new DatabaseSync(databasePath);
@@ -420,10 +554,11 @@ describe("runtime bootstrap contracts", () => {
       },
       async prepareFile(candidate) {
         expect(candidate).toBe(logicalDatabase);
-        if (databasePrepared) return;
+        if (databasePrepared) return false;
         const handle = await open(databasePath, "wx", 0o600);
         await handle.close();
         databasePrepared = true;
+        return true;
       },
       async realpath(candidate) {
         return candidate;
@@ -573,6 +708,8 @@ describe("runtime bootstrap contracts", () => {
     }],
     ["database symlink", (harness: ReturnType<typeof createLeaseHarness>) => {
       harness.databaseEntries.set(harness.databasePath("/srv/openclaw-session"), {
+        dev: 1,
+        ino: 901,
         kind: "symlink",
         mode: 0o600,
         uid: 1000,
@@ -580,6 +717,8 @@ describe("runtime bootstrap contracts", () => {
     }],
     ["database owner", (harness: ReturnType<typeof createLeaseHarness>) => {
       harness.databaseEntries.set(harness.databasePath("/srv/openclaw-session"), {
+        dev: 1,
+        ino: 902,
         kind: "file",
         mode: 0o600,
         uid: 0,
@@ -587,6 +726,8 @@ describe("runtime bootstrap contracts", () => {
     }],
     ["database mode", (harness: ReturnType<typeof createLeaseHarness>) => {
       harness.databaseEntries.set(harness.databasePath("/srv/openclaw-session"), {
+        dev: 1,
+        ino: 903,
         kind: "file",
         mode: 0o644,
         uid: 1000,
@@ -611,6 +752,225 @@ describe("runtime bootstrap contracts", () => {
         harness.operations,
       ),
     ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("rejects a database leaf swapped to a symlink immediately before DatabaseSync", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    harness.setBeforeDatabaseOpen((candidate) => {
+      harness.databaseEntries.set(candidate, {
+        dev: 1,
+        ino: 950,
+        kind: "symlink",
+        mode: 0o600,
+        uid: 1000,
+      });
+    });
+
+    await expect(
+      acquireWriterLease({ cellId: CELL_ID, persistentRoot: root }, harness.operations),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("rejects a safe-looking database inode replacement before DatabaseSync", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    harness.setBeforeDatabaseOpen((candidate) => {
+      harness.databaseEntries.set(candidate, {
+        dev: 1,
+        ino: 951,
+        kind: "file",
+        mode: 0o600,
+        uid: 1000,
+      });
+    });
+
+    await expect(
+      acquireWriterLease({ cellId: CELL_ID, persistentRoot: root }, harness.operations),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("rejects a symlinked SQLite sidecar before lease acquisition", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    harness.databaseEntries.set(`${harness.databasePath(root)}-journal`, {
+      dev: 1,
+      ino: 952,
+      kind: "symlink",
+      mode: 0o600,
+      uid: 1000,
+    });
+
+    await expect(
+      acquireWriterLease({ cellId: CELL_ID, persistentRoot: root }, harness.operations),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("revalidates the guarded database inode after every SQLite operation", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    const databasePath = harness.databasePath(root);
+    let replaced = false;
+    const operations = {
+      ...harness.operations,
+      async openDatabase(candidate: string, expected?: Parameters<typeof harness.operations.openDatabase>[1]) {
+        const database = await harness.operations.openDatabase(candidate, expected);
+        return {
+          ...database,
+          exec(sql: string) {
+            database.exec(sql);
+            if (!replaced && sql === "PRAGMA busy_timeout = 0") {
+              replaced = true;
+              harness.databaseEntries.set(databasePath, {
+                dev: 1,
+                ino: 953,
+                kind: "file",
+                mode: 0o600,
+                uid: 1000,
+              });
+            }
+          },
+        };
+      },
+    };
+
+    await expect(
+      acquireWriterLease({ cellId: CELL_ID, persistentRoot: root }, operations),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("revalidates after a failed SQLite operation before classifying contention", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    const databasePath = harness.databasePath(root);
+    const operations = {
+      ...harness.operations,
+      async openDatabase(candidate: string, expected?: Parameters<typeof harness.operations.openDatabase>[1]) {
+        const database = await harness.operations.openDatabase(candidate, expected);
+        return {
+          ...database,
+          exec(sql: string) {
+            if (sql === "BEGIN EXCLUSIVE") {
+              harness.databaseEntries.set(databasePath, {
+                dev: 1,
+                ino: 956,
+                kind: "file",
+                mode: 0o600,
+                uid: 1000,
+              });
+              throw errno("SQLITE_BUSY");
+            }
+            database.exec(sql);
+          },
+        };
+      },
+    };
+
+    await expect(
+      acquireWriterLease({ cellId: CELL_ID, persistentRoot: root }, operations),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("rejects a canonical root replaced after its descriptor is pinned", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    const prepareFile = harness.operations.prepareFile;
+    const operations = {
+      ...harness.operations,
+      async prepareFile(candidate: string) {
+        const created = await prepareFile(candidate);
+        harness.rootEntries.set(root, {
+          dev: 1,
+          ino: 954,
+          kind: "symlink",
+          mode: 0o700,
+          uid: 1000,
+        });
+        return created;
+      },
+    };
+
+    await expect(
+      acquireWriterLease({ cellId: CELL_ID, persistentRoot: root }, operations),
+    ).rejects.toMatchObject({ code: "WRITER_LEASE_UNSAFE" });
+  });
+
+  it("revalidates the guarded database around release rollback", async () => {
+    const acquireWriterLease = runtimeExport<
+      (
+        configuration: { cellId: string; persistentRoot: string },
+        operations: ReturnType<typeof createLeaseHarness>["operations"],
+      ) => Promise<{ release(): Promise<void> }>
+    >("acquireWriterLease");
+    expect(acquireWriterLease).toBeTypeOf("function");
+    if (!acquireWriterLease) return;
+    const root = "/srv/openclaw-session";
+    const harness = createLeaseHarness(root);
+    const lease = await acquireWriterLease(
+      { cellId: CELL_ID, persistentRoot: root },
+      harness.operations,
+    );
+    harness.databaseEntries.set(harness.databasePath(root), {
+      dev: 1,
+      ino: 955,
+      kind: "file",
+      mode: 0o600,
+      uid: 1000,
+    });
+
+    await expect(lease.release()).rejects.toMatchObject({
+      code: "WRITER_LEASE_RELEASE_FAILED",
+    });
+    expect(harness.activeLocks.size).toBe(0);
+    await lease.release();
   });
 
   it("rejects an unsafe cell identifier before opening the lease database", async () => {

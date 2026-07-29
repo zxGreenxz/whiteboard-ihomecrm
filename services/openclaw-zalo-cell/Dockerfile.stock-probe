@@ -1,0 +1,17 @@
+FROM ghcr.io/openclaw/openclaw:2026.7.1@sha256:165b4992f1b4b74ffdd7a02c887ba006f9f5dc951eca420eef573a8b233b543f AS install
+ARG SOURCE_DATE_EPOCH
+USER node
+COPY --chown=node:node verified-upstream.tgz /opt/openclaw-cell/upstream/verified-upstream.tgz
+COPY --chmod=0555 --chown=node:node install-stock-zalouser-probe.sh /opt/openclaw-cell/install-stock-zalouser-probe.sh
+COPY --chown=node:node normalize-openclaw-install.mjs /opt/openclaw-cell/normalize-openclaw-install.mjs
+RUN --network=none node -e 'const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){process.exit(1)}' \
+    && test "$SOURCE_DATE_EPOCH" = "1785062400" \
+    && test ! -e /tmp/npm-empty \
+    && mkdir /tmp/npm-empty \
+    && test -z "$(find /tmp/npm-empty -mindepth 1 -print -quit)" \
+    && /opt/openclaw-cell/install-stock-zalouser-probe.sh --offline --cache /tmp/npm-empty --no-fallback \
+    && node /opt/openclaw-cell/normalize-openclaw-install.mjs --source-date-epoch "$SOURCE_DATE_EPOCH"
+
+FROM ghcr.io/openclaw/openclaw:2026.7.1@sha256:165b4992f1b4b74ffdd7a02c887ba006f9f5dc951eca420eef573a8b233b543f AS runtime
+USER node
+COPY --from=install --chown=node:node /home/node/.openclaw/npm/projects/zalouser /home/node/.openclaw/npm/projects/zalouser

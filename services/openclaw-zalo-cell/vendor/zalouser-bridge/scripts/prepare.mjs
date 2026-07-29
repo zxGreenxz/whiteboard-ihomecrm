@@ -70,18 +70,26 @@ function copyPreparedSources(vendorRoot, preparedRoot, upstream) {
   }
 }
 
-function copyOverlay(vendorRoot, preparedRoot) {
+export function copyOverlay(vendorRoot, preparedRoot) {
   for (const name of [
     "authorize-client.ts",
+    "behavior-contract.ts",
+    "canonical-send.ts",
     "control-traffic.ts",
     "inbound-listener.ts",
     "outbound-rpc.ts",
+    "protocol.ts",
+    "runtime-bootstrap.ts",
     "send-context.ts",
   ]) {
     const target = resolve(preparedRoot, "src/bridge", name);
     mkdirSync(dirname(target), { recursive: true });
     copyFileSync(resolve(vendorRoot, "src/bridge", name), target);
   }
+  copyFileSync(
+    resolve(vendorRoot, "behavior-contract-api.ts"),
+    resolve(preparedRoot, "behavior-contract-api.ts"),
+  );
 }
 
 function copyRuntimeDependencies(preparedRoot, entries) {

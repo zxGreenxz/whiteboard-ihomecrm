@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -87,20 +88,37 @@ function privateFailure(): never {
 }
 
 describe("executable patched outbound source", () => {
-  it("routes exact prepared text, media, link, and reaction calls through one wrapper", async () => {
+  it("installs the production bridge composition root before registering the private RPC", () => {
+    const root = preparePatchedSource();
+    const indexSource = readFileSync(resolve(root, "index.ts"), "utf8");
+    const installIndex = indexSource.indexOf("installProductionBridgeRuntimeFromEnvironment()");
+    const registerIndex = indexSource.indexOf("registerPrivateOutboundRpc(api, \"zalouser.bridge.send\")");
+
+    expect(indexSource).toContain("./src/bridge/runtime-bootstrap.js");
+    expect(installIndex).toBeGreaterThanOrEqual(0);
+    expect(registerIndex).toBeGreaterThan(installIndex);
+  });
+
+  it("routes only text and pre-materialized verified media through the provider wrapper", async () => {
     const root = preparePatchedSource();
     const events: string[] = [];
-    const media = Object.freeze({
-      buffer: Buffer.from("prepared-media"),
-      contentType: "image/png",
-      fileName: "image.png",
-      kind: "image",
-    });
+    const media = Buffer.from("prepared-media");
+    const preparedSession = Object.freeze({ accountProfile: SINK.accountProfile });
     const dependencies = {
       assertAuthorizedProviderCall: vi.fn(() => events.push("wrapper")),
+      verifyMaterializedMedia: vi.fn((_frame: unknown, candidate: Buffer | undefined) => {
+        events.push("media-verified");
+        if (!candidate) throw new Error("materialized media missing");
+        return candidate;
+      }),
       loadAndVerifyPreparedMedia: vi.fn(async () => {
-        events.push("media-ready");
-        return media;
+        events.push("late-media-load");
+        return {
+          buffer: media,
+          contentType: "image/png",
+          fileName: "image.png",
+          kind: "image",
+        };
       }),
       sendZaloTextMessage: vi.fn(async () => {
         events.push("text-provider");
@@ -110,80 +128,299 @@ describe("executable patched outbound source", () => {
         events.push("media-provider");
         return { ok: true, messageId: "media-id" };
       }),
-      sendZaloLink: vi.fn(async () => {
-        events.push("link-provider");
-        return { ok: true, messageId: "link-id" };
-      }),
-      sendZaloReaction: vi.fn(async () => {
-        events.push("reaction-provider");
-        return { ok: true };
+      sendZaloLink: vi.fn(),
+      sendZaloReaction: vi.fn(),
+      unsupportedBusinessPart: vi.fn(() => {
+        throw Object.assign(new Error("only text and media are supported"), {
+          code: "UNSUPPORTED_BUSINESS_PART",
+        });
       }),
     };
     const sendPrepared = compileFunction(root, "src/send.ts", "sendPreparedProviderCallZalouser", [
       "assertAuthorizedProviderCall",
+      "verifyMaterializedMedia",
       "loadAndVerifyPreparedMedia",
       "sendZaloTextMessage",
       "sendZaloPreparedMediaMessage",
       "sendZaloLink",
       "sendZaloReaction",
+      "unsupportedBusinessPart",
     ])(dependencies);
     const frames = [
       { kind: "text", text: "hello" },
       {
         kind: "media",
-        url: "https://media.invalid/image.png",
+        objectKey: "organization-a/account-a/outbox-a/image.png",
         caption: "caption",
-        byteLength: media.buffer.length,
-        contentType: media.contentType,
-        name: media.fileName,
-        sha256: "a".repeat(64),
+        byteLength: media.length,
+        contentType: "image/png",
+        sha256: createHash("sha256").update(media).digest("hex"),
       },
-      { kind: "link", url: "https://example.invalid", caption: "link" },
-      { kind: "reaction", msgId: "msg-1", cliMsgId: "cli-1", emoji: "heart", remove: false },
     ] as const;
 
-    const receipts = [];
-    for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
-      receipts.push(await sendPrepared({ frameIndex, sink: SINK, frame: frames[frameIndex] }));
-    }
+    const receipts = [
+      await sendPrepared({ frameIndex: 0, sink: SINK, frame: frames[0] }, undefined, preparedSession),
+      await sendPrepared({ frameIndex: 1, sink: SINK, frame: frames[1] }, media, preparedSession),
+    ];
 
     expect(receipts).toEqual([
       { providerMessageId: "text-id" },
       { providerMessageId: "media-id" },
-      { providerMessageId: "link-id" },
-      {},
     ]);
     expect(events).toEqual([
       "wrapper", "text-provider",
-      "wrapper", "media-ready", "media-provider",
-      "wrapper", "link-provider",
-      "wrapper", "reaction-provider",
+      "media-verified", "wrapper", "media-provider",
     ]);
     expect(dependencies.sendZaloTextMessage).toHaveBeenCalledWith(
       SINK.conversationId,
       "hello",
       { profile: SINK.accountProfile, isGroup: true },
       SINK,
+      preparedSession,
     );
     expect(dependencies.sendZaloPreparedMediaMessage).toHaveBeenCalledWith(
       expect.objectContaining({ frameIndex: 1, sink: SINK, frame: frames[1] }),
       media,
+      preparedSession,
     );
-    expect(dependencies.sendZaloLink).toHaveBeenCalledWith(
-      SINK.conversationId,
-      frames[2].url,
-      { profile: SINK.accountProfile, isGroup: true, caption: frames[2].caption },
-      SINK,
+    expect(dependencies.loadAndVerifyPreparedMedia).not.toHaveBeenCalled();
+    expect(dependencies.sendZaloLink).not.toHaveBeenCalled();
+    expect(dependencies.sendZaloReaction).not.toHaveBeenCalled();
+
+    const wrapperBody = declaration(root, "src/send.ts", "sendPreparedProviderCallZalouser");
+    const mediaBody = declaration(root, "src/zalo-js.ts", "sendZaloPreparedMediaMessage");
+    expect(wrapperBody).not.toContain("loadAndVerifyPreparedMedia");
+    expect(mediaBody).not.toContain("loadOutboundMediaFromUrl");
+    expect(mediaBody).not.toContain("frame.url");
+  });
+
+  it("prepares only an already-ready provider session without restoring it", () => {
+    const root = preparePatchedSource();
+    const api = Object.freeze({ id: "api-a" });
+    const apiByProfile = new Map<string, unknown>([["profile-a", api]]);
+    const preparedApiBySession = new WeakMap<object, unknown>();
+    const prepareSession = compileFunction(root, "src/zalo-js.ts", "prepareZaloProviderSession", [
+      "apiByProfile",
+      "normalizeProfile",
+      "preparedApiBySession",
+    ])({
+      apiByProfile,
+      normalizeProfile: (profile: string) => profile.trim(),
+      preparedApiBySession,
+    });
+
+    const session = prepareSession(" profile-a ");
+
+    expect(session).toEqual({ accountProfile: "profile-a" });
+    expect(Object.isFrozen(session)).toBe(true);
+    expect(preparedApiBySession.get(session as object)).toBe(api);
+    expect(() => prepareSession("cold-profile")).toThrow(expect.objectContaining({
+      code: "PROVIDER_SESSION_NOT_READY",
+    }));
+  });
+
+  it("installs one identity-bound offline provider fixture only when the probe gate is enabled", () => {
+    const root = preparePatchedSource();
+    const apiByProfile = new Map<string, unknown>();
+    const apiInitByProfile = new Map<string, Promise<unknown>>();
+    const installFixture = compileFunction(
+      root,
+      "src/zalo-js.ts",
+      "installZaloBehaviorProbeProviderV1",
+      ["apiByProfile", "apiInitByProfile", "normalizeProfile"],
+    )({
+      apiByProfile,
+      apiInitByProfile,
+      normalizeProfile: (profile: string) => profile.trim(),
+    });
+    const fixture = Object.freeze({
+      getContext: vi.fn(),
+      getCookie: vi.fn(),
+      sendMessage: vi.fn(),
+      uploadAttachment: vi.fn(),
+      sendVoice: vi.fn(),
+      sendTypingEvent: vi.fn(),
+    });
+    const previous = process.env.IHOME_BEHAVIOR_PROBE;
+    try {
+      delete process.env.IHOME_BEHAVIOR_PROBE;
+      expect(() => installFixture("profile-a", fixture)).toThrow(expect.objectContaining({
+        code: "BEHAVIOR_PROBE_DISABLED",
+      }));
+
+      process.env.IHOME_BEHAVIOR_PROBE = "1";
+      const cleanup = installFixture(" profile-a ", fixture) as () => void;
+      expect(apiByProfile.get("profile-a")).toBe(fixture);
+      expect(() => installFixture("profile-a", fixture)).toThrow(expect.objectContaining({
+        code: "BEHAVIOR_PROBE_PROFILE_OCCUPIED",
+      }));
+
+      cleanup();
+      cleanup();
+      expect(apiByProfile.has("profile-a")).toBe(false);
+
+      const secondCleanup = installFixture("profile-a", fixture) as () => void;
+      const replacement = Object.freeze({ id: "replacement" });
+      apiByProfile.set("profile-a", replacement);
+      secondCleanup();
+      expect(apiByProfile.get("profile-a")).toBe(replacement);
+    } finally {
+      if (previous === undefined) delete process.env.IHOME_BEHAVIOR_PROBE;
+      else process.env.IHOME_BEHAVIOR_PROBE = previous;
+    }
+  });
+
+  it("enters the provider operation without awaiting session restoration after authorization", async () => {
+    const root = preparePatchedSource();
+    const events: string[] = [];
+    const api = Object.freeze({ id: "api-a" });
+    const session = Object.freeze({ accountProfile: "profile-a" });
+    const ensureApi = vi.fn(async () => {
+      throw new Error("session restoration must not run after authorization");
+    });
+    const withZaloApi = compileFunction(root, "src/zalo-js.ts", "withZaloApi", [
+      "ensureApi",
+      "normalizeProfile",
+      "persistApiCredentialsIfChanged",
+      "preparedApiForSession",
+    ])({
+      ensureApi,
+      normalizeProfile: (profile: string) => profile.trim(),
+      persistApiCredentialsIfChanged: vi.fn(() => events.push("persist")),
+      preparedApiForSession: vi.fn(() => {
+        events.push("prepared-api");
+        return api;
+      }),
+    });
+
+    const result = await withZaloApi(
+      "profile-a",
+      async (receivedApi: unknown) => {
+        events.push("provider-call");
+        expect(receivedApi).toBe(api);
+        return "sent";
+      },
+      { preparedSession: session },
     );
-    expect(dependencies.sendZaloReaction).toHaveBeenCalledWith({
-      profile: SINK.accountProfile,
-      threadId: SINK.conversationId,
-      isGroup: true,
-      msgId: frames[3].msgId,
-      cliMsgId: frames[3].cliMsgId,
-      emoji: frames[3].emoji,
-      remove: false,
-    }, SINK);
+
+    expect(result).toBe("sent");
+    expect(ensureApi).not.toHaveBeenCalled();
+    expect(events).toEqual(["prepared-api", "provider-call", "persist"]);
+  });
+
+  it.each([
+    {
+      label: "link",
+      frame: { kind: "link", url: "https://example.invalid", caption: "link" },
+    },
+    {
+      label: "reaction",
+      frame: { kind: "reaction", msgId: "msg-1", cliMsgId: "cli-1", emoji: "heart", remove: false },
+    },
+    {
+      label: "URL media",
+      frame: {
+        kind: "media",
+        url: "https://media.invalid/image.png",
+        caption: null,
+        byteLength: 1,
+        contentType: "image/png",
+        name: "image.png",
+        sha256: "a".repeat(64),
+      },
+    },
+  ])("denies $label before authorization or provider I/O", async ({ frame }) => {
+    const root = preparePatchedSource();
+    const dependencies = {
+      assertAuthorizedProviderCall: vi.fn(),
+      verifyMaterializedMedia: vi.fn(),
+      loadAndVerifyPreparedMedia: vi.fn(),
+      sendZaloTextMessage: vi.fn(),
+      sendZaloPreparedMediaMessage: vi.fn(),
+      sendZaloLink: vi.fn(),
+      sendZaloReaction: vi.fn(),
+      unsupportedBusinessPart: vi.fn(() => {
+        throw Object.assign(new Error("only text and media are supported"), {
+          code: "UNSUPPORTED_BUSINESS_PART",
+        });
+      }),
+    };
+    const sendPrepared = compileFunction(root, "src/send.ts", "sendPreparedProviderCallZalouser", [
+      "assertAuthorizedProviderCall",
+      "verifyMaterializedMedia",
+      "loadAndVerifyPreparedMedia",
+      "sendZaloTextMessage",
+      "sendZaloPreparedMediaMessage",
+      "sendZaloLink",
+      "sendZaloReaction",
+      "unsupportedBusinessPart",
+    ])(dependencies);
+
+    await expect(sendPrepared({ frameIndex: 0, sink: SINK, frame })).rejects.toMatchObject({
+      code: "UNSUPPORTED_BUSINESS_PART",
+    });
+    expect(dependencies.unsupportedBusinessPart).toHaveBeenCalledTimes(1);
+    expect(dependencies.assertAuthorizedProviderCall).not.toHaveBeenCalled();
+    expect(dependencies.sendZaloTextMessage).not.toHaveBeenCalled();
+    expect(dependencies.sendZaloPreparedMediaMessage).not.toHaveBeenCalled();
+    expect(dependencies.sendZaloLink).not.toHaveBeenCalled();
+    expect(dependencies.sendZaloReaction).not.toHaveBeenCalled();
+  });
+
+  it("verifies materialized length and SHA-256 before the wrapper authorization check", () => {
+    const root = preparePatchedSource();
+    const verifier = compileFunction(root, "src/send.ts", "verifyMaterializedMedia", [
+      "createHash",
+      "preparedMediaMismatch",
+    ])({
+      createHash,
+      preparedMediaMismatch: (message: string) => {
+        throw Object.assign(new Error(message), { code: "PREPARED_MEDIA_MISMATCH" });
+      },
+    });
+    const media = Buffer.from("verified-media");
+    const frame = {
+      kind: "media",
+      objectKey: "organization-a/account-a/outbox-a/verified.png",
+      byteLength: media.length,
+      contentType: "image/png",
+      sha256: createHash("sha256").update(media).digest("hex"),
+    };
+
+    expect(verifier(frame, media)).toBe(media);
+    expect(() => verifier({ ...frame, byteLength: media.length + 1 }, media)).toThrowError(
+      expect.objectContaining({ code: "PREPARED_MEDIA_MISMATCH" }),
+    );
+    expect(() => verifier({ ...frame, sha256: "0".repeat(64) }, media)).toThrowError(
+      expect.objectContaining({ code: "PREPARED_MEDIA_MISMATCH" }),
+    );
+  });
+
+  it("omits an absent provider message ID from the receipt", async () => {
+    const root = preparePatchedSource();
+    const sendPrepared = compileFunction(root, "src/send.ts", "sendPreparedProviderCallZalouser", [
+      "assertAuthorizedProviderCall",
+      "verifyMaterializedMedia",
+      "preparedMediaMismatch",
+      "sendZaloTextMessage",
+      "sendZaloPreparedMediaMessage",
+      "unsupportedBusinessPart",
+    ])({
+      assertAuthorizedProviderCall: vi.fn(),
+      verifyMaterializedMedia: vi.fn(),
+      preparedMediaMismatch: vi.fn(),
+      sendZaloTextMessage: vi.fn(async () => ({ ok: true })),
+      sendZaloPreparedMediaMessage: vi.fn(),
+      unsupportedBusinessPart: vi.fn(),
+    });
+
+    const receipt = await sendPrepared({
+      frameIndex: 0,
+      sink: SINK,
+      frame: { kind: "text", text: "hello" },
+    });
+    expect(receipt).toEqual({});
+    expect(Object.keys(receipt as object)).toEqual([]);
   });
 
   it("denies every public send.ts business export without touching a provider", async () => {
@@ -234,9 +471,28 @@ describe("executable patched outbound source", () => {
       const body = declaration(root, "src/zalo-js.ts", name);
       expect(body).toContain("assertAuthorizedProviderIo");
     }
+    const textBody = declaration(root, "src/zalo-js.ts", "sendZaloTextMessage");
     const mediaBody = declaration(root, "src/zalo-js.ts", "sendZaloPreparedMediaMessage");
-    expect(mediaBody.indexOf("assertAuthorizedProviderIo")).toBeLessThan(
-      mediaBody.indexOf("withZaloApi"),
+    const reactionBody = declaration(root, "src/zalo-js.ts", "sendZaloReaction");
+    const linkBody = declaration(root, "src/zalo-js.ts", "sendZaloLink");
+    expect(textBody).not.toContain("loadOutboundMediaFromUrl");
+    expect(textBody).toMatch(
+      /assertAuthorizedProviderIo\(sink\);\s*const response = await api\.sendMessage/u,
+    );
+    expect(mediaBody.indexOf("withZaloApi")).toBeLessThan(
+      mediaBody.indexOf("assertAuthorizedProviderIo"),
+    );
+    expect(mediaBody).toMatch(
+      /assertAuthorizedProviderIo\(sink\);\s*const uploaded = await api\.uploadAttachment/u,
+    );
+    expect(mediaBody).toMatch(
+      /assertAuthorizedProviderIo\(sink\);\s*const response = await api\.sendMessage/u,
+    );
+    expect(reactionBody).toMatch(
+      /assertAuthorizedProviderIo\(sink\);\s*await api\.addReaction/u,
+    );
+    expect(linkBody).toMatch(
+      /assertAuthorizedProviderIo\(sink\);\s*const response = await api\.sendLink/u,
     );
   });
 
@@ -328,11 +584,6 @@ describe("executable patched outbound source", () => {
 
     expect(inventory).toEqual([
       { method: "sendMessage", owner: "sendZaloTextMessage" },
-      { method: "uploadAttachment", owner: "sendZaloTextMessage" },
-      { method: "sendVoice", owner: "sendZaloTextMessage" },
-      { method: "sendMessage", owner: "sendZaloTextMessage" },
-      { method: "sendMessage", owner: "sendZaloTextMessage" },
-      { method: "sendMessage", owner: "sendZaloPreparedMediaMessage" },
       { method: "uploadAttachment", owner: "sendZaloPreparedMediaMessage" },
       { method: "sendVoice", owner: "sendZaloPreparedMediaMessage" },
       { method: "sendMessage", owner: "sendZaloPreparedMediaMessage" },

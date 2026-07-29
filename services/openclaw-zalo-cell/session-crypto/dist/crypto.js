@@ -11,6 +11,9 @@ const TAG_LENGTH = 16;
 export const DEFAULT_MAX_ENVELOPE_BYTES = 64 * 1024 * 1024;
 const MAX_NONCE_ATTEMPTS = 32;
 const AAD_DOMAIN = Buffer.from("ihome-openclaw-session-aad-v1\0", "utf8");
+const LINUX_O_DIRECTORY = fsConstants.O_DIRECTORY ?? 0x10000;
+const LINUX_O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0x20000;
+const DIRECTORY_OPEN_FLAGS = fsConstants.O_RDONLY | LINUX_O_DIRECTORY | LINUX_O_NOFOLLOW;
 export class SessionCryptoError extends Error {
     code;
     constructor(code, message, options) {
@@ -362,43 +365,9 @@ export async function assertSafeRootConfiguration(configuration, operations) {
     }
     return { persistentRoot: realPersistentRoot, plaintextRoot: realPlaintextRoot };
 }
-function resolveLogicalTarget(root, logicalPathValue) {
-    const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
-    const targetPath = path.resolve(root, ...logicalPath.split("/"));
-    if (!isSameOrDescendant(root, targetPath) || targetPath === root) {
-        throw new SessionCryptoError("PATH_ESCAPE", "Logical path escapes its configured root");
-    }
-    return { logicalPath, targetPath };
-}
-async function assertTargetComponentsAreSafe(root, targetPath, inspectPath, options = {}) {
-    const relative = path.relative(root, targetPath);
-    const segments = relative.split(path.sep).filter(Boolean);
-    let current = root;
-    for (let index = 0; index < segments.length; index += 1) {
-        current = path.join(current, segments[index]);
-        const entry = await inspectPath(current);
-        if (entry.kind === "symlink" || entry.kind === "reparse") {
-            throw new SessionCryptoError("UNSAFE_PATH_COMPONENT", `Logical session path contains a ${entry.kind} component`);
-        }
-        if (index < segments.length - 1 && entry.kind !== "directory") {
-            if (entry.kind === "missing" && options.requireExistingParents) {
-                throw new SessionCryptoError("PARENT_DIRECTORY_MISSING", "Every parent of a session file must be a pre-existing directory");
-            }
-            throw new SessionCryptoError("UNSAFE_PATH_COMPONENT", "Logical session path contains a file where a directory is required");
-        }
-        if (entry.kind === "directory" && index < segments.length - 1) {
-            if (entry.uid !== undefined && options.expectedOwnerUid !== undefined && entry.uid !== options.expectedOwnerUid) {
-                throw new SessionCryptoError("UNSAFE_DIRECTORY_OWNER", "Session parent directory has an unexpected owner");
-            }
-            if (entry.mode !== undefined && (entry.mode & 0o077) !== 0) {
-                throw new SessionCryptoError("UNSAFE_DIRECTORY_MODE", "Session parent directory mode exposes data outside the service owner");
-            }
-        }
-    }
-}
-async function cleanupTemporaryFile(fs, temporaryPath) {
+async function cleanupTemporaryFile(fs, parentHandle, temporaryName) {
     try {
-        await fs.unlink(temporaryPath);
+        await fs.unlink(parentHandle.descriptorPath(temporaryName));
         return undefined;
     }
     catch (error) {
@@ -407,15 +376,22 @@ async function cleanupTemporaryFile(fs, temporaryPath) {
         return error;
     }
 }
-export async function durableAtomicWrite(fs, targetPath, bytes, randomBytes = nodeRandomBytes) {
-    const directoryPath = path.dirname(targetPath);
+export async function durableAtomicWrite(fs, parentHandle, targetName, bytes, randomBytes = nodeRandomBytes) {
+    if (targetName.length === 0 ||
+        targetName === "." ||
+        targetName === ".." ||
+        targetName.includes("/") ||
+        targetName.includes("\\")) {
+        throw new SessionCryptoError("INVALID_LOGICAL_PATH", "Atomic write target must be one safe leaf name");
+    }
     const suffix = Buffer.from(randomBytes(8));
     if (suffix.length !== 8) {
         throw new SessionCryptoError("INVALID_RANDOMNESS", "Random source returned an invalid temp suffix");
     }
-    const temporaryPath = path.join(directoryPath, `.${path.basename(targetPath)}.tmp-${suffix.toString("hex")}`);
-    const noFollow = fsConstants.O_NOFOLLOW ?? 0;
-    const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | noFollow;
+    const temporaryName = `.${targetName}.tmp-${suffix.toString("hex")}`;
+    const temporaryPath = parentHandle.descriptorPath(temporaryName);
+    const targetPath = parentHandle.descriptorPath(targetName);
+    const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | LINUX_O_NOFOLLOW;
     let handle;
     let temporaryCreated = false;
     let closed = false;
@@ -439,28 +415,17 @@ export async function durableAtomicWrite(fs, targetPath, bytes, randomBytes = no
             }
         }
         const cleanupError = temporaryCreated
-            ? await cleanupTemporaryFile(fs, temporaryPath)
+            ? await cleanupTemporaryFile(fs, parentHandle, temporaryName)
             : undefined;
         if (cleanupError) {
             throw new SessionCryptoError("TEMP_CLEANUP_FAILED", "Persistent write failed before rename and temp cleanup also failed", { cause: new AggregateError([error, cleanupError]) });
         }
         throw error;
     }
-    let directoryHandle;
     try {
-        directoryHandle = await fs.open(directoryPath, "r");
-        await directoryHandle.sync();
-        await directoryHandle.close();
+        await parentHandle.sync();
     }
     catch (error) {
-        if (directoryHandle) {
-            try {
-                await directoryHandle.close();
-            }
-            catch {
-                // The rename already happened, so every close failure is still ambiguous.
-            }
-        }
         throw new AmbiguousDurabilityError("Atomic rename completed but directory durability could not be confirmed; explicit recovery is required", { cause: error });
     }
 }
@@ -477,7 +442,13 @@ async function defaultIsTmpfsRoot(candidate) {
     catch {
         return false;
     }
-    const normalizedCandidate = path.resolve(candidate);
+    let normalizedCandidate;
+    try {
+        normalizedCandidate = path.resolve(await nodeFs.realpath(candidate));
+    }
+    catch {
+        return false;
+    }
     const mounts = [];
     for (const line of mountInfo.split("\n")) {
         if (!line)
@@ -501,6 +472,23 @@ async function defaultIsTmpfsRoot(candidate) {
 function wrapFileHandle(handle) {
     return {
         close: () => handle.close(),
+        descriptorPath(relativePath = "") {
+            const descriptorRoot = `/proc/self/fd/${handle.fd}`;
+            return relativePath
+                ? path.posix.join(descriptorRoot, ...relativePath.split("/"))
+                : descriptorRoot;
+        },
+        readFile: () => handle.readFile(),
+        async stat() {
+            const stats = await handle.stat();
+            return {
+                dev: stats.dev,
+                ino: stats.ino,
+                kind: stats.isDirectory() ? "directory" : stats.isFile() ? "file" : "reparse",
+                mode: stats.mode & 0o777,
+                uid: stats.uid,
+            };
+        },
         sync: () => handle.sync(),
         writeFile: (data) => handle.writeFile(data),
     };
@@ -511,10 +499,24 @@ const defaultFileSystem = {
             const stats = await nodeFs.lstat(candidate);
             if (stats.isSymbolicLink())
                 return { kind: "symlink" };
-            if (stats.isDirectory())
-                return { kind: "directory", mode: stats.mode & 0o777, uid: stats.uid };
-            if (stats.isFile())
-                return { kind: "file", mode: stats.mode & 0o777, uid: stats.uid };
+            if (stats.isDirectory()) {
+                return {
+                    dev: stats.dev,
+                    ino: stats.ino,
+                    kind: "directory",
+                    mode: stats.mode & 0o777,
+                    uid: stats.uid,
+                };
+            }
+            if (stats.isFile()) {
+                return {
+                    dev: stats.dev,
+                    ino: stats.ino,
+                    kind: "file",
+                    mode: stats.mode & 0o777,
+                    uid: stats.uid,
+                };
+            }
             return { kind: "reparse" };
         }
         catch (error) {
@@ -523,9 +525,7 @@ const defaultFileSystem = {
             throw error;
         }
     },
-    mkdir: (directoryPath, options) => nodeFs.mkdir(directoryPath, options).then(() => undefined),
     open: async (filePath, flags, mode) => wrapFileHandle(await nodeFs.open(filePath, flags, mode)),
-    readFile: (filePath) => nodeFs.readFile(filePath),
     realpath: (candidate) => nodeFs.realpath(candidate),
     rename: (from, to) => nodeFs.rename(from, to),
     unlink: (filePath) => nodeFs.unlink(filePath),
@@ -541,28 +541,8 @@ function assertExpectedEnvelope(expected, current) {
         throw new SessionCryptoError("ENVELOPE_CONFLICT", "Ciphertext changed since the caller observed it");
     }
 }
-async function fsyncDirectory(fs, directoryPath) {
-    let handle;
-    try {
-        handle = await fs.open(directoryPath, "r");
-        await handle.sync();
-        await handle.close();
-    }
-    catch (error) {
-        if (handle) {
-            try {
-                await handle.close();
-            }
-            catch {
-                // The caller receives a fatal ambiguous-durability error below.
-            }
-        }
-        throw new AmbiguousDurabilityError("Directory durability could not be confirmed; explicit recovery is required", { cause: error });
-    }
-}
-async function reserveUniqueNonce(fs, persistentRoot, generation, randomBytes, forbiddenNonce) {
-    const noFollow = fsConstants.O_NOFOLLOW ?? 0;
-    const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | noFollow;
+async function reserveUniqueNonce(fs, persistentRootHandle, generation, randomBytes, forbiddenNonce) {
+    const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | LINUX_O_NOFOLLOW;
     for (let attempt = 0; attempt < MAX_NONCE_ATTEMPTS; attempt += 1) {
         const nonce = Buffer.from(randomBytes(NONCE_LENGTH));
         if (nonce.length !== NONCE_LENGTH) {
@@ -571,7 +551,7 @@ async function reserveUniqueNonce(fs, persistentRoot, generation, randomBytes, f
         const encoded = nonce.toString("base64");
         if (encoded === forbiddenNonce)
             continue;
-        const reservationPath = path.join(persistentRoot, `.openclaw-nonce-v1-${generation}-${nonce.toString("hex")}.reserve`);
+        const reservationPath = persistentRootHandle.descriptorPath(`.openclaw-nonce-v1-${generation}-${nonce.toString("hex")}.reserve`);
         let handle;
         try {
             handle = await fs.open(reservationPath, flags, 0o600);
@@ -585,7 +565,12 @@ async function reserveUniqueNonce(fs, persistentRoot, generation, randomBytes, f
             await handle.writeFile(Buffer.from(`openclaw-nonce-reservation-v1\n${generation}\n${encoded}\n`, "utf8"));
             await handle.sync();
             await handle.close();
-            await fsyncDirectory(fs, persistentRoot);
+            try {
+                await persistentRootHandle.sync();
+            }
+            catch (error) {
+                throw new AmbiguousDurabilityError("Directory durability could not be confirmed; explicit recovery is required", { cause: error });
+            }
             return nonce;
         }
         catch (error) {
@@ -602,19 +587,163 @@ async function reserveUniqueNonce(fs, persistentRoot, generation, randomBytes, f
     }
     throw new SessionCryptoError("NONCE_EXHAUSTED", "Unable to reserve a unique AES-GCM nonce after repeated collisions");
 }
+function sameFileIdentity(left, right) {
+    if (left.dev === undefined ||
+        left.ino === undefined ||
+        right.dev === undefined ||
+        right.ino === undefined) {
+        return false;
+    }
+    return left.dev === right.dev && left.ino === right.ino;
+}
+function assertOwnedPrivateDirectory(entry, expectedOwnerUid) {
+    if (entry.kind !== "directory") {
+        throw new SessionCryptoError("UNSAFE_PATH_COMPONENT", `Logical session path contains a ${entry.kind} where a directory is required`);
+    }
+    if (entry.uid !== undefined && entry.uid !== expectedOwnerUid) {
+        throw new SessionCryptoError("UNSAFE_DIRECTORY_OWNER", "Session parent directory has an unexpected owner");
+    }
+    if (entry.mode !== undefined && (entry.mode & 0o077) !== 0) {
+        throw new SessionCryptoError("UNSAFE_DIRECTORY_MODE", "Session parent directory mode exposes data outside the service owner");
+    }
+}
+async function openVerifiedRootDirectory(fs, root, expectedOwnerUid) {
+    const checked = await fs.inspectPath(root);
+    let handle;
+    try {
+        handle = await fs.open(root, DIRECTORY_OPEN_FLAGS);
+        const descriptorEntry = await handle.stat();
+        const rechecked = await fs.inspectPath(root);
+        const descriptorRealPath = path.resolve(await fs.realpath(handle.descriptorPath()));
+        if (descriptorEntry.kind !== "directory") {
+            throw new SessionCryptoError("UNSAFE_ROOT_COMPONENT", "Configured session root is not a directory");
+        }
+        if (descriptorEntry.uid !== undefined && descriptorEntry.uid !== expectedOwnerUid) {
+            throw new SessionCryptoError("UNSAFE_ROOT_OWNER", "Configured session root has an unexpected owner");
+        }
+        if (descriptorEntry.mode !== undefined && (descriptorEntry.mode & 0o077) !== 0) {
+            throw new SessionCryptoError("UNSAFE_ROOT_MODE", "Configured session root mode exposes data outside the service owner");
+        }
+        if (checked.kind !== "directory" ||
+            rechecked.kind !== "directory" ||
+            !sameFileIdentity(checked, descriptorEntry) ||
+            !sameFileIdentity(rechecked, descriptorEntry) ||
+            normalizedComparisonPath(descriptorRealPath) !== normalizedComparisonPath(root)) {
+            throw new SessionCryptoError("UNSAFE_ROOT_COMPONENT", "Configured session root changed while its directory descriptor was opened");
+        }
+        return handle;
+    }
+    catch (error) {
+        if (handle) {
+            try {
+                await handle.close();
+            }
+            catch {
+                // The root validation failure remains authoritative.
+            }
+        }
+        if (isNodeError(error) && ["ELOOP", "ENOTDIR"].includes(String(error.code))) {
+            throw new SessionCryptoError("UNSAFE_ROOT_COMPONENT", "Configured session root changed to an unsafe path component", { cause: error });
+        }
+        throw error;
+    }
+}
+async function openSessionParent(fs, rootHandle, logicalPathValue, expectedOwnerUid) {
+    const segments = normalizeLogicalSessionPath(logicalPathValue).split("/");
+    const leafName = segments.pop();
+    let current = rootHandle;
+    let currentOwned = false;
+    try {
+        for (const segment of segments) {
+            let child;
+            const childPath = current.descriptorPath(segment);
+            try {
+                child = await fs.open(childPath, DIRECTORY_OPEN_FLAGS);
+            }
+            catch (error) {
+                if (isNodeError(error) && error.code === "ENOENT") {
+                    throw new SessionCryptoError("PARENT_DIRECTORY_MISSING", "Every parent of a session file must be a pre-existing directory", { cause: error });
+                }
+                if (isNodeError(error) && ["ELOOP", "ENOTDIR"].includes(String(error.code))) {
+                    const entry = await fs.inspectPath(childPath).catch(() => undefined);
+                    const kind = entry?.kind === "symlink" || entry?.kind === "reparse"
+                        ? entry.kind
+                        : "unsafe parent";
+                    throw new SessionCryptoError("UNSAFE_PATH_COMPONENT", `Logical session path contains a ${kind} component`, { cause: error });
+                }
+                throw error;
+            }
+            try {
+                assertOwnedPrivateDirectory(await child.stat(), expectedOwnerUid);
+            }
+            catch (error) {
+                await child.close().catch(() => undefined);
+                throw error;
+            }
+            if (currentOwned)
+                await current.close();
+            current = child;
+            currentOwned = true;
+        }
+        return {
+            handle: current,
+            leafName,
+            release: currentOwned ? () => current.close() : async () => undefined,
+        };
+    }
+    catch (error) {
+        if (currentOwned)
+            await current.close().catch(() => undefined);
+        throw error;
+    }
+}
+async function readLeafFromParent(fs, parent, leafName) {
+    let handle;
+    try {
+        handle = await fs.open(parent.descriptorPath(leafName), fsConstants.O_RDONLY | LINUX_O_NOFOLLOW);
+    }
+    catch (error) {
+        if (isNodeError(error) && ["ELOOP", "ENOTDIR"].includes(String(error.code))) {
+            throw new SessionCryptoError("UNSAFE_PATH_COMPONENT", "Logical session leaf changed to an unsafe path component", { cause: error });
+        }
+        throw error;
+    }
+    let operationError;
+    let bytes = Buffer.alloc(0);
+    try {
+        const entry = await handle.stat();
+        if (entry.kind !== "file") {
+            throw new SessionCryptoError("UNSAFE_PATH_COMPONENT", "Logical session leaf must be a regular file");
+        }
+        bytes = await handle.readFile();
+    }
+    catch (error) {
+        operationError = error;
+    }
+    try {
+        await handle.close();
+    }
+    catch (error) {
+        if (!operationError)
+            operationError = error;
+    }
+    if (operationError)
+        throw operationError;
+    return bytes;
+}
 export class SessionCryptoStore {
     engine;
     fs;
-    plaintextRoot;
-    persistentRoot;
+    plaintextRootHandle;
+    persistentRootHandle;
     randomBytes;
     expectedOwnerUid;
     pathLocks = new Map();
-    constructor(engine, fs, plaintextRoot, persistentRoot, randomBytes, expectedOwnerUid) {
+    constructor(engine, fs, plaintextRootHandle, persistentRootHandle, randomBytes, expectedOwnerUid) {
         this.engine = engine;
         this.fs = fs;
-        this.plaintextRoot = plaintextRoot;
-        this.persistentRoot = persistentRoot;
+        this.plaintextRootHandle = plaintextRootHandle;
+        this.persistentRootHandle = persistentRootHandle;
         this.randomBytes = randomBytes;
         this.expectedOwnerUid = expectedOwnerUid;
     }
@@ -654,7 +783,18 @@ export class SessionCryptoStore {
             engineOptions.maxEnvelopeBytes = configuration.maxEnvelopeBytes;
         }
         const engine = new SessionCryptoEngine(engineOptions);
-        return new SessionCryptoStore(engine, fs, roots.plaintextRoot, roots.persistentRoot, randomBytes, expectedOwnerUid);
+        let plaintextRootHandle;
+        let persistentRootHandle;
+        try {
+            plaintextRootHandle = await openVerifiedRootDirectory(fs, roots.plaintextRoot, expectedOwnerUid);
+            persistentRootHandle = await openVerifiedRootDirectory(fs, roots.persistentRoot, expectedOwnerUid);
+        }
+        catch (error) {
+            await persistentRootHandle?.close().catch(() => undefined);
+            await plaintextRootHandle?.close().catch(() => undefined);
+            throw error;
+        }
+        return new SessionCryptoStore(engine, fs, plaintextRootHandle, persistentRootHandle, randomBytes, expectedOwnerUid);
     }
     async serializePath(logicalPath, operation) {
         const previous = this.pathLocks.get(logicalPath) ?? Promise.resolve();
@@ -674,14 +814,18 @@ export class SessionCryptoStore {
                 this.pathLocks.delete(logicalPath);
         }
     }
-    async readFromRoot(root, logicalPathValue) {
-        const { targetPath } = resolveLogicalTarget(root, logicalPathValue);
-        await assertTargetComponentsAreSafe(root, targetPath, (candidate) => this.fs.inspectPath(candidate), { expectedOwnerUid: this.expectedOwnerUid, requireExistingParents: true });
-        return this.fs.readFile(targetPath);
+    async readFromRoot(rootHandle, logicalPathValue) {
+        const parent = await openSessionParent(this.fs, rootHandle, logicalPathValue, this.expectedOwnerUid);
+        try {
+            return await readLeafFromParent(this.fs, parent.handle, parent.leafName);
+        }
+        finally {
+            await parent.release();
+        }
     }
     async readCurrentEnvelope(logicalPath) {
         try {
-            const bytes = await this.readFromRoot(this.persistentRoot, logicalPath);
+            const bytes = await this.readFromRoot(this.persistentRootHandle, logicalPath);
             return { bytes, metadata: this.engine.inspect(bytes) };
         }
         catch (error) {
@@ -690,17 +834,21 @@ export class SessionCryptoStore {
             throw error;
         }
     }
-    async writeToRoot(root, logicalPathValue, bytes) {
-        const { targetPath } = resolveLogicalTarget(root, logicalPathValue);
-        await assertTargetComponentsAreSafe(root, targetPath, (candidate) => this.fs.inspectPath(candidate), { expectedOwnerUid: this.expectedOwnerUid, requireExistingParents: true });
-        await durableAtomicWrite(this.fs, targetPath, bytes, this.randomBytes);
+    async writeToRoot(rootHandle, logicalPathValue, bytes) {
+        const parent = await openSessionParent(this.fs, rootHandle, logicalPathValue, this.expectedOwnerUid);
+        try {
+            await durableAtomicWrite(this.fs, parent.handle, parent.leafName, bytes, this.randomBytes);
+        }
+        finally {
+            await parent.release();
+        }
     }
     async writeSessionUnlocked(logicalPath, plaintext, expectedEnvelopeVersion) {
         const current = await this.readCurrentEnvelope(logicalPath);
         assertExpectedEnvelope(expectedEnvelopeVersion, current);
-        const nonce = await reserveUniqueNonce(this.fs, this.persistentRoot, this.engine.getActiveGeneration(), this.randomBytes, current?.metadata.nonce);
+        const nonce = await reserveUniqueNonce(this.fs, this.persistentRootHandle, this.engine.getActiveGeneration(), this.randomBytes, current?.metadata.nonce);
         const envelope = this.engine.encryptWithNonce(logicalPath, plaintext, this.engine.getActiveGeneration(), nonce);
-        await this.writeToRoot(this.persistentRoot, logicalPath, envelope);
+        await this.writeToRoot(this.persistentRootHandle, logicalPath, envelope);
         return this.engine.inspect(envelope);
     }
     async writeSession(logicalPathValue, plaintext, expectedEnvelopeVersion) {
@@ -710,7 +858,7 @@ export class SessionCryptoStore {
     async persistFromPlaintext(logicalPathValue, expectedEnvelopeVersion) {
         const logicalPath = normalizeLogicalSessionPath(logicalPathValue);
         return this.serializePath(logicalPath, async () => {
-            const plaintext = await this.readFromRoot(this.plaintextRoot, logicalPath);
+            const plaintext = await this.readFromRoot(this.plaintextRootHandle, logicalPath);
             return this.writeSessionUnlocked(logicalPath, plaintext, expectedEnvelopeVersion);
         });
     }
@@ -733,7 +881,7 @@ export class SessionCryptoStore {
                 throw new SessionCryptoError("CIPHERTEXT_MISSING", "Ciphertext session file is missing");
             }
             const decrypted = this.engine.decrypt(logicalPath, current.bytes);
-            await this.writeToRoot(this.plaintextRoot, logicalPath, decrypted.plaintext);
+            await this.writeToRoot(this.plaintextRootHandle, logicalPath, decrypted.plaintext);
             const { plaintext: _plaintext, ...metadata } = decrypted;
             return metadata;
         });
@@ -749,9 +897,9 @@ export class SessionCryptoStore {
             if (current.metadata.generation === this.engine.getActiveGeneration()) {
                 throw new SessionCryptoError("ROTATION_GENERATION_UNCHANGED", "Ciphertext already uses the configured active key generation");
             }
-            const nonce = await reserveUniqueNonce(this.fs, this.persistentRoot, this.engine.getActiveGeneration(), this.randomBytes, current.metadata.nonce);
+            const nonce = await reserveUniqueNonce(this.fs, this.persistentRootHandle, this.engine.getActiveGeneration(), this.randomBytes, current.metadata.nonce);
             const rotated = this.engine.rotateToActiveWithNonce(logicalPath, current.bytes, nonce);
-            await this.writeToRoot(this.persistentRoot, logicalPath, rotated);
+            await this.writeToRoot(this.persistentRootHandle, logicalPath, rotated);
             return this.engine.inspect(rotated);
         });
     }

@@ -14,6 +14,15 @@
     "version": "29.1.3",
     "linux_amd64_sha256": "40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a"
   },
+  "git": {
+    "version": "2.53.0",
+    "linux_amd64_sha256": "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a"
+  },
+  "node": {
+    "version": "24.15.0",
+    "linux_amd64_size": 122889056,
+    "linux_amd64_sha256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+  },
   "inputs": [
     {
       "path": ".dockerignore",
@@ -54,15 +63,15 @@
       "path": "session-crypto/dist/crypto.js",
       "type": "blob",
       "mode": "100644",
-      "size": 36195,
-      "sha256": "d03cc0bf02169ad3d66ac5a2075c3fe063f6f3bf08e8c0bc59916313a9c70db2"
+      "size": 41480,
+      "sha256": "893cc9a6b9715109b90da425eec560f430e133ccad239108676e026144f7997b"
     },
     {
       "path": "session-crypto/dist/daemon.js",
       "type": "blob",
       "mode": "100644",
-      "size": 26965,
-      "sha256": "2db8c0656d8a6aad6ca397164aa3616e660a9e43ba57f2aa1c32c1e74719052e"
+      "size": 35628,
+      "sha256": "cdbea4147e35ca019296a32dea2baff2715c56a3f2e0ed6ea7bf9f0434a926b5"
     },
     {
       "path": "session-crypto/dist/package.json",
@@ -75,15 +84,15 @@
       "path": "vendor/zalouser-bridge/FORK.json",
       "type": "blob",
       "mode": "100644",
-      "size": 56399,
-      "sha256": "1ea954d2191a916eb3c96a3b17277b66e3bc59ce5087d2a0ab775e4568070701"
+      "size": 241276,
+      "sha256": "23e11dc970a7f71bbfbbc474fa378a9d48db514be1c5a3f91d280a7b1204886f"
     },
     {
       "path": "vendor/zalouser-bridge/artifacts/openclaw-zalouser-2026.7.1.tgz",
       "type": "blob",
       "mode": "100644",
-      "size": 407587,
-      "sha256": "a566e950c4ecef7ff45169a339349fa67777ec4ee92c96d14057ff59e266b44f"
+      "size": 420052,
+      "sha256": "b99bb13abbd54661778ae79e4d2b3cff7d3e3d35616f0005ea7283259e5f6f2d"
     }
   ]
 }

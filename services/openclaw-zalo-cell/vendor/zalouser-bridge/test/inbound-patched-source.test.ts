@@ -7,7 +7,7 @@ import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildZaloUserInboundEnvelopeV1,
-  commitInboundThroughBridge,
+  commitAndDispatchInbound,
   installInboundBridgeCommitter,
   type ZaloUserInboundInputV1,
 } from "../src/bridge/inbound-listener.js";
@@ -53,6 +53,9 @@ function installBridge(committer: (envelope: unknown) => Promise<unknown>): () =
       sessionGeneration: 7,
     },
     committer,
+    ready: async () => undefined,
+    commitTimeoutMs: 6_000,
+    readinessTimeoutMs: 2_000,
   });
   bridgeCleanups.push(uninstall);
   return () => {
@@ -365,7 +368,10 @@ describe("executable patched inbound source", () => {
     )({
       toNonNegativeInteger: () => null,
       toStringValue: (value: unknown) => typeof value === "string" ? value : "",
-    }) as (content: unknown, eventType: string) => Array<{ fetchRef: string | null }>;
+    }) as (content: unknown, eventType: string) => Array<{
+      fetchRef: string | null;
+      providerMediaId: string | null;
+    }>;
     for (const field of [
       "videoUrl",
       "voiceUrl",
@@ -381,6 +387,16 @@ describe("executable patched inbound source", () => {
         { fetchRef: expected },
       ]);
     }
+
+    expect(extractMedia({
+      attachments: [{
+        fileId: "file-1",
+        fileUrl: "https://provider.invalid/file-1",
+      }],
+    }, "chat.file")).toMatchObject([{
+      fetchRef: "https://provider.invalid/file-1",
+      providerMediaId: "file-1",
+    }]);
   });
 
   it("executes the actual monitor callback through strict bridge acknowledgement gating", async () => {
@@ -389,7 +405,7 @@ describe("executable patched inbound source", () => {
     const arrow = findObjectPropertyArrow(monitor, "monitorZalouserProvider", "onMessage");
     const makeCallback = compileCallback(monitor, arrow, [
       "stopped",
-      "commitInboundThroughBridge",
+      "commitAndDispatchInbound",
       "account",
       "logVerbose",
       "core",
@@ -410,7 +426,7 @@ describe("executable patched inbound source", () => {
     const events: string[] = [];
     const dependencies = {
       stopped: false,
-      commitInboundThroughBridge,
+      commitAndDispatchInbound,
       account: { accountId: "account-a" },
       logVerbose: () => events.push("log"),
       core: {},
@@ -464,6 +480,16 @@ describe("executable patched inbound source", () => {
       expect(events, label).toEqual([]);
       uninstallDenied();
     }
+  });
+
+  it("awaits bridge readiness before attaching the provider listener", () => {
+    const root = preparePatchedSource();
+    const monitorSource = readFileSync(resolve(root, "src/monitor.ts"), "utf8");
+    const readinessIndex = monitorSource.indexOf("await ensureInboundBridgeReady(account.accountId)");
+    const listenerIndex = monitorSource.indexOf("await startZaloListener({");
+
+    expect(readinessIndex).toBeGreaterThanOrEqual(0);
+    expect(listenerIndex).toBeGreaterThan(readinessIndex);
   });
 
   it("executes the actual void provider callback with synchronous receipt capture and failure routing", async () => {

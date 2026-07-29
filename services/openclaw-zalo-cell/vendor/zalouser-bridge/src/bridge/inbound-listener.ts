@@ -120,6 +120,11 @@ export type InboundBridgeCommitter = (
   envelope: ZaloUserInboundEnvelopeV1,
 ) => Promise<unknown>;
 
+export type InboundBridgeReady = (
+  accountId: string,
+  binding: InboundBridgeBinding,
+) => Promise<void>;
+
 export type CommittedInboundResult = Readonly<{
   envelope: ZaloUserInboundEnvelopeV1;
   status: "committed";
@@ -135,6 +140,9 @@ type InboundCommitResult = CommittedInboundResult | DuplicateInboundResult;
 type InstalledInboundBridge = Readonly<{
   binding: InboundBridgeBinding;
   committer: InboundBridgeCommitter;
+  ready: InboundBridgeReady;
+  commitTimeoutMs: number;
+  readinessTimeoutMs: number;
 }>;
 
 const EVENT_KINDS = new Set<ZaloUserInboundEventKindV1>([
@@ -191,6 +199,24 @@ export class InboundBridgeAlreadyInstalledError extends Error {
   constructor(message = "an inbound bridge binding is already installed") {
     super(message);
     this.name = "InboundBridgeAlreadyInstalledError";
+  }
+}
+
+export class InboundBridgeCommitTimeoutError extends Error {
+  readonly code = "INBOUND_BRIDGE_COMMIT_TIMEOUT";
+
+  constructor(message = "durable inbound bridge commit timed out") {
+    super(message);
+    this.name = "InboundBridgeCommitTimeoutError";
+  }
+}
+
+export class InboundBridgeReadinessTimeoutError extends Error {
+  readonly code = "INBOUND_BRIDGE_READINESS_TIMEOUT";
+
+  constructor(message = "inbound bridge readiness check timed out") {
+    super(message);
+    this.name = "InboundBridgeReadinessTimeoutError";
   }
 }
 
@@ -565,18 +591,64 @@ function validateAcknowledgement(value: unknown): InboundBridgeAcknowledgementV1
 export function installInboundBridgeCommitter(optionsValue: Readonly<{
   binding: InboundBridgeBinding;
   committer: InboundBridgeCommitter;
+  ready: InboundBridgeReady;
+  commitTimeoutMs: number;
+  readinessTimeoutMs: number;
 }>): () => void {
-  const options = exactRecord("inbound bridge installation", optionsValue, ["binding", "committer"]);
+  const options = exactRecord("inbound bridge installation", optionsValue, [
+    "binding",
+    "committer",
+    "ready",
+    "commitTimeoutMs",
+    "readinessTimeoutMs",
+  ]);
   if (typeof options.committer !== "function") throw new TypeError("committer must be a function");
+  if (typeof options.ready !== "function") throw new TypeError("ready must be a function");
+  const commitTimeoutMs = positiveSafeInteger("commitTimeoutMs", options.commitTimeoutMs);
+  const readinessTimeoutMs = positiveSafeInteger("readinessTimeoutMs", options.readinessTimeoutMs);
+  if (commitTimeoutMs > 6_000) invalidEnvelope("commitTimeoutMs may not exceed 6000");
+  if (readinessTimeoutMs > 2_000) invalidEnvelope("readinessTimeoutMs may not exceed 2000");
   const installation = Object.freeze({
     binding: validatedBinding(options.binding),
     committer: options.committer as InboundBridgeCommitter,
+    ready: options.ready as InboundBridgeReady,
+    commitTimeoutMs,
+    readinessTimeoutMs,
   });
   if (installedInboundBridge) throw new InboundBridgeAlreadyInstalledError();
   installedInboundBridge = installation;
   return () => {
     if (installedInboundBridge === installation) installedInboundBridge = undefined;
   };
+}
+
+async function withBridgeTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  timeoutError: Error,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(timeoutError), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export async function ensureInboundBridgeReady(accountIdValue: string): Promise<void> {
+  const installation = installedInboundBridge;
+  if (!installation) throw new InboundBridgeUnavailableError();
+  const accountId = requiredString("accountId", accountIdValue);
+  await withBridgeTimeout(
+    installation.ready(accountId, installation.binding),
+    installation.readinessTimeoutMs,
+    new InboundBridgeReadinessTimeoutError(),
+  );
 }
 
 export async function commitInboundThroughBridge(
@@ -586,7 +658,11 @@ export async function commitInboundThroughBridge(
   const installation = installedInboundBridge;
   if (!installation) throw new InboundBridgeUnavailableError();
   const envelope = buildZaloUserInboundEnvelopeV1(installation.binding, accountId, input);
-  const acknowledgement = validateAcknowledgement(await installation.committer(envelope));
+  const acknowledgement = validateAcknowledgement(await withBridgeTimeout(
+    installation.committer(envelope),
+    installation.commitTimeoutMs,
+    new InboundBridgeCommitTimeoutError(),
+  ));
   if (acknowledgement.status === "collision") throw new InboundIdCollisionError();
   return Object.freeze({ envelope, status: acknowledgement.status });
 }

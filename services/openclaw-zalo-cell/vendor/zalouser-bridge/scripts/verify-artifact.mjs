@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   lstatSync,
@@ -17,7 +17,10 @@ import {
   PACKAGE_VERSION,
   PLUGIN_ID,
   SOURCE_DATE_EPOCH,
+  analyzeEmittedRuntimeSites,
+  buildPreparedTree,
 } from "./build.mjs";
+import { prepareVendorTree } from "./prepare.mjs";
 import {
   canonicalJson,
   canonicalSha256,
@@ -140,10 +143,12 @@ function patchSeriesMetadata(vendorRoot) {
 
 function bridgeOverlayMetadata(vendorRoot) {
   const bridgeRoot = resolve(vendorRoot, "src/bridge");
-  const paths = readdirSync(bridgeRoot, { withFileTypes: true })
+  const paths = [
+    "behavior-contract-api.ts",
+    ...readdirSync(bridgeRoot, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-    .map((entry) => `src/bridge/${entry.name}`)
-    .sort(utf8Compare);
+    .map((entry) => `src/bridge/${entry.name}`),
+  ].sort(utf8Compare);
   const hash = createHash("sha256");
   hash.update("ihome-zalouser-bridge-overlay-v1\0", "utf8");
   const members = [];
@@ -158,8 +163,7 @@ function bridgeOverlayMetadata(vendorRoot) {
   return { members, sha256: hash.digest("hex") };
 }
 
-function verifyDynamicInventory(fork, allowlist) {
-  const inventory = fork.runtimeDynamicSiteInventory;
+function verifySiteInventory(inventory, allowlist, label, { emitted = false } = {}) {
   if (!Array.isArray(inventory) || inventory.length === 0) throw new Error("FORK runtime dynamic site inventory is missing");
   const identities = new Set();
   for (const site of inventory) {
@@ -169,27 +173,78 @@ function verifyDynamicInventory(fork, allowlist) {
       site.line < 1 ||
       !Number.isInteger(site?.column) ||
       site.column < 1 ||
-      !["dynamic-import", "require", "filesystem-read", "import-meta-resolve", "package-exports"].includes(site?.operation) ||
+      !["dynamic-import", "require", "filesystem-read", "package-entrypoint"].includes(site?.operation) ||
       typeof site?.expression !== "string" ||
+      !["artifact-members", "bundled-static", "node-builtin", "optional-external", "external-runtime-input"].includes(site?.classification) ||
       !["literal", "reviewed-finite"].includes(site?.resolution) ||
-      !Array.isArray(site?.expandedMembers) ||
-      site.expandedMembers.length === 0
+      !Array.isArray(site?.expandedMembers)
     ) {
-      throw new Error("FORK runtime dynamic site inventory contains an incomplete record");
+      throw new Error(`FORK ${label} contains an incomplete record`);
     }
-    const identity = `${site.source}\0${site.line}\0${site.column}\0${site.operation}`;
-    if (identities.has(identity)) throw new Error(`FORK runtime dynamic site inventory contains a duplicate: ${identity}`);
+    const identity = `${site.source}\0${site.line}\0${site.column}\0${site.operation}\0${site.surface ?? ""}\0${site.expression}`;
+    if (identities.has(identity)) throw new Error(`FORK ${label} contains a duplicate: ${identity}`);
     identities.add(identity);
     const expanded = [...site.expandedMembers].sort(utf8Compare);
     if (new Set(expanded).size !== expanded.length || canonicalJson(expanded) !== canonicalJson(site.expandedMembers)) {
-      throw new Error(`FORK runtime dynamic site expansion is not exact and sorted: ${identity}`);
+      throw new Error(`FORK ${label} expansion is not exact and sorted: ${identity}`);
     }
-    if (expanded.some((path) => !allowlist.includes(path))) throw new Error(`FORK runtime dynamic site expands outside allowlist: ${identity}`);
+    if (expanded.some((path) => !allowlist.includes(path))) throw new Error(`FORK ${label} expands outside allowlist: ${identity}`);
+    if (site.classification === "artifact-members") {
+      if (
+        !["dynamic-import", "package-entrypoint"].includes(site.operation) ||
+        site.resolution !== "literal" ||
+        expanded.length === 0 ||
+        typeof site.resolvedTarget !== "string"
+      ) {
+        throw new Error(`FORK ${label} artifact classification is invalid: ${identity}`);
+      }
+    } else if (expanded.length !== 0) {
+      throw new Error(`FORK ${label} external/pruned classification must not expand artifact members: ${identity}`);
+    }
+    if (
+      site.classification === "bundled-static" &&
+      (site.operation !== "require" || site.resolution !== "literal" || typeof site.specifier !== "string")
+    ) {
+      throw new Error(`FORK ${label} bundled require classification is invalid: ${identity}`);
+    }
+    if (
+      site.classification === "node-builtin" &&
+      (site.operation !== "require" || site.resolution !== "literal" || !/^node:[a-z0-9_./-]+$/u.test(site.resolvedTarget ?? ""))
+    ) {
+      throw new Error(`FORK ${label} builtin classification is invalid: ${identity}`);
+    }
+    if (
+      site.classification === "optional-external" &&
+      (site.operation !== "require" || site.resolution !== "reviewed-finite" || !["bufferutil", "utf-8-validate"].includes(site.specifier))
+    ) {
+      throw new Error(`FORK ${label} optional external classification is invalid: ${identity}`);
+    }
+    if (
+      site.classification === "external-runtime-input" &&
+      (site.operation !== "filesystem-read" || site.resolution !== "reviewed-finite")
+    ) {
+      throw new Error(`FORK ${label} runtime input classification is invalid: ${identity}`);
+    }
+    if (site.operation === "package-entrypoint" && (emitted || typeof site.surface !== "string")) {
+      throw new Error(`FORK ${label} package surface classification is invalid: ${identity}`);
+    }
   }
-  if (!inventory.some((site) => site.operation === "package-exports")) throw new Error("FORK package export inventory is missing");
+  const sorted = [...inventory].sort((left, right) => {
+    const source = utf8Compare(left.source, right.source);
+    if (source !== 0) return source;
+    if (left.line !== right.line) return left.line - right.line;
+    if (left.column !== right.column) return left.column - right.column;
+    const operation = utf8Compare(left.operation, right.operation);
+    if (operation !== 0) return operation;
+    return utf8Compare(left.surface ?? left.expression, right.surface ?? right.expression);
+  });
+  if (canonicalJson(sorted) !== canonicalJson(inventory)) throw new Error(`FORK ${label} is not sorted exactly`);
+  if (!emitted && !inventory.some((site) => site.operation === "package-entrypoint")) {
+    throw new Error("FORK package entrypoint inventory is missing");
+  }
 }
 
-export function verifyRuntimeReachabilityMetadata(fork, actualMemberPaths) {
+export function verifyRuntimeReachabilityMetadata(fork, actualMemberPaths, independentlyReconstructed) {
   if (!Array.isArray(actualMemberPaths) || actualMemberPaths.some((path) => typeof path !== "string")) {
     throw new Error("artifact member paths are invalid");
   }
@@ -223,11 +278,37 @@ export function verifyRuntimeReachabilityMetadata(fork, actualMemberPaths) {
   if (canonicalJson(derived) !== canonicalJson(allowlist)) {
     throw new Error("FORK derived runtime set does not equal the runtime reachability allowlist");
   }
-  verifyDynamicInventory(fork, allowlist);
+  if (
+    !independentlyReconstructed ||
+    !Array.isArray(independentlyReconstructed.runtimeDynamicSiteInventory) ||
+    !Array.isArray(independentlyReconstructed.emittedRuntimeSiteInventory) ||
+    !Array.isArray(independentlyReconstructed.derivedRuntimeSet)
+  ) {
+    throw new Error("independently reconstructed runtime evidence is required");
+  }
+  verifySiteInventory(fork.runtimeDynamicSiteInventory, allowlist, "runtime dynamic site inventory");
+  verifySiteInventory(fork.emittedRuntimeSiteInventory, allowlist, "emitted runtime site inventory", { emitted: true });
+  if (fork.runtimeDynamicSiteInventorySha256 !== canonicalSha256(fork.runtimeDynamicSiteInventory)) {
+    throw new Error("FORK runtime dynamic site inventory hash mismatch");
+  }
+  if (fork.emittedRuntimeSiteInventorySha256 !== canonicalSha256(fork.emittedRuntimeSiteInventory)) {
+    throw new Error("FORK emitted runtime site inventory hash mismatch");
+  }
+  if (
+    canonicalJson(fork.runtimeDynamicSiteInventory) !==
+      canonicalJson(independentlyReconstructed.runtimeDynamicSiteInventory) ||
+    canonicalJson(fork.emittedRuntimeSiteInventory) !==
+      canonicalJson(independentlyReconstructed.emittedRuntimeSiteInventory)
+  ) {
+    throw new Error("FORK runtime inventory mismatch with independently reconstructed evidence");
+  }
+  if (canonicalJson(derived) !== canonicalJson(independentlyReconstructed.derivedRuntimeSet)) {
+    throw new Error("FORK derived runtime set differs from independently reconstructed evidence");
+  }
   return { allowlist, derived, legal, metadata };
 }
 
-function verifyFork(vendorRoot, artifactPath, artifactBytes, entries, installed) {
+function verifyFork(vendorRoot, artifactPath, artifactBytes, entries, installed, independentlyReconstructed) {
   const forkPath = resolve(vendorRoot, "FORK.json");
   if (!existsSync(forkPath)) throw new Error("FORK.json is required for artifact verification");
   const fork = JSON.parse(readFileSync(forkPath, "utf8"));
@@ -242,13 +323,14 @@ function verifyFork(vendorRoot, artifactPath, artifactBytes, entries, installed)
   if (fork.artifactMembersSha256 !== canonicalSha256(entries)) throw new Error("FORK artifact member hash mismatch");
   if (canonicalJson(fork.artifactMembers) !== canonicalJson(entries)) throw new Error("FORK artifact member manifest mismatch");
   const actualPaths = entries.map((entry) => entry.path).sort(utf8Compare);
-  const { legal, metadata } = verifyRuntimeReachabilityMetadata(fork, actualPaths);
+  const { legal, metadata } = verifyRuntimeReachabilityMetadata(fork, actualPaths, independentlyReconstructed);
   const expectedLegal = [...expectedLegalMembers(vendorRoot).keys()].sort(utf8Compare);
   if (canonicalJson(legal) !== canonicalJson(expectedLegal)) throw new Error("FORK legal member exceptions mismatch");
   const expectedMetadata = ["package/README.md", "package/openclaw.plugin.json", "package/package.json"].sort(utf8Compare);
   if (canonicalJson(metadata) !== canonicalJson(expectedMetadata)) throw new Error("FORK package metadata exceptions mismatch");
   const expectedEntrypoints = [
     "api",
+    "behavior-contract-api",
     "channel-plugin-api",
     "contract-api",
     "doctor-contract-api",
@@ -276,6 +358,41 @@ function verifyFork(vendorRoot, artifactPath, artifactBytes, entries, installed)
   return fork;
 }
 
+async function reconstructRuntimeEvidence(vendorRoot, sourceDateEpoch) {
+  const resolvedVendorRoot = resolve(vendorRoot);
+  const workRoot = resolve(resolvedVendorRoot, ".work");
+  const outputRoot = resolve(workRoot, `verify-runtime-${randomUUID()}`);
+  let preparedRoot;
+  try {
+    preparedRoot = await prepareVendorTree({
+      repoRoot: resolve(resolvedVendorRoot, "../../../.."),
+      tarballPath: resolve(workRoot, "verified-upstream.tgz"),
+      vendorRoot: resolvedVendorRoot,
+    });
+    const rebuilt = await buildPreparedTree({
+      vendorRoot: resolvedVendorRoot,
+      preparedRoot,
+      outputRoot,
+      sourceDateEpoch,
+    });
+    return {
+      derivedRuntimeSet: rebuilt.derivedRuntimeSet,
+      emittedRuntimeSiteInventory: rebuilt.emittedRuntimeSiteInventory,
+      members: rebuilt.members.map((member) => ({ ...member, path: `package/${member.path}` })),
+      runtimeDynamicSiteInventory: rebuilt.runtimeDynamicSiteInventory,
+    };
+  } finally {
+    const workPrefix = `${workRoot}${sep}`;
+    for (const candidate of [outputRoot, preparedRoot].filter(Boolean)) {
+      const resolvedCandidate = resolve(candidate);
+      if (!resolvedCandidate.startsWith(workPrefix)) {
+        throw new Error("refusing to clean reconstructed runtime evidence outside vendor .work");
+      }
+      rmSync(resolvedCandidate, { force: true, recursive: true });
+    }
+  }
+}
+
 export async function verifyArtifact({
   vendorRoot,
   artifactPath,
@@ -288,6 +405,15 @@ export async function verifyArtifact({
   const artifactBytes = readFileSync(resolvedArtifactPath);
   const entries = readArtifactEntries(artifactBytes, sourceDateEpoch);
   const manifest = inspectArtifactBytes(artifactBytes, sourceDateEpoch);
+  const independentlyReconstructed = requireFork
+    ? await reconstructRuntimeEvidence(resolve(vendorRoot), sourceDateEpoch)
+    : null;
+  if (
+    independentlyReconstructed &&
+    canonicalJson(independentlyReconstructed.members) !== canonicalJson(manifest)
+  ) {
+    throw new Error("artifact members differ from the independently reconstructed source build");
+  }
   assertNoForbiddenMembers(entries);
   const expectedLegal = expectedLegalMembers(resolve(vendorRoot));
   const complianceEntries = entries.filter(
@@ -367,7 +493,31 @@ export async function verifyArtifact({
   const installedPlugin = JSON.parse(readFileSync(resolve(installedPackageRoot, "openclaw.plugin.json"), "utf8"));
   if (installedPackage.name !== PACKAGE_NAME || installedPackage.version !== PACKAGE_VERSION) throw new Error("installed package identity mismatch");
   if (installedPlugin.id !== PLUGIN_ID || canonicalJson(installedPlugin.channels) !== canonicalJson([PLUGIN_ID])) throw new Error("installed plugin identity mismatch");
-  const fork = requireFork ? verifyFork(vendorRoot, resolvedArtifactPath, artifactBytes, manifest, installed) : null;
+  if (independentlyReconstructed) {
+    const installedRuntimeMembers = manifest
+      .map(({ path }) => path)
+      .filter((path) => path.startsWith("package/dist/"));
+    const installedEmittedRuntimeSiteInventory = analyzeEmittedRuntimeSites(
+      installedPackageRoot,
+      installedRuntimeMembers,
+    );
+    if (
+      canonicalJson(installedEmittedRuntimeSiteInventory) !==
+      canonicalJson(independentlyReconstructed.emittedRuntimeSiteInventory)
+    ) {
+      throw new Error("installed emitted runtime inventory differs from independently reconstructed evidence");
+    }
+  }
+  const fork = requireFork
+    ? verifyFork(
+        vendorRoot,
+        resolvedArtifactPath,
+        artifactBytes,
+        manifest,
+        installed,
+        independentlyReconstructed,
+      )
+    : null;
   return {
     artifactPath: resolvedArtifactPath,
     artifactSha256: sha256(artifactBytes),

@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
+import { builtinModules } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import ts from "typescript";
@@ -26,6 +27,7 @@ export const PLUGIN_ID = "zalouser";
 
 const ENTRY_POINTS = [
   "api",
+  "behavior-contract-api",
   "channel-plugin-api",
   "contract-api",
   "doctor-contract-api",
@@ -163,6 +165,7 @@ const FILESYSTEM_READ_CALLS = new Set([
   "access",
   "accessSync",
   "createReadStream",
+  "existsSync",
   "lstat",
   "lstatSync",
   "open",
@@ -173,10 +176,313 @@ const FILESYSTEM_READ_CALLS = new Set([
   "statSync",
 ]);
 
+const SOURCE_CODE_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"]);
+const OPTIONAL_EXTERNAL_REQUIRES = new Set(["bufferutil", "utf-8-validate"]);
+const NODE_BUILTINS = new Set(
+  builtinModules.flatMap((name) => {
+    const plain = name.startsWith("node:") ? name.slice("node:".length) : name;
+    return [plain, `node:${plain}`];
+  }),
+);
+const REVIEWED_EXTERNAL_RUNTIME_INPUTS = new Set(
+  [
+    ["node_modules/form-data/lib/form_data.js", "stat", "value.path", 2],
+    ["node_modules/zca-js/dist/apis/changeAccountAvatar.js", "readFileSync", "avatarSource", 1],
+    ["node_modules/zca-js/dist/apis/changeGroupAvatar.js", "readFileSync", "avatarSource", 1],
+    ["node_modules/zca-js/dist/apis/sendMessage.js", "readFile", "source", 1],
+    ["node_modules/zca-js/dist/apis/sendMessage.js", "readFile", "gif", 1],
+    ["node_modules/zca-js/dist/apis/uploadAttachment.js", "existsSync", "source", 1],
+    ["node_modules/zca-js/dist/apis/uploadAttachment.js", "readFile", "source", 1],
+    ["node_modules/zca-js/dist/apis/uploadProductPhoto.js", "readFile", "payload.file", 1],
+    ["node_modules/zca-js/dist/utils.js", "stat", "filePath", 1],
+    ["node_modules/zca-js/dist/utils.js", "readFile", "source", 1],
+    ["src/bridge/runtime-bootstrap.ts", "readFileSync", "BRIDGE_SECRET_FILE", 2],
+    ["src/zalo-js.ts", "existsSync", "filePath", 1],
+  ].map((record) => JSON.stringify(record)),
+);
+
 function calledIdentifier(expression) {
   if (ts.isIdentifier(expression)) return expression.text;
   if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
   return null;
+}
+
+function scriptKindForPath(sourcePath) {
+  const extension = sourcePath.slice(sourcePath.lastIndexOf(".")).toLowerCase();
+  switch (extension) {
+    case ".js":
+    case ".cjs":
+    case ".mjs":
+      return ts.ScriptKind.JS;
+    case ".jsx":
+      return ts.ScriptKind.JSX;
+    case ".tsx":
+      return ts.ScriptKind.TSX;
+    default:
+      return ts.ScriptKind.TS;
+  }
+}
+
+function literalModuleSpecifier(node) {
+  return node && ts.isStringLiteralLike(node) ? node.text : null;
+}
+
+function bindNamedFunctions(name, namespaceSet, functionMap, namespaceKind) {
+  if (ts.isIdentifier(name)) {
+    namespaceSet.add(name.text);
+    return;
+  }
+  if (!ts.isObjectBindingPattern(name)) return;
+  for (const element of name.elements) {
+    if (!ts.isIdentifier(element.name)) continue;
+    const imported = element.propertyName && ts.isIdentifier(element.propertyName)
+      ? element.propertyName.text
+      : element.name.text;
+    if (namespaceKind === "fs" && imported === "promises") continue;
+    if (FILESYSTEM_READ_CALLS.has(imported)) functionMap.set(element.name.text, imported);
+  }
+}
+
+function requireCallSpecifier(node, requireIdentifiers) {
+  if (
+    !node ||
+    !ts.isCallExpression(node) ||
+    !ts.isIdentifier(node.expression) ||
+    !requireIdentifiers.has(node.expression.text) ||
+    node.arguments.length !== 1
+  ) {
+    return null;
+  }
+  return literalSpecifier(node.arguments[0]);
+}
+
+function collectRuntimeBindings(sourceFile, additionalRequireIdentifiers = []) {
+  const requireIdentifiers = new Set(["require", ...additionalRequireIdentifiers]);
+  const createRequireIdentifiers = new Set(["createRequire"]);
+  const fsNamespaces = new Set();
+  const fsPromiseNamespaces = new Set();
+  const fsFunctions = new Map();
+
+  const visitImports = (node) => {
+    if (ts.isImportDeclaration(node)) {
+      const moduleName = literalModuleSpecifier(node.moduleSpecifier);
+      const clause = node.importClause;
+      if (moduleName === "node:module" || moduleName === "module") {
+        const named = clause?.namedBindings;
+        if (named && ts.isNamedImports(named)) {
+          for (const element of named.elements) {
+            const imported = element.propertyName?.text ?? element.name.text;
+            if (imported === "createRequire") createRequireIdentifiers.add(element.name.text);
+          }
+        }
+      }
+      if (moduleName === "node:fs" || moduleName === "fs") {
+        if (clause?.name) fsNamespaces.add(clause.name.text);
+        const named = clause?.namedBindings;
+        if (named && ts.isNamespaceImport(named)) fsNamespaces.add(named.name.text);
+        if (named && ts.isNamedImports(named)) {
+          for (const element of named.elements) {
+            const imported = element.propertyName?.text ?? element.name.text;
+            if (imported === "promises") fsPromiseNamespaces.add(element.name.text);
+            else if (FILESYSTEM_READ_CALLS.has(imported)) fsFunctions.set(element.name.text, imported);
+          }
+        }
+      }
+      if (moduleName === "node:fs/promises" || moduleName === "fs/promises") {
+        if (clause?.name) fsPromiseNamespaces.add(clause.name.text);
+        const named = clause?.namedBindings;
+        if (named && ts.isNamespaceImport(named)) fsPromiseNamespaces.add(named.name.text);
+        if (named && ts.isNamedImports(named)) {
+          for (const element of named.elements) {
+            const imported = element.propertyName?.text ?? element.name.text;
+            if (FILESYSTEM_READ_CALLS.has(imported)) fsFunctions.set(element.name.text, imported);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visitImports);
+  };
+  visitImports(sourceFile);
+
+  const visitBindings = (node) => {
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      if (
+        ts.isCallExpression(node.initializer) &&
+        ts.isIdentifier(node.initializer.expression) &&
+        createRequireIdentifiers.has(node.initializer.expression.text)
+      ) {
+        if (ts.isIdentifier(node.name)) requireIdentifiers.add(node.name.text);
+      }
+      const required = requireCallSpecifier(node.initializer, requireIdentifiers);
+      if (required === "node:fs" || required === "fs") {
+        bindNamedFunctions(node.name, fsNamespaces, fsFunctions, "fs");
+      } else if (required === "node:fs/promises" || required === "fs/promises") {
+        bindNamedFunctions(node.name, fsPromiseNamespaces, fsFunctions, "fs-promises");
+      } else if (
+        ts.isPropertyAccessExpression(node.initializer) &&
+        node.initializer.name.text === "promises" &&
+        ["node:fs", "fs"].includes(requireCallSpecifier(node.initializer.expression, requireIdentifiers))
+      ) {
+        bindNamedFunctions(node.name, fsPromiseNamespaces, fsFunctions, "fs-promises");
+      }
+    }
+    ts.forEachChild(node, visitBindings);
+  };
+  visitBindings(sourceFile);
+  return { fsFunctions, fsNamespaces, fsPromiseNamespaces, requireIdentifiers };
+}
+
+function filesystemMethod(expression, bindings) {
+  if (ts.isIdentifier(expression)) return bindings.fsFunctions.get(expression.text) ?? null;
+  if (!ts.isPropertyAccessExpression(expression)) return null;
+  const method = expression.name.text;
+  if (!FILESYSTEM_READ_CALLS.has(method)) return null;
+  if (ts.isIdentifier(expression.expression)) {
+    if (
+      bindings.fsNamespaces.has(expression.expression.text) ||
+      bindings.fsPromiseNamespaces.has(expression.expression.text)
+    ) {
+      return method;
+    }
+  }
+  if (
+    ts.isPropertyAccessExpression(expression.expression) &&
+    expression.expression.name.text === "promises" &&
+    ts.isIdentifier(expression.expression.expression) &&
+    bindings.fsNamespaces.has(expression.expression.expression.text)
+  ) {
+    return method;
+  }
+  return null;
+}
+
+function sourceSite(sourceFile, sourcePath, node, values) {
+  const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return {
+    source: sourcePath,
+    line: location.line + 1,
+    column: location.character + 1,
+    ...values,
+  };
+}
+
+function externalRuntimeInputKey(sourcePath, method, node, sourceFile) {
+  const firstArgument = node.arguments[0]?.getText(sourceFile) ?? "";
+  return JSON.stringify([sourcePath, method, firstArgument, node.arguments.length]);
+}
+
+function compareRuntimeSites(left, right) {
+  const bySource = utf8Compare(left.source, right.source);
+  if (bySource !== 0) return bySource;
+  if (left.line !== right.line) return left.line - right.line;
+  if (left.column !== right.column) return left.column - right.column;
+  const byOperation = utf8Compare(left.operation, right.operation);
+  if (byOperation !== 0) return byOperation;
+  return utf8Compare(left.surface ?? left.expression, right.surface ?? right.expression);
+}
+
+export function analyzeEmittedRuntimeSites(packageRoot, runtimeMembers) {
+  const runtimeSet = new Set(runtimeMembers);
+  const sites = [];
+  for (const artifactPath of [...runtimeMembers].sort(utf8Compare)) {
+    if (!artifactPath.startsWith("package/dist/") || !artifactPath.endsWith(".js")) {
+      throw new Error(`emitted runtime member is invalid: ${artifactPath}`);
+    }
+    const relativePath = artifactPath.slice("package/".length);
+    const absolutePath = resolve(packageRoot, relativePath);
+    const sourceText = readFileSync(absolutePath, "utf8");
+    const sourceFile = ts.createSourceFile(
+      artifactPath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.JS,
+    );
+    const emittedRequireIdentifiers = new Set();
+    const discoverEmittedRequires = (node) => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        /^__require\d*$/u.test(node.expression.text)
+      ) {
+        emittedRequireIdentifiers.add(node.expression.text);
+      }
+      ts.forEachChild(node, discoverEmittedRequires);
+    };
+    discoverEmittedRequires(sourceFile);
+    const bindings = collectRuntimeBindings(sourceFile, emittedRequireIdentifiers);
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        const specifier = node.arguments.length === 1 ? literalSpecifier(node.arguments[0]) : null;
+        if (specifier === null || !specifier.startsWith(".")) {
+          const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          throw new Error(`unclassified emitted dynamic import at ${artifactPath}:${location.line + 1}`);
+        }
+        const targetAbsolute = resolve(dirname(absolutePath), specifier);
+        const targetRelative = normalizedMetafilePath(relative(packageRoot, targetAbsolute));
+        const targetArtifactPath = `package/${targetRelative}`;
+        if (!runtimeSet.has(targetArtifactPath)) {
+          throw new Error(`emitted dynamic import escapes the runtime set: ${artifactPath} -> ${specifier}`);
+        }
+        sites.push(sourceSite(sourceFile, artifactPath, node, {
+          operation: "dynamic-import",
+          expression: node.arguments[0].getText(sourceFile),
+          classification: "artifact-members",
+          resolution: "literal",
+          specifier,
+          resolvedTarget: targetArtifactPath,
+          expandedMembers: [targetArtifactPath],
+        }));
+      } else if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        emittedRequireIdentifiers.has(node.expression.text)
+      ) {
+        const specifier = node.arguments.length === 1 ? literalSpecifier(node.arguments[0]) : null;
+        if (specifier === null) {
+          const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          throw new Error(`unclassified emitted require at ${artifactPath}:${location.line + 1}`);
+        }
+        let classification;
+        let resolution = "literal";
+        let resolvedTarget;
+        if (NODE_BUILTINS.has(specifier)) {
+          classification = "node-builtin";
+          const plain = specifier.startsWith("node:") ? specifier.slice("node:".length) : specifier;
+          resolvedTarget = `node:${plain}`;
+        } else if (OPTIONAL_EXTERNAL_REQUIRES.has(specifier)) {
+          classification = "optional-external";
+          resolution = "reviewed-finite";
+          resolvedTarget = specifier;
+        } else {
+          throw new Error(`unclassified emitted external require: ${artifactPath} -> ${specifier}`);
+        }
+        sites.push(sourceSite(sourceFile, artifactPath, node, {
+          operation: "require",
+          expression: node.arguments[0].getText(sourceFile),
+          classification,
+          resolution,
+          specifier,
+          resolvedTarget,
+          expandedMembers: [],
+        }));
+      } else if (ts.isCallExpression(node)) {
+        const method = filesystemMethod(node.expression, bindings);
+        if (method) {
+          sites.push(sourceSite(sourceFile, artifactPath, node, {
+            operation: "filesystem-read",
+            expression: node.getText(sourceFile),
+            classification: "external-runtime-input",
+            resolution: "reviewed-finite",
+            expandedMembers: [],
+          }));
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+  return sites.sort(compareRuntimeSites);
 }
 
 function isImportMetaResolve(expression) {
@@ -189,12 +495,32 @@ function isImportMetaResolve(expression) {
   );
 }
 
-function assertFiniteCallArgument(node, sourceFile, sourcePath, operation) {
-  if (node.arguments.length !== 1 || literalSpecifier(node.arguments[0]) === null) {
-    const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-    throw new Error(`unclassified non-finite ${operation} at ${sourcePath}:${location.line + 1}`);
+export function createMetafileImportClaims(imports, sourcePath) {
+  if (!Array.isArray(imports) || typeof sourcePath !== "string" || !sourcePath) {
+    throw new TypeError("metafile import claims require an import array and source path");
   }
-  throw new Error(`unclassified ${operation} requires an explicit reviewed artifact mapping at ${sourcePath}`);
+  const relevant = imports
+    .map((record, index) => ({ record, index }))
+    .filter(({ record }) => ["dynamic-import", "require-call"].includes(record?.kind));
+  const claimed = new Set();
+  return Object.freeze({
+    claim(predicate, label) {
+      if (typeof predicate !== "function" || typeof label !== "string" || !label) {
+        throw new TypeError("metafile import claim requires a predicate and label");
+      }
+      const match = relevant.find(({ record, index }) => !claimed.has(index) && predicate(record));
+      if (!match) throw new Error(`metafile import claim is absent or already claimed: ${sourcePath} -> ${label}`);
+      claimed.add(match.index);
+      return match.record;
+    },
+    assertExhausted() {
+      const unconsumed = relevant.filter(({ index }) => !claimed.has(index));
+      if (unconsumed.length > 0) {
+        const details = unconsumed.map(({ record }) => `${record.kind}:${record.original ?? record.path}`).join(", ");
+        throw new Error(`unconsumed metafile runtime imports at ${sourcePath}: ${details}`);
+      }
+    },
+  });
 }
 
 function runtimeReachabilityAnalysis(preparedRoot, metafile) {
@@ -206,27 +532,30 @@ function runtimeReachabilityAnalysis(preparedRoot, metafile) {
     return output;
   });
   const sites = [];
-  const runtimeSourceInputs = Object.keys(metafile.inputs)
-    .map(normalizedMetafilePath)
-    .filter((path) => path.endsWith(".ts") && !path.startsWith("node_modules/") && existsSync(resolve(preparedRoot, path)))
+  const inputMetadata = new Map(
+    Object.entries(metafile.inputs).map(([path, metadata]) => [normalizedMetafilePath(path), metadata]),
+  );
+  const runtimeSourceInputs = [...inputMetadata.keys()]
+    .filter((path) => SOURCE_CODE_EXTENSIONS.has(path.slice(path.lastIndexOf(".")).toLowerCase()))
     .sort(utf8Compare);
+  const reviewedExternalInputsSeen = new Set();
   for (const sourcePath of runtimeSourceInputs) {
-    const sourceText = readFileSync(resolve(preparedRoot, sourcePath), "utf8");
-    const sourceFile = ts.createSourceFile(sourcePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-    const requireIdentifiers = new Set(["require"]);
-    const findCreateRequireBindings = (node) => {
-      if (
-        ts.isVariableDeclaration(node) &&
-        ts.isIdentifier(node.name) &&
-        node.initializer &&
-        ts.isCallExpression(node.initializer) &&
-        calledIdentifier(node.initializer.expression) === "createRequire"
-      ) {
-        requireIdentifiers.add(node.name.text);
-      }
-      ts.forEachChild(node, findCreateRequireBindings);
-    };
-    findCreateRequireBindings(sourceFile);
+    const absoluteSource = resolve(preparedRoot, sourcePath);
+    const preparedPrefix = `${resolve(preparedRoot)}${sep}`;
+    if (!absoluteSource.startsWith(preparedPrefix) || !existsSync(absoluteSource)) {
+      throw new Error(`esbuild runtime input is not a regular prepared source: ${sourcePath}`);
+    }
+    const sourceText = readFileSync(absoluteSource, "utf8");
+    const sourceFile = ts.createSourceFile(
+      sourcePath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKindForPath(sourcePath),
+    );
+    const bindings = collectRuntimeBindings(sourceFile);
+    const metadata = inputMetadata.get(sourcePath);
+    const importClaims = createMetafileImportClaims(metadata?.imports ?? [], sourcePath);
     const visit = (node) => {
       if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
         if (node.arguments.length !== 1) {
@@ -237,8 +566,9 @@ function runtimeReachabilityAnalysis(preparedRoot, metafile) {
           const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           throw new Error(`unclassified non-finite dynamic resolution at ${sourcePath}:${location.line + 1}`);
         }
-        const inputImport = metafile.inputs[sourcePath]?.imports?.find(
+        const inputImport = importClaims.claim(
           ({ kind, original }) => kind === "dynamic-import" && original === specifier,
+          `dynamic-import:${specifier}`,
         );
         if (!inputImport || inputImport.external) {
           throw new Error(`dynamic resolution is absent from the esbuild graph: ${sourcePath} -> ${specifier}`);
@@ -248,50 +578,120 @@ function runtimeReachabilityAnalysis(preparedRoot, metafile) {
         if (!targetOutput) {
           throw new Error(`dynamic resolution has no finite esbuild output: ${sourcePath} -> ${specifier}`);
         }
-        const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-        sites.push({
-          source: sourcePath,
-          line: location.line + 1,
-          column: location.character + 1,
+        sites.push(sourceSite(sourceFile, sourcePath, node, {
           operation: "dynamic-import",
           expression: node.arguments[0].getText(sourceFile),
+          classification: "artifact-members",
           resolution: "literal",
+          specifier,
+          resolvedTarget: targetEntrypoint,
           expandedMembers: outputClosure(graph, [targetOutput], false),
-        });
+        }));
       } else if (ts.isCallExpression(node) && isImportMetaResolve(node.expression)) {
-        assertFiniteCallArgument(node, sourceFile, sourcePath, "import.meta.resolve site");
+        const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        throw new Error(`unclassified import.meta.resolve site at ${sourcePath}:${location.line + 1}`);
       } else if (
         ts.isCallExpression(node) &&
-        calledIdentifier(node.expression) !== "createRequire" &&
-        requireIdentifiers.has(calledIdentifier(node.expression))
+        ts.isIdentifier(node.expression) &&
+        !["createRequire"].includes(node.expression.text) &&
+        bindings.requireIdentifiers.has(node.expression.text)
       ) {
-        assertFiniteCallArgument(node, sourceFile, sourcePath, "require site");
-      } else if (
-        ts.isCallExpression(node) &&
-        FILESYSTEM_READ_CALLS.has(calledIdentifier(node.expression))
-      ) {
-        assertFiniteCallArgument(node, sourceFile, sourcePath, "filesystem read site");
+        const specifier = node.arguments.length === 1 ? literalSpecifier(node.arguments[0]) : null;
+        if (specifier === null) {
+          const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          throw new Error(`unclassified non-finite require site at ${sourcePath}:${location.line + 1}`);
+        }
+        const inputImport = importClaims.claim(
+          ({ kind, original, path, external }) =>
+            kind === "require-call" && (external ? path === specifier : original === specifier),
+          `require-call:${specifier}`,
+        );
+        if (!inputImport) {
+          throw new Error(`require site is absent from the esbuild graph: ${sourcePath} -> ${specifier}`);
+        }
+        let classification;
+        let resolution = "literal";
+        let resolvedTarget = normalizedMetafilePath(inputImport.path);
+        if (!inputImport.external) classification = "bundled-static";
+        else if (NODE_BUILTINS.has(specifier) && NODE_BUILTINS.has(inputImport.path)) {
+          classification = "node-builtin";
+          const plain = specifier.startsWith("node:") ? specifier.slice("node:".length) : specifier;
+          resolvedTarget = `node:${plain}`;
+        } else if (OPTIONAL_EXTERNAL_REQUIRES.has(specifier) && inputImport.path === specifier) {
+          classification = "optional-external";
+          resolution = "reviewed-finite";
+        } else {
+          throw new Error(`unclassified external require site at ${sourcePath}: ${specifier}`);
+        }
+        sites.push(sourceSite(sourceFile, sourcePath, node, {
+          operation: "require",
+          expression: node.arguments[0].getText(sourceFile),
+          classification,
+          resolution,
+          specifier,
+          resolvedTarget,
+          expandedMembers: [],
+        }));
+      } else if (ts.isCallExpression(node)) {
+        const method = filesystemMethod(node.expression, bindings);
+        if (method) {
+          const reviewedKey = externalRuntimeInputKey(sourcePath, method, node, sourceFile);
+          if (!REVIEWED_EXTERNAL_RUNTIME_INPUTS.has(reviewedKey)) {
+            const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+            throw new Error(`unclassified filesystem read site at ${sourcePath}:${location.line + 1}`);
+          }
+          reviewedExternalInputsSeen.add(reviewedKey);
+          sites.push(sourceSite(sourceFile, sourcePath, node, {
+            operation: "filesystem-read",
+            expression: node.getText(sourceFile),
+            classification: "external-runtime-input",
+            resolution: "reviewed-finite",
+            expandedMembers: [],
+          }));
+        }
       }
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
+    importClaims.assertExhausted();
   }
-  sites.push({
-    source: "package.json",
-    line: 1,
-    column: 1,
-    operation: "package-exports",
-    expression: "exports/openclaw.extensions/openclaw.setupEntry",
-    resolution: "literal",
-    expandedMembers: outputClosure(graph, publicRoots, false),
-  });
-  sites.sort((left, right) => {
-    const bySource = utf8Compare(left.source, right.source);
-    if (bySource !== 0) return bySource;
-    if (left.line !== right.line) return left.line - right.line;
-    if (left.column !== right.column) return left.column - right.column;
-    return utf8Compare(left.operation, right.operation);
-  });
+  const expectedReviewedExternalInputs = [...REVIEWED_EXTERNAL_RUNTIME_INPUTS]
+    .filter((key) => inputMetadata.has(JSON.parse(key)[0]))
+    .sort(utf8Compare);
+  if (
+    JSON.stringify([...reviewedExternalInputsSeen].sort(utf8Compare)) !==
+    JSON.stringify(expectedReviewedExternalInputs)
+  ) {
+    throw new Error("reviewed external runtime input inventory does not match the esbuild source universe");
+  }
+
+  const manifestSurfaces = [
+    { surface: "main", entrypoint: "index.ts", expression: "./dist/index.js" },
+    ...ENTRY_POINTS.map((name) => ({
+      surface: `exports:${name === "index" ? "." : `./${name}`}`,
+      entrypoint: `${name}.ts`,
+      expression: `./dist/${name}.js`,
+    })),
+    { surface: "openclaw.extensions:0", entrypoint: "index.ts", expression: "./dist/index.js" },
+    { surface: "openclaw.setupEntry", entrypoint: "setup-entry.ts", expression: "./dist/setup-entry.js" },
+  ];
+  for (const [index, manifestSite] of manifestSurfaces.entries()) {
+    const targetOutput = entrypoints.get(manifestSite.entrypoint);
+    if (!targetOutput) throw new Error(`package entrypoint has no emitted target: ${manifestSite.surface}`);
+    sites.push({
+      source: "package.json",
+      line: 1,
+      column: index + 1,
+      operation: "package-entrypoint",
+      surface: manifestSite.surface,
+      expression: manifestSite.expression,
+      classification: "artifact-members",
+      resolution: "literal",
+      resolvedTarget: targetOutput,
+      expandedMembers: outputClosure(graph, [targetOutput], false),
+    });
+  }
+  sites.sort(compareRuntimeSites);
   return {
     derivedRuntimeSet: outputClosure(graph, publicRoots, true),
     runtimeDynamicSiteInventory: sites,
@@ -463,6 +863,7 @@ export async function buildPreparedTree({
   return {
     buildResult,
     derivedRuntimeSet: reachability.derivedRuntimeSet,
+    emittedRuntimeSiteInventory: analyzeEmittedRuntimeSites(packageRoot, runtimeMembers),
     members,
     packageRoot,
     sourceDateEpoch,

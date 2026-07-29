@@ -97,9 +97,10 @@ const PROJECTED_MESSAGE = Object.freeze({
 });
 
 describe("executable patched control source", () => {
-  it("forwards only classifier-projected typing, seen, and delivery fields", async () => {
+  it("authorizes and guards classifier-projected typing, seen, and delivery provider I/O", async () => {
     const root = preparePatchedSource();
     const candidates: unknown[] = [];
+    const events: string[] = [];
     const classifyControlTraffic = (candidate: unknown) => {
       candidates.push(candidate);
       const kind = (candidate as { kind?: string }).kind;
@@ -120,21 +121,60 @@ describe("executable patched control source", () => {
         isSeen: true,
       });
     };
-    const sendZaloTypingEvent = vi.fn(async () => undefined);
-    const sendZaloSeenEvent = vi.fn(async () => undefined);
-    const sendZaloDeliveredEvent = vi.fn(async () => undefined);
+    const sendZaloTypingEvent = vi.fn(async () => {
+      events.push("provider:typing");
+    });
+    const sendZaloSeenEvent = vi.fn(async () => {
+      events.push("provider:seen");
+    });
+    const sendZaloDeliveredEvent = vi.fn(async () => {
+      events.push("provider:delivery-receipt");
+    });
+    const authorizedFrames: unknown[] = [];
+    const invokeAuthorizedControl = vi.fn(async (
+      frame: unknown,
+      provider: (authorizedFrame: unknown) => Promise<void>,
+    ) => {
+      authorizedFrames.push(frame);
+      events.push(`authorize:${String((frame as { kind?: unknown }).kind)}`);
+      await provider(frame);
+    });
+    const assertAuthorizedControlIo = vi.fn((frame: unknown) => {
+      events.push(`guard:${String((frame as { kind?: unknown }).kind)}`);
+    });
     const sendTyping = compileFunction(root, "sendTypingZalouser", [
+      "assertAuthorizedControlIo",
       "classifyControlTraffic",
+      "invokeAuthorizedControl",
       "sendZaloTypingEvent",
-    ])({ classifyControlTraffic, sendZaloTypingEvent });
+    ])({
+      assertAuthorizedControlIo,
+      classifyControlTraffic,
+      invokeAuthorizedControl,
+      sendZaloTypingEvent,
+    });
     const sendSeen = compileFunction(root, "sendSeenZalouser", [
+      "assertAuthorizedControlIo",
       "classifyControlTraffic",
+      "invokeAuthorizedControl",
       "sendZaloSeenEvent",
-    ])({ classifyControlTraffic, sendZaloSeenEvent });
+    ])({
+      assertAuthorizedControlIo,
+      classifyControlTraffic,
+      invokeAuthorizedControl,
+      sendZaloSeenEvent,
+    });
     const sendDelivered = compileFunction(root, "sendDeliveredZalouser", [
+      "assertAuthorizedControlIo",
       "classifyControlTraffic",
+      "invokeAuthorizedControl",
       "sendZaloDeliveredEvent",
-    ])({ classifyControlTraffic, sendZaloDeliveredEvent });
+    ])({
+      assertAuthorizedControlIo,
+      classifyControlTraffic,
+      invokeAuthorizedControl,
+      sendZaloDeliveredEvent,
+    });
 
     await sendTyping("original-thread", { profile: " original-profile ", isGroup: true });
     await sendSeen({
@@ -180,6 +220,24 @@ describe("executable patched control source", () => {
         message: ORIGINAL_MESSAGE,
         isSeen: false,
       },
+    ]);
+    expect(authorizedFrames).toEqual([
+      expect.objectContaining({ kind: "typing" }),
+      expect.objectContaining({ kind: "seen" }),
+      expect.objectContaining({ kind: "delivery-receipt" }),
+    ]);
+    expect(invokeAuthorizedControl).toHaveBeenCalledTimes(3);
+    expect(assertAuthorizedControlIo).toHaveBeenCalledTimes(3);
+    expect(events).toEqual([
+      "authorize:typing",
+      "guard:typing",
+      "provider:typing",
+      "authorize:seen",
+      "guard:seen",
+      "provider:seen",
+      "authorize:delivery-receipt",
+      "guard:delivery-receipt",
+      "provider:delivery-receipt",
     ]);
     expect(sendZaloTypingEvent).toHaveBeenCalledWith("projected-thread", {
       profile: "projected-profile",

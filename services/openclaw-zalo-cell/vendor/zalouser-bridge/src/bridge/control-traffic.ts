@@ -1,3 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
+
 export type ControlSinkV1 = Readonly<{
   accountProfile: string;
   conversationId: string;
@@ -38,6 +41,19 @@ export type DeliveryReceiptControlV1 = Readonly<{
 }>;
 
 export type ControlTraffic = TypingControlV1 | SeenControlV1 | DeliveryReceiptControlV1;
+
+export type ControlRuntime = Readonly<{
+  authorize(frame: ControlTraffic): Promise<void>;
+  providerTimeoutMs: number;
+}>;
+
+type AuthorizedControlScope = {
+  expectedSha256: string;
+  providerIoEntered: boolean;
+};
+
+let installedControlRuntime: ControlRuntime | undefined;
+const authorizedControlScope = new AsyncLocalStorage<AuthorizedControlScope>();
 
 function fail(message: string): never {
   throw Object.assign(new Error(message), { code: "INVALID_CONTROL_TRAFFIC" });
@@ -190,4 +206,79 @@ export function createControlTrafficSender(options: {
     const frame = classifyControlTraffic(candidate);
     await options.sendControl(frame);
   };
+}
+
+function controlSha256(frame: ControlTraffic): string {
+  return createHash("sha256").update(JSON.stringify(frame), "utf8").digest("hex");
+}
+
+function controlFailure(code: string, message: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code });
+}
+
+export function installControlRuntime(runtime: ControlRuntime): () => void {
+  if (
+    !runtime || typeof runtime.authorize !== "function" ||
+    !Number.isSafeInteger(runtime.providerTimeoutMs) || runtime.providerTimeoutMs <= 0 ||
+    runtime.providerTimeoutMs > 5_000
+  ) {
+    throw new TypeError("control runtime is invalid");
+  }
+  if (installedControlRuntime) {
+    throw controlFailure("CONTROL_RUNTIME_ALREADY_INSTALLED", "a control runtime is already installed");
+  }
+  installedControlRuntime = Object.freeze({
+    authorize: runtime.authorize,
+    providerTimeoutMs: runtime.providerTimeoutMs,
+  });
+  const installed = installedControlRuntime;
+  return () => {
+    if (installedControlRuntime === installed) installedControlRuntime = undefined;
+  };
+}
+
+export function assertAuthorizedControlIo(frameValue: unknown): void {
+  const scope = authorizedControlScope.getStore();
+  if (!scope) throw controlFailure("CONTROL_AUTHORIZATION_REQUIRED", "control provider I/O is unauthorized");
+  if (scope.providerIoEntered) {
+    throw controlFailure("CONTROL_PROVIDER_IO_REPLAY", "control provider I/O was already entered");
+  }
+  const frame = classifyControlTraffic(frameValue);
+  if (controlSha256(frame) !== scope.expectedSha256) {
+    throw controlFailure("CONTROL_AUTHORIZATION_MISMATCH", "control provider frame differs from authorization");
+  }
+  scope.providerIoEntered = true;
+}
+
+export async function invokeAuthorizedControl(
+  frameValue: unknown,
+  provider: (frame: ControlTraffic) => Promise<void>,
+): Promise<void> {
+  const runtime = installedControlRuntime;
+  if (!runtime) throw controlFailure("CONTROL_RUNTIME_UNAVAILABLE", "control runtime is unavailable");
+  if (typeof provider !== "function") throw new TypeError("provider must be a function");
+  const frame = classifyControlTraffic(frameValue);
+  await runtime.authorize(frame);
+  const scope: AuthorizedControlScope = {
+    expectedSha256: controlSha256(frame),
+    providerIoEntered: false,
+  };
+  await authorizedControlScope.run(scope, async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        provider(frame),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(controlFailure("CONTROL_PROVIDER_TIMEOUT", "control provider call timed out"));
+          }, runtime.providerTimeoutMs);
+        }),
+      ]);
+      if (!scope.providerIoEntered) {
+        throw controlFailure("CONTROL_PROVIDER_BOUNDARY_MISSING", "control provider bypassed its I/O guard");
+      }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  });
 }

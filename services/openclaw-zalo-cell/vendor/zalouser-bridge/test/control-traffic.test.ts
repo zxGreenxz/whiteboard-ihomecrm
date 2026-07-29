@@ -1,8 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   classifyControlTraffic,
   createControlTrafficSender,
 } from "../src/bridge/control-traffic.js";
+import * as controlRuntimeModule from "../src/bridge/control-traffic.js";
+import * as runtimeBootstrap from "../src/bridge/runtime-bootstrap.js";
+
+const cleanups: Array<() => void> = [];
+
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+});
 
 const SINK = Object.freeze({
   accountProfile: "profile-a",
@@ -23,6 +31,59 @@ const MESSAGE = Object.freeze({
 });
 
 describe("closed control traffic schemas", () => {
+  it("authorizes a separately authenticated control capability before provider I/O", async () => {
+    const events: string[] = [];
+    const createRuntime = (runtimeBootstrap as unknown as {
+      createProductionControlRuntime?: (options: unknown) => unknown;
+    }).createProductionControlRuntime;
+    const installRuntime = (controlRuntimeModule as unknown as {
+      installControlRuntime?: (runtime: unknown) => () => void;
+    }).installControlRuntime;
+    const invoke = (controlRuntimeModule as unknown as {
+      invokeAuthorizedControl?: (frame: unknown, provider: (frame: unknown) => Promise<void>) => Promise<void>;
+    }).invokeAuthorizedControl;
+    const assertIo = (controlRuntimeModule as unknown as {
+      assertAuthorizedControlIo?: (frame: unknown) => void;
+    }).assertAuthorizedControlIo;
+    expect(typeof createRuntime).toBe("function");
+    expect(typeof installRuntime).toBe("function");
+    expect(typeof invoke).toBe("function");
+    expect(typeof assertIo).toBe("function");
+    const runtime = createRuntime!({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x34),
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "control-transport-nonce",
+      fetch: async (_url: string, init: RequestInit) => {
+        const envelope = JSON.parse(String(init.body)) as { operation: string; body: unknown };
+        events.push(envelope.operation);
+        expect(envelope.body).toEqual({ version: 1, kind: "typing", sink: SINK });
+        return new Response(JSON.stringify({ version: 1, status: "AUTHORIZED" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    cleanups.push(installRuntime!(runtime));
+    const frame = classifyControlTraffic({ version: 1, kind: "typing", sink: SINK });
+
+    await invoke!(frame, async (authorizedFrame) => {
+      events.push("provider");
+      assertIo!(authorizedFrame);
+    });
+
+    expect(events).toEqual(["control.authorize", "provider"]);
+  });
+
   it.each([
     [{ version: 1, kind: "typing", sink: SINK }],
     [{ version: 1, kind: "seen", sink: SINK, message: MESSAGE }],

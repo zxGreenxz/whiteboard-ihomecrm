@@ -3,6 +3,7 @@ import {
   cpSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -18,9 +19,12 @@ import { afterEach, describe, expect, it } from "vitest";
 const vendorRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_DATE_EPOCH = 1_785_062_400;
 const temporaryRoots: string[] = [];
+let selectedPreparedRoot: string | undefined;
 
 afterEach(() => {
-  for (const root of temporaryRoots.splice(0)) rmSync(root, { force: true, recursive: true });
+  for (const root of temporaryRoots.splice(0)) {
+    rmSync(root, { force: true, maxRetries: 10, recursive: true, retryDelay: 100 });
+  }
 });
 
 describe("reviewed patch series", () => {
@@ -50,7 +54,7 @@ describe("reviewed patch series", () => {
     expect(patchedZaloJs).toContain("pending = params.onMessage(normalized);");
     expect(patchedZaloJs).toContain("Promise.resolve(pending).catch");
     expect(readFileSync(resolve(preparedRoot, "src/monitor.ts"), "utf8")).toContain(
-      "await commitInboundThroughBridge",
+      "await commitAndDispatchInbound",
     );
     expect(readFileSync(resolve(preparedRoot, "index.ts"), "utf8")).toContain(
       'registerPrivateOutboundRpc(api, "zalouser.bridge.send")',
@@ -62,21 +66,31 @@ describe("reviewed patch series", () => {
 });
 
 function latestPreparedRoot() {
+  if (selectedPreparedRoot !== undefined) return selectedPreparedRoot;
   const workRoot = resolve(vendorRoot, ".work");
   const candidates = readdirSync(workRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && /^prepared-[0-9a-f-]+$/.test(entry.name))
     .map((entry) => resolve(workRoot, entry.name))
-    .filter((path) => existsSync(resolve(path, "package.json")))
+    .filter((path) =>
+      [
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "package.json",
+        "src/bridge/canonical-send.ts",
+        "src/bridge/runtime-bootstrap.ts",
+      ].every((required) => existsSync(resolve(path, required))),
+    )
     .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs);
   const [latest] = candidates;
   if (latest === undefined) throw new Error("vendor:prepare must run before artifact tests");
-  return latest;
+  selectedPreparedRoot = latest;
+  return selectedPreparedRoot;
 }
 
 async function loadArtifactScripts() {
   const [
-    { buildPreparedTree },
-    { controlledNpmEnvironment, forkMetadata, packArtifact },
+    { analyzeEmittedRuntimeSites, buildPreparedTree, createMetafileImportClaims },
+    { canonicalSha256, controlledNpmEnvironment, forkMetadata, packArtifact },
     { prepareVendorTree },
     { verifyArtifact, verifyRuntimeReachabilityMetadata },
   ] = await Promise.all([
@@ -86,7 +100,10 @@ async function loadArtifactScripts() {
     import("../scripts/verify-artifact.mjs"),
   ]);
   return {
+    analyzeEmittedRuntimeSites,
     buildPreparedTree,
+    createMetafileImportClaims,
+    canonicalSha256,
     controlledNpmEnvironment,
     forkMetadata,
     packArtifact,
@@ -97,6 +114,16 @@ async function loadArtifactScripts() {
 }
 
 describe("controlled npm child environment", () => {
+  it("does not let a mutated test copy replace the selected prepared fixture", () => {
+    const selected = latestPreparedRoot();
+    const mutated = resolve(vendorRoot, ".work", `prepared-${randomUUID()}`);
+    temporaryRoots.push(mutated);
+    cpSync(selected, mutated, { recursive: true });
+    writeFileSync(resolve(mutated, ".test-only-newer-root"), "mutated\n");
+
+    expect(latestPreparedRoot()).toBe(selected);
+  });
+
   it("removes inherited npm config in every casing before applying reviewed overrides", async () => {
     const { controlledNpmEnvironment } = await loadArtifactScripts();
     const environment = controlledNpmEnvironment(
@@ -168,10 +195,19 @@ describe("reproducible internal artifact", () => {
       .map((member) => `package/${member.path}`)
       .sort();
     expect(result.derivedRuntimeSet).toEqual(runtimeMembers);
-    const dynamicSites = result.runtimeDynamicSiteInventory.filter(
+    type RuntimeSite = {
+      classification: string;
+      expandedMembers: string[];
+      operation: string;
+      source: string;
+      specifier?: string;
+      surface?: string;
+    };
+    const runtimeSites = result.runtimeDynamicSiteInventory as RuntimeSite[];
+    const dynamicSites = runtimeSites.filter(
       ({ operation }) => operation === "dynamic-import",
     );
-    expect(dynamicSites).toHaveLength(6);
+    expect(dynamicSites).toHaveLength(7);
     for (const site of dynamicSites) {
       expect(site.expandedMembers.length).toBeGreaterThan(0);
       expect(site.expandedMembers).not.toEqual(runtimeMembers);
@@ -183,6 +219,77 @@ describe("reproducible internal artifact", () => {
     expect(accountsSite?.expandedMembers.some((member) => /channel\.runtime-/.test(member))).toBe(
       false,
     );
+
+    const requireSites = runtimeSites.filter(
+      ({ operation }) => operation === "require",
+    );
+    expect(requireSites).toHaveLength(400);
+    expect(requireSites.filter(({ classification }) => classification === "bundled-static")).toHaveLength(364);
+    expect(requireSites.filter(({ classification }) => classification === "node-builtin")).toHaveLength(34);
+    expect(requireSites.filter(({ classification }) => classification === "optional-external")).toHaveLength(2);
+    expect(
+      requireSites
+        .filter(({ classification }) => classification === "optional-external")
+        .map(({ source, specifier }) => `${source}:${specifier}`)
+        .sort(),
+    ).toEqual([
+      "node_modules/ws/lib/buffer-util.js:bufferutil",
+      "node_modules/ws/lib/validation.js:utf-8-validate",
+    ]);
+
+    const fileSystemSites = runtimeSites.filter(
+      ({ operation }) => operation === "filesystem-read",
+    );
+    expect(fileSystemSites).toHaveLength(12);
+    expect(fileSystemSites.every(({ classification }) => classification === "external-runtime-input")).toBe(true);
+    expect(fileSystemSites.every(({ expandedMembers }) => expandedMembers.length === 0)).toBe(true);
+    expect(fileSystemSites.map(({ source }) => source).sort()).toEqual([
+      "node_modules/form-data/lib/form_data.js",
+      "node_modules/zca-js/dist/apis/changeAccountAvatar.js",
+      "node_modules/zca-js/dist/apis/changeGroupAvatar.js",
+      "node_modules/zca-js/dist/apis/sendMessage.js",
+      "node_modules/zca-js/dist/apis/sendMessage.js",
+      "node_modules/zca-js/dist/apis/uploadAttachment.js",
+      "node_modules/zca-js/dist/apis/uploadAttachment.js",
+      "node_modules/zca-js/dist/apis/uploadProductPhoto.js",
+      "node_modules/zca-js/dist/utils.js",
+      "node_modules/zca-js/dist/utils.js",
+      "src/bridge/runtime-bootstrap.ts",
+      "src/zalo-js.ts",
+    ]);
+
+    const manifestSites = runtimeSites.filter(
+      ({ operation }) => operation === "package-entrypoint",
+    );
+    expect(manifestSites).toHaveLength(13);
+    expect(manifestSites.map(({ surface }) => surface).sort()).toEqual([
+      "exports:.",
+      "exports:./api",
+      "exports:./behavior-contract-api",
+      "exports:./channel-plugin-api",
+      "exports:./contract-api",
+      "exports:./doctor-contract-api",
+      "exports:./runtime-api",
+      "exports:./secret-contract-api",
+      "exports:./setup-entry",
+      "exports:./setup-plugin-api",
+      "main",
+      "openclaw.extensions:0",
+      "openclaw.setupEntry",
+    ]);
+    expect(runtimeSites).toHaveLength(432);
+
+    const emittedSites = result.emittedRuntimeSiteInventory as RuntimeSite[];
+    const emittedRequireSites = emittedSites.filter(({ operation }) => operation === "require");
+    expect(emittedSites.filter(({ operation }) => operation === "dynamic-import")).toHaveLength(7);
+    expect(emittedRequireSites).toHaveLength(36);
+    expect(emittedSites.filter(({ operation }) => operation === "filesystem-read")).toHaveLength(12);
+    expect(emittedSites).toHaveLength(55);
+    expect(
+      emittedRequireSites.filter(({ classification }) => classification === "optional-external")
+        .map(({ specifier }) => specifier!)
+        .sort(),
+    ).toEqual(["bufferutil", "utf-8-validate"]);
   });
 
   it.each([
@@ -190,14 +297,13 @@ describe("reproducible internal artifact", () => {
     ["require", "void require(resolveUnboundedRuntimeSpecifier());"],
     ["createRequire", "const runtimeRequire = createRequire(import.meta.url); void runtimeRequire(resolveUnboundedRuntimeSpecifier());"],
     ["import.meta.resolve", "void import.meta.resolve(resolveUnboundedRuntimeSpecifier());"],
-    ["filesystem read", "void readFileSync(resolveUnboundedRuntimeSpecifier());"],
+    [
+      "filesystem read",
+      'import { existsSync as injectedExistsSync } from "node:fs"; void injectedExistsSync(resolveUnboundedRuntimeSpecifier());',
+    ],
   ])("fails closed on an unclassified non-literal %s site", async (_kind, statement) => {
     const { buildPreparedTree } = await loadArtifactScripts();
-    const preparedRoot = resolve(
-      vendorRoot,
-      ".work",
-      `prepared-${randomUUID()}`,
-    );
+    const preparedRoot = resolve(vendorRoot, ".work", `prepared-${randomUUID()}`);
     temporaryRoots.push(preparedRoot);
     cpSync(latestPreparedRoot(), preparedRoot, { recursive: true });
     const accountsPath = resolve(preparedRoot, "src/accounts.ts");
@@ -218,9 +324,57 @@ describe("reproducible internal artifact", () => {
     ).rejects.toThrow(/unclassified|non-finite|dynamic resolution/i);
   });
 
+  it("rejects an unclassified host require in emitted JavaScript", async () => {
+    const { analyzeEmittedRuntimeSites } = await loadArtifactScripts();
+    const root = mkdtempSync(resolve(tmpdir(), "ihome-zalouser-emitted-require-"));
+    temporaryRoots.push(root);
+    mkdirSync(resolve(root, "dist"));
+    writeFileSync(
+      resolve(root, "dist/index.js"),
+      'const __require = (name) => name; void __require("unexpected-host-dependency");\n',
+    );
+    expect(() =>
+      analyzeEmittedRuntimeSites(root, ["package/dist/index.js"]),
+    ).toThrow(/unclassified emitted external require/i);
+  });
+
+  it("does not mistake an unrelated object.stat call for filesystem I/O", async () => {
+    const { analyzeEmittedRuntimeSites } = await loadArtifactScripts();
+    const root = mkdtempSync(resolve(tmpdir(), "ihome-zalouser-unrelated-stat-"));
+    temporaryRoots.push(root);
+    mkdirSync(resolve(root, "dist"));
+    writeFileSync(
+      resolve(root, "dist/index.js"),
+      "const object = { stat(value) { return value; } }; object.stat('not-a-file');\n",
+    );
+    expect(analyzeEmittedRuntimeSites(root, ["package/dist/index.js"])).toEqual([]);
+  });
+
+  it("consumes every relevant esbuild import record exactly once", async () => {
+    const { createMetafileImportClaims } = await loadArtifactScripts();
+    const imports = [
+      { kind: "require-call", original: "buffer", path: "buffer", external: true },
+      { kind: "require-call", original: "buffer", path: "buffer", external: true },
+      { kind: "dynamic-import", original: "./runtime.js", path: "src/runtime.ts", external: false },
+      { kind: "import-statement", original: "node:fs", path: "node:fs", external: true },
+    ];
+    const claims = createMetafileImportClaims(imports, "fixture.js");
+    const isBufferRequire = (record: { kind: string; original?: string }) =>
+      record.kind === "require-call" && record.original === "buffer";
+    expect(claims.claim(isBufferRequire, "first buffer")).toEqual(imports[0]);
+    expect(claims.claim(isBufferRequire, "second buffer")).toEqual(imports[1]);
+    expect(() => claims.assertExhausted()).toThrow(/dynamic-import|unconsumed/i);
+    expect(claims.claim((record: { kind: string }) => record.kind === "dynamic-import", "runtime")).toEqual(
+      imports[2],
+    );
+    expect(() => claims.assertExhausted()).not.toThrow();
+    expect(() => claims.claim(isBufferRequire, "third buffer")).toThrow(/absent|unclaimed/i);
+  });
+
   it("uses the independently derived closure as the fork runtime allowlist", async () => {
     const {
       buildPreparedTree,
+      canonicalSha256,
       forkMetadata,
       packArtifact,
       verifyRuntimeReachabilityMetadata,
@@ -250,6 +404,7 @@ describe("reproducible internal artifact", () => {
       vendorRoot,
       packed,
       installedTree,
+      emittedRuntimeSiteInventory: build.emittedRuntimeSiteInventory,
       runtimeDynamicSiteInventory: build.runtimeDynamicSiteInventory,
       derivedRuntimeSet: build.derivedRuntimeSet,
     });
@@ -260,19 +415,66 @@ describe("reproducible internal artifact", () => {
       verifyRuntimeReachabilityMetadata(
         fork,
         packed.members.map(({ path }) => path),
+        {
+          derivedRuntimeSet: build.derivedRuntimeSet,
+          emittedRuntimeSiteInventory: build.emittedRuntimeSiteInventory,
+          runtimeDynamicSiteInventory: build.runtimeDynamicSiteInventory,
+        },
       ),
     ).not.toThrow();
     expect(() =>
       verifyRuntimeReachabilityMetadata(
         { ...fork, derivedRuntimeSet: fork.derivedRuntimeSet.slice(1) },
         packed.members.map(({ path }) => path),
+        {
+          derivedRuntimeSet: build.derivedRuntimeSet,
+          emittedRuntimeSiteInventory: build.emittedRuntimeSiteInventory,
+          runtimeDynamicSiteInventory: build.runtimeDynamicSiteInventory,
+        },
       ),
     ).toThrow(/derived runtime set/i);
+    expect(() =>
+      verifyRuntimeReachabilityMetadata(
+        (() => {
+          const runtimeDynamicSiteInventory = fork.runtimeDynamicSiteInventory.slice(1);
+          return {
+            ...fork,
+            runtimeDynamicSiteInventory,
+            runtimeDynamicSiteInventorySha256: canonicalSha256(runtimeDynamicSiteInventory),
+          };
+        })(),
+        packed.members.map(({ path }) => path),
+        {
+          derivedRuntimeSet: build.derivedRuntimeSet,
+          emittedRuntimeSiteInventory: build.emittedRuntimeSiteInventory,
+          runtimeDynamicSiteInventory: build.runtimeDynamicSiteInventory,
+        },
+      ),
+    ).toThrow(/independently reconstructed|inventory mismatch/i);
+    expect(() =>
+      verifyRuntimeReachabilityMetadata(
+        (() => {
+          const emittedRuntimeSiteInventory = fork.emittedRuntimeSiteInventory.slice(1);
+          return {
+            ...fork,
+            emittedRuntimeSiteInventory,
+            emittedRuntimeSiteInventorySha256: canonicalSha256(emittedRuntimeSiteInventory),
+          };
+        })(),
+        packed.members.map(({ path }) => path),
+        {
+          derivedRuntimeSet: build.derivedRuntimeSet,
+          emittedRuntimeSiteInventory: build.emittedRuntimeSiteInventory,
+          runtimeDynamicSiteInventory: build.runtimeDynamicSiteInventory,
+        },
+      ),
+    ).toThrow(/independently reconstructed|inventory mismatch/i);
     expect(() =>
       forkMetadata({
         vendorRoot,
         packed,
         installedTree,
+        emittedRuntimeSiteInventory: build.emittedRuntimeSiteInventory,
         runtimeDynamicSiteInventory: build.runtimeDynamicSiteInventory,
         derivedRuntimeSet: build.derivedRuntimeSet.slice(1),
       }),
@@ -422,7 +624,7 @@ describe("reproducible internal artifact", () => {
     });
     expect(installedPaths.get("node_modules/@openclaw/zalouser/package.json")).toMatchObject({
       type: "file",
-      size: 2050,
+      size: 2116,
     });
     expect(
       result.installedTree.entries.some(({ path }) => path.endsWith(".package-lock.json")),

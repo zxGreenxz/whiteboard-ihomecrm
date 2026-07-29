@@ -681,6 +681,33 @@ function validateRoot(root) {
   }
 }
 
+function effectiveUnifiedDiffSource(source) {
+  const lines = source.split(/\r?\n/);
+  const hasStructuredHunk = lines.some((line) => line.startsWith("@@"));
+  let insideHunk = false;
+  return lines
+    .map((line) => {
+      if (!hasStructuredHunk) {
+        if (line.startsWith("+") && !line.startsWith("+++ ")) return ` ${line.slice(1)}`;
+        if (line.startsWith(" ")) return line;
+        return "";
+      }
+      if (line.startsWith("diff --git ")) {
+        insideHunk = false;
+        return "";
+      }
+      if (line.startsWith("@@")) {
+        insideHunk = true;
+        return "";
+      }
+      if (!insideHunk) return "";
+      if (line.startsWith("+")) return ` ${line.slice(1)}`;
+      if (line.startsWith(" ")) return line;
+      return "";
+    })
+    .join("\n");
+}
+
 export function scanOpenClawFiles(root = process.cwd()) {
   const absoluteRoot = resolve(root);
   const findings = [];
@@ -699,10 +726,13 @@ export function scanOpenClawFiles(root = process.cwd()) {
     const source = readTextFile(file, relativePath, findings);
     if (source === null) continue;
 
-    scanPatterns(source, relativePath, ALWAYS_FORBIDDEN, findings);
-    const parsedAsCode = scanCodeSemantics(source, relativePath, approvedDeliveryPath, findings);
+    const effectiveSource = extname(relativePath).toLowerCase() === ".patch"
+      ? effectiveUnifiedDiffSource(source)
+      : source;
+    scanPatterns(effectiveSource, relativePath, ALWAYS_FORBIDDEN, findings);
+    const parsedAsCode = scanCodeSemantics(effectiveSource, relativePath, approvedDeliveryPath, findings);
     if (!approvedDeliveryPath && !parsedAsCode) {
-      const canonicalSource = canonicalizeEscapedAscii(source);
+      const canonicalSource = canonicalizeEscapedAscii(effectiveSource);
       scanPatterns(canonicalSource, relativePath, ALWAYS_FORBIDDEN, findings);
       scanPatterns(canonicalSource, relativePath, RESTRICTED_PACKAGE, findings);
       scanPatterns(canonicalSource, relativePath, RAW_RESTRICTED_FALLBACK, findings);

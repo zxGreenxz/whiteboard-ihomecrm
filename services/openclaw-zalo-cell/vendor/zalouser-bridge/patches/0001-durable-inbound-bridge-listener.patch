@@ -19,11 +19,17 @@ diff --git a/src/monitor.ts b/src/monitor.ts
    normalizeOptionalLowercaseString,
    normalizeStringEntries,
  } from "openclaw/plugin-sdk/string-coerce-runtime";
-+import { commitInboundThroughBridge } from "./bridge/inbound-listener.js";
++import { commitAndDispatchInbound, ensureInboundBridgeReady } from "./bridge/inbound-listener.js";
  import {
    buildZalouserGroupCandidates,
    findZalouserGroupEntry,
-@@ -965,10 +966,14 @@ export async function monitorZalouserProvider(
+@@ -960,34 +961,40 @@ export async function monitorZalouserProvider(
+   abortSignal.addEventListener("abort", onAbort, { once: true });
+
+   let listener: Awaited<ReturnType<typeof startZaloListener>>;
+   try {
++    await ensureInboundBridgeReady(account.accountId);
+     listener = await startZaloListener({
        accountId: account.accountId,
        profile: account.profile,
        abortSignal,
@@ -32,13 +38,33 @@ diff --git a/src/monitor.ts b/src/monitor.ts
          if (stopped) {
            return;
          }
-+        const commitResult = await commitInboundThroughBridge(account.accountId, msg.bridge);
-+        if (commitResult.status === "duplicate" || stopped || abortSignal.aborted) {
-+          return;
-+        }
++        await commitAndDispatchInbound(account.accountId, msg.bridge, async () => {
++          if (stopped || abortSignal.aborted) {
++            return;
++          }
          logVerbose(core, runtime, `[${account.accountId}] inbound message`);
          statusSink?.({ lastInboundAt: Date.now() });
          const queueKey = resolveInboundQueueKey(msg);
+         void inboundQueue
+           .enqueue(queueKey, async () => {
+             if (stopped || abortSignal.aborted) {
+               return;
+             }
+             await processMessage(
+               msg,
+               account,
+               config,
+               core,
+               runtime,
+               { historyLimit, groupHistories },
+               statusSink,
+             );
+           })
+           .catch((err: unknown) => {
+             runtime.error(`[${account.accountId}] Failed to process message: ${String(err)}`);
+           });
++        });
+       },
 diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 --- a/src/zalo-js.ts
 +++ b/src/zalo-js.ts
@@ -175,7 +201,7 @@ diff --git a/src/zalo-js.ts b/src/zalo-js.ts
 +    const eventSuggestsMedia = /photo|image|video|audio|voice|file|sticker/u.test(
 +      providerEventType.toLowerCase(),
 +    );
-+    if (eventSuggestsMedia || directEvidenceKeys.some((key) => content[key] != null)) append(content);
++    if (directEvidenceKeys.some((key) => content[key] != null) || (eventSuggestsMedia && records.length === 0)) append(content);
 +  }
 +
 +  return records.map((record) => {

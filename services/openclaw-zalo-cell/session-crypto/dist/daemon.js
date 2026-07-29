@@ -8,8 +8,11 @@ export const RUNTIME_PROTOCOL_VERSION = 1;
 export const SESSION_KEY_PATH = "/run/secrets/openclaw_session_key";
 const MAX_KEY_FILE_BYTES = 64 * 1024;
 const MAX_REQUEST_BYTES = 64 * 1024;
+const LINUX_O_DIRECTORY = fsConstants.O_DIRECTORY ?? 0x10000;
 const LINUX_O_NOFOLLOW = fsConstants.O_NOFOLLOW ?? 0x20000;
+const WRITER_DIRECTORY_OPEN_FLAGS = fsConstants.O_RDONLY | LINUX_O_DIRECTORY | LINUX_O_NOFOLLOW;
 const WRITER_LEASE_DATABASE = ".session-crypto-writer.sqlite";
+const WRITER_LEASE_SIDECARS = ["-journal", "-shm", "-wal"];
 const ENVELOPE_VERSION_PATTERN = /^[0-9a-f]{64}$/;
 const SAFE_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 const SAFE_GENERATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -72,15 +75,6 @@ const defaultKeyFileOperations = {
         };
     },
 };
-async function syncDirectory(candidate) {
-    const handle = await nodeFs.open(candidate, "r");
-    try {
-        await handle.sync();
-    }
-    finally {
-        await handle.close();
-    }
-}
 const defaultWriterLeaseOperations = {
     getuid() {
         if (typeof process.getuid !== "function") {
@@ -90,21 +84,61 @@ const defaultWriterLeaseOperations = {
     },
     async inspectPath(candidate) {
         const stats = await nodeFs.lstat(candidate);
-        if (stats.isSymbolicLink())
-            return { kind: "symlink", mode: stats.mode & 0o777, uid: stats.uid };
-        if (stats.isDirectory())
-            return { kind: "directory", mode: stats.mode & 0o777, uid: stats.uid };
-        if (stats.isFile())
-            return { kind: "file", mode: stats.mode & 0o777, uid: stats.uid };
-        return { kind: "other", mode: stats.mode & 0o777, uid: stats.uid };
+        return {
+            dev: stats.dev,
+            ino: stats.ino,
+            kind: stats.isSymbolicLink()
+                ? "symlink"
+                : stats.isDirectory()
+                    ? "directory"
+                    : stats.isFile()
+                        ? "file"
+                        : "other",
+            mode: stats.mode & 0o777,
+            uid: stats.uid,
+        };
     },
     async isLocalFileSystem(candidate) {
         const stats = await nodeFs.statfs(candidate);
         return LOCAL_WRITER_FILE_SYSTEM_TYPES.has(stats.type >>> 0);
     },
-    async openDatabase(candidate) {
+    async open(candidate, flags, mode) {
+        const handle = await nodeFs.open(candidate, flags, mode);
+        return {
+            close: () => handle.close(),
+            descriptorPath(relativePath = "") {
+                const descriptorRoot = `/proc/self/fd/${handle.fd}`;
+                return relativePath
+                    ? path.posix.join(descriptorRoot, ...relativePath.split("/"))
+                    : descriptorRoot;
+            },
+            async stat() {
+                const stats = await handle.stat();
+                return {
+                    dev: stats.dev,
+                    ino: stats.ino,
+                    kind: stats.isDirectory() ? "directory" : stats.isFile() ? "file" : "other",
+                    mode: stats.mode & 0o777,
+                    uid: stats.uid,
+                };
+            },
+            sync: () => handle.sync(),
+        };
+    },
+    async openDatabase(candidate, expected) {
+        const before = await this.inspectPath(candidate);
+        if (!sameWriterLeaseIdentity(before, expected))
+            throw writerLeaseUnsafe("Writer lease database changed before open");
         const { DatabaseSync } = await import("node:sqlite");
         const database = new DatabaseSync(candidate);
+        const after = await this.inspectPath(candidate).catch((error) => {
+            database.close();
+            throw error;
+        });
+        if (!sameWriterLeaseIdentity(after, expected)) {
+            database.close();
+            throw writerLeaseUnsafe("Writer lease database changed during open");
+        }
         return {
             close: () => database.close(),
             exec: (sql) => database.exec(sql),
@@ -125,7 +159,7 @@ const defaultWriterLeaseOperations = {
             await handle.sync();
             await handle.close();
             handle = undefined;
-            await syncDirectory(path.posix.dirname(candidate));
+            return true;
         }
         catch (error) {
             if (handle) {
@@ -138,6 +172,7 @@ const defaultWriterLeaseOperations = {
             }
             if (!(error instanceof Error && "code" in error && error.code === "EEXIST"))
                 throw error;
+            return false;
         }
     },
     realpath: (candidate) => nodeFs.realpath(candidate),
@@ -163,17 +198,99 @@ function isWriterLeaseContentionError(error) {
 function writerLeaseUnsafe(message, cause) {
     return new SessionCryptoError("WRITER_LEASE_UNSAFE", message, cause === undefined ? undefined : { cause });
 }
-async function closeWriterDatabase(database, state) {
+function sameWriterLeaseIdentity(left, right) {
+    return (left.dev === right.dev &&
+        left.ino === right.ino &&
+        left.kind === right.kind &&
+        left.mode === right.mode &&
+        left.uid === right.uid);
+}
+function assertWriterLeasePath(stat, expected, message) {
+    if (!sameWriterLeaseIdentity(stat, expected))
+        throw writerLeaseUnsafe(message);
+}
+async function inspectWriterLeaseOptional(operations, candidate) {
+    try {
+        return await operations.inspectPath(candidate);
+    }
+    catch (error) {
+        if (isErrorCode(error, "ENOENT"))
+            return undefined;
+        throw error;
+    }
+}
+async function assertWriterLeaseState(operations, canonicalRoot, rootHandle, rootStat, databasePath, databaseHandle, databaseStat, expectedUid) {
+    const rootDescriptorStat = await rootHandle.stat();
+    assertWriterLeasePath(rootDescriptorStat, rootStat, "Writer lease root descriptor changed");
+    const rootPathStat = await operations.inspectPath(canonicalRoot);
+    assertWriterLeasePath(rootPathStat, rootStat, "Writer lease root pathname changed");
+    const databaseDescriptorStat = await databaseHandle.stat();
+    assertWriterLeasePath(databaseDescriptorStat, databaseStat, "Writer lease database guard changed");
+    const databasePathStat = await operations.inspectPath(databasePath);
+    assertWriterLeasePath(databasePathStat, databaseStat, "Writer lease database pathname changed");
+    for (const suffix of WRITER_LEASE_SIDECARS) {
+        const sidecar = await inspectWriterLeaseOptional(operations, `${databasePath}${suffix}`);
+        if (!sidecar)
+            continue;
+        if (sidecar.kind !== "file" ||
+            sidecar.uid !== expectedUid ||
+            sidecar.mode !== 0o600) {
+            throw writerLeaseUnsafe("Writer lease SQLite sidecar is unsafe");
+        }
+    }
+}
+async function checkedWriterLeaseOperation(validate, operation) {
+    await validate();
+    let operationError;
+    let result;
+    try {
+        result = operation();
+    }
+    catch (error) {
+        operationError = error;
+    }
+    try {
+        await validate();
+    }
+    catch (validationError) {
+        if (operationError) {
+            throw writerLeaseUnsafe("Writer lease state changed during a failed SQLite operation", new AggregateError([operationError, validationError]));
+        }
+        if (validationError instanceof SessionCryptoError)
+            throw validationError;
+        throw writerLeaseUnsafe("Writer lease state could not be revalidated", validationError);
+    }
+    if (operationError)
+        throw operationError;
+    return result;
+}
+async function closeWriterDatabase(database, state, validate) {
     const errors = [];
     if (state.closed)
         return errors;
     if (state.transactionActive) {
+        if (validate) {
+            try {
+                await validate();
+            }
+            catch (error) {
+                errors.push(error);
+            }
+        }
         try {
             database.exec("ROLLBACK");
             state.transactionActive = false;
         }
         catch (error) {
             errors.push(error);
+        }
+        if (validate) {
+            try {
+                await validate();
+            }
+            catch (error) {
+                errors.push(error);
+            }
         }
     }
     try {
@@ -204,33 +321,56 @@ export async function acquireWriterLease(configuration, operations = defaultWrit
         throw writerLeaseUnsafe("Writer lease root resolves through an alias");
     }
     const expectedUid = operations.getuid();
-    let rootStat;
+    let checkedRootStat;
     try {
-        rootStat = await operations.inspectPath(canonicalRoot);
+        checkedRootStat = await operations.inspectPath(canonicalRoot);
     }
     catch (error) {
         throw writerLeaseUnsafe("Writer lease root cannot be inspected", error);
     }
-    if (rootStat.kind !== "directory" ||
-        rootStat.uid !== expectedUid ||
-        (rootStat.mode & 0o077) !== 0) {
+    if (checkedRootStat.kind !== "directory" ||
+        checkedRootStat.uid !== expectedUid ||
+        (checkedRootStat.mode & 0o077) !== 0) {
         throw writerLeaseUnsafe("Writer lease root type, owner, or mode is unsafe");
     }
+    let rootHandle;
     try {
-        if (!(await operations.isLocalFileSystem(canonicalRoot))) {
+        rootHandle = await operations.open(canonicalRoot, WRITER_DIRECTORY_OPEN_FLAGS);
+        const descriptorStat = await rootHandle.stat();
+        const recheckedRootStat = await operations.inspectPath(canonicalRoot);
+        const descriptorRealPath = path.posix.resolve(await operations.realpath(rootHandle.descriptorPath()));
+        assertWriterLeasePath(descriptorStat, checkedRootStat, "Writer lease root changed while its descriptor was opened");
+        assertWriterLeasePath(recheckedRootStat, checkedRootStat, "Writer lease root changed while its descriptor was opened");
+        if (descriptorRealPath !== canonicalRoot) {
+            throw writerLeaseUnsafe("Writer lease root descriptor resolves through an alias");
+        }
+    }
+    catch (error) {
+        await rootHandle?.close().catch(() => undefined);
+        if (error instanceof SessionCryptoError)
+            throw error;
+        throw writerLeaseUnsafe("Writer lease root descriptor cannot be opened", error);
+    }
+    if (!rootHandle)
+        throw writerLeaseUnsafe("Writer lease root descriptor cannot be opened");
+    try {
+        if (!(await operations.isLocalFileSystem(rootHandle.descriptorPath()))) {
             throw writerLeaseUnsafe("Writer lease requires a verified local filesystem");
         }
     }
     catch (error) {
+        await rootHandle.close().catch(() => undefined);
         if (error instanceof SessionCryptoError)
             throw error;
         throw writerLeaseUnsafe("Writer lease filesystem type cannot be verified", error);
     }
-    const databasePath = path.posix.join(canonicalRoot, WRITER_LEASE_DATABASE);
+    const databasePath = rootHandle.descriptorPath(WRITER_LEASE_DATABASE);
     try {
-        await operations.prepareFile(databasePath);
+        if (await operations.prepareFile(databasePath))
+            await rootHandle.sync();
     }
     catch (error) {
+        await rootHandle.close().catch(() => undefined);
         throw writerLeaseUnsafe("Writer lease database cannot be safely prepared", error);
     }
     let databaseStat;
@@ -238,48 +378,76 @@ export async function acquireWriterLease(configuration, operations = defaultWrit
         databaseStat = await operations.inspectPath(databasePath);
     }
     catch (error) {
+        await rootHandle.close().catch(() => undefined);
         throw writerLeaseUnsafe("Writer lease database cannot be inspected", error);
     }
     if (databaseStat.kind !== "file" ||
         databaseStat.uid !== expectedUid ||
         databaseStat.mode !== 0o600) {
+        await rootHandle.close().catch(() => undefined);
         throw writerLeaseUnsafe("Writer lease database type, owner, or mode is unsafe");
     }
-    let database;
+    let databaseHandle;
     try {
-        database = await operations.openDatabase(databasePath);
+        databaseHandle = await operations.open(databasePath, fsConstants.O_RDWR | LINUX_O_NOFOLLOW);
+        assertWriterLeasePath(await databaseHandle.stat(), databaseStat, "Writer lease database changed while its guard descriptor was opened");
     }
     catch (error) {
+        await databaseHandle?.close().catch(() => undefined);
+        await rootHandle.close().catch(() => undefined);
+        if (error instanceof SessionCryptoError)
+            throw error;
+        throw writerLeaseUnsafe("Writer lease database guard cannot be opened", error);
+    }
+    if (!databaseHandle)
+        throw writerLeaseUnsafe("Writer lease database guard cannot be opened");
+    const validate = () => assertWriterLeaseState(operations, canonicalRoot, rootHandle, checkedRootStat, databasePath, databaseHandle, databaseStat, expectedUid);
+    let database;
+    try {
+        await validate();
+        database = await operations.openDatabase(databasePath, databaseStat);
+        await validate();
+    }
+    catch (error) {
+        await databaseHandle.close().catch(() => undefined);
+        await rootHandle.close().catch(() => undefined);
+        if (error instanceof SessionCryptoError)
+            throw error;
+        if (isErrorCode(error, "ELOOP", "ENOTDIR", "ESTALE")) {
+            throw writerLeaseUnsafe("Writer lease database changed before it could be opened", error);
+        }
         throw new SessionCryptoError("WRITER_LEASE_IO", "Writer lease database cannot be opened", {
             cause: error,
         });
     }
     let transactionActive = false;
     try {
-        database.exec("PRAGMA busy_timeout = 0");
-        database.exec("PRAGMA journal_mode = DELETE");
-        database.exec("PRAGMA locking_mode = EXCLUSIVE");
-        database.exec("BEGIN EXCLUSIVE");
+        await checkedWriterLeaseOperation(validate, () => database.exec("PRAGMA busy_timeout = 0"));
+        await checkedWriterLeaseOperation(validate, () => database.exec("PRAGMA journal_mode = DELETE"));
+        await checkedWriterLeaseOperation(validate, () => database.exec("PRAGMA locking_mode = EXCLUSIVE"));
+        await checkedWriterLeaseOperation(validate, () => database.exec("BEGIN EXCLUSIVE"));
         transactionActive = true;
-        database.exec("CREATE TABLE IF NOT EXISTS writer_identity (version INTEGER PRIMARY KEY, cell_id TEXT NOT NULL, persistent_root TEXT NOT NULL)");
-        const identity = database
+        await checkedWriterLeaseOperation(validate, () => database.exec("CREATE TABLE IF NOT EXISTS writer_identity (version INTEGER PRIMARY KEY, cell_id TEXT NOT NULL, persistent_root TEXT NOT NULL)"));
+        const identity = await checkedWriterLeaseOperation(validate, () => database
             .prepare("SELECT cell_id AS cellId, persistent_root AS persistentRoot FROM writer_identity WHERE version = 1")
-            .get();
+            .get());
         if (!identity) {
-            database
+            await checkedWriterLeaseOperation(validate, () => database
                 .prepare("INSERT INTO writer_identity (version, cell_id, persistent_root) VALUES (1, ?, ?)")
-                .run(configuration.cellId, canonicalRoot);
+                .run(configuration.cellId, canonicalRoot));
         }
         else if (identity.cellId !== configuration.cellId || identity.persistentRoot !== canonicalRoot) {
             throw writerLeaseUnsafe("Writer lease database identity does not match this cell and root");
         }
-        database.exec("COMMIT");
+        await checkedWriterLeaseOperation(validate, () => database.exec("COMMIT"));
         transactionActive = false;
-        database.exec("BEGIN EXCLUSIVE");
+        await checkedWriterLeaseOperation(validate, () => database.exec("BEGIN EXCLUSIVE"));
         transactionActive = true;
     }
     catch (error) {
         await closeWriterDatabase(database, { closed: false, transactionActive });
+        await databaseHandle.close().catch(() => undefined);
+        await rootHandle.close().catch(() => undefined);
         if (error instanceof SessionCryptoError)
             throw error;
         if (isWriterLeaseContentionError(error)) {
@@ -289,16 +457,42 @@ export async function acquireWriterLease(configuration, operations = defaultWrit
             cause: error,
         });
     }
-    const cleanupState = { closed: false, transactionActive: true };
+    const cleanupState = {
+        closed: false,
+        databaseHandleClosed: false,
+        rootHandleClosed: false,
+        transactionActive: true,
+    };
     let releaseAttempt;
     return {
         release() {
-            if (cleanupState.closed)
+            if (cleanupState.closed &&
+                cleanupState.databaseHandleClosed &&
+                cleanupState.rootHandleClosed) {
                 return Promise.resolve();
+            }
             if (releaseAttempt)
                 return releaseAttempt;
             releaseAttempt = (async () => {
-                const errors = await closeWriterDatabase(database, cleanupState);
+                const errors = await closeWriterDatabase(database, cleanupState, validate);
+                if (cleanupState.closed && !cleanupState.databaseHandleClosed) {
+                    try {
+                        await databaseHandle.close();
+                        cleanupState.databaseHandleClosed = true;
+                    }
+                    catch (error) {
+                        errors.push(error);
+                    }
+                }
+                if (cleanupState.closed && !cleanupState.rootHandleClosed) {
+                    try {
+                        await rootHandle.close();
+                        cleanupState.rootHandleClosed = true;
+                    }
+                    catch (error) {
+                        errors.push(error);
+                    }
+                }
                 if (errors.length > 0) {
                     throw new SessionCryptoError("WRITER_LEASE_RELEASE_FAILED", "Writer lease cleanup failed", { cause: new AggregateError(errors) });
                 }

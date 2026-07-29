@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdtemp, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { gzipSync } from "node:zlib";
+import { deflateSync, gzipSync } from "node:zlib";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const cellRoot = resolve(testDir, "..");
@@ -19,6 +20,10 @@ const CONTEXT_GOLDEN =
   "925be74a4fe381076871348887a653659ada468fa21333d5d22585be9e381f4e";
 const DOCKER_LINUX_SHA256 =
   "40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a";
+const GIT_LINUX_SHA256 =
+  "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a";
+const NODE_LINUX_SHA256 =
+  "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c";
 const SESSION_DIST = [
   "session-crypto/dist/crypto.js",
   "session-crypto/dist/daemon.js",
@@ -60,6 +65,11 @@ async function readCell(relativePath) {
 
 async function loadScript(relativePath) {
   return import(pathToFileURL(join(cellRoot, relativePath)).href);
+}
+
+function localGitPath() {
+  const locator = process.platform === "win32" ? "where.exe" : "which";
+  return execFileSync(locator, ["git"], { encoding: "utf8" }).split(/\r?\n/u).find(Boolean);
 }
 
 function sha256(bytes) {
@@ -158,6 +168,207 @@ function scratchOciBytes() {
   ]);
 }
 
+function passingBehaviorProbe() {
+  return {
+    schema: 1,
+    implementation: "fork",
+    status: "PASS",
+    checks: {
+      inbound: {
+        commit_before_dispatch: true,
+        error_zero_dispatch: true,
+        timeout_zero_dispatch: true,
+        corrupt_ack_zero_dispatch: true,
+      },
+      outbound: {
+        text_sent: true,
+        media_sent: true,
+        unsupported_zero_provider_frames: true,
+        authorization_zero_provider_frames: true,
+        unknown_after_handoff: true,
+        unknown_provider_calls: 1,
+        retry_count: 0,
+      },
+      control: {
+        authorized: true,
+        rate_limited_zero_provider_frames: true,
+        provider_timeout: true,
+      },
+      session: { restore: true, offline_restart: true },
+    },
+  };
+}
+
+function passingBehaviorTranscript(variant) {
+  const makeEvents = (entries) => entries.map((entry, seq) => ({ seq, ...entry }));
+  const response = (ok, { code, value = null } = {}) => ({
+    kind: "return",
+    value: {
+      ok,
+      value,
+      error: code === undefined ? null : { code },
+    },
+  });
+  const delivery = ({ ids, prefix, reasonCode, status, total }) => ({
+    knownProviderMessageIds: ids,
+    possibleHandoffPrefixLength: prefix,
+    reasonCode,
+    receipts: ids.map((providerMessageId) => ({ providerMessageId })),
+    status,
+    totalPartCount: total,
+  });
+  const base = {
+    schema: 3,
+    contract: "ihome.zalouser.business.v1",
+    implementation: variant,
+    package: { name: "@openclaw/zalouser", version: "2026.7.1" },
+  };
+  if (variant === "stock") {
+    return {
+      ...base,
+      registered_methods: [],
+      cases: [{
+        id: "outbound-text-authorized",
+        outcome: { kind: "error", code: "METHOD_NOT_REGISTERED" },
+        events: [],
+      }],
+    };
+  }
+  return {
+    ...base,
+    registered_methods: ["zalouser.bridge.send"],
+    cases: [
+      {
+        id: "inbound-committed",
+        outcome: { kind: "return", value: { status: "dispatched" } },
+        events: makeEvents([
+          { actor: "bridge", operation: "inbound.ready" },
+          { actor: "bridge", operation: "inbound.commit" },
+          { actor: "plugin", operation: "dispatch-inbound" },
+        ]),
+      },
+      {
+        id: "inbound-duplicate",
+        outcome: { kind: "return", value: { status: "duplicate" } },
+        events: makeEvents([{ actor: "bridge", operation: "inbound.commit" }]),
+      },
+      {
+        id: "inbound-corrupt",
+        outcome: { kind: "error", code: "INBOUND_BRIDGE_INVALID_ACK" },
+        events: makeEvents([{ actor: "bridge", operation: "inbound.commit" }]),
+      },
+      {
+        id: "outbound-group-text-authorized",
+        outcome: response(true, { value: delivery({
+          ids: ["provider-0"],
+          prefix: 1,
+          reasonCode: "ALL_PARTS_ACKNOWLEDGED",
+          status: "SENT",
+          total: 1,
+        }) }),
+        events: makeEvents([
+          { actor: "bridge", operation: "outbox.authorize-send" },
+          {
+            actor: "provider", operation: "send-message", callIndex: 0, messageKind: "text",
+            text: "probe", threadId: "group-a", type: 1,
+          },
+        ]),
+      },
+      {
+        id: "outbound-peer-media-authorized",
+        outcome: response(true, { value: delivery({
+          ids: ["provider-0"],
+          prefix: 1,
+          reasonCode: "ALL_PARTS_ACKNOWLEDGED",
+          status: "SENT",
+          total: 1,
+        }) }),
+        events: makeEvents([
+          { actor: "bridge", operation: "media.materialize" },
+          { actor: "bridge", operation: "outbox.authorize-send" },
+          {
+            actor: "provider", operation: "send-message", callIndex: 0, messageKind: "media",
+            attachmentBytes: 19,
+            attachmentSha256: "c3741084a5f5129dfce6049b9e21c8af58cfa9174265000a63d35f6ad0d3e120",
+            threadId: "peer-a",
+            type: 0,
+          },
+        ]),
+      },
+      { id: "outbound-link-rejected", outcome: response(false, { code: "UNSUPPORTED_BUSINESS_PART" }), events: [] },
+      { id: "outbound-reaction-rejected", outcome: response(false, { code: "UNSUPPORTED_BUSINESS_PART" }), events: [] },
+      {
+        id: "outbound-authorization-denied",
+        outcome: response(false, { code: "AUTHORIZATION_DENIED" }),
+        events: makeEvents([{ actor: "bridge", operation: "outbox.authorize-send" }]),
+      },
+      {
+        id: "outbound-partial-handoff-unknown",
+        outcome: response(true, { value: delivery({
+          ids: ["provider-0"],
+          prefix: 2,
+          reasonCode: "PROVIDER_DISCONNECT_AFTER_POSSIBLE_HANDOFF",
+          status: "UNKNOWN",
+          total: 2,
+        }) }),
+        events: makeEvents([
+          { actor: "bridge", operation: "outbox.authorize-send" },
+          {
+            actor: "provider", operation: "send-message", callIndex: 0, messageKind: "text",
+            text: "first", threadId: "peer-a", type: 0,
+          },
+          {
+            actor: "provider", operation: "send-message", callIndex: 1, messageKind: "text",
+            text: "second", threadId: "peer-a", type: 0,
+          },
+        ]),
+      },
+      {
+        id: "control-authorized",
+        outcome: { kind: "return", value: null },
+        events: makeEvents([
+          { actor: "bridge", operation: "control.authorize" },
+          { actor: "provider", operation: "typing", threadId: "thread-a", type: 0 },
+        ]),
+      },
+      {
+        id: "control-denied",
+        outcome: { kind: "error", code: "CONTROL_AUTHORIZATION_DENIED" },
+        events: makeEvents([{ actor: "bridge", operation: "control.authorize" }]),
+      },
+    ],
+  };
+}
+
+function rawBehaviorRecord(variant) {
+  const bytes = Buffer.from(`${JSON.stringify(passingBehaviorTranscript(variant))}\n`, "utf8");
+  return {
+    transcript_base64: bytes.toString("base64"),
+    transcript_size: bytes.length,
+    transcript_sha256: sha256(bytes),
+  };
+}
+
+function recordedBehaviorEvidence({ runnerBytes, forkArchiveBytes, stockArchiveBytes }) {
+  return {
+    runner: {
+      path: "scripts/behavior-probe-runner.mjs",
+      size: runnerBytes.length,
+      sha256: sha256(runnerBytes),
+    },
+    fork_oci: {
+      archive_sha256: sha256(forkArchiveBytes),
+      manifest_digest: `sha256:${"b".repeat(64)}`,
+    },
+    stock_oci: {
+      archive_sha256: sha256(stockArchiveBytes),
+      manifest_digest: `sha256:${"c".repeat(64)}`,
+    },
+    fork: rawBehaviorRecord("fork"),
+    stock: rawBehaviorRecord("stock"),
+  };
+}
+
 function collectObjects(value, path = "$") {
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
   return [[path, value]].concat(
@@ -200,6 +411,26 @@ test("Dockerfile is an exact two-stage pinned offline image assembly", async () 
     dockerfile,
     /session-crypto\/(src|package-lock\.json|tsconfig|node_modules|dist\/.*\.d\.ts)/,
   );
+});
+
+test("stock behavior control installs the authenticated upstream ZaloUser offline", async () => {
+  const dockerfile = await readCell("Dockerfile.stock-probe");
+  const installer = await readCell("scripts/install-stock-zalouser-probe.sh");
+  const fromLines = dockerfile.match(/^FROM\s+.+$/gim) ?? [];
+  assert.deepEqual(fromLines, [
+    `FROM ${BASE_IMAGE} AS install`,
+    `FROM ${BASE_IMAGE} AS runtime`,
+  ]);
+  assert.match(dockerfile, /RUN --network=none/);
+  assert.match(dockerfile, /verified-upstream\.tgz/);
+  assert.match(dockerfile, /install-stock-zalouser-probe\.sh --offline --cache \/tmp\/npm-empty --no-fallback/);
+  assert.doesNotMatch(dockerfile, /curl|wget|npm\s+(?:ci|view)|https?:\/\//i);
+  assert.match(installer, /e4022d5dc39009460523b796445c089caedce7e875a816d0e4cd18e8a48a0089/);
+  assert.match(installer, /NPM_CONFIG_OFFLINE=true/);
+  assert.match(installer, /NPM_CONFIG_REGISTRY=http:\/\/127\.0\.0\.1:9/);
+  assert.match(installer, /--offline/);
+  assert.match(installer, /--ignore-scripts/);
+  assert.doesNotMatch(installer, /curl|wget|https:\/\//i);
 });
 
 test("docker context is deny-by-default and admits only reviewed runtime inputs", async () => {
@@ -272,6 +503,15 @@ test("image lock binds every admitted file and the exact session dist closure", 
   assert.deepEqual(result.lock.docker, {
     version: "29.1.3",
     linux_amd64_sha256: DOCKER_LINUX_SHA256,
+  });
+  assert.deepEqual(result.lock.git, {
+    version: "2.53.0",
+    linux_amd64_sha256: GIT_LINUX_SHA256,
+  });
+  assert.deepEqual(result.lock.node, {
+    version: "24.15.0",
+    linux_amd64_size: 122889056,
+    linux_amd64_sha256: NODE_LINUX_SHA256,
   });
   assert.deepEqual(
     result.lock.inputs.map(({ path }) => path),
@@ -447,10 +687,10 @@ test("build evidence binds exact canonical M and R approval reports", async (t) 
   assert.ok(schema.required.includes("reviews"));
   assert.deepEqual(schema.properties.reviews.required, ["M", "R"]);
   assert.equal(schema.properties.reviews.additionalProperties, false);
-  assert.equal(schema.properties.reviews.properties.M.$ref, "#/$defs/reviewRecord");
-  assert.equal(schema.properties.reviews.properties.R.$ref, "#/$defs/reviewRecord");
+  assert.equal(schema.properties.reviews.properties.M.$ref, "#/$defs/mReviewRecord");
+  assert.equal(schema.properties.reviews.properties.R.$ref, "#/$defs/rReviewRecord");
 
-  const reviewSchema = schema.$defs.reviewRecord;
+  const reviewSchema = schema.$defs.mReviewRecord;
   assert.equal(reviewSchema.additionalProperties, false);
   assert.deepEqual(reviewSchema.required, [
     "checkpoint",
@@ -464,6 +704,8 @@ test("build evidence binds exact canonical M and R approval reports", async (t) 
     "decision",
     "findings",
   ]);
+  assert.equal(reviewSchema.properties.checkpoint.const, "M");
+  assert.equal(schema.$defs.rReviewRecord.properties.checkpoint.const, "R");
   assert.equal(reviewSchema.properties.decision.const, "APPROVED");
   assert.equal(reviewSchema.properties.findings.maxItems, 0);
 
@@ -481,8 +723,8 @@ test("build evidence binds exact canonical M and R approval reports", async (t) 
       }),
     /at most 0 items/i,
   );
-  const fixture = await mkdtemp(join(tmpdir(), "openclaw-review-"));
-  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "openclaw-review-"));
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
   const reviewedSha = "a".repeat(40);
   const report = {
     checkpoint: "M",
@@ -495,13 +737,25 @@ test("build evidence binds exact canonical M and R approval reports", async (t) 
     schema: 1,
   };
   const canonicalBytes = Buffer.from(`${JSON.stringify(report)}\n`);
-  const reportPath = join(fixture, "m-review.json");
+  const reportsRoot = join(
+    repositoryRoot,
+    "services",
+    "openclaw-zalo-cell",
+    ".release",
+    "reviews",
+  );
+  await mkdir(reportsRoot, { recursive: true });
+  const reportPath = join(reportsRoot, `m-review-report-v1-${reviewedSha}.json`);
   await writeFile(reportPath, canonicalBytes);
 
-  const embedded = await readCanonicalReviewReport(reportPath, {
+  const retained = await readCanonicalReviewReport(reportPath, {
     checkpoint: "M",
     reviewedSha,
+    repositoryRoot,
   });
+  assert.equal(retained.canonicalPath, await realpath(reportPath));
+  assert.deepEqual(retained.bytes, canonicalBytes);
+  const embedded = retained.record;
   assert.deepEqual(
     embedded,
     {
@@ -549,7 +803,7 @@ test("build evidence binds exact canonical M and R approval reports", async (t) 
     `{"checkpoint":"M","decision":"REJECTED","decision":"APPROVED","findings":[],"reviewedSha":"${reviewedSha}","reviewerIdentity":"/root/review-m","reviewerRole":"reviewer","reviewerRunId":"M-review-run","schema":1}\n`,
   );
   await assert.rejects(
-    readCanonicalReviewReport(reportPath, { checkpoint: "M", reviewedSha }),
+    readCanonicalReviewReport(reportPath, { checkpoint: "M", reviewedSha, repositoryRoot }),
     /duplicate JSON key/i,
   );
   await writeFile(
@@ -557,9 +811,563 @@ test("build evidence binds exact canonical M and R approval reports", async (t) 
     `${JSON.stringify({ schema: 1, ...report })}\n`,
   );
   await assert.rejects(
-    readCanonicalReviewReport(reportPath, { checkpoint: "M", reviewedSha }),
+    readCanonicalReviewReport(reportPath, { checkpoint: "M", reviewedSha, repositoryRoot }),
     /not canonical/i,
   );
+  const arbitraryPath = join(reportsRoot, "m-review.json");
+  await writeFile(arbitraryPath, canonicalBytes);
+  await assert.rejects(
+    readCanonicalReviewReport(arbitraryPath, { checkpoint: "M", reviewedSha, repositoryRoot }),
+    /canonical|SHA-bound|report path/i,
+  );
+});
+
+test("qualifying gates require exact Git lineage, reviewed verifier bytes, and raw M inputs", async (t) => {
+  const source = await readCell("scripts/verify-image-lock.mjs");
+  assert.match(source, /ExpectedM|expected-m/);
+  assert.match(source, /git[\s\S]+cat-file[\s\S]+--batch/);
+  assert.match(source, /authenticateCommitLineage/);
+  assert.match(source, /readAuthenticatedGitObjects/);
+  assert.match(source, /createHash\("sha1"\)/);
+
+  const {
+    collectRawMInputs,
+    readGitBlobRecords,
+    verifyGitLineage,
+    verifyReviewedVerifierBlob,
+  } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const repositoryRoot = resolve(cellRoot, "../..");
+  const gitPath = localGitPath();
+  const expectedM = "0650187981ad9728d295fae34eff92b508e36bc8";
+  const reviewedTree = (await import("node:child_process")).execFileSync(
+    "git",
+    ["rev-parse", "HEAD"],
+    { cwd: repositoryRoot, encoding: "ascii" },
+  ).trim();
+  await assert.doesNotReject(() =>
+    verifyGitLineage({ gitPath, repositoryRoot, expectedM, reviewedTree }),
+  );
+  const records = await readGitBlobRecords({
+    gitPath,
+    repositoryRoot,
+    commit: expectedM,
+    paths: ["services/openclaw-zalo-cell/vendor/zalouser-bridge/UPSTREAM.json"],
+  });
+  assert.equal(records.length, 1);
+  assert.equal(records[0].source, "git-object");
+  assert.match(records[0].git_object_id, /^[0-9a-f]{40}$/);
+  assert.match(records[0].sha256, /^[0-9a-f]{64}$/);
+  await assert.rejects(
+    verifyGitLineage({ gitPath, repositoryRoot, expectedM: "0".repeat(40), reviewedTree }),
+    /Git|ancestor|commit/i,
+  );
+  const rawM = await collectRawMInputs({ gitPath, repositoryRoot, expectedM });
+  assert.equal(rawM.records.length, 87);
+  assert.equal(rawM.provenance.size, 4);
+
+  const verifierRelative = "services/openclaw-zalo-cell/scripts/verify-image-lock.mjs";
+  const [reviewedVerifier] = await readGitBlobRecords({
+    gitPath,
+    repositoryRoot,
+    commit: reviewedTree,
+    paths: [verifierRelative],
+  });
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-reviewed-verifier-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const verifierPath = join(fixture, "verify-image-lock.mjs");
+  await writeFile(verifierPath, reviewedVerifier.bytes);
+  await assert.doesNotReject(() =>
+    verifyReviewedVerifierBlob({ gitPath, repositoryRoot, reviewedTree, verifierPath }),
+  );
+  await writeFile(verifierPath, Buffer.concat([reviewedVerifier.bytes, Buffer.from("// tampered\n")]));
+  await assert.rejects(
+    verifyReviewedVerifierBlob({ gitPath, repositoryRoot, reviewedTree, verifierPath }),
+    /reviewed R|verifier|Git blob/i,
+  );
+});
+
+test("detached evidence reauthenticates retained canonical M/R reports byte-for-byte", async (t) => {
+  const {
+    authenticateEvidenceReviews,
+    readCanonicalReviewReport,
+    validateRetainedReviewReports,
+  } = await loadScript("scripts/verify-image-lock.mjs");
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "openclaw-retained-reviews-"));
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+  const mSha = "a".repeat(40);
+  const rSha = "b".repeat(40);
+  const makeReport = (checkpoint, reviewedSha) => Buffer.from(
+    `${JSON.stringify({
+      checkpoint,
+      decision: "APPROVED",
+      findings: [],
+      reviewedSha,
+      reviewerIdentity: `/review/${checkpoint}`,
+      reviewerRole: "reviewer",
+      reviewerRunId: `${checkpoint}-run`,
+      schema: 1,
+    })}\n`,
+    "utf8",
+  );
+  const reportsRoot = join(repositoryRoot, "services", "openclaw-zalo-cell", ".release", "reviews");
+  await mkdir(reportsRoot, { recursive: true });
+  const mPath = join(reportsRoot, `m-review-report-v1-${mSha}.json`);
+  const rPath = join(reportsRoot, `r-review-report-v1-${rSha}.json`);
+  const mBytes = makeReport("M", mSha);
+  const rBytes = makeReport("R", rSha);
+  await writeFile(mPath, mBytes);
+  await writeFile(rPath, rBytes);
+  const mReport = await readCanonicalReviewReport(mPath, {
+    checkpoint: "M", reviewedSha: mSha, repositoryRoot,
+  });
+  const rReport = await readCanonicalReviewReport(rPath, {
+    checkpoint: "R", reviewedSha: rSha, repositoryRoot,
+  });
+  const embedded = { M: mReport.record, R: rReport.record };
+  assert.doesNotThrow(() => authenticateEvidenceReviews(embedded, {
+    expectedM: mSha,
+    reviewedTree: rSha,
+    mReport,
+    rReport,
+  }));
+  const forgedMBytes = makeReport("M", mSha).toString("utf8").replace(
+    '"reviewerIdentity":"/review/M"',
+    '"reviewerIdentity":"/attacker/forged-M"',
+  );
+  const forgedMBuffer = Buffer.from(forgedMBytes, "utf8");
+  const forgedEmbedded = {
+    ...embedded,
+    M: {
+      ...embedded.M,
+      report_base64: forgedMBuffer.toString("base64"),
+      report_size: forgedMBuffer.length,
+      report_sha256: sha256(forgedMBuffer),
+      reviewer_identity: "/attacker/forged-M",
+    },
+  };
+  assert.throws(
+    () => authenticateEvidenceReviews(forgedEmbedded, {
+      expectedM: mSha,
+      reviewedTree: rSha,
+      mReport,
+      rReport,
+    }),
+    /bytes|retained canonical report/i,
+  );
+  await assert.doesNotReject(() =>
+    validateRetainedReviewReports({
+      embedded,
+      expectedM: mSha,
+      reviewedTree: rSha,
+      repositoryRoot,
+      mReviewReportPath: mPath,
+      rReviewReportPath: rPath,
+    }),
+  );
+  await writeFile(rPath, Buffer.from(`${rBytes}tampered`, "utf8"));
+  await assert.rejects(
+    validateRetainedReviewReports({
+      embedded,
+      expectedM: mSha,
+      reviewedTree: rSha,
+      repositoryRoot,
+      mReviewReportPath: mPath,
+      rReviewReportPath: rPath,
+    }),
+    /byte|canonical|report/i,
+  );
+});
+
+test("path validation rejects a symlink or reparse ancestor, not only a linked leaf", async (t) => {
+  const { assertPathHasNoSymbolicLink } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-reparse-chain-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const real = join(fixture, "real");
+  const linked = join(fixture, "linked");
+  await mkdir(real);
+  await writeFile(join(real, "report.json"), "{}\n");
+  try {
+    await symlink(real, linked, process.platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    if (error?.code === "EPERM") {
+      t.skip("symlink creation is unavailable in this Windows environment");
+      return;
+    }
+    throw error;
+  }
+  await assert.rejects(
+    assertPathHasNoSymbolicLink(join(linked, "report.json"), "retained report"),
+    /link|reparse/i,
+  );
+});
+
+test("OCI A/B comparison accepts distinct byte-identical files but rejects same-file and hardlink reuse", async (t) => {
+  const { compareDistinctOciArchives } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-oci-identity-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const a = join(fixture, "a.oci.tar");
+  const b = join(fixture, "b.oci.tar");
+  const hardlink = join(fixture, "hardlink.oci.tar");
+  await writeFile(a, "same archive bytes\n");
+  await writeFile(b, "same archive bytes\n");
+  await link(a, hardlink);
+  await assert.doesNotReject(() => compareDistinctOciArchives(a, b));
+  await assert.rejects(compareDistinctOciArchives(a, a), /distinct|same/i);
+  await assert.rejects(compareDistinctOciArchives(a, hardlink), /hardlink|identity|distinct/i);
+});
+
+test("qualification retains distinct A/B/stock archives, upstream tgz, and runner identities", async (t) => {
+  const {
+    captureRetainedQualificationInputs,
+    verifyRetainedQualificationInputs,
+  } = await loadScript("scripts/verify-image-lock.mjs");
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-retained-inputs-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const paths = {
+    archiveAPath: join(fixture, "a.oci.tar"),
+    archiveBPath: join(fixture, "b.oci.tar"),
+    stockArchivePath: join(fixture, "stock.oci.tar"),
+    upstreamTarballPath: join(fixture, "verified-upstream.tgz"),
+    behaviorRunnerPath: join(fixture, "behavior-probe-runner.mjs"),
+  };
+  await writeFile(paths.archiveAPath, "fork oci\n");
+  await writeFile(paths.archiveBPath, "fork oci\n");
+  await writeFile(paths.stockArchivePath, "stock oci\n");
+  await writeFile(paths.upstreamTarballPath, "upstream tgz\n");
+  await writeFile(paths.behaviorRunnerPath, "runner\n");
+
+  const retained = await captureRetainedQualificationInputs(paths);
+  assert.equal("path" in retained.archive_a, false);
+  assert.equal(retained.archive_a.sha256, retained.archive_b.sha256);
+  assert.notEqual(retained.archive_a.sha256, retained.stock_oci.sha256);
+  await assert.doesNotReject(() => verifyRetainedQualificationInputs(retained, paths));
+
+  await writeFile(paths.stockArchivePath, "tampered stock oci\n");
+  await assert.rejects(
+    verifyRetainedQualificationInputs(retained, paths),
+    /stock.*(?:changed|hash|binding)|retained/i,
+  );
+
+  await writeFile(paths.stockArchivePath, "stock oci\n");
+  await writeFile(paths.archiveBPath, "different fork oci\n");
+  await assert.rejects(
+    captureRetainedQualificationInputs(paths),
+    /A\/B|byte-identical|mismatch/i,
+  );
+});
+
+test("retained qualification inputs reject pairwise path and hardlink reuse", async (t) => {
+  const { captureRetainedQualificationInputs } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-retained-distinct-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const a = join(fixture, "a.oci.tar");
+  const b = join(fixture, "b.oci.tar");
+  const stock = join(fixture, "stock.oci.tar");
+  const upstream = join(fixture, "verified-upstream.tgz");
+  const runner = join(fixture, "behavior-probe-runner.mjs");
+  await writeFile(a, "same\n");
+  await writeFile(b, "same\n");
+  await link(a, stock);
+  await writeFile(upstream, "tgz\n");
+  await writeFile(runner, "runner\n");
+  await assert.rejects(
+    captureRetainedQualificationInputs({
+      archiveAPath: a,
+      archiveBPath: b,
+      stockArchivePath: stock,
+      upstreamTarballPath: upstream,
+      behaviorRunnerPath: runner,
+    }),
+    /hardlink|identity|distinct/i,
+  );
+});
+
+test("behavioral installed-image probe runs the reviewed contract without rewriting installed dist", async () => {
+  const source = await readCell("scripts/verify-image-lock.mjs");
+  const runner = await readCell("scripts/behavior-probe-runner.mjs");
+  assert.doesNotMatch(source, /appendFileSync\(path[\s\S]*export \{/);
+  assert.doesNotMatch(source, /cpSync\(root, probeRoot/);
+  assert.match(runner, /dist\/behavior-contract-api\.js/);
+  assert.match(runner, /installInstalledBehaviorContractRuntimeV1/);
+  assert.match(runner, /zalouser\.bridge\.send/);
+  assert.match(runner, /commitInboundAndDispatch/);
+  assert.match(runner, /invokeInstalledBehaviorTypingV1/);
+  assert.match(runner, /outbound-peer-media-authorized/);
+  assert.match(runner, /outbound-partial-handoff-unknown/);
+  assert.doesNotMatch(runner, /providerRuntime\s*:/);
+  assert.doesNotMatch(runner, /fork_pass|stock_fail|observed_behavior|status:\s*["']PASS/);
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  assert.ok(schema.required.includes("expected_m"));
+  assert.ok(schema.$defs.supplyChain.required.includes("git_binding"));
+  assert.ok(schema.$defs.pluginProbe.required.includes("behavior"));
+  assert.ok(schema.properties.verification.required.includes("installed_behavior"));
+  const { validateBehaviorTranscript, dockerBehaviorProbeArguments } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const fork = {
+    schema: 3,
+    contract: "ihome.zalouser.business.v1",
+    implementation: "fork",
+    package: { name: "@openclaw/zalouser", version: "2026.7.1" },
+    registered_methods: ["zalouser.bridge.send"],
+    cases: [],
+  };
+  assert.throws(
+    () => validateBehaviorTranscript({ ...fork, registered_methods: [] }, "fork"),
+    /registered|behavior/i,
+  );
+  const args = dockerBehaviorProbeArguments({
+    image: "ihome/openclaw-behavior:0123456789abcdef0123456789abcdef",
+    variant: "fork",
+  });
+  assert.deepEqual(args.slice(0, 6), ["run", "--pull=never", "--rm", "-i", "--network", "none"]);
+  assert.equal(args.includes("--eval"), false);
+  assert.deepEqual(args.slice(-1), ["--input-type=module"]);
+});
+
+test("behavior evidence contains only raw canonical transcripts bound to runner and OCI identities", async () => {
+  const { validateJsonSchema, validateRecordedBehaviorEvidence } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  const runnerBytes = Buffer.from("runner\n");
+  const forkArchiveBytes = Buffer.from("fork oci\n");
+  const stockArchiveBytes = Buffer.from("stock oci\n");
+  const recorded = recordedBehaviorEvidence({ runnerBytes, forkArchiveBytes, stockArchiveBytes });
+
+  assert.doesNotThrow(() => validateRecordedBehaviorEvidence(recorded));
+  assert.doesNotThrow(() =>
+    validateJsonSchema(recorded, {
+      ...schema.$defs.behaviorEvidence,
+      $defs: schema.$defs,
+    }),
+  );
+  assert.equal("transcript" in recorded.fork, false);
+  assert.equal("fork_pass" in recorded, false);
+  assert.equal("stock_fail" in recorded, false);
+  assert.equal("observed_behavior" in recorded, false);
+  assert.equal("observed_check_count" in recorded, false);
+  assert.equal(schema.$defs.pluginProbe.required.includes("differential"), false);
+  assert.equal(schema.$defs.behaviorProbeFork, undefined);
+  assert.equal(schema.$defs.behaviorProbeStock, undefined);
+  assert.ok(schema.required.includes("retained_inputs"));
+  assert.deepEqual(schema.properties.retained_inputs.required, [
+    "archive_a",
+    "archive_b",
+    "stock_oci",
+    "upstream_tgz",
+    "behavior_runner",
+  ]);
+  assert.deepEqual(schema.$defs.retainedFileBinding.required, ["size", "sha256"]);
+  assert.equal("path" in schema.$defs.retainedFileBinding.properties, false);
+
+  const forgedTranscript = structuredClone(recorded);
+  forgedTranscript.fork.transcript_base64 = Buffer.from(
+    `${JSON.stringify({ ...passingBehaviorTranscript("fork"), implementation: "stock" })}\n`,
+    "utf8",
+  ).toString("base64");
+  assert.throws(
+    () => validateRecordedBehaviorEvidence(forgedTranscript),
+    /transcript.*(?:size|sha|identity|binding)|behavior/i,
+  );
+
+  const forgedClaim = structuredClone(recorded);
+  forgedClaim.fork_pass = true;
+  assert.throws(
+    () => validateRecordedBehaviorEvidence(forgedClaim),
+    /unknown|missing|properties/i,
+  );
+});
+
+test("evidence schema accepts the exhaustive classified runtime-site inventory", async () => {
+  const { validateJsonSchema } = await loadScript("scripts/verify-image-lock.mjs");
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  const fork = JSON.parse(await readCell("vendor/zalouser-bridge/FORK.json"));
+  assert.doesNotThrow(() =>
+    validateJsonSchema(fork.runtimeDynamicSiteInventory, {
+      type: "array",
+      minItems: 1,
+      items: { $ref: "#/$defs/runtimeDynamicSite" },
+      $defs: schema.$defs,
+    }),
+  );
+});
+
+test("custom schema validation enforces numeric bounds", async () => {
+  const { validateJsonSchema } = await loadScript("scripts/verify-image-lock.mjs");
+  assert.throws(
+    () => validateJsonSchema(0, { type: "integer", minimum: 1 }),
+    /minimum|less than/i,
+  );
+  assert.throws(
+    () => validateJsonSchema(2, { type: "integer", maximum: 1 }),
+    /maximum|greater than/i,
+  );
+});
+
+test("offline behavior replay reruns fork A, fork B, and stock from immutable snapshots", async (t) => {
+  const { replayRecordedBehaviorEvidence } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-offline-behavior-replay-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const dockerPath = join(fixture, "docker");
+  const dockerHost = "unix:///run/ihome-openclaw-test/docker.sock";
+  const archiveAPath = join(fixture, "fork-a.oci.tar");
+  const archiveBPath = join(fixture, "fork-b.oci.tar");
+  const stockArchivePath = join(fixture, "stock.oci.tar");
+  const behaviorRunnerPath = join(fixture, "behavior-probe-runner.mjs");
+  const dockerBytes = Buffer.from("docker\n");
+  const runnerBytes = Buffer.from("runner\n");
+  const forkBytes = Buffer.from("fork oci\n");
+  const stockBytes = Buffer.from("stock oci\n");
+  await writeFile(dockerPath, dockerBytes);
+  await writeFile(archiveAPath, forkBytes);
+  await writeFile(archiveBPath, forkBytes);
+  await writeFile(stockArchivePath, stockBytes);
+  await writeFile(behaviorRunnerPath, runnerBytes);
+  const recorded = recordedBehaviorEvidence({
+    runnerBytes,
+    forkArchiveBytes: forkBytes,
+    stockArchiveBytes: stockBytes,
+  });
+  const calls = [];
+  const invoke = async (file, args, options) => {
+    assert.equal(options?.environment?.DOCKER_HOST, dockerHost);
+    assert.equal("DOCKER_CONTEXT" in options.environment, false);
+    assert.equal("DOCKER_TLS_VERIFY" in options.environment, false);
+    assert.equal("DOCKER_CERT_PATH" in options.environment, false);
+    calls.push({ file, args: [...args], input: options?.input });
+    if (args[0] === "version") {
+      return { exitCode: 0, stdout: Buffer.from("29.1.3|29.1.3|linux|amd64\n"), stderr: Buffer.alloc(0) };
+    }
+    if (args[0] === "image" && args[1] === "inspect") {
+      return { exitCode: 1, stdout: Buffer.alloc(0), stderr: Buffer.from("not found\n") };
+    }
+    if (args[0] === "load") {
+      assert.notEqual(args[2], archiveAPath);
+      assert.notEqual(args[2], archiveBPath);
+      assert.notEqual(args[2], stockArchivePath);
+      assert.ok([forkBytes.toString("utf8"), stockBytes.toString("utf8")].includes((await readFile(args[2])).toString("utf8")));
+      return { exitCode: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
+    }
+    if (args[0] === "tag" || (args[0] === "image" && args[1] === "rm")) {
+      return { exitCode: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
+    }
+    if (args[0] === "run") {
+      const variant = args.find((value) => value.startsWith("IHOME_BEHAVIOR_VARIANT="))?.split("=")[1];
+      assert.ok(variant === "fork" || variant === "stock");
+      assert.deepEqual(options?.input, runnerBytes);
+      const transcript = passingBehaviorTranscript(variant);
+      return { exitCode: 0, stdout: Buffer.from(`${JSON.stringify(transcript)}\n`), stderr: Buffer.alloc(0) };
+    }
+    throw new Error(`unexpected fake Docker call: ${args.join(" ")}`);
+  };
+
+  await assert.doesNotReject(() =>
+    replayRecordedBehaviorEvidence({
+      recorded,
+      archiveAPath,
+      archiveBPath,
+      stockArchivePath,
+      behaviorRunnerPath,
+      dockerPath,
+      dockerHost,
+      dockerSha256: sha256(dockerBytes),
+      expectedDockerVersion: "29.1.3",
+      nonce: "d".repeat(32),
+      invoke,
+    }),
+  );
+  assert.equal(calls.some(({ args }) => ["pull", "build", "login"].includes(args[0])), false);
+  assert.equal(calls.filter(({ args }) => args[0] === "run").length, 3);
+  assert.equal(calls.filter(({ args }) => args[0] === "run").every(({ args }) => args.includes("--pull=never") && args.includes("none")), true);
+
+  const forged = structuredClone(recorded);
+  forged.stock.transcript_sha256 = "0".repeat(64);
+  await assert.rejects(
+    replayRecordedBehaviorEvidence({
+      recorded: forged,
+      archiveAPath,
+      archiveBPath,
+      stockArchivePath,
+      behaviorRunnerPath,
+      dockerPath,
+      dockerHost,
+      dockerSha256: sha256(dockerBytes),
+      expectedDockerVersion: "29.1.3",
+      nonce: "e".repeat(32),
+      invoke,
+    }),
+    /transcript|sha|behavior/i,
+  );
+
+  await writeFile(stockArchivePath, "tampered stock\n");
+  await assert.rejects(
+    replayRecordedBehaviorEvidence({
+      recorded,
+      archiveAPath,
+      archiveBPath,
+      stockArchivePath,
+      behaviorRunnerPath,
+      dockerPath,
+      dockerHost,
+      dockerSha256: sha256(dockerBytes),
+      expectedDockerVersion: "29.1.3",
+      nonce: "f".repeat(32),
+      invoke,
+    }),
+    /stock|retained|hash|binding/i,
+  );
+});
+
+test("behavior replay binds the exact runner bytes read from a nofollow file handle", async () => {
+  const source = await readCell("scripts/verify-image-lock.mjs");
+  const replayStart = source.indexOf("export async function replayRecordedBehaviorEvidence");
+  const replayEnd = source.indexOf("export async function", replayStart + 1);
+  const replay = source.slice(replayStart, replayEnd);
+
+  assert.match(source, /async function readRegularFileHandleBound/);
+  assert.match(source, /O_NOFOLLOW/);
+  assert.match(replay, /readRegularFileHandleBound\(behaviorRunnerPath/);
+  assert.match(replay, /behaviorRunnerBytes\s*=\s*runnerAuthority\.bytes/);
+  assert.doesNotMatch(replay, /hashFile\(behaviorRunnerPath\)[\s\S]*readFile\(behaviorRunnerPath\)/);
+});
+
+test("Docker execution strips hostile ambient routing and rejects a non-socket authority", async (t) => {
+  const { buildTrustedDockerEnvironment, assertTrustedDockerSocket } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const dockerHost = "unix:///run/ihome-openclaw-test/docker.sock";
+  const environment = buildTrustedDockerEnvironment(dockerHost, {
+    PATH: "/trusted/bin",
+    HOME: "/trusted/home",
+    DOCKER_HOST: "tcp://attacker.invalid:2375",
+    DOCKER_CONTEXT: "attacker",
+    DOCKER_TLS_VERIFY: "1",
+    DOCKER_CERT_PATH: "/attacker/certs",
+    BUILDKIT_HOST: "tcp://attacker.invalid:1234",
+  });
+  assert.equal(environment.DOCKER_HOST, dockerHost);
+  assert.equal(environment.PATH, "/trusted/bin");
+  assert.equal(environment.HOME, "/trusted/home");
+  for (const key of ["DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "BUILDKIT_HOST"]) {
+    assert.equal(key in environment, false);
+  }
+
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-docker-host-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const regular = join(fixture, "docker.sock");
+  await writeFile(regular, "not a socket\n");
+  await assert.rejects(assertTrustedDockerSocket(`unix://${regular}`), /socket/i);
 });
 
 test("PowerShell helper pins builders and makes the verifier the promotion gate", async () => {
@@ -568,9 +1376,11 @@ test("PowerShell helper pins builders and makes the verifier the promotion gate"
   assert.match(script, /^#Requires -Version 7\.3/m);
   assert.match(script, /\[IO\.Path\]::IsPathFullyQualified\(\$BuildxPath\)/);
   assert.match(script, /\[string\]\$DockerPath/);
+  assert.match(script, /\[string\]\$DockerHost/);
   assert.match(script, /\[IO\.Path\]::IsPathFullyQualified\(\$DockerPath\)/);
   assert.match(script, new RegExp(DOCKER_LINUX_SHA256));
   assert.match(script, /'--docker-path', \$resolvedDocker/);
+  assert.match(script, /'--docker-host', \$DockerHost/);
   assert.match(script, /'--docker-sha256', \$actualDockerSha256/);
   assert.match(script, /\[string\]\$ReviewedSourceRoot/);
   assert.match(script, /\[string\]\$ReviewedExportManifestPath/);
@@ -596,12 +1406,43 @@ test("PowerShell helper pins builders and makes the verifier the promotion gate"
   assert.match(script, /--pull/);
   assert.match(script, /rewrite-timestamp=true/);
   assert.match(script, /verify-image-lock\.mjs/);
+  assert.match(script, /'--mode', 'qualify'/);
+  assert.match(script, /normalize-openclaw-install\.mjs/);
+  assert.doesNotMatch(script, /normalize-oci-layout\.mjs/);
   assert.match(script, /'--release-artifact', \$ReleaseArtifactPath/);
   assert.match(script, /\[string\]\$MReviewReportPath/);
   assert.match(script, /\[string\]\$RReviewReportPath/);
+  assert.match(script, /\[string\]\$ExpectedM/);
+  assert.match(script, /\[string\]\$GitRepositoryRoot/);
+  assert.match(script, /merge-base['"],?\s*['"]--is-ancestor/);
+  assert.match(script, /m-review-report-v1-['" ]*\+?\s*\$ExpectedM|m-review-report-v1-\$ExpectedM/);
+  assert.match(script, /r-review-report-v1-['" ]*\+?\s*\$ReviewedTree|r-review-report-v1-\$ReviewedTree/);
   assert.match(script, /'--m-review-report', \$resolvedMReviewReport/);
   assert.match(script, /'--r-review-report', \$resolvedRReviewReport/);
+  assert.match(script, /'--expected-m', \$ExpectedM/);
+  assert.match(script, /'--git-repository-root', \$resolvedGitRepositoryRoot/);
+  assert.match(script, /\[string\]\$RetainedUpstreamTarballPath/);
+  assert.match(script, /IsPathFullyQualified\(\$RetainedUpstreamTarballPath\)/);
+  assert.match(script, /Publish-RetainedArchive[\s\S]*\$upstreamTarballPath[\s\S]*\$resolvedRetainedUpstreamTarball/);
+  assert.match(script, /'--upstream-tgz', \$resolvedRetainedUpstreamTarball/);
   assert.doesNotMatch(script, /Invoke-Expression|cmd\s+\/c|Start-Process/);
+});
+
+test("PowerShell helper runs lock preflight before an explicit qualifying verifier", async () => {
+  const script = await readCell("scripts/build-reproducible-image.ps1");
+  const verifierCall = "    $verifierPath,";
+  const firstVerifier = script.indexOf(verifierCall);
+  const firstBuilder = script.indexOf("$builderACreated = $true");
+  const finalVerifier = script.indexOf(verifierCall, firstVerifier + verifierCall.length);
+  const finalRehash = script.indexOf("Assert-HashUnchanged", finalVerifier);
+
+  assert.ok(firstVerifier > 0 && firstBuilder > firstVerifier);
+  assert.ok(finalVerifier > firstBuilder && finalRehash > finalVerifier);
+  assert.match(script.slice(firstVerifier, firstBuilder), /'--mode', 'lock'/);
+  assert.doesNotMatch(script.slice(firstVerifier, firstBuilder), /'--mode', 'qualify'/);
+  assert.match(script.slice(finalVerifier, finalRehash), /'--mode', 'qualify'/);
+  assert.match(script.slice(finalVerifier, finalRehash), /'--oci-a', \$resolvedReleaseArtifact/);
+  assert.match(script.slice(finalVerifier, finalRehash), /'--oci-b', \$resolvedReproductionArtifact/);
 });
 
 test("PowerShell helper arms cleanup before either builder create can partially fail", async () => {
@@ -628,19 +1469,81 @@ test("evidence-child helper uses absolute verified candidates and exact R to E l
   assert.match(script, /^#Requires -Version 7\.3/m);
   assert.ok(nodeGate > 0 && nodeGate < firstWork);
   assert.match(script, /\[ValidatePattern\('\^\[0-9a-f\]\{40\}\$'\)\][\s\S]*\$ReviewedTree/);
+  assert.match(script, /\$ExpectedM/);
+  assert.match(script, /\$MReviewReportPath/);
+  assert.match(script, /\$RReviewReportPath/);
   assert.match(script, /IsPathFullyQualified\(\$CandidateEvidencePath\)/);
   assert.match(script, /IsPathFullyQualified\(\$CandidateArchivePath\)/);
+  assert.match(script, /IsPathFullyQualified\(\$CandidateArchiveBPath\)/);
+  assert.match(script, /IsPathFullyQualified\(\$CandidateStockOciPath\)/);
+  assert.match(script, /IsPathFullyQualified\(\$UpstreamTarballPath\)/);
+  assert.match(script, /IsPathFullyQualified\(\$DockerPath\)/);
+  assert.match(script, /\$DockerHost/);
   assert.match(script, /GetRelativePath\(\$releaseRoot, \$candidateEvidence\)/);
   assert.match(script, /GetRelativePath\(\$releaseRoot, \$candidateArchive\)/);
   assert.match(script, /FileAttributes\]::ReparsePoint/);
   assert.match(script, /'--evidence', \$eDestination/);
+  assert.match(script, /'--mode', 'evidence-replay-v1'/);
   assert.match(script, /'--schema', \$eSchema/);
-  assert.match(script, /'--release-artifact', \$candidateArchive/);
-  assert.match(script, /git[\s\S]*worktree[\s\S]*add[\s\S]*--detach/);
-  assert.match(script, /git[\s\S]*worktree[\s\S]*remove[\s\S]*--force/);
+  assert.match(script, /'--oci-a', \$candidateArchive/);
+  assert.match(script, /'--oci-b', \$candidateArchiveB/);
+  assert.match(script, /'--stock-oci', \$candidateStockOci/);
+  assert.match(script, /'--upstream-tgz', \$upstreamTarball/);
+  assert.match(script, /'--behavior-runner', \$eBehaviorRunner/);
+  assert.match(script, /'--docker-path', \$dockerPath/);
+  assert.match(script, /'--docker-host', \$DockerHost/);
+  assert.match(script, /'--docker-sha256', \$dockerSha256/);
+  assert.match(script, /'--expected-m', \$ExpectedM/);
+  assert.match(script, /'--git-repository-root', \$sourceRoot/);
+  assert.match(script, /Assert-EvidenceOnlyWorktreeStatus/);
+  assert.match(script, /hash-object[\s\S]*verify-image-lock\.mjs/);
+  assert.match(script, /hash-object[\s\S]*build-evidence\.schema\.v1\.json/);
+  assert.match(script, /hash-object[\s\S]*image-lock\.json/);
+  assert.match(script, /hash-object[\s\S]*behavior-probe-runner\.mjs/);
+  assert.match(script, /rev-list[\s\S]*--parents[\s\S]*-n[\s\S]*1/);
+  const commitIndex = script.indexOf("Invoke-Git @('commit', '-m', 'chore(openclaw-zalo): record verified evidence E'");
+  assert.ok(commitIndex > 0);
+  const postCommit = script.slice(commitIndex);
+  assert.match(postCommit, /rev-parse[\s\S]*\$E`?:services\/openclaw-zalo-cell\/build-evidence\.json/);
+  assert.match(postCommit, /cat-file[\s\S]*blob[\s\S]*committedEvidence/i);
+  assert.match(postCommit, /candidateEvidenceSha256/);
+  assert.match(script, /function Assert-SourceWorktreeState/);
+  assert.match(script, /function Assert-RetainedAuthorityBindings/);
+  const retainedBindingHelper = script.slice(
+    script.indexOf("function Assert-RetainedAuthorityBindings"),
+    script.indexOf("$nodePath ="),
+  );
+  assert.match(retainedBindingHelper, /candidateArchiveSha256/);
+  assert.match(retainedBindingHelper, /retainedMReviewSha256/);
+  assert.match(retainedBindingHelper, /retainedRReviewSha256/);
+  assert.match(script, /Invoke-Git[\s\S]*'worktree'[\s\S]*'add'[\s\S]*'--detach'/);
+  assert.match(script, /Invoke-Git[\s\S]*'worktree'[\s\S]*'remove'[\s\S]*'--force'/);
   assert.match(script, /rev-parse[\s\S]*\$E\^/);
   assert.match(script, /services\/openclaw-zalo-cell\/build-evidence\.json/);
-  assert.match(script, /merge[\s\S]*--ff-only[\s\S]*\$E/);
+  const fastForwardIndex = script.indexOf("Invoke-Git @('-C', $sourceRoot, 'update-ref', '--no-deref', $sourceBranchRef, $E, $ReviewedTree)");
+  assert.ok(fastForwardIndex > commitIndex);
+  assert.match(script, /symbolic-ref[\s\S]*--quiet[\s\S]*HEAD/);
+  assert.match(script, /update-ref[\s\S]*\$sourceBranchRef[\s\S]*\$E[\s\S]*\$ReviewedTree/);
+  assert.match(script, /read-tree[\s\S]*--reset[\s\S]*-u[\s\S]*\$E/);
+  const beforeFastForward = script.slice(commitIndex, fastForwardIndex);
+  assert.match(
+    beforeFastForward,
+    /Assert-SourceWorktreeState\s+-ExpectedHead\s+\$ReviewedTree\s+-Context\s+'before E fast-forward'/,
+  );
+  assert.match(
+    beforeFastForward,
+    /Assert-RetainedAuthorityBindings\s+-Context\s+'before E fast-forward'/,
+  );
+  const afterFastForward = script.slice(fastForwardIndex);
+  assert.match(
+    afterFastForward,
+    /Assert-SourceWorktreeState\s+-ExpectedHead\s+\$E\s+-Context\s+'after E fast-forward'/,
+  );
+  assert.match(
+    afterFastForward,
+    /Assert-RetainedAuthorityBindings\s+-Context\s+'after E fast-forward'/,
+  );
+  assert.match(afterFastForward, /Assert-NoReparseChain\s+-Path\s+\$fastForwardedEvidence/);
   assert.doesNotMatch(script, /--evidence['"],?\s*['"]services\//);
   assert.doesNotMatch(script, /--schema['"],?\s*['"]services\//);
 });
@@ -688,6 +1591,9 @@ test("qualifying verifier operands reject relative OCI and review paths", async 
   const args = {
     "oci-a": "relative-a.oci.tar",
     "oci-b": join(absolute, "b.oci.tar"),
+    "stock-oci": join(absolute, "stock.oci.tar"),
+    "upstream-tgz": join(absolute, "verified-upstream.tgz"),
+    "behavior-runner": join(absolute, "behavior-probe-runner.mjs"),
     schema: join(absolute, "schema.json"),
     evidence: join(absolute, "evidence.json"),
     "release-artifact": join(absolute, "release.oci.tar"),
@@ -698,6 +1604,191 @@ test("qualifying verifier operands reject relative OCI and review paths", async 
   );
   assert.doesNotThrow(() =>
     assertAbsoluteQualifyingOperands({ ...args, "oci-a": join(absolute, "a.oci.tar") }),
+  );
+  assert.throws(
+    () => assertAbsoluteQualifyingOperands({
+      ...args,
+      "oci-a": join(absolute, "a.oci.tar"),
+      "git-repository-root": "relative-repository",
+    }),
+    /--git-repository-root path must be absolute/i,
+  );
+  assert.throws(
+    () => assertAbsoluteQualifyingOperands({
+      ...args,
+      "oci-a": join(absolute, "a.oci.tar"),
+      "m-review-report": "relative-M.json",
+    }),
+    /--m-review-report path must be absolute/i,
+  );
+  for (const key of ["stock-oci", "upstream-tgz", "behavior-runner"]) {
+    assert.throws(
+      () =>
+        assertAbsoluteQualifyingOperands({
+          ...args,
+          "oci-a": join(absolute, "a.oci.tar"),
+          [key]: `relative-${key}`,
+        }),
+      new RegExp(`--${key} path must be absolute`, "i"),
+    );
+  }
+});
+
+test("verifier CLI rejects duplicate, unknown, and unsupported mode options", async () => {
+  const { parseCliArguments, validateCliModeArguments } = await loadScript("scripts/verify-image-lock.mjs");
+  assert.throws(
+    () => parseCliArguments(["--mode", "lock", "--mode", "lock"]),
+    /duplicate/i,
+  );
+  assert.throws(
+    () => parseCliArguments(["--mode", "lock", "--unexpected", "value"]),
+    /unknown/i,
+  );
+  assert.throws(
+    () => parseCliArguments(["--mode", "legacy-evidence"]),
+    /mode/i,
+  );
+  assert.throws(
+    () => validateCliModeArguments({ mode: "evidence-replay-v1", schema: resolve("schema.json") }),
+    /--evidence is required/i,
+  );
+  assert.throws(
+    () => validateCliModeArguments({ mode: "evidence-replay-v1", evidence: resolve("evidence.json"), "buildx-path": resolve("buildx") }),
+    /--buildx-path.*not allowed/i,
+  );
+});
+
+test("Git authority is absolute, pinned, replacement-free, and ambient-independent", async () => {
+  const verifierSource = await readCell("scripts/verify-image-lock.mjs");
+  const exporterSource = await readCell("scripts/export-reviewed-tree.mjs");
+  const buildHelper = await readCell("scripts/build-reproducible-image.ps1");
+  const evidenceHelper = await readCell("scripts/create-evidence-child.ps1");
+  const { buildTrustedGitEnvironment, parseCliArguments, validateCliModeArguments } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const environment = buildTrustedGitEnvironment({
+    PATH: "attacker-path",
+    HOME: "attacker-home",
+    GIT_DIR: "attacker-dir",
+    GIT_CONFIG_GLOBAL: "attacker-config",
+    GIT_OBJECT_DIRECTORY: "attacker-objects",
+    GIT_REPLACE_REF_BASE: "refs/evil",
+    DOCKER_HOST: "unix:///safe/docker.sock",
+  });
+  assert.equal("GIT_DIR" in environment, false);
+  assert.equal("GIT_OBJECT_DIRECTORY" in environment, false);
+  assert.equal("GIT_REPLACE_REF_BASE" in environment, false);
+  assert.equal(environment.GIT_NO_REPLACE_OBJECTS, "1");
+  assert.equal(environment.GIT_CONFIG_NOSYSTEM, "1");
+  assert.equal(environment.GIT_OPTIONAL_LOCKS, "0");
+  assert.match(verifierSource, /--no-replace-objects/);
+  assert.match(verifierSource, /refs\/replace/);
+  assert.match(verifierSource, /info[\\/]grafts/);
+  assert.match(verifierSource, /objects[\\/]info[\\/]alternates/);
+  assert.doesNotMatch(verifierSource, /spawnSync\(["']git["']/);
+  assert.match(exporterSource, /--git-path/);
+  assert.match(exporterSource, /--no-replace-objects/);
+  assert.doesNotMatch(exporterSource, /execFileSync\(["']git["']/);
+  for (const helper of [buildHelper, evidenceHelper]) {
+    assert.match(helper, /\[string\]\$NodePath/);
+    assert.match(helper, new RegExp(NODE_LINUX_SHA256));
+    assert.match(helper, /122889056/);
+    assert.doesNotMatch(helper, /Get-Command\s+node/);
+    assert.match(helper, /\[string\]\$GitPath/);
+    assert.match(helper, /2\.53\.0/);
+    assert.match(helper, new RegExp(GIT_LINUX_SHA256));
+    assert.match(helper, /--no-replace-objects/);
+    assert.doesNotMatch(helper, /Get-Command\s+git/);
+    assert.doesNotMatch(helper, /^\s*git\s/m);
+  }
+  assert.equal(parseCliArguments(["--mode", "qualify", "--git-path", resolve("git")])["git-path"], resolve("git"));
+  assert.throws(
+    () => validateCliModeArguments({ mode: "qualify", schema: resolve("schema.json") }),
+    /--git-path is required/i,
+  );
+});
+
+test("Git object verification rejects forged loose commit and tree bytes under approved object IDs", async (t) => {
+  const { readGitBlobRecords, verifyGitLineage } = await loadScript("scripts/verify-image-lock.mjs");
+  const gitPath = localGitPath();
+  const createRepository = async (label) => {
+    const repositoryRoot = await mkdtemp(join(tmpdir(), `openclaw-git-object-${label}-`));
+    t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+    execFileSync(gitPath, ["init", "--quiet"], { cwd: repositoryRoot });
+    await writeFile(join(repositoryRoot, "a.txt"), "one\n");
+    execFileSync(gitPath, ["add", "--", "a.txt"], { cwd: repositoryRoot });
+    execFileSync(
+      gitPath,
+      ["-c", "user.name=Codex", "-c", "user.email=noreply@openai.com", "commit", "--quiet", "-m", "M"],
+      { cwd: repositoryRoot },
+    );
+    const expectedM = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: repositoryRoot,
+      encoding: "ascii",
+    }).trim();
+    await writeFile(join(repositoryRoot, "a.txt"), "two\n");
+    execFileSync(gitPath, ["add", "--", "a.txt"], { cwd: repositoryRoot });
+    execFileSync(
+      gitPath,
+      ["-c", "user.name=Codex", "-c", "user.email=noreply@openai.com", "commit", "--quiet", "-m", "R"],
+      { cwd: repositoryRoot },
+    );
+    const reviewedTree = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: repositoryRoot,
+      encoding: "ascii",
+    }).trim();
+    const writeForgedLooseObject = async (oid, type, bytes) => {
+      const objectDirectory = join(repositoryRoot, ".git", "objects", oid.slice(0, 2));
+      await mkdir(objectDirectory, { recursive: true });
+      const objectPath = join(objectDirectory, oid.slice(2));
+      await rm(objectPath, { force: true });
+      await writeFile(
+        objectPath,
+        deflateSync(Buffer.concat([Buffer.from(`${type} ${bytes.length}\0`, "ascii"), bytes])),
+      );
+    };
+    return { repositoryRoot, expectedM, reviewedTree, writeForgedLooseObject };
+  };
+
+  const commitFixture = await createRepository("commit");
+  const commitBytes = execFileSync(gitPath, ["cat-file", "commit", commitFixture.reviewedTree], {
+    cwd: commitFixture.repositoryRoot,
+    encoding: null,
+  });
+  const forgedCommit = Buffer.concat([commitBytes, Buffer.from("forged-message\n", "utf8")]);
+  await commitFixture.writeForgedLooseObject(commitFixture.reviewedTree, "commit", forgedCommit);
+  await assert.rejects(
+    verifyGitLineage({
+      gitPath,
+      repositoryRoot: commitFixture.repositoryRoot,
+      expectedM: commitFixture.expectedM,
+      reviewedTree: commitFixture.reviewedTree,
+    }),
+    /Git.*(?:hash|object)|(?:hash|object).*Git/i,
+  );
+
+  const treeFixture = await createRepository("tree");
+  const rootTree = execFileSync(gitPath, ["rev-parse", `${treeFixture.reviewedTree}^{tree}`], {
+    cwd: treeFixture.repositoryRoot,
+    encoding: "ascii",
+  }).trim();
+  const treeBytes = execFileSync(gitPath, ["cat-file", "tree", rootTree], {
+    cwd: treeFixture.repositoryRoot,
+    encoding: null,
+  });
+  const forgedTree = Buffer.from(treeBytes);
+  const modeOffset = forgedTree.indexOf(Buffer.from("100644", "ascii"));
+  assert.notEqual(modeOffset, -1);
+  Buffer.from("100755", "ascii").copy(forgedTree, modeOffset);
+  await treeFixture.writeForgedLooseObject(rootTree, "tree", forgedTree);
+  await assert.rejects(
+    readGitBlobRecords({
+      gitPath,
+      repositoryRoot: treeFixture.repositoryRoot,
+      commit: treeFixture.reviewedTree,
+      paths: ["a.txt"],
+    }),
+    /Git.*(?:hash|object)|(?:hash|object).*Git/i,
   );
 });
 
@@ -732,6 +1823,15 @@ test("verifier rejects a context mutation without Docker or network", async (t) 
     docker: {
       version: "29.1.3",
       linux_amd64_sha256: DOCKER_LINUX_SHA256,
+    },
+    git: {
+      version: "2.53.0",
+      linux_amd64_sha256: GIT_LINUX_SHA256,
+    },
+    node: {
+      version: "24.15.0",
+      linux_amd64_size: 122889056,
+      linux_amd64_sha256: NODE_LINUX_SHA256,
     },
     inputs: [
       {
@@ -801,13 +1901,13 @@ test("verifier rejects an OCI that omits the pinned base, fork, and session file
   );
 });
 
-test("plugin probe requires stock-fail and exact fork list/inspect discovery", async () => {
+test("plugin probe requires authentic stock and fork list/inspect discovery", async () => {
   const { validatePluginProbeResults } = await loadScript(
     "scripts/verify-image-lock.mjs",
   );
   const pluginRoot =
     "/home/node/.openclaw/npm/projects/zalouser/node_modules/@openclaw/zalouser";
-  const stockList = { plugins: [{ id: "active-memory" }] };
+  const baseList = { plugins: [{ id: "active-memory" }] };
   const forkPlugin = {
     id: "zalouser",
     name: "Zalo Personal",
@@ -830,7 +1930,8 @@ test("plugin probe requires stock-fail and exact fork list/inspect discovery", a
       optionalDependencies: [],
     },
   };
-  const forkList = { plugins: [...stockList.plugins, forkPlugin] };
+  const forkList = { plugins: [...baseList.plugins, forkPlugin] };
+  const stockList = { plugins: [...baseList.plugins, forkPlugin] };
   const forkInspect = {
     plugin: {
       ...forkPlugin,
@@ -864,28 +1965,25 @@ test("plugin probe requires stock-fail and exact fork list/inspect discovery", a
       stderr: Buffer.alloc(0),
     },
     stockInspect: {
-      exitCode: 1,
-      stdout: Buffer.alloc(0),
-      stderr: Buffer.from("Plugin not found: zalouser\n"),
+      exitCode: 0,
+      stdout: Buffer.from(JSON.stringify(forkInspect)),
+      stderr: Buffer.alloc(0),
     },
   });
 
   assert.equal(result.fork.plugin_count, 2);
-  assert.equal(result.stock.plugin_count, 1);
+  assert.equal(result.stock.plugin_count, 2);
+  assert.equal(result.stock.plugin.root_dir, pluginRoot);
   assert.equal(result.fork.plugin.root_dir, pluginRoot);
   assert.equal(result.fork.inspect.install_path, pluginRoot);
-  assert.deepEqual(result.differential, {
-    fork_pass: true,
-    stock_fail: true,
-    plugin_delta: 1,
-  });
+  assert.equal("differential" in result, false);
   assert.throws(
     () =>
       validatePluginProbeResults({
-        forkList: { exitCode: 0, stdout: Buffer.from(JSON.stringify(stockList)), stderr: Buffer.alloc(0) },
+        forkList: { exitCode: 0, stdout: Buffer.from(JSON.stringify(baseList)), stderr: Buffer.alloc(0) },
         forkInspect: { exitCode: 0, stdout: Buffer.from(JSON.stringify(forkInspect)), stderr: Buffer.alloc(0) },
         stockList: { exitCode: 0, stdout: Buffer.from(JSON.stringify(stockList)), stderr: Buffer.alloc(0) },
-        stockInspect: { exitCode: 1, stdout: Buffer.alloc(0), stderr: Buffer.from("Plugin not found: zalouser\n") },
+        stockInspect: { exitCode: 0, stdout: Buffer.from(JSON.stringify(forkInspect)), stderr: Buffer.alloc(0) },
       }),
     /fork.*zalouser/i,
   );
@@ -899,7 +1997,7 @@ test("Docker probe arguments isolate plugin inspection from network and host sta
     image: "ihome/openclaw-probe:0123456789abcdef0123456789abcdef",
     cliArguments: ["plugins", "inspect", "zalouser", "--runtime", "--json"],
   });
-  assert.deepEqual(args.slice(0, 2), ["run", "--rm"]);
+  assert.deepEqual(args.slice(0, 3), ["run", "--pull=never", "--rm"]);
   assert.ok(args.includes("none"));
   assert.ok(args.includes("--read-only"));
   assert.deepEqual(args.slice(args.indexOf("--cap-drop"), args.indexOf("--cap-drop") + 2), [
@@ -953,7 +2051,7 @@ test("installed runtime scenarios are finite, complete, and run in the hardened 
     image: "ihome/openclaw-probe:0123456789abcdef0123456789abcdef",
     scenario: plan[0],
   });
-  assert.deepEqual(args.slice(0, 2), ["run", "--rm"]);
+  assert.deepEqual(args.slice(0, 3), ["run", "--pull=never", "--rm"]);
   assert.ok(args.includes("none"));
   assert.ok(args.includes("--read-only"));
   assert.ok(args.includes("ALL"));
@@ -963,6 +2061,7 @@ test("installed runtime scenarios are finite, complete, and run in the hardened 
   const privateRpcArgs = dockerPrivateRpcProbeArguments({
     image: "ihome/openclaw-probe:0123456789abcdef0123456789abcdef",
   });
+  assert.ok(privateRpcArgs.includes("--pull=never"));
   assert.ok(privateRpcArgs.includes("--eval"));
   assert.ok(privateRpcArgs.includes("none"));
   assert.equal(privateRpcArgs.some((value) => /docker\.sock|--privileged/i.test(value)), false);
@@ -975,16 +2074,22 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
   const fixture = await mkdtemp(join(tmpdir(), "openclaw-docker-probe-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
   const dockerPath = join(fixture, "docker");
+  const dockerHost = "unix:///run/ihome-openclaw-test/docker.sock";
   const archivePath = join(fixture, "runtime.oci.tar");
+  const stockArchivePath = join(fixture, "stock.oci.tar");
+  const behaviorRunnerPath = join(fixture, "behavior-probe-runner.mjs");
   const dockerBytes = Buffer.from("reviewed docker cli\n");
+  const behaviorRunnerBytes = Buffer.from(await readCell("scripts/behavior-probe-runner.mjs"));
   await writeFile(dockerPath, dockerBytes);
   await writeFile(archivePath, "oci\n");
+  await writeFile(stockArchivePath, "stock oci\n");
+  await writeFile(behaviorRunnerPath, behaviorRunnerBytes);
   const nonce = "a".repeat(32);
   const forkTag = `ihome/openclaw-fork-probe:${nonce}`;
   const stockTag = `ihome/openclaw-stock-probe:${nonce}`;
   const pluginRoot =
     "/home/node/.openclaw/npm/projects/zalouser/node_modules/@openclaw/zalouser";
-  const stockList = { plugins: [{ id: "active-memory" }] };
+  const baseList = { plugins: [{ id: "active-memory" }] };
   const plugin = {
     id: "zalouser",
     name: "Zalo Personal",
@@ -1004,7 +2109,8 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
       missingOptional: [],
     },
   };
-  const forkList = { plugins: [...stockList.plugins, plugin] };
+  const forkList = { plugins: [...baseList.plugins, plugin] };
+  const stockList = { plugins: [...baseList.plugins, plugin] };
   const forkInspect = {
     plugin: { ...plugin, packageName: "@openclaw/zalouser", imported: true },
     install: {
@@ -1021,19 +2127,31 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
     await readCell("vendor/zalouser-bridge/FORK.json"),
   );
   const calls = [];
-  const invoke = async (file, args) => {
-    calls.push({ file, args: [...args] });
+  const invoke = async (file, args, options) => {
+    assert.equal(options?.environment?.DOCKER_HOST, dockerHost);
+    calls.push({ file, args: [...args], input: options?.input });
     if (args[0] === "version") {
       return { exitCode: 0, stdout: Buffer.from("29.1.3|29.1.3|linux|amd64\n"), stderr: Buffer.alloc(0) };
     }
     if (args[0] === "image" && args[1] === "inspect") {
       return { exitCode: 1, stdout: Buffer.alloc(0), stderr: Buffer.from("not found\n") };
     }
-    if (["load", "tag", "pull"].includes(args[0]) || (args[0] === "image" && args[1] === "rm")) {
+    if (["load", "tag"].includes(args[0]) || (args[0] === "image" && args[1] === "rm")) {
       return { exitCode: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
     }
     if (args[0] === "run") {
       const image = args[args.indexOf("--entrypoint") + 2];
+      const behaviorVariant = args
+        .find((value) => value.startsWith("IHOME_BEHAVIOR_VARIANT="))
+        ?.slice("IHOME_BEHAVIOR_VARIANT=".length);
+      if (behaviorVariant) {
+        assert.deepEqual(options?.input, behaviorRunnerBytes);
+        return {
+          exitCode: 0,
+          stdout: Buffer.from(`${JSON.stringify(passingBehaviorTranscript(behaviorVariant))}\n`),
+          stderr: Buffer.alloc(0),
+        };
+      }
       if (args.includes("--eval")) {
         const encoded = args
           .find((value) => value.startsWith("IHOME_RUNTIME_SCENARIO="))
@@ -1081,7 +2199,7 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
         return { exitCode: 0, stdout: Buffer.from(JSON.stringify(stockList)), stderr: Buffer.alloc(0) };
       }
       if (image === stockTag && isInspect) {
-        return { exitCode: 1, stdout: Buffer.alloc(0), stderr: Buffer.from("Plugin not found: zalouser\n") };
+        return { exitCode: 0, stdout: Buffer.from(JSON.stringify(forkInspect)), stderr: Buffer.alloc(0) };
       }
     }
     throw new Error(`unexpected fake Docker call: ${args.join(" ")}`);
@@ -1089,17 +2207,33 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
 
   const result = await probeOpenClawRuntimeImages({
     archivePath,
+    stockArchivePath,
     baseImage: BASE_IMAGE,
     dockerPath,
+    dockerHost,
     dockerSha256: sha256(dockerBytes),
     expectedDockerVersion: "29.1.3",
     manifestDigest: `sha256:${"b".repeat(64)}`,
+    stockManifestDigest: `sha256:${"c".repeat(64)}`,
     nonce,
     fork,
+    behaviorRunnerPath,
+    behaviorRunnerSha256: sha256(behaviorRunnerBytes),
     invoke,
   });
 
-  assert.deepEqual(result.differential, { fork_pass: true, stock_fail: true, plugin_delta: 1 });
+  assert.equal("differential" in result, false);
+  assert.equal(
+    JSON.parse(Buffer.from(result.behavior.fork.transcript_base64, "base64").toString("utf8")).schema,
+    3,
+  );
+  assert.equal(
+    JSON.parse(Buffer.from(result.behavior.stock.transcript_base64, "base64").toString("utf8")).implementation,
+    "stock",
+  );
+  assert.equal(result.behavior.runner.sha256, sha256(behaviorRunnerBytes));
+  assert.equal(result.behavior.fork_oci.archive_sha256, sha256(Buffer.from("oci\n")));
+  assert.equal(result.behavior.stock_oci.archive_sha256, sha256(Buffer.from("stock oci\n")));
   assert.equal(result.runtime_scenarios.traces.length, 16);
   assert.deepEqual(result.private_rpc, {
     method: "zalouser.bridge.send",
@@ -1123,8 +2257,15 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
     calls.filter(({ args }) => args[0] === "image" && args[1] === "rm").length,
     2,
   );
+  assert.equal(calls.filter(({ args }) => args[0] === "load").length, 2);
+  assert.equal(calls.some(({ args }) => args[0] === "pull"), false);
   assert.equal(
     calls.filter(({ args }) => args[0] === "run").every(({ args }) => args.includes("--network") && args.includes("none")),
+    true,
+  );
+  assert.equal(
+    calls.filter(({ args }) => args.includes("IHOME_BEHAVIOR_VARIANT=fork") || args.includes("IHOME_BEHAVIOR_VARIANT=stock"))
+      .every(({ input }) => Buffer.isBuffer(input) && input.equals(behaviorRunnerBytes)),
     true,
   );
 });
@@ -1191,6 +2332,58 @@ test("schema or probe evidence failure cannot promote an OCI archive", async (t)
   await assert.rejects(stat(evidencePath), /ENOENT/);
 });
 
+test("release promotion rejects a symlinked destination ancestor", async (t) => {
+  const { publishVerifiedRelease } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-promotion-link-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const outside = join(fixture, "outside");
+  const linked = join(fixture, "linked");
+  await mkdir(outside);
+  await symlink(outside, linked, process.platform === "win32" ? "junction" : "dir");
+  const archivePath = join(fixture, "candidate.oci.tar");
+  const releasePath = join(linked, "release.oci.tar");
+  const evidencePath = join(fixture, "evidence.json");
+  const archiveBytes = Buffer.from("candidate\n");
+  await writeFile(archivePath, archiveBytes);
+  const archiveSha256 = createHash("sha256").update(archiveBytes).digest("hex");
+  const evidence = {
+    oci: {
+      promoted_archive_role: "A",
+      promoted_archive_sha256: archiveSha256,
+    },
+  };
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["oci"],
+    properties: {
+      oci: {
+        type: "object",
+        additionalProperties: false,
+        required: ["promoted_archive_role", "promoted_archive_sha256"],
+        properties: {
+          promoted_archive_role: { type: "string", const: "A" },
+          promoted_archive_sha256: { type: "string" },
+        },
+      },
+    },
+  };
+
+  await assert.rejects(
+    publishVerifiedRelease({
+      archivePath,
+      evidence,
+      evidencePath,
+      releaseArtifactPath: releasePath,
+      schema,
+    }),
+    /link|reparse|ancestor/i,
+  );
+  await assert.rejects(stat(join(outside, "release.oci.tar")), /ENOENT/);
+});
+
 test("qualifying main probes Docker before schema validation and promotion", async () => {
   const source = await readCell("scripts/verify-image-lock.mjs");
   const mainStart = source.indexOf("async function main()");
@@ -1210,7 +2403,7 @@ test("qualifying main probes Docker before schema validation and promotion", asy
   assert.match(source.slice(mainStart), /assertAbsoluteQualifyingOperands\(args\)/);
   assert.ok(
     source.indexOf("assertAbsoluteQualifyingOperands(args)", mainStart) <
-      source.indexOf("const archive = await compareFiles", mainStart),
+      source.indexOf("const retainedInputs = await captureRetainedQualificationInputs", mainStart),
   );
   assert.match(source.slice(mainStart), /reviewed_export:\s*reviewedExport/);
 });
@@ -1517,12 +2710,43 @@ test("recorded reviewed export evidence is exact, closed, and bound to R", async
 
 test("supply-chain evidence binds committed M inputs, signatures, and the exact fork artifact", async () => {
   const {
+    collectRawMInputs,
     collectSupplyChainMetadata,
+    readReviewedForkGitObjects,
+    sigstoreInputsFromRawM,
     validateRecordedSupplyChainEvidence,
   } = await loadScript("scripts/verify-image-lock.mjs");
   const sourceRoot = resolve(cellRoot, "../..");
-  const mReviewedTree = "0650187981ad9728d295fae34eff92b508e36bc8";
-  const metadata = await collectSupplyChainMetadata({ sourceRoot, mReviewedTree });
+  const gitPath = localGitPath();
+  const expectedM = "0650187981ad9728d295fae34eff92b508e36bc8";
+  const reviewedTree = (await import("node:child_process")).execFileSync(
+    "git",
+    ["rev-parse", "HEAD"],
+    { cwd: sourceRoot, encoding: "ascii" },
+  ).trim();
+  const metadata = await collectSupplyChainMetadata({
+    gitPath,
+    sourceRoot,
+    repositoryRoot: sourceRoot,
+    expectedM,
+    reviewedTree,
+  });
+  const rawR = await readReviewedForkGitObjects({ gitPath, repositoryRoot: sourceRoot, reviewedTree });
+  assert.equal(rawR.forkRecord.source, "git-object");
+  assert.equal(rawR.artifactRecord.source, "git-object");
+  assert.equal(rawR.artifactRecord.sha256, metadata.fork.artifact_sha256);
+  const rawM = await collectRawMInputs({
+    gitPath,
+    repositoryRoot: sourceRoot,
+    expectedM,
+  });
+  assert.deepEqual(Object.keys(sigstoreInputsFromRawM(rawM)).sort(), [
+    "attestations",
+    "keys",
+    "metadata",
+    "trustRoot",
+    "upstream",
+  ]);
   const recorded = {
     ...metadata,
     proof: {
@@ -1539,21 +2763,27 @@ test("supply-chain evidence binds committed M inputs, signatures, and the exact 
     },
   };
   await assert.doesNotReject(
-    validateRecordedSupplyChainEvidence(recorded, { sourceRoot, mReviewedTree }),
+    validateRecordedSupplyChainEvidence(recorded, {
+      gitPath,
+      sourceRoot,
+      repositoryRoot: sourceRoot,
+      expectedM,
+      reviewedTree,
+    }),
   );
   assert.equal(recorded.committed_inputs.input_count, 87);
   assert.equal(recorded.committed_inputs.provenance_inputs.length, 4);
   assert.equal(recorded.upstream.source_manifest_count, 75);
   assert.equal(recorded.upstream.license_carrier_count, 39);
-  assert.equal(recorded.fork.artifact_member_count, 71);
-  assert.equal(recorded.fork.artifact_sha256, "a566e950c4ecef7ff45169a339349fa67777ec4ee92c96d14057ff59e266b44f");
+  assert.equal(recorded.fork.artifact_member_count, rawR.fork.artifactMembers.length);
+  assert.equal(recorded.fork.artifact_sha256, rawR.artifactRecord.sha256);
   await assert.rejects(
     validateRecordedSupplyChainEvidence(
       {
         ...recorded,
         fork: { ...recorded.fork, artifact_sha256: "0".repeat(64) },
       },
-      { sourceRoot, mReviewedTree },
+      { gitPath, sourceRoot, repositoryRoot: sourceRoot, expectedM, reviewedTree },
     ),
     /supply-chain|fork artifact/i,
   );
@@ -1562,6 +2792,9 @@ test("supply-chain evidence binds committed M inputs, signatures, and the exact 
   const mainStart = source.indexOf("async function main()");
   assert.match(source.slice(mainStart), /await collectQualifyingSupplyChainEvidence/);
   assert.match(source.slice(mainStart), /supply_chain:\s*supplyChain/);
+  assert.doesNotMatch(source, /reviewedSha:\s*evidence\.reviews\.M\.reviewed_sha/);
+  assert.doesNotMatch(source, /readFile\(resolve\(root,\s*"vendor\/zalouser-bridge\/FORK\.json"\)\)/);
+  assert.match(source, /verifySigstoreAttestations\(\{[\s\S]*metadata[\s\S]*keys[\s\S]*attestations[\s\S]*trustRoot/);
   const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
   assert.ok(schema.required.includes("supply_chain"));
   assert.equal(schema.$defs.supplyChain.additionalProperties, false);

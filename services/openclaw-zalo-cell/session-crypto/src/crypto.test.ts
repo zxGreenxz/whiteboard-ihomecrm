@@ -1,5 +1,6 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -351,6 +352,8 @@ class OrderedFileSystem implements FileSystemOperations {
   readonly files = new Map<string, Buffer>();
   readonly directories = new Set<string>();
   private directorySyncCount = 0;
+  private readonly identities = new Map<string, number>();
+  private nextInode = 1;
 
   constructor(private readonly failure?: FailurePoint) {}
 
@@ -360,8 +363,15 @@ class OrderedFileSystem implements FileSystemOperations {
   }
 
   async open(filePath: string, flags: string | number, mode?: number): Promise<FileHandleOperations> {
-    const directoryHandle = flags === "r";
-    if (!directoryHandle && typeof flags === "number" && this.files.has(filePath)) {
+    const directoryHandle =
+      flags === "r" ||
+      (typeof flags === "number" &&
+        (flags & (fsConstants.O_DIRECTORY ?? 0x10000)) !== 0);
+    const exclusiveCreate =
+      typeof flags === "number" &&
+      (flags & fsConstants.O_CREAT) !== 0 &&
+      (flags & fsConstants.O_EXCL) !== 0;
+    if (!directoryHandle && exclusiveCreate && this.files.has(filePath)) {
       throw Object.assign(new Error("already exists"), { code: "EEXIST" });
     }
     this.events.push(
@@ -369,10 +379,34 @@ class OrderedFileSystem implements FileSystemOperations {
         ? `open-dir:${filePath}`
         : `open-temp:${filePath}:${String(flags)}:${String(mode)}`,
     );
-    if (!directoryHandle) this.files.set(filePath, Buffer.alloc(0));
-    let bytes = Buffer.alloc(0);
+    if (directoryHandle && !this.directories.has(filePath)) {
+      const entry = await this.inspectPath(filePath);
+      throw Object.assign(new Error(entry.kind === "missing" ? "missing" : "not a directory"), {
+        code: entry.kind === "missing" ? "ENOENT" : "ENOTDIR",
+      });
+    }
+    if (!directoryHandle && exclusiveCreate) this.files.set(filePath, Buffer.alloc(0));
+    if (!directoryHandle && !this.files.has(filePath)) {
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    }
+    let bytes = this.files.get(filePath) ?? Buffer.alloc(0);
 
     return {
+      descriptorPath: (relativePath = "") =>
+        relativePath ? path.join(filePath, ...relativePath.split("/")) : filePath,
+      readFile: async () => {
+        this.events.push(`read-handle:${filePath}`);
+        const value = this.files.get(filePath);
+        if (!value) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        return Buffer.from(value);
+      },
+      stat: async () => {
+        const entry = await this.inspectPath(filePath);
+        if (entry.kind === "missing") {
+          throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        }
+        return entry;
+      },
       writeFile: async (value) => {
         this.events.push(`write:${filePath}`);
         if (this.failure === "write") throw new Error("injected write failure");
@@ -422,13 +456,24 @@ class OrderedFileSystem implements FileSystemOperations {
   }
 
   async inspectPath(candidate: string): Promise<PathEntry> {
-    if (this.files.has(candidate)) return { kind: "file" };
-    if (this.directories.has(candidate)) return { kind: "directory" };
+    if (this.files.has(candidate)) return { dev: 1, ino: this.identity(candidate), kind: "file" };
+    if (this.directories.has(candidate)) {
+      return { dev: 1, ino: this.identity(candidate), kind: "directory" };
+    }
     return { kind: "missing" };
   }
 
   async realpath(candidate: string): Promise<string> {
     return candidate;
+  }
+
+  private identity(candidate: string): number {
+    let identity = this.identities.get(candidate);
+    if (identity === undefined) {
+      identity = this.nextInode++;
+      this.identities.set(candidate, identity);
+    }
+    return identity;
   }
 }
 
@@ -441,8 +486,16 @@ describe("durable persistent writes", () => {
     const target = path.resolve("durable", "session.enc");
     const parent = path.dirname(target);
     const temporary = path.join(parent, ".session.enc.tmp-0102030405060708");
+    fs.directories.add(parent);
+    const parentHandle = await fs.open(
+      parent,
+      fsConstants.O_RDONLY |
+        (fsConstants.O_DIRECTORY ?? 0x10000) |
+        (fsConstants.O_NOFOLLOW ?? 0x20000),
+    );
+    fs.events.length = 0;
 
-    await durableAtomicWrite(fs, target, Buffer.from("ciphertext"), randomBytes);
+    await durableAtomicWrite(fs, parentHandle, "session.enc", Buffer.from("ciphertext"), randomBytes);
 
     expect(fs.events).toEqual([
       expect.stringMatching(`^open-temp:${temporary.replaceAll("\\", "\\\\")}:\\d+:384$`),
@@ -450,9 +503,7 @@ describe("durable persistent writes", () => {
       `fsync-file:${temporary}`,
       `close-file:${temporary}`,
       `rename:${temporary}->${target}`,
-      `open-dir:${parent}`,
       `fsync-dir:${parent}`,
-      `close-dir:${parent}`,
     ]);
     expect(fs.files.get(target)).toEqual(Buffer.from("ciphertext"));
   });
@@ -462,10 +513,24 @@ describe("durable persistent writes", () => {
     async (failure) => {
       const fs = new OrderedFileSystem(failure);
       const target = path.resolve("durable", `${failure}.enc`);
+      const parent = path.dirname(target);
+      fs.directories.add(parent);
       fs.files.set(target, Buffer.from("old-ciphertext"));
+      const parentHandle = await fs.open(
+        parent,
+        fsConstants.O_RDONLY |
+          (fsConstants.O_DIRECTORY ?? 0x10000) |
+          (fsConstants.O_NOFOLLOW ?? 0x20000),
+      );
 
       await expect(
-        durableAtomicWrite(fs, target, Buffer.from("new-ciphertext"), sequenceRandom(suffix)),
+        durableAtomicWrite(
+          fs,
+          parentHandle,
+          path.basename(target),
+          Buffer.from("new-ciphertext"),
+          sequenceRandom(suffix),
+        ),
       ).rejects.toThrow(/injected/i);
 
       expect(fs.files.get(target)).toEqual(Buffer.from("old-ciphertext"));
@@ -477,10 +542,24 @@ describe("durable persistent writes", () => {
   it("surfaces directory-fsync failure as ambiguous after rename without plaintext fallback", async () => {
     const fs = new OrderedFileSystem("dir-fsync");
     const target = path.resolve("durable", "ambiguous.enc");
+    const parent = path.dirname(target);
+    fs.directories.add(parent);
     fs.files.set(target, Buffer.from("old-ciphertext"));
+    const parentHandle = await fs.open(
+      parent,
+      fsConstants.O_RDONLY |
+        (fsConstants.O_DIRECTORY ?? 0x10000) |
+        (fsConstants.O_NOFOLLOW ?? 0x20000),
+    );
 
     await expect(
-      durableAtomicWrite(fs, target, Buffer.from("new-ciphertext"), sequenceRandom(suffix)),
+      durableAtomicWrite(
+        fs,
+        parentHandle,
+        path.basename(target),
+        Buffer.from("new-ciphertext"),
+        sequenceRandom(suffix),
+      ),
     ).rejects.toBeInstanceOf(AmbiguousDurabilityError);
 
     expect(fs.files.get(target)).toEqual(Buffer.from("new-ciphertext"));
@@ -557,7 +636,380 @@ function createStoreFixture(options: {
   };
 }
 
+type RaceEntry = PathEntry & {
+  dev: number;
+  ino: number;
+};
+
+type DescriptorFileHandle = FileHandleOperations & {
+  descriptorPath(relativePath?: string): string;
+  readFile(): Promise<Buffer>;
+  stat(): Promise<RaceEntry>;
+};
+
+class RaceHookFileSystem implements FileSystemOperations {
+  readonly directories = new Map<string, RaceEntry>();
+  readonly files = new Map<string, { bytes: Buffer; entry: RaceEntry }>();
+  readonly symlinks = new Map<string, string>();
+  beforeAccess?: (operation: "open" | "read" | "rename", candidate: string) => void;
+  private readonly descriptors = new Map<number, string>();
+  private nextDescriptor = 10;
+  private nextInode = 100;
+
+  addDirectory(candidate: string, mode = 0o700, uid = 0): void {
+    const resolved = path.resolve(candidate);
+    for (const component of this.pathComponents(resolved)) {
+      if (!this.directories.has(component)) {
+        this.directories.set(component, {
+          dev: 1,
+          ino: this.nextInode++,
+          kind: "directory",
+          mode,
+          uid,
+        });
+      }
+    }
+  }
+
+  addFile(candidate: string, bytes: Uint8Array, mode = 0o600, uid = 0): void {
+    const resolved = path.resolve(candidate);
+    this.addDirectory(path.dirname(resolved), 0o700, uid);
+    this.files.set(resolved, {
+      bytes: Buffer.from(bytes),
+      entry: { dev: 1, ino: this.nextInode++, kind: "file", mode, uid },
+    });
+  }
+
+  replaceWithSymlink(candidate: string, target: string): void {
+    this.symlinks.set(path.resolve(candidate), path.resolve(target));
+  }
+
+  async mkdir(directoryPath: string): Promise<void> {
+    this.addDirectory(directoryPath);
+  }
+
+  async open(
+    filePath: string,
+    flags: string | number,
+    mode?: number,
+  ): Promise<DescriptorFileHandle> {
+    const requested = this.decodeCandidate(filePath);
+    const requestedPath = requested.target;
+    this.beforeAccess?.("open", requestedPath);
+    const noFollow =
+      typeof flags === "number" && (flags & (fsConstants.O_NOFOLLOW ?? 0x20000)) !== 0;
+    if (noFollow && this.symlinks.has(requestedPath)) {
+      throw Object.assign(new Error("symlink refused"), { code: "ELOOP" });
+    }
+    const targetPath = requested.descriptor
+      ? noFollow
+        ? requestedPath
+        : this.resolvePath(requestedPath, true)
+      : this.resolvePath(requestedPath, !noFollow);
+    const directory =
+      flags === "r" ||
+      (typeof flags === "number" &&
+        (flags & (fsConstants.O_DIRECTORY ?? 0x10000)) !== 0);
+    const exclusiveCreate =
+      typeof flags === "number" &&
+      (flags & fsConstants.O_CREAT) !== 0 &&
+      (flags & fsConstants.O_EXCL) !== 0;
+
+    if (directory) {
+      if (!this.directories.has(targetPath)) {
+        throw Object.assign(new Error("not a directory"), { code: "ENOTDIR" });
+      }
+    } else if (exclusiveCreate) {
+      if (this.files.has(targetPath) || this.symlinks.has(targetPath)) {
+        throw Object.assign(new Error("already exists"), { code: "EEXIST" });
+      }
+      this.addFile(targetPath, Buffer.alloc(0), mode ?? 0o600);
+    } else if (!this.files.has(targetPath)) {
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    }
+
+    const descriptor = this.nextDescriptor++;
+    this.descriptors.set(descriptor, targetPath);
+    let closed = false;
+    const handle: DescriptorFileHandle = {
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        this.descriptors.delete(descriptor);
+      },
+      descriptorPath: (relativePath = "") => `@fd:${descriptor}:${relativePath}`,
+      readFile: async () => {
+        const file = this.files.get(targetPath);
+        if (!file) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        return Buffer.from(file.bytes);
+      },
+      stat: async () => {
+        const entry = this.directories.get(targetPath) ?? this.files.get(targetPath)?.entry;
+        if (!entry) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        return { ...entry };
+      },
+      sync: async () => undefined,
+      writeFile: async (value) => {
+        const file = this.files.get(targetPath);
+        if (!file) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        file.bytes = Buffer.from(value);
+      },
+    };
+    return handle;
+  }
+
+  async rename(from: string, to: string): Promise<void> {
+    const decodedSource = this.decodeCandidate(from);
+    const decodedTarget = this.decodeCandidate(to);
+    this.beforeAccess?.("rename", decodedTarget.target);
+    const source = decodedSource.descriptor
+      ? decodedSource.target
+      : this.resolvePath(decodedSource.target, false);
+    const target = decodedTarget.descriptor
+      ? decodedTarget.target
+      : this.resolvePath(decodedTarget.target, false);
+    const file = this.files.get(source);
+    if (!file) throw Object.assign(new Error("source is missing"), { code: "ENOENT" });
+    this.files.set(target, file);
+    this.files.delete(source);
+    this.symlinks.delete(target);
+  }
+
+  async unlink(filePath: string): Promise<void> {
+    const decoded = this.decodeCandidate(filePath);
+    const target = decoded.descriptor ? decoded.target : this.resolvePath(decoded.target, false);
+    if (!this.files.delete(target) && !this.symlinks.delete(target)) {
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    }
+  }
+
+  async readFile(filePath: string): Promise<Buffer> {
+    const requested = this.decodeCandidate(filePath);
+    const requestedPath = requested.target;
+    this.beforeAccess?.("read", requestedPath);
+    const target = requested.descriptor ? requestedPath : this.resolvePath(requestedPath, true);
+    const file = this.files.get(target);
+    if (!file) throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    return Buffer.from(file.bytes);
+  }
+
+  async inspectPath(candidate: string): Promise<PathEntry> {
+    const requested = this.decodeCandidate(candidate);
+    const requestedPath = requested.target;
+    if (this.symlinks.has(requestedPath)) return { kind: "symlink" };
+    const target = requested.descriptor ? requestedPath : this.resolvePath(requestedPath, true);
+    const entry = this.directories.get(target) ?? this.files.get(target)?.entry;
+    return entry ? { ...entry } : { kind: "missing" };
+  }
+
+  async realpath(candidate: string): Promise<string> {
+    const decoded = this.decodeCandidate(candidate);
+    return decoded.descriptor ? decoded.target : this.resolvePath(decoded.target, true);
+  }
+
+  private decodeCandidate(candidate: string): { descriptor: boolean; target: string } {
+    const match = /^@fd:(\d+):(.*)$/.exec(candidate);
+    if (!match) return { descriptor: false, target: path.resolve(candidate) };
+    const base = this.descriptors.get(Number(match[1]));
+    if (!base) throw Object.assign(new Error("bad descriptor"), { code: "EBADF" });
+    const relative = match[2];
+    return {
+      descriptor: true,
+      target: relative ? path.join(base, ...relative.split("/").filter(Boolean)) : base,
+    };
+  }
+
+  private pathComponents(candidate: string): string[] {
+    const parsed = path.parse(candidate);
+    const components = [parsed.root];
+    let current = parsed.root;
+    for (const segment of path.relative(parsed.root, candidate).split(path.sep).filter(Boolean)) {
+      current = path.join(current, segment);
+      components.push(current);
+    }
+    return components;
+  }
+
+  private resolvePath(candidate: string, followLeaf: boolean): string {
+    let resolved = path.resolve(candidate);
+    for (let attempts = 0; attempts < 16; attempts += 1) {
+      const link = [...this.symlinks.keys()]
+        .filter((entry) => resolved === entry || resolved.startsWith(`${entry}${path.sep}`))
+        .filter((entry) => followLeaf || resolved !== entry)
+        .sort((left, right) => right.length - left.length)[0];
+      if (!link) return resolved;
+      const suffix = path.relative(link, resolved);
+      resolved = suffix ? path.join(this.symlinks.get(link)!, suffix) : this.symlinks.get(link)!;
+    }
+    throw new Error("symlink loop");
+  }
+}
+
+function createRaceStoreFixture() {
+  const base = path.resolve("race-store");
+  const plaintextRoot = path.join(base, "plain");
+  const persistentRoot = path.join(base, "cipher");
+  const attackerRoot = path.join(base, "attacker");
+  const fs = new RaceHookFileSystem();
+  for (const directory of [
+    plaintextRoot,
+    persistentRoot,
+    attackerRoot,
+    path.join(plaintextRoot, "account"),
+    path.join(persistentRoot, "account"),
+    path.join(attackerRoot, "account"),
+  ]) {
+    fs.addDirectory(directory);
+  }
+  return {
+    attackerRoot,
+    fs,
+    persistentRoot,
+    plaintextRoot,
+    create: () =>
+      SessionCryptoStore.create(
+        {
+          activeGeneration: "g1",
+          cellId: CELL_A,
+          keys: new Map([["g1", KEY_A]]),
+          persistentRoot,
+          plaintextRoot,
+        },
+        {
+          expectedOwnerUid: 0,
+          fs,
+          isTmpfsRoot: async (candidate) => candidate === plaintextRoot,
+          platform: "linux",
+          randomBytes: sequenceRandom(Buffer.alloc(12, 0x31), Buffer.alloc(8, 0x32)),
+        },
+      ),
+  };
+}
+
 describe("session store and rotation", () => {
+  it("keeps verified root descriptors pinned for the store lifetime", async () => {
+    const fixture = createRaceStoreFixture();
+    const logicalPath = "account/session.json";
+    const original = createEngine().encrypt(logicalPath, Buffer.from("original-root"));
+    const attacker = createEngine().encrypt(logicalPath, Buffer.from("attacker-root"));
+    fixture.fs.addFile(path.join(fixture.persistentRoot, logicalPath), original);
+    fixture.fs.addFile(path.join(fixture.attackerRoot, logicalPath), attacker);
+    const store = await fixture.create();
+
+    fixture.fs.replaceWithSymlink(fixture.persistentRoot, fixture.attackerRoot);
+
+    expect((await store.readSession(logicalPath)).plaintext).toEqual(Buffer.from("original-root"));
+  });
+
+  it("rejects a parent swapped to a symlink between validation and directory open", async () => {
+    const fixture = createRaceStoreFixture();
+    const logicalPath = "account/session.json";
+    const parent = path.join(fixture.persistentRoot, "account");
+    fixture.fs.addFile(
+      path.join(fixture.persistentRoot, logicalPath),
+      createEngine().encrypt(logicalPath, Buffer.from("original-parent")),
+    );
+    fixture.fs.addFile(
+      path.join(fixture.attackerRoot, logicalPath),
+      createEngine().encrypt(logicalPath, Buffer.from("attacker-parent")),
+    );
+    const store = await fixture.create();
+    let raced = false;
+    fixture.fs.beforeAccess = (operation, candidate) => {
+      if (!raced && ((operation === "open" && candidate === parent) || operation === "read")) {
+        raced = true;
+        fixture.fs.replaceWithSymlink(parent, path.join(fixture.attackerRoot, "account"));
+      }
+    };
+
+    await expect(store.readSession(logicalPath)).rejects.toMatchObject({
+      code: "UNSAFE_PATH_COMPONENT",
+    });
+  });
+
+  it("rejects a leaf swapped to a symlink between validation and descriptor read", async () => {
+    const fixture = createRaceStoreFixture();
+    const logicalPath = "account/session.json";
+    const leaf = path.join(fixture.persistentRoot, logicalPath);
+    const attackerLeaf = path.join(fixture.attackerRoot, logicalPath);
+    fixture.fs.addFile(leaf, createEngine().encrypt(logicalPath, Buffer.from("original-leaf")));
+    fixture.fs.addFile(
+      attackerLeaf,
+      createEngine().encrypt(logicalPath, Buffer.from("attacker-leaf")),
+    );
+    const store = await fixture.create();
+    let raced = false;
+    fixture.fs.beforeAccess = (operation, candidate) => {
+      if (!raced && candidate === leaf && (operation === "open" || operation === "read")) {
+        raced = true;
+        fixture.fs.replaceWithSymlink(leaf, attackerLeaf);
+      }
+    };
+
+    await expect(store.readSession(logicalPath)).rejects.toMatchObject({
+      code: "UNSAFE_PATH_COMPONENT",
+    });
+  });
+
+  it("renames through the pinned parent when its checked pathname is swapped", async () => {
+    const fixture = createRaceStoreFixture();
+    const logicalPath = "account/session.json";
+    const target = path.join(fixture.persistentRoot, logicalPath);
+    const parent = path.dirname(target);
+    const attackerParent = path.join(fixture.attackerRoot, "account");
+    const store = await fixture.create();
+    fixture.fs.beforeAccess = (operation, candidate) => {
+      if (operation !== "rename" || candidate !== target) return;
+      fixture.fs.replaceWithSymlink(parent, attackerParent);
+      fixture.fs.addFile(
+        path.join(attackerParent, ".session.json.tmp-3232323232323232"),
+        Buffer.from("attacker-temp"),
+      );
+    };
+
+    const metadata = await store.writeSession(logicalPath, Buffer.from("pinned-write"), null);
+    const persisted = fixture.fs.files.get(target)?.bytes;
+
+    expect(persisted).toBeDefined();
+    expect(envelopeVersion(persisted!)).toBe(metadata.envelopeVersion);
+    expect(fixture.fs.files.get(path.join(attackerParent, "session.json"))?.bytes).not.toEqual(
+      Buffer.from("attacker-temp"),
+    );
+  });
+
+  it("creates nonce reservations through the pinned persistent root", async () => {
+    const fixture = createRaceStoreFixture();
+    const store = await fixture.create();
+    let raced = false;
+    fixture.fs.beforeAccess = (operation, candidate) => {
+      if (
+        !raced &&
+        operation === "open" &&
+        path.basename(candidate).startsWith(".openclaw-nonce-v1-")
+      ) {
+        raced = true;
+        fixture.fs.replaceWithSymlink(fixture.persistentRoot, fixture.attackerRoot);
+      }
+    };
+
+    await store.writeSession("session.json", Buffer.from("nonce-root"), null);
+
+    expect(
+      [...fixture.fs.files.keys()].some(
+        (candidate) =>
+          path.dirname(candidate) === fixture.persistentRoot &&
+          path.basename(candidate).startsWith(".openclaw-nonce-v1-"),
+      ),
+    ).toBe(true);
+    expect(
+      [...fixture.fs.files.keys()].some(
+        (candidate) =>
+          path.dirname(candidate) === fixture.attackerRoot &&
+          path.basename(candidate).startsWith(".openclaw-nonce-v1-"),
+      ),
+    ).toBe(false);
+  });
+
   it("returns a stable ciphertext envelope version for compare-and-swap", async () => {
     const fixture = createStoreFixture();
     const store = await fixture.create();
@@ -773,6 +1225,26 @@ describe("session store and rotation", () => {
     expect(String((rejection as Error | undefined)?.message)).toMatch(/root.*owner|root.*mode/i);
   });
 
+  it("rejects a root descriptor without stable device and inode identity", async () => {
+    const fixture = createStoreFixture();
+    const openFile = fixture.fs.open.bind(fixture.fs);
+    fixture.fs.open = async (candidate, flags, mode) => {
+      const handle = await openFile(candidate, flags, mode);
+      if (candidate !== fixture.plaintextRoot) return handle;
+      return {
+        ...handle,
+        async stat() {
+          const { dev: _dev, ino: _ino, ...stat } = await handle.stat();
+          return stat;
+        },
+      };
+    };
+
+    await expect(fixture.create()).rejects.toMatchObject({
+      code: "UNSAFE_ROOT_COMPONENT",
+    });
+  });
+
   it("fails explicitly when the store runtime is not Linux", async () => {
     const fixture = createStoreFixture();
 
@@ -845,8 +1317,8 @@ describe("session store and rotation", () => {
     const store = await fixture.create();
 
     await expect(store.readSession(logicalPath)).rejects.toThrow(SessionCryptoError);
-    expect(fixture.fs.events.filter((event) => event.startsWith("read:"))).toEqual([
-      `read:${persistentPath}`,
+    expect(fixture.fs.events.filter((event) => event.startsWith("read-handle:"))).toEqual([
+      `read-handle:${persistentPath}`,
     ]);
   });
 

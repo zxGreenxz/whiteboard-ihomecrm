@@ -1,60 +1,40 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAuthorizeClient } from "../src/bridge/authorize-client.js";
 import {
+  businessFramesFromPayload,
+  providerSinkFromPayload,
+  type ZaloUserBridgeSendParamsV1,
+  type ZaloUserBridgeSendPartV1,
+} from "../src/bridge/canonical-send.js";
+import {
   assertAuthorizedProviderCall,
   assertAuthorizedProviderIo,
   createPrivateOutboundRpc,
 } from "../src/bridge/outbound-rpc.js";
 import {
   createPreparedOutboundBatch,
-  createSendContext,
-  verifySendContext,
   type BusinessFrame,
   type PreparedProviderCallV1,
   type ProviderSinkV1,
 } from "../src/bridge/send-context.js";
+import { FRAMES, MEDIA_PART, PARTS, REQUEST, SINK, TEXT_PART, makeRequest } from "./outbound-fixtures.js";
 
-const secret = Buffer.alloc(32, 0x24);
-const MEDIA_SHA256 = "b".repeat(64);
-const SINK: ProviderSinkV1 = Object.freeze({
-  accountId: "account-a",
-  accountProfile: "profile-a",
-  conversationId: "thread-a",
-  isGroup: false,
-});
-const FRAMES: readonly BusinessFrame[] = Object.freeze([
-  Object.freeze({ kind: "text", text: "hello" }),
-  Object.freeze({
-    kind: "media",
-    url: "file:///prepared/a.png",
-    caption: "caption",
-    byteLength: 2048,
-    contentType: "image/png",
-    name: "a.png",
-    sha256: MEDIA_SHA256,
-  }),
-  Object.freeze({ kind: "link", url: "https://example.invalid", caption: "link" }),
-  Object.freeze({
-    kind: "reaction",
-    msgId: "message-1",
-    cliMsgId: "cli-1",
-    emoji: "❤",
-    remove: false,
-  }),
-]);
-
-function context(frames: readonly BusinessFrame[] = FRAMES, sink: ProviderSinkV1 = SINK) {
-  return createSendContext({
-    ...sink,
-    expiresAt: 2_000,
-    frames,
-    issuedAt: 1_000,
-    nonce: "nonce-a",
-  }, secret);
+function prepareRequest(request: ZaloUserBridgeSendParamsV1) {
+  return createPreparedOutboundBatch(
+    providerSinkFromPayload(request.payload),
+    businessFramesFromPayload(request.payload),
+  );
 }
 
-function request(frames: readonly BusinessFrame[] = FRAMES, sink: ProviderSinkV1 = SINK) {
-  return { context: context(frames, sink), sink, frames };
+type SendPrepared = (
+  call: ReturnType<typeof prepareRequest>["calls"][number],
+) => Promise<{ providerMessageId?: string }>;
+
+function preparedExecution(
+  request: ZaloUserBridgeSendParamsV1,
+  sendPrepared: SendPrepared = async () => ({}),
+) {
+  return Object.freeze({ batch: prepareRequest(request), sendPrepared });
 }
 
 function changedCall(
@@ -66,23 +46,31 @@ function changedCall(
   return copy as unknown as PreparedProviderCallV1;
 }
 
-describe("outbound exact frame and sink binding", () => {
-  it("allows exactly 2000 Unicode code points and rejects 2001", () => {
-    const exact = Object.freeze([{ kind: "text" as const, text: "😀".repeat(2_000) }]);
-    const overflow = Object.freeze([{ kind: "text" as const, text: "😀".repeat(2_001) }]);
+function reindex(parts: readonly ZaloUserBridgeSendPartV1[]): readonly ZaloUserBridgeSendPartV1[] {
+  return Object.freeze(parts.map((part, partIndex) => Object.freeze({ ...part, partIndex })));
+}
 
-    expect(createPreparedOutboundBatch(SINK, exact).calls[0]).toMatchObject({
-      frame: { text: exact[0]?.text },
+describe("outbound exact frame and sink binding", () => {
+  it("allows exactly 2000 Unicode code points and rejects 2001", async () => {
+    const exact = makeRequest([Object.freeze({ ...TEXT_PART, text: "😀".repeat(2_000) })]);
+    const overflow = structuredClone(exact) as unknown as { payload: { parts: Array<{ text: string }> } };
+    overflow.payload.parts[0]!.text = "😀".repeat(2_001);
+
+    expect(businessFramesFromPayload(exact.payload)[0]).toMatchObject({
+      text: exact.payload.parts[0]?.kind === "TEXT" ? exact.payload.parts[0].text : undefined,
     });
-    expect(() => createPreparedOutboundBatch(SINK, overflow)).toThrowError(
-      expect.objectContaining({ code: "INVALID_PROVIDER_FRAME" }),
-    );
+    await expect(createPrivateOutboundRpc({
+      prepare: async (request) => preparedExecution(request),
+      authorize: async () => undefined,
+    }).invoke("zalouser.bridge.send", overflow as unknown as ZaloUserBridgeSendParamsV1))
+      .rejects.toMatchObject({ code: "INVALID_PRIVATE_SEND_REQUEST" });
   });
 
   it.each([
     ["extra frame field", [{ kind: "text", text: "x", caption: "extra" }]],
     ["bad media sha", [{ ...FRAMES[1], sha256: "ABC" }]],
     ["zero media bytes", [{ ...FRAMES[1], byteLength: 0 }]],
+    ["legacy media URL", [{ kind: "media", url: "file:///x", caption: null, byteLength: 1, contentType: "image/png", name: null, sha256: "a".repeat(64) }]],
     ["unsafe frame class", [new (class Frame { kind = "text"; text = "x"; })()]],
     ["extra sink field", FRAMES.slice(0, 1), { ...SINK, extra: true }],
     ["unsafe sink class", FRAMES.slice(0, 1), new (class Sink {
@@ -91,7 +79,7 @@ describe("outbound exact frame and sink binding", () => {
       conversationId = SINK.conversationId;
       isGroup = SINK.isGroup;
     })()],
-  ] as const)("rejects strict input: %s", (_label, frames, sink = SINK) => {
+  ] as const)("rejects strict provider input: %s", (_label, frames, sink = SINK) => {
     expect(() => createPreparedOutboundBatch(
       sink as ProviderSinkV1,
       frames as readonly BusinessFrame[],
@@ -110,7 +98,7 @@ describe("outbound exact frame and sink binding", () => {
       (copy.sink as Record<string, unknown>).conversationId = "thread-b";
     })],
     ["isGroup", (call: PreparedProviderCallV1) => changedCall(call, (copy) => {
-      (copy.sink as Record<string, unknown>).isGroup = true;
+      (copy.sink as Record<string, unknown>).isGroup = false;
     })],
     ["text", (call: PreparedProviderCallV1) => changedCall(call, (copy) => {
       (copy.frame as Record<string, unknown>).text = "changed";
@@ -118,18 +106,18 @@ describe("outbound exact frame and sink binding", () => {
   ] as const)("rejects altered %s before provider I/O", async (_label, alter) => {
     let authorizeCalls = 0;
     let providerCalls = 0;
+    const request = makeRequest([TEXT_PART]);
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames.slice(0, 1)),
-      authorize: async () => { authorizeCalls += 1; },
-      sendPrepared: async (call) => {
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
         assertAuthorizedProviderCall(alter(call));
         assertAuthorizedProviderIo(call.sink);
         providerCalls += 1;
         return {};
-      },
+      }),
+      authorize: async () => { authorizeCalls += 1; },
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request(FRAMES.slice(0, 1))))
+    await expect(rpc.invoke("zalouser.bridge.send", request))
       .rejects.toMatchObject({ code: "AUTHORIZED_PROVIDER_CALL_MISMATCH" });
     expect(authorizeCalls).toBe(1);
     expect(providerCalls).toBe(0);
@@ -137,39 +125,30 @@ describe("outbound exact frame and sink binding", () => {
 
   it.each([
     [0, "text"],
-    [1, "caption"],
+    [1, "objectKey"],
     [1, "byteLength"],
     [1, "contentType"],
-    [1, "name"],
     [1, "sha256"],
-    [1, "url"],
-    [2, "caption"],
-    [2, "url"],
-    [3, "msgId"],
-    [3, "cliMsgId"],
-    [3, "emoji"],
-    [3, "remove"],
   ] as const)("binds frame %d field %s", async (frameIndex, field) => {
-    const selectedFrame = FRAMES[frameIndex];
-    if (!selectedFrame) throw new Error(`missing fixture frame ${frameIndex}`);
-    const selectedFrames = Object.freeze([selectedFrame]);
+    const selectedPart = PARTS[frameIndex];
+    if (!selectedPart) throw new Error(`missing fixture part ${frameIndex}`);
+    const selectedRequest = makeRequest(reindex([selectedPart]));
     let providerCalls = 0;
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames),
-      authorize: async () => undefined,
-      sendPrepared: async (call) => {
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
         const actual = changedCall(call, (copy) => {
           const frame = copy.frame as Record<string, unknown>;
-          frame[field] = typeof frame[field] === "boolean" ? !frame[field] : `${String(frame[field])}-changed`;
+          frame[field] = `${String(frame[field])}-changed`;
         });
         assertAuthorizedProviderCall(actual);
         assertAuthorizedProviderIo(call.sink);
         providerCalls += 1;
         return {};
-      },
+      }),
+      authorize: async () => undefined,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request(selectedFrames))).rejects.toMatchObject({
+    await expect(rpc.invoke("zalouser.bridge.send", selectedRequest)).rejects.toMatchObject({
       code: "AUTHORIZED_PROVIDER_CALL_MISMATCH",
     });
     expect(providerCalls).toBe(0);
@@ -180,10 +159,9 @@ describe("outbound exact frame and sink binding", () => {
     async (field) => {
       let authorizeCalls = 0;
       let providerCalls = 0;
+      const request = makeRequest([TEXT_PART]);
       const rpc = createPrivateOutboundRpc({
-        prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames),
-        authorize: async () => { authorizeCalls += 1; },
-        sendPrepared: async (call) => {
+        prepare: async (candidate) => preparedExecution(candidate, async (call) => {
           assertAuthorizedProviderCall(call);
           const actualSink = { ...call.sink } as Record<string, unknown>;
           actualSink[field] = typeof actualSink[field] === "boolean"
@@ -192,10 +170,11 @@ describe("outbound exact frame and sink binding", () => {
           assertAuthorizedProviderIo(actualSink as ProviderSinkV1);
           providerCalls += 1;
           return {};
-        },
+        }),
+        authorize: async () => { authorizeCalls += 1; },
       });
 
-      await expect(rpc.invoke("zalouser.bridge.send", request(FRAMES.slice(0, 1))))
+      await expect(rpc.invoke("zalouser.bridge.send", request))
         .rejects.toMatchObject({ code: "AUTHORIZED_PROVIDER_SINK_MISMATCH" });
       expect(authorizeCalls).toBe(1);
       expect(providerCalls).toBe(0);
@@ -206,15 +185,17 @@ describe("outbound exact frame and sink binding", () => {
     const authorize = vi.fn(async () => undefined);
     const sendPrepared = vi.fn(async () => ({}));
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(
-        candidate.sink,
-        [...candidate.frames].reverse(),
-      ),
+      prepare: async (candidate) => Object.freeze({
+        batch: createPreparedOutboundBatch(
+          providerSinkFromPayload(candidate.payload),
+          [...businessFramesFromPayload(candidate.payload)].reverse(),
+        ),
+        sendPrepared,
+      }),
       authorize,
-      sendPrepared,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request())).rejects.toMatchObject({
+    await expect(rpc.invoke("zalouser.bridge.send", REQUEST)).rejects.toMatchObject({
       code: "INVALID_PROVIDER_BATCH",
     });
     expect(authorize).not.toHaveBeenCalled();
@@ -222,26 +203,55 @@ describe("outbound exact frame and sink binding", () => {
   });
 
   it("binds frame index even when duplicate frames are structurally identical", async () => {
-    const duplicate = Object.freeze({ kind: "text" as const, text: "same" });
-    const frames = Object.freeze([duplicate, duplicate]);
+    const parts = reindex([TEXT_PART, TEXT_PART]);
     let providerCalls = 0;
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames),
-      authorize: async () => undefined,
-      sendPrepared: async (call) => {
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
         assertAuthorizedProviderCall(changedCall(call, (copy) => {
           copy.frameIndex = call.frameIndex === 0 ? 1 : 0;
         }));
         assertAuthorizedProviderIo(call.sink);
         providerCalls += 1;
         return {};
-      },
+      }),
+      authorize: async () => undefined,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request(frames))).rejects.toMatchObject({
+    await expect(rpc.invoke("zalouser.bridge.send", makeRequest(parts))).rejects.toMatchObject({
       code: "AUTHORIZED_PROVIDER_CALL_MISMATCH",
     });
     expect(providerCalls).toBe(0);
+  });
+});
+
+describe("complete authorization contract", () => {
+  it.each([
+    ["claimToken", (value: Record<string, unknown>) => { delete (value.authorization as Record<string, unknown>).claimToken; }],
+    ["outboxId", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).outboxId; }],
+    ["claimGeneration", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).claimGeneration; }],
+    ["payloadHash", (value: Record<string, unknown>) => { ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).payloadHash = "b".repeat(64); }],
+    ["fencingToken", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).fencingToken; }],
+    ["sessionGeneration", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).sessionGeneration; }],
+    ["controlVersion", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).controlVersion; }],
+    ["takeoverVersion", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).takeoverVersion; }],
+    ["markerNonce", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).markerNonce; }],
+    ["expiresAt", (value: Record<string, unknown>) => { delete ((value.authorization as Record<string, unknown>).authorizationMarker as Record<string, unknown>).expiresAt; }],
+  ] as const)("rejects missing or mismatched %s before preparation", async (_field, mutate) => {
+    const candidate = structuredClone(REQUEST) as unknown as Record<string, unknown>;
+    mutate(candidate);
+    const sendPrepared = vi.fn(async () => ({}));
+    const prepare = vi.fn(async (request: ZaloUserBridgeSendParamsV1) =>
+      preparedExecution(request, sendPrepared));
+    const authorize = vi.fn(async () => undefined);
+    const rpc = createPrivateOutboundRpc({ prepare, authorize });
+
+    await expect(rpc.invoke(
+      "zalouser.bridge.send",
+      candidate as unknown as ZaloUserBridgeSendParamsV1,
+    )).rejects.toMatchObject({ code: expect.stringMatching(/INVALID|MISMATCH/u) });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(authorize).not.toHaveBeenCalled();
+    expect(sendPrepared).not.toHaveBeenCalled();
   });
 });
 
@@ -255,12 +265,11 @@ describe("outbound fail-closed outcomes", () => {
   ])("emits zero provider calls when authorization is %s", async (_label, failure) => {
     const sendPrepared = vi.fn(async () => ({}));
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames),
+      prepare: async (candidate) => preparedExecution(candidate, sendPrepared),
       authorize: async () => { throw failure; },
-      sendPrepared,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request())).rejects.toBe(failure);
+    await expect(rpc.invoke("zalouser.bridge.send", REQUEST)).rejects.toBe(failure);
     expect(sendPrepared).not.toHaveBeenCalled();
   });
 
@@ -271,118 +280,149 @@ describe("outbound fail-closed outcomes", () => {
     });
     const sendPrepared = vi.fn(async () => ({}));
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames),
+      prepare: async (candidate) => preparedExecution(candidate, sendPrepared),
       authorize,
-      sendPrepared,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request())).rejects.toMatchObject({
+    await expect(rpc.invoke("zalouser.bridge.send", REQUEST)).rejects.toMatchObject({
       code: "AUTHORIZATION_TIMEOUT",
     });
     expect(sendPrepared).not.toHaveBeenCalled();
   });
 
-  it("rejects stale or hash-mismatched context before provider I/O", async () => {
-    const sendPrepared = vi.fn(async () => ({}));
-    const staleRpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames),
-      authorize: async (candidate, batch) => {
-        verifySendContext(candidate.context, batch, { now: 2_001, secret });
-      },
-      sendPrepared,
-    });
-    await expect(staleRpc.invoke("zalouser.bridge.send", request())).rejects.toMatchObject({
-      code: "STALE_SEND_CONTEXT",
-    });
-
-    const otherFrames = Object.freeze([{ kind: "text" as const, text: "other" }]);
-    const mismatchRpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames),
-      authorize: async (candidate, batch) => {
-        verifySendContext(candidate.context, batch, { now: 1_500, secret });
-      },
-      sendPrepared,
-    });
-    await expect(mismatchRpc.invoke("zalouser.bridge.send", {
-      context: context(otherFrames),
-      sink: SINK,
-      frames: FRAMES,
-    })).rejects.toMatchObject({ code: "INVALID_SEND_CONTEXT" });
-    expect(sendPrepared).not.toHaveBeenCalled();
-  });
-
   it("returns UNKNOWN only after the provider boundary is entered and never retries", async () => {
     let providerCalls = 0;
+    const request = makeRequest([TEXT_PART]);
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames.slice(0, 1)),
-      authorize: async () => undefined,
-      sendPrepared: async (call) => {
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
         assertAuthorizedProviderCall(call);
         assertAuthorizedProviderIo(call.sink);
         providerCalls += 1;
         throw new Error("connection closed after write");
-      },
+      }),
+      authorize: async () => undefined,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request(FRAMES.slice(0, 1))))
-      .resolves.toEqual({ receipts: [], status: "UNKNOWN" });
+    await expect(rpc.invoke("zalouser.bridge.send", request))
+      .resolves.toEqual({
+        knownProviderMessageIds: [],
+        possibleHandoffPrefixLength: 1,
+        reasonCode: "PROVIDER_DISCONNECT_AFTER_POSSIBLE_HANDOFF",
+        receipts: [],
+        status: "UNKNOWN",
+        totalPartCount: 1,
+      });
     expect(providerCalls).toBe(1);
+  });
+
+  it("treats a provider success without a nonempty message id as unknown handoff evidence", async () => {
+    const request = makeRequest([TEXT_PART]);
+    const rpc = createPrivateOutboundRpc({
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
+        assertAuthorizedProviderCall(call);
+        assertAuthorizedProviderIo(call.sink);
+        return {};
+      }),
+      authorize: async () => undefined,
+    });
+
+    await expect(rpc.invoke("zalouser.bridge.send", request)).resolves.toEqual({
+      knownProviderMessageIds: [],
+      possibleHandoffPrefixLength: 1,
+      reasonCode: "ACK_LOST_AFTER_HANDOFF",
+      receipts: [],
+      status: "UNKNOWN",
+      totalPartCount: 1,
+    });
+  });
+
+  it("distinguishes a later pre-I/O failure from a post-I/O possible handoff", async () => {
+    const makeRpc = (enterSecondIo: boolean) => createPrivateOutboundRpc({
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
+        assertAuthorizedProviderCall(call);
+        if (call.frameIndex === 0) {
+          assertAuthorizedProviderIo(call.sink);
+          return { providerMessageId: "provider-0" };
+        }
+        if (enterSecondIo) assertAuthorizedProviderIo(call.sink);
+        throw new Error(enterSecondIo ? "connection closed after write" : "wrapper failed before I/O");
+      }),
+      authorize: async () => undefined,
+    });
+
+    await expect(makeRpc(false).invoke("zalouser.bridge.send", REQUEST)).resolves.toEqual({
+      knownProviderMessageIds: ["provider-0"],
+      possibleHandoffPrefixLength: 1,
+      reasonCode: "ACK_LOST_AFTER_HANDOFF",
+      receipts: [{ providerMessageId: "provider-0" }],
+      status: "UNKNOWN",
+      totalPartCount: 2,
+    });
+    await expect(makeRpc(true).invoke("zalouser.bridge.send", REQUEST)).resolves.toEqual({
+      knownProviderMessageIds: ["provider-0"],
+      possibleHandoffPrefixLength: 2,
+      reasonCode: "PROVIDER_DISCONNECT_AFTER_POSSIBLE_HANDOFF",
+      receipts: [{ providerMessageId: "provider-0" }],
+      status: "UNKNOWN",
+      totalPartCount: 2,
+    });
   });
 
   it("rejects errors before provider I/O instead of misclassifying them as UNKNOWN", async () => {
     const failure = new Error("local preparation failed after wrapper entry");
+    const request = makeRequest([TEXT_PART]);
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames.slice(0, 1)),
-      authorize: async () => undefined,
-      sendPrepared: async (call) => {
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
         assertAuthorizedProviderCall(call);
         throw failure;
-      },
+      }),
+      authorize: async () => undefined,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request(FRAMES.slice(0, 1))))
-      .rejects.toBe(failure);
+    await expect(rpc.invoke("zalouser.bridge.send", request)).rejects.toBe(failure);
   });
 
   it("keeps UNKNOWN when a later call fails before I/O after an earlier handoff", async () => {
     const failure = new Error("second frame wrapper mismatch");
     let calls = 0;
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames.slice(0, 2)),
-      authorize: async () => undefined,
-      sendPrepared: async (call) => {
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
         assertAuthorizedProviderCall(call);
         if (call.frameIndex === 1) throw failure;
         assertAuthorizedProviderIo(call.sink);
         calls += 1;
         return { providerMessageId: "provider-0" };
-      },
+      }),
+      authorize: async () => undefined,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request(FRAMES.slice(0, 2))))
-      .resolves.toEqual({
-        receipts: [{ providerMessageId: "provider-0" }],
-        status: "UNKNOWN",
-      });
+    await expect(rpc.invoke("zalouser.bridge.send", REQUEST)).resolves.toEqual({
+      knownProviderMessageIds: ["provider-0"],
+      possibleHandoffPrefixLength: 1,
+      reasonCode: "ACK_LOST_AFTER_HANDOFF",
+      receipts: [{ providerMessageId: "provider-0" }],
+      status: "UNKNOWN",
+      totalPartCount: 2,
+    });
     expect(calls).toBe(1);
   });
 
   it("allows one provider boundary entry per authorized call", async () => {
     let providerCalls = 0;
+    const request = makeRequest([TEXT_PART]);
     const rpc = createPrivateOutboundRpc({
-      prepare: async (candidate) => createPreparedOutboundBatch(candidate.sink, candidate.frames.slice(0, 1)),
-      authorize: async () => undefined,
-      sendPrepared: async (call) => {
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
         assertAuthorizedProviderCall(call);
         assertAuthorizedProviderIo(call.sink);
         providerCalls += 1;
         assertAuthorizedProviderIo(call.sink);
         providerCalls += 1;
         return {};
-      },
+      }),
+      authorize: async () => undefined,
     });
 
-    await expect(rpc.invoke("zalouser.bridge.send", request(FRAMES.slice(0, 1))))
+    await expect(rpc.invoke("zalouser.bridge.send", request))
       .resolves.toMatchObject({ status: "UNKNOWN" });
     expect(providerCalls).toBe(1);
   });

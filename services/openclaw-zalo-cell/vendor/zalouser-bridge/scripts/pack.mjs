@@ -310,10 +310,12 @@ function hashPatchSeries(vendorRoot) {
 
 function hashBridgeOverlay(vendorRoot) {
   const bridgeRoot = resolve(vendorRoot, "src/bridge");
-  const paths = readdirSync(bridgeRoot, { withFileTypes: true })
+  const paths = [
+    "behavior-contract-api.ts",
+    ...readdirSync(bridgeRoot, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-    .map((entry) => `src/bridge/${entry.name}`)
-    .sort(utf8Compare);
+    .map((entry) => `src/bridge/${entry.name}`),
+  ].sort(utf8Compare);
   const hash = createHash("sha256");
   hash.update("ihome-zalouser-bridge-overlay-v1\0", "utf8");
   const members = [];
@@ -353,6 +355,7 @@ export function forkMetadata({
   packed,
   installedTree,
   runtimeDynamicSiteInventory,
+  emittedRuntimeSiteInventory,
   derivedRuntimeSet,
 }) {
   const patches = hashPatchSeries(vendorRoot);
@@ -378,6 +381,7 @@ export function forkMetadata({
   }
   const publicEntrypoints = [
     "api",
+    "behavior-contract-api",
     "channel-plugin-api",
     "contract-api",
     "doctor-contract-api",
@@ -404,8 +408,9 @@ export function forkMetadata({
     licenseManifestSha256: sha256(licenseManifestBytes),
     publicEntrypoints,
     runtimeDynamicSiteInventory,
-    runtimeDynamicImportPatterns: ["package/dist/chunks/*.js"],
-    runtimeAssetPatterns: [],
+    runtimeDynamicSiteInventorySha256: canonicalSha256(runtimeDynamicSiteInventory),
+    emittedRuntimeSiteInventory,
+    emittedRuntimeSiteInventorySha256: canonicalSha256(emittedRuntimeSiteInventory),
     derivedRuntimeSet: runtimeReachabilityAllowlist,
     runtimeReachabilityAllowlist,
     legalMemberExceptions,
@@ -470,7 +475,9 @@ export async function buildReproducibleArtifact({ vendorRoot, preparedRoot, sour
   if (
     canonicalJson(firstBuild.derivedRuntimeSet) !== canonicalJson(secondBuild.derivedRuntimeSet) ||
     canonicalJson(firstBuild.runtimeDynamicSiteInventory) !==
-      canonicalJson(secondBuild.runtimeDynamicSiteInventory)
+      canonicalJson(secondBuild.runtimeDynamicSiteInventory) ||
+    canonicalJson(firstBuild.emittedRuntimeSiteInventory) !==
+      canonicalJson(secondBuild.emittedRuntimeSiteInventory)
   ) {
     throw new Error("two clean artifact builds have different runtime reachability evidence");
   }
@@ -488,6 +495,7 @@ export async function buildReproducibleArtifact({ vendorRoot, preparedRoot, sour
     packed: first,
     installedTree: verified.installedTree,
     runtimeDynamicSiteInventory: firstBuild.runtimeDynamicSiteInventory,
+    emittedRuntimeSiteInventory: firstBuild.emittedRuntimeSiteInventory,
     derivedRuntimeSet: firstBuild.derivedRuntimeSet,
   });
   atomicWrite(resolve(vendorRoot, "FORK.json"), Buffer.from(`${JSON.stringify(fork, null, 2)}\n`, "utf8"), sourceDateEpoch);

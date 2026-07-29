@@ -472,6 +472,22 @@ describe("OpenClaw Zalo isolation guardrail", () => {
         `const table = "zalo_owned_vendor_test";`,
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/0001-owned.patch":
         `+const table = "zalo_owned_patch";`,
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/0002-removed-only.patch": [
+        `diff --git a/src/example.ts b/src/example.ts`,
+        `--- a/src/example.ts`,
+        `+++ b/src/example.ts`,
+        `@@ -1 +1 @@`,
+        `-const table = "zalo_removed_patch_context";`,
+        `+const table = "safe_replacement";`,
+      ].join("\n"),
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/0003-plus-prefixed.patch": [
+        `diff --git a/src/example.ts b/src/example.ts`,
+        `--- a/src/example.ts`,
+        `+++ b/src/example.ts`,
+        `@@ -1 +1 @@`,
+        `-const safe_counter = 0;`,
+        `+++zalo_legacy_counter;`,
+      ].join("\n"),
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/owned.ts":
         `const table = "zalo_owned_overlay";`,
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/manifest.json":
@@ -485,6 +501,7 @@ describe("OpenClaw Zalo isolation guardrail", () => {
     ).toEqual([
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/manifest.json",
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/0001-owned.patch",
+      "services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/0003-plus-prefixed.patch",
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/src/bridge/owned.ts",
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/test/owned.test.ts",
     ]);

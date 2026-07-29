@@ -1,36 +1,38 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
+  businessFramesFromPayload,
+  providerSinkFromPayload,
+  snapshotZaloUserBridgeSendParams,
+  type ZaloUserBridgeSendParamsV1,
+} from "./canonical-send.js";
+import {
   createPreparedOutboundBatch,
   hashProviderBatch,
-  snapshotBusinessFrames,
   snapshotPreparedOutboundBatch,
   snapshotPreparedProviderCall,
   snapshotProviderSink,
-  snapshotSendContext,
-  type BusinessFrame,
   type PreparedOutboundBatchV1,
   type PreparedProviderCallV1,
   type ProviderSinkV1,
-  type SendContext,
 } from "./send-context.js";
 
 const PRIVATE_SEND_METHOD = "zalouser.bridge.send";
 const PRIVATE_RPC_REQUIRED = "PRIVATE_RPC_REQUIRED";
 
-export type PrivateBridgeSendRequestV1 = Readonly<{
-  context: SendContext;
-  sink: ProviderSinkV1;
-  frames: readonly BusinessFrame[];
+export type PrivateBridgeSendRequestV1 = ZaloUserBridgeSendParamsV1;
+
+export type PreparedPrivateOutboundExecutionV1 = Readonly<{
+  batch: PreparedOutboundBatchV1;
+  sendPrepared(call: PreparedProviderCallV1): Promise<{ providerMessageId?: string }>;
 }>;
 
 export type PrivateOutboundRuntime = Readonly<{
   assertClient(client: unknown): Promise<void>;
-  prepare(request: PrivateBridgeSendRequestV1): Promise<PreparedOutboundBatchV1>;
+  prepare(request: PrivateBridgeSendRequestV1): Promise<PreparedPrivateOutboundExecutionV1>;
   authorize(
     request: PrivateBridgeSendRequestV1,
     batch: PreparedOutboundBatchV1,
   ): Promise<void>;
-  sendPrepared(call: PreparedProviderCallV1): Promise<{ providerMessageId?: string }>;
 }>;
 
 type GatewayRequest = Readonly<{
@@ -53,6 +55,12 @@ type AuthorizedProviderScope = {
   providerIoEntered: boolean;
 };
 
+type ProviderReceiptV1 = Readonly<{ providerMessageId: string }>;
+type UnknownReasonCodeV1 =
+  | "PROVIDER_TIMEOUT_AFTER_POSSIBLE_HANDOFF"
+  | "PROVIDER_DISCONNECT_AFTER_POSSIBLE_HANDOFF"
+  | "ACK_LOST_AFTER_HANDOFF";
+
 let privateOutboundRuntime: PrivateOutboundRuntime | undefined;
 const authorizedProviderScope = new AsyncLocalStorage<AuthorizedProviderScope>();
 
@@ -64,50 +72,37 @@ function privateRpcRequired(): Error & { code: string } {
   return failure(PRIVATE_RPC_REQUIRED, "business sends require the private bridge RPC");
 }
 
-function snapshotExactRecord(
-  value: unknown,
-  expectedKeys: readonly string[],
-): Readonly<Record<string, unknown>> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return undefined;
-  const keys = Reflect.ownKeys(value);
-  if (
-    keys.length !== expectedKeys.length ||
-    keys.some((key) => typeof key !== "string" || !expectedKeys.includes(key))
-  ) {
-    return undefined;
-  }
-  const snapshot: Record<string, unknown> = {};
-  for (const key of keys) {
-    if (typeof key !== "string") return undefined;
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor?.enumerable || !("value" in descriptor)) return undefined;
-    Object.defineProperty(snapshot, key, {
-      configurable: false,
-      enumerable: true,
-      value: descriptor.value,
-      writable: false,
-    });
-  }
-  return Object.freeze(snapshot);
+function snapshotRequest(value: unknown): PrivateBridgeSendRequestV1 {
+  return snapshotZaloUserBridgeSendParams(value);
 }
 
-function snapshotRequest(value: unknown): PrivateBridgeSendRequestV1 {
-  const record = snapshotExactRecord(value, ["context", "sink", "frames"]);
-  if (!record) throw failure("INVALID_PRIVATE_SEND_REQUEST", "invalid private send request");
-  const context = snapshotSendContext(record.context);
-  const sink = snapshotProviderSink(record.sink);
-  const frames = snapshotBusinessFrames(record.frames);
-  if (
-    context.accountId !== sink.accountId ||
-    context.accountProfile !== sink.accountProfile ||
-    context.conversationId !== sink.conversationId ||
-    context.isGroup !== sink.isGroup
-  ) {
-    throw failure("INVALID_SEND_CONTEXT", "send context sink does not match request sink");
+function snapshotPreparedExecution(value: unknown): PreparedPrivateOutboundExecutionV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw failure("INVALID_PROVIDER_BATCH", "prepared execution must be a plain object");
   }
-  return Object.freeze({ context, sink, frames });
+  const prototype = Object.getPrototypeOf(value);
+  const keys = Reflect.ownKeys(value);
+  if (
+    (prototype !== Object.prototype && prototype !== null) ||
+    keys.length !== 2 ||
+    !keys.includes("batch") ||
+    !keys.includes("sendPrepared")
+  ) {
+    throw failure("INVALID_PROVIDER_BATCH", "prepared execution has an invalid shape");
+  }
+  const batchDescriptor = Object.getOwnPropertyDescriptor(value, "batch");
+  const sendDescriptor = Object.getOwnPropertyDescriptor(value, "sendPrepared");
+  if (
+    !batchDescriptor?.enumerable || !("value" in batchDescriptor) ||
+    !sendDescriptor?.enumerable || !("value" in sendDescriptor) ||
+    typeof sendDescriptor.value !== "function"
+  ) {
+    throw failure("INVALID_PROVIDER_BATCH", "prepared execution must use data properties");
+  }
+  return Object.freeze({
+    batch: snapshotPreparedOutboundBatch(batchDescriptor.value),
+    sendPrepared: sendDescriptor.value as PreparedPrivateOutboundExecutionV1["sendPrepared"],
+  });
 }
 
 function callsEqual(left: PreparedProviderCallV1, right: PreparedProviderCallV1): boolean {
@@ -121,6 +116,46 @@ function sinksEqual(left: ProviderSinkV1, right: ProviderSinkV1): boolean {
     left.conversationId === right.conversationId &&
     left.isGroup === right.isGroup
   );
+}
+
+function providerMessageId(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(value, "providerMessageId");
+  if (!descriptor || !("value" in descriptor)) return undefined;
+  return typeof descriptor.value === "string" && descriptor.value.trim() !== ""
+    ? descriptor.value
+    : undefined;
+}
+
+function unknownReason(error: unknown): UnknownReasonCodeV1 {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : undefined;
+  const evidence = `${typeof record?.code === "string" ? record.code : ""} ${
+    error instanceof Error ? error.message : String(error ?? "")
+  }`.toLowerCase();
+  if (/timeout|timedout|abort/u.test(evidence)) {
+    return "PROVIDER_TIMEOUT_AFTER_POSSIBLE_HANDOFF";
+  }
+  if (/disconnect|closed|econn|epipe|socket|network/u.test(evidence)) {
+    return "PROVIDER_DISCONNECT_AFTER_POSSIBLE_HANDOFF";
+  }
+  return "ACK_LOST_AFTER_HANDOFF";
+}
+
+function unknownResult(
+  receipts: readonly ProviderReceiptV1[],
+  totalPartCount: number,
+  possibleHandoffPrefixLength: number,
+  reasonCode: UnknownReasonCodeV1,
+) {
+  const retainedReceipts = Object.freeze([...receipts]);
+  return Object.freeze({
+    knownProviderMessageIds: Object.freeze(retainedReceipts.map(({ providerMessageId }) => providerMessageId)),
+    possibleHandoffPrefixLength,
+    reasonCode,
+    receipts: retainedReceipts,
+    status: "UNKNOWN" as const,
+    totalPartCount,
+  });
 }
 
 export function assertAuthorizedProviderCall(actualValue: PreparedProviderCallV1): void {
@@ -161,7 +196,7 @@ export function assertAuthorizedProviderIo(actualSinkValue: ProviderSinkV1): voi
 
 async function invokePreparedCall(
   call: PreparedProviderCallV1,
-  sendPrepared: PrivateOutboundRuntime["sendPrepared"],
+  sendPrepared: PreparedPrivateOutboundExecutionV1["sendPrepared"],
 ): Promise<
   | Readonly<{ ok: true; receipt: { providerMessageId?: string } }>
   | Readonly<{ ok: false; error: unknown; possibleHandoff: boolean }>
@@ -188,41 +223,62 @@ async function invokePreparedCall(
 
 export function createPrivateOutboundRpc(options: Pick<
   PrivateOutboundRuntime,
-  "prepare" | "authorize" | "sendPrepared"
+  "prepare" | "authorize"
 >) {
   if (
     !options ||
     typeof options.prepare !== "function" ||
-    typeof options.authorize !== "function" ||
-    typeof options.sendPrepared !== "function"
+    typeof options.authorize !== "function"
   ) {
-    throw new TypeError("prepare, authorize, and sendPrepared must be functions");
+    throw new TypeError("prepare and authorize must be functions");
   }
   return Object.freeze({
     async invoke(method: string, requestValue: PrivateBridgeSendRequestV1) {
       if (method !== PRIVATE_SEND_METHOD) throw privateRpcRequired();
       const request = snapshotRequest(requestValue);
-      const expected = createPreparedOutboundBatch(request.sink, request.frames);
-      const prepared = snapshotPreparedOutboundBatch(await options.prepare(request));
-      if (prepared.batchSha256 !== expected.batchSha256) {
+      const sink = providerSinkFromPayload(request.payload);
+      const frames = businessFramesFromPayload(request.payload);
+      const expected = createPreparedOutboundBatch(sink, frames);
+      const execution = snapshotPreparedExecution(await options.prepare(request));
+      if (execution.batch.batchSha256 !== expected.batchSha256) {
         throw failure("INVALID_PROVIDER_BATCH", "prepared batch differs from the private request");
       }
-      if (request.context.batchSha256 !== prepared.batchSha256) {
-        throw failure("INVALID_SEND_CONTEXT", "send context batch differs from prepared calls");
-      }
-      await options.authorize(request, prepared);
-      const receipts: Array<{ providerMessageId?: string }> = [];
-      for (const call of prepared.calls) {
-        const result = await invokePreparedCall(call, options.sendPrepared);
+      await options.authorize(request, execution.batch);
+      const receipts: ProviderReceiptV1[] = [];
+      const totalPartCount = execution.batch.calls.length;
+      for (const call of execution.batch.calls) {
+        const result = await invokePreparedCall(call, execution.sendPrepared);
         if (!result.ok) {
           if (result.possibleHandoff || receipts.length > 0) {
-            return Object.freeze({ receipts: Object.freeze(receipts), status: "UNKNOWN" as const });
+            return unknownResult(
+              receipts,
+              totalPartCount,
+              receipts.length + (result.possibleHandoff ? 1 : 0),
+              unknownReason(result.error),
+            );
           }
           throw result.error;
         }
-        receipts.push(result.receipt);
+        const messageId = providerMessageId(result.receipt);
+        if (!messageId || receipts.some(({ providerMessageId }) => providerMessageId === messageId)) {
+          return unknownResult(
+            receipts,
+            totalPartCount,
+            receipts.length + 1,
+            "ACK_LOST_AFTER_HANDOFF",
+          );
+        }
+        receipts.push(Object.freeze({ providerMessageId: messageId }));
       }
-      return Object.freeze({ receipts: Object.freeze(receipts), status: "SENT" as const });
+      const retainedReceipts = Object.freeze([...receipts]);
+      return Object.freeze({
+        knownProviderMessageIds: Object.freeze(retainedReceipts.map(({ providerMessageId }) => providerMessageId)),
+        possibleHandoffPrefixLength: totalPartCount,
+        reasonCode: "ALL_PARTS_ACKNOWLEDGED" as const,
+        receipts: retainedReceipts,
+        status: "SENT" as const,
+        totalPartCount,
+      });
     },
   });
 }
