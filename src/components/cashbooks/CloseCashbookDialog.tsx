@@ -41,7 +41,9 @@ export default function CloseCashbookDialog({
   const [note, setNote] = useState("");
   const [typed, setTyped] = useState("");
 
-  const { data: blockers = [], isLoading: loadingBlockers } = useClosingBlockers(open ? cashbookId : null);
+  const {
+    data: blockers = [], isLoading: loadingBlockers, isError: blockersFailed, error: blockersError,
+  } = useClosingBlockers(open ? cashbookId : null);
   const { data: systemBalance } = useCashbookBalanceAsOf(open ? cashbookId : null);
   const proposeMut = useProposeCashbookClosing();
 
@@ -57,7 +59,10 @@ export default function CloseCashbookDialog({
   const diff = countedNum !== null && systemBalance !== null && systemBalance !== undefined
     ? countedNum - systemBalance : null;
 
-  const canGoStep2 = hardBlockers.length === 0 && !loadingBlockers;
+  // Hook lỗi thì `data` rơi về [] ⇒ nếu chỉ đếm hardBlockers sẽ hiện "sẵn sàng
+  // chốt" ngay giữa lúc không đọc nổi sổ. Trạng thái không-biết KHÔNG phải
+  // trạng thái tốt.
+  const canGoStep2 = hardBlockers.length === 0 && !loadingBlockers && !blockersFailed;
   const canGoStep3 = countedNum !== null && !!confirmer;
   const canSubmit = canGoStep3 && typed.trim().toUpperCase() === CONFIRM_WORD;
 
@@ -92,6 +97,11 @@ export default function CloseCashbookDialog({
               <p className="text-sm text-muted-foreground flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" /> Đang kiểm tra sổ…
               </p>
+            ) : blockersFailed ? (
+              <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                Không kiểm tra được sổ quỹ nên chưa thể chốt.
+                {blockersError instanceof Error ? ` (${blockersError.message})` : ""}
+              </div>
             ) : hardBlockers.length === 0 ? (
               <p className="text-sm text-emerald-700 flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4" /> Sổ đã sẵn sàng để chốt.

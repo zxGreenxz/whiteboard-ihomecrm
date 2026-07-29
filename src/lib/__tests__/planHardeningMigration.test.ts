@@ -157,3 +157,48 @@ describe("Đọc số tiền người dùng gõ", () => {
     expect(formatMoney(Number.NaN)).toBe("—");
   });
 });
+
+const w3 = readFileSync(
+  resolve(process.cwd(), "supabase/migrations", "20260730210000_plan_hardening_wave3.sql"),
+  "utf8",
+);
+
+describe("Siết plan đợt 3 — hai lỗi làm Đợt 6 bất khả dụng", () => {
+  it("hàm đọc gọi authz phải VOLATILE, không được STABLE", () => {
+    // PostgREST chạy hàm STABLE/IMMUTABLE trong transaction READ ONLY, mà
+    // authorize_tenant_action_v3 có SELECT … FOR SHARE ⇒ 25006. Đã tái hiện.
+    expect(w3).toContain("ALTER FUNCTION %s VOLATILE");
+    for (const fn of [
+      "cashbook_closing_blockers_v1", "cashbook_close_confirmers_v1",
+      "can_reverse_collection_v1", "can_flex_cancel_v1",
+    ]) {
+      expect(w3).toContain(fn);
+    }
+    expect(w3).toContain("25006");
+  });
+
+  it("cashbook_balance_as_of_v1 tra membership và dùng đúng helper phạm vi nhìn", () => {
+    // assert_cashbook_access_v2(...,'KNOWER',NULL) ném 42501 cho MỌI người vì nó
+    // không tự tra membership; và nó so possession_kind CHÍNH XÁC nên CUSTODIAN
+    // cũng trượt. Helper đúng là ie_visible_cashbook_ids_v1 (doctrine Đợt 0).
+    expect(w3).toContain("ie_visible_cashbook_ids_v1");
+    expect(w3).toContain("Không có quyền xem sổ quỹ này");
+    expect(w3).toMatch(/KHÔNG dùng được ở đây vì nó so/);
+  });
+
+  it("chốt sổ lệch thì lập phiếu điều chỉnh NGOÀI KQKD rồi mới ghi biên bản", () => {
+    expect(w3).toContain("cashbook.closing.diff");
+    expect(w3).toContain("business_result_accounting");
+    expect(w3).toMatch(/Thừa quỹ khi chốt sổ/);
+    expect(w3).toMatch(/Thiếu quỹ khi chốt sổ/);
+    // Hậu điều kiện: số dư PHẢI bằng số hai bên đã đếm, sai thì RAISE.
+    expect(w3).toMatch(/vẫn khác số đã đếm \(%\) — DỪNG, không đóng băng con số sai/);
+  });
+
+  it("chặn NaN đúng cách — numeric của Postgres KHÁC float", () => {
+    // 'NaN'::numeric = 'NaN'::numeric là TRUE, nên phép thử x = x KHÔNG bắt được.
+    expect(w3).toContain("p_counted_balance = ''NaN''::numeric");
+    expect(w3).toContain("p_counted_balance = 'NaN'::numeric");
+    expect(w3).toMatch(/numeric của Postgres KHÁC float/);
+  });
+});

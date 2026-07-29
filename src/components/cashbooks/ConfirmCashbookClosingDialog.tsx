@@ -38,7 +38,7 @@ export default function ConfirmCashbookClosingDialog({
   const confirmMut = useConfirmCashbookClosing();
   const cancelMut = useCancelCashbookClosing();
 
-  const { data: freshSystem, isLoading: loadingFresh } = useCashbookBalanceAsOf(
+  const { data: freshSystem, isLoading: loadingFresh, isError: freshFailed } = useCashbookBalanceAsOf(
     open ? request?.cashbook_id ?? null : null,
     request?.closed_through ?? null,
   );
@@ -56,7 +56,10 @@ export default function ConfirmCashbookClosingDialog({
   const drifted = freshSystem !== null && freshSystem !== undefined
     && !sameMoney(freshSystem, request.system_balance);
   const matches = countedNum !== null && sameMoney(countedNum, declared);
-  const canConfirm = matches && agreed && !drifted && !loadingFresh;
+  // Không đọc được số dư tươi = không kiểm được "sổ đã trôi chưa". Ký trong
+  // trạng thái đó là ký mù, nên chặn.
+  const canConfirm = matches && agreed && !drifted && !loadingFresh && !freshFailed
+    && freshSystem !== null && freshSystem !== undefined;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!confirmMut.isPending) onOpenChange(o); }}>
@@ -73,7 +76,7 @@ export default function ConfirmCashbookClosingDialog({
             <div className="flex justify-between">
               <span className="text-muted-foreground">Số dư theo sổ (tính lại lúc này)</span>
               <span className="tabular-nums">
-                {loadingFresh ? "đang tính…" : fmtVND(freshSystem)}
+                {loadingFresh ? "đang tính…" : freshFailed ? "không đọc được" : fmtVND(freshSystem)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -88,6 +91,13 @@ export default function ConfirmCashbookClosingDialog({
               <p className="pt-1 text-muted-foreground">Ghi chú: {request.note}</p>
             )}
           </div>
+
+          {freshFailed && (
+            <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+              Không đọc được số dư sổ quỹ lúc này nên không đối chiếu được — chưa ký
+              nhận được. Thử lại, hoặc nhờ quản trị kiểm quyền xem sổ.
+            </div>
+          )}
 
           {drifted && (
             <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
