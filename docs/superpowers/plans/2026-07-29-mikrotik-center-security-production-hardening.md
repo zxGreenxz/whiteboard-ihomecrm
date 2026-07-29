@@ -624,7 +624,7 @@ git commit -m "fix(network-center): xoay vòng backup và giữ disk reserve" -m
 - Modify: `scripts/verify-network-center-queue.mjs`
 - Modify: `scripts/verify-network-center-retention.mjs`
 
-- [ ] **Step 1: Write RED migration tests for all fixed thresholds**
+- [x] **Step 1: Write RED migration tests for all fixed thresholds**
 
 ```ts
 expect(sql).toMatch(/max.*1.*disruptive.*device/is);
@@ -642,13 +642,13 @@ expect(sql).toMatch(/network_commands[\s\S]*interval '180 days'/i);
 expect(sql).not.toMatch(/delete from public\.network_audit_events/i);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts
 ```
 
-- [ ] **Step 3: Implement atomic admission inside enqueue transaction**
+- [x] **Step 3: Implement atomic admission inside enqueue transaction**
 
 Acquire an advisory transaction lock derived from organization/device before
 counting and inserting. Compute `semantic_fingerprint` from canonical target,
@@ -658,7 +658,7 @@ non-terminal rows, plus 12/device/hour, 30/actor/hour and 120/org/hour. Cooldown
 are reboot 10m, cycle 2m, DNS/DHCP 30s and snapshot 60s. Return typed
 SQLSTATE/details and create no orphan events on rejection.
 
-- [ ] **Step 4: Extend retention with bounded tenant batches**
+- [x] **Step 4: Extend retention with bounded tenant batches**
 
 Retention deletes expired client sessions after 90 days, trims address history
 to the 16 newest distinct entries during ingest, and expires terminal
@@ -666,7 +666,7 @@ commands/attempts/events after 180 days only after sanitized audit summary exist
 Active/UNCERTAIN and append-only audit are never purged. Each delete uses indexed
 timestamp predicates, bounded batches and a repeat-safe return report.
 
-- [ ] **Step 5: Run static tests and verifiers**
+- [x] **Step 5: Run static tests and verifiers**
 
 ```powershell
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterDatabaseMigration.test.ts src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts
@@ -675,7 +675,7 @@ node scripts/verify-network-center-retention.mjs
 node scripts/check-definer-acl.mjs
 ```
 
-- [ ] **Step 6: Commit Task 8**
+- [x] **Step 6: Commit Task 8**
 
 ```powershell
 git add -- supabase/migrations/20260729131000_network_center_resource_lifecycle.sql src/lib/__tests__/networkCenterDatabaseMigration.test.ts src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts scripts/verify-network-center-queue.mjs scripts/verify-network-center-retention.mjs
