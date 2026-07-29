@@ -2,7 +2,6 @@
 // Network Center AuthZ/RLS matrix. Every fixture write is limited to the
 // canonical DEMO organization and the whole request ends with ROLLBACK.
 // Production organization rows are read-only negative targets.
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -16,13 +15,6 @@ export const PROD_ORG_ID = "aaaa0000-0000-4000-8000-000000000001";
 export const DEMO_OWNER_EMAIL = "demo.chunha@username.ihomecrm.local";
 export const DEMO_VIEW_EMAIL = "demo.ketoan@username.ihomecrm.local";
 export const DEMO_EXECUTE_EMAIL = "demo.quanly@username.ihomecrm.local";
-
-const MIGRATION_PATHS = Object.freeze([
-  "../supabase/migrations/20260729010000_network_center_permissions_inventory.sql",
-  "../supabase/migrations/20260729020000_network_center_current_telemetry.sql",
-  "../supabase/migrations/20260729030000_network_center_operations.sql",
-  "../supabase/migrations/20260729040000_network_center_rls_rpcs_realtime.sql",
-]);
 
 export const REQUIRED_CASE_IDS = Object.freeze([
   "owner.view",
@@ -51,84 +43,17 @@ function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-function stripMigrationShell(sql) {
-  return sql
-    .replace(/^\uFEFF/, "")
-    .replace(/^\s*BEGIN\s*;\s*$/gim, "")
-    .replace(/^\s*COMMIT\s*;\s*$/gim, "")
-    .replace(/^\s*NOTIFY\s+pgrst\s*,\s*'reload schema'\s*;\s*$/gim, "")
-    .trim();
-}
-
-function replaceExactly(sql, pattern, replacement, expected, label) {
-  const matches = sql.match(pattern) ?? [];
-  if (matches.length !== expected) {
-    throw new Error(
-      `Shadow migration guard failed for ${label}: expected ${expected}, received ${matches.length}`,
-    );
-  }
-  return sql.replace(pattern, replacement);
-}
-
-export function buildShadowMigrationSql(readFile = readFileSync) {
-  const migrations = MIGRATION_PATHS.map((relativePath) =>
-    stripMigrationShell(
-      readFile(new URL(relativePath, import.meta.url), "utf8"),
-    ),
-  );
-
-  migrations[0] = replaceExactly(
-    migrations[0],
-    /WHERE b\.organization_id IS NOT NULL\s+AND b\.is_virtual = false/g,
-    `WHERE b.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid\n  AND b.is_virtual = false`,
-    2,
-    "DEMO-only inventory/settings backfill",
-  );
-  migrations[3] = replaceExactly(
-    migrations[3],
-    /FROM public\.organizations organization\s+WHERE NOT EXISTS \(/g,
-    `FROM public.organizations organization\nWHERE organization.id = ${sqlLiteral(DEMO_ORG_ID)}::uuid\n  AND NOT EXISTS (`,
-    1,
-    "DEMO-only organization scope seed",
-  );
-  migrations[3] = replaceExactly(
-    migrations[3],
-    /WHERE membership\.member_type = 'OWNER'/g,
-    `WHERE membership.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid\n  AND membership.member_type = 'OWNER'`,
-    1,
-    "DEMO-only owner permission seed",
-  );
-  migrations[3] = replaceExactly(
-    migrations[3],
-    /WHERE override\.permission_key IN \('network_center\.view', 'network_center\.execute'\)/g,
-    `WHERE override.organization_id = ${sqlLiteral(DEMO_ORG_ID)}::uuid\n  AND override.permission_key IN ('network_center.view', 'network_center.execute')`,
-    1,
-    "DEMO-only owner scope edges",
-  );
-
-  const shadowSql = migrations.join("\n\n");
-  if (/session_replication_role\s*=\s*replica/i.test(shadowSql)) {
-    throw new Error("Shadow migrations must use real triggers and constraints");
-  }
-  if (/^\s*(?:BEGIN|COMMIT)\s*;/im.test(shadowSql)) {
-    throw new Error("Nested transaction shell remained in shadow migrations");
-  }
-  return shadowSql;
-}
-
 function requiredCaseValues() {
   return REQUIRED_CASE_IDS.map(
     (caseId, index) => `(${index + 1}, ${sqlLiteral(caseId)})`,
   ).join(",\n  ");
 }
 
-export function buildNetworkCenterMatrixSql({ shadowSql = "" } = {}) {
+export function buildNetworkCenterMatrixSql() {
   return `BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '10min';
 SET CONSTRAINTS ALL DEFERRED;
-
-${shadowSql}
 
 CREATE TEMP TABLE _nc_fixture ON COMMIT DROP AS
 SELECT
@@ -759,22 +684,24 @@ export async function main(
     return;
   }
 
-  const shadowSql = buildShadowMigrationSql();
   if (argv.includes("--dry-run")) {
-    const sql = buildNetworkCenterMatrixSql({ shadowSql });
+    const sql = buildNetworkCenterMatrixSql();
     if (!/\bROLLBACK\s*;/i.test(sql)) {
       throw new Error("Rollback terminator is missing");
     }
-    log("Network Center dry run passed: DEMO-only rollback payload built.");
+    log("Network Center dry run passed: applied-schema rollback payload built.");
     log("No Management API request was executed.");
     return;
   }
 
   const config = loadConfig();
   const applied = await migrationApplied(config, fetchImpl);
-  const sql = buildNetworkCenterMatrixSql({
-    shadowSql: applied ? "" : shadowSql,
-  });
+  if (!applied) {
+    throw new Error(
+      "Network Center migration is not applied; refusing shadow DDL on the configured project",
+    );
+  }
+  const sql = buildNetworkCenterMatrixSql();
   const body = await executeManagementQuery(sql, config, fetchImpl);
   const verdict = parseNetworkCenterVerdict(body);
   if (!verdict.passed) {

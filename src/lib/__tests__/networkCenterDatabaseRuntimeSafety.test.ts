@@ -153,4 +153,13 @@ describe("Network Center database runtime safety", () => {
       /session_replication_role\s*=\s*replica/i,
     );
   });
+
+  it("never injects migrations into the configured project tenant test", () => {
+    expect(crossTenantScript).not.toMatch(/buildShadowMigrationSql/);
+    expect(crossTenantScript).not.toMatch(/supabase\/migrations\/20260729/);
+    expect(crossTenantScript).not.toMatch(/shadowSql/);
+    expect(crossTenantScript).toMatch(
+      /migrationApplied[\s\S]*if\s*\(\s*!applied\s*\)[\s\S]*throw new Error/i,
+    );
+  });
 });

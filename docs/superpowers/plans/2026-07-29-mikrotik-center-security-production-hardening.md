@@ -60,7 +60,7 @@ New implementation units:
 - Create: `scripts/__tests__/network-center-cross-tenant-target.test.mjs`
 - Modify: `src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts`
 
-- [ ] **Step 1: Export target classification and write the failing Node tests**
+- [x] **Step 1: Export target classification and write the failing Node tests**
 
 Add tests with these required cases:
 
@@ -91,7 +91,7 @@ test("accepts one per-run local Supabase identity", () => {
 });
 ```
 
-- [ ] **Step 2: Run RED and confirm the missing export failure**
+- [x] **Step 2: Run RED and confirm the missing export failure**
 
 ```powershell
 node --test scripts/__tests__/network-center-cross-tenant-target.test.mjs
@@ -99,7 +99,7 @@ node --test scripts/__tests__/network-center-cross-tenant-target.test.mjs
 
 Expected: FAIL because `assertDisposableTenantTestTarget` does not exist.
 
-- [ ] **Step 3: Implement target proof before any fetch or SQL construction**
+- [x] **Step 3: Implement target proof before any fetch or SQL construction**
 
 `network-center-disposable-db.mjs` must:
 
@@ -124,7 +124,7 @@ export function assertDisposableTenantTestTarget(
 Remove the production Management API shadow-migration fallback. Missing deployed
 RPC outside an approved local stack must throw setup failure without sending DDL.
 
-- [ ] **Step 4: Verify GREEN plus static runtime safety**
+- [x] **Step 4: Verify GREEN plus static runtime safety**
 
 ```powershell
 node --test scripts/__tests__/network-center-cross-tenant-target.test.mjs
@@ -134,7 +134,7 @@ node scripts/test-cross-tenant.mjs --dry-run
 
 Expected: all pass; dry-run states that no database request was made.
 
-- [ ] **Step 5: Commit only Task 1 files**
+- [x] **Step 5: Commit only Task 1 files**
 
 ```powershell
 git add -- scripts/test-cross-tenant.mjs scripts/network-center-disposable-db.mjs scripts/__tests__/network-center-cross-tenant-target.test.mjs src/lib/__tests__/networkCenterDatabaseRuntimeSafety.test.ts
