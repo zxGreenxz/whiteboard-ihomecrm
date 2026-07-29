@@ -109,8 +109,16 @@ export const useCashBookSummary = (
 
       // Số dư đầu kỳ — RPC aggregate (migration 20260610110000): trả 1 số
       // thay vì kéo TOÀN BỘ lịch sử phiếu trước start_date về client cộng
-      // tay (payload tăng vô hạn theo tuổi dữ liệu). SECURITY INVOKER nên
-      // phạm vi nhìn thấy y hệt query cũ (qua RLS).
+      // tay (payload tăng vô hạn theo tuổi dữ liệu).
+      //
+      // ĐÍNH CHÍNH (Đợt 0, 30/07/2026): ba RPC tổng hợp này là SECURITY
+      // DEFINER chứ KHÔNG phải INVOKER — nên chúng đi VÒNG QUA RLS. Trước
+      // 20260730101000 chúng chỉ lọc `my_org_ids()`, tức ai cũng đọc được
+      // tồn quỹ chính xác của MỌI sổ trong tổ chức chỉ bằng cách truyền
+      // p_account_id (đo thực tế: một tài khoản chỉ giữ 1 sổ đọc được
+      // 20.635.000đ của sổ người khác). Nay chúng tự kiểm phạm vi nhìn qua
+      // app_private.ie_visible_cashbook_ids_v1 và ném 42501 khi hỏi đích
+      // danh một sổ không được phép.
       let openingBalance = 0;
       if (start_date) {
         const { data: ob, error: obErr } = await (supabase.rpc as any)(
