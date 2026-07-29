@@ -22,7 +22,8 @@ import {
 } from "@/lib/network-center/repositoryLifecycle";
 import {
   NETWORK_CENTER_REALTIME_TABLES,
-  resolveNetworkCenterMode,
+  NETWORK_CENTER_RUNTIME_ENABLED,
+  NETWORK_CENTER_RUNTIME_MODE,
   resolveNetworkCenterRealtimeTarget,
   selectNetworkCenterRepository,
 } from "@/lib/network-center/runtime";
@@ -42,7 +43,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
   const permissionsQuery = useMyPermissions();
   const authQuery = useAuth();
   const profileQuery = useProfile();
-  const mode = resolveNetworkCenterMode(import.meta.env.VITE_NETWORK_CENTER_MODE);
+  const mode = NETWORK_CENTER_RUNTIME_MODE;
 
   const physicalBuildings = useMemo<PhysicalBuildingRecord[]>(
     () =>
@@ -83,10 +84,16 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     supabaseNetworkCenterRepository,
     demoRepository,
   );
+  const requireRepository = useCallback(() => {
+    if (!repository) throw new Error("Network Center is disabled.");
+    return repository;
+  }, [repository]);
 
   const actor = resolveNetworkActor(authQuery.data, profileQuery.data);
-  const canView = Boolean(actor.id) && canUse(permissionsQuery.data, "network_center", "view");
-  const canExecute = Boolean(actor.id) && canUse(
+  const canView = NETWORK_CENTER_RUNTIME_ENABLED
+    && Boolean(actor.id)
+    && canUse(permissionsQuery.data, "network_center", "view");
+  const canExecute = NETWORK_CENTER_RUNTIME_ENABLED && Boolean(actor.id) && canUse(
     permissionsQuery.data,
     "network_center",
     "execute",
@@ -103,7 +110,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
   );
   const fleetQuery = useQuery({
     queryKey: fleetKey,
-    queryFn: () => repository.listFleet(),
+    queryFn: () => requireRepository().listFleet(),
     enabled: canView && !buildingsQuery.isLoading && !permissionsQuery.isLoading,
   });
   const fleet = useMemo(() => fleetQuery.data ?? [], [fleetQuery.data]);
@@ -130,7 +137,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
         (building) => normalizeId(building.buildingId) === normalizedSelectedBuildingId,
       );
       if (!fallback) return null;
-      return repository.getBuilding(normalizedSelectedBuildingId, fallback);
+      return requireRepository().getBuilding(normalizedSelectedBuildingId, fallback);
     },
     enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
   });
@@ -164,7 +171,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
 
   const acknowledgeMutation = useMutation({
     mutationFn: (variables: { buildingId: string; incidentId: string; requestId: string }) =>
-      repository.acknowledgeIncident(
+      requireRepository().acknowledgeIncident(
         variables.buildingId,
         variables.incidentId,
         actor,
@@ -177,7 +184,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       buildingId: string;
       input: MaintenanceInput;
       requestId: string;
-    }) => repository.createMaintenance(
+    }) => requireRepository().createMaintenance(
       variables.buildingId,
       variables.input,
       actor,
@@ -190,7 +197,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       buildingId: string;
       maintenanceId: string;
       requestId: string;
-    }) => repository.cancelMaintenance(
+    }) => requireRepository().cancelMaintenance(
       variables.buildingId,
       variables.maintenanceId,
       actor,
@@ -200,7 +207,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
   });
   const captureConfigurationMutation = useMutation({
     mutationFn: (variables: { buildingId: string; label: string; requestId: string }) =>
-      repository.captureConfiguration(
+      requireRepository().captureConfiguration(
         variables.buildingId,
         variables.label,
         actor,
@@ -213,7 +220,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       buildingId: string;
       request: NetworkActionRequest;
       requestId: string;
-    }) => repository.executeAction(
+    }) => requireRepository().executeAction(
       variables.buildingId,
       variables.request,
       actor,
@@ -227,7 +234,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       settings: Partial<NetworkSettings>;
       requestId: string;
       expectedVersion: number;
-    }) => repository.updateSettings(
+    }) => requireRepository().updateSettings(
       variables.buildingId,
       variables.settings,
       actor,
@@ -349,7 +356,17 @@ export function useNetworkCenter(selectedBuildingId?: string) {
         requestId: crypto.randomUUID(),
       });
     },
-    compareRevisions: repository.compareRevisions.bind(repository),
+    compareRevisions(
+      buildingId: string,
+      fromRevisionId: string,
+      toRevisionId: string,
+    ) {
+      return requireRepository().compareRevisions(
+        buildingId,
+        fromRevisionId,
+        toRevisionId,
+      );
+    },
     async executeAction(buildingId: string, request: NetworkActionRequest) {
       requireExecute();
       return executeActionMutation.mutateAsync({

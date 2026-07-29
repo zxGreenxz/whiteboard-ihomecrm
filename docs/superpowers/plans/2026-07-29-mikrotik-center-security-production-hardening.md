@@ -151,8 +151,9 @@ git commit -m "fix(network-center): cô lập kiểm thử migration khỏi prod
 - Modify: `src/components/layout/Sidebar.tsx`
 - Modify: `src/pages/home/launcherTiles.ts`
 - Create: `src/lib/__tests__/networkCenterRuntimeMode.test.ts`
+- Modify: `src/lib/__tests__/networkCenterReactQueryRuntime.test.ts`
 
-- [ ] **Step 1: Write RED tests for explicit `off|demo|production`**
+- [x] **Step 1: Write RED tests for explicit `off|demo|production`**
 
 ```ts
 describe("Network Center runtime mode", () => {
@@ -160,23 +161,24 @@ describe("Network Center runtime mode", () => {
     expect(resolveNetworkCenterMode(undefined, true)).toBe("off");
   });
 
-  it.each(["off", "demo", "production"] as const)("accepts %s", (mode) => {
+  it.each(["off", "production"] as const)("accepts %s", (mode) => {
     expect(resolveNetworkCenterMode(mode, true)).toBe(mode);
   });
 
-  it("rejects demo mode in a production build", () => {
-    expect(() => resolveNetworkCenterMode("demo", true)).toThrow(/demo.*production/i);
+  it("fails demo mode closed in a production build", () => {
+    expect(resolveNetworkCenterMode("demo", true)).toBe("off");
+    expect(resolveNetworkCenterMode("demo", false)).toBe("demo");
   });
 });
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterRuntimeMode.test.ts
 ```
 
-- [ ] **Step 3: Implement a pure resolver and route/navigation guards**
+- [x] **Step 3: Implement a pure resolver and route/navigation guards**
 
 Use this public contract:
 
@@ -197,16 +199,16 @@ When `off`, do not mount `NetworkCenterApp`, create React Query hooks, or render
 sidebar/launcher links. Direct navigation renders the existing Not Found/disabled
 state, not demo data.
 
-- [ ] **Step 4: Run focused mode, permissions and route tests**
+- [x] **Step 4: Run focused mode, permissions and route tests**
 
 ```powershell
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterRuntimeMode.test.ts src/lib/__tests__/networkCenterPermissions.test.ts src/lib/__tests__/networkCenterReactQueryRuntime.test.ts
 ```
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```powershell
-git add -- src/lib/network-center/runtime.ts src/hooks/network-center/useNetworkCenter.ts src/App.tsx src/components/layout/Sidebar.tsx src/pages/home/launcherTiles.ts src/lib/__tests__/networkCenterRuntimeMode.test.ts
+git add -- src/lib/network-center/runtime.ts src/hooks/network-center/useNetworkCenter.ts src/App.tsx src/components/layout/Sidebar.tsx src/pages/home/launcherTiles.ts src/lib/__tests__/networkCenterRuntimeMode.test.ts src/lib/__tests__/networkCenterReactQueryRuntime.test.ts
 git commit -m "fix(network-center): thêm chế độ off fail-closed" -m "Co-Authored-By: Codex <noreply@openai.com>"
 ```
 

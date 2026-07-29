@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { hideAppSplash } from "@/lib/appSplash";
 import { syncAuthQueryCache } from "@/lib/authQueryCache";
+import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
 // đổ về danh sách).
 function TenantToCustomerRedirect() {
@@ -308,7 +309,9 @@ const App = () => (
           {/* /dashboard: Bảng tin — mobile mở màn web-app riêng, desktop về "/". */}
           <Route path="/dashboard" element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
           <Route path="/building-map" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingMapPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/network-center/*" element={<ProtectedRoute><RequirePermission module="network_center" action="view"><NetworkCenterApp /></RequirePermission></ProtectedRoute>} />
+          {NETWORK_CENTER_RUNTIME_ENABLED ? (
+            <Route path="/network-center/*" element={<ProtectedRoute><RequirePermission module="network_center" action="view"><NetworkCenterApp /></RequirePermission></ProtectedRoute>} />
+          ) : null}
           <Route path="/notifications" element={<ProtectedRoute><RequirePermission module="notifications"><NotificationsPage /></RequirePermission></ProtectedRoute>} />
 
           {/* === KÊNH CHAT === */}

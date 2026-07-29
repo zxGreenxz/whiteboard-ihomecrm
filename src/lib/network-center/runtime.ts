@@ -1,4 +1,4 @@
-export type NetworkCenterMode = "demo" | "production";
+export type NetworkCenterMode = "off" | "demo" | "production";
 
 export const NETWORK_CENTER_REALTIME_TABLES = [
   "network_device_current",
@@ -15,15 +15,35 @@ export interface NetworkCenterRealtimeTarget {
   buildingIds: string[];
 }
 
-export function resolveNetworkCenterMode(value: string | undefined): NetworkCenterMode {
-  return value?.trim().toLowerCase() === "demo" ? "demo" : "production";
+export function resolveNetworkCenterMode(
+  value: string | undefined,
+  isProductionBuild: boolean,
+): NetworkCenterMode {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "production") return "production";
+  if (normalized === "demo" && !isProductionBuild) return "demo";
+  return "off";
 }
+
+export function isNetworkCenterEnabled(mode: NetworkCenterMode): boolean {
+  return mode !== "off";
+}
+
+export const NETWORK_CENTER_RUNTIME_MODE = resolveNetworkCenterMode(
+  import.meta.env.VITE_NETWORK_CENTER_MODE,
+  import.meta.env.PROD,
+);
+
+export const NETWORK_CENTER_RUNTIME_ENABLED = isNetworkCenterEnabled(
+  NETWORK_CENTER_RUNTIME_MODE,
+);
 
 export function selectNetworkCenterRepository<T>(
   mode: NetworkCenterMode,
   productionRepository: T,
   demoRepository: T,
-): T {
+): T | null {
+  if (mode === "off") return null;
   return mode === "demo" ? demoRepository : productionRepository;
 }
 

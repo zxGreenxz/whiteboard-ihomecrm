@@ -19,6 +19,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusinessPerformance';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
+import { NETWORK_CENTER_RUNTIME_ENABLED } from '@/lib/network-center/runtime';
 import {
   Collapsible,
   CollapsibleContent,
@@ -171,7 +172,9 @@ const navigationGroups: NavGroup[] = [
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
-      { title: 'Trung tâm mạng', href: '/network-center', icon: Network, module: 'network_center', action: 'view' },
+      ...(NETWORK_CENTER_RUNTIME_ENABLED
+        ? [{ title: 'Trung tâm mạng', href: '/network-center', icon: Network, module: 'network_center', action: 'view' } satisfies NavItem]
+        : []),
       { title: 'Công việc', href: '/tasks', icon: ClipboardList, module: 'tasks' },
       { title: 'Thông báo', href: '/notifications', icon: Bell, module: 'notifications' },
     ],
