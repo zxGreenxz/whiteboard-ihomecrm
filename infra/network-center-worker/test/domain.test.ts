@@ -17,11 +17,63 @@ describe("worker domain safeguards", () => {
     expect(chunks.flat()).toEqual(source);
   });
 
-  it("maps database interface UUIDs back to RouterOS keys", () => {
+  it("maps database interface UUIDs to immutable managed-interface targets", () => {
     const registry = new InterfaceRegistry();
-    registry.update("router-1", [{ id: "interface-uuid", interfaceKey: "ether4" }]);
-    expect(registry.resolve("router-1", "interface-uuid")).toBe("ether4");
+    registry.update("router-1", [{
+      managedResourceId: "managed-resource-uuid",
+      id: "interface-uuid",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+    expect(registry.resolve("router-1", "interface-uuid")).toEqual({
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    });
     expect(registry.resolve("router-2", "interface-uuid")).toBeNull();
+  });
+
+  it("fails closed when a managed interface loses immutable enrollment evidence", () => {
+    const registry = new InterfaceRegistry();
+    registry.update("router-1", [{
+      managedResourceId: null,
+      id: "interface-uuid",
+      interfaceKey: "room-401",
+      currentName: "room-401",
+      immutableKey: null,
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "DISCOVERED",
+    }]);
+
+    expect(registry.resolve("router-1", "interface-uuid")).toBeNull();
+  });
+
+  it("drops stale managed-interface mappings when a router inventory refresh replaces them", () => {
+    const registry = new InterfaceRegistry();
+    registry.update("router-1", [{
+      managedResourceId: "managed-resource-uuid",
+      id: "interface-uuid",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    registry.update("router-1", []);
+
+    expect(registry.resolve("router-1", "interface-uuid")).toBeNull();
   });
 
   it("redacts nested secrets and common credential patterns", () => {

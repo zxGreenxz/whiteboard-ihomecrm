@@ -26,6 +26,60 @@ function connection() {
 }
 
 describe("polling coordinator", () => {
+  it("never upgrades a database-revoked interface from live observation fields", async () => {
+    const registry = new InterfaceRegistry();
+    const authoritativeMapping = {
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "60000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "REVOKED" as const,
+    };
+    const coordinator = new PollingCoordinator({
+      api: {
+        listConnections: async () => [connection()],
+        heartbeat: async () => undefined,
+        ingest: async () => undefined,
+        inventory: async () => ({
+          routerDeviceId: connection().deviceId,
+          interfaces: [authoritativeMapping],
+          aruba: [],
+        }),
+        upsertIncident: async () => undefined,
+      },
+      connectorFactory: async () => ({
+        poll: async () => ({
+          observedAt: "2026-07-28T00:00:00.000Z",
+          device: { reachable: true },
+          interfaces: [{
+            externalKey: "ether4",
+            displayName: "room-401",
+            immutableKey: "ether4",
+            role: "ACCESS",
+            protected: false,
+            enabled: true,
+          }],
+          clients: [],
+          aruba: [],
+        }),
+        close: async () => undefined,
+      }),
+      interfaceRegistry: registry,
+      maxConcurrency: 1,
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+      startedAt: new Date("2026-07-27T00:00:00.000Z"),
+      workerVersion: "test",
+      logger: { info() {}, warn() {}, error() {} },
+    });
+
+    await coordinator.runCycle();
+
+    expect(registry.resolve(connection().deviceId, authoritativeMapping.id)).toBeNull();
+  });
+
   it("sends every Aruba through repeated bounded inventory batches", async () => {
     const inventoryPayloads: Array<Record<string, unknown>> = [];
     const ingestPayloads: Array<Record<string, unknown>> = [];
@@ -64,8 +118,14 @@ describe("polling coordinator", () => {
         inventory: async (payload: Record<string, unknown>) => {
           inventoryPayloads.push(payload);
           const interfaces = (payload.interfaces as Array<{ interfaceKey: string }>).map((item, index) => ({
+            managedResourceId: `managed-${inventoryPayloads.length}-${index}`,
             interfaceKey: item.interfaceKey,
             id: `uuid-${inventoryPayloads.length}-${index}`,
+            currentName: item.interfaceKey,
+            immutableKey: item.interfaceKey,
+            enrolledRole: "ACCESS" as const,
+            protected: false,
+            enrollmentState: "ENROLLED" as const,
           }));
           const aruba = (payload.aruba as Array<{ externalKey: string }>).map((item, index) => ({
             externalKey: item.externalKey,
@@ -95,6 +155,11 @@ describe("polling coordinator", () => {
     expect(ingestPayloads.flatMap((payload) => payload.devices as unknown[])).toHaveLength(601);
     expect(Math.max(...ingestPayloads.map((payload) => (payload.devices as unknown[]).length))).toBe(256);
     expect(heartbeatStatuses.at(-1)).toBe("ONLINE");
+    expect(registry.resolve(connection().deviceId, "uuid-1-2")).toMatchObject({
+      managedResourceId: "managed-1-2",
+      immutableKey: "ether2",
+      enrollmentState: "ENROLLED",
+    });
   });
 
   it("keeps one discovery run across batches and degrades inventory without declaring a router outage", async () => {
@@ -185,6 +250,17 @@ describe("polling coordinator", () => {
     const ingestPayloads: Array<Record<string, unknown>> = [];
     const incidents: Array<Record<string, unknown>> = [];
     const heartbeatStatuses: string[] = [];
+    const registry = new InterfaceRegistry();
+    registry.update(connection().deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "60000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
     const coordinator = new PollingCoordinator({
       api: {
         listConnections: async () => [connection()],
@@ -203,7 +279,7 @@ describe("polling coordinator", () => {
         }),
         close: async () => undefined,
       }),
-      interfaceRegistry: new InterfaceRegistry(),
+      interfaceRegistry: registry,
       maxConcurrency: 1,
       now: () => new Date("2026-07-28T00:00:00.000Z"),
       startedAt: new Date("2026-07-27T00:00:00.000Z"),
@@ -212,6 +288,11 @@ describe("polling coordinator", () => {
     });
 
     await coordinator.runCycle();
+
+    expect(registry.resolve(
+      connection().deviceId,
+      "60000000-0000-4000-8000-000000000001",
+    )).toBeNull();
 
     expect(ingestPayloads.flatMap((payload) => payload.devices as unknown[])).toEqual([
       expect.objectContaining({ deviceId: connection().deviceId, reachable: true }),
@@ -281,6 +362,17 @@ describe("polling coordinator", () => {
   it("isolates a failed router and reconnects on the next cycle", async () => {
     let attempts = 0;
     const incidents: Array<Record<string, unknown>> = [];
+    const registry = new InterfaceRegistry();
+    registry.update(connection().deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "60000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
     const coordinator = new PollingCoordinator({
       api: {
         listConnections: async () => [connection()],
@@ -297,7 +389,7 @@ describe("polling coordinator", () => {
         },
         close: async () => undefined,
       }),
-      interfaceRegistry: new InterfaceRegistry(),
+      interfaceRegistry: registry,
       maxConcurrency: 1,
       now: () => new Date(),
       startedAt: new Date(),
@@ -306,6 +398,10 @@ describe("polling coordinator", () => {
     });
 
     await coordinator.runCycle();
+    expect(registry.resolve(
+      connection().deviceId,
+      "60000000-0000-4000-8000-000000000001",
+    )).toBeNull();
     await coordinator.runCycle();
 
     expect(attempts).toBe(2);
@@ -380,7 +476,16 @@ describe("polling coordinator", () => {
           inventoryCalls += 1;
           return {
             routerDeviceId: connection().deviceId,
-            interfaces: [{ interfaceKey: "ether2", id: "interface-id" }],
+            interfaces: [{
+              managedResourceId: "managed-resource-id",
+              interfaceKey: "ether2",
+              id: "interface-id",
+              currentName: "ether2",
+              immutableKey: "ether2",
+              enrolledRole: "ACCESS",
+              protected: false,
+              enrollmentState: "ENROLLED",
+            }],
             aruba: [],
           };
         },

@@ -5,6 +5,7 @@ import {
   chunkAll,
   redactForLog,
   type InventoryMapping,
+  type ManagedInterfaceMapping,
   type NetworkCenterWorkerApi,
   type NetworkConnection,
   type RouterObservation,
@@ -116,7 +117,11 @@ function inventoryInterface(
     isProtected: item.protected,
     sortOrder,
     isEnabled: item.enabled,
-    metadata: { discoveredBy: "routeros-worker" },
+    metadata: {
+      discoveredBy: "routeros-worker",
+      immutableKey: item.immutableKey,
+      currentName: item.displayName,
+    },
   };
 }
 
@@ -246,6 +251,7 @@ export class PollingCoordinator {
     let inventoryDegraded = quarantine.length > 0;
     let quarantinedCount = 0;
     let receivedQuarantineCount = false;
+    const managedInterfaces: ManagedInterfaceMapping[] = [];
 
     for (let index = 0; index < batchCount; index += 1) {
       const mapping: InventoryMapping = await this.#api.inventory({
@@ -261,7 +267,7 @@ export class PollingCoordinator {
       if (mapping.routerDeviceId !== connection.deviceId) {
         throw new Error("Inventory response router does not match request");
       }
-      this.#interfaceRegistry.update(connection.deviceId, mapping.interfaces);
+      managedInterfaces.push(...mapping.interfaces);
       for (const item of mapping.interfaces) interfaceIds.set(item.interfaceKey, item.id);
       for (const item of mapping.aruba) arubaIds.set(item.externalKey, item.id);
       inventoryDegraded ||= mapping.inventoryStatus === "DEGRADED";
@@ -270,6 +276,7 @@ export class PollingCoordinator {
         receivedQuarantineCount = true;
       }
     }
+    this.#interfaceRegistry.update(connection.deviceId, managedInterfaces);
     if (!receivedQuarantineCount) quarantinedCount = quarantine.length;
     this.#inventoryCache.set(connection.deviceId, {
       signature,
@@ -432,6 +439,7 @@ export class PollingCoordinator {
       try {
         inventoryIds = await this.#syncInventory(connection, observation);
       } catch (inventoryError) {
+        this.#interfaceRegistry.clear(connection.deviceId);
         const cached = this.#inventoryCache.get(connection.deviceId);
         inventoryIds = {
           interfaceIds: new Map(cached?.interfaceIds ?? []),
@@ -488,6 +496,7 @@ export class PollingCoordinator {
       });
       return telemetry;
     } catch (error) {
+      this.#interfaceRegistry.clear(connection.deviceId);
       const previous = this.#states.get(connection.deviceId);
       const failures = (previous?.consecutiveFailures ?? 0) + 1;
       const delay = Math.min(

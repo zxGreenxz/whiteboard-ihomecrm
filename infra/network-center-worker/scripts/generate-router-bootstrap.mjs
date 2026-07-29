@@ -15,6 +15,18 @@ const templateDirectory = resolve(scriptDirectory, "../templates");
 const WIREGUARD_KEY = /^[A-Za-z0-9+/]{43}=$/;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 const SAFE_HOST = /^(?:[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])$/;
+const DEPLOYMENT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$/;
+const MANAGED_ROUTER_USER = "ihome-nc-worker";
+const MANAGEMENT_SERVICE_NAMES = Object.freeze([
+  "ssh",
+  "winbox",
+  "telnet",
+  "ftp",
+  "www",
+  "www-ssl",
+  "api",
+  "api-ssl",
+]);
 
 function requiredString(input, key, minimum = 1, maximum = 512) {
   const value = input?.[key];
@@ -59,6 +71,60 @@ function ipv4Range(value) {
   return { address, prefix, number, first, last: first + size - 1 };
 }
 
+function isRfc1918(range) {
+  const blocks = [
+    ipv4Range("10.0.0.0/8"),
+    ipv4Range("172.16.0.0/12"),
+    ipv4Range("192.168.0.0/16"),
+  ];
+  return blocks.some((block) => range.first >= block.first && range.last <= block.last);
+}
+
+function serviceAddress(value) {
+  if (
+    typeof value !== "string"
+    || value.length > 512
+    || /[\x00-\x1f\x7f]/.test(value)
+  ) throw new TypeError("invalid management service state");
+  if (!value) return "";
+  const entries = value.split(",");
+  for (const entry of entries) {
+    const [address] = entry.split("/");
+    const family = isIP(address ?? "");
+    if (!family) throw new TypeError("invalid management service state");
+    cidr(entry, family);
+  }
+  return entries.join(",");
+}
+
+function managementServices(input) {
+  const value = input?.managementServices;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("invalid management service state");
+  }
+  const keys = Object.keys(value).sort();
+  if (keys.join(",") !== [...MANAGEMENT_SERVICE_NAMES].sort().join(",")) {
+    throw new TypeError("invalid management service state");
+  }
+  return Object.fromEntries(MANAGEMENT_SERVICE_NAMES.map((name) => {
+    const state = value[name];
+    if (
+      !state
+      || typeof state !== "object"
+      || Array.isArray(state)
+      || typeof state.disabled !== "boolean"
+      || !Number.isInteger(state.port)
+      || state.port < 1
+      || state.port > 65_535
+    ) throw new TypeError("invalid management service state");
+    return [name, {
+      disabled: state.disabled,
+      address: serviceAddress(state.address),
+      port: state.port,
+    }];
+  }));
+}
+
 function validateNetworks(value) {
   const management = ipv4Range(value.managementCidr);
   const recovery = ipv4Range(value.recoveryCidr);
@@ -71,6 +137,9 @@ function validateNetworks(value) {
   const invalid = management.number !== management.first
     || management.prefix > 30
     || recovery.number !== recovery.first
+    || recovery.prefix < 28
+    || recovery.prefix > 32
+    || !isRfc1918(recovery)
     || vpsAddress.prefix !== management.prefix
     || routerAddress.prefix !== management.prefix
     || vpsPeer.prefix !== 32
@@ -113,11 +182,25 @@ function render(template, values) {
 
 function normalizeInput(input) {
   const routerIdentity = requiredString(input, "routerIdentity", 1, 64);
-  const routerUser = requiredString(input, "routerUser", 3, 63);
+  const deploymentId = requiredString(input, "deploymentId", 8, 64);
+  if (!DEPLOYMENT_ID.test(deploymentId)) throw new TypeError("invalid deployment marker");
+  if (
+    input?.routerUser !== undefined
+    && requiredString(input, "routerUser", 3, 63) !== MANAGED_ROUTER_USER
+  ) throw new TypeError("invalid managed RouterOS user");
+  const routerUser = MANAGED_ROUTER_USER;
   const routerPassword = requiredString(input, "routerPassword", 24, 128);
   const wanInterface = requiredString(input, "wanInterface", 1, 64);
-  if (!SAFE_NAME.test(routerUser) || !SAFE_NAME.test(wanInterface)) {
+  const recoveryInterface = requiredString(input, "recoveryInterface", 1, 64);
+  if (!SAFE_NAME.test(wanInterface) || !SAFE_NAME.test(recoveryInterface)) {
     throw new TypeError("invalid RouterOS name");
+  }
+  if (
+    recoveryInterface.toLowerCase() === wanInterface.toLowerCase()
+    || /^(?:ether1(?:$|\D)|wan|uplink|pppoe|sfp|wg|wireguard)/i.test(recoveryInterface)
+  ) throw new TypeError("invalid recovery interface");
+  if (typeof input?.sshStrongCrypto !== "boolean") {
+    throw new TypeError("invalid SSH strong-crypto state");
   }
   const endpoint = requiredString(input, "vpsEndpointHost", 1, 253);
   if (!isIP(endpoint) && !SAFE_HOST.test(endpoint)) throw new TypeError("invalid VPS endpoint");
@@ -137,6 +220,7 @@ function normalizeInput(input) {
   const recoveryCidr = cidr(requiredString(input, "recoveryCidr"), 4);
   const normalized = {
     routerIdentity,
+    deploymentId,
     routerUser,
     routerPassword,
     routerWireGuardPrivateKey: wireGuardKey(input, "routerWireGuardPrivateKey"),
@@ -152,7 +236,10 @@ function normalizeInput(input) {
     routerAddress,
     routerPeerAddress,
     recoveryCidr,
+    recoveryInterface,
     wanInterface,
+    sshStrongCrypto: input.sshStrongCrypto,
+    managementServices: managementServices(input),
   };
   validateNetworks(normalized);
   return normalized;
@@ -160,6 +247,13 @@ function normalizeInput(input) {
 
 export function generateBootstrap(input) {
   const value = normalizeInput(input);
+  const ownershipMarker = `ihomecrm-network-center:v1:${value.deploymentId}`;
+  const serviceRollbackCommands = MANAGEMENT_SERVICE_NAMES.map((name) => {
+    const state = value.managementServices[name];
+    return `/ip/service set [find where name=${routerOsQuote(name)}] disabled=${
+      state.disabled ? "yes" : "no"
+    } port=${state.port} address=${routerOsQuote(state.address)}`;
+  }).join("\n");
   const placeholders = {
     ROUTER_USER: routerOsQuote(value.routerUser),
     ROUTER_PASSWORD: routerOsQuote(value.routerPassword),
@@ -171,7 +265,11 @@ export function generateBootstrap(input) {
     VPS_PEER_ADDRESS: value.vpsPeerAddress,
     ROUTER_ADDRESS: value.routerAddress,
     RECOVERY_CIDR: value.recoveryCidr,
+    RECOVERY_INTERFACE: routerOsQuote(value.recoveryInterface),
     WAN_INTERFACE: routerOsQuote(value.wanInterface),
+    OWNERSHIP_MARKER: routerOsQuote(ownershipMarker),
+    SERVICE_ROLLBACK_COMMANDS: serviceRollbackCommands,
+    SSH_STRONG_CRYPTO_ROLLBACK: value.sshStrongCrypto ? "yes" : "no",
   };
   return {
     "router-bootstrap.rsc": render(readTemplate("router-bootstrap.rsc.tmpl"), placeholders),

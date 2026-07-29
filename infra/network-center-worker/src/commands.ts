@@ -141,8 +141,8 @@ export class CommandProcessor {
           : { applied: false, reason: "NO_BOUND_DHCP_CLIENT" };
       case "CYCLE_ACCESS_PORT": {
         if (!claim.interfaceId) throw new RouterOperationError("INTERFACE_REQUIRED", { retryable: false, mayHaveExecuted: false });
-        const interfaceKey = this.#interfaceRegistry.resolve(claim.deviceId, claim.interfaceId);
-        if (!interfaceKey) {
+        const target = this.#interfaceRegistry.resolve(claim.deviceId, claim.interfaceId);
+        if (!target) {
           throw new RouterOperationError("INTERFACE_MAPPING_UNAVAILABLE", {
             retryable: true,
             mayHaveExecuted: false,
@@ -152,7 +152,7 @@ export class CommandProcessor {
         if (!Number.isInteger(duration) || duration < 5 || duration > 30) {
           throw new RouterOperationError("INVALID_CYCLE_DURATION", { retryable: false, mayHaveExecuted: false });
         }
-        await connector.cycleAccessPort(interfaceKey, duration);
+        await connector.cycleAccessPort(target, duration);
         return { applied: true, durationSeconds: duration };
       }
       case "REBOOT_ROUTER":

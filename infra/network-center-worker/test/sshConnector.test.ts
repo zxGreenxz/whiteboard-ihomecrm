@@ -1,13 +1,20 @@
+import { EventEmitter } from "node:events";
+
+import type { Client } from "ssh2";
 import { describe, expect, it } from "vitest";
 
 import {
   ROUTER_OS_COMMANDS,
   ROUTER_OS_READ_COMMANDS,
+  SshRouterConnector,
   leaseExpiryIso,
   normalizeHostFingerprint,
   parseArubaNeighbors,
+  parseRouterOsResourceId,
   parseRouterOsRecords,
   quoteRouterOsValue,
+  resolveManagedAccessPort,
+  routerOsRecoveryInterfaceNames,
   routerOsCommandFailed,
   routerOsInterfaceState,
 } from "../src/routeros/sshConnector.js";
@@ -150,5 +157,167 @@ describe("RouterOS SSH boundary", () => {
     expect(parsed.quarantined[0]?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(parsed.quarantined)).not.toContain("secret malformed name");
     expect(JSON.stringify(parsed.quarantined)).not.toContain("01:00:5e:00:00:01");
+  });
+
+  it("rejects renamed ether1 even when its display role looks like access", () => {
+    expect(() => resolveManagedAccessPort({
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether1",
+      currentName: "room-101",
+      immutableKey: "ether1",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }, [{
+      ".id": "*1",
+      name: "room-101",
+      "default-name": "ether1",
+      type: "ether",
+      running: "true",
+    }])).toThrowError(expect.objectContaining({ code: "PROTECTED_INTERFACE" }));
+  });
+
+  it("rejects a secondary physical port whose current name identifies a WAN", () => {
+    expect(() => resolveManagedAccessPort({
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether2",
+      currentName: "wan-backup",
+      immutableKey: "ether2",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }, [{
+      name: "wan-backup",
+      "default-name": "ether2",
+      type: "ether",
+      running: "true",
+    }])).toThrowError(expect.objectContaining({ code: "PROTECTED_INTERFACE" }));
+  });
+
+  it("protects the interface named by an owned bootstrap recovery rule", () => {
+    expect(routerOsRecoveryInterfaceNames([{
+      chain: "input",
+      action: "accept",
+      "in-interface": "ether2",
+      comment: "ihomecrm-network-center:v1:demo-router-20260730:lan-recovery",
+    }, {
+      chain: "input",
+      action: "accept",
+      "in-interface": "ether3",
+      comment: "unowned recovery rule",
+    }])).toEqual(new Set(["ether2"]));
+  });
+
+  it("targets only one live enrolled access port with matching current and immutable names", () => {
+    const target = {
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS" as const,
+      protected: false,
+      enrollmentState: "ENROLLED" as const,
+    };
+    expect(resolveManagedAccessPort(target, [{
+      ".id": "*A",
+      name: "room-401",
+      "default-name": "ether4",
+      type: "ether",
+    }])).toEqual({ resourceId: "*A", currentName: "room-401", immutableKey: "ether4" });
+    expect(resolveManagedAccessPort(target, [{
+      name: "room-401",
+      "default-name": "ether4",
+      type: "ether",
+    }])).toEqual({ resourceId: null, currentName: "room-401", immutableKey: "ether4" });
+    expect(() => resolveManagedAccessPort(target, [{
+      ".id": "*A",
+      name: "stale-name",
+      "default-name": "ether4",
+      type: "ether",
+    }])).toThrowError(expect.objectContaining({ code: "INTERFACE_IDENTITY_MISMATCH" }));
+    expect(() => resolveManagedAccessPort({ ...target, enrollmentState: "REVOKED" }, []))
+      .toThrowError(expect.objectContaining({ code: "INTERFACE_NOT_ENROLLED" }));
+    expect(parseRouterOsResourceId("*A\n")).toBe("*A");
+    expect(parseRouterOsResourceId("*A *B")).toBeNull();
+  });
+
+  it("rereads owned recovery firewall state immediately before cycling a port", async () => {
+    const commands: string[] = [];
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        commands.push(command);
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        const output = command === ROUTER_OS_READ_COMMANDS.interfaces
+          ? ".id=*A name=ether2 default-name=ether2 type=ether\n"
+          : command === ROUTER_OS_READ_COMMANDS.firewallFilters
+            ? "chain=input action=accept in-interface=ether2 comment=ihomecrm-network-center:v1:demo-router-20260730:lan-recovery\n"
+            : "*A\n";
+        queueMicrotask(() => {
+          channel.emit("data", Buffer.from(output));
+          channel.emit("close", 0);
+        });
+      }
+
+      destroy(): void {}
+      end(): void {}
+    }
+
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => new FakeClient() as unknown as Client,
+    });
+
+    await expect(connector.cycleAccessPort({
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether2",
+      currentName: "ether2",
+      immutableKey: "ether2",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }, 5)).rejects.toMatchObject({ code: "PROTECTED_INTERFACE" });
+    expect(commands).toEqual([
+      ROUTER_OS_READ_COMMANDS.interfaces,
+      ROUTER_OS_READ_COMMANDS.firewallFilters,
+    ]);
   });
 });

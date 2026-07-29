@@ -8,6 +8,7 @@ import {
   RouterOperationError,
   type ArubaObservation,
   type JsonObject,
+  type ManagedInterfaceTarget,
   type NetworkConnection,
   type RouterClientObservation,
   type RouterCredential,
@@ -37,6 +38,7 @@ export const ROUTER_OS_READ_COMMANDS = Object.freeze({
   dhcpClients: "/ip/dhcp-client/print detail terse without-paging",
   leases: "/ip/dhcp-server/lease/print detail terse without-paging",
   neighbors: "/ip/neighbor/print detail terse without-paging",
+  firewallFilters: "/ip/firewall/filter/print detail terse without-paging",
   dns: ":put [/ip/dns/print as-value]",
 });
 
@@ -226,13 +228,118 @@ export function leaseExpiryIso(
   return new Date(new Date(observedAt).getTime() + boundedSeconds * 1_000).toISOString();
 }
 
-function interfaceRole(name: string, type: string): RouterInterfaceObservation["role"] {
-  const normalized = name.toLowerCase();
-  if (normalized === "ether1" || normalized.startsWith("wan") || normalized.startsWith("pppoe")) return "WAN";
-  if (type === "wireguard" || normalized.startsWith("wg")) return "MANAGEMENT";
+function interfaceRole(
+  name: string,
+  type: string,
+  immutableKey?: string | null,
+): RouterInterfaceObservation["role"] {
+  const currentName = name.toLowerCase();
+  const normalized = (immutableKey ?? name).toLowerCase();
+  if (
+    normalized === "ether1"
+    || normalized.startsWith("wan")
+    || normalized.startsWith("pppoe")
+    || currentName.startsWith("wan")
+    || currentName.startsWith("pppoe")
+  ) return "WAN";
+  if (type === "wireguard" || normalized.startsWith("wg") || currentName.startsWith("wg")) return "MANAGEMENT";
   if (type === "bridge") return "LAN";
-  if (normalized.startsWith("sfp")) return "UPLINK";
+  if (
+    normalized.startsWith("sfp")
+    || normalized.startsWith("uplink")
+    || currentName.startsWith("sfp")
+    || currentName.startsWith("uplink")
+  ) return "UPLINK";
   return "ACCESS";
+}
+
+const PHYSICAL_ACCESS_PORT = /^ether(?:[2-9]|[1-9][0-9])$/i;
+const ROUTEROS_RESOURCE_ID = /^\*[0-9A-Fa-f]+$/;
+const RECOVERY_RULE_MARKER = /^ihomecrm-network-center:v1:[A-Za-z0-9][A-Za-z0-9._-]{7,63}:lan-recovery$/;
+
+export function routerOsRecoveryInterfaceNames(
+  records: Record<string, string>[],
+): Set<string> {
+  return new Set(records.flatMap((record) => {
+    const interfaceName = record["in-interface"]?.trim();
+    return record.chain === "input"
+      && record.action === "accept"
+      && interfaceName
+      && RECOVERY_RULE_MARKER.test(record.comment ?? "")
+      ? [interfaceName]
+      : [];
+  }));
+}
+
+export function parseRouterOsResourceId(output: string): string | null {
+  const values = output.trim().split(/\s+/).filter(Boolean);
+  return values.length === 1 && ROUTEROS_RESOURCE_ID.test(values[0] ?? "")
+    ? values[0]!
+    : null;
+}
+
+export function resolveManagedAccessPort(
+  target: ManagedInterfaceTarget,
+  records: Record<string, string>[],
+  recoveryInterfaceNames: ReadonlySet<string> = new Set(),
+): { resourceId: string | null; currentName: string; immutableKey: string } {
+  if (target.enrollmentState !== "ENROLLED") {
+    throw new RouterOperationError("INTERFACE_NOT_ENROLLED", {
+      retryable: false,
+      mayHaveExecuted: false,
+    });
+  }
+  if (target.enrolledRole !== "ACCESS") {
+    throw new RouterOperationError("INTERFACE_NOT_ACCESS", {
+      retryable: false,
+      mayHaveExecuted: false,
+    });
+  }
+  if (
+    target.protected
+    || recoveryInterfaceNames.has(target.currentName)
+    || !target.immutableKey
+    || !PHYSICAL_ACCESS_PORT.test(target.immutableKey)
+  ) {
+    throw new RouterOperationError("PROTECTED_INTERFACE", {
+      retryable: false,
+      mayHaveExecuted: false,
+    });
+  }
+  if (target.interfaceKey !== target.immutableKey) {
+    throw new RouterOperationError("INTERFACE_IDENTITY_MISMATCH", {
+      retryable: false,
+      mayHaveExecuted: false,
+    });
+  }
+  const matches = records.filter((record) =>
+    record["default-name"] === target.immutableKey
+    && record.type?.toLowerCase().includes("ether")
+  );
+  const record = matches[0];
+  if (
+    matches.length !== 1
+    || !record
+    || record.name !== target.currentName
+  ) {
+    throw new RouterOperationError("INTERFACE_IDENTITY_MISMATCH", {
+      retryable: true,
+      mayHaveExecuted: false,
+    });
+  }
+  if (interfaceRole(record.name, record.type ?? "", record["default-name"]) !== "ACCESS") {
+    throw new RouterOperationError("PROTECTED_INTERFACE", {
+      retryable: false,
+      mayHaveExecuted: false,
+    });
+  }
+  return {
+    resourceId: record[".id"] && ROUTEROS_RESOURCE_ID.test(record[".id"])
+      ? record[".id"]
+      : null,
+    currentName: record.name,
+    immutableKey: record["default-name"]!,
+  };
 }
 
 function interfaceKind(type: string): string {
@@ -523,7 +630,15 @@ export class SshRouterConnector implements RouterConnector {
   }
 
   async poll(): Promise<RouterObservation> {
-    const [identityOutput, resourceOutput, interfaceOutput, dhcpOutput, leaseOutput, neighborOutput] =
+    const [
+      identityOutput,
+      resourceOutput,
+      interfaceOutput,
+      dhcpOutput,
+      leaseOutput,
+      neighborOutput,
+      firewallOutput,
+    ] =
       await Promise.all([
         this.#execute(ROUTER_OS_READ_COMMANDS.identity),
         this.#execute(ROUTER_OS_READ_COMMANDS.resource),
@@ -531,27 +646,39 @@ export class SshRouterConnector implements RouterConnector {
         this.#execute(ROUTER_OS_READ_COMMANDS.dhcpClients),
         this.#execute(ROUTER_OS_READ_COMMANDS.leases),
         this.#execute(ROUTER_OS_READ_COMMANDS.neighbors),
+        this.#execute(ROUTER_OS_READ_COMMANDS.firewallFilters),
       ]);
     const identity = parseRouterOsRecords(identityOutput)[0] ?? {};
     const resource = parseRouterOsRecords(resourceOutput)[0] ?? {};
     const interfaceRecords = parseRouterOsRecords(interfaceOutput);
     const dhcpClients = parseRouterOsRecords(dhcpOutput);
+    const recoveryInterfaceNames = routerOsRecoveryInterfaceNames(
+      parseRouterOsRecords(firewallOutput),
+    );
     const now = this.#now().toISOString();
 
     const interfaces: RouterInterfaceObservation[] = interfaceRecords.map((record, index) => {
       const name = record.name ?? `interface-${index}`;
       const type = record.type ?? "unknown";
-      const role = interfaceRole(name, type);
+      const defaultName = record["default-name"]?.trim() || null;
+      const immutableKey = type.toLowerCase().includes("ether")
+        ? defaultName
+        : null;
+      const role = interfaceRole(name, type, immutableKey);
       const state = routerOsInterfaceState(record);
       const speed = parseBytes(record.rate ?? record["link-downs"]);
       const metadata: JsonObject = { interfaceKind: interfaceKind(type), sortOrder: index };
       if (record["mac-address"]) metadata.macAddress = record["mac-address"];
       if (speed) metadata.nominalSpeedBps = speed;
       return {
-        externalKey: name,
+        externalKey: immutableKey ?? name,
         displayName: name,
+        immutableKey,
         role,
-        protected: role === "WAN" || role === "MANAGEMENT" || role === "UPLINK",
+        protected: recoveryInterfaceNames.has(name)
+          || role === "WAN"
+          || role === "MANAGEMENT"
+          || role === "UPLINK",
         enabled: state.enabled,
         sample: {
           linkState: state.running ? "UP" : "DOWN",
@@ -678,7 +805,7 @@ export class SshRouterConnector implements RouterConnector {
     const interfaceRecords = parseRouterOsRecords(interfaces);
     const wanUp = interfaceRecords.some((record) => {
       const name = record.name ?? "";
-      return interfaceRole(name, record.type ?? "") === "WAN"
+      return interfaceRole(name, record.type ?? "", record["default-name"] ?? null) === "WAN"
         && routerOsInterfaceState(record).running;
     }) || parseRouterOsRecords(dhcp).some((record) => record.status === "bound");
     const dnsRecord = parseRouterOsRecords(dns)[0] ?? {};
@@ -700,15 +827,31 @@ export class SshRouterConnector implements RouterConnector {
     return true;
   }
 
-  async cycleAccessPort(interfaceExternalKey: string, durationSeconds: number): Promise<void> {
+  async cycleAccessPort(target: ManagedInterfaceTarget, durationSeconds: number): Promise<void> {
     if (!Number.isInteger(durationSeconds) || durationSeconds < 5 || durationSeconds > 30) {
       throw new RouterOperationError("INVALID_CYCLE_DURATION", { retryable: false, mayHaveExecuted: false });
     }
-    if (/^(ether1|sfp|wg|wireguard|bridge)/i.test(interfaceExternalKey)) {
-      throw new RouterOperationError("PROTECTED_INTERFACE", { retryable: false, mayHaveExecuted: false });
+    const [interfaceOutput, firewallOutput] = await Promise.all([
+      this.#execute(ROUTER_OS_READ_COMMANDS.interfaces),
+      this.#execute(ROUTER_OS_READ_COMMANDS.firewallFilters),
+    ]);
+    const resolved = resolveManagedAccessPort(
+      target,
+      parseRouterOsRecords(interfaceOutput),
+      routerOsRecoveryInterfaceNames(parseRouterOsRecords(firewallOutput)),
+    );
+    const currentName = quoteRouterOsValue(resolved.currentName);
+    const immutableKey = quoteRouterOsValue(resolved.immutableKey);
+    const resourceId = parseRouterOsResourceId(await this.#execute(
+      `:put [/interface/find where name=${currentName} and default-name=${immutableKey}]`,
+    ));
+    if (!resourceId || (resolved.resourceId && resolved.resourceId !== resourceId)) {
+      throw new RouterOperationError("INTERFACE_IDENTITY_MISMATCH", {
+        retryable: true,
+        mayHaveExecuted: false,
+      });
     }
-    const name = quoteRouterOsValue(interfaceExternalKey);
-    const command = `:local ncPort [/interface/find where name=${name}]; :if ([:len $ncPort] != 1) do={:error "access port not found"}; /interface/disable $ncPort; :delay ${durationSeconds}s; /interface/enable $ncPort`;
+    const command = `:local ncPort [/interface/find where .id=${resourceId} and name=${currentName} and default-name=${immutableKey}]; :if ([:len $ncPort] != 1) do={:error "managed access port identity changed"}; /interface/disable $ncPort; :delay ${durationSeconds}s; /interface/enable $ncPort`;
     await this.#execute(command, true);
   }
 

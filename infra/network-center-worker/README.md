@@ -35,7 +35,7 @@ Mỗi file phải thuộc UID/GID `10001:10001`, mode `0600` (hoặc chặt hơn
 ```json
 {
   "router/demo": {
-    "username": "network-center",
+    "username": "ihome-nc-worker",
     "privateKeyFile": "/run/secrets/network-center/router-demo-key",
     "backupPasswordFile": "/run/secrets/network-center/router-demo-backup-password"
   }

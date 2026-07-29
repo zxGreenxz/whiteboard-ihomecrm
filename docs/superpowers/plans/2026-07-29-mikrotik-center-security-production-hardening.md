@@ -800,15 +800,27 @@ git commit -m "fix(network-center): giới hạn churn Aruba không đặt quota
 - Modify: `src/lib/__tests__/networkCenterDatabaseMigration.test.ts`
 - Create: `src/lib/__tests__/networkCenterManagedCommandsMigration.test.ts`
 - Modify: `infra/network-center-worker/src/domain.ts`
+- Modify: `infra/network-center-worker/src/apiClient.ts`
+- Modify: `infra/network-center-worker/src/commands.ts`
+- Modify: `infra/network-center-worker/src/polling.ts`
+- Modify: `infra/network-center-worker/src/routeros/connector.ts`
 - Modify: `infra/network-center-worker/src/routeros/sshConnector.ts`
+- Modify: `infra/network-center-worker/test/commands.test.ts`
+- Modify: `infra/network-center-worker/test/domain.test.ts`
+- Modify: `infra/network-center-worker/test/apiClient.test.ts`
+- Modify: `infra/network-center-worker/test/polling.test.ts`
 - Modify: `infra/network-center-worker/test/sshConnector.test.ts`
 - Modify: `infra/network-center-worker/scripts/generate-router-bootstrap.mjs`
+- Modify: `infra/network-center-worker/scripts/generate-router-bootstrap.d.mts`
 - Modify: `infra/network-center-worker/templates/router-bootstrap.rsc.tmpl`
 - Modify: `infra/network-center-worker/templates/router-rollback.rsc.tmpl`
 - Modify: `infra/network-center-worker/templates/router-lockdown.rsc.tmpl`
 - Modify: `infra/network-center-worker/test/bootstrap.test.ts`
+- Modify: `infra/network-center-worker/README.md`
+- Modify: `infra/network-center-worker/docs/DEMO-ROUTER-RUNBOOK.md`
+- Create: `scripts/__tests__/network-center-managed-resources-runtime.sql`
 
-- [ ] **Step 1: Write RED renamed-interface exploit test**
+- [x] **Step 1: Write RED renamed-interface exploit test**
 
 ```ts
 it("rejects a renamed ether1 even when its display name looks like access", async () => {
@@ -823,21 +835,21 @@ it("rejects a renamed ether1 even when its display name looks like access", asyn
 });
 ```
 
-- [ ] **Step 2: Write RED bootstrap exploit tests**
+- [x] **Step 2: Write RED bootstrap exploit tests**
 
 Reject public CIDR, RFC1918 `/23`, missing/non-access recovery interface and any
 router username other than `ihome-nc-worker`. Generated bootstrap must abort when an
 existing user lacks the exact ownership marker; rollback may remove only the
 marked user and must restore captured management-service settings.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- sshConnector.test.ts bootstrap.test.ts
 .\node_modules\.bin\vitest.cmd run src/lib/__tests__/networkCenterManagedCommandsMigration.test.ts
 ```
 
-- [ ] **Step 4: Create managed-resource registry and safe interface linkage**
+- [x] **Step 4: Create managed-resource registry and safe interface linkage**
 
 ```sql
 CREATE TABLE public.network_managed_resources (
@@ -860,18 +872,23 @@ CREATE TABLE public.network_managed_resources (
 Link `network_interfaces.managed_resource_id`. Worker discovery persists
 `default-name`; physical cycle RPC and connector require enrolled ACCESS resource,
 `protected=false` and exact current-name/default-name readback. No immutable key
-means fail closed.
+means fail closed. Discovery remains `DISCOVERED/protected`; only the private
+`network_center_enroll_access_interface_v1` helper can atomically enroll and
+unprotect one verified `ether2`-`ether99` access resource.
 
-- [ ] **Step 5: Implement fixed bootstrap identity and narrow recovery scope**
+- [x] **Step 5: Implement fixed bootstrap identity and narrow recovery scope**
 
 Generator uses `ihome-nc-worker` and marker
 `ihomecrm-network-center:v1:${deploymentId}`. IPv4 recovery must be RFC1918
 `/28`–`/32` (default `/32`); template binds both `src-address` and explicit non-WAN
 `in-interface`. Bootstrap checks the existing user comment before any password,
 group or key mutation. Rollback checks the same marker and restores the captured
-service allowlist/disabled state.
+service allowlist/disabled state plus the prior SSH `strong-crypto` setting.
+Before any mutation, RouterOS must confirm the recovery interface exists once,
+is not the configured WAN, is Ethernet, and has a physical `ether2`-`ether99`
+`default-name`.
 
-- [ ] **Step 6: Run GREEN and migration security checks**
+- [x] **Step 6: Run GREEN and migration security checks**
 
 ```powershell
 npm --prefix infra/network-center-worker test -- sshConnector.test.ts bootstrap.test.ts
@@ -880,10 +897,22 @@ npm --prefix infra/network-center-worker run typecheck
 node scripts/check-definer-acl.mjs
 ```
 
-- [ ] **Step 7: Commit Task 10**
+The disposable PostgreSQL proof in
+`scripts/__tests__/network-center-managed-resources-runtime.sql` must return
+`PASS` and end with `ROLLBACK`. It covers renamed `ether1`, stable access-port
+renames, missing immutable identity, injected linkage rejection, enrolled safe
+cycle admission, revoked/unsafe rejection, device cascade, and browser ACL.
+
+Task 5's final `network_center_worker_inventory_v2` must return the private
+`network_center_managed_interface_mapping_v1` fields unchanged so the worker
+never derives authorization from RouterOS observations. Its claim path must also
+revalidate the managed resource after enqueue; this closes revoke/protect races
+between the last inventory refresh and command claim.
+
+- [x] **Step 7: Commit Task 10**
 
 ```powershell
-git add -- supabase/migrations/20260729132000_network_center_managed_commands.sql src/lib/__tests__/networkCenterDatabaseMigration.test.ts src/lib/__tests__/networkCenterManagedCommandsMigration.test.ts infra/network-center-worker/src/domain.ts infra/network-center-worker/src/routeros/sshConnector.ts infra/network-center-worker/test/sshConnector.test.ts infra/network-center-worker/scripts/generate-router-bootstrap.mjs infra/network-center-worker/templates/router-bootstrap.rsc.tmpl infra/network-center-worker/templates/router-rollback.rsc.tmpl infra/network-center-worker/templates/router-lockdown.rsc.tmpl infra/network-center-worker/test/bootstrap.test.ts
+git add -- docs/superpowers/plans/2026-07-29-mikrotik-center-security-production-hardening.md supabase/migrations/20260729132000_network_center_managed_commands.sql scripts/__tests__/network-center-managed-resources-runtime.sql src/lib/__tests__/networkCenterDatabaseMigration.test.ts src/lib/__tests__/networkCenterManagedCommandsMigration.test.ts infra/network-center-worker/README.md infra/network-center-worker/docs/DEMO-ROUTER-RUNBOOK.md infra/network-center-worker/scripts/generate-router-bootstrap.d.mts infra/network-center-worker/scripts/generate-router-bootstrap.mjs infra/network-center-worker/src/apiClient.ts infra/network-center-worker/src/commands.ts infra/network-center-worker/src/domain.ts infra/network-center-worker/src/polling.ts infra/network-center-worker/src/routeros/connector.ts infra/network-center-worker/src/routeros/sshConnector.ts infra/network-center-worker/templates/router-bootstrap.rsc.tmpl infra/network-center-worker/templates/router-lockdown.rsc.tmpl infra/network-center-worker/templates/router-rollback.rsc.tmpl infra/network-center-worker/test/apiClient.test.ts infra/network-center-worker/test/bootstrap.test.ts infra/network-center-worker/test/commands.test.ts infra/network-center-worker/test/domain.test.ts infra/network-center-worker/test/polling.test.ts infra/network-center-worker/test/sshConnector.test.ts
 git commit -m "fix(network-center): khóa tài nguyên RouterOS bằng identity bất biến" -m "Co-Authored-By: Codex <noreply@openai.com>"
 ```
 

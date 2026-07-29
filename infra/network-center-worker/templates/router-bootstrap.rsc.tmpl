@@ -1,49 +1,140 @@
-# iHomeCRM Network Center - stage 1 (keep LAN recovery)
+# iHomeCRM Network Center - stage 1 (keep narrow LAN recovery)
 # Upload worker-ssh-key.pub before importing this file.
 :local ncWgName "wg-ihome-mgmt"
 :local ncGroup "network-center-worker"
+:local ncExpectedPolicy "ssh,ftp,reboot,read,write,test,sensitive"
 :local ncUser @@ROUTER_USER@@
+:local ncRecoveryName @@RECOVERY_INTERFACE@@
+:local ncWanName @@WAN_INTERFACE@@
+:local ncMarker @@OWNERSHIP_MARKER@@
+:local ncWgMarker ($ncMarker . ":wireguard")
+:local ncAddressMarker ($ncMarker . ":address")
+:local ncPeerMarker ($ncMarker . ":peer")
+:local ncHandshakeMarker ($ncMarker . ":wg-handshake")
+:local ncManagementMarker ($ncMarker . ":wg-management")
+:local ncRecoveryMarker ($ncMarker . ":lan-recovery")
 
-:if ([:len [/interface/wireguard find where name=$ncWgName]] = 0) do={
-  /interface/wireguard add name=$ncWgName listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ comment="iHomeCRM Network Center"
+# Ownership preflight: every collision is rejected before the first mutation.
+:local ncUsers [/user find where name=$ncUser]
+:if ([:len $ncUsers] > 1) do={ :error "NETWORK_CENTER_OWNERSHIP_CONFLICT" }
+:if ([:len $ncUsers] = 1 && [/user get $ncUsers comment] != $ncMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+:local ncGroups [/user/group find where name=$ncGroup]
+:if ([:len $ncGroups] > 1) do={ :error "NETWORK_CENTER_GROUP_CONFLICT" }
+:if ([:len $ncGroups] = 0 && [:len $ncUsers] = 1) do={
+  :error "NETWORK_CENTER_GROUP_CONFLICT"
+}
+:if ([:len $ncGroups] = 1) do={
+  :if ([:len $ncUsers] = 1 && [/user get $ncUsers group] != $ncGroup) do={
+    :error "NETWORK_CENTER_GROUP_CONFLICT"
+  }
+  :if ([:tostr [/user/group get $ncGroups policy]] != $ncExpectedPolicy) do={
+    :error "NETWORK_CENTER_GROUP_CONFLICT"
+  }
+}
+:local ncWgs [/interface/wireguard find where name=$ncWgName]
+:if ([:len $ncWgs] > 1) do={ :error "NETWORK_CENTER_OWNERSHIP_CONFLICT" }
+:if ([:len $ncWgs] = 1 && [/interface/wireguard get $ncWgs comment] != $ncWgMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+:local ncRecovery [/interface find where name=$ncRecoveryName]
+:local ncWan [/interface find where name=$ncWanName]
+:if ([:len $ncRecovery] != 1 || [:len $ncWan] != 1) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+}
+:if ([:tostr $ncRecovery] = [:tostr $ncWan]) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+}
+:if ([:tostr [/interface get $ncRecovery type]] != "ether") do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+}
+:if ([:tostr [/interface get $ncRecovery default-name]] !~ "^ether([2-9]|[1-9][0-9])$") do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+}
+:if ([:tostr [/interface get $ncRecovery disabled]] != "false") do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+}
+:if ([:len [/interface/bridge/port find where interface=$ncRecoveryName]] > 0) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+}
+:if ([:len [/ip/address find where interface=$ncRecoveryName and disabled=no]] = 0) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+}
+:local ncRecoveryRules [/ip/firewall/filter find where comment=$ncRecoveryMarker]
+:local ncHandshakeRules [/ip/firewall/filter find where comment=$ncHandshakeMarker]
+:local ncManagementRules [/ip/firewall/filter find where comment=$ncManagementMarker]
+:if ([:len $ncRecoveryRules] > 1 || [:len $ncHandshakeRules] > 1 || [:len $ncManagementRules] > 1) do={
+  :error "NETWORK_CENTER_FIREWALL_CONFLICT"
+}
+:if ([:len $ncRecoveryRules] = 1 && (
+    [:tostr [/ip/firewall/filter get $ncRecoveryRules chain]] != "input"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules action]] != "accept"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules protocol]] != "tcp"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules dst-port]] != "22"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules src-address]] != "@@RECOVERY_CIDR@@"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules in-interface]] != $ncRecoveryName
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules disabled]] != "false"
+  )) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
+:if ([:len $ncHandshakeRules] = 1 && (
+    [:tostr [/ip/firewall/filter get $ncHandshakeRules chain]] != "input"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules action]] != "accept"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules protocol]] != "udp"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules dst-port]] != "@@WG_PORT@@"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules in-interface]] != $ncWanName
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules disabled]] != "false"
+  )) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
+:if ([:len $ncManagementRules] = 1 && (
+    [:tostr [/ip/firewall/filter get $ncManagementRules chain]] != "input"
+    || [:tostr [/ip/firewall/filter get $ncManagementRules action]] != "accept"
+    || [:tostr [/ip/firewall/filter get $ncManagementRules in-interface]] != $ncWgName
+    || [:tostr [/ip/firewall/filter get $ncManagementRules src-address]] != "@@VPS_PEER_ADDRESS@@"
+    || [:tostr [/ip/firewall/filter get $ncManagementRules disabled]] != "false"
+  )) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
+
+:if ([:len $ncWgs] = 0) do={
+  /interface/wireguard add name=$ncWgName listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ comment=$ncWgMarker
 } else={
-  /interface/wireguard set [find where name=$ncWgName] listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ disabled=no
+  /interface/wireguard set $ncWgs listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ disabled=no
 }
 
-:if ([:len [/ip/address find where interface=$ncWgName and address=@@ROUTER_ADDRESS@@]] = 0) do={
-  /ip/address add address=@@ROUTER_ADDRESS@@ interface=$ncWgName comment="iHomeCRM Network Center"
+:if ([:len [/ip/address find where interface=$ncWgName and comment=$ncAddressMarker]] = 0) do={
+  /ip/address add address=@@ROUTER_ADDRESS@@ interface=$ncWgName comment=$ncAddressMarker
+} else={
+  /ip/address set [find where interface=$ncWgName and comment=$ncAddressMarker] address=@@ROUTER_ADDRESS@@ disabled=no
 }
 
-:if ([:len [/interface/wireguard/peers find where interface=$ncWgName and public-key=@@VPS_WG_PUBLIC_KEY@@]] = 0) do={
-  /interface/wireguard/peers add interface=$ncWgName public-key=@@VPS_WG_PUBLIC_KEY@@ allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s comment="iHomeCRM VPS"
+:if ([:len [/interface/wireguard/peers find where interface=$ncWgName and comment=$ncPeerMarker]] = 0) do={
+  /interface/wireguard/peers add interface=$ncWgName public-key=@@VPS_WG_PUBLIC_KEY@@ allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s comment=$ncPeerMarker
 } else={
-  /interface/wireguard/peers set [find where interface=$ncWgName and public-key=@@VPS_WG_PUBLIC_KEY@@] allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s disabled=no
+  /interface/wireguard/peers set [find where interface=$ncWgName and comment=$ncPeerMarker] public-key=@@VPS_WG_PUBLIC_KEY@@ allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s disabled=no
 }
 
 :if ([:len [/user/group find where name=$ncGroup]] = 0) do={
-  /user/group add name=$ncGroup policy=ssh,ftp,read,write,reboot,test,sensitive
-} else={
-  /user/group set [find where name=$ncGroup] policy=ssh,ftp,read,write,reboot,test,sensitive
+  /user/group add name=$ncGroup policy=ssh,ftp,reboot,read,write,test,sensitive
 }
 
-:if ([:len [/user find where name=$ncUser]] = 0) do={
-  /user add name=$ncUser group=$ncGroup password=@@ROUTER_PASSWORD@@ comment="iHomeCRM Network Center worker"
+:if ([:len $ncUsers] = 0) do={
+  /user add name=$ncUser group=$ncGroup password=@@ROUTER_PASSWORD@@ comment=$ncMarker
 } else={
-  /user set [find where name=$ncUser] group=$ncGroup password=@@ROUTER_PASSWORD@@ disabled=no comment="iHomeCRM Network Center worker"
+  /user set $ncUsers group=$ncGroup password=@@ROUTER_PASSWORD@@ disabled=no comment=$ncMarker
 }
 
 /user/ssh-keys remove [find where user=$ncUser]
-/user/ssh-keys import public-key-file="network-center-worker.pub" user=$ncUser
+/user/ssh-keys import public-key-file="worker-ssh-key.pub" user=$ncUser
 /ip/ssh set strong-crypto=yes
 
-# Stage 1 deliberately keeps the existing LAN recovery CIDR.
+# Stage 1 keeps one explicitly selected, RFC1918 /28-/32 recovery path.
 /ip/service set [find where name="ssh"] disabled=no port=22 address=@@RECOVERY_CIDR@@,@@VPS_PEER_ADDRESS@@
-
-:if ([:len [/ip/firewall/filter find where comment="iHomeCRM WG handshake"]] = 0) do={
-  /ip/firewall/filter add chain=input action=accept protocol=udp in-interface=@@WAN_INTERFACE@@ dst-port=@@WG_PORT@@ place-before=0 comment="iHomeCRM WG handshake"
-}
-:if ([:len [/ip/firewall/filter find where comment="iHomeCRM WG management"]] = 0) do={
-  /ip/firewall/filter add chain=input action=accept in-interface=$ncWgName src-address=@@VPS_PEER_ADDRESS@@ place-before=0 comment="iHomeCRM WG management"
+:if ([:len [/ip/firewall/filter find where comment=$ncRecoveryMarker]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept protocol=tcp dst-port=22 src-address=@@RECOVERY_CIDR@@ in-interface=@@RECOVERY_INTERFACE@@ place-before=0 comment=$ncRecoveryMarker
 }
 
-:put "NETWORK_CENTER_STAGE1_READY"
+:if ([:len [/ip/firewall/filter find where comment=$ncHandshakeMarker]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept protocol=udp in-interface=@@WAN_INTERFACE@@ dst-port=@@WG_PORT@@ place-before=0 comment=$ncHandshakeMarker
+}
+:if ([:len [/ip/firewall/filter find where comment=$ncManagementMarker]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept in-interface=$ncWgName src-address=@@VPS_PEER_ADDRESS@@ place-before=0 comment=$ncManagementMarker
+}
+
+:put "NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF"

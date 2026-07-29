@@ -1,6 +1,7 @@
 export interface BootstrapInput {
   routerIdentity: string;
-  routerUser: string;
+  deploymentId: string;
+  routerUser?: string;
   routerPassword: string;
   routerWireGuardPrivateKey: string;
   routerWireGuardPublicKey: string;
@@ -15,7 +16,13 @@ export interface BootstrapInput {
   routerAddress: string;
   routerPeerAddress: string;
   recoveryCidr: string;
+  recoveryInterface: string;
   wanInterface: string;
+  sshStrongCrypto: boolean;
+  managementServices: Record<
+    "ssh" | "winbox" | "telnet" | "ftp" | "www" | "www-ssl" | "api" | "api-ssl",
+    { disabled: boolean; address: string; port: number }
+  >;
 }
 
 export type GeneratedBootstrapFiles = Record<

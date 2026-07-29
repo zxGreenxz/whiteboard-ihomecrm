@@ -1,4 +1,5 @@
 import type {
+  ManagedInterfaceTarget,
   NetworkConnection,
   RouterCredential,
   RouterObservation,
@@ -23,7 +24,7 @@ export interface RouterConnector {
   healthCheck(): Promise<RouterHealth>;
   flushDnsCache(): Promise<void>;
   renewDhcpLease(): Promise<boolean>;
-  cycleAccessPort(interfaceExternalKey: string, durationSeconds: number): Promise<void>;
+  cycleAccessPort(target: ManagedInterfaceTarget, durationSeconds: number): Promise<void>;
   reboot(): Promise<void>;
   close(): Promise<void>;
 }

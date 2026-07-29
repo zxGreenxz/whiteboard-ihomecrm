@@ -37,6 +37,7 @@ export interface NetworkConnection {
 export interface RouterInterfaceObservation {
   externalKey: string;
   displayName: string;
+  immutableKey?: string | null;
   role: string;
   protected: boolean;
   enabled: boolean;
@@ -77,10 +78,32 @@ export interface RouterObservation {
 
 export interface InventoryMapping {
   routerDeviceId: string;
-  interfaces: Array<{ interfaceKey: string; id: string }>;
+  interfaces: ManagedInterfaceMapping[];
   aruba: Array<{ externalKey: string; id: string }>;
   inventoryStatus?: "OK" | "DEGRADED";
   quarantinedCount?: number;
+}
+
+export interface ManagedInterfaceTarget {
+  managedResourceId: string;
+  interfaceId: string;
+  interfaceKey: string;
+  currentName: string;
+  immutableKey: string | null;
+  enrolledRole: string;
+  protected: boolean;
+  enrollmentState: "DISCOVERED" | "ENROLLED" | "REVOKED";
+}
+
+export interface ManagedInterfaceMapping {
+  managedResourceId: string | null;
+  id: string;
+  interfaceKey: string;
+  currentName: string;
+  immutableKey: string | null;
+  enrolledRole: string;
+  protected: boolean;
+  enrollmentState: "DISCOVERED" | "ENROLLED" | "REVOKED";
 }
 
 export type CommandAction =
@@ -218,16 +241,33 @@ export function redactForLog(value: unknown): unknown {
 }
 
 export class InterfaceRegistry {
-  readonly #byRouter = new Map<string, Map<string, string>>();
+  readonly #byRouter = new Map<string, Map<string, ManagedInterfaceMapping>>();
 
-  update(routerDeviceId: string, mappings: Array<{ id: string; interfaceKey: string }>): void {
-    const current = this.#byRouter.get(routerDeviceId) ?? new Map<string, string>();
-    for (const mapping of mappings) current.set(mapping.id, mapping.interfaceKey);
-    this.#byRouter.set(routerDeviceId, current);
+  update(routerDeviceId: string, mappings: ManagedInterfaceMapping[]): void {
+    const replacement = new Map<string, ManagedInterfaceMapping>();
+    for (const mapping of mappings) replacement.set(mapping.id, { ...mapping });
+    this.#byRouter.set(routerDeviceId, replacement);
   }
 
-  resolve(routerDeviceId: string, interfaceId: string): string | null {
-    return this.#byRouter.get(routerDeviceId)?.get(interfaceId) ?? null;
+  resolve(routerDeviceId: string, interfaceId: string): ManagedInterfaceTarget | null {
+    const mapping = this.#byRouter.get(routerDeviceId)?.get(interfaceId);
+    if (
+      !mapping?.immutableKey
+      || !mapping.managedResourceId
+      || mapping.enrollmentState !== "ENROLLED"
+      || mapping.enrolledRole !== "ACCESS"
+      || mapping.protected
+    ) return null;
+    return {
+      managedResourceId: mapping.managedResourceId,
+      interfaceId: mapping.id,
+      interfaceKey: mapping.interfaceKey,
+      currentName: mapping.currentName,
+      immutableKey: mapping.immutableKey,
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    };
   }
 
   clear(routerDeviceId: string): void {

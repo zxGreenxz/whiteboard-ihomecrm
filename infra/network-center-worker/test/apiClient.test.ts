@@ -52,7 +52,16 @@ describe("worker Edge API client", () => {
         ok: true,
         data: {
           routerDeviceId: "40000000-0000-4000-8000-000000000001",
-          interfaces: [],
+          interfaces: [{
+            managedResourceId: "60000000-0000-4000-8000-000000000001",
+            interfaceKey: "ether4",
+            id: "50000000-0000-4000-8000-000000000001",
+            currentName: "room-401",
+            immutableKey: "ether4",
+            enrolledRole: "ACCESS",
+            protected: false,
+            enrollmentState: "ENROLLED",
+          }],
           aruba: [],
           inventoryStatus: "DEGRADED",
           quarantinedCount: 3,
@@ -62,7 +71,34 @@ describe("worker Edge API client", () => {
     await expect(validClient.inventory({})).resolves.toMatchObject({
       inventoryStatus: "DEGRADED",
       quarantinedCount: 3,
+      interfaces: [{
+        managedResourceId: "60000000-0000-4000-8000-000000000001",
+        currentName: "room-401",
+        immutableKey: "ether4",
+        enrolledRole: "ACCESS",
+        protected: false,
+        enrollmentState: "ENROLLED",
+      }],
     });
+
+    const missingAuthorityClient = new NetworkCenterApiClient({
+      baseUrl,
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      fetch: async () => Response.json({
+        ok: true,
+        data: {
+          routerDeviceId: "40000000-0000-4000-8000-000000000001",
+          interfaces: [{
+            interfaceKey: "ether4",
+            id: "50000000-0000-4000-8000-000000000001",
+          }],
+          aruba: [],
+        },
+      }),
+    });
+    await expect(missingAuthorityClient.inventory({}))
+      .rejects.toBeInstanceOf(ApiClientError);
 
     const invalidClient = new NetworkCenterApiClient({
       baseUrl,

@@ -48,6 +48,7 @@ function harness(
 ) {
   const calls: string[] = [];
   const completions: Array<Record<string, unknown>> = [];
+  const interfaceRegistry = new InterfaceRegistry();
   let renewCallback: (() => void | Promise<void>) | undefined;
   const connector: RouterConnector = {
     poll: async () => ({ observedAt: new Date().toISOString(), device: {}, interfaces: [], clients: [], aruba: [] }),
@@ -99,7 +100,7 @@ function harness(
       }),
       ...backupStoreOverrides,
     },
-    interfaceRegistry: new InterfaceRegistry(),
+    interfaceRegistry,
     emergencyStop: typeof emergencyStop === "function" ? emergencyStop : () => emergencyStop,
     clock: {
       now: () => new Date("2026-07-28T00:00:00.000Z"),
@@ -110,7 +111,13 @@ function harness(
     leaseSeconds: 90,
     logger: { info() {}, warn() {}, error() {} },
   });
-  return { calls, completions, processor, triggerRenew: async () => renewCallback?.() };
+  return {
+    calls,
+    completions,
+    interfaceRegistry,
+    processor,
+    triggerRenew: async () => renewCallback?.(),
+  };
 }
 
 describe("command processor", () => {
@@ -167,6 +174,40 @@ describe("command processor", () => {
     ]));
     expect(test.completions).toHaveLength(1);
     expect(test.completions[0]).toMatchObject({ outcome: "SUCCEEDED" });
+  });
+
+  it("passes an enrolled immutable target to access-port execution", async () => {
+    let receivedTarget: unknown;
+    const test = harness({
+      cycleAccessPort: async (target) => {
+        receivedTarget = target;
+      },
+    });
+    test.interfaceRegistry.update(connection.deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    await test.processor.processClaim({
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+    }, connection);
+
+    expect(receivedTarget).toMatchObject({
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    });
   });
 
   it("cancels before connecting when a global or building kill switch is active", async () => {

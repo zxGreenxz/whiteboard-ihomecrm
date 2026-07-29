@@ -44,7 +44,16 @@ const commandClaimSchema = z.object({
 
 const inventoryMappingSchema = z.object({
   routerDeviceId: z.uuid(),
-  interfaces: z.array(z.object({ interfaceKey: z.string(), id: z.uuid() })).max(256),
+  interfaces: z.array(z.object({
+    managedResourceId: z.uuid().nullable(),
+    interfaceKey: z.string().min(1).max(160),
+    id: z.uuid(),
+    currentName: z.string().min(1).max(160),
+    immutableKey: z.string().min(1).max(160).nullable(),
+    enrolledRole: z.enum(["WAN", "LAN", "ACCESS", "UPLINK", "MANAGEMENT", "UNKNOWN"]),
+    protected: z.boolean(),
+    enrollmentState: z.enum(["DISCOVERED", "ENROLLED", "REVOKED"]),
+  }).strict()).max(256),
   aruba: z.array(z.object({ externalKey: z.string(), id: z.uuid() })).max(256),
   inventoryStatus: z.enum(["OK", "DEGRADED"]).optional(),
   quarantinedCount: z.number().int().nonnegative().max(1_000_000).optional(),

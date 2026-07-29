@@ -1,10 +1,33 @@
-# iHomeCRM Network Center - emergency rollback from the original LAN session
-/ip/service set [find where name="ssh"] disabled=no port=22 address=@@RECOVERY_CIDR@@
-/ip/firewall/filter remove [find where comment="iHomeCRM WG management"]
-/ip/firewall/filter remove [find where comment="iHomeCRM WG handshake"]
-/interface/wireguard/peers remove [find where interface="wg-ihome-mgmt"]
-/ip/address remove [find where interface="wg-ihome-mgmt"]
-/interface/wireguard remove [find where name="wg-ihome-mgmt"]
-/user remove [find where name=@@ROUTER_USER@@]
-/user/group remove [find where name="network-center-worker"]
+# iHomeCRM Network Center - emergency rollback from the original recovery session
+:local ncUser @@ROUTER_USER@@
+:local ncMarker @@OWNERSHIP_MARKER@@
+:local ncWgName "wg-ihome-mgmt"
+:local ncWgMarker ($ncMarker . ":wireguard")
+:local ncAddressMarker ($ncMarker . ":address")
+:local ncPeerMarker ($ncMarker . ":peer")
+:local ncHandshakeMarker ($ncMarker . ":wg-handshake")
+:local ncManagementMarker ($ncMarker . ":wg-management")
+:local ncRecoveryMarker ($ncMarker . ":lan-recovery")
+:local ncUsers [/user find where name=$ncUser]
+:local ncWgs [/interface/wireguard find where name=$ncWgName]
+
+:if ([:len $ncUsers] > 0 && ([:len $ncUsers] != 1 || [/user get $ncUsers comment] != $ncMarker)) do={
+  :put "NETWORK_CENTER_USER_NOT_OWNED"
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+:if ([:len $ncWgs] > 0 && ([:len $ncWgs] != 1 || [/interface/wireguard get $ncWgs comment] != $ncWgMarker)) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+
+# Restore the exact management-service snapshot captured before bootstrap.
+@@SERVICE_ROLLBACK_COMMANDS@@
+/ip/ssh set strong-crypto=@@SSH_STRONG_CRYPTO_ROLLBACK@@
+
+/ip/firewall/filter remove [find where comment=$ncRecoveryMarker]
+/ip/firewall/filter remove [find where comment=$ncManagementMarker]
+/ip/firewall/filter remove [find where comment=$ncHandshakeMarker]
+/interface/wireguard/peers remove [find where interface=$ncWgName and comment=$ncPeerMarker]
+/ip/address remove [find where interface=$ncWgName and comment=$ncAddressMarker]
+:if ([:len $ncWgs] = 1) do={ /interface/wireguard remove $ncWgs }
+:if ([:len $ncUsers] = 1) do={ /user/ssh-keys remove [find where user=$ncUser]; /user remove $ncUsers }
 :put "NETWORK_CENTER_ROLLBACK_APPLIED"

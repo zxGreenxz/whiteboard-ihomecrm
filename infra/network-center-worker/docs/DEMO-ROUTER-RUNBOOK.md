@@ -56,7 +56,8 @@ Tạo input JSON owner-only ở thư mục tạm ngoài Git với các trường
 ```json
 {
   "routerIdentity": "MikroTik Demo",
-  "routerUser": "network-center",
+  "deploymentId": "demo-router-<change-id>",
+  "routerUser": "ihome-nc-worker",
   "routerPassword": "<random 32+ chars; recovery only>",
   "routerWireGuardPrivateKey": "<secret>",
   "routerWireGuardPublicKey": "<public>",
@@ -70,10 +71,32 @@ Tạo input JSON owner-only ở thư mục tạm ngoài Git với các trường
   "vpsPeerAddress": "<VPS /32>",
   "routerAddress": "<router /24>",
   "routerPeerAddress": "<router /32>",
-  "recoveryCidr": "<current LAN CIDR>",
-  "wanInterface": "<actual WAN interface>"
+  "recoveryCidr": "<one RFC1918 /28 to /32 recovery network; prefer laptop /32>",
+  "recoveryInterface": "<enabled, unbridged ether2-ether99 with a direct IP address>",
+  "wanInterface": "<actual WAN interface>",
+  "sshStrongCrypto": false,
+  "managementServices": {
+    "ssh": { "disabled": false, "address": "<captured exact value>", "port": 22 },
+    "winbox": { "disabled": false, "address": "<captured exact value>", "port": 8291 },
+    "telnet": { "disabled": true, "address": "<captured exact value>", "port": 23 },
+    "ftp": { "disabled": true, "address": "<captured exact value>", "port": 21 },
+    "www": { "disabled": true, "address": "<captured exact value>", "port": 80 },
+    "www-ssl": { "disabled": true, "address": "<captured exact value>", "port": 443 },
+    "api": { "disabled": true, "address": "<captured exact value>", "port": 8728 },
+    "api-ssl": { "disabled": true, "address": "<captured exact value>", "port": 8729 }
+  }
 }
 ```
+
+`routerUser` chỉ được phép là `ihome-nc-worker`. Generator tạo ownership marker
+`ihomecrm-network-center:v1:<deploymentId>` và dừng trước mutation nếu user hoặc
+WireGuard cùng tên không mang marker đó. `managementServices` phải được chép từ
+pre-state vừa capture; không tự điền theo giá trị mong muốn vì rollback dùng đúng
+disabled/address/port này. `sshStrongCrypto` cũng phải phản ánh đúng giá trị
+`/ip/ssh strong-crypto` trước bootstrap để rollback phục hồi chính xác.
+Bootstrap sẽ dừng trước mutation nếu recovery port không tồn tại duy nhất, đang
+disabled, là bridge member, thiếu IP address trực tiếp, trùng WAN, hoặc không có
+`default-name` vật lý `ether2`-`ether99`.
 
 Xác minh public key khớp private key bằng `wg pubkey` trước khi tiếp tục. Chạy
 generator không dùng CLI arguments và chọn output ngoài repo:
@@ -88,7 +111,8 @@ Generator không in nội dung ra stdout. Output gồm:
 
 - `router-bootstrap.rsc`: stage 1, vẫn cho SSH từ LAN recovery;
 - `router-lockdown.rsc`: stage 2, chỉ apply sau xác minh;
-- `router-rollback.rsc`: gỡ thành phần Network Center và mở lại SSH LAN;
+- `router-rollback.rsc`: chỉ gỡ resource đúng ownership marker và phục hồi chính
+  xác disabled/address/port của tám management service cùng `strong-crypto`;
 - `worker-ssh-key.pub`;
 - `wg0.conf`: cấu hình VPS chứa private key, phải giữ mode `0600`.
 
@@ -104,7 +128,9 @@ Generator không in nội dung ra stdout. Output gồm:
    ```
 
 4. Chỉ khi dry-run báo 0 lỗi mới import thật và đọc toàn bộ output trước khi đóng
-   phiên:
+   phiên. Output phải là
+   `NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF`; marker này cố ý không phải
+   `READY` vì đường phục hồi thực tế chưa được chứng minh:
 
    ```routeros
    /import file-name=router-bootstrap.rsc verbose=yes
@@ -118,10 +144,14 @@ Generator không in nội dung ra stdout. Output gồm:
    /file/remove [find where name="worker-ssh-key.pub"]
    ```
 
-6. Xác minh interface `wg-ihome-mgmt`, IP, peer, user/group, SSH key và hai rule
-   firewall có comment `iHomeCRM ...`.
-7. Không disable admin cũ, không thay default route/NAT/DHCP và chưa import
-   lockdown.
+6. Giữ nguyên phiên LAN cũ, mở một phiên SSH LAN recovery mới từ đúng
+   máy/nguồn trong `recoveryCidr`, và xác minh đăng nhập thành công sau
+   import. Đây là recovery proof bắt buộc; không đóng phiên cũ trước
+   khi phiên mới đã đọc được identity và `/ip/firewall/filter/print`
+   cho rule có marker `:lan-recovery`.
+7. Xác minh interface `wg-ihome-mgmt`, IP, peer, user/group, SSH key và ba rule
+   firewall có marker ownership. Không disable admin cũ, không thay default
+   route/NAT/DHCP và chưa import lockdown.
 
 Nếu import lỗi giữa chừng, chạy rollback từ phiên LAN còn mở rồi so sánh trạng
 thái với evidence bước 1.
@@ -176,7 +206,8 @@ Import `router-lockdown.rsc` qua phiên WireGuard đã xác minh. Ngay sau impor
 
 - mở phiên SSH mới qua WireGuard trước khi đóng phiên cũ;
 - xác minh SSH chỉ nhận từ VPS peer `/32`;
-- Winbox chỉ nằm trên management CIDR;
+- Winbox bị disable trong lockdown; quản trị tự động chỉ đi qua SSH/WireGuard từ
+  VPS peer `/32`;
 - telnet/FTP service/web/API bị disable (SFTP trong SSH vẫn hoạt động);
 - LAN không còn là đường quản trị bình thường; giữ cáp và rollback file cho tình
   huống khẩn cấp vật lý.
@@ -203,7 +234,7 @@ Nếu WireGuard/SSH worker không ổn định:
 
 1. dùng phiên LAN recovery còn mở;
 2. import `router-rollback.rsc`;
-3. xác minh SSH LAN hoạt động lại;
+3. xác minh cả tám management service và `strong-crypto` trở về đúng pre-state;
 4. giữ binary backup/export để điều tra nhưng không commit;
 5. xóa/rotate key và worker secret bị nghi lộ;
 6. chỉ khôi phục binary backup khi rollback script không đủ và đã xác nhận đúng

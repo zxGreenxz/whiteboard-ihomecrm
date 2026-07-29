@@ -57,6 +57,15 @@ const resourceLifecycleSql = existsSync(resourceLifecycleMigrationPath)
   ? readFileSync(resourceLifecycleMigrationPath, "utf8").replace(/\r\n/g, "\n")
   : "";
 
+const managedCommandsMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260729132000_network_center_managed_commands.sql",
+);
+
+const managedCommandsSql = existsSync(managedCommandsMigrationPath)
+  ? readFileSync(managedCommandsMigrationPath, "utf8").replace(/\r\n/g, "\n")
+  : "";
+
 function sqlFunctionBody(sql: string, functionName: string): string {
   const start = sql.search(new RegExp(`CREATE OR REPLACE FUNCTION\\s+(?:public|app_private)\\.${functionName}\\b`, "i"));
   if (start < 0) return "";
@@ -491,6 +500,28 @@ describe("Network Center resource lifecycle hardening migration", () => {
     expect(resourceLifecycleSql).toMatch(/network_center_enqueue_command_v1/i);
     expect(resourceLifecycleSql).not.toMatch(
       /pending_approval|approved_by|rejected_by|maker_checker/i,
+    );
+  });
+});
+
+describe("Network Center managed command hardening migration", () => {
+  it("is one additive forward transaction and reloads the API schema", () => {
+    expect(
+      existsSync(managedCommandsMigrationPath),
+      `Missing migration: ${managedCommandsMigrationPath}`,
+    ).toBe(true);
+    expect(managedCommandsSql.match(/^BEGIN;$/gim)).toHaveLength(1);
+    expect(managedCommandsSql.match(/^COMMIT;$/gim)).toHaveLength(1);
+    expect(managedCommandsSql).toMatch(/pg_advisory_xact_lock\(20260729132000/i);
+    expect(managedCommandsSql).toMatch(/NOTIFY pgrst, 'reload schema';\s*COMMIT;\s*$/i);
+  });
+
+  it("keeps immutable resources private and command enforcement server-side", () => {
+    expect(managedCommandsSql).toContain("public.network_managed_resources");
+    expect(managedCommandsSql).toContain("managed_resource_id");
+    expect(managedCommandsSql).toContain("network_commands_managed_target_guard");
+    expect(managedCommandsSql).not.toMatch(
+      /GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE|ALL)\s+ON\s+(?:TABLE\s+)?public\.network_managed_resources/i,
     );
   });
 });
