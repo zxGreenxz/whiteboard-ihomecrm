@@ -115,9 +115,19 @@ serve(async (req) => {
     let sent = 0;
     let failed = 0;
     const deadIds: string[] = [];
+    // Phơi lỗi thật ra ngoài. Trước đây hàm chỉ trả `sent` nên khi push service từ chối
+    // (403 lệch cặp VAPID, 401 ký sai, 413 payload quá lớn) UI chỉ thấy sent=0 và hiện
+    // "chưa bật thiết bị" — đúng câu đánh lạc hướng. Xem plan §F.
+    const errors: Array<{ status?: number; host: string; body: string }> = [];
 
     await Promise.all(
       subs.map(async (s) => {
+        let host = '?';
+        try {
+          host = new URL(s.endpoint).host;
+        } catch {
+          /* endpoint hỏng — giữ '?' */
+        }
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -127,6 +137,11 @@ serve(async (req) => {
         } catch (e) {
           failed++;
           const status = (e as { statusCode?: number })?.statusCode;
+          const body = String(
+            (e as { body?: unknown })?.body ?? (e as Error)?.message ?? e,
+          ).slice(0, 300);
+          errors.push({ status, host, body });
+          console.error('[send-push] fail', JSON.stringify({ status, host, body }));
           // 404/410 = subscription hết hạn/đã huỷ → dọn
           if (status === 404 || status === 410) deadIds.push(s.id);
         }
@@ -137,7 +152,14 @@ serve(async (req) => {
       await adminClient.from('push_subscriptions').update({ is_active: false }).in('id', deadIds);
     }
 
-    return json(200, { ok: true, sent, failed, total: subs.length, pruned: deadIds.length });
+    return json(200, {
+      ok: true,
+      sent,
+      failed,
+      total: subs.length,
+      pruned: deadIds.length,
+      errors,
+    });
   } catch (e) {
     return json(500, { error: String((e as Error)?.message ?? e) });
   }

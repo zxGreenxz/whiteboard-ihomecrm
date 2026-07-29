@@ -8,9 +8,14 @@
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUserId } from '@/lib/authSession';
 
+// Xoay khoá 29/07/2026: cặp cũ (BO7WKT9NW…) chưa từng chứng minh giao được tin nào và
+// không đối chiếu được nửa private. Vì push_subscriptions đang 0 dòng nên xoay tốn 0 đồng.
+// Nếu xoay lại lần nữa: phải đổi CẢ ở đây VÀ ở Supabase secrets (VAPID_PUBLIC_KEY +
+// VAPID_PRIVATE_KEY), rồi redeploy send-push. Subscription cũ tự đăng ký lại nhờ
+// enablePush() so applicationServerKey (xem bên dưới).
 export const VAPID_PUBLIC_KEY: string =
   (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ||
-  'BO7WKT9NWAu87ilcP54yVYn8_M0DJX0UOpWC04dgEhu8X8s5lU0KIV9gjoPM3ejJ5v0Ify171gsnmtVjEz_7n-c';
+  'BF4cxKnCn4zWVOIZPZ0vT4NKH18_Bvx_3pv9jxpI8ePhi16yvdpMnbY95sa34vWq6YnzT_m2dN_RpsUu2k2fZV4';
 
 const SW_URL = '/sw.js';
 
@@ -128,15 +133,41 @@ export async function enablePush(): Promise<NotificationPermission | 'unsupporte
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return permission;
 
+  const wantKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
   let sub = await reg.pushManager.getSubscription();
+
+  // Subscription gắn CHẾT vào applicationServerKey lúc đăng ký. Nếu khoá VAPID đã xoay
+  // mà ta tái dùng subscription cũ thì mọi lần gửi ăn 403 vĩnh viễn và không bao giờ bị
+  // prune (send-push chỉ prune 404/410). Phải huỷ rồi đăng ký lại bằng khoá hiện tại.
+  if (sub && !sameApplicationServerKey(sub, wantKey)) {
+    try {
+      await sub.unsubscribe();
+    } catch (e) {
+      console.warn('[push] unsubscribe khoá cũ thất bại', e);
+    }
+    sub = null;
+  }
+
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      applicationServerKey: wantKey,
     });
   }
   await saveSubscription(sub);
   return 'granted';
+}
+
+/** Subscription hiện có được đăng ký bằng đúng khoá VAPID đang dùng? */
+function sameApplicationServerKey(sub: PushSubscription, want: Uint8Array): boolean {
+  const raw = sub.options?.applicationServerKey;
+  // Không đọc được options (trình duyệt cũ) → coi như KHÁC để buộc đăng ký lại: an toàn hơn
+  // là giữ một subscription có thể đã lệch khoá.
+  if (!raw) return false;
+  const have = new Uint8Array(raw as ArrayBuffer);
+  if (have.length !== want.length) return false;
+  for (let i = 0; i < have.length; i++) if (have[i] !== want[i]) return false;
+  return true;
 }
 
 /** Tắt thông báo trên thiết bị này: huỷ subscription + dọn DB. */
@@ -153,8 +184,22 @@ export async function disablePush(): Promise<void> {
   await (supabase as any).from('push_subscriptions').delete().eq('endpoint', endpoint);
 }
 
+export interface PushSendError {
+  status?: number;
+  host: string;
+  body: string;
+}
+
+export interface SendTestPushResult {
+  sent: number;
+  failed: number;
+  total: number;
+  pruned: number;
+  errors: PushSendError[];
+}
+
 /** Gọi edge function gửi thông báo thử về chính mình. */
-export async function sendTestPush(): Promise<{ sent: number; total: number }> {
+export async function sendTestPush(): Promise<SendTestPushResult> {
   const { data, error } = await supabase.functions.invoke('send-push', {
     body: {
       title: 'CRM — Thông báo thử 🔔',
@@ -163,6 +208,29 @@ export async function sendTestPush(): Promise<{ sent: number; total: number }> {
       tag: 'test',
     },
   });
-  if (error) throw error;
-  return { sent: data?.sent ?? 0, total: data?.total ?? 0 };
+
+  if (error) {
+    // supabase-js chỉ để lại "Edge Function returned a non-2xx status code" ở .message;
+    // thân phản hồi thật nằm trong error.context và trước đây bị vứt đi.
+    const ctx = (error as { context?: Response }).context;
+    if (ctx && typeof ctx.json === 'function') {
+      try {
+        const detail = await ctx.json();
+        throw new Error(detail?.error ? String(detail.error) : JSON.stringify(detail).slice(0, 300));
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message !== 'Unexpected end of JSON input') {
+          throw parseErr;
+        }
+      }
+    }
+    throw error;
+  }
+
+  return {
+    sent: data?.sent ?? 0,
+    failed: data?.failed ?? 0,
+    total: data?.total ?? 0,
+    pruned: data?.pruned ?? 0,
+    errors: Array.isArray(data?.errors) ? (data.errors as PushSendError[]) : [],
+  };
 }
