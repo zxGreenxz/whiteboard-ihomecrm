@@ -377,7 +377,7 @@ test('finance-v2-lifecycle', async ({ browser }) => {
     authC,
     `income_expenses?select=id&name=eq.${encodeURIComponent(name)}&limit=1`,
   );
-  await row.getByRole('button', { name: /Hoàn tác khoản (thu|chi)/ }).click();
+  await row.getByRole('button', { name: /Mở lại \(tiền (rời|về) sổ/ }).click();
   await pc
     .getByRole('alertdialog')
     .getByRole('button', { name: 'Hoàn tác' })
@@ -505,7 +505,7 @@ test('finance-v2 huỷ phiếu REVERSED qua UI (desktop)', async ({ browser }) =
     await expect(row.getByText(/^Đã (Thu|Chi)$/)).toBeVisible({ timeout: 30_000 });
 
     // HOÀN TÁC (nút violet, dialog có Textarea lý do) → posting_status=REVERSED.
-    await row.getByRole('button', { name: /Hoàn tác khoản (thu|chi)/ }).click();
+    await row.getByRole('button', { name: /Mở lại \(tiền (rời|về) sổ/ }).click();
     await pc.getByRole('alertdialog').getByRole('textbox').fill('E2E hoàn tác trước khi huỷ');
     await pc.getByRole('alertdialog').getByRole('button', { name: 'Hoàn tác' }).click();
     await expect

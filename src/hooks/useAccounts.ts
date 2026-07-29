@@ -242,46 +242,13 @@ export const useDeleteAccount = () => {
   });
 };
 
-export const useLockAccount = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { id: string; lock_date: string }) => {
-      // Canonical lock_cashbook_period_v1 (monotonic guard). Không còn fallback
-      // ghi thẳng bảng (xem ghi chú ở useCreateAccount).
-      const canonical = await (supabase.rpc as any)("lock_cashbook_period_v1", {
-        p_cashbook_id: input.id, p_lock_date: input.lock_date, p_unlock: false,
-      });
-      if (!canonical.error) return;
-      toast.error(canonical.error.message || "Không thể khoá sổ");
-      throw canonical.error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["accounts"] });
-      qc.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      toast.success("Đã khoá sổ thành công");
-    },
-  });
-};
-
-export const useUnlockAccount = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      // Canonical unlock qua lock_cashbook_period_v1(unlock=true). KHÔNG còn
-      // fallback `.update({lock_date: null})`: đó chính là đường cho phép chủ
-      // sổ tự mở khoá một kỳ đã chốt bằng một PATCH PostgREST. Đợt 3 sẽ bỏ hẳn
-      // khái niệm mở khoá; ở Đợt 0 chỉ cắt đường đi vòng.
-      const canonical = await (supabase.rpc as any)("lock_cashbook_period_v1", {
-        p_cashbook_id: id, p_lock_date: null, p_unlock: true,
-      });
-      if (!canonical.error) return;
-      toast.error(canonical.error.message || "Không thể mở khoá sổ");
-      throw canonical.error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["accounts"] });
-      qc.invalidateQueries({ queryKey: ["accounts-with-balance"] });
-      toast.success("Đã mở khoá sổ thành công");
-    },
-  });
-};
+// ĐỢT 6 — ĐÃ XOÁ useLockAccount / useUnlockAccount.
+//
+// Khoá sổ không còn là một nút bấm một mình: nó là kết quả của nghi thức chốt &
+// bàn giao hai bên (propose_cashbook_closing_v1 → confirm_cashbook_closing_v1,
+// xem src/hooks/useCashbookClosing.ts), và ngày khoá hiệu lực đọc từ
+// app_private.cashbook_closures chứ không từ accounts.lock_date.
+//
+// useUnlockAccount thì đã CHẾT từ Đợt 3: lock_cashbook_period_v1(p_unlock=>true)
+// LUÔN ném [CASHBOOK_CLOSED] theo quyết định #7 của chủ ("không ai mở"). Giữ một
+// nút gọi nó lại là hứa với người dùng một đường thoát không tồn tại.

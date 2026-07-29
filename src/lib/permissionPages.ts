@@ -268,6 +268,12 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("cashbooks", "post", "Ghi sổ (hạch toán vào sổ quỹ)", "elevated", {
             desc: "Đẩy phiếu đã duyệt vào số dư sổ quỹ. Chỉ người đang GIỮ sổ mới ghi được, kể cả khi có quyền này.",
           }),
+          f("cashbooks", "close", "Đề nghị chốt & bàn giao quỹ", "elevated", {
+            desc: "Đếm tiền mặt rồi gửi đề nghị chốt sổ tới người nhận. Chỉ người đang GIỮ sổ mới đề nghị được. Đề nghị chưa khoá gì cả — phải bên kia xác nhận.",
+          }),
+          f("cashbooks", "close_confirm", "Xác nhận nhận bàn giao (khoá vĩnh viễn)", "elevated", {
+            desc: "Ký nhận số tiền đã đếm và ĐÓNG KỲ VĨNH VIỄN: mọi phiếu có ngày ≤ ngày chốt không sửa/huỷ/xoá được nữa, không ai mở lại được, kể cả chủ tổ chức. Người xác nhận phải KHÁC người đề nghị.",
+          }),
         ],
       },
       {

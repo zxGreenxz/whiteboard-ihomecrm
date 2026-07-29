@@ -17,7 +17,6 @@ import { Plus, Search, Wallet } from "lucide-react";
 import {
   useAccountsWithBalance,
   useDeleteAccount,
-  useUnlockAccount,
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
 import { usePagination } from "@/hooks/usePagination";
@@ -26,7 +25,10 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import CashbookList from "@/components/cashbooks/CashbookList";
 import CashbookListMobile from "@/components/cashbooks/CashbookListMobile";
 import CashbookForm from "@/components/cashbooks/CashbookForm";
-import CashbookLockDialog from "@/components/cashbooks/CashbookLockDialog";
+import CloseCashbookDialog from "@/components/cashbooks/CloseCashbookDialog";
+import ConfirmCashbookClosingDialog from "@/components/cashbooks/ConfirmCashbookClosingDialog";
+import CashbookClosingInbox from "@/components/cashbooks/CashbookClosingInbox";
+import { useCashbookCloseConfirmers } from "@/hooks/useCashbookClosing";
 import CashbookDetailDialog from "@/components/cashbooks/CashbookDetailDialog";
 
 const CashbooksDesktop = () => {
@@ -44,12 +46,12 @@ const CashbooksDesktop = () => {
   const totalCount = data?.totalCount ?? 0;
 
   const deleteMut = useDeleteAccount();
-  const unlockMut = useUnlockAccount();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AccountWithBalance | null>(null);
-  const [lockOpen, setLockOpen] = useState(false);
-  const [lockTarget, setLockTarget] = useState<AccountWithBalance | null>(null);
+  // Đợt 6 — nghi thức chốt & bàn giao thay cho khoá/mở khoá tay.
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<AccountWithBalance | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [detailAcc, setDetailAcc] = useState<AccountWithBalance | null>(null);
 
@@ -67,17 +69,12 @@ const CashbooksDesktop = () => {
     setFormOpen(true);
   }, []);
 
-  const handleLock = useCallback((acc: AccountWithBalance) => {
-    setLockTarget(acc);
-    setLockOpen(true);
-  }, []);
+  const { data: confirmers } = useCashbookCloseConfirmers(closeTarget?.id ?? null);
 
-  const handleUnlock = useCallback(
-    async (acc: AccountWithBalance) => {
-      await unlockMut.mutateAsync(acc.id);
-    },
-    [unlockMut]
-  );
+  const handleClose = useCallback((acc: AccountWithBalance) => {
+    setCloseTarget(acc);
+    setCloseOpen(true);
+  }, []);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteId) return;
@@ -114,14 +111,17 @@ const CashbooksDesktop = () => {
             </div>
           </form>
 
+          <div className="px-3 pt-3">
+            <CashbookClosingInbox />
+          </div>
+
           <CashbookListMobile
             rows={rows}
             isLoading={isLoading}
             onView={handleView}
             onEdit={handleEdit}
             onDelete={(id) => setDeleteId(id)}
-            onLock={handleLock}
-            onUnlock={handleUnlock}
+            onClose={handleClose}
           />
 
           {totalCount > pagination.pageSize && (
@@ -171,6 +171,8 @@ const CashbooksDesktop = () => {
             </form>
           </div>
 
+          <CashbookClosingInbox />
+
           <CashbookList
             rows={rows}
             isLoading={isLoading}
@@ -179,8 +181,7 @@ const CashbooksDesktop = () => {
             onView={handleView}
             onEdit={handleEdit}
             onDelete={(id) => setDeleteId(id)}
-            onLock={handleLock}
-            onUnlock={handleUnlock}
+            onClose={handleClose}
           />
         </div>
       )}
@@ -204,13 +205,15 @@ const CashbooksDesktop = () => {
         account={editing}
       />
 
-      <CashbookLockDialog
-        open={lockOpen}
+      <CloseCashbookDialog
+        open={closeOpen}
         onOpenChange={(o) => {
-          setLockOpen(o);
-          if (!o) setLockTarget(null);
+          setCloseOpen(o);
+          if (!o) setCloseTarget(null);
         }}
-        account={lockTarget}
+        cashbookId={closeTarget?.id ?? null}
+        cashbookName={closeTarget?.name ?? null}
+        candidates={confirmers ?? []}
       />
 
       <AlertDialog
