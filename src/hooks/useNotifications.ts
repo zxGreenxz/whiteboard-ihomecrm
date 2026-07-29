@@ -26,6 +26,7 @@ export type NotificationStatus =
   | 'PENDING'
   | 'SENT'
   | 'FAILED'
+  | 'CANCELLED'
   | 'READ';
 
 export interface Notification {
@@ -41,6 +42,9 @@ export interface Notification {
   invoice_id?: string;
   contract_id?: string;
   issue_id?: string;
+  job_id?: string | null;
+  organization_id?: string | null;
+  metadata?: Record<string, unknown> | null;
   scheduled_at?: string;
   sent_at?: string;
   status: NotificationStatus;
@@ -76,6 +80,9 @@ export function useNotifications() {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
+        // Lọc user_id tường minh: RLS đã ép own-row từ 29/07/2026, đây là lớp bảo hiểm
+        // + tránh quét thừa. Xem migration 20260729130000_notifications_rls_own_row.sql.
+        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .order('created_at', { ascending: false })
         // Cap an toàn: trang thông báo không cần kéo toàn bộ lịch sử.
@@ -100,10 +107,12 @@ export function useUnreadNotificationsCount() {
     queryFn: async () => {
       if (!user?.id) throw new Error('User not authenticated');
 
-      // Use PENDING as unread indicator since READ may not exist in enum yet
+      // Dùng PENDING làm cờ chưa đọc. Hôm nay bảng chỉ có PENDING/READ nên tương đương
+      // `!= READ`; nếu sau này có dòng SENT/FAILED thì phải xem lại (đã ghi trong plan).
       const { count, error } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .eq('status', 'PENDING');
 
@@ -129,6 +138,7 @@ export function useRecentNotifications(limit: number = 5) {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
+        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .order('created_at', { ascending: false })
         .limit(limit);
@@ -150,12 +160,17 @@ export function useMarkAsRead() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      // .maybeSingle() thay .single(): dòng không thuộc mình (hoặc đã bị xoá) trả null
+      // thay vì ném PGRST116 — trước đây lỗi này bị nuốt câm vì không có onError.
       const { data, error } = await supabase
         .from('notifications')
         .update({ status: 'READ' })
         .eq('id', notificationId)
+        .eq('user_id', user.id)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       return data;
@@ -163,6 +178,9 @@ export function useMarkAsRead() {
     onSuccess: () => {
       // Invalidate all notification queries to refresh
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+    onError: (error) => {
+      toast.error('Không đánh dấu đã đọc được: ' + error.message);
     },
   });
 }
@@ -181,6 +199,7 @@ export function useMarkAllAsRead() {
       const { error } = await supabase
         .from('notifications')
         .update({ status: 'READ' })
+        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .neq('status', 'READ');
 
@@ -235,19 +254,27 @@ export function useCreateNotification() {
  */
 export function useDeleteNotification() {
   const queryClient = useQueryClient();
+  const { data: user } = useAuth();
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
+      if (!user?.id) throw new Error('User not authenticated');
+
+      const { data, error } = await supabase
         .from('notifications')
         .delete()
-        .eq('id', notificationId);
+        .eq('id', notificationId)
+        .eq('user_id', user.id)
+        .select('id');
 
       if (error) throw error;
+      return data ?? [];
     },
-    onSuccess: () => {
+    onSuccess: (rows) => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      toast.success('Thông báo đã được xóa thành công');
+      // Trước đây toast "thành công" cả khi xoá 0 dòng (dòng của người khác / đã bị xoá).
+      if (rows.length) toast.success('Thông báo đã được xóa thành công');
+      else toast.info('Thông báo không còn tồn tại');
     },
     onError: (error) => {
       toast.error('Có lỗi xảy ra khi xóa thông báo: ' + error.message);
@@ -269,6 +296,7 @@ export function useDeleteAllRead() {
       const { error } = await supabase
         .from('notifications')
         .delete()
+        .eq('user_id', user.id)
         .eq('channel', 'IN_APP')
         .eq('status', 'READ');
 
