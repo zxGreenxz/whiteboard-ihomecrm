@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CommandCoordinator, CommandProcessor, sanitizeRouterExport } from "../src/commands.js";
+import type { BackupStore } from "../src/backupStore.js";
 import { InterfaceRegistry, RouterOperationError } from "../src/domain.js";
 import type { RouterConnector } from "../src/routeros/connector.js";
 
@@ -43,6 +44,7 @@ function claim(actionType = "FLUSH_DNS_CACHE") {
 function harness(
   overrides: Partial<RouterConnector> = {},
   emergencyStop: boolean | (() => boolean) = false,
+  backupStoreOverrides: Partial<BackupStore> = {},
 ) {
   const calls: string[] = [];
   const completions: Array<Record<string, unknown>> = [];
@@ -52,7 +54,12 @@ function harness(
     captureBackup: async () => {
       calls.push("backup");
       return {
-        binary: new Uint8Array([1, 2, 3]),
+        artifact: {
+          path: "/staging/safe.backup.part",
+          sha256: "a".repeat(64),
+          bytes: 3,
+          dispose: async () => { calls.push("dispose-staging"); },
+        },
         redactedExport: "/system identity set name=demo",
       };
     },
@@ -75,7 +82,23 @@ function harness(
       snapshot: async () => { calls.push("snapshot"); },
     },
     connectorFactory: async () => connector,
-    backupStore: { save: async () => ({ path: "/backups/safe.backup", sha256: "a".repeat(64), bytes: 3 }) },
+    backupStore: {
+      pressure: async () => ({ state: "OK", volumeBytes: 0, freeBytes: 40 * 1024 ** 3 }),
+      assertReserve: async () => {
+        calls.push("reserve");
+        return { state: "OK", volumeBytes: 0, freeBytes: 40 * 1024 ** 3 };
+      },
+      rotate: async () => ({ deleted: 0, reclaimedBytes: 0, remainingBytes: 0 }),
+      saveVerified: async () => ({
+        path: "/backups/safe.backup",
+        deviceId: connection.deviceId,
+        sha256: "a".repeat(64),
+        bytes: 3,
+        createdAt: new Date("2026-07-28T00:00:00.000Z"),
+        release: () => { calls.push("release-backup"); },
+      }),
+      ...backupStoreOverrides,
+    },
     interfaceRegistry: new InterfaceRegistry(),
     emergencyStop: typeof emergencyStop === "function" ? emergencyStop : () => emergencyStop,
     clock: {
@@ -127,6 +150,7 @@ describe("command processor", () => {
 
     expect(test.calls).toEqual(expect.arrayContaining([
       "VALIDATED",
+      "reserve",
       "BACKUP_STARTED",
       "backup",
       "snapshot",
@@ -139,6 +163,7 @@ describe("command processor", () => {
       "POST_CHECK_COMPLETED",
       "close",
       "renew-lease",
+      "release-backup",
     ]));
     expect(test.completions).toHaveLength(1);
     expect(test.completions[0]).toMatchObject({ outcome: "SUCCEEDED" });
@@ -161,13 +186,41 @@ describe("command processor", () => {
     const test = harness({
       captureBackup: async () => {
         stopped = true;
-        return { binary: new Uint8Array([1]), redactedExport: "/system identity print" };
+        return {
+          artifact: {
+            path: "/staging/emergency.backup.part",
+            sha256: "a".repeat(64),
+            bytes: 1,
+            dispose: async () => undefined,
+          },
+          redactedExport: "/system identity print",
+        };
       },
     }, () => stopped);
 
     await test.processor.processClaim(claim(), connection);
     expect(test.calls).not.toContain("flush");
     expect(test.completions[0]).toMatchObject({ outcome: "CANCELLED_BY_KILL_SWITCH" });
+  });
+
+  it("fails before router backup or mutation when disk reserve is unavailable", async () => {
+    const test = harness({}, false, {
+      assertReserve: async () => {
+        throw new RouterOperationError("BACKUP_RESERVE_UNAVAILABLE", {
+          retryable: true,
+          mayHaveExecuted: false,
+        });
+      },
+    });
+
+    await test.processor.processClaim(claim("REBOOT_ROUTER"), connection);
+
+    expect(test.calls).not.toContain("backup");
+    expect(test.calls).not.toContain("reboot");
+    expect(test.completions[0]).toMatchObject({
+      outcome: "RETRYABLE_FAILURE",
+      result: { code: "BACKUP_RESERVE_UNAVAILABLE" },
+    });
   });
 
   it("does not replay actions during reconciliation", async () => {
@@ -180,6 +233,26 @@ describe("command processor", () => {
       "post-check",
       "RECONCILIATION_COMPLETED",
     ]));
+    expect(test.completions[0]).toMatchObject({ outcome: "SUCCEEDED" });
+  });
+
+  it("allows read-only reconciliation when backup storage is under pressure", async () => {
+    const test = harness({}, false, {
+      assertReserve: async () => {
+        throw new RouterOperationError("BACKUP_RESERVE_UNAVAILABLE", {
+          retryable: true,
+          mayHaveExecuted: false,
+        });
+      },
+    });
+
+    await test.processor.processClaim({
+      ...claim("REBOOT_ROUTER"),
+      reconciliation: true,
+    }, connection);
+
+    expect(test.calls).toContain("post-check");
+    expect(test.calls).not.toContain("backup");
     expect(test.completions[0]).toMatchObject({ outcome: "SUCCEEDED" });
   });
 

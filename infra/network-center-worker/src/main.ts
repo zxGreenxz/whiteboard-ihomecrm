@@ -1,8 +1,10 @@
 import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { NetworkCenterApiClient } from "./apiClient.js";
-import { CommandCoordinator, CommandProcessor, FileBackupStore } from "./commands.js";
+import { FileBackupStore } from "./backupStore.js";
+import { CommandCoordinator, CommandProcessor } from "./commands.js";
 import { loadWorkerConfig } from "./config.js";
 import {
   InterfaceRegistry,
@@ -111,6 +113,7 @@ async function run(): Promise<void> {
       connection,
       credential,
       commandTimeoutMs: config.commandTimeoutMs,
+      backupStagingDirectory: resolve(config.backupDirectory, ".staging"),
     });
   };
   const polling = new PollingCoordinator({

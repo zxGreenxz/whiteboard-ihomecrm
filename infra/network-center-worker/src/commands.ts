@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
 
+import {
+  type BackupStore,
+  type VerifiedBackup,
+} from "./backupStore.js";
 import {
   InterfaceRegistry,
   RouterOperationError,
@@ -14,53 +16,15 @@ import {
   type WorkerLogger,
 } from "./domain.js";
 import type { RouterConnector } from "./routeros/connector.js";
+import {
+  ROUTER_BACKUP_MAX_BYTES,
+  type StagedSftpFile,
+} from "./routeros/boundedSftpRead.js";
 
 type CommandApi = Pick<
   NetworkCenterWorkerApi,
   "renewLease" | "stage" | "complete" | "snapshot"
 >;
-
-export interface BackupReceipt {
-  path: string;
-  sha256: string;
-  bytes: number;
-}
-
-export interface BackupStore {
-  save(claim: CommandClaim, binary: Uint8Array): Promise<BackupReceipt>;
-}
-
-export class FileBackupStore implements BackupStore {
-  readonly #directory: string;
-
-  constructor(directory: string) {
-    this.#directory = resolve(directory);
-  }
-
-  async save(claim: CommandClaim, binary: Uint8Array): Promise<BackupReceipt> {
-    if (binary.byteLength < 1 || binary.byteLength > 64 * 1024 * 1024) {
-      throw new RouterOperationError("BACKUP_SIZE_INVALID", {
-        retryable: false,
-        mayHaveExecuted: false,
-      });
-    }
-    await mkdir(this.#directory, { recursive: true, mode: 0o700 });
-    const name = `${claim.deviceId}-${claim.commandId}-${claim.attemptNo}.backup`;
-    const path = resolve(this.#directory, name);
-    if (!path.startsWith(`${this.#directory}${sep}`)) {
-      throw new RouterOperationError("BACKUP_PATH_INVALID", {
-        retryable: false,
-        mayHaveExecuted: false,
-      });
-    }
-    await writeFile(path, binary, { flag: "wx", mode: 0o600 });
-    return {
-      path,
-      sha256: createHash("sha256").update(binary).digest("hex"),
-      bytes: binary.byteLength,
-    };
-  }
-}
 
 interface CommandProcessorOptions {
   api: CommandApi;
@@ -215,7 +179,8 @@ export class CommandProcessor {
     }
 
     let connector: RouterConnector | undefined;
-    let backupReceipt: BackupReceipt | undefined;
+    let backupReceipt: VerifiedBackup | undefined;
+    let stagedArtifact: StagedSftpFile | undefined;
     let actionResult: Record<string, unknown> = { applied: false };
     let actionStarted = false;
     let leaseError: unknown;
@@ -260,10 +225,22 @@ export class CommandProcessor {
         return;
       }
 
+      await this.#backupStore.assertReserve(ROUTER_BACKUP_MAX_BYTES);
       await this.#stage(claim, "BACKUP_STARTED");
       const backup = await connector.captureBackup();
+      stagedArtifact = backup.artifact;
       const sanitizedExport = sanitizeRouterExport(backup.redactedExport);
-      backupReceipt = await this.#backupStore.save(claim, backup.binary);
+      backupReceipt = await this.#backupStore.saveVerified({
+        organizationId: claim.organizationId,
+        buildingId: claim.buildingId,
+        deviceId: claim.deviceId,
+        commandId: claim.commandId,
+        attemptNo: claim.attemptNo,
+        createdAt: this.#clock.now(),
+        encryption: "ROUTEROS_AES_SHA256",
+        artifact: stagedArtifact,
+      });
+      stagedArtifact = undefined;
       const contentHash = createHash("sha256").update(sanitizedExport).digest("hex");
       const redactedLines = sanitizedExport.split("\n");
       await this.#api.snapshot({
@@ -334,6 +311,8 @@ export class CommandProcessor {
       });
     } finally {
       this.#clock.clearInterval(renewal);
+      await stagedArtifact?.dispose();
+      backupReceipt?.release();
       try {
         await connector?.close();
       } catch {

@@ -1,4 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 
 import { Client, type ClientChannel, type SFTPWrapper } from "ssh2";
 
@@ -13,6 +15,14 @@ import {
   type RouterObservation,
 } from "../domain.js";
 import type { RouterBackup, RouterConnector, RouterHealth } from "./connector.js";
+import {
+  ROUTER_BACKUP_MAX_BYTES,
+  ROUTER_BACKUP_TIMEOUT_MS,
+  ROUTER_EXPORT_MAX_BYTES,
+  ROUTER_EXPORT_TIMEOUT_MS,
+  readSftpRemoteFileBounded,
+  stageSftpRemoteFileBounded,
+} from "./boundedSftpRead.js";
 
 export const ROUTER_OS_COMMANDS = Object.freeze({
   flushDnsCache: "/ip/dns/cache/flush",
@@ -156,6 +166,7 @@ interface SshConnectorOptions {
   connection: NetworkConnection;
   credential: RouterCredential;
   commandTimeoutMs: number;
+  backupStagingDirectory: string;
   now?: () => Date;
   clientFactory?: () => Client;
 }
@@ -249,6 +260,7 @@ export class SshRouterConnector implements RouterConnector {
   readonly #commandTimeoutMs: number;
   readonly #now: () => Date;
   readonly #clientFactory: () => Client;
+  readonly #backupStagingDirectory: string;
   #client: Client | null = null;
   #connecting: Promise<Client> | null = null;
 
@@ -264,6 +276,7 @@ export class SshRouterConnector implements RouterConnector {
     this.#commandTimeoutMs = options.commandTimeoutMs;
     this.#now = options.now ?? (() => new Date());
     this.#clientFactory = options.clientFactory ?? (() => new Client());
+    this.#backupStagingDirectory = resolve(options.backupStagingDirectory);
   }
 
   async #connect(): Promise<Client> {
@@ -412,23 +425,6 @@ export class SshRouterConnector implements RouterConnector {
     });
   }
 
-  async #readRemoteFile(path: string): Promise<Buffer> {
-    const sftp = await this.#sftp();
-    return new Promise((resolve, reject) => {
-      sftp.readFile(path, (error, data) => {
-        sftp.end();
-        if (error) {
-          reject(new RouterOperationError("SFTP_READ_FAILED", {
-            retryable: true,
-            mayHaveExecuted: false,
-          }));
-          return;
-        }
-        resolve(data);
-      });
-    });
-  }
-
   async poll(): Promise<RouterObservation> {
     const [identityOutput, resourceOutput, interfaceOutput, dhcpOutput, leaseOutput, neighborOutput] =
       await Promise.all([
@@ -543,11 +539,28 @@ export class SshRouterConnector implements RouterConnector {
       await this.#execute(
         `/export terse show-sensitive=no file=${quoteRouterOsValue(exportName)}`,
       );
-      const [binary, redacted] = await Promise.all([
-        this.#readRemoteFile(backupFile),
-        this.#readRemoteFile(exportFile),
-      ]);
-      return { binary, redactedExport: redacted.toString("utf8") };
+      const exportSftp = await this.#sftp();
+      const redacted = await readSftpRemoteFileBounded(exportSftp, exportFile, {
+        kind: "export",
+        maxBytes: ROUTER_EXPORT_MAX_BYTES,
+        timeoutMs: ROUTER_EXPORT_TIMEOUT_MS,
+      });
+      await mkdir(this.#backupStagingDirectory, { recursive: true, mode: 0o700 });
+      const localPath = resolve(this.#backupStagingDirectory, `${backupName}.backup.part`);
+      if (!localPath.startsWith(`${this.#backupStagingDirectory}${sep}`)) {
+        throw new RouterOperationError("SFTP_STAGING_PATH_INVALID", {
+          retryable: false,
+          mayHaveExecuted: false,
+        });
+      }
+      const backupSftp = await this.#sftp();
+      const artifact = await stageSftpRemoteFileBounded(backupSftp, backupFile, {
+        kind: "backup",
+        destinationPath: localPath,
+        maxBytes: ROUTER_BACKUP_MAX_BYTES,
+        timeoutMs: ROUTER_BACKUP_TIMEOUT_MS,
+      });
+      return { artifact, redactedExport: redacted.toString("utf8") };
     } finally {
       try {
         await this.#execute(

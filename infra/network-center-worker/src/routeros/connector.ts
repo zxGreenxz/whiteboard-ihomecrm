@@ -3,9 +3,10 @@ import type {
   RouterCredential,
   RouterObservation,
 } from "../domain.js";
+import type { StagedSftpFile } from "./boundedSftpRead.js";
 
 export interface RouterBackup {
-  binary: Uint8Array;
+  artifact: StagedSftpFile;
   redactedExport: string;
 }
 
