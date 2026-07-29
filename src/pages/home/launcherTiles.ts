@@ -30,6 +30,7 @@ import {
   Car,
   Wallet,
   Coins,
+  Banknote,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
 
@@ -83,6 +84,9 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
     label: 'Tài chính',
     items: [
       { id: 'thu-tien', title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, accent: '#1f9d57', module: 'thu_tien', hot: true },
+      // Đóng tiền Tập trung theo Kỳ — gate `thu_tien.collect` khớp đúng route
+      // guard /thanh-toan (người chỉ có quyền xem không thấy ô này).
+      { id: 'thanh-toan', title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, accent: '#ea580c', module: 'thu_tien', action: 'collect' },
       { id: 'invoices', title: 'Hoá đơn', href: '/invoices', icon: Receipt, accent: '#d6453f', module: 'invoices' },
       { id: 'meters', title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, accent: '#0891b2', module: 'meter_readings' },
       { id: 'cashbook', title: 'Thu chi', href: '/income-expense', icon: CreditCard, accent: '#7c3aed', module: 'income_expenses' },

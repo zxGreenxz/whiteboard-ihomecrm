@@ -41,6 +41,13 @@ interface Props {
   billingMonth: string;
   onBillingMonthChange?: (m: string) => void;
   canRecordPayment: boolean;
+  /**
+   * Sheet LÀ nội dung của page (/thanh-toan) chứ không phải lớp phủ tạm.
+   * Khi đó bỏ hẳn scrim: nó không có gì để làm mờ, mà lại là một vùng bấm
+   * "thoát trang" full-bleed nằm dưới sheet — chỉ vô hại chừng nào .sheet.full
+   * còn phủ kín 100%.
+   */
+  standalone?: boolean;
 }
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
@@ -48,7 +55,7 @@ const parseVN = (s: string) => { const d = s.replace(/\D/g, ''); return d ? pars
 const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 const N_OPTIONS = [1, 3, 6, 12];
 
-export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChange, canRecordPayment }: Props) {
+export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChange, canRecordPayment, standalone }: Props) {
   const period = billingMonth;
   const { data: allBuildings = [] } = useIncomeExpenseFormBuildings();
   const buildings = useMemo(() => allBuildings.filter((b) => !b.is_virtual).map((b) => ({ id: b.id, name: b.name })), [allBuildings]);
@@ -301,15 +308,27 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
       <input ref={S.fileRef} type="file" accept="image/*" hidden onChange={S.onFileChange} />
       <input ref={EN.fileRef} type="file" accept="image/*" hidden onChange={EN.onFileChange} />
       <input ref={batchFileRef} type="file" accept="image/*" hidden onChange={onBatchFile} />
-      <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={onClose} />
+      {!standalone && <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={onClose} />}
       <div className={'sheet full ptt-sheet' + (show ? ' show' : '')}>
         {/* Header */}
         <div className="ptt-m-head">
           <button type="button" className="ptt-m-trigger" onClick={() => setPickerOpen(true)}>
             <span className="ptt-m-ic" style={{ background: headerCat.accent + '18', color: headerCat.accent }}><FeeIcon name={headerCat.icon} style={{ width: 18, height: 18 }} /></span>
-            <span className="ptt-m-tt"><span className="ptt-m-lbl">{fam === 'over' ? 'Tổng quan kỳ' : cat!.label}<ChevronDown /></span><span className="ptt-m-sub">Kỳ {fmtBillingMonth(period)} · {fam === 'over' ? 'Còn thiếu phiếu' : cat!.sub}</span></span>
+            <span className="ptt-m-tt"><span className="ptt-m-lbl"><span className="ptt-m-lbltxt">{fam === 'over' ? 'Tổng quan kỳ' : cat!.label}</span><ChevronDown /></span><span className="ptt-m-sub">Kỳ {fmtBillingMonth(period)} · {fam === 'over' ? 'Còn thiếu phiếu' : cat!.sub}</span></span>
           </button>
-          <button type="button" className="rp-x" onClick={onClose}><X /></button>
+          {/* Ô chọn kỳ NGAY TRONG header sheet: .sheet.full phủ kín .tt-page nên
+              header của page phía sau (và ô <input type="month"> của nó) không
+              bấm tới được — thiếu ô này là mobile kẹt ở đúng 1 kỳ. */}
+          {onBillingMonthChange && (
+            <input
+              className="ky-input"
+              type="month"
+              title="Kỳ đang xem"
+              value={period}
+              onChange={(e) => e.target.value && onBillingMonthChange(e.target.value)}
+            />
+          )}
+          <button type="button" className="rp-x" title="Đóng" onClick={onClose}><X /></button>
         </div>
 
         <div className="sheet-scroll ptt-m-body">

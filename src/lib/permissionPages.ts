@@ -302,7 +302,9 @@ export const PAGE_GROUPS: PageGroup[] = [
         desc: "Lưới ô phòng thu tiền nhanh theo kỳ & toà.",
         features: [
           f("thu_tien", "view", "Vào trang Thu tiền", "view"),
-          f("thu_tien", "collect", "Thu đủ / thu một phần", "manage"),
+          // `collect` cũng là quyền vào trang Thanh toán (/thanh-toan — Đóng
+          // tiền Tập trung theo Kỳ), vốn trước đây là overlay trong Thu tiền.
+          f("thu_tien", "collect", "Thu đủ / thu một phần · vào trang Thanh toán", "manage"),
           f("thu_tien", "undo", "Hoàn tác phiếu thu", "manage"),
           f("thu_tien", "report", "Xem báo cáo thu tiền", "view"),
         ],

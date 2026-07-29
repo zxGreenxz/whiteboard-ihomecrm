@@ -157,6 +157,10 @@ const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
 // Space Mono chỉ nạp khi mở /thu-tien, không kế thừa/đụng theme site.
 const ThuTien = lazy(() => import("./pages/ThuTien"));
 
+// Trang "Thanh toán" (Đóng tiền Tập trung theo Kỳ) — tách khỏi overlay của
+// /thu-tien. Dùng CHUNG thu-tien.css nên cũng cần Suspense cục bộ như trên.
+const ThanhToan = lazy(() => import("./pages/ThanhToan"));
+
 // Fallback khi đang tải chunk của route lazy
 const RouteFallback = () => (
   <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">
@@ -352,6 +356,10 @@ const App = () => (
           {/* === TÀI CHÍNH === */}
           <Route path="/meter-readings" element={<ProtectedRoute><RequirePermission module="meter_readings"><MeterReadingsPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/thu-tien" element={<ProtectedRoute><RequirePermission module="thu_tien"><Suspense fallback={null}><ThuTien /></Suspense></RequirePermission></ProtectedRoute>} />
+          {/* Gate `thu_tien.collect` (không phải `view`) — giữ NGUYÊN tầm với cũ:
+              trước đây panel này chỉ mở được qua nút Plug vốn đã ẩn với người
+              không có quyền thu. Dùng `view` sẽ mở rộng ai thấy được số liệu chi. */}
+          <Route path="/thanh-toan" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><Suspense fallback={null}><ThanhToan /></Suspense></RequirePermission></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><RequirePermission module="invoices"><InvoicesPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/invoices/print/:id" element={<ProtectedRoute><RequirePermission module="invoices" action="print"><InvoicePrintPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/invoices/:id" element={<ProtectedRoute><RequirePermission module="invoices"><InvoiceDetailPage /></RequirePermission></ProtectedRoute>} />

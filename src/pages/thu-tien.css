@@ -1144,6 +1144,16 @@
 .tt-page .ptt-m-lbl svg { width: 15px; height: 15px; color: var(--ink-3); flex-shrink: 0; }
 .tt-page .ptt-m-sub { display: block; font-size: 11px; font-weight: 600; color: var(--ink-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tt-page .ptt-m-body { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+/* Ô chọn kỳ trong header sheet (page /thanh-toan). <input type="month"> có
+   intrinsic width ~160px và KHÔNG tự co, đủ để bóp .ptt-m-trigger từ 281px
+   xuống 110px và làm nhãn hạng mục xuống 3 dòng. Ghim bề ngang + cho nhãn
+   ellipsis thay vì xuống dòng. */
+.tt-page .ptt-m-head .ky-input { flex: 0 0 auto; width: 118px; min-width: 0; font-size: 11px; padding: 6px 2px; text-align: center; }
+/* Nhãn hạng mục co bằng ellipsis, KHÔNG xuống dòng; chevron luôn thấy được
+   (overflow:hidden đặt trên chính chữ, không đặt trên hàng flex — đặt ở hàng
+   sẽ đẩy luôn chevron ra ngoài vùng nhìn). */
+.tt-page .ptt-m-lbl { white-space: nowrap; }
+.tt-page .ptt-m-lbltxt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .tt-page .ptt-m-ov { padding: 14px 16px 6px; display: flex; flex-direction: column; gap: 12px; }
 .tt-page .ptt-m-ovtop { display: flex; gap: 10px; }

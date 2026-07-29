@@ -38,6 +38,7 @@ import {
   Gauge,
   Receipt,
   HandCoins,
+  Banknote,
   CreditCard,
   Package,
   BarChart3,
@@ -160,6 +161,8 @@ const navigationGroups: NavGroup[] = [
           { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, module: 'meter_readings' },
           { title: 'Hoá đơn', href: '/invoices', icon: Receipt, module: 'invoices' },
           { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, module: 'thu_tien' },
+          // Đóng tiền Tập trung theo Kỳ (tách khỏi overlay của /thu-tien).
+          { title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, module: 'thu_tien', action: 'collect' },
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard, module: 'income_expenses' },
           // Hộp thư duyệt: không khai `module` → luôn hiện, khớp route /approvals
           // (không bọc RequirePermission). RPC lọc theo auth.uid() nên người không
