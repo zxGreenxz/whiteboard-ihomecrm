@@ -1,80 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
-import { fetchAllRows } from "@/lib/supabaseFetchAll";
-import { toast } from "sonner";
 
-export interface CashBookEntry {
-  id: string;
-  date: string;
-  type: "INCOME" | "EXPENSE";
-  description: string;
-  amount: number;
-  payment_method?: string;
-  reference_id?: string;
-  reference_type?: string;
-}
-
-// Sổ quỹ lấy từ income_expenses (canonical ledger). Mỗi payment hoá đơn
-// đều có row mirror trong income_expenses (xem migration voucher_payment_link),
-// còn bảng `expenses` legacy không dùng nữa — đọc thêm các bảng đó sẽ double-count.
-export const useCashBook = (start_date?: string, end_date?: string) => {
-  return useQuery({
-    queryKey: ["cash-book", start_date, end_date],
-    queryFn: async (): Promise<CashBookEntry[]> => {
-      const user = await getSessionUser();
-      if (!user) throw new Error('Not authenticated');
-
-      // PAGED: sổ quỹ 1 kỳ có thể > 1000 dòng → phân trang (order + id tiebreaker).
-      const incomeExpenses = await fetchAllRows<any>(
-        (from, to) => {
-          let ieQuery = supabase
-            .from("income_expenses")
-            .select(`
-              id,
-              type,
-              name,
-              voucher_date,
-              total_amount,
-              invoice_id,
-              payment_id,
-              building:buildings!income_expenses_building_id_fkey (
-                name
-              )
-            `)
-            .eq('approval_status', 'APPROVED')
-            .is('deleted_at', null);
-          if (start_date) ieQuery = ieQuery.gte("voucher_date", start_date);
-          if (end_date) ieQuery = ieQuery.lte("voucher_date", end_date);
-          return ieQuery.order("voucher_date", { ascending: false }).order("id", { ascending: true }).range(from, to);
-        },
-        { label: "cashbook.entries" },
-      );
-      if (incomeExpenses === null) {
-        toast.error("Không thể tải sổ quỹ");
-        throw new Error("Lỗi tải sổ quỹ (income_expenses)");
-      }
-
-      const entries: CashBookEntry[] = incomeExpenses.map((ie: any) => {
-        const buildingName = ie.building?.name || "";
-        const description = buildingName ? `${ie.name} (${buildingName})` : ie.name;
-        return {
-          id: ie.id,
-          date: ie.voucher_date,
-          type: ie.type as "INCOME" | "EXPENSE",
-          description,
-          amount: Number(ie.total_amount) || 0,
-          reference_id: ie.payment_id || ie.invoice_id || ie.id,
-          reference_type: ie.payment_id ? "payment" : ie.invoice_id ? "invoice" : "income_expense",
-        };
-      });
-
-      entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      return entries;
-    },
-  });
-};
-
+// ĐỢT 5 — ĐÃ XOÁ `useCashBook` (danh sách phiếu sổ quỹ).
+//
+// Nó liệt kê phiếu theo `approval_status='APPROVED'` trong khi mọi con số TỔNG
+// ở dưới đã chuyển sang posting-truth (RPC `cashbook_period_totals`) — hai
+// nguồn sự thật cho cùng một màn hình. Nó còn kéo cả phiếu NOT_APPLICABLE và
+// phiếu trên sổ ảo, và sau Đợt 5 thì phiếu thu bị huỷ tại chỗ vẫn còn
+// `APPROVED` trong cache cũ nên sẽ hiện sai thêm một kiểu nữa.
+//
+// Cách sửa đúng ở đây là XOÁ chứ không phải viết lại: hook này KHÔNG có một
+// consumer nào (đã kiểm toàn bộ `src/`, `.e2e-fleet/`, `scripts/`), nên "sửa
+// sang posting-truth" chỉ là bảo trì một nguồn sai không ai đọc. Màn hình sổ
+// quỹ thật dùng `useCashBookSummary` / `useCashFlowByDay` bên dưới, cả hai đều
+// đi qua RPC aggregate.
+//
+// Query key `cash-book` vẫn được các writer invalidate — vô hại, và giữ lại
+// đúng khi hook danh sách quay lại theo posting-truth.
 
 // Tổng hợp sổ quỹ — chỉ đọc từ income_expenses (APPROVED, chưa xoá).
 // Mọi payment hoá đơn đều có row mirror trong income_expenses nên cộng cả
