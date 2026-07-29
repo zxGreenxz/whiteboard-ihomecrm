@@ -16,6 +16,7 @@ import { resolve, sep } from "node:path";
 import { RouterOperationError } from "./domain.js";
 import {
   ROUTER_BACKUP_MAX_BYTES,
+  ROUTER_BACKUP_TIMEOUT_MS,
   type StagedSftpFile,
 } from "./routeros/boundedSftpRead.js";
 
@@ -81,6 +82,8 @@ interface StoredFile {
 }
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+// Leave a full timeout of slack so cleanup cannot race a bounded in-flight stage.
+const STAGING_MAX_AGE_MS = ROUTER_BACKUP_TIMEOUT_MS * 2;
 
 export const DEFAULT_BACKUP_POLICY: BackupPolicy = Object.freeze({
   maxPerDevice: 20,
@@ -149,6 +152,8 @@ export class FileBackupStore implements BackupStore {
   readonly #diskFreeBytes: (path: string) => Promise<number>;
   readonly #now: () => Date;
   readonly #active = new Set<string>();
+  #readyPromise: Promise<void> | undefined;
+  #saveTail: Promise<void> = Promise.resolve();
 
   constructor(root: string, options: FileBackupStoreOptions = {}) {
     this.#root = resolve(root);
@@ -160,8 +165,30 @@ export class FileBackupStore implements BackupStore {
   }
 
   async #ensureDirectories(): Promise<void> {
-    await mkdir(this.#root, { recursive: true, mode: 0o700 });
-    await mkdir(this.#stagingRoot, { recursive: true, mode: 0o700 });
+    this.#readyPromise ??= (async () => {
+      await mkdir(this.#root, { recursive: true, mode: 0o700 });
+      await mkdir(this.#stagingRoot, { recursive: true, mode: 0o700 });
+      await this.#cleanupStaging(this.#now().getTime());
+    })();
+    await this.#readyPromise;
+  }
+
+  async #cleanupStaging(nowMs: number): Promise<void> {
+    if (!Number.isFinite(nowMs)) return;
+    for (const entry of await readdir(this.#stagingRoot, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".part")) continue;
+      const path = resolve(this.#stagingRoot, entry.name);
+      if (!descendant(this.#stagingRoot, path)) continue;
+      let details;
+      try {
+        details = await stat(path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
+      }
+      if (nowMs - details.mtimeMs <= STAGING_MAX_AGE_MS) continue;
+      await rm(path, { force: true });
+    }
   }
 
   async #files(): Promise<StoredFile[]> {
@@ -201,22 +228,48 @@ export class FileBackupStore implements BackupStore {
   }
 
   async assertReserve(additionalBytes = 0): Promise<BackupPressure> {
-    if (!Number.isSafeInteger(additionalBytes) || additionalBytes < 0) {
+    return this.#assertReserveFor(additionalBytes, additionalBytes);
+  }
+
+  async #assertReserveFor(
+    additionalVolumeBytes: number,
+    additionalFreeBytes: number,
+  ): Promise<BackupPressure> {
+    if (
+      !Number.isSafeInteger(additionalVolumeBytes)
+      || additionalVolumeBytes < 0
+      || !Number.isSafeInteger(additionalFreeBytes)
+      || additionalFreeBytes < 0
+    ) {
       throw backupError("BACKUP_SIZE_INVALID");
     }
     await this.rotate(this.#now());
     let current = await this.pressure();
-    if (current.volumeBytes + additionalBytes > this.#policy.softVolumeBytes) {
+    if (current.volumeBytes + additionalVolumeBytes > this.#policy.softVolumeBytes) {
       await this.rotate(this.#now());
       current = await this.pressure();
     }
     if (
-      current.freeBytes < this.#policy.minimumFreeBytes + additionalBytes
-      || current.volumeBytes + additionalBytes > this.#policy.hardVolumeBytes
+      current.freeBytes < this.#policy.minimumFreeBytes + additionalFreeBytes
+      || current.volumeBytes + additionalVolumeBytes > this.#policy.hardVolumeBytes
     ) {
       throw backupError("BACKUP_RESERVE_UNAVAILABLE", true);
     }
     return current;
+  }
+
+  async #withSaveLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.#saveTail;
+    let release!: () => void;
+    this.#saveTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
 
   async saveVerified(input: BackupCandidate): Promise<VerifiedBackup> {
@@ -241,73 +294,78 @@ export class FileBackupStore implements BackupStore {
       throw backupError("BACKUP_CANDIDATE_INVALID");
     }
 
-    await this.#ensureDirectories();
-    let promotedTarget: string | undefined;
-    try {
-      await this.assertReserve(input.artifact.bytes);
-      const sourceStat = await stat(artifactPath);
-      if (sourceStat.size !== input.artifact.bytes) {
-        throw backupError("BACKUP_SIZE_MISMATCH");
-      }
-      const sourceHash = await sha256File(artifactPath);
-      if (sourceHash !== input.artifact.sha256) {
-        throw backupError("BACKUP_HASH_MISMATCH");
-      }
-
-      const deviceDirectory = resolve(this.#root, input.deviceId);
-      await mkdir(deviceDirectory, { recursive: true, mode: 0o700 });
-      const timestamp = String(Math.trunc(createdAtMs)).padStart(13, "0");
-      const name = `${timestamp}-${input.commandId}-${input.attemptNo}-${sourceHash}.backup`;
-      const target = resolve(deviceDirectory, name);
-      if (!descendant(this.#root, target)) throw backupError("BACKUP_PATH_INVALID");
-
-      await link(artifactPath, target);
-      promotedTarget = target;
-      await unlink(artifactPath);
-      await utimes(target, input.createdAt, input.createdAt);
-      const targetHandle = await open(target, "r+");
+    return this.#withSaveLock(async () => {
+      await this.#ensureDirectories();
+      let promotedTarget: string | undefined;
       try {
-        await targetHandle.sync();
-      } finally {
-        await targetHandle.close();
-      }
-      const targetStat = await stat(target);
-      const targetHash = await sha256File(target);
-      if (targetStat.size !== input.artifact.bytes || targetHash !== sourceHash) {
-        await rm(target, { force: true });
-        promotedTarget = undefined;
-        throw backupError("BACKUP_HASH_MISMATCH");
-      }
+        // Promotion links within the same volume, so staged bytes add volume usage but no new free-space demand.
+        await this.#assertReserveFor(input.artifact.bytes, 0);
+        const sourceStat = await stat(artifactPath);
+        if (sourceStat.size !== input.artifact.bytes) {
+          throw backupError("BACKUP_SIZE_MISMATCH");
+        }
+        const sourceHash = await sha256File(artifactPath);
+        if (sourceHash !== input.artifact.sha256) {
+          throw backupError("BACKUP_HASH_MISMATCH");
+        }
 
-      this.#active.add(target);
-      await this.rotate(this.#now());
-      let released = false;
-      return {
-        path: target,
-        deviceId: input.deviceId,
-        sha256: targetHash,
-        bytes: targetStat.size,
-        createdAt: new Date(createdAtMs),
-        release: () => {
-          if (released) return;
-          released = true;
-          this.#active.delete(target);
-        },
-      };
-    } catch (error) {
-      if (promotedTarget) {
-        this.#active.delete(promotedTarget);
-        await rm(promotedTarget, { force: true });
+        const deviceDirectory = resolve(this.#root, input.deviceId);
+        await mkdir(deviceDirectory, { recursive: true, mode: 0o700 });
+        const timestamp = String(Math.trunc(createdAtMs)).padStart(13, "0");
+        const name = `${timestamp}-${input.commandId}-${input.attemptNo}-${sourceHash}.backup`;
+        const target = resolve(deviceDirectory, name);
+        if (!descendant(this.#root, target)) throw backupError("BACKUP_PATH_INVALID");
+
+        await link(artifactPath, target);
+        promotedTarget = target;
+        await unlink(artifactPath);
+        await utimes(target, input.createdAt, input.createdAt);
+        const targetHandle = await open(target, "r+");
+        try {
+          await targetHandle.sync();
+        } finally {
+          await targetHandle.close();
+        }
+        const targetStat = await stat(target);
+        const targetHash = await sha256File(target);
+        if (targetStat.size !== input.artifact.bytes || targetHash !== sourceHash) {
+          await rm(target, { force: true });
+          promotedTarget = undefined;
+          throw backupError("BACKUP_HASH_MISMATCH");
+        }
+
+        this.#active.add(target);
+        await this.rotate(this.#now());
+        let released = false;
+        return {
+          path: target,
+          deviceId: input.deviceId,
+          sha256: targetHash,
+          bytes: targetStat.size,
+          createdAt: new Date(createdAtMs),
+          release: () => {
+            if (released) return;
+            released = true;
+            this.#active.delete(target);
+          },
+        };
+      } catch (error) {
+        if (promotedTarget) {
+          this.#active.delete(promotedTarget);
+          await rm(promotedTarget, { force: true });
+        }
+        await input.artifact.dispose();
+        if (error instanceof RouterOperationError) throw error;
+        throw backupError("BACKUP_SAVE_FAILED", true);
       }
-      await input.artifact.dispose();
-      if (error instanceof RouterOperationError) throw error;
-      throw backupError("BACKUP_SAVE_FAILED", true);
-    }
+    });
   }
 
   async rotate(now: Date): Promise<BackupRotationReport> {
     const nowMs = now.getTime();
     if (!Number.isFinite(nowMs)) throw backupError("BACKUP_ROTATION_TIME_INVALID");
+    await this.#ensureDirectories();
+    await this.#cleanupStaging(nowMs);
     const files = await this.#files();
     const protectedPaths = new Set(this.#active);
     const byDevice = new Map<string, StoredFile[]>();

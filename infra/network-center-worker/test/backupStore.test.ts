@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,7 +18,10 @@ import {
   FileBackupStore,
   type BackupPolicy,
 } from "../src/backupStore.js";
-import type { StagedSftpFile } from "../src/routeros/boundedSftpRead.js";
+import {
+  ROUTER_BACKUP_TIMEOUT_MS,
+  type StagedSftpFile,
+} from "../src/routeros/boundedSftpRead.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -58,11 +70,12 @@ function input(
   artifact: StagedSftpFile,
   sequence = 1,
   createdAt = new Date("2026-07-29T00:00:00.000Z"),
+  deviceId = "40000000-0000-4000-8000-000000000001",
 ) {
   return {
     organizationId: "20000000-0000-4000-8000-000000000001",
     buildingId: "30000000-0000-4000-8000-000000000001",
-    deviceId: "40000000-0000-4000-8000-000000000001",
+    deviceId,
     commandId: `50000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
     attemptNo: 1,
     createdAt,
@@ -207,5 +220,112 @@ describe("verified backup store", () => {
       code: "BACKUP_RESERVE_UNAVAILABLE",
     });
     await expect(stat(artifact.path)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("serializes concurrent device saves so the global hard cap cannot be overcommitted", async () => {
+    const backupRoot = await root();
+    const policy: BackupPolicy = {
+      ...generousPolicy,
+      softVolumeBytes: 10,
+      hardVolumeBytes: 10,
+      minimumFreeBytes: 20,
+    };
+    let diskChecks = 0;
+    let releaseDiskChecks!: () => void;
+    const diskChecksMayProceed = new Promise<void>((resolve) => {
+      releaseDiskChecks = resolve;
+    });
+    const fallback = setTimeout(releaseDiskChecks, 100);
+    const store = new FileBackupStore(backupRoot, {
+      policy,
+      diskFreeBytes: async () => {
+        diskChecks += 1;
+        if (diskChecks === 2) {
+          clearTimeout(fallback);
+          releaseDiskChecks();
+        }
+        await diskChecksMayProceed;
+        return 100;
+      },
+    });
+    const first = await candidate(backupRoot, "concurrent-one", Buffer.alloc(6, 1));
+    const second = await candidate(backupRoot, "concurrent-two", Buffer.alloc(6, 2));
+
+    const results = await Promise.allSettled([
+      store.saveVerified(input(
+        first,
+        1,
+        new Date("2026-07-29T00:00:01.000Z"),
+        "40000000-0000-4000-8000-000000000001",
+      )),
+      store.saveVerified(input(
+        second,
+        2,
+        new Date("2026-07-29T00:00:02.000Z"),
+        "40000000-0000-4000-8000-000000000002",
+      )),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({
+      reason: { code: "BACKUP_RESERVE_UNAVAILABLE" },
+    });
+    expect((await store.pressure()).volumeBytes).toBeLessThanOrEqual(policy.hardVolumeBytes);
+    for (const result of fulfilled) result.value.release();
+  });
+
+  it("reclaims abandoned staging files on restart and later rotations without deleting recent staging", async () => {
+    const backupRoot = await root();
+    const stagingRoot = join(backupRoot, ".staging");
+    await mkdir(stagingRoot, { recursive: true, mode: 0o700 });
+    const stalePath = join(stagingRoot, "abandoned.backup.part");
+    const recentPath = join(stagingRoot, "live.backup.part");
+    await writeFile(stalePath, "stale", { flag: "wx", mode: 0o600 });
+    await writeFile(recentPath, "live", { flag: "wx", mode: 0o600 });
+    let currentTime = new Date("2026-07-29T12:00:00.000Z");
+    const staleTime = new Date(currentTime.getTime() - ROUTER_BACKUP_TIMEOUT_MS * 3);
+    await utimes(stalePath, staleTime, staleTime);
+    await utimes(recentPath, currentTime, currentTime);
+
+    const restartedStore = new FileBackupStore(backupRoot, {
+      policy: generousPolicy,
+      diskFreeBytes: async () => 40 * 1024 ** 3,
+      now: () => currentTime,
+    });
+
+    await restartedStore.pressure();
+    await expect(stat(stalePath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(recentPath, "utf8")).toBe("live");
+
+    currentTime = new Date(currentTime.getTime() + ROUTER_BACKUP_TIMEOUT_MS * 3);
+    await restartedStore.rotate(currentTime);
+    await expect(stat(recentPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("promotes staged bytes at the exact free-space and hard-volume boundaries", async () => {
+    const backupRoot = await root();
+    const payload = Buffer.alloc(8, 7);
+    const artifact = await candidate(backupRoot, "exact-boundary", payload);
+    const policy: BackupPolicy = {
+      ...generousPolicy,
+      softVolumeBytes: payload.byteLength,
+      hardVolumeBytes: payload.byteLength,
+      minimumFreeBytes: 20,
+    };
+    const store = new FileBackupStore(backupRoot, {
+      policy,
+      // The staged file has already consumed its bytes on this same volume.
+      diskFreeBytes: async () => policy.minimumFreeBytes,
+    });
+
+    const verified = await store.saveVerified(input(artifact));
+
+    expect(verified.bytes).toBe(payload.byteLength);
+    await expect(stat(artifact.path)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await store.pressure()).volumeBytes).toBe(policy.hardVolumeBytes);
+    verified.release();
   });
 });

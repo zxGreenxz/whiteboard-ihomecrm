@@ -124,9 +124,11 @@ export async function stageSftpFileBounded(
   }
 
   let handle: FileHandle | undefined;
+  let ownsDestination = false;
   let completed = false;
   try {
     handle = await open(options.destinationPath, "wx", 0o600);
+    ownsDestination = true;
     const hash = createHash("sha256");
     const bytes = await consumeBounded(source, options, async (chunk) => {
       try {
@@ -152,7 +154,7 @@ export async function stageSftpFileBounded(
     throw operationError("SFTP_STAGING_FAILED", true);
   } finally {
     await closeQuietly(handle);
-    if (!completed) await unlinkQuietly(options.destinationPath);
+    if (ownsDestination && !completed) await unlinkQuietly(options.destinationPath);
   }
 }
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -158,6 +158,24 @@ describe("bounded SFTP reads", () => {
       await expect(stat(destinationPath)).rejects.toMatchObject({ code: "ENOENT" });
       expect(item.stream.destroyed).toBe(true);
     }
+  });
+
+  it("preserves an existing destination when exclusive staging creation fails", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "network-center-sftp-owned-cleanup-"));
+    temporaryDirectories.push(directory);
+    const destinationPath = join(directory, "sentinel.backup.part");
+    await writeFile(destinationPath, "sentinel", { flag: "wx", mode: 0o600 });
+    const stream = source([Buffer.from("replacement")]);
+
+    await expect(stageSftpFileBounded(stream, {
+      kind: "backup",
+      destinationPath,
+      maxBytes: 32,
+      timeoutMs: 100,
+    })).rejects.toMatchObject({ code: "SFTP_STAGING_FAILED" });
+
+    expect(await readFile(destinationPath, "utf8")).toBe("sentinel");
+    expect(stream.destroyed).toBe(true);
   });
 
   it("closes the SFTP session exactly once after successful and failed remote reads", async () => {
