@@ -327,7 +327,7 @@ git commit -m "fix(network-center): ràng buộc danh tính và assignment worke
 - Modify: `infra/network-center-worker/test/apiClient.test.ts`
 - Modify: `infra/network-center-worker/test/config.test.ts`
 
-- [ ] **Step 1: Write RED Edge tests for server-owned principal**
+- [x] **Step 1: Write RED Edge tests for server-owned principal**
 
 ```ts
 Deno.test("spoofed workerId never reaches an RPC", async () => {
@@ -346,7 +346,7 @@ Deno.test("credential digest reaches RPC but no worker UUID is Edge-controlled",
 });
 ```
 
-- [ ] **Step 2: Write RED worker tests proving request bodies omit worker ID**
+- [x] **Step 2: Write RED worker tests proving request bodies omit worker ID**
 
 ```ts
 expect(JSON.parse(fetchCalls[0].init.body as string)).not.toHaveProperty("workerId");
@@ -355,14 +355,14 @@ expect(fetchCalls[0].init.headers).toMatchObject({
 });
 ```
 
-- [ ] **Step 3: Run both RED suites**
+- [x] **Step 3: Run both RED suites**
 
 ```powershell
 npx --yes deno test --config supabase/functions/network-center-worker/deno.json supabase/functions/network-center-worker/index.test.ts --allow-env
 npm --prefix infra/network-center-worker test -- apiClient.test.ts config.test.ts
 ```
 
-- [ ] **Step 4: Implement digest authentication and body rejection**
+- [x] **Step 4: Implement digest authentication and body rejection**
 
 `workerAuth.ts` exposes:
 
@@ -376,7 +376,7 @@ only `p_credential_digest` into every v2 RPC; PostgreSQL authenticates and deriv
 the UUID at the same boundary that enforces assignment. Worker config retains a
 local `workerKey` only for log/readback labeling; API bodies never send it.
 
-- [ ] **Step 5: Run GREEN suites and type checks**
+- [x] **Step 5: Run GREEN suites and type checks**
 
 ```powershell
 npx --yes deno test --config supabase/functions/network-center-worker/deno.json supabase/functions/network-center-worker/index.test.ts --allow-env
@@ -384,7 +384,7 @@ npm --prefix infra/network-center-worker test -- apiClient.test.ts config.test.t
 npm --prefix infra/network-center-worker run typecheck
 ```
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```powershell
 git add -- supabase/functions/network-center-worker infra/network-center-worker/src/apiClient.ts infra/network-center-worker/src/config.ts infra/network-center-worker/src/main.ts infra/network-center-worker/.env.example infra/network-center-worker/test/apiClient.test.ts infra/network-center-worker/test/config.test.ts
