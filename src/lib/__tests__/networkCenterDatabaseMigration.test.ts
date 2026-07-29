@@ -39,6 +39,15 @@ const rpcSql = existsSync(rpcMigrationPath)
   ? readFileSync(rpcMigrationPath, "utf8").replace(/\r\n/g, "\n")
   : "";
 
+const workerIdentityMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260729130000_network_center_worker_identity.sql",
+);
+
+const workerIdentitySql = existsSync(workerIdentityMigrationPath)
+  ? readFileSync(workerIdentityMigrationPath, "utf8").replace(/\r\n/g, "\n")
+  : "";
+
 function sqlFunctionBody(sql: string, functionName: string): string {
   const start = sql.search(new RegExp(`CREATE OR REPLACE FUNCTION\\s+(?:public|app_private)\\.${functionName}\\b`, "i"));
   if (start < 0) return "";
@@ -427,5 +436,37 @@ describe("Network Center RLS, RPC, worker, and Realtime migration", () => {
     expect(rpcSql).toMatch(
       /ALTER PUBLICATION supabase_realtime DROP TABLE public\.network_commands/i,
     );
+  });
+});
+
+describe("Network Center worker identity hardening migration", () => {
+  it("exists as an additive forward transaction", () => {
+    expect(
+      existsSync(workerIdentityMigrationPath),
+      `Missing migration: ${workerIdentityMigrationPath}`,
+    ).toBe(true);
+    expect(workerIdentitySql.match(/^BEGIN;$/gim)).toHaveLength(1);
+    expect(workerIdentitySql.match(/^COMMIT;$/gim)).toHaveLength(1);
+    expect(workerIdentitySql).toMatch(/NOTIFY pgrst, 'reload schema';\s*$/i);
+  });
+
+  it("keeps the worker registry inert behind RLS and service-role RPCs", () => {
+    for (const table of [
+      "network_workers",
+      "network_worker_credentials",
+      "network_worker_assignments",
+    ]) {
+      expect(workerIdentitySql).toContain(`public.${table}`);
+      expect(workerIdentitySql).toMatch(
+        new RegExp(`ALTER TABLE public\\.${table} ENABLE ROW LEVEL SECURITY`, "i"),
+      );
+      expect(workerIdentitySql).toMatch(
+        new RegExp(
+          `REVOKE\\s+ALL\\s+ON\\s+TABLE\\s+public\\.${table}\\s+FROM\\s+PUBLIC,\\s*anon,\\s*authenticated,\\s*service_role`,
+          "i",
+        ),
+      );
+    }
+    expect(workerIdentitySql).not.toMatch(/GRANT\s+(?:SELECT|INSERT|UPDATE|DELETE|ALL)\s+ON\s+TABLE/i);
   });
 });
