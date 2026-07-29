@@ -1,8 +1,11 @@
 # Audit realtime toàn hệ thống và kế hoạch tối ưu
 
-> Ngày audit: 2026-07-29  
-> Phạm vi: React/TypeScript, TanStack Query cache, Supabase Realtime, Postgres/RLS, migrations và các flow nghiệp vụ liên quan  
-> Production đối chiếu: <https://ptcrm.vercel.app>  
+> Ngày audit: 2026-07-29
+>
+> Phạm vi: React/TypeScript, TanStack Query cache, Supabase Realtime, Postgres/RLS, migrations và các flow nghiệp vụ liên quan
+>
+> Production đối chiếu: <https://ptcrm.vercel.app>
+>
 > Trạng thái: tài liệu audit và đề xuất kiến trúc; chưa triển khai thay đổi code hoặc database
 
 ## 1. Kết luận điều hành
@@ -267,71 +270,71 @@ Tham khảo chính thức: [Supabase Postgres Changes — scaling](https://supab
 
 ### Critical — Cùng client phải refetch toàn bộ sau mutation
 
-**Tác động:** UI chậm, request thừa, tải tăng theo quy mô dữ liệu.  
-**Bằng chứng:** flow tạo khách mất 943–1.918 ms dù POST chỉ 171 ms.  
-**Root cause:** mutation response không được đưa vào cache/state.  
-**Hướng sửa:** local-first mutation response, auto-select và background reconciliation.
+- **Tác động:** UI chậm, request thừa, tải tăng theo quy mô dữ liệu.
+- **Bằng chứng:** flow tạo khách mất 943–1.918 ms dù POST chỉ 171 ms.
+- **Root cause:** mutation response không được đưa vào cache/state.
+- **Hướng sửa:** local-first mutation response, auto-select và background reconciliation.
 
 ### Critical — Dependency graph realtime không đầy đủ
 
-**Tác động:** client khác có thể giữ dữ liệu cũ ở contracts, invoices, vehicles, rooms/buildings và junction-dependent screens.  
-**Root cause:** query-key mapping hard-code theo bảng.  
-**Hướng sửa:** typed dependency/domain registry và parent/domain signals.
+- **Tác động:** client khác có thể giữ dữ liệu cũ ở contracts, invoices, vehicles, rooms/buildings và junction-dependent screens.
+- **Root cause:** query-key mapping hard-code theo bảng.
+- **Hướng sửa:** typed dependency/domain registry và parent/domain signals.
 
 ### High — Không có reconnect/catch-up protocol
 
-**Tác động:** tab ngủ hoặc websocket lỗi có thể giữ cache stale vô thời hạn.  
-**Root cause:** không theo dõi channel status, không version check, `refetchOnWindowFocus` bị tắt.  
-**Hướng sửa:** health state, reconnect handling và catch-up active queries/domain version.
+- **Tác động:** tab ngủ hoặc websocket lỗi có thể giữ cache stale vô thời hạn.
+- **Root cause:** không theo dõi channel status, không version check, `refetchOnWindowFocus` bị tắt.
+- **Hướng sửa:** health state, reconnect handling và catch-up active queries/domain version.
 
 ### High — Same-client realtime echo gây duplicate refetch
 
-**Tác động:** tăng network/DB load và có thể làm danh sách nặng chậm thêm.  
-**Root cause:** không có mutation-origin dedupe/suppression.  
-**Hướng sửa:** client/mutation ID hoặc suppression window theo entity/domain.
+- **Tác động:** tăng network/DB load và có thể làm danh sách nặng chậm thêm.
+- **Root cause:** không có mutation-origin dedupe/suppression.
+- **Hướng sửa:** client/mutation ID hoặc suppression window theo entity/domain.
 
 ### High — Event-driven eager prefetch quá rộng
 
-**Tác động:** invoices/contracts query nặng được tải nền dù user không dùng.  
-**Root cause:** mọi visible tab đều có thể `prefetchDomain` sau event.  
-**Hướng sửa:** active-query only, stale-only cho cache không active, intent-based prefetch.
+- **Tác động:** invoices/contracts query nặng được tải nền dù user không dùng.
+- **Root cause:** mọi visible tab đều có thể `prefetchDomain` sau event.
+- **Hướng sửa:** active-query only, stale-only cho cache không active, intent-based prefetch.
 
 ### High — Read models quá nặng
 
-**Tác động:** list queries có mean từ 0,8 đến hơn 2 giây.  
-**Root cause:** `select *`, exact count, nested relations, lateral embeds và supplemental RPC.  
-**Hướng sửa:** compact list RPC/view, cursor pagination, lazy detail và query-specific indexes.
+- **Tác động:** list queries có mean từ 0,8 đến hơn 2 giây.
+- **Root cause:** `select *`, exact count, nested relations, lateral embeds và supplemental RPC.
+- **Hướng sửa:** compact list RPC/view, cursor pagination, lazy detail và query-specific indexes.
 
 ### High — RLS helper đắt đối với realtime fan-out
 
-**Tác động:** throughput giảm theo số subscriber, không chỉ theo write rate.  
-**Root cause:** authorization helper phức tạp và nhiều shared block hits.  
-**Hướng sửa:** set-based/indexed lookup, cached initplan và benchmark với JWT thật.
+- **Tác động:** throughput giảm theo số subscriber, không chỉ theo write rate.
+- **Root cause:** authorization helper phức tạp và nhiều shared block hits.
+- **Hướng sửa:** set-based/indexed lookup, cached initplan và benchmark với JWT thật.
 
 ### Medium — Publication/migration drift
 
-**Tác động:** production và môi trường dựng lại có thể hoạt động khác nhau.  
-**Hướng sửa:** reconciliation migration, audit `schema_migrations` và publication trong CI/deploy verification.
+- **Tác động:** production và môi trường dựng lại có thể hoạt động khác nhau.
+- **Hướng sửa:** reconciliation migration, audit `schema_migrations` và publication trong CI/deploy verification.
 
 ## 7. Các phương án kiến trúc
 
 ### Phương án A — Publish Postgres Changes cho mọi bảng
 
-**Ưu điểm:** triển khai ban đầu nhanh, ít abstraction frontend.  
-**Nhược điểm:** RLS authorization nhân theo subscriber, DELETE khó filter, fan-out cao, dễ tạo bão invalidate.  
-**Đánh giá:** không khuyến nghị cho toàn hệ thống.
+- **Ưu điểm:** triển khai ban đầu nhanh, ít abstraction frontend.
+- **Nhược điểm:** RLS authorization nhân theo subscriber, DELETE khó filter, fan-out cao, dễ tạo bão invalidate.
+- **Đánh giá:** không khuyến nghị cho toàn hệ thống.
 
 ### Phương án B — Polling/refetch thuần
 
-**Ưu điểm:** dễ hiểu, ít phụ thuộc websocket.  
-**Nhược điểm:** tốn bandwidth, dữ liệu có độ trễ và không tạo cảm giác tức thì.  
-**Đánh giá:** chỉ phù hợp làm fallback/catch-up cho một số màn.
+- **Ưu điểm:** dễ hiểu, ít phụ thuộc websocket.
+- **Nhược điểm:** tốn bandwidth, dữ liệu có độ trễ và không tạo cảm giác tức thì.
+- **Đánh giá:** chỉ phù hợp làm fallback/catch-up cho một số màn.
 
 ### Phương án C — Hybrid local-first + domain signal
 
-**Ưu điểm:** cùng client tức thì, cross-client đủ nhanh, kiểm soát được query load và scale tốt hơn.  
-**Nhược điểm:** cần dependency registry và mutation discipline rõ ràng.  
-**Đánh giá:** phương án khuyến nghị.
+- **Ưu điểm:** cùng client tức thì, cross-client đủ nhanh, kiểm soát được query load và scale tốt hơn.
+- **Nhược điểm:** cần dependency registry và mutation discipline rõ ràng.
+- **Đánh giá:** phương án khuyến nghị.
 
 Supabase khuyến nghị Broadcast cho phần lớn use case cần scalability và security; Postgres Changes đơn giản hơn nhưng scale kém hơn. Tham khảo: [Subscribing to Database Changes](https://supabase.com/docs/guides/realtime/subscribing-to-database-changes).
 
@@ -579,4 +582,3 @@ Lát cắt đầu tiên nên chứng minh được ba điều trước khi mở 
 - [Supabase — Subscribing to Database Changes](https://supabase.com/docs/guides/realtime/subscribing-to-database-changes)
 - [TanStack Query — Updates from Mutation Responses](https://tanstack.com/query/latest/docs/framework/react/guides/updates-from-mutation-responses)
 - [TanStack Query — Invalidations from Mutations](https://tanstack.com/query/latest/docs/framework/react/guides/invalidations-from-mutations)
-
