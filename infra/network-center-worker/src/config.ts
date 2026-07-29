@@ -14,7 +14,7 @@ export class ConfigError extends Error {
 
 export interface WorkerConfig {
   edgeUrl: URL;
-  workerId: string;
+  workerKey: string;
   workerSecret: string;
   credentials: ReadonlyMap<string, RouterCredential>;
   credentialsFile: string;
@@ -182,9 +182,9 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
   }
   edgeUrl.pathname = edgeUrl.pathname.replace(/\/+$/, "");
 
-  const workerId = required(env, "NETWORK_CENTER_WORKER_ID");
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/.test(workerId)) {
-    throw new ConfigError("NETWORK_CENTER_WORKER_ID is invalid");
+  const workerKey = required(env, "NETWORK_CENTER_WORKER_KEY");
+  if (!/^[a-z0-9][a-z0-9._-]{2,63}$/.test(workerKey)) {
+    throw new ConfigError("NETWORK_CENTER_WORKER_KEY is invalid");
   }
 
   const workerSecretFile = required(env, "NETWORK_CENTER_WORKER_SECRET_FILE");
@@ -197,7 +197,7 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
 
   return Object.freeze({
     edgeUrl,
-    workerId,
+    workerKey,
     workerSecret,
     credentials,
     credentialsFile,

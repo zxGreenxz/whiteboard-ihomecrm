@@ -29,10 +29,6 @@ type WorkerModule = {
     getEnv?: (name: string) => string | undefined;
     rpc?: (name: string, args: Record<string, unknown>) => Promise<RpcResult>;
   }) => (request: Request) => Promise<Response>;
-  constantTimeSecretEquals: (
-    provided: string,
-    expected: string,
-  ) => Promise<boolean>;
 };
 
 type RpcCall = {
@@ -60,18 +56,14 @@ async function loadWorkerModule(): Promise<WorkerModule> {
   return loaded as WorkerModule;
 }
 
-async function createHarness(options?: {
-  configuredSecret?: string;
-  rpcResult?: RpcResult;
-}) {
+async function createHarness(options?: { rpcResult?: RpcResult }) {
   const calls: RpcCall[] = [];
   const loaded = await loadWorkerModule();
-  const configuredSecret = options && "configuredSecret" in options
-    ? options.configuredSecret
-    : SECRET;
   const handler = loaded.createWorkerHandler({
     getEnv: (name) => {
-      if (name === "NETWORK_WORKER_SECRET") return configuredSecret;
+      if (name === "NETWORK_WORKER_SECRET") {
+        throw new Error("fleet-global worker secret must not be read");
+      }
       if (name === "SUPABASE_URL") return "https://example.supabase.co";
       if (name === "SUPABASE_SERVICE_ROLE_KEY") return "service-role-test-key";
       return undefined;
@@ -109,32 +101,57 @@ async function responseJson(
   return await response.json() as Record<string, unknown>;
 }
 
-Deno.test("worker auth fails closed for missing configuration and missing or wrong secrets", async () => {
-  const missingConfig = await createHarness({ configuredSecret: undefined });
-  const missingConfigResponse = await missingConfig.handler(
-    post("/heartbeat", {}, { secret: null }),
+async function sha256Hex(value: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
   );
-  assertEquals(missingConfigResponse.status, 503);
-  assertEquals(missingConfig.calls.length, 0);
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
+Deno.test("worker auth rejects missing or malformed credentials before RPC", async () => {
   const { handler, calls } = await createHarness();
   const missing = await handler(post("/heartbeat", {}, { secret: null }));
-  const wrong = await handler(
-    post("/heartbeat", {}, { secret: "wrong-secret" }),
+  const malformed = await handler(
+    post("/heartbeat", {}, { secret: "too-short" }),
   );
   assertEquals(missing.status, 401);
-  assertEquals(wrong.status, 401);
+  assertEquals(malformed.status, 401);
   assertEquals(calls.length, 0);
 });
 
-Deno.test("worker secret comparison hashes to fixed-length digests", async () => {
-  const loaded = await loadWorkerModule();
-  assertEquals(await loaded.constantTimeSecretEquals(SECRET, SECRET), true);
-  assertEquals(
-    await loaded.constantTimeSecretEquals(`${SECRET}x`, SECRET),
-    false,
+Deno.test("spoofed workerId is rejected before any RPC", async () => {
+  const { handler, calls } = await createHarness();
+  const response = await handler(post("/connections", {
+    workerId: "victim-worker",
+    limit: 100,
+  }));
+  assertEquals(response.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("credential digest reaches v2 RPC and Edge never supplies worker identity", async () => {
+  const { handler, calls } = await createHarness();
+  const response = await handler(post("/connections", { limit: 100 }));
+  assertEquals(response.status, 200);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0]?.name, "network_center_worker_list_connections_v2");
+  assert(
+    typeof calls[0]?.args.p_credential_digest === "string" &&
+      /^[a-f0-9]{64}$/.test(calls[0]?.args.p_credential_digest as string),
+    "credential digest must be a lowercase SHA-256 hex value",
   );
-  assertEquals(await loaded.constantTimeSecretEquals("", SECRET), false);
+  assertEquals("p_worker_id" in (calls[0]?.args ?? {}), false);
+  assertEquals("workerId" in (calls[0]?.args ?? {}), false);
+});
+
+Deno.test("database authentication failures are returned as one unauthorized response", async () => {
+  const { handler, calls } = await createHarness({
+    rpcResult: { data: null, error: { code: "28000", message: "credential detail" } },
+  });
+  const response = await handler(post("/connections", { limit: 100 }));
+  assertEquals(response.status, 401);
+  assertEquals(await responseJson(response), { error: "unauthorized" });
+  assertEquals(calls.length, 1);
 });
 
 Deno.test("unknown routes and non-POST methods are denied without invoking RPC", async () => {
@@ -181,6 +198,7 @@ Deno.test("malformed JSON, wrong content type, and oversized bodies are rejected
 
 Deno.test("valid routes forward only their allowlisted RPC and normalized arguments", async () => {
   const now = new Date().toISOString();
+  const credentialDigest = await sha256Hex(SECRET);
   const routes: Array<{
     path: string;
     body: Record<string, unknown>;
@@ -190,7 +208,6 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     {
       path: "/heartbeat",
       body: {
-        workerId: WORKER_ID,
         workerVersion: "1.0.0",
         capabilities: ["poll", "execute"],
         status: "online",
@@ -198,9 +215,8 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
         safeMetadata: { region: "sgp" },
         startedAt: now,
       },
-      rpc: "network_center_worker_heartbeat_v1",
+      rpc: "network_center_worker_heartbeat_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_worker_version: "1.0.0",
         p_capabilities: ["poll", "execute"],
         p_status: "ONLINE",
@@ -211,27 +227,25 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     },
     {
       path: "/connections",
-      body: { workerId: WORKER_ID, limit: 100 },
-      rpc: "network_center_worker_list_connections_v1",
-      args: { p_worker_id: WORKER_ID, p_limit: 100 },
+      body: { limit: 100 },
+      rpc: "network_center_worker_list_connections_v2",
+      args: { p_limit: 100 },
     },
     {
       path: "/claim",
-      body: { workerId: WORKER_ID, limit: 5, leaseSeconds: 90 },
-      rpc: "network_center_worker_claim_v1",
-      args: { p_worker_id: WORKER_ID, p_limit: 5, p_lease_seconds: 90 },
+      body: { limit: 5, leaseSeconds: 90 },
+      rpc: "network_center_worker_claim_v2",
+      args: { p_limit: 5, p_lease_seconds: 90 },
     },
     {
       path: "/renew",
       body: {
-        workerId: WORKER_ID,
         commandId: COMMAND_ID,
         leaseToken: LEASE_TOKEN,
         leaseSeconds: 90,
       },
-      rpc: "network_center_worker_renew_v1",
+      rpc: "network_center_worker_renew_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_command_id: COMMAND_ID,
         p_lease_token: LEASE_TOKEN,
         p_lease_seconds: 90,
@@ -240,12 +254,10 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     {
       path: "/ingest",
       body: {
-        workerId: WORKER_ID,
         payload: { observedAt: now, devices: [], interfaces: [], clients: [] },
       },
-      rpc: "network_center_worker_ingest_v1",
+      rpc: "network_center_worker_ingest_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_payload: {
           observedAt: now,
           devices: [],
@@ -257,27 +269,23 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     {
       path: "/inventory",
       body: {
-        workerId: WORKER_ID,
         payload: { routerDeviceId: DEVICE_ID, interfaces: [], aruba: [] },
       },
-      rpc: "network_center_worker_inventory_v1",
+      rpc: "network_center_worker_inventory_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_payload: { routerDeviceId: DEVICE_ID, interfaces: [], aruba: [] },
       },
     },
     {
       path: "/stage",
       body: {
-        workerId: WORKER_ID,
         commandId: COMMAND_ID,
         leaseToken: LEASE_TOKEN,
         eventKind: "validated",
         payload: { check: "ok" },
       },
-      rpc: "network_center_worker_command_event_v1",
+      rpc: "network_center_worker_command_event_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_command_id: COMMAND_ID,
         p_lease_token: LEASE_TOKEN,
         p_event_kind: "VALIDATED",
@@ -287,7 +295,6 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     {
       path: "/complete",
       body: {
-        workerId: WORKER_ID,
         commandId: COMMAND_ID,
         leaseToken: LEASE_TOKEN,
         outcome: "succeeded",
@@ -295,9 +302,8 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
         rollback: null,
         retryDelaySeconds: 30,
       },
-      rpc: "network_center_worker_complete_v1",
+      rpc: "network_center_worker_complete_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_command_id: COMMAND_ID,
         p_lease_token: LEASE_TOKEN,
         p_outcome: "SUCCEEDED",
@@ -309,7 +315,6 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     {
       path: "/incidents",
       body: {
-        workerId: WORKER_ID,
         payload: {
           eventKey: "router-down-0001",
           fingerprint: "router-down-building-1",
@@ -323,9 +328,8 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
           deviceId: DEVICE_ID,
         },
       },
-      rpc: "network_center_worker_upsert_incident_v1",
+      rpc: "network_center_worker_upsert_incident_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_payload: {
           eventKey: "router-down-0001",
           fingerprint: "router-down-building-1",
@@ -343,7 +347,6 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     {
       path: "/snapshots",
       body: {
-        workerId: WORKER_ID,
         payload: {
           snapshotId: SNAPSHOT_ID,
           deviceId: DEVICE_ID,
@@ -353,9 +356,8 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
           contentHash: "a".repeat(64),
         },
       },
-      rpc: "network_center_worker_snapshot_v1",
+      rpc: "network_center_worker_snapshot_v2",
       args: {
-        p_worker_id: WORKER_ID,
         p_payload: {
           snapshotId: SNAPSHOT_ID,
           deviceId: DEVICE_ID,
@@ -368,9 +370,9 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     },
     {
       path: "/maintenance",
-      body: { workerId: WORKER_ID, now },
-      rpc: "network_center_worker_maintenance_v1",
-      args: { p_worker_id: WORKER_ID, p_now: now },
+      body: { now },
+      rpc: "network_center_worker_maintenance_v2",
+      args: { p_now: now },
     },
   ];
 
@@ -378,7 +380,10 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     const { handler, calls } = await createHarness();
     const response = await handler(post(route.path, route.body));
     assertEquals(response.status, 200, route.path);
-    assertEquals(calls, [{ name: route.rpc, args: route.args }], route.path);
+    assertEquals(calls, [{
+      name: route.rpc,
+      args: { p_credential_digest: credentialDigest, ...route.args },
+    }], route.path);
     assertEquals(await responseJson(response), {
       ok: true,
       data: { accepted: true },
@@ -393,7 +398,6 @@ Deno.test("inventory accepts unlimited Aruba through repeated bounded batches", 
     displayName: `Aruba ${index + 1}`,
   }));
   const body = {
-    workerId: WORKER_ID,
     payload: { routerDeviceId: DEVICE_ID, interfaces: [], aruba },
   };
 
@@ -417,20 +421,17 @@ Deno.test("inventory accepts unlimited Aruba through repeated bounded batches", 
 Deno.test("invalid stage kinds, UUIDs, timestamps, and RPC failures are sanitized", async () => {
   const { handler, calls } = await createHarness();
   const invalidStage = await handler(post("/stage", {
-    workerId: WORKER_ID,
     commandId: COMMAND_ID,
     leaseToken: LEASE_TOKEN,
     eventKind: "run_arbitrary_cli",
     payload: {},
   }));
   const invalidUuid = await handler(post("/renew", {
-    workerId: WORKER_ID,
     commandId: "not-a-uuid",
     leaseToken: LEASE_TOKEN,
     leaseSeconds: 90,
   }));
   const invalidTimestamp = await handler(post("/heartbeat", {
-    workerId: WORKER_ID,
     workerVersion: "1.0.0",
     capabilities: [],
     status: "online",
@@ -450,7 +451,6 @@ Deno.test("invalid stage kinds, UUIDs, timestamps, and RPC failures are sanitize
     },
   });
   const failedResponse = await failed.handler(post("/claim", {
-    workerId: WORKER_ID,
     limit: 5,
     leaseSeconds: 90,
   }));

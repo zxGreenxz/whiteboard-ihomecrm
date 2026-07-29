@@ -75,7 +75,6 @@ export class ApiClientError extends Error {
 interface ApiClientOptions {
   baseUrl: URL;
   secret: string;
-  workerId: string;
   timeoutMs: number;
   fetch?: typeof fetch;
 }
@@ -89,14 +88,12 @@ function isRetryableStatus(status: number): boolean {
 export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
   readonly #baseUrl: string;
   readonly #secret: string;
-  readonly #workerId: string;
   readonly #timeoutMs: number;
   readonly #fetch: typeof fetch;
 
   constructor(options: ApiClientOptions) {
     this.#baseUrl = options.baseUrl.href.replace(/\/+$/, "");
     this.#secret = options.secret;
-    this.#workerId = options.workerId;
     this.#timeoutMs = options.timeoutMs;
     this.#fetch = options.fetch ?? globalThis.fetch;
   }
@@ -113,7 +110,7 @@ export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
             "content-type": "application/json",
             "x-network-worker-secret": this.#secret,
           },
-          body: JSON.stringify({ workerId: this.#workerId, ...body }),
+          body: JSON.stringify(body),
           signal: controller.signal,
         });
       } catch {

@@ -8,7 +8,6 @@ describe("worker Edge API client", () => {
     const client = new NetworkCenterApiClient({
       baseUrl: new URL("https://example.test/functions/v1/network-center-worker"),
       secret: "s".repeat(48),
-      workerId: "worker-01",
       timeoutMs: 1_000,
       fetch: async (input, init) => {
         requests.push(new Request(input, init));
@@ -22,7 +21,9 @@ describe("worker Edge API client", () => {
       "https://example.test/functions/v1/network-center-worker/connections",
     );
     expect(requests[0]!.headers.get("x-network-worker-secret")).toBe("s".repeat(48));
-    await expect(requests[0]!.json()).resolves.toEqual({ workerId: "worker-01", limit: 100 });
+    const body = await requests[0]!.json();
+    expect(body).toEqual({ limit: 100 });
+    expect(body).not.toHaveProperty("workerId");
   });
 
   it("classifies transient responses without leaking response bodies or secrets", async () => {
@@ -30,7 +31,6 @@ describe("worker Edge API client", () => {
     const client = new NetworkCenterApiClient({
       baseUrl: new URL("https://example.test/worker"),
       secret,
-      workerId: "worker-01",
       timeoutMs: 1_000,
       fetch: async () => new Response(`password=router ${secret}`, { status: 503 }),
     });
@@ -46,7 +46,6 @@ describe("worker Edge API client", () => {
     const client = new NetworkCenterApiClient({
       baseUrl: new URL("https://example.test/worker"),
       secret: "s".repeat(48),
-      workerId: "worker-01",
       timeoutMs: 5,
       fetch: async (_input, init) => {
         const signal = init?.signal;

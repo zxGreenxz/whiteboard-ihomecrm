@@ -4,7 +4,7 @@ import { ConfigError, loadWorkerConfig } from "../src/config.js";
 
 const validEnvironment = {
   NETWORK_CENTER_EDGE_URL: "https://example.supabase.co/functions/v1/network-center-worker",
-  NETWORK_CENTER_WORKER_ID: "vultr-bkk-01",
+  NETWORK_CENTER_WORKER_KEY: "vultr-network-center-01",
   NETWORK_CENTER_WORKER_SECRET_FILE: "/run/secrets/worker-secret",
   NETWORK_CENTER_CREDENTIALS_FILE: "/run/secrets/router-credentials.json",
   NETWORK_CENTER_BACKUP_DIR: "/var/lib/network-center/backups",
@@ -36,9 +36,19 @@ describe("worker configuration", () => {
       "https://example.supabase.co/functions/v1/network-center-worker",
     );
     expect(config.workerSecret).toHaveLength(48);
+    expect(config.workerKey).toBe("vultr-network-center-01");
     expect(config.pollIntervalMs).toBe(60_000);
     expect(config.emergencyStop).toBe(false);
     expect(config.credentials.size).toBe(0);
+  });
+
+  it("keeps the worker key as local labeling only and matches the database key format", () => {
+    expect(() => loadWorkerConfig({
+      env: { ...validEnvironment, NETWORK_CENTER_WORKER_KEY: "UPPER:scope" },
+      argv: ["node", "dist/main.js"],
+      files: secureFiles,
+      platform: "linux",
+    })).toThrow(/WORKER_KEY/i);
   });
 
   it("rejects inline secrets, CLI arguments, and world-readable secret files", () => {

@@ -90,7 +90,6 @@ async function run(): Promise<void> {
   const api = new NetworkCenterApiClient({
     baseUrl: config.edgeUrl,
     secret: config.workerSecret,
-    workerId: config.workerId,
     timeoutMs: config.requestTimeoutMs,
   });
   const interfaceRegistry = new InterfaceRegistry();
@@ -176,7 +175,7 @@ async function run(): Promise<void> {
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   logger.info("Network Center worker started", {
-    workerId: config.workerId,
+    workerKey: config.workerKey,
     emergencyStop: config.emergencyStop,
     configuredRouters: config.credentials.size,
   });

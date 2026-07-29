@@ -3,6 +3,7 @@
     "strict": true
   },
   "imports": {
-    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.81.1"
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.81.1",
+    "zod": "npm:zod@4.4.3"
   }
 }

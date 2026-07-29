@@ -1,4 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
+
+import { credentialDigestHex, WorkerCredentialError } from "./workerAuth.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -32,11 +35,11 @@ export type WorkerHandlerDependencies = {
 type RouteDefinition = {
   maxBodyBytes: number;
   rpcName: string;
+  bodySchema: z.ZodType<JsonObject>;
   toRpcArgs: (body: JsonObject) => Record<string, unknown>;
 };
 
 const SECRET_HEADER = "x-network-worker-secret";
-const WORKER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const encoder = new TextEncoder();
@@ -131,19 +134,18 @@ function asTimestamp(value: unknown, field: string): string {
   return timestamp;
 }
 
-function asWorkerId(value: unknown): string {
-  const workerId = asString(value, "workerId", 3, 128);
-  if (!WORKER_ID_PATTERN.test(workerId)) {
-    throw new RequestValidationError("workerId is invalid");
-  }
-  return workerId;
-}
-
 function asArray(value: unknown, field: string, maximum: number): unknown[] {
   if (!Array.isArray(value) || value.length > maximum) {
     throw new RequestValidationError(`${field} must be a bounded array`);
   }
   return value;
+}
+
+function strictBodySchema(keys: readonly string[]): z.ZodType<JsonObject> {
+  const shape = Object.fromEntries(
+    keys.map((key) => [key, z.unknown().optional()]),
+  ) as Record<string, z.ZodOptional<z.ZodUnknown>>;
+  return z.object(shape).strict();
 }
 
 function asBoundedObject(
@@ -194,7 +196,6 @@ function heartbeatArgs(body: JsonObject): Record<string, unknown> {
     16_384,
   );
   return {
-    p_worker_id: asWorkerId(body.workerId),
     p_worker_version: asString(body.workerVersion, "workerVersion", 1, 100),
     p_capabilities: capabilities,
     p_status: status,
@@ -211,14 +212,12 @@ function heartbeatArgs(body: JsonObject): Record<string, unknown> {
 
 function connectionsArgs(body: JsonObject): Record<string, unknown> {
   return {
-    p_worker_id: asWorkerId(body.workerId),
     p_limit: asInteger(body.limit ?? 100, "limit", 1, 500),
   };
 }
 
 function claimArgs(body: JsonObject): Record<string, unknown> {
   return {
-    p_worker_id: asWorkerId(body.workerId),
     p_limit: asInteger(body.limit ?? 5, "limit", 1, 20),
     p_lease_seconds: asInteger(
       body.leaseSeconds ?? 90,
@@ -231,7 +230,6 @@ function claimArgs(body: JsonObject): Record<string, unknown> {
 
 function renewArgs(body: JsonObject): Record<string, unknown> {
   return {
-    p_worker_id: asWorkerId(body.workerId),
     p_command_id: asUuid(body.commandId, "commandId"),
     p_lease_token: asUuid(body.leaseToken, "leaseToken"),
     p_lease_seconds: asInteger(
@@ -249,7 +247,7 @@ function ingestArgs(body: JsonObject): Record<string, unknown> {
   asArray(payload.devices ?? [], "payload.devices", 256);
   asArray(payload.interfaces ?? [], "payload.interfaces", 256);
   asArray(payload.clients ?? [], "payload.clients", 256);
-  return { p_worker_id: asWorkerId(body.workerId), p_payload: payload };
+  return { p_payload: payload };
 }
 
 function inventoryArgs(body: JsonObject): Record<string, unknown> {
@@ -257,12 +255,11 @@ function inventoryArgs(body: JsonObject): Record<string, unknown> {
   asUuid(payload.routerDeviceId, "payload.routerDeviceId");
   asArray(payload.interfaces ?? [], "payload.interfaces", 256);
   asArray(payload.aruba ?? [], "payload.aruba", 256);
-  return { p_worker_id: asWorkerId(body.workerId), p_payload: payload };
+  return { p_payload: payload };
 }
 
 function stageArgs(body: JsonObject): Record<string, unknown> {
   return {
-    p_worker_id: asWorkerId(body.workerId),
     p_command_id: asUuid(body.commandId, "commandId"),
     p_lease_token: asUuid(body.leaseToken, "leaseToken"),
     p_event_kind: asUpperEnum(body.eventKind, "eventKind", COMMAND_EVENT_KINDS),
@@ -272,7 +269,6 @@ function stageArgs(body: JsonObject): Record<string, unknown> {
 
 function completeArgs(body: JsonObject): Record<string, unknown> {
   return {
-    p_worker_id: asWorkerId(body.workerId),
     p_command_id: asUuid(body.commandId, "commandId"),
     p_lease_token: asUuid(body.leaseToken, "leaseToken"),
     p_outcome: asUpperEnum(body.outcome, "outcome", COMMAND_OUTCOMES),
@@ -320,7 +316,7 @@ function incidentArgs(body: JsonObject): Record<string, unknown> {
   if (payload.resolved !== undefined && typeof payload.resolved !== "boolean") {
     throw new RequestValidationError("payload.resolved must be boolean");
   }
-  return { p_worker_id: asWorkerId(body.workerId), p_payload: payload };
+  return { p_payload: payload };
 }
 
 function snapshotArgs(body: JsonObject): Record<string, unknown> {
@@ -351,12 +347,11 @@ function snapshotArgs(body: JsonObject): Record<string, unknown> {
   if (!/^[a-f0-9]{64}$/.test(hash)) {
     throw new RequestValidationError("payload.contentHash is invalid");
   }
-  return { p_worker_id: asWorkerId(body.workerId), p_payload: payload };
+  return { p_payload: payload };
 }
 
 function maintenanceArgs(body: JsonObject): Record<string, unknown> {
   return {
-    p_worker_id: asWorkerId(body.workerId),
     p_now: asTimestamp(body.now, "now"),
   };
 }
@@ -364,57 +359,74 @@ function maintenanceArgs(body: JsonObject): Record<string, unknown> {
 const ROUTES: Readonly<Record<string, RouteDefinition>> = Object.freeze({
   heartbeat: {
     maxBodyBytes: 32_768,
-    rpcName: "network_center_worker_heartbeat_v1",
+    rpcName: "network_center_worker_heartbeat_v2",
+    bodySchema: strictBodySchema([
+      "workerVersion", "capabilities", "status", "queueAgeSeconds",
+      "safeMetadata", "startedAt",
+    ]),
     toRpcArgs: heartbeatArgs,
   },
   connections: {
     maxBodyBytes: 8_192,
-    rpcName: "network_center_worker_list_connections_v1",
+    rpcName: "network_center_worker_list_connections_v2",
+    bodySchema: strictBodySchema(["limit"]),
     toRpcArgs: connectionsArgs,
   },
   claim: {
     maxBodyBytes: 8_192,
-    rpcName: "network_center_worker_claim_v1",
+    rpcName: "network_center_worker_claim_v2",
+    bodySchema: strictBodySchema(["limit", "leaseSeconds"]),
     toRpcArgs: claimArgs,
   },
   renew: {
     maxBodyBytes: 8_192,
-    rpcName: "network_center_worker_renew_v1",
+    rpcName: "network_center_worker_renew_v2",
+    bodySchema: strictBodySchema(["commandId", "leaseToken", "leaseSeconds"]),
     toRpcArgs: renewArgs,
   },
   ingest: {
     maxBodyBytes: 600_000,
-    rpcName: "network_center_worker_ingest_v1",
+    rpcName: "network_center_worker_ingest_v2",
+    bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: ingestArgs,
   },
   inventory: {
     maxBodyBytes: 600_000,
-    rpcName: "network_center_worker_inventory_v1",
+    rpcName: "network_center_worker_inventory_v2",
+    bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: inventoryArgs,
   },
   stage: {
     maxBodyBytes: 100_000,
-    rpcName: "network_center_worker_command_event_v1",
+    rpcName: "network_center_worker_command_event_v2",
+    bodySchema: strictBodySchema(["commandId", "leaseToken", "eventKind", "payload"]),
     toRpcArgs: stageArgs,
   },
   complete: {
     maxBodyBytes: 150_000,
-    rpcName: "network_center_worker_complete_v1",
+    rpcName: "network_center_worker_complete_v2",
+    bodySchema: strictBodySchema([
+      "commandId", "leaseToken", "outcome", "result", "rollback",
+      "retryDelaySeconds",
+    ]),
     toRpcArgs: completeArgs,
   },
   incidents: {
     maxBodyBytes: 100_000,
-    rpcName: "network_center_worker_upsert_incident_v1",
+    rpcName: "network_center_worker_upsert_incident_v2",
+    bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: incidentArgs,
   },
   snapshots: {
     maxBodyBytes: 2_200_000,
-    rpcName: "network_center_worker_snapshot_v1",
+    rpcName: "network_center_worker_snapshot_v2",
+    bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: snapshotArgs,
   },
   maintenance: {
     maxBodyBytes: 8_192,
-    rpcName: "network_center_worker_maintenance_v1",
+    rpcName: "network_center_worker_maintenance_v2",
+    bodySchema: strictBodySchema(["now"]),
     toRpcArgs: maintenanceArgs,
   },
 });
@@ -449,23 +461,6 @@ async function readJsonBody(
     throw new SyntaxError("invalid_json");
   }
   return asObject(parsed);
-}
-
-export async function constantTimeSecretEquals(
-  provided: string,
-  expected: string,
-): Promise<boolean> {
-  const [providedDigest, expectedDigest] = await Promise.all([
-    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
-    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
-  ]);
-  const left = new Uint8Array(providedDigest);
-  const right = new Uint8Array(expectedDigest);
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left[index] ^ right[index];
-  }
-  return difference === 0;
 }
 
 function createServiceRpc(
@@ -504,17 +499,14 @@ export function createWorkerHandler(
   const rpc = dependencies.rpc ?? createServiceRpc(getEnv);
 
   return async (request: Request): Promise<Response> => {
-    const expectedSecret = getEnv("NETWORK_WORKER_SECRET")?.trim() ?? "";
-    if (expectedSecret.length < 32 || expectedSecret.length > 512) {
-      return jsonResponse(503, { error: "worker_auth_unavailable" });
-    }
-
     const providedSecret = request.headers.get(SECRET_HEADER) ?? "";
-    const authenticated = await constantTimeSecretEquals(
-      providedSecret,
-      expectedSecret,
-    );
-    if (!authenticated) {
+    let credentialDigest: string;
+    try {
+      credentialDigest = await credentialDigestHex(providedSecret);
+    } catch (error) {
+      if (!(error instanceof WorkerCredentialError)) {
+        return jsonResponse(500, { error: "worker_auth_error" });
+      }
       return jsonResponse(401, { error: "unauthorized" });
     }
 
@@ -549,7 +541,14 @@ export function createWorkerHandler(
 
     let args: Record<string, unknown>;
     try {
-      args = route.toRpcArgs(body);
+      const parsedBody = route.bodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        throw new RequestValidationError("body contains an unsupported field");
+      }
+      args = {
+        p_credential_digest: credentialDigest,
+        ...route.toRpcArgs(parsedBody.data),
+      };
     } catch (error) {
       if (error instanceof RequestValidationError) {
         return jsonResponse(400, { error: "invalid_request" });
@@ -564,6 +563,9 @@ export function createWorkerHandler(
       return jsonResponse(502, { error: "worker_backend_error" });
     }
     if (result.error) {
+      if (result.error.code === "28000") {
+        return jsonResponse(401, { error: "unauthorized" });
+      }
       return jsonResponse(rpcErrorStatus(result.error.code), {
         error: "worker_backend_error",
         code: result.error.code ?? "UNKNOWN",
