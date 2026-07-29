@@ -26,6 +26,7 @@ import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
   Eye,
@@ -200,6 +201,7 @@ const IncomeExpenseList = ({
   // cancel rơi về edit).
   const canApproveVoucher = canUse(perms, 'income_expenses', 'approve');
   const canCancelVoucher = canUse(perms, 'income_expenses', 'cancel');
+  const canEditVoucher = canUse(perms, 'income_expenses', 'edit');
 
   if (isLoading) {
     return (
@@ -255,8 +257,15 @@ const IncomeExpenseList = ({
             // Đã ghi nhận/đã huỷ: super admin vẫn mở full form; creator
             // (không phải admin) mở dialog sửa nhanh 3 field.
             const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
-            const showQuickEdit =
-              !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
+            // Đợt 2: không còn giới hạn ở NGƯỜI TẠO — kế toán/quản lý có quyền
+            // sửa thu chi cũng đính hộ được chứng từ (server là nơi chốt).
+            const showQuickEdit = canShowAnnotateAction({
+              hasHandler: !!onQuickEdit,
+              isUnapproved,
+              isAdmin,
+              isCreator,
+              canEdit: canEditVoucher,
+            });
 
             const rowClass = [
               isCancelled ? 'opacity-60' : '',

@@ -27,6 +27,9 @@ import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIncomeExpenseHistory } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
@@ -92,6 +95,7 @@ export function IncomeExpenseDetailDialog({
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: perms } = useMyPermissions();
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
@@ -138,8 +142,13 @@ export function IncomeExpenseDetailDialog({
   const isCreator =
     !!currentUserId && voucher.user_id === currentUserId;
   const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
-  const showQuickEdit =
-    !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
+  const showQuickEdit = canShowAnnotateAction({
+    hasHandler: !!onQuickEdit,
+    isUnapproved,
+    isAdmin,
+    isCreator,
+    canEdit: canUse(perms, "income_expenses", "edit"),
+  });
 
   return (
     <>

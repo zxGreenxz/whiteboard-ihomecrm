@@ -9,19 +9,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import AttachmentUpload from "./AttachmentUpload";
-import {
-  useQuickUpdateIncomeExpense,
-  type IncomeExpenseWithRelations,
-} from "@/hooks/useIncomeExpenses";
-import { useAccounts } from "@/hooks/useAccounts";
+import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
+import { useAnnotateIncomeExpense } from "@/hooks/income-expenses/annotateMutations";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -31,23 +21,31 @@ interface Props {
   voucher: IncomeExpenseWithRelations | null;
 }
 
+/**
+ * Bổ sung ảnh chứng từ + ghi chú cho một phiếu ở BẤT KỲ trạng thái nào.
+ *
+ * Đợt 2: ô "Sổ quỹ" đã bị BỎ khỏi màn này. Trước đây nó gọi
+ * `update_income_expense_quick` với `account_id`, mà `account_id` nằm trong
+ * danh sách `UPDATE OF` của cầu auto-posting a85 — nên một cú "sửa nhanh" trên
+ * phiếu ĐÃ GHI SỔ sẽ đảo bút toán ở sổ cũ và ghi bút toán ở sổ mới: tiền rời
+ * két người khác, không ai duyệt, không dòng nhật ký nào. Server đã chặn ở Đợt
+ * 0; ở đây bỏ luôn ô đó khỏi giao diện để không mời người dùng làm việc sai.
+ * Cần đổi sổ quỹ thì huỷ phiếu và lập lại.
+ */
 export function IncomeExpenseQuickEditDialog({
   open,
   onOpenChange,
   voucher,
 }: Props) {
-  const { data: accounts = [] } = useAccounts();
   const { data: authUser } = useAuth();
   const isMobile = useIsMobile();
-  const quickUpdate = useQuickUpdateIncomeExpense();
+  const annotate = useAnnotateIncomeExpense();
 
-  const [accountId, setAccountId] = useState<string>("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [notes, setNotes] = useState<string>("");
 
   useEffect(() => {
     if (open && voucher) {
-      setAccountId(voucher.account_id ?? "");
       setAttachments(voucher.attachments ?? []);
       setNotes(voucher.notes ?? "");
     }
@@ -55,17 +53,25 @@ export function IncomeExpenseQuickEditDialog({
 
   if (!voucher) return null;
 
+  const original: string[] = voucher.attachments ?? [];
+  const added = attachments.filter((url) => !original.includes(url));
+  const removed = original.filter((url) => !attachments.includes(url));
+  const notesChanged = (notes.trim() || null) !== (voucher.notes ?? null);
+  const nothingToDo = added.length === 0 && removed.length === 0 && !notesChanged;
+
   const handleSave = async () => {
     try {
-      await quickUpdate.mutateAsync({
-        id: voucher.id,
-        account_id: accountId || null,
-        attachments,
-        notes: notes.trim() ? notes.trim() : null,
+      await annotate.mutateAsync({
+        voucherId: voucher.id,
+        addAttachments: added,
+        removeAttachments: removed,
+        // Chỉ gửi ghi chú khi thật sự đổi — gửi thừa sẽ đụng vào bộ canh dấu
+        // hiệu tiền trong ghi chú mà chẳng để làm gì.
+        notes: notesChanged ? (notes.trim() ? notes.trim() : "") : null,
       });
       onOpenChange(false);
     } catch {
-      // toast handled by hook
+      // toast đã xử lý trong hook
     }
   };
 
@@ -79,32 +85,16 @@ export function IncomeExpenseQuickEditDialog({
         }
       >
         <DialogHeader>
-          <DialogTitle>SỬA NHANH PHIẾU</DialogTitle>
+          <DialogTitle>BỔ SUNG CHỨNG TỪ / GHI CHÚ</DialogTitle>
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          Chỉnh sửa nhanh sổ quỹ, hình ảnh đính kèm và ghi chú của phiếu{" "}
-          <b>{voucher.code}</b>. Các trường khác (số tiền, hạng mục, người
-          nhận/trả…) không sửa được — nếu cần đổi, hãy huỷ phiếu và tạo lại.
+          Bổ sung ảnh chứng từ và ghi chú cho phiếu <b>{voucher.code}</b> — làm
+          được ở mọi trạng thái, kể cả phiếu đã ghi sổ. Số tiền, hạng mục, sổ quỹ,
+          người nhận/trả không sửa ở đây; cần đổi thì huỷ phiếu rồi lập lại.
         </p>
 
         <div className="space-y-4 mt-2">
-          <div className="space-y-2">
-            <Label htmlFor="quick-edit-account">Sổ quỹ</Label>
-            <Select value={accountId} onValueChange={setAccountId}>
-              <SelectTrigger id="quick-edit-account">
-                <SelectValue placeholder="Chọn sổ quỹ" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((acc) => (
-                  <SelectItem key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="space-y-2">
             <Label>Hình ảnh đính kèm</Label>
             <AttachmentUpload
@@ -130,12 +120,12 @@ export function IncomeExpenseQuickEditDialog({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            disabled={quickUpdate.isPending}
+            disabled={annotate.isPending}
           >
             Huỷ
           </Button>
-          <Button onClick={handleSave} disabled={quickUpdate.isPending}>
-            {quickUpdate.isPending ? "Đang lưu..." : "Lưu"}
+          <Button onClick={handleSave} disabled={annotate.isPending || nothingToDo}>
+            {annotate.isPending ? "Đang lưu..." : "Lưu"}
           </Button>
         </DialogFooter>
       </DialogContent>
