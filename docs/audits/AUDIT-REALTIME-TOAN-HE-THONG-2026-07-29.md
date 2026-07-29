@@ -582,3 +582,448 @@ Lát cắt đầu tiên nên chứng minh được ba điều trước khi mở 
 - [Supabase — Subscribing to Database Changes](https://supabase.com/docs/guides/realtime/subscribing-to-database-changes)
 - [TanStack Query — Updates from Mutation Responses](https://tanstack.com/query/latest/docs/framework/react/guides/updates-from-mutation-responses)
 - [TanStack Query — Invalidations from Mutations](https://tanstack.com/query/latest/docs/framework/react/guides/invalidations-from-mutations)
+
+---
+
+## 15. Audit đối chiếu thực tế (phiên độc lập, 2026-07-29)
+
+> Phần này được **thêm vào cuối tài liệu, không sửa nội dung §1–§14**.
+>
+> Mục đích: kiểm chứng từng khẳng định của bản kế hoạch bằng code thật + database
+> production, đánh giá tính khả thi và đề xuất điều chỉnh.
+>
+> Phương pháp: 7 cụm khẳng định được kiểm bởi 7 tác nhân độc lập, sau đó **mọi
+> khẳng định bị chấm sai/một phần đều bị một tác nhân đối kháng thứ hai phản biện**
+> (nhiệm vụ của tác nhân này là *bác bỏ* kết luận của tác nhân đầu). Truy vấn DB
+> chỉ đọc, qua Management API, project `tryymsxyyckgbrmmvozx`.
+
+### 15.1. Kết quả chấm điểm
+
+**87 khẳng định** được chấm. Sau vòng phản biện:
+
+| Kết quả | Số lượng | Ghi chú |
+|---|---:|---|
+| ĐÚNG | 61 | tái lập được bằng code/SQL |
+| ĐÚNG MỘT PHẦN | 25 | phần lớn là **stale** hoặc khác phương pháp đếm, không phải sai |
+| SAI | 1 | §9 G5 "Thêm intent-based prefetch" — tính năng đã có từ 05/07 |
+
+**Kết luận tổng:** phần chẩn đoán (§3–§5) của bản kế hoạch **đáng tin cậy**. Vấn đề
+nằm ở **thứ tự triển khai (§9, §13), cách định cỡ (68 checkbox không có cut line),
+và một số mục đề xuất lại việc đã làm xong**. Không nên vứt §3–§5 cùng với §9–§13.
+
+Một cảnh báo về quy trình: vòng kiểm đầu chấm 15 khẳng định là "SAI", vòng phản biện
+lật lại 14 trong số đó. Nguyên nhân gần như luôn là **đo ở commit khác** hoặc **dùng
+regex khác**. Bài học áp dụng cho chính bản kế hoạch này: mọi con số phải ghi kèm
+commit và lệnh đo.
+
+### 15.2. Bảng §2 thống kê tĩnh — tái lập ĐÚNG tại commit của chính nó
+
+Nghi ngờ ban đầu rằng bảng §2 được "ước lượng" là **sai**. Đo lại tại commit
+`e41da93`/`7e6b3a9` (cây mà audit thực sự chạy trên đó), phạm vi
+`src/components + src/hooks + src/pages + src/lib (+integrations)`, loại test:
+
+| Hạng mục | Doc | Đo lại | Đánh giá |
+|---|---:|---:|---|
+| File TS/TSX production | 812 | **812** | khớp tuyệt đối |
+| `useQuery` | 301 | **301** | khớp tuyệt đối (dạng `useQuery({`) |
+| Literal query-key roots | 196 | **196** | khớp tuyệt đối |
+| Direct database/storage sources | 98 | **98** | khớp tuyệt đối |
+| `invalidateQueries` | 536 | 537 | lệch 1 |
+| `useMutation` | 279 | 282 | lệch 3 |
+| Bảng có mutation trực tiếp | 59 | 57 | lệch 2 |
+| `setQueryData`/`setQueriesData` | 9 | **9 file** / 16 call site | **dán nhãn sai** |
+
+**Chỉ một dòng cần sửa:** "9" là **số FILE**, trong khi mọi dòng khác là **số lần
+gọi**. Số call site thật là 16 (non-test) / 44 (kể cả test). Nên viết lại thành
+`setQueryData/setQueriesData | 16 (trong 9 file)`.
+
+Ba bổ sung cho bảng này:
+
+1. **`useInfiniteQuery` xuất hiện 0 lần** trong toàn repo (`useSuspenseQuery` cũng 0).
+   Nhãn cột gợi ý đã có hạ tầng phân trang tăng dần — thực tế bằng 0. Mục "cursor
+   pagination" (§1 điểm 6, §9 G4) là **greenfield**, không phải mở rộng.
+2. **Đã tồn tại sẵn implementation optimistic chuẩn sách giáo khoa**:
+   [`src/hooks/useBuildings.ts:249-271`](../../src/hooks/useBuildings.ts) có đủ
+   `cancelQueries → getQueryData snapshot → setQueryData → onError rollback →
+   onSettled invalidate`. Cùng pattern ở `useZaloChat` (3 mutation) và
+   `useUiPreferences` (1). Tổng cộng **5/282 mutation là optimistic thật (1,8%)**.
+   §6-Critical-1 trình bày local-first như kiến trúc phải xây mới; thực tế là
+   **port một pattern đã chạy production** — rẻ hơn nhiều so với doc ngụ ý.
+3. **20 bảng chỉ truy cập được qua `.from("x" as any)`** do `types.ts` drift
+   (teams, materials\_\*, profit_manager\_\*, meter_readings_detailed…). Registry
+   dependency **có type** mà §6 đề xuất sẽ **không phủ được 20 bảng này** cho tới
+   khi `types.ts` được regen.
+
+### 15.3. Những phần đã STALE — cần sửa nội dung
+
+#### §4.7 (notifications) — đúng lúc viết, sập sau 4 phút 23 giây
+
+Tài liệu commit lúc `b18272e` **19:41:49**; commit `99b87e4` lúc **19:46:12** đã mount
+`NotificationsRealtime`. Trạng thái thực tế **hiện nay**:
+
+- [`src/App.tsx:14`](../../src/App.tsx) + [`:238`](../../src/App.tsx) — đã mount, dưới `<RealtimeDataSync />`.
+- `public.notifications` **đã nằm trong publication production**.
+- RLS own-row đã có: 4 policy PERMISSIVE (`user_id = (SELECT auth.uid())`) + 1
+  RESTRICTIVE `notifications_org_boundary`.
+- Kênh dùng **server-side filter** `user_id=eq.<uid>` và **chỉ nghe INSERT**
+  ([`useNotifications.ts:346-353`](../../src/hooks/useNotifications.ts)).
+
+⇒ §4.7 phải **viết lại**: notifications không phải WIP, mà là **đường realtime chặt
+nhất trong toàn repo** — chặt hơn hub trung tâm. Nó nên là **mẫu tham chiếu** cho
+gạch đầu dòng "Thêm org filter cho Postgres Changes" (§9 G3), chứ không phải một
+hạng mục phải làm.
+
+#### §4.1 — publication là 17 bảng, không phải 16
+
+Thiếu đúng `notifications`. Phân loại 7 business / 4 Zalo / 5 network **chính xác 100%**.
+
+#### §5.3 — suy luận "không có trong `schema_migrations` ⇒ chưa apply" là SAI trong repo này
+
+Đây là lỗi suy luận nghiêm trọng nhất của tài liệu, và nó làm **hạ bậc sai** một
+finding lẽ ra phải cao hơn:
+
+- `schema_migrations`: **360 dòng, max version = `20260716170000`** — sổ ghi migration
+  đã **chết từ 2026-07-16**.
+- Repo có ~507 file `.sql`; **143 version local vắng sổ** — không phải 2.
+- Bằng chứng phản chứng dứt khoát: `20260729130000_notifications_rls_own_row.sql`
+  nằm trong nhóm vắng sổ, nhưng **5 policy của nó đang tồn tại thật trên production**.
+
+⇒ Quy trình thực tế của repo là apply qua Management API **không ghi sổ**. Rủi ro
+**ngược lại** với mô tả của tài liệu: production có catalog **không có migration bảo
+chứng**, nên `supabase db reset`/dựng môi trường mới sẽ **mất** publication,
+RLS notifications và toàn khối finance_v2. Đề nghị **nâng "Medium — Publication/migration
+drift" lên High**, và đổi hướng sửa từ "reconcile 2 migration" thành "khôi phục sổ
+ghi migration cho 143 version".
+
+#### §6/§9 G4 — tối ưu RLS helper là việc ĐÃ LÀM XONG
+
+[`docs/audits/AUDIT-HIEU-NANG-2026-07-26.md`](AUDIT-HIEU-NANG-2026-07-26.md) §6 ghi
+migration `20260726130000` đã chuyển `can_access_org_entity`/`has_any_scope_v3` sang
+set-based, đo trên prod:
+
+| Query | Trước | Sau |
+|---|---:|---:|
+| `count(*)` customers (504 dòng) | 2.610 ms | **11,6 ms** |
+| `count(*)` meter_readings_detailed | 4.086 ms | ~44 ms |
+| `select *` jobs | 1.059 ms | ~47 ms |
+
+⇒ Con số **8,8 ms initplan** mà §5.2 đo được **chính là trạng thái SAU tối ưu**.
+Checkbox §9 G4 dòng 472 ("Tối ưu `can_access_org_entity`/`has_any_scope_v3` theo
+set-based/indexed lookup") đang **đề xuất lại việc đã hoàn thành 3 ngày trước**. Nên xoá.
+
+#### Ba hạng mục khác đã tồn tại
+
+| Checkbox | Thực tế |
+|---|---|
+| §9 G5 "Thêm intent-based prefetch" | **Đã có từ 05/07** — `src/lib/prefetchIntent.ts` (commit `d51f6e7`), dùng ở `Sidebar.tsx` + `HomeLauncher.tsx` |
+| §9 G0 "E2E helper kiểm console errors" | **Đã có** — `trackConsoleErrors` (`.e2e-fleet/specs/auth.ts:52`), **28 file** đang dùng |
+| §9 G3 "Lập bảng canonical source → signal → queries" | **Đã có** — [`docs/he-thong/realtime-sync.md`](../he-thong/realtime-sync.md), 194 dòng, chính là artifact đó |
+
+Riêng mục cuối là vấn đề về nguồn sự thật: tài liệu **không hề tham chiếu**
+`realtime-sync.md` (§14 chỉ có link ngoài), trong khi chính hub trỏ tới nó ở
+[`useRealtimeDataSync.ts:95`](../../src/hooks/useRealtimeDataSync.ts). File đó đã có
+sẵn §3 bản đồ bảng→query key, §5 danh sách **có chủ ý** bỏ realtime (= Tier C của
+§8.3), §6 nguyên tắc **"mutation lo tức thì cho client hiện tại; hub lo cross-client"**
+(= chính "kiến trúc mục tiêu" §8). ⇒ Kiến trúc §8 **không mới**; cái thiếu là lớp 1
+đang được cài bằng `invalidate` thay vì `setQueryData`. Nên phát biểu lại §8 theo
+hướng đó, và nói rõ registry (§9 G2) **thay thế** hay **bổ sung** cho tài liệu này —
+hai nguồn sự thật cạnh tranh đúng là lỗi mà registry định diệt.
+
+### 15.4. Những gì kế hoạch BỎ SÓT (bổ sung, xếp theo mức độ)
+
+#### ★★★ 1. Chi phí realtime lớn nhất không phải RLS — mà là chính WAL poller
+
+`realtime.list_changes` chiếm **25,5% toàn bộ thời gian thực thi database**
+(6,7 giờ / 26,2 giờ tích lũy), gấp ~5 lần statement đứng thứ hai. Nó chạy **bất kể
+có ai subscribe hay không**.
+
+⇒ Toàn bộ §5.2 phân tích chi phí theo trục `RLS × subscriber`, nhưng chi phí thật
+lớn nhất là **chi phí cố định theo số bảng trong publication**. Mọi đề xuất "thêm
+bảng vào publication" (§9 G3) đều làm tăng con số này. Đây phải là mục §5 riêng.
+
+#### ★★★ 2. 5 bảng `network_*` đang publish nhưng KHÔNG có consumer nào
+
+`network_command_events`, `network_device_current`, `network_incidents`,
+`network_interface_current`, `network_worker_heartbeats` đều nằm trong publication.
+Grep toàn `src/` cho các tên này: **0 kết quả** ngoài `types.ts` (file sinh tự động).
+Không có `supabase.channel` nào subscribe chúng. `CLAUDE.md` còn ghi nhóm `network_*`
+tự sinh **~65 phân mảnh theo ngày mỗi ngày**.
+
+⇒ Đang đốt WAL + chi phí poller ở mục 1 **hoàn toàn vô ích**. §4.4 khuyên "không bật
+Postgres Changes một cách cơ học" nhưng không phát hiện điều đó **đã xảy ra rồi**.
+**Quick win không rủi ro: DROP 5 bảng khỏi publication.**
+
+#### ★★★ 3. Debounce 800 ms không có maxWait — bị starve, không "gộp bão" như comment tự nhận
+
+[`useRealtimeDataSync.ts:262-270`](../../src/hooks/useRealtimeDataSync.ts) là debounce
+trailing-edge thuần: mỗi event `clearTimeout` rồi đặt lại 800 ms, **không có giới hạn
+chờ tối đa**. Trong một đợt bulk phát event dày hơn 1 lần/800 ms, `flushEntry`
+**không chạy lần nào** cho tới khi cơn bão dứt hẳn.
+
+Nghiêm trọng hơn: `businessPerformanceTimer` ([:237](../../src/hooks/useRealtimeDataSync.ts),
+[:246-254](../../src/hooks/useRealtimeDataSync.ts)) là **MỘT biến duy nhất dùng chung
+cho cả 5 bảng** invoices/income_expenses/contracts/rooms/buildings — event từ bất kỳ
+bảng nào cũng reset nó.
+
+⇒ Comment ở dòng 12-14 tự nhận "gộp cơn bão đó về 1 lần invalidate" chỉ đúng **sau khi
+bão kết thúc**; trong suốt đợt sinh hoá đơn hàng loạt, dashboard đứng số mà không có
+tín hiệu nào. Đây là **lỗi tiềm ẩn thật trong đúng 40 dòng mà §4.2/§4.5 đang mổ xẻ**
+nhưng không nêu. Fix ~6 dòng (flush cưỡng bức sau 2–3 s), thuộc lát cắt đầu tiên.
+
+#### ★★★ 4. KPI "Cross-tenant event/data leak = 0" hiện KHÔNG đạt — và không thể đạt với Postgres Changes
+
+Hai sự thật đã đo:
+
+1. **Toàn bộ 17 bảng có `relreplident = 'd'`** (replica identity default) ⇒ WAL cho
+   DELETE **chỉ chứa primary key**.
+2. Hub đăng ký `{ event: "*" }` **không filter** cho 7 bảng business
+   ([:242](../../src/hooks/useRealtimeDataSync.ts)).
+
+Theo tài liệu chính thức Supabase, **RLS không được áp cho sự kiện DELETE** (không thể
+lọc bản ghi đã xoá).
+
+⇒ Đây là **điều kiện hiện tại của production**, không phải rủi ro của việc mở rộng.
+§10 đặt nó làm KPI tương lai; thực tế phải xử lý ngay hoặc phát biểu lại KPI cho trung
+thực.
+
+#### ★★★ 5. Org filter + replica identity DEFAULT = giết luôn sự kiện DELETE
+
+Checkbox §9 G3 "Thêm org filter cho Postgres Changes nơi bảng có `organization_id`"
+khả thi về mặt cột (14 bảng Tier A đều có). Nhưng với replica identity DEFAULT,
+`organization_id=eq.<uuid>` **không bao giờ khớp DELETE** vì WAL chỉ có PK ⇒ Supabase
+sẽ **không gửi** event DELETE.
+
+Cách sửa (`ALTER TABLE … REPLICA IDENTITY FULL`) ghi **toàn bộ dòng cũ** vào WAL —
+khuếch đại ghi, cộng dồn vào chi phí ở mục 1. ⇒ Đây là **quyết định schema toàn cục**,
+không phải một checkbox. Nếu ship mà không xem xét, hard-delete
+(`contract_customers`, `contract_services`) **ngừng lan truyền cross-client** — đúng
+loại bug mà §4.3 đang muốn diệt.
+
+#### ★★ 6. Giai đoạn 5 "private Broadcast" có 0% hạ tầng
+
+`realtime.messages` **đã bật RLS nhưng có 0 policy** (`select count(*) from pg_policies
+where schemaname='realtime'` → **0**). ⇒ Mọi channel `config: { private: true }` sẽ bị
+**từ chối authorization**. §7 Phương án C và §9 G5 viết như thể chỉ là việc code
+frontend; thực tế cần viết policy cho `realtime.messages` trước, và đó là bề mặt bảo
+mật mới hoàn toàn.
+
+#### ★★ 7. `count: 'exact'` bắt mọi list trả giá RLS InitPlan HAI LẦN
+
+PostgREST bọc query trong `pgrst_source` + `pgrst_source_count`; nhánh count **quét
+lại toàn bộ** dưới cùng bộ predicate RLS và **chạy lại InitPlan**. Đo trên picker:
+**27,3–28,2 ms có count vs 12,6 ms không count (~2,2×)**.
+
+Cả 4 list đều truyền `{ count: 'exact' }` (`useInvoices.ts:105`, `useCustomers.ts:90`,
+`useVehicles.ts:36-50`, `useContracts.ts:278`).
+
+⇒ Đây là hạng mục **rẻ nhất và có bằng chứng đo được rõ nhất** của Giai đoạn 4
+(đổi 1 dòng), nhưng đang bị xếp **thứ 6/13**. Phải lên đầu.
+
+#### ★★ 8. Quy mô thật quá nhỏ cho luận điểm scale — nhưng write amplification thì không
+
+| Chỉ số | Thực tế |
+|---|---:|
+| `auth.users` | **11** (6 đăng nhập trong 7 ngày) |
+| Kích thước DB | **151 MB** |
+| invoices / contracts / customers / income_expenses | 903 / 337 / 519 / 2.613 dòng |
+| Subscription realtime đang sống | ~1–2 |
+
+Nhưng: **`invoices` có 664.258 row-version UPDATE** (~735 update/dòng),
+`income_expenses` 496.814. ⇒ Driver thật của fan-out là **write amplification**, không
+phải subscriber count.
+
+Hệ quả cho kế hoạch:
+
+- §5.2/§7-A/§9 G5 (Broadcast, fan-out) **định cỡ cho một hệ thống không tồn tại** —
+  nên cắt hoặc hoãn vô thời hạn.
+- "Cursor pagination" ở bảng 903 dòng **không mua được gì**, trong khi là hạng mục
+  **xâm lấn nhất** (đổi mọi component phân trang + mọi query key).
+- Việc đáng làm là **giảm write amplification** (trigger churn, mass status recalc) —
+  tài liệu không hề nhắc.
+
+#### ★★ 9. Ưu tiên theo thời gian DB thật khác với ưu tiên của tài liệu
+
+Tổng thời gian thực thi theo bảng gốc: **contracts 164,6 phút** → **invoices 128,3** →
+**notifications 126,4** → zalo_conversations 86,4 → income_expenses 72,2 → … →
+**customers chỉ đứng thứ 10 (28,4 phút)**.
+
+⇒ Case study §3 chọn đúng flow **gây khó chịu nhất cho người dùng**, nhưng đó **không
+phải điểm nóng DB lớn nhất**. Nên nói rõ điều này để §9 G4 không bị ưu tiên nhầm — và
+lưu ý `notifications`, thứ mà §4.7 gạt đi là "chưa production-ready", đã là workload
+đọc nặng **thứ 3**.
+
+#### ★ 10. Chi phí RLS mỗi event khác nhau theo bảng — §5.2 khái quát từ bảng RẺ NHẤT
+
+Đo dưới JWT authenticated org thật: `customers` → 11,1–12,4 ms; **`invoices` → 42,0–44,0 ms**
+(chuỗi policy thêm một InitPlan và một SubPlan building scope). ⇒ Phép tính fan-out
+của §5.2 **lạc quan ~4×** ở trường hợp xấu nhất, và `invoices` chính là bảng nhiều
+event nhất.
+
+#### ★ 11. `pg_stat_statements.track_planning = off` — mọi số §5.1 thiếu planning time
+
+Planning đo được 4,7–6,8 ms trên picker, so với 11,4–28,2 ms execution ⇒ **20–40% chi
+phí ẩn**, và nặng nhất đúng ở các statement RLS-heavy. Mọi benchmark trước/sau dựa
+trên §5.1 sẽ **đo thiếu** phần lợi ích của việc giảm số policy.
+
+#### ★ 12. Multi-tab: `hubActive` là biến module ⇒ N tab = N websocket = N prefetch storm
+
+[`:224`](../../src/hooks/useRealtimeDataSync.ts) `let hubActive = false;` là guard
+**theo JS realm, tức theo tab**. 3 tab = 3 channel = 3 lần `flushEntry` + tới 3
+`prefetchDomain` đồng thời. Không có leader election (BroadcastChannel/Web Lock).
+⇒ Baseline đo bằng Playwright 1 tab ở Giai đoạn 0 **không phản ánh thực tế** người
+quản lý mở nhiều tab — cả khung SLA bị hiệu chỉnh sai workload.
+
+Kèm theo, nhánh `if (!userId || hubActive) return;` **không trả về cleanup**: nếu
+instance thứ nhất unmount trước, `hubActive` về `false` nhưng instance thứ hai
+**không tự re-subscribe** (deps không đổi) ⇒ **mất realtime im lặng**, không log,
+không status callback để phát hiện.
+
+#### ★ 13. Ba channel còn lại cũng không có status callback
+
+§4.6 chỉ soi hub. Thực tế cả 4 channel đều `.subscribe()` không callback:
+`useNotifications.ts:360`, `useZaloChat.ts:409` và `:421`. ⇒ Giai đoạn 5 phải bao
+**4 channel**, nếu không chỉ vá 1/4 bề mặt.
+
+#### ★ 14. `useSyncContractServices` có cùng anti-pattern nhưng §4.3 chỉ nêu một
+
+[`useContracts.ts:696-736`](../../src/hooks/useContracts.ts): `delete().eq("contract_id")`
+rồi `insert(rows)` trên `contract_services`, `onSuccess` chỉ invalidate cục bộ.
+`contract_services` cũng **không** nằm trong publication. ⇒ Mọi giải pháp (touch parent
+/ domain_version / broadcast) phải áp **cho cả hai hook cùng lúc** — nếu không, sửa
+xong `contract_customers` vẫn còn nguyên lỗ ở dịch vụ hợp đồng, vốn ảnh hưởng **trực
+tiếp tới đơn giá điện nước và số tiền hoá đơn**.
+
+#### ★ 15. Bug tiềm ẩn nằm ngay trong hook được dùng làm case study
+
+| Vị trí | Vấn đề |
+|---|---|
+| [`VehicleFormDialog.tsx:94-99`](../../src/components/vehicles/VehicleFormDialog.tsx) | `useCustomers(…, { page: 1, pageSize: 500 })` trong khi org thật có **501 khách active** ⇒ `.range(0,499)` **cắt mất 1 khách, im lặng**. Càng lệch khi khách tăng. |
+| [`CustomerSelectionDialog.tsx:45`](../../src/components/contracts/CustomerSelectionDialog.tsx) | Không truyền pagination ⇒ không có `.range()`, phụ thuộc **PostgREST `max_rows = 1000`**. Ở 1001 khách, picker **im lặng** bỏ khách mới nhất; `handleConfirm` lọc theo `customers` nên khách đã chọn ngoài cửa sổ bị **âm thầm loại khỏi hợp đồng**. |
+| [`useCustomers.ts:308`](../../src/hooks/useCustomers.ts) | `await supabase.from("vehicles").insert(...)` **không destructure `error`, không throw** ⇒ tạo khách kèm xe mà phần xe fail vẫn chạy `onSuccess` và toast **"Dữ liệu đã được TẠO thành công"**. Đối chiếu: `syncCustomerVehicles` cùng file kiểm `error` sau mọi thao tác. **Fix 1 dòng.** |
+
+⇒ Hai mục đầu biến §3 từ "vấn đề UX chậm" thành **"nguy cơ mất dữ liệu im lặng cách
+2× tăng trưởng"** — đủ để đẩy Giai đoạn 1 lên đầu mà không cần tranh luận về latency.
+Mục thứ ba biến giả định §9 dòng 425 ("**Nếu** customer + vehicles phải atomic") thành
+yêu cầu bắt buộc.
+
+> Ghi chú công bằng: `useContracts.ts:1160` ghi vào bảng `public.cash_book` **không
+> tồn tại**, nhưng nhánh đó nằm **sau** canonical RPC `approve_contract_termination_v1`
+> — đã xác nhận **có trên production** — nên hiện **không kích hoạt**. Là code chết,
+> nên xoá, không phải bug đang chạy.
+
+### 15.5. Đánh giá kế hoạch triển khai (§9, §13)
+
+#### Giai đoạn 0 đang CHẶN thứ duy nhất tự trả công cho nó
+
+Repo có **0 hạ tầng telemetry**: `package.json` không có sentry/posthog/web-vitals/
+analytics; `src/` không có `performance.mark`/`measure`. ⇒ Đầu ra tự đặt của Giai đoạn 0
+("dashboard/log đo được p50/p95/p99 cho từng flow trọng yếu") là một **dự án
+observability from-scratch**, không phải bước chuẩn bị.
+
+§13 lại xếp nó **trước** Giai đoạn 1 — đảo ngược chính lời hứa "thứ tự an toàn và có
+khả năng chứng minh giá trị nhanh nhất". Một người bảo trì đơn lẻ sẽ hoặc bỏ qua Giai
+đoạn 0 (khiến bảng KPI không cưỡng chế được), hoặc mắc kẹt ở đó và không bao giờ tới
+Giai đoạn 1.
+
+#### KPI p95/p99 cross-client là không đo được
+
+Cần đồng hồ chung giữa 2 client (timestamp ghi từ server đưa vào payload + timestamp
+nhận ở client) và **hàng trăm mẫu** cho p99. Hệ thống có **11 tài khoản** ⇒ lưu lượng
+thật sẽ **không bao giờ** sinh đủ mẫu. Thêm nữa, hub **cố ý bỏ payload**
+([:16-18](../../src/hooks/useRealtimeDataSync.ts)) nên không có clock source.
+
+⇒ Thay bằng **phép đo tổng hợp 2 browser context bằng Playwright, N=20, báo `max` thay
+vì p99**. KPI không đo được sẽ trở thành KPI được **tuyên bố** là đạt — và điều đó làm
+hỏng luôn cơ chế "Rollback domain nếu SLA regression" của §6.
+
+#### 68 checkbox, không sizing, không cut line
+
+Phân bố: G0=6, G1=12, G2=8, G3=12, G4=12, G5=8, G6=10. Vài checkbox đơn lẻ tự nó là
+dự án nhiều tuần ("Chốt baseline cho customers, contracts, invoices, vehicles, meters,
+finance và jobs"; "Chuyển domain fan-out lớn sang private Broadcast theo org").
+Trong khi đó `CLAUDE.md` yêu cầu mỗi thay đổi phải: typecheck + vitest + Playwright
+headless (happy path **và** edge case) + kiểm console errors + `check-view-invoker`
+cho mọi migration đụng view.
+
+⇒ Kế hoạch không có cut line sẽ bị bỏ dở sau Giai đoạn 1 với registry xây một nửa —
+**trạng thái tệ nhất**, vì một registry điền dở còn kém tin cậy hơn một danh sách
+hard-code trung thực. §13 cần kết bằng một câu "ship G1 + các xoá rẻ, rồi **đánh giá
+lại** xem G2–G5 có còn đáng làm không".
+
+#### `check-view-invoker` đang nằm sai giai đoạn
+
+§9 G3 có checkbox `node scripts/check-view-invoker.mjs`, nhưng **G4 mới là nơi tạo
+view/RPC** (4 read model mới) — và checklist G4 **chỉ có** `reconcile-money.mjs`.
+`CLAUDE.md` ghi án lệ: `CREATE OR REPLACE VIEW` làm rớt `security_invoker=true` → lộ
+dữ liệu tenant khác.
+
+⇒ Rủi ro hậu quả cao nhất của cả kế hoạch là **rò rỉ cross-tenant sinh ra trong lúc
+đi tối ưu**, mà bài test duy nhất bắt được nó (§9 G6 "Test hai browser contexts khác
+tenant") lại chạy **sau 2 giai đoạn**. Phải: (a) thêm `check-view-invoker` vào G4, và
+(b) kéo test cross-tenant lên **ngay sau RPC đầu tiên**.
+
+#### Xung đột với việc đang dang dở
+
+Nhánh hiện tại `feat/thu-chi-dot5-6-20260729` còn **Đợt 5 (phiếu hoá đơn)** và **Đợt 6
+(chốt sổ)** — cả hai nằm đúng trên `income_expenses`/`invoices`, tức Tier A của G3 và
+mục tiêu read-model của G4. Cây làm việc còn có sửa đổi chưa commit ở
+`useRealtimeDataSync.ts`, `useMyPermissions.ts`, `useIsAdmin.ts`.
+
+⇒ Cần ràng buộc thứ tự tường minh: **làm G1 + các xoá rẻ NGAY** (chỉ đụng
+customers/picker + 1 dòng của hub), **hoãn G3/G4 cho tới khi Đợt 5–6 hạ cánh**.
+
+### 15.6. Lát cắt đầu tiên đề xuất thay thế
+
+Gộp trong **1 PR, ~1 ngày, không cần Giai đoạn 0**, đo bằng đúng 1 spec Playwright:
+
+1. **Thêm `skipLocationEnrichment` cho `useCustomers`**, early-out khối enrichment
+   ([:148-187](../../src/hooks/useCustomers.ts)), truyền từ picker → **giết 7/8 request**.
+   ⚠ **Bẫy:** giữ nguyên query key `["customers", undefined, undefined]`, **đừng tạo
+   root mới** (vd `["customers-picker"]`) — root mới sẽ **rơi ra ngoài** `SYNC_TABLES`
+   của hub và tạo đúng loại lỗ hổng mà §4.3 đang liệt kê. An toàn vì key này không
+   chia sẻ với `CustomersPage`/`CustomersMobilePage`/`VehicleFormDialog`.
+2. **`onCreated(customer)` + `setQueryData` vào đúng key picker.** Auto-select
+   **đã có sẵn** ([`CustomerSelectionDialog.tsx:65-80`](../../src/components/contracts/CustomerSelectionDialog.tsx)
+   diff theo `knownIdsRef`) nên chỉ cần dòng mới xuất hiện là selection tự chạy.
+   Mẫu copy: `useBuildings.ts:249-271`.
+3. **Sửa nuốt lỗi insert vehicles** (`useCustomers.ts:308`) — 1 dòng.
+4. **Thêm maxWait cho debounce** (~6 dòng) — hết starvation business-performance.
+5. **DROP 5 bảng `network_*` khỏi publication** — giảm chi phí WAL poller, 0 rủi ro.
+6. **Bỏ `count:'exact'` ở picker** (hoặc `estimated`) — ~2,2× trên đúng query đó.
+7. **Sửa `pageSize: 500` → dùng search server-side** ở `VehicleFormDialog` — hết cắt
+   khách thứ 501.
+
+Lát cắt này đạt **cả 3 tiêu chí thành công mà chính §13 đặt ra**, cộng thêm một fix
+mất-dữ-liệu-im-lặng và một fix starvation, với **0 abstraction mới, 0 migration, 0
+observability phải xây trước**.
+
+### 15.7. Xếp lại Giai đoạn 4 theo tỉ lệ ăn/công
+
+| Thứ tự đề xuất | Hạng mục | Lý do |
+|---:|---|---|
+| 1 | Bỏ `count: 'exact'` khỏi list | đo được ~2,2×, đổi 1 dòng |
+| 2 | Thu hẹp cột (`select *` → danh sách cột) ở invoices list | shape mới là nút thắt, không phải khối lượng |
+| 3 | Index trigram cho ILIKE (`pg_trgm` **đã cài sẵn** trên prod) | search là shape đắt nhất đo được |
+| 4 | Compact read model cho picker/list | tái dùng mẫu `THU_TIEN_SELECT` + `useInvoiceItemsLite` đã có ở luồng `/thu-tien` |
+| 5 | Giảm write amplification `invoices` (664k row-version) | driver thật của fan-out |
+| — | ~~Cursor pagination~~ | **bỏ** — 903 dòng, offset không suy giảm; xâm lấn nhất, lợi ích ~0 |
+| — | ~~Tối ưu `can_access_org_entity`~~ | **bỏ** — đã làm ở `20260726130000` |
+
+### 15.8. Tổng kết
+
+**Giữ:** §3 (root cause local-first — đúng và đã verify từng dòng), §4.3 (lỗ hổng
+dependency), §4.5 (echo), §5.1 (shape query nặng), §8.1 (local command path).
+
+**Sửa:** §4.1 (17 bảng), §4.7 (viết lại — notifications đã production-ready và là mẫu
+tham chiếu), §5.3 (nâng lên High, 143 version vắng sổ, đảo chiều rủi ro), §2 (nhãn dòng
+`setQueryData`), §8 (nói rõ quan hệ với `realtime-sync.md`).
+
+**Bỏ:** §9 G4 dòng 472 (RLS — đã xong), §9 G5 "intent-based prefetch" (đã có), §9 G5
+Broadcast (11 user — định cỡ sai), §9 G4 cursor pagination (903 dòng).
+
+**Thêm:** WAL poller 25,5% DB time; `network_*` publish vô ích; debounce starvation;
+DELETE bypass RLS; org filter giết DELETE; `realtime.messages` 0 policy; `count:'exact'`
+2 lần InitPlan; multi-tab; 3 bug im lặng ở `useCustomers`/`VehicleFormDialog`.
+
+**Đảo thứ tự:** Giai đoạn 1 (+ 5 fix rẻ) **trước** Giai đoạn 0, và thay KPI percentile
+bằng phép đo tổng hợp Playwright.
