@@ -9096,6 +9096,5117 @@ export type Database = {
           },
         ]
       }
+      network_audit_events: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_type: string
+          building_id: string
+          command_id: string | null
+          created_at: string
+          id: string
+          occurred_at: string
+          organization_id: string
+          outcome: string
+          reason: string
+          request_hash: string | null
+          request_id: string | null
+          result: Json
+          target_display: Json
+          target_id: string | null
+          target_type: string
+          validation: Json
+          worker_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_type: string
+          building_id: string
+          command_id?: string | null
+          created_at?: string
+          id?: string
+          occurred_at?: string
+          organization_id: string
+          outcome: string
+          reason: string
+          request_hash?: string | null
+          request_id?: string | null
+          result?: Json
+          target_display: Json
+          target_id?: string | null
+          target_type: string
+          validation?: Json
+          worker_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_type?: string
+          building_id?: string
+          command_id?: string | null
+          created_at?: string
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          outcome?: string
+          reason?: string
+          request_hash?: string | null
+          request_id?: string | null
+          result?: Json
+          target_display?: Json
+          target_id?: string | null
+          target_type?: string
+          validation?: Json
+          worker_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_audit_events_command_fk"
+            columns: ["organization_id", "building_id", "command_id"]
+            isOneToOne: false
+            referencedRelation: "network_commands"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_audit_events_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_client_current: {
+        Row: {
+          building_id: string
+          client_fingerprint: string
+          connection_type: string
+          device_id: string
+          expires_at: string
+          first_seen_at: string
+          hostname: string | null
+          id: string
+          interface_id: string | null
+          last_seen_at: string
+          observed_at: string
+          observed_ip: unknown
+          observed_mac: unknown
+          organization_id: string
+          randomized_mac: boolean
+          room_hint: string | null
+          rx_bps: number | null
+          rx_bytes: number
+          session_key: string
+          session_type: string
+          signal_dbm: number | null
+          tx_bps: number | null
+          tx_bytes: number
+          update_seq: number
+        }
+        Insert: {
+          building_id: string
+          client_fingerprint: string
+          connection_type?: string
+          device_id: string
+          expires_at: string
+          first_seen_at: string
+          hostname?: string | null
+          id?: string
+          interface_id?: string | null
+          last_seen_at: string
+          observed_at: string
+          observed_ip?: unknown
+          observed_mac?: unknown
+          organization_id: string
+          randomized_mac?: boolean
+          room_hint?: string | null
+          rx_bps?: number | null
+          rx_bytes?: number
+          session_key: string
+          session_type?: string
+          signal_dbm?: number | null
+          tx_bps?: number | null
+          tx_bytes?: number
+          update_seq?: number
+        }
+        Update: {
+          building_id?: string
+          client_fingerprint?: string
+          connection_type?: string
+          device_id?: string
+          expires_at?: string
+          first_seen_at?: string
+          hostname?: string | null
+          id?: string
+          interface_id?: string | null
+          last_seen_at?: string
+          observed_at?: string
+          observed_ip?: unknown
+          observed_mac?: unknown
+          organization_id?: string
+          randomized_mac?: boolean
+          room_hint?: string | null
+          rx_bps?: number | null
+          rx_bytes?: number
+          session_key?: string
+          session_type?: string
+          signal_dbm?: number | null
+          tx_bps?: number | null
+          tx_bytes?: number
+          update_seq?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_client_current_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_client_current_interface_fk"
+            columns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "interface_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "network_interfaces"
+            referencedColumns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "network_client_current_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_client_links: {
+        Row: {
+          building_id: string
+          client_fingerprint: string
+          confidence: number
+          contract_id: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          linked_by: string | null
+          organization_id: string
+          room_id: string | null
+          source: string
+          valid_from: string
+          valid_to: string | null
+        }
+        Insert: {
+          building_id: string
+          client_fingerprint: string
+          confidence: number
+          contract_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          linked_by?: string | null
+          organization_id: string
+          room_id?: string | null
+          source: string
+          valid_from: string
+          valid_to?: string | null
+        }
+        Update: {
+          building_id?: string
+          client_fingerprint?: string
+          confidence?: number
+          contract_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          linked_by?: string | null
+          organization_id?: string
+          room_id?: string | null
+          source?: string
+          valid_from?: string
+          valid_to?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_client_links_contract_fk"
+            columns: ["organization_id", "contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "network_client_links_customer_fk"
+            columns: ["organization_id", "customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "network_client_links_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "network_client_links_room_fk"
+            columns: ["organization_id", "room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_client_sessions: {
+        Row: {
+          address_history: Json
+          building_id: string
+          client_fingerprint: string
+          connection_type: string
+          created_at: string
+          device_id: string
+          ended_at: string | null
+          first_seen_at: string
+          hostname: string | null
+          id: string
+          interface_id: string | null
+          last_seen_at: string
+          observed_mac: unknown
+          organization_id: string
+          rx_bytes: number
+          safe_metadata: Json
+          session_key: string
+          tx_bytes: number
+        }
+        Insert: {
+          address_history?: Json
+          building_id: string
+          client_fingerprint: string
+          connection_type?: string
+          created_at?: string
+          device_id: string
+          ended_at?: string | null
+          first_seen_at: string
+          hostname?: string | null
+          id?: string
+          interface_id?: string | null
+          last_seen_at: string
+          observed_mac?: unknown
+          organization_id: string
+          rx_bytes?: number
+          safe_metadata?: Json
+          session_key: string
+          tx_bytes?: number
+        }
+        Update: {
+          address_history?: Json
+          building_id?: string
+          client_fingerprint?: string
+          connection_type?: string
+          created_at?: string
+          device_id?: string
+          ended_at?: string | null
+          first_seen_at?: string
+          hostname?: string | null
+          id?: string
+          interface_id?: string | null
+          last_seen_at?: string
+          observed_mac?: unknown
+          organization_id?: string
+          rx_bytes?: number
+          safe_metadata?: Json
+          session_key?: string
+          tx_bytes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_client_sessions_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_client_sessions_interface_fk"
+            columns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "interface_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "network_interfaces"
+            referencedColumns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "network_client_sessions_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_command_attempts: {
+        Row: {
+          attempt_no: number
+          building_id: string
+          command_id: string
+          created_at: string
+          device_id: string
+          error_code: string | null
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          lease_token: string
+          organization_id: string
+          outcome: string
+          result: Json | null
+          retryable: boolean | null
+          started_at: string
+          worker_id: string
+        }
+        Insert: {
+          attempt_no: number
+          building_id: string
+          command_id: string
+          created_at?: string
+          device_id: string
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          lease_token: string
+          organization_id: string
+          outcome?: string
+          result?: Json | null
+          retryable?: boolean | null
+          started_at: string
+          worker_id: string
+        }
+        Update: {
+          attempt_no?: number
+          building_id?: string
+          command_id?: string
+          created_at?: string
+          device_id?: string
+          error_code?: string | null
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          lease_token?: string
+          organization_id?: string
+          outcome?: string
+          result?: Json | null
+          retryable?: boolean | null
+          started_at?: string
+          worker_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_command_attempts_command_fk"
+            columns: ["organization_id", "building_id", "command_id"]
+            isOneToOne: false
+            referencedRelation: "network_commands"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_command_attempts_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_command_attempts_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_command_events: {
+        Row: {
+          actor_id: string | null
+          attempt_id: string | null
+          building_id: string
+          command_id: string
+          created_at: string
+          event_kind: string
+          event_seq: number
+          id: string
+          occurred_at: string
+          organization_id: string
+          payload: Json
+          worker_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          attempt_id?: string | null
+          building_id: string
+          command_id: string
+          created_at?: string
+          event_kind: string
+          event_seq: number
+          id?: string
+          occurred_at: string
+          organization_id: string
+          payload?: Json
+          worker_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          attempt_id?: string | null
+          building_id?: string
+          command_id?: string
+          created_at?: string
+          event_kind?: string
+          event_seq?: number
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          payload?: Json
+          worker_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_command_events_attempt_fk"
+            columns: ["organization_id", "building_id", "attempt_id"]
+            isOneToOne: false
+            referencedRelation: "network_command_attempts"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_command_events_command_fk"
+            columns: ["organization_id", "building_id", "command_id"]
+            isOneToOne: false
+            referencedRelation: "network_commands"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_command_events_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_commands: {
+        Row: {
+          action_type: string
+          attempt_count: number
+          available_at: string
+          building_id: string
+          created_at: string
+          device_id: string
+          finished_at: string | null
+          id: string
+          idempotency_key: string
+          interface_id: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          lease_token: string | null
+          max_attempts: number
+          organization_id: string
+          priority: number
+          reason: string
+          reconciliation_state: string
+          request_hash: string
+          requested_by: string
+          result: Json | null
+          rollback: Json | null
+          sanitized_parameters: Json
+          started_at: string | null
+          status: string
+          target_display: Json
+          updated_at: string
+        }
+        Insert: {
+          action_type: string
+          attempt_count?: number
+          available_at?: string
+          building_id: string
+          created_at?: string
+          device_id: string
+          finished_at?: string | null
+          id?: string
+          idempotency_key: string
+          interface_id?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          lease_token?: string | null
+          max_attempts?: number
+          organization_id: string
+          priority?: number
+          reason: string
+          reconciliation_state?: string
+          request_hash: string
+          requested_by: string
+          result?: Json | null
+          rollback?: Json | null
+          sanitized_parameters?: Json
+          started_at?: string | null
+          status?: string
+          target_display: Json
+          updated_at?: string
+        }
+        Update: {
+          action_type?: string
+          attempt_count?: number
+          available_at?: string
+          building_id?: string
+          created_at?: string
+          device_id?: string
+          finished_at?: string | null
+          id?: string
+          idempotency_key?: string
+          interface_id?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          lease_token?: string | null
+          max_attempts?: number
+          organization_id?: string
+          priority?: number
+          reason?: string
+          reconciliation_state?: string
+          request_hash?: string
+          requested_by?: string
+          result?: Json | null
+          rollback?: Json | null
+          sanitized_parameters?: Json
+          started_at?: string | null
+          status?: string
+          target_display?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_commands_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_commands_interface_fk"
+            columns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "interface_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "network_interfaces"
+            referencedColumns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "network_commands_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_config_snapshots: {
+        Row: {
+          artifact_key: string | null
+          building_id: string
+          command_id: string | null
+          content_hash: string
+          created_at: string
+          created_by: string | null
+          device_id: string
+          id: string
+          normalized_content: Json
+          organization_id: string
+          redacted_lines: Json
+          schema_version: number
+          source: string
+          worker_id: string | null
+        }
+        Insert: {
+          artifact_key?: string | null
+          building_id: string
+          command_id?: string | null
+          content_hash: string
+          created_at?: string
+          created_by?: string | null
+          device_id: string
+          id?: string
+          normalized_content: Json
+          organization_id: string
+          redacted_lines: Json
+          schema_version: number
+          source: string
+          worker_id?: string | null
+        }
+        Update: {
+          artifact_key?: string | null
+          building_id?: string
+          command_id?: string | null
+          content_hash?: string
+          created_at?: string
+          created_by?: string | null
+          device_id?: string
+          id?: string
+          normalized_content?: Json
+          organization_id?: string
+          redacted_lines?: Json
+          schema_version?: number
+          source?: string
+          worker_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_config_snapshots_command_fk"
+            columns: ["organization_id", "building_id", "command_id"]
+            isOneToOne: false
+            referencedRelation: "network_commands"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_config_snapshots_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_config_snapshots_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_desired_state_versions: {
+        Row: {
+          building_id: string
+          change_note: string | null
+          created_at: string
+          created_by: string | null
+          desired_state: Json
+          id: string
+          is_active: boolean
+          organization_id: string
+          router_device_id: string
+          schema_version: number
+          state_hash: string
+          version: number
+        }
+        Insert: {
+          building_id: string
+          change_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          desired_state: Json
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          router_device_id: string
+          schema_version?: number
+          state_hash: string
+          version: number
+        }
+        Update: {
+          building_id?: string
+          change_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          desired_state?: Json
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          router_device_id?: string
+          schema_version?: number
+          state_hash?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_desired_state_versions_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "network_desired_state_versions_router_fk"
+            columns: ["organization_id", "building_id", "router_device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+        ]
+      }
+      network_device_connections: {
+        Row: {
+          building_id: string
+          connect_timeout_ms: number
+          created_at: string
+          credential_ref: string
+          device_id: string
+          host_key_fingerprint: string | null
+          id: string
+          is_enabled: boolean
+          management_ip: unknown
+          management_port: number
+          organization_id: string
+          poll_interval_seconds: number
+          transport: string
+          updated_at: string
+        }
+        Insert: {
+          building_id: string
+          connect_timeout_ms?: number
+          created_at?: string
+          credential_ref: string
+          device_id: string
+          host_key_fingerprint?: string | null
+          id?: string
+          is_enabled?: boolean
+          management_ip: unknown
+          management_port: number
+          organization_id: string
+          poll_interval_seconds?: number
+          transport: string
+          updated_at?: string
+        }
+        Update: {
+          building_id?: string
+          connect_timeout_ms?: number
+          created_at?: string
+          credential_ref?: string
+          device_id?: string
+          host_key_fingerprint?: string | null
+          id?: string
+          is_enabled?: boolean
+          management_ip?: unknown
+          management_port?: number
+          organization_id?: string
+          poll_interval_seconds?: number
+          transport?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_device_connections_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_device_connections_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_device_current: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          disk_total_bytes: number | null
+          disk_used_bytes: number | null
+          health_status: string
+          identity_name: string | null
+          last_error_code: string | null
+          last_seen_at: string | null
+          latency_ms: number | null
+          memory_total_bytes: number | null
+          memory_used_bytes: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          pppoe_state: string
+          reachable: boolean
+          routeros_version: string | null
+          temperature_c: number | null
+          update_seq: number
+          uptime_seconds: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          disk_total_bytes?: number | null
+          disk_used_bytes?: number | null
+          health_status?: string
+          identity_name?: string | null
+          last_error_code?: string | null
+          last_seen_at?: string | null
+          latency_ms?: number | null
+          memory_total_bytes?: number | null
+          memory_used_bytes?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          pppoe_state?: string
+          reachable?: boolean
+          routeros_version?: string | null
+          temperature_c?: number | null
+          update_seq?: number
+          uptime_seconds?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          disk_total_bytes?: number | null
+          disk_used_bytes?: number | null
+          health_status?: string
+          identity_name?: string | null
+          last_error_code?: string | null
+          last_seen_at?: string | null
+          latency_ms?: number | null
+          memory_total_bytes?: number | null
+          memory_used_bytes?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          pppoe_state?: string
+          reachable?: boolean
+          routeros_version?: string | null
+          temperature_c?: number | null
+          update_seq?: number
+          uptime_seconds?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_device_current_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_device_current_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_device_leases: {
+        Row: {
+          acquired_at: string
+          building_id: string
+          command_id: string
+          device_id: string
+          expires_at: string
+          generation: number
+          heartbeat_at: string
+          lease_owner: string
+          lease_token: string
+          organization_id: string
+        }
+        Insert: {
+          acquired_at: string
+          building_id: string
+          command_id: string
+          device_id: string
+          expires_at: string
+          generation?: number
+          heartbeat_at: string
+          lease_owner: string
+          lease_token: string
+          organization_id: string
+        }
+        Update: {
+          acquired_at?: string
+          building_id?: string
+          command_id?: string
+          device_id?: string
+          expires_at?: string
+          generation?: number
+          heartbeat_at?: string
+          lease_owner?: string
+          lease_token?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_device_leases_command_fk"
+            columns: ["organization_id", "building_id", "command_id"]
+            isOneToOne: false
+            referencedRelation: "network_commands"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_device_leases_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_device_leases_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_device_samples: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_device_samples_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_device_samples_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_device_samples_20260727: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260728: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260729: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260730: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260731: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260801: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260802: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260803: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260804: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260805: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260806: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260807: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260808: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260809: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260810: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260811: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260812: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260813: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260814: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260815: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260816: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260817: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260818: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260819: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260820: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260821: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260822: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260823: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260824: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260825: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260826: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260827: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_device_samples_20260828: {
+        Row: {
+          building_id: string
+          connection_count: number | null
+          cpu_pct: number | null
+          device_id: string
+          latency_ms: number | null
+          memory_used_pct: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct: number | null
+          reachable: boolean
+          sample: Json
+          temperature_c: number | null
+          voltage_v: number | null
+        }
+        Insert: {
+          building_id: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at: string
+          organization_id: string
+          packet_loss_pct?: number | null
+          reachable: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Update: {
+          building_id?: string
+          connection_count?: number | null
+          cpu_pct?: number | null
+          device_id?: string
+          latency_ms?: number | null
+          memory_used_pct?: number | null
+          observed_at?: string
+          organization_id?: string
+          packet_loss_pct?: number | null
+          reachable?: boolean
+          sample?: Json
+          temperature_c?: number | null
+          voltage_v?: number | null
+        }
+        Relationships: []
+      }
+      network_devices: {
+        Row: {
+          building_id: string
+          created_at: string
+          credential_ref: string | null
+          desired_firmware: string | null
+          device_kind: string
+          display_name: string
+          external_key: string
+          id: string
+          inventory_metadata: Json
+          is_active: boolean
+          lifecycle_status: string
+          model: string | null
+          organization_id: string
+          parent_device_id: string | null
+          serial_number: string | null
+          sort_order: number
+          updated_at: string
+          uplink_interface_key: string | null
+          vendor: string
+          write_capability: boolean
+        }
+        Insert: {
+          building_id: string
+          created_at?: string
+          credential_ref?: string | null
+          desired_firmware?: string | null
+          device_kind: string
+          display_name: string
+          external_key: string
+          id?: string
+          inventory_metadata?: Json
+          is_active?: boolean
+          lifecycle_status?: string
+          model?: string | null
+          organization_id: string
+          parent_device_id?: string | null
+          serial_number?: string | null
+          sort_order?: number
+          updated_at?: string
+          uplink_interface_key?: string | null
+          vendor: string
+          write_capability?: boolean
+        }
+        Update: {
+          building_id?: string
+          created_at?: string
+          credential_ref?: string | null
+          desired_firmware?: string | null
+          device_kind?: string
+          display_name?: string
+          external_key?: string
+          id?: string
+          inventory_metadata?: Json
+          is_active?: boolean
+          lifecycle_status?: string
+          model?: string | null
+          organization_id?: string
+          parent_device_id?: string | null
+          serial_number?: string | null
+          sort_order?: number
+          updated_at?: string
+          uplink_interface_key?: string | null
+          vendor?: string
+          write_capability?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_devices_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "network_devices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "network_devices_parent_fk"
+            columns: ["organization_id", "building_id", "parent_device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+        ]
+      }
+      network_incident_events: {
+        Row: {
+          actor_id: string | null
+          building_id: string
+          created_at: string
+          details: Json
+          event_kind: string
+          event_seq: number
+          external_event_key: string | null
+          id: string
+          incident_id: string
+          occurred_at: string
+          organization_id: string
+          severity: string
+          worker_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          building_id: string
+          created_at?: string
+          details?: Json
+          event_kind: string
+          event_seq: number
+          external_event_key?: string | null
+          id?: string
+          incident_id: string
+          occurred_at: string
+          organization_id: string
+          severity: string
+          worker_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          building_id?: string
+          created_at?: string
+          details?: Json
+          event_kind?: string
+          event_seq?: number
+          external_event_key?: string | null
+          id?: string
+          incident_id?: string
+          occurred_at?: string
+          organization_id?: string
+          severity?: string
+          worker_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_incident_events_incident_fk"
+            columns: ["organization_id", "building_id", "incident_id"]
+            isOneToOne: false
+            referencedRelation: "network_incidents"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_incident_events_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_incidents: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          availability_impact: boolean
+          building_id: string
+          created_at: string
+          device_id: string
+          fingerprint: string
+          id: string
+          incident_type: string
+          interface_id: string | null
+          last_observed_at: string
+          observed_values: Json
+          occurrence_count: number
+          opened_at: string
+          organization_id: string
+          recovered_at: string | null
+          resolved_at: string | null
+          severity: string
+          status: string
+          summary: string
+          title: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          availability_impact?: boolean
+          building_id: string
+          created_at?: string
+          device_id: string
+          fingerprint: string
+          id?: string
+          incident_type: string
+          interface_id?: string | null
+          last_observed_at: string
+          observed_values?: Json
+          occurrence_count?: number
+          opened_at: string
+          organization_id: string
+          recovered_at?: string | null
+          resolved_at?: string | null
+          severity: string
+          status?: string
+          summary: string
+          title: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          availability_impact?: boolean
+          building_id?: string
+          created_at?: string
+          device_id?: string
+          fingerprint?: string
+          id?: string
+          incident_type?: string
+          interface_id?: string | null
+          last_observed_at?: string
+          observed_values?: Json
+          occurrence_count?: number
+          opened_at?: string
+          organization_id?: string
+          recovered_at?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          summary?: string
+          title?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_incidents_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_incidents_interface_fk"
+            columns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "interface_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "network_interfaces"
+            referencedColumns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "network_incidents_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_interface_current: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_count: number | null
+          error_count: number | null
+          interface_id: string
+          link_state: string
+          observed_at: string
+          organization_id: string
+          queue_drop_count: number | null
+          rx_bps: number | null
+          rx_bytes: number | null
+          tx_bps: number | null
+          tx_bytes: number | null
+          update_seq: number
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_count?: number | null
+          error_count?: number | null
+          interface_id: string
+          link_state?: string
+          observed_at: string
+          organization_id: string
+          queue_drop_count?: number | null
+          rx_bps?: number | null
+          rx_bytes?: number | null
+          tx_bps?: number | null
+          tx_bytes?: number | null
+          update_seq?: number
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_count?: number | null
+          error_count?: number | null
+          interface_id?: string
+          link_state?: string
+          observed_at?: string
+          organization_id?: string
+          queue_drop_count?: number | null
+          rx_bps?: number | null
+          rx_bytes?: number | null
+          tx_bps?: number | null
+          tx_bytes?: number | null
+          update_seq?: number
+          utilization_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_interface_current_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_interface_current_interface_fk"
+            columns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "interface_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "network_interfaces"
+            referencedColumns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "network_interface_current_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_interface_samples: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_interface_samples_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_interface_samples_interface_fk"
+            columns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "interface_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "network_interfaces"
+            referencedColumns: [
+              "organization_id",
+              "building_id",
+              "device_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "network_interface_samples_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_interface_samples_20260727: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260728: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260729: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260730: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260731: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260801: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260802: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260803: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260804: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260805: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260806: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260807: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260808: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260809: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260810: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260811: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260812: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260813: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260814: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260815: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260816: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260817: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260818: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260819: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260820: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260821: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260822: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260823: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260824: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260825: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260826: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260827: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interface_samples_20260828: {
+        Row: {
+          building_id: string
+          device_id: string
+          discard_delta: number | null
+          error_delta: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta: number | null
+          rx_bps: number | null
+          sample: Json
+          tx_bps: number | null
+          utilization_pct: number | null
+        }
+        Insert: {
+          building_id: string
+          device_id: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id: string
+          link_up: boolean
+          observed_at: string
+          organization_id: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Update: {
+          building_id?: string
+          device_id?: string
+          discard_delta?: number | null
+          error_delta?: number | null
+          interface_id?: string
+          link_up?: boolean
+          observed_at?: string
+          organization_id?: string
+          queue_drop_delta?: number | null
+          rx_bps?: number | null
+          sample?: Json
+          tx_bps?: number | null
+          utilization_pct?: number | null
+        }
+        Relationships: []
+      }
+      network_interfaces: {
+        Row: {
+          building_id: string
+          created_at: string
+          device_id: string
+          display_metadata: Json
+          display_name: string
+          id: string
+          if_index: number | null
+          interface_key: string
+          interface_kind: string
+          interface_role: string
+          is_enabled: boolean
+          is_managed: boolean
+          is_protected: boolean
+          mac_address: unknown
+          nominal_speed_bps: number | null
+          organization_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          building_id: string
+          created_at?: string
+          device_id: string
+          display_metadata?: Json
+          display_name: string
+          id?: string
+          if_index?: number | null
+          interface_key: string
+          interface_kind?: string
+          interface_role?: string
+          is_enabled?: boolean
+          is_managed?: boolean
+          is_protected?: boolean
+          mac_address?: unknown
+          nominal_speed_bps?: number | null
+          organization_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          building_id?: string
+          created_at?: string
+          device_id?: string
+          display_metadata?: Json
+          display_name?: string
+          id?: string
+          if_index?: number | null
+          interface_key?: string
+          interface_kind?: string
+          interface_role?: string
+          is_enabled?: boolean
+          is_managed?: boolean
+          is_protected?: boolean
+          mac_address?: unknown
+          nominal_speed_bps?: number | null
+          organization_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_interfaces_device_fk"
+            columns: ["organization_id", "building_id", "device_id"]
+            isOneToOne: false
+            referencedRelation: "network_devices"
+            referencedColumns: ["organization_id", "building_id", "id"]
+          },
+          {
+            foreignKeyName: "network_interfaces_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_maintenance_windows: {
+        Row: {
+          building_id: string
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          created_by: string
+          ends_at: string
+          id: string
+          idempotency_key: string
+          organization_id: string
+          reason: string
+          request_hash: string
+          starts_at: string
+          status: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          building_id: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          created_by: string
+          ends_at: string
+          id?: string
+          idempotency_key: string
+          organization_id: string
+          reason: string
+          request_hash: string
+          starts_at: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          building_id?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          created_by?: string
+          ends_at?: string
+          id?: string
+          idempotency_key?: string
+          organization_id?: string
+          reason?: string
+          request_hash?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_maintenance_windows_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_metric_hourly: {
+        Row: {
+          avg_value: number | null
+          bucket_hour: string
+          building_id: string
+          max_value: number | null
+          metric_name: string
+          min_value: number | null
+          organization_id: string
+          p95_value: number | null
+          sample_count: number
+          series_id: string
+          series_kind: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          avg_value?: number | null
+          bucket_hour: string
+          building_id: string
+          max_value?: number | null
+          metric_name: string
+          min_value?: number | null
+          organization_id: string
+          p95_value?: number | null
+          sample_count: number
+          series_id: string
+          series_kind: string
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          avg_value?: number | null
+          bucket_hour?: string
+          building_id?: string
+          max_value?: number | null
+          metric_name?: string
+          min_value?: number | null
+          organization_id?: string
+          p95_value?: number | null
+          sample_count?: number
+          series_id?: string
+          series_kind?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_metric_hourly_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_outbox_deliveries: {
+        Row: {
+          attempt_count: number
+          available_at: string
+          channel: string
+          created_at: string
+          delivered_at: string | null
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          lease_owner: string | null
+          lease_token: string | null
+          outbox_event_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          available_at?: string
+          channel: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          lease_token?: string | null
+          outbox_event_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          available_at?: string
+          channel?: string
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          lease_owner?: string | null
+          lease_token?: string | null
+          outbox_event_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_outbox_deliveries_outbox_event_id_fkey"
+            columns: ["outbox_event_id"]
+            isOneToOne: false
+            referencedRelation: "network_outbox_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      network_outbox_events: {
+        Row: {
+          aggregate_id: string
+          aggregate_type: string
+          building_id: string
+          created_at: string
+          event_type: string
+          id: string
+          occurred_at: string
+          organization_id: string
+          payload: Json
+        }
+        Insert: {
+          aggregate_id: string
+          aggregate_type: string
+          building_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          occurred_at: string
+          organization_id: string
+          payload: Json
+        }
+        Update: {
+          aggregate_id?: string
+          aggregate_type?: string
+          building_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_outbox_events_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_site_settings: {
+        Row: {
+          alert_sensitivity: string
+          backup_max_age_hours: number
+          backup_time_local: string
+          building_id: string
+          changes_paused: boolean
+          created_at: string
+          dependency_grouping: boolean
+          id: string
+          latency_warning_ms: number
+          monitoring_enabled: boolean
+          offline_after_seconds: number
+          organization_id: string
+          packet_loss_warning_pct: number
+          poll_interval_seconds: number
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          alert_sensitivity?: string
+          backup_max_age_hours?: number
+          backup_time_local?: string
+          building_id: string
+          changes_paused?: boolean
+          created_at?: string
+          dependency_grouping?: boolean
+          id?: string
+          latency_warning_ms?: number
+          monitoring_enabled?: boolean
+          offline_after_seconds?: number
+          organization_id: string
+          packet_loss_warning_pct?: number
+          poll_interval_seconds?: number
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          alert_sensitivity?: string
+          backup_max_age_hours?: number
+          backup_time_local?: string
+          building_id?: string
+          changes_paused?: boolean
+          created_at?: string
+          dependency_grouping?: boolean
+          id?: string
+          latency_warning_ms?: number
+          monitoring_enabled?: boolean
+          offline_after_seconds?: number
+          organization_id?: string
+          packet_loss_warning_pct?: number
+          poll_interval_seconds?: number
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_site_settings_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: true
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "network_site_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      network_sla_daily: {
+        Row: {
+          building_id: string
+          eligible_seconds: number
+          excluded_maintenance_seconds: number
+          incident_count: number
+          mttr_seconds: number | null
+          organization_id: string
+          outage_seconds: number
+          sample_count: number
+          sla_day: string
+          total_seconds: number
+          updated_at: string
+          uptime_pct: number
+          uptime_seconds: number
+        }
+        Insert: {
+          building_id: string
+          eligible_seconds?: number
+          excluded_maintenance_seconds?: number
+          incident_count?: number
+          mttr_seconds?: number | null
+          organization_id: string
+          outage_seconds: number
+          sample_count: number
+          sla_day: string
+          total_seconds?: number
+          updated_at?: string
+          uptime_pct: number
+          uptime_seconds: number
+        }
+        Update: {
+          building_id?: string
+          eligible_seconds?: number
+          excluded_maintenance_seconds?: number
+          incident_count?: number
+          mttr_seconds?: number | null
+          organization_id?: string
+          outage_seconds?: number
+          sample_count?: number
+          sla_day?: string
+          total_seconds?: number
+          updated_at?: string
+          uptime_pct?: number
+          uptime_seconds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "network_sla_daily_org_building_fk"
+            columns: ["organization_id", "building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      network_worker_heartbeats: {
+        Row: {
+          capabilities: string[]
+          heartbeat_at: string
+          queue_age_seconds: number
+          safe_metadata: Json
+          started_at: string
+          status: string
+          updated_at: string
+          worker_id: string
+          worker_version: string
+        }
+        Insert: {
+          capabilities?: string[]
+          heartbeat_at: string
+          queue_age_seconds?: number
+          safe_metadata?: Json
+          started_at: string
+          status: string
+          updated_at?: string
+          worker_id: string
+          worker_version: string
+        }
+        Update: {
+          capabilities?: string[]
+          heartbeat_at?: string
+          queue_age_seconds?: number
+          safe_metadata?: Json
+          started_at?: string
+          status?: string
+          updated_at?: string
+          worker_id?: string
+          worker_version?: string
+        }
+        Relationships: []
+      }
       notification_logs: {
         Row: {
           channel: Database["public"]["Enums"]["notification_channel"]
@@ -9149,6 +14260,44 @@ export type Database = {
           },
           {
             foreignKeyName: "notification_logs_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_preferences: {
+        Row: {
+          cadence: string
+          event_key: string
+          in_app: boolean
+          organization_id: string
+          push: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cadence?: string
+          event_key: string
+          in_app?: boolean
+          organization_id: string
+          push?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cadence?: string
+          event_key?: string
+          in_app?: boolean
+          organization_id?: string
+          push?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -9225,6 +14374,10 @@ export type Database = {
           job_id: string | null
           metadata: Json
           organization_id: string | null
+          push_attempts: number
+          push_idem_key: string | null
+          push_leased_at: string | null
+          push_state: string | null
           recipient_emails: string[] | null
           recipient_phones: string[] | null
           recipient_tenant_ids: string[] | null
@@ -9247,6 +14400,10 @@ export type Database = {
           job_id?: string | null
           metadata?: Json
           organization_id?: string | null
+          push_attempts?: number
+          push_idem_key?: string | null
+          push_leased_at?: string | null
+          push_state?: string | null
           recipient_emails?: string[] | null
           recipient_phones?: string[] | null
           recipient_tenant_ids?: string[] | null
@@ -9269,6 +14426,10 @@ export type Database = {
           job_id?: string | null
           metadata?: Json
           organization_id?: string | null
+          push_attempts?: number
+          push_idem_key?: string | null
+          push_leased_at?: string | null
+          push_state?: string | null
           recipient_emails?: string[] | null
           recipient_phones?: string[] | null
           recipient_tenant_ids?: string[] | null
@@ -10827,6 +15988,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      push_send_log: {
+        Row: {
+          created_at: string
+          idempotency_key: string
+          outcome: string | null
+          sent: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          idempotency_key: string
+          outcome?: string | null
+          sent?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          idempotency_key?: string
+          outcome?: string | null
+          sent?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       push_subscriptions: {
         Row: {
@@ -14732,6 +19917,17 @@ export type Database = {
         Returns: Json
       }
       ai_copilot_perms_for: { Args: { p_user: string }; Returns: Json }
+      annotate_income_expense_v1: {
+        Args: {
+          p_add_attachments?: Json
+          p_idempotency_key?: string
+          p_note_mode?: string
+          p_notes?: string
+          p_remove_attachments?: Json
+          p_voucher: string
+        }
+        Returns: Json
+      }
       append_fee_attachment: {
         Args: { p_url: string; p_voucher_id: string }
         Returns: Json
@@ -15224,6 +20420,14 @@ export type Database = {
         Args: { _action: string; _building_id: string; _table: string }
         Returns: boolean
       }
+      can_flex_cancel_v1: {
+        Args: { p_ids: string[] }
+        Returns: {
+          eligible: boolean
+          id: string
+          reason_code: string
+        }[]
+      }
       can_ie_all_buildings: {
         Args: { _action: string; _building_id: string }
         Returns: boolean
@@ -15233,6 +20437,15 @@ export type Database = {
         Returns: boolean
       }
       can_view_restricted_ie: { Args: never; Returns: boolean }
+      cancel_income_expense_flex_v1: {
+        Args: {
+          p_expected_approval_version?: number
+          p_expected_posting_version?: number
+          p_reason: string
+          p_voucher: string
+        }
+        Returns: Json
+      }
       cancel_income_expense_v1: {
         Args: { p_reason?: string; p_voucher_id: string }
         Returns: undefined
@@ -15360,6 +20573,14 @@ export type Database = {
           income: number
         }[]
       }
+      check_voucher_period_open_v1: {
+        Args: { p_ids: string[] }
+        Returns: {
+          id: string
+          is_open: boolean
+          reason_code: string
+        }[]
+      }
       complete_inspection: {
         Args: { p_condition_note?: string; p_session: string }
         Returns: Json
@@ -15377,6 +20598,10 @@ export type Database = {
         Returns: Json
       }
       confirm_reconciliation: { Args: { p_id: string }; Returns: Json }
+      contract_deposit_paid_derived: {
+        Args: { p_contract_id: string }
+        Returns: number
+      }
       create_cash_handover: {
         Args: {
           p_note?: string
@@ -16137,6 +21362,7 @@ export type Database = {
         Args: never
         Returns: {
           access_route: string
+          accounting_standard_strict: boolean
           organization_id: string
           posting_route: string
           read_semantics_route: string
@@ -16280,6 +21506,10 @@ export type Database = {
       get_my_available_rooms: { Args: never; Returns: Json }
       get_my_context: { Args: never; Returns: Json }
       get_my_day_summary: { Args: never; Returns: Json }
+      get_my_notification_preferences_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_my_permissions: { Args: never; Returns: Json }
       get_my_share_buildings: {
         Args: never
@@ -16288,6 +21518,7 @@ export type Database = {
           name: string
         }[]
       }
+      get_notification_org_config_v1: { Args: never; Returns: Json }
       get_or_create_deposit_account: { Args: never; Returns: string }
       get_organization_profile_v1: { Args: never; Returns: Json }
       get_overpayment_summary: {
@@ -16373,6 +21604,10 @@ export type Database = {
       }
       get_salary_progress_v5: { Args: { p_month?: string }; Returns: Json }
       get_salary_v5_config: { Args: never; Returns: Json }
+      get_voucher_cancellation_v1: {
+        Args: { p_voucher: string }
+        Returns: Json
+      }
       has_full_building_scope: { Args: never; Returns: boolean }
       has_perm_full_scope: {
         Args: { _action: string; _table: string }
@@ -16573,6 +21808,15 @@ export type Database = {
           state: string
         }[]
       }
+      list_ie_accounting_standard_v1: {
+        Args: never
+        Returns: {
+          can_manage: boolean
+          organization_id: string
+          organization_name: string
+          strict_mode: boolean
+        }[]
+      }
       list_income_expenses_v2: {
         Args: { p_filters?: Json }
         Returns: {
@@ -16701,9 +21945,194 @@ export type Database = {
       }
       my_org_ids: { Args: never; Returns: string[] }
       natural_sort_key: { Args: { p_name: string }; Returns: string }
+      network_center_ack_incident_v1: {
+        Args: { p_incident_id: string; p_request_id: string }
+        Returns: Json
+      }
+      network_center_cancel_maintenance_v1: {
+        Args: {
+          p_building_id: string
+          p_maintenance_id: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      network_center_compare_snapshots_v1: {
+        Args: {
+          p_building_id: string
+          p_from_snapshot_id: string
+          p_to_snapshot_id: string
+        }
+        Returns: Json
+      }
+      network_center_create_maintenance_v1: {
+        Args: {
+          p_building_id: string
+          p_duration_minutes: number
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      network_center_execute_action_v1: {
+        Args: {
+          p_action_type: string
+          p_confirmation: string
+          p_device_id: string
+          p_parameters: Json
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
+      network_center_get_building_v1: {
+        Args: { p_building_id: string }
+        Returns: Json
+      }
+      network_center_list_aruba_v1: {
+        Args: {
+          p_after_id?: string
+          p_after_sort_order?: number
+          p_building_id: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      network_center_list_audit_v1: {
+        Args: {
+          p_before_id?: string
+          p_before_occurred_at?: string
+          p_building_id: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      network_center_list_clients_v1: {
+        Args: {
+          p_before_id?: string
+          p_before_seen_at?: string
+          p_building_id: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      network_center_list_commands_v1: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_building_id: string
+          p_limit?: number
+        }
+        Returns: Json
+      }
+      network_center_list_fleet_v1: { Args: never; Returns: Json }
+      network_center_request_snapshot_v1: {
+        Args: { p_device_id: string; p_label: string; p_request_id: string }
+        Returns: Json
+      }
+      network_center_update_settings_v1: {
+        Args: {
+          p_building_id: string
+          p_expected_version: number
+          p_request_id: string
+          p_settings: Json
+        }
+        Returns: Json
+      }
+      network_center_worker_claim_v1: {
+        Args: {
+          p_lease_seconds?: number
+          p_limit?: number
+          p_worker_id: string
+        }
+        Returns: Json
+      }
+      network_center_worker_command_event_v1: {
+        Args: {
+          p_command_id: string
+          p_event_kind: string
+          p_lease_token: string
+          p_payload: Json
+          p_worker_id: string
+        }
+        Returns: Json
+      }
+      network_center_worker_complete_v1: {
+        Args: {
+          p_command_id: string
+          p_lease_token: string
+          p_outcome: string
+          p_result: Json
+          p_retry_delay_seconds?: number
+          p_rollback?: Json
+          p_worker_id: string
+        }
+        Returns: Json
+      }
+      network_center_worker_heartbeat_v1: {
+        Args: {
+          p_capabilities: string[]
+          p_queue_age_seconds: number
+          p_safe_metadata: Json
+          p_started_at: string
+          p_status: string
+          p_worker_id: string
+          p_worker_version: string
+        }
+        Returns: Json
+      }
+      network_center_worker_ingest_v1: {
+        Args: { p_payload: Json; p_worker_id: string }
+        Returns: Json
+      }
+      network_center_worker_inventory_v1: {
+        Args: { p_payload: Json; p_worker_id: string }
+        Returns: Json
+      }
+      network_center_worker_list_connections_v1: {
+        Args: { p_limit?: number; p_worker_id: string }
+        Returns: Json
+      }
+      network_center_worker_maintenance_v1: {
+        Args: { p_now?: string; p_worker_id: string }
+        Returns: Json
+      }
+      network_center_worker_renew_v1: {
+        Args: {
+          p_command_id: string
+          p_lease_seconds?: number
+          p_lease_token: string
+          p_worker_id: string
+        }
+        Returns: Json
+      }
+      network_center_worker_snapshot_v1: {
+        Args: { p_payload: Json; p_worker_id: string }
+        Returns: Json
+      }
+      network_center_worker_upsert_incident_v1: {
+        Args: { p_payload: Json; p_worker_id: string }
+        Returns: Json
+      }
       normalize_income_expense_type_name: {
         Args: { p_name: string }
         Returns: string
+      }
+      notify_claim_push_batch_v1: {
+        Args: { p_limit?: number }
+        Returns: {
+          body: string
+          idem_key: string
+          notification_ids: string[]
+          tag: string
+          title: string
+          url: string
+          user_id: string
+        }[]
+      }
+      notify_settle_push_batch_v1: {
+        Args: { p_results: Json }
+        Returns: number
       }
       nrm_vn: { Args: { s: string }; Returns: string }
       occupancy_snapshot_v2: {
@@ -17345,6 +22774,14 @@ export type Database = {
         Args: { p_cashbook_id: string; p_user_ids: string[] }
         Returns: Json
       }
+      set_ie_accounting_standard_v1: {
+        Args: {
+          p_organization_id: string
+          p_reason?: string
+          p_strict: boolean
+        }
+        Returns: Json
+      }
       set_ie_auto_approve_threshold_v1: {
         Args: { p_threshold: number }
         Returns: Json
@@ -17353,8 +22790,16 @@ export type Database = {
         Args: { p_reason?: string; p_status: string; p_user_id: string }
         Returns: Json
       }
+      set_my_notification_preferences_v1: {
+        Args: { p_organization_id: string; p_prefs: Json }
+        Returns: Json
+      }
       set_my_ui_preference: {
         Args: { p_key: string; p_value: Json }
+        Returns: Json
+      }
+      set_notification_org_config_v1: {
+        Args: { p_events?: Json; p_quiet_end?: number; p_quiet_start?: number }
         Returns: Json
       }
       set_room_pass_listing_active: {
@@ -18379,6 +23824,8 @@ export type Database = {
         | "CUSTOM"
         | "DEPOSIT_SHORTFALL"
         | "SALARY_BONUS"
+        | "ACTION_REQUIRED"
+        | "APPROVAL_RESULT"
       payment_cycle: "MONTHLY" | "QUARTERLY" | "SEMI_ANNUAL" | "ANNUAL"
       payment_method: "TM" | "TK" | "TT" | "CT"
       pricing_type:
@@ -18629,6 +24076,8 @@ export const Constants = {
         "CUSTOM",
         "DEPOSIT_SHORTFALL",
         "SALARY_BONUS",
+        "ACTION_REQUIRED",
+        "APPROVAL_RESULT",
       ],
       payment_cycle: ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"],
       payment_method: ["TM", "TK", "TT", "CT"],
