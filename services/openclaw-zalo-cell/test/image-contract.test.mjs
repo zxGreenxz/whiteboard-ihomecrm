@@ -1354,6 +1354,7 @@ test("behavior replay binds the exact runner bytes read from a nofollow file han
 });
 
 test("Docker execution strips hostile ambient routing and rejects a non-socket authority", async (t) => {
+  const verifierSource = await readCell("scripts/verify-image-lock.mjs");
   const { buildTrustedDockerEnvironment, assertTrustedDockerSocket } = await loadScript(
     "scripts/verify-image-lock.mjs",
   );
@@ -1373,6 +1374,8 @@ test("Docker execution strips hostile ambient routing and rejects a non-socket a
     DOCKER_CERT_PATH: "/attacker/certs",
     BUILDKIT_HOST: "tcp://attacker.invalid:1234",
   });
+  assert.deepEqual(Object.keys(environment), ["DOCKER_HOST", "HOME"]);
+  assert.equal(Object.isFrozen(environment), true);
   assert.equal(environment.DOCKER_HOST, dockerHost);
   assert.equal(environment.HOME, "/nonexistent");
   for (const key of [
@@ -1390,6 +1393,15 @@ test("Docker execution strips hostile ambient routing and rejects a non-socket a
   ]) {
     assert.equal(key in environment, false);
   }
+  const environmentBuilder = verifierSource.slice(
+    verifierSource.indexOf("export function buildTrustedDockerEnvironment"),
+    verifierSource.indexOf("export async function assertTrustedDockerSocket"),
+  );
+  assert.doesNotMatch(
+    environmentBuilder,
+    /\b(?:_?ambient|process\.env)\b/,
+    "Docker environment construction must not bind ambient process state",
+  );
 
   const fixture = await mkdtemp(join(tmpdir(), "openclaw-docker-host-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
@@ -1399,6 +1411,7 @@ test("Docker execution strips hostile ambient routing and rejects a non-socket a
 });
 
 test("qualification helpers clear ambient native loaders and disable executable local Git config", async () => {
+  const verifier = await readCell("scripts/verify-image-lock.mjs");
   const buildHelper = await readCell("scripts/build-reproducible-image.ps1");
   const evidenceHelper = await readCell("scripts/create-evidence-child.ps1");
 
@@ -1409,12 +1422,46 @@ test("qualification helpers clear ambient native loaders and disable executable 
     assert.match(helper, /Diagnostics\.ProcessStartInfo/, `${label} must use an explicit native process`);
     assert.match(helper, /\.Environment\.Clear\(\)/, `${label} must start from an empty environment`);
     assert.match(helper, /UseShellExecute\s*=\s*\$false/, `${label} must not invoke a shell`);
+    assert.match(helper, /RedirectStandardOutput\s*=\s*\$true/, `${label} must capture stdout`);
+    assert.match(helper, /RedirectStandardError\s*=\s*\$true/, `${label} must capture stderr`);
+    assert.match(helper, /\.ExitCode/, `${label} must check the exact native exit status`);
+    assert.match(
+      helper,
+      /function Assert-NativeEnvironmentAllowlist/,
+      `${label} must reject environment names outside its closed allowlist`,
+    );
+    assert.match(helper, /NativeEnvironmentAllowedKeys/, `${label} must declare its environment allowlist`);
+    assert.match(helper, /not approved for native execution/, `${label} must fail closed on an unknown environment name`);
     assert.doesNotMatch(helper, /@\(&\s*\$nodePath\b/, `${label} must not invoke Node through ambient PowerShell execution`);
+    assert.doesNotMatch(helper, /^\s*&\s/m, `${label} must not use PowerShell's native call operator`);
     assert.match(helper, /core\.fsmonitor=false/, `${label} must neutralize repo-local fsmonitor commands`);
     assert.match(helper, /core\.hooksPath=\/dev\/null/, `${label} must neutralize hooks`);
     assert.match(helper, /commit\.gpgSign=false/, `${label} must disable signing helpers`);
     assert.match(helper, /core\.attributesFile=\/dev\/null/, `${label} must ignore repo-local attribute indirection`);
   }
+
+  const gitArgumentBlockStart = verifier.indexOf("const TRUSTED_GIT_CONFIG_ARGUMENTS");
+  const gitArgumentBlockEnd = verifier.indexOf("];", gitArgumentBlockStart);
+  assert.ok(gitArgumentBlockStart >= 0 && gitArgumentBlockEnd > gitArgumentBlockStart);
+  const gitArgumentBlock = verifier.slice(gitArgumentBlockStart, gitArgumentBlockEnd);
+  for (const setting of [
+    "core.fsmonitor=false",
+    "core.hooksPath=/dev/null",
+    "commit.gpgSign=false",
+    "core.attributesFile=/dev/null",
+  ]) {
+    assert.match(gitArgumentBlock, new RegExp(setting.replaceAll(".", "\\.")));
+  }
+  const gitExecutableCheck = verifier.slice(
+    verifier.indexOf("export async function assertTrustedGitExecutable"),
+    verifier.indexOf("async function assertTrustedGitAuthorityUnchanged"),
+  );
+  const gitChecked = verifier.slice(
+    verifier.indexOf("function gitChecked"),
+    verifier.indexOf("function gitSingleLine"),
+  );
+  assert.match(gitExecutableCheck, /TRUSTED_GIT_CONFIG_ARGUMENTS/);
+  assert.match(gitChecked, /TRUSTED_GIT_CONFIG_ARGUMENTS/);
 
   assert.match(buildHelper, /\$dockerEnvironment\.HOME\s*=\s*\$nativeHome/);
   assert.match(buildHelper, /\$dockerEnvironment\.DOCKER_CONFIG\s*=\s*\$dockerConfigRoot/);

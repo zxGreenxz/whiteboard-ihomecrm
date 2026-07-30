@@ -58,6 +58,35 @@ $script:BaseNativeEnvironment = [ordered]@{
   LANG = 'C'
   LC_ALL = 'C'
 }
+$script:NativeEnvironmentAllowedKeys = [Collections.Generic.HashSet[string]]::new(
+  [StringComparer]::Ordinal
+)
+foreach ($environmentName in @(
+    'HOME', 'LANG', 'LC_ALL',
+    'GIT_ATTR_NOSYSTEM', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_NAME',
+    'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_CONFIG_GLOBAL',
+    'GIT_CONFIG_NOSYSTEM', 'GIT_NO_LAZY_FETCH', 'GIT_NO_REPLACE_OBJECTS',
+    'GIT_OPTIONAL_LOCKS', 'GIT_TERMINAL_PROMPT'
+  )) {
+  [void]$script:NativeEnvironmentAllowedKeys.Add($environmentName)
+}
+
+function Assert-NativeEnvironmentAllowlist {
+  param(
+    [Parameter(Mandatory = $true)][Collections.IDictionary]$Environment
+  )
+
+  foreach ($binding in $Environment.GetEnumerator()) {
+    $name = [string]$binding.Key
+    if ([string]::IsNullOrEmpty($name) -or $name.Contains('=') -or $name.Contains([char]0) -or
+        -not $script:NativeEnvironmentAllowedKeys.Contains($name)) {
+      throw "Environment name is not approved for native execution: $name"
+    }
+    if ($null -eq $binding.Value -or ([string]$binding.Value).Contains([char]0)) {
+      throw "Environment value is invalid for native execution: $name"
+    }
+  }
+}
 
 function Invoke-NativeChecked {
   param(
@@ -66,6 +95,7 @@ function Invoke-NativeChecked {
     [Collections.IDictionary]$Environment = $script:BaseNativeEnvironment
   )
 
+  Assert-NativeEnvironmentAllowlist -Environment $Environment
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = $FilePath
   $startInfo.UseShellExecute = $false
@@ -116,6 +146,7 @@ function Invoke-NativeCheckedBytes {
     [byte[]]$InputBytes
   )
 
+  Assert-NativeEnvironmentAllowlist -Environment $Environment
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = $FilePath
   $startInfo.UseShellExecute = $false

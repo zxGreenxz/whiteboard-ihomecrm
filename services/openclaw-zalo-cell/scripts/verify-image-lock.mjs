@@ -210,7 +210,7 @@ function dockerSocketPath(dockerHost) {
   return dockerHost.slice("unix://".length);
 }
 
-export function buildTrustedDockerEnvironment(dockerHost, _ambient = process.env) {
+export function buildTrustedDockerEnvironment(dockerHost) {
   dockerSocketPath(dockerHost);
   return Object.freeze({
     DOCKER_HOST: dockerHost,
@@ -388,6 +388,13 @@ export function buildTrustedGitEnvironment(ambient = process.env) {
   return Object.freeze(environment);
 }
 
+const TRUSTED_GIT_CONFIG_ARGUMENTS = Object.freeze([
+  "-c", "core.fsmonitor=false",
+  "-c", "core.hooksPath=/dev/null",
+  "-c", "commit.gpgSign=false",
+  "-c", "core.attributesFile=/dev/null",
+]);
+
 export async function assertTrustedGitExecutable({
   gitPath,
   expectedVersion,
@@ -400,13 +407,17 @@ export async function assertTrustedGitExecutable({
   }
   const before = await readRegularFileHandleBound(gitPath, "Git executable");
   if (before.sha256 !== expectedSha256) throw new Error("Git executable SHA-256 mismatch");
-  const result = invoke(gitPath, ["--no-replace-objects", "--version"], {
-    encoding: null,
-    env: buildTrustedGitEnvironment(),
-    maxBuffer: 1024 * 1024,
-    shell: false,
-    windowsHide: true,
-  });
+  const result = invoke(
+    gitPath,
+    ["--no-replace-objects", ...TRUSTED_GIT_CONFIG_ARGUMENTS, "--version"],
+    {
+      encoding: null,
+      env: buildTrustedGitEnvironment(),
+      maxBuffer: 1024 * 1024,
+      shell: false,
+      windowsHide: true,
+    },
+  );
   const stdout = Buffer.from(result.stdout ?? []);
   if (
     result.error || result.signal !== null || result.status !== 0 ||
@@ -465,14 +476,20 @@ function gitChecked(gitPath, repositoryRoot, args, { input, allowedStatuses = [0
   }
   const result = spawnSync(
     gitPath,
-    ["--no-replace-objects", "-c", "core.commitGraph=false", "-C", repositoryRoot, ...args],
+    [
+      "--no-replace-objects",
+      ...TRUSTED_GIT_CONFIG_ARGUMENTS,
+      "-c", "core.commitGraph=false",
+      "-C", repositoryRoot,
+      ...args,
+    ],
     {
-    encoding: null,
-    env: buildTrustedGitEnvironment(),
-    input,
-    maxBuffer: 64 * 1024 * 1024,
-    shell: false,
-    windowsHide: true,
+      encoding: null,
+      env: buildTrustedGitEnvironment(),
+      input,
+      maxBuffer: 64 * 1024 * 1024,
+      shell: false,
+      windowsHide: true,
     },
   );
   if (result.error) throw new Error(`Git command failed: ${result.error.message}`);
