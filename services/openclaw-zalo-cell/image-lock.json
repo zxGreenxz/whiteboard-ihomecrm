@@ -85,14 +85,14 @@
       "type": "blob",
       "mode": "100644",
       "size": 241276,
-      "sha256": "ca31777512c81ace71739b14804d111027a505af9eef3531ccea8ee875e0fc08"
+      "sha256": "3b8eb4d04fce254226cd36b5ed22d91149eb13395f6eeb84b63e81173f22263b"
     },
     {
       "path": "vendor/zalouser-bridge/artifacts/openclaw-zalouser-2026.7.1.tgz",
       "type": "blob",
       "mode": "100644",
-      "size": 420138,
-      "sha256": "d8f8900f16895ff65cd96a5dc9bfe70764fd99caf81a7cd3fef50d6e33af9a89"
+      "size": 420657,
+      "sha256": "5bc5b61284cf172c6e8c320cee23d5f7f174990ac9cce064e67707c0be2169af"
     }
   ]
 }

@@ -69,6 +69,8 @@ export type ZaloUserBridgeSendParamsV1 = Readonly<{
 }>;
 
 const MAX_PARTS = 20;
+export const MAX_MEDIA_PART_BYTES = 32 * 1024 * 1024;
+export const MAX_MEDIA_BATCH_BYTES = 64 * 1024 * 1024;
 const PAYLOAD_HASH_DOMAIN = "ihome-openclaw-send-v1\0";
 
 function fail(code: string, message: string): never {
@@ -145,10 +147,21 @@ function requiredString(value: unknown, name: string): string {
   return value;
 }
 
+function requiredIdentifier(value: unknown, name: string): string {
+  const identifier = requiredString(value, name);
+  if (identifier !== identifier.trim()) {
+    return fail("INVALID_PRIVATE_SEND_REQUEST", `${name} must not contain surrounding whitespace`);
+  }
+  return identifier;
+}
+
 function nullableString(value: unknown, name: string): string | null {
   if (value === null) return null;
-  if (typeof value !== "string") {
-    return fail("INVALID_PRIVATE_SEND_REQUEST", `${name} must be a string or null`);
+  if (typeof value !== "string" || value === "" || value !== value.trim()) {
+    return fail(
+      "INVALID_PRIVATE_SEND_REQUEST",
+      `${name} must be a non-empty string without surrounding whitespace or null`,
+    );
   }
   return value;
 }
@@ -204,14 +217,28 @@ function snapshotPart(value: unknown, expectedIndex: number): ZaloUserBridgeSend
     if (!/^[0-9a-f]{64}$/u.test(sha256)) {
       return fail("INVALID_PRIVATE_SEND_REQUEST", `parts[${expectedIndex}].sha256 is invalid`);
     }
+    const bytes = integer(record.bytes, `parts[${expectedIndex}].bytes`, 1);
+    if (bytes > MAX_MEDIA_PART_BYTES) {
+      return fail(
+        "INVALID_PRIVATE_SEND_REQUEST",
+        `parts[${expectedIndex}].bytes exceeds ${MAX_MEDIA_PART_BYTES}`,
+      );
+    }
+    const mime = requiredIdentifier(record.mime, `parts[${expectedIndex}].mime`);
+    if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/u.test(mime)) {
+      return fail(
+        "INVALID_PRIVATE_SEND_REQUEST",
+        `parts[${expectedIndex}].mime must be a canonical lowercase media type`,
+      );
+    }
     return Object.freeze({
       version: 1,
       partIndex: expectedIndex,
       kind: "MEDIA",
-      objectKey: requiredString(record.objectKey, `parts[${expectedIndex}].objectKey`),
+      objectKey: requiredIdentifier(record.objectKey, `parts[${expectedIndex}].objectKey`),
       sha256,
-      mime: requiredString(record.mime, `parts[${expectedIndex}].mime`),
-      bytes: integer(record.bytes, `parts[${expectedIndex}].bytes`, 1),
+      mime,
+      bytes,
     });
   }
   return fail("UNSUPPORTED_BUSINESS_PART", "only TEXT and MEDIA business parts are supported");
@@ -235,7 +262,7 @@ function snapshotFrozenInputs(value: unknown): CanonicalSendPayloadV1["frozenInp
   ], "frozenInputs");
   const knowledgeValues = denseArray(record.knowledgeVersionIds, "knowledgeVersionIds");
   const knowledgeVersionIds = Object.freeze(
-    knowledgeValues.map((item, index) => requiredString(item, `knowledgeVersionIds[${index}]`)),
+    knowledgeValues.map((item, index) => requiredIdentifier(item, `knowledgeVersionIds[${index}]`)),
   );
   const nullableInteger = (candidate: unknown, name: string): number | null =>
     candidate === null ? null : integer(candidate, name);
@@ -287,23 +314,34 @@ export function snapshotCanonicalSendPayload(value: unknown): CanonicalSendPaylo
     return fail("INVALID_PRIVATE_SEND_REQUEST", `payload.parts must contain 1-${MAX_PARTS} items`);
   }
   const parts = Object.freeze(partValues.map((part, index) => snapshotPart(part, index)));
+  let aggregateMediaBytes = 0;
+  for (const part of parts) {
+    if (part.kind !== "MEDIA") continue;
+    aggregateMediaBytes += part.bytes;
+    if (!Number.isSafeInteger(aggregateMediaBytes) || aggregateMediaBytes > MAX_MEDIA_BATCH_BYTES) {
+      return fail(
+        "INVALID_PRIVATE_SEND_REQUEST",
+        `payload media bytes exceed ${MAX_MEDIA_BATCH_BYTES}`,
+      );
+    }
+  }
   return Object.freeze({
     version: 1,
-    organizationId: requiredString(record.organizationId, "payload.organizationId"),
-    accountId: requiredString(record.accountId, "payload.accountId"),
+    organizationId: requiredIdentifier(record.organizationId, "payload.organizationId"),
+    accountId: requiredIdentifier(record.accountId, "payload.accountId"),
     target: Object.freeze({
       kind: target.kind,
-      providerId: requiredString(target.providerId, "payload.target.providerId"),
+      providerId: requiredIdentifier(target.providerId, "payload.target.providerId"),
     }),
     channel: "zalouser",
-    accountProfile: requiredString(record.accountProfile, "payload.accountProfile"),
-    idempotencyKey: requiredString(record.idempotencyKey, "payload.idempotencyKey"),
+    accountProfile: requiredIdentifier(record.accountProfile, "payload.accountProfile"),
+    idempotencyKey: requiredIdentifier(record.idempotencyKey, "payload.idempotencyKey"),
     parts,
     replyToProviderMessageId: nullableString(
       record.replyToProviderMessageId,
       "payload.replyToProviderMessageId",
     ),
-    policyVersionId: requiredString(record.policyVersionId, "payload.policyVersionId"),
+    policyVersionId: requiredIdentifier(record.policyVersionId, "payload.policyVersionId"),
     automationVersionId: nullableString(record.automationVersionId, "payload.automationVersionId"),
     templateVersionId: nullableString(record.templateVersionId, "payload.templateVersionId"),
     frozenInputs: snapshotFrozenInputs(record.frozenInputs),
@@ -357,17 +395,17 @@ function snapshotAuthorization(value: unknown, payload: CanonicalSendPayloadV1):
   }
   return Object.freeze({
     version: 1,
-    claimToken: requiredString(record.claimToken, "authorization.claimToken"),
+    claimToken: requiredIdentifier(record.claimToken, "authorization.claimToken"),
     authorizationMarker: Object.freeze({
       version: 1,
-      outboxId: requiredString(marker.outboxId, "authorizationMarker.outboxId"),
+      outboxId: requiredIdentifier(marker.outboxId, "authorizationMarker.outboxId"),
       claimGeneration: integer(marker.claimGeneration, "authorizationMarker.claimGeneration", 1),
       payloadHash: markerPayloadHash,
       fencingToken: integer(marker.fencingToken, "authorizationMarker.fencingToken", 1),
       sessionGeneration: integer(marker.sessionGeneration, "authorizationMarker.sessionGeneration", 1),
       controlVersion: integer(marker.controlVersion, "authorizationMarker.controlVersion"),
       takeoverVersion: integer(marker.takeoverVersion, "authorizationMarker.takeoverVersion"),
-      markerNonce: requiredString(marker.markerNonce, "authorizationMarker.markerNonce"),
+      markerNonce: requiredIdentifier(marker.markerNonce, "authorizationMarker.markerNonce"),
       expiresAt: isoTimestamp(marker.expiresAt, "authorizationMarker.expiresAt"),
     }),
   });
@@ -393,6 +431,12 @@ export function providerSinkFromPayload(payloadValue: CanonicalSendPayloadV1): P
 
 export function businessFramesFromPayload(payloadValue: CanonicalSendPayloadV1): readonly BusinessFrame[] {
   const payload = snapshotCanonicalSendPayload(payloadValue);
+  if (payload.replyToProviderMessageId !== null) {
+    return fail(
+      "UNSUPPORTED_PROVIDER_REPLY",
+      "provider reply requires authenticated quote metadata and cannot be downgraded to a standalone send",
+    );
+  }
   return Object.freeze(payload.parts.map((part): BusinessFrame => {
     if (part.kind === "TEXT") return Object.freeze({ kind: "text", text: part.text });
     return Object.freeze({

@@ -7,6 +7,11 @@ import {
   type PrivateBridgeSendRequestV1,
 } from "../src/bridge/outbound-rpc.js";
 import {
+  businessFramesFromPayload,
+  snapshotCanonicalSendPayload,
+  type CanonicalSendPayloadV1,
+} from "../src/bridge/canonical-send.js";
+import {
   createPreparedOutboundBatch,
   type BusinessFrame,
   type ProviderSinkV1,
@@ -112,6 +117,21 @@ const frames = Object.freeze([
   }),
 ]) as unknown as readonly BusinessFrame[];
 
+type MutablePayload = Record<string, unknown> & {
+  organizationId: string;
+  accountId: string;
+  target: { providerId: string };
+  accountProfile: string;
+  idempotencyKey: string;
+  parts: Array<Record<string, unknown>>;
+  replyToProviderMessageId: string | null;
+  policyVersionId: string;
+};
+
+function mutablePayload(): MutablePayload {
+  return JSON.parse(JSON.stringify(payload)) as MutablePayload;
+}
+
 describe("canonical ZaloUserBridgeSendParamsV1", () => {
   it("accepts the complete canonical payload and authorization marker", async () => {
     const authorize = vi.fn(async (candidate: PrivateBridgeSendRequestV1) => {
@@ -144,5 +164,78 @@ describe("canonical ZaloUserBridgeSendParamsV1", () => {
       sink,
       [unsupported] as unknown as readonly BusinessFrame[],
     )).toThrowError(expect.objectContaining({ code: "UNSUPPORTED_BUSINESS_PART" }));
+  });
+
+  it.each([
+    ["organizationId", (candidate: MutablePayload) => { candidate.organizationId = " organization-a"; }],
+    ["accountId", (candidate: MutablePayload) => { candidate.accountId = "account-a "; }],
+    ["target.providerId", (candidate: MutablePayload) => { candidate.target.providerId = " group-a "; }],
+    ["accountProfile", (candidate: MutablePayload) => { candidate.accountProfile = " profile-a"; }],
+    ["idempotencyKey", (candidate: MutablePayload) => { candidate.idempotencyKey = "outbox-a:1 "; }],
+    ["replyToProviderMessageId", (candidate: MutablePayload) => {
+      candidate.replyToProviderMessageId = " provider-message-a ";
+    }],
+    ["policyVersionId", (candidate: MutablePayload) => { candidate.policyVersionId = " policy-v1"; }],
+  ])("rejects non-canonical whitespace in routing identifier %s", (_field, mutate) => {
+    const candidate = mutablePayload();
+    mutate(candidate);
+    expect(() => snapshotCanonicalSendPayload(candidate)).toThrowError(
+      expect.objectContaining({ code: "INVALID_PRIVATE_SEND_REQUEST" }),
+    );
+  });
+
+  it("preserves intentional whitespace in message text", () => {
+    const candidate = mutablePayload();
+    candidate.parts = [{ version: 1, partIndex: 0, kind: "TEXT", text: "  hello  " }];
+    expect(snapshotCanonicalSendPayload(candidate).parts[0]).toMatchObject({ text: "  hello  " });
+  });
+
+  it("rejects a media part or aggregate that exceeds the bounded materialization budget", () => {
+    const oversizedPart = mutablePayload();
+    oversizedPart.parts = [{
+      version: 1,
+      partIndex: 0,
+      kind: "MEDIA",
+      objectKey: "organization-a/account-a/outbox-a/part-0",
+      sha256: "b".repeat(64),
+      mime: "image/png",
+      bytes: 32 * 1024 * 1024 + 1,
+    }];
+    expect(() => snapshotCanonicalSendPayload(oversizedPart)).toThrowError(
+      expect.objectContaining({ code: "INVALID_PRIVATE_SEND_REQUEST" }),
+    );
+
+    const oversizedAggregate = mutablePayload();
+    oversizedAggregate.parts = [0, 1, 2].map((partIndex) => ({
+      version: 1,
+      partIndex,
+      kind: "MEDIA",
+      objectKey: `organization-a/account-a/outbox-a/part-${partIndex}`,
+      sha256: String(partIndex + 1).repeat(64),
+      mime: "image/png",
+      bytes: partIndex === 2 ? 1 : 32 * 1024 * 1024,
+    }));
+    expect(() => snapshotCanonicalSendPayload(oversizedAggregate)).toThrowError(
+      expect.objectContaining({ code: "INVALID_PRIVATE_SEND_REQUEST" }),
+    );
+  });
+
+  it("rejects mixed-case MIME before provider classification", () => {
+    const candidate = mutablePayload();
+    const media = candidate.parts[1];
+    if (!media) throw new Error("missing media fixture");
+    media.mime = "Image/PNG";
+    expect(() => snapshotCanonicalSendPayload(candidate)).toThrowError(
+      expect.objectContaining({ code: "INVALID_PRIVATE_SEND_REQUEST" }),
+    );
+  });
+
+  it("fails closed instead of silently dropping a provider reply intent", () => {
+    const candidate = mutablePayload();
+    candidate.replyToProviderMessageId = "provider-message-a";
+    const canonicalPayload = snapshotCanonicalSendPayload(candidate) as CanonicalSendPayloadV1;
+    expect(() => businessFramesFromPayload(canonicalPayload)).toThrowError(
+      expect.objectContaining({ code: "UNSUPPORTED_PROVIDER_REPLY" }),
+    );
   });
 });
