@@ -96,6 +96,7 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
     expect(sql).toContain("schedule_version bigint not null");
     expect(sql).toMatch(/unique\s*\(organization_id,account_id,schedule_id,schedule_version,planned_local\)/i);
     expect(sql).toMatch(/unique\s*\(organization_id,account_id,schedule_id,schedule_version,planned_for\)/i);
+    expect(sql).toMatch(/unique\s*\(organization_id,account_id,id\)/i);
     expect(sql).toContain("occurrence_grace_seconds");
     expect(sql).toContain("dst_fold_policy");
     expect(sql).toContain("EARLIER_OFFSET");
@@ -230,6 +231,8 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
     expect(runner).toContain("expire_openclaw_maintenance_leases_v1");
     expect(runner).toContain("sweep_openclaw_delivery_claims_v1");
     const deliverySweep = functionBody(sql, "app_private", "sweep_openclaw_delivery_claims_v1");
+    expect(deliverySweep).not.toMatch(/\bauthorization\s*\./i);
+    expect(deliverySweep).not.toMatch(/\)\s*authorization\s+on\s+true/i);
     expect(deliverySweep).toContain("openclaw_dead_letters");
     expect(deliverySweep).toContain("SWEEPER_LEASE_EXPIRED_AFTER_HANDOFF");
     expect(deliverySweep).toContain("SWEEPER_DISPATCHING_WITHOUT_AUTHORIZATION");

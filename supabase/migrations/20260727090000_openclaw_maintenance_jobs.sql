@@ -280,6 +280,7 @@ create table public.openclaw_schedule_occurrences (
   occurrence_evidence_hash text not null check (occurrence_evidence_hash ~ '^[0-9a-f]{64}$'),
   created_at timestamptz not null default statement_timestamp(),
   unique (organization_id,id),
+  unique (organization_id,account_id,id),
   unique (organization_id,account_id,schedule_id,schedule_version,planned_local),
   unique (organization_id,account_id,schedule_id,schedule_version,planned_for),
   foreign key (organization_id,account_id,schedule_id,schedule_version)
@@ -2177,8 +2178,8 @@ declare
   v_count integer;
 begin
   for item in
-    select outbox.*,authorization.id authorization_id,
-      authorization.authorized_handoff_at
+    select outbox.*,handoff_match.id authorization_id,
+      handoff_match.authorized_handoff_at
     from public.openclaw_outbox outbox
     left join lateral (
       select handoff.id,handoff.authorized_handoff_at
@@ -2187,7 +2188,7 @@ begin
         and handoff.account_id=outbox.account_id and handoff.outbox_id=outbox.id
         and handoff.claim_generation=outbox.claim_generation
       order by handoff.issued_at desc limit 1
-    ) authorization on true
+    ) handoff_match on true
     where (p_organization_id is null or outbox.organization_id=p_organization_id)
       and (p_account_id is null or outbox.account_id=p_account_id)
       and outbox.state in ('LEASED','DISPATCHING')
