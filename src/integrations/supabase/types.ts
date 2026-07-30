@@ -20620,6 +20620,7 @@ export type Database = {
           p_initial_date: string
           p_is_default?: boolean
           p_name: string
+          p_organization_id?: string
           p_owner_user_id?: string
           p_quick_default_building_id: string
         }
