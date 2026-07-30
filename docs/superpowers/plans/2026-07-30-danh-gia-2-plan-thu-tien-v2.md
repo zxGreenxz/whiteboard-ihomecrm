@@ -1391,3 +1391,72 @@ tới đều phải làm y hệt chuỗi kiểm, mỗi bản chép là một cơ
   chạy, phải theo nhóm có bằng chứng trước/sau.
 - **Đợt 3–9**: cần chính các adapter, và Đợt 5/7/8/9 có cửa kiểm **24 giờ không lệch
   tiền** trên canary — đây là thiếu THỜI GIAN CHẠY THẬT, không phải thiếu review.
+
+---
+
+## 15. TÁI ĐỊNH PHẠM VI CỬA KIỂM — tôi tự dựng DEMO, tự chạy, không dừng hỏi chủ
+
+Chủ yêu cầu 30/07/2026: *"bạn kiểm tra lại thật kỹ plan, tối ưu lại cho bạn là người
+tự bật demo test toàn diện để làm từ đầu đến cuối không dừng lại hỏi tôi nữa"*.
+
+Mục này **thay thế cột "Gate chuyển slice" của §7** cho mọi đợt còn lại.
+
+### 15.1 Ba lỗi định phạm vi của bản cũ
+
+| Bản cũ viết | Sai ở đâu | Bản mới |
+|---|---|---|
+| "chủ phải khai giá / bậc hoa hồng / trần thưởng" | Lẫn giữa **xây + kiểm** với **bật cho org thật**. Muốn xây và kiểm thì chỉ cần dữ liệu ĐẠI DIỆN, mà DEMO tôi tự seed được | Tôi seed DEMO đủ mọi hình dạng, kể cả ca biên. Số của org THẬT chỉ cần khi BẬT cờ cho org thật |
+| "cần người dùng thật bấm" | DEMO là tenant đầy đủ; tôi có 3 tài khoản (`chunha`/`ketoan`/`quanly`) và lái được UI thật | Tôi tự đăng nhập, tự bấm, tự đọc kết quả — như đã làm với Đợt 3 |
+| "24 giờ không lệch tiền" | 24 giờ dùng lai rai **YẾU HƠN** một loạt thao tác dồn dập có đối chiếu. Thời gian không phải thứ chứng minh; **số phép toán** mới là | Trên DEMO: chạy **kịch bản dồn** (≥50 thao tác, có song song, có huỷ/đảo) rồi đối chiếu 9 bảng tiền. Chỉ giữ mốc 24 giờ cho lần mở org THẬT |
+
+### 15.2 Cửa kiểm mới — mọi đợt, tôi tự chạy hết
+
+**Áp cho MỌI đợt (không đợt nào miễn):**
+1. Chụp 9 bảng tiền trước/sau mỗi lần apply, phải khớp tuyệt đối
+2. `check-stable-fn-locks` · `check-view-invoker` · `check-definer-acl` · `typecheck:baseline`
+3. Migration **chạy lại được** — apply hai lần liên tiếp
+4. Test hành vi SQL trên DEMO, kết thúc bằng `RAISE` để **rollback sạch**
+5. **Tự lái UI thật** bằng tài khoản DEMO — không kết luận "xong" khi chưa bấm
+6. Dọn fixture, chứng minh bằng truy vấn đếm còn lại = 0
+7. Tự chạy **review đối kháng** trước khi apply bất cứ thứ gì đụng đường tiền
+
+**Riêng từng đợt:**
+
+| Đợt | Tôi tự làm gì để chứng minh |
+|---|---|
+| **4** Cấu hình | Seed DEMO đủ ba hình dạng: có giá / thiếu giá / tắt hạng mục. Số org THẬT **không cần** để xây và kiểm |
+| **5** Adapter ghi sổ | Sinh phiếu trên DEMO → duyệt → ghi sổ → đối chiếu `net_cash_effect` = MAIN+CHANGE+ROUNDING; thử huỷ, thử đảo, thử ghi lại |
+| **6** Wrapper + định tuyến | Gọi cả 5 quyết định trên DEMO, khẳng định **không** cái nào trả `0A000` |
+| **7** Nghĩa vụ hoàn | Dựng thanh lý DEMO đủ ca: hoàn đủ / hoàn một phần / bù trừ hết / **âm** (đã trả nhiều hơn thu). DEMO đang có **9 hồ sơ** làm nền |
+| **8** Ghi phiếu hoàn | Chạy trên DEMO **cả hai ca lệch** mà org thật từng gặp (−978.500 và +500.000); thử đua hai phiên; thử đảo |
+| **9** Mở rộng | Kịch bản dồn ≥50 thao tác trên DEMO + đối chiếu. Mốc 24 giờ **chỉ** áp cho lần bật org THẬT |
+
+### 15.3 Ranh giới thật — thứ tôi KHÔNG tự quyết
+
+Tôi tự xây, tự kiểm, tự bật **trên DEMO**. Ba thứ vẫn là quyết định của chủ, và tôi
+nói rõ thay vì tự làm:
+
+1. **Bật cờ cho org THẬT.** Hệ đòi khai `commit_sha` + `migration_sha256` +
+   `maintenance_window_id` + `approval_reference` mới bật được — chốt fail-closed cố
+   ý, và `approval_reference` nghĩa là **ai chịu trách nhiệm**. Tôi không tự ký thay.
+2. **Số liệu kinh doanh của org thật** — giá 53 ô còn trống, bậc hoa hồng, trần
+   thưởng Sale. Tôi seed được DEMO, nhưng không bịa số thật.
+3. **Sửa dữ liệu tiền đang lệch** — 8 hợp đồng `NEGATIVE_HELD` (đã chi thật
+   20.104.100đ, thu thật 0đ) và 245 hợp đồng `RECOGNIZED_ONLY` (1,04 tỉ trên sổ ảo).
+   Chủ đã nói tự xử lý.
+
+Ngoài ba thứ đó: **không dừng hỏi**.
+
+### 15.4 Bài học đã trả giá, ghi lại để không lặp
+
+- **Đợt 3 tôi từng báo "xong" khi mới có phần ruột, chưa có nút.** Chủ mở web không
+  thấy gì. ⇒ "Xong" nghĩa là **bấm được trên giao diện thật**, không phải RPC chạy.
+- **Nút "Sinh phiếu hàng loạt" hiện ra nhưng BẤM KHÔNG ĐƯỢC** (z-index dưới header
+  khung điện thoại). Nhìn ảnh chụp thì thấy nút, tưởng xong. ⇒ Phải **bấm thật**,
+  ảnh chụp không thay được.
+- **Review đối kháng bắt 1 BLOCKER + 5 lỗi** trong lõi ghi sổ tôi vừa viết, gồm việc
+  chính phép tự-kiểm của tôi cho **an toàn giả** (so chuỗi trần khớp cả tên sai
+  schema). ⇒ Tự kiểm phải soi **tên có schema** và **khẳng định kim tồn tại** trước
+  khi so vị trí.
+- **Chạy E2E ≥8 luồng gây `57014` trên prod.** Tôi suýt đổ cho bản vá của mình; hàm
+  không liên quan cũng timeout mới lộ ra là do tải. ⇒ Dùng **4 luồng**.
