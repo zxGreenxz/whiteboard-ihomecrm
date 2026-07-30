@@ -33,7 +33,7 @@ export type BehaviorContractRuntimeV1Options = Readonly<{
   binding: BridgeRuntimeBindingV1;
   bridgeBaseUrl: string;
   bridgeSecret: Uint8Array;
-  gatewayClientId: string;
+  gatewayDeviceId: string;
   now(): number;
   nonce(): string;
   bridgeFetch(url: string, init: RequestInit): Promise<Response>;
@@ -83,7 +83,7 @@ export function installBehaviorContractRuntimeV1(
     cleanups.push(installControlRuntime(createProductionControlRuntime(shared)));
     cleanups.push(installPrivateOutboundRuntime(createProductionBridgeRuntime({
       ...shared,
-      gatewayClientId: options.gatewayClientId,
+      gatewayDeviceId: options.gatewayDeviceId,
       loadProviderSender: async () => options.providerRuntime,
     })));
   } catch (error) {

@@ -53,7 +53,7 @@ export type ProductionBridgeRuntimeOptions = Readonly<{
   binding: BridgeRuntimeBindingV1;
   bridgeBaseUrl: string;
   bridgeSecret: Uint8Array;
-  gatewayClientId: string;
+  gatewayDeviceId: string;
   fetch(url: string, init: RequestInit): Promise<Response>;
   now(): number;
   nonce(): string;
@@ -310,8 +310,8 @@ export function createProductionBridgeRuntime(
   const bridgeBaseUrl = checkedBaseUrl(options.bridgeBaseUrl);
   const bridgeSecret = Buffer.from(options.bridgeSecret);
   if (bridgeSecret.byteLength < 32) throw new TypeError("bridgeSecret must contain at least 32 bytes");
-  const gatewayClientId = options.gatewayClientId.trim();
-  if (!gatewayClientId) throw new TypeError("gatewayClientId is required");
+  const gatewayDeviceId = options.gatewayDeviceId.trim();
+  if (!gatewayDeviceId) throw new TypeError("gatewayDeviceId is required");
   if (typeof options.fetch !== "function" || typeof options.now !== "function" ||
       typeof options.nonce !== "function" || typeof options.loadProviderSender !== "function") {
     throw new TypeError("fetch, now, nonce, and loadProviderSender must be functions");
@@ -421,8 +421,23 @@ export function createProductionBridgeRuntime(
 
   return Object.freeze({
     assertClient: async (client: unknown) => {
-      if (!client || typeof client !== "object" || (client as { id?: unknown }).id !== gatewayClientId) {
-        throw failure("PRIVATE_BRIDGE_CLIENT_DENIED", "gateway client is not the dedicated bridge client");
+      const gatewayClient = client as {
+        isDeviceTokenAuth?: unknown;
+        connect?: {
+          client?: { id?: unknown; mode?: unknown };
+          device?: { id?: unknown };
+        };
+      } | null;
+      if (
+        !gatewayClient ||
+        typeof gatewayClient !== "object" ||
+        Array.isArray(gatewayClient) ||
+        gatewayClient.isDeviceTokenAuth !== true ||
+        gatewayClient.connect?.client?.id !== "gateway-client" ||
+        gatewayClient.connect.client.mode !== "backend" ||
+        gatewayClient.connect.device?.id !== gatewayDeviceId
+      ) {
+        throw failure("PRIVATE_BRIDGE_CLIENT_DENIED", "gateway client is not the authenticated bridge device");
       }
     },
     prepare,
@@ -480,7 +495,7 @@ export function installProductionBridgeRuntimeFromEnvironment(
     "OPENCLAW_ZALO_FENCING_TOKEN",
     "OPENCLAW_ZALO_CONTROL_VERSION",
     "OPENCLAW_ZALO_TAKEOVER_VERSION",
-    "OPENCLAW_ZALO_GATEWAY_CLIENT_ID",
+    "OPENCLAW_ZALO_GATEWAY_DEVICE_ID",
   ] as const;
   const configuredCount = requiredNames.reduce(
     (count, name) => count + (environment[name]?.trim() ? 1 : 0),
@@ -534,7 +549,7 @@ export function installProductionBridgeRuntimeFromEnvironment(
   try {
     installPrivateOutboundRuntime(createProductionBridgeRuntime({
       ...shared,
-      gatewayClientId: requiredEnvironment(environment, "OPENCLAW_ZALO_GATEWAY_CLIENT_ID"),
+      gatewayDeviceId: requiredEnvironment(environment, "OPENCLAW_ZALO_GATEWAY_DEVICE_ID"),
       loadProviderSender: loadInstalledZaloUserProviderRuntime,
     }));
   } catch (error) {

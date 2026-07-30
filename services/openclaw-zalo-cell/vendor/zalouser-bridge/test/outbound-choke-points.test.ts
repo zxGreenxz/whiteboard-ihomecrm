@@ -30,6 +30,62 @@ function prepareRequest(request: ZaloUserBridgeSendParamsV1) {
 }
 
 describe("private outbound RPC exact choke point", () => {
+  it("binds private RPC access to the authenticated nested gateway device principal", async () => {
+    const factory = (outboundRuntimeModule as unknown as {
+      createProductionBridgeRuntime(options: unknown): Parameters<typeof createPrivateOutboundRpc>[0] & {
+        assertClient(client: unknown): Promise<void>;
+      };
+    }).createProductionBridgeRuntime;
+    const runtime = factory({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x30),
+      gatewayDeviceId: "bridge-device-a",
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "unused-nonce",
+      fetch: async () => {
+        throw new Error("must not call bridge while checking the gateway principal");
+      },
+      loadProviderSender: async () => {
+        throw new Error("must not load provider while checking the gateway principal");
+      },
+    });
+    const trustedClient = Object.freeze({
+      isDeviceTokenAuth: true,
+      connect: Object.freeze({
+        client: Object.freeze({ id: "gateway-client", mode: "backend" }),
+        device: Object.freeze({ id: "bridge-device-a" }),
+      }),
+    });
+
+    await expect(runtime.assertClient(trustedClient)).resolves.toBeUndefined();
+    await expect(runtime.assertClient({ id: "bridge-device-a" }))
+      .rejects.toMatchObject({ code: "PRIVATE_BRIDGE_CLIENT_DENIED" });
+    for (const denied of [
+      { connect: trustedClient.connect },
+      { isDeviceTokenAuth: true },
+      { ...trustedClient, isDeviceTokenAuth: false },
+      { ...trustedClient, connect: { ...trustedClient.connect, device: {} } },
+      { ...trustedClient, connect: { ...trustedClient.connect, device: { id: "other-device" } } },
+      { ...trustedClient, connect: { ...trustedClient.connect, client: { mode: "backend" } } },
+      { ...trustedClient, connect: { ...trustedClient.connect, client: { id: "gateway-client" } } },
+      { ...trustedClient, connect: { ...trustedClient.connect, client: { id: "cli", mode: "backend" } } },
+      { ...trustedClient, connect: { ...trustedClient.connect, client: { id: "gateway-client", mode: "cli" } } },
+    ]) {
+      await expect(runtime.assertClient(denied)).rejects.toMatchObject({
+        code: "PRIVATE_BRIDGE_CLIENT_DENIED",
+      });
+    }
+  });
+
   it("installs a production runtime that materializes media before immediate authorization", async () => {
     const bytes = Buffer.from("real-media-bytes", "utf8");
     const mediaRequest = makeRequest([
@@ -64,7 +120,7 @@ describe("private outbound RPC exact choke point", () => {
       },
       bridgeBaseUrl: "http://bridge.internal",
       bridgeSecret: Buffer.alloc(32, 0x31),
-      gatewayClientId: "bridge-client-a",
+      gatewayDeviceId: "bridge-client-a",
       now: () => Date.parse("2026-07-29T10:00:00.000Z"),
       nonce: (() => {
         let value = 0;
@@ -150,7 +206,7 @@ describe("private outbound RPC exact choke point", () => {
       },
       bridgeBaseUrl: "http://bridge.internal",
       bridgeSecret: Buffer.alloc(32, 0x33),
-      gatewayClientId: "bridge-client-a",
+      gatewayDeviceId: "bridge-client-a",
       now: () => Date.parse("2026-07-29T10:00:00.000Z"),
       nonce: () => "unused-nonce",
       fetch: async () => {

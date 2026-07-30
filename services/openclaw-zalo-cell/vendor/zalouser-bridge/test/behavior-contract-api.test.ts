@@ -40,7 +40,7 @@ function options(events: string[]): BehaviorContractRuntimeV1Options {
     binding,
     bridgeBaseUrl: "http://bridge.internal",
     bridgeSecret: Buffer.alloc(32, 0x45),
-    gatewayClientId: "gateway-a",
+    gatewayDeviceId: "gateway-a",
     now: () => Date.parse("2026-07-29T10:00:00.000Z"),
     nonce: (() => {
       let value = 0;
@@ -124,7 +124,13 @@ describe("installed behavior contract", () => {
     let response: unknown;
     try {
       await registrations[0]!.handler({
-        client: { id: "gateway-a" },
+        client: {
+          isDeviceTokenAuth: true,
+          connect: {
+            client: { id: "gateway-client", mode: "backend" },
+            device: { id: "gateway-a" },
+          },
+        },
         params: makeRequest([TEXT_PART]),
         respond(ok: boolean, payload: unknown, error: unknown) {
           response = { ok, payload, error };

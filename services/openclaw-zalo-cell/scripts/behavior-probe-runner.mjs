@@ -222,7 +222,7 @@ if (variant === "stock") {
     binding,
     bridgeBaseUrl: "http://bridge.internal",
     bridgeSecret: Buffer.alloc(32, 0x46),
-    gatewayClientId: "gateway-a",
+    gatewayDeviceId: "gateway-a",
     now: () => Date.parse("2026-07-29T10:00:00.000Z"),
     nonce: () => `behavior-${nonce += 1}`,
     providerFixture: { accountProfile: "profile-a", api: fixtureApi },
@@ -305,7 +305,13 @@ if (variant === "stock") {
     const invokePrivate = async (request) => {
       let response;
       await registration.handler({
-        client: { id: "gateway-a" },
+        client: {
+          isDeviceTokenAuth: true,
+          connect: {
+            client: { id: "gateway-client", mode: "backend" },
+            device: { id: "gateway-a" },
+          },
+        },
         params: request,
         respond(ok, value, error) {
           response = { ok, value: value ?? null, error: error ?? null };
