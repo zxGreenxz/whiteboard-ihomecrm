@@ -143,8 +143,16 @@ describe("OpenClaw typed CRM occurrence sources migration", () => {
     expect(bindingBody).toContain("cardinality(scope.building_ids)");
     expect(bindingBody).toContain("v_permission_key");
     expect(bindingBody).toContain("v_building_id");
+    expect(bindingBody).toContain("for share of lead");
+    expect(bindingBody).toContain("v_is_trusted");
+    expect(bindingBody).toContain("if not v_is_trusted then");
+    expect(bindingBody).toContain("if v_actor_id is null then");
+    expect(bindingBody.indexOf("if not v_is_trusted then")).toBeLessThan(
+      bindingBody.indexOf("if v_actor_id is null then"),
+    );
     expect(bindingBody).toContain("sales task parent lead is outside the caller");
     expect(bindingBody).toContain("request.jwt.claim.role");
+    expect(bindingBody).toContain("request.jwt.claims");
     expect(bindingBody).toContain("NEW.organization_id := v_organization_id");
     expect(bindingBody).toContain("sales task organization does not match parent lead");
     expect(sql).toMatch(/before insert or update of lead_id,organization_id on public\.lead_activities/i);
@@ -153,10 +161,13 @@ describe("OpenClaw typed CRM occurrence sources migration", () => {
     expect(insertBody).toContain("from public.rooms source_row");
     expect(insertBody).toContain("from public.lead_activities source_row");
     expect(sql).toContain("to_regprocedure('app_private.authorized_scope_v3(text,uuid)') is null");
+    expect(sql).toContain("to_regprocedure('auth.uid()') is null");
     expect(sql).toMatch(/grant execute on function app_private\.authorize_tenant_action_v3\(uuid,uuid,text,uuid,uuid\)\s+to openclaw_function_owner/i);
     expect(sql).toMatch(/grant execute on function app_private\.authorized_scope_v3\(text,uuid\)\s+to openclaw_function_owner/i);
     expect(sql).toContain("grant usage on schema auth to openclaw_function_owner");
     expect(sql).toContain("grant execute on function auth.uid() to openclaw_function_owner");
+    expect(sql).toMatch(/grant update \(openclaw_assignment_revision\) on public\.leads\s+to openclaw_function_owner/i);
+    expect(sql).toMatch(/create policy openclaw_crm_sources_function_owner_leads_lock\s+on public\.leads for update to openclaw_function_owner\s+using \(true\) with check \(true\)/i);
     expect(sql).not.toMatch(/alter table public\.lead_activities\s+alter column organization_id set not null/i);
   });
 

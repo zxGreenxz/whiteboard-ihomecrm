@@ -11,6 +11,7 @@ begin
      or to_regprocedure('app_private.lock_org_for_decision_v1(uuid)') is null
      or to_regprocedure('app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)') is null
      or to_regprocedure('app_private.authorized_scope_v3(text,uuid)') is null
+     or to_regprocedure('auth.uid()') is null
   then
     raise exception 'OpenClaw CRM event source dependencies are incomplete' using errcode = '55000';
   end if;
@@ -414,14 +415,32 @@ declare
   v_permission_key text := case when TG_OP = 'INSERT' then 'leads.create' else 'leads.edit' end;
   v_allowed boolean;
   v_jwt_role text := pg_catalog.current_setting('request.jwt.claim.role',true);
+  v_jwt_claims text := pg_catalog.current_setting('request.jwt.claims',true);
+  v_effective_role text;
+  v_is_trusted boolean;
 begin
+  v_effective_role := coalesce(
+    nullif(v_jwt_role,''),
+    nullif(v_jwt_claims,'')::jsonb ->> 'role',
+    ''
+  );
+  v_is_trusted := v_effective_role = 'service_role'
+    or (
+      v_effective_role = ''
+      and session_user in ('postgres','supabase_admin')
+    );
   select lead.organization_id,lead.building_id into v_organization_id,v_building_id
   from public.leads lead
-  where lead.id = NEW.lead_id;
+  where lead.id = NEW.lead_id
+  for share of lead;
   if not found or v_organization_id is null then
     raise exception 'sales task parent lead organization is unavailable' using errcode = '23503';
   end if;
-  if v_actor_id is not null then
+  if not v_is_trusted then
+    if v_actor_id is null then
+      raise exception 'sales task organization binding requires a trusted caller'
+        using errcode = '42501';
+    end if;
     perform app_private.lock_org_for_decision_v1(v_organization_id);
     if v_building_id is not null then
       select decision.allowed into v_allowed
@@ -438,11 +457,6 @@ begin
       raise exception 'sales task parent lead is outside the caller''s authorized scope'
         using errcode = '42501';
     end if;
-  elsif coalesce(v_jwt_role,'') <> 'service_role'
-    and session_user not in ('postgres','supabase_admin')
-  then
-    raise exception 'sales task organization binding requires a trusted caller'
-      using errcode = '42501';
   end if;
   if NEW.organization_id is null then
     NEW.organization_id := v_organization_id;
@@ -592,6 +606,9 @@ create policy openclaw_crm_sources_function_owner_rooms_select
   on public.rooms for select to openclaw_function_owner using (true);
 create policy openclaw_crm_sources_function_owner_leads_select
   on public.leads for select to openclaw_function_owner using (true);
+create policy openclaw_crm_sources_function_owner_leads_lock
+  on public.leads for update to openclaw_function_owner
+  using (true) with check (true);
 create policy openclaw_crm_sources_function_owner_activities_select
   on public.lead_activities for select to openclaw_function_owner using (true);
 create policy openclaw_crm_sources_function_owner_activities_update
@@ -618,6 +635,7 @@ revoke all on function app_private.openclaw_bind_sales_task_organization_v1()
 grant select,insert on public.openclaw_crm_event_occurrences to openclaw_function_owner;
 grant select on public.openclaw_crm_event_occurrences to openclaw_runtime_writer;
 grant select on public.rooms,public.leads to openclaw_function_owner;
+grant update (openclaw_assignment_revision) on public.leads to openclaw_function_owner;
 grant select,update on public.lead_activities to openclaw_function_owner;
 grant execute on function public.recompute_room_reservation(uuid) to openclaw_function_owner;
 
