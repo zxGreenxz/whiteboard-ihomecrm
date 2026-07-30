@@ -22,6 +22,7 @@ import {
   computeMInputAggregate,
   inspectTarball,
   verifyCommittedInputs,
+  verifyOnlineInputs,
   verifySigstoreAttestations,
 } from "../vendor/zalouser-bridge/scripts/verify-upstream.mjs";
 
@@ -4105,6 +4106,32 @@ export async function collectSupplyChainMetadata({
   };
 }
 
+export async function reacquireQualifyingInputs(
+  { reviewedTree, reviewedExport },
+  verifyOnline = verifyOnlineInputs,
+) {
+  validateRecordedReviewedExport(reviewedExport, reviewedTree);
+  if (typeof verifyOnline !== "function") {
+    throw new TypeError("qualifying online verifier must be a function");
+  }
+  const online = await verifyOnline({
+    reviewedExportManifestPath: reviewedExport.manifest_path,
+    reviewedExportManifestSha256: reviewedExport.manifest_sha256,
+    reviewedTree,
+  });
+  if (
+    online.inputCount !== 87 ||
+    online.provenanceInputCount !== 4 ||
+    online.sourceBlobCount !== 75 ||
+    online.sigstore?.npm !== "verified" ||
+    online.sigstore?.slsa !== "verified" ||
+    online.sigstore?.rekorEntries !== 2
+  ) {
+    throw new Error("qualifying online provenance result is incomplete");
+  }
+  return online;
+}
+
 export async function collectQualifyingSupplyChainEvidence({
   gitPath,
   sourceRoot,
@@ -4113,6 +4140,7 @@ export async function collectQualifyingSupplyChainEvidence({
   reviewedTree,
   reviewedExport,
 }) {
+  const online = await reacquireQualifyingInputs({ reviewedTree, reviewedExport });
   const metadata = await collectSupplyChainMetadata({
     gitPath,
     sourceRoot,
@@ -4163,6 +4191,10 @@ export async function collectQualifyingSupplyChainEvidence({
       checkpoint_verified: true,
       certificate_chain_verified: true,
       body_binding_verified: true,
+      online_reacquired: true,
+      online_input_count: online.inputCount,
+      online_provenance_input_count: online.provenanceInputCount,
+      online_source_blob_count: online.sourceBlobCount,
       verified_tarball_sha256: sha256(tarballBytes),
     },
   };
@@ -4211,6 +4243,10 @@ export async function validateRecordedSupplyChainEvidence(
       "checkpoint_verified",
       "certificate_chain_verified",
       "body_binding_verified",
+      "online_reacquired",
+      "online_input_count",
+      "online_provenance_input_count",
+      "online_source_blob_count",
       "verified_tarball_sha256",
     ],
     "supply-chain proof",
@@ -4225,6 +4261,10 @@ export async function validateRecordedSupplyChainEvidence(
     recorded.proof.checkpoint_verified !== true ||
     recorded.proof.certificate_chain_verified !== true ||
     recorded.proof.body_binding_verified !== true ||
+    recorded.proof.online_reacquired !== true ||
+    recorded.proof.online_input_count !== 87 ||
+    recorded.proof.online_provenance_input_count !== 4 ||
+    recorded.proof.online_source_blob_count !== 75 ||
     recorded.proof.verified_tarball_sha256 !== expected.upstream.tarball.sha256
   ) {
     throw new Error("supply-chain proof is incomplete or mismatched");

@@ -1076,8 +1076,54 @@ $nodePath = (Resolve-Path -LiteralPath $env:OPENCLAW_NODE_PATH -ErrorAction Stop
 $gitPath = (Resolve-Path -LiteralPath $env:OPENCLAW_GIT_PATH -ErrorAction Stop).Path
 $dockerHost = $env:OPENCLAW_DOCKER_HOST
 if (-not [IO.Path]::IsPathFullyQualified($nodePath) -or -not [IO.Path]::IsPathFullyQualified($gitPath)) { throw 'Pinned Node/Git paths must be absolute' }
-& $nodePath --version
-if ($LASTEXITCODE -ne 0) { throw 'Pinned Node authority failed' }
+function Invoke-QualificationNative {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [hashtable]$Environment = @{}
+  )
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $FilePath
+  foreach ($argument in $Arguments) { $startInfo.ArgumentList.Add($argument) }
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.Environment.Clear()
+  foreach ($name in $Environment.Keys) { $startInfo.Environment[$name] = [string]$Environment[$name] }
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+  if (-not $process.Start()) { throw "Unable to start pinned native authority: $FilePath" }
+  $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+  $stderrTask = $process.StandardError.ReadToEndAsync()
+  $process.WaitForExit()
+  $stdout = $stdoutTask.GetAwaiter().GetResult()
+  $stderr = $stderrTask.GetAwaiter().GetResult()
+  $exitCode = $process.ExitCode
+  $process.Dispose()
+  if ($exitCode -ne 0) { throw "Pinned native authority failed ($exitCode): $FilePath`n$stderr" }
+  return $stdout
+}
+$expectedNodeSha256 = 'd1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c'
+$expectedGitSha256 = '5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a'
+if ((Get-FileHash -LiteralPath $nodePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedNodeSha256) { throw 'Pinned Node SHA-256 mismatch' }
+if ((Get-FileHash -LiteralPath $gitPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedGitSha256) { throw 'Pinned Git SHA-256 mismatch' }
+$nodeCheck = 'const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){process.exit(1)}process.stdout.write(process.version)'
+$nodeVersion = (Invoke-QualificationNative -FilePath $nodePath -Arguments @('-e', $nodeCheck)).Trim()
+if ($nodeVersion -ne 'v24.15.0') { throw 'Pinned Node must be exact official stable v24.15.0' }
+$gitSafePrefix = @(
+  '--no-replace-objects',
+  '-c', 'core.fsmonitor=false',
+  '-c', 'core.hooksPath=/dev/null',
+  '-c', 'commit.gpgSign=false',
+  '-c', 'core.attributesFile=/dev/null',
+  '-c', 'diff.external=',
+  '-c', 'credential.helper='
+)
+function Invoke-QualificationGit {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+  return Invoke-QualificationNative -FilePath $gitPath -Arguments ($gitSafePrefix + $Arguments)
+}
+if ((Invoke-QualificationGit -Arguments @('--version')).Trim() -ne 'git version 2.53.0') { throw 'Pinned Git semantic version mismatch' }
 $R = $env:OPENCLAW_REVIEWED_R_SHA
 if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
 $M = $env:OPENCLAW_REVIEWED_M_SHA
@@ -1089,24 +1135,22 @@ if (-not [IO.Path]::IsPathFullyQualified($buildxPath)) { throw 'OPENCLAW_BUILDX_
 $dockerPath = (Resolve-Path -LiteralPath $env:OPENCLAW_DOCKER_PATH -ErrorAction Stop).Path
 if (-not [IO.Path]::IsPathFullyQualified($dockerPath)) { throw 'OPENCLAW_DOCKER_PATH must resolve to an absolute path' }
 $sourceRoot = (Get-Location).Path
-if ((& $gitPath --no-replace-objects -C $sourceRoot rev-parse HEAD).Trim() -ne $R) { throw 'HEAD is not exact reviewed R' }
-& $gitPath --no-replace-objects -C $sourceRoot merge-base --is-ancestor $M $R
-if ($LASTEXITCODE -ne 0) { throw 'Reviewed M is not an ancestor of reviewed R' }
-if (@(& $gitPath --no-replace-objects -C $sourceRoot status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'R working tree is not completely clean' }
-& $gitPath --no-replace-objects -C $sourceRoot diff --cached --quiet
-if ($LASTEXITCODE -ne 0) { throw 'R index is not empty' }
+if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', 'HEAD')).Trim() -ne $R) { throw 'HEAD is not exact reviewed R' }
+Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'merge-base', '--is-ancestor', $M, $R) | Out-Null
+if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'status', '--porcelain=v1', '--untracked-files=all')).Trim().Length -ne 0) { throw 'R working tree is not completely clean' }
+Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'diff', '--cached', '--quiet') | Out-Null
 $gitStatePaths = @(
-  (& $gitPath --no-replace-objects -C $sourceRoot rev-parse --git-path MERGE_HEAD)
-  (& $gitPath --no-replace-objects -C $sourceRoot rev-parse --git-path rebase-merge)
-  (& $gitPath --no-replace-objects -C $sourceRoot rev-parse --git-path rebase-apply)
+  (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', '--git-path', 'MERGE_HEAD')).Trim()
+  (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', '--git-path', 'rebase-merge')).Trim()
+  (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', '--git-path', 'rebase-apply')).Trim()
 )
 if (@($gitStatePaths | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'Merge/rebase is in progress' }
 
 $exporterRel = 'services/openclaw-zalo-cell/scripts/export-reviewed-tree.mjs'
-$exporterBlob = (& $gitPath --no-replace-objects -C $sourceRoot rev-parse "$R`:$exporterRel").Trim()
+$exporterBlob = (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', "$R`:$exporterRel")).Trim()
 if ($exporterBlob -notmatch '^[0-9a-f]{40}$') { throw 'Reviewed exporter blob ID is invalid' }
-if ((& $gitPath --no-replace-objects -C $sourceRoot cat-file -t $exporterBlob).Trim() -ne 'blob') { throw 'Reviewed exporter is not a blob' }
-$exporterSize = [int64](& $gitPath --no-replace-objects -C $sourceRoot cat-file -s $exporterBlob)
+if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'cat-file', '-t', $exporterBlob)).Trim() -ne 'blob') { throw 'Reviewed exporter is not a blob' }
+$exporterSize = [int64](Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'cat-file', '-s', $exporterBlob)).Trim()
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $bootstrapRoot = Join-Path $tempRoot ('ihome-openclaw-bootstrap-' + [guid]::NewGuid().ToString('N'))
 $verificationExportRoot = Join-Path $tempRoot ('ihome-openclaw-r-verify-' + [guid]::NewGuid().ToString('N'))
@@ -1118,7 +1162,7 @@ try {
   $bootstrapExporter = Join-Path $bootstrapRoot 'export-reviewed-tree.mjs'
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = $gitPath
-  $startInfo.ArgumentList.Add('--no-replace-objects')
+  foreach ($argument in $gitSafePrefix) { $startInfo.ArgumentList.Add($argument) }
   $startInfo.ArgumentList.Add('-C')
   $startInfo.ArgumentList.Add($sourceRoot)
   $startInfo.ArgumentList.Add('cat-file')
@@ -1127,6 +1171,7 @@ try {
   $startInfo.UseShellExecute = $false
   $startInfo.RedirectStandardOutput = $true
   $startInfo.RedirectStandardError = $true
+  $startInfo.Environment.Clear()
   $process = [Diagnostics.Process]::new()
   $process.StartInfo = $startInfo
   if (-not $process.Start()) { throw 'Unable to start raw Git blob export' }
@@ -1142,11 +1187,11 @@ try {
   if ($process.ExitCode -ne 0) { throw "git cat-file exporter bootstrap failed: $stderr" }
   $process.Dispose()
   if ((Get-Item -LiteralPath $bootstrapExporter).Length -ne $exporterSize) { throw 'Reviewed exporter byte size mismatch' }
-  if ((& $gitPath --no-replace-objects -C $sourceRoot hash-object $bootstrapExporter).Trim() -ne $exporterBlob) { throw 'Reviewed exporter Git object mismatch' }
+  if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'hash-object', $bootstrapExporter)).Trim() -ne $exporterBlob) { throw 'Reviewed exporter Git object mismatch' }
 
   $verificationExportManifest = Join-Path $bootstrapRoot 'reviewed-verification-tree-manifest.json'
-  & $nodePath $bootstrapExporter export --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $verificationExportRoot --manifest $verificationExportManifest
-  & $nodePath $bootstrapExporter verify --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $verificationExportRoot --manifest $verificationExportManifest
+  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'export', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $verificationExportRoot, '--manifest', $verificationExportManifest) | Out-Null
+  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'verify', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $verificationExportRoot, '--manifest', $verificationExportManifest) | Out-Null
   $verificationExportManifestSha256 = (Get-FileHash -LiteralPath $verificationExportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
   $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $verificationExportManifest
   $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $verificationExportManifestSha256
@@ -1168,8 +1213,8 @@ try {
   }
 
   $qualificationExportManifest = Join-Path $bootstrapRoot 'reviewed-qualification-tree-manifest.json'
-  & $nodePath $bootstrapExporter export --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $qualificationExportRoot --manifest $qualificationExportManifest
-  & $nodePath $bootstrapExporter verify --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $qualificationExportRoot --manifest $qualificationExportManifest
+  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'export', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $qualificationExportRoot, '--manifest', $qualificationExportManifest) | Out-Null
+  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'verify', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $qualificationExportRoot, '--manifest', $qualificationExportManifest) | Out-Null
   $qualificationExportManifestSha256 = (Get-FileHash -LiteralPath $qualificationExportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
   $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $qualificationExportManifest
   $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $qualificationExportManifestSha256
@@ -1177,10 +1222,9 @@ try {
   $reviewedImageHelper = Join-Path $qualificationExportRoot 'services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1'
   & $reviewedImageHelper -ReviewedTree $R -ExpectedM $M -MReviewReportPath $mReviewReport -RReviewReportPath $rReviewReport -NodePath $nodePath -GitPath $gitPath -BuildxPath $buildxPath -DockerPath $dockerPath -DockerHost $dockerHost -GitRepositoryRoot $sourceRoot -ReviewedSourceRoot $qualificationExportRoot -ReviewedExportManifestPath $qualificationExportManifest -ReviewedExportManifestSha256 $qualificationExportManifestSha256 -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-a-linux-amd64.oci.tar') -ReproductionArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-b-linux-amd64.oci.tar') -StockOciPath (Join-Path $releaseRoot 'openclaw-zalo-cell-stock-linux-amd64.oci.tar') -RetainedUpstreamTarballPath (Join-Path $releaseRoot 'zalouser-2026.7.1-verified.tgz')
 
-  if ((& $gitPath --no-replace-objects -C $sourceRoot rev-parse HEAD).Trim() -ne $R) { throw 'Source HEAD changed after exported-R run' }
-  if (@(& $gitPath --no-replace-objects -C $sourceRoot status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Exported-R run mutated source worktree/index' }
-  & $gitPath --no-replace-objects -C $sourceRoot diff --cached --quiet
-  if ($LASTEXITCODE -ne 0) { throw 'Exported-R run mutated source index' }
+  if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', 'HEAD')).Trim() -ne $R) { throw 'Source HEAD changed after exported-R run' }
+  if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'status', '--porcelain=v1', '--untracked-files=all')).Trim().Length -ne 0) { throw 'Exported-R run mutated source worktree/index' }
+  Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'diff', '--cached', '--quiet') | Out-Null
 } finally {
   if (Test-Path -LiteralPath $qualificationExportRoot) { Remove-Item -LiteralPath $qualificationExportRoot -Recurse -Force }
   if (Test-Path -LiteralPath $verificationExportRoot) { Remove-Item -LiteralPath $verificationExportRoot -Recurse -Force }

@@ -752,6 +752,10 @@
             "checkpoint_verified",
             "certificate_chain_verified",
             "body_binding_verified",
+            "online_reacquired",
+            "online_input_count",
+            "online_provenance_input_count",
+            "online_source_blob_count",
             "verified_tarball_sha256"
           ],
           "properties": {
@@ -764,6 +768,10 @@
             "checkpoint_verified": { "type": "boolean", "const": true },
             "certificate_chain_verified": { "type": "boolean", "const": true },
             "body_binding_verified": { "type": "boolean", "const": true },
+            "online_reacquired": { "type": "boolean", "const": true },
+            "online_input_count": { "type": "integer", "const": 87 },
+            "online_provenance_input_count": { "type": "integer", "const": 4 },
+            "online_source_blob_count": { "type": "integer", "const": 75 },
             "verified_tarball_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
           }
         }

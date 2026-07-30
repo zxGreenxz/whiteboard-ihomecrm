@@ -1484,18 +1484,56 @@ test("Task 2 keeps source verification and qualification in distinct reviewed ex
 
   assert.match(flow, /\$verificationExportRoot\s*=\s*Join-Path\s+\$tempRoot/);
   assert.match(flow, /\$qualificationExportRoot\s*=\s*Join-Path\s+\$tempRoot/);
-  assert.match(flow, /--output-root\s+\$verificationExportRoot/);
-  assert.match(flow, /--output-root\s+\$qualificationExportRoot/);
+  assert.match(flow, /['"]--output-root['"],\s*\$verificationExportRoot/);
+  assert.match(flow, /['"]--output-root['"],\s*\$qualificationExportRoot/);
   assert.match(flow, /Push-Location\s+\$verificationExportRoot/);
   assert.doesNotMatch(flow, /Push-Location\s+\$qualificationExportRoot/);
   assert.match(flow, /-ReviewedSourceRoot\s+\$qualificationExportRoot/);
 
   const verificationCommands = flow.indexOf("Push-Location $verificationExportRoot");
-  const qualificationExport = flow.indexOf("--output-root $qualificationExportRoot");
+  const qualificationExport = flow.indexOf("'--output-root', $qualificationExportRoot");
   const helperCall = flow.indexOf("-ReviewedSourceRoot $qualificationExportRoot");
   assert.ok(
     verificationCommands >= 0 && qualificationExport > verificationCommands && helperCall > qualificationExport,
     "the exact qualification export must be created only after mutable source verification",
+  );
+});
+
+test("Task 2 outer launcher authenticates and isolates pinned Node before creating work", async () => {
+  const repoRoot = resolve(cellRoot, "../..");
+  const plan = await readFile(
+    join(repoRoot, "docs/superpowers/plans/2026-07-26-openclaw-zalo-personal.md"),
+    "utf8",
+  );
+  const qualificationStep = plan.indexOf(
+    "**Step 4: Run verification and build strictly from reviewed R without tracked mutation**",
+  );
+  const flowStart = plan.indexOf(
+    "if ($PSVersionTable.PSVersion -lt [version]'7.3')",
+    qualificationStep,
+  );
+  const workCreation = plan.indexOf("$tempRoot = [IO.Path]::GetFullPath", flowStart);
+  assert.ok(
+    qualificationStep >= 0 && flowStart > qualificationStep && workCreation > flowStart,
+    "Task 2 qualifying launcher must precede work creation",
+  );
+  const preWork = plan.slice(flowStart, workCreation);
+
+  assert.match(preWork, /\[Diagnostics\.ProcessStartInfo\]::new\(\)/);
+  assert.match(preWork, /\.Environment\.Clear\(\)/);
+  assert.match(preWork, /UseShellExecute\s*=\s*\$false/);
+  assert.match(preWork, /RedirectStandardOutput\s*=\s*\$true/);
+  assert.match(preWork, /d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c/);
+  assert.match(preWork, /\^v24\\\.\(0\|\[1-9\]\\d\*\)\\\.\(0\|\[1-9\]\\d\*\)\$/);
+  assert.doesNotMatch(preWork, /&\s*\$nodePath\b/);
+  assert.doesNotMatch(preWork, /&\s*\$gitPath\b/);
+  assert.match(preWork, /core\.fsmonitor=false/);
+  assert.match(preWork, /core\.hooksPath=\/dev\/null/);
+  assert.match(preWork, /commit\.gpgSign=false/);
+  assert.match(preWork, /core\.attributesFile=\/dev\/null/);
+  assert.ok(
+    preWork.indexOf(".Environment.Clear()") < preWork.indexOf(".Start()"),
+    "the pinned Node environment must be cleared before its first execution",
   );
 });
 
@@ -2977,6 +3015,10 @@ test("supply-chain evidence binds committed M inputs, signatures, and the exact 
       checkpoint_verified: true,
       certificate_chain_verified: true,
       body_binding_verified: true,
+      online_reacquired: true,
+      online_input_count: 87,
+      online_provenance_input_count: 4,
+      online_source_blob_count: 75,
       verified_tarball_sha256: metadata.upstream.tarball.sha256,
     },
   };
@@ -3017,4 +3059,40 @@ test("supply-chain evidence binds committed M inputs, signatures, and the exact 
   assert.ok(schema.required.includes("supply_chain"));
   assert.equal(schema.$defs.supplyChain.additionalProperties, false);
   assert.ok(schema.properties.verification.required.includes("supply_chain"));
+});
+
+test("qualifying supply-chain evidence fails before offline proof when online reacquisition fails", async () => {
+  const { reacquireQualifyingInputs } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  const sourceRoot = resolve(cellRoot, "../..");
+  const reviewedTree = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: sourceRoot,
+    encoding: "ascii",
+  }).trim();
+  let attempts = 0;
+
+  await assert.rejects(
+    reacquireQualifyingInputs(
+      {
+        reviewedTree,
+        reviewedExport: {
+          manifest_path: resolve(sourceRoot, "reviewed-export-manifest.json"),
+          manifest_sha256: "a".repeat(64),
+          manifest_size: 1,
+          reviewed_tree: reviewedTree,
+          entry_count: 1,
+          entries_sha256: "b".repeat(64),
+        },
+      },
+      async () => {
+        attempts += 1;
+        throw new Error("simulated online provenance outage");
+      },
+    ),
+    /simulated online provenance outage/,
+  );
+  assert.equal(attempts, 1);
+  const source = await readCell("scripts/verify-image-lock.mjs");
+  assert.match(source, /collectQualifyingSupplyChainEvidence[\s\S]*await reacquireQualifyingInputs/);
 });
