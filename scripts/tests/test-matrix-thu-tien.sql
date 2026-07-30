@@ -394,6 +394,98 @@ K1 ✗✗ đã ghi sổ '||v_n||' dòng'; END IF;
 K1 ✓ kỳ cũ bị chặn ngay khi sinh: '||left(SQLERRM,50);
   END;
 
+
+  -- ═══ NHÓM M — CHỐT ĐIỆN NƯỚC (ĐỢT −1) ═════════════
+  DECLARE v_bmeter uuid; v_meter uuid; v_meter_khac uuid;
+  BEGIN
+    PERFORM set_config('request.jwt.claim.sub', v_chu::text, true);
+    SELECT u.building_id, u.id INTO v_bmeter, v_meter
+      FROM building_utility_accounts u JOIN buildings b ON b.id=u.building_id
+     WHERE b.organization_id=v_demo AND b.deleted_at IS NULL
+       AND u.utility_type='ELECTRIC' AND u.deleted_at IS NULL LIMIT 1;
+    SELECT u.id INTO v_meter_khac FROM building_utility_accounts u
+      JOIN buildings b ON b.id=u.building_id
+     WHERE b.organization_id<>v_demo AND u.utility_type='ELECTRIC'
+       AND u.deleted_at IS NULL LIMIT 1;
+    IF v_meter IS NULL THEN RAISE EXCEPTION 'THIẾU FIXTURE: DEMO không có công tơ điện'; END IF;
+
+    -- M0 ĐỐI CHỨNG DƯƠNG: chỉ đích danh công tơ thì đóng được
+    BEGIN
+      PERFORM public.pay_utility_bill(
+        p_building_id:=v_bmeter, p_utility_type:='ELECTRIC', p_amount:=250000,
+        p_period_month:='2029-01', p_voucher_date:=public.org_today_v1(v_demo),
+        p_provider_code:=NULL, p_account_holder:=NULL, p_account_id:=NULL,
+        p_attachments:=NULL, p_utility_account_id:=v_meter);
+      v_pass:=v_pass+1;
+      v_ket:=v_ket||E'\nM0 ✓ ĐÚNG (đối chứng dương): đóng tiền điện đúng công tơ được';
+    EXCEPTION WHEN OTHERS THEN v_fail:=v_fail+1;
+      v_ket:=v_ket||E'\nM0 ✗✗ ĐỐI CHỨNG DƯƠNG ĐỎ ⇒ M1 có thể XANH GIẢ: '||left(SQLERRM,52);
+    END;
+
+    -- M1: bấm lại cùng kỳ, cùng công tơ ⇒ không được trả hai lần
+    BEGIN
+      PERFORM public.pay_utility_bill(
+        p_building_id:=v_bmeter, p_utility_type:='ELECTRIC', p_amount:=250000,
+        p_period_month:='2029-01', p_voucher_date:=public.org_today_v1(v_demo),
+        p_provider_code:=NULL, p_account_holder:=NULL, p_account_id:=NULL,
+        p_attachments:=NULL, p_utility_account_id:=v_meter);
+      v_fail:=v_fail+1;
+      v_ket:=v_ket||E'\nM1 ✗✗ NGUY HIỂM: hai phiếu cho cùng một kỳ điện của cùng công tơ';
+    EXCEPTION WHEN OTHERS THEN
+      IF position('UTILITY_BILL_DUPLICATE' IN SQLERRM) > 0 THEN v_pass:=v_pass+1;
+      v_ket:=v_ket||E'\nM1 ✓ SAI-bị-chặn: kỳ này ĐÃ CÓ phiếu, không tạo phiếu thứ hai';
+      ELSE v_fail:=v_fail+1;
+      v_ket:=v_ket||E'\nM1 ✗ chặn nhưng SAI LÝ DO: '||left(SQLERRM,52);
+      END IF;
+    END;
+
+    -- M2: không chỉ đích danh công tơ ⇒ cấm. Trước ĐỢT −1 nhánh này TỰ ĐẺ
+    -- một công tơ mới trong im lặng, nên ô đó không bao giờ hiện "đã đóng".
+    BEGIN
+      PERFORM public.pay_utility_bill(
+        p_building_id:=v_bmeter, p_utility_type:='ELECTRIC', p_amount:=250000,
+        p_period_month:='2029-01', p_voucher_date:=public.org_today_v1(v_demo),
+        p_provider_code:=NULL, p_account_holder:=NULL, p_account_id:=NULL,
+        p_attachments:=NULL, p_utility_account_id:=NULL);
+      v_fail:=v_fail+1;
+      v_ket:=v_ket||E'\nM2 ✗✗ NGUY HIỂM: vẫn đóng được khi không chỉ công tơ (nguy cơ tự đẻ công tơ)';
+    EXCEPTION WHEN OTHERS THEN
+      IF position('UTILITY_METER_REQUIRED' IN SQLERRM) > 0 THEN v_pass:=v_pass+1;
+      v_ket:=v_ket||E'\nM2 ✓ SAI-bị-chặn: bắt chỉ đích danh công tơ, không tự đẻ nữa';
+      ELSE v_fail:=v_fail+1;
+      v_ket:=v_ket||E'\nM2 ✗ chặn nhưng SAI LÝ DO: '||left(SQLERRM,52);
+      END IF;
+    END;
+
+    -- M3: toà của TỔ CHỨC KHÁC
+    BEGIN
+      PERFORM public.pay_utility_bill(
+        p_building_id:=v_bthat, p_utility_type:='ELECTRIC', p_amount:=250000,
+        p_period_month:='2029-02', p_voucher_date:=public.org_today_v1(v_demo),
+        p_provider_code:=NULL, p_account_holder:=NULL, p_account_id:=NULL,
+        p_attachments:=NULL, p_utility_account_id:=v_meter);
+      v_fail:=v_fail+1;
+      v_ket:=v_ket||E'\nM3 ✗✗ NGUY HIỂM: đóng được tiền điện cho toà org THẬT';
+    EXCEPTION WHEN OTHERS THEN v_pass:=v_pass+1;
+      v_ket:=v_ket||E'\nM3 ✓ SAI-bị-chặn: không đóng điện xuyên tổ chức: '||left(SQLERRM,52);
+    END;
+
+    -- M4: MƯỢN công tơ của tổ chức khác gắn vào toà DEMO
+    IF v_meter_khac IS NOT NULL THEN
+    BEGIN
+      PERFORM public.pay_utility_bill(
+        p_building_id:=v_bmeter, p_utility_type:='ELECTRIC', p_amount:=250000,
+        p_period_month:='2029-03', p_voucher_date:=public.org_today_v1(v_demo),
+        p_provider_code:=NULL, p_account_holder:=NULL, p_account_id:=NULL,
+        p_attachments:=NULL, p_utility_account_id:=v_meter_khac);
+      v_fail:=v_fail+1;
+      v_ket:=v_ket||E'\nM4 ✗✗ NGUY HIỂM: gắn được công tơ của tổ chức khác vào toà DEMO';
+    EXCEPTION WHEN OTHERS THEN v_pass:=v_pass+1;
+      v_ket:=v_ket||E'\nM4 ✓ SAI-bị-chặn: không mượn được công tơ của toà/org khác: '||left(SQLERRM,52);
+    END;
+    END IF;
+  END;
+
   RAISE EXCEPTION 'MA TRẬN: % ĐẠT / % HỎNG%', v_pass, v_fail, v_ket;
 END
 $t$;
