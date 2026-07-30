@@ -264,6 +264,12 @@ describe("useRealtimeDataSync report invalidation", () => {
       "income_expense_items",
       "accounts",
       "cash_handovers",
+      // Đợt 1: hai bảng VÒNG ĐỜI. Trước đó chúng không có trong publication
+      // `supabase_realtime` (đo prod 30/07: publication có 21 bảng, thiếu đúng
+      // hai bảng này) lẫn trong SYNC_TABLES ⇒ mọi thay đổi thanh lý / chuyển
+      // phòng là im lặng hoàn toàn. Migration 20260731060000 thêm vào publication.
+      "contract_terminations",
+      "contract_transfers",
     ]);
     expect(new Set(registeredTables).size).toBe(registeredTables.length);
   });
