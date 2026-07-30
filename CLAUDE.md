@@ -22,6 +22,15 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 - **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
   GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
   chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.
+- **Sau MỌI migration TẠO/SỬA HÀM**: chạy `node scripts/check-stable-fn-locks.mjs`.
+  GOTCHA án lệ (đã cắn 5 lần): PostgREST chạy hàm `STABLE`/`IMMUTABLE` trong
+  transaction **READ ONLY**, nên bất kỳ `SELECT … FOR SHARE` nào trong thân hàm —
+  hoặc trong hàm nó gọi (`authorize_tenant_action_v3`, `lock_org_for_decision_v1`,
+  `_profit_assert_authorized_v2`…) — ném `25006`. Gọi bằng SQL thì **XANH**, gọi từ
+  trình duyệt thì **HỎNG**, nên loại này sống rất lâu mà không ai thấy
+  (`profit_close_state_v2` hỏng 10 ngày, kéo sập cả tab "Chốt LN tháng").
+  **Hàm nào lấy khoá dòng thì phải khai `VOLATILE`** — an toàn vì `supabase.rpc()`
+  mặc định POST; chỉ hàm cần gọi qua GET mới buộc non-volatile. Script exit 1 nếu hở.
 - **Đối chiếu tiền**: `node scripts/reconcile-money.mjs [YYYY-MM]` so SUM SQL thật
   vs tổng-1000-dòng-đầu — chạy ở mọi thay đổi đụng số tiền để bắt bug cap-1000.
 
