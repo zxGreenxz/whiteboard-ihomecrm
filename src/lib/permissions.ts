@@ -79,6 +79,11 @@ export type ActionKey =
   // Kênh chat (Zalo)
   | "send"
   | "manage_automation"
+  | "manage_connections"
+  | "manage_knowledge"
+  | "manage_handoff"
+  | "manage_operations"
+  | "audit"
   // Báo cáo BĐS (từng báo cáo)
   | "vacant_rooms"
   | "expiring"
@@ -159,6 +164,20 @@ export const PERMISSION_GROUPS: GroupDef[] = [
         label: "Chat Zalo",
         core: ["view"],
         extra: ["send", "manage_automation", "manage_templates"],
+      },
+      {
+        key: "openclaw_zalo",
+        label: "OpenClaw Zalo cá nhân",
+        core: ["view"],
+        extra: [
+          "send",
+          "manage_connections",
+          "manage_automation",
+          "manage_knowledge",
+          "manage_handoff",
+          "manage_operations",
+          "audit",
+        ],
       },
     ],
   },
@@ -331,6 +350,11 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   manage_templates: "Quản lý mẫu",
   send:           "Gửi tin",
   manage_automation: "Quản lý tự động hoá",
+  manage_connections: "Quản lý kết nối Zalo cá nhân",
+  manage_knowledge: "Quản lý tri thức OpenClaw",
+  manage_handoff: "Quản lý bàn giao hội thoại",
+  manage_operations: "Quản lý vận hành OpenClaw",
+  audit:          "Xem nhật ký kiểm toán OpenClaw",
   vacant_rooms:   "BC Phòng trống",
   expiring:       "BC HĐ sắp hết hạn",
   renewals_transfers: "BC Gia hạn & CN",
@@ -502,7 +526,7 @@ const MANAGE_ACTIONS = new Set<ActionKey>([
   "manage_tokens", "manage_settings", "manage_images", "edit_floor_plan", "manage_pass_listings",
   "convert", "refund", "renew", "transfer", "handover", "import", "share",
   "cancel", "collect", "undo", "report", "move", "maintain", "complete",
-  "send", "manage_automation", "manage_templates",
+  "send", "manage_automation", "manage_knowledge", "manage_handoff", "manage_templates",
   "vacant_rooms", "expiring", "renewals_transfers", "occupancy", "promotions",
   "new_leases", "terminations", "expense_ratio",
   "daily_cashbook", "cash_flow", "profit_distribution",
@@ -521,7 +545,11 @@ export function applyGlobalPreset(_perms: PermissionsMap, preset: Preset): Permi
       switch (preset) {
         case "none":   row[a] = false; break;
         case "view":   row[a] = !sensitiveModule && a === "view"; break;
-        case "manage": row[a] = !sensitiveModule && MANAGE_ACTIONS.has(a); break;
+        case "manage": {
+          const openClawElevated = m.key === "openclaw_zalo" && a === "manage_automation";
+          row[a] = !sensitiveModule && !openClawElevated && MANAGE_ACTIONS.has(a);
+          break;
+        }
         case "all":    row[a] = true; break;
       }
     }

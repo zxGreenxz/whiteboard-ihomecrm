@@ -137,6 +137,22 @@ export const PAGE_GROUPS: PageGroup[] = [
           f("chat_zalo", "manage_templates", "Quản lý mẫu tin / ZNS", "manage"),
         ],
       },
+      {
+        key: "openclaw_zalo",
+        label: "OpenClaw Zalo cá nhân",
+        route: "/openclaw-zalo",
+        desc: "Kết nối Zalo cá nhân, inbox, AI draft, tự động hoá và nhóm sale theo tổ chức.",
+        features: [
+          f("openclaw_zalo", "view", "Vào trang OpenClaw Zalo", "view"),
+          f("openclaw_zalo", "send", "Gửi tin thủ công", "manage"),
+          f("openclaw_zalo", "manage_connections", "Kết nối, ngắt kết nối và đăng nhập QR", "elevated"),
+          f("openclaw_zalo", "manage_automation", "Xuất bản tự động hoá và lịch gửi", "elevated"),
+          f("openclaw_zalo", "manage_knowledge", "Quản lý tri thức và bản nháp AI", "manage"),
+          f("openclaw_zalo", "manage_handoff", "Tiếp quản và bàn giao hội thoại", "manage"),
+          f("openclaw_zalo", "manage_operations", "GLOBAL_STOP, UNKNOWN và vận hành", "elevated"),
+          f("openclaw_zalo", "audit", "Xem nhật ký và bằng chứng vận hành", "elevated"),
+        ],
+      },
     ],
   },
   {

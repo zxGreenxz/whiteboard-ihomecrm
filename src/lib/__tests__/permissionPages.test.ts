@@ -19,8 +19,54 @@ import {
   actionsForModule,
   applyGlobalPreset,
   buildEmptyPermissions,
+  canFeature,
   type PermissionsMap,
 } from "@/lib/permissions";
+
+describe("OpenClaw Zalo permission catalog", () => {
+  it("registers the exact eight deny-by-default actions", () => {
+    expect(actionsForModule("openclaw_zalo")).toEqual([
+      "view",
+      "send",
+      "manage_connections",
+      "manage_automation",
+      "manage_knowledge",
+      "manage_handoff",
+      "manage_operations",
+      "audit",
+    ]);
+    expect(canFeature({}, "openclaw_zalo", "send")).toBe(false);
+  });
+
+  it("maps /openclaw-zalo to the approved permission tiers", () => {
+    const page = ALL_PAGES.find((candidate) => candidate.route === "/openclaw-zalo");
+    expect(page?.key).toBe("openclaw_zalo");
+    expect(page?.features.map(({ action, tier }) => [action, tier])).toEqual([
+      ["view", "view"],
+      ["send", "manage"],
+      ["manage_connections", "elevated"],
+      ["manage_automation", "elevated"],
+      ["manage_knowledge", "manage"],
+      ["manage_handoff", "manage"],
+      ["manage_operations", "elevated"],
+      ["audit", "elevated"],
+    ]);
+  });
+
+  it("does not grant OpenClaw elevated actions through the manage preset", () => {
+    const permissions = applyGlobalPreset(buildEmptyPermissions(), "manage");
+    expect(permissions.openclaw_zalo).toEqual({
+      view: true,
+      send: true,
+      manage_connections: false,
+      manage_automation: false,
+      manage_knowledge: true,
+      manage_handoff: true,
+      manage_operations: false,
+      audit: false,
+    });
+  });
+});
 
 describe("collection_cycle là quyền RIÊNG, phải cấp tường minh", () => {
   // Trước cutover V3, người có invoices.record_payment tự động xem được báo cáo
