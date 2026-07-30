@@ -816,6 +816,50 @@ export interface ResetProfitPeriodInput {
   reason: string;
 }
 
+export interface UnlockProfitMonthInput {
+  periodMonth: string;
+  buildingIds: string[];
+}
+
+/**
+ * MỞ KHOÁ tháng đã chốt lợi nhuận — nhẹ hơn "Đặt lại tháng".
+ *
+ * Khác nhau ở chỗ nào:
+ *   - Đặt lại tháng (profit_reset_checked_v2): XOÁ snapshot, huỷ cả phân bổ
+ *     cổ đông đã tính. Dùng khi muốn làm lại từ đầu.
+ *   - Mở khoá (unlock_profit_month_v1): chỉ gỡ `locked_at` để sửa/ghi phiếu
+ *     của tháng đó, snapshot giữ nguyên. Dùng khi chỉ cần chỉnh vài phiếu rồi
+ *     chốt lại.
+ *
+ * RPC đã tồn tại từ trước và tự gác bằng quyền `shareholder_profit.unlock`
+ * (thực tế chỉ chủ tổ chức mỗi org có), nhưng tới 30/07/2026 mới được GRANT cho
+ * `authenticated` — trước đó có cơ chế khoá mà không có cơ chế mở.
+ */
+export const useUnlockProfitMonth = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: UnlockProfitMonthInput) => {
+      if (input.buildingIds.length === 0) throw new Error("Không có toà nào đang khoá để mở");
+      const { data, error } = await (supabase.rpc as any)("unlock_profit_month_v1", {
+        p_period_month: input.periodMonth,
+        p_building_ids: input.buildingIds,
+      });
+      if (error) throw error;
+      return data as number;
+    },
+    onSuccess: (count) => {
+      invalidateProfitCloseQueries(qc);
+      qc.invalidateQueries({ queryKey: ["income-expenses"] });
+      toast.success(
+        `Đã mở khoá ${count ?? 0} toà — giờ sửa/ghi phiếu của tháng này được. Nhớ chốt lại sau khi sửa xong.`,
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || "Không thể mở khoá tháng");
+    },
+  });
+};
+
 export const useResetProfitPeriod = () => {
   const qc = useQueryClient();
   return useMutation({

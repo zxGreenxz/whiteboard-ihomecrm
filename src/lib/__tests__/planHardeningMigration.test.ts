@@ -323,3 +323,60 @@ describe("Hoàn tác chỉ người đã thu + gác nút huỷ cả đợt", () 
     expect(w6).toContain("COMPAT_BATCH_CANCEL");
   });
 });
+
+const w7 = readMigration("20260730260000_profit_lock_cover_out_of_pnl.sql");
+const w8 = readMigration("20260730270000_annotate_evidence_protection.sql");
+
+describe("Khoá kỳ phủ luôn phiếu ngoài KQKD do người dùng tạo", () => {
+  it("ranh giới là NGƯỜI TẠO, không phải loại phiếu", () => {
+    // Khoá tuốt sẽ chặn luôn hai chân bàn giao tiền mặt (20 phiếu
+    // handover.transfer đều ngoài KQKD) — tiền trao tay ngoài đời mà sổ không
+    // ghi được. Ranh giới đúng: ngoài KQKD + không có system_source.
+    expect(w7).toMatch(/business_result_accounting, true\) OR OLD\.system_source IS NULL/);
+    expect(w7).toMatch(/business_result_accounting, true\) OR NEW\.system_source IS NULL/);
+    expect(w7).toMatch(/handover\.transfer/);
+  });
+
+  it("giữ nguyên cửa chủ + ngoại lệ cron + cửa ANNOTATE", () => {
+    expect(w7).toMatch(/is_super_admin\(\) OR app_private\.is_org_owner_v1/);
+    expect(w7).toMatch(/IF v_actor IS NULL THEN/);
+    expect(w7).toContain("'ANNOTATE'");
+  });
+
+  it("hạng mục dùng cùng ranh giới", () => {
+    expect(w7).toMatch(/business_result_accounting, true\) OR ie\.system_source IS NULL/);
+  });
+});
+
+describe("Bảo vệ bằng chứng trên phiếu đã ghi sổ", () => {
+  it("gỡ ảnh phiếu ĐÃ GHI SỔ chỉ dành cho chủ tổ chức", () => {
+    expect(w8).toContain("TIỀN ĐÃ RỜI KÉT");
+    expect(w8).toMatch(/posting_status, ''UNPOSTED''\) <> ''POSTED''/);
+    expect(w8).toContain("is_org_owner_v1");
+  });
+
+  it("ghi chú trên phiếu đã ghi sổ bị ép sang NỐI THÊM", () => {
+    expect(w8).toContain("p_note_mode := ''APPEND''");
+  });
+
+  it("KHÔNG chặn việc THÊM ảnh/ghi chú — quyết định #8 còn nguyên", () => {
+    expect(w8).toMatch(/Quyết định #8 của chủ KHÔNG bị đụng/);
+  });
+
+  it("guard ANNOTATE mới phủ MỌI phiếu, không chỉ 175 phiếu flow-owned", () => {
+    // Nhánh cũ nằm sau early-return "không flow-owned" của guard đóng băng.
+    expect(w8).toContain("a01_ie_annotate_scope_delta");
+    expect(w8).toContain("ie_annotate_scope_delta_guard");
+    // Phải là SECURITY INVOKER (không khai DEFINER) và không đụng 4 hàm cấm.
+    expect(w8).not.toMatch(/CREATE OR REPLACE FUNCTION app_private\.guard_income_expense_owned_payload/);
+  });
+
+  it("trần 5000 ký tự tính trên chuỗi KẾT QUẢ", () => {
+    expect(w8).toContain("vượt 5000 ký tự");
+  });
+
+  it("ghi rõ p_idempotency_key là tham số chết thay vì im lặng", () => {
+    expect(w8).toMatch(/COMMENT ON FUNCTION public\.annotate_income_expense_v1/);
+    expect(w8).toMatch(/tham số chết/);
+  });
+});

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Lock, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
+import { AlertCircle, Lock, LockOpen, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -37,6 +37,7 @@ import {
   useProfitClosePreview,
   useProfitCloseState,
   useResetProfitPeriod,
+  useUnlockProfitMonth,
   type ProfitCloseOrganizationScope,
   type ProfitClosePreviewRow,
 } from "@/hooks/useShareholderProfit";
@@ -287,6 +288,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const displayedHash = canLock ? preview?.source_hash : state?.state_hash;
   const closeMutation = useCloseProfitPeriod();
   const resetMutation = useResetProfitPeriod();
+  const unlockMutation = useUnlockProfitMonth();
 
   useEffect(() => {
     if (!preview) return;
@@ -669,6 +671,33 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
               {recloseMode
                 ? "Xác nhận chốt lại"
                 : `Chốt tháng ${periodToLabel(period)}`}
+            </Button>
+          )}
+
+          {/* MỞ KHOÁ — nhẹ hơn "Đặt lại tháng": chỉ gỡ locked_at để sửa/ghi
+              phiếu của tháng đó, snapshot giữ nguyên. Từ 30/07/2026 phiếu của
+              tháng đã chốt bị TRIGGER chặn, nên không có nút này thì chủ phải
+              nhờ kỹ thuật chạy SQL mỗi lần cần sửa một phiếu. */}
+          {hasSnapshots && canUnlock && (
+            <Button
+              className="ph-control"
+              onClick={() => {
+                const locked = (state?.rows ?? [])
+                  .filter((r) => r.locked_at)
+                  .map((r) => r.building_id);
+                if (locked.length === 0) return;
+                unlockMutation.mutate({ periodMonth: period, buildingIds: locked });
+              }}
+              disabled={
+                unlockMutation.isPending ||
+                resetMutation.isPending ||
+                closeMutation.isPending ||
+                (state?.rows ?? []).every((r) => !r.locked_at)
+              }
+              title="Gỡ khoá để sửa phiếu của tháng này, snapshot giữ nguyên. Nhớ chốt lại sau khi sửa xong."
+            >
+              <LockOpen className="mr-1.5 h-3.5 w-3.5" />
+              Mở khoá tháng
             </Button>
           )}
 
