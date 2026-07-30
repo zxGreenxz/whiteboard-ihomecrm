@@ -42,6 +42,16 @@ const GIT_LINUX_SHA256 =
 const NODE_LINUX_SHA256 =
   "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c";
 const NODE_LINUX_SIZE = 122889056;
+const EXPECTED_OCI_ENV = Object.freeze([
+  "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  "NODE_VERSION=24.16.0",
+  "YARN_VERSION=1.22.22",
+  "COREPACK_HOME=/usr/local/share/corepack",
+  "PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright",
+  "NODE_ENV=production",
+]);
+const EXPECTED_OCI_ENTRYPOINT = Object.freeze(["tini", "-s", "--"]);
+const EXPECTED_OCI_CMD = Object.freeze(["node", "openclaw.mjs", "gateway"]);
 const SESSION_DIST = [
   "session-crypto/dist/crypto.js",
   "session-crypto/dist/daemon.js",
@@ -108,6 +118,41 @@ const BASE_AMD64_DIFF_IDS = [
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function equalStringArrays(actual, expected) {
+  return Array.isArray(actual) && actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index]);
+}
+
+export function verifyOciRuntimeConfig(imageConfig) {
+  if (imageConfig?.architecture !== "amd64" || imageConfig?.os !== "linux") {
+    throw new Error("OCI runtime platform must be exactly linux/amd64");
+  }
+  const runtime = imageConfig?.config;
+  if (!runtime || runtime.User !== "node") {
+    throw new Error("OCI runtime user must be exactly node");
+  }
+  if (!equalStringArrays(runtime.Entrypoint, EXPECTED_OCI_ENTRYPOINT)) {
+    throw new Error("OCI runtime entrypoint does not match the pinned OpenClaw startup");
+  }
+  if (!equalStringArrays(runtime.Cmd, EXPECTED_OCI_CMD)) {
+    throw new Error("OCI runtime command does not match the pinned OpenClaw gateway command");
+  }
+  if (!equalStringArrays(runtime.Env, EXPECTED_OCI_ENV)) {
+    throw new Error("OCI runtime environment does not match the pinned OpenClaw environment");
+  }
+  if (runtime.WorkingDir !== "/app") {
+    throw new Error("OCI runtime working directory must be exactly /app");
+  }
+  return {
+    platform: { architecture: "amd64", os: "linux" },
+    user: "node",
+    entrypoint: [...EXPECTED_OCI_ENTRYPOINT],
+    cmd: [...EXPECTED_OCI_CMD],
+    env: [...EXPECTED_OCI_ENV],
+    working_dir: "/app",
+  };
 }
 
 async function readRegularFileHandleBound(path, label) {
@@ -2630,6 +2675,8 @@ export function parseRuntimeLayerTar(bytes) {
     collisionKeys.add(collisionKey);
     const size = parseTarNumber(header.subarray(124, 136), "size");
     const modeValue = parseTarNumber(header.subarray(100, 108), "mode") & 0o7777;
+    const uid = parseTarNumber(header.subarray(108, 116), "uid");
+    const gid = parseTarNumber(header.subarray(116, 124), "gid");
     const mtime = parseTarNumber(header.subarray(136, 148), "mtime");
     if (typeCode === "5" && size !== 0) {
       throw new Error(`runtime layer directory has content: ${path}`);
@@ -2642,6 +2689,8 @@ export function parseRuntimeLayerTar(bytes) {
       path,
       type: typeCode === "5" ? "directory" : "file",
       mode: modeValue.toString(8).padStart(4, "0"),
+      uid,
+      gid,
       size,
       sha256: sha256(body),
       mtime,
@@ -2707,18 +2756,39 @@ async function inspectOciArchive(path) {
     const layout = JSON.parse(layoutEntry.bytes.toString("utf8"));
     if (layout.imageLayoutVersion !== "1.0.0") throw new Error("unsupported OCI layout version");
     const index = JSON.parse(indexEntry.bytes.toString("utf8"));
-    if (!Array.isArray(index.manifests) || index.manifests.length !== 1) {
+    if (
+      index.schemaVersion !== 2 ||
+      index.mediaType !== "application/vnd.oci.image.index.v1+json" ||
+      !Array.isArray(index.manifests) || index.manifests.length !== 1
+    ) {
       throw new Error("OCI index must contain exactly one manifest");
     }
     const manifestDescriptor = index.manifests[0];
+    if (
+      manifestDescriptor?.mediaType !== "application/vnd.oci.image.manifest.v1+json" ||
+      manifestDescriptor?.platform?.architecture !== "amd64" ||
+      manifestDescriptor?.platform?.os !== "linux"
+    ) {
+      throw new Error("OCI index manifest platform must be exactly linux/amd64");
+    }
     const manifestHex = String(manifestDescriptor.digest ?? "").replace(/^sha256:/, "");
     if (!HEX_64.test(manifestHex)) throw new Error("invalid OCI manifest digest");
     const manifestEntry = entries.get(`blobs/sha256/${manifestHex}`);
-    if (!manifestEntry || manifestEntry.sha256 !== manifestHex) {
+    if (
+      !manifestEntry || manifestEntry.sha256 !== manifestHex ||
+      manifestEntry.size !== manifestDescriptor.size
+    ) {
       throw new Error("OCI manifest blob mismatch");
     }
     const manifestBytes = (await hashRegion(handle, manifestEntry.offset, manifestEntry.size, true)).bytes;
     const manifest = parseJsonStrict(manifestBytes, "OCI manifest");
+    if (
+      manifest.schemaVersion !== 2 ||
+      manifest.mediaType !== "application/vnd.oci.image.manifest.v1+json" ||
+      manifest.config?.mediaType !== "application/vnd.oci.image.config.v1+json"
+    ) {
+      throw new Error("OCI manifest or config media type is invalid");
+    }
     const descriptors = [manifest.config, ...(manifest.layers ?? [])];
     for (const descriptor of descriptors) {
       const digest = String(descriptor?.digest ?? "").replace(/^sha256:/, "");
@@ -2765,6 +2835,7 @@ async function inspectOciArchive(path) {
 
 async function readOciRuntimeDelta({ archivePath, expectedDeltaLayerCount }) {
   const inspected = await inspectOciArchive(archivePath);
+  const runtimeConfig = verifyOciRuntimeConfig(inspected.config);
   const layerDigests = inspected.manifest.layers.map(({ digest }) => digest);
   if (
     layerDigests.length !== BASE_AMD64_LAYER_DIGESTS.length + expectedDeltaLayerCount ||
@@ -2821,15 +2892,15 @@ async function readOciRuntimeDelta({ archivePath, expectedDeltaLayerCount }) {
         diff_id: diffId,
         record_count: records.length,
         records_sha256: sha256(Buffer.from(records.map(
-          ({ path, type, mode, size, sha256: digestValue, mtime }) =>
-            `${path}\0${type}\0${mode}\0${size}\0${digestValue}\0${mtime}\0`,
+          ({ path, type, mode, uid, gid, size, sha256: digestValue, mtime }) =>
+            `${path}\0${type}\0${mode}\0${uid}\0${gid}\0${size}\0${digestValue}\0${mtime}\0`,
         ).join(""), "utf8")),
       });
     }
   } finally {
     await handle.close();
   }
-  return { inspected, records: [...finalRecords.values()], layerEvidence };
+  return { inspected, runtimeConfig, records: [...finalRecords.values()], layerEvidence };
 }
 
 export function expectedStockRuntimeRecords({ tarballEntries, sourceDateEpoch }) {
@@ -2847,6 +2918,8 @@ export function expectedStockRuntimeRecords({ tarballEntries, sourceDateEpoch })
         path,
         type: "directory",
         mode: "0755",
+        uid: 1000,
+        gid: 1000,
         size: 0,
         sha256: sha256(Buffer.alloc(0)),
         mtime: epoch,
@@ -2867,6 +2940,8 @@ export function expectedStockRuntimeRecords({ tarballEntries, sourceDateEpoch })
     path: projectManifestPath,
     type: "file",
     mode: "0644",
+    uid: 1000,
+    gid: 1000,
     size: projectManifest.length,
     sha256: sha256(projectManifest),
     mtime: epoch,
@@ -2884,6 +2959,8 @@ export function expectedStockRuntimeRecords({ tarballEntries, sourceDateEpoch })
       path,
       type: "file",
       mode: "0644",
+      uid: 1000,
+      gid: 1000,
       size: entry.bytes.length,
       sha256: sha256(entry.bytes),
       mtime: epoch,
@@ -2914,13 +2991,15 @@ export async function verifyStockOciRuntimeImage({
     const found = actual[index];
     if (
       found?.path !== wanted.path || found.type !== wanted.type || found.mode !== wanted.mode ||
-      found.size !== wanted.size || found.sha256 !== wanted.sha256 || found.mtime !== wanted.mtime
+      found.uid !== wanted.uid || found.gid !== wanted.gid || found.size !== wanted.size ||
+      found.sha256 !== wanted.sha256 || found.mtime !== wanted.mtime
     ) {
       throw new Error(`stock runtime rootfs mismatch: ${wanted.path}`);
     }
   }
   const result = {
     ...delta.inspected,
+    runtime_config: delta.runtimeConfig,
     upstream_tgz_sha256: sha256(tarballBytes),
     rootfs: {
       architecture: "amd64",
@@ -2929,8 +3008,8 @@ export async function verifyStockOciRuntimeImage({
       delta_layer_count: 1,
       records: actual,
       records_sha256: sha256(Buffer.from(actual.map(
-        ({ path, type, mode, size, sha256: digest, mtime }) =>
-          `${path}\0${type}\0${mode}\0${size}\0${digest}\0${mtime}\0`,
+        ({ path, type, mode, uid, gid, size, sha256: digest, mtime }) =>
+          `${path}\0${type}\0${mode}\0${uid}\0${gid}\0${size}\0${digest}\0${mtime}\0`,
       ).join(""), "utf8")),
       layers: delta.layerEvidence,
     },
@@ -2949,6 +3028,7 @@ export async function verifyOciRuntimeImage({ archivePath, fork, lock }) {
     throw new Error("FORK installed tree is missing");
   }
   const inspected = await inspectOciArchive(archivePath);
+  const runtimeConfig = verifyOciRuntimeConfig(inspected.config);
   const layerDigests = inspected.manifest.layers.map(({ digest }) => digest);
   if (
     layerDigests.length <= BASE_AMD64_LAYER_DIGESTS.length ||
@@ -3021,8 +3101,8 @@ export async function verifyOciRuntimeImage({ archivePath, fork, lock }) {
           Buffer.from(
             records
               .map(
-                ({ path, type, mode, size, sha256: digestValue, mtime }) =>
-                  `${path}\0${type}\0${mode}\0${size}\0${digestValue}\0${mtime}\0`,
+                ({ path, type, mode, uid, gid, size, sha256: digestValue, mtime }) =>
+                  `${path}\0${type}\0${mode}\0${uid}\0${gid}\0${size}\0${digestValue}\0${mtime}\0`,
               )
               .join(""),
             "utf8",
@@ -3040,6 +3120,7 @@ export async function verifyOciRuntimeImage({ archivePath, fork, lock }) {
   });
   const result = {
     ...inspected,
+    runtime_config: runtimeConfig,
     rootfs: {
       architecture: inspected.config.architecture,
       os: inspected.config.os,
@@ -3070,7 +3151,7 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
   const configPath = "opt/openclaw-cell/openclaw.json.tmpl";
   const expected = new Map();
   for (const entry of fork.installedTree.entries) {
-    expected.set(`${forkRoot}/${entry.path}`, { ...entry, mtime: epoch });
+    expected.set(`${forkRoot}/${entry.path}`, { ...entry, uid: 1000, gid: 1000, mtime: epoch });
   }
   const sessionInputs = lock.inputs.filter(({ path }) => SESSION_DIST.includes(path));
   if (sessionInputs.length !== SESSION_DIST.length) {
@@ -3081,6 +3162,8 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
       path: input.path,
       type: "file",
       mode: input.mode === "100755" ? "0755" : "0644",
+      uid: 1000,
+      gid: 1000,
       size: input.size,
       sha256: input.sha256,
       mtime: epoch,
@@ -3092,22 +3175,40 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
     path: configInput.path,
     type: "file",
     mode: configInput.mode === "100755" ? "0755" : "0644",
+    uid: 1000,
+    gid: 1000,
     size: configInput.size,
     sha256: configInput.sha256,
     mtime: epoch,
   });
 
-  const allowedAncestors = new Set([
-    "home",
-    "home/node",
-    "home/node/.openclaw",
+  const emptySha256 = sha256(Buffer.alloc(0));
+  const requiredAncestors = [
     "home/node/.openclaw/npm",
     "home/node/.openclaw/npm/projects",
     forkRoot,
-    "opt",
     "opt/openclaw-cell",
     "opt/openclaw-cell/session-crypto",
     sessionRoot,
+  ];
+  for (const path of requiredAncestors) {
+    expected.set(path, {
+      path,
+      type: "directory",
+      mode: "0755",
+      uid: 1000,
+      gid: 1000,
+      size: 0,
+      sha256: emptySha256,
+      mtime: epoch,
+      ancestor: true,
+    });
+  }
+  const pinnedBaseAncestors = new Map([
+    ["home", { mode: "0755", uid: 0, gid: 0 }],
+    ["home/node", { mode: "0755", uid: 1000, gid: 1000 }],
+    ["home/node/.openclaw", { mode: "0700", uid: 1000, gid: 1000 }],
+    ["opt", { mode: "0755", uid: 0, gid: 0 }],
   ]);
   const actual = new Map();
   const collisionKeys = new Set();
@@ -3118,12 +3219,17 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
       throw new Error(`duplicate or shadow runtime delta path: ${record.path}`);
     }
     collisionKeys.add(collisionKey);
-    if (!expected.has(record.path) && !allowedAncestors.has(record.path)) {
+    if (!expected.has(record.path) && !pinnedBaseAncestors.has(record.path)) {
       throw new Error(`unexpected runtime delta path: ${record.path}`);
     }
-    if (allowedAncestors.has(record.path) && !expected.has(record.path)) {
-      if (record.type !== "directory") {
-        throw new Error(`runtime delta ancestor is not a directory: ${record.path}`);
+    if (pinnedBaseAncestors.has(record.path)) {
+      const pinned = pinnedBaseAncestors.get(record.path);
+      if (
+        record.type !== "directory" || record.mode !== pinned.mode ||
+        record.uid !== pinned.uid || record.gid !== pinned.gid ||
+        record.size !== 0 || record.sha256 !== emptySha256 || record.mtime !== epoch
+      ) {
+        throw new Error(`pinned base ancestor rootfs mismatch: ${record.path}`);
       }
     }
     actual.set(record.path, record);
@@ -3140,11 +3246,13 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
       !found ||
       found.type !== wanted.type ||
       found.mode !== wanted.mode ||
+      found.uid !== wanted.uid ||
+      found.gid !== wanted.gid ||
       found.size !== wanted.size ||
       found.sha256 !== wanted.sha256 ||
       found.mtime !== epoch
     ) {
-      throw new Error(`${label} rootfs mismatch: ${path}`);
+      throw new Error(`${wanted.ancestor ? "runtime ancestor" : label} rootfs mismatch: ${path}`);
     }
   }
   const exactRecords = [...actual.values()].sort((left, right) => compareUtf8(left.path, right.path));
@@ -3161,8 +3269,8 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
       Buffer.from(
         exactRecords
           .map(
-            ({ path, type, mode, size, sha256: digest, mtime }) =>
-              `${path}\0${type}\0${mode}\0${size}\0${digest}\0${mtime}\0`,
+            ({ path, type, mode, uid, gid, size, sha256: digest, mtime }) =>
+              `${path}\0${type}\0${mode}\0${uid}\0${gid}\0${size}\0${digest}\0${mtime}\0`,
           )
           .join(""),
         "utf8",

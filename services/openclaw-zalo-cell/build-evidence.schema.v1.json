@@ -175,6 +175,7 @@
         "blob_manifest_sha256",
         "archive_entry_count",
         "archive_entries",
+        "runtime_config",
         "rootfs"
       ],
       "properties": {
@@ -210,6 +211,7 @@
           "minItems": 1,
           "items": { "$ref": "#/$defs/ociArchiveEntry" }
         },
+        "runtime_config": { "$ref": "#/$defs/ociRuntimeConfig" },
         "rootfs": { "$ref": "#/$defs/rootfsEvidence" }
       }
     },
@@ -385,14 +387,47 @@
     "runtimeRootfsRecord": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "type", "mode", "size", "sha256", "mtime"],
+      "required": ["path", "type", "mode", "uid", "gid", "size", "sha256", "mtime"],
       "properties": {
         "path": { "type": "string", "pattern": "^.+$" },
         "type": { "type": "string", "enum": ["file", "directory"] },
         "mode": { "type": "string", "pattern": "^0[67][0-7]{2}$" },
+        "uid": { "type": "integer", "enum": [0, 1000] },
+        "gid": { "type": "integer", "enum": [0, 1000] },
         "size": { "type": "integer" },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "mtime": { "type": "integer", "const": 1785062400 }
+      }
+    },
+    "ociRuntimeConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "user", "entrypoint", "cmd", "env", "working_dir"],
+      "properties": {
+        "platform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["architecture", "os"],
+          "properties": {
+            "architecture": { "type": "string", "const": "amd64" },
+            "os": { "type": "string", "const": "linux" }
+          }
+        },
+        "user": { "type": "string", "const": "node" },
+        "entrypoint": { "type": "array", "const": ["tini", "-s", "--"] },
+        "cmd": { "type": "array", "const": ["node", "openclaw.mjs", "gateway"] },
+        "env": {
+          "type": "array",
+          "const": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "NODE_VERSION=24.16.0",
+            "YARN_VERSION=1.22.22",
+            "COREPACK_HOME=/usr/local/share/corepack",
+            "PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright",
+            "NODE_ENV=production"
+          ]
+        },
+        "working_dir": { "type": "string", "const": "/app" }
       }
     },
     "rootfsLayerEvidence": {

@@ -93,8 +93,8 @@ function tarBytes(entries) {
     const header = Buffer.alloc(512);
     writeString(header, 0, 100, entry.path);
     writeOctal(header, 100, 8, entry.mode ?? 0o644);
-    writeOctal(header, 108, 8, 0);
-    writeOctal(header, 116, 8, 0);
+    writeOctal(header, 108, 8, entry.uid ?? 0);
+    writeOctal(header, 116, 8, entry.gid ?? 0);
     writeOctal(header, 124, 12, body.length);
     writeOctal(header, 136, 12, entry.mtime ?? 0);
     header.fill(0x20, 148, 156);
@@ -1940,7 +1940,7 @@ test("verifier rejects an OCI that omits the pinned base, fork, and session file
 
   await assert.rejects(
     () => verifyOciRuntimeImage({ archivePath, fork, lock }),
-    /pinned base|base layer|installed fork|session/i,
+    /pinned base|base layer|installed fork|session|runtime user|runtime config/i,
   );
 });
 
@@ -2505,8 +2505,29 @@ test("runtime delta requires the exact installed fork, session closure, and conf
   const records = fork.installedTree.entries.map((entry) => ({
     ...entry,
     path: `${forkRoot}/${entry.path}`,
+    uid: 1000,
+    gid: 1000,
     mtime: epoch,
   }));
+  for (const path of [
+    "home/node/.openclaw/npm",
+    "home/node/.openclaw/npm/projects",
+    forkRoot,
+    "opt/openclaw-cell",
+    "opt/openclaw-cell/session-crypto",
+    "opt/openclaw-cell/session-crypto/dist",
+  ]) {
+    records.push({
+      path,
+      type: "directory",
+      mode: "0755",
+      uid: 1000,
+      gid: 1000,
+      size: 0,
+      sha256: sha256(Buffer.alloc(0)),
+      mtime: epoch,
+    });
+  }
   for (const input of lock.inputs.filter(({ path }) =>
     SESSION_DIST.includes(path),
   )) {
@@ -2515,6 +2536,8 @@ test("runtime delta requires the exact installed fork, session closure, and conf
       path: `opt/openclaw-cell/${input.path}`,
       type: "file",
       mode: input.mode === "100755" ? "0755" : "0644",
+      uid: 1000,
+      gid: 1000,
       mtime: epoch,
     });
   }
@@ -2526,6 +2549,8 @@ test("runtime delta requires the exact installed fork, session closure, and conf
     path: "opt/openclaw-cell/openclaw.json.tmpl",
     type: "file",
     mode: config.mode === "100755" ? "0755" : "0644",
+    uid: 1000,
+    gid: 1000,
     mtime: epoch,
   });
 
@@ -2576,6 +2601,68 @@ test("runtime delta requires the exact installed fork, session closure, and conf
       }),
     /installed fork.*mismatch/i,
   );
+  assert.throws(
+    () =>
+      verifyRuntimeDeltaRecords({
+        fork,
+        lock,
+        records: records.map((entry) =>
+          entry.path.endsWith("session-crypto/dist/crypto.js")
+            ? { ...entry, uid: 0, gid: 0 }
+            : entry,
+        ),
+      }),
+    /ownership|uid|gid|rootfs mismatch/i,
+  );
+  assert.throws(
+    () =>
+      verifyRuntimeDeltaRecords({
+        fork,
+        lock,
+        records: records.filter((entry) => entry.path !== "opt/openclaw-cell/session-crypto"),
+      }),
+    /ancestor.*mismatch|missing.*ancestor/i,
+  );
+});
+
+test("OCI runtime config is exact and cannot fall back to root or a different startup command", async () => {
+  const { verifyOciRuntimeConfig } = await loadScript("scripts/verify-image-lock.mjs");
+  const expected = {
+    architecture: "amd64",
+    os: "linux",
+    config: {
+      User: "node",
+      Entrypoint: ["tini", "-s", "--"],
+      Cmd: ["node", "openclaw.mjs", "gateway"],
+      Env: [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "NODE_VERSION=24.16.0",
+        "YARN_VERSION=1.22.22",
+        "COREPACK_HOME=/usr/local/share/corepack",
+        "PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright",
+        "NODE_ENV=production",
+      ],
+      WorkingDir: "/app",
+    },
+  };
+  assert.deepEqual(verifyOciRuntimeConfig(expected), {
+    platform: { architecture: "amd64", os: "linux" },
+    user: "node",
+    entrypoint: ["tini", "-s", "--"],
+    cmd: ["node", "openclaw.mjs", "gateway"],
+    env: expected.config.Env,
+    working_dir: "/app",
+  });
+  for (const mutated of [
+    { ...expected, config: { ...expected.config, User: "" } },
+    { ...expected, config: { ...expected.config, Entrypoint: ["/bin/sh"] } },
+    { ...expected, config: { ...expected.config, Cmd: ["sleep", "infinity"] } },
+    { ...expected, config: { ...expected.config, Env: [...expected.config.Env, "NODE_OPTIONS=--import=/tmp/x.mjs"] } },
+    { ...expected, config: { ...expected.config, WorkingDir: "/tmp" } },
+    { ...expected, architecture: "arm64" },
+  ]) {
+    assert.throws(() => verifyOciRuntimeConfig(mutated), /runtime config|platform|user|entrypoint|command|environment|working/i);
+  }
 });
 
 test("OCI layer parser hashes regular files and rejects unsafe archive structure", async () => {
@@ -2590,12 +2677,16 @@ test("OCI layer parser hashes regular files and rejects unsafe archive structure
         path: "opt/openclaw-cell/session-crypto/dist",
         type: "5",
         mode: 0o755,
+        uid: 1000,
+        gid: 1000,
         mtime: epoch,
       },
       {
         path: "opt/openclaw-cell/session-crypto/dist/crypto.js",
         bytes,
         mode: 0o644,
+        uid: 1000,
+        gid: 1000,
         mtime: epoch,
       },
     ]),
@@ -2605,6 +2696,8 @@ test("OCI layer parser hashes regular files and rejects unsafe archive structure
       path: "opt/openclaw-cell/session-crypto/dist",
       type: "directory",
       mode: "0755",
+      uid: 1000,
+      gid: 1000,
       size: 0,
       sha256: sha256(Buffer.alloc(0)),
       mtime: epoch,
@@ -2613,6 +2706,8 @@ test("OCI layer parser hashes regular files and rejects unsafe archive structure
       path: "opt/openclaw-cell/session-crypto/dist/crypto.js",
       type: "file",
       mode: "0644",
+      uid: 1000,
+      gid: 1000,
       size: bytes.length,
       sha256: sha256(bytes),
       mtime: epoch,
