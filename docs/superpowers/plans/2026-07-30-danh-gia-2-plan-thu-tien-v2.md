@@ -946,3 +946,180 @@ trước DEMO CANARY, và giới hạn mọi fixture write vào `dddd0000-…000
   hoạch đã khớp hiện trạng đo được ngày 30/07 và có gate. Chỉ được tuyên bố feature hoàn tất sau khi
   chạy verification + browser theo `CLAUDE.md`, và với Slice −1 thì **bắt buộc** phải có bằng chứng
   browser vì toàn bộ §4 hiện chỉ được chứng minh bằng source + dữ liệu live.
+
+---
+
+## 12. ĐÃ THỰC HIỆN — Đợt −1 lên production 30/07/2026 (commit `80153a9`)
+
+Mục này viết **sau** khi thi hành, nên nó thắng mọi câu "sẽ làm" ở trên khi hai bên lệch nhau.
+§11.1 nói "chưa có lần chạy browser nào" — điều đó **đã hết đúng** cho Đợt −1; bằng chứng ở §12.4.
+
+### 12.1 Đã ship gì, và bằng chứng không mất tiền
+
+Hai migration `20260731010000_slice_minus1_readers.sql` + `20260731011000_slice_minus1_guards.sql`
+đã apply lên prod: 14 hàm được định nghĩa, 3 trigger `a00_*` mới, 2 bảng sổ vết trong `app_private`.
+
+**Bằng chứng tuân thủ ràng buộc §1bis ("giữ nguyên tiền, đừng đụng vào"):** chụp 9 bảng tiền
+(`income_expenses`, `income_expense_items`, `posting_lines`, `invoices`, `payments`, `accounts`,
+`contract_terminations`, ie_POSTED, ie_CANCELLED) ngay trước và ngay sau apply — **khớp tuyệt đối,
+0 đồng dịch chuyển**. Baseline còn được chụp hai lần cách nhau 1 giờ để chắc prod đang tĩnh.
+
+Gate: `check-view-invoker` 12/12 · `check-stable-fn-locks` OK · `typecheck:baseline` khớp 30
+fingerprint · 27 test xanh · `gen:types` chỉ **8 dòng thêm** (3 khối đúng dự kiến, **không** kéo
+theo drift `network_*` như CLAUDE.md cảnh báo).
+
+⚠ `reconcile-money.mjs` trả **INCONCLUSIVE**, không phải pass: **không kỳ nào có >1000 phiếu**
+(2026-06 nhiều nhất, 350) nên không kích được trần cap-1000 của PostgREST. Exit 0 nhưng vô nghĩa về
+mặt chứng minh. Đừng ghi nhận nó là gate đã đạt.
+
+### 12.2 GIẢI QUYẾT §11.2 hạng mục 1 — chốt phép đo canonical ô trùng
+
+§11.2.1 đòi hoà giải ba con số đá nhau trước khi viết unique index. **Đã hoà giải.**
+
+Nguyên nhân ba số khác nhau là **lưới tháng**, không phải dữ liệu khác nhau. Khoá canonical =
+`(org, toà, hạng mục, THÁNG)`, mỗi item mở ra bằng
+`generate_series(date_trunc('month', start_date) … end_date)` — đúng khoá mà khoá tư vấn của
+`pay_period_fee` dùng. Population: APPROVED, `deleted_at IS NULL`, `type='EXPENSE'`. Tiền tính theo
+**phiếu riêng biệt** (phiếu trải nhiều tháng chỉ đếm một lần).
+
+| Phép đo | Ô | Lượt phiếu | Tiền |
+|---|---|---|---|
+| `quan_ly` CÒN gồm lương (hành vi trước A1) | 25 | 51 | 654.703.469đ |
+| **`quan_ly` ĐÃ loại lương (sau A1) — CANONICAL** | **24** | **49** | **620.496.725đ** |
+
+Phân rã: **21 ô `system_source` NULL + 3 ô `utility.bill` + 0 ô `fixed_fee`**.
+Chỗ phép đo 23-ô bỏ sót, đã truy đích danh: **405PVB · công an · 07/2026** — `PC2606014`
+(1.000.000đ) có item trải 01/06→31/07 nên rơi vào cả hai tháng; đối tác tháng 7 là `PC2607014`
+**7.000đ**, đúng bằng chênh lệch 620.496.725 − 620.489.725 = **7.000đ**.
+
+Cả 24 ô ở **org THẬT**, DEMO **không có ô nào**. Một ô 3 phiếu (Kho Văn Phòng Chung · tiền nhà ·
+05/2026), 23 ô còn lại 2 phiếu. Ba mã phiếu **trùng nhau giữa các toà** (`PC2607076`, `PC2607006`,
+`PC2607096`) — tái xác nhận mã phiếu duy nhất theo **người tạo**, không theo org.
+
+### 12.3 ĐÍNH CHÍNH NẶNG — "2 ô điện trùng" ở 1392QT không phải trùng
+
+§4 và các bản nháp trước gọi hai ô này là trùng lặp, rồi lấy chúng làm bằng chứng cho "cứ bấm lại là
+một phiếu 6–15tr mới". **Sai.** Toà 1392QT có **hai hợp đồng điện thật**, cùng chủ hộ
+"Hoàng Công Hiệp", hai mã khách hàng khác nhau:
+
+| Công tơ | provider_code | Tạo lúc |
+|---|---|---|
+| `fea1d2f4` | PE13000241972 | 19/06/2026 08:32 |
+| `70b8af72` | PE13000241924 | **08/07/2026 02:55** |
+| `97959cff` | **NULL** (chủ hộ NULL) | 08/07/2026 02:43 — **đã xoá mềm** |
+
+| Kỳ | Hoá đơn lớn | Hoá đơn nhỏ | Cách nhau | Công tơ |
+|---|---|---|---|---|
+| 05/2026 | PC2605090 14.324.839 | PC2605091 46.977 | **134 ms** | cùng `fea1d2f4` |
+| 06/2026 | PC2606108 14.391.670 | PC2606107 29.998 | **214 ms** | cùng `fea1d2f4` |
+| 07/2026 | PC2607050 12.299.364 | PC2607051 86.277 | 1,27 s | **KHÁC** nhau |
+
+Khuôn hình là **một hoá đơn lớn + một hoá đơn nhỏ mỗi tháng, cùng một cú thao tác**. Tháng 05–06 cả
+hai bị dồn vào công tơ duy nhất đang tồn tại; từ 08/07 khi công tơ thứ hai được khai thì hoá đơn nhỏ
+đi đúng chỗ (nên 07/2026 **không** vi phạm khoá). Trùng do bấm lại sẽ cho hai số **xấp xỉ bằng nhau**
+— không phải 14.324.839 vs 46.977. Đây là **gán sai công tơ trên dữ liệu lịch sử**, không phải tiền
+chi hai lần. Công tơ `97959cff` (provider_code NULL, tạo 02:43 rồi xoá mềm) là bằng chứng **trực
+tiếp** của lỗi tự-sinh-công-tơ (§−1.2), mạnh hơn suy luận "toà d76268b2 có 2 công tơ ELECTRIC".
+
+**Hệ quả đã xử:** khoá B1 khoá theo `(công tơ, tháng)`, nên nếu người dùng 1392QT giữ tay cũ — đóng
+cả hai hoá đơn dưới `fea1d2f4` — phiếu thứ hai bị từ chối `55000`, mà họ **thật sự có** hoá đơn thứ
+hai cần trả. Câu lỗi nay **nêu mã khách hàng công tơ** và thêm gợi ý khi toà có nhiều công tơ cùng
+loại. Đã render thật:
+
+> `[UTILITY_BILL_DUPLICATE]` Kỳ 08/2026 của công tơ **PE13000241972** ĐÃ CÓ phiếu chi PC… —
+> 12.299.364đ (đã duyệt). … **Lưu ý: toà này có 2 công tơ điện.** Nếu hoá đơn bạn đang trả thuộc
+> công tơ khác thì hãy chọn đúng công tơ đó rồi đóng lại.
+
+Kết luận "không tạo được UNIQUE INDEX" **vẫn đúng** (2 dòng vi phạm) — chỉ khác lý do.
+
+### 12.4 Bằng chứng browser (bù đúng khoảng trống §11.1 nêu)
+
+Chạy ẩn trên `https://ptcrm.vercel.app`, tài khoản chủ, org THẬT (chỉ đọc):
+
+- **`/deposits`** — KPI **"Đã hoàn cọc (tiền đã ra khỏi két)" = 28.039.100 ₫**, phụ đề "10 phiếu hoàn
+  đã duyệt & vào sổ" ⇒ **quyết định D1 của chủ (§1ter.1) đã sống**. Dòng cảnh báo mồ côi hiện đúng:
+  *"Trong đó **23.737.100 ₫** (8 phiếu) đã ra khỏi két nhưng **KHÔNG có hồ sơ thanh lý** — bảng
+  'Hoàn / Bỏ cọc' bên dưới chỉ liệt kê được 4.302.000 ₫ (2 phiếu · 2 hồ sơ). Ghi nhận để rà tay, hệ
+  thống KHÔNG tự sửa."* — đối chiếu đủ **cả hai đơn vị** (phiếu và hồ sơ). **0 lỗi console.**
+- **`/thanh-toan`** — spec `thanh-toan-page.spec.ts` **7/7 xanh**. Kỳ 06/2026 render dữ liệu thật
+  (185 khoản · 6 toà · 146 khoản đã có phiếu duyệt · 970.779.008đ đã chi). **0 lỗi console.**
+- **Cửa thoát B2 đã hiện thật:** nút **"Tạo công tơ"** render trên tab Điện & Nước cho mọi dòng
+  "Chưa khai công tơ" (nhiều toà). Trước đây chỉ được kiểm bằng đọc source.
+- **Khoảng trống còn lại, nói thẳng:** hiệu ứng số của A2 lên hai ô `dien`/`nuoc` (phiếu
+  `5916661a` 6.384.000đ tách thành Điện 5.758.000 + Nước 626.000) **chưa** quan sát được trên UI —
+  `/thanh-toan` gộp Điện & Nước thành khối theo công tơ, không có ô phí cố định riêng cho hai hạng
+  mục đó. Hiệu ứng này được chứng minh bằng **đo lại SQL độc lập** (đúng 3 ô đổi, đều giảm, khớp số
+  ở §−1.4), **không** bằng mắt. `get_period_fee_status` đòi `auth.uid()` nên không gọi được qua
+  Management API.
+- Kỳ 07/2026 hiện 0 khoản / 0 toà là **đúng**, không phải lỗi: chưa toà nào được khai giá
+  (0/21, xem §10) nên không có khoản dự kiến nào để so.
+
+### 12.5 Phân định spec đỏ — không phải hồi quy của Đợt −1
+
+| Spec | Kết quả | Nguyên nhân |
+|---|---|---|
+| `thanh-toan-page` | **7/7 xanh** | — |
+| `finance-v2` ×3 | đỏ | **Pre-existing.** Khớp chính xác bản ghi phiên trước (đã xác minh bằng `git stash` + chạy trên `origin/main` sạch): một `42501 income_expenses.approve required in scope`, hai timeout tìm nút. Không đi qua hàm nào Đợt −1 định nghĩa. |
+| `ie-create` (ketoan) | đỏ khi 8 worker, **xanh khi chạy riêng** | **Flaky do song song**, không phải hồi quy. Chạy lại đơn lẻ: `create path = CANONICAL (200)`. |
+| `utility-book-menu` ×3 | đỏ | **Spec đã cũ, không phải Đợt −1.** Fixture `seedBooks()` INSERT thẳng REST vào `public.accounts`, mà `20260730102000_money_tables_revoke_dml.sql` (10:20 cùng ngày, **việc khác**) đã REVOKE INSERT/UPDATE/DELETE khỏi `authenticated`. Hiện `authenticated` chỉ còn `SELECT`. Cần sửa fixture sang RPC. |
+
+Đối chiếu để phân định: cả hai migration Đợt −1 **không có** một câu GRANT/REVOKE nào trên bảng
+`accounts`, và 14 hàm chúng định nghĩa **không** gồm `approve_income_expense_v2` hay bất kỳ helper RBAC.
+
+### 12.6 HẠNG MỤC MỚI, chưa nằm trong plan nào — chốt trùng cho writer phiếu CHUNG
+
+Đây là lỗ **Đợt −1 không che**, phải nói rõ để không ai ghi nhận nhầm là đã bịt. Writer chung
+(`create_income_expense_v1` / `_v2`, `system_source` NULL) **không có bất kỳ chốt slot nào**.
+
+Đã phân loại 24 ô theo *số tiền có bằng nhau không* để thiết kế mà không đoán:
+
+**Nhóm 1 — 4 ô SỐ TIỀN BẰNG NHAU, tất cả `tien_nha`, tất cả `system_source` NULL (164.500.000đ):**
+
+| Toà | Kỳ | Tiền ×2 | Cách nhau | Người tạo |
+|---|---|---|---|---|
+| 102LVT | 06/2026 | 66.000.000 | **460 ms** | **1 người** |
+| 32PVC | 07/2026 | 26.000.000 | ~13,9 giờ | 2 người |
+| 405PVB | 07/2026 | 52.500.000 | ~8,4 ngày | 2 người |
+| 15KV | 07/2026 | 20.000.000 | ~9,4 ngày | 2 người |
+
+**Hai bệnh khác nhau, đừng chữa bằng một thuốc:** 102LVT là **bấm đôi**; ba ô kia là **hai người
+cùng trả một tháng tiền nhà, cách nhau nhiều ngày** — không ai biết đồng nghiệp đã trả.
+
+**Nhóm 2 — 20 ô SỐ TIỀN KHÁC NHAU ⇒ HỢP LỆ, TUYỆT ĐỐI KHÔNG ĐƯỢC CHẶN.** Ví dụ 405PVB công an
+07/2026 = 1.000.000đ + **7.000đ**; 15KV rác 06/2026 = 300.000đ + 120.000đ. **Khoá cứng theo ô sẽ chặn
+oan 20/24 trường hợp** — đây là lý do không được copy khuôn B1 sang đây.
+
+**Công cụ đã có nhưng đang bỏ không:** cột `income_expenses.idempotency_key` **đã tồn tại**; 42 phiếu
+có key và **cả 42 key phân biệt** ⇒ tạo được partial UNIQUE INDEX **ngay, 0 xung đột**. Nhưng hiện
+**không có unique index nào** trên cột đó (key chỉ là trang trí), và writer thủ công chỉ gửi key ở
+**28/1.239 phiếu (2,3 %)**:
+
+| system_source | phiếu | có key |
+|---|---|---|
+| **NULL (writer thủ công)** | **1.239** | **28** |
+| contract.deposit | 287 | 0 |
+| invoice.collection.v5 | 10 | 10 ✅ |
+| invoice.collection.reverse.v5 | 3 | 3 ✅ |
+| contract.create.v2 | 1 | 1 ✅ |
+| 8 nguồn còn lại (`termination.*`, `salary.*`, `handover.*`) | — | **0** |
+
+**Đề xuất 3 bước, không đụng một đồng dữ liệu cũ:**
+1. `CREATE UNIQUE INDEX … ON income_expenses (idempotency_key) WHERE idempotency_key IS NOT NULL`
+   — thuần bổ sung, 0 xung đột. **Cần nhưng chưa đủ** (97,7 % phiếu thủ công không gửi key).
+2. Frontend gửi `p_idempotency_key` dẫn xuất từ nội dung form ⇒ bịt hẳn ca 460 ms.
+3. Trong writer: khoá tư vấn theo ô + **cảnh báo mềm** (không chặn) khi ô đã có phiếu APPROVED **cùng
+   số tiền** — trả payload để UI hỏi lại *"Toà X đã có phiếu tiền nhà 07/2026 — 26.000.000đ do
+   <người> tạo <ngày>. Vẫn tạo phiếu thứ hai?"*. Bắt đúng nhóm 1, **không** đụng nhóm 2.
+
+### 12.7 Còn nợ sau Đợt −1
+
+- **§11.2 hạng mục 1 → ĐÃ XONG** (§12.2). Hạng mục 10 (`BuildingFilterSelect` có đỏ trên `main`?)
+  → **đã xong ở phiên trước**: đỏ sẵn trên `main`, không do các đợt này.
+- Năm hàm khác **vẫn** so vai trò chủ theo chuỗi `'Chủ sở hữu tổ chức'`
+  (`set_ie_auto_approve_threshold_v1`, `get_ie_auto_approve_threshold_v1`,
+  `set_ie_accounting_standard_v1`, `set_membership_status_v1`, `_termination_ensure_type`).
+  Đợt −1 **chặn đổi tên** ở tầng trigger thay vì neo lại cả năm hàm (đổi thân hàm tiền/authz đang
+  drift so với migration là ngoài phạm vi). Rủi ro còn lại là migration/script `service_role` tương
+  lai, không phải đường client — `authenticated` chỉ có `SELECT` trên `organization_roles`.
+- Đợt 4 vẫn dừng ở chủ: **0/21 toà được khai giá**, 0/109 sổ quỹ mặc định (§10).
+- Đợt 9 giữ cửa kiểm "24 giờ không lệch tiền" — không rút ngắn được.
