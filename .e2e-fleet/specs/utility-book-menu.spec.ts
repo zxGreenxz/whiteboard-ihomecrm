@@ -63,26 +63,75 @@ const headers = (a: Api) => ({
  * Tạo sổ tạm để danh sách đủ dài (test lọc/cuộn). Tên gắn `stamp` riêng từng
  * lần chạy vì các test chạy SONG SONG trên cùng tài khoản — trùng tên là kết
  * quả lọc lẫn của nhau. Trả id để xoá sau.
+ *
+ * PHẢI đi qua RPC canonical `create_cashbook_v1`, KHÔNG POST thẳng
+ * /rest/v1/accounts: `20260730102000_money_tables_revoke_dml.sql` đã REVOKE
+ * INSERT/UPDATE/DELETE trên `public.accounts` khỏi `authenticated` (đường cũ cho
+ * client tự sửa `initial_amount`/`lock_date`, tức đổi số dư sổ quỹ mà không sinh
+ * phiếu hay posting nào). Ghi thẳng bảng nay trả 403 `42501 permission denied
+ * for table accounts` — đúng thiết kế, không phải lỗi. Giao diện thật cũng đã
+ * chuyển sang RPC này (`useAccounts.ts` → `useCreateAccount`).
  */
 async function seedBooks(page: Page, a: Api): Promise<{ ids: string[]; stamp: string }> {
   const stamp = Date.now().toString(36).slice(-5) + Math.floor(Math.random() * 900 + 100);
-  const res = await page.request.post(`${a.base}/rest/v1/accounts`, {
-    headers: headers(a),
-    data: SEED_NAMES.map((n, i) => ({
-      organization_id: a.org, user_id: a.uid, code: `ZFL${stamp}${i}`,
-      name: `${SEED_PREFIX}${n}-${stamp}`, initial_amount: 0, initial_date: '2026-01-01',
-    })),
-  });
-  expect(res.ok(), `tạo sổ tạm: ${res.status()} ${await res.text()}`).toBeTruthy();
-  return { ids: (await res.json()).map((r: { id: string }) => r.id), stamp };
+  const ids: string[] = [];
+  // RPC tạo MỘT sổ mỗi lần gọi (khác POST cũ ghi cả mảng), nên tuần tự hoá.
+  for (const [i, n] of SEED_NAMES.entries()) {
+    const payload = {
+      p_name: `${SEED_PREFIX}${n}-${stamp}`,
+      p_initial_amount: 0,
+      p_initial_date: '2026-01-01',
+      p_bank_name: null,
+      p_account_number: null,
+      p_quick_default_building_id: null,
+      // Khoá chống phát lại của chính RPC — phải khác nhau từng sổ, kẻo sổ thứ
+      // hai bị coi là bấm lại của sổ thứ nhất và không được tạo. RPC đòi
+      // 8–200 ký tự ASCII an toàn, nên dùng CHỈ SỐ chứ không dùng `n`
+      // (SEED_NAMES có 'ATâm'/'Đức' — tiếng Việt, bị từ chối P0001).
+      p_idempotency_key: `fleet-${stamp}-${i}`,
+      p_description: null,
+      p_is_default: false,
+      p_owner_user_id: null,
+    };
+    // create_cashbook_v1 DEADLOCK (40P01) khi nhiều worker cùng tạo sổ trên một
+    // tài khoản — đã gặp thật với FLEET_WORKERS=3. 40P01 là lỗi TẠM THỜI, cách
+    // xử lý đúng là thử lại; khoá chống phát lại giữ nguyên nên lần thử lại
+    // không thể sinh sổ thứ hai. (Bản thân việc RPC deadlock được là quan sát
+    // đáng báo cáo, không phải lỗi của test.)
+    let res = await page.request.post(`${a.base}/rest/v1/rpc/create_cashbook_v1`, {
+      headers: headers(a), data: payload,
+    });
+    for (let retry = 0; retry < 4 && !res.ok(); retry++) {
+      const txt = await res.text();
+      if (!txt.includes('40P01')) break;
+      await new Promise((r) => setTimeout(r, 150 * (retry + 1)));
+      res = await page.request.post(`${a.base}/rest/v1/rpc/create_cashbook_v1`, {
+        headers: headers(a), data: payload,
+      });
+    }
+    expect(res.ok(), `tạo sổ tạm qua create_cashbook_v1: ${res.status()} ${await res.text()}`).toBeTruthy();
+    const body = await res.json();
+    // RPC trả json; id có thể nằm ở gốc hoặc trong khoá con tuỳ phiên bản.
+    const id = body?.id ?? body?.cashbook_id ?? body?.account_id ?? body?.data?.id;
+    expect(id, `create_cashbook_v1 phải trả id (nhận: ${JSON.stringify(body)})`).toBeTruthy();
+    ids.push(id);
+  }
+  return { ids, stamp };
 }
 
+/**
+ * Dọn sổ tạm qua `archive_cashbook_v1` (RPC mà giao diện dùng), vì DELETE thẳng
+ * bảng cũng đã bị REVOKE. RPC từ chối nếu sổ còn phiếu — các sổ này vừa tạo và
+ * chưa hề dùng nên phải xoá được; nếu không, để test đỏ chứ đừng bỏ qua âm thầm.
+ */
 async function removeBooks(page: Page, a: Api, ids: string[]) {
   if (!ids.length) return;
-  const res = await page.request.delete(
-    `${a.base}/rest/v1/accounts?id=in.(${ids.join(',')})`, { headers: headers(a) },
-  );
-  expect(res.ok(), 'dọn sổ tạm').toBeTruthy();
+  for (const id of ids) {
+    const res = await page.request.post(`${a.base}/rest/v1/rpc/archive_cashbook_v1`, {
+      headers: headers(a), data: { p_cashbook_id: id },
+    });
+    expect(res.ok(), `dọn sổ tạm ${id}: ${res.status()} ${await res.text()}`).toBeTruthy();
+  }
 }
 
 async function openUtilityTable(page: Page) {
