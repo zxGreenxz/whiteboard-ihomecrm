@@ -21685,6 +21685,29 @@ export type Database = {
         Returns: Json
       }
       get_voucher_change_log_v1: { Args: { p_voucher: string }; Returns: Json }
+      get_voucher_slot_warning_v1: {
+        Args: {
+          p_building_id: string
+          p_end: string
+          p_exclude_id?: string
+          p_start: string
+          p_type?: string
+          p_type_ids: string[]
+        }
+        Returns: {
+          approval_status: string
+          code: string
+          created_at: string
+          creator_name: string
+          matched_amount: number
+          same_amount: boolean
+          total_amount: number
+          type_names: string
+          voucher_date: string
+          voucher_id: string
+          voucher_name: string
+        }[]
+      }
       has_contract_termination_write_v1: {
         Args: { p_termination: string }
         Returns: boolean
