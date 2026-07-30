@@ -4,6 +4,11 @@ import {
   createControlTrafficSender,
 } from "../src/bridge/control-traffic.js";
 import * as controlRuntimeModule from "../src/bridge/control-traffic.js";
+import {
+  createSignedBridgeResponse,
+  type BridgeRuntimeBindingV1,
+  type SignedBridgeRequestV1,
+} from "../src/bridge/protocol.js";
 import * as runtimeBootstrap from "../src/bridge/runtime-bootstrap.js";
 
 const cleanups: Array<() => void> = [];
@@ -33,6 +38,17 @@ const MESSAGE = Object.freeze({
 describe("closed control traffic schemas", () => {
   it("authorizes a separately authenticated control capability before provider I/O", async () => {
     const events: string[] = [];
+    const binding: BridgeRuntimeBindingV1 = Object.freeze({
+      organizationId: "organization-a",
+      accountId: "account-a",
+      cellId: "cell-a",
+      sessionGeneration: 7,
+      fencingToken: 9,
+      controlVersion: 3,
+      takeoverVersion: 2,
+    });
+    const bridgeSecret = Buffer.alloc(32, 0x34);
+    const bridgeNow = Date.parse("2026-07-29T10:00:00.000Z");
     const createRuntime = (runtimeBootstrap as unknown as {
       createProductionControlRuntime?: (options: unknown) => unknown;
     }).createProductionControlRuntime;
@@ -50,24 +66,25 @@ describe("closed control traffic schemas", () => {
     expect(typeof invoke).toBe("function");
     expect(typeof assertIo).toBe("function");
     const runtime = createRuntime!({
-      binding: {
-        organizationId: "organization-a",
-        accountId: "account-a",
-        cellId: "cell-a",
-        sessionGeneration: 7,
-        fencingToken: 9,
-        controlVersion: 3,
-        takeoverVersion: 2,
-      },
+      binding,
       bridgeBaseUrl: "http://bridge.internal",
-      bridgeSecret: Buffer.alloc(32, 0x34),
-      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      bridgeSecret,
+      now: () => bridgeNow,
       nonce: () => "control-transport-nonce",
       fetch: async (_url: string, init: RequestInit) => {
-        const envelope = JSON.parse(String(init.body)) as { operation: string; body: unknown };
+        const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
         events.push(envelope.operation);
         expect(envelope.body).toEqual({ version: 1, kind: "typing", sink: SINK });
-        return new Response(JSON.stringify({ version: 1, status: "AUTHORIZED" }), {
+        const response = createSignedBridgeResponse({
+          operation: envelope.operation,
+          requestNonce: envelope.nonce,
+          binding,
+          body: { version: 1, status: "AUTHORIZED" },
+          secret: bridgeSecret,
+          now: bridgeNow,
+          ttlMs: 1_000,
+        });
+        return new Response(JSON.stringify(response), {
           status: 200,
           headers: { "content-type": "application/json" },
         });

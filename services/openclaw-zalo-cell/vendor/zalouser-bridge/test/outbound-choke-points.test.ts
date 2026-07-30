@@ -13,8 +13,13 @@ import {
   registerPrivateOutboundRpc,
 } from "../src/bridge/outbound-rpc.js";
 import * as outboundRuntimeModule from "../src/bridge/runtime-bootstrap.js";
+import {
+  createSignedBridgeResponse,
+  type BridgeRuntimeBindingV1,
+  type SignedBridgeRequestV1,
+} from "../src/bridge/protocol.js";
 import { createPreparedOutboundBatch } from "../src/bridge/send-context.js";
-import { FRAMES, REQUEST, SINK, makeRequest } from "./outbound-fixtures.js";
+import { FRAMES, REQUEST, SINK, TEXT_PART, makeRequest } from "./outbound-fixtures.js";
 
 const runtimeCleanups: Array<() => void> = [];
 
@@ -30,6 +35,11 @@ function prepareRequest(request: ZaloUserBridgeSendParamsV1) {
 }
 
 describe("private outbound RPC exact choke point", () => {
+  it("fails closed when the production plugin starts without bridge configuration", () => {
+    expect(() => outboundRuntimeModule.installProductionBridgeRuntimeFromEnvironment({}))
+      .toThrowError(expect.objectContaining({ code: "BRIDGE_CONFIGURATION_INVALID" }));
+  });
+
   it("binds private RPC access to the authenticated nested gateway device principal", async () => {
     const factory = (outboundRuntimeModule as unknown as {
       createProductionBridgeRuntime(options: unknown): Parameters<typeof createPrivateOutboundRpc>[0] & {
@@ -102,6 +112,17 @@ describe("private outbound RPC exact choke point", () => {
     const mediaPart = mediaRequest.payload.parts[0];
     if (!mediaPart || mediaPart.kind !== "MEDIA") throw new Error("missing media fixture");
     const events: string[] = [];
+    const binding: BridgeRuntimeBindingV1 = Object.freeze({
+      organizationId: "organization-a",
+      accountId: "account-a",
+      cellId: "cell-a",
+      sessionGeneration: 7,
+      fencingToken: 9,
+      controlVersion: 3,
+      takeoverVersion: 2,
+    });
+    const bridgeSecret = Buffer.alloc(32, 0x31);
+    const bridgeNow = Date.parse("2026-07-29T10:00:00.000Z");
     const factory = (outboundRuntimeModule as unknown as {
       createProductionBridgeRuntime?: (options: unknown) => ReturnType<typeof createPrivateOutboundRpc> extends never
         ? never
@@ -109,42 +130,40 @@ describe("private outbound RPC exact choke point", () => {
     }).createProductionBridgeRuntime;
     expect(typeof factory).toBe("function");
     const runtime = factory!({
-      binding: {
-        organizationId: "organization-a",
-        accountId: "account-a",
-        cellId: "cell-a",
-        sessionGeneration: 7,
-        fencingToken: 9,
-        controlVersion: 3,
-        takeoverVersion: 2,
-      },
+      binding,
       bridgeBaseUrl: "http://bridge.internal",
-      bridgeSecret: Buffer.alloc(32, 0x31),
+      bridgeSecret,
       gatewayDeviceId: "bridge-client-a",
-      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      now: () => bridgeNow,
       nonce: (() => {
         let value = 0;
         return () => `transport-nonce-${value += 1}`;
       })(),
       fetch: async (_url: string, init: RequestInit) => {
-        const envelope = JSON.parse(String(init.body)) as {
-          operation: string;
-          body: unknown;
-        };
+        const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
         events.push(envelope.operation);
+        const signed = (body: unknown) => createSignedBridgeResponse({
+          operation: envelope.operation,
+          requestNonce: envelope.nonce,
+          binding,
+          body,
+          secret: bridgeSecret,
+          now: bridgeNow,
+          ttlMs: 1_000,
+        });
         if (envelope.operation === "media.materialize") {
-          return new Response(JSON.stringify({
+          return new Response(JSON.stringify(signed({
             version: 1,
             objectKey: mediaPart.objectKey,
             sha256: createHash("sha256").update(bytes).digest("hex"),
             mime: "image/png",
             bytes: bytes.length,
             contentBase64: bytes.toString("base64"),
-          }), { status: 200, headers: { "content-type": "application/json" } });
+          })), { status: 200, headers: { "content-type": "application/json" } });
         }
         if (envelope.operation === "outbox.authorize-send") {
           expect(envelope.body).toEqual(mediaRequest.authorization);
-          return new Response(JSON.stringify({ version: 1, status: "AUTHORIZED" }), {
+          return new Response(JSON.stringify(signed({ version: 1, status: "AUTHORIZED" })), {
             status: 200,
             headers: { "content-type": "application/json" },
           });
@@ -187,6 +206,358 @@ describe("private outbound RPC exact choke point", () => {
       "outbox.authorize-send",
       "provider",
     ]);
+  });
+
+  it("rejects an unsigned authorization response before provider I/O", async () => {
+    const textRequest = makeRequest([TEXT_PART]);
+    const send = vi.fn(async (call: ReturnType<typeof prepareRequest>["calls"][number]) => {
+      assertAuthorizedProviderCall(call);
+      assertAuthorizedProviderIo(call.sink);
+      return { providerMessageId: "must-not-send" };
+    });
+    const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x34),
+      gatewayDeviceId: "bridge-client-a",
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "authorization-nonce-a",
+      fetch: async () => new Response(JSON.stringify({ version: 1, status: "AUTHORIZED" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+      loadProviderSender: async () => ({
+        prepareSession: async () => Object.freeze({ ready: true }),
+        send,
+      }),
+    });
+
+    await expect(createPrivateOutboundRpc(runtime).invoke("zalouser.bridge.send", textRequest))
+      .rejects.toMatchObject({ code: "BRIDGE_RESPONSE_AUTHENTICATION_FAILED" });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("aborts and cancels an authorization response stream at the byte cap", async () => {
+    let requestSignal: AbortSignal | null = null;
+    let streamCancelled = false;
+    const send = vi.fn(async () => ({ providerMessageId: "must-not-send" }));
+    const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x37),
+      gatewayDeviceId: "bridge-client-a",
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "authorization-overflow-nonce-a",
+      fetch: async (_url, init) => {
+        requestSignal = init.signal ?? null;
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(64 * 1024 + 1));
+          },
+          cancel() {
+            streamCancelled = true;
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      },
+      loadProviderSender: async () => ({
+        prepareSession: async () => Object.freeze({ ready: true }),
+        send,
+      }),
+    });
+
+    await expect(createPrivateOutboundRpc(runtime).invoke(
+      "zalouser.bridge.send",
+      makeRequest([TEXT_PART]),
+    )).rejects.toMatchObject({ code: "AUTHORIZATION_ERROR" });
+    const observedSignal = requestSignal as AbortSignal | null;
+    expect(observedSignal).not.toBeNull();
+    expect((observedSignal as AbortSignal).aborted).toBe(true);
+    expect(streamCancelled).toBe(true);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid UTF-8 authorization bytes before provider I/O", async () => {
+    const send = vi.fn(async () => ({ providerMessageId: "must-not-send" }));
+    const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x38),
+      gatewayDeviceId: "bridge-client-a",
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "authorization-utf8-nonce-a",
+      fetch: async () => new Response(new Uint8Array([0xc3, 0x28]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+      loadProviderSender: async () => ({
+        prepareSession: async () => Object.freeze({ ready: true }),
+        send,
+      }),
+    });
+
+    await expect(createPrivateOutboundRpc(runtime).invoke(
+      "zalouser.bridge.send",
+      makeRequest([TEXT_PART]),
+    )).rejects.toMatchObject({
+      code: "AUTHORIZATION_ERROR",
+      message: "bridge response is not valid UTF-8",
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [500, "application/json"],
+    [200, "text/plain"],
+  ] as const)("aborts and cancels an unusable HTTP %s %s response", async (status, contentType) => {
+    let requestSignal: AbortSignal | null = null;
+    let cancellations = 0;
+    const runtime = outboundRuntimeModule.createProductionControlRuntime({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x39),
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "control-unusable-response-nonce-a",
+      fetch: async (_url, init) => {
+        requestSignal = init.signal ?? null;
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array([0x7b]));
+          },
+          cancel() {
+            cancellations += 1;
+          },
+        }), { status, headers: { "content-type": contentType } });
+      },
+    });
+
+    await expect(runtime.authorize({ version: 1, kind: "typing", sink: SINK }))
+      .rejects.toMatchObject({ code: "CONTROL_AUTHORIZATION_FAILED" });
+    const observedSignal = requestSignal as AbortSignal | null;
+    expect(observedSignal).not.toBeNull();
+    expect((observedSignal as AbortSignal).aborted).toBe(true);
+    expect(cancellations).toBe(1);
+  });
+
+  it("does not let a stalled stream cancellation defeat the authorization deadline", async () => {
+    vi.useFakeTimers();
+    let resolvePull!: () => void;
+    let resolveCancel!: () => void;
+    const pullGate = new Promise<void>((resolve) => {
+      resolvePull = resolve;
+    });
+    const cancelGate = new Promise<void>((resolve) => {
+      resolveCancel = resolve;
+    });
+    const runtime = outboundRuntimeModule.createProductionControlRuntime({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x3a),
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "control-stalled-cancel-nonce-a",
+      fetch: async () => new Response(new ReadableStream<Uint8Array>({
+        pull: () => pullGate,
+        cancel: () => cancelGate,
+      }), { status: 200, headers: { "content-type": "application/json" } }),
+    });
+    let outcome: "pending" | "resolved" | "rejected" = "pending";
+    const settled = runtime.authorize({ version: 1, kind: "typing", sink: SINK }).then(
+      () => {
+        outcome = "resolved";
+        return { status: "resolved" as const, error: undefined };
+      },
+      (error: unknown) => {
+        outcome = "rejected";
+        return { status: "rejected" as const, error };
+      },
+    );
+    try {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(1_001);
+      await Promise.resolve();
+
+      expect(outcome).toBe("rejected");
+      await expect(settled).resolves.toMatchObject({
+        status: "rejected",
+        error: { code: "CONTROL_AUTHORIZATION_TIMEOUT" },
+      });
+    } finally {
+      resolvePull();
+      resolveCancel();
+      await settled;
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts the in-flight authorization fetch when its deadline expires", async () => {
+    vi.useFakeTimers();
+    try {
+      let requestSignal: AbortSignal | null = null;
+      let markFetchStarted: (() => void) | undefined;
+      const fetchStarted = new Promise<void>((resolve) => {
+        markFetchStarted = resolve;
+      });
+      const send = vi.fn(async () => ({ providerMessageId: "must-not-send" }));
+      const textRequest = makeRequest([TEXT_PART]);
+      const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+        binding: {
+          organizationId: "organization-a",
+          accountId: "account-a",
+          cellId: "cell-a",
+          sessionGeneration: 7,
+          fencingToken: 9,
+          controlVersion: 3,
+          takeoverVersion: 2,
+        },
+        bridgeBaseUrl: "http://bridge.internal",
+        bridgeSecret: Buffer.alloc(32, 0x35),
+        gatewayDeviceId: "bridge-client-a",
+        now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+        nonce: () => "authorization-timeout-nonce-a",
+        fetch: async (_url, init) => {
+          requestSignal = init.signal ?? null;
+          markFetchStarted?.();
+          return await new Promise<Response>((_resolve, reject) => {
+            requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+          });
+        },
+        loadProviderSender: async () => ({
+          prepareSession: async () => Object.freeze({ ready: true }),
+          send,
+        }),
+      });
+      const invocation = createPrivateOutboundRpc(runtime).invoke("zalouser.bridge.send", textRequest);
+      const rejected = expect(invocation).rejects.toMatchObject({
+        code: "OUTBOX_AUTHORIZE_SEND_TIMEOUT",
+      });
+
+      await fetchStarted;
+      await vi.advanceTimersByTimeAsync(2_001);
+
+      await rejected;
+      const observedSignal = requestSignal as AbortSignal | null;
+      expect(observedSignal).not.toBeNull();
+      expect((observedSignal as AbortSignal).aborted).toBe(true);
+      expect(send).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("removes every abort listener after a successful bridge response", async () => {
+    const binding: BridgeRuntimeBindingV1 = Object.freeze({
+      organizationId: "organization-a",
+      accountId: "account-a",
+      cellId: "cell-a",
+      sessionGeneration: 7,
+      fencingToken: 9,
+      controlVersion: 3,
+      takeoverVersion: 2,
+    });
+    const bridgeSecret = Buffer.alloc(32, 0x36);
+    const bridgeNow = Date.parse("2026-07-29T10:00:00.000Z");
+    type AbortListener = Parameters<AbortSignal["addEventListener"]>[1];
+    const added: AbortListener[] = [];
+    const removed: AbortListener[] = [];
+    const originalAdd = AbortSignal.prototype.addEventListener;
+    const originalRemove = AbortSignal.prototype.removeEventListener;
+    const addSpy = vi.spyOn(AbortSignal.prototype, "addEventListener").mockImplementation(function (
+      this: AbortSignal,
+      ...args: Parameters<AbortSignal["addEventListener"]>
+    ) {
+      const [type, listener] = args;
+      if (type === "abort") added.push(listener);
+      return Reflect.apply(originalAdd, this, args) as void;
+    });
+    const removeSpy = vi.spyOn(AbortSignal.prototype, "removeEventListener").mockImplementation(function (
+      this: AbortSignal,
+      ...args: Parameters<AbortSignal["removeEventListener"]>
+    ) {
+      const [type, listener] = args;
+      if (type === "abort") removed.push(listener);
+      return Reflect.apply(originalRemove, this, args) as void;
+    });
+    try {
+      const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+        binding,
+        bridgeBaseUrl: "http://bridge.internal",
+        bridgeSecret,
+        gatewayDeviceId: "bridge-client-a",
+        now: () => bridgeNow,
+        nonce: () => "authorization-listener-nonce-a",
+        fetch: async (_url, init) => {
+          const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
+          return new Response(JSON.stringify(createSignedBridgeResponse({
+            operation: envelope.operation,
+            requestNonce: envelope.nonce,
+            binding,
+            body: { version: 1, status: "AUTHORIZED" },
+            secret: bridgeSecret,
+            now: bridgeNow,
+            ttlMs: 1_000,
+          })), { status: 200, headers: { "content-type": "application/json" } });
+        },
+        loadProviderSender: async () => ({
+          prepareSession: async () => Object.freeze({ ready: true }),
+          send: async (call) => {
+            assertAuthorizedProviderCall(call);
+            assertAuthorizedProviderIo(call.sink);
+            return { providerMessageId: "provider-a" };
+          },
+        }),
+      });
+
+      await expect(createPrivateOutboundRpc(runtime).invoke(
+        "zalouser.bridge.send",
+        makeRequest([TEXT_PART]),
+      )).resolves.toMatchObject({ status: "SENT" });
+    } finally {
+      addSpy.mockRestore();
+      removeSpy.mockRestore();
+    }
+
+    expect(added.length).toBeGreaterThan(0);
+    expect(removed).toHaveLength(added.length);
+    for (const listener of added) expect(removed).toContain(listener);
   });
 
   it("rejects a stale fencing/control/takeover binding before any bridge or provider call", async () => {

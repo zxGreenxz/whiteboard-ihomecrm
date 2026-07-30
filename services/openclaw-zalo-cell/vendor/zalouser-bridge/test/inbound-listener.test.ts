@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as inboundBridge from "../src/bridge/inbound-listener.js";
+import {
+  createSignedBridgeResponse,
+  type BridgeRuntimeBindingV1,
+  type SignedBridgeRequestV1,
+} from "../src/bridge/protocol.js";
 import * as runtimeBootstrap from "../src/bridge/runtime-bootstrap.js";
 
 type Binding = Readonly<{
@@ -389,6 +394,15 @@ describe("ZaloUser inbound envelope V1", () => {
 describe("durable bridge acknowledgement and ordering", () => {
   it("installs the authenticated production readiness and durable commit client", async () => {
     const operations: string[] = [];
+    const binding: BridgeRuntimeBindingV1 = Object.freeze({
+      ...BINDING,
+      accountId: "account-a",
+      fencingToken: 9,
+      controlVersion: 3,
+      takeoverVersion: 2,
+    });
+    const bridgeSecret = Buffer.alloc(32, 0x32);
+    const bridgeNow = Date.parse("2026-07-29T10:00:00.000Z");
     const factory = (runtimeBootstrap as unknown as {
       createProductionInboundBridge?: (options: unknown) => Parameters<
         typeof inboundBridge.installInboundBridgeCommitter
@@ -396,25 +410,28 @@ describe("durable bridge acknowledgement and ordering", () => {
     }).createProductionInboundBridge;
     expect(typeof factory).toBe("function");
     const installation = factory!({
-      binding: {
-        ...BINDING,
-        accountId: "account-a",
-        fencingToken: 9,
-        controlVersion: 3,
-        takeoverVersion: 2,
-      },
+      binding,
       bridgeBaseUrl: "http://bridge.internal",
-      bridgeSecret: Buffer.alloc(32, 0x32),
-      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      bridgeSecret,
+      now: () => bridgeNow,
       nonce: (() => {
         let value = 0;
         return () => `inbound-transport-${value += 1}`;
       })(),
       fetch: async (_url: string, init: RequestInit) => {
-        const envelope = JSON.parse(String(init.body)) as { operation: string; body: unknown };
+        const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
         operations.push(envelope.operation);
+        const signed = (body: unknown) => createSignedBridgeResponse({
+          operation: envelope.operation,
+          requestNonce: envelope.nonce,
+          binding,
+          body,
+          secret: bridgeSecret,
+          now: bridgeNow,
+          ttlMs: 1_000,
+        });
         if (envelope.operation === "inbound.ready") {
-          return new Response(JSON.stringify({ version: 1, status: "READY" }), {
+          return new Response(JSON.stringify(signed({ version: 1, status: "READY" })), {
             status: 200,
             headers: { "content-type": "application/json" },
           });
@@ -426,7 +443,7 @@ describe("durable bridge acknowledgement and ordering", () => {
             accountId: "account-a",
             cellId: BINDING.cellId,
           });
-          return new Response(JSON.stringify(COMMITTED_ACK), {
+          return new Response(JSON.stringify(signed(COMMITTED_ACK)), {
             status: 200,
             headers: { "content-type": "application/json" },
           });

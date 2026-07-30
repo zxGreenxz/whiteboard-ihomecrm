@@ -8,6 +8,10 @@ import {
   assertAuthorizedProviderIo,
   registerPrivateOutboundRpc,
 } from "../src/bridge/outbound-rpc.js";
+import {
+  createSignedBridgeResponse,
+  type SignedBridgeRequestV1,
+} from "../src/bridge/protocol.js";
 import { makeRequest, TEXT_PART } from "./outbound-fixtures.js";
 
 const installedProvider = { events: [] as string[] };
@@ -36,34 +40,45 @@ const binding = Object.freeze({
 });
 
 function options(events: string[]): BehaviorContractRuntimeV1Options {
+  const bridgeSecret = Buffer.alloc(32, 0x45);
+  const bridgeNow = Date.parse("2026-07-29T10:00:00.000Z");
   return {
     binding,
     bridgeBaseUrl: "http://bridge.internal",
-    bridgeSecret: Buffer.alloc(32, 0x45),
+    bridgeSecret,
     gatewayDeviceId: "gateway-a",
-    now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+    now: () => bridgeNow,
     nonce: (() => {
       let value = 0;
       return () => `behavior-${value += 1}`;
     })(),
     bridgeFetch: async (_url, init) => {
-      const request = JSON.parse(String(init.body)) as { operation: string };
+      const request = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
       events.push(`bridge:${request.operation}`);
+      const signed = (body: unknown) => createSignedBridgeResponse({
+        operation: request.operation,
+        requestNonce: request.nonce,
+        binding,
+        body,
+        secret: bridgeSecret,
+        now: bridgeNow,
+        ttlMs: 1_000,
+      });
       if (request.operation === "inbound.ready") {
-        return new Response(JSON.stringify({ version: 1, status: "READY" }), {
+        return new Response(JSON.stringify(signed({ version: 1, status: "READY" })), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       }
       if (request.operation === "inbound.commit") {
-        return new Response(JSON.stringify({
+        return new Response(JSON.stringify(signed({
           version: 1,
           status: "committed",
           durability: { journalMode: "WAL", synchronous: "FULL" },
-        }), { status: 200, headers: { "content-type": "application/json" } });
+        })), { status: 200, headers: { "content-type": "application/json" } });
       }
       if (request.operation === "outbox.authorize-send" || request.operation === "control.authorize") {
-        return new Response(JSON.stringify({ version: 1, status: "AUTHORIZED" }), {
+        return new Response(JSON.stringify(signed({ version: 1, status: "AUTHORIZED" })), {
           status: 200,
           headers: { "content-type": "application/json" },
         });

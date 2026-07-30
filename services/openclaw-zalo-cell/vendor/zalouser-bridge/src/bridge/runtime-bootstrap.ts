@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   businessFramesFromPayload,
+  MAX_MEDIA_PART_BYTES,
   providerSinkFromPayload,
   type ZaloUserBridgeSendParamsV1,
 } from "./canonical-send.js";
@@ -18,7 +19,11 @@ import type {
 import { installInboundBridgeCommitter } from "./inbound-listener.js";
 import { installPrivateOutboundRuntime } from "./outbound-rpc.js";
 import { installControlRuntime, type ControlRuntime, type ControlTraffic } from "./control-traffic.js";
-import { createSignedBridgeRequest, type BridgeRuntimeBindingV1 } from "./protocol.js";
+import {
+  createSignedBridgeRequest,
+  verifySignedBridgeResponse,
+  type BridgeRuntimeBindingV1,
+} from "./protocol.js";
 import {
   createPreparedOutboundBatch,
   type PreparedProviderCallV1,
@@ -82,6 +87,9 @@ export type ProductionControlRuntimeOptions = ProductionInboundBridgeOptions;
 const MATERIALIZE_TIMEOUT_MS = 30_000;
 const AUTHORIZE_TIMEOUT_MS = 2_000;
 const PROVIDER_TIMEOUT_MS = 30_000;
+const SMALL_BRIDGE_RESPONSE_BYTES = 64 * 1024;
+const INBOUND_COMMIT_RESPONSE_BYTES = 1024 * 1024;
+const MEDIA_MATERIALIZE_RESPONSE_BYTES = Math.ceil(MAX_MEDIA_PART_BYTES * 4 / 3) + 64 * 1024;
 const BRIDGE_SECRET_FILE = "/run/secrets/openclaw_zalo_bridge_hmac";
 let installedFromEnvironment = false;
 
@@ -168,18 +176,175 @@ function envelopeBindingMatches(
   }
 }
 
-async function responseJson(response: Response, code: string): Promise<unknown> {
-  if (!response.ok) throw failure(code, `bridge returned HTTP ${response.status}`);
+function abortReason(signal: AbortSignal, fallbackCode: string): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : failure(fallbackCode, `${fallbackCode.toLowerCase()} aborted`);
+}
+
+async function raceAbort<T>(operation: Promise<T>, signal: AbortSignal, code: string): Promise<T> {
+  if (signal.aborted) throw abortReason(signal, code);
+  return await new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const onAbort = () => settle(() => reject(abortReason(signal, code)));
+    signal.addEventListener("abort", onAbort, { once: true });
+    operation.then(
+      (value) => settle(() => resolve(value)),
+      (error: unknown) => settle(() => reject(error)),
+    );
+    if (signal.aborted) onAbort();
+  });
+}
+
+function abortUnusedResponse(
+  response: Response,
+  controller: AbortController,
+  error: Error,
+): never {
+  controller.abort(error);
+  if (response.body) {
+    try {
+      void response.body.cancel(error).catch(() => undefined);
+    } catch {
+      // The controller signal remains the authoritative cancellation path.
+    }
+  }
+  throw error;
+}
+
+async function responseJson(
+  response: Response,
+  code: string,
+  controller: AbortController,
+  maximumBytes: number,
+): Promise<unknown> {
+  if (!response.ok) {
+    return abortUnusedResponse(
+      response,
+      controller,
+      failure(code, `bridge returned HTTP ${response.status}`),
+    );
+  }
   const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
-  if (contentType !== "application/json") throw failure(code, "bridge response is not JSON");
-  const text = await response.text();
-  if (Buffer.byteLength(text, "utf8") > 96 * 1024 * 1024) {
-    throw failure(code, "bridge response exceeded the byte cap");
+  if (contentType !== "application/json") {
+    return abortUnusedResponse(
+      response,
+      controller,
+      failure(code, "bridge response is not JSON"),
+    );
+  }
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
+    throw new TypeError("maximumBytes must be a positive safe integer");
+  }
+  if (!response.body) {
+    const missingBody = failure(code, "bridge response body is missing");
+    controller.abort(missingBody);
+    throw missingBody;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const item = await raceAbort(reader.read(), controller.signal, code);
+      if (item.done) break;
+      totalBytes += item.value.byteLength;
+      if (totalBytes > maximumBytes) {
+        const overflow = failure(code, "bridge response exceeded the byte cap");
+        controller.abort(overflow);
+        throw overflow;
+      }
+      chunks.push(item.value);
+    }
+  } finally {
+    if (controller.signal.aborted) {
+      try {
+        void reader.cancel(abortReason(controller.signal, code)).catch(() => undefined);
+      } catch {
+        // The deadline/overflow error must not be replaced by cleanup failure.
+      }
+    }
+    try {
+      reader.releaseLock();
+    } catch {
+      // A pending underlying cancel owns the locked reader; never extend the deadline for it.
+    }
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks, totalBytes));
+  } catch {
+    throw failure(code, "bridge response is not valid UTF-8");
   }
   try {
     return JSON.parse(text) as unknown;
   } catch {
     throw failure(code, "bridge response contains invalid JSON");
+  }
+}
+
+async function postSignedBridgeJson(options: Readonly<{
+  bridgeBaseUrl: URL;
+  bridgeSecret: Uint8Array;
+  binding: BridgeRuntimeBindingV1;
+  fetch(url: string, init: RequestInit): Promise<Response>;
+  now(): number;
+  nonce(): string;
+  path: string;
+  operation: string;
+  body: unknown;
+  timeoutMs: number;
+  timeoutCode: string;
+  responseCode: string;
+  maximumResponseBytes: number;
+}>): Promise<unknown> {
+  const envelope = createSignedBridgeRequest({
+    operation: options.operation,
+    binding: options.binding,
+    body: options.body,
+    secret: options.bridgeSecret,
+    now: options.now(),
+    nonce: options.nonce(),
+    ttlMs: Math.min(options.timeoutMs, 5_000),
+  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(failure(options.timeoutCode, `${options.timeoutCode.toLowerCase()} timed out`));
+  }, options.timeoutMs);
+  try {
+    const response = await raceAbort(
+      options.fetch(new URL(options.path, `${options.bridgeBaseUrl.href}/`).href, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(envelope),
+        redirect: "error",
+        signal: controller.signal,
+      }),
+      controller.signal,
+      options.timeoutCode,
+    );
+    const signedResponse = await responseJson(
+      response,
+      options.responseCode,
+      controller,
+      options.maximumResponseBytes,
+    );
+    return verifySignedBridgeResponse(signedResponse, {
+      operation: options.operation,
+      requestNonce: envelope.nonce,
+      binding: options.binding,
+      secret: options.bridgeSecret,
+      now: options.now(),
+    });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -193,27 +358,28 @@ export function createProductionInboundBridge(
       typeof options.nonce !== "function") {
     throw new TypeError("fetch, now, and nonce must be functions");
   }
-  const post = async (path: string, operation: string, body: unknown, timeoutMs: number) => {
-    const envelope = createSignedBridgeRequest({
-      operation,
-      binding: options.binding,
-      body,
-      secret: bridgeSecret,
-      now: options.now(),
-      nonce: options.nonce(),
-      ttlMs: Math.min(timeoutMs, 5_000),
-    });
-    return await withTimeout(
-      options.fetch(new URL(path, `${bridgeBaseUrl.href}/`).href, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(envelope),
-        redirect: "error",
-      }),
-      timeoutMs,
-      `${operation.toUpperCase().replaceAll(/[.-]/gu, "_")}_TIMEOUT`,
-    );
-  };
+  const post = async (
+    path: string,
+    operation: string,
+    body: unknown,
+    timeoutMs: number,
+    responseCode: string,
+    maximumResponseBytes: number,
+  ) => await postSignedBridgeJson({
+    bridgeBaseUrl,
+    bridgeSecret,
+    binding: options.binding,
+    fetch: options.fetch,
+    now: options.now,
+    nonce: options.nonce,
+    path,
+    operation,
+    body,
+    timeoutMs,
+    timeoutCode: `${operation.toUpperCase().replaceAll(/[.-]/gu, "_")}_TIMEOUT`,
+    responseCode,
+    maximumResponseBytes,
+  });
   const installationBinding = Object.freeze({
     organizationId: options.binding.organizationId,
     cellId: options.binding.cellId,
@@ -232,14 +398,16 @@ export function createProductionInboundBridge(
       ) {
         throw failure("BRIDGE_BINDING_MISMATCH", "readiness request does not match the cell binding");
       }
-      const response = await post(
+      const responseBody = await post(
         "/v1/zalouser/ready",
         "inbound.ready",
         Object.freeze({ version: 1 }),
         2_000,
+        "INBOUND_BRIDGE_UNAVAILABLE",
+        SMALL_BRIDGE_RESPONSE_BYTES,
       );
       const record = exactRecord(
-        await responseJson(response, "INBOUND_BRIDGE_UNAVAILABLE"),
+        responseBody,
         ["version", "status"],
         "INBOUND_BRIDGE_UNAVAILABLE",
       );
@@ -249,13 +417,14 @@ export function createProductionInboundBridge(
     },
     committer: async (envelope) => {
       envelopeBindingMatches(envelope, options.binding);
-      const response = await post(
+      return await post(
         "/v1/zalouser/inbound/commit",
         "inbound.commit",
         envelope,
         6_000,
+        "INBOUND_BRIDGE_COMMIT_FAILED",
+        INBOUND_COMMIT_RESPONSE_BYTES,
       );
-      return await responseJson(response, "INBOUND_BRIDGE_COMMIT_FAILED");
     },
   });
 }
@@ -273,27 +442,23 @@ export function createProductionControlRuntime(
   return Object.freeze({
     providerTimeoutMs: 5_000,
     authorize: async (frame: ControlTraffic) => {
-      const envelope = createSignedBridgeRequest({
-        operation: "control.authorize",
+      const responseBody = await postSignedBridgeJson({
+        bridgeBaseUrl,
+        bridgeSecret,
         binding: options.binding,
+        fetch: options.fetch,
+        now: options.now,
+        nonce: options.nonce,
+        path: "/v1/zalouser/control/authorize",
+        operation: "control.authorize",
         body: frame,
-        secret: bridgeSecret,
-        now: options.now(),
-        nonce: options.nonce(),
-        ttlMs: 1_000,
+        timeoutMs: 1_000,
+        timeoutCode: "CONTROL_AUTHORIZATION_TIMEOUT",
+        responseCode: "CONTROL_AUTHORIZATION_FAILED",
+        maximumResponseBytes: SMALL_BRIDGE_RESPONSE_BYTES,
       });
-      const response = await withTimeout(
-        options.fetch(new URL("/v1/zalouser/control/authorize", `${bridgeBaseUrl.href}/`).href, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(envelope),
-          redirect: "error",
-        }),
-        1_000,
-        "CONTROL_AUTHORIZATION_TIMEOUT",
-      );
       const record = exactRecord(
-        await responseJson(response, "CONTROL_AUTHORIZATION_FAILED"),
+        responseBody,
         ["version", "status"],
         "CONTROL_AUTHORIZATION_FAILED",
       );
@@ -317,27 +482,28 @@ export function createProductionBridgeRuntime(
     throw new TypeError("fetch, now, nonce, and loadProviderSender must be functions");
   }
 
-  const post = async (path: string, operation: string, body: unknown, timeoutMs: number) => {
-    const envelope = createSignedBridgeRequest({
-      operation,
-      binding: options.binding,
-      body,
-      secret: bridgeSecret,
-      now: options.now(),
-      nonce: options.nonce(),
-      ttlMs: Math.min(timeoutMs, 5_000),
-    });
-    return await withTimeout(
-      options.fetch(new URL(path, `${bridgeBaseUrl.href}/`).href, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(envelope),
-        redirect: "error",
-      }),
-      timeoutMs,
-      `${operation.toUpperCase().replaceAll(/[.-]/gu, "_")}_TIMEOUT`,
-    );
-  };
+  const post = async (
+    path: string,
+    operation: string,
+    body: unknown,
+    timeoutMs: number,
+    responseCode: string,
+    maximumResponseBytes: number,
+  ) => await postSignedBridgeJson({
+    bridgeBaseUrl,
+    bridgeSecret,
+    binding: options.binding,
+    fetch: options.fetch,
+    now: options.now,
+    nonce: options.nonce,
+    path,
+    operation,
+    body,
+    timeoutMs,
+    timeoutCode: `${operation.toUpperCase().replaceAll(/[.-]/gu, "_")}_TIMEOUT`,
+    responseCode,
+    maximumResponseBytes,
+  });
 
   const prepare = async (
     request: ZaloUserBridgeSendParamsV1,
@@ -358,7 +524,7 @@ export function createProductionBridgeRuntime(
     const materialized = new Map<number, string>();
     for (const call of batch.calls) {
       if (call.frame.kind !== "media" || !("objectKey" in call.frame)) continue;
-      const response = await post(
+      const responseBody = await post(
         "/v1/zalouser/media/materialize",
         "media.materialize",
         Object.freeze({
@@ -369,8 +535,10 @@ export function createProductionBridgeRuntime(
           bytes: call.frame.byteLength,
         }),
         MATERIALIZE_TIMEOUT_MS,
+        "MEDIA_MATERIALIZE_FAILED",
+        MEDIA_MATERIALIZE_RESPONSE_BYTES,
       );
-      const record = exactRecord(await responseJson(response, "MEDIA_MATERIALIZE_FAILED"), [
+      const record = exactRecord(responseBody, [
         "version",
         "objectKey",
         "sha256",
@@ -443,14 +611,16 @@ export function createProductionBridgeRuntime(
     prepare,
     authorize: async (request) => {
       bindingMatches(request, options.binding);
-      const response = await post(
+      const responseBody = await post(
         "/v1/outbox/authorize-send",
         "outbox.authorize-send",
         request.authorization,
         AUTHORIZE_TIMEOUT_MS,
+        "AUTHORIZATION_ERROR",
+        SMALL_BRIDGE_RESPONSE_BYTES,
       );
       const record = exactRecord(
-        await responseJson(response, "AUTHORIZATION_ERROR"),
+        responseBody,
         ["version", "status"],
         "AUTHORIZATION_ERROR",
       );
@@ -501,7 +671,12 @@ export function installProductionBridgeRuntimeFromEnvironment(
     (count, name) => count + (environment[name]?.trim() ? 1 : 0),
     environment.OPENCLAW_ZALO_BRIDGE_SECRET_FILE?.trim() ? 1 : 0,
   );
-  if (configuredCount === 0) return false;
+  if (configuredCount === 0) {
+    throw failure(
+      "BRIDGE_CONFIGURATION_INVALID",
+      "production bridge configuration is required before the Zalouser plugin can start",
+    );
+  }
   if (configuredCount !== requiredNames.length + 1) {
     throw failure("BRIDGE_CONFIGURATION_INVALID", "production bridge configuration is incomplete");
   }
