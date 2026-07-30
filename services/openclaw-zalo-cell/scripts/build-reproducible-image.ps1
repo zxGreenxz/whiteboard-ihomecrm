@@ -71,18 +71,59 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+$script:BaseNativeEnvironment = [ordered]@{
+  HOME = '/nonexistent'
+  LANG = 'C'
+  LC_ALL = 'C'
+}
 
 function Invoke-NativeChecked {
   param(
     [Parameter(Mandatory = $true)][string]$FilePath,
-    [Parameter(Mandatory = $true)][string[]]$Arguments
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [Collections.IDictionary]$Environment = $script:BaseNativeEnvironment
   )
 
-  $output = & $FilePath @Arguments 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    throw "Native command failed ($LASTEXITCODE): $FilePath $($Arguments -join ' ')`n$($output -join "`n")"
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $FilePath
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.Environment.Clear()
+  foreach ($binding in $Environment.GetEnumerator()) {
+    $startInfo.Environment[[string]$binding.Key] = [string]$binding.Value
   }
-  return @($output)
+  foreach ($argument in $Arguments) {
+    $startInfo.ArgumentList.Add($argument)
+  }
+
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+  try {
+    if (-not $process.Start()) {
+      throw "Unable to start native command: $FilePath"
+    }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
+    $script:LASTEXITCODE = $process.ExitCode
+    $output = [Collections.Generic.List[string]]::new()
+    foreach ($stream in @($stdout, $stderr)) {
+      if (-not [string]::IsNullOrEmpty($stream)) {
+        foreach ($line in @($stream.TrimEnd("`r", "`n") -split "`r?`n")) {
+          $output.Add($line)
+        }
+      }
+    }
+    if ($process.ExitCode -ne 0) {
+      throw "Native command failed ($($process.ExitCode)): $FilePath $($Arguments -join ' ')`n$($output -join "`n")"
+    }
+    return @($output)
+  } finally {
+    $process.Dispose()
+  }
 }
 
 function Assert-NoReparseChain {
@@ -240,19 +281,34 @@ $actualGitSha256 = (Get-FileHash -LiteralPath $GitPath -Algorithm SHA256).Hash.T
 if ($actualGitSha256 -ne $expectedGitSha256) {
   throw 'GitPath SHA-256 does not match the pinned Git authority'
 }
-foreach ($environmentEntry in @(Get-ChildItem Env:)) {
-  if ($environmentEntry.Name -like 'GIT_*') {
-    Remove-Item -LiteralPath ("Env:" + $environmentEntry.Name) -ErrorAction SilentlyContinue
-  }
+$gitEnvironment = [ordered]@{}
+foreach ($binding in $script:BaseNativeEnvironment.GetEnumerator()) {
+  $gitEnvironment[[string]$binding.Key] = [string]$binding.Value
 }
-$env:GIT_ATTR_NOSYSTEM = '1'
-$env:GIT_CONFIG_GLOBAL = '/dev/null'
-$env:GIT_CONFIG_NOSYSTEM = '1'
-$env:GIT_NO_LAZY_FETCH = '1'
-$env:GIT_NO_REPLACE_OBJECTS = '1'
-$env:GIT_OPTIONAL_LOCKS = '0'
-$env:GIT_TERMINAL_PROMPT = '0'
-$gitVersionOutput = Invoke-NativeChecked -FilePath $GitPath -Arguments @('--no-replace-objects', '--version')
+$gitEnvironmentBindings = [ordered]@{
+  GIT_ATTR_NOSYSTEM = '1'
+  GIT_CONFIG_GLOBAL = '/dev/null'
+  GIT_CONFIG_NOSYSTEM = '1'
+  GIT_NO_LAZY_FETCH = '1'
+  GIT_NO_REPLACE_OBJECTS = '1'
+  GIT_OPTIONAL_LOCKS = '0'
+  GIT_TERMINAL_PROMPT = '0'
+}
+foreach ($binding in $gitEnvironmentBindings.GetEnumerator()) {
+  $gitEnvironment[[string]$binding.Key] = [string]$binding.Value
+}
+function Invoke-GitChecked {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+  $trustedArguments = @(
+    '--no-replace-objects',
+    '-c', 'core.fsmonitor=false',
+    '-c', 'core.hooksPath=/dev/null',
+    '-c', 'commit.gpgSign=false',
+    '-c', 'core.attributesFile=/dev/null'
+  ) + $Arguments
+  return @(Invoke-NativeChecked -FilePath $GitPath -Environment $gitEnvironment -Arguments $trustedArguments)
+}
+$gitVersionOutput = Invoke-GitChecked -Arguments @('--version')
 if (($gitVersionOutput -join "`n").Trim() -ne "git version $expectedGitVersion") {
   throw 'GitPath version does not match the pinned Git authority'
 }
@@ -276,12 +332,11 @@ Invoke-NodeChecked -Arguments @(
   'const f=require("node:fs");const p=process.argv[1];const s=f.lstatSync(p,{bigint:true});if(!s.isSocket()||s.isSymbolicLink())throw new Error("DockerHost is not a real Unix socket");if(typeof process.getuid==="function"&&s.uid!==BigInt(process.getuid()))throw new Error("DockerHost owner mismatch");if((s.mode&2n)!==0n)throw new Error("DockerHost is world-writable")',
   $dockerSocketPath
 ) | Out-Null
-foreach ($environmentEntry in @(Get-ChildItem Env:)) {
-  if ($environmentEntry.Name -match '^(DOCKER|BUILDKIT|BUILDX)_' -or $environmentEntry.Name -eq 'CONTAINER_HOST') {
-    Remove-Item -LiteralPath ("Env:" + $environmentEntry.Name) -ErrorAction SilentlyContinue
-  }
+$dockerEnvironment = [ordered]@{}
+foreach ($binding in $script:BaseNativeEnvironment.GetEnumerator()) {
+  $dockerEnvironment[[string]$binding.Key] = [string]$binding.Value
 }
-$env:DOCKER_HOST = $DockerHost
+$dockerEnvironment.DOCKER_HOST = $DockerHost
 if (-not [IO.Path]::IsPathFullyQualified($GitRepositoryRoot)) {
   throw 'GitRepositoryRoot must be absolute'
 }
@@ -361,21 +416,21 @@ foreach ($commitBinding in @(
     [pscustomobject]@{ Sha = $ExpectedM; Label = 'ExpectedM' },
     [pscustomobject]@{ Sha = $ReviewedTree; Label = 'ReviewedTree' }
   )) {
-  $objectType = Invoke-NativeChecked -FilePath $GitPath -Arguments @(
-    '--no-replace-objects', '-C', $resolvedGitRepositoryRoot, 'cat-file', '-t', "$($commitBinding.Sha)^{commit}"
+  $objectType = Invoke-GitChecked -Arguments @(
+    '-C', $resolvedGitRepositoryRoot, 'cat-file', '-t', "$($commitBinding.Sha)^{commit}"
   )
   if (($objectType -join "`n").Trim() -ne 'commit') {
     throw "$($commitBinding.Label) is not an exact Git commit object"
   }
-  $resolvedCommit = Invoke-NativeChecked -FilePath $GitPath -Arguments @(
-    '--no-replace-objects', '-C', $resolvedGitRepositoryRoot, 'rev-parse', '--verify', "$($commitBinding.Sha)^{commit}"
+  $resolvedCommit = Invoke-GitChecked -Arguments @(
+    '-C', $resolvedGitRepositoryRoot, 'rev-parse', '--verify', "$($commitBinding.Sha)^{commit}"
   )
   if (($resolvedCommit -join "`n").Trim() -ne $commitBinding.Sha) {
     throw "$($commitBinding.Label) does not resolve exactly"
   }
 }
-Invoke-NativeChecked -FilePath $GitPath -Arguments @(
-  '--no-replace-objects', '-C', $resolvedGitRepositoryRoot, 'merge-base', '--is-ancestor', $ExpectedM, $ReviewedTree
+Invoke-GitChecked -Arguments @(
+  '-C', $resolvedGitRepositoryRoot, 'merge-base', '--is-ancestor', $ExpectedM, $ReviewedTree
 ) | Out-Null
 
 foreach ($pathBinding in @(
@@ -413,7 +468,7 @@ $actualBuildxSha256 = (Get-FileHash -LiteralPath $resolvedBuildx -Algorithm SHA2
 if ($actualBuildxSha256 -ne $expectedBuildxSha256) {
   throw 'Buildx binary SHA-256 does not match image-lock.json'
 }
-$buildxVersion = Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @('version')
+$buildxVersion = Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @('version')
 if (($buildxVersion -join "`n") -notmatch '(?m)\bv?0\.13\.1\b') {
   throw 'Buildx semantic version must be exactly 0.13.1'
 }
@@ -431,7 +486,7 @@ $actualDockerSha256 = (Get-FileHash -LiteralPath $resolvedDocker -Algorithm SHA2
 if ($actualDockerSha256 -ne $expectedDockerSha256) {
   throw 'Docker binary SHA-256 does not match image-lock.json'
 }
-$dockerVersion = Invoke-NativeChecked -FilePath $resolvedDocker -Arguments @(
+$dockerVersion = Invoke-NativeChecked -FilePath $resolvedDocker -Environment $dockerEnvironment -Arguments @(
   'version', '--format', '{{.Client.Version}}|{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}'
 )
 if (($dockerVersion -join "`n").Trim() -ne '29.1.3|29.1.3|linux|amd64') {
@@ -539,6 +594,10 @@ $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $workRoot = Join-Path $tempBase ('ihome-openclaw-image-' + [guid]::NewGuid().ToString('N'))
 $contextRoot = Join-Path $workRoot 'context'
 $stockContextRoot = Join-Path $workRoot 'stock-context'
+$nativeHome = Join-Path $workRoot 'native-home'
+$nativeConfigRoot = Join-Path $nativeHome '.config'
+$nativeCacheRoot = Join-Path $nativeHome '.cache'
+$dockerConfigRoot = Join-Path $nativeHome '.docker'
 $ownershipMarker = Join-Path $workRoot '.ihome-openclaw-image-owner'
 $ociA = Join-Path $workRoot 'gate-a.oci.tar'
 $ociB = Join-Path $workRoot 'gate-b.oci.tar'
@@ -554,6 +613,14 @@ $cleanupErrors = [Collections.Generic.List[string]]::new()
 try {
   New-Item -ItemType Directory -Path $contextRoot -ErrorAction Stop | Out-Null
   [IO.File]::WriteAllText($ownershipMarker, $ReviewedTree, [Text.UTF8Encoding]::new($false))
+  foreach ($nativeDirectory in @($nativeHome, $nativeConfigRoot, $nativeCacheRoot, $dockerConfigRoot)) {
+    New-Item -ItemType Directory -Path $nativeDirectory -Force -ErrorAction Stop | Out-Null
+    Assert-NoReparseChain -Path $nativeDirectory -Label 'controlled native process directory'
+  }
+  $dockerEnvironment.HOME = $nativeHome
+  $dockerEnvironment.DOCKER_CONFIG = $dockerConfigRoot
+  $dockerEnvironment.XDG_CONFIG_HOME = $nativeConfigRoot
+  $dockerEnvironment.XDG_CACHE_HOME = $nativeCacheRoot
   Copy-Item -LiteralPath $lockPath -Destination (Join-Path $contextRoot 'image-lock.json') -ErrorAction Stop
   foreach ($input in $lock.inputs) {
     $relativePath = [string]$input.path
@@ -592,18 +659,18 @@ try {
   ) | Out-Null
 
   $builderACreated = $true
-  Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
+  Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @(
     'create', '--name', $builderA, '--driver', 'docker-container',
     '--driver-opt', "image=$buildkitImage"
   ) | Out-Null
   $builderBCreated = $true
-  Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
+  Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @(
     'create', '--name', $builderB, '--driver', 'docker-container',
     '--driver-opt', "image=$buildkitImage"
   ) | Out-Null
 
   foreach ($builder in @($builderA, $builderB)) {
-    $inspection = Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
+    $inspection = Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @(
       'inspect', '--bootstrap', $builder
     )
     if (($inspection -join "`n") -notmatch '(?m)\bv0\.13\.2\b') {
@@ -620,7 +687,7 @@ try {
     '--provenance=false',
     '--sbom=false'
   )
-  Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
+  Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @(
     $forkBuildArguments + @(
       '--builder', $builderA,
       '--output', "type=oci,dest=$ociA,rewrite-timestamp=true",
@@ -653,7 +720,7 @@ try {
     '--provenance=false',
     '--sbom=false'
   )
-  Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
+  Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @(
     $stockBuildArguments + @(
       '--builder', $builderA,
       '--file', (Join-Path $stockContextRoot 'Dockerfile.stock-probe'),
@@ -662,7 +729,7 @@ try {
     )
   ) | Out-Null
 
-  Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
+  Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @(
     $forkBuildArguments + @(
       '--builder', $builderB,
       '--output', "type=oci,dest=$ociB,rewrite-timestamp=true",
@@ -731,7 +798,7 @@ try {
   )) {
     if ($builderState.Created) {
       try {
-        Invoke-NativeChecked -FilePath $resolvedBuildx -Arguments @(
+        Invoke-NativeChecked -FilePath $resolvedBuildx -Environment $dockerEnvironment -Arguments @(
           'rm', '--force', [string]$builderState.Name
         ) | Out-Null
       } catch {

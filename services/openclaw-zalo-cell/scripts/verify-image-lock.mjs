@@ -150,16 +150,12 @@ function dockerSocketPath(dockerHost) {
   return dockerHost.slice("unix://".length);
 }
 
-export function buildTrustedDockerEnvironment(dockerHost, ambient = process.env) {
+export function buildTrustedDockerEnvironment(dockerHost, _ambient = process.env) {
   dockerSocketPath(dockerHost);
-  const environment = {};
-  for (const [key, value] of Object.entries(ambient)) {
-    if (value === undefined) continue;
-    if (/^(?:DOCKER|BUILDKIT|BUILDX)_/u.test(key) || key === "CONTAINER_HOST") continue;
-    environment[key] = value;
-  }
-  environment.DOCKER_HOST = dockerHost;
-  return Object.freeze(environment);
+  return Object.freeze({
+    DOCKER_HOST: dockerHost,
+    HOME: "/nonexistent",
+  });
 }
 
 export async function assertTrustedDockerSocket(dockerHost) {

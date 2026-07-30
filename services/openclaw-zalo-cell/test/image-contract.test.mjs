@@ -1350,6 +1350,12 @@ test("Docker execution strips hostile ambient routing and rejects a non-socket a
   const environment = buildTrustedDockerEnvironment(dockerHost, {
     PATH: "/trusted/bin",
     HOME: "/trusted/home",
+    NODE_OPTIONS: "--import=/attacker/preload.mjs",
+    NODE_PATH: "/attacker/node_modules",
+    LD_PRELOAD: "/attacker/preload.so",
+    LD_LIBRARY_PATH: "/attacker/lib",
+    AWS_SECRET_ACCESS_KEY: "attacker-secret",
+    SUPABASE_SERVICE_ROLE_KEY: "attacker-service-role",
     DOCKER_HOST: "tcp://attacker.invalid:2375",
     DOCKER_CONTEXT: "attacker",
     DOCKER_TLS_VERIFY: "1",
@@ -1357,9 +1363,20 @@ test("Docker execution strips hostile ambient routing and rejects a non-socket a
     BUILDKIT_HOST: "tcp://attacker.invalid:1234",
   });
   assert.equal(environment.DOCKER_HOST, dockerHost);
-  assert.equal(environment.PATH, "/trusted/bin");
-  assert.equal(environment.HOME, "/trusted/home");
-  for (const key of ["DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "BUILDKIT_HOST"]) {
+  assert.equal(environment.HOME, "/nonexistent");
+  for (const key of [
+    "PATH",
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "AWS_SECRET_ACCESS_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "DOCKER_CONTEXT",
+    "DOCKER_TLS_VERIFY",
+    "DOCKER_CERT_PATH",
+    "BUILDKIT_HOST",
+  ]) {
     assert.equal(key in environment, false);
   }
 
@@ -1368,6 +1385,32 @@ test("Docker execution strips hostile ambient routing and rejects a non-socket a
   const regular = join(fixture, "docker.sock");
   await writeFile(regular, "not a socket\n");
   await assert.rejects(assertTrustedDockerSocket(`unix://${regular}`), /socket/i);
+});
+
+test("qualification helpers clear ambient native loaders and disable executable local Git config", async () => {
+  const buildHelper = await readCell("scripts/build-reproducible-image.ps1");
+  const evidenceHelper = await readCell("scripts/create-evidence-child.ps1");
+
+  for (const [label, helper] of [
+    ["build helper", buildHelper],
+    ["evidence helper", evidenceHelper],
+  ]) {
+    assert.match(helper, /Diagnostics\.ProcessStartInfo/, `${label} must use an explicit native process`);
+    assert.match(helper, /\.Environment\.Clear\(\)/, `${label} must start from an empty environment`);
+    assert.match(helper, /UseShellExecute\s*=\s*\$false/, `${label} must not invoke a shell`);
+    assert.doesNotMatch(helper, /@\(&\s*\$nodePath\b/, `${label} must not invoke Node through ambient PowerShell execution`);
+    assert.match(helper, /core\.fsmonitor=false/, `${label} must neutralize repo-local fsmonitor commands`);
+    assert.match(helper, /core\.hooksPath=\/dev\/null/, `${label} must neutralize hooks`);
+    assert.match(helper, /commit\.gpgSign=false/, `${label} must disable signing helpers`);
+    assert.match(helper, /core\.attributesFile=\/dev\/null/, `${label} must ignore repo-local attribute indirection`);
+  }
+
+  assert.match(buildHelper, /\$dockerEnvironment\.HOME\s*=\s*\$nativeHome/);
+  assert.match(buildHelper, /\$dockerEnvironment\.DOCKER_CONFIG\s*=\s*\$dockerConfigRoot/);
+  assert.match(buildHelper, /\$dockerEnvironment\.XDG_CONFIG_HOME\s*=\s*\$nativeConfigRoot/);
+  const controlledHome = buildHelper.indexOf("$dockerEnvironment.HOME = $nativeHome");
+  const firstBuilderCreate = buildHelper.indexOf("'create', '--name', $builderA");
+  assert.ok(controlledHome >= 0 && controlledHome < firstBuilderCreate, "controlled native home must be active before buildx persists builder state");
 });
 
 test("PowerShell helper pins builders and makes the verifier the promotion gate", async () => {

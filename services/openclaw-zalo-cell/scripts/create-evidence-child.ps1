@@ -46,6 +46,60 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
+$script:BaseNativeEnvironment = [ordered]@{
+  HOME = '/nonexistent'
+  LANG = 'C'
+  LC_ALL = 'C'
+}
+
+function Invoke-NativeChecked {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [Parameter(Mandatory = $true)][string[]]$Arguments,
+    [Collections.IDictionary]$Environment = $script:BaseNativeEnvironment
+  )
+
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $FilePath
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $startInfo.Environment.Clear()
+  foreach ($binding in $Environment.GetEnumerator()) {
+    $startInfo.Environment[[string]$binding.Key] = [string]$binding.Value
+  }
+  foreach ($argument in $Arguments) {
+    $startInfo.ArgumentList.Add($argument)
+  }
+
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+  try {
+    if (-not $process.Start()) {
+      throw "Unable to start native command: $FilePath"
+    }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    $stdout = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
+    $script:LASTEXITCODE = $process.ExitCode
+    $output = [Collections.Generic.List[string]]::new()
+    foreach ($stream in @($stdout, $stderr)) {
+      if (-not [string]::IsNullOrEmpty($stream)) {
+        foreach ($line in @($stream.TrimEnd("`r", "`n") -split "`r?`n")) {
+          $output.Add($line)
+        }
+      }
+    }
+    if ($process.ExitCode -ne 0) {
+      throw "Native command failed ($($process.ExitCode)): $FilePath $($Arguments -join ' ')`n$($output -join "`n")"
+    }
+    return @($output)
+  } finally {
+    $process.Dispose()
+  }
+}
 
 function Assert-NoReparseChain {
   param(
@@ -104,6 +158,14 @@ function Get-GitBlobSha256 {
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = $GitPath
   $startInfo.ArgumentList.Add('--no-replace-objects')
+  $startInfo.ArgumentList.Add('-c')
+  $startInfo.ArgumentList.Add('core.fsmonitor=false')
+  $startInfo.ArgumentList.Add('-c')
+  $startInfo.ArgumentList.Add('core.hooksPath=/dev/null')
+  $startInfo.ArgumentList.Add('-c')
+  $startInfo.ArgumentList.Add('commit.gpgSign=false')
+  $startInfo.ArgumentList.Add('-c')
+  $startInfo.ArgumentList.Add('core.attributesFile=/dev/null')
   $startInfo.ArgumentList.Add('-C')
   $startInfo.ArgumentList.Add($sourceRoot)
   $startInfo.ArgumentList.Add('cat-file')
@@ -112,6 +174,10 @@ function Get-GitBlobSha256 {
   $startInfo.UseShellExecute = $false
   $startInfo.RedirectStandardOutput = $true
   $startInfo.RedirectStandardError = $true
+  $startInfo.Environment.Clear()
+  foreach ($binding in $gitEnvironment.GetEnumerator()) {
+    $startInfo.Environment[[string]$binding.Key] = [string]$binding.Value
+  }
   $process = [Diagnostics.Process]::new()
   $process.StartInfo = $startInfo
   if (-not $process.Start()) { throw "Unable to start raw Git blob read for $Label" }
@@ -125,6 +191,7 @@ function Get-GitBlobSha256 {
   $process.WaitForExit()
   $stderr = $stderrTask.GetAwaiter().GetResult()
   $exitCode = $process.ExitCode
+  $script:LASTEXITCODE = $exitCode
   $process.Dispose()
   if ($exitCode -ne 0) { throw "Unable to read raw Git blob for $Label`: $stderr" }
   return [Convert]::ToHexString($hashBytes).ToLowerInvariant()
@@ -208,10 +275,7 @@ function Invoke-NodeChecked {
   if ($beforeItem.Length -ne $expectedNodeSize -or $beforeSha256 -ne $expectedNodeSha256) {
     throw 'Node authority changed before execution'
   }
-  $output = @(& $nodePath @Arguments 2>&1)
-  if ($LASTEXITCODE -ne 0) {
-    throw "Pinned Node command failed ($LASTEXITCODE): $($output -join "`n")"
-  }
+  $output = Invoke-NativeChecked -FilePath $nodePath -Arguments $Arguments
   $afterItem = Get-Item -LiteralPath $nodePath -Force -ErrorAction Stop
   $afterSha256 = (Get-FileHash -LiteralPath $nodePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($afterItem.Length -ne $beforeItem.Length -or $afterSha256 -ne $beforeSha256) {
@@ -243,32 +307,42 @@ $actualGitSha256 = (Get-FileHash -LiteralPath $GitPath -Algorithm SHA256).Hash.T
 if ($actualGitSha256 -ne $expectedGitSha256) {
   throw 'GitPath SHA-256 does not match the pinned Git authority'
 }
-foreach ($environmentEntry in @(Get-ChildItem Env:)) {
-  if ($environmentEntry.Name -like 'GIT_*') {
-    Remove-Item -LiteralPath ("Env:" + $environmentEntry.Name) -ErrorAction SilentlyContinue
-  }
+$gitEnvironment = [ordered]@{}
+foreach ($binding in $script:BaseNativeEnvironment.GetEnumerator()) {
+  $gitEnvironment[[string]$binding.Key] = [string]$binding.Value
 }
-$env:GIT_ATTR_NOSYSTEM = '1'
-$env:GIT_AUTHOR_EMAIL = 'noreply@openai.com'
-$env:GIT_AUTHOR_NAME = 'Codex'
-$env:GIT_COMMITTER_EMAIL = 'noreply@openai.com'
-$env:GIT_COMMITTER_NAME = 'Codex'
-$env:GIT_CONFIG_GLOBAL = '/dev/null'
-$env:GIT_CONFIG_NOSYSTEM = '1'
-$env:GIT_NO_LAZY_FETCH = '1'
-$env:GIT_NO_REPLACE_OBJECTS = '1'
-$env:GIT_OPTIONAL_LOCKS = '0'
-$env:GIT_TERMINAL_PROMPT = '0'
-$gitVersionOutput = & $GitPath '--no-replace-objects' '--version' 2>&1
-if ($LASTEXITCODE -ne 0 -or ($gitVersionOutput -join "`n").Trim() -ne "git version $expectedGitVersion") {
-  throw 'GitPath version does not match the pinned Git authority'
+$gitEnvironmentBindings = [ordered]@{
+  GIT_ATTR_NOSYSTEM = '1'
+  GIT_AUTHOR_EMAIL = 'noreply@openai.com'
+  GIT_AUTHOR_NAME = 'Codex'
+  GIT_COMMITTER_EMAIL = 'noreply@openai.com'
+  GIT_COMMITTER_NAME = 'Codex'
+  GIT_CONFIG_GLOBAL = '/dev/null'
+  GIT_CONFIG_NOSYSTEM = '1'
+  GIT_NO_LAZY_FETCH = '1'
+  GIT_NO_REPLACE_OBJECTS = '1'
+  GIT_OPTIONAL_LOCKS = '0'
+  GIT_TERMINAL_PROMPT = '0'
+}
+foreach ($binding in $gitEnvironmentBindings.GetEnumerator()) {
+  $gitEnvironment[[string]$binding.Key] = [string]$binding.Value
 }
 
 function Invoke-Git {
-  param(
-    [Parameter(Mandatory = $true)][string[]]$Arguments
-  )
-  return @(& $GitPath '--no-replace-objects' '-c' 'core.hooksPath=/dev/null' '-c' 'commit.gpgSign=false' @Arguments 2>&1)
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+  $trustedArguments = @(
+    '--no-replace-objects',
+    '-c', 'core.fsmonitor=false',
+    '-c', 'core.hooksPath=/dev/null',
+    '-c', 'commit.gpgSign=false',
+    '-c', 'core.attributesFile=/dev/null'
+  ) + $Arguments
+  return @(Invoke-NativeChecked -FilePath $GitPath -Environment $gitEnvironment -Arguments $trustedArguments)
+}
+
+$gitVersionOutput = Invoke-Git -Arguments @('--version')
+if ($LASTEXITCODE -ne 0 -or ($gitVersionOutput -join "`n").Trim() -ne "git version $expectedGitVersion") {
+  throw 'GitPath version does not match the pinned Git authority'
 }
 
 if (-not [IO.Path]::IsPathFullyQualified($CandidateEvidencePath)) {
