@@ -12,8 +12,8 @@
   },
   "sourceDateEpoch": 1785062400,
   "artifactPath": "artifacts/openclaw-zalouser-2026.7.1.tgz",
-  "artifactSha256": "b99bb13abbd54661778ae79e4d2b3cff7d3e3d35616f0005ea7283259e5f6f2d",
-  "builtTgzSha256": "b99bb13abbd54661778ae79e4d2b3cff7d3e3d35616f0005ea7283259e5f6f2d",
+  "artifactSha256": "d8f8900f16895ff65cd96a5dc9bfe70764fd99caf81a7cd3fef50d6e33af9a89",
+  "builtTgzSha256": "d8f8900f16895ff65cd96a5dc9bfe70764fd99caf81a7cd3fef50d6e33af9a89",
   "artifactMembers": [
     {
       "path": "package/LICENSE",
@@ -48,7 +48,7 @@
       "type": "file",
       "mode": "0644",
       "size": 3611,
-      "sha256": "667500e1155d7df667404655e75f67ae5ba6f877d49bb91e43443ef695f579cc"
+      "sha256": "29945dacf00bef0930a080d901a29da687379e1d5cf40c8cadcdb17073aca789"
     },
     {
       "path": "package/dist/channel-plugin-api.js",
@@ -79,11 +79,11 @@
       "sha256": "d23416994c46753f5d7f0702a2329289084d5124a8dfe787930e21e5576a442b"
     },
     {
-      "path": "package/dist/chunks/chunk-77A3W7W3.js",
+      "path": "package/dist/chunks/chunk-6KW4FIZP.js",
       "type": "file",
       "mode": "0644",
-      "size": 20865,
-      "sha256": "24b6e46335c5d05ea81403d1d68e0fe1e67286da32fee5830ac90e6a3057a072"
+      "size": 21127,
+      "sha256": "916909445f018e7d133a403a457c335ecabe8b92bf49f2db91f02746a49c17e2"
     },
     {
       "path": "package/dist/chunks/chunk-DFYAECVK.js",
@@ -223,7 +223,7 @@
       "type": "file",
       "mode": "0644",
       "size": 1372,
-      "sha256": "a1c722c59a00dca9ae8ed27cf80a391f098f1b3d90b51e8daec355d4e78073ff"
+      "sha256": "ffd801d832a669624087db536dbc5a9f6db9731ff70f7f5310746d6b318471f5"
     },
     {
       "path": "package/dist/runtime-api.js",
@@ -541,7 +541,7 @@
       "sha256": "d86034bc0f5320f55f4ea7b6e35fffb5d9868e04585ac1fe7b016f453192f17e"
     }
   ],
-  "artifactMembersSha256": "50c9888f754df1e6eb58852cefeb7ee0c603064fb4cd37f24410f1095a367831",
+  "artifactMembersSha256": "65591f3f79884043ded7362339c1f3c3f3d0dc7878e6b83e4b31aa24c1f115ce",
   "patches": [
     "0001-durable-inbound-bridge-listener.patch",
     "0002-private-bridge-send-rpc.patch",
@@ -563,7 +563,7 @@
       {
         "path": "src/bridge/behavior-contract.ts",
         "size": 3598,
-        "sha256": "3494f5a1851b9d86ea4dad93ae9f20f0171f9dd750f20a58d76e4c75708da0cb"
+        "sha256": "7778962c0a788dfea85b02c7f221876a5d3db142badf3accab6ca5f78dc788cd"
       },
       {
         "path": "src/bridge/canonical-send.ts",
@@ -592,8 +592,8 @@
       },
       {
         "path": "src/bridge/runtime-bootstrap.ts",
-        "size": 20750,
-        "sha256": "965e55c20ec822b35c90a8d77bddd1ca6d76ccd54aa200276d074f8eff1fe487"
+        "size": 21232,
+        "sha256": "7ee06ed3174885520ef4825d013b0212f18071d16e14d2bbb8cbebbc136956a1"
       },
       {
         "path": "src/bridge/send-context.ts",
@@ -601,7 +601,7 @@
         "sha256": "c9099790a5d86415e33242890c13554d3c71b54fd03f50932f960ceab79a6036"
       }
     ],
-    "sha256": "cb3e56b8d71af252a7a4584d1666390615cda06e35682cfa4997e7ec259dff77"
+    "sha256": "e30746d4d18883c46bd1b6f3c7903cdf92c9c0ab09abd26ffd9531ab009e5d95"
   },
   "licenseManifestSha256": "d1c0f4462e31f03195fe0a21870c35a69fe98337e173d26d1934bdb40c39e158",
   "publicEntrypoints": [
@@ -5528,7 +5528,7 @@
       "resolution": "literal",
       "resolvedTarget": "package/dist/index.js",
       "expandedMembers": [
-        "package/dist/chunks/chunk-77A3W7W3.js",
+        "package/dist/chunks/chunk-6KW4FIZP.js",
         "package/dist/chunks/chunk-ESXGWCXZ.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
         "package/dist/chunks/chunk-QSWGS6BV.js",
@@ -5575,7 +5575,7 @@
       "resolvedTarget": "package/dist/behavior-contract-api.js",
       "expandedMembers": [
         "package/dist/behavior-contract-api.js",
-        "package/dist/chunks/chunk-77A3W7W3.js",
+        "package/dist/chunks/chunk-6KW4FIZP.js",
         "package/dist/chunks/chunk-ESXGWCXZ.js",
         "package/dist/chunks/chunk-FGRTUG4Y.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
@@ -5647,7 +5647,7 @@
       "resolution": "literal",
       "resolvedTarget": "package/dist/index.js",
       "expandedMembers": [
-        "package/dist/chunks/chunk-77A3W7W3.js",
+        "package/dist/chunks/chunk-6KW4FIZP.js",
         "package/dist/chunks/chunk-ESXGWCXZ.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
         "package/dist/chunks/chunk-QSWGS6BV.js",
@@ -5746,7 +5746,7 @@
       "resolution": "literal",
       "resolvedTarget": "package/dist/index.js",
       "expandedMembers": [
-        "package/dist/chunks/chunk-77A3W7W3.js",
+        "package/dist/chunks/chunk-6KW4FIZP.js",
         "package/dist/chunks/chunk-ESXGWCXZ.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
         "package/dist/chunks/chunk-QSWGS6BV.js",
@@ -5806,7 +5806,7 @@
     },
     {
       "source": "src/bridge/runtime-bootstrap.ts",
-      "line": 463,
+      "line": 478,
       "column": 19,
       "operation": "filesystem-read",
       "expression": "readFileSync(BRIDGE_SECRET_FILE, \"utf8\")",
@@ -5919,10 +5919,10 @@
       ]
     }
   ],
-  "runtimeDynamicSiteInventorySha256": "1af0b3ded8b2a919d414d0f28dda0b4ad4f25bf1927ca7e29df830530f9db74d",
+  "runtimeDynamicSiteInventorySha256": "83e1e45fa6cbcfe146b8a23e9fd6a551151b25a23f0e67d71febff6a0259ae8d",
   "emittedRuntimeSiteInventory": [
     {
-      "source": "package/dist/chunks/chunk-77A3W7W3.js",
+      "source": "package/dist/chunks/chunk-6KW4FIZP.js",
       "line": 77,
       "column": 24,
       "operation": "dynamic-import",
@@ -5936,8 +5936,8 @@
       ]
     },
     {
-      "source": "package/dist/chunks/chunk-77A3W7W3.js",
-      "line": 400,
+      "source": "package/dist/chunks/chunk-6KW4FIZP.js",
+      "line": 401,
       "column": 19,
       "operation": "filesystem-read",
       "expression": "readFileSync(BRIDGE_SECRET_FILE, \"utf8\")",
@@ -6572,7 +6572,7 @@
       "expandedMembers": []
     }
   ],
-  "emittedRuntimeSiteInventorySha256": "cadf4bdcfd0aca0e0fe1627f09ebd9ab6c34b9b8c2747b18ba2e1c31986c0928",
+  "emittedRuntimeSiteInventorySha256": "8de9dae05e8f25f5dd65aa7a62718a6d1ebf57235fd30d294bd974c3cc331276",
   "derivedRuntimeSet": [
     "package/dist/api.js",
     "package/dist/behavior-contract-api.js",
@@ -6580,7 +6580,7 @@
     "package/dist/chunks/accounts.runtime-KBTNACZB.js",
     "package/dist/chunks/channel.runtime-FKW24D4M.js",
     "package/dist/chunks/chunk-5JFALIRO.js",
-    "package/dist/chunks/chunk-77A3W7W3.js",
+    "package/dist/chunks/chunk-6KW4FIZP.js",
     "package/dist/chunks/chunk-DFYAECVK.js",
     "package/dist/chunks/chunk-ESXGWCXZ.js",
     "package/dist/chunks/chunk-FGRTUG4Y.js",
@@ -6613,7 +6613,7 @@
     "package/dist/chunks/accounts.runtime-KBTNACZB.js",
     "package/dist/chunks/channel.runtime-FKW24D4M.js",
     "package/dist/chunks/chunk-5JFALIRO.js",
-    "package/dist/chunks/chunk-77A3W7W3.js",
+    "package/dist/chunks/chunk-6KW4FIZP.js",
     "package/dist/chunks/chunk-DFYAECVK.js",
     "package/dist/chunks/chunk-ESXGWCXZ.js",
     "package/dist/chunks/chunk-FGRTUG4Y.js",
@@ -6750,7 +6750,7 @@
         "type": "file",
         "mode": "0644",
         "size": 3611,
-        "sha256": "667500e1155d7df667404655e75f67ae5ba6f877d49bb91e43443ef695f579cc"
+        "sha256": "29945dacf00bef0930a080d901a29da687379e1d5cf40c8cadcdb17073aca789"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/channel-plugin-api.js",
@@ -6788,11 +6788,11 @@
         "sha256": "d23416994c46753f5d7f0702a2329289084d5124a8dfe787930e21e5576a442b"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-77A3W7W3.js",
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-6KW4FIZP.js",
         "type": "file",
         "mode": "0644",
-        "size": 20865,
-        "sha256": "24b6e46335c5d05ea81403d1d68e0fe1e67286da32fee5830ac90e6a3057a072"
+        "size": 21127,
+        "sha256": "916909445f018e7d133a403a457c335ecabe8b92bf49f2db91f02746a49c17e2"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-DFYAECVK.js",
@@ -6932,7 +6932,7 @@
         "type": "file",
         "mode": "0644",
         "size": 1372,
-        "sha256": "a1c722c59a00dca9ae8ed27cf80a391f098f1b3d90b51e8daec355d4e78073ff"
+        "sha256": "ffd801d832a669624087db536dbc5a9f6db9731ff70f7f5310746d6b318471f5"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/runtime-api.js",
@@ -7546,7 +7546,7 @@
     ],
     "fileCount": 76,
     "directoryCount": 46,
-    "sha256": "de9b201d392aa5bb8b1d0d35103b14fe2e554cca2ccd225e50fa0f70aeeac243",
-    "rootSha256": "de9b201d392aa5bb8b1d0d35103b14fe2e554cca2ccd225e50fa0f70aeeac243"
+    "sha256": "a89f358ea5c8871d5aaeb9fe028a3f9aea4d87f16cbd5b8b22fd0bf258ae9a44",
+    "rootSha256": "a89f358ea5c8871d5aaeb9fe028a3f9aea4d87f16cbd5b8b22fd0bf258ae9a44"
   }
 }
