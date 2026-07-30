@@ -1123,3 +1123,142 @@ có key và **cả 42 key phân biệt** ⇒ tạo được partial UNIQUE INDEX
   lai, không phải đường client — `authenticated` chỉ có `SELECT` trên `organization_roles`.
 - Đợt 4 vẫn dừng ở chủ: **0/21 toà được khai giá**, 0/109 sổ quỹ mặc định (§10).
 - Đợt 9 giữ cửa kiểm "24 giờ không lệch tiền" — không rút ngắn được.
+
+---
+
+## 13. BƯỚC KẾ TIẾP ĐÃ LÀM — Cài đặt phí + cảnh báo trùng ô (30/07/2026)
+
+Mục này ghi hai việc làm sau §12, và **đính chính ba khẳng định sai** của chính tài
+liệu này. Chủ đặt đúng câu hỏi khiến chúng lộ ra: *"sao không để mục cài đặt cho tôi
+tự cập nhật, còn test thì dùng dữ liệu mẫu?"* và *"sổ quỹ mặc định là gì nữa? mỗi
+thanh toán có nút chọn sổ mà"*.
+
+### 13.1 ĐÍNH CHÍNH — ba thứ §10 gọi là "cửa chặn" thì KHÔNG phải
+
+| §10 nói | Đo lại 30/07 | Thực tế |
+|---|---|---|
+| "0/21 toà được khai giá" | org thật **109/162 ô đã khai, 107 ô CÓ giá** | **SAI HẲN.** Còn `pay_period_fee` **tự học** `default_amount` theo kỳ mỗi lần đóng, nên ô trống tự điền dần |
+| "0/109 sổ quỹ mặc định" | `pay_period_fee` **ghi** nó first-write-wins và **KHÔNG BAO GIỜ đọc lại** | **KHÔNG phải cửa chặn.** Mỗi lần thanh toán vẫn là picker sổ người chi thấy được; không truyền thì server lấy sổ "…Thu" của chính họ |
+| Đợt 4 "chờ chủ khai giá" | thiếu là **chỗ để xem/sửa gọn**, không phải dữ liệu | Việc thật: 53/162 ô chưa khai + không có trang nào xem toàn cảnh |
+
+⇒ Bài học: đừng gọi "thiếu dữ liệu" khi thật ra là "thiếu màn hình". Và trước khi
+liệt kê một thứ vào danh sách chặn, phải kiểm **ai đọc nó** — `default_account_id`
+có 4 hàm chạm tới nhưng **không hàm nào đọc để chọn sổ**.
+
+### 13.2 Trang Cài đặt "Phí cố định theo toà" — `/settings/finance/fixed-fees`
+
+Ma trận **toà × 9 hạng mục**, sửa tại chỗ giá / mã khách hàng / chủ hộ, bật-tắt
+hạng mục, lọc "chỉ hiện toà còn thiếu giá". Gate `thu_tien/collect` (trùng
+`/thanh-toan`); server vẫn kiểm từng toà trong `upsert_building_fee_account`.
+
+Điểm quyết định: `get_fee_config_matrix_v1` trả **CẢ ô CHƯA khai**. Trước đây ô
+trống là **vô hình** nên không ai biết mình còn nợ cấu hình — đó là lý do 53 ô kia
+nằm im. Kèm `last_voucher_date` / `voucher_count` để phân biệt ô đang chạy thật với
+ô khai rồi chưa dùng.
+
+Đọc trên web (org thật + DEMO): **182 ô cần khai · 129 đã có giá · 53 còn thiếu ·
+127 đang chạy thật · 7 đã tắt**. Bốn số này khớp chéo: 21 toà × 9 = 189, trừ 7 tắt
+= 182; 107 (thật) − 1 (ô vừa tắt) + 23 (DEMO seed) = 129; 182 − 129 = 53. ✅
+
+### 13.3 HAI LỖI THẬT tìm được khi dựng trang
+
+**(a) Cờ "Không áp dụng" ĐỌC MỘT NƠI GHI MỘT NƠI.** RPC ghi vào
+`buildings.hidden_fixed_expenses` (tự khai là nguồn duy nhất), giao diện lại đọc cột
+`building_fee_accounts.not_applicable` — **0/109 dòng true, không ai ghi vào đó**.
+Trong khi `hidden_fixed_expenses` có **6 mục thật ở 4 toà**: 403PVB [nuoc, ve_sinh],
+65NTG [cong_an, ve_sinh], 405PVB [nuoc], 1392QT [nuoc]. ⇒ đúng những ô chủ đã tắt
+lại hiện "đang áp dụng". Nay đọc từ nguồn duy nhất; migration đồng bộ cột cache
+(**1 dòng** đổi — 5/6 ô bị tắt chưa từng khai dòng cấu hình nào), và RPC giữ nó khớp
+sau mỗi lần ghi. Đo sau khi test qua UI: **lệch cache = 0** ở cả 3 toà DEMO.
+
+**(b) KHÔNG XOÁ ĐƯỢC giá gõ sai.** Upsert dùng `COALESCE(mới, cũ)` cho cả 4 cột nên
+NULL = giữ nguyên. Gõ 1.500.000 thành 15.000.000 là con số đó ở lại **vĩnh viễn** và
+mỗi kỳ lưới phí lại mời đóng theo nó. Thêm `p_clear_amount` / `p_clear_provider` /
+`p_clear_account` (cờ xoá **thắng** giá trị truyền kèm).
+⚠ **KHÔNG** đổi `COALESCE` thành gán thẳng: `pay_period_fee` dùng **cùng khuôn
+ON CONFLICT** và chỉ truyền vài cột (mục "Học cấu hình", `20260731011000:761`) —
+gán thẳng sẽ khiến **mỗi lần đóng tiền xoá sạch** các cột nó không truyền.
+
+Test đầu-cuối trên web, chỉ ghi org DEMO: nhập `"1.234.000"` (có dấu chấm) → lưu
+đúng `1234000`; bấm xoá → giá về `null` mà **mã khách hàng vẫn còn** (đúng ngữ nghĩa
+theo cột); tắt rồi bật lại hạng mục → cache khớp. **0 lỗi console.**
+
+### 13.4 ĐÍNH CHÍNH §12.6 — hai đường tôi định bịt thì ĐÃ ĐÓNG SẴN
+
+Trước khi viết một dòng nào, đo lại trên prod:
+
+1. **"Bấm đôi" KHÔNG tái diễn được.** `create_income_expense_v1` **bắt buộc**
+   idempotency key (kiểm định dạng 8–200 ký tự ASCII rồi claim vào
+   `app_private.canonical_write_operations` bằng `ON CONFLICT` — chính nó gọi đó là
+   *linearization point*); `create_income_expense_v2` ném `22023` nếu thiếu
+   `idempotencyKey`.
+2. **Đường POST THẲNG `/rest/v1/income_expenses`** — thứ **đã** sinh cặp 66.000.000đ
+   ở 102LVT cách nhau 460 ms — nay `authenticated` **KHÔNG còn** INSERT/UPDATE/DELETE
+   trên `income_expenses` lẫn `income_expense_items`
+   (`20260730102000_money_tables_revoke_dml.sql`, 10:20 cùng ngày).
+
+⇒ **BỎ** đề xuất `CREATE UNIQUE INDEX` trên `income_expenses.idempotency_key` ở
+§12.6 bước 1: cột đó chỉ là bản sao phi chuẩn hoá (45/45 key phân biệt), còn chốt
+thật nằm ở sổ canonical và **mạnh hơn**. Không thêm index nào.
+
+### 13.5 Phần CÒN HỞ thật → cảnh báo "ô này đã có phiếu"
+
+3/4 ô "cùng số tiền" **không phải bấm đôi** mà là **HAI NGƯỜI cùng trả một tháng,
+cách nhau nhiều ngày**. Idempotency tuyệt đối không cứu được: khác người, khác phiên,
+khác key — mỗi phiếu tự nó hợp lệ. Đây là lỗi **PHỐI HỢP**, thuốc đúng là **cho
+người ta THẤY**, không phải chặn.
+
+`get_voucher_slot_warning_v1(toà, loại[], kỳ, INCOME/EXPENSE, trừ-id)`:
+- Khoá ô theo **`income_expense_type_id`**, KHÔNG theo 9 hạng mục phí cố định — lỗi
+  này xảy ra với bất kỳ khoản định kỳ nào, và form chung không biết khái niệm "phí
+  cố định".
+- **ĐẾM CẢ `UNAPPROVED`**: phiếu chờ duyệt là phiếu người khác **không thấy** trên
+  các bảng lọc APPROVED — chính là nguyên nhân người thứ hai tạo lại.
+- Lọc theo quyền toà ⇒ không thành kênh soi phiếu toà mình không được xem.
+- `p_exclude_id` để lúc SỬA phiếu không tự cảnh báo về chính nó.
+- `VOLATILE` theo án lệ 25006.
+- Preflight của migration **RAISE** nếu `authenticated` được cấp lại INSERT thẳng
+  bảng — lúc đó cảnh báo mềm không còn đủ và phải biết mà xử.
+
+**KHÔNG chặn nút Lưu**: 20/24 ô trùng trên prod có số tiền **khác nhau** và đều hợp
+lệ (405PVB công an 07/2026 = 1.000.000đ + 7.000đ; 15KV rác 06/2026 = 300.000đ +
+120.000đ). Chặn cứng là **chặn oan 20/24**.
+
+**Bằng chứng browser trên chính ca thật** (405PVB · Tiền nhà · kỳ 07/2026):
+
+> Toà này đã có 2 phiếu cùng hạng mục cho kỳ đang chọn
+> `PC2607063` · 52.500.000đ · Tiền nhà · **NATHAN** · 2026-07-11
+> `PC2607077` · 52.500.000đ · Tiền nhà · **NG TÂM** · 2026-07-02
+> *Kiểm tra xem khoản này đã được trả chưa. Nếu đây là khoản khác thì cứ tạo bình
+> thường — hệ thống không chặn.*
+
+Đúng thông tin NATHAN cần thấy hôm 11/07 để không tạo phiếu thứ hai. Form đã bấm Huỷ,
+không lưu gì.
+
+### 13.6 Một lỗi server ĐÃ XÁC NHẬN nhưng CHƯA sửa
+
+`create_cashbook_v1` **deadlock `40P01`** khi nhiều phiên cùng tạo sổ quỹ trong một
+org: 3 worker xanh 4/4, **6 worker đỏ đều đặn 1/4** với
+*"Process A waits for ShareLock on transaction X; blocked by B. Process B waits …
+blocked by A."* Thứ tự khoá trong thân hàm: `SELECT … FOR SHARE` trên `buildings` →
+`app_private.lock_org_for_decision_v1(org)` → `INSERT canonical_write_operations
+ON CONFLICT DO NOTHING` → `SELECT … FOR UPDATE` chính dòng đó.
+
+Sửa đúng phải nằm **TRONG hàm** (thống nhất thứ tự khoá) — là thay đổi trên writer
+đụng tiền nên **tách làm riêng**, không vá vội. Ở E2E thì `40P01` là lỗi tạm thời nên
+thử lại là cách xử lý đúng (8 lần, backoff **có jitter** — không jitter thì hai phiên
+cùng ngủ rồi cùng thức và deadlock lại y như cũ; `idempotency_key` giữ nguyên nên
+không thể sinh sổ thứ hai). Sau vá: **4/4 xanh ba lần liên tiếp ở 6 worker.**
+⚠ Người dùng thật vẫn có thể gặp nếu hai người thêm sổ cùng lúc.
+
+### 13.7 Trạng thái sau bước này
+
+Đã lên prod, tiền không đổi ở mọi lần apply (9 bảng khớp tuyệt đối):
+`20260731020000_fee_config_clearable.sql` · `20260731030000_voucher_slot_warning.sql`.
+Gate: typecheck baseline khớp 30 fingerprint; vitest **2044 xanh / 2 đỏ**
+(`BuildingFilterSelect` đỏ sẵn trên `main`); `thanh-toan-page` 7/7;
+`utility-book-menu` 4/4.
+
+Còn nợ: (1) sửa thứ tự khoá `create_cashbook_v1`; (2) Đợt 1–2 (nền dùng chung với
+công tắc tắt, audit chuyển phòng); (3) Đợt 5/7/8/9 vẫn chờ cửa canary nhiều ngày —
+không rút ngắn được.
