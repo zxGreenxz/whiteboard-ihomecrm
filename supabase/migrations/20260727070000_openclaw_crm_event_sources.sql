@@ -8,6 +8,9 @@ begin
      or to_regclass('public.rooms') is null
      or to_regclass('public.lead_activities') is null
      or to_regprocedure('public.recompute_room_reservation(uuid)') is null
+     or to_regprocedure('app_private.lock_org_for_decision_v1(uuid)') is null
+     or to_regprocedure('app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)') is null
+     or to_regprocedure('app_private.authorized_scope_v3(text,uuid)') is null
   then
     raise exception 'OpenClaw CRM event source dependencies are incomplete' using errcode = '55000';
   end if;
@@ -16,6 +19,12 @@ $preflight$;
 
 grant usage on schema extensions to openclaw_function_owner;
 grant execute on function extensions.digest(bytea,text) to openclaw_function_owner;
+grant usage on schema auth to openclaw_function_owner;
+grant execute on function auth.uid() to openclaw_function_owner;
+grant execute on function app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)
+  to openclaw_function_owner;
+grant execute on function app_private.authorized_scope_v3(text,uuid)
+  to openclaw_function_owner;
 
 alter table public.openclaw_crm_event_subscriptions
   drop constraint if exists openclaw_crm_event_subscriptions_event_type_check;
@@ -65,8 +74,6 @@ begin
 end
 $source_preflight$;
 
-alter table public.lead_activities
-  alter column organization_id set not null;
 alter table public.lead_activities
   add constraint openclaw_lead_activities_schedule_canonical_check check (
     (scheduled_at is null and openclaw_scheduled_at_utc is null)
@@ -402,12 +409,40 @@ set search_path = ''
 as $function$
 declare
   v_organization_id uuid;
+  v_building_id uuid;
+  v_actor_id uuid := (select auth.uid());
+  v_permission_key text := case when TG_OP = 'INSERT' then 'leads.create' else 'leads.edit' end;
+  v_allowed boolean;
+  v_jwt_role text := pg_catalog.current_setting('request.jwt.claim.role',true);
 begin
-  select lead.organization_id into v_organization_id
+  select lead.organization_id,lead.building_id into v_organization_id,v_building_id
   from public.leads lead
   where lead.id = NEW.lead_id;
   if not found or v_organization_id is null then
     raise exception 'sales task parent lead organization is unavailable' using errcode = '23503';
+  end if;
+  if v_actor_id is not null then
+    perform app_private.lock_org_for_decision_v1(v_organization_id);
+    if v_building_id is not null then
+      select decision.allowed into v_allowed
+      from app_private.authorize_tenant_action_v3(
+        v_actor_id,v_organization_id,v_permission_key,v_building_id,null
+      ) decision;
+    else
+      select coalesce(scope.org_wide,false)
+          or coalesce(cardinality(scope.building_ids),0) > 0
+      into v_allowed
+      from app_private.authorized_scope_v3(v_permission_key,v_organization_id) scope;
+    end if;
+    if not coalesce(v_allowed,false) then
+      raise exception 'sales task parent lead is outside the caller''s authorized scope'
+        using errcode = '42501';
+    end if;
+  elsif coalesce(v_jwt_role,'') <> 'service_role'
+    and session_user not in ('postgres','supabase_admin')
+  then
+    raise exception 'sales task organization binding requires a trusted caller'
+      using errcode = '42501';
   end if;
   if NEW.organization_id is null then
     NEW.organization_id := v_organization_id;

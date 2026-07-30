@@ -136,7 +136,15 @@ describe("OpenClaw typed CRM occurrence sources migration", () => {
     const bindingBody = functionBody(sql, "app_private", "openclaw_bind_sales_task_organization_v1");
     const insertBody = functionBody(sql, "app_private", "openclaw_insert_crm_occurrence_v1");
     expect(sql).toMatch(/update public\.lead_activities task[\s\S]*?set organization_id = lead\.organization_id[\s\S]*?from public\.leads lead[\s\S]*?task\.lead_id = lead\.id/i);
-    expect(bindingBody).toMatch(/select lead\.organization_id[\s\S]*?from public\.leads lead[\s\S]*?lead\.id = NEW\.lead_id/i);
+    expect(bindingBody).toMatch(/select lead\.organization_id,lead\.building_id[\s\S]*?from public\.leads lead[\s\S]*?lead\.id = NEW\.lead_id/i);
+    expect(bindingBody).toContain("perform app_private.lock_org_for_decision_v1(v_organization_id)");
+    expect(bindingBody).toContain("app_private.authorize_tenant_action_v3(");
+    expect(bindingBody).toContain("app_private.authorized_scope_v3(v_permission_key,v_organization_id)");
+    expect(bindingBody).toContain("cardinality(scope.building_ids)");
+    expect(bindingBody).toContain("v_permission_key");
+    expect(bindingBody).toContain("v_building_id");
+    expect(bindingBody).toContain("sales task parent lead is outside the caller");
+    expect(bindingBody).toContain("request.jwt.claim.role");
     expect(bindingBody).toContain("NEW.organization_id := v_organization_id");
     expect(bindingBody).toContain("sales task organization does not match parent lead");
     expect(sql).toMatch(/before insert or update of lead_id,organization_id on public\.lead_activities/i);
@@ -144,6 +152,12 @@ describe("OpenClaw typed CRM occurrence sources migration", () => {
     expect(insertBody).toContain("from public.leads source_row");
     expect(insertBody).toContain("from public.rooms source_row");
     expect(insertBody).toContain("from public.lead_activities source_row");
+    expect(sql).toContain("to_regprocedure('app_private.authorized_scope_v3(text,uuid)') is null");
+    expect(sql).toMatch(/grant execute on function app_private\.authorize_tenant_action_v3\(uuid,uuid,text,uuid,uuid\)\s+to openclaw_function_owner/i);
+    expect(sql).toMatch(/grant execute on function app_private\.authorized_scope_v3\(text,uuid\)\s+to openclaw_function_owner/i);
+    expect(sql).toContain("grant usage on schema auth to openclaw_function_owner");
+    expect(sql).toContain("grant execute on function auth.uid() to openclaw_function_owner");
+    expect(sql).not.toMatch(/alter table public\.lead_activities\s+alter column organization_id set not null/i);
   });
 
   it("hashes event-specific snapshots and keeps occurrences append-only and tenant-closed", () => {
