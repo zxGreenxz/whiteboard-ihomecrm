@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   fetchBoundedJson,
   fetchTarballWithRedirects,
+  parseCliArguments,
   verifyCommittedInputs,
   verifyExternalSourceMembership,
   verifySigstoreAttestations,
@@ -83,6 +84,42 @@ function exportReviewedTreeFixture(reviewedTree: string, outputRoot: string, man
 }
 
 describe("reviewed upstream and legal inputs", () => {
+  it("strictly parses one acquisition mode and an all-or-none reviewed export binding", () => {
+    const manifestPath = resolve(repoRoot, "reviewed-tree-manifest.json");
+    const manifestSha256 = "a".repeat(64);
+    const reviewedTree = "b".repeat(40);
+
+    expect(parseCliArguments([
+      "--online",
+      "--reviewed-export-manifest", manifestPath,
+      "--reviewed-export-manifest-sha256", manifestSha256,
+      "--reviewed-tree", reviewedTree,
+    ])).toEqual({
+      mode: "online",
+      options: {
+        reviewedExportManifestPath: manifestPath,
+        reviewedExportManifestSha256: manifestSha256,
+        reviewedTree,
+      },
+    });
+    expect(parseCliArguments(["--offline"])).toEqual({ mode: "offline", options: {} });
+
+    for (const args of [[], ["--reviewed-tree", reviewedTree]]) {
+      expect(() => parseCliArguments(args), args.join(" ")).toThrow(/exactly one.*--online.*--offline/i);
+    }
+    expect(() => parseCliArguments(["--online", "--offline"])).toThrow(/conflict/i);
+    expect(() => parseCliArguments(["--online", "--online"])).toThrow(/duplicate/i);
+    expect(() => parseCliArguments(["--offline", "--unexpected"])).toThrow(/unknown/i);
+    expect(() => parseCliArguments(["--online", "--reviewed-tree", reviewedTree, "--reviewed-tree", reviewedTree])).toThrow(/duplicate/i);
+    expect(() => parseCliArguments(["--online", "--reviewed-tree"])).toThrow(/value/i);
+    expect(() => parseCliArguments(["--online", "--reviewed-tree", reviewedTree])).toThrow(/all.*reviewed export/i);
+    expect(() => parseCliArguments([
+      "--online",
+      "--reviewed-tree", reviewedTree,
+      "--reviewed-export-manifest", manifestPath,
+    ])).toThrow(/all.*reviewed export/i);
+  });
+
   it("follows at most three HTTPS redirects within the npm registry", async () => {
     const calls: string[] = [];
     const result = await fetchTarballWithRedirects(

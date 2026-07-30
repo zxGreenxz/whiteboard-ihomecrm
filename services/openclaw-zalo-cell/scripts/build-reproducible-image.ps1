@@ -520,8 +520,21 @@ Invoke-NodeChecked -Arguments @(
   '--manifest', $resolvedReviewedExportManifest
 ) | Out-Null
 
+$reviewedUpstreamVerifier = [IO.Path]::GetFullPath((Join-Path $cellRoot 'vendor/zalouser-bridge/scripts/verify-upstream.mjs'))
+Assert-RegularArchive -Path $reviewedUpstreamVerifier -Label 'Reviewed upstream verifier'
+$upstreamTarballDestination = [IO.Path]::GetFullPath((Join-Path $cellRoot 'vendor/zalouser-bridge/.work/verified-upstream.tgz'))
+Assert-NoReparseChain -Path $upstreamTarballDestination -Label 'Online upstream acquisition destination'
+Invoke-NodeChecked -Arguments @(
+    $reviewedUpstreamVerifier,
+    '--online',
+    '--reviewed-export-manifest', $resolvedReviewedExportManifest,
+    '--reviewed-export-manifest-sha256', $actualReviewedExportManifestSha256,
+    '--reviewed-tree', $ReviewedTree
+  ) | Out-Null
+
 $behaviorRunnerPath = (Resolve-Path -LiteralPath (Join-Path $cellRoot 'scripts/behavior-probe-runner.mjs') -ErrorAction Stop).Path
-$upstreamTarballPath = (Resolve-Path -LiteralPath (Join-Path $cellRoot 'vendor/zalouser-bridge/.work/verified-upstream.tgz') -ErrorAction Stop).Path
+$upstreamTarballPath = (Resolve-Path -LiteralPath $upstreamTarballDestination -ErrorAction Stop).Path
+$upstreamTarballSha256 = (Get-FileHash -LiteralPath $upstreamTarballPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $stockDockerfilePath = (Resolve-Path -LiteralPath (Join-Path $cellRoot 'Dockerfile.stock-probe') -ErrorAction Stop).Path
 $stockInstallerPath = (Resolve-Path -LiteralPath (Join-Path $cellRoot 'scripts/install-stock-zalouser-probe.sh') -ErrorAction Stop).Path
 $stockDockerfileText = Get-Content -LiteralPath $stockDockerfilePath -Raw
@@ -543,7 +556,7 @@ foreach ($stockInput in @(
 
 $lockedQualificationOperands = [ordered]@{
   'Behavior runner' = @{ Path = $behaviorRunnerPath; Sha256 = (Get-FileHash -LiteralPath $behaviorRunnerPath -Algorithm SHA256).Hash.ToLowerInvariant() }
-  'Verified upstream tarball' = @{ Path = $upstreamTarballPath; Sha256 = (Get-FileHash -LiteralPath $upstreamTarballPath -Algorithm SHA256).Hash.ToLowerInvariant() }
+  'Verified upstream tarball' = @{ Path = $upstreamTarballPath; Sha256 = $upstreamTarballSha256 }
   'M review report' = @{ Path = $resolvedMReviewReport; Sha256 = $retainedMReviewSha256 }
   'R review report' = @{ Path = $resolvedRReviewReport; Sha256 = $retainedRReviewSha256 }
   'Buildx binary' = @{ Path = $resolvedBuildx; Sha256 = $actualBuildxSha256 }

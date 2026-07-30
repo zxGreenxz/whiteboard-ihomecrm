@@ -1471,6 +1471,58 @@ test("PowerShell helper pins builders and makes the verifier the promotion gate"
   assert.doesNotMatch(script, /Invoke-Expression|cmd\s+\/c|Start-Process/);
 });
 
+test("qualification reacquires reviewed upstream online before any stale archive or output can be used", async () => {
+  const script = await readCell("scripts/build-reproducible-image.ps1");
+  const exportVerification = script.indexOf("  $reviewedExporter,");
+  const verifierBinding = script.indexOf("$reviewedUpstreamVerifier =", exportVerification);
+  const destination = script.indexOf("$upstreamTarballDestination =", verifierBinding);
+  const ancestryCheck = script.indexOf(
+    "Assert-NoReparseChain -Path $upstreamTarballDestination",
+    destination,
+  );
+  const acquisitionCall = script.indexOf("    $reviewedUpstreamVerifier,", ancestryCheck);
+  const archiveResolution = script.indexOf("$upstreamTarballPath = (Resolve-Path", acquisitionCall);
+  const archiveHash = script.indexOf("$upstreamTarballSha256 =", archiveResolution);
+  const firstMainTry = script.indexOf("try {", acquisitionCall);
+  const firstBuilder = script.indexOf("$builderACreated = $true", acquisitionCall);
+  const stockConsumption = script.indexOf("Source = $upstreamTarballPath", acquisitionCall);
+  const retainedArtifact = script.indexOf("$retainedAHash = Publish-RetainedArchive", acquisitionCall);
+  const retainedUpstream = script.indexOf("$retainedUpstreamHash = Publish-RetainedArchive", acquisitionCall);
+  const evidence = script.indexOf("'--evidence', $EvidencePath", acquisitionCall);
+
+  assert.ok(exportVerification >= 0 && verifierBinding > exportVerification && destination > verifierBinding);
+  assert.ok(ancestryCheck > destination && acquisitionCall > ancestryCheck);
+  assert.ok(archiveResolution > acquisitionCall && archiveHash > archiveResolution);
+  assert.ok(firstMainTry > acquisitionCall, "online acquisition must fail outside catch-and-cleanup flow");
+  for (const laterSentinel of [firstBuilder, stockConsumption, retainedArtifact, retainedUpstream, evidence]) {
+    assert.ok(laterSentinel > archiveHash, "acquisition and archive hash lock must precede every consumer/output");
+  }
+
+  const destinationGate = script.slice(destination, acquisitionCall);
+  assert.match(destinationGate, /\[IO\.Path\]::GetFullPath/);
+  assert.doesNotMatch(destinationGate, /Resolve-Path/);
+
+  const acquisitionBlockStart = script.lastIndexOf("Invoke-NodeChecked -Arguments @(", acquisitionCall);
+  const acquisitionBlockEnd = script.indexOf(") | Out-Null", acquisitionCall);
+  const acquisitionBlock = script.slice(acquisitionBlockStart, acquisitionBlockEnd);
+  assert.match(
+    script.slice(verifierBinding, destination),
+    /vendor\/zalouser-bridge\/scripts\/verify-upstream\.mjs/,
+  );
+  assert.match(acquisitionBlock, /'--online'/);
+  assert.match(acquisitionBlock, /'--reviewed-export-manifest', \$resolvedReviewedExportManifest/);
+  assert.match(acquisitionBlock, /'--reviewed-export-manifest-sha256', \$actualReviewedExportManifestSha256/);
+  assert.match(acquisitionBlock, /'--reviewed-tree', \$ReviewedTree/);
+  assert.doesNotMatch(acquisitionBlock, /\bnpm\b|Invoke-GitChecked|\$GitPath|OPENCLAW_REVIEWED_/i);
+
+  const nodeWrapperStart = script.indexOf("function Invoke-NodeChecked");
+  const nodeWrapperEnd = script.indexOf("$nodeVersion =", nodeWrapperStart);
+  const nodeWrapper = script.slice(nodeWrapperStart, nodeWrapperEnd);
+  assert.match(nodeWrapper, /Invoke-NativeChecked -FilePath \$nodePath -Arguments \$Arguments/);
+  assert.doesNotMatch(nodeWrapper, /-Environment\s+\$gitEnvironment|-Environment\s+\$dockerEnvironment/);
+  assert.match(script, /\.Environment\.Clear\(\)/);
+});
+
 test("PowerShell helper runs lock preflight before an explicit qualifying verifier", async () => {
   const script = await readCell("scripts/build-reproducible-image.ps1");
   const verifierCall = "    $verifierPath,";

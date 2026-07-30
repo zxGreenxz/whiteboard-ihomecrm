@@ -1238,13 +1238,57 @@ function isMain() {
   return process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }
 
+export function parseCliArguments(argv) {
+  if (!Array.isArray(argv)) throw new TypeError("CLI arguments must be an array");
+  const optionBindings = new Map([
+    ["--reviewed-export-manifest", "reviewedExportManifestPath"],
+    ["--reviewed-export-manifest-sha256", "reviewedExportManifestSha256"],
+    ["--reviewed-tree", "reviewedTree"],
+  ]);
+  const seen = new Set();
+  const options = {};
+  let mode;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--online" || argument === "--offline") {
+      if (seen.has(argument)) throw new Error(`duplicate CLI argument: ${argument}`);
+      seen.add(argument);
+      const candidateMode = argument.slice(2);
+      if (mode && mode !== candidateMode) throw new Error("conflicting --online and --offline modes");
+      mode = candidateMode;
+      continue;
+    }
+
+    const optionName = optionBindings.get(argument);
+    if (!optionName) throw new Error(`unknown CLI argument: ${argument}`);
+    if (seen.has(argument)) throw new Error(`duplicate CLI argument: ${argument}`);
+    seen.add(argument);
+    const value = argv[index + 1];
+    if (typeof value !== "string" || value.startsWith("--")) {
+      throw new Error(`${argument} requires a value`);
+    }
+    options[optionName] = value;
+    index += 1;
+  }
+
+  if (!mode) throw new Error("exactly one of --online or --offline is required");
+  const reviewedBindingCount = [...optionBindings.values()].filter((key) =>
+    Object.prototype.hasOwnProperty.call(options, key),
+  ).length;
+  if (reviewedBindingCount !== 0 && reviewedBindingCount !== optionBindings.size) {
+    throw new Error("all reviewed export arguments must be supplied together");
+  }
+  return { mode, options };
+}
+
 if (isMain()) {
-  const offline = process.argv.includes("--offline");
-  if (offline) {
-    const result = await verifyCommittedInputs();
+  const cli = parseCliArguments(process.argv.slice(2));
+  if (cli.mode === "offline") {
+    const result = await verifyCommittedInputs(cli.options);
     process.stdout.write(`Verified ${result.inputCount} committed M inputs offline; this is non-qualifying.\n`);
   } else {
-    const result = await verifyOnlineInputs();
+    const result = await verifyOnlineInputs(cli.options);
     process.stdout.write(
       `Verified ${result.inputCount} committed M inputs, ${result.provenanceInputCount} reacquired provenance inputs, ${result.sourceBlobCount} source blobs, and the signed upstream tarball online.\n`,
     );
