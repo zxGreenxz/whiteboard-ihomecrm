@@ -1,6 +1,7 @@
 begin;
 
-grant usage on schema app_private to authenticated, openclaw_function_owner;
+revoke usage on schema app_private from public, anon, authenticated, service_role;
+grant usage on schema app_private to openclaw_function_owner;
 grant execute on function public.my_org_ids() to openclaw_function_owner;
 grant execute on function app_private.authorized_scope_v3(text, uuid) to openclaw_function_owner;
 

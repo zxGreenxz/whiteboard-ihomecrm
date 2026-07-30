@@ -223,6 +223,12 @@ describe("OpenClaw tenant-safe access policy migration", () => {
 
   it("derives authorized organizations through the exact row organization", () => {
     const sql = accessSql();
+    expect(allSql()).not.toMatch(
+      /grant\s+usage\s+on\s+schema\s+app_private\s+to\s+[^;]*\bauthenticated\b/is,
+    );
+    expect(sql).toMatch(
+      /revoke\s+usage\s+on\s+schema\s+app_private\s+from\s+public,\s*anon,\s*authenticated,\s*service_role;/i,
+    );
     expect(sql).toContain("app_private.openclaw_authorized_org_ids_v1");
     expect(sql).toContain("app_private.openclaw_can_org_v1");
     expect(sql).toContain("unnest(public.my_org_ids())");
