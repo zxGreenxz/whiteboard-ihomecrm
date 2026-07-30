@@ -21414,6 +21414,23 @@ export type Database = {
         Args: { p_building_ids?: string[]; p_status?: string }
         Returns: Json
       }
+      get_fee_config_matrix_v1: {
+        Args: { p_building_ids?: string[] }
+        Returns: {
+          account_holder: string
+          building_id: string
+          building_name: string
+          default_account_id: string
+          default_account_name: string
+          default_amount: number
+          fee_category: string
+          is_declared: boolean
+          last_voucher_date: string
+          not_applicable: boolean
+          provider_code: string
+          voucher_count: number
+        }[]
+      }
       get_finance_v2_client_flags_v1: {
         Args: never
         Returns: {
@@ -23437,6 +23454,9 @@ export type Database = {
         Args: {
           p_account_holder?: string
           p_building_id: string
+          p_clear_account?: boolean
+          p_clear_amount?: boolean
+          p_clear_provider?: boolean
           p_default_account_id?: string
           p_default_amount?: number
           p_fee_category: string

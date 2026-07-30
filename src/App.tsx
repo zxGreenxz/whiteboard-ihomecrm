@@ -125,6 +125,7 @@ const MetersPage = lazy(() => import("./pages/settings/MetersPage"));
 const IncomeExpenseTypesNewPage = lazy(() => import("./pages/settings/IncomeExpenseTypesPage"));
 const IncomeExpenseTemplatesPage = lazy(() => import("./pages/settings/IncomeExpenseTemplatesPage"));
 const CashbooksPage = lazy(() => import("./pages/settings/finance/CashbooksPage"));
+const FixedFeesPage = lazy(() => import("./pages/settings/finance/FixedFeesPage"));
 const PersonalWalletPage = lazy(() => import("./pages/finance/PersonalWalletPage"));
 const ManagerSalaryPage = lazy(() => import("./pages/finance/ManagerSalaryPage"));
 const MySalaryPage = lazy(() => import("./pages/finance/MySalaryPage"));
@@ -466,6 +467,10 @@ const App = () => (
           {/* Cashbooks (Tài khoản): canonical URL is /finance/cashbooks under
               VẬN HÀNH → Tài chính (cùng nhóm với Thu chi). Legacy URLs aliased. */}
           <Route path="/finance/cashbooks" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbooksPage /></RequirePermission></ProtectedRoute>} />
+          {/* Cấu hình giá phí cố định theo toà. Gate trùng /thanh-toan
+              (thu_tien/collect) để ai đóng được phí thì cấu hình được — server
+              vẫn kiểm lại từng toà trong upsert_building_fee_account. */}
+          <Route path="/settings/finance/fixed-fees" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><FixedFeesPage /></RequirePermission></ProtectedRoute>} />
           {/* Biên bản chốt & bàn giao quỹ — in được, ký tay. Gác bằng chính
               quyền xem sổ quỹ; nội dung biên bản đã khoá vĩnh viễn. */}
           <Route path="/finance/cashbooks/closure/:closureId" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbookClosureRecord /></RequirePermission></ProtectedRoute>} />

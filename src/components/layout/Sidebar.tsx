@@ -169,6 +169,8 @@ const navigationGroups: NavGroup[] = [
           // phải bước duyệt nào chỉ thấy danh sách rỗng.
           { title: 'Chờ duyệt', href: '/approvals', icon: ClipboardList },
           { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, module: 'cashbooks' },
+          // Cấu hình giá phí cố định theo toà — nguồn gợi ý số tiền cho /thanh-toan.
+          { title: 'Phí cố định', href: '/settings/finance/fixed-fees', icon: Settings, module: 'thu_tien', action: 'collect' },
           { title: 'Bảng lương', href: '/finance/salary', icon: HandCoins, module: 'salary', selfHref: '/finance/my-salary' },
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],

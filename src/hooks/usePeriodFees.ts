@@ -364,24 +364,59 @@ export const useUpdatePeriodFee = () => {
 };
 
 // ── Cấu hình tòa×hạng mục ───────────────────────────────────────────────────
+/**
+ * GOTCHA đã cắn: cờ "Không áp dụng" KHÔNG nằm ở `building_fee_accounts.not_applicable`.
+ * `upsert_building_fee_account` ghi nó vào `buildings.hidden_fixed_expenses` và tự
+ * gọi đó là "nguồn DUY NHẤT" (BC Lợi nhuận + trang Đóng tiền cùng đọc chỗ đó).
+ * Cột `not_applicable` thì KHÔNG AI GHI — đo trên prod 30/07: 0/109 dòng true,
+ * trong khi `hidden_fixed_expenses` có 6 mục thật ở 4 toà (403PVB nuoc+ve_sinh,
+ * 65NTG cong_an+ve_sinh, 405PVB nuoc, 1392QT nuoc). Đọc sai cột ⇒ giao diện hiện
+ * "đang áp dụng" cho đúng những ô chủ đã tắt. Nên phải JOIN sang buildings.
+ */
 export const useFeeAccounts = () => {
   const query = useQuery({
     queryKey: ['fee-accounts'],
     queryFn: async (): Promise<FeeAccount[]> => {
-      const { data, error } = await (supabase as any)
-        .from('building_fee_accounts')
-        .select('building_id, fee_category, provider_code, account_holder, default_amount, default_account_id, not_applicable')
-        .is('deleted_at', null);
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      const [cfgRes, bldRes] = await Promise.all([
+        (supabase as any)
+          .from('building_fee_accounts')
+          .select('building_id, fee_category, provider_code, account_holder, default_amount, default_account_id')
+          .is('deleted_at', null),
+        (supabase as any)
+          .from('buildings')
+          .select('id, hidden_fixed_expenses')
+          .is('deleted_at', null),
+      ]);
+      if (cfgRes.error) throw new Error(cfgRes.error.message);
+      if (bldRes.error) throw new Error(bldRes.error.message);
+
+      const hidden = new Set<string>();
+      for (const b of (bldRes.data ?? []) as any[]) {
+        for (const k of (b.hidden_fixed_expenses ?? []) as string[]) hidden.add(`${b.id}:${k}`);
+      }
+
+      const rows: FeeAccount[] = ((cfgRes.data ?? []) as any[]).map((r) => ({
         buildingId: r.building_id,
         feeCategory: r.fee_category,
         providerCode: r.provider_code ?? '',
         accountHolder: r.account_holder ?? '',
         defaultAmount: r.default_amount == null ? null : Number(r.default_amount),
         defaultAccountId: r.default_account_id ?? null,
-        notApplicable: !!r.not_applicable,
+        notApplicable: hidden.has(`${r.building_id}:${r.fee_category}`),
       }));
+
+      // Ô bị tắt mà CHƯA có dòng cấu hình vẫn phải xuất hiện, kẻo trang Cài đặt
+      // hiện nó là "đang áp dụng" — đúng lỗi vừa vá, chỉ đổi chỗ biểu hiện.
+      const seen = new Set(rows.map((r) => `${r.buildingId}:${r.feeCategory}`));
+      for (const key of hidden) {
+        if (seen.has(key)) continue;
+        const [buildingId, feeCategory] = [key.slice(0, 36), key.slice(37)];
+        rows.push({
+          buildingId, feeCategory, providerCode: '', accountHolder: '',
+          defaultAmount: null, defaultAccountId: null, notApplicable: true,
+        });
+      }
+      return rows;
     },
   });
   const byKey = useMemo(() => {
