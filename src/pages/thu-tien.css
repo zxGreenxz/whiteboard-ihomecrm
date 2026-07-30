@@ -1322,3 +1322,16 @@
 .tt-page .ptt-m-batch .ptt-note { margin-bottom: 11px; }
 .tt-page .ptt-m-comm .ptt-note { display: flex; }
 
+
+/* Đợt 3 — thanh nút "Sinh phiếu hàng loạt" trên /thanh-toan.
+   position:absolute để không chen vào grid 2 cột của .tt-stage (panel desktop |
+   khung điện thoại); z-index thấp hơn sheet mobile nên không đè lên nó. */
+.tt-stage .tt-batch-bar {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 5;
+}
+@media (max-width: 1023px) {
+  .tt-stage .tt-batch-bar { top: 6px; right: 8px; }
+}

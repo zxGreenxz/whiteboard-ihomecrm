@@ -37,6 +37,10 @@ import { canUse } from '@/lib/permissionPages';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { PeriodFeePanel } from '@/components/thu-tien/PeriodFeePanel';
 import { PeriodFeeSheet } from '@/components/thu-tien/PeriodFeeSheet';
+import { SpecialFeeBatchDialog } from '@/components/thu-tien/SpecialFeeBatchDialog';
+import { Button } from '@/components/ui/button';
+import { Sparkles } from 'lucide-react';
+import { useState } from 'react';
 
 const currentMonth = () => {
   const d = new Date();
@@ -62,6 +66,11 @@ const ThanhToan = () => {
   // thì lui đúng 1 bước cho tự nhiên. Vào THẲNG bằng deep-link/F5 thì history
   // rỗng — react-router đánh dấu entry đầu bằng key 'default' — nên rơi về
   // /thu-tien, hoặc "/" nếu không có quyền vào Thu tiền.
+  // Đợt 3: sinh phiếu phí cố định hàng loạt. Đặt ở page (không nhét vào panel)
+  // vì nó thao tác trên CẢ KỲ chứ không theo từng hạng mục, và hai bề mặt
+  // desktop/mobile dùng chung một dialog.
+  const [batchOpen, setBatchOpen] = useState(false);
+
   const goBack = () => {
     if (location.key !== 'default') navigate(-1);
     else navigate(canViewThuTien ? '/thu-tien' : '/');
@@ -69,6 +78,19 @@ const ThanhToan = () => {
 
   return (
     <div className="tt-stage">
+      {canRecordPayment && (
+        <div className="tt-batch-bar">
+          <Button size="sm" variant="outline" onClick={() => setBatchOpen(true)}>
+            <Sparkles className="h-4 w-4 mr-1" />
+            Sinh phiếu hàng loạt
+          </Button>
+        </div>
+      )}
+      <SpecialFeeBatchDialog
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        period={billingMonth}
+      />
       <PeriodFeePanel
         billingMonth={billingMonth}
         onBillingMonthChange={setBillingMonth}
