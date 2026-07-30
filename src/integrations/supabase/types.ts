@@ -20554,6 +20554,8 @@ export type Database = {
           confirmer_count: number
           covered: boolean
           has_pending_request: boolean
+          i_can_confirm: boolean
+          i_can_propose: boolean
           is_bank: boolean
           needs_closing: boolean
         }[]

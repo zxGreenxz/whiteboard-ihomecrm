@@ -70,12 +70,23 @@ export interface MonthlyClosingStatus {
   balance_at_month_end: number | null;
   needs_closing: boolean;
   /**
-   * false = KHÔNG chốt được vì thiếu người ký thứ hai (chỉ một người dính líu
-   * tới sổ). Nhắc chốt trong ca này là vô nghĩa — phải gán ai đó vào vai trò
-   * "Kế toán" trước. Đo 30/07: org thật có 10/16 sổ thuộc loại này.
+   * Câu hỏi của HỆ THỐNG: có tồn tại một CẶP hai người khác nhau (một đề nghị,
+   * một ký)? false = phải gán ai đó vào vai trò "Kế toán" trước, nhắc chốt là
+   * vô nghĩa. Đo 30/07: org thật có 10/16 sổ thuộc loại này.
    */
   can_be_closed: boolean;
   confirmer_count: number;
+  /**
+   * Câu hỏi của NGƯỜI ĐANG XEM. Tách khỏi `can_be_closed` sau khi đo trên
+   * trình duyệt: sổ "Hiệp Thu" chốt được (NATHAN đề nghị → chủ ký) nhưng CHỦ
+   * mở hộp thoại ra thì ăn blocker NO_CONFIRMER, vì `cashbook_close_confirmers_v1`
+   * loại chính người gọi và trên sổ đó chủ là người ký duy nhất.
+   *
+   * `i_can_propose` còn đòi ĐANG GIỮ SỔ (CUSTODIAN) — điều kiện thật của
+   * `propose_cashbook_closing_v1`. Chỉ hiện nút "Chốt sổ" khi cờ này bật.
+   */
+  i_can_propose: boolean;
+  i_can_confirm: boolean;
 }
 
 /** Mọi thứ đọc được đều đổi sau một lần chốt — gom một chỗ để khỏi sót. */

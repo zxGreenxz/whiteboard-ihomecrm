@@ -175,15 +175,26 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   //     tháng đó bị TRIGGER khoá, muốn sửa phải mở khoá (xoá phân bổ, chốt lại).
   //     CẢNH BÁO MỀM theo quyết định của chủ: không bao giờ chặn tay chủ.
   const closingStatusQuery = useCashbookMonthlyClosingStatus(organizationId, period);
+  //     Bốn nhóm, cố ý tách theo VIỆC CỦA AI. Đo trên trình duyệt: chủ mở hộp
+  //     thoại chốt "Hiệp Thu" thì ăn blocker NO_CONFIRMER — sổ đó chốt được
+  //     nhưng phải NATHAN đề nghị, chủ chỉ ký. Bày một nút "Chốt sổ" cho chủ ở
+  //     đây là dẫn người ta vào cửa đóng.
   const cashbookGaps = useMemo(() => {
     const rows = closingStatusQuery.data ?? [];
     const open = rows.filter((r) => !r.covered && r.needs_closing);
+    const waiting = open.filter((r) => r.has_pending_request);
+    const rest = open.filter((r) => !r.has_pending_request);
     return {
-      waiting: open.filter((r) => r.has_pending_request),
-      todo: open.filter((r) => !r.has_pending_request && r.can_be_closed),
-      // Không chốt được vì chỉ MỘT người dính líu tới sổ — nhắc là vô nghĩa,
-      // phải gán ai đó vào vai trò "Kế toán" trước.
-      noSigner: open.filter((r) => !r.has_pending_request && !r.can_be_closed),
+      // đề nghị chờ ký — tách riêng phần chờ CHÍNH TÔI ký
+      waiting,
+      waitingMine: waiting.filter((r) => r.i_can_confirm),
+      // tôi giữ sổ + tôi đề nghị được + có người khác ký được
+      mine: rest.filter((r) => r.i_can_propose),
+      // hệ đủ hai bên nhưng người phải bấm là NGƯỜI KHÁC
+      others: rest.filter((r) => !r.i_can_propose && r.can_be_closed),
+      // không chốt được vì chỉ MỘT người dính líu tới sổ — nhắc là vô nghĩa,
+      // phải gán ai đó vào vai trò "Kế toán" trước
+      noSigner: rest.filter((r) => !r.can_be_closed),
       total: open.length,
     };
   }, [closingStatusQuery.data]);
@@ -846,10 +857,10 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                 Chốt lợi nhuận trước khi đếm quỹ nghĩa là con số đem chia chưa có ai
                 ký nhận. Chốt từng sổ trước rồi hãy chốt tháng.
               </p>
-              {cashbookGaps.todo.length > 0 && (
+              {cashbookGaps.mine.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="font-medium">Chốt được ngay:</span>
-                  {cashbookGaps.todo.map((r) => (
+                  <span className="font-medium">Bạn chốt được ngay:</span>
+                  {cashbookGaps.mine.map((r) => (
                     <Link
                       key={r.cashbook_id}
                       to={`/finance/cashbooks?close=${r.cashbook_id}`}
@@ -865,20 +876,39 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   ))}
                 </div>
               )}
-              {cashbookGaps.waiting.length > 0 && (
+              {cashbookGaps.waitingMine.length > 0 && (
                 <p>
-                  <span className="font-medium">Đang chờ ký:</span>{" "}
-                  {cashbookGaps.waiting.map((r) => r.cashbook_name).join(" · ")} — nhắc
-                  người nhận vào <Link to="/finance/cashbooks" className="underline">Sổ quỹ</Link> ký.
+                  <span className="font-medium">Chờ BẠN ký:</span>{" "}
+                  {cashbookGaps.waitingMine.map((r) => r.cashbook_name).join(" · ")} —
+                  mở <Link to="/finance/cashbooks" className="underline">Sổ quỹ</Link> để
+                  đếm lại và ký nhận.
+                </p>
+              )}
+              {cashbookGaps.waiting.length > cashbookGaps.waitingMine.length && (
+                <p>
+                  <span className="font-medium">Chờ người khác ký:</span>{" "}
+                  {cashbookGaps.waiting
+                    .filter((r) => !r.i_can_confirm)
+                    .map((r) => r.cashbook_name)
+                    .join(" · ")}{" "}
+                  — đã có đề nghị, nhắc người nhận vào ký.
+                </p>
+              )}
+              {cashbookGaps.others.length > 0 && (
+                <p>
+                  <span className="font-medium">Chờ người giữ sổ đề nghị:</span>{" "}
+                  {cashbookGaps.others.map((r) => r.cashbook_name).join(" · ")} — nghi
+                  thức đòi người ký <em>khác</em> người đề nghị, nên bạn không tự chốt
+                  các sổ này; người đang giữ sổ phải đề nghị rồi bạn ký.
                 </p>
               )}
               {cashbookGaps.noSigner.length > 0 && (
                 <p>
                   <span className="font-medium">Chưa có người ký:</span>{" "}
-                  {cashbookGaps.noSigner.map((r) => r.cashbook_name).join(" · ")} — nghi
-                  thức đòi người ký khác người đề nghị, nên các sổ này cần gán một người
-                  vào vai trò <strong>Kế toán</strong> (Cài đặt → Thành viên, phạm vi
-                  toàn tổ chức) mới chốt được.
+                  {cashbookGaps.noSigner.map((r) => r.cashbook_name).join(" · ")} — các
+                  sổ này chỉ một người dính tới nên không ai ký nhận được. Gán một người
+                  vào vai trò <strong>Kế toán</strong> (Cài đặt → Thành viên, phạm vi{" "}
+                  <em>toàn tổ chức</em>) là chốt được ngay.
                 </p>
               )}
             </div>
