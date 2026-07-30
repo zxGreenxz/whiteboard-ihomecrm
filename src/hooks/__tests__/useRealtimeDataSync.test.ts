@@ -52,6 +52,7 @@ import { QueryClient } from "@tanstack/react-query";
 
 const NEW_REPORT_ROOTS = new Set([
   "business-performance",
+  "occupancy-dashboard",
 ]);
 
 const businessPerformanceKeys = {
@@ -227,7 +228,7 @@ describe("useRealtimeDataSync report invalidation", () => {
   it.each([
     ["invoices", [["business-performance"]]],
     ["income_expenses", [["business-performance"]]],
-    ["contracts", [["business-performance"]]],
+    ["contracts", [["business-performance"], ["occupancy-dashboard"]]],
     ["rooms", [["business-performance"]]],
     ["buildings", [["business-performance"]]],
     ["jobs", []],
@@ -256,6 +257,13 @@ describe("useRealtimeDataSync report invalidation", () => {
       "buildings",
       "jobs",
       "customers",
+      // Rủi ro #5 của plan thu chi: bốn bảng TIỀN trước đây thiếu hẳn. Phiếu
+      // giờ sửa/huỷ/chốt được (Đợt 4/5/6) nên không đồng bộ là hai người đối
+      // chiếu quỹ đọc ra hai số.
+      "payments",
+      "income_expense_items",
+      "accounts",
+      "cash_handovers",
     ]);
     expect(new Set(registeredTables).size).toBe(registeredTables.length);
   });
@@ -397,7 +405,10 @@ describe("useRealtimeDataSync report invalidation", () => {
         expect(fetchers.upcomingVacancy).toHaveBeenCalledTimes(1);
         expect(fetchers.occupancyTrend12m).toHaveBeenCalledTimes(1);
       });
-      expect(invalidatedReportRoots()).toEqual([["business-performance"]]);
+      expect(invalidatedReportRoots()).toEqual([
+        ["occupancy-dashboard"],
+        ["business-performance"],
+      ]);
       for (const [name, queryFn] of Object.entries(fetchers) as Array<
         [BusinessPerformanceQueryName, ReturnType<typeof vi.fn>]
       >) {
@@ -431,6 +442,7 @@ describe("useRealtimeDataSync report invalidation", () => {
       "dashboard-alerts",
       "recent-activities",
       "dashboard-summary",
+      "occupancy-dashboard",
     ]);
 
     const cleanup = harness.cleanup;
@@ -441,7 +453,7 @@ describe("useRealtimeDataSync report invalidation", () => {
     vi.advanceTimersByTime(800);
 
     expect(invalidatedRoots()).not.toContain("business-performance");
-    expect(harness.invalidateQueries).toHaveBeenCalledTimes(7);
+    expect(harness.invalidateQueries).toHaveBeenCalledTimes(8);
     expect(harness.removeChannel).toHaveBeenCalledTimes(1);
   });
 

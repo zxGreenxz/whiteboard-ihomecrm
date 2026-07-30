@@ -1,15 +1,24 @@
-// Đợt 6 — hộp thư "đang chờ tôi ký".
+// Đợt 6 — hộp thư "đang chờ tôi ký" + đường ra biên bản đã ký.
 //
 // Nghi thức đối soát CŨ chết đúng ở chỗ này: `propose_reconciliation` tạo được
 // bản PENDING nhưng KHÔNG có màn hình nào để bên kia bấm xác nhận
 // (useConfirmReconciliation là code chết, không ai import). Một đề nghị gửi đi
 // là treo vĩnh viễn. Cửa này là thứ giữ cho nghi thức mới không chết y hệt.
+//
+// Cùng lý do đó, khối "biên bản đã ký" nằm ngay đây: closures ghi vào
+// app_private.cashbook_closures, không bảng nào ở FE join tới, nên nếu không có
+// một đường link thì trang biên bản in được sẽ là một URL không ai bấm tới.
 
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Inbox } from "lucide-react";
-import { useCashbookClosings, type PendingClosure } from "@/hooks/useCashbookClosing";
+import { FileText, Inbox } from "lucide-react";
+import {
+  useCashbookClosings,
+  type ConfirmedClosure,
+  type PendingClosure,
+} from "@/hooks/useCashbookClosing";
 import ConfirmCashbookClosingDialog from "./ConfirmCashbookClosingDialog";
 
 function fmtVND(n: number | null | undefined) {
@@ -17,58 +26,130 @@ function fmtVND(n: number | null | undefined) {
   return new Intl.NumberFormat("vi-VN").format(Number(n)) + "đ";
 }
 
-export default function CashbookClosingInbox() {
-  const { data } = useCashbookClosings();
+/** Đường dẫn biên bản in được của một lần chốt đã ký. */
+export const closureRecordPath = (closureId: number | string) =>
+  `/finance/cashbooks/closure/${closureId}`;
+
+export interface CashbookClosingInboxProps {
+  /** Lọc theo một sổ (bỏ trống = mọi sổ người dùng thấy được). */
+  cashbookId?: string | null;
+  /**
+   * "mobile" = thu nhỏ chữ + xếp dọc cho khung 432px của trang app điện thoại.
+   * Chỉ đổi cách bày, KHÔNG đổi luồng: vẫn cùng RPC, cùng hộp thoại ký.
+   */
+  variant?: "desktop" | "mobile";
+  /** Số biên bản đã ký hiển thị gần nhất. */
+  recentLimit?: number;
+}
+
+export default function CashbookClosingInbox({
+  cashbookId = null,
+  variant = "desktop",
+  recentLimit = 5,
+}: CashbookClosingInboxProps) {
+  const { data } = useCashbookClosings(cashbookId);
   const [target, setTarget] = useState<PendingClosure | null>(null);
   const pending = data?.pending ?? [];
+  const closures: ConfirmedClosure[] = (data?.closures ?? []).slice(0, recentLimit);
 
-  if (pending.length === 0) return null;
+  if (pending.length === 0 && closures.length === 0) return null;
 
   const mine = pending.filter((p) => p.is_mine_to_confirm);
   const others = pending.filter((p) => !p.is_mine_to_confirm);
+  const isMobile = variant === "mobile";
+  const bodyText = isMobile ? "text-xs" : "text-sm";
 
   return (
     <>
-      <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
-          <Inbox className="h-4 w-4" />
-          Đề nghị chốt sổ đang chờ
-          {mine.length > 0 && (
-            <Badge className="bg-red-600 hover:bg-red-600">{mine.length} chờ bạn ký</Badge>
-          )}
+      {pending.length > 0 && (
+        <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <Inbox className="h-4 w-4 shrink-0" />
+            Đề nghị chốt sổ đang chờ
+            {mine.length > 0 && (
+              <Badge className="bg-red-600 hover:bg-red-600">{mine.length} chờ bạn ký</Badge>
+            )}
+          </div>
+          <ul className="space-y-2">
+            {[...mine, ...others].map((p) => (
+              <li
+                key={p.request_id}
+                className={
+                  isMobile
+                    ? "rounded-md bg-white px-3 py-2 text-xs"
+                    : "flex flex-wrap items-center justify-between gap-2 rounded-md bg-white px-3 py-2 text-sm"
+                }
+              >
+                <div className="min-w-0">
+                  <span className="font-medium">{p.cashbook_name}</span>
+                  <span className="text-muted-foreground">
+                    {" "}· {p.proposed_by_name ?? "người giữ sổ"} đề nghị chốt tới {p.closed_through}
+                    {" "}· đã đếm <span className="tabular-nums">{fmtVND(p.counted_balance)}</span>
+                    {Number(p.difference) !== 0 && (
+                      <span className="text-amber-800">
+                        {" "}(lệch {fmtVND(p.difference)})
+                      </span>
+                    )}
+                  </span>
+                </div>
+                {p.is_mine_to_confirm ? (
+                  <Button
+                    size="sm"
+                    className={`bg-red-600 hover:bg-red-700 ${isMobile ? "mt-2 w-full" : ""}`}
+                    onClick={() => setTarget(p)}
+                  >
+                    Xem &amp; ký nhận
+                  </Button>
+                ) : (
+                  <span className={`text-xs text-muted-foreground ${isMobile ? "mt-1 block" : ""}`}>
+                    chờ {p.confirmer_name ?? "người nhận"} ký
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul className="space-y-2">
-          {[...mine, ...others].map((p) => (
-            <li
-              key={p.request_id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white px-3 py-2 text-sm"
-            >
-              <div className="min-w-0">
-                <span className="font-medium">{p.cashbook_name}</span>
-                <span className="text-muted-foreground">
-                  {" "}· {p.proposed_by_name ?? "người giữ sổ"} đề nghị chốt tới {p.closed_through}
-                  {" "}· đã đếm <span className="tabular-nums">{fmtVND(p.counted_balance)}</span>
-                  {Number(p.difference) !== 0 && (
-                    <span className="text-amber-800">
-                      {" "}(lệch {fmtVND(p.difference)})
-                    </span>
-                  )}
-                </span>
-              </div>
-              {p.is_mine_to_confirm ? (
-                <Button size="sm" className="bg-red-600 hover:bg-red-700"
-                        onClick={() => setTarget(p)}>
-                  Xem &amp; ký nhận
-                </Button>
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  chờ {p.confirmer_name ?? "người nhận"} ký
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
+      )}
+
+      {closures.length > 0 && (
+        <div className="mb-4 rounded-lg border bg-white p-3">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <FileText className="h-4 w-4 shrink-0 text-emerald-700" />
+            Biên bản chốt sổ đã ký
+          </div>
+          <ul className="space-y-1.5">
+            {closures.map((c) => (
+              <li
+                key={c.closure_id}
+                className={
+                  isMobile
+                    ? `rounded-md bg-zinc-50 px-2.5 py-2 ${bodyText}`
+                    : `flex flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2 ${bodyText}`
+                }
+              >
+                <div className="min-w-0">
+                  <span className="font-medium">{c.cashbook_name}</span>
+                  <span className="text-muted-foreground">
+                    {" "}· chốt tới {c.closed_through} · đã đếm{" "}
+                    <span className="tabular-nums">{fmtVND(c.counted_balance)}</span>
+                    {Number(c.difference) !== 0 && (
+                      <span className="text-amber-800"> (lệch {fmtVND(c.difference)})</span>
+                    )}
+                  </span>
+                </div>
+                <Link
+                  to={closureRecordPath(c.closure_id)}
+                  className={`text-blue-600 underline underline-offset-2 ${
+                    isMobile ? "mt-1 inline-block font-medium" : "shrink-0"
+                  }`}
+                >
+                  Xem biên bản
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ConfirmCashbookClosingDialog
         open={!!target}

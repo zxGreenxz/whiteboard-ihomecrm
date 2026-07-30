@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -87,6 +87,13 @@ import {
   adoptVoucherAttachmentsAsEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
+// Đợt 4: hỏi-trước can_flex_cancel_v1 + writer huỷ-một-nhát có CAS hai version.
+import {
+  useFlexCancelEligibility,
+  useCancelVoucherFlex,
+  flexCancelGate,
+} from "@/hooks/income-expenses/flexMutations";
+import VoucherHistoryDialog from "@/components/income-expenses/VoucherHistoryDialog";
 
 const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
 
@@ -128,6 +135,9 @@ const IncomeExpenseDesktopPage = () => {
   const [quickEditVoucher, setQuickEditVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [verifyVoucher, setVerifyVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  // Đợt 4: màn đọc lại mốc lập/duyệt/huỷ + nhật ký thay đổi trước/sau.
+  const [historyVoucher, setHistoryVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
@@ -319,6 +329,7 @@ const IncomeExpenseDesktopPage = () => {
     useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
 
   const cancelMutation = useCancelIncomeExpense();
+  const flexCancelMutation = useCancelVoucherFlex();
   const restoreMutation = useRestoreIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
@@ -346,12 +357,30 @@ const IncomeExpenseDesktopPage = () => {
     approveAndPostOpen || !!postApprovedTarget,
   );
 
+  // Đợt 4 — hỏi server TRƯỚC phiếu nào huỷ được (can_flex_cancel_v1). Danh sách
+  // id phải dựng bằng useMemo: queryKey băm từ mảng đã sort, mảng mới mỗi render
+  // vẫn cùng key nhưng effect của react-query thì chạy lại vô ích.
+  const flexCancelIds = useMemo(
+    () =>
+      vouchers
+        .filter((v) => v.approval_status !== "CANCELLED")
+        .map((v) => v.id),
+    [vouchers],
+  );
+  const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
+
   // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
   const cancelTargetVoucher = cancelTarget
     ? vouchers.find((v) => v.id === cancelTarget) ?? null
     : null;
   const cancelTargetPosted = cancelTargetVoucher?.posting_status === "POSTED";
   const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
+  // Hộp thoại xác nhận cũng phải tôn trọng câu trả lời của server: phiếu mở từ
+  // chi tiết/đợt có thể không nằm trong trang hiện tại ⇒ không có dòng ⇒ gate
+  // mặc định "cho bấm", writer là chốt chặn cuối.
+  const cancelTargetGate = flexCancelGate(
+    cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
+  );
 
   const isShareholderPayout = !!approveTarget?.shareholder_id;
   const approvalAccounts = isShareholderPayout
@@ -538,16 +567,35 @@ const IncomeExpenseDesktopPage = () => {
   }, []);
 
   const confirmCancel = useCallback(() => {
+    const reason = cancelReason.trim();
     if (cancelTarget) {
-      cancelMutation.mutate(
-        cancelReason.trim()
-          ? { id: cancelTarget, reason: cancelReason.trim() }
-          : cancelTarget,
-      );
+      // Đợt 4: phiếu nào server đã xác nhận huỷ-nhanh-được thì đi THẲNG writer
+      // linh hoạt — đó là đường duy nhất truyền được CAS hai version. Đường cũ
+      // (useCancelIncomeExpense) luôn gửi null nên hai người bấm cùng lúc là
+      // huỷ đè lên nhau trong im lặng.
+      if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
+        flexCancelMutation.mutate({
+          voucherId: cancelTarget,
+          reason,
+          expectedApprovalVersion: cancelTargetVoucher.approval_version ?? null,
+          expectedPostingVersion: cancelTargetVoucher.posting_version ?? null,
+        });
+      } else {
+        cancelMutation.mutate(
+          reason ? { id: cancelTarget, reason } : cancelTarget,
+        );
+      }
     }
     setCancelTarget(null);
     setCancelReason("");
-  }, [cancelTarget, cancelReason, cancelMutation]);
+  }, [
+    cancelTarget,
+    cancelReason,
+    cancelMutation,
+    cancelTargetGate.useFlexWriter,
+    cancelTargetVoucher,
+    flexCancelMutation,
+  ]);
 
   const confirmCancelBatch = useCallback(() => {
     if (cancelBatchTarget) {
@@ -724,6 +772,8 @@ const IncomeExpenseDesktopPage = () => {
             onUnapprove={handleUnapproveVoucher}
             onVerify={handleVerifyVoucher}
             onCopy={(v) => setCopyVoucher(v)}
+            onHistory={(v) => setHistoryVoucher(v)}
+            cancelEligibility={cancelEligibility}
             pagination={pagination}
             totalCount={totalCount}
           />
@@ -790,6 +840,14 @@ const IncomeExpenseDesktopPage = () => {
         onOpenChange={handleVerifyClose}
         voucher={verifyVoucher}
       />
+      {/* Đợt 4: lịch sử phiếu — mốc lập/duyệt/huỷ + lý do + nhật ký trước/sau. */}
+      <VoucherHistoryDialog
+        open={!!historyVoucher}
+        onOpenChange={(o) => {
+          if (!o) setHistoryVoucher(null);
+        }}
+        voucher={historyVoucher}
+      />
       <IncomeExpenseBatchDetailDialog
         open={!!detailBatch}
         onOpenChange={(o) => {
@@ -831,8 +889,7 @@ const IncomeExpenseDesktopPage = () => {
                   thật</b>. Huỷ sẽ <b>trừ thẳng khoản này khỏi tồn quỹ</b> ngay,
                   không sinh thêm phiếu đối ứng nào trong danh sách. Phiếu
                   chuyển <b>Đã huỷ</b> và giữ lại đầy đủ mốc lập / duyệt / huỷ
-                  cùng lý do để đối soát. Chỉ Người giữ sổ (CUSTODIAN) của sổ
-                  này thực hiện được.
+                  cùng lý do để đối soát.
                 </>
               ) : (
                 <>
@@ -842,6 +899,30 @@ const IncomeExpenseDesktopPage = () => {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* Sự thật về QUYỀN (đo lại trên prod 30/07/2026, thân hàm
+              cancel_income_expense_flex_v1): super admin, chủ tổ chức và NGƯỜI
+              TẠO phiếu vào thẳng, không cần giữ sổ. Chỉ người ngoài ba nhóm đó
+              mới phải vừa có quyền huỷ thu chi trên toà, vừa là CUSTODIAN của
+              sổ. Câu cũ ("chỉ CUSTODIAN") là sai và làm người dùng không dám bấm. */}
+          <p className="text-xs text-muted-foreground">
+            Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc
+            người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của
+            phiếu (CUSTODIAN).
+          </p>
+          {/* Server đã nói trước là không huỷ được thì nói luôn ở đây, đừng để
+              người dùng gõ xong lý do rồi mới ăn toast lỗi. */}
+          {cancelTargetGate.reason && (
+            <p
+              className={
+                cancelTargetGate.canCancel
+                  ? "rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800"
+                  : "rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-700"
+              }
+            >
+              {cancelTargetGate.canCancel ? "Lưu ý: " : "Không huỷ được: "}
+              {cancelTargetGate.reason}
+            </p>
+          )}
           {/* Đợt 4: lý do là BẮT BUỘC ở mọi trạng thái. Đây là vế "đổi lại"
               của thoả thuận: cho huỷ thẳng không sinh phiếu đối ứng, nhưng
               phiếu đã huỷ phải tự giải thích được khi đối soát về sau. */}
@@ -860,7 +941,12 @@ const IncomeExpenseDesktopPage = () => {
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmCancel}
-              disabled={cancelReason.trim().length < 8}
+              disabled={
+                cancelReason.trim().length < 8 ||
+                !cancelTargetGate.canCancel ||
+                flexCancelMutation.isPending ||
+                cancelMutation.isPending
+              }
               className="bg-red-600 hover:bg-red-700"
             >
               {cancelTargetPosted ? "Huỷ phiếu & trừ khỏi sổ quỹ" : "Huỷ phiếu"}

@@ -98,6 +98,7 @@ const TerminationsReport = lazy(() => import("./pages/reports/real-estate/Termin
 const ExpenseRatioReport = lazy(() => import("./pages/reports/real-estate/ExpenseRatioReport"));
 const DailyCashbookReport = lazy(() => import("./pages/reports/finance/DailyCashbookReport"));
 const CashFlowReport = lazy(() => import("./pages/reports/finance/CashFlowReport"));
+const CashbookClosureRecord = lazy(() => import("./pages/reports/finance/CashbookClosureRecord"));
 const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/PaymentScheduleReport"));
 const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
 const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
@@ -465,6 +466,9 @@ const App = () => (
           {/* Cashbooks (Tài khoản): canonical URL is /finance/cashbooks under
               VẬN HÀNH → Tài chính (cùng nhóm với Thu chi). Legacy URLs aliased. */}
           <Route path="/finance/cashbooks" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbooksPage /></RequirePermission></ProtectedRoute>} />
+          {/* Biên bản chốt & bàn giao quỹ — in được, ký tay. Gác bằng chính
+              quyền xem sổ quỹ; nội dung biên bản đã khoá vĩnh viễn. */}
+          <Route path="/finance/cashbooks/closure/:closureId" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbookClosureRecord /></RequirePermission></ProtectedRoute>} />
           <Route path="/setting/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           <Route path="/settings/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           <Route path="/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />

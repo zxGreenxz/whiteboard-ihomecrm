@@ -12,7 +12,11 @@ import {
   Layers,
   Zap,
   Share2,
+  History,
   X,
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight,
 } from "lucide-react";
 import "@/styles/mobileApp.css";
 import "@/styles/financeMobile.css";
@@ -97,6 +101,15 @@ import {
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
 import { Textarea } from "@/components/ui/textarea";
+// Đợt 4 (parity desktop): hỏi-trước can_flex_cancel_v1, writer huỷ có CAS hai
+// version, và màn lịch sử phiếu.
+import {
+  useFlexCancelEligibility,
+  useCancelVoucherFlex,
+  flexCancelGate,
+} from "@/hooks/income-expenses/flexMutations";
+import VoucherHistoryDialog from "@/components/income-expenses/VoucherHistoryDialog";
+import { groupReversalVouchers, groupNetAmount } from "@/lib/voucherReversalGrouping";
 
 const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
 
@@ -184,6 +197,9 @@ export default function IncomeExpenseMobilePage() {
   const [copyVoucher, setCopyVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [quickEditVoucher, setQuickEditVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
+  // Đợt 4: màn đọc lại mốc lập/duyệt/huỷ + nhật ký thay đổi trước/sau.
+  const [historyVoucher, setHistoryVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isQuickOpen, setIsQuickOpen] = useState(false);
@@ -360,6 +376,39 @@ export default function IncomeExpenseMobilePage() {
     internalCount: 0, internalIncome: 0, internalExpense: 0,
     pendingCount: 0, pendingTotal: 0,
   };
+  // --- Gộp ẩn phiếu đối ứng DI SẢN vào thẻ phiếu gốc (plan Đợt 5, parity desktop) ---
+  // Lịch sử trước Đợt 5 có hai thẻ rời rạc cho cùng một nghiệp vụ hoàn tác.
+  // `vouchers` GIỮ NGUYÊN để nút "Xem thêm" vẫn đếm theo số bản ghi thật.
+  const [openReversals, setOpenReversals] = useState<Record<string, boolean>>({});
+  const displayRows = useMemo(() => {
+    const rows: Array<{
+      voucher: (typeof vouchers)[number];
+      reversalCount: number;
+      netAmount: number;
+      nested: boolean;
+    }> = [];
+    for (const group of groupReversalVouchers(vouchers)) {
+      const reversalCount = group.reversals.length;
+      rows.push({
+        voucher: group.anchor,
+        reversalCount,
+        netAmount: reversalCount > 0 ? groupNetAmount(group) : 0,
+        nested: false,
+      });
+      if (reversalCount > 0 && openReversals[group.anchor.id]) {
+        for (const reversal of group.reversals) {
+          rows.push({
+            voucher: reversal,
+            reversalCount: 0,
+            netAmount: 0,
+            nested: true,
+          });
+        }
+      }
+    }
+    return rows;
+  }, [vouchers, openReversals]);
+
   const curLayer = filters.layer === undefined ? "CASH" : filters.layer ?? "ALL";
   const setLayer = (v: "CASH" | "INTERNAL" | "PENDING" | "ALL") => {
     setFilters({ ...filters, layer: v === "ALL" ? null : v });
@@ -368,6 +417,7 @@ export default function IncomeExpenseMobilePage() {
   const positive = statsData.difference >= 0;
 
   const cancelMutation = useCancelIncomeExpense();
+  const flexCancelMutation = useCancelVoucherFlex();
   const restoreMutation = useRestoreIncomeExpense();
   const approveMutation = useApproveVoucher();
   const quickUpdateMutation = useQuickUpdateIncomeExpense();
@@ -395,6 +445,16 @@ export default function IncomeExpenseMobilePage() {
     approveAndPostOpen || !!postApprovedTarget,
   );
 
+  // Đợt 4 (parity desktop) — hỏi server TRƯỚC phiếu nào huỷ được.
+  const flexCancelIds = useMemo(
+    () =>
+      vouchers
+        .filter((v) => v.approval_status !== "CANCELLED")
+        .map((v) => v.id),
+    [vouchers],
+  );
+  const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
+
   // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
   const cancelTargetVoucher = cancelTarget
     ? vouchers.find((x) => x.id === cancelTarget) ?? null
@@ -403,6 +463,9 @@ export default function IncomeExpenseMobilePage() {
     (cancelTargetVoucher as { posting_status?: string | null } | null)
       ?.posting_status === "POSTED";
   const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
+  const cancelTargetGate = flexCancelGate(
+    cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
+  );
 
   // Duyệt phiếu: nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước
   // (update_income_expense_quick chỉ áp cho phiếu nháp) rồi mới ghi vào tồn quỹ.
@@ -740,6 +803,19 @@ export default function IncomeExpenseMobilePage() {
                             {v.building_name ? ` · ${v.building_name}` : ""}
                             {v.room_name ? ` - ${v.room_name}` : ""}
                           </div>
+                          {/* Đợt 4 (parity desktop): lịch sử phiếu — mốc
+                              lập/duyệt/huỷ + lý do + nhật ký trước/sau. Với
+                              phiếu đã huỷ đây là chỗ đối soát duy nhất. */}
+                          <button
+                            className="vch-qr"
+                            aria-label="Xem lịch sử phiếu"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setHistoryVoucher(v);
+                            }}
+                          >
+                            <History size={15} />
+                          </button>
                           {canShareQR && (
                             <button
                               className="vch-qr"
@@ -959,6 +1035,14 @@ export default function IncomeExpenseMobilePage() {
         }}
         voucher={quickEditVoucher}
       />
+      {/* Đợt 4: lịch sử phiếu — dùng chung component với desktop (parity). */}
+      <VoucherHistoryDialog
+        open={!!historyVoucher}
+        onOpenChange={(o) => {
+          if (!o) setHistoryVoucher(null);
+        }}
+        voucher={historyVoucher}
+      />
       {shareVoucher && (
         <PayViaBankAppSheet
           open
@@ -985,10 +1069,10 @@ export default function IncomeExpenseMobilePage() {
               {cancelTargetPosted ? (
                 <>
                   Phiếu này <b>đã {cancelTargetIsIncome ? "thu" : "chi"} tiền
-                  thật</b>. Huỷ sẽ tạo bút toán <b>HOÀN TÁC</b> ghi ngày hôm
-                  nay ({cancelTargetIsIncome ? "tiền rời khỏi sổ" : "tiền trả về sổ"},
-                  tồn quỹ thay đổi) rồi mới đánh dấu phiếu <b>Đã huỷ</b>. Bút
-                  toán gốc giữ nguyên trong lịch sử sổ.
+                  thật</b>. Huỷ sẽ <b>trừ thẳng khoản này khỏi tồn quỹ</b> ngay,
+                  không sinh thêm phiếu đối ứng nào trong danh sách. Phiếu
+                  chuyển <b>Đã huỷ</b> và giữ lại đầy đủ mốc lập / duyệt / huỷ
+                  cùng lý do để đối soát.
                 </>
               ) : (
                 <>
@@ -998,6 +1082,25 @@ export default function IncomeExpenseMobilePage() {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {/* Giữ Y HỆT bản desktop: super admin / chủ tổ chức / người tạo phiếu
+              vào thẳng; người khác mới cần quyền huỷ + giữ sổ (CUSTODIAN). */}
+          <p className="text-xs text-muted-foreground">
+            Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc
+            người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của
+            phiếu (CUSTODIAN).
+          </p>
+          {cancelTargetGate.reason && (
+            <p
+              className={
+                cancelTargetGate.canCancel
+                  ? "rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800"
+                  : "rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-700"
+              }
+            >
+              {cancelTargetGate.canCancel ? "Lưu ý: " : "Không huỷ được: "}
+              {cancelTargetGate.reason}
+            </p>
+          )}
           {/* Đợt 4: lý do BẮT BUỘC ở mọi trạng thái — vế đánh đổi của việc cho
               huỷ thẳng mà không sinh phiếu đối ứng. Giữ y hệt bản desktop. */}
           <div className="space-y-1">
@@ -1014,13 +1117,29 @@ export default function IncomeExpenseMobilePage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
-              disabled={cancelReason.trim().length < 8}
+              disabled={
+                cancelReason.trim().length < 8 ||
+                !cancelTargetGate.canCancel ||
+                flexCancelMutation.isPending ||
+                cancelMutation.isPending
+              }
               onClick={() => {
+                const reason = cancelReason.trim();
                 if (cancelTarget) {
-                  cancelMutation.mutate({
-                    id: cancelTarget,
-                    reason: cancelReason.trim(),
-                  });
+                  // Đợt 4: đi writer linh hoạt khi server đã gật, vì chỉ đường
+                  // đó nhận p_expected_approval_version/p_expected_posting_version.
+                  if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
+                    flexCancelMutation.mutate({
+                      voucherId: cancelTarget,
+                      reason,
+                      expectedApprovalVersion:
+                        cancelTargetVoucher.approval_version ?? null,
+                      expectedPostingVersion:
+                        cancelTargetVoucher.posting_version ?? null,
+                    });
+                  } else {
+                    cancelMutation.mutate({ id: cancelTarget, reason });
+                  }
                 }
                 setCancelTarget(null);
                 setCancelReason("");

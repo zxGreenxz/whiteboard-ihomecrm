@@ -33,7 +33,14 @@ type SyncTable =
   | "rooms"
   | "buildings"
   | "jobs"
-  | "customers";
+  | "customers"
+  // Rủi ro #5 của plan thu chi: ba bảng tiền dưới đây trước KHÔNG có mặt ở đây.
+  // Hồi đó vô hại vì phiếu bất biến; từ Đợt 4/5/6 phiếu sửa/huỷ/chốt được nên
+  // hai người đối chiếu quỹ sẽ đọc ra hai số khác nhau nếu không đồng bộ.
+  | "payments"
+  | "income_expense_items"
+  | "accounts"
+  | "cash_handovers";
 
 type BusinessPerformanceSubtype =
   | "organizations"
@@ -138,6 +145,17 @@ const SYNC_TABLES: SyncEntry[] = [
       ["change-breakdown"], // sổ thối
       ["commission-prefill"],
       ["business-performance"],
+      // --- Đợt 2→6: màn đọc phiếu bằng key riêng, trước đây bỏ sót ---
+      ["settlement-report"],
+      ["financial-analysis"],
+      ["monthly-building-profit"],
+      ["income-expense-batches"],
+      ["voucher-detail"],
+      ["voucher-cancellation"],
+      ["voucher-change-log"],
+      ["ie-history"],
+      ["flex-cancel-eligibility"],
+      ["can-reverse-collection"],
     ],
     domain: "income-expenses",
   },
@@ -155,6 +173,7 @@ const SYNC_TABLES: SyncEntry[] = [
       ["recent-activities"],
       ["dashboard-summary"],
       ["business-performance"],
+      ["occupancy-dashboard"],
     ],
     domain: "contracts",
   },
@@ -165,6 +184,57 @@ const SYNC_TABLES: SyncEntry[] = [
   },
   { table: "jobs", keys: [["jobs"]], domain: "jobs" },
   { table: "customers", keys: [["customers"], ["customer-stats"]] },
+
+  // ── Ba bảng TIỀN mà plan (Rủi ro #5) nêu là thiếu hẳn ─────────────
+  // payments: hoàn tác thu tiền đổi payments.reversed_at, và
+  // recompute_invoice_for_id tính paid_amount TỪ bảng này chứ không từ phiếu.
+  {
+    table: "payments",
+    keys: [
+      ["invoice-payments-summary"],
+      ["invoices"],
+      ["payments"],
+      ["invoice-statistics"],
+      ["invoice-collectors"],
+      ["can-reverse-collection"],
+      ["settlement-report"],
+    ],
+  },
+  // income_expense_items: sửa hạng mục đổi total_amount của phiếu qua trigger,
+  // tức đổi luôn tồn quỹ — mà trước đây không phát tín hiệu nào.
+  {
+    table: "income_expense_items",
+    keys: [
+      ["income-expenses"],
+      ["voucher-with-batch"],
+      ["voucher-detail"],
+      ["accounts-with-balance"],
+      ["cash-book-summary"],
+      ["financial-analysis"],
+    ],
+  },
+  // accounts: chốt sổ đặt lock_date, đổi số dư đầu, đổi người phụ trách.
+  {
+    table: "accounts",
+    keys: [
+      ["accounts"],
+      ["accounts-with-balance"],
+      ["cashbook-closings"],
+      ["cashbook-closing-blockers"],
+      ["cashbook-balance-as-of"],
+      ["cash-book-summary"],
+    ],
+  },
+  // cash_handovers: phiên bàn giao đổi trạng thái là hai bên phải thấy ngay.
+  {
+    table: "cash_handovers",
+    keys: [
+      ["cash-handovers"],
+      ["handover-vouchers"],
+      ["settlement-report"],
+      ["cashbook-closing-blockers"],
+    ],
+  },
 ];
 
 const DEBOUNCE_MS = 800;
