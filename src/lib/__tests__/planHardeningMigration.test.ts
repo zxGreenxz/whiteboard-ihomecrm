@@ -253,3 +253,73 @@ describe("Người tạo được huỷ phiếu mình tạo + nhật ký trướ
     expect(w4).not.toMatch(/v_money_keys/);
   });
 });
+
+const w5 = readMigration("20260730240000_profit_month_lock_guard.sql");
+const w6 = readMigration("20260730250000_undo_by_collector_and_batch_cancel_gate.sql");
+
+describe("Khoá tháng đã chốt lợi nhuận — và mở khoá nó", () => {
+  it("là TRIGGER chứ không phải vị ngữ", () => {
+    // [PROFIT_LOCKED] cũ chỉ là vị ngữ vài hàm gọi khi SỬA/HUỶ. Đo thật: tạo
+    // phiếu chi mới 777.000đ vào tháng 06/2026 đã chốt & đã chia — TẠO ĐƯỢC.
+    for (const t of ["a02_ie_profit_lock_ins", "a02_ie_profit_lock_upd",
+                     "a02_ie_profit_lock_del", "a02_ie_items_profit_lock"]) {
+      expect(w5).toContain(t);
+    }
+  });
+
+  it("chừa cửa cho chủ tổ chức / super admin (chủ chọn phương án 2)", () => {
+    expect(w5).toMatch(/is_super_admin\(\) OR app_private\.is_org_owner_v1/);
+  });
+
+  it("ba ngoại lệ có chủ ý, không phải sơ hở", () => {
+    // 1) ngoài KQKD không góp vào số đã chia
+    expect(w5).toContain("business_result_accounting");
+    // 2) cron: 07/2026 khoá từ 20/07 trong khi tháng vẫn chạy — chặn là cron chết
+    expect(w5).toMatch(/IF v_actor IS NULL THEN/);
+    expect(w5).toMatch(/recurring_vouchers_daily/);
+    // 3) quyết định #8: vẫn thêm được ảnh/ghi chú
+    expect(w5).toContain("'ANNOTATE'");
+  });
+
+  it("canh cả hạng mục — đổi chỗ giữ nguyên tổng vẫn phải chặn", () => {
+    expect(w5).toMatch(/TỔNG KHÔNG ĐỔI/);
+  });
+
+  it("xét cả phía cũ lẫn phía mới", () => {
+    // Đẩy phiếu RA khỏi tháng đã chốt cũng là đổi số của tháng đó.
+    expect(w5).toMatch(/TG_OP <> 'INSERT' THEN OLD\.building_id/);
+    expect(w5).toMatch(/TG_OP <> 'DELETE' THEN NEW\.building_id/);
+  });
+
+  it("mở khoá: GRANT hàm đã có sẵn, và chỉ GRANT khi hàm TỰ gác quyền", () => {
+    // unlock_profit_month_v1 tồn tại từ trước, gác bằng shareholder_profit.unlock
+    // (đúng 2 người có: chủ mỗi org), nhưng ACL là postgres-only nên vô dụng.
+    expect(w5).toContain("GRANT EXECUTE ON FUNCTION public.unlock_profit_month_v1(text, uuid[]) TO authenticated");
+    expect(w5).toContain("GRANT EXECUTE ON FUNCTION public.lock_profit_month_v1(text, jsonb) TO authenticated");
+    expect(w5).toMatch(/không tự gác quyền — KHÔNG GRANT/);
+  });
+});
+
+describe("Hoàn tác chỉ người đã thu + gác nút huỷ cả đợt", () => {
+  it("hoàn tác đòi ĐÚNG người đã thu", () => {
+    expect(w6).toContain("CHÍNH NGƯỜI ĐÃ THU");
+    expect(w6).toMatch(/src\.user_id = v_actor/);
+    expect(w6).toContain("Chỉ người đã thu khoản này mới hoàn tác được");
+  });
+
+  it("giữ cửa chủ tổ chức, nếu không khoản thu của nhân viên nghỉ là bất khả hoàn tác", () => {
+    expect(w6).toMatch(/nhân viên đã nghỉ là bất khả hoàn tác vĩnh viễn/);
+    expect(w6).toMatch(/is_org_owner_v1\(v_collection\.organization_id, v_actor\)/);
+  });
+
+  it("reader khớp writer bằng mã NOT_COLLECTOR", () => {
+    expect(w6).toContain("'NOT_COLLECTOR'");
+  });
+
+  it("huỷ cả đợt có cổng quyền + ghi dấu vết", () => {
+    expect(w6).toContain("'income_expenses.cancel'");
+    expect(w6).toContain("assert_cashbook_access_v2");
+    expect(w6).toContain("income_expense_cancellations");
+    expect(w6).toContain("COMPAT_BATCH_CANCEL");
+  });
+});
