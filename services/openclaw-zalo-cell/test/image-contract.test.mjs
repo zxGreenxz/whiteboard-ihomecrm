@@ -1471,6 +1471,34 @@ test("PowerShell helper pins builders and makes the verifier the promotion gate"
   assert.doesNotMatch(script, /Invoke-Expression|cmd\s+\/c|Start-Process/);
 });
 
+test("Task 2 keeps source verification and qualification in distinct reviewed exports", async () => {
+  const repoRoot = resolve(cellRoot, "../..");
+  const plan = await readFile(
+    join(repoRoot, "docs/superpowers/plans/2026-07-26-openclaw-zalo-personal.md"),
+    "utf8",
+  );
+  const flowStart = plan.indexOf("$bootstrapRoot = Join-Path $tempRoot");
+  const flowEnd = plan.indexOf("Expected: every command exits 0", flowStart);
+  assert.ok(flowStart >= 0 && flowEnd > flowStart, "Task 2 qualifying flow must be present");
+  const flow = plan.slice(flowStart, flowEnd);
+
+  assert.match(flow, /\$verificationExportRoot\s*=\s*Join-Path\s+\$tempRoot/);
+  assert.match(flow, /\$qualificationExportRoot\s*=\s*Join-Path\s+\$tempRoot/);
+  assert.match(flow, /--output-root\s+\$verificationExportRoot/);
+  assert.match(flow, /--output-root\s+\$qualificationExportRoot/);
+  assert.match(flow, /Push-Location\s+\$verificationExportRoot/);
+  assert.doesNotMatch(flow, /Push-Location\s+\$qualificationExportRoot/);
+  assert.match(flow, /-ReviewedSourceRoot\s+\$qualificationExportRoot/);
+
+  const verificationCommands = flow.indexOf("Push-Location $verificationExportRoot");
+  const qualificationExport = flow.indexOf("--output-root $qualificationExportRoot");
+  const helperCall = flow.indexOf("-ReviewedSourceRoot $qualificationExportRoot");
+  assert.ok(
+    verificationCommands >= 0 && qualificationExport > verificationCommands && helperCall > qualificationExport,
+    "the exact qualification export must be created only after mutable source verification",
+  );
+});
+
 test("qualification reacquires reviewed upstream online before any stale archive or output can be used", async () => {
   const script = await readCell("scripts/build-reproducible-image.ps1");
   const exportVerification = script.indexOf("  $reviewedExporter,");

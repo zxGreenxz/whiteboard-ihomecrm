@@ -1109,7 +1109,8 @@ if ((& $gitPath --no-replace-objects -C $sourceRoot cat-file -t $exporterBlob).T
 $exporterSize = [int64](& $gitPath --no-replace-objects -C $sourceRoot cat-file -s $exporterBlob)
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $bootstrapRoot = Join-Path $tempRoot ('ihome-openclaw-bootstrap-' + [guid]::NewGuid().ToString('N'))
-$exportRoot = Join-Path $tempRoot ('ihome-openclaw-r-' + [guid]::NewGuid().ToString('N'))
+$verificationExportRoot = Join-Path $tempRoot ('ihome-openclaw-r-verify-' + [guid]::NewGuid().ToString('N'))
+$qualificationExportRoot = Join-Path $tempRoot ('ihome-openclaw-r-qualify-' + [guid]::NewGuid().ToString('N'))
 $releaseRoot = Join-Path $sourceRoot 'services/openclaw-zalo-cell/.release'
 New-Item -ItemType Directory -Path $bootstrapRoot -ErrorAction Stop | Out-Null
 New-Item -ItemType Directory -Path $releaseRoot -Force -ErrorAction Stop | Out-Null
@@ -1143,15 +1144,15 @@ try {
   if ((Get-Item -LiteralPath $bootstrapExporter).Length -ne $exporterSize) { throw 'Reviewed exporter byte size mismatch' }
   if ((& $gitPath --no-replace-objects -C $sourceRoot hash-object $bootstrapExporter).Trim() -ne $exporterBlob) { throw 'Reviewed exporter Git object mismatch' }
 
-  $exportManifest = Join-Path $bootstrapRoot 'reviewed-tree-manifest.json'
-  & $nodePath $bootstrapExporter export --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
-  & $nodePath $bootstrapExporter verify --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $exportRoot --manifest $exportManifest
-  $exportManifestSha256 = (Get-FileHash -LiteralPath $exportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
-  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $exportManifest
-  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $exportManifestSha256
+  $verificationExportManifest = Join-Path $bootstrapRoot 'reviewed-verification-tree-manifest.json'
+  & $nodePath $bootstrapExporter export --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $verificationExportRoot --manifest $verificationExportManifest
+  & $nodePath $bootstrapExporter verify --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $verificationExportRoot --manifest $verificationExportManifest
+  $verificationExportManifestSha256 = (Get-FileHash -LiteralPath $verificationExportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
+  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $verificationExportManifest
+  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $verificationExportManifestSha256
   $env:OPENCLAW_REVIEWED_R_SHA = $R
 
-  Push-Location $exportRoot
+  Push-Location $verificationExportRoot
   try {
     npm ci
     npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run preflight --silent
@@ -1166,20 +1167,28 @@ try {
     Pop-Location
   }
 
-  $reviewedImageHelper = Join-Path $exportRoot 'services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1'
-  & $reviewedImageHelper -ReviewedTree $R -ExpectedM $M -MReviewReportPath $mReviewReport -RReviewReportPath $rReviewReport -NodePath $nodePath -GitPath $gitPath -BuildxPath $buildxPath -DockerPath $dockerPath -DockerHost $dockerHost -GitRepositoryRoot $sourceRoot -ReviewedSourceRoot $exportRoot -ReviewedExportManifestPath $exportManifest -ReviewedExportManifestSha256 $exportManifestSha256 -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-a-linux-amd64.oci.tar') -ReproductionArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-b-linux-amd64.oci.tar') -StockOciPath (Join-Path $releaseRoot 'openclaw-zalo-cell-stock-linux-amd64.oci.tar') -RetainedUpstreamTarballPath (Join-Path $releaseRoot 'zalouser-2026.7.1-verified.tgz')
+  $qualificationExportManifest = Join-Path $bootstrapRoot 'reviewed-qualification-tree-manifest.json'
+  & $nodePath $bootstrapExporter export --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $qualificationExportRoot --manifest $qualificationExportManifest
+  & $nodePath $bootstrapExporter verify --git-path $gitPath --repository-root $sourceRoot --reviewed-tree $R --output-root $qualificationExportRoot --manifest $qualificationExportManifest
+  $qualificationExportManifestSha256 = (Get-FileHash -LiteralPath $qualificationExportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
+  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $qualificationExportManifest
+  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $qualificationExportManifestSha256
+
+  $reviewedImageHelper = Join-Path $qualificationExportRoot 'services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1'
+  & $reviewedImageHelper -ReviewedTree $R -ExpectedM $M -MReviewReportPath $mReviewReport -RReviewReportPath $rReviewReport -NodePath $nodePath -GitPath $gitPath -BuildxPath $buildxPath -DockerPath $dockerPath -DockerHost $dockerHost -GitRepositoryRoot $sourceRoot -ReviewedSourceRoot $qualificationExportRoot -ReviewedExportManifestPath $qualificationExportManifest -ReviewedExportManifestSha256 $qualificationExportManifestSha256 -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-a-linux-amd64.oci.tar') -ReproductionArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-b-linux-amd64.oci.tar') -StockOciPath (Join-Path $releaseRoot 'openclaw-zalo-cell-stock-linux-amd64.oci.tar') -RetainedUpstreamTarballPath (Join-Path $releaseRoot 'zalouser-2026.7.1-verified.tgz')
 
   if ((& $gitPath --no-replace-objects -C $sourceRoot rev-parse HEAD).Trim() -ne $R) { throw 'Source HEAD changed after exported-R run' }
   if (@(& $gitPath --no-replace-objects -C $sourceRoot status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Exported-R run mutated source worktree/index' }
   & $gitPath --no-replace-objects -C $sourceRoot diff --cached --quiet
   if ($LASTEXITCODE -ne 0) { throw 'Exported-R run mutated source index' }
 } finally {
-  if (Test-Path -LiteralPath $exportRoot) { Remove-Item -LiteralPath $exportRoot -Recurse -Force }
+  if (Test-Path -LiteralPath $qualificationExportRoot) { Remove-Item -LiteralPath $qualificationExportRoot -Recurse -Force }
+  if (Test-Path -LiteralPath $verificationExportRoot) { Remove-Item -LiteralPath $verificationExportRoot -Recurse -Force }
   if (Test-Path -LiteralPath $bootstrapRoot) { Remove-Item -LiteralPath $bootstrapRoot -Recurse -Force }
 }
 ```
 
-Expected: every command exits 0, injected native failure prevents later sentinels, `HEAD` remains exact `R`, and source/index remain unchanged. This creates candidate OCI/evidence only. Evidence includes `M`/`R`; exact Git-blob path/size/SHA-256 records for all four raw provenance/trust inputs; npm key, Fulcio chain/identity, DSSE/SET/inclusion/checkpoint/time/body proof; tarball locks; source/compliance manifests; exact `artifactMembers` and `installedTree`; complete dynamic-site inventory; `derivedRuntimeSet == runtimeReachabilityAllowlist`; nonempty mandatory-scenario `resolvedRuntimeSet` subset of the allowlist; stock-fail/fork-pass and unchanged differential results; pinned buildx/BuildKit/context-root v2; byte-identical OCI archive/layout/index/blob evidence; normalized timestamps/state; promoted archive; and deterministic image digest. It validates against the closed schema and embeds exact canonical `M`/`R` approval-report bytes/base64, sizes/hashes, SHAs, reviewer roles/identities/run IDs, `APPROVED`, and empty findings. Negative fixtures reject acquisition/trust mismatch, resolved-unlisted members, unclassified dynamic sites, artifact runtime outside allowlist, duplicate/shadow install, source/evidence mixing, non-minimal rootfs, OCI byte drift, schema openness, or review-report tampering. Optional statically classified allowlist members may remain untraced. Task 29 later repeats reviewed source `R ->` qualifying build `->` evidence-only `E`.
+Expected: every command exits 0, mutable source verification occurs only in `$verificationExportRoot`, and the later `$qualificationExportRoot` remains an exact untouched Git-object export when the reviewed image helper re-verifies it. Injected native failure prevents later sentinels, `HEAD` remains exact `R`, and source/index remain unchanged. This creates candidate OCI/evidence only. Evidence includes `M`/`R`; exact Git-blob path/size/SHA-256 records for all four raw provenance/trust inputs; npm key, Fulcio chain/identity, DSSE/SET/inclusion/checkpoint/time/body proof; tarball locks; source/compliance manifests; exact `artifactMembers` and `installedTree`; complete dynamic-site inventory; `derivedRuntimeSet == runtimeReachabilityAllowlist`; nonempty mandatory-scenario `resolvedRuntimeSet` subset of the allowlist; stock-fail/fork-pass and unchanged differential results; pinned buildx/BuildKit/context-root v2; byte-identical OCI archive/layout/index/blob evidence; normalized timestamps/state; promoted archive; and deterministic image digest. It validates against the closed schema and embeds exact canonical `M`/`R` approval-report bytes/base64, sizes/hashes, SHAs, reviewer roles/identities/run IDs, `APPROVED`, and empty findings. Negative fixtures reject acquisition/trust mismatch, resolved-unlisted members, unclassified dynamic sites, artifact runtime outside allowlist, duplicate/shadow install, source/evidence mixing, non-minimal rootfs, OCI byte drift, schema openness, or review-report tampering. Optional statically classified allowlist members may remain untraced. Task 29 later repeats reviewed source `R ->` qualifying build `->` evidence-only `E`.
 
 Candidate evidence re-hashes every `UPSTREAM.json.provenanceInputs` Git blob from `M` (path, byte size, SHA-256, endpoint/cap, subject/key/trust identity), proves all trust decisions came from those exact raw bytes, records complete dynamic-site inventory/finite expansions and mandatory scenario traces, and rejects any unexercised/unclassified dynamic resolution or file-read site.
 
