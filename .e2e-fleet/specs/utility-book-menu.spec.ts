@@ -93,21 +93,29 @@ async function seedBooks(page: Page, a: Api): Promise<{ ids: string[]; stamp: st
       p_is_default: false,
       p_owner_user_id: null,
     };
-    // create_cashbook_v1 DEADLOCK (40P01) khi nhiều worker cùng tạo sổ trên một
-    // tài khoản — đã gặp thật với FLEET_WORKERS=3. 40P01 là lỗi TẠM THỜI, cách
-    // xử lý đúng là thử lại; khoá chống phát lại giữ nguyên nên lần thử lại
-    // không thể sinh sổ thứ hai. (Bản thân việc RPC deadlock được là quan sát
-    // đáng báo cáo, không phải lỗi của test.)
-    let res = await page.request.post(`${a.base}/rest/v1/rpc/create_cashbook_v1`, {
+    // ⚠ LỖI SERVER ĐÃ XÁC NHẬN, KHÔNG PHẢI LỖI TEST: `create_cashbook_v1` gây
+    // DEADLOCK (40P01) khi nhiều phiên cùng tạo sổ trong một org. Đo thật
+    // 30/07/2026: FLEET_WORKERS=3 xanh 4/4; FLEET_WORKERS=6 đỏ đều đặn 1/4 với
+    //   40P01 "Process A waits for ShareLock on transaction X; blocked by B.
+    //          Process B waits for ShareLock on transaction Y; blocked by A."
+    // Thân hàm lấy khoá theo thứ tự: SELECT ... FOR SHARE trên buildings →
+    // app_private.lock_org_for_decision_v1(org) → INSERT canonical_write_operations
+    // ON CONFLICT DO NOTHING → SELECT ... FOR UPDATE chính dòng đó. Đảo thứ tự
+    // giữa hai phiên là ăn deadlock. Sửa đúng phải nằm TRONG hàm (thống nhất thứ
+    // tự khoá) — là một thay đổi trên writer đụng tiền nên tách ra làm riêng,
+    // KHÔNG vá vội ở đây.
+    // Ở test thì 40P01 là lỗi TẠM THỜI nên thử lại là cách xử lý đúng: khoá chống
+    // phát lại (idempotency_key) giữ nguyên qua các lần thử nên không thể sinh sổ
+    // thứ hai. Backoff có JITTER, nếu không hai phiên cùng ngủ rồi cùng thức và
+    // deadlock lại y như cũ.
+    const post = () => page.request.post(`${a.base}/rest/v1/rpc/create_cashbook_v1`, {
       headers: headers(a), data: payload,
     });
-    for (let retry = 0; retry < 4 && !res.ok(); retry++) {
-      const txt = await res.text();
-      if (!txt.includes('40P01')) break;
-      await new Promise((r) => setTimeout(r, 150 * (retry + 1)));
-      res = await page.request.post(`${a.base}/rest/v1/rpc/create_cashbook_v1`, {
-        headers: headers(a), data: payload,
-      });
+    let res = await post();
+    for (let retry = 0; retry < 8 && !res.ok(); retry++) {
+      if (!(await res.text()).includes('40P01')) break;   // lỗi khác → để nó đỏ
+      await new Promise((r) => setTimeout(r, 200 * (retry + 1) + Math.random() * 400));
+      res = await post();
     }
     expect(res.ok(), `tạo sổ tạm qua create_cashbook_v1: ${res.status()} ${await res.text()}`).toBeTruthy();
     const body = await res.json();

@@ -178,14 +178,17 @@ export default function FixedFeesPage() {
                         return (
                           <TableCell key={k.key} className="align-top">
                             {editing ? (
-                              <div className="space-y-1.5 min-w-[8rem]">
+                              // Enter/Escape gắn ở CẢ BA ô, không chỉ ô giá: luồng tự nhiên là
+                              // gõ giá → tab sang mã khách hàng → Enter, và lúc đó con trỏ
+                              // không còn ở ô giá nên Enter sẽ không làm gì (đã tự cắn khi test).
+                              <div className="space-y-1.5 min-w-[8rem]"
+                                   onKeyDown={(e) => {
+                                     if (e.key === 'Enter') { e.preventDefault(); commit(); }
+                                     if (e.key === 'Escape') { e.preventDefault(); setEdit(null); }
+                                   }}>
                                 <Input autoFocus inputMode="numeric" placeholder="Giá mỗi kỳ"
                                        value={edit.amount}
                                        onChange={(e) => setEdit({ ...edit, amount: e.target.value })}
-                                       onKeyDown={(e) => {
-                                         if (e.key === 'Enter') commit();
-                                         if (e.key === 'Escape') setEdit(null);
-                                       }}
                                        className="h-8 text-sm" />
                                 <Input placeholder="Mã khách hàng" value={edit.providerCode}
                                        onChange={(e) => setEdit({ ...edit, providerCode: e.target.value })}
