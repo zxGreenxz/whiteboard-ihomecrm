@@ -1,10 +1,11 @@
-import { CheckCircle2, CircleDashed, CircleX, Clock3, RotateCcw, SkipForward } from "lucide-react";
+import { CheckCircle2, CircleDashed, CircleX, Clock3, RotateCcw, SkipForward, TriangleAlert } from "lucide-react";
 
 import type { JobStage, NetworkBuilding, NetworkJob } from "@/lib/network-center/contracts";
 
 const jobStatus = {
   queued: { label: "Đang chờ", icon: Clock3 },
   running: { label: "Đang chạy", icon: CircleDashed },
+  uncertain: { label: "Chưa thể kết luận", icon: TriangleAlert },
   success: { label: "Thành công", icon: CheckCircle2 },
   failed: { label: "Thất bại", icon: CircleX },
   rolled_back: { label: "Đã hoàn tác", icon: RotateCcw },

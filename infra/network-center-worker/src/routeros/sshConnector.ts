@@ -15,6 +15,7 @@ import {
   type RouterInterfaceObservation,
   type RouterObservation,
 } from "../domain.js";
+import type { ActionObservation, CommandIntent } from "../reconciliation.js";
 import type { RouterBackup, RouterConnector, RouterHealth } from "./connector.js";
 import {
   ROUTER_BACKUP_MAX_BYTES,
@@ -467,6 +468,11 @@ export class SshRouterConnector implements RouterConnector {
   readonly #backupStagingDirectory: string;
   #client: Client | null = null;
   #connecting: Promise<Client> | null = null;
+  #dnsCommandAck = false;
+  #lastAccessCycle: {
+    managedResourceId: string;
+    immutableKey: string;
+  } | null = null;
 
   constructor(options: SshConnectorOptions) {
     if (options.connection.transport !== "ROUTEROS_SSH") {
@@ -816,8 +822,81 @@ export class SshRouterConnector implements RouterConnector {
     };
   }
 
+  async observeAction(intent: CommandIntent): Promise<ActionObservation> {
+    const observedAt = this.#now().toISOString();
+    if (intent.actionType === "FLUSH_DNS_CACHE") {
+      const identity = parseRouterOsRecords(await this.#execute(ROUTER_OS_READ_COMMANDS.identity));
+      return {
+        observedAt,
+        reachable: identity.length > 0,
+        ...(this.#dnsCommandAck ? { dns: { commandAck: true } } : {}),
+      };
+    }
+    if (intent.actionType === "RENEW_DHCP_LEASE") {
+      const [identityOutput, dhcpOutput] = await Promise.all([
+        this.#execute(ROUTER_OS_READ_COMMANDS.identity),
+        this.#execute(ROUTER_OS_READ_COMMANDS.dhcpClients),
+      ]);
+      const clients = parseRouterOsRecords(dhcpOutput);
+      const bound = clients.find((record) => record.status?.toLowerCase() === "bound");
+      return {
+        observedAt,
+        reachable: parseRouterOsRecords(identityOutput).length > 0,
+        dhcp: bound ? {
+          leaseKey: bound[".id"] ?? bound.interface ?? "wan-dhcp",
+          status: "bound",
+          expiresInSeconds: parseDurationSeconds(bound["expires-after"]) ?? 0,
+        } : { notApplicable: true },
+      };
+    }
+    if (intent.actionType === "CYCLE_ACCESS_PORT") {
+      const [identityOutput, interfaceOutput] = await Promise.all([
+        this.#execute(ROUTER_OS_READ_COMMANDS.identity),
+        this.#execute(ROUTER_OS_READ_COMMANDS.interfaces),
+      ]);
+      const immutableKey = String(intent.managedTarget.immutableKey ?? "").trim();
+      const managedResourceId = String(intent.managedTarget.managedResourceId ?? "").trim();
+      const record = parseRouterOsRecords(interfaceOutput).find(
+        (candidate) => candidate["default-name"] === immutableKey,
+      );
+      const cycled = this.#lastAccessCycle;
+      return {
+        observedAt,
+        reachable: parseRouterOsRecords(identityOutput).length > 0,
+        accessInterface: {
+          managedResourceId,
+          immutableKey,
+          enabled: Boolean(record) && record?.disabled !== "true",
+          disabledObserved: cycled?.managedResourceId === managedResourceId
+            && cycled.immutableKey === immutableKey,
+          enabledObserved: Boolean(record) && record?.disabled !== "true",
+        },
+      };
+    }
+    if (intent.actionType === "REBOOT_ROUTER") {
+      const [identityOutput, resourceOutput] = await Promise.all([
+        this.#execute(ROUTER_OS_READ_COMMANDS.identity),
+        this.#execute(ROUTER_OS_READ_COMMANDS.resource),
+      ]);
+      const resource = parseRouterOsRecords(resourceOutput)[0] ?? {};
+      const uptimeSeconds = parseDurationSeconds(resource.uptime) ?? 0;
+      const bootEpochSeconds = Math.floor(this.#now().getTime() / 1_000) - uptimeSeconds;
+      return {
+        observedAt,
+        reachable: parseRouterOsRecords(identityOutput).length > 0,
+        boot: {
+          bootId: `routeros-boot:${bootEpochSeconds}`,
+          uptimeSeconds,
+        },
+      };
+    }
+    const identity = parseRouterOsRecords(await this.#execute(ROUTER_OS_READ_COMMANDS.identity));
+    return { observedAt, reachable: identity.length > 0 };
+  }
+
   async flushDnsCache(): Promise<void> {
     await this.#execute(ROUTER_OS_COMMANDS.flushDnsCache);
+    this.#dnsCommandAck = true;
   }
 
   async renewDhcpLease(): Promise<boolean> {
@@ -851,8 +930,22 @@ export class SshRouterConnector implements RouterConnector {
         mayHaveExecuted: false,
       });
     }
-    const command = `:local ncPort [/interface/find where .id=${resourceId} and name=${currentName} and default-name=${immutableKey}]; :if ([:len $ncPort] != 1) do={:error "managed access port identity changed"}; /interface/disable $ncPort; :delay ${durationSeconds}s; /interface/enable $ncPort`;
-    await this.#execute(command, true);
+    const command = `:local ncPort [/interface/find where .id=${resourceId} and name=${currentName} and default-name=${immutableKey}]; :if ([:len $ncPort] != 1) do={:error "managed access port identity changed"}; /interface/disable $ncPort; :if ([/interface/get $ncPort disabled] != true) do={:error "access port disable readback failed"}; :put ("NC_CYCLE_DISABLED:" . [/interface/get $ncPort default-name]); :delay ${durationSeconds}s; /interface/enable $ncPort; :if ([/interface/get $ncPort disabled] = true) do={:error "access port enable readback failed"}; :put ("NC_CYCLE_ENABLED:" . [/interface/get $ncPort default-name])`;
+    this.#lastAccessCycle = null;
+    const output = await this.#execute(command, true);
+    const markers = output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+    const disabledIndex = markers.indexOf(`NC_CYCLE_DISABLED:${resolved.immutableKey}`);
+    const enabledIndex = markers.indexOf(`NC_CYCLE_ENABLED:${resolved.immutableKey}`);
+    if (disabledIndex < 0 || enabledIndex <= disabledIndex) {
+      throw new RouterOperationError("PORT_CYCLE_EVIDENCE_MISSING", {
+        retryable: true,
+        mayHaveExecuted: true,
+      });
+    }
+    this.#lastAccessCycle = {
+      managedResourceId: target.managedResourceId,
+      immutableKey: resolved.immutableKey,
+    };
   }
 
   async reboot(): Promise<void> {

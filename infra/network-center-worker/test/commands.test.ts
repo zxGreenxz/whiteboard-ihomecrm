@@ -38,6 +38,13 @@ function claim(actionType = "FLUSH_DNS_CACHE") {
     leaseToken: "60000000-0000-4000-8000-000000000001",
     leaseExpiresAt: "2026-07-28T00:02:00.000Z",
     reconciliation: false,
+    intentType: actionType,
+    managedTarget: {},
+    preObservation: null,
+    expectedPostcondition: { kind: actionType },
+    observationDeadline: "2026-07-28T00:05:00.000Z",
+    transitionVersion: 3,
+    fencingGeneration: 9,
   };
 }
 
@@ -48,7 +55,13 @@ function harness(
 ) {
   const calls: string[] = [];
   const completions: Array<Record<string, unknown>> = [];
+  const observations: Array<Record<string, unknown>> = [];
+  const snapshots: Array<Record<string, unknown>> = [];
   const interfaceRegistry = new InterfaceRegistry();
+  let dnsAck = false;
+  let dhcpRenewed = false;
+  let portCycled = false;
+  let rebooted = false;
   let renewCallback: (() => void | Promise<void>) | undefined;
   const connector: RouterConnector = {
     poll: async () => ({ observedAt: new Date().toISOString(), device: {}, interfaces: [], clients: [], aruba: [] }),
@@ -68,10 +81,55 @@ function harness(
       calls.push("post-check");
       return { reachable: true, wanUp: true, dnsOk: true };
     },
-    flushDnsCache: async () => { calls.push("flush"); },
-    renewDhcpLease: async () => { calls.push("renew-dhcp"); return true; },
-    cycleAccessPort: async () => { calls.push("cycle-port"); },
-    reboot: async () => { calls.push("reboot"); },
+    observeAction: async (intent) => {
+      calls.push("observe-action");
+      if (intent.actionType === "FLUSH_DNS_CACHE") {
+        return {
+          observedAt: "2026-07-28T00:00:00.000Z",
+          reachable: true,
+          ...(dnsAck ? { dns: { commandAck: true } } : {}),
+        };
+      }
+      if (intent.actionType === "RENEW_DHCP_LEASE") {
+        return {
+          observedAt: "2026-07-28T00:00:00.000Z",
+          reachable: true,
+          dhcp: {
+            leaseKey: "wan-dhcp",
+            status: "bound",
+            expiresInSeconds: dhcpRenewed ? 3_600 : 120,
+          },
+        };
+      }
+      if (intent.actionType === "CYCLE_ACCESS_PORT") {
+        return {
+          observedAt: "2026-07-28T00:00:00.000Z",
+          reachable: true,
+          accessInterface: {
+            managedResourceId: "50000000-0000-4000-8000-000000000001",
+            immutableKey: "ether4",
+            enabled: true,
+            disabledObserved: portCycled,
+            enabledObserved: true,
+          },
+        };
+      }
+      if (intent.actionType === "REBOOT_ROUTER") {
+        return {
+          observedAt: "2026-07-28T00:00:00.000Z",
+          reachable: true,
+          boot: {
+            bootId: rebooted ? "boot-2" : "boot-1",
+            uptimeSeconds: rebooted ? 15 : 86_400,
+          },
+        };
+      }
+      return { observedAt: "2026-07-28T00:00:00.000Z", reachable: true };
+    },
+    flushDnsCache: async () => { calls.push("flush"); dnsAck = true; },
+    renewDhcpLease: async () => { calls.push("renew-dhcp"); dhcpRenewed = true; return true; },
+    cycleAccessPort: async () => { calls.push("cycle-port"); portCycled = true; },
+    reboot: async () => { calls.push("reboot"); rebooted = true; },
     close: async () => { calls.push("close"); },
     ...overrides,
   };
@@ -79,8 +137,22 @@ function harness(
     api: {
       renewLease: async () => { calls.push("renew-lease"); },
       stage: async (input: { eventKind: string }) => { calls.push(input.eventKind); },
-      complete: async (input: Record<string, unknown>) => { completions.push(input); },
-      snapshot: async () => { calls.push("snapshot"); },
+      observe: async (input: Record<string, unknown>) => {
+        calls.push(`observe-${String(input.observationKind)}`);
+        observations.push(input);
+        return {
+          accepted: true,
+          transitionVersion: Number(input.transitionVersion) + 1,
+        };
+      },
+      complete: async (input: Record<string, unknown>) => {
+        calls.push("complete");
+        completions.push(input);
+      },
+      snapshot: async (payload: Record<string, unknown>) => {
+        calls.push("snapshot");
+        snapshots.push(payload);
+      },
     },
     connectorFactory: async () => connector,
     backupStore: {
@@ -114,6 +186,8 @@ function harness(
   return {
     calls,
     completions,
+    observations,
+    snapshots,
     interfaceRegistry,
     processor,
     triggerRenew: async () => renewCallback?.(),
@@ -166,14 +240,26 @@ describe("command processor", () => {
       "flush",
       "EXECUTION_COMPLETED",
       "POST_CHECK_STARTED",
-      "post-check",
+      "observe-action",
       "POST_CHECK_COMPLETED",
       "close",
       "renew-lease",
       "release-backup",
     ]));
     expect(test.completions).toHaveLength(1);
-    expect(test.completions[0]).toMatchObject({ outcome: "SUCCEEDED" });
+    expect(test.completions[0]).toMatchObject({
+      outcome: "EVALUATE_POSTCONDITION",
+      transitionVersion: 5,
+      fencingGeneration: 9,
+      result: { actionType: "FLUSH_DNS_CACHE" },
+    });
+    expect(JSON.stringify(test.completions[0])).not.toContain("reconciliationDecision");
+    expect(test.calls.indexOf("observe-PRE_ACTION"))
+      .toBeLessThan(test.calls.indexOf("EXECUTION_STARTED"));
+    expect(test.calls.indexOf("observe-PRE_ACTION"))
+      .toBeLessThan(test.calls.indexOf("flush"));
+    expect(test.calls.indexOf("observe-POST_ACTION"))
+      .toBeLessThan(test.calls.indexOf("complete"));
   });
 
   it("passes an enrolled immutable target to access-port execution", async () => {
@@ -265,20 +351,48 @@ describe("command processor", () => {
   });
 
   it("does not replay actions during reconciliation", async () => {
-    const test = harness();
-    await test.processor.processClaim({ ...claim("REBOOT_ROUTER"), reconciliation: true }, connection);
+    const test = harness({
+      observeAction: async () => ({
+        observedAt: "2026-07-28T00:00:15.000Z",
+        reachable: true,
+        boot: { bootId: "boot-2", uptimeSeconds: 15 },
+      }),
+    });
+    await test.processor.processClaim({
+      ...claim("REBOOT_ROUTER"),
+      reconciliation: true,
+      preObservation: {
+        observedAt: "2026-07-28T00:00:00.000Z",
+        reachable: true,
+        boot: { bootId: "boot-1", uptimeSeconds: 86_400 },
+      },
+    }, connection);
     expect(test.calls).not.toContain("backup");
     expect(test.calls).not.toContain("reboot");
     expect(test.calls).toEqual(expect.arrayContaining([
       "RECONCILIATION_STARTED",
-      "post-check",
       "RECONCILIATION_COMPLETED",
     ]));
-    expect(test.completions[0]).toMatchObject({ outcome: "SUCCEEDED" });
+    expect(test.completions[0]).toMatchObject({
+      outcome: "EVALUATE_POSTCONDITION",
+      transitionVersion: 4,
+    });
+    expect(test.observations[0]).toMatchObject({
+      observationKind: "RECONCILIATION",
+      fencingGeneration: 9,
+      transitionVersion: 3,
+    });
+    expect(JSON.stringify(test.completions[0])).not.toContain("reconciliationDecision");
   });
 
   it("allows read-only reconciliation when backup storage is under pressure", async () => {
-    const test = harness({}, false, {
+    const test = harness({
+      observeAction: async () => ({
+        observedAt: "2026-07-28T00:00:15.000Z",
+        reachable: true,
+        boot: { bootId: "boot-2", uptimeSeconds: 15 },
+      }),
+    }, false, {
       assertReserve: async () => {
         throw new RouterOperationError("BACKUP_RESERVE_UNAVAILABLE", {
           retryable: true,
@@ -290,11 +404,19 @@ describe("command processor", () => {
     await test.processor.processClaim({
       ...claim("REBOOT_ROUTER"),
       reconciliation: true,
+      preObservation: {
+        observedAt: "2026-07-28T00:00:00.000Z",
+        reachable: true,
+        boot: { bootId: "boot-1", uptimeSeconds: 86_400 },
+      },
     }, connection);
 
-    expect(test.calls).toContain("post-check");
+    expect(test.calls).toContain("RECONCILIATION_COMPLETED");
     expect(test.calls).not.toContain("backup");
-    expect(test.completions[0]).toMatchObject({ outcome: "SUCCEEDED" });
+    expect(test.completions[0]).toMatchObject({
+      outcome: "EVALUATE_POSTCONDITION",
+      transitionVersion: 4,
+    });
   });
 
   it("reports UNCERTAIN when a disruptive action may have executed", async () => {
@@ -308,11 +430,58 @@ describe("command processor", () => {
   });
 
   it("reports DHCP renew as not applicable without failing PPPoE sites", async () => {
-    const test = harness({ renewDhcpLease: async () => false });
+    const test = harness({
+      observeAction: async () => ({
+        observedAt: "2026-07-28T00:00:00.000Z",
+        reachable: true,
+        dhcp: { notApplicable: true },
+      }),
+      renewDhcpLease: async () => false,
+    });
     await test.processor.processClaim(claim("RENEW_DHCP_LEASE"), connection);
     expect(test.completions[0]).toMatchObject({
-      outcome: "SUCCEEDED",
-      result: { actionResult: { applied: false, reason: "NO_BOUND_DHCP_CLIENT" } },
+      outcome: "EVALUATE_POSTCONDITION",
+      result: {
+        actionResult: { applied: false, reason: "DHCP_RENEW_NOT_APPLICABLE" },
+      },
+    });
+  });
+
+  it("never promotes generic reachable health to worker-authored success", async () => {
+    const test = harness({
+      observeAction: async () => ({
+        observedAt: "2026-07-28T00:00:00.000Z",
+        reachable: true,
+      }),
+    });
+
+    await test.processor.processClaim(claim("FLUSH_DNS_CACHE"), connection);
+
+    expect(test.completions[0]).toMatchObject({
+      outcome: "EVALUATE_POSTCONDITION",
+      result: { actionType: "FLUSH_DNS_CACHE" },
+    });
+    expect(JSON.stringify(test.completions[0])).not.toContain("reconciliationDecision");
+    expect(test.completions[0]).not.toMatchObject({ outcome: "SUCCEEDED" });
+  });
+
+  it("persists redacted and encrypted hashes as snapshot postcondition evidence", async () => {
+    const test = harness();
+    await test.processor.processClaim(claim("CAPTURE_SNAPSHOT"), connection);
+
+    expect(test.observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        observationKind: "POST_ACTION",
+        evidence: expect.objectContaining({
+          snapshot: expect.objectContaining({
+            redactedContentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+            encryptedArtifactHash: "a".repeat(64),
+          }),
+        }),
+      }),
+    ]));
+    expect(test.snapshots[0]).toMatchObject({
+      encryptedArtifactHash: "a".repeat(64),
     });
   });
 
@@ -322,6 +491,37 @@ describe("command processor", () => {
     await test.processor.processClaim(claim(), connection);
     expect(test.calls.filter((value) => value === "flush")).toHaveLength(1);
     expect(test.completions).toHaveLength(1);
+  });
+
+  it("processes a later reconciliation lease even when the attempt number is unchanged", async () => {
+    const test = harness({
+      observeAction: async () => ({
+        observedAt: "2026-07-28T00:00:15.000Z",
+        reachable: true,
+        boot: { bootId: "boot-2", uptimeSeconds: 15 },
+      }),
+    });
+    const first = {
+      ...claim("REBOOT_ROUTER"),
+      reconciliation: true,
+      preObservation: {
+        observedAt: "2026-07-28T00:00:00.000Z",
+        reachable: true,
+        boot: { bootId: "boot-1", uptimeSeconds: 86_400 },
+      },
+    };
+    await test.processor.processClaim(first, connection);
+    await test.processor.processClaim({
+      ...first,
+      leaseToken: "60000000-0000-4000-8000-000000000002",
+      fencingGeneration: first.fencingGeneration + 1,
+      transitionVersion: first.transitionVersion + 2,
+    }, connection);
+
+    expect(test.observations).toHaveLength(2);
+    expect(test.observations[0]?.observationId)
+      .not.toBe(test.observations[1]?.observationId);
+    expect(test.completions).toHaveLength(2);
   });
 
   it("serializes concurrent commands for the same MikroTik", async () => {

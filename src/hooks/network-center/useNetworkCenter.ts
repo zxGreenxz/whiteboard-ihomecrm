@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useBuildings } from "@/hooks/useBuildings";
@@ -17,6 +17,7 @@ import type {
 } from "@/lib/network-center/contracts";
 import { resolveNetworkActor } from "@/lib/network-center/actorIdentity";
 import { DemoNetworkCenterRepository } from "@/lib/network-center/demoRepository";
+import { createIntentRegistry } from "@/lib/network-center/intentRegistry";
 import { networkCenterQueryKeys } from "@/lib/network-center/queryKeys";
 import {
   createAsyncDemoNetworkCenterRepository,
@@ -29,7 +30,10 @@ import {
   resolveNetworkCenterRealtimeTarget,
   selectNetworkCenterRepository,
 } from "@/lib/network-center/runtime";
-import { supabaseNetworkCenterRepository } from "@/lib/network-center/supabaseRepository";
+import {
+  NetworkCenterRepositoryError,
+  supabaseNetworkCenterRepository,
+} from "@/lib/network-center/supabaseRepository";
 
 const EXECUTE_DISABLED_MESSAGE =
   "Tài khoản chỉ có quyền xem. Cần network_center.execute để thực thi thao tác.";
@@ -46,6 +50,14 @@ export function useNetworkCenter(selectedBuildingId?: string) {
   const authQuery = useAuth();
   const profileQuery = useProfile();
   const mode = NETWORK_CENTER_RUNTIME_MODE;
+  const intentRegistryRef = useRef<ReturnType<typeof createIntentRegistry> | null>(null);
+  if (!intentRegistryRef.current) intentRegistryRef.current = createIntentRegistry();
+  const intentRegistry = intentRegistryRef.current;
+  const [intentRevision, setIntentRevision] = useState(0);
+  useEffect(
+    () => intentRegistry.subscribe(() => setIntentRevision((current) => current + 1)),
+    [intentRegistry],
+  );
 
   const physicalBuildings = useMemo<PhysicalBuildingRecord[]>(
     () =>
@@ -106,6 +118,10 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       .filter((value): value is string => Boolean(value)),
     [physicalBuildings],
   );
+  useEffect(() => {
+    if (!actor.id || organizationIds.length === 0) return;
+    intentRegistry.prune({ actorId: actor.id, organizationIds });
+  }, [actor.id, intentRegistry, organizationIds]);
   const fleetKey = useMemo(
     () => networkCenterQueryKeys.fleet(actor.id || "anonymous", organizationIds),
     [actor.id, organizationIds],
@@ -151,6 +167,45 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     },
     enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
   });
+  const activeIntent = useMemo(
+    () => intentRegistry.list({
+      actorId: actor.id,
+      organizationId: selectedOrganizationId,
+      buildingId: normalizedSelectedBuildingId,
+    })[0] ?? null,
+    [
+      actor.id,
+      intentRegistry,
+      intentRevision,
+      normalizedSelectedBuildingId,
+      selectedOrganizationId,
+    ],
+  );
+  const activeCommandQuery = useQuery({
+    queryKey: [
+      ...buildingKey,
+      "intent",
+      activeIntent?.commandId ?? activeIntent?.id ?? "none",
+    ],
+    queryFn: async () => {
+      const currentRepository = requireRepository();
+      if (!currentRepository.getCommand || !activeIntent) return null;
+      return currentRepository.getCommand(normalizedSelectedBuildingId, {
+        commandId: activeIntent.commandId,
+        requestId: activeIntent.commandId ? null : activeIntent.id,
+      });
+    },
+    enabled: canView && Boolean(activeIntent && repository?.getCommand),
+    retry: activeIntent?.status === "SUBMISSION_UNKNOWN" ? 6 : 2,
+    retryDelay: 2_000,
+    refetchInterval: activeIntent?.status === "SUBMISSION_UNKNOWN" ? 5_000 : false,
+  });
+  useEffect(() => {
+    const command = activeCommandQuery.data;
+    if (!activeIntent || !command) return;
+    intentRegistry.attachCommand(activeIntent.id, command.id, command.status);
+    intentRegistry.observeCommand(command.id, command.status);
+  }, [activeCommandQuery.data, activeIntent, intentRegistry]);
   const arubaQuery = useInfiniteQuery({
     queryKey: arubaKey,
     initialPageParam: null as ArubaPageCursor | null,
@@ -181,8 +236,20 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       arubaOnline: loadedEveryArubaPage
         ? arubaNodes.filter((node) => node.status === "online").length
         : null,
+      jobs: activeCommandQuery.data
+        ? [
+          { ...activeCommandQuery.data, isStableIntent: true },
+          ...building.jobs.filter((job) => job.id !== activeCommandQuery.data?.id),
+        ]
+        : building.jobs,
     };
-  }, [arubaNodes, arubaQuery.data, arubaQuery.hasNextPage, buildingQuery.data]);
+  }, [
+    activeCommandQuery.data,
+    arubaNodes,
+    arubaQuery.data,
+    arubaQuery.hasNextPage,
+    buildingQuery.data,
+  ]);
 
   const availableBuildings = useMemo<PhysicalBuildingRecord[]>(
     () => fleet.map((building) => ({
@@ -361,6 +428,12 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     if (!canExecute) throw new Error(EXECUTE_DISABLED_MESSAGE);
   };
 
+  useEffect(() => {
+    for (const job of selectedBuilding?.jobs ?? []) {
+      intentRegistry.observeCommand(job.id, job.status);
+    }
+  }, [intentRegistry, selectedBuilding?.jobs]);
+
   return {
     mode,
     isDemo: mode === "demo",
@@ -374,6 +447,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     availableBuildings,
     fleet,
     selectedBuilding,
+    activeActionIntent: activeIntent,
     arubaNodes,
     hasNextArubaPage: Boolean(arubaQuery.hasNextPage),
     isLoadingAruba: arubaQuery.isLoading,
@@ -437,11 +511,55 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     },
     async executeAction(buildingId: string, request: NetworkActionRequest) {
       requireExecute();
-      return executeActionMutation.mutateAsync({
-        buildingId,
-        request,
-        requestId: crypto.randomUUID(),
+      const normalizedBuildingId = normalizeId(buildingId);
+      const building = selectedBuilding?.buildingId === normalizedBuildingId
+        ? selectedBuilding
+        : fleet.find((item) => normalizeId(item.buildingId) === normalizedBuildingId);
+      const organizationId = physicalBuildingById.get(normalizedBuildingId)?.organizationId;
+      if (!actor.id || !organizationId || !building?.router.id) {
+        throw new Error("Không thể xác định phạm vi intent Network Center.");
+      }
+      const interfaceId = typeof request.fields.interfaceId === "string"
+        ? request.fields.interfaceId
+        : null;
+      const intent = intentRegistry.begin({
+        actorId: actor.id,
+        organizationId,
+        buildingId: normalizedBuildingId,
+        deviceId: building.router.id,
+        actionType: request.type,
+        interfaceId,
+        parameters: request.fields,
+        reason: request.reason,
+        confirmation: request.confirmation ?? null,
       });
+      const frozenRequest: NetworkActionRequest = {
+        type: intent.target.actionType,
+        reason: intent.target.reason,
+        fields: intent.target.parameters,
+        ...(intent.target.confirmation
+          ? { confirmation: intent.target.confirmation }
+          : {}),
+      };
+      intentRegistry.observe(intent.id, "SUBMITTING");
+      try {
+        const job = await executeActionMutation.mutateAsync({
+          buildingId: intent.target.buildingId,
+          request: frozenRequest,
+          requestId: intent.id,
+        });
+        intentRegistry.attachCommand(intent.id, job.id, job.status);
+        intentRegistry.observeCommand(job.id, job.status);
+        return job;
+      } catch (error) {
+        const authoritativeRejection = error instanceof NetworkCenterRepositoryError
+          && Boolean(error.code);
+        intentRegistry.observe(
+          intent.id,
+          authoritativeRejection ? "FAILED" : "SUBMISSION_UNKNOWN",
+        );
+        throw error;
+      }
     },
     async updateSettings(
       buildingId: string,

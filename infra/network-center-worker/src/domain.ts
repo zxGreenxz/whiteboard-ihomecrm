@@ -1,3 +1,7 @@
+import type {
+  ActionObservation,
+} from "./reconciliation.js";
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
@@ -126,10 +130,17 @@ export interface CommandClaim {
   leaseToken: string;
   leaseExpiresAt: string;
   reconciliation: boolean;
+  intentType: string;
+  managedTarget: JsonObject;
+  preObservation: ActionObservation | null;
+  expectedPostcondition: JsonObject;
+  observationDeadline: string;
+  transitionVersion: number;
+  fencingGeneration: number;
 }
 
 export type CommandOutcome =
-  | "SUCCEEDED"
+  | "EVALUATE_POSTCONDITION"
   | "RETRYABLE_FAILURE"
   | "FAILED"
   | "UNCERTAIN"
@@ -149,6 +160,7 @@ export interface NetworkCenterWorkerApi {
   renewLease(input: {
     commandId: string;
     leaseToken: string;
+    fencingGeneration: number;
     leaseSeconds: number;
   }): Promise<unknown>;
   ingest(payload: Record<string, unknown>): Promise<unknown>;
@@ -156,12 +168,25 @@ export interface NetworkCenterWorkerApi {
   stage(input: {
     commandId: string;
     leaseToken: string;
+    fencingGeneration: number;
     eventKind: string;
     payload: Record<string, unknown>;
   }): Promise<unknown>;
+  observe(input: {
+    commandId: string;
+    leaseToken: string;
+    fencingGeneration: number;
+    transitionVersion: number;
+    observationId: string;
+    observationKind: "PRE_ACTION" | "POST_ACTION" | "RECONCILIATION";
+    observedAt: string;
+    evidence: Record<string, unknown>;
+  }): Promise<{ accepted: true; transitionVersion: number }>;
   complete(input: {
     commandId: string;
     leaseToken: string;
+    fencingGeneration: number;
+    transitionVersion: number;
     outcome: CommandOutcome;
     result: Record<string, unknown>;
     rollback?: Record<string, unknown> | null;

@@ -18,7 +18,7 @@ import {
 
 type RpcResult = {
   data: unknown;
-  error: null | { code?: string; message?: string };
+  error: null | { code?: string; message?: string; details?: string };
 };
 
 type RpcCall = (
@@ -42,6 +42,10 @@ type Repository = {
     request: NetworkActionRequest,
     actor: NetworkActor,
     requestId?: string,
+  ): Promise<NetworkJob>;
+  getCommand(
+    buildingId: string,
+    lookup: { commandId?: string | null; requestId?: string | null },
   ): Promise<NetworkJob>;
   updateSettings(
     buildingId: string,
@@ -290,6 +294,32 @@ function createRpcHarness(options?: {
           },
           error: null,
         };
+      case "network_center_get_command_v1":
+        return {
+          data: {
+            id: COMMAND_ID,
+            actionType: "FLUSH_DNS_CACHE",
+            reason: "Làm mới DNS để kiểm tra",
+            parameters: {},
+            target: {
+              buildingId: BUILDING_ID,
+              buildingName: "Tòa Demo",
+              deviceId: ROUTER_ID,
+              routerIdentity: "MikroTik — Tòa Demo",
+            },
+            requestedBy: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            status: "RUNNING",
+            attemptCount: 1,
+            result: null,
+            rollback: null,
+            reconciliationState: "NONE",
+            transitionVersion: 2,
+            createdAt: NOW,
+            startedAt: NOW,
+            finishedAt: null,
+          },
+          error: null,
+        };
       case "network_center_list_audit_v1":
         return {
           data: {
@@ -384,6 +414,7 @@ describe("Network Center Supabase repository boundary", () => {
     expect(typeof repository.NetworkCenterRepositoryError).toBe("function");
     expect(typeof repositoryClass.prototype.listFleet).toBe("function");
     expect(typeof repositoryClass.prototype.getBuilding).toBe("function");
+    expect(typeof repositoryClass.prototype.getCommand).toBe("function");
   });
 
   it("builds stable identity-scoped keys independent of organization order", () => {
@@ -548,8 +579,10 @@ describe("Network Center Supabase repository boundary", () => {
 
     const first = await repository.executeAction(site.buildingId, request, actor, REQUEST_ID);
     const second = await repository.executeAction(site.buildingId, request, actor, REQUEST_ID);
-    expect(first).toMatchObject({ id: COMMAND_ID, status: "queued", action: "flush_dns_cache" });
+    expect(first).toMatchObject({ id: COMMAND_ID, status: "running", action: "flush_dns_cache" });
     expect(second.id).toBe(first.id);
+    expect(harness.calls.filter((call) => call.name === "network_center_get_command_v1"))
+      .toHaveLength(2);
 
     await repository.updateSettings(
       site.buildingId,
@@ -583,6 +616,82 @@ describe("Network Center Supabase repository boundary", () => {
       p_request_id: REQUEST_ID,
     });
     expect(JSON.stringify(settingsCall)).not.toContain(actor.id);
+  });
+
+  it("recovers the exact existing command from typed semantic duplicate details", async () => {
+    const harness = createRpcHarness({ connected: true });
+    const rpc: RpcCall = async (name, args) => {
+      if (name === "network_center_execute_action_v1") {
+        return {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "Equivalent command intent already exists",
+            details: JSON.stringify({
+              code: "NETWORK_CENTER_DUPLICATE_INTENT",
+              commandId: COMMAND_ID,
+              actionType: "FLUSH_DNS_CACHE",
+              cooldownSeconds: 30,
+            }),
+          },
+        };
+      }
+      return harness.rpc(name, args);
+    };
+    const repository = new RepositoryConstructor(rpc);
+    const [site] = await repository.listFleet();
+
+    const restored = await repository.executeAction(site.buildingId, {
+      type: "flush_dns_cache",
+      reason: "Làm mới DNS để kiểm tra",
+      fields: {},
+    }, { id: "browser-user-id", label: "Nhân viên" }, REQUEST_ID);
+
+    expect(restored).toMatchObject({ id: COMMAND_ID, status: "running" });
+    expect(harness.calls.at(-1)).toMatchObject({
+      name: "network_center_get_command_v1",
+      args: {
+        p_building_id: BUILDING_ID,
+        p_command_id: COMMAND_ID,
+        p_request_id: null,
+      },
+    });
+  });
+
+  it("recovers an ambiguous submission by exact frozen request id", async () => {
+    const harness = createRpcHarness({ connected: true });
+    const repository = new RepositoryConstructor(harness.rpc);
+
+    const command = await repository.getCommand(BUILDING_ID, { requestId: REQUEST_ID });
+
+    expect(command.id).toBe(COMMAND_ID);
+    expect(harness.calls.at(-1)).toMatchObject({
+      name: "network_center_get_command_v1",
+      args: {
+        p_building_id: BUILDING_ID,
+        p_command_id: null,
+        p_request_id: REQUEST_ID,
+      },
+    });
+  });
+
+  it("keeps UNCERTAIN as a first-class exact command status", async () => {
+    const harness = createRpcHarness({ connected: true });
+    const rpc: RpcCall = async (name, args) => name === "network_center_get_command_v1"
+      ? {
+        data: {
+          ...(await harness.rpc(name, args)).data as Record<string, unknown>,
+          status: "UNCERTAIN",
+          reconciliationState: "REQUIRED",
+        },
+        error: null,
+      }
+      : harness.rpc(name, args);
+    const repository = new RepositoryConstructor(rpc);
+
+    const command = await repository.getCommand(BUILDING_ID, { commandId: COMMAND_ID });
+    expect(command.status).toBe("uncertain");
+    expect(command.reconciliation.status).toBe("uncertain");
   });
 
   it("does not enumerate unlimited Aruba inventory before a mutation", async () => {

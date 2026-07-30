@@ -22,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { NetworkActionRequest, NetworkActionType, NetworkBuilding, NetworkJob } from "@/lib/network-center/contracts";
+import type { NetworkActionRequest, NetworkActionType, NetworkBuilding, NetworkJob, NetworkJobStatus } from "@/lib/network-center/contracts";
+import type { NetworkActionIntent, NetworkIntentStatus } from "@/lib/network-center/intentRegistry";
 import { NETWORK_ACTION_DEFINITIONS } from "@/lib/network-center/model";
 import { ExecuteButton } from "./ExecuteGuard";
 
@@ -31,6 +32,7 @@ interface NetworkActionDialogProps {
   canExecute: boolean;
   disabledReason: string;
   isDemo?: boolean;
+  persistedIntent?: NetworkActionIntent | null;
   onExecute: (request: NetworkActionRequest) => Promise<NetworkJob>;
 }
 
@@ -43,7 +45,28 @@ const initialFieldsFor = (type: NetworkActionType): Record<string, string | numb
   );
 };
 
-export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo = false, onExecute }: NetworkActionDialogProps) {
+export function shouldPreserveActionDraft(input: {
+  submitting: boolean;
+  status: NetworkJobStatus | null;
+  persistedStatus?: NetworkIntentStatus | null;
+}): boolean {
+  return Boolean(input.persistedStatus)
+    || input.submitting || input.status === "queued" || input.status === "running"
+    || input.status === "uncertain";
+}
+
+export function canRetryActionIntent(status?: NetworkIntentStatus | null): boolean {
+  return status === "SUBMISSION_UNKNOWN";
+}
+
+export function NetworkActionDialog({
+  site,
+  canExecute,
+  disabledReason,
+  isDemo = false,
+  persistedIntent = null,
+  onExecute,
+}: NetworkActionDialogProps) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<NetworkActionType>("flush_dns_cache");
   const [reason, setReason] = useState("");
@@ -59,6 +82,12 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
   const lanInterfaces = site.interfaces.filter(
     (item) => item.role === "lan" && !item.protected && item.status === "up",
   );
+  const draftLocked = shouldPreserveActionDraft({
+    submitting,
+    status: result?.status ?? null,
+    persistedStatus: persistedIntent?.status ?? null,
+  });
+  const canRetryUnknown = canRetryActionIntent(persistedIntent?.status);
 
   const resetDraft = useCallback(() => {
     setType("flush_dns_cache");
@@ -72,10 +101,46 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
 
   useEffect(() => {
     setOpen(false);
-    resetDraft();
-  }, [resetDraft, site.buildingId]);
+    if (!persistedIntent || persistedIntent.target.buildingId !== site.buildingId) {
+      resetDraft();
+      return;
+    }
+    setType(persistedIntent.target.actionType);
+    setReason(persistedIntent.target.reason);
+    setFields(persistedIntent.target.parameters);
+    setConfirmation(persistedIntent.target.confirmation ?? "");
+    setError("");
+    setResult(
+      persistedIntent.commandId
+        ? site.jobs.find((job) => job.id === persistedIntent.commandId) ?? null
+        : null,
+    );
+    setSubmitting(persistedIntent.status === "SUBMITTING");
+  }, [persistedIntent, resetDraft, site.buildingId, site.jobs]);
+
+  useEffect(() => {
+    const authoritative = result
+      ? site.jobs.find((job) => job.id === result.id)
+      : persistedIntent?.commandId
+        ? site.jobs.find((job) => job.id === persistedIntent.commandId)
+      : site.jobs.find((job) => job.isStableIntent && shouldPreserveActionDraft({
+        submitting: false,
+        status: job.status,
+      }));
+    if (!authoritative || authoritative === result) return;
+    setResult(authoritative);
+    setType(authoritative.action);
+    setReason(authoritative.reason);
+    setFields({
+      ...authoritative.parameters,
+      ...(authoritative.target.interfaceId
+        ? { interfaceId: authoritative.target.interfaceId }
+        : {}),
+    });
+  }, [persistedIntent?.commandId, result, site.jobs]);
 
   const chooseType = (nextType: NetworkActionType) => {
+    if (draftLocked) return;
     setType(nextType);
     setFields(initialFieldsFor(nextType));
     setConfirmation("");
@@ -85,11 +150,12 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
 
   const changeOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
-    if (!nextOpen) resetDraft();
+    if (!nextOpen && !draftLocked) resetDraft();
   };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (draftLocked && !canRetryUnknown) return;
     setResult(null);
     setError("");
     setSubmitting(true);
@@ -128,7 +194,7 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
         <form className="nc-form" onSubmit={submit}>
           <div className="nc-field">
             <Label>Loại thao tác</Label>
-            <Select value={type} onValueChange={(value) => chooseType(value as NetworkActionType)}>
+            <Select value={type} disabled={draftLocked} onValueChange={(value) => chooseType(value as NetworkActionType)}>
               <SelectTrigger aria-label="Loại thao tác"><SelectValue /></SelectTrigger>
               <SelectContent className="network-center nc-select-content">
                 <SelectGroup>
@@ -153,6 +219,7 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
               <Label>{field.label}</Label>
               <Select
                 value={String(fields[field.key] ?? "")}
+                disabled={draftLocked}
                 onValueChange={(value) => setFields((current) => ({ ...current, [field.key]: value }))}
               >
                 <SelectTrigger aria-label={field.label}><SelectValue placeholder="Chọn cổng LAN đang UP" /></SelectTrigger>
@@ -174,6 +241,7 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
                 min={field.min}
                 max={field.max}
                 value={String(fields[field.key] ?? field.defaultValue ?? "")}
+                disabled={draftLocked}
                 onChange={(event) => setFields((current) => ({ ...current, [field.key]: Number(event.target.value) }))}
               />
             </div>
@@ -184,6 +252,7 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
             <Textarea
               id="network-action-reason"
               value={reason}
+              disabled={draftLocked}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Nêu lý do vận hành cụ thể"
             />
@@ -195,6 +264,7 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
               <Input
                 id="router-confirmation"
                 value={confirmation}
+                disabled={draftLocked}
                 onChange={(event) => setConfirmation(event.target.value)}
                 autoComplete="off"
               />
@@ -212,8 +282,16 @@ export function NetworkActionDialog({ site, canExecute, disabledReason, isDemo =
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => changeOpen(false)}>Đóng</Button>
-            <Button type="submit" disabled={!canExecute || submitting}>
-              {submitting ? "Đang gửi…" : isDemo ? "Kiểm tra và mô phỏng cục bộ" : "Kiểm tra và thực thi"}
+            <Button type="submit" disabled={!canExecute || (draftLocked && !canRetryUnknown)}>
+              {submitting
+                ? "Đang gửi…"
+                : canRetryUnknown
+                  ? "Thử gửi lại an toàn"
+                  : draftLocked
+                    ? "Đang theo dõi intent hiện tại"
+                    : isDemo
+                      ? "Kiểm tra và mô phỏng cục bộ"
+                      : "Kiểm tra và thực thi"}
             </Button>
           </DialogFooter>
         </form>

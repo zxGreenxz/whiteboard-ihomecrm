@@ -11,7 +11,7 @@ export function ConfigurationTab({ site, controller }: { site: NetworkBuilding; 
       <section className="nc-panel">
         <div className="nc-panel-heading">
           <div><p className="nc-eyebrow">Trạng thái mong muốn</p><h3>Cấu hình an toàn</h3></div>
-          <NetworkActionDialog site={site} canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} isDemo={controller.isDemo} onExecute={(request) => controller.executeAction(site.buildingId, request)} />
+          <NetworkActionDialog site={site} canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} isDemo={controller.isDemo} persistedIntent={controller.activeActionIntent} onExecute={(request) => controller.executeAction(site.buildingId, request)} />
         </div>
         <p className="nc-footnote">{controller.isDemo
           ? "Mọi thao tác trong màn hình này chỉ mô phỏng cục bộ trong bộ nhớ trình duyệt."

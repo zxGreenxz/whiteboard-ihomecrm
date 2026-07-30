@@ -320,4 +320,102 @@ describe("RouterOS SSH boundary", () => {
       ROUTER_OS_READ_COMMANDS.firewallFilters,
     ]);
   });
+
+  it("accepts a port cycle only after ordered RouterOS disable/enable readback markers", async () => {
+    const commands: string[] = [];
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        commands.push(command);
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        const output = command === ROUTER_OS_READ_COMMANDS.interfaces
+          ? ".id=*B name=room-401 default-name=ether4 type=ether disabled=false running=true\n"
+          : command === ROUTER_OS_READ_COMMANDS.firewallFilters
+            ? ""
+            : command === ROUTER_OS_READ_COMMANDS.identity
+              ? "name=demo-router\n"
+              : command.startsWith(":put [/interface/find")
+                ? "*B\n"
+                : command.includes("NC_CYCLE_DISABLED")
+                  ? "NC_CYCLE_DISABLED:ether4\nNC_CYCLE_ENABLED:ether4\n"
+                  : "";
+        queueMicrotask(() => {
+          channel.emit("data", Buffer.from(output));
+          channel.emit("close", 0);
+        });
+      }
+
+      destroy(): void {}
+      end(): void {}
+    }
+
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => new FakeClient() as unknown as Client,
+    });
+    const target = {
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS" as const,
+      protected: false,
+      enrollmentState: "ENROLLED" as const,
+    };
+
+    await connector.cycleAccessPort(target, 5);
+    const observation = await connector.observeAction({
+      actionType: "CYCLE_ACCESS_PORT",
+      deviceId: "device-id",
+      managedTarget: target,
+      expectedPostcondition: { kind: "IMMUTABLE_ACCESS_INTERFACE_CYCLE" },
+      observationDeadline: "2026-07-30T00:05:00.000Z",
+    });
+
+    const cycleCommand = commands.find((command) => command.includes("/interface/disable"));
+    expect(cycleCommand).toContain("NC_CYCLE_DISABLED");
+    expect(cycleCommand).toContain("NC_CYCLE_ENABLED");
+    expect(observation.accessInterface).toMatchObject({
+      managedResourceId: target.managedResourceId,
+      immutableKey: target.immutableKey,
+      disabledObserved: true,
+      enabledObserved: true,
+      enabled: true,
+    });
+  });
 });

@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ExecuteButton } from "@/components/network-center/ExecuteGuard";
+import {
+  canRetryActionIntent,
+  shouldPreserveActionDraft,
+} from "@/components/network-center/NetworkActionDialog";
 
 function getGuardedControl(onClick: () => void) {
   const tree = ExecuteButton({
@@ -51,5 +55,27 @@ describe("ExecuteButton accessibility guard", () => {
     expect(onClick).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the active intent locked across close and reopen", () => {
+    expect(shouldPreserveActionDraft({ submitting: true, status: null })).toBe(true);
+    expect(shouldPreserveActionDraft({ submitting: false, status: "queued" })).toBe(true);
+    expect(shouldPreserveActionDraft({ submitting: false, status: "running" })).toBe(true);
+    expect(shouldPreserveActionDraft({ submitting: false, status: "uncertain" })).toBe(true);
+    expect(shouldPreserveActionDraft({
+      submitting: false,
+      status: null,
+      persistedStatus: "SUBMISSION_UNKNOWN",
+    })).toBe(true);
+    expect(shouldPreserveActionDraft({
+      submitting: false,
+      status: null,
+      persistedStatus: "UNCERTAIN",
+    })).toBe(true);
+    expect(shouldPreserveActionDraft({ submitting: false, status: "success" })).toBe(false);
+    expect(shouldPreserveActionDraft({ submitting: false, status: "failed" })).toBe(false);
+    expect(canRetryActionIntent("SUBMISSION_UNKNOWN")).toBe(true);
+    expect(canRetryActionIntent("UNCERTAIN")).toBe(false);
+    expect(canRetryActionIntent("RUNNING")).toBe(false);
   });
 });

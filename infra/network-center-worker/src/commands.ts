@@ -17,13 +17,19 @@ import {
 } from "./domain.js";
 import type { RouterConnector } from "./routeros/connector.js";
 import {
+  reconcileAction,
+  type ActionObservation,
+  type CommandIntent,
+  type CommandIntentAction,
+} from "./reconciliation.js";
+import {
   ROUTER_BACKUP_MAX_BYTES,
   type StagedSftpFile,
 } from "./routeros/boundedSftpRead.js";
 
 type CommandApi = Pick<
   NetworkCenterWorkerApi,
-  "renewLease" | "stage" | "complete" | "snapshot"
+  "renewLease" | "stage" | "observe" | "complete" | "snapshot"
 >;
 
 interface CommandProcessorOptions {
@@ -64,7 +70,7 @@ function hasNoParameters(parameters: Record<string, unknown>): boolean {
   return Object.keys(parameters).length === 0;
 }
 
-function safeAction(value: string): string {
+function safeAction(value: string): CommandIntentAction {
   const action = value.trim().toUpperCase();
   if (!ALLOWED_ACTIONS.has(action)) {
     throw new RouterOperationError("ACTION_NOT_ALLOWED", {
@@ -72,7 +78,26 @@ function safeAction(value: string): string {
       mayHaveExecuted: false,
     });
   }
-  return action;
+  return action as CommandIntentAction;
+}
+
+type ObservationKind = "PRE_ACTION" | "POST_ACTION" | "RECONCILIATION";
+
+function stableObservationId(claim: CommandClaim, kind: ObservationKind): string {
+  const hex = createHash("sha256")
+    .update(`${claim.commandId}:${claim.leaseToken}:${kind}`)
+    .digest("hex")
+    .slice(0, 32)
+    .split("");
+  hex[12] = "5";
+  hex[16] = ((Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  const value = hex.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
+
+function observationEvidence(observation: ActionObservation): Record<string, unknown> {
+  const { observedAt: _observedAt, ...evidence } = observation;
+  return evidence;
 }
 
 export class CommandProcessor {
@@ -102,30 +127,59 @@ export class CommandProcessor {
     await this.#api.stage({
       commandId: claim.commandId,
       leaseToken: claim.leaseToken,
+      fencingGeneration: claim.fencingGeneration,
       eventKind,
       payload,
     });
   }
 
+  async #observe(
+    claim: CommandClaim,
+    kind: ObservationKind,
+    observation: ActionObservation,
+    transitionVersion: number,
+  ): Promise<number> {
+    const receipt = await this.#api.observe({
+      commandId: claim.commandId,
+      leaseToken: claim.leaseToken,
+      fencingGeneration: claim.fencingGeneration,
+      transitionVersion,
+      observationId: stableObservationId(claim, kind),
+      observationKind: kind,
+      observedAt: observation.observedAt,
+      evidence: observationEvidence(observation),
+    });
+    if (receipt.transitionVersion !== transitionVersion + 1) {
+      throw new RouterOperationError("OBSERVATION_VERSION_MISMATCH", {
+        retryable: true,
+        mayHaveExecuted: kind !== "PRE_ACTION",
+      });
+    }
+    return receipt.transitionVersion;
+  }
+
   async #finish(
     claim: CommandClaim,
     input: {
-      outcome: "SUCCEEDED" | "RETRYABLE_FAILURE" | "FAILED" | "UNCERTAIN" | "CANCELLED_BY_KILL_SWITCH";
+      outcome: "EVALUATE_POSTCONDITION" | "RETRYABLE_FAILURE" | "FAILED" | "UNCERTAIN" | "CANCELLED_BY_KILL_SWITCH";
       result: Record<string, unknown>;
       rollback?: Record<string, unknown> | null;
       retryDelaySeconds?: number;
     },
+    transitionVersion = claim.transitionVersion,
   ): Promise<void> {
     await this.#api.complete({
       commandId: claim.commandId,
       leaseToken: claim.leaseToken,
+      fencingGeneration: claim.fencingGeneration,
+      transitionVersion,
       ...input,
     });
-    this.#processed.add(`${claim.commandId}:${claim.attemptNo}`);
+    this.#processed.add(`${claim.commandId}:${claim.leaseToken}:${claim.fencingGeneration}`);
   }
 
   async #performAction(
-    action: string,
+    action: CommandIntentAction,
     claim: CommandClaim,
     connector: RouterConnector,
   ): Promise<Record<string, unknown>> {
@@ -138,7 +192,7 @@ export class CommandProcessor {
         if (!hasNoParameters(claim.parameters)) throw new RouterOperationError("INVALID_PARAMETERS", { retryable: false, mayHaveExecuted: false });
         return await connector.renewDhcpLease()
           ? { applied: true }
-          : { applied: false, reason: "NO_BOUND_DHCP_CLIENT" };
+          : { applied: false, reason: "DHCP_RENEW_NOT_APPLICABLE" };
       case "CYCLE_ACCESS_PORT": {
         if (!claim.interfaceId) throw new RouterOperationError("INTERFACE_REQUIRED", { retryable: false, mayHaveExecuted: false });
         const target = this.#interfaceRegistry.resolve(claim.deviceId, claim.interfaceId);
@@ -166,8 +220,18 @@ export class CommandProcessor {
     }
   }
 
+  #intent(action: CommandIntentAction, claim: CommandClaim): CommandIntent {
+    return {
+      actionType: action,
+      deviceId: claim.deviceId,
+      managedTarget: claim.managedTarget,
+      expectedPostcondition: claim.expectedPostcondition,
+      observationDeadline: claim.observationDeadline,
+    };
+  }
+
   async #process(claim: CommandClaim, connection: NetworkConnection): Promise<void> {
-    const dedupeKey = `${claim.commandId}:${claim.attemptNo}`;
+    const dedupeKey = `${claim.commandId}:${claim.leaseToken}:${claim.fencingGeneration}`;
     if (this.#processed.has(dedupeKey)) return;
 
     if (this.#emergencyStop() || connection.changesPaused) {
@@ -182,6 +246,8 @@ export class CommandProcessor {
     let backupReceipt: VerifiedBackup | undefined;
     let stagedArtifact: StagedSftpFile | undefined;
     let actionResult: Record<string, unknown> = { applied: false };
+    let beforeObservation: ActionObservation | null = claim.preObservation;
+    let transitionVersion = claim.transitionVersion;
     let actionStarted = false;
     let leaseError: unknown;
     const renewLease = async () => {
@@ -189,6 +255,7 @@ export class CommandProcessor {
         await this.#api.renewLease({
           commandId: claim.commandId,
           leaseToken: claim.leaseToken,
+          fencingGeneration: claim.fencingGeneration,
           leaseSeconds: this.#leaseSeconds,
         });
       } catch (error) {
@@ -209,19 +276,41 @@ export class CommandProcessor {
       await renewLease();
       assertLease();
       const action = safeAction(claim.actionType);
+      const intent = this.#intent(action, claim);
       connector = await this.#connectorFactory(connection);
       await this.#stage(claim, "VALIDATED", { actionType: action });
       assertLease();
 
       if (claim.reconciliation) {
         await this.#stage(claim, "RECONCILIATION_STARTED");
-        const health = await connector.healthCheck();
-        await this.#stage(claim, "RECONCILIATION_COMPLETED", { ...health });
-        await this.#finish(claim, {
-          outcome: health.reachable ? "SUCCEEDED" : "RETRYABLE_FAILURE",
-          result: { reconciled: health.reachable, health },
-          retryDelaySeconds: 30,
+        if (!beforeObservation) {
+          await this.#finish(claim, {
+            outcome: "UNCERTAIN",
+            result: {
+              code: "MISSING_DURABLE_PRE_OBSERVATION",
+              actionType: action,
+            },
+            retryDelaySeconds: 30,
+          }, transitionVersion);
+          return;
+        }
+        const afterObservation = await connector.observeAction(intent);
+        transitionVersion = await this.#observe(
+          claim,
+          "RECONCILIATION",
+          afterObservation,
+          transitionVersion,
+        );
+        const decision = reconcileAction(intent, beforeObservation, afterObservation);
+        await this.#stage(claim, "RECONCILIATION_COMPLETED", {
+          decision,
+          observation: afterObservation,
         });
+        await this.#finish(claim, {
+          outcome: "EVALUATE_POSTCONDITION",
+          result: { actionType: action },
+          retryDelaySeconds: 30,
+        }, transitionVersion);
         return;
       }
 
@@ -251,6 +340,7 @@ export class CommandProcessor {
         normalizedContent: { format: "routeros-export-v1", lines: redactedLines },
         redactedLines,
         contentHash,
+        encryptedArtifactHash: backupReceipt.sha256,
       });
       await this.#stage(claim, "BACKUP_COMPLETED", {
         backupSha256: backupReceipt.sha256,
@@ -267,6 +357,16 @@ export class CommandProcessor {
         return;
       }
 
+      if (!beforeObservation) {
+        beforeObservation = await connector.observeAction(intent);
+        transitionVersion = await this.#observe(
+          claim,
+          "PRE_ACTION",
+          beforeObservation,
+          transitionVersion,
+        );
+      }
+
       if (action !== "CAPTURE_SNAPSHOT") {
         await this.#stage(claim, "EXECUTION_STARTED", { actionType: action });
         actionStarted = true;
@@ -277,24 +377,36 @@ export class CommandProcessor {
       assertLease();
 
       await this.#stage(claim, "POST_CHECK_STARTED");
-      const health = await connector.healthCheck();
-      const postCheckPassed = health.reachable && (
-        action === "FLUSH_DNS_CACHE" ? health.dnsOk
-          : action === "RENEW_DHCP_LEASE" ? health.wanUp
-            : true
+      const afterObservation = action === "CAPTURE_SNAPSHOT"
+        ? {
+          observedAt: this.#clock.now().toISOString(),
+          reachable: true,
+          snapshot: {
+            redactedContentHash: contentHash,
+            encryptedArtifactHash: backupReceipt.sha256,
+          },
+        }
+        : await connector.observeAction(intent);
+      const decision = reconcileAction(intent, beforeObservation, afterObservation);
+      transitionVersion = await this.#observe(
+        claim,
+        "POST_ACTION",
+        afterObservation,
+        transitionVersion,
       );
-      await this.#stage(claim, "POST_CHECK_COMPLETED", { ...health, passed: postCheckPassed });
-      if (!postCheckPassed) {
-        throw new RouterOperationError("POST_CHECK_FAILED", {
-          retryable: true,
-          mayHaveExecuted: actionStarted,
-        });
-      }
-      await this.#finish(claim, {
-        outcome: "SUCCEEDED",
-        result: { actionType: action, actionResult, health, backupSha256: backupReceipt.sha256 },
-        rollback: { backupSha256: backupReceipt.sha256 },
+      await this.#stage(claim, "POST_CHECK_COMPLETED", {
+        decision,
+        observation: afterObservation,
       });
+      await this.#finish(claim, {
+        outcome: "EVALUATE_POSTCONDITION",
+        result: {
+          actionType: action,
+          actionResult,
+          backupSha256: backupReceipt.sha256,
+        },
+        rollback: { backupSha256: backupReceipt.sha256 },
+      }, transitionVersion);
     } catch (error) {
       this.#logger.warn("Router command failed", redactForLog({
         commandId: claim.commandId,
@@ -308,7 +420,7 @@ export class CommandProcessor {
         result: classified.result,
         ...(backupReceipt ? { rollback: { backupSha256: backupReceipt.sha256 } } : {}),
         retryDelaySeconds: classified.retryDelaySeconds,
-      });
+      }, transitionVersion);
     } finally {
       this.#clock.clearInterval(renewal);
       await stagedArtifact?.dispose();
@@ -372,6 +484,8 @@ export class CommandCoordinator {
         await this.#api.complete({
           commandId: claim.commandId,
           leaseToken: claim.leaseToken,
+          fencingGeneration: claim.fencingGeneration,
+          transitionVersion: claim.transitionVersion,
           outcome: "RETRYABLE_FAILURE",
           result: { code: "CONNECTION_UNAVAILABLE", message: "Router connection is unavailable" },
           retryDelaySeconds: 30,

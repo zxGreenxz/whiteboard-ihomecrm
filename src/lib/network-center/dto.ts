@@ -208,6 +208,7 @@ const commandItemSchema = z.object({
   result: jsonObjectSchema.nullable(),
   rollback: jsonObjectSchema.nullable(),
   reconciliationState: z.string(),
+  transitionVersion: z.number().int().positive().optional(),
   createdAt: timestampSchema,
   startedAt: nullableTimestampSchema,
   finishedAt: nullableTimestampSchema,
@@ -296,6 +297,7 @@ export type NetworkCenterBuildingDto = z.infer<typeof buildingSchema>;
 export type NetworkCenterArubaPageDto = z.infer<typeof arubaPageSchema>;
 export type NetworkCenterClientPageDto = z.infer<typeof clientPageSchema>;
 export type NetworkCenterCommandPageDto = z.infer<typeof commandPageSchema>;
+export type NetworkCenterCommandDto = z.infer<typeof commandItemSchema>;
 export type NetworkCenterAuditPageDto = z.infer<typeof auditPageSchema>;
 export type NetworkCenterExecuteResultDto = z.infer<typeof executeResultSchema>;
 
@@ -317,6 +319,10 @@ export function parseNetworkCenterClientPage(value: unknown): NetworkCenterClien
 
 export function parseNetworkCenterCommandPage(value: unknown): NetworkCenterCommandPageDto {
   return commandPageSchema.parse(value);
+}
+
+export function parseNetworkCenterCommand(value: unknown): NetworkCenterCommandDto {
+  return commandItemSchema.parse(value);
 }
 
 export function parseNetworkCenterAuditPage(value: unknown): NetworkCenterAuditPageDto {
@@ -617,7 +623,7 @@ function mapTarget(
 }
 
 function mapJob(
-  building: NetworkBuilding,
+  building: Pick<NetworkBuilding, "buildingId" | "buildingName" | "router">,
   item: z.infer<typeof commandItemSchema>,
 ): NetworkJob | null {
   const action = item.actionType.toLowerCase() as NetworkActionType;
@@ -625,11 +631,13 @@ function mapJob(
   const rawStatus = item.status.toUpperCase();
   const status: NetworkJob["status"] = rawStatus === "SUCCEEDED"
     ? "success"
-    : rawStatus === "FAILED" || rawStatus === "UNCERTAIN" || rawStatus.startsWith("CANCELLED")
-      ? "failed"
-      : rawStatus === "LEASED" || rawStatus === "RUNNING" || rawStatus === "RECONCILING"
-        ? "running"
-        : "queued";
+    : rawStatus === "UNCERTAIN"
+      ? "uncertain"
+      : rawStatus === "FAILED" || rawStatus.startsWith("CANCELLED")
+        ? "failed"
+        : rawStatus === "LEASED" || rawStatus === "RUNNING" || rawStatus === "RECONCILING"
+          ? "running"
+          : "queued";
   const finished = status === "success" || status === "failed";
   const running = status === "running";
   const resultMessage = item.result && typeof item.result.message === "string"
@@ -638,7 +646,9 @@ function mapJob(
       ? "Đang chờ worker xử lý"
       : status === "running"
         ? "Worker đang thực hiện và kiểm tra"
-        : status === "success"
+        : status === "uncertain"
+          ? "Chưa đủ bằng chứng hậu kiểm; chưa thể kết luận thành công hay thất bại"
+          : status === "success"
           ? "Worker đã hoàn tất và đối soát"
           : "Thao tác không hoàn tất";
   return {
@@ -656,8 +666,8 @@ function mapJob(
     stages: [
       { key: "validation", label: "Kiểm tra đầu vào", status: "success", detail: "Đã xác thực" },
       { key: "backup", label: "Backup", status: finished ? "success" : running ? "running" : "pending", detail: "Worker quản lý backup trước thao tác" },
-      { key: "execution", label: "Thực hiện", status: finished ? (status === "success" ? "success" : "failed") : running ? "running" : "pending", detail: resultMessage },
-      { key: "post_check", label: "Kiểm tra sau", status: status === "success" ? "success" : finished ? "failed" : "pending", detail: "Đối soát trạng thái thiết bị" },
+      { key: "execution", label: "Thực hiện", status: finished ? (status === "success" ? "success" : "failed") : running || status === "uncertain" ? "running" : "pending", detail: resultMessage },
+      { key: "post_check", label: "Kiểm tra sau", status: status === "success" ? "success" : finished ? "failed" : status === "uncertain" ? "running" : "pending", detail: "Đối soát trạng thái thiết bị" },
       { key: "success", label: "Hoàn tất", status: status === "success" ? "success" : status === "failed" ? "failed" : "pending", detail: resultMessage },
     ],
     result: resultMessage,
@@ -668,10 +678,29 @@ function mapJob(
       detail: item.rollback ? "Có dữ liệu rollback đã làm sạch" : "Chưa cần rollback",
     },
     reconciliation: {
-      status: item.reconciliationState.toUpperCase() === "CONFIRMED" ? "matched" : item.reconciliationState.toUpperCase() === "FAILED" ? "drifted" : "not_required",
+      status: rawStatus === "UNCERTAIN" || item.reconciliationState.toUpperCase() === "REQUIRED"
+        ? "uncertain"
+        : item.reconciliationState.toUpperCase() === "CONFIRMED"
+          ? "matched"
+          : item.reconciliationState.toUpperCase() === "FAILED"
+            ? "drifted"
+            : "not_required",
       detail: `Trạng thái đối soát: ${item.reconciliationState}`,
     },
   };
+}
+
+export function mapNetworkCenterCommand(item: NetworkCenterCommandDto): NetworkJob {
+  const buildingId = stringField(item.target, "buildingId", "unknown-building");
+  const buildingName = stringField(item.target, "buildingName", "Network Center");
+  const routerIdentity = stringField(item.target, "routerIdentity", "MikroTik");
+  const job = mapJob({
+    buildingId,
+    buildingName,
+    router: { identity: routerIdentity } as NetworkBuilding["router"],
+  }, item);
+  if (!job) throw new Error("Unsupported Network Center command response");
+  return job;
 }
 
 const AUDIT_ACTIONS = new Set<NetworkAuditAction>([

@@ -4,6 +4,7 @@ import type {
   RouterCredential,
   RouterObservation,
 } from "../domain.js";
+import type { ActionObservation, CommandIntent } from "../reconciliation.js";
 import type { StagedSftpFile } from "./boundedSftpRead.js";
 
 export interface RouterBackup {
@@ -22,6 +23,7 @@ export interface RouterConnector {
   poll(): Promise<RouterObservation>;
   captureBackup(): Promise<RouterBackup>;
   healthCheck(): Promise<RouterHealth>;
+  observeAction(intent: CommandIntent): Promise<ActionObservation>;
   flushDnsCache(): Promise<void>;
   renewDhcpLease(): Promise<boolean>;
   cycleAccessPort(target: ManagedInterfaceTarget, durationSeconds: number): Promise<void>;

@@ -42,6 +42,84 @@ describe("worker Edge API client", () => {
     expect(String((error as Error).message)).not.toContain(secret);
   });
 
+  it("accepts typed claim metadata and sends fenced observations without worker-authored success", async () => {
+    const requests: Request[] = [];
+    const claim = {
+      commandId: "50000000-0000-4000-8000-000000000001",
+      organizationId: "20000000-0000-4000-8000-000000000001",
+      buildingId: "30000000-0000-4000-8000-000000000001",
+      deviceId: "40000000-0000-4000-8000-000000000001",
+      interfaceId: null,
+      actionType: "FLUSH_DNS_CACHE",
+      reason: "Kiểm tra DNS",
+      parameters: {},
+      attemptNo: 1,
+      leaseToken: "60000000-0000-4000-8000-000000000001",
+      leaseExpiresAt: "2026-07-30T00:02:00.000Z",
+      reconciliation: false,
+      intentType: "FLUSH_DNS_CACHE",
+      managedTarget: { deviceId: "40000000-0000-4000-8000-000000000001" },
+      preObservation: null,
+      expectedPostcondition: { kind: "DNS_COMMAND_ACK" },
+      observationDeadline: "2026-07-30T00:05:00.000Z",
+      transitionVersion: 7,
+      fencingGeneration: 11,
+    };
+    const client = new NetworkCenterApiClient({
+      baseUrl: new URL("https://example.test/worker"),
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        requests.push(request);
+        return Response.json({
+          ok: true,
+          data: request.url.endsWith("/claim")
+            ? { items: [claim] }
+            : request.url.endsWith("/observe")
+              ? { accepted: true, transitionVersion: 8 }
+              : { accepted: true },
+        });
+      },
+    });
+
+    await expect(client.claimCommands()).resolves.toEqual([claim]);
+    await expect(client.observe({
+      commandId: claim.commandId,
+      leaseToken: claim.leaseToken,
+      fencingGeneration: claim.fencingGeneration,
+      transitionVersion: claim.transitionVersion,
+      observationId: "70000000-0000-4000-8000-000000000001",
+      observationKind: "POST_ACTION",
+      observedAt: "2026-07-30T00:00:01.000Z",
+      evidence: { dns: { commandAck: true } },
+    })).resolves.toEqual({ accepted: true, transitionVersion: 8 });
+    await client.complete({
+      commandId: claim.commandId,
+      leaseToken: claim.leaseToken,
+      fencingGeneration: claim.fencingGeneration,
+      transitionVersion: 8,
+      outcome: "EVALUATE_POSTCONDITION",
+      result: { actionType: "FLUSH_DNS_CACHE" },
+    });
+
+    const observeBody = await requests[1]!.json() as Record<string, unknown>;
+    expect(observeBody).toMatchObject({
+      fencingGeneration: 11,
+      transitionVersion: 7,
+      observationKind: "POST_ACTION",
+    });
+    const completeBody = await requests[2]!.json() as Record<string, unknown>;
+    expect(completeBody).toMatchObject({
+      fencingGeneration: 11,
+      transitionVersion: 8,
+      outcome: "EVALUATE_POSTCONDITION",
+    });
+    expect(completeBody).not.toHaveProperty("observations");
+    expect(JSON.stringify(completeBody)).not.toContain("reconciliationDecision");
+    expect(completeBody.outcome).not.toBe("SUCCEEDED");
+  });
+
   it("validates inventory degradation metadata returned by the database boundary", async () => {
     const baseUrl = new URL("https://example.test/worker");
     const validClient = new NetworkCenterApiClient({

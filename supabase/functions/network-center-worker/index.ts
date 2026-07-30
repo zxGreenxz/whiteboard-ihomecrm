@@ -57,7 +57,7 @@ const COMMAND_EVENT_KINDS = new Set([
 ]);
 
 const COMMAND_OUTCOMES = new Set([
-  "SUCCEEDED",
+  "EVALUATE_POSTCONDITION",
   "RETRYABLE_FAILURE",
   "FAILED",
   "UNCERTAIN",
@@ -232,6 +232,12 @@ function renewArgs(body: JsonObject): Record<string, unknown> {
   return {
     p_command_id: asUuid(body.commandId, "commandId"),
     p_lease_token: asUuid(body.leaseToken, "leaseToken"),
+    p_fencing_generation: asInteger(
+      body.fencingGeneration,
+      "fencingGeneration",
+      1,
+      Number.MAX_SAFE_INTEGER,
+    ),
     p_lease_seconds: asInteger(
       body.leaseSeconds ?? 90,
       "leaseSeconds",
@@ -270,17 +276,68 @@ function stageArgs(body: JsonObject): Record<string, unknown> {
   return {
     p_command_id: asUuid(body.commandId, "commandId"),
     p_lease_token: asUuid(body.leaseToken, "leaseToken"),
+    p_fencing_generation: asInteger(
+      body.fencingGeneration,
+      "fencingGeneration",
+      1,
+      Number.MAX_SAFE_INTEGER,
+    ),
     p_event_kind: asUpperEnum(body.eventKind, "eventKind", COMMAND_EVENT_KINDS),
     p_payload: asBoundedObject(body.payload ?? {}, "payload", 65_536),
   };
 }
 
-function completeArgs(body: JsonObject): Record<string, unknown> {
+function observeArgs(body: JsonObject): Record<string, unknown> {
   return {
     p_command_id: asUuid(body.commandId, "commandId"),
     p_lease_token: asUuid(body.leaseToken, "leaseToken"),
+    p_fencing_generation: asInteger(
+      body.fencingGeneration,
+      "fencingGeneration",
+      1,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    p_transition_version: asInteger(
+      body.transitionVersion,
+      "transitionVersion",
+      1,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    p_observation_id: asUuid(body.observationId, "observationId"),
+    p_observation_kind: asUpperEnum(
+      body.observationKind,
+      "observationKind",
+      new Set(["PRE_ACTION", "POST_ACTION", "RECONCILIATION"]),
+    ),
+    p_observed_at: asTimestamp(body.observedAt, "observedAt"),
+    p_evidence: asBoundedObject(body.evidence, "evidence", 65_536),
+  };
+}
+
+function completeArgs(body: JsonObject): Record<string, unknown> {
+  const result = asBoundedObject(body.result ?? {}, "result", 65_536);
+  if (Object.hasOwn(result, "reconciliationDecision")) {
+    throw new RequestValidationError(
+      "result.reconciliationDecision is database-owned",
+    );
+  }
+  return {
+    p_command_id: asUuid(body.commandId, "commandId"),
+    p_lease_token: asUuid(body.leaseToken, "leaseToken"),
+    p_fencing_generation: asInteger(
+      body.fencingGeneration,
+      "fencingGeneration",
+      1,
+      Number.MAX_SAFE_INTEGER,
+    ),
+    p_transition_version: asInteger(
+      body.transitionVersion,
+      "transitionVersion",
+      1,
+      Number.MAX_SAFE_INTEGER,
+    ),
     p_outcome: asUpperEnum(body.outcome, "outcome", COMMAND_OUTCOMES),
-    p_result: asBoundedObject(body.result ?? {}, "result", 65_536),
+    p_result: result,
     p_rollback: asOptionalBoundedObject(body.rollback, "rollback", 65_536),
     p_retry_delay_seconds: asInteger(
       body.retryDelaySeconds ?? 30,
@@ -355,6 +412,15 @@ function snapshotArgs(body: JsonObject): Record<string, unknown> {
   if (!/^[a-f0-9]{64}$/.test(hash)) {
     throw new RequestValidationError("payload.contentHash is invalid");
   }
+  const encryptedHash = asString(
+    payload.encryptedArtifactHash,
+    "payload.encryptedArtifactHash",
+    64,
+    64,
+  );
+  if (!/^[a-f0-9]{64}$/.test(encryptedHash)) {
+    throw new RequestValidationError("payload.encryptedArtifactHash is invalid");
+  }
   return { p_payload: payload };
 }
 
@@ -389,7 +455,9 @@ const ROUTES: Readonly<Record<string, RouteDefinition>> = Object.freeze({
   renew: {
     maxBodyBytes: 8_192,
     rpcName: "network_center_worker_renew_v2",
-    bodySchema: strictBodySchema(["commandId", "leaseToken", "leaseSeconds"]),
+    bodySchema: strictBodySchema([
+      "commandId", "leaseToken", "fencingGeneration", "leaseSeconds",
+    ]),
     toRpcArgs: renewArgs,
   },
   ingest: {
@@ -407,15 +475,26 @@ const ROUTES: Readonly<Record<string, RouteDefinition>> = Object.freeze({
   stage: {
     maxBodyBytes: 100_000,
     rpcName: "network_center_worker_command_event_v2",
-    bodySchema: strictBodySchema(["commandId", "leaseToken", "eventKind", "payload"]),
+    bodySchema: strictBodySchema([
+      "commandId", "leaseToken", "fencingGeneration", "eventKind", "payload",
+    ]),
     toRpcArgs: stageArgs,
+  },
+  observe: {
+    maxBodyBytes: 100_000,
+    rpcName: "network_center_worker_observe_v2",
+    bodySchema: strictBodySchema([
+      "commandId", "leaseToken", "fencingGeneration", "transitionVersion",
+      "observationId", "observationKind", "observedAt", "evidence",
+    ]),
+    toRpcArgs: observeArgs,
   },
   complete: {
     maxBodyBytes: 150_000,
     rpcName: "network_center_worker_complete_v2",
     bodySchema: strictBodySchema([
-      "commandId", "leaseToken", "outcome", "result", "rollback",
-      "retryDelaySeconds",
+      "commandId", "leaseToken", "fencingGeneration", "transitionVersion",
+      "outcome", "result", "rollback", "retryDelaySeconds",
     ]),
     toRpcArgs: completeArgs,
   },

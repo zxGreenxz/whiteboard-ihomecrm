@@ -242,12 +242,14 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
       body: {
         commandId: COMMAND_ID,
         leaseToken: LEASE_TOKEN,
+        fencingGeneration: 11,
         leaseSeconds: 90,
       },
       rpc: "network_center_worker_renew_v2",
       args: {
         p_command_id: COMMAND_ID,
         p_lease_token: LEASE_TOKEN,
+        p_fencing_generation: 11,
         p_lease_seconds: 90,
       },
     },
@@ -299,6 +301,7 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
       body: {
         commandId: COMMAND_ID,
         leaseToken: LEASE_TOKEN,
+        fencingGeneration: 11,
         eventKind: "validated",
         payload: { check: "ok" },
       },
@@ -306,8 +309,33 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
       args: {
         p_command_id: COMMAND_ID,
         p_lease_token: LEASE_TOKEN,
+        p_fencing_generation: 11,
         p_event_kind: "VALIDATED",
         p_payload: { check: "ok" },
+      },
+    },
+    {
+      path: "/observe",
+      body: {
+        commandId: COMMAND_ID,
+        leaseToken: LEASE_TOKEN,
+        fencingGeneration: 11,
+        transitionVersion: 7,
+        observationId: SNAPSHOT_ID,
+        observationKind: "post_action",
+        observedAt: now,
+        evidence: { dns: { commandAck: true } },
+      },
+      rpc: "network_center_worker_observe_v2",
+      args: {
+        p_command_id: COMMAND_ID,
+        p_lease_token: LEASE_TOKEN,
+        p_fencing_generation: 11,
+        p_transition_version: 7,
+        p_observation_id: SNAPSHOT_ID,
+        p_observation_kind: "POST_ACTION",
+        p_observed_at: now,
+        p_evidence: { dns: { commandAck: true } },
       },
     },
     {
@@ -315,8 +343,10 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
       body: {
         commandId: COMMAND_ID,
         leaseToken: LEASE_TOKEN,
-        outcome: "succeeded",
-        result: { reachable: true },
+        fencingGeneration: 11,
+        transitionVersion: 7,
+        outcome: "evaluate_postcondition",
+        result: { actionType: "FLUSH_DNS_CACHE" },
         rollback: null,
         retryDelaySeconds: 30,
       },
@@ -324,8 +354,10 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
       args: {
         p_command_id: COMMAND_ID,
         p_lease_token: LEASE_TOKEN,
-        p_outcome: "SUCCEEDED",
-        p_result: { reachable: true },
+        p_fencing_generation: 11,
+        p_transition_version: 7,
+        p_outcome: "EVALUATE_POSTCONDITION",
+        p_result: { actionType: "FLUSH_DNS_CACHE" },
         p_rollback: null,
         p_retry_delay_seconds: 30,
       },
@@ -372,6 +404,7 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
           normalizedContent: { identity: "demo" },
           redactedLines: ["/system identity set name=demo"],
           contentHash: "a".repeat(64),
+          encryptedArtifactHash: "b".repeat(64),
         },
       },
       rpc: "network_center_worker_snapshot_v2",
@@ -383,6 +416,7 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
           normalizedContent: { identity: "demo" },
           redactedLines: ["/system identity set name=demo"],
           contentHash: "a".repeat(64),
+          encryptedArtifactHash: "b".repeat(64),
         },
       },
     },
@@ -407,6 +441,36 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
       data: { accepted: true },
     });
   }
+});
+
+Deno.test("complete rejects worker-authored SUCCEEDED before RPC", async () => {
+  const { handler, calls } = await createHarness();
+  const response = await handler(post("/complete", {
+    commandId: COMMAND_ID,
+    leaseToken: LEASE_TOKEN,
+    fencingGeneration: 11,
+    transitionVersion: 1,
+    outcome: "SUCCEEDED",
+    result: {},
+    rollback: null,
+    retryDelaySeconds: 30,
+  }));
+
+  assertEquals(response.status, 400);
+  assertEquals(calls.length, 0);
+
+  const advisory = await handler(post("/complete", {
+    commandId: COMMAND_ID,
+    leaseToken: LEASE_TOKEN,
+    fencingGeneration: 11,
+    transitionVersion: 1,
+    outcome: "EVALUATE_POSTCONDITION",
+    result: { reconciliationDecision: { outcome: "SUCCEEDED" } },
+    rollback: null,
+    retryDelaySeconds: 30,
+  }));
+  assertEquals(advisory.status, 400);
+  assertEquals(calls.length, 0);
 });
 
 Deno.test("inventory accepts unlimited Aruba through repeated bounded batches", async () => {

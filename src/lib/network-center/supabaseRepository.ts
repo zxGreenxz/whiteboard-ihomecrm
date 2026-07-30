@@ -17,6 +17,7 @@ import {
   NETWORK_CENTER_ARUBA_PAGE_SIZE,
   NETWORK_CENTER_PAGE_SIZE,
   mapNetworkCenterArubaPage,
+  mapNetworkCenterCommand,
   mapNetworkCenterExecuteResult,
   mapNetworkCenterFleetItem,
   mergeNetworkCenterBuilding,
@@ -26,6 +27,7 @@ import {
   parseNetworkCenterBuilding,
   parseNetworkCenterCancellationResult,
   parseNetworkCenterClientPage,
+  parseNetworkCenterCommand,
   parseNetworkCenterCommandPage,
   parseNetworkCenterDiff,
   parseNetworkCenterExecuteResult,
@@ -38,7 +40,7 @@ import {
 
 export type NetworkCenterRpcResult = {
   data: unknown;
-  error: null | { code?: string; message?: string };
+  error: null | { code?: string; message?: string; details?: string };
 };
 
 export type NetworkCenterRpcCall = (
@@ -50,18 +52,53 @@ const boundSupabaseRpc = supabase.rpc.bind(supabase) as unknown as NetworkCenter
 
 const defaultRpc: NetworkCenterRpcCall = async (name, args) => {
   const result = await boundSupabaseRpc(name, args);
-  return { data: result.data, error: result.error };
+  return {
+    data: result.data,
+    error: result.error ? {
+      code: result.error.code,
+      message: result.error.message,
+      details: result.error.details,
+    } : null,
+  };
 };
 
 export class NetworkCenterRepositoryError extends Error {
   readonly rpcName?: string;
   readonly code?: string;
+  readonly duplicateCode?: string;
+  readonly commandId?: string;
 
-  constructor(message: string, options?: { rpcName?: string; code?: string }) {
+  constructor(message: string, options?: {
+    rpcName?: string;
+    code?: string;
+    duplicateCode?: string;
+    commandId?: string;
+  }) {
     super(message);
     this.name = "NetworkCenterRepositoryError";
     this.rpcName = options?.rpcName;
     this.code = options?.code;
+    this.duplicateCode = options?.duplicateCode;
+    this.commandId = options?.commandId;
+  }
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DUPLICATE_CODES = new Set([
+  "NETWORK_CENTER_DUPLICATE_INTENT",
+  "NETWORK_CENTER_COOLDOWN",
+]);
+
+function duplicateDetails(error: NonNullable<NetworkCenterRpcResult["error"]>) {
+  if (!error.details) return null;
+  try {
+    const parsed = JSON.parse(error.details) as Record<string, unknown>;
+    const code = typeof parsed.code === "string" ? parsed.code : "";
+    const commandId = typeof parsed.commandId === "string" ? parsed.commandId : "";
+    if (!DUPLICATE_CODES.has(code) || !UUID_PATTERN.test(commandId)) return null;
+    return { code, commandId: commandId.toLowerCase() };
+  } catch {
+    return null;
   }
 }
 
@@ -272,19 +309,74 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
   ): Promise<NetworkJob> {
     const building = await this.requireBuilding(buildingId);
     const routerId = this.requireWritableRouter(building);
-    const result = await this.call(
-      "network_center_execute_action_v1",
-      {
+    const rpcName = "network_center_execute_action_v1";
+    const args = {
         p_device_id: routerId,
         p_action_type: actionName(request.type),
         p_reason: request.reason,
         p_parameters: request.fields,
         p_confirmation: request.confirmation ?? null,
         p_request_id: requestId(idempotencyKey),
+    };
+    let response: NetworkCenterRpcResult;
+    try {
+      response = await this.rpc(rpcName, args);
+    } catch {
+      throw new NetworkCenterRepositoryError("Không thể kết nối dịch vụ Network Center", {
+        rpcName,
+      });
+    }
+    if (response.error) {
+      const duplicate = duplicateDetails(response.error);
+      if (duplicate) {
+        return this.getCommand(buildingId, { commandId: duplicate.commandId });
+      }
+      throw new NetworkCenterRepositoryError("Dịch vụ Network Center từ chối yêu cầu", {
+        rpcName,
+        code: response.error.code,
+      });
+    }
+    let result;
+    try {
+      result = parseNetworkCenterExecuteResult(response.data);
+    } catch {
+      throw new NetworkCenterRepositoryError("Dữ liệu Network Center không đúng hợp đồng", {
+        rpcName,
+      });
+    }
+    try {
+      return await this.getCommand(buildingId, { commandId: result.commandId });
+    } catch (error) {
+      if (error instanceof NetworkCenterRepositoryError && error.code === "P0002") {
+        return mapNetworkCenterExecuteResult(building, result, actor);
+      }
+      throw error;
+    }
+  }
+
+  async getCommand(
+    buildingId: string,
+    lookup: { commandId?: string | null; requestId?: string | null },
+  ): Promise<NetworkJob> {
+    const normalizedBuildingId = buildingId.trim().toLowerCase();
+    const commandId = lookup.commandId?.trim().toLowerCase() || null;
+    const exactRequestId = lookup.requestId?.trim().toLowerCase() || null;
+    if (!UUID_PATTERN.test(normalizedBuildingId)
+      || Boolean(commandId) === Boolean(exactRequestId)
+      || (commandId !== null && !UUID_PATTERN.test(commandId))
+      || (exactRequestId !== null && !UUID_PATTERN.test(exactRequestId))) {
+      throw new NetworkCenterRepositoryError("Định danh command/request không hợp lệ");
+    }
+    const command = await this.call(
+      "network_center_get_command_v1",
+      {
+        p_building_id: normalizedBuildingId,
+        p_command_id: commandId,
+        p_request_id: exactRequestId,
       },
-      parseNetworkCenterExecuteResult,
+      parseNetworkCenterCommand,
     );
-    return mapNetworkCenterExecuteResult(building, result, actor);
+    return mapNetworkCenterCommand(command);
   }
 
   async updateSettings(

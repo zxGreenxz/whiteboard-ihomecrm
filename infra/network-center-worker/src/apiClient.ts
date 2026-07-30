@@ -40,7 +40,19 @@ const commandClaimSchema = z.object({
   leaseToken: z.uuid(),
   leaseExpiresAt: z.iso.datetime({ offset: true }),
   reconciliation: z.boolean(),
+  intentType: z.string().min(3).max(64),
+  managedTarget: z.record(z.string(), z.unknown()),
+  preObservation: z.record(z.string(), z.unknown()).nullable(),
+  expectedPostcondition: z.record(z.string(), z.unknown()),
+  observationDeadline: z.iso.datetime({ offset: true }),
+  transitionVersion: z.number().int().positive(),
+  fencingGeneration: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 });
+
+const observationReceiptSchema = z.object({
+  accepted: z.literal(true),
+  transitionVersion: z.number().int().positive(),
+}).passthrough();
 
 const inventoryMappingSchema = z.object({
   routerDeviceId: z.uuid(),
@@ -195,7 +207,12 @@ export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
     return data.items as CommandClaim[];
   }
 
-  async renewLease(input: { commandId: string; leaseToken: string; leaseSeconds: number }): Promise<unknown> {
+  async renewLease(input: {
+    commandId: string;
+    leaseToken: string;
+    fencingGeneration: number;
+    leaseSeconds: number;
+  }): Promise<unknown> {
     return this.#post("renew", input, z.unknown());
   }
 
@@ -210,16 +227,32 @@ export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
   async stage(input: {
     commandId: string;
     leaseToken: string;
+    fencingGeneration: number;
     eventKind: string;
     payload: Record<string, unknown>;
   }): Promise<unknown> {
     return this.#post("stage", input, z.unknown());
   }
 
+  async observe(input: {
+    commandId: string;
+    leaseToken: string;
+    fencingGeneration: number;
+    transitionVersion: number;
+    observationId: string;
+    observationKind: "PRE_ACTION" | "POST_ACTION" | "RECONCILIATION";
+    observedAt: string;
+    evidence: Record<string, unknown>;
+  }): Promise<{ accepted: true; transitionVersion: number }> {
+    return this.#post("observe", input, observationReceiptSchema);
+  }
+
   async complete(input: {
     commandId: string;
     leaseToken: string;
-    outcome: "SUCCEEDED" | "RETRYABLE_FAILURE" | "FAILED" | "UNCERTAIN" | "CANCELLED_BY_KILL_SWITCH";
+    fencingGeneration: number;
+    transitionVersion: number;
+    outcome: "EVALUATE_POSTCONDITION" | "RETRYABLE_FAILURE" | "FAILED" | "UNCERTAIN" | "CANCELLED_BY_KILL_SWITCH";
     result: Record<string, unknown>;
     rollback?: Record<string, unknown> | null;
     retryDelaySeconds?: number;

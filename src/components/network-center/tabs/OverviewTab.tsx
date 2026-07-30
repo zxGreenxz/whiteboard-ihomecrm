@@ -53,6 +53,7 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
             canExecute={controller.canExecute}
             disabledReason={controller.executeDisabledMessage}
             isDemo={controller.isDemo}
+            persistedIntent={controller.activeActionIntent}
             onExecute={(request) => controller.executeAction(site.buildingId, request)}
           />
           <MaintenanceDialog

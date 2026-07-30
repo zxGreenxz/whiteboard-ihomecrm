@@ -150,10 +150,17 @@ export interface NetworkMutationTarget {
   revisionId?: string;
 }
 
-export type NetworkJobStatus = "queued" | "running" | "success" | "failed" | "rolled_back";
+export type NetworkJobStatus =
+  | "queued"
+  | "running"
+  | "uncertain"
+  | "success"
+  | "failed"
+  | "rolled_back";
 
 export interface NetworkJob {
   id: string;
+  isStableIntent?: boolean;
   buildingId: string;
   action: NetworkActionType;
   actionLabel: string;
@@ -173,7 +180,7 @@ export interface NetworkJob {
     detail: string;
   };
   reconciliation: {
-    status: "matched" | "drifted" | "not_required";
+    status: "matched" | "drifted" | "uncertain" | "not_required";
     detail: string;
   };
 }
@@ -301,6 +308,10 @@ export interface NetworkCenterRepository {
     request: NetworkActionRequest,
     actor: NetworkActor,
     requestId?: string,
+  ): Promise<NetworkJob>;
+  getCommand?(
+    buildingId: string,
+    lookup: { commandId?: string | null; requestId?: string | null },
   ): Promise<NetworkJob>;
   updateSettings(
     buildingId: string,
