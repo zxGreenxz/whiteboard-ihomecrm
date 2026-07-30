@@ -318,16 +318,19 @@ test('finance-v2 mobile huỷ phiếu ĐÃ CHI (posted-aware)', async ({ browser
     await openMobileDetail(pc, name);
     await pc.getByRole('button', { name: 'Huỷ', exact: true }).click();
 
-    // Dialog POSTED-AWARE: cảnh báo "HOÀN TÁC" + ô lý do (Textarea).
+    // Dialog POSTED-AWARE + ô lý do (Textarea).
+    // ⚠ Spec này từng chờ chữ "hoàn tác". Đợt 5 đổi sang HUỶ TẠI CHỖ: dialog nay
+    // nói "trừ thẳng khoản này khỏi tồn quỹ ngay, KHÔNG sinh thêm phiếu đối ứng".
+    // Chờ chữ cũ là bắt spec nói dối về hành vi đang chạy.
     const dialog = pc.getByRole('alertdialog');
     await expect(dialog).toBeVisible({ timeout: 15_000 });
-    await expect(dialog).toContainText(/hoàn tác/i);
+    await expect(dialog).toContainText(/trừ thẳng khoản này khỏi tồn quỹ/i);
     const reason = dialog.getByRole('textbox');
     await expect(reason).toBeVisible();
     await reason.fill('E2E mobile huỷ phiếu đã chi');
 
-    // Nút posted-aware "Hoàn tác & Huỷ phiếu" (khác dialog thường "Huỷ phiếu").
-    await dialog.getByRole('button', { name: 'Hoàn tác & Huỷ phiếu' }).click();
+    // Nút posted-aware nay là "Huỷ phiếu & trừ khỏi sổ quỹ" (Đợt 5 huỷ tại chỗ).
+    await dialog.getByRole('button', { name: 'Huỷ phiếu & trừ khỏi sổ quỹ' }).click();
 
     // Assert DB thật: reverse (REVERSED) + cancel (CANCELLED). Poll ≤15s.
     await expect
