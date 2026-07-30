@@ -1262,3 +1262,132 @@ Gate: typecheck baseline khớp 30 fingerprint; vitest **2044 xanh / 2 đỏ**
 Còn nợ: (1) sửa thứ tự khoá `create_cashbook_v1`; (2) Đợt 1–2 (nền dùng chung với
 công tắc tắt, audit chuyển phòng); (3) Đợt 5/7/8/9 vẫn chờ cửa canary nhiều ngày —
 không rút ngắn được.
+
+---
+
+## 14. ĐỢT 1 & ĐỢT 2 — đã lên production 30/07/2026
+
+Tất cả ship ở trạng thái **route OFF / 0 caller** hoặc **chỉ đọc**, nên không cái nào
+tự sinh bút toán. Mọi lần apply đều chụp 9 bảng tiền trước/sau: **không đổi**.
+
+| Migration | Nội dung | Kiểm chứng |
+|---|---|---|
+| `20260731040000_fix_org_lock_upgrade_deadlock` | Khoá org `FOR SHARE` → `FOR NO KEY UPDATE` | 8 worker ×3 → 4/4 xanh, 0 retry |
+| `20260731050000_contract_transfer_audit_hardening` | `transfer_room` + `apply_contract_transfer` fail-closed, index composite | 8/8 phép kiểm |
+| `20260731051000_room_residence_segments` | Đoạn cư trú + chẩn đoán xung đột | 12/12 phép kiểm |
+| `20260731060000_realtime_lifecycle_tables` | 2 bảng vòng đời vào publication | test chốt chặn 23/23 |
+| `20260731061000_org_timezone_today` | `organization_timezones` + `org_today_v1` | mô phỏng 18:00 UTC lệch 1 ngày |
+| `20260731062000_post_voucher_with_source` | Lõi ghi sổ dùng chung | review 17 agent + 8/8 hành vi |
+| `20260731063000_signed_deposit_basis` | Cơ sở cọc dùng chung | chạy trên 321 HĐ thật |
+| `20260731064000_special_page_submit_context` | Context submit dùng chung | 8/8 hành vi |
+
+### 14.1 Deadlock 40P01 — bẫy nâng khoá, ảnh hưởng 41 hàm ghi
+
+`lock_org_for_decision_v1` khoá dòng `organizations` bằng `FOR SHARE`, còn trigger
+`a10_bump_authz_version` lại `UPDATE organizations` khi writer chạm ba bảng phân
+quyền ⇒ hai phiên cùng org đều phải **nâng** khoá lên độc quyền và chờ chéo.
+
+Sửa: `FOR NO KEY UPDATE` — đúng mode câu UPDATE kia cần, lấy sẵn từ đầu là hết phải
+nâng. **Không** dùng `FOR UPDATE` (mạnh quá mức, chặn cả FK check `FOR KEY SHARE`).
+Thông lượng không xấu đi: các writer này vốn đã tuần tự hoá tại chính câu UPDATE của
+trigger; đổi này chỉ dời điểm xếp hàng lên sớm hơn.
+
+**Khuôn lỗi để nhận ra chỗ khác:** thấy `FOR SHARE` rồi sau đó cùng transaction có
+UPDATE/DELETE lên **cùng dòng** (kể cả qua trigger). Tái hiện bằng cách tăng luồng —
+3 luồng xanh mà 6 luồng đỏ đều đặn, nên **test ít luồng sẽ bỏ sót**.
+
+### 14.2 Đợt 2 Task 0 — audit chuyển phòng từng là "best-effort"
+
+Khối INSERT `contract_transfers` bọc `EXCEPTION WHEN OTHERS THEN NULL` kèm chú thích
+"audit best-effort, không chặn nghiệp vụ". Nghĩa là hợp đồng ĐÃ sang phòng mới, phòng
+cũ ĐÃ thành trống, phòng mới ĐÃ thành có người — mà **không một dòng nào ghi lại**.
+
+Cùng đó: không `FOR UPDATE` hợp đồng; kiểm phòng đích là SELECT trần nên **hai hợp
+đồng cùng vào một phòng đều lọt**; không chặn chuyển chéo toà. Đường duyệt tay còn
+**ghi đè `start_date`/`end_date`** và đặt `TRANSFERRED` + `parent_contract_id` cho cả
+ROOM_CHANGE — làm một hợp đồng CÒN HIỆU LỰC biến mất khỏi mọi danh sách ACTIVE.
+
+Chọn **phương án (A)** của plan Step 2b: giữ trigger nhưng ép fail-closed và ép cùng
+hình dạng dữ liệu với đường A. Không chọn (B) tắt trigger vì nếu có UI nào đang cho
+duyệt DRAFT→APPROVED thì tắt biến hành động đó thành **không làm gì trong im lặng**.
+
+⚠ Dấu hiệu nhận đường B mà plan §Step 3 mô tả (`status='TRANSFERRED'` +
+`parent_contract_id`) **đã hết đúng** kể từ chính bản vá này. Phân biệt bằng
+`contract_transfers.status`: `COMPLETED` = đường A (RPC), `APPROVED` = đường B.
+
+### 14.3 `org_today_v1` — `CURRENT_DATE` sai 7 giờ mỗi ngày
+
+Server chạy **UTC**, Việt Nam UTC+7 ⇒ trong **00:00–07:00 giờ VN**, `CURRENT_DATE`
+trả về **ngày hôm qua**. **36 hàm** đang dùng nó. Mô phỏng 18:00 UTC:
+`CURRENT_DATE` = 30/07 còn `org_today_v1` = **31/07**.
+
+Bug vô hình nếu chỉ thử vào giờ hành chính — đó là lý do nó sống lâu.
+⚠ **Đợt 1 CHỈ dựng primitive.** 36 hàm kia chưa chuyển; đó là đổi hành vi ngày tháng
+của nghiệp vụ đang chạy, phải làm theo nhóm có bằng chứng trước/sau.
+
+### 14.4 Lõi ghi sổ dùng chung — review tự chạy bắt 1 BLOCKER + 5 lỗi
+
+Tự chạy review đối kháng (3 lens + phản biện từng phát hiện, **17 agent**) trước khi
+apply. Nó bắt được, trong code tôi vừa viết:
+
+1. **BLOCKER** — hai hàm chốt kỳ nằm ở `app_private`, tôi viết `public.` ở **cả bốn
+   chỗ**. Preflight sẽ chặn ⇒ file không apply được; nếu ai gỡ preflight thì thân hàm
+   ném `42883` ở mọi lời gọi. **Tự kiểm của tôi KHÔNG bắt được** vì so chuỗi trần nên
+   khớp luôn tên sai schema — an toàn giả.
+2. Lõi chịu ghi sổ cho phiếu **CANCELLED và CHƯA DUYỆT** (chỉ soi `deleted_at`);
+   prod có 256 phiếu như vậy.
+3. Tự kiểm thứ tự **luôn đỗ** khi cái kim biến mất: `position()` trả 0 và `0 > N`
+   luôn sai.
+4. Tiền thối ≠ 0 mà thiếu sổ đối ứng ⇒ **rơi khỏi `net_cash_effect` không tiếng động**.
+5. `p_amount_basis` tự do trong khi cột có CHECK ba giá trị ⇒ `23514` thô.
+6. Mệnh đề "0 caller" quét cả comment ⇒ một dòng TODO cũng abort, và tự khoá đường
+   quay lại khi Đợt 5 thêm adapter.
+
+Tự tìm thêm trước review: **1.906 phiếu đã có POSTING gen=1** với
+`external_source_kind` NULL nên phép kiểm replay không bắt được ⇒ thiếu chốt chặn thì
+chết bằng `23505` thô.
+
+Cũng đính chính: `ux_ie_postings_external_source` **không** gác được khi
+`ext_line_id` NULL (btree coi NULL khác NULL) — khoá replay THẬT là
+`ux_ie_postings_org_idempotency`.
+
+### 14.5 Cơ sở cọc — và một việc cần rà tay
+
+`resolve_signed_contract_deposit_basis_v1` chạy trên **321 hợp đồng thật**:
+
+| Trạng thái | HĐ | Số tiền |
+|---|---|---|
+| `RECOGNIZED_ONLY` | **245** | **1.039.109.500đ** chỉ ghi nhận trên sổ ảo, **chưa từng vào két** |
+| `OK` | 46 | đang giữ thật 182.037.990đ |
+| `NO_SOURCE` | 22 | — |
+| `NEGATIVE_HELD` | **8** | **đã chi ra thật 20.104.100đ trong khi thu thật = 0** |
+
+Tám hợp đồng `NEGATIVE_HELD`: 481NVK/09 2.852.000đ `PC2607104` · 481NVK/01
+2.090.000đ `PC2606198`+`PC2606199` · 417LVT/L04 1.450.000đ `PC2607119` · 158PVC/MB
+1.412.500đ `PC2606201` · 331PHI/402 955.400đ `PC2606062` · và 3 HĐ nữa.
+**Chủ đã ghi nhận và tự xử lý.**
+
+Gốc: backfill cọc đầu kỳ 28/07 đưa ~998tr lên **sổ ảo** cho đủ sổ sách, sổ quỹ thật
+không đổi. Cọc đến từ **12 nguồn** khác nhau kể cả `system_source` NULL ⇒ nhận diện
+theo TÊN LOẠI, khoá theo nguồn là bỏ sót ngay.
+`netHeld = realPostedIn − postedReleaseOut`, **cố ý không cộng** rổ ghi nhận;
+self-check chặn cứng việc ai đó sau này cộng nhầm.
+
+### 14.6 Context submit — thứ tự là bản thân tính đúng đắn
+
+**Idempotency LOOKUP đứng TRƯỚC MỌI THỨ.** Nếu kiểm quyền/hạn mức/kỳ trước thì một
+thao tác ĐÃ hoàn tất hợp lệ khi gọi lại (mạng chập, bấm lại) sẽ ăn lỗi mới — "kỳ đã
+khoá", "hết hạn mức canary" — dù chẳng còn gì để làm. Test chứng minh tính chất này
+bằng ca khó nhất: **replay thắng cả khi sổ quỹ truyền vào là SỔ ẢO**.
+
+Chặn **sổ ảo** là mắt xích hay quên nhất, và là lý do context tồn tại: năm writer sắp
+tới đều phải làm y hệt chuỗi kiểm, mỗi bản chép là một cơ hội quên.
+
+### 14.7 Còn lại — và vì sao
+
+- **Nhánh CASE dispatcher**: thuộc về chính các adapter (Đợt 3/5). Thêm nhánh rỗng bây
+  giờ không tăng an toàn — `ELSE` hiện tại đã nêu đúng tên adapter chưa nối.
+- **Chuyển 36 hàm sang `org_today_v1`**: đổi hành vi ngày tháng của nghiệp vụ đang
+  chạy, phải theo nhóm có bằng chứng trước/sau.
+- **Đợt 3–9**: cần chính các adapter, và Đợt 5/7/8/9 có cửa kiểm **24 giờ không lệch
+  tiền** trên canary — đây là thiếu THỜI GIAN CHẠY THẬT, không phải thiếu review.
