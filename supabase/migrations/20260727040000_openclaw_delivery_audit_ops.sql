@@ -410,7 +410,8 @@ create table public.openclaw_health_events (
     references public.openclaw_accounts(organization_id, id) on delete restrict,
   foreign key (organization_id, account_id, cell_id)
     references public.openclaw_runtime_cells(organization_id, account_id, id) on delete restrict,
-  check (jsonb_typeof(content_free_metrics) = 'object')
+  check (jsonb_typeof(content_free_metrics) = 'object'),
+  check (cell_id is null or account_id is not null)
 );
 
 create index openclaw_health_events_dashboard_idx

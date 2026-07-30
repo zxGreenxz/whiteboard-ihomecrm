@@ -166,6 +166,9 @@ describe("OpenClaw delivery, audit and operations migration", () => {
     );
     expect(migration).toContain("signing_key_generation bigint not null");
     expect(migration).toContain("r2_anchor_key text not null");
+    expect(tableDefinition(migration, "openclaw_health_events")).toContain(
+      "check (cell_id is null or account_id is not null)",
+    );
   });
 
   it("persists rollout/smoke state and enforces staged continuous-green evidence", () => {
