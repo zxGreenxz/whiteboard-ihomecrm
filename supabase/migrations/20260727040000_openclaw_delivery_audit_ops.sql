@@ -19,6 +19,7 @@ create table public.openclaw_outbox (
   campaign_version bigint,
   idempotency_key text not null,
   canonical_payload jsonb not null,
+  canonical_payload_bytes bytea not null,
   payload_hash text not null check (payload_hash ~ '^[0-9a-f]{64}$'),
   state text not null default 'QUEUED'
     check (state IN ('QUEUED','LEASED','DISPATCHING','SENT','FAILED','UNKNOWN','DEAD_LETTER')),
@@ -57,6 +58,9 @@ create table public.openclaw_outbox (
   foreign key (organization_id, account_id, claimed_cell_id)
     references public.openclaw_runtime_cells(organization_id, account_id, id) on delete restrict,
   check (jsonb_typeof(canonical_payload) = 'object'),
+  check (octet_length(canonical_payload_bytes) > 0),
+  check (convert_from(canonical_payload_bytes, 'UTF8')::jsonb = canonical_payload),
+  check (payload_hash = encode(extensions.digest(canonical_payload_bytes, 'sha256'), 'hex')),
   check (
     (source_kind = 'MANUAL' and actor_id is not null and client_operation_id is not null
       and inbound_event_id is null and schedule_id is null and subscription_id is null)
@@ -69,7 +73,8 @@ create table public.openclaw_outbox (
   ),
   check ((state in ('LEASED','DISPATCHING')) = (claim_token_hash is not null)),
   check ((state = 'DISPATCHING') = (dispatching_at is not null)),
-  check ((state in ('SENT','FAILED','UNKNOWN','DEAD_LETTER')) = (terminal_at is not null))
+  check ((state in ('SENT','FAILED','UNKNOWN','DEAD_LETTER')) = (terminal_at is not null)),
+  check (resolution_version = 0 or state = 'UNKNOWN')
 );
 
 create unique index openclaw_outbox_manual_idempotency_uidx
@@ -269,8 +274,11 @@ create table public.openclaw_send_work_attempts (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null,
   account_id uuid not null,
+  cell_id uuid not null,
   work_item_id uuid not null,
   claim_generation bigint not null check (claim_generation > 0),
+  fencing_token bigint not null check (fencing_token > 0),
+  session_generation bigint not null check (session_generation > 0),
   attempt_number integer not null check (attempt_number > 0),
   outcome text not null check (outcome in ('COMPLETE','RETRY','FAILED','DEAD_LETTER')),
   evidence jsonb not null,
@@ -280,7 +288,9 @@ create table public.openclaw_send_work_attempts (
   unique (organization_id, account_id, id),
   unique (organization_id, account_id, work_item_id, claim_generation, attempt_number),
   foreign key (organization_id, account_id, work_item_id)
-    references public.openclaw_send_work_items(organization_id, account_id, id) on delete restrict
+    references public.openclaw_send_work_items(organization_id, account_id, id) on delete restrict,
+  foreign key (organization_id, account_id, cell_id)
+    references public.openclaw_runtime_cells(organization_id, account_id, id) on delete restrict
 );
 
 create table public.openclaw_maintenance_work_items (
@@ -328,6 +338,8 @@ create table public.openclaw_maintenance_work_attempts (
   maintenance_principal_id uuid not null,
   work_item_id uuid not null,
   claim_generation bigint not null check (claim_generation > 0),
+  maintenance_lease_generation bigint not null check (maintenance_lease_generation > 0),
+  fencing_token bigint not null check (fencing_token > 0),
   attempt_number integer not null check (attempt_number > 0),
   outcome text not null check (outcome in ('COMPLETE','RETRY','FAILED','DEAD_LETTER')),
   gateway_receipt jsonb,
@@ -359,6 +371,7 @@ create table public.openclaw_audit_events (
   request_id uuid,
   correlation_id uuid,
   redacted_evidence jsonb not null,
+  redacted_evidence_bytes bytea not null,
   evidence_hash text not null check (evidence_hash ~ '^[0-9a-f]{64}$'),
   previous_hash text not null check (previous_hash ~ '^[0-9a-f]{64}$'),
   event_hash text not null check (event_hash ~ '^[0-9a-f]{64}$'),
@@ -367,7 +380,10 @@ create table public.openclaw_audit_events (
   unique (organization_id, organization_sequence),
   unique (organization_id, event_hash),
   check (actor_id is not null or workload_principal is not null),
-  check (jsonb_typeof(redacted_evidence) = 'object')
+  check (jsonb_typeof(redacted_evidence) = 'object'),
+  check (octet_length(redacted_evidence_bytes) > 0),
+  check (convert_from(redacted_evidence_bytes, 'UTF8')::jsonb = redacted_evidence),
+  check (evidence_hash = encode(extensions.digest(redacted_evidence_bytes, 'sha256'), 'hex'))
 );
 
 create table public.openclaw_audit_roots (
@@ -389,8 +405,13 @@ create table public.openclaw_audit_roots (
   UNIQUE (organization_id, id),
   unique (organization_id, root_date),
   unique (organization_id, root_hash),
-  check ((anchored_at is null) = (gateway_receipt is null)),
-  check ((gateway_receipt is null) = (gateway_receipt_hash is null))
+  check (
+    (anchored_at is null and signature_hash is null
+      and gateway_receipt is null and gateway_receipt_hash is null)
+    or (anchored_at is not null and signature_hash is not null
+      and gateway_receipt is not null and gateway_receipt_hash is not null)
+  ),
+  check (gateway_receipt is null or jsonb_typeof(gateway_receipt) = 'object')
 );
 
 create table public.openclaw_health_events (
@@ -554,6 +575,7 @@ set search_path = ''
 as $function$
 begin
   if NEW.canonical_payload is distinct from OLD.canonical_payload
+     or NEW.canonical_payload_bytes is distinct from OLD.canonical_payload_bytes
      or NEW.payload_hash is distinct from OLD.payload_hash
      or row(
        NEW.id, NEW.organization_id, NEW.account_id, NEW.target_id, NEW.source_kind,
@@ -653,6 +675,137 @@ create trigger openclaw_outbound_authorizations_consume_once
 before update on public.openclaw_outbound_authorizations
 for each row execute function app_private.guard_openclaw_outbound_authorization_v1();
 
+create or replace function app_private.guard_openclaw_send_work_mutation_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_binding_changed boolean := row(
+    NEW.account_id, NEW.cell_id, NEW.fencing_token, NEW.session_generation
+  ) is distinct from row(
+    OLD.account_id, OLD.cell_id, OLD.fencing_token, OLD.session_generation
+  );
+begin
+  if row(
+       NEW.id, NEW.organization_id, NEW.work_kind, NEW.source_id,
+       NEW.source_version, NEW.source_hash, NEW.payload, NEW.payload_hash,
+       NEW.created_at
+     ) is distinct from row(
+       OLD.id, OLD.organization_id, OLD.work_kind, OLD.source_id,
+       OLD.source_version, OLD.source_hash, OLD.payload, OLD.payload_hash,
+       OLD.created_at
+     )
+  then
+    raise exception 'send work source and frozen payload cannot change' using errcode = '55000';
+  end if;
+
+  if v_binding_changed and (
+    OLD.state <> 'QUEUED' or NEW.state <> 'QUEUED'
+    or OLD.claim_token_hash is not null or NEW.claim_token_hash is not null
+    or OLD.lease_expires_at is not null or NEW.lease_expires_at is not null
+    or OLD.terminal_at is not null or NEW.terminal_at is not null
+    or NEW.claim_generation <> OLD.claim_generation + 1
+  ) then
+    raise exception 'send work binding can only rebind while unclaimed' using errcode = '55000';
+  end if;
+
+  return NEW;
+end
+$function$;
+
+create or replace function app_private.guard_openclaw_maintenance_work_mutation_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_binding_changed boolean := row(
+    NEW.maintenance_principal_id, NEW.maintenance_lease_generation, NEW.fencing_token
+  ) is distinct from row(
+    OLD.maintenance_principal_id, OLD.maintenance_lease_generation, OLD.fencing_token
+  );
+begin
+  if row(
+       NEW.id, NEW.organization_id, NEW.work_kind, NEW.work_phase,
+       NEW.source_id, NEW.source_version, NEW.source_hash, NEW.payload,
+       NEW.payload_hash, NEW.created_at
+     ) is distinct from row(
+       OLD.id, OLD.organization_id, OLD.work_kind, OLD.work_phase,
+       OLD.source_id, OLD.source_version, OLD.source_hash, OLD.payload,
+       OLD.payload_hash, OLD.created_at
+     )
+  then
+    raise exception 'maintenance work source and frozen payload cannot change' using errcode = '55000';
+  end if;
+
+  if v_binding_changed and (
+    OLD.state <> 'QUEUED' or NEW.state <> 'QUEUED'
+    or OLD.claim_token_hash is not null or NEW.claim_token_hash is not null
+    or OLD.lease_expires_at is not null or NEW.lease_expires_at is not null
+    or OLD.terminal_at is not null or NEW.terminal_at is not null
+    or NEW.claim_generation <> OLD.claim_generation + 1
+  ) then
+    raise exception 'maintenance work binding can only rebind while unclaimed' using errcode = '55000';
+  end if;
+
+  return NEW;
+end
+$function$;
+
+create or replace function app_private.guard_openclaw_audit_root_mutation_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  if (to_jsonb(NEW) - array[
+        'signature_hash','gateway_receipt','gateway_receipt_hash','anchored_at'
+      ]::text[])
+       is distinct from
+     (to_jsonb(OLD) - array[
+        'signature_hash','gateway_receipt','gateway_receipt_hash','anchored_at'
+      ]::text[])
+  then
+    raise exception 'audit root identity cannot change' using errcode = '55000';
+  end if;
+
+  if OLD.anchored_at is not null and to_jsonb(NEW) is distinct from to_jsonb(OLD) then
+    raise exception 'audit root can only be anchored once' using errcode = '55000';
+  end if;
+
+  if OLD.anchored_at is null and (
+    NEW.signature_hash is distinct from OLD.signature_hash
+    or NEW.gateway_receipt is distinct from OLD.gateway_receipt
+    or NEW.gateway_receipt_hash is distinct from OLD.gateway_receipt_hash
+    or NEW.anchored_at is distinct from OLD.anchored_at
+  ) and (
+    NEW.signature_hash is null or NEW.gateway_receipt is null
+    or NEW.gateway_receipt_hash is null or NEW.anchored_at is null
+  ) then
+    raise exception 'audit root acknowledgement must be atomic' using errcode = '55000';
+  end if;
+
+  return NEW;
+end
+$function$;
+
+alter function app_private.guard_openclaw_send_work_mutation_v1()
+  owner to openclaw_function_owner;
+alter function app_private.guard_openclaw_maintenance_work_mutation_v1()
+  owner to openclaw_function_owner;
+alter function app_private.guard_openclaw_audit_root_mutation_v1()
+  owner to openclaw_function_owner;
+revoke all on function app_private.guard_openclaw_send_work_mutation_v1()
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.guard_openclaw_maintenance_work_mutation_v1()
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.guard_openclaw_audit_root_mutation_v1()
+  from public, anon, authenticated, service_role;
+
 create or replace function app_private.append_openclaw_audit_v1(
   p_organization_id uuid,
   p_event_type text,
@@ -661,7 +814,7 @@ create or replace function app_private.append_openclaw_audit_v1(
   p_request_id uuid,
   p_correlation_id uuid,
   p_redacted_evidence jsonb,
-  p_evidence_hash text
+  p_redacted_evidence_bytes bytea
 )
 returns uuid
 language plpgsql
@@ -672,14 +825,23 @@ declare
   v_id uuid := gen_random_uuid();
   v_sequence bigint;
   v_previous_hash text;
+  v_evidence_hash text;
   v_event_hash text;
 begin
   if p_actor_id is null and p_workload_principal is null then
     raise exception 'audit actor or workload principal is required' using errcode = '23514';
   end if;
-  if p_evidence_hash !~ '^[0-9a-f]{64}$' or jsonb_typeof(p_redacted_evidence) <> 'object' then
+  if jsonb_typeof(p_redacted_evidence) <> 'object'
+     or p_redacted_evidence_bytes is null
+     or octet_length(p_redacted_evidence_bytes) = 0
+     or convert_from(p_redacted_evidence_bytes, 'UTF8')::jsonb <> p_redacted_evidence
+  then
     raise exception 'invalid audit evidence' using errcode = '23514';
   end if;
+  v_evidence_hash := encode(
+    extensions.digest(p_redacted_evidence_bytes, 'sha256'),
+    'hex'
+  );
 
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_organization_id::text, 0));
   select e.organization_sequence + 1, e.event_hash
@@ -692,19 +854,22 @@ begin
 
   v_sequence := coalesce(v_sequence, 1);
   v_previous_hash := coalesce(v_previous_hash, repeat('0', 64));
-  v_event_hash := encode(extensions.digest(convert_to(
-    v_previous_hash || chr(0) || v_sequence::text || chr(0) || p_event_type || chr(0) || p_evidence_hash,
-    'UTF8'
-  ), 'sha256'), 'hex');
+  v_event_hash := encode(extensions.digest(
+    convert_to(v_previous_hash, 'UTF8') || decode('00', 'hex')
+      || convert_to(v_sequence::text, 'UTF8') || decode('00', 'hex')
+      || convert_to(p_event_type, 'UTF8') || decode('00', 'hex')
+      || convert_to(v_evidence_hash, 'UTF8'),
+    'sha256'
+  ), 'hex');
 
   insert into public.openclaw_audit_events (
     id, organization_id, organization_sequence, event_type, actor_id,
     workload_principal, request_id, correlation_id, redacted_evidence,
-    evidence_hash, previous_hash, event_hash
+    redacted_evidence_bytes, evidence_hash, previous_hash, event_hash
   ) values (
     v_id, p_organization_id, v_sequence, p_event_type, p_actor_id,
     p_workload_principal, p_request_id, p_correlation_id, p_redacted_evidence,
-    p_evidence_hash, v_previous_hash, v_event_hash
+    p_redacted_evidence_bytes, v_evidence_hash, v_previous_hash, v_event_hash
   );
   return v_id;
 end
@@ -726,7 +891,8 @@ declare
   v_event record;
 begin
   for v_event in
-    select organization_sequence, event_type, evidence_hash, previous_hash, event_hash
+    select organization_sequence, event_type, redacted_evidence_bytes,
+           evidence_hash, previous_hash, event_hash
       from public.openclaw_audit_events
      where organization_id = p_organization_id
      order by organization_sequence
@@ -736,11 +902,18 @@ begin
     then
       return false;
     end if;
-    v_expected_hash := encode(extensions.digest(convert_to(
-      v_previous_hash || chr(0) || v_expected_sequence::text || chr(0)
-        || v_event.event_type || chr(0) || v_event.evidence_hash,
-      'UTF8'
-    ), 'sha256'), 'hex');
+    if encode(extensions.digest(v_event.redacted_evidence_bytes, 'sha256'), 'hex')
+         <> v_event.evidence_hash
+    then
+      return false;
+    end if;
+    v_expected_hash := encode(extensions.digest(
+      convert_to(v_previous_hash, 'UTF8') || decode('00', 'hex')
+        || convert_to(v_expected_sequence::text, 'UTF8') || decode('00', 'hex')
+        || convert_to(v_event.event_type, 'UTF8') || decode('00', 'hex')
+        || convert_to(v_event.evidence_hash, 'UTF8'),
+      'sha256'
+    ), 'hex');
     if v_event.event_hash <> v_expected_hash then
       return false;
     end if;
@@ -751,15 +924,15 @@ begin
 end
 $function$;
 
-alter function app_private.append_openclaw_audit_v1(uuid,text,uuid,text,uuid,uuid,jsonb,text)
+alter function app_private.append_openclaw_audit_v1(uuid,text,uuid,text,uuid,uuid,jsonb,bytea)
   owner to openclaw_function_owner;
 alter function app_private.verify_openclaw_audit_chain_v1(uuid)
   owner to openclaw_function_owner;
-revoke all on function app_private.append_openclaw_audit_v1(uuid,text,uuid,text,uuid,uuid,jsonb,text)
+revoke all on function app_private.append_openclaw_audit_v1(uuid,text,uuid,text,uuid,uuid,jsonb,bytea)
   from public, anon, authenticated, service_role;
 revoke all on function app_private.verify_openclaw_audit_chain_v1(uuid)
   from public, anon, authenticated, service_role;
-grant execute on function app_private.append_openclaw_audit_v1(uuid,text,uuid,text,uuid,uuid,jsonb,text)
+grant execute on function app_private.append_openclaw_audit_v1(uuid,text,uuid,text,uuid,uuid,jsonb,bytea)
   to openclaw_runtime_writer, openclaw_maintenance_writer;
 grant execute on function app_private.verify_openclaw_audit_chain_v1(uuid)
   to openclaw_maintenance_writer;
@@ -783,6 +956,21 @@ declare
   v_green_has_gap boolean;
   v_green_has_failure boolean;
 begin
+  if row(
+       NEW.id, NEW.organization_id, NEW.reviewed_commit_sha,
+       NEW.migration_manifest_sha256, NEW.upstream_sri, NEW.upstream_git_head,
+       NEW.patch_series_sha256, NEW.built_tgz_sha256, NEW.artifact_digests,
+       NEW.started_at
+     ) is distinct from row(
+       OLD.id, OLD.organization_id, OLD.reviewed_commit_sha,
+       OLD.migration_manifest_sha256, OLD.upstream_sri, OLD.upstream_git_head,
+       OLD.patch_series_sha256, OLD.built_tgz_sha256, OLD.artifact_digests,
+       OLD.started_at
+     )
+  then
+    raise exception 'rollout deployment identity cannot change' using errcode = '55000';
+  end if;
+
   if NEW.stage is distinct from OLD.stage then
     v_old_position := array_position(v_stages, OLD.stage);
     v_new_position := array_position(v_stages, NEW.stage);
@@ -854,9 +1042,41 @@ alter function app_private.guard_openclaw_rollout_transition_v1()
 revoke all on function app_private.guard_openclaw_rollout_transition_v1()
   from public, anon, authenticated, service_role;
 
+create or replace function app_private.guard_openclaw_smoke_run_mutation_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  if row(
+       NEW.id, NEW.organization_id, NEW.rollout_run_id,
+       NEW.command_scope, NEW.command_scope_hash
+     ) is distinct from row(
+       OLD.id, OLD.organization_id, OLD.rollout_run_id,
+       OLD.command_scope, OLD.command_scope_hash
+     )
+  then
+    raise exception 'smoke command scope cannot change' using errcode = '55000';
+  end if;
+  return NEW;
+end
+$function$;
+
+alter function app_private.guard_openclaw_smoke_run_mutation_v1()
+  owner to openclaw_function_owner;
+revoke all on function app_private.guard_openclaw_smoke_run_mutation_v1()
+  from public, anon, authenticated, service_role;
+
 create trigger openclaw_rollout_runs_transition_guard
 before update on public.openclaw_rollout_runs
 for each row execute function app_private.guard_openclaw_rollout_transition_v1();
+create trigger openclaw_audit_roots_anchor_once
+before update on public.openclaw_audit_roots
+for each row execute function app_private.guard_openclaw_audit_root_mutation_v1();
+create trigger openclaw_smoke_runs_command_scope_guard
+before update on public.openclaw_smoke_runs
+for each row execute function app_private.guard_openclaw_smoke_run_mutation_v1();
 
 create trigger openclaw_delivery_attempts_append_only
 before update or delete on public.openclaw_delivery_attempts
@@ -987,10 +1207,10 @@ before update on public.openclaw_outbound_authorizations
 for each row execute function app_private.reject_openclaw_tenant_identity_update_v1();
 create trigger openclaw_send_work_items_immutable_tenant
 before update on public.openclaw_send_work_items
-for each row execute function app_private.reject_openclaw_tenant_identity_update_v1();
+for each row execute function app_private.guard_openclaw_send_work_mutation_v1();
 create trigger openclaw_maintenance_work_items_immutable_tenant
 before update on public.openclaw_maintenance_work_items
-for each row execute function app_private.reject_openclaw_tenant_identity_update_v1();
+for each row execute function app_private.guard_openclaw_maintenance_work_mutation_v1();
 create trigger openclaw_audit_roots_immutable_tenant
 before update on public.openclaw_audit_roots
 for each row execute function app_private.reject_openclaw_tenant_identity_update_v1();

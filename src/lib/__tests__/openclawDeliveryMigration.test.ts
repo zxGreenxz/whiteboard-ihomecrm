@@ -105,7 +105,9 @@ describe("OpenClaw delivery, audit and operations migration", () => {
       "openclaw_outbox_unknown_idx",
     ]) expect(migration).toContain(index);
     expect(migration).toContain("canonical_payload jsonb not null");
+    expect(migration).toContain("canonical_payload_bytes bytea not null");
     expect(migration).toContain("payload_hash text not null");
+    expect(migration).toContain("extensions.digest(canonical_payload_bytes, 'sha256')");
     expect(migration).toContain("claim_generation bigint not null default 0");
     expect(migration).toContain("fencing_token bigint not null");
     expect(migration).toContain("session_generation bigint not null");
@@ -113,6 +115,7 @@ describe("OpenClaw delivery, audit and operations migration", () => {
     expect(migration).toContain("takeover_version bigint not null");
     expect(migration).toContain("outbox intent and canonical payload cannot change");
     expect(migration).toContain("NEW.canonical_payload is distinct from OLD.canonical_payload");
+    expect(migration).toContain("NEW.canonical_payload_bytes is distinct from OLD.canonical_payload_bytes");
     expect(migration).toContain("NEW.payload_hash is distinct from OLD.payload_hash");
   });
 
@@ -138,6 +141,17 @@ describe("OpenClaw delivery, audit and operations migration", () => {
     expect(migration).toMatch(/openclaw_maintenance_work_items[\s\S]*maintenance_principal_id uuid not null/i);
     expect(migration).toContain("openclaw_send_work_claimable_idx");
     expect(migration).toContain("openclaw_maintenance_work_claimable_idx");
+    expect(tableDefinition(migration, "openclaw_send_work_attempts")).toMatch(
+      /cell_id uuid not null[\s\S]*fencing_token bigint not null[\s\S]*session_generation bigint not null/i,
+    );
+    expect(tableDefinition(migration, "openclaw_maintenance_work_attempts")).toMatch(
+      /maintenance_lease_generation bigint not null[\s\S]*fencing_token bigint not null/i,
+    );
+    expect(migration).toContain("guard_openclaw_send_work_mutation_v1");
+    expect(migration).toContain("send work binding can only rebind while unclaimed");
+    expect(migration).toContain("guard_openclaw_maintenance_work_mutation_v1");
+    expect(migration).toContain("maintenance work binding can only rebind while unclaimed");
+    expect(migration).toContain("NEW.claim_generation <> OLD.claim_generation + 1");
   });
 
   it("keeps UNKNOWN historical and resolves it once through immutable evidence", () => {
@@ -151,6 +165,9 @@ describe("OpenClaw delivery, audit and operations migration", () => {
     expect(migration).toContain("to_jsonb(NEW) - 'resolution_version'");
     expect(migration).toContain("invalid outbox state transition");
     expect(migration).toContain("openclaw_unknown_resolutions_append_only");
+    expect(tableDefinition(migration, "openclaw_outbox")).toContain(
+      "check (resolution_version = 0 or state = 'UNKNOWN')",
+    );
   });
 
   it("stores append-only hash-chained audit and signed daily roots", () => {
@@ -158,14 +175,21 @@ describe("OpenClaw delivery, audit and operations migration", () => {
     expect(migration).toContain("organization_sequence bigint not null");
     expect(migration).toContain("previous_hash text not null");
     expect(migration).toContain("event_hash text not null");
+    expect(migration).toContain("redacted_evidence_bytes bytea not null");
     expect(migration).toContain("openclaw_audit_events_append_only");
     expect(migration).toContain("append_openclaw_audit_v1");
     expect(migration).toContain("verify_openclaw_audit_chain_v1");
+    expect(migration).not.toContain("chr(0)");
+    expect(migration).toContain("decode('00', 'hex')");
+    expect(migration).toContain("extensions.digest(p_redacted_evidence_bytes, 'sha256')");
     expect(migration).toMatch(
       /grant execute on function app_private\.verify_openclaw_audit_chain_v1\(uuid\)\s+to openclaw_maintenance_writer;/i,
     );
     expect(migration).toContain("signing_key_generation bigint not null");
     expect(migration).toContain("r2_anchor_key text not null");
+    expect(migration).toContain("guard_openclaw_audit_root_mutation_v1");
+    expect(migration).toContain("audit root identity cannot change");
+    expect(migration).toContain("audit root can only be anchored once");
     expect(tableDefinition(migration, "openclaw_health_events")).toContain(
       "check (cell_id is null or account_id is not null)",
     );
@@ -188,6 +212,8 @@ describe("OpenClaw delivery, audit and operations migration", () => {
     expect(migration).toContain("openclaw_smoke_cleanup_zero_residual_check");
     expect(migration).toContain("reviewed_commit_sha text not null");
     expect(migration).toContain("migration_manifest_sha256 text not null");
+    expect(migration).toContain("rollout deployment identity cannot change");
+    expect(migration).toContain("smoke command scope cannot change");
     expect(migration.split(stageConstraint)).toHaveLength(4);
   });
 });
