@@ -1324,14 +1324,19 @@
 
 
 /* Đợt 3 — thanh nút "Sinh phiếu hàng loạt" trên /thanh-toan.
-   position:absolute để không chen vào grid 2 cột của .tt-stage (panel desktop |
-   khung điện thoại); z-index thấp hơn sheet mobile nên không đè lên nó. */
+   position:fixed để không chen vào grid 2 cột của .tt-stage.
+
+   ⚠ z-index: bản đầu tôi để 5 và nút HIỆN NHƯNG BẤM KHÔNG ĐƯỢC — header khung
+   điện thoại (.ptt-m-head, nằm trong .tt-page vốn có .hdr z-index:30) đè lên và
+   nuốt sự kiện chuột. Chỉ lộ ra khi bấm thật, không lộ khi nhìn ảnh.
+   Đặt 110: TRÊN mọi lớp trong khung điện thoại (cao nhất là toast z-index:90)
+   nhưng DƯỚI .ptt-modal (120) và .uc-overlay (200) để không đè modal. */
 .tt-stage .tt-batch-bar {
-  position: absolute;
-  top: 10px;
-  right: 16px;
-  z-index: 5;
+  position: fixed;
+  top: 12px;
+  right: 18px;
+  z-index: 110;
 }
 @media (max-width: 1023px) {
-  .tt-stage .tt-batch-bar { top: 6px; right: 8px; }
+  .tt-stage .tt-batch-bar { top: 8px; right: 10px; }
 }
