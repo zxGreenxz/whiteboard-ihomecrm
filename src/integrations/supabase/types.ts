@@ -14660,6 +14660,35 @@ export type Database = {
           },
         ]
       }
+      organization_timezones: {
+        Row: {
+          created_at: string
+          organization_id: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          organization_id: string
+          timezone: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          organization_id?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_timezones_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           authorization_version: number
@@ -21678,6 +21707,31 @@ export type Database = {
         Args: { p_building_ids?: string[] }
         Returns: Json
       }
+      get_room_residence_conflicts_v1: {
+        Args: { p_contract_ids?: string[] }
+        Returns: {
+          contract_id: string
+          contract_number: string
+          diagnostic: string
+          seg_count: number
+        }[]
+      }
+      get_room_residence_segments_v1: {
+        Args: { p_contract_ids?: string[] }
+        Returns: {
+          contract_id: string
+          contract_number: string
+          diagnostic: string
+          from_date: string
+          room_id: string
+          room_name: string
+          seg_index: number
+          source_path: string
+          to_date: string
+          transfer_id: string
+          trusted: boolean
+        }[]
+      }
       get_salary_progress_v5: { Args: { p_month?: string }; Returns: Json }
       get_salary_v5_config: { Args: never; Returns: Json }
       get_voucher_cancellation_v1: {
@@ -22280,6 +22334,7 @@ export type Database = {
           room_name: string
         }[]
       }
+      org_today_v1: { Args: { p_organization_id?: string }; Returns: string }
       pass_listing_form_rooms: {
         Args: never
         Returns: {
