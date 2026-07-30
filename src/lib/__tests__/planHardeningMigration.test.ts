@@ -202,3 +202,54 @@ describe("Siết plan đợt 3 — hai lỗi làm Đợt 6 bất khả dụng", 
     expect(w3).toMatch(/numeric của Postgres KHÁC float/);
   });
 });
+
+const w4 = readMigration("20260730220000_voucher_change_log_and_creator_cancel.sql");
+
+describe("Người tạo được huỷ phiếu mình tạo + nhật ký trước/sau", () => {
+  it("THÊM cửa người tạo, KHÔNG bỏ cửa người giữ sổ / chủ tổ chức", () => {
+    // Bỏ hai cửa cũ thì người giữ sổ hết dọn được phiếu rác của nhân viên đã nghỉ.
+    expect(w4).toContain("v.user_id IS DISTINCT FROM v_actor THEN");
+    expect(w4).toContain("is_org_owner_v1");
+    expect(w4).toMatch(/GIỮ nguyên hai cửa cũ/);
+  });
+
+  it("reader can_flex_cancel_v1 khớp cửa mới, không nói dối", () => {
+    expect(w4).toContain("v.user_id IS DISTINCT FROM auth.uid() THEN");
+  });
+
+  it("nhật ký bắt bằng TRIGGER nên không đường ghi nào lọt", () => {
+    // Vá từng writer sẽ sót: annotate, quick edit, compat, huỷ linh hoạt, cầu
+    // a85, và cả psql tay. Trigger tóm hết.
+    expect(w4).toContain("z99_ie_change_log");
+    expect(w4).toContain("z99_ie_items_change_log");
+    expect(w4).toMatch(/AFTER UPDATE OR DELETE ON public\.income_expenses/);
+    expect(w4).toMatch(/AFTER INSERT OR UPDATE OR DELETE ON public\.income_expense_items/);
+  });
+
+  it("lưu giá trị TRƯỚC và SAU, bỏ cột nhiễu", () => {
+    expect(w4).toContain("before            jsonb");
+    expect(w4).toContain("after             jsonb");
+    expect(w4).toContain("changed_cols      text[]");
+    // Không lọc nhiễu thì mỗi lần ghi sổ đẻ một dòng rỗng nghĩa.
+    expect(w4).toContain("v_noise");
+    expect(w4).toMatch(/'updated_at', 'created_at', 'approval_version', 'posting_version'/);
+    expect(w4).toContain("RETURN NULL;   -- chỉ nhiễu, không ghi");
+  });
+
+  it("nhật ký là append-only, không sửa/xoá/truncate được", () => {
+    expect(w4).toContain("a00_ie_change_log_append_only");
+    expect(w4).toContain("a00_ie_change_log_no_truncate");
+    expect(w4).toMatch(/REVOKE ALL ON app_private\.income_expense_change_log/);
+  });
+
+  it("KHÔNG đụng chuỗi hash của income_expense_audit_log", () => {
+    // Bảng đó có sequence_no + prev_event_hash + event_hash; thêm cột vào là
+    // đụng chính cơ chế toàn vẹn của nó.
+    expect(w4).not.toMatch(/ALTER TABLE public\.income_expense_audit_log/);
+  });
+
+  it("KHÔNG mở sửa tiền — quyết định #2 giữ nguyên", () => {
+    expect(w4).toMatch(/GIỮ NGUYÊN quyết định #2/);
+    expect(w4).not.toMatch(/v_money_keys/);
+  });
+});
