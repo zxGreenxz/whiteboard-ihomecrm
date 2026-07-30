@@ -114,6 +114,10 @@ async function seedBooks(page: Page, a: Api): Promise<{ ids: string[]; stamp: st
     let res = await post();
     for (let retry = 0; retry < 8 && !res.ok(); retry++) {
       if (!(await res.text()).includes('40P01')) break;   // lỗi khác → để nó đỏ
+      // In ra để biết retry CÓ CÒN cần hay không. Sau khi vá thứ tự khoá
+      // (20260731040000) thì dòng này KHÔNG được xuất hiện nữa; nếu còn thấy là
+      // deadlock quay lại và phải điều tra, đừng để retry che mất.
+      console.warn(`[DEADLOCK-40P01] phải thử lại lần ${retry + 1} khi tạo sổ quỹ`);
       await new Promise((r) => setTimeout(r, 200 * (retry + 1) + Math.random() * 400));
       res = await post();
     }
