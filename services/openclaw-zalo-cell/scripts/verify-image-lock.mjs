@@ -14,18 +14,12 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
-import {
-  computeMInputAggregate,
-  inspectTarball,
-  verifyCommittedInputs,
-  verifyOnlineInputs,
-  verifySigstoreAttestations,
-} from "../vendor/zalouser-bridge/scripts/verify-upstream.mjs";
-
+import { parseTask2ApprovalManifest } from "./install-reviewed-task2-launcher.mjs";
 const HEX_64 = /^[0-9a-f]{64}$/;
 const REVIEWED_TREE = /^[0-9a-f]{40}$/;
 const BASE_IMAGE =
@@ -60,6 +54,26 @@ const SESSION_DIST = [
 ];
 const VENDOR_REPOSITORY_PATH = "services/openclaw-zalo-cell/vendor/zalouser-bridge";
 const UPSTREAM_REPOSITORY_PATH = `${VENDOR_REPOSITORY_PATH}/UPSTREAM.json`;
+const UPSTREAM_VERIFIER_REPOSITORY_PATH =
+  `${VENDOR_REPOSITORY_PATH}/scripts/verify-upstream.mjs`;
+const REQUIRED_UPSTREAM_VERIFIER_EXPORTS = Object.freeze([
+  "computeMInputAggregate",
+  "inspectTarball",
+  "verifyCommittedInputs",
+  "verifyOnlineInputs",
+  "verifySigstoreAttestations",
+]);
+const REQUIRED_UPSTREAM_VERIFIER_BUILTINS = Object.freeze([
+  "node:child_process",
+  "node:crypto",
+  "node:fs",
+  "node:path",
+  "node:url",
+  "node:zlib",
+]);
+const upstreamVerifierResolutionHooks = new Map();
+let qualifyingUpstreamVerifier;
+let unqualifiedUpstreamVerifierPromise;
 const BASE_AMD64_LAYER_DIGESTS = [
   "sha256:068fedd6b0f109b8186d00d49327b6fc6747c428fd3c9a8739424ff5f38d7531",
   "sha256:9bea510bd805f72c63e2d093c23fca1da9b02127c4849c121b6117a45d4d2ba7",
@@ -787,8 +801,12 @@ export async function verifyReviewedFileBlob({
     commit: reviewedTree,
     paths: [repositoryPath],
   });
-  const bytes = await readFile(filePath);
-  if (!bytes.equals(record.bytes)) {
+  const bound = await readRegularFileHandleBound(filePath, label);
+  if (
+    bound.size !== record.size ||
+    bound.sha256 !== record.sha256 ||
+    !bound.bytes.equals(record.bytes)
+  ) {
     throw new Error(`${label} bytes do not match the exact reviewed R Git blob`);
   }
   return record;
@@ -803,6 +821,139 @@ export async function verifyReviewedVerifierBlob({ gitPath, repositoryRoot, revi
     repositoryPath: "services/openclaw-zalo-cell/scripts/verify-image-lock.mjs",
     label: "reviewed verifier",
   });
+}
+
+function validateUpstreamVerifierModule(module) {
+  for (const name of REQUIRED_UPSTREAM_VERIFIER_EXPORTS) {
+    if (typeof module?.[name] !== "function") {
+      throw new Error(`reviewed upstream verifier export is missing: ${name}`);
+    }
+  }
+  return Object.freeze(Object.fromEntries(
+    REQUIRED_UPSTREAM_VERIFIER_EXPORTS.map((name) => [name, module[name]]),
+  ));
+}
+
+async function importUpstreamVerifierBytes(bytes, sha256Digest) {
+  if (!Buffer.isBuffer(bytes)) throw new TypeError("upstream verifier source must be bytes");
+  new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const url = `data:text/javascript;base64,${bytes.toString("base64")}#sha256=${sha256Digest}`;
+  let binding = upstreamVerifierResolutionHooks.get(url);
+  if (!binding) {
+    const observed = new Set();
+    const allowed = new Set(REQUIRED_UPSTREAM_VERIFIER_BUILTINS);
+    const hook = registerHooks({
+      resolve(specifier, context, nextResolve) {
+        if (context.parentURL === url) {
+          if (!allowed.has(specifier)) {
+            throw new Error(
+              `reviewed upstream verifier has a local or dynamic module dependency: ${specifier}`,
+            );
+          }
+          observed.add(specifier);
+        }
+        return nextResolve(specifier, context);
+      },
+    });
+    binding = Object.freeze({ hook, observed });
+    upstreamVerifierResolutionHooks.set(url, binding);
+  }
+  const module = validateUpstreamVerifierModule(await import(url));
+  const observed = [...binding.observed].sort(compareUtf8);
+  if (
+    observed.length !== REQUIRED_UPSTREAM_VERIFIER_BUILTINS.length ||
+    observed.some((specifier, index) => specifier !== REQUIRED_UPSTREAM_VERIFIER_BUILTINS[index])
+  ) {
+    throw new Error("reviewed upstream verifier module request closure is incomplete");
+  }
+  return module;
+}
+
+async function loadUnqualifiedUpstreamVerifier() {
+  unqualifiedUpstreamVerifierPromise ??= import(
+    new URL("../vendor/zalouser-bridge/scripts/verify-upstream.mjs", import.meta.url).href
+  ).then(validateUpstreamVerifierModule);
+  return unqualifiedUpstreamVerifierPromise;
+}
+
+async function getUpstreamVerifier({ requireQualifyingAuthority = false } = {}) {
+  if (qualifyingUpstreamVerifier) return qualifyingUpstreamVerifier.module;
+  if (requireQualifyingAuthority) {
+    throw new Error("qualifying upstream verifier module has not been authenticated");
+  }
+  return loadUnqualifiedUpstreamVerifier();
+}
+
+export async function loadReviewedUpstreamVerifier({
+  gitPath,
+  repositoryRoot,
+  reviewedTree,
+  reviewedSourceRoot,
+  verifierPath = fileURLToPath(import.meta.url),
+}) {
+  if (!isAbsolute(reviewedSourceRoot) || !isAbsolute(verifierPath)) {
+    throw new Error("reviewed verifier closure paths must be absolute");
+  }
+  await Promise.all([
+    assertPathHasNoSymbolicLink(reviewedSourceRoot, "reviewed verifier source root"),
+    assertPathHasNoSymbolicLink(verifierPath, "reviewed verifier path"),
+  ]);
+  const canonicalSourceRoot = await realpath(reviewedSourceRoot);
+  const expectedVerifierPath = resolve(
+    canonicalSourceRoot,
+    "services/openclaw-zalo-cell/scripts/verify-image-lock.mjs",
+  );
+  if ((await realpath(verifierPath)) !== expectedVerifierPath) {
+    throw new Error("reviewed verifier path escaped or disagrees with reviewed source root");
+  }
+  await verifyReviewedVerifierBlob({ gitPath, repositoryRoot, reviewedTree, verifierPath });
+  const modulePath = resolve(canonicalSourceRoot, ...UPSTREAM_VERIFIER_REPOSITORY_PATH.split("/"));
+  const moduleRelative = relative(canonicalSourceRoot, modulePath);
+  if (
+    isAbsolute(moduleRelative) || moduleRelative === "" || moduleRelative === ".." ||
+    moduleRelative.startsWith(`..${sep}`)
+  ) {
+    throw new Error("reviewed upstream verifier path escaped reviewed source root");
+  }
+  const [record] = await readGitBlobRecords({
+    gitPath,
+    repositoryRoot,
+    commit: reviewedTree,
+    paths: [UPSTREAM_VERIFIER_REPOSITORY_PATH],
+  });
+  const bound = await readRegularFileHandleBound(modulePath, "reviewed upstream verifier");
+  if (
+    bound.size !== record.size ||
+    bound.sha256 !== record.sha256 ||
+    !bound.bytes.equals(record.bytes)
+  ) {
+    throw new Error("reviewed upstream verifier Git blob mismatch");
+  }
+  const module = await importUpstreamVerifierBytes(bound.bytes, bound.sha256);
+  const binding = Object.freeze({
+    module,
+    reviewed_tree: reviewedTree,
+    repository_root: await realpath(repositoryRoot),
+    reviewed_source_root: canonicalSourceRoot,
+    module_path: UPSTREAM_VERIFIER_REPOSITORY_PATH,
+    module_git_object_id: record.git_object_id,
+    module_size: record.size,
+    module_sha256: record.sha256,
+  });
+  if (qualifyingUpstreamVerifier) {
+    const previous = qualifyingUpstreamVerifier;
+    if (
+      previous.reviewed_tree !== binding.reviewed_tree ||
+      previous.repository_root !== binding.repository_root ||
+      previous.reviewed_source_root !== binding.reviewed_source_root ||
+      previous.module_sha256 !== binding.module_sha256
+    ) {
+      throw new Error("qualifying upstream verifier authority cannot be rebound");
+    }
+    return previous.module;
+  }
+  qualifyingUpstreamVerifier = binding;
+  return module;
 }
 
 const ZALOUSER_PLUGIN_ROOT =
@@ -2976,6 +3127,7 @@ export async function verifyStockOciRuntimeImage({
   upstream,
   lock,
 }) {
+  const { inspectTarball } = await getUpstreamVerifier();
   if (lock?.base_image !== BASE_IMAGE) throw new Error("wrong pinned stock base image");
   if (!isAbsolute(upstreamTarballPath)) throw new Error("stock upstream tarball path must be absolute");
   const tarballBytes = await readFile(upstreamTarballPath);
@@ -3814,6 +3966,7 @@ function assertMManifestBindings(records, upstream) {
 }
 
 export async function collectRawMInputs({ gitPath, repositoryRoot, expectedM }) {
+  const { computeMInputAggregate } = await getUpstreamVerifier();
   const upstreamRecord = (
     await readGitBlobRecords({
       gitPath,
@@ -3896,7 +4049,7 @@ export async function readReviewedForkGitObjects({ gitPath, repositoryRoot, revi
   return { fork, forkRecord, artifactRecord };
 }
 
-async function verifyCommittedInputsWithoutAmbient(options) {
+async function verifyCommittedInputsWithoutAmbient(options, verifyCommittedInputs) {
   const names = [
     "OPENCLAW_REVIEWED_EXPORT_MANIFEST",
     "OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256",
@@ -3923,6 +4076,7 @@ export async function collectSupplyChainMetadata({
   reviewedTree,
   reviewedExport,
 }) {
+  const { verifyCommittedInputs } = await getUpstreamVerifier();
   if (!isAbsolute(sourceRoot)) throw new Error("supply-chain source root must be absolute");
   if (!REVIEWED_TREE.test(expectedM ?? "")) throw new Error("supply-chain ExpectedM is invalid");
   if (!REVIEWED_TREE.test(reviewedTree ?? "")) throw new Error("supply-chain reviewed R is invalid");
@@ -3949,7 +4103,7 @@ export async function collectSupplyChainMetadata({
         reviewedExportManifestSha256: reviewedExport.manifest_sha256,
         reviewedTree: reviewedExport.reviewed_tree,
       })
-    : await verifyCommittedInputsWithoutAmbient(committedOptions);
+    : await verifyCommittedInputsWithoutAmbient(committedOptions, verifyCommittedInputs);
   const upstream = committed.upstream;
   const upstreamPath = `${vendorRelative}/UPSTREAM.json`;
   const upstreamRecord = rawM.upstreamRecord;
@@ -4107,14 +4261,22 @@ export async function collectSupplyChainMetadata({
 }
 
 export async function reacquireQualifyingInputs(
-  { reviewedTree, reviewedExport },
-  verifyOnline = verifyOnlineInputs,
+  { reviewedTree, reviewedExport, sourceRoot },
+  verifyOnline,
 ) {
   validateRecordedReviewedExport(reviewedExport, reviewedTree);
-  if (typeof verifyOnline !== "function") {
+  const onlineVerifier = verifyOnline ??
+    (await getUpstreamVerifier({ requireQualifyingAuthority: true })).verifyOnlineInputs;
+  if (typeof onlineVerifier !== "function") {
     throw new TypeError("qualifying online verifier must be a function");
   }
-  const online = await verifyOnline({
+  if (verifyOnline === undefined && !isAbsolute(sourceRoot ?? "")) {
+    throw new Error("qualifying online verifier source root must be absolute");
+  }
+  const online = await onlineVerifier({
+    ...(verifyOnline === undefined
+      ? { vendorRoot: resolve(sourceRoot, ...VENDOR_REPOSITORY_PATH.split("/")) }
+      : {}),
     reviewedExportManifestPath: reviewedExport.manifest_path,
     reviewedExportManifestSha256: reviewedExport.manifest_sha256,
     reviewedTree,
@@ -4140,7 +4302,10 @@ export async function collectQualifyingSupplyChainEvidence({
   reviewedTree,
   reviewedExport,
 }) {
-  const online = await reacquireQualifyingInputs({ reviewedTree, reviewedExport });
+  const { verifySigstoreAttestations } = await getUpstreamVerifier({
+    requireQualifyingAuthority: true,
+  });
+  const online = await reacquireQualifyingInputs({ reviewedTree, reviewedExport, sourceRoot });
   const metadata = await collectSupplyChainMetadata({
     gitPath,
     sourceRoot,
@@ -4297,6 +4462,7 @@ export async function verifyEvidenceFile({
   dockerPath,
   dockerHost,
   dockerSha256,
+  executionAuthority,
   invoke = invokeNativeBounded,
   verifierPath = fileURLToPath(import.meta.url),
 }) {
@@ -4407,6 +4573,7 @@ export async function verifyEvidenceFile({
   if (!evidenceBytes.equals(canonicalEvidence)) throw new Error("build evidence bytes are not canonical");
   const schema = parseJsonStrict(await readFile(schemaPath), "build evidence schema");
   validateJsonSchema(evidence, schema);
+  verifyExecutionAuthorityReplay(evidence, executionAuthority);
   if (evidence.expected_m !== expectedM) throw new Error("build evidence ExpectedM mismatch");
   if (evidence.reviewed_tree !== reviewedTree) throw new Error("build evidence reviewed tree mismatch");
   authenticateEvidenceReviews(evidence.reviews, {
@@ -4459,6 +4626,9 @@ export async function verifyEvidenceFile({
   ) {
     throw new Error("retained upstream tgz does not match authenticated supply-chain evidence");
   }
+  const { inspectTarball, verifySigstoreAttestations } = await getUpstreamVerifier({
+    requireQualifyingAuthority: true,
+  });
   const retainedTarballBytes = await readFile(upstreamTarballPath);
   const retainedRawM = await collectRawMInputs({ gitPath, repositoryRoot: gitRepositoryRoot, expectedM });
   const retainedSigstoreInputs = sigstoreInputsFromRawM(retainedRawM);
@@ -4702,6 +4872,7 @@ const CLI_OPTIONS = new Set([
   "reviewed-source-root", "reviewed-export-manifest", "reviewed-export-manifest-sha256",
   "oci-a", "oci-b", "stock-oci", "upstream-tgz", "behavior-runner",
   "buildx-path", "buildx-sha256", "docker-path", "docker-host", "docker-sha256", "git-path",
+  "approval-manifest",
 ]);
 const CLI_MODES = new Set(["lock", "qualify", "evidence-replay-v1"]);
 
@@ -4740,6 +4911,7 @@ const CLI_MODE_CONTRACTS = {
       "reviewed-export-manifest", "reviewed-export-manifest-sha256", "oci-a", "oci-b",
       "stock-oci", "upstream-tgz", "behavior-runner", "release-artifact", "buildx-path",
       "buildx-sha256", "docker-path", "docker-host", "docker-sha256",
+      "approval-manifest",
     ],
   },
   "evidence-replay-v1": {
@@ -4748,12 +4920,14 @@ const CLI_MODE_CONTRACTS = {
       "git-repository-root", "m-review-report", "r-review-report", "oci-a", "oci-b",
       "stock-oci", "upstream-tgz", "behavior-runner", "docker-path", "docker-sha256",
       "docker-host", "git-path",
+      "approval-manifest",
     ],
     required: [
       "evidence", "git-path", "schema", "expected-m", "reviewed-tree", "git-repository-root",
       "m-review-report", "r-review-report", "oci-a", "oci-b", "stock-oci",
       "upstream-tgz", "behavior-runner", "docker-path", "docker-sha256",
       "docker-host",
+      "approval-manifest",
     ],
   },
 };
@@ -4803,6 +4977,130 @@ async function readReviewsFromArgs(args) {
   return { M: mReport.record, R: rReport.record };
 }
 
+export function createExecutionAuthorityRecord({
+  manifestBytes,
+  expectedM,
+  reviewedTree,
+  authorityRecords,
+}) {
+  const bytes = Buffer.from(manifestBytes);
+  const manifest = parseTask2ApprovalManifest(bytes);
+  if (manifest.expected_m !== expectedM || manifest.reviewed_tree !== reviewedTree) {
+    throw new Error("Task 2 execution authority M/R binding mismatch");
+  }
+  if (!Array.isArray(authorityRecords) || authorityRecords.length !== Object.keys(manifest.authorities).length) {
+    throw new Error("Task 2 execution authority raw-R record set is incomplete");
+  }
+  const byPath = new Map();
+  for (const record of authorityRecords) {
+    if (byPath.has(record?.path)) throw new Error("Task 2 execution authority raw-R record path is duplicated");
+    byPath.set(record?.path, record);
+  }
+  for (const binding of Object.values(manifest.authorities)) {
+    const record = byPath.get(binding.repository_path);
+    if (
+      !record ||
+      record.git_object_id !== binding.blob_oid ||
+      record.size !== binding.size ||
+      record.sha256 !== binding.sha256
+    ) {
+      throw new Error(`Task 2 execution authority raw-R binding mismatch: ${binding.repository_path}`);
+    }
+  }
+  return Object.freeze({
+    approval_manifest_base64: bytes.toString("base64"),
+    approval_manifest_size: bytes.length,
+    approval_manifest_sha256: sha256(bytes),
+    expected_m: manifest.expected_m,
+    reviewed_tree: manifest.reviewed_tree,
+    authorities: manifest.authorities,
+    runtime: manifest.runtime,
+  });
+}
+
+export function attachExecutionAuthorityToEvidence(evidence, executionAuthority) {
+  if (!evidence || typeof evidence !== "object" || Array.isArray(evidence)) {
+    throw new TypeError("qualification evidence must be an object");
+  }
+  if (!executionAuthority || typeof executionAuthority !== "object" || Array.isArray(executionAuthority)) {
+    throw new TypeError("Task 2 execution authority record is required");
+  }
+  if (Object.hasOwn(evidence, "execution_authority")) {
+    throw new Error("qualification evidence already contains an execution authority record");
+  }
+  if (!evidence.verification || typeof evidence.verification !== "object" || Array.isArray(evidence.verification)) {
+    throw new TypeError("qualification evidence verification record is required");
+  }
+  return Object.freeze({
+    ...evidence,
+    execution_authority: executionAuthority,
+    verification: Object.freeze({
+      ...evidence.verification,
+      execution_authority: true,
+    }),
+  });
+}
+
+export function verifyExecutionAuthorityReplay(evidence, reconstructedExecutionAuthority) {
+  if (evidence?.verification?.execution_authority !== true) {
+    throw new Error("build evidence execution authority verification marker is missing");
+  }
+  if (!reconstructedExecutionAuthority || typeof reconstructedExecutionAuthority !== "object") {
+    throw new Error("reconstructed Task 2 execution authority is required");
+  }
+  assertJsonEqual(
+    evidence.execution_authority,
+    reconstructedExecutionAuthority,
+    "build evidence execution authority",
+  );
+  return reconstructedExecutionAuthority;
+}
+
+async function readExecutionAuthorityFromArgs(args, reviews) {
+  const approvalManifestPath = args["approval-manifest"];
+  if (!isAbsolute(approvalManifestPath ?? "")) throw new Error("--approval-manifest path must be absolute");
+  const expectedPath = resolve(
+    "/opt/openclaw-tools/reviewed-task2",
+    args["reviewed-tree"],
+    "approval-manifest-v1.json",
+  );
+  if (resolve(approvalManifestPath) !== expectedPath) {
+    throw new Error("Task 2 approval manifest path is not the exact installed R-bound authority");
+  }
+  const binding = await readRegularFileHandleBound(approvalManifestPath, "Task 2 approval manifest");
+  const manifest = parseTask2ApprovalManifest(binding.bytes);
+  if (
+    manifest.review_reports.M.size !== reviews?.M?.report_size ||
+    manifest.review_reports.M.sha256 !== reviews?.M?.report_sha256 ||
+    manifest.review_reports.R.size !== reviews?.R?.report_size ||
+    manifest.review_reports.R.sha256 !== reviews?.R?.report_sha256
+  ) {
+    throw new Error("Task 2 approval manifest review-report bindings mismatch");
+  }
+  if (
+    manifest.runtime.git.path !== args["git-path"] ||
+    manifest.runtime.docker.path !== args["docker-path"] ||
+    manifest.runtime.docker.sha256 !== args["docker-sha256"] ||
+    manifest.runtime.docker.host !== args["docker-host"] ||
+    (args["buildx-path"] && manifest.runtime.buildx.path !== args["buildx-path"]) ||
+    (args["buildx-sha256"] && manifest.runtime.buildx.sha256 !== args["buildx-sha256"])
+  ) {
+    throw new Error("Task 2 approval manifest runtime bindings mismatch");
+  }
+  const authorityRecords = await readGitBlobRecords({
+    gitPath: args["git-path"],
+    repositoryRoot: args["git-repository-root"],
+    commit: args["reviewed-tree"],
+    paths: Object.values(manifest.authorities).map(({ repository_path: path }) => path),
+  });
+  return createExecutionAuthorityRecord({
+    manifestBytes: binding.bytes,
+    expectedM: args["expected-m"],
+    reviewedTree: args["reviewed-tree"],
+    authorityRecords,
+  });
+}
+
 async function readReviewedExportFromArgs(args) {
   const required = [
     "reviewed-source-root",
@@ -4842,6 +5140,7 @@ export function assertAbsoluteQualifyingOperands(args) {
         "buildx-path",
         "docker-path",
         "git-path",
+        "approval-manifest",
       ]
     : [
         "evidence",
@@ -4855,6 +5154,7 @@ export function assertAbsoluteQualifyingOperands(args) {
         "behavior-runner",
         "docker-path",
         "git-path",
+        "approval-manifest",
       ];
   for (const key of keys) {
     if (args[key] && !isAbsolute(args[key])) {
@@ -4867,10 +5167,41 @@ async function main() {
   const args = parseCliArguments(process.argv.slice(2));
   const mode = validateCliModeArguments(args);
   assertAbsoluteQualifyingOperands(args);
-  if (mode !== "lock") await assertTrustedDockerSocket(args["docker-host"]);
   const scriptCellRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const root = resolve(args.root ?? (args.lock ? dirname(args.lock) : scriptCellRoot));
   const lockPath = resolve(args.lock ?? resolve(root, "image-lock.json"));
+  let preauthenticatedGitAuthority;
+  let preauthenticatedGitBinding;
+  if (mode !== "lock") {
+    for (const key of ["expected-m", "reviewed-tree", "git-repository-root", "git-path"]) {
+      if (!args[key]) throw new Error(`--${key} is required before non-lock verification`);
+    }
+    const reviewedSourceRoot = mode === "qualify"
+      ? args["reviewed-source-root"]
+      : resolve(scriptCellRoot, "../..");
+    if (!isAbsolute(reviewedSourceRoot ?? "")) {
+      throw new Error("reviewed source root is required before non-lock verification");
+    }
+    preauthenticatedGitAuthority = await assertTrustedGitExecutable({
+      gitPath: args["git-path"],
+      expectedVersion: "2.53.0",
+      expectedSha256: GIT_LINUX_SHA256,
+    });
+    preauthenticatedGitBinding = await verifyGitLineage({
+      gitPath: args["git-path"],
+      repositoryRoot: args["git-repository-root"],
+      expectedM: args["expected-m"],
+      reviewedTree: args["reviewed-tree"],
+    });
+    await loadReviewedUpstreamVerifier({
+      gitPath: args["git-path"],
+      repositoryRoot: args["git-repository-root"],
+      reviewedTree: args["reviewed-tree"],
+      reviewedSourceRoot,
+      verifierPath: fileURLToPath(import.meta.url),
+    });
+    await assertTrustedDockerSocket(args["docker-host"]);
+  }
   if (mode === "evidence-replay-v1") {
     for (const key of [
       "evidence",
@@ -4889,9 +5220,12 @@ async function main() {
       "docker-host",
       "docker-sha256",
       "git-path",
+      "approval-manifest",
     ]) {
       if (!args[key]) throw new Error(`--${key} is required in evidence-replay-v1 mode`);
     }
+    const reviews = await readReviewsFromArgs(args);
+    const executionAuthority = await readExecutionAuthorityFromArgs(args, reviews);
     const result = await verifyEvidenceFile({
       root,
       lockPath,
@@ -4911,6 +5245,7 @@ async function main() {
       dockerPath: args["docker-path"],
       dockerHost: args["docker-host"],
       dockerSha256: args["docker-sha256"],
+      executionAuthority,
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
@@ -4931,29 +5266,21 @@ async function main() {
     "git-path",
   ];
   const reviewAuthorityPresent = reviewAuthorityKeys.filter((key) => args[key]);
-  let gitBinding;
-  let gitAuthority;
+  let gitBinding = preauthenticatedGitBinding;
+  let gitAuthority = preauthenticatedGitAuthority;
   if (reviewAuthorityPresent.length > 0) {
     for (const key of reviewAuthorityKeys) if (!args[key]) throw new Error(`--${key} is required`);
-    gitAuthority = await assertTrustedGitExecutable({
-      gitPath: args["git-path"],
-      expectedVersion: lockResult.lock.git.version,
-      expectedSha256: lockResult.lock.git.linux_amd64_sha256,
-    });
-    gitBinding = await verifyGitLineage({
-      gitPath: args["git-path"],
-      repositoryRoot: args["git-repository-root"],
-      expectedM: args["expected-m"],
-      reviewedTree: args["reviewed-tree"],
-    });
-    await verifyReviewedVerifierBlob({
-      gitPath: args["git-path"],
-      repositoryRoot: args["git-repository-root"],
-      reviewedTree: args["reviewed-tree"],
-      verifierPath: fileURLToPath(import.meta.url),
-    });
+    if (
+      lockResult.lock.git.version !== "2.53.0" ||
+      lockResult.lock.git.linux_amd64_sha256 !== GIT_LINUX_SHA256
+    ) {
+      throw new Error("image lock Git authority disagrees with the pre-authenticated verifier closure");
+    }
   }
   const reviews = await readReviewsFromArgs(args);
+  const executionAuthority = mode === "qualify"
+    ? await readExecutionAuthorityFromArgs(args, reviews)
+    : undefined;
   const reviewedExport = await readReviewedExportFromArgs(args);
   const supplyChain =
     reviews && reviewedExport && gitBinding
@@ -5093,7 +5420,7 @@ async function main() {
     behaviorRunnerSha256: behaviorRunnerRecord.sha256,
   });
 
-  const evidence = {
+  const evidence = attachExecutionAuthorityToEvidence({
     schema_version: 1,
     expected_m: args["expected-m"],
     reviewed_tree: args["reviewed-tree"],
@@ -5178,7 +5505,7 @@ async function main() {
       rootfs: true,
       private_rpc: true,
     },
-  };
+  }, executionAuthority);
   validateRecordedBehaviorEvidence(evidence.plugin_probe.behavior);
   if (
     evidence.plugin_probe.behavior.runner.sha256 !== retainedInputs.behavior_runner.sha256 ||

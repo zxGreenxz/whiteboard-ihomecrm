@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { link, mkdtemp, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  link,
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import test from "node:test";
@@ -1472,27 +1483,22 @@ test("PowerShell helper pins builders and makes the verifier the promotion gate"
 });
 
 test("Task 2 keeps source verification and qualification in distinct reviewed exports", async () => {
-  const repoRoot = resolve(cellRoot, "../..");
-  const plan = await readFile(
-    join(repoRoot, "docs/superpowers/plans/2026-07-26-openclaw-zalo-personal.md"),
-    "utf8",
-  );
-  const flowStart = plan.indexOf("$bootstrapRoot = Join-Path $tempRoot");
-  const flowEnd = plan.indexOf("Expected: every command exits 0", flowStart);
-  assert.ok(flowStart >= 0 && flowEnd > flowStart, "Task 2 qualifying flow must be present");
-  const flow = plan.slice(flowStart, flowEnd);
+  const flow = await readCell("scripts/run-reviewed-task2.ps1");
 
   assert.match(flow, /\$verificationExportRoot\s*=\s*Join-Path\s+\$tempRoot/);
   assert.match(flow, /\$qualificationExportRoot\s*=\s*Join-Path\s+\$tempRoot/);
   assert.match(flow, /['"]--output-root['"],\s*\$verificationExportRoot/);
   assert.match(flow, /['"]--output-root['"],\s*\$qualificationExportRoot/);
-  assert.match(flow, /Push-Location\s+\$verificationExportRoot/);
+  assert.match(flow, /Invoke-QualificationNpm\s+-WorkingDirectory\s+\$verificationExportRoot/);
+  assert.doesNotMatch(flow, /Push-Location\s+\$verificationExportRoot/);
   assert.doesNotMatch(flow, /Push-Location\s+\$qualificationExportRoot/);
-  assert.match(flow, /-ReviewedSourceRoot\s+\$qualificationExportRoot/);
+  assert.match(flow, /['"]-ReviewedSourceRoot['"],\s*\$qualificationExportRoot/);
 
-  const verificationCommands = flow.indexOf("Push-Location $verificationExportRoot");
+  const verificationCommands = flow.indexOf(
+    "Invoke-QualificationNpm -WorkingDirectory $verificationExportRoot",
+  );
   const qualificationExport = flow.indexOf("'--output-root', $qualificationExportRoot");
-  const helperCall = flow.indexOf("-ReviewedSourceRoot $qualificationExportRoot");
+  const helperCall = flow.indexOf("'-ReviewedSourceRoot', $qualificationExportRoot");
   assert.ok(
     verificationCommands >= 0 && qualificationExport > verificationCommands && helperCall > qualificationExport,
     "the exact qualification export must be created only after mutable source verification",
@@ -1500,41 +1506,950 @@ test("Task 2 keeps source verification and qualification in distinct reviewed ex
 });
 
 test("Task 2 outer launcher authenticates and isolates pinned Node before creating work", async () => {
+  const launcher = await readCell("scripts/launch-reviewed-task2.mjs");
+  const sourceGate = launcher.indexOf("invokeSourceGate(authority, options, allowedPaths)");
+  const workCreation = launcher.indexOf("workRoot = createPrivateWorkRoot()");
+  assert.ok(sourceGate >= 0 && workCreation > sourceGate);
+  assert.match(launcher, /d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c/);
+  assert.match(launcher, /5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a/);
+  assert.match(launcher, /core\.fsmonitor=false/);
+  assert.match(launcher, /core\.hooksPath=\/dev\/null/);
+  assert.match(launcher, /commit\.gpgSign=false/);
+  assert.match(launcher, /core\.attributesFile=\/dev\/null/);
+  assert.match(launcher, /assertRootOwnedImmutablePath/);
+  const bindExecutableBody = launcher.slice(
+    launcher.indexOf("function bindExecutable"),
+    launcher.indexOf("function assertRuntimeMinimumPins"),
+  );
+  assert.match(bindExecutableBody, /assertRootOwnedImmutablePath/);
+  const directoryTreeBody = launcher.slice(
+    launcher.indexOf("function bindImmutableDirectoryTree"),
+    launcher.indexOf("function cleanBaseEnvironment"),
+  );
+  assert.match(directoryTreeBody, /uid\s*!==\s*0/);
+  assert.match(directoryTreeBody, /gid\s*!==\s*0/);
+  assert.match(directoryTreeBody, /mode\s*&\s*0o022/);
+  assert.match(launcher, /process\.getuid\(\)\s*!==\s*1001/);
+  assert.match(launcher, /process\.getgid\(\)\s*!==\s*1001/);
+  assert.match(launcher, /readRegularFileBound/);
+  assert.doesNotMatch(launcher, /process\.env/);
+});
+
+test("Task 2 authorizes exact M and R through one closed root-owned approval manifest", async () => {
+  const schema = JSON.parse(await readCell("task2-approval-manifest.schema.v1.json"));
+  const launcherSource = await readCell("scripts/launch-reviewed-task2.mjs");
+  const launcher = await loadScript("scripts/launch-reviewed-task2.mjs");
+
+  assert.equal(schema.type, "object");
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(schema.required, [
+    "schema_version",
+    "expected_m",
+    "reviewed_tree",
+    "authorities",
+    "review_reports",
+    "runtime",
+  ]);
+  assert.equal(typeof launcher.parseTask2ApprovalManifest, "function");
+  assert.match(launcherSource, /--approval-manifest/);
+  assert.doesNotMatch(launcherSource, /--docker-host/);
+  assert.match(launcherSource, /approval-manifest-v1\.json/);
+  assert.match(launcherSource, /assertRootOwnedImmutablePath/);
+  assert.match(launcherSource, /process\.execPath/);
+
+  const fileBinding = (repositoryPath, fill) => ({
+    repository_path: repositoryPath,
+    blob_oid: fill.repeat(40),
+    size: 1,
+    sha256: fill.repeat(64),
+  });
+  const manifest = {
+    schema_version: 1,
+    expected_m: "1".repeat(40),
+    reviewed_tree: "2".repeat(40),
+    authorities: {
+      installer: fileBinding("services/openclaw-zalo-cell/scripts/install-reviewed-task2-launcher.mjs", "3"),
+      launcher: fileBinding("services/openclaw-zalo-cell/scripts/launch-reviewed-task2.mjs", "4"),
+      orchestrator: fileBinding("services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1", "5"),
+      source_gate: fileBinding("services/openclaw-zalo-cell/scripts/verify-reviewed-source-gate.mjs", "6"),
+      build_helper: fileBinding("services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1", "7"),
+      evidence_helper: fileBinding("services/openclaw-zalo-cell/scripts/create-evidence-child.ps1", "8"),
+    },
+    review_reports: {
+      M: { checkpoint: "M", file_name: `m-review-report-v1-${"1".repeat(40)}.json`, size: 1, sha256: "9".repeat(64) },
+      R: { checkpoint: "R", file_name: `r-review-report-v1-${"2".repeat(40)}.json`, size: 1, sha256: "a".repeat(64) },
+    },
+    runtime: {
+      node: { path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node", version: "v24.15.0", size: 122889056, sha256: NODE_LINUX_SHA256 },
+      git: { path: "/usr/bin/git", version: "git version 2.53.0", sha256: GIT_LINUX_SHA256 },
+      powershell: { path: "/opt/openclaw-tools/powershell-7.6.2/pwsh", version: "7.6.2", sha256: "b".repeat(64), tree_sha256: "c".repeat(64) },
+      npm: { root_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm", version: "11.12.1", entry_count: 2169, root_sha256: "d".repeat(64), cli_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js", cli_size: 54, cli_sha256: "e".repeat(64) },
+      buildx: { path: "/opt/openclaw-tools/docker-buildx-v0.13.1", version: "0.13.1", sha256: "f".repeat(64) },
+      docker: {
+        path: "/usr/bin/docker",
+        version: "29.1.3",
+        sha256: DOCKER_LINUX_SHA256,
+        host: "unix:///run/user/1001/docker.sock",
+      },
+    },
+  };
+  assert.deepEqual(schema.properties.runtime.properties.docker.required, [
+    "path",
+    "version",
+    "sha256",
+    "host",
+  ]);
+  const bytes = Buffer.from(`${JSON.stringify(manifest)}\n`, "utf8");
+  assert.deepEqual(launcher.parseTask2ApprovalManifest(bytes), manifest);
+  await assert.rejects(
+    async () => launcher.parseTask2ApprovalManifest(Buffer.from(`${JSON.stringify(manifest).replace('{"schema_version":1', '{"schema_version":1,"schema_version":1')}\n`)),
+    /canonical|duplicate|manifest/i,
+  );
+});
+
+test("Task 2 approval manifest parser rejects noncanonical and cross-field-confused authorities", async () => {
+  const { parseTask2ApprovalManifest } = await loadScript("scripts/launch-reviewed-task2.mjs");
+  assert.equal(typeof parseTask2ApprovalManifest, "function");
+  const fileBinding = (repositoryPath, fill) => ({
+    repository_path: repositoryPath,
+    blob_oid: fill.repeat(40),
+    size: 1,
+    sha256: fill.repeat(64),
+  });
+  const manifest = {
+    schema_version: 1,
+    expected_m: "1".repeat(40),
+    reviewed_tree: "2".repeat(40),
+    authorities: {
+      installer: fileBinding("services/openclaw-zalo-cell/scripts/install-reviewed-task2-launcher.mjs", "3"),
+      launcher: fileBinding("services/openclaw-zalo-cell/scripts/launch-reviewed-task2.mjs", "4"),
+      orchestrator: fileBinding("services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1", "5"),
+      source_gate: fileBinding("services/openclaw-zalo-cell/scripts/verify-reviewed-source-gate.mjs", "6"),
+      build_helper: fileBinding("services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1", "7"),
+      evidence_helper: fileBinding("services/openclaw-zalo-cell/scripts/create-evidence-child.ps1", "8"),
+    },
+    review_reports: {
+      M: { checkpoint: "M", file_name: `m-review-report-v1-${"1".repeat(40)}.json`, size: 1, sha256: "9".repeat(64) },
+      R: { checkpoint: "R", file_name: `r-review-report-v1-${"2".repeat(40)}.json`, size: 1, sha256: "a".repeat(64) },
+    },
+    runtime: {
+      node: { path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node", version: "v24.15.0", size: 122889056, sha256: NODE_LINUX_SHA256 },
+      git: { path: "/usr/bin/git", version: "git version 2.53.0", sha256: GIT_LINUX_SHA256 },
+      powershell: { path: "/opt/openclaw-tools/powershell-7.6.2/pwsh", version: "7.6.2", sha256: "b".repeat(64), tree_sha256: "c".repeat(64) },
+      npm: { root_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm", version: "11.12.1", entry_count: 2169, root_sha256: "d".repeat(64), cli_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js", cli_size: 54, cli_sha256: "e".repeat(64) },
+      buildx: { path: "/opt/openclaw-tools/docker-buildx-v0.13.1", version: "0.13.1", sha256: "f".repeat(64) },
+      docker: {
+        path: "/usr/bin/docker",
+        version: "29.1.3",
+        sha256: DOCKER_LINUX_SHA256,
+        host: "unix:///run/user/1001/docker.sock",
+      },
+    },
+  };
+  const canonical = (value) => Buffer.from(`${JSON.stringify(value)}\n`, "utf8");
+  const changed = (mutate) => {
+    const value = structuredClone(manifest);
+    mutate(value);
+    return canonical(value);
+  };
+  assert.deepEqual(parseTask2ApprovalManifest(canonical(manifest)), manifest);
+
+  for (const bytes of [
+    Buffer.from(JSON.stringify(manifest), "utf8"),
+    Buffer.from(`${JSON.stringify(manifest)}\n\n`, "utf8"),
+    Buffer.from(`${JSON.stringify(manifest)}\r\n`, "utf8"),
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), canonical(manifest)]),
+    Buffer.from(` ${JSON.stringify(manifest)}\n`, "utf8"),
+    changed((value) => { value.unknown = true; }),
+    changed((value) => { delete value.runtime; }),
+    changed((value) => { value.reviewed_tree = value.expected_m; }),
+    changed((value) => { value.authorities.launcher.repository_path = value.authorities.installer.repository_path; }),
+    changed((value) => { value.review_reports.M.file_name = "m-review-report-v1-confused.json"; }),
+    changed((value) => { value.runtime.node.version = "v24.15.1"; }),
+    changed((value) => { value.runtime.npm.cli_size = 0; }),
+    changed((value) => { value.runtime.docker.host = "unix:///run/user/0/docker.sock"; }),
+  ]) {
+    assert.throws(() => parseTask2ApprovalManifest(bytes), /manifest|canonical|authority|report|runtime|identity/i);
+  }
+
+  const reordered = {
+    expected_m: manifest.expected_m,
+    schema_version: manifest.schema_version,
+    reviewed_tree: manifest.reviewed_tree,
+    authorities: manifest.authorities,
+    review_reports: manifest.review_reports,
+    runtime: manifest.runtime,
+  };
+  assert.throws(() => parseTask2ApprovalManifest(canonical(reordered)), /canonical|order|manifest/i);
+});
+
+test("Task 2 root installer atomically promotes one exact R-bound launcher and manifest", async () => {
+  const installerSource = await readCell("scripts/install-reviewed-task2-launcher.mjs");
+  const installer = await loadScript("scripts/install-reviewed-task2-launcher.mjs");
+  const launcher = await loadScript("scripts/launch-reviewed-task2.mjs");
+
+  assert.equal(typeof installer.parseTask2ApprovalManifest, "function");
+  assert.equal(typeof installer.installReviewedTask2, "function");
+  assert.match(installerSource, /process\.getuid\(\)\s*!==\s*0/);
+  assert.match(installerSource, /process\.getgid\(\)\s*!==\s*0/);
+  assert.match(installerSource, /process\.execPath/);
+  assert.match(installerSource, /assertRootOwnedImmutablePath/);
+  assert.match(installerSource, /\/opt\/openclaw-tools\/reviewed-task2-bootstrap\/install-reviewed-task2-launcher\.mjs/);
+  assert.match(installerSource, /\/opt\/openclaw-tools\/reviewed-task2-approvals/);
+  assert.match(installerSource, /\/opt\/openclaw-tools\/reviewed-task2/);
+  assert.match(installerSource, /approval-manifest-v1\.json/);
+  assert.match(installerSource, /getAuthenticatedReviewedBlob/);
+  assert.match(installerSource, /authenticateManifestAuthorities/);
+  assert.match(installerSource, /merge-base/);
+  assert.match(installerSource, /authorities\.installer/);
+  assert.match(installerSource, /authorities\.launcher/);
+  assert.match(installerSource, /O_NOFOLLOW/);
+  assert.match(installerSource, /O_EXCL/);
+  assert.match(installerSource, /fchmodSync\([^\n]+0o444/);
+  assert.match(installerSource, /chmodSync\([^\n]+0o555/);
+  assert.match(installerSource, /f?chownSync\([^\n]+0,\s*0/);
+  assert.match(installerSource, /fsyncSync/);
+  assert.match(installerSource, /renameSync/);
+  assert.match(installerSource, /rmSync\([^\n]+recursive:\s*true/);
+  assert.doesNotMatch(installerSource, /--reviewed-tree/);
+  assert.doesNotMatch(installerSource, /process\.env/);
+
+  const authentication = installerSource.indexOf("authenticateManifestAuthorities");
+  const candidateCreation = installerSource.indexOf("candidateRoot = mkdtempSync");
+  const promotion = installerSource.indexOf("renameSync(candidateRoot, finalRoot)");
+  assert.ok(authentication >= 0 && candidateCreation > authentication && promotion > candidateCreation);
+
+  const fileBinding = (repositoryPath, fill) => ({
+    repository_path: repositoryPath,
+    blob_oid: fill.repeat(40),
+    size: 1,
+    sha256: fill.repeat(64),
+  });
+  const manifest = {
+    schema_version: 1,
+    expected_m: "1".repeat(40),
+    reviewed_tree: "2".repeat(40),
+    authorities: {
+      installer: fileBinding("services/openclaw-zalo-cell/scripts/install-reviewed-task2-launcher.mjs", "3"),
+      launcher: fileBinding("services/openclaw-zalo-cell/scripts/launch-reviewed-task2.mjs", "4"),
+      orchestrator: fileBinding("services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1", "5"),
+      source_gate: fileBinding("services/openclaw-zalo-cell/scripts/verify-reviewed-source-gate.mjs", "6"),
+      build_helper: fileBinding("services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1", "7"),
+      evidence_helper: fileBinding("services/openclaw-zalo-cell/scripts/create-evidence-child.ps1", "8"),
+    },
+    review_reports: {
+      M: { checkpoint: "M", file_name: `m-review-report-v1-${"1".repeat(40)}.json`, size: 1, sha256: "9".repeat(64) },
+      R: { checkpoint: "R", file_name: `r-review-report-v1-${"2".repeat(40)}.json`, size: 1, sha256: "a".repeat(64) },
+    },
+    runtime: {
+      node: { path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node", version: "v24.15.0", size: 122889056, sha256: NODE_LINUX_SHA256 },
+      git: { path: "/usr/bin/git", version: "git version 2.53.0", sha256: GIT_LINUX_SHA256 },
+      powershell: { path: "/opt/openclaw-tools/powershell-7.6.2/pwsh", version: "7.6.2", sha256: "cd7ac031490349b4ffd203cadf8922af85113b84ab9bfc28a50d03730d9309bc", tree_sha256: "b".repeat(64) },
+      npm: { root_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm", version: "11.12.1", entry_count: 2169, root_sha256: "aebb5b5b1892a7dd23c04af9b5afa24747f752beff2e4f2e781d9eb3830f93d9", cli_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js", cli_size: 54, cli_sha256: "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7" },
+      buildx: { path: "/opt/openclaw-tools/docker-buildx-v0.13.1", version: "0.13.1", sha256: "3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c" },
+      docker: { path: "/usr/bin/docker", version: "29.1.3", sha256: DOCKER_LINUX_SHA256, host: "unix:///run/user/1001/docker.sock" },
+    },
+  };
+  const bytes = Buffer.from(`${JSON.stringify(manifest)}\n`, "utf8");
+  assert.deepEqual(installer.parseTask2ApprovalManifest(bytes), manifest);
+  assert.deepEqual(installer.parseTask2ApprovalManifest(bytes), launcher.parseTask2ApprovalManifest(bytes));
+});
+
+test("build evidence embeds and replays one closed Task 2 execution authority", async () => {
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  const verifierSource = await readCell("scripts/verify-image-lock.mjs");
+  const buildHelper = await readCell("scripts/build-reproducible-image.ps1");
+  const evidenceHelper = await readCell("scripts/create-evidence-child.ps1");
+  const orchestrator = await readCell("scripts/run-reviewed-task2.ps1");
+  const launcher = await readCell("scripts/launch-reviewed-task2.mjs");
+  const {
+    attachExecutionAuthorityToEvidence,
+    createExecutionAuthorityRecord,
+    verifyExecutionAuthorityReplay,
+  } = await loadScript("scripts/verify-image-lock.mjs");
+
+  assert.ok(schema.required.includes("execution_authority"));
+  assert.equal(schema.properties.execution_authority.additionalProperties, false);
+  assert.ok(schema.properties.execution_authority.required.includes("approval_manifest_base64"));
+  assert.ok(schema.properties.execution_authority.required.includes("authorities"));
+  assert.ok(schema.properties.execution_authority.required.includes("runtime"));
+  assert.ok(schema.properties.verification.required.includes("execution_authority"));
+  assert.equal(typeof createExecutionAuthorityRecord, "function");
+  assert.equal(typeof attachExecutionAuthorityToEvidence, "function");
+  assert.equal(typeof verifyExecutionAuthorityReplay, "function");
+  assert.match(verifierSource, /--approval-manifest/);
+  assert.match(buildHelper, /\[string\]\$ApprovalManifestPath/);
+  assert.match(buildHelper, /'--approval-manifest',\s*\$resolvedApprovalManifest/);
+  assert.match(evidenceHelper, /\[string\]\$ApprovalManifestPath/);
+  assert.match(evidenceHelper, /'--approval-manifest',\s*\$approvalManifest/);
+  assert.match(orchestrator, /'-ApprovalManifestPath',\s*\$approvalManifest/);
+  assert.match(launcher, /OPENCLAW_TASK2_APPROVAL_MANIFEST/);
+  assert.match(orchestrator, /\/opt\/openclaw-tools\/reviewed-task2\/\$ReviewedTree\/approval-manifest-v1\.json/);
+  assert.match(buildHelper, /\$lockedQualificationOperands[\s\S]*Task 2 approval manifest/);
+  assert.match(buildHelper, /\$protectedQualificationInputs[\s\S]*\$resolvedApprovalManifest/);
+  const hashStabilityBody = buildHelper.slice(
+    buildHelper.indexOf("function Assert-HashUnchanged"),
+    buildHelper.indexOf("if (-not [IO.Path]::IsPathFullyQualified($NodePath)"),
+  );
+  assert.match(hashStabilityBody, /Assert-NoReparseChain/);
+  assert.match(hashStabilityBody, /FileAttributes\]::ReparsePoint/);
+  assert.match(evidenceHelper, /Assert-RetainedAuthorityBindings[\s\S]*Task 2 approval manifest/);
+
+  const fileBinding = (repositoryPath, fill) => ({
+    repository_path: repositoryPath,
+    blob_oid: fill.repeat(40),
+    size: 1,
+    sha256: fill.repeat(64),
+  });
+  const manifest = {
+    schema_version: 1,
+    expected_m: "1".repeat(40),
+    reviewed_tree: "2".repeat(40),
+    authorities: {
+      installer: fileBinding("services/openclaw-zalo-cell/scripts/install-reviewed-task2-launcher.mjs", "3"),
+      launcher: fileBinding("services/openclaw-zalo-cell/scripts/launch-reviewed-task2.mjs", "4"),
+      orchestrator: fileBinding("services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1", "5"),
+      source_gate: fileBinding("services/openclaw-zalo-cell/scripts/verify-reviewed-source-gate.mjs", "6"),
+      build_helper: fileBinding("services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1", "7"),
+      evidence_helper: fileBinding("services/openclaw-zalo-cell/scripts/create-evidence-child.ps1", "8"),
+    },
+    review_reports: {
+      M: { checkpoint: "M", file_name: `m-review-report-v1-${"1".repeat(40)}.json`, size: 1, sha256: "9".repeat(64) },
+      R: { checkpoint: "R", file_name: `r-review-report-v1-${"2".repeat(40)}.json`, size: 1, sha256: "a".repeat(64) },
+    },
+    runtime: {
+      node: { path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node", version: "v24.15.0", size: 122889056, sha256: NODE_LINUX_SHA256 },
+      git: { path: "/usr/bin/git", version: "git version 2.53.0", sha256: GIT_LINUX_SHA256 },
+      powershell: { path: "/opt/openclaw-tools/powershell-7.6.2/pwsh", version: "7.6.2", sha256: "cd7ac031490349b4ffd203cadf8922af85113b84ab9bfc28a50d03730d9309bc", tree_sha256: "b".repeat(64) },
+      npm: { root_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm", version: "11.12.1", entry_count: 2169, root_sha256: "aebb5b5b1892a7dd23c04af9b5afa24747f752beff2e4f2e781d9eb3830f93d9", cli_path: "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js", cli_size: 54, cli_sha256: "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7" },
+      buildx: { path: "/opt/openclaw-tools/docker-buildx-v0.13.1", version: "0.13.1", sha256: "3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c" },
+      docker: { path: "/usr/bin/docker", version: "29.1.3", sha256: DOCKER_LINUX_SHA256, host: "unix:///run/user/1001/docker.sock" },
+    },
+  };
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest)}\n`, "utf8");
+  const authorityRecords = Object.values(manifest.authorities).map((binding) => ({
+    path: binding.repository_path,
+    git_object_id: binding.blob_oid,
+    size: binding.size,
+    sha256: binding.sha256,
+  }));
+  const recorded = createExecutionAuthorityRecord({
+    manifestBytes,
+    expectedM: manifest.expected_m,
+    reviewedTree: manifest.reviewed_tree,
+    authorityRecords,
+  });
+  assert.equal(recorded.approval_manifest_sha256, sha256(manifestBytes));
+  assert.deepEqual(recorded.authorities, manifest.authorities);
+  assert.deepEqual(recorded.runtime, manifest.runtime);
+  assert.equal(recorded.runtime.docker.host, "unix:///run/user/1001/docker.sock");
+
+  const evidence = attachExecutionAuthorityToEvidence(
+    { schema_version: 1, verification: { schema: true } },
+    recorded,
+  );
+  assert.deepEqual(evidence.execution_authority, recorded);
+  assert.equal(evidence.verification.execution_authority, true);
+  assert.equal(evidence.verification.schema, true);
+  assert.deepEqual(verifyExecutionAuthorityReplay(evidence, recorded), recorded);
+
+  const changed = structuredClone(recorded);
+  changed.runtime.docker.host = "unix:///run/user/1001/other.sock";
+  assert.throws(
+    () => verifyExecutionAuthorityReplay(evidence, changed),
+    /execution authority.*mismatch/i,
+  );
+});
+
+test("Task 2 routes both phases through a raw-R Node launcher and pinned-pwsh inner orchestrator", async () => {
   const repoRoot = resolve(cellRoot, "../..");
   const plan = await readFile(
     join(repoRoot, "docs/superpowers/plans/2026-07-26-openclaw-zalo-personal.md"),
     "utf8",
   );
-  const qualificationStep = plan.indexOf(
-    "**Step 4: Run verification and build strictly from reviewed R without tracked mutation**",
-  );
-  const flowStart = plan.indexOf(
-    "if ($PSVersionTable.PSVersion -lt [version]'7.3')",
-    qualificationStep,
-  );
-  const workCreation = plan.indexOf("$tempRoot = [IO.Path]::GetFullPath", flowStart);
-  assert.ok(
-    qualificationStep >= 0 && flowStart > qualificationStep && workCreation > flowStart,
-    "Task 2 qualifying launcher must precede work creation",
-  );
-  const preWork = plan.slice(flowStart, workCreation);
+  const task2Start = plan.indexOf("### Task 2:");
+  const task3Start = plan.indexOf("### Task 3:", task2Start);
+  assert.ok(task2Start >= 0 && task3Start > task2Start);
+  const task2Plan = plan.slice(task2Start, task3Start);
+  const launcherSource = await readCell("scripts/launch-reviewed-task2.mjs");
+  const inner = await readCell("scripts/run-reviewed-task2.ps1");
+  const launcher = await loadScript("scripts/launch-reviewed-task2.mjs");
 
-  assert.match(preWork, /\[Diagnostics\.ProcessStartInfo\]::new\(\)/);
-  assert.match(preWork, /\.Environment\.Clear\(\)/);
-  assert.match(preWork, /UseShellExecute\s*=\s*\$false/);
-  assert.match(preWork, /RedirectStandardOutput\s*=\s*\$true/);
-  assert.match(preWork, /d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c/);
-  assert.match(preWork, /\^v24\\\.\(0\|\[1-9\]\\d\*\)\\\.\(0\|\[1-9\]\\d\*\)\$/);
-  assert.doesNotMatch(preWork, /&\s*\$nodePath\b/);
-  assert.doesNotMatch(preWork, /&\s*\$gitPath\b/);
-  assert.match(preWork, /core\.fsmonitor=false/);
-  assert.match(preWork, /core\.hooksPath=\/dev\/null/);
-  assert.match(preWork, /commit\.gpgSign=false/);
-  assert.match(preWork, /core\.attributesFile=\/dev\/null/);
-  assert.ok(
-    preWork.indexOf(".Environment.Clear()") < preWork.indexOf(".Start()"),
-    "the pinned Node environment must be cleared before its first execution",
+  assert.match(task2Plan, /services\/openclaw-zalo-cell\/scripts\/launch-reviewed-task2\.mjs/);
+  assert.match(task2Plan, /--phase(?:['"]?,?\s*['"]?)qualification/);
+  assert.match(task2Plan, /--phase(?:['"]?,?\s*['"]?)evidence/);
+  assert.doesNotMatch(
+    task2Plan,
+    /Resolve-Path[^\n]+services\/openclaw-zalo-cell\/scripts\/(?:build-reproducible-image|create-evidence-child)\.ps1/,
   );
+  assert.doesNotMatch(task2Plan, /&\s+\$reviewed(?:Image|Evidence)Helper\b/);
+
+  assert.equal(typeof launcher.POWERSHELL_STDIN_BOOTSTRAP, "string");
+  assert.deepEqual(launcher.powerShellArgv("qualification"), [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    launcher.POWERSHELL_STDIN_BOOTSTRAP,
+  ]);
+  assert.deepEqual(launcher.powerShellArgv("evidence"), [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    launcher.POWERSHELL_STDIN_BOOTSTRAP,
+  ]);
+  const cleanEnvironment = launcher.buildPowerShellEnvironment({
+    phase: "evidence",
+    workRoot: "/tmp/ihome-launch-fixture",
+    reviewedTree: "1".repeat(40),
+    expectedM: "2".repeat(40),
+    approvalManifestPath: `/opt/openclaw-tools/reviewed-task2/${"1".repeat(40)}/approval-manifest-v1.json`,
+    mReviewReport: "/repo/.release/reviews/m.json",
+    rReviewReport: "/repo/.release/reviews/r.json",
+    nodePath: "/opt/node/bin/node",
+    gitPath: "/opt/git/bin/git",
+    dockerPath: "/opt/docker/docker",
+    dockerHost: "unix:///run/user/1001/docker.sock",
+    scriptApprovedRoot: "/repo",
+    scriptLogicalPath: "/repo/services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1",
+    scriptSize: 123,
+    scriptSha256: "3".repeat(64),
+  });
+  assert.equal(cleanEnvironment.PATH, "/nonexistent");
+  assert.equal(cleanEnvironment.LANG, "C");
+  assert.equal(cleanEnvironment.LC_ALL, "C");
+  assert.equal(cleanEnvironment.TZ, "UTC");
+  assert.equal(cleanEnvironment.OPENCLAW_REVIEWED_R_SHA, "1".repeat(40));
+  assert.equal(
+    cleanEnvironment.OPENCLAW_TASK2_APPROVAL_MANIFEST,
+    `/opt/openclaw-tools/reviewed-task2/${"1".repeat(40)}/approval-manifest-v1.json`,
+  );
+  assert.equal(
+    cleanEnvironment.OPENCLAW_PWSH_APPROVED_ROOT,
+    "/repo",
+  );
+  assert.equal(
+    cleanEnvironment.OPENCLAW_PWSH_LOGICAL_PATH,
+    "/repo/services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1",
+  );
+  assert.equal(cleanEnvironment.OPENCLAW_PWSH_BLOB_SIZE, "123");
+  assert.equal(cleanEnvironment.OPENCLAW_PWSH_BLOB_SHA256, "3".repeat(64));
+  assert.equal(cleanEnvironment.OPENCLAW_PWSH_ARGUMENTS_JSON, '["-Phase","Evidence"]');
+  for (const hostile of [
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "NODE_OPTIONS",
+    "BASH_FUNC_Get-FileHash%%",
+    "OPENCLAW_ATTACKER_VALUE",
+  ]) {
+    assert.equal(Object.hasOwn(cleanEnvironment, hostile), false);
+  }
+  assert.throws(
+    () => launcher.buildPowerShellEnvironment({
+      phase: "evidence",
+      workRoot: "/tmp/ihome-launch-fixture",
+      reviewedTree: "1".repeat(40),
+      expectedM: "2".repeat(40),
+      mReviewReport: "/repo/.release/reviews/m.json",
+      rReviewReport: "/repo/.release/reviews/r.json",
+      nodePath: "/opt/node/bin/node",
+      gitPath: "/opt/git/bin/git",
+      dockerPath: "/opt/docker/docker",
+      dockerHost: "unix:///run/user/1001/docker.sock",
+      scriptApprovedRoot: "/repo",
+      scriptLogicalPath: "/repo/services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1",
+      scriptSize: 123,
+      scriptSha256: "3".repeat(64),
+    }),
+    /approvalManifestPath is required/i,
+  );
+
+  assert.match(launcherSource, /\/opt\/openclaw-tools\/powershell-7\.6\.2\/pwsh/);
+  assert.match(
+    launcherSource,
+    /cd7ac031490349b4ffd203cadf8922af85113b84ab9bfc28a50d03730d9309bc/,
+  );
+  assert.match(launcherSource, /shell:\s*false/);
+  assert.match(launcherSource, /stdio:\s*\["pipe",\s*"inherit",\s*"pipe"\]/);
+  assert.match(launcherSource, /verify-reviewed-source-gate\.mjs/);
+  assert.match(launcherSource, /run-reviewed-task2\.ps1/);
+  assert.match(launcherSource, /getAuthenticatedReviewedBlob/);
+  assert.match(launcher.POWERSHELL_STDIN_BOOTSTRAP, /Parser\]::ParseInput/);
+  assert.match(launcher.POWERSHELL_STDIN_BOOTSTRAP, /GetScriptBlock\(\)/);
+  assert.match(launcher.POWERSHELL_STDIN_BOOTSTRAP, /UTF8Encoding/);
+  assert.match(launcher.POWERSHELL_STDIN_BOOTSTRAP, /SHA256/);
+  assert.doesNotMatch(launcherSource, /['"]\/dev\/stdin['"]/);
+  assert.doesNotMatch(launcherSource, /process\.env/);
+
+  assert.match(inner, /^#Requires -Version 7\.3/m);
+  assert.match(inner, /Invoke-ReviewedSourceGate -Commit \$ReviewedTree/);
+  assert.match(inner, /Invoke-ReviewedPowerShellBlob/);
+  assert.match(inner, /Parser\]::ParseInput/);
+  assert.match(inner, /GetScriptBlock\(\)/);
+  assert.match(inner, /build-reproducible-image\.ps1/);
+  assert.match(inner, /create-evidence-child\.ps1/);
+  assert.doesNotMatch(inner, /['"]\/dev\/stdin['"]/);
+  assert.doesNotMatch(inner, /Invoke-Expression/);
+  assert.doesNotMatch(inner, /ScriptBlock\]::Create/);
+  assert.doesNotMatch(inner, /&\s+\$reviewed(?:Image|Evidence)Helper\b/);
+});
+
+test("Task 2 runbook exposes only the installed closed approval-manifest entrypoint", async () => {
+  const repoRoot = resolve(cellRoot, "../..");
+  const [plan, design, readme] = await Promise.all([
+    readFile(
+      join(repoRoot, "docs/superpowers/plans/2026-07-26-openclaw-zalo-personal.md"),
+      "utf8",
+    ),
+    readFile(
+      join(repoRoot, "docs/superpowers/specs/2026-07-26-openclaw-zalo-personal-design.md"),
+      "utf8",
+    ),
+    readCell("README.md"),
+  ]);
+  const task2Start = plan.indexOf("### Task 2:");
+  const task3Start = plan.indexOf("### Task 3:", task2Start);
+  assert.ok(task2Start >= 0 && task3Start > task2Start);
+  const task2Plan = plan.slice(task2Start, task3Start);
+
+  assert.match(
+    task2Plan,
+    /\/opt\/openclaw-tools\/reviewed-task2-bootstrap\/install-reviewed-task2-launcher\.mjs/,
+  );
+  assert.match(task2Plan, /authenticated raw R installer bytes out-of-band/i);
+  assert.doesNotMatch(
+    task2Plan,
+    /install[\s\S]{0,300}\$\{source_root\}\/services\/openclaw-zalo-cell\/scripts\/install-reviewed-task2-launcher\.mjs/,
+  );
+  assert.match(
+    task2Plan,
+    /\/opt\/openclaw-tools\/reviewed-task2-approvals\/\$\{?reviewed_r\}?\/approval-manifest-v1\.json/,
+  );
+  assert.match(task2Plan, /--approval-manifest\s+"\$approval_manifest"/);
+  assert.match(task2Plan, /--phase\s+qualification/);
+  assert.match(task2Plan, /--phase\s+evidence/);
+  for (const callerOwnedOption of [
+    "--reviewed-tree",
+    "--expected-m",
+    "--m-review-report",
+    "--r-review-report",
+    "--node-path",
+    "--git-path",
+    "--npm-root",
+    "--buildx-path",
+    "--docker-path",
+    "--docker-host",
+  ]) {
+    assert.doesNotMatch(task2Plan, new RegExp(`${callerOwnedOption}\\s+`));
+  }
+  assert.doesNotMatch(task2Plan, /PowerShell 7\.3(?:\+|\b)/);
+  assert.match(task2Plan, /PowerShell 7\.6\.2/);
+
+  for (const document of [design, readme]) {
+    assert.match(document, /PowerShell 7\.6\.2/);
+    assert.match(document, /approval-manifest-v1\.json/);
+    assert.match(document, /launch-reviewed-task2\.mjs/);
+    assert.doesNotMatch(document, /PowerShell 7\.3(?:\+|\b)/);
+  }
+  assert.match(readme, /install-reviewed-task2-launcher\.mjs/);
+  assert.match(readme, /\/opt\/openclaw-tools\/reviewed-task2\//);
+});
+
+test("every Task 2 PowerShell stage requires the exact pinned 7.6.2 runtime", async () => {
+  for (const path of [
+    "scripts/run-reviewed-task2.ps1",
+    "scripts/build-reproducible-image.ps1",
+    "scripts/create-evidence-child.ps1",
+  ]) {
+    const source = await readCell(path);
+    assert.match(source, /^#Requires -Version 7\.3/m);
+    assert.match(source, /\$PSVersionTable\.PSVersion\s*-ne\s*\[version\]['"]7\.6\.2['"]/);
+    assert.match(source, /PowerShell 7\.6\.2/);
+  }
+});
+
+test("reviewed source gate rejects executable local Git configuration without running filters", async () => {
+  const { verifyReviewedSourceGate } = await loadScript("scripts/verify-reviewed-source-gate.mjs");
+  const gitPath = localGitPath();
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "openclaw-reviewed-source-gate-"));
+  const markerPath = join(repositoryRoot, "filter-executed.marker");
+  const filterPath = join(repositoryRoot, "filter.mjs");
+  try {
+    execFileSync(gitPath, ["init", "--quiet"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["config", "user.email", "gate@example.invalid"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["config", "user.name", "Gate Fixture"], { cwd: repositoryRoot });
+    await writeFile(join(repositoryRoot, "payload.txt"), "reviewed\n");
+    await writeFile(
+      filterPath,
+      "import { writeFileSync } from 'node:fs';\n" +
+        "writeFileSync(process.argv[2], 'executed\\n');\n" +
+        "process.stdin.pipe(process.stdout);\n",
+    );
+    execFileSync(gitPath, ["add", "--", "payload.txt"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["commit", "--quiet", "-m", "fixture"], { cwd: repositoryRoot });
+    const reviewedTree = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: repositoryRoot,
+      encoding: "ascii",
+    }).trim();
+    const filterCommand = `\"${process.execPath}\" \"${filterPath}\" \"${markerPath}\"`;
+    execFileSync(gitPath, ["config", "filter.inject.clean", filterCommand], { cwd: repositoryRoot });
+
+    await assert.rejects(
+      verifyReviewedSourceGate({ gitPath, repositoryRoot, reviewedTree }),
+      /local Git configuration|filter\.inject\.clean/i,
+    );
+    await assert.rejects(stat(markerPath), /ENOENT/);
+
+    execFileSync(gitPath, ["config", "--unset-all", "filter.inject.clean"], { cwd: repositoryRoot });
+    const gitDir = execFileSync(gitPath, ["rev-parse", "--absolute-git-dir"], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+    }).trim();
+    await mkdir(join(gitDir, "info"), { recursive: true });
+    await writeFile(join(gitDir, "info", "attributes"), "payload.txt filter=inject\n");
+    execFileSync(gitPath, ["config", "filter.inject.clean", filterCommand], {
+      cwd: repositoryRoot,
+    });
+    await assert.rejects(
+      verifyReviewedSourceGate({ gitPath, repositoryRoot, reviewedTree }),
+      /local Git configuration|filter\.inject\.clean|info\/attributes|local Git attributes/i,
+    );
+    await assert.rejects(stat(markerPath), /ENOENT/);
+    execFileSync(gitPath, ["config", "--unset-all", "filter.inject.clean"], {
+      cwd: repositoryRoot,
+    });
+
+    await writeFile(join(gitDir, "info", "attributes"), "");
+    const clean = await verifyReviewedSourceGate({
+      gitPath,
+      repositoryRoot,
+      reviewedTree,
+      allowedUntrackedPaths: ["filter.mjs"],
+    });
+    assert.equal(clean.reviewed_tree, reviewedTree);
+    assert.equal(clean.tracked_file_count, 1);
+    assert.equal(clean.untracked_file_count, 1, "the untracked inert filter fixture is reported");
+    assert.deepEqual(clean.allowed_untracked_paths, ["filter.mjs"]);
+    await assert.rejects(stat(markerPath), /ENOENT/);
+    await assert.rejects(
+      verifyReviewedSourceGate({
+        gitPath,
+        repositoryRoot,
+        reviewedTree,
+        allowedUntrackedPaths: [
+          "filter.mjs",
+          "services\\openclaw-zalo-cell\\.release\\candidate.json",
+        ],
+      }),
+      /portable repository path|backslash/i,
+    );
+
+    execFileSync(gitPath, ["update-index", "--skip-worktree", "payload.txt"], {
+      cwd: repositoryRoot,
+    });
+    await assert.rejects(
+      verifyReviewedSourceGate({
+        gitPath,
+        repositoryRoot,
+        reviewedTree,
+        allowedUntrackedPaths: ["filter.mjs"],
+      }),
+      /index flags|skip-worktree|non-default index/i,
+    );
+    execFileSync(gitPath, ["update-index", "--no-skip-worktree", "payload.txt"], {
+      cwd: repositoryRoot,
+    });
+
+    execFileSync(gitPath, ["update-index", "--assume-unchanged", "payload.txt"], {
+      cwd: repositoryRoot,
+    });
+    await assert.rejects(
+      verifyReviewedSourceGate({
+        gitPath,
+        repositoryRoot,
+        reviewedTree,
+        allowedUntrackedPaths: ["filter.mjs"],
+      }),
+      /index flags|assume-unchanged|non-default index/i,
+    );
+    execFileSync(gitPath, ["update-index", "--no-assume-unchanged", "payload.txt"], {
+      cwd: repositoryRoot,
+    });
+
+    await writeFile(join(repositoryRoot, "payload.txt"), "mutated\n");
+    await assert.rejects(
+      verifyReviewedSourceGate({
+        gitPath,
+        repositoryRoot,
+        reviewedTree,
+        allowedUntrackedPaths: ["filter.mjs"],
+      }),
+      /tracked worktree blob mismatch/i,
+    );
+    await assert.rejects(stat(markerPath), /ENOENT/);
+  } finally {
+    await rm(repositoryRoot, { recursive: true, force: true });
+  }
+});
+
+test("reviewed source gate CLI executes directly from authenticated stdin bytes", async () => {
+  const gitPath = localGitPath();
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "openclaw-source-gate-stdin-"));
+  try {
+    execFileSync(gitPath, ["init", "--quiet"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["config", "user.email", "gate@example.invalid"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["config", "user.name", "Gate Fixture"], { cwd: repositoryRoot });
+    await writeFile(join(repositoryRoot, "payload.txt"), "reviewed\n");
+    execFileSync(gitPath, ["add", "--", "payload.txt"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["commit", "--quiet", "-m", "fixture"], { cwd: repositoryRoot });
+    const reviewedTree = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: repositoryRoot,
+      encoding: "ascii",
+    }).trim();
+    const gitSha256 = sha256(await readFile(gitPath));
+    const sourceGate = await readCell("scripts/verify-reviewed-source-gate.mjs");
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-",
+        "--git-path",
+        gitPath,
+        "--repository-root",
+        repositoryRoot,
+        "--reviewed-tree",
+        reviewedTree,
+        "--git-sha256",
+        gitSha256,
+      ],
+      { cwd: repositoryRoot, encoding: "utf8", input: sourceGate },
+    );
+    const record = JSON.parse(stdout);
+    assert.equal(record.reviewed_tree, reviewedTree);
+    assert.equal(record.tracked_file_count, 1);
+    assert.deepEqual(record.allowed_untracked_paths, []);
+  } finally {
+    await rm(repositoryRoot, { recursive: true, force: true });
+  }
+});
+
+test("reviewed-tree exporter CLI executes directly from authenticated stdin bytes", async () => {
+  const gitPath = localGitPath();
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "openclaw-exporter-stdin-"));
+  const outputRoot = join(repositoryRoot, "reviewed-output");
+  const manifestPath = join(repositoryRoot, "reviewed-manifest.json");
+  try {
+    execFileSync(gitPath, ["init", "--quiet"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["config", "user.email", "exporter@example.invalid"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["config", "user.name", "Exporter Fixture"], { cwd: repositoryRoot });
+    await writeFile(join(repositoryRoot, "payload.txt"), "reviewed-export\n");
+    execFileSync(gitPath, ["add", "--", "payload.txt"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["commit", "--quiet", "-m", "fixture"], { cwd: repositoryRoot });
+    const reviewedTree = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: repositoryRoot,
+      encoding: "ascii",
+    }).trim();
+    const localGitSha256 = sha256(await readFile(gitPath));
+    const localGitVersion = execFileSync(gitPath, ["--version"], { encoding: "utf8" })
+      .trim()
+      .replace(/^git version /u, "");
+    const exporter = (await readCell("scripts/export-reviewed-tree.mjs"))
+      .replace(GIT_LINUX_SHA256, localGitSha256)
+      .replace('const GIT_VERSION = "2.53.0";', `const GIT_VERSION = ${JSON.stringify(localGitVersion)};`);
+    execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-",
+        "export",
+        "--git-path",
+        gitPath,
+        "--repository-root",
+        repositoryRoot,
+        "--reviewed-tree",
+        reviewedTree,
+        "--output-root",
+        outputRoot,
+        "--manifest",
+        manifestPath,
+      ],
+      { cwd: repositoryRoot, input: exporter },
+    );
+    assert.equal(await readFile(join(outputRoot, "payload.txt"), "utf8"), "reviewed-export\n");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    assert.equal(manifest.reviewed_tree, reviewedTree);
+  } finally {
+    await rm(repositoryRoot, { recursive: true, force: true });
+  }
+});
+
+test("package-manager authority CLI evaluates authenticated stdin bytes", async () => {
+  const authority = await readCell("scripts/verify-package-manager-authority.mjs");
+  assert.throws(
+    () => execFileSync(process.execPath, ["--input-type=module", "-"], { input: authority }),
+    /usage: verify-package-manager-authority\.mjs/,
+  );
+});
+
+test("reviewed source gate rejects linked-worktree config and common info attributes", async () => {
+  const { verifyReviewedSourceGate } = await loadScript("scripts/verify-reviewed-source-gate.mjs");
+  const gitPath = localGitPath();
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "openclaw-source-gate-common-"));
+  const worktreeRoot = `${repositoryRoot}-linked`;
+  try {
+    execFileSync(gitPath, ["init", "--quiet"], { cwd: repositoryRoot });
+    execFileSync(gitPath, ["config", "user.email", "gate@example.invalid"], {
+      cwd: repositoryRoot,
+    });
+    execFileSync(gitPath, ["config", "user.name", "Gate Fixture"], {
+      cwd: repositoryRoot,
+    });
+    await writeFile(join(repositoryRoot, "payload.bin"), Buffer.from([0, 1, 2, 3]));
+    execFileSync(gitPath, ["-c", "core.autocrlf=false", "add", "--", "payload.bin"], {
+      cwd: repositoryRoot,
+    });
+    execFileSync(gitPath, ["commit", "--quiet", "-m", "fixture"], { cwd: repositoryRoot });
+    const reviewedTree = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: repositoryRoot,
+      encoding: "ascii",
+    }).trim();
+    execFileSync(
+      gitPath,
+      ["-c", "core.autocrlf=false", "worktree", "add", "--quiet", worktreeRoot, reviewedTree],
+      { cwd: repositoryRoot },
+    );
+
+    execFileSync(gitPath, ["config", "extensions.worktreeConfig", "true"], {
+      cwd: repositoryRoot,
+    });
+    execFileSync(
+      gitPath,
+      ["config", "--worktree", "filter.inject.clean", "sh -c 'touch injected.marker; cat'"],
+      { cwd: worktreeRoot },
+    );
+    await assert.rejects(
+      verifyReviewedSourceGate({ gitPath, repositoryRoot: worktreeRoot, reviewedTree }),
+      /worktreeConfig|worktree configuration|local Git configuration/i,
+    );
+
+    execFileSync(gitPath, ["config", "--worktree", "--unset-all", "filter.inject.clean"], {
+      cwd: worktreeRoot,
+    });
+    execFileSync(gitPath, ["config", "--unset-all", "extensions.worktreeConfig"], {
+      cwd: repositoryRoot,
+    });
+    const commonDir = execFileSync(
+      gitPath,
+      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { cwd: worktreeRoot, encoding: "utf8" },
+    ).trim();
+    await mkdir(join(commonDir, "info"), { recursive: true });
+    await writeFile(join(commonDir, "info", "attributes"), "payload.bin filter=inject\n");
+    await assert.rejects(
+      verifyReviewedSourceGate({ gitPath, repositoryRoot: worktreeRoot, reviewedTree }),
+      /info\/attributes|local Git attributes/i,
+    );
+  } finally {
+    try {
+      execFileSync(gitPath, ["worktree", "remove", "--force", worktreeRoot], {
+        cwd: repositoryRoot,
+      });
+    } catch {
+      // The recursive fixture cleanup below is authoritative.
+    }
+    await rm(worktreeRoot, { recursive: true, force: true });
+    await rm(repositoryRoot, { recursive: true, force: true });
+  }
+});
+
+test("package-manager authority hashes the complete npm runtime closure", async () => {
+  const { computePackageManagerAuthority, assertPackageManagerAuthority } = await loadScript(
+    "scripts/verify-package-manager-authority.mjs",
+  );
+  const npmRoot = await mkdtemp(join(tmpdir(), "openclaw-npm-authority-"));
+  try {
+    await mkdir(join(npmRoot, "bin"), { recursive: true });
+    await mkdir(join(npmRoot, "lib"), { recursive: true });
+    await writeFile(join(npmRoot, "package.json"), '{"name":"npm","version":"11.12.1"}\n');
+    await writeFile(join(npmRoot, "bin", "npm-cli.js"), "console.log('fixture');\n");
+    await writeFile(join(npmRoot, "lib", "runtime.js"), "export const fixture = true;\n");
+    const first = await computePackageManagerAuthority(npmRoot);
+    assert.equal(first.version, "11.12.1");
+    assert.equal(first.entry_count, 5);
+    await assertPackageManagerAuthority(npmRoot, first);
+
+    await writeFile(join(npmRoot, "lib", "runtime.js"), "export const fixture = false;\n");
+    await assert.rejects(
+      assertPackageManagerAuthority(npmRoot, first),
+      /package-manager authority.*mismatch/i,
+    );
+  } finally {
+    await rm(npmRoot, { recursive: true, force: true });
+  }
+});
+
+test("package-manager authority binds npm to the same official Node distribution", async () => {
+  const { computePackageManagerAuthority } = await loadScript(
+    "scripts/verify-package-manager-authority.mjs",
+  );
+  const distributionRoot = await mkdtemp(join(tmpdir(), "openclaw-node-authority-"));
+  const npmRoot = join(distributionRoot, "lib", "node_modules", "npm");
+  const nodePath = join(distributionRoot, "bin", process.platform === "win32" ? "node.exe" : "node");
+  const unrelatedNodePath = join(distributionRoot, "unrelated", "node");
+  try {
+    await mkdir(join(npmRoot, "bin"), { recursive: true });
+    await mkdir(dirname(nodePath), { recursive: true });
+    await mkdir(dirname(unrelatedNodePath), { recursive: true });
+    await writeFile(join(npmRoot, "package.json"), '{"name":"npm","version":"11.12.1"}\n');
+    await writeFile(join(npmRoot, "bin", "npm-cli.js"), "console.log('fixture');\n");
+    await writeFile(nodePath, "node fixture\n");
+    await writeFile(unrelatedNodePath, "unrelated node fixture\n");
+
+    const authority = await computePackageManagerAuthority(npmRoot, { nodePath });
+    assert.equal(authority.node_distribution_root, distributionRoot);
+    await assert.rejects(
+      computePackageManagerAuthority(npmRoot, { nodePath: unrelatedNodePath }),
+      /same official Node distribution|distribution root|npm root/i,
+    );
+  } finally {
+    await rm(distributionRoot, { recursive: true, force: true });
+  }
+});
+
+test("vendor verification scripts never recurse through an ambient npm command", async () => {
+  const vendorPackage = JSON.parse(await readCell("vendor/zalouser-bridge/package.json"));
+  for (const [name, script] of Object.entries(vendorPackage.scripts)) {
+    assert.doesNotMatch(script, /(^|(?:&&|\|\|)\s*)npm(?:\s|$)/u, `${name} uses ambient npm`);
+  }
+  for (const path of [
+    "vendor/zalouser-bridge/scripts/pack.mjs",
+    "vendor/zalouser-bridge/scripts/verify-artifact.mjs",
+  ]) {
+    const source = await readCell(path);
+    assert.doesNotMatch(source, /dirname\(process\.execPath\)[\s\S]*node_modules\/npm/u);
+    assert.match(source, /process\.env\.npm_execpath/);
+  }
+});
+
+test("Task 2 invokes only the hash-bound npm closure under pinned Node", async () => {
+  const flow = await readCell("scripts/run-reviewed-task2.ps1");
+  assert.match(flow, /aebb5b5b1892a7dd23c04af9b5afa24747f752beff2e4f2e781d9eb3830f93d9/);
+  assert.match(flow, /2169/);
+  assert.match(flow, /8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7/);
+  assert.match(flow, /verify-package-manager-authority\.mjs/);
+  assert.match(flow, /Invoke-QualificationNpm/);
+  assert.match(flow, /Invoke-QualificationNodeBlob -Binding \$reviewedBootstrap\.npmAuthority[\s\S]*--node-path['"],\s*\$nodePath/);
+  assert.match(flow, /verify-mutable/);
+  assert.match(flow, /--ignore-scripts/);
+  assert.doesNotMatch(flow, /['"]run['"],\s*['"]verify['"]/);
+  assert.doesNotMatch(flow, /^\s*npm(?:\.cmd)?\s/m);
+  assert.doesNotMatch(flow, /^\s*npx(?:\.cmd)?\s/m);
+  assert.doesNotMatch(flow, /status['"],\s*['"]--porcelain/);
+  assert.doesNotMatch(flow, /diff['"],\s*['"]--cached/);
+  const sourceGateCall = flow.indexOf("Invoke-ReviewedSourceGate -Commit $R");
+  const npmClosureCall = flow.indexOf("Invoke-QualificationNodeBlob -Binding $reviewedBootstrap.npmAuthority");
+  assert.ok(sourceGateCall >= 0 && npmClosureCall > sourceGateCall);
 });
 
 test("qualification reacquires reviewed upstream online before any stale archive or output can be used", async () => {
@@ -1656,17 +2571,19 @@ test("evidence-child helper uses absolute verified candidates and exact R to E l
   assert.match(script, /'--docker-sha256', \$dockerSha256/);
   assert.match(script, /'--expected-m', \$ExpectedM/);
   assert.match(script, /'--git-repository-root', \$sourceRoot/);
-  assert.match(script, /Assert-EvidenceOnlyWorktreeStatus/);
-  assert.match(script, /hash-object[\s\S]*verify-image-lock\.mjs/);
-  assert.match(script, /hash-object[\s\S]*build-evidence\.schema\.v1\.json/);
-  assert.match(script, /hash-object[\s\S]*image-lock\.json/);
-  assert.match(script, /hash-object[\s\S]*behavior-probe-runner\.mjs/);
+  assert.match(script, /Invoke-ReviewedSourceGate/);
+  assert.match(script, /export-reviewed-tree\.mjs/);
+  assert.match(script, /verify-reviewed-source-gate\.mjs/);
+  assert.match(script, /Get-GitBlobSha256[\s\S]*verify-image-lock\.mjs/);
   assert.match(script, /rev-list[\s\S]*--parents[\s\S]*-n[\s\S]*1/);
-  const commitIndex = script.indexOf("Invoke-Git @('commit', '-m', 'chore(openclaw-zalo): record verified evidence E'");
+  const commitIndex = script.indexOf("'commit-tree'");
   assert.ok(commitIndex > 0);
   const postCommit = script.slice(commitIndex);
   assert.match(postCommit, /rev-parse[\s\S]*\$E`?:services\/openclaw-zalo-cell\/build-evidence\.json/);
-  assert.match(postCommit, /cat-file[\s\S]*blob[\s\S]*committedEvidence/i);
+  assert.match(
+    postCommit,
+    /(?:cat-file[\s\S]*blob|Get-AuthenticatedGitBlobByOid)[\s\S]*committedEvidence/i,
+  );
   assert.match(postCommit, /candidateEvidenceSha256/);
   assert.match(script, /function Assert-SourceWorktreeState/);
   assert.match(script, /function Assert-RetainedAuthorityBindings/);
@@ -1677,7 +2594,10 @@ test("evidence-child helper uses absolute verified candidates and exact R to E l
   assert.match(retainedBindingHelper, /candidateArchiveSha256/);
   assert.match(retainedBindingHelper, /retainedMReviewSha256/);
   assert.match(retainedBindingHelper, /retainedRReviewSha256/);
-  assert.match(script, /Invoke-Git[\s\S]*'worktree'[\s\S]*'add'[\s\S]*'--detach'/);
+  assert.match(script, /Invoke-Git[\s\S]*'worktree'[\s\S]*'add'[\s\S]*'--detach'[\s\S]*'--no-checkout'/);
+  assert.match(script, /'hash-object'[\s\S]*'-w'[\s\S]*'--stdin'/);
+  assert.match(script, /'update-index'[\s\S]*'--cacheinfo'/);
+  assert.match(script, /'write-tree'/);
   assert.match(script, /Invoke-Git[\s\S]*'worktree'[\s\S]*'remove'[\s\S]*'--force'/);
   assert.match(script, /rev-parse[\s\S]*\$E\^/);
   assert.match(script, /services\/openclaw-zalo-cell\/build-evidence\.json/);
@@ -1685,7 +2605,12 @@ test("evidence-child helper uses absolute verified candidates and exact R to E l
   assert.ok(fastForwardIndex > commitIndex);
   assert.match(script, /symbolic-ref[\s\S]*--quiet[\s\S]*HEAD/);
   assert.match(script, /update-ref[\s\S]*\$sourceBranchRef[\s\S]*\$E[\s\S]*\$ReviewedTree/);
-  assert.match(script, /read-tree[\s\S]*--reset[\s\S]*-u[\s\S]*\$E/);
+  assert.match(script, /read-tree[\s\S]*\$E/);
+  assert.doesNotMatch(script, /'read-tree'[\s\S]{0,120}'-u'/);
+  assert.doesNotMatch(script, /'status'[\s\S]*--porcelain/);
+  assert.doesNotMatch(script, /'diff'[\s\S]*--cached/);
+  assert.doesNotMatch(script, /Invoke-Git\s+@\('add'/);
+  assert.doesNotMatch(script, /Invoke-Git\s+@\('commit'/);
   const beforeFastForward = script.slice(commitIndex, fastForwardIndex);
   assert.match(
     beforeFastForward,
@@ -1707,6 +2632,80 @@ test("evidence-child helper uses absolute verified candidates and exact R to E l
   assert.match(afterFastForward, /Assert-NoReparseChain\s+-Path\s+\$fastForwardedEvidence/);
   assert.doesNotMatch(script, /--evidence['"],?\s*['"]services\//);
   assert.doesNotMatch(script, /--schema['"],?\s*['"]services\//);
+});
+
+test("evidence-child helper authenticates the complete R export and E object before promotion", async () => {
+  const script = await readCell("scripts/create-evidence-child.ps1");
+  const exportFunctionStart = script.indexOf("function Invoke-ReviewedTreeExport");
+  const exportFunctionEnd = script.indexOf("$gitVersionOutput =", exportFunctionStart);
+  assert.ok(exportFunctionStart > 0 && exportFunctionEnd > exportFunctionStart);
+  const exportFunction = script.slice(exportFunctionStart, exportFunctionEnd);
+  assert.match(exportFunction, /['"]export['"]/);
+  assert.match(exportFunction, /['"]verify['"]/);
+
+  const lifecycleStart = script.indexOf("$reviewedExportRoot =");
+  const commitTree = script.indexOf("'commit-tree'", lifecycleStart);
+  const verifierReplay = script.indexOf("Invoke-EvidenceReplay", lifecycleStart);
+  const exportReverify = script.indexOf("Assert-ReviewedTreeExport", verifierReplay + 1);
+  assert.ok(lifecycleStart > 0 && verifierReplay > lifecycleStart);
+  assert.ok(exportReverify > verifierReplay && exportReverify < commitTree);
+  assert.match(
+    script.slice(lifecycleStart, verifierReplay),
+    /Assert-ReviewedTreeExport[\s\S]*\$reviewedExportRoot/,
+  );
+  assert.match(
+    script,
+    /\$eDestination\s*=\s*\[IO\.Path\]::GetFullPath\(\(Join-Path\s+\$eWorktree\s+'candidate-build-evidence\.json'\)\)/,
+  );
+  assert.doesNotMatch(
+    script,
+    /\$eDestination\s*=\s*\[IO\.Path\]::GetFullPath\(\(Join-Path\s+\$reviewedExportRoot/,
+  );
+
+  const postCommit = script.slice(commitTree);
+  assert.match(postCommit, /Get-AuthenticatedGitCommitByOid[\s\S]*\$E/);
+  assert.match(postCommit, /Get-AuthenticatedGitTreeByOid[\s\S]*\$eTree/);
+  assert.match(postCommit, /diff-tree[\s\S]*--raw[\s\S]*--no-renames/);
+  assert.match(postCommit, /100644[\s\S]*blob[\s\S]*services\/openclaw-zalo-cell\/build-evidence\.json/);
+  assert.match(postCommit, /Invoke-EvidenceReplay[\s\S]*committedEvidence/i);
+});
+
+test("evidence-child promotion retains E and makes rollback conditional and complete", async () => {
+  const script = await readCell("scripts/create-evidence-child.ps1");
+  const commitTree = script.indexOf("'commit-tree'");
+  assert.match(script, /refs\/ihome\/openclaw\/evidence-staging\//);
+  const stagingRef = script.indexOf(
+    "Invoke-Git @('-C', $sourceRoot, 'update-ref', '--no-deref', $stagingRef, $E, $zeroOid)",
+    commitTree,
+  );
+  const worktreeCleanup = script.indexOf("'worktree', 'remove', '--force'", commitTree);
+  const fastForward = script.indexOf(
+    "Invoke-Git @('-C', $sourceRoot, 'update-ref', '--no-deref', $sourceBranchRef, $E, $ReviewedTree)",
+  );
+  assert.ok(stagingRef > commitTree && stagingRef < worktreeCleanup && fastForward > worktreeCleanup);
+  assert.match(
+    script.slice(stagingRef, worktreeCleanup),
+    /update-ref[\s\S]*\$stagingRef[\s\S]*\$E[\s\S]*\$zeroOid/,
+  );
+
+  const promotionCatch = script.indexOf("} catch {", fastForward);
+  const finalBinding = script.indexOf("fast-forwarded evidence final binding", fastForward);
+  assert.ok(finalBinding > fastForward && finalBinding < promotionCatch);
+  const rollback = script.slice(promotionCatch, script.length);
+  assert.match(rollback, /\$rollbackRefRestored\s*=\s*\$false/);
+  assert.match(
+    rollback,
+    /update-ref[\s\S]*\$sourceBranchRef[\s\S]*\$ReviewedTree[\s\S]*\$E[\s\S]*\$rollbackRefRestored\s*=\s*\$true/,
+  );
+  assert.match(
+    rollback,
+    /if\s*\(\$rollbackRefRestored\)[\s\S]*read-tree[\s\S]*\$ReviewedTree/,
+  );
+  assert.match(
+    rollback,
+    /failed fast-forward evidence rollback[\s\S]*candidateEvidenceSha256[\s\S]*committedEvidenceOid[\s\S]*Remove-Item/,
+  );
+  assert.match(script, /update-ref[\s\S]*'-d'[\s\S]*\$stagingRef[\s\S]*\$E/);
 });
 
 test("evidence verifier rejects relative evidence and schema operands", async (t) => {
@@ -1816,6 +2815,70 @@ test("verifier CLI rejects duplicate, unknown, and unsupported mode options", as
   assert.throws(
     () => validateCliModeArguments({ mode: "evidence-replay-v1", evidence: resolve("evidence.json"), "buildx-path": resolve("buildx") }),
     /--buildx-path.*not allowed/i,
+  );
+});
+
+test("verifier CLI requires one absolute approval manifest only in authority-bearing modes", async () => {
+  const {
+    assertAbsoluteQualifyingOperands,
+    parseCliArguments,
+    validateCliModeArguments,
+  } = await loadScript("scripts/verify-image-lock.mjs");
+  const absolute = (name) => resolve("C:/tmp/openclaw-authority-cli", name);
+  const shared = {
+    "git-path": absolute("git"),
+    schema: absolute("schema.json"),
+    evidence: absolute("evidence.json"),
+    "expected-m": "1".repeat(40),
+    "reviewed-tree": "2".repeat(40),
+    "git-repository-root": absolute("repository"),
+    "m-review-report": absolute("m-review.json"),
+    "r-review-report": absolute("r-review.json"),
+    "oci-a": absolute("a.oci.tar"),
+    "oci-b": absolute("b.oci.tar"),
+    "stock-oci": absolute("stock.oci.tar"),
+    "upstream-tgz": absolute("upstream.tgz"),
+    "behavior-runner": absolute("behavior-runner.mjs"),
+    "docker-path": absolute("docker"),
+    "docker-host": "unix:///run/user/1001/docker.sock",
+    "docker-sha256": "3".repeat(64),
+  };
+  const approvalManifest = absolute("approval-manifest-v1.json");
+  const qualify = {
+    mode: "qualify",
+    ...shared,
+    "release-artifact": absolute("release.oci.tar"),
+    "reviewed-source-root": absolute("reviewed-source"),
+    "reviewed-export-manifest": absolute("reviewed-export.json"),
+    "reviewed-export-manifest-sha256": "4".repeat(64),
+    "buildx-path": absolute("buildx"),
+    "buildx-sha256": "5".repeat(64),
+  };
+  const replay = { mode: "evidence-replay-v1", ...shared };
+
+  assert.throws(() => validateCliModeArguments(qualify), /--approval-manifest is required/i);
+  assert.equal(
+    validateCliModeArguments({ ...qualify, "approval-manifest": approvalManifest }),
+    "qualify",
+  );
+  assert.throws(() => validateCliModeArguments(replay), /--approval-manifest is required/i);
+  assert.equal(
+    validateCliModeArguments({ ...replay, "approval-manifest": approvalManifest }),
+    "evidence-replay-v1",
+  );
+  assert.throws(
+    () => validateCliModeArguments({ mode: "lock", "approval-manifest": approvalManifest }),
+    /--approval-manifest is not allowed in lock mode/i,
+  );
+  assert.equal(
+    parseCliArguments(["--mode", "qualify", "--approval-manifest", approvalManifest])[
+      "approval-manifest"
+    ],
+    approvalManifest,
+  );
+  assert.throws(
+    () => assertAbsoluteQualifyingOperands({ ...qualify, "approval-manifest": "relative.json" }),
+    /--approval-manifest path must be absolute/i,
   );
 });
 
@@ -1950,6 +3013,46 @@ test("Git object verification rejects forged loose commit and tree bytes under a
       paths: ["a.txt"],
     }),
     /Git.*(?:hash|object)|(?:hash|object).*Git/i,
+  );
+});
+
+test("Task 2 launcher authenticates every commit on the approved M-to-R ancestry path", async (t) => {
+  const { authenticateRawCommitAncestry } = await loadScript("scripts/launch-reviewed-task2.mjs");
+  assert.equal(typeof authenticateRawCommitAncestry, "function");
+  const gitPath = localGitPath();
+  const repositoryRoot = await mkdtemp(join(tmpdir(), "openclaw-raw-ancestry-"));
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+  execFileSync(gitPath, ["init", "--quiet"], { cwd: repositoryRoot });
+  const commit = async (value, message) => {
+    await writeFile(join(repositoryRoot, "a.txt"), `${value}\n`);
+    execFileSync(gitPath, ["add", "--", "a.txt"], { cwd: repositoryRoot });
+    execFileSync(
+      gitPath,
+      ["-c", "user.name=Codex", "-c", "user.email=noreply@openai.com", "commit", "--quiet", "-m", message],
+      { cwd: repositoryRoot },
+    );
+    return execFileSync(gitPath, ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "ascii" }).trim();
+  };
+  const expectedM = await commit("one", "M");
+  const intermediate = await commit("two", "I");
+  const reviewedTree = await commit("three", "R");
+  assert.doesNotThrow(() => authenticateRawCommitAncestry({ gitPath, repositoryRoot, expectedM, reviewedTree }));
+
+  const original = execFileSync(gitPath, ["cat-file", "commit", intermediate], {
+    cwd: repositoryRoot,
+    encoding: null,
+  });
+  const forged = Buffer.concat([original, Buffer.from("forged-ancestry\n", "utf8")]);
+  const objectDirectory = join(repositoryRoot, ".git", "objects", intermediate.slice(0, 2));
+  await mkdir(objectDirectory, { recursive: true });
+  await rm(join(objectDirectory, intermediate.slice(2)), { force: true });
+  await writeFile(
+    join(objectDirectory, intermediate.slice(2)),
+    deflateSync(Buffer.concat([Buffer.from(`commit ${forged.length}\0`, "ascii"), forged])),
+  );
+  assert.throws(
+    () => authenticateRawCommitAncestry({ gitPath, repositoryRoot, expectedM, reviewedTree }),
+    /raw Git object authentication|approved ancestry/i,
   );
 });
 
@@ -2880,6 +3983,86 @@ test("reviewed-tree exporter consumes raw Git blobs and rehashes its complete ou
   assert.doesNotMatch(source, /"(?:archive|checkout|restore)"/);
 });
 
+test("mutable verification export permits only dependency/output roots and rehashes reviewed files", async (t) => {
+  const { verifyMutableReviewedTree } = await loadScript("scripts/export-reviewed-tree.mjs");
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-mutable-reviewed-export-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const outputRoot = join(fixture, "source");
+  await mkdir(outputRoot);
+  const bytes = Buffer.from('{"private":true}\n', "utf8");
+  await writeFile(join(outputRoot, "package.json"), bytes);
+  const oid = createHash("sha1")
+    .update(Buffer.from(`blob ${bytes.length}\0`, "ascii"))
+    .update(bytes)
+    .digest("hex");
+  const manifest = {
+    schema_version: 1,
+    git_object_format: "sha1",
+    reviewed_tree: "1".repeat(40),
+    entries: [
+      {
+        path: "package.json",
+        type: "blob",
+        mode: "100644",
+        git_object_id: oid,
+        git_object_size: bytes.length,
+        content_size: bytes.length,
+        content_sha256: sha256(bytes),
+      },
+    ],
+  };
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  const manifestPath = join(fixture, "reviewed-tree-manifest.json");
+  await writeFile(manifestPath, manifestBytes);
+  await mkdir(join(outputRoot, "node_modules", "fixture"), { recursive: true });
+  await writeFile(join(outputRoot, "node_modules", "fixture", "index.js"), "fixture\n");
+  await mkdir(
+    join(outputRoot, "services", "openclaw-zalo-cell", "vendor", "zalouser-bridge", ".work"),
+    { recursive: true },
+  );
+  await writeFile(
+    join(
+      outputRoot,
+      "services",
+      "openclaw-zalo-cell",
+      "vendor",
+      "zalouser-bridge",
+      ".work",
+      "result.json",
+    ),
+    "{}\n",
+  );
+
+  assert.doesNotThrow(() =>
+    verifyMutableReviewedTree({
+      outputRoot,
+      manifestPath,
+      manifestSha256: sha256(manifestBytes),
+    }),
+  );
+  await writeFile(join(outputRoot, ".npmrc"), "script-shell=/tmp/evil\n");
+  assert.throws(
+    () =>
+      verifyMutableReviewedTree({
+        outputRoot,
+        manifestPath,
+        manifestSha256: sha256(manifestBytes),
+      }),
+    /unexpected mutable export path|file set mismatch|\.npmrc/i,
+  );
+  await rm(join(outputRoot, ".npmrc"));
+  await writeFile(join(outputRoot, "package.json"), '{"private":false}\n');
+  assert.throws(
+    () =>
+      verifyMutableReviewedTree({
+        outputRoot,
+        manifestPath,
+        manifestSha256: sha256(manifestBytes),
+      }),
+    /content mismatch|hash mismatch/i,
+  );
+});
+
 test("reviewed export binding rehashes every manifest entry and rejects checkout drift", async (t) => {
   const { verifyReviewedExportBinding } = await loadScript(
     "scripts/verify-image-lock.mjs",
@@ -3095,4 +4278,101 @@ test("qualifying supply-chain evidence fails before offline proof when online re
   assert.equal(attempts, 1);
   const source = await readCell("scripts/verify-image-lock.mjs");
   assert.match(source, /collectQualifyingSupplyChainEvidence[\s\S]*await reacquireQualifyingInputs/);
+});
+
+test("qualifying verifier authenticates the adjacent upstream module before evaluation", async () => {
+  const { loadReviewedUpstreamVerifier } = await loadScript(
+    "scripts/verify-image-lock.mjs",
+  );
+  assert.equal(typeof loadReviewedUpstreamVerifier, "function");
+  const gitPath = localGitPath();
+  const verifierPath = join(cellRoot, "scripts", "verify-image-lock.mjs");
+  const upstreamPath = join(
+    cellRoot,
+    "vendor",
+    "zalouser-bridge",
+    "scripts",
+    "verify-upstream.mjs",
+  );
+  const reviewedRoot = await mkdtemp(join(tmpdir(), "openclaw-reviewed-qualifier-"));
+  const reviewedVerifier = join(
+    reviewedRoot,
+    "services",
+    "openclaw-zalo-cell",
+    "scripts",
+    "verify-image-lock.mjs",
+  );
+  const reviewedUpstream = join(
+    reviewedRoot,
+    "services",
+    "openclaw-zalo-cell",
+    "vendor",
+    "zalouser-bridge",
+    "scripts",
+    "verify-upstream.mjs",
+  );
+  const markerPath = join(reviewedRoot, "fake-module-evaluated.marker");
+  try {
+    await mkdir(dirname(reviewedVerifier), { recursive: true });
+    await mkdir(dirname(reviewedUpstream), { recursive: true });
+    await copyFile(verifierPath, reviewedVerifier);
+    execFileSync(gitPath, ["init", "--quiet"], { cwd: reviewedRoot });
+    execFileSync(gitPath, ["config", "user.email", "qualifier@example.invalid"], { cwd: reviewedRoot });
+    execFileSync(gitPath, ["config", "user.name", "Qualifier Fixture"], { cwd: reviewedRoot });
+    const hostileDependency = join(reviewedRoot, "hostile-upstream.mjs");
+    await writeFile(
+      hostileDependency,
+      `import { writeFileSync } from "node:fs";\n` +
+        `writeFileSync(${JSON.stringify(markerPath)}, "evaluated\\n");\n` +
+        "export const computeMInputAggregate = () => 'fake';\n" +
+        "export const inspectTarball = () => ({ entries: [] });\n" +
+        "export const verifyCommittedInputs = async () => ({ inputCount: 87 });\n" +
+        "export const verifyOnlineInputs = async () => ({ inputCount: 87 });\n" +
+        "export const verifySigstoreAttestations = () => ({ npm: 'verified' });\n",
+    );
+    await writeFile(
+      reviewedUpstream,
+      'import { createHash } from "node:crypto";\n' +
+        `export { computeMInputAggregate, inspectTarball, verifyCommittedInputs, verifyOnlineInputs, verifySigstoreAttestations } from ${JSON.stringify(pathToFileURL(hostileDependency).href)};\n` +
+        "export const authenticatedBuiltin = createHash;\n",
+    );
+    execFileSync(gitPath, ["add", "--", "services"], { cwd: reviewedRoot });
+    execFileSync(gitPath, ["commit", "--quiet", "-m", "reviewed closure"], { cwd: reviewedRoot });
+    const reviewedTree = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: reviewedRoot,
+      encoding: "ascii",
+    }).trim();
+    await assert.rejects(
+      loadReviewedUpstreamVerifier({
+        gitPath,
+        repositoryRoot: reviewedRoot,
+        reviewedTree,
+        reviewedSourceRoot: reviewedRoot,
+        verifierPath: reviewedVerifier,
+      }),
+      /local or dynamic module dependency|module request|file:/i,
+    );
+    await assert.rejects(stat(markerPath), /ENOENT/);
+
+    await copyFile(upstreamPath, reviewedUpstream);
+    execFileSync(gitPath, ["add", "--", "services"], { cwd: reviewedRoot });
+    execFileSync(gitPath, ["commit", "--quiet", "-m", "safe reviewed closure"], {
+      cwd: reviewedRoot,
+    });
+    const safeReviewedTree = execFileSync(gitPath, ["rev-parse", "HEAD"], {
+      cwd: reviewedRoot,
+      encoding: "ascii",
+    }).trim();
+    const trusted = await loadReviewedUpstreamVerifier({
+      gitPath,
+      repositoryRoot: reviewedRoot,
+      reviewedTree: safeReviewedTree,
+      reviewedSourceRoot: reviewedRoot,
+      verifierPath: reviewedVerifier,
+    });
+    assert.equal(typeof trusted.verifyOnlineInputs, "function");
+    assert.equal(typeof trusted.verifySigstoreAttestations, "function");
+  } finally {
+    await rm(reviewedRoot, { recursive: true, force: true });
+  }
 });

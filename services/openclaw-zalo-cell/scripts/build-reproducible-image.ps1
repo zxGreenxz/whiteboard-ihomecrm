@@ -17,6 +17,9 @@ param(
   [string]$RReviewReportPath,
 
   [Parameter(Mandatory = $true)]
+  [string]$ApprovalManifestPath,
+
+  [Parameter(Mandatory = $true)]
   [string]$BuildxPath,
 
   [Parameter(Mandatory = $true)]
@@ -67,6 +70,10 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$RetainedUpstreamTarballPath
 )
+
+if ($PSVersionTable.PSVersion -ne [version]'7.6.2') {
+  throw "PowerShell 7.6.2 is required; current runtime is $($PSVersionTable.PSVersion)"
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -223,6 +230,11 @@ function Assert-HashUnchanged {
   )
 
   foreach ($binding in $Bindings.GetEnumerator()) {
+    Assert-NoReparseChain -Path $binding.Value.Path -Label "$($binding.Key) $Phase"
+    $item = Get-Item -LiteralPath $binding.Value.Path -Force -ErrorAction Stop
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+      throw "$($binding.Key) must remain a regular non-reparse file during $Phase"
+    }
     $actual = (Get-FileHash -LiteralPath $binding.Value.Path -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $binding.Value.Sha256) {
       throw "$($binding.Key) changed during $Phase"
@@ -385,6 +397,23 @@ for ($left = 0; $left -lt $retainedOutputPaths.Count; $left++) {
 if ($ExpectedM -eq $ReviewedTree) {
   throw 'ExpectedM and ReviewedTree must be distinct'
 }
+if (-not [IO.Path]::IsPathFullyQualified($ApprovalManifestPath)) {
+  throw 'ApprovalManifestPath must be absolute'
+}
+$canonicalApprovalManifest = [IO.Path]::GetFullPath($ApprovalManifestPath)
+$expectedApprovalManifest = [IO.Path]::GetFullPath("/opt/openclaw-tools/reviewed-task2/$ReviewedTree/approval-manifest-v1.json")
+if ($ApprovalManifestPath -cne $canonicalApprovalManifest -or
+    $canonicalApprovalManifest -cne $expectedApprovalManifest) {
+  throw 'ApprovalManifestPath must be the exact canonical R-bound Task 2 approval manifest path'
+}
+Assert-NoReparseChain -Path $canonicalApprovalManifest -Label 'Task 2 approval manifest'
+$resolvedApprovalManifest = (Resolve-Path -LiteralPath $canonicalApprovalManifest -ErrorAction Stop).Path
+$approvalManifestItem = Get-Item -LiteralPath $resolvedApprovalManifest -Force -ErrorAction Stop
+if ($resolvedApprovalManifest -cne $expectedApprovalManifest -or $approvalManifestItem.PSIsContainer -or
+    ($approvalManifestItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+  throw 'ApprovalManifestPath must resolve to the exact regular non-reparse R-bound authority'
+}
+$approvalManifestSha256 = (Get-FileHash -LiteralPath $resolvedApprovalManifest -Algorithm SHA256).Hash.ToLowerInvariant()
 $resolvedGitRepositoryRoot = (Resolve-Path -LiteralPath $GitRepositoryRoot -ErrorAction Stop).Path
 $gitRepositoryItem = Get-Item -LiteralPath $resolvedGitRepositoryRoot -Force -ErrorAction Stop
 if (-not $gitRepositoryItem.PSIsContainer) {
@@ -559,6 +588,7 @@ $lockedQualificationOperands = [ordered]@{
   'Verified upstream tarball' = @{ Path = $upstreamTarballPath; Sha256 = $upstreamTarballSha256 }
   'M review report' = @{ Path = $resolvedMReviewReport; Sha256 = $retainedMReviewSha256 }
   'R review report' = @{ Path = $resolvedRReviewReport; Sha256 = $retainedRReviewSha256 }
+  'Task 2 approval manifest' = @{ Path = $resolvedApprovalManifest; Sha256 = $approvalManifestSha256 }
   'Buildx binary' = @{ Path = $resolvedBuildx; Sha256 = $actualBuildxSha256 }
   'Docker binary' = @{ Path = $resolvedDocker; Sha256 = $actualDockerSha256 }
   'Node executable' = @{ Path = $nodePath; Sha256 = $actualNodeSha256 }
@@ -578,6 +608,7 @@ $protectedQualificationInputs = @(
   $GitPath,
   $resolvedMReviewReport,
   $resolvedRReviewReport,
+  $resolvedApprovalManifest,
   $resolvedReviewedExportManifest,
   $behaviorRunnerPath,
   $upstreamTarballPath,
@@ -764,6 +795,7 @@ try {
   Invoke-NodeChecked -Arguments @(
     $verifierPath,
     '--mode', 'qualify',
+    '--approval-manifest', $resolvedApprovalManifest,
     '--root', $contextRoot,
     '--lock', (Join-Path $contextRoot 'image-lock.json'),
     '--oci-a', $resolvedReleaseArtifact,

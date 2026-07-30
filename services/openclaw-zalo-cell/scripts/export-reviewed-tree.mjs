@@ -22,6 +22,12 @@ const SHA1 = /^[0-9a-f]{40}$/;
 const GIT_SHA256 = "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a";
 const GIT_VERSION = "2.53.0";
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
+const MUTABLE_EXPORT_DIRECTORIES = new Set([
+  "node_modules",
+  "services/openclaw-zalo-cell/session-crypto/node_modules",
+  "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work",
+  "services/openclaw-zalo-cell/vendor/zalouser-bridge/node_modules",
+]);
 
 function compareUtf8(left, right) {
   return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
@@ -517,13 +523,104 @@ export function verifyReviewedTree({ gitPath, repositoryRoot, reviewedTree, outp
   return expectedManifest;
 }
 
+function listMutableExportFiles(root) {
+  const files = [];
+  const visit = (directory, relativeDirectory) => {
+    const names = readdirSync(directory).sort(compareUtf8);
+    for (const name of names) {
+      const absolute = resolve(directory, name);
+      const path = relativeDirectory ? `${relativeDirectory}/${name}` : name;
+      const info = lstatSync(absolute);
+      if (info.isSymbolicLink()) throw new Error(`mutable export contains a link: ${path}`);
+      if (MUTABLE_EXPORT_DIRECTORIES.has(path)) {
+        if (!info.isDirectory()) {
+          throw new Error(`mutable export dependency/output root is not a directory: ${path}`);
+        }
+        assertNoSymbolicLinkChain(absolute, `mutable export dependency/output root ${path}`);
+        continue;
+      }
+      if (info.isDirectory()) visit(absolute, path);
+      else if (info.isFile()) files.push(path);
+      else throw new Error(`mutable export contains an unsupported entry: ${path}`);
+    }
+  };
+  visit(root, "");
+  return files.sort(compareUtf8);
+}
+
+export function verifyMutableReviewedTree({ outputRoot, manifestPath, manifestSha256 }) {
+  if (!isAbsolute(outputRoot) || !isAbsolute(manifestPath)) {
+    throw new Error("mutable reviewed export paths must be absolute");
+  }
+  if (!/^[0-9a-f]{64}$/u.test(manifestSha256 ?? "")) {
+    throw new Error("mutable reviewed export manifest SHA-256 is invalid");
+  }
+  assertNoSymbolicLinkChain(outputRoot, "mutable reviewed export root");
+  const rootInfo = lstatSync(outputRoot);
+  if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) {
+    throw new Error("mutable reviewed export root must be a real directory");
+  }
+  const manifestFile = readRegularFileBound(manifestPath, "mutable reviewed export manifest");
+  if (manifestFile.sha256 !== manifestSha256) {
+    throw new Error("mutable reviewed export manifest hash mismatch");
+  }
+  const manifest = JSON.parse(UTF8.decode(manifestFile.bytes));
+  if (
+    manifest?.schema_version !== 1 || manifest?.git_object_format !== "sha1" ||
+    !SHA1.test(manifest?.reviewed_tree ?? "") || !Array.isArray(manifest?.entries)
+  ) {
+    throw new Error("mutable reviewed export manifest is invalid");
+  }
+  const expectedPaths = [];
+  const seen = new Set();
+  for (const entry of manifest.entries) {
+    assertPortablePath(entry?.path);
+    if (
+      entry?.type !== "blob" || !["100644", "100755"].includes(entry?.mode) ||
+      !SHA1.test(entry?.git_object_id ?? "") ||
+      !Number.isSafeInteger(entry?.content_size) || entry.content_size < 0 ||
+      !/^[0-9a-f]{64}$/u.test(entry?.content_sha256 ?? "") || seen.has(entry.path)
+    ) {
+      throw new Error("mutable reviewed export manifest entry is invalid");
+    }
+    seen.add(entry.path);
+    expectedPaths.push(entry.path);
+    const path = outputPath(outputRoot, entry.path);
+    const file = readRegularFileBound(path, `mutable reviewed export ${entry.path}`);
+    if (file.size !== entry.content_size || file.sha256 !== entry.content_sha256) {
+      throw new Error(`mutable reviewed export content mismatch: ${entry.path}`);
+    }
+    if (process.platform !== "win32") {
+      const info = lstatSync(path);
+      const executable = (info.mode & 0o111) !== 0;
+      if (executable !== (entry.mode === "100755")) {
+        throw new Error(`mutable reviewed export mode mismatch: ${entry.path}`);
+      }
+    }
+  }
+  expectedPaths.sort(compareUtf8);
+  const actualPaths = listMutableExportFiles(outputRoot);
+  if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)) {
+    const unexpected = actualPaths.filter((path) => !seen.has(path));
+    throw new Error(`unexpected mutable export path set: ${unexpected.join(",")}`);
+  }
+  return Object.freeze({
+    reviewed_tree: manifest.reviewed_tree,
+    reviewed_file_count: expectedPaths.length,
+    manifest_sha256: manifestSha256,
+    allowed_mutable_directories: Object.freeze([...MUTABLE_EXPORT_DIRECTORIES].sort(compareUtf8)),
+  });
+}
+
 function parseArgs(argv) {
   const command = argv[0];
-  if (command !== "export" && command !== "verify") {
-    throw new Error("first argument must be export or verify");
+  if (!["export", "verify", "verify-mutable"].includes(command)) {
+    throw new Error("first argument must be export, verify, or verify-mutable");
   }
   const values = {};
-  const allowed = new Set(["git-path", "repository-root", "reviewed-tree", "output-root", "manifest"]);
+  const allowed = new Set([
+    "git-path", "repository-root", "reviewed-tree", "output-root", "manifest", "manifest-sha256",
+  ]);
   for (let index = 1; index < argv.length; index += 2) {
     const key = argv[index];
     const value = argv[index + 1];
@@ -533,30 +630,40 @@ function parseArgs(argv) {
     if (Object.hasOwn(values, name)) throw new Error(`duplicate argument: ${key}`);
     values[name] = value;
   }
-  if (!values["git-path"]) throw new Error("--git-path is required");
-  for (const key of ["git-path", "repository-root", "reviewed-tree", "output-root", "manifest"]) {
+  const required = command === "verify-mutable"
+    ? ["output-root", "manifest", "manifest-sha256"]
+    : ["git-path", "repository-root", "reviewed-tree", "output-root", "manifest"];
+  if (command !== "verify-mutable" && !values["git-path"]) {
+    throw new Error("--git-path is required");
+  }
+  for (const key of required) {
     if (!values[key]) throw new Error(`--${key} is required`);
   }
   for (const key of ["git-path", "repository-root", "output-root", "manifest"]) {
-    if (!isAbsolute(values[key])) throw new Error(`--${key} must be absolute`);
+    if (values[key] && !isAbsolute(values[key])) throw new Error(`--${key} must be absolute`);
   }
   return {
     command,
-    gitPath: resolve(values["git-path"]),
-    repositoryRoot: resolve(values["repository-root"]),
+    ...(values["git-path"] ? { gitPath: resolve(values["git-path"]) } : {}),
+    ...(values["repository-root"] ? { repositoryRoot: resolve(values["repository-root"]) } : {}),
     reviewedTree: values["reviewed-tree"],
     outputRoot: resolve(values["output-root"]),
     manifestPath: resolve(values.manifest),
+    manifestSha256: values["manifest-sha256"],
   };
 }
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.command === "export") exportReviewedTree(options);
-  else verifyReviewedTree(options);
+  else if (options.command === "verify") verifyReviewedTree(options);
+  else verifyMutableReviewedTree(options);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] === "-" ||
+  (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+) {
   try {
     main();
   } catch (error) {

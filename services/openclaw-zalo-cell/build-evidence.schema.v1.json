@@ -9,6 +9,7 @@
     "expected_m",
     "reviewed_tree",
     "reviews",
+    "execution_authority",
     "reviewed_export",
     "supply_chain",
     "retained_inputs",
@@ -39,6 +40,28 @@
       "properties": {
         "M": { "$ref": "#/$defs/mReviewRecord" },
         "R": { "$ref": "#/$defs/rReviewRecord" }
+      }
+    },
+    "execution_authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_manifest_base64",
+        "approval_manifest_size",
+        "approval_manifest_sha256",
+        "expected_m",
+        "reviewed_tree",
+        "authorities",
+        "runtime"
+      ],
+      "properties": {
+        "approval_manifest_base64": { "type": "string", "pattern": "^[A-Za-z0-9+/]+={0,2}$" },
+        "approval_manifest_size": { "type": "integer", "minimum": 1 },
+        "approval_manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "expected_m": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "reviewed_tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "authorities": { "$ref": "#/$defs/task2ExecutionAuthorities" },
+        "runtime": { "$ref": "#/$defs/task2ExecutionRuntime" }
       }
     },
     "reviewed_export": {
@@ -262,6 +285,7 @@
         "plugin_probe",
         "installed_behavior",
         "runtime_reachability",
+        "execution_authority",
         "reviewed_export",
         "supply_chain",
         "rootfs",
@@ -275,6 +299,7 @@
         "plugin_probe": { "type": "boolean", "const": true },
         "installed_behavior": { "type": "boolean", "const": true },
         "runtime_reachability": { "type": "boolean", "const": true },
+        "execution_authority": { "type": "boolean", "const": true },
         "reviewed_export": { "type": "boolean", "const": true },
         "supply_chain": { "type": "boolean", "const": true },
         "rootfs": { "type": "boolean", "const": true },
@@ -283,6 +308,104 @@
     }
   },
   "$defs": {
+    "task2ExecutionFileBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_path", "blob_oid", "size", "sha256"],
+      "properties": {
+        "repository_path": { "type": "string", "pattern": "^services/openclaw-zalo-cell/scripts/.+$" },
+        "blob_oid": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "size": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "task2ExecutionAuthorities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installer", "launcher", "orchestrator", "source_gate", "build_helper", "evidence_helper"],
+      "properties": {
+        "installer": { "$ref": "#/$defs/task2ExecutionFileBinding" },
+        "launcher": { "$ref": "#/$defs/task2ExecutionFileBinding" },
+        "orchestrator": { "$ref": "#/$defs/task2ExecutionFileBinding" },
+        "source_gate": { "$ref": "#/$defs/task2ExecutionFileBinding" },
+        "build_helper": { "$ref": "#/$defs/task2ExecutionFileBinding" },
+        "evidence_helper": { "$ref": "#/$defs/task2ExecutionFileBinding" }
+      }
+    },
+    "task2ExecutionRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "git", "powershell", "npm", "buildx", "docker"],
+      "properties": {
+        "node": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "version", "size", "sha256"],
+          "properties": {
+            "path": { "type": "string", "const": "/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node" },
+            "version": { "type": "string", "const": "v24.15.0" },
+            "size": { "type": "integer", "const": 122889056 },
+            "sha256": { "type": "string", "const": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c" }
+          }
+        },
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "version", "sha256"],
+          "properties": {
+            "path": { "type": "string", "const": "/usr/bin/git" },
+            "version": { "type": "string", "const": "git version 2.53.0" },
+            "sha256": { "type": "string", "const": "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a" }
+          }
+        },
+        "powershell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "version", "sha256", "tree_sha256"],
+          "properties": {
+            "path": { "type": "string", "const": "/opt/openclaw-tools/powershell-7.6.2/pwsh" },
+            "version": { "type": "string", "const": "7.6.2" },
+            "sha256": { "type": "string", "const": "cd7ac031490349b4ffd203cadf8922af85113b84ab9bfc28a50d03730d9309bc" },
+            "tree_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "npm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["root_path", "version", "entry_count", "root_sha256", "cli_path", "cli_size", "cli_sha256"],
+          "properties": {
+            "root_path": { "type": "string", "const": "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm" },
+            "version": { "type": "string", "const": "11.12.1" },
+            "entry_count": { "type": "integer", "const": 2169 },
+            "root_sha256": { "type": "string", "const": "aebb5b5b1892a7dd23c04af9b5afa24747f752beff2e4f2e781d9eb3830f93d9" },
+            "cli_path": { "type": "string", "const": "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm/bin/npm-cli.js" },
+            "cli_size": { "type": "integer", "const": 54 },
+            "cli_sha256": { "type": "string", "const": "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7" }
+          }
+        },
+        "buildx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "version", "sha256"],
+          "properties": {
+            "path": { "type": "string", "const": "/opt/openclaw-tools/docker-buildx-v0.13.1" },
+            "version": { "type": "string", "const": "0.13.1" },
+            "sha256": { "type": "string", "const": "3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c" }
+          }
+        },
+        "docker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "version", "sha256", "host"],
+          "properties": {
+            "path": { "type": "string", "const": "/usr/bin/docker" },
+            "version": { "type": "string", "const": "29.1.3" },
+            "sha256": { "type": "string", "const": "40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a" },
+            "host": { "type": "string", "const": "unix:///run/user/1001/docker.sock" }
+          }
+        }
+      }
+    },
     "retainedFileBinding": {
       "type": "object",
       "additionalProperties": false,

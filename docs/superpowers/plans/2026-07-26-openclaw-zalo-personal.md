@@ -32,7 +32,7 @@
 - Committed reviewed `licenses/manifest.json` is the independent source of truth, not generated from internal notice/tgz. It contains exact 38 package name/version/SPDX selections and exact 39 source carrier paths/sizes/SHA-256/output paths; `UPSTREAM.json` and `FORK.json` bind its SHA-256 and counts. Internal `THIRD_PARTY_NOTICES.md` and carrier tree are rendered/verified from it, and an independent document/artifact review must approve the manifest and rendered outputs before pack evidence is accepted.
 - Internal `THIRD_PARTY_NOTICES.md` contains the upstream root notice verbatim plus the exact inventory, carrier paths, the pako exception, and the Spark-md5 selection. `FORK.json.artifactMembers` is the exact sorted file-by-file path/type/mode/size/SHA-256 manifest for the tgz, while `runtimeReachabilityAllowlist` is the exact sorted required runtime JS/JSON/package-metadata set. The tgz uses exact archive paths `package/LICENSE`, `package/THIRD_PARTY_NOTICES.md`, and `package/licenses/**`; structural bans remain absolute, category pruning cannot remove an allowlisted runtime member, and no unlisted member is allowed. Clean install/load, upstream-compatible, and differential runtime tests must pass.
 - Docker installs only the verified internal tgz and never resolves registry ZaloUser during image build/runtime. The Dockerfile has exactly two stages, `install` and `runtime`; it never runs `npm ci` or compiles session-crypto. Before `R`, the Node gate clean-builds session-crypto twice and commits exactly `dist/package.json`, `dist/crypto.js`, and `dist/daemon.js`; `dist/package.json` is exact bytes `{"type":"module"}\n`. The install stage runs the Node `>=24.15.0 <25` assertion first in the same `RUN --network=none`, then installs the local tgz with one newly created, initially empty cache and no reuse/fallback. The runtime stage copies only the installed fork, those three reviewed dist blobs, and runtime config. Base-image acquisition remains the separate pinned `--pull` operation; only application `RUN`/install work is networkless, so the design does not claim air-gapped base acquisition. `FORK.json.installedTree` binds the sorted installed path/type/mode/size/SHA-256 manifest plus file/directory counts and root hash. Verification cross-checks `openclaw plugins list --json`, plugin inspect output, installed `package.json`, all loader/discovery roots, and duplicate/shadow candidates; upstream and fork packages may not coexist.
-- Reproducible image gates accept only exact `-ReviewedTree` and an absolute verified `-BuildxPath`. Buildx is exactly `0.13.1`, with binary SHA-256 `6b113e84cbc3cd645646aa82f00a7f7d3737cc10375b4341e0aca0de0c997c75` on Windows or `3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c` on Linux; BuildKit is exactly `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`. Context-root v2 and evidence bind the exact three session-crypto dist Git blobs, while final-rootfs evidence binds their installed hashes and rejects d.ts/tests/source/locks/tsconfig/node_modules/compiler/cache. Two fresh builders must produce byte-identical OCI archives and byte-identical extracted OCI layout/index/blob sets, not merely matching manifest/config/layer digest lists. `build-evidence.schema.v1.json` is closed at every object level, and the PowerShell 7.3 helper is self-contained, checked-native, fail-fast, and accepts only official stable `process.version` bytes matching `^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$` with numeric minor at least `15` before creating work/artifact/evidence or invoking its first Node/npm/npx/vendor subcommand; prerelease/build suffixes fail.
+- Reproducible image gates accept only exact `-ReviewedTree` and an absolute verified `-BuildxPath`. Buildx is exactly `0.13.1`, with binary SHA-256 `6b113e84cbc3cd645646aa82f00a7f7d3737cc10375b4341e0aca0de0c997c75` on Windows or `3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c` on Linux; BuildKit is exactly `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`. Context-root v2 and evidence bind the exact three session-crypto dist Git blobs, while final-rootfs evidence binds their installed hashes and rejects d.ts/tests/source/locks/tsconfig/node_modules/compiler/cache. Two fresh builders must produce byte-identical OCI archives and byte-identical extracted OCI layout/index/blob sets, not merely matching manifest/config/layer digest lists. `build-evidence.schema.v1.json` is closed at every object level, and the exact PowerShell `7.6.2` helper is self-contained, checked-native, fail-fast, and accepts only official stable `process.version` bytes matching `^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$` with numeric minor at least `15` before creating work/artifact/evidence or invoking its first Node/npm/npx/vendor subcommand; prerelease/build suffixes fail.
 - The vendor package exposes `vendor:prepare`; it must not define npm lifecycle script `prepare`, because `npm ci` may invoke lifecycle hooks before the qualifying gate intends to prepare source. Its build harness is pinned to exact `packageManager: npm@11.12.1`, and its dependency-free `preflight` requires an exact `npm/11.12.1` user agent before the vendor `npm ci` or any owned vendor command. Explicit reviewed-export options are an atomic path/tree/SHA-256 binding and may never be completed from ambient environment variables. This npm pin is scoped to the vendor harness and does not rewrite the root package-manager contract. The session-crypto package/lock keep reviewed `engines.node >=22.13.0` as their runtime/library minimum; Node `>=24.15.0 <25` is a separate build/gate requirement and must not rewrite that engine range.
 - The production Compose file publishes no Gateway port. OpenClaw and bridge communicate only on a private internal Docker network.
 - Do not enable OpenClaw's Docker sandbox backend because it mounts the Docker socket. The cell receives no Docker socket, shell tool, browser tool, arbitrary HTTP tool, filesystem tool, or SQL tool.
@@ -782,9 +782,9 @@ git commit -m "test(openclaw-zalo): khoa cach ly voi zalo cu" -m "Co-Authored-By
 - Modify: `eslint.config.js`
 - Create: `services/openclaw-zalo-cell/Dockerfile`
 - Create: `services/openclaw-zalo-cell/.dockerignore`
-- Create: `services/openclaw-zalo-cell/{image-lock.json,build-evidence.json,build-evidence.schema.v1.json,README.md}`
+- Create: `services/openclaw-zalo-cell/{image-lock.json,build-evidence.json,build-evidence.schema.v1.json,task2-approval-manifest.schema.v1.json,README.md}`
 - Create: `services/openclaw-zalo-cell/config/openclaw.json.tmpl`
-- Create: `services/openclaw-zalo-cell/scripts/{install-vendored-zalouser.sh,normalize-openclaw-install.mjs,export-reviewed-tree.mjs,build-reproducible-image.ps1,verify-image-lock.mjs}`
+- Create: `services/openclaw-zalo-cell/scripts/{install-vendored-zalouser.sh,normalize-openclaw-install.mjs,install-reviewed-task2-launcher.mjs,launch-reviewed-task2.mjs,run-reviewed-task2.ps1,export-reviewed-tree.mjs,verify-reviewed-source-gate.mjs,verify-package-manager-authority.mjs,build-reproducible-image.ps1,create-evidence-child.ps1,verify-image-lock.mjs}`
 - Create: `services/openclaw-zalo-cell/test/image-contract.test.mjs`
 - Create: `services/openclaw-zalo-cell/vendor/zalouser-bridge/{package.json,package-lock.json,tsconfig.json,vitest.config.ts,README.md,UPSTREAM.json,FORK.json,SHA512SUMS,LICENSE,THIRD_PARTY_NOTICES.md}`
 - Create: `services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/{LICENSE.openclaw,THIRD_PARTY_NOTICES.openclaw.md,package/**}` (exact root compliance bytes plus the complete exact 75-blob `extensions/zalouser` snapshot, not only `src/**`)
@@ -929,7 +929,7 @@ This is a pre-`R` TDD development run. Its only valid result is RED evidence for
 Run:
 
 ```powershell
-if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
+if ($PSVersionTable.PSVersion -ne [version]'7.6.2') { throw 'PowerShell 7.6.2 is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $nodePath = (Resolve-Path -LiteralPath $env:OPENCLAW_NODE_PATH -ErrorAction Stop).Path
@@ -981,7 +981,7 @@ Before `R`, run the Node `>=24.15.0 <25` assertion before the first package comm
 After all tracked source, patches, overlay, rendered legal files/carriers, `FORK.json`, package metadata, internal tgz, `installedTree`, artifactMembers, runtime inventory/allowlist, build-evidence schema, image-contract test, normalization tool, session build config, exact three-file prebuilt session runtime, and lock/tooling files are frozen, commit the final source/artifact/lock/tooling checkpoint `R` (do not include `build-evidence.json`, which is created only by `E`). Review only exact committed SHA `R` with a fresh read-only reviewer; the review must confirm `M` is an ancestor, every tracked output is present, no source/evidence mixing occurred, and no working-tree or plan-only state is treated as reviewed. It also verifies the two clean session builds match the exact three committed Git blobs and no extra dist member exists. Emit the same closed canonical review-report format as `M`, with exact `R`, reviewer role/identity/run ID, decision `APPROVED`, empty findings, and exact bytes retained outside `R` for evidence embedding.
 
 ```powershell
-if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
+if ($PSVersionTable.PSVersion -ne [version]'7.6.2') { throw 'PowerShell 7.6.2 is required for native fail-fast' }
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
@@ -1058,178 +1058,40 @@ COPY --chown=node:node session-crypto/dist/daemon.js /opt/openclaw-cell/session-
 COPY --chown=node:node config/openclaw.json.tmpl /opt/openclaw-cell/openclaw.json.tmpl
 ```
 
-The first gate commands, before any `npm ci` or executable verifier/build, require `HEAD` to equal independently reviewed exact `R`, a completely clean status/index, and no merge/rebase. The dependency-free Node assertion runs immediately after PowerShell fail-fast setup and before exporter/helper work; `build-reproducible-image.ps1` repeats the same self-preflight before creating temp paths/builders/artifacts/evidence. Bootstrap `export-reviewed-tree.mjs` from its exact `R` Git blob through a raw byte stream, then verify its blob type, Git object ID, and byte size before executing it. The exporter must enumerate `git ls-tree -rz --full-tree R`, consume objects through `git cat-file --batch`, preserve only reviewed `100644`/`100755` blob modes, reject symlink/submodule/tree/unknown entries, record Git object size/SHA-1 plus content size/SHA-256, and write a deterministic manifest. A separate verify mode must re-enumerate exact `R`, validate the complete manifest, and re-hash every exported output before any dependency install, test, verifier, or build. No working-tree byte, checkout, JSON reserialization, or archive extraction may qualify; `git archive` is allowed only in an explicit negative/diagnostic fixture that proves it is rejected as a qualifying source path. Every dependency install, test, verifier, and Docker context uses the fully verified export. `.dockerignore` is deny-by-default; `image-lock.json` lists exact Git-tree path/type/mode/size/SHA-256 records except itself and explicitly binds the three session-crypto dist Git blobs. Context-root v2 includes those three records and uses the approved ordered algorithm and golden vector `925be74a4fe381076871348887a653659ada468fa21333d5d22585be9e381f4e` for the empty-lock/Dockerfile/install.sh fixture. Candidate evidence is written only to the absolute source `.release/` path; later gates, including Tasks 19 and 27, repeat reviewed source `R ->` qualifying build `->` evidence-only `E`, never source plus tracked evidence in one commit.
+The first gate commands, before any dependency install or executable verifier/build, require `HEAD` to equal independently reviewed exact `R`, the index and every tracked worktree byte/mode to equal the raw `R` Git tree, no untracked path, no merge/rebase, no executable local Git configuration, and an empty or absent `.git/info/attributes`. They never use `git status`, `git diff`, textconv, clean/smudge filters, or an ambient package-manager command. The dependency-free Node assertion runs immediately after PowerShell fail-fast setup. The root installer authenticates the exact raw-R `services/openclaw-zalo-cell/scripts/launch-reviewed-task2.mjs` blob before installing it. The launcher then bootstraps `verify-reviewed-source-gate.mjs`, `verify-package-manager-authority.mjs`, and `export-reviewed-tree.mjs` from their exact `R` Git blobs through raw `git cat-file` streams; it verifies blob type, ID, size, and raw hash before execution. The source gate uses filter-free Git object/index listings plus nofollow file reads, so a repository-local filter cannot execute while cleanliness is decided. The npm `11.12.1` authority is the complete 2,169-entry runtime closure from the pinned official Node `24.15.0` Linux distribution, rooted at SHA-256 `aebb5b5b1892a7dd23c04af9b5afa24747f752beff2e4f2e781d9eb3830f93d9`; its `bin/npm-cli.js` is 54 bytes with SHA-256 `8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7`. Every npm operation invokes that exact CLI through the absolute pinned Node path, a cleared explicit environment, and an explicit working directory. Node, Git, npm closure, and bootstrap blobs are reauthenticated immediately around both exports and after dependency/test execution.
+
+The exporter enumerates `git ls-tree -rz --full-tree R`, consumes objects through `git cat-file --batch`, preserves only reviewed `100644`/`100755` blob modes, rejects symlink/submodule/tree/unknown entries, records Git object size/SHA-1 plus content size/SHA-256, and writes a deterministic manifest. A separate verify mode re-enumerates exact `R`, validates the complete manifest, and re-hashes every exported output before any dependency install, test, verifier, or build. No working-tree byte, checkout, JSON reserialization, or archive extraction may qualify; `git archive` is allowed only in an explicit negative/diagnostic fixture that proves it is rejected as a qualifying source path. Every dependency install, test, verifier, and Docker context uses the fully verified export. `.dockerignore` is deny-by-default; `image-lock.json` lists exact Git-tree path/type/mode/size/SHA-256 records except itself and explicitly binds the three session-crypto dist Git blobs. Context-root v2 includes those three records and uses the approved ordered algorithm and golden vector `925be74a4fe381076871348887a653659ada468fa21333d5d22585be9e381f4e` for the empty-lock/Dockerfile/install.sh fixture. Candidate evidence is written only to the absolute source `.release/` path; later gates, including Tasks 19 and 27, repeat reviewed source `R ->` qualifying build `->` evidence-only `E`, never source plus tracked evidence in one commit.
 
 The Dockerfile has exactly two stages. The `install` stage has one application install `RUN --network=none`: the Node version assertion is the first command, then the source epoch check creates one cache that did not previously exist, proves it is empty, installs only the local tgz with offline/no-fallback flags, and normalizes reviewed OpenClaw install state. No Docker stage runs session-crypto `npm ci`, TypeScript, tests, or any compiler. The `runtime` stage copies only the installed fork closure, exact reviewed `session-crypto/dist/package.json`, `dist/crypto.js`, `dist/daemon.js`, and runtime config, excluding d.ts/tests/source/package lock/tsconfig/node_modules/compiler/cache as well as tgz, `FORK.json`, image lock, scripts, and temporary state. The pinned base image is still acquired separately by BuildKit under `--pull`; `RUN --network=none` constrains application execution and does not claim air-gapped base acquisition. `install-vendored-zalouser.sh` verifies the local tgz and performs no npm metadata/tarball request. Verification requires matching results from `openclaw plugins list --json`, plugin inspect JSON, installed package.json, installedTree, every loader/discovery root, exact final-rootfs hashes for the three session files, and duplicate/shadow scans. The template contains no secrets or customer/provider identifiers.
 
-`build-reproducible-image.ps1` runs only on the reviewed Linux amd64 host and requires absolute `-NodePath`, `-GitPath`, `-BuildxPath`, and `-DockerPath` values plus an explicit `-DockerHost` Unix socket URI. It rejects PATH lookup; pins Node `24.15.0`, Git `2.53.0`, buildx `0.13.1`, and Docker client/server `29.1.3` on `linux/amd64`; and re-hashes each authority around security-critical execution. The helper also requires the absolute exact-R export root, its canonical export manifest path and SHA-256, exact `M`/`R`, both canonical approval reports, retained fork OCI A/B paths, a distinct stock-control OCI path, and a retained upstream-tarball path. It re-runs the reviewed exporter verification from the Git-backed source working directory before Docker activity. It creates two fresh `docker-container` builders named `ihome-openclaw-gate-a-<32hex>` and `ihome-openclaw-gate-b-<32hex>` with exact BuildKit `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`; each worker reports `v0.13.2`. In one `try/finally`, it builds the same exact-`-ReviewedTree` context through both builders with `--platform linux/amd64 --no-cache --pull --build-arg SOURCE_DATE_EPOCH=1785062400 --provenance=false --sbom=false`, retains byte-identical fork A/B archives, and builds the stock control with application network disabled. Every native call goes through a checked PowerShell 7.3 wrapper. Cleanup is exact-name and validated-temp-root only.
+`build-reproducible-image.ps1` runs only on the reviewed Linux amd64 host and receives its absolute `-NodePath`, `-GitPath`, `-BuildxPath`, `-DockerPath`, fixed Docker socket, `M`/`R`, review reports, and exact installed approval manifest from the authenticated launcher/orchestrator closure rather than from the operator CLI. It rejects PATH lookup; pins Node `24.15.0`, Git `2.53.0`, PowerShell `7.6.2`, buildx `0.13.1`, and Docker client/server `29.1.3` on `linux/amd64`; and re-hashes each authority around security-critical execution. The helper also requires the absolute exact-R export root, its canonical export manifest path and SHA-256, retained fork OCI A/B paths, a distinct stock-control OCI path, and a retained upstream-tarball path. It re-runs the reviewed exporter verification from the Git-backed source working directory before Docker activity. It creates two fresh `docker-container` builders named `ihome-openclaw-gate-a-<32hex>` and `ihome-openclaw-gate-b-<32hex>` with exact BuildKit `moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6`; each worker reports `v0.13.2`. In one `try/finally`, it builds the same exact-`-ReviewedTree` context through both builders with `--platform linux/amd64 --no-cache --pull --build-arg SOURCE_DATE_EPOCH=1785062400 --provenance=false --sbom=false`, retains byte-identical fork A/B archives, and builds the stock control with application network disabled. Every native call goes through the checked exact PowerShell `7.6.2` runtime. Cleanup is exact-name and validated-temp-root only.
 
 The helper invokes `verify-image-lock.mjs --oci-a ... --oci-b ...` before cleanup. The verifier requires byte-identical OCI archive bytes, then extracts both safely and requires identical `oci-layout`, `index.json`, file set, path/type/mode/size/SHA-256 manifest, and every blob byte; it separately verifies index/manifest/config/layer digests, mtimes, base digest, installedTree, plugin list/inspect/package/discovery roots, no duplicate/shadow/upstream package, private RPC, and stock-fail/fork-pass behavior. It byte-compares the exact three session-crypto input Git blobs with final-rootfs `dist/package.json`, `dist/crypto.js`, and `dist/daemon.js`, rejects every extra session path, and records both input and installed hashes. It validates `build-evidence.json` against closed `build-evidence.schema.v1.json` (`additionalProperties: false` recursively) and embeds exact canonical `M`/`R` review report bytes as base64 plus size/SHA-256 and reviewed identity fields. It atomically promotes gate A to the explicit source `.release/` path and records exact `M`, `R`, Git-blob provenance inputs including trust root, buildx binary path/hash/version, BuildKit pin, context-root v2, archive/layout/index/blob equality, installed tree, three-file session closure, scenario runtime sets, promoted archive path/hash, and every Task 2 result. Missing/tampered bytes, schema drift, review-report mismatch, lock mismatch, or tracked mutation fails.
 
 Run:
 
-```powershell
-if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
-$ErrorActionPreference = 'Stop'
-$PSNativeCommandUseErrorActionPreference = $true
-$nodePath = (Resolve-Path -LiteralPath $env:OPENCLAW_NODE_PATH -ErrorAction Stop).Path
-$gitPath = (Resolve-Path -LiteralPath $env:OPENCLAW_GIT_PATH -ErrorAction Stop).Path
-$dockerHost = $env:OPENCLAW_DOCKER_HOST
-if (-not [IO.Path]::IsPathFullyQualified($nodePath) -or -not [IO.Path]::IsPathFullyQualified($gitPath)) { throw 'Pinned Node/Git paths must be absolute' }
-function Invoke-QualificationNative {
-  param(
-    [Parameter(Mandatory = $true)][string]$FilePath,
-    [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [hashtable]$Environment = @{}
-  )
-  $startInfo = [Diagnostics.ProcessStartInfo]::new()
-  $startInfo.FileName = $FilePath
-  foreach ($argument in $Arguments) { $startInfo.ArgumentList.Add($argument) }
-  $startInfo.UseShellExecute = $false
-  $startInfo.RedirectStandardOutput = $true
-  $startInfo.RedirectStandardError = $true
-  $startInfo.Environment.Clear()
-  foreach ($name in $Environment.Keys) { $startInfo.Environment[$name] = [string]$Environment[$name] }
-  $process = [Diagnostics.Process]::new()
-  $process.StartInfo = $startInfo
-  if (-not $process.Start()) { throw "Unable to start pinned native authority: $FilePath" }
-  $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-  $stderrTask = $process.StandardError.ReadToEndAsync()
-  $process.WaitForExit()
-  $stdout = $stdoutTask.GetAwaiter().GetResult()
-  $stderr = $stderrTask.GetAwaiter().GetResult()
-  $exitCode = $process.ExitCode
-  $process.Dispose()
-  if ($exitCode -ne 0) { throw "Pinned native authority failed ($exitCode): $FilePath`n$stderr" }
-  return $stdout
-}
-$expectedNodeSha256 = 'd1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c'
-$expectedGitSha256 = '5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a'
-if ((Get-FileHash -LiteralPath $nodePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedNodeSha256) { throw 'Pinned Node SHA-256 mismatch' }
-if ((Get-FileHash -LiteralPath $gitPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedGitSha256) { throw 'Pinned Git SHA-256 mismatch' }
-$nodeCheck = 'const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){process.exit(1)}process.stdout.write(process.version)'
-$nodeVersion = (Invoke-QualificationNative -FilePath $nodePath -Arguments @('-e', $nodeCheck)).Trim()
-if ($nodeVersion -ne 'v24.15.0') { throw 'Pinned Node must be exact official stable v24.15.0' }
-$gitSafePrefix = @(
-  '--no-replace-objects',
-  '-c', 'core.fsmonitor=false',
-  '-c', 'core.hooksPath=/dev/null',
-  '-c', 'commit.gpgSign=false',
-  '-c', 'core.attributesFile=/dev/null',
-  '-c', 'diff.external=',
-  '-c', 'credential.helper='
-)
-function Invoke-QualificationGit {
-  param([Parameter(Mandatory = $true)][string[]]$Arguments)
-  return Invoke-QualificationNative -FilePath $gitPath -Arguments ($gitSafePrefix + $Arguments)
-}
-if ((Invoke-QualificationGit -Arguments @('--version')).Trim() -ne 'git version 2.53.0') { throw 'Pinned Git semantic version mismatch' }
-$R = $env:OPENCLAW_REVIEWED_R_SHA
-if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
-$M = $env:OPENCLAW_REVIEWED_M_SHA
-if ($M -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_M_SHA must be the exact reviewed M SHA' }
-$mReviewReport = (Resolve-Path -LiteralPath $env:OPENCLAW_M_REVIEW_REPORT -ErrorAction Stop).Path
-$rReviewReport = (Resolve-Path -LiteralPath $env:OPENCLAW_R_REVIEW_REPORT -ErrorAction Stop).Path
-$buildxPath = (Resolve-Path -LiteralPath $env:OPENCLAW_BUILDX_PATH -ErrorAction Stop).Path
-if (-not [IO.Path]::IsPathFullyQualified($buildxPath)) { throw 'OPENCLAW_BUILDX_PATH must resolve to an absolute path' }
-$dockerPath = (Resolve-Path -LiteralPath $env:OPENCLAW_DOCKER_PATH -ErrorAction Stop).Path
-if (-not [IO.Path]::IsPathFullyQualified($dockerPath)) { throw 'OPENCLAW_DOCKER_PATH must resolve to an absolute path' }
-$sourceRoot = (Get-Location).Path
-if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', 'HEAD')).Trim() -ne $R) { throw 'HEAD is not exact reviewed R' }
-Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'merge-base', '--is-ancestor', $M, $R) | Out-Null
-if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'status', '--porcelain=v1', '--untracked-files=all')).Trim().Length -ne 0) { throw 'R working tree is not completely clean' }
-Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'diff', '--cached', '--quiet') | Out-Null
-$gitStatePaths = @(
-  (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', '--git-path', 'MERGE_HEAD')).Trim()
-  (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', '--git-path', 'rebase-merge')).Trim()
-  (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', '--git-path', 'rebase-apply')).Trim()
-)
-if (@($gitStatePaths | Where-Object { Test-Path -LiteralPath $_ }).Count -ne 0) { throw 'Merge/rebase is in progress' }
+```bash
+readonly reviewed_r="${OPENCLAW_REVIEWED_R_SHA:?}"
+readonly source_root="$(pwd -P)"
+readonly node_path='/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node'
+readonly bootstrap_installer='/opt/openclaw-tools/reviewed-task2-bootstrap/install-reviewed-task2-launcher.mjs'
+readonly approval_manifest="/opt/openclaw-tools/reviewed-task2-approvals/${reviewed_r}/approval-manifest-v1.json"
+readonly launcher="/opt/openclaw-tools/reviewed-task2/${reviewed_r}/launch-reviewed-task2.mjs"
 
-$exporterRel = 'services/openclaw-zalo-cell/scripts/export-reviewed-tree.mjs'
-$exporterBlob = (Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', "$R`:$exporterRel")).Trim()
-if ($exporterBlob -notmatch '^[0-9a-f]{40}$') { throw 'Reviewed exporter blob ID is invalid' }
-if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'cat-file', '-t', $exporterBlob)).Trim() -ne 'blob') { throw 'Reviewed exporter is not a blob' }
-$exporterSize = [int64](Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'cat-file', '-s', $exporterBlob)).Trim()
-$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
-$bootstrapRoot = Join-Path $tempRoot ('ihome-openclaw-bootstrap-' + [guid]::NewGuid().ToString('N'))
-$verificationExportRoot = Join-Path $tempRoot ('ihome-openclaw-r-verify-' + [guid]::NewGuid().ToString('N'))
-$qualificationExportRoot = Join-Path $tempRoot ('ihome-openclaw-r-qualify-' + [guid]::NewGuid().ToString('N'))
-$releaseRoot = Join-Path $sourceRoot 'services/openclaw-zalo-cell/.release'
-New-Item -ItemType Directory -Path $bootstrapRoot -ErrorAction Stop | Out-Null
-New-Item -ItemType Directory -Path $releaseRoot -Force -ErrorAction Stop | Out-Null
-try {
-  $bootstrapExporter = Join-Path $bootstrapRoot 'export-reviewed-tree.mjs'
-  $startInfo = [Diagnostics.ProcessStartInfo]::new()
-  $startInfo.FileName = $gitPath
-  foreach ($argument in $gitSafePrefix) { $startInfo.ArgumentList.Add($argument) }
-  $startInfo.ArgumentList.Add('-C')
-  $startInfo.ArgumentList.Add($sourceRoot)
-  $startInfo.ArgumentList.Add('cat-file')
-  $startInfo.ArgumentList.Add('blob')
-  $startInfo.ArgumentList.Add($exporterBlob)
-  $startInfo.UseShellExecute = $false
-  $startInfo.RedirectStandardOutput = $true
-  $startInfo.RedirectStandardError = $true
-  $startInfo.Environment.Clear()
-  $process = [Diagnostics.Process]::new()
-  $process.StartInfo = $startInfo
-  if (-not $process.Start()) { throw 'Unable to start raw Git blob export' }
-  $stderrTask = $process.StandardError.ReadToEndAsync()
-  $destination = [IO.File]::Open($bootstrapExporter, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
-  try {
-    $process.StandardOutput.BaseStream.CopyTo($destination)
-  } finally {
-    $destination.Dispose()
-  }
-  $process.WaitForExit()
-  $stderr = $stderrTask.GetAwaiter().GetResult()
-  if ($process.ExitCode -ne 0) { throw "git cat-file exporter bootstrap failed: $stderr" }
-  $process.Dispose()
-  if ((Get-Item -LiteralPath $bootstrapExporter).Length -ne $exporterSize) { throw 'Reviewed exporter byte size mismatch' }
-  if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'hash-object', $bootstrapExporter)).Trim() -ne $exporterBlob) { throw 'Reviewed exporter Git object mismatch' }
+# One-time root trust ceremony after exact-R review: stage the independently
+# authenticated raw R installer bytes out-of-band at $bootstrap_installer as
+# root:root mode 0444. Never source this bootstrap from mutable working-tree
+# bytes. The installer rechecks its own raw-R blob and the root-owned manifest.
+"$node_path" "$bootstrap_installer" \
+  --repository-root "$source_root" \
+  --approval-manifest "$approval_manifest"
 
-  $verificationExportManifest = Join-Path $bootstrapRoot 'reviewed-verification-tree-manifest.json'
-  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'export', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $verificationExportRoot, '--manifest', $verificationExportManifest) | Out-Null
-  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'verify', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $verificationExportRoot, '--manifest', $verificationExportManifest) | Out-Null
-  $verificationExportManifestSha256 = (Get-FileHash -LiteralPath $verificationExportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
-  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $verificationExportManifest
-  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $verificationExportManifestSha256
-  $env:OPENCLAW_REVIEWED_R_SHA = $R
-
-  Push-Location $verificationExportRoot
-  try {
-    npm ci
-    npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run preflight --silent
-    npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge ci
-    npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify
-    npx vitest run services/openclaw-zalo-bridge/test/upstream-contract.test.ts
-    npm --prefix services/openclaw-zalo-cell/session-crypto ci
-    npm --prefix services/openclaw-zalo-cell/session-crypto test
-    npm --prefix services/openclaw-zalo-cell/session-crypto run typecheck
-    npm --prefix services/openclaw-zalo-cell/session-crypto run verify:dist
-  } finally {
-    Pop-Location
-  }
-
-  $qualificationExportManifest = Join-Path $bootstrapRoot 'reviewed-qualification-tree-manifest.json'
-  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'export', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $qualificationExportRoot, '--manifest', $qualificationExportManifest) | Out-Null
-  Invoke-QualificationNative -FilePath $nodePath -Arguments @($bootstrapExporter, 'verify', '--git-path', $gitPath, '--repository-root', $sourceRoot, '--reviewed-tree', $R, '--output-root', $qualificationExportRoot, '--manifest', $qualificationExportManifest) | Out-Null
-  $qualificationExportManifestSha256 = (Get-FileHash -LiteralPath $qualificationExportManifest -Algorithm SHA256).Hash.ToLowerInvariant()
-  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST = $qualificationExportManifest
-  $env:OPENCLAW_REVIEWED_EXPORT_MANIFEST_SHA256 = $qualificationExportManifestSha256
-
-  $reviewedImageHelper = Join-Path $qualificationExportRoot 'services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1'
-  & $reviewedImageHelper -ReviewedTree $R -ExpectedM $M -MReviewReportPath $mReviewReport -RReviewReportPath $rReviewReport -NodePath $nodePath -GitPath $gitPath -BuildxPath $buildxPath -DockerPath $dockerPath -DockerHost $dockerHost -GitRepositoryRoot $sourceRoot -ReviewedSourceRoot $qualificationExportRoot -ReviewedExportManifestPath $qualificationExportManifest -ReviewedExportManifestSha256 $qualificationExportManifestSha256 -Platform 'linux/amd64' -SourceDateEpoch '1785062400' -EvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') -ReleaseArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-a-linux-amd64.oci.tar') -ReproductionArtifactPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-b-linux-amd64.oci.tar') -StockOciPath (Join-Path $releaseRoot 'openclaw-zalo-cell-stock-linux-amd64.oci.tar') -RetainedUpstreamTarballPath (Join-Path $releaseRoot 'zalouser-2026.7.1-verified.tgz')
-
-  if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'rev-parse', 'HEAD')).Trim() -ne $R) { throw 'Source HEAD changed after exported-R run' }
-  if ((Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'status', '--porcelain=v1', '--untracked-files=all')).Trim().Length -ne 0) { throw 'Exported-R run mutated source worktree/index' }
-  Invoke-QualificationGit -Arguments @('-C', $sourceRoot, 'diff', '--cached', '--quiet') | Out-Null
-} finally {
-  if (Test-Path -LiteralPath $qualificationExportRoot) { Remove-Item -LiteralPath $qualificationExportRoot -Recurse -Force }
-  if (Test-Path -LiteralPath $verificationExportRoot) { Remove-Item -LiteralPath $verificationExportRoot -Recurse -Force }
-  if (Test-Path -LiteralPath $bootstrapRoot) { Remove-Item -LiteralPath $bootstrapRoot -Recurse -Force }
-}
+# The operator supplies only phase, repository root, and the closed manifest.
+# All M/R, review-report, runtime, Docker and helper authorities come from it.
+/usr/bin/sudo -n -u openclaw-runner /usr/bin/env -i "$node_path" "$launcher" \
+  --phase qualification \
+  --repository-root "$source_root" \
+  --approval-manifest "$approval_manifest"
 ```
 
 Expected: every command exits 0, mutable source verification occurs only in `$verificationExportRoot`, and the later `$qualificationExportRoot` remains an exact untouched Git-object export when the reviewed image helper re-verifies it. Injected native failure prevents later sentinels, `HEAD` remains exact `R`, and source/index remain unchanged. This creates candidate OCI/evidence only. Evidence includes `M`/`R`; exact Git-blob path/size/SHA-256 records for all four raw provenance/trust inputs; npm key, Fulcio chain/identity, DSSE/SET/inclusion/checkpoint/time/body proof; tarball locks; source/compliance manifests; exact `artifactMembers` and `installedTree`; complete dynamic-site inventory; `derivedRuntimeSet == runtimeReachabilityAllowlist`; nonempty mandatory-scenario `resolvedRuntimeSet` subset of the allowlist; stock-fail/fork-pass and unchanged differential results; pinned buildx/BuildKit/context-root v2; byte-identical OCI archive/layout/index/blob evidence; normalized timestamps/state; promoted archive; and deterministic image digest. It validates against the closed schema and embeds exact canonical `M`/`R` approval-report bytes/base64, sizes/hashes, SHAs, reviewer roles/identities/run IDs, `APPROVED`, and empty findings. Negative fixtures reject acquisition/trust mismatch, resolved-unlisted members, unclassified dynamic sites, artifact runtime outside allowlist, duplicate/shadow install, source/evidence mixing, non-minimal rootfs, OCI byte drift, schema openness, or review-report tampering. Optional statically classified allowlist members may remain untraced. Task 29 later repeats reviewed source `R ->` qualifying build `->` evidence-only `E`.
@@ -1240,116 +1102,17 @@ Candidate evidence re-hashes every `UPSTREAM.json.provenanceInputs` Git blob fro
 
 After the reviewed-`R` run succeeds, this fenced block independently rebinds and validates exact `R`, then recomputes the absolute source, `.release/`, candidate-evidence, and retained-OCI paths plus their hashes without using any Step 4 variable. It proves canonical containment, leaf/container types, and that the source/release chain and both candidates are not reparse points/symlinks before hashing or verification. Create the detached-child path as a canonical generated child of the canonical non-reparse temp root, then add the worktree at exact `R`, copy and re-hash exactly one tracked file as `services/openclaw-zalo-cell/build-evidence.json`, and invoke the exact reviewed child-worktree `verify-image-lock.mjs` against that copy, the closed schema, exact `$R`, and the retained absolute candidate archive before staging. Only verifier success may commit `E`. Prove `E^ == R` and the committed diff is exactly that evidence path; the OCI archive remains external and uncommitted. Cleanup must use checked `git worktree remove --force` so a dirty child is still removed; a cleanup error fails when it is the only error, while a simultaneous cleanup error is reported without masking the primary exception. Only after confirmed path and registration removal may the source branch fast-forward from `R` to `E`. No relative path may be interpreted inside the child worktree, and no source, artifact, lock, tooling, config, plan, or archive file may differ.
 
-```powershell
-if ($PSVersionTable.PSVersion -lt [version]'7.3') { throw 'PowerShell 7.3+ is required for native fail-fast' }
-$ErrorActionPreference = 'Stop'
-$PSNativeCommandUseErrorActionPreference = $true
-$sourceRoot = (Resolve-Path -LiteralPath '.').Path
-$releaseRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot 'services/openclaw-zalo-cell/.release'))
-$reviewedEvidenceHelper = (Resolve-Path -LiteralPath 'services/openclaw-zalo-cell/scripts/create-evidence-child.ps1' -ErrorAction Stop).Path
-& $reviewedEvidenceHelper `
-  -ReviewedTree $env:OPENCLAW_REVIEWED_R_SHA `
-  -ExpectedM $env:OPENCLAW_REVIEWED_M_SHA `
-  -MReviewReportPath (Resolve-Path -LiteralPath $env:OPENCLAW_M_REVIEW_REPORT).Path `
-  -RReviewReportPath (Resolve-Path -LiteralPath $env:OPENCLAW_R_REVIEW_REPORT).Path `
-  -CandidateEvidencePath (Join-Path $releaseRoot 'task2-build-evidence.json') `
-  -CandidateArchivePath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-a-linux-amd64.oci.tar') `
-  -CandidateArchiveBPath (Join-Path $releaseRoot 'openclaw-zalo-cell-fork-b-linux-amd64.oci.tar') `
-  -CandidateStockOciPath (Join-Path $releaseRoot 'openclaw-zalo-cell-stock-linux-amd64.oci.tar') `
-  -UpstreamTarballPath (Join-Path $releaseRoot 'zalouser-2026.7.1-verified.tgz') `
-  -NodePath (Resolve-Path -LiteralPath $env:OPENCLAW_NODE_PATH).Path `
-  -GitPath (Resolve-Path -LiteralPath $env:OPENCLAW_GIT_PATH).Path `
-  -DockerPath (Resolve-Path -LiteralPath $env:OPENCLAW_DOCKER_PATH).Path `
-  -DockerHost $env:OPENCLAW_DOCKER_HOST
-if ($LASTEXITCODE -ne 0) { throw 'Reviewed evidence-child helper failed' }
-return # The reviewed helper above is the sole executable R -> E lifecycle.
-<# Historical pre-helper transcript retained only for traceability; do not execute.
-node -e "const m=/^v24\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}"
-$R = $env:OPENCLAW_REVIEWED_R_SHA
-if ($R -notmatch '^[0-9a-f]{40}$') { throw 'OPENCLAW_REVIEWED_R_SHA must be the exact reviewed R SHA' }
-$sourceRoot = (Resolve-Path -LiteralPath '.').Path
-$servicesRoot = [IO.Path]::GetFullPath((Join-Path $sourceRoot 'services'))
-$cellRoot = [IO.Path]::GetFullPath((Join-Path $servicesRoot 'openclaw-zalo-cell'))
-$releaseRoot = [IO.Path]::GetFullPath((Join-Path $cellRoot '.release'))
-$releaseRelative = [IO.Path]::GetRelativePath($sourceRoot, $releaseRoot)
-if ([IO.Path]::IsPathRooted($releaseRelative) -or $releaseRelative -eq '..' -or $releaseRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Task 2 release root escaped the source worktree' }
-$candidateEvidence = [IO.Path]::GetFullPath((Join-Path $releaseRoot 'task2-build-evidence.json'))
-$candidateArchive = [IO.Path]::GetFullPath((Join-Path $releaseRoot 'openclaw-zalo-cell-linux-amd64.oci.tar'))
-foreach ($candidatePath in @($candidateEvidence, $candidateArchive)) {
-  $candidateRelative = [IO.Path]::GetRelativePath($releaseRoot, $candidatePath)
-  if ([IO.Path]::IsPathRooted($candidateRelative) -or $candidateRelative -eq '.' -or $candidateRelative -eq '..' -or $candidateRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Task 2 candidate escaped the canonical release root' }
-}
-$sourceItem = Get-Item -LiteralPath $sourceRoot -ErrorAction Stop
-$servicesItem = Get-Item -LiteralPath $servicesRoot -ErrorAction Stop
-$cellItem = Get-Item -LiteralPath $cellRoot -ErrorAction Stop
-$releaseItem = Get-Item -LiteralPath $releaseRoot -ErrorAction Stop
-$candidateItem = Get-Item -LiteralPath $candidateEvidence -ErrorAction Stop
-$candidateArchiveItem = Get-Item -LiteralPath $candidateArchive -ErrorAction Stop
-if (-not $sourceItem.PSIsContainer -or -not $servicesItem.PSIsContainer -or -not $cellItem.PSIsContainer -or -not $releaseItem.PSIsContainer) { throw 'Task 2 source and release ancestors must be directories' }
-if ($candidateItem.PSIsContainer -or $candidateArchiveItem.PSIsContainer) { throw 'Task 2 candidates must be leaf files' }
-foreach ($checkedItem in @($sourceItem, $servicesItem, $cellItem, $releaseItem, $candidateItem, $candidateArchiveItem)) {
-  if ($checkedItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Task 2 source, release, and candidate paths must not traverse a reparse point' }
-}
-$candidateSha256 = (Get-FileHash -LiteralPath $candidateEvidence -Algorithm SHA256).Hash.ToLowerInvariant()
-$candidateArchiveSha256 = (Get-FileHash -LiteralPath $candidateArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ((git rev-parse HEAD).Trim() -ne $R) { throw 'Evidence child must start from R' }
-if (@(git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'R worktree is not completely clean' }
-git diff --cached --quiet
-if ($LASTEXITCODE -ne 0) { throw 'R index is not empty' }
-$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
-$tempRootItem = Get-Item -LiteralPath $tempRoot -ErrorAction Stop
-if ($tempRootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Temp root must not be a reparse point' }
-$eWorktree = [IO.Path]::GetFullPath((Join-Path $tempRoot ('ihome-openclaw-e-' + [guid]::NewGuid().ToString('N'))))
-$eRelative = [IO.Path]::GetRelativePath($tempRoot, $eWorktree)
-if ([IO.Path]::IsPathRooted($eRelative) -or $eRelative -eq '..' -or $eRelative.StartsWith('..' + [IO.Path]::DirectorySeparatorChar)) { throw 'Detached E path escaped canonical temp root' }
-$primaryError = $null
-$cleanupError = $null
-try {
-  git worktree add --detach $eWorktree $R
-  $eDestination = Join-Path $eWorktree 'services/openclaw-zalo-cell/build-evidence.json'
-  New-Item -ItemType Directory -Path (Split-Path -Parent $eDestination) -Force -ErrorAction Stop | Out-Null
-  Copy-Item -LiteralPath $candidateEvidence -Destination $eDestination -ErrorAction Stop
-  if ((Get-FileHash -LiteralPath $eDestination -Algorithm SHA256).Hash.ToLowerInvariant() -ne $candidateSha256) { throw 'Copied evidence hash mismatch' }
-  if ((Get-FileHash -LiteralPath $candidateArchive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $candidateArchiveSha256) { throw 'Candidate archive changed before E verification' }
-  Push-Location $eWorktree
-  try {
-    node services/openclaw-zalo-cell/scripts/verify-image-lock.mjs --evidence services/openclaw-zalo-cell/build-evidence.json --schema services/openclaw-zalo-cell/build-evidence.schema.v1.json --reviewed-tree $R --release-artifact $candidateArchive
-    git add services/openclaw-zalo-cell/build-evidence.json
-    $ePaths = @(git diff --cached --name-only)
-    if (($ePaths.Count -ne 1) -or ($ePaths[0] -ne 'services/openclaw-zalo-cell/build-evidence.json')) { throw 'E staged diff is not evidence-only' }
-    git commit -m "chore(openclaw-zalo): record verified evidence E" -m "Co-Authored-By: Codex <noreply@openai.com>"
-    $E = (git rev-parse HEAD).Trim()
-    if ((git rev-parse "$E^").Trim() -ne $R) { throw 'E is not a direct child of R' }
-    $committedPaths = @(git diff-tree --no-commit-id --name-only -r $E)
-    if (($committedPaths.Count -ne 1) -or ($committedPaths[0] -ne 'services/openclaw-zalo-cell/build-evidence.json')) { throw 'E committed diff is not evidence-only' }
-  } finally {
-    Pop-Location
-  }
-} catch {
-  $primaryError = $_
-} finally {
-  try {
-    $registeredPaths = @(git worktree list --porcelain | Where-Object { $_ -like 'worktree *' } | ForEach-Object { [IO.Path]::GetFullPath($_.Substring(9)) })
-    if (($registeredPaths -contains $eWorktree) -or (Test-Path -LiteralPath $eWorktree)) {
-      git worktree remove --force $eWorktree
-      if ($LASTEXITCODE -ne 0) { throw 'Forced detached E worktree removal failed' }
-    }
-    if (Test-Path -LiteralPath $eWorktree) { throw 'Detached E path remains after forced removal' }
-    $remainingPaths = @(git worktree list --porcelain | Where-Object { $_ -like 'worktree *' } | ForEach-Object { [IO.Path]::GetFullPath($_.Substring(9)) })
-    if ($remainingPaths -contains $eWorktree) { throw 'Detached E registration remains after forced removal' }
-  } catch {
-    $cleanupError = $_
-  }
-  if ($null -ne $primaryError) {
-    if ($null -ne $cleanupError) { [Console]::Error.WriteLine('Detached E cleanup also failed: ' + $cleanupError.Exception.Message) }
-    throw $primaryError
-  }
-  if ($null -ne $cleanupError) { throw $cleanupError }
-}
-if ((git rev-parse HEAD).Trim() -ne $R) { throw 'Source branch moved before E fast-forward' }
-git merge --ff-only $E
-if ((git rev-parse HEAD).Trim() -ne $E) { throw 'Source branch did not fast-forward to E' }
-#>
+```bash
+readonly reviewed_r="${OPENCLAW_REVIEWED_R_SHA:?}"
+readonly source_root="$(pwd -P)"
+readonly node_path='/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node'
+readonly approval_manifest="/opt/openclaw-tools/reviewed-task2-approvals/${reviewed_r}/approval-manifest-v1.json"
+readonly launcher="/opt/openclaw-tools/reviewed-task2/${reviewed_r}/launch-reviewed-task2.mjs"
+
+/usr/bin/sudo -n -u openclaw-runner /usr/bin/env -i "$node_path" "$launcher" \
+  --phase evidence \
+  --repository-root "$source_root" \
+  --approval-manifest "$approval_manifest"
 ```
 
 - [ ] **Step 6: Independently review exact E and unlock Tasks 3-29**

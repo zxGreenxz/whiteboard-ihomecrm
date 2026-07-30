@@ -3,10 +3,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -14,7 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { gzipSync, gunzipSync } from "node:zlib";
-import { dirname, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   PACKAGE_NAME,
@@ -85,14 +87,15 @@ function atomicWrite(path, bytes, sourceDateEpoch) {
 }
 
 function npmCliPath() {
-  const candidates = [
-    process.env.npm_execpath,
-    resolve(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js"),
-    resolve(dirname(process.execPath), "../lib/node_modules/npm/bin/npm-cli.js"),
-  ].filter(Boolean);
-  const candidate = candidates.find((path) => existsSync(path));
-  if (!candidate) throw new Error(`npm CLI was not found for portable Node ${process.execPath}`);
-  return candidate;
+  const candidate = process.env.npm_execpath;
+  if (!candidate || !isAbsolute(candidate) || !existsSync(candidate)) {
+    throw new Error("authenticated absolute npm_execpath is required");
+  }
+  const item = lstatSync(candidate);
+  if (!item.isFile() || item.isSymbolicLink()) {
+    throw new Error("authenticated npm_execpath must be a regular non-symlink file");
+  }
+  return realpathSync(candidate);
 }
 
 function verifyNpmPackSelection(packageRoot, expectedPaths) {

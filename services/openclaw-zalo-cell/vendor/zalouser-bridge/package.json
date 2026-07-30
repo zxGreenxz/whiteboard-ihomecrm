@@ -8,15 +8,15 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "preflight": "node -e \"const m=/^v24\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.exec(process.version);const u=process.env.npm_config_user_agent??'';if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}if(!/^npm\\/11\\.12\\.1(?:\\s|$)/.test(u)){console.error('npm 11.12.1 is required');process.exit(1)}\"",
-    "verify:upstream": "npm run preflight --silent && node scripts/verify-upstream.mjs --online",
-    "vendor:prepare": "npm run preflight --silent && node scripts/prepare.mjs --tarball .work/verified-upstream.tgz",
-    "typecheck": "npm run preflight --silent && tsc --noEmit -p tsconfig.json",
-    "test": "npm run preflight --silent && vitest run --config vitest.config.ts",
-    "build": "npm run preflight --silent && node scripts/build.mjs",
-    "pack": "npm run preflight --silent && node scripts/pack.mjs",
-    "verify:artifact": "npm run preflight --silent && node scripts/verify-artifact.mjs",
-    "verify": "npm run preflight --silent && npm run verify:upstream && npm run vendor:prepare && npm run typecheck && npm test && npm run build && npm run pack && npm run verify:artifact"
+    "preflight": "node scripts/preflight.mjs",
+    "verify:upstream": "node scripts/preflight.mjs && node scripts/verify-upstream.mjs --online",
+    "vendor:prepare": "node scripts/preflight.mjs && node scripts/prepare.mjs --tarball .work/verified-upstream.tgz",
+    "typecheck": "node scripts/preflight.mjs && tsc --noEmit -p tsconfig.json",
+    "test": "node scripts/preflight.mjs && vitest run --config vitest.config.ts",
+    "build": "node scripts/preflight.mjs && node scripts/build.mjs",
+    "pack": "node scripts/preflight.mjs && node scripts/pack.mjs",
+    "verify:artifact": "node scripts/preflight.mjs && node scripts/verify-artifact.mjs",
+    "verify": "node scripts/preflight.mjs && node scripts/verify-upstream.mjs --online && node scripts/prepare.mjs --tarball .work/verified-upstream.tgz && tsc --noEmit -p tsconfig.json && vitest run --config vitest.config.ts && node scripts/build.mjs && node scripts/pack.mjs && node scripts/verify-artifact.mjs"
   },
   "devDependencies": {
     "@types/node": "22.16.5",

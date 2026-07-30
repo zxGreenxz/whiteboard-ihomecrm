@@ -541,16 +541,21 @@ describe("reviewed upstream and legal inputs", () => {
 
     expect(packageJson.private).toBe(true);
     expect(packageJson.packageManager).toBe("npm@11.12.1");
-    expect(packageJson.scripts.preflight).toContain("npm_config_user_agent");
-    expect(packageJson.scripts.preflight).toContain("npm 11.12.1 is required");
+    expect(packageJson.scripts.preflight).toBe("node scripts/preflight.mjs");
+    const preflight = readFileSync(resolve(vendorRoot, "scripts/preflight.mjs"), "utf8");
+    expect(preflight).toContain("npm_config_user_agent");
+    expect(preflight).toContain("npm 11.12.1 is required");
     expect(packageJson.scripts.prepare).toBeUndefined();
     expect(packageJson.scripts["vendor:prepare"]).toContain("scripts/prepare.mjs");
-    expect(packageJson.scripts.verify).toContain("verify:upstream");
-    expect(packageJson.scripts.verify).toContain("vendor:prepare");
-    expect(packageJson.scripts.verify).toContain("typecheck");
-    expect(packageJson.scripts.verify).toContain("test");
-    expect(packageJson.scripts.verify).toContain("build");
-    expect(packageJson.scripts.verify).toContain("pack");
-    expect(packageJson.scripts.verify).toContain("verify:artifact");
+    expect(packageJson.scripts.verify).toContain("scripts/verify-upstream.mjs --online");
+    expect(packageJson.scripts.verify).toContain("scripts/prepare.mjs");
+    expect(packageJson.scripts.verify).toContain("tsc --noEmit");
+    expect(packageJson.scripts.verify).toContain("vitest run");
+    expect(packageJson.scripts.verify).toContain("scripts/build.mjs");
+    expect(packageJson.scripts.verify).toContain("scripts/pack.mjs");
+    expect(packageJson.scripts.verify).toContain("scripts/verify-artifact.mjs");
+    for (const script of Object.values(packageJson.scripts) as string[]) {
+      expect(script).not.toMatch(/(^|(?:&&|\|\|)\s*)npm(?:\s|$)/u);
+    }
   });
 });

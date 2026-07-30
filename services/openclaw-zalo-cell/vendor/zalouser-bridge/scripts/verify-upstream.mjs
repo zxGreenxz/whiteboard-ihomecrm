@@ -1235,7 +1235,8 @@ export async function verifyOnlineInputs(options = {}) {
 }
 
 function isMain() {
-  return process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  return import.meta.url.startsWith("file:") &&
+    process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }
 
 export function parseCliArguments(argv) {
