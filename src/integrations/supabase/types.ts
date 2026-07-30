@@ -21630,12 +21630,15 @@ export type Database = {
         Returns: {
           account_name: string
           amount: number
+          approval_status: string
           batch_id: string
           building_id: string
           building_name: string
           has_receipt: boolean
           is_standalone: boolean
           payer_name: string
+          posting_status: string
+          state: string
           subtype: string
           voucher_date: string
           voucher_id: string
@@ -21665,6 +21668,10 @@ export type Database = {
         Returns: Json
       }
       get_voucher_change_log_v1: { Args: { p_voucher: string }; Returns: Json }
+      has_contract_termination_write_v1: {
+        Args: { p_termination: string }
+        Returns: boolean
+      }
       has_full_building_scope: { Args: never; Returns: boolean }
       has_perm_full_scope: {
         Args: { _action: string; _table: string }
@@ -21810,6 +21817,7 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      is_org_owner_self_v1: { Args: never; Returns: boolean }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { _owner: string }; Returns: boolean }

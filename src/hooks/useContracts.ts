@@ -1105,89 +1105,47 @@ export const useApproveTermination = () => {
   return useMutation({
     mutationFn: async (data: {
       termination_id: string;
-      contract_id: string;
-      refund_amount: number;
+      /** @deprecated Writer canonical tự suy từ termination — tham số bị BỎ QUA. */
+      contract_id?: string;
+      /** @deprecated Writer canonical đọc `refund_amount` GENERATED — bị BỎ QUA. */
+      refund_amount?: number;
+      /** @deprecated Sổ quỹ do kế toán chọn khi duyệt phiếu — bị BỎ QUA. */
       payment_method?: string;
       notes?: string;
     }) => {
-      const user = await getSessionUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Canonical: atomic 5 bước server-side + BUG-FIX (legacy bước 4 ghi vào
-      // public.cash_book đã KHÔNG tồn tại → vỡ giữa chừng khi có hoàn tiền).
-      // Writer ghi tiền bằng phiếu thu/chi NHÁP để kế toán chọn sổ quỹ & duyệt.
+      // CHỈ CÒN MỘT WRITER. Writer server-side làm atomic 5 bước (duyệt hồ sơ →
+      // TERMINATED hợp đồng → COMPLETED → phiếu thu/chi NHÁP → trả phòng) trong
+      // một transaction.
+      //
+      // ĐÃ XOÁ fallback client (Slice −1 · §−1.8): khi RPC trả "tín hiệu
+      // fallback", hook này từng TỰ LÀM tiếp bằng REST — UPDATE
+      // `contract_terminations` → APPROVED, UPDATE `contracts` → TERMINATED,
+      // UPDATE → COMPLETED + `refund_date`, rồi INSERT vào `public.cash_book`.
+      // `to_regclass('public.cash_book')` là NULL: **bảng đó không tồn tại**. Và
+      // bốn lệnh REST đó KHÔNG nằm trong một transaction, nên bước cuối vỡ khi
+      // ba bước đầu ĐÃ COMMIT ⇒ hợp đồng thành TERMINATED, hồ sơ thành COMPLETED
+      // với `refund_date` (⇒ trang /deposits hiện tick xanh "Đã hoàn") mà KHÔNG
+      // có một phiếu tiền nào ở đâu cả. Đó là writer thứ tư, nằm ngoài mọi mô
+      // hình, và nó "tự chữa" bằng cách ghi bừa từ trình duyệt.
+      //
+      // Luật thay thế: RPC lỗi thì LỖI HIỆN RA cho người dùng. Trình duyệt tuyệt
+      // đối không ghi thay tiền.
       const canonical = await (supabase.rpc as any)("approve_contract_termination_v1", {
         p_termination_id: data.termination_id,
         p_note: data.notes ?? null,
       });
-      if (!canonical.error) return { success: true };
-      if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
-
-      const { error: termError } = await supabase
-        .from("contract_terminations")
-        .update({
-          status: "APPROVED",
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", data.termination_id)
-        ;
-      if (termError) throw termError;
-
-      const { error: contractError } = await supabase
-        .from("contracts")
-        .update({
-          status: "TERMINATED",
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq("id", data.contract_id)
-        ;
-      if (contractError) throw contractError;
-
-      const { error: completeError } = await supabase
-        .from("contract_terminations")
-        .update({
-          status: "COMPLETED",
-          refund_date: new Date().toISOString(),
-        } as any)
-        .eq("id", data.termination_id)
-        ;
-      if (completeError) throw completeError;
-
-      if (data.refund_amount !== 0) {
-        const isRefund = data.refund_amount > 0;
-        const { error: cashError } = await (supabase as any)
-          .from("cash_book")
-          .insert([
-            {
-              user_id: user.id,
-              transaction_date: new Date().toISOString(),
-              transaction_type: isRefund ? "EXPENSE" : "INCOME",
-              category: isRefund ? "DEPOSIT_REFUND" : "DEPOSIT_FORFEIT",
-              amount: Math.abs(data.refund_amount),
-              description: isRefund
-                ? "Hoàn cọc thanh lý hợp đồng"
-                : "Thu thêm từ thanh lý hợp đồng",
-              reference_type: "CONTRACT_TERMINATION",
-              reference_id: data.termination_id,
-              payment_method: data.payment_method || "TM",
-              notes: data.notes,
-            },
-          ]);
-        if (cashError) throw cashError;
-      }
-
-      const { data: contract } = await supabase
-        .from("contracts")
-        .select("room_id")
-        .eq("id", data.contract_id)
-        .single();
-
-      if (contract?.room_id) {
-        await supabase
-          .from("rooms")
-          .update({ status: "AVAILABLE" } as any)
-          .eq("id", contract.room_id);
+      if (canonical.error) {
+        const err = canonical.error as { code?: string | null; message?: string | null };
+        if (isCanonicalFallbackSignal(err)) {
+          // Writer chưa deploy / rollout OFF. Trước đây đây là cửa vào fallback;
+          // nay là lỗi cứng — KHÔNG có đường ghi tiền nào khác được phép.
+          throw new Error(
+            "Chưa duyệt được thanh lý: hàm duyệt thanh lý trên server chưa sẵn sàng " +
+              "(approve_contract_termination_v1). Vui lòng báo kỹ thuật — KHÔNG có " +
+              "đường ghi tay nào thay thế, ghi tay sẽ làm mất phiếu tiền.",
+          );
+        }
+        throw canonical.error;
       }
       return { success: true };
     },

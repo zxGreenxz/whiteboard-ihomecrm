@@ -41,6 +41,16 @@ export interface UtilityMeter {
 /** 1 phiếu chi điện/nước đã ghi nhận (enriched cho Báo cáo + Hủy phiếu). */
 export interface UtilityPaymentRow {
   voucher_id: string;
+  /**
+   * true = phiếu CHỜ DUYỆT (UNAPPROVED). `pay_utility_bill` sinh phiếu
+   * UNAPPROVED khi số tiền ≥ ngưỡng `ie_auto_approve_config` (org thật đã hạ
+   * xuống 600.000đ ngày 29/07/2026 ⇒ hầu hết hoá đơn điện nước rơi vào nhánh
+   * này). Trước đây reader lọc cứng APPROVED nên phiếu đó VÔ HÌNH: dòng vẫn
+   * hiện "chưa đóng" và mời bấm lại ⇒ mỗi lần bấm là một phiếu 6–15tr mới
+   * (kiểm toán 30/07/2026 §−1.1). Nay trả về kèm cờ này, tiền CHƯA tính vào
+   * tổng đã chi.
+   */
+  pending: boolean;
   account_id: string | null; // đồng hồ (utility_account_id)
   building_id: string;
   building_name: string;
@@ -55,7 +65,12 @@ export interface UtilityPaymentRow {
   attachments: string[]; // ảnh phiếu chi (URL/path đã lưu) — xem qua lightbox
 }
 
-/** Trạng thái "đã đóng" của 1 đồng hồ trong kỳ — dùng cho ô/thẻ. */
+/**
+ * Trạng thái của 1 đồng hồ trong kỳ — dùng cho ô/thẻ. Cùng shape cho hai trạng
+ * thái khác nhau: `paidThisKy` (phiếu ĐÃ DUYỆT — "đã đóng") và `pendingThisKy`
+ * (phiếu CHỜ DUYỆT — "đã tạo, chờ duyệt"). Đừng gộp hai cái vào một: gộp là
+ * quay lại đúng khuyết tật cũ (đếm tiền chưa duyệt như đã chi).
+ */
 export interface PaidInfo {
   amount: number;   // tổng đã đóng trong kỳ (có thể > 1 phiếu)
   date: string;     // ngày phiếu gần nhất
@@ -71,6 +86,8 @@ export interface PaidInfo {
 
 export interface DayReportRow {
   voucher_id: string;
+  /** Phiếu chờ duyệt — KHÔNG cộng vào `DayGroup.sum`, chỉ hiện nhãn. */
+  pending: boolean;
   building_id: string;
   buildingName: string;
   type: UtilType;
@@ -85,7 +102,8 @@ export interface DayReportRow {
 
 export interface DayGroup {
   date: string;      // 'YYYY-MM-DD'
-  sum: number;
+  sum: number;       // chỉ phiếu ĐÃ DUYỆT
+  pendingSum: number;
   rows: DayReportRow[];
 }
 
@@ -291,17 +309,22 @@ export const useUtilityPayments = (billingMonth: string) => {
       const rangeEnd = monthToEndDate(billingMonth);
 
       // Phiếu CHI có hạng mục thuộc type + kỳ chồng lấn billingMonth.
+      // approval_status: lấy CẢ 'UNAPPROVED' để phiếu chờ duyệt không còn vô hình
+      // (§−1.1). KHÔNG lấy 'CANCELLED' — trên prod phiếu CANCELLED có
+      // `deleted_at IS NULL` (đã đo 30/07: 5 phiếu utility.bill dạng này) nên
+      // filter deleted_at KHÔNG loại được chúng.
       const { data, error } = await (supabase as any)
         .from('income_expenses')
         .select(`
           id, building_id, total_amount, voucher_date, created_at, creator_name, attachments, utility_account_id,
+          approval_status,
           building:buildings(name),
           book:accounts!income_expenses_account_id_fkey(name),
           meter:building_utility_accounts!income_expenses_utility_account_id_fkey(provider_code),
           it:income_expense_items!inner ( income_expense_type_id, start_date, end_date )
         `)
         .eq('type', 'EXPENSE')
-        .eq('approval_status', 'APPROVED')
+        .in('approval_status', ['APPROVED', 'UNAPPROVED'])
         .is('deleted_at', null)
         .in('it.income_expense_type_id', allIds)
         .lte('it.start_date', rangeEnd)
@@ -319,6 +342,7 @@ export const useUtilityPayments = (billingMonth: string) => {
           .filter((x: any): x is string => typeof x === 'string' && x.length > 0);
         out.push({
           voucher_id: v.id,
+          pending: v.approval_status === 'UNAPPROVED',
           account_id: v.utility_account_id ?? null,
           building_id: v.building_id,
           building_name: v.building?.name ?? '—',
@@ -339,36 +363,78 @@ export const useUtilityPayments = (billingMonth: string) => {
 
   const rows = query.data ?? [];
 
-  // Đã đóng theo TỪNG đồng hồ trong kỳ → tổng + phiếu gần nhất (mục tiêu Hủy phiếu).
-  const paidMap = useMemo(() => {
-    const m: Record<string, PaidInfo> = {};
-    for (const r of rows) {
-      const k = r.account_id;
-      if (!k) continue; // phiếu chưa gắn đồng hồ (không xảy ra sau backfill)
-      const cur = m[k];
-      if (!cur) {
-        m[k] = {
-          amount: r.amount, date: r.payment_date, count: 1,
-          voucherId: r.voucher_id, time: r.time, by: r.by, book: r.book,
-          hasReceipt: r.hasReceipt, attachments: r.attachments,
-        };
-      } else {
-        cur.amount += r.amount;
-        cur.count += 1;
-        // Giữ phiếu gần nhất làm đại diện (rows đã sort voucher_date desc).
-        if (r.payment_date > cur.date) {
-          cur.date = r.payment_date;
-          cur.voucherId = r.voucher_id;
-          cur.time = r.time; cur.by = r.by; cur.book = r.book;
-          cur.hasReceipt = r.hasReceipt; cur.attachments = r.attachments;
+  // Theo TỪNG đồng hồ trong kỳ → tổng + phiếu gần nhất (mục tiêu Hủy phiếu).
+  // HAI map tách bạch: đã duyệt ("đã đóng") vs chờ duyệt ("đã tạo, chờ duyệt").
+  const { paidMap, pendingMap } = useMemo(() => {
+    const fold = (src: UtilityPaymentRow[]) => {
+      const m: Record<string, PaidInfo> = {};
+      for (const r of src) {
+        const k = r.account_id;
+        // Phiếu CHƯA GẮN ĐỒNG HỒ không có ô nào để thuộc về — gom riêng ở
+        // `noMeter` bên dưới, KHÔNG bỏ im lặng (xem chú thích ở đó).
+        if (!k) continue;
+        const cur = m[k];
+        if (!cur) {
+          m[k] = {
+            amount: r.amount, date: r.payment_date, count: 1,
+            voucherId: r.voucher_id, time: r.time, by: r.by, book: r.book,
+            hasReceipt: r.hasReceipt, attachments: r.attachments,
+          };
+        } else {
+          cur.amount += r.amount;
+          cur.count += 1;
+          // Giữ phiếu gần nhất làm đại diện (rows đã sort voucher_date desc).
+          if (r.payment_date > cur.date) {
+            cur.date = r.payment_date;
+            cur.voucherId = r.voucher_id;
+            cur.time = r.time; cur.by = r.by; cur.book = r.book;
+            cur.hasReceipt = r.hasReceipt; cur.attachments = r.attachments;
+          }
         }
       }
+      return m;
+    };
+    return {
+      paidMap: fold(rows.filter((r) => !r.pending)),
+      pendingMap: fold(rows.filter((r) => r.pending)),
+    };
+  }, [rows]);
+  /** Trạng thái ĐÃ ĐÓNG (phiếu đã duyệt) của 1 đồng hồ (theo account id). */
+  const paidThisKy = (accountId: string | null | undefined): PaidInfo | undefined =>
+    accountId ? paidMap[accountId] : undefined;
+  /**
+   * Trạng thái ĐÃ TẠO – CHỜ DUYỆT của 1 đồng hồ. Ô có phiếu chờ duyệt KHÔNG
+   * được hiện "chưa đóng" (mời bấm lại), nhưng cũng KHÔNG được coi là đã đóng.
+   */
+  const pendingThisKy = (accountId: string | null | undefined): PaidInfo | undefined =>
+    accountId ? pendingMap[accountId] : undefined;
+
+  // ── Phiếu điện/nước KHÔNG gắn đồng hồ (utility_account_id NULL) ─────────────
+  // `paidMap`/`pendingMap` khoá theo id đồng hồ nên những phiếu này rơi ra ngoài
+  // MỌI ô của bảng "Đóng tiền" và ra ngoài mọi tổng tính từ ô (StatCard). Đo trên
+  // prod 30/07/2026: org thật **9 phiếu APPROVED / 7.956.000đ**, org DEMO 1 phiếu
+  // / 777.000đ (+ 8 phiếu UNAPPROVED rác của DEMO). Đó là phiếu tay tạo bên Thu
+  // chi (system_source NULL) — dữ liệu THẬT, chủ đã cấm đụng ⇒ chỉ được GHI NHẬN.
+  // Gom theo (toà × loại) để UI hiện được một dòng "chưa gắn công tơ" thay vì
+  // giấu tiền; tab Báo cáo vẫn liệt kê từng phiếu như trước.
+  const noMeter = useMemo(() => {
+    const m: Record<string, { amount: number; pendingAmount: number; count: number }> = {};
+    for (const r of rows) {
+      if (r.account_id) continue;
+      const k = `${r.building_id}:${r.type}:no-meter`;
+      const cur = (m[k] ??= { amount: 0, pendingAmount: 0, count: 0 });
+      if (r.pending) cur.pendingAmount += r.amount;
+      else cur.amount += r.amount;
+      cur.count += 1;
     }
     return m;
   }, [rows]);
-  /** Trạng thái đã đóng của 1 đồng hồ (theo account id). */
-  const paidThisKy = (accountId: string | null | undefined): PaidInfo | undefined =>
-    accountId ? paidMap[accountId] : undefined;
+  /** Tiền điện/nước của toà×loại trong kỳ mà KHÔNG gắn vào đồng hồ nào. */
+  const noMeterThisKy = (
+    buildingId: string,
+    type: UtilType,
+  ): { amount: number; pendingAmount: number; count: number } | undefined =>
+    noMeter[`${buildingId}:${type}:no-meter`];
 
   // Báo cáo theo ngày — chỉ ngày có đóng, desc; trong ngày sort theo giờ asc.
   const byDay = useMemo<DayGroup[]>(() => {
@@ -377,10 +443,12 @@ export const useUtilityPayments = (billingMonth: string) => {
       const d = r.payment_date;
       if (!d) continue;
       let g = map.get(d);
-      if (!g) { g = { date: d, sum: 0, rows: [] }; map.set(d, g); }
-      g.sum += r.amount;
+      if (!g) { g = { date: d, sum: 0, pendingSum: 0, rows: [] }; map.set(d, g); }
+      // Tổng trong ngày chỉ đếm tiền ĐÃ DUYỆT — phiếu chờ duyệt tiền chưa ra khỏi két.
+      if (r.pending) g.pendingSum += r.amount; else g.sum += r.amount;
       g.rows.push({
-        voucher_id: r.voucher_id, building_id: r.building_id, buildingName: r.building_name,
+        voucher_id: r.voucher_id, pending: r.pending,
+        building_id: r.building_id, buildingName: r.building_name,
         type: r.type, code: r.code, time: r.time, by: r.by, book: r.book, amount: r.amount,
         hasReceipt: r.hasReceipt, attachments: r.attachments,
       });
@@ -390,7 +458,7 @@ export const useUtilityPayments = (billingMonth: string) => {
     return groups;
   }, [rows]);
 
-  return { ...query, rows, paidThisKy, byDay };
+  return { ...query, rows, paidThisKy, pendingThisKy, noMeterThisKy, byDay };
 };
 
 /** Dữ liệu Biểu đồ: chi NCC (điện/nước) vs phải thu (hoá đơn khách) theo tháng. */

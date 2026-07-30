@@ -1,0 +1,948 @@
+# Đánh giá lại hai plan `/thu-tien` — bản quyết định production v2 (30/07/2026)
+
+> Tài liệu này **thay thế** `danh-gia-2-plan-thu-tien.md` (29/07/2026, chỉ tồn tại trên nhánh
+> `fix/v5-collection-completion-20260722`). Bản 29/07 vẫn là bằng chứng lịch sử; mọi chỗ hai bản
+> xung đột thì bản này thắng, vì nó được dựng trên một đợt kiểm toán 10 mảng chạy trên **codebase
+> hiện tại + database production sống** ngày 30/07/2026, sau đó bị phản biện đối kháng (63 phán
+> quyết: 41 sống, 22 bị bác).
+>
+> Mọi số liệu hiện trạng được tách riêng sang `2026-07-30-thu-tien-state-of-world.md`. Tài liệu này
+> chỉ nêu số khi số đó **là căn cứ của một quyết định**, và luôn ghi rõ khi nó bác một số của bản 29/07.
+>
+> Đây là **plan**. Không một dòng nào dưới đây được đọc là "đã code", "đã apply", "đã test".
+
+## 1. Kết luận điều hành
+
+Verdict 29/07 là **"đủ điều kiện bắt đầu Slice 0 read-only/prerequisite"**.
+
+**Verdict 30/07: KHÔNG. Chưa đủ điều kiện bắt đầu Slice 0 như đã định nghĩa.** Bốn lý do, theo thứ tự
+mức độ:
+
+1. **Có một tầng khuyết tật ĐANG SỐNG trên production, độc lập với cả hai plan, đang làm mất hoặc
+   khai sai tiền NGAY LÚC NÀY.** Chín khuyết tật đã được đo tận gốc (§4). Ba trong số đó không chỉ là
+   bug: chúng làm **mục tiêu của chính hai plan trở nên bất khả thi** — không thể tạo partial unique
+   index trên dữ liệu đã vi phạm nó (22 slot phí cố định × 45 phiếu, 13 slot thuộc tháng 07/2026,
+   tức vẫn đang sinh thêm), và không thể "chỉ hiện Đã hoàn khi có phiếu POSTED" khi hàm KPI trên cùng
+   trang vẫn cộng công thức tự tính. Vì vậy có một **Slice −1** đứng trước tất cả.
+2. **Nhiều điều kiện tiên quyết của bản 29/07 nhắm vào vấn đề KHÔNG TỒN TẠI.** Nặng nhất: forward-correct
+   `thu_tien.view` "cần CASHBOOK" (catalog live khai `required_dimensions=[]`,
+   `requires_cashbook_possession=false` — CASHBOOK chỉ là một trong bốn `scope_kinds` được chấp nhận;
+   làm theo plan sẽ **thu hồi 24 cạnh grant đang chạy**), và digest-check/forward-define
+   `ensure_income_expense_type_v1` + `normalize_income_expense_type_name` (cả hai **đã có** defining
+   migration tracked tại `20260728180000_income_expense_type_canonicalization.sql:13` và `:792`).
+3. **Toàn bộ tiền đề shared-runtime của Plan 2 KHÔNG có trên prod.** Không tồn tại
+   `app_private.special_page_submit_context_v1`, không tồn tại `finance_v2_post_voucher_with_source_v1`
+   (grep `%with_source%` và `%special%` trên `pg_proc` = rỗng), không tồn tại một object nào tên
+   `special_fee*` / `termination_refund*` / `room_residence_segments` / `termination_settlement_snapshots`.
+   Nghĩa là **Plan 2 Task 1–5 bị hard-block**: chúng được viết như thể chỉ cần "gọi" shared context, trong
+   khi shared context là một hạng mục công việc của Plan 1 chưa từng bắt đầu.
+4. **Nhánh làm việc đã hấp thu Đợt 0–6 "thu chi linh hoạt".** 24 migration nằm trong dải
+   `20260730100000 → 20260730280000` đã lên prod. Việc này (a) chiếm đúng timestamp `20260730160000`
+   mà Plan 2 định dùng, (b) làm mọi `CREATE OR REPLACE` mà Plan 1 đặt ở `202607300000xx` bị khối Đợt
+   ghi đè khi rebuild clone, (c) cài thêm bốn tầng khoá mà cả hai plan chưa biết:
+   `income_expenses_check_lock` / `income_expense_posting_lines_check_lock` (chốt sổ),
+   `a02_ie_profit_lock_*` (chốt lợi nhuận, **18 toà đã chốt tháng 05/2026**), nhánh ANNOTATE của
+   `guard_income_expense_owned_payload`, và `DO $guard$` của `20260730280000` — hàng rào quét toàn
+   schema, tự `RAISE` nếu còn hàm public khai `STABLE/IMMUTABLE` mà chạm khoá dòng. **Toàn bộ ~8 read
+   RPC mà hai plan gọi là "read-only" đều gọi `authorize_tenant_action_v3`, hàm này có `SELECT … FOR
+   SHARE`** — khai `STABLE` là vừa ném `25006` qua PostgREST vừa làm migration abort.
+
+Điều **không** đổi: ý định nghiệp vụ của chủ. Bảng luật ở §3 sống gần như trọn vẹn; kiến trúc chốt ở
+§6 của bản 29/07 (shared submit context, dedicated posting adapter, obligation ledger + sticky
+canonical-subject marker) vẫn là kiến trúc đúng. Cái phải đổi là **thứ tự**, **file đích**, và
+**tiền đề kỹ thuật**.
+
+**Verdict thi hành:** được phép bắt đầu **Slice −1** ngay (hotfix production, không schema mới,
+không feature surface mới). **Slice 0 chỉ được mở sau khi Slice −1 xanh**, và Slice 0 phải được viết
+lại thành "sửa văn bản plan + preflight", không còn migration. Không một money route nào được bật
+cho tới khi gate của slice tương ứng xanh theo §7.
+
+## 1bis. QUYẾT ĐỊNH CỦA CHỦ — 30/07/2026 (rằng buộc, thắng mọi mục khác)
+
+> Nguyên văn: **“tất cả khoản tiền đó giữ nguyên đi ghi nhận là được đừng đụng vào”.**
+
+Áp dụng cho toàn bộ dữ liệu tiền đã tồn tại. Diễn giải thi hành:
+
+1. **Không sửa, không huỷ, không đảo, không xoá** bất kỳ dòng `income_expenses` /
+   `income_expense_items` / `contract_terminations` / `payments` / posting nào đang có.
+2. **Không viết backfill làm đổi số tiền, trạng thái hay posting.** Backfill chỉ được **đọc và ghi nhận**
+   sang sổ phụ (claim/conflict ledger), không chạm bản ghi gốc.
+3. **22 ô phí cố định / 45 phiếu** (gồm cặp `66.000.000đ` toà 102LVT, và worst-slot 3 phiếu
+   `108.400.000đ`), **2 ô công tơ**, **3 ô mức toà**, và **3 phiếu `quan_ly` item NULL-date**:
+   **giữ nguyên**, chỉ ghi nhận.
+4. Do đó **mọi ràng buộc chống trùng chỉ áp cho phiếu MỚI.**
+
+### 1bis.1 Hệ quả thiết kế bắt buộc — chống trùng KHÔNG đặt trên phiếu lịch sử
+
+Bản 30/07 trước đó coi “dọn 22 ô” là **điều kiện tồn tại** của partial unique BASE index
+(§4.1). Quyết định của chủ **bác** cách đó. Thiết kế thay thế — và may mắn là kiến trúc plan
+**đã hỗ trợ sẵn**, không phải thiết kế lại:
+
+| Điểm | Bản trước 30/07 | Sau quyết định của chủ |
+|---|---|---|
+| Nơi đặt uniqueness | Suy ra từ phiếu lịch sử ⇒ `CREATE UNIQUE INDEX` **fail ngay lúc tạo** | Đặt trên **sổ claim mới** (`special_fee_claims`), bảng trống lúc tạo ⇒ index tạo được |
+| Ô đang có ≥2 phiếu | Phải dọn trước | Sinh **đúng một claim `CONFLICT`** cho cả ô (đã là luật ở Plan 1 Task 6 Step 6: “một slot legacy duy nhất → `LEGACY`; nhiều voucher → `CONFLICT`”) |
+| Phiếu lịch sử | Có thể bị đảo/huỷ để dọn | **Bất biến.** Chỉ được tham chiếu từ claim |
+| Chặn trùng mới | Dựa vào index | **Kiểm trong hàm writer** + advisory lock theo slot ⇒ chặn phiếu mới, không hồi tố |
+| Gate Slice −1 | “dọn xong 22 slot phí + 2 slot công tơ” | **“ghi nhận đủ 22 + 2 + 3 + 3 ô vào conflict ledger, không sửa phiếu nào”** |
+
+**Vì sao một claim `CONFLICT` cho cả ô, không phải hai claim:** partial unique BASE index phủ
+`NORMAL|EXCEPTION|EXTERNAL|LEGACY|CONFLICT`, nên hai claim active trên cùng `base_slot_key` là bất khả.
+Ô có n phiếu ⇒ một hàng `CONFLICT` mang mảng n voucher id + lý do. Đó đúng nghĩa “ghi nhận”.
+
+**Cái KHÔNG đổi:** ô đã ghi nhận `CONFLICT` thì **không cho chi mới** trên ô đó cho tới khi chủ giải
+quyết — đây là chặn phiếu mới, không phải sửa phiếu cũ, nên hợp với quyết định. Không có nó thì phiếu
+thứ 46 vẫn sinh ra được.
+
+### 1bis.2 Việc kế toán, nằm ngoài phạm vi code
+
+Bốn cặp **cùng số tiền** (nghi chi hai lần thật, **tổng phơi nhiễm 164.500.000đ**) vẫn cần người đối
+chiếu sao kê/biên nhận chủ toà. Chủ đã quyết **không đụng vào bản ghi**, nên nếu kết luận là chi trùng
+thì xử lý bằng **nghiệp vụ ngoài hệ thống** (thu hồi/cấn trừ kỳ sau), hoặc chủ ra quyết định riêng sau.
+Code không tự làm gì:
+
+| Toà | Loại | Kỳ | Số tiền | Ghi chú |
+|---|---|---|---:|---|
+| 102LVT | tiền nhà | 06/2026 | `66.000.000` ×2 | `PC2606046` + `PC2606047`, cùng người tạo, cách **460 ms** — bằng chứng double-submit rõ nhất |
+| 405PVB | tiền nhà | 07/2026 | `52.500.000` ×2 | 1 định kỳ + 1 tay |
+| 32PVC | tiền nhà | 07/2026 | `26.000.000` ×2 | 1 tay + 1 định kỳ |
+| 15KV | tiền nhà | 07/2026 | `20.000.000` ×2 | 1 định kỳ + 1 tay |
+
+Một ô trong 22 ô **không phải trùng thật**: `Kho Văn Phòng Chung / quan_ly / 07/2026` là hai phiếu
+**lương** (`13.930.046` + `20.276.698` = `34.206.744đ`) bị matcher `LIKE '%quan ly%'` đọc thành phí
+quản lý. Vá §4.3 là ô này tự biến mất — không cần chủ quyết gì.
+
+## 1ter. Ba quyết định của chủ — 30/07/2026 (chốt, thay mọi giả định trước đó)
+
+### 1ter.1 KPI “Đã hoàn cọc” = tiền THẬT đã ra khỏi két
+
+**Chốt: `28.039.100đ / 10 phiếu`** — gồm **cả** phiếu hoàn không nối được hồ sơ thanh lý.
+
+Lý do bác phương án “chỉ lấy phần nối được hồ sơ” (`4.302.000đ / 2`): nó khớp bảng nhưng **khai
+thiếu `23.737.100đ`** tiền đã chi thật, tức chỉ đổi lỗi *khai thừa* hôm nay thành lỗi *khai thiếu*.
+
+Đối chiếu bắt buộc (đã đo lại 30/07, khớp tuyệt đối):
+
+```text
+refund_linked_total          4.302.000đ   /  2 phiếu   (nối được hồ sơ thanh lý → khớp bảng)
+refund_posted_orphan_total  23.737.100đ   /  8 phiếu   (đã ghi sổ, KHÔNG có hồ sơ thanh lý)
+──────────────────────────────────────────────────────
+refund_total                28.039.100đ   / 10 phiếu   ← KPI
+```
+
+**UI bắt buộc** hiện dòng cảnh báo cho phần `orphan`, nếu không KPI lại lệch bảng lần nữa —
+lần này theo chiều ngược. Đây là phát hiện MỚI, không có trong bản 29/07: **16/20 phiếu hoàn của org
+thật không nối được hồ sơ thanh lý**, 8 trong số đó đã ghi sổ.
+
+### 1ter.2 Ngưỡng tự duyệt: KHÔNG áp cho trang `/thanh-toan`
+
+Nguyên văn chủ: *“với các phiếu chi qua page thanh-toan thì auto duyệt chỉ khoá với các rule kèm theo,
+còn các phiếu chi ở bên ngoài page thu-chi giữ nguyên logic hiện tại đang có.”*
+
+Ngữ nghĩa đúng — **bản 30/07 trước đó hiểu sai** và coi ngưỡng `600.000đ` là mâu thuẫn phải hoà giải:
+
+| Đường đi | Cổng chặn tự duyệt | Ngưỡng `ie_auto_approve_config` |
+|---|---|---|
+| Nút chi đặc biệt trên `/thanh-toan` | **Chỉ các rule của chính hạng mục đó** (đúng giá công bố, ô còn trống, đủ giãn cách, đủ điều kiện hoa hồng…) | **KHÔNG áp** |
+| Phiếu tạo tay ở `/thu-chi` và mọi nơi khác | Giữ nguyên hiện trạng | **Vẫn áp** |
+
+**Hệ quả về thứ tự — điều tôi KHÔNG làm ở Đợt −1 và lý do:** hôm nay **chưa có rule engine**. Nếu gỡ
+ngưỡng khỏi `pay_utility_bill` ngay bây giờ thì phiếu điện nước sẽ auto-duyệt **không qua bất kỳ cổng
+nào** — lỏng hơn hiện tại, và ngược đúng ý chủ (“chỉ khoá với các rule kèm theo”). Vì vậy:
+
+- **Đợt −1 giữ nguyên ngưỡng**, chỉ làm phiếu chờ duyệt **hiện ra** để hết bấm trùng (§−1.1).
+- **Đợt 5 mới gỡ ngưỡng cho riêng đường `/thanh-toan`**, đúng lúc rule engine thay thế nó.
+- Miễn ngưỡng phải **scope theo đường ghi**, không phải theo tổ chức — `/thu-chi` không được ảnh hưởng.
+
+### 1ter.3 “Chủ sở hữu” = theo TÊN VAI TRÒ (giữ nguyên hiện trạng)
+
+**Chốt: dùng `app_private.is_org_owner_v1`** (nhận diện vai trò tên `Chủ sở hữu tổ chức`).
+Không đổi `member_type`, không ai mất quyền, DEMO không phải cấp lại.
+
+**Nợ kỹ thuật bắt buộc trả kèm:** `organization_roles.name` là text tự do, nên **đổi tên vai trò trong
+Cài đặt sẽ âm thầm làm sập cửa chủ sở hữu** ở mọi nơi dựng trên helper này. Đợt −1 phải thêm khoá
+chống đổi tên/xoá vai trò đó (§−1.10). Không có khoá này thì lựa chọn “theo tên vai trò” là một quả
+mìn hẹn giờ, không phải một quyết định ổn định.
+
+## 2. Quan hệ với bản 29/07
+
+Bằng chứng hiện trạng: xem `2026-07-30-thu-tien-state-of-world.md`. Ở đây chỉ ghi **quan hệ**.
+
+### 2.1 Giữ nguyên (carry over unchanged)
+
+- Toàn bộ **§3 Yêu cầu nghiệp vụ đã khóa** — vẫn là ý chủ, xem §3 bản này để biết chướng ngại mới.
+- Kiến trúc §6: một shared submit context; writer tạo voucher nội bộ rồi gọi **dedicated** posting
+  adapter; Plan 2 dùng obligation ledger + sticky marker; `/thu-chi`, `/income-expense`, contract page,
+  import, Copilot giữ nguyên approval/posting.
+- Bác bỏ `apply-sql.mjs --dry-run` (script hard-code production ref — đã xác minh lại).
+- Ánh xạ `CANONICAL→ON`, `FROZEN→force_freeze`, `CANARY→CANARY + canary org + caps`.
+- Bác bỏ `invoice_refund_reservations` cho hoàn cọc (`invoice_id NOT NULL`, cap theo `invoices.paid_amount`).
+- Bác bỏ `contract_terminations.refund_amount` làm exact due (GENERATED, có thể âm, min **−10.590.180,64**).
+- Bác bỏ amount tolerance cho phí cố định; bác bỏ claim bảo trì lifetime-unique; bác bỏ ordinal tự động `#2/#3`.
+- Bác bỏ `CURRENT_DATE` → `app_private.org_today_v1`.
+- Bác bỏ backfill bằng matcher tên chung.
+- Bác bỏ `public.notifications` cho snapshot nhạy cảm.
+- Giữ `public.can_create_restricted_ie()` nguyên vẹn (md5 `90ad1994a07546d11c18c368ab2b3bb8`, là gate
+  server thật tại `pay_period_fee:50-52`, nằm trong `scripts/definer-acl-baseline.json:16`).
+- Global lock order duy nhất (§6.3) — giữ, có bổ sung một quy tắc chặn trước (§6.2 invariant 8).
+
+### 2.2 BỎ (nhắm vào vấn đề không tồn tại)
+
+| Hạng mục 29/07 | Vì sao bỏ |
+|---|---|
+| Forward-correct scoped read contract của `thu_tien.view` (§4.1, §5 dòng CRITICAL cuối; Plan 1 Task 0 Step 3d) | Catalog live: `required_dimensions=[]`, `requires_cashbook_possession=false`, `scope_match_mode=ANY_MATCH`. `required_dimensions` trong catalog này chỉ nhận `BUILDING` hoặc `CASHBOOK` ⇒ lệnh "đổi thành organization/area/building" **không biểu diễn được**. Thực thi đúng chữ sẽ vô hiệu **24 cạnh ALLOW** đang sống |
+| Digest-check + forward-define `ensure_income_expense_type_v1` / `normalize_income_expense_type_name` (§6; Plan 1 §1.2, Task 0 Step 2) | Cả hai có defining migration tracked `20260728180000:13` và `:792`, signature 12 tham số khớp live. Nhánh "absent trên clone là hợp lệ" **không bao giờ chạy** |
+| Registry technical SERVICE membership + `check-technical-membership-isolation.mjs` + sửa hàng loạt selector, như một deliverable của Slice 0 (§5, §6, §8) | Chỉ có **1** superadmin và **2** org; superadmin đó có membership ACTIVE hợp lệ ở **cả hai** org ⇒ nhánh provision **không tới được** trên dữ liệu hiện tại. Giữ lại: một preflight ghi rõ nhánh này là dead-on-current-data, và câu §147 phải viết ở thể điều kiện |
+| "Task 0 sửa `ThuTien.tsx` để chỉ mount đúng surface theo breakpoint" (§5 dòng "Không sửa double mount") **như đặc tả** | Hai chuyện: file sai (surface đã chuyển sang `/thanh-toan`), và **thiết kế sản phẩm là chủ ý** — `thu-tien.css:439-444` hiện cả hai cột ở ≥1024px và `.e2e-fleet/specs/thanh-toan-page.spec.ts:20/:27/:32` **assert cả hai cùng render**. Thực thi Step 4 làm spec đó đỏ ⇒ chặn chính gate Slice 0 |
+| "Broker phải tạo unique index một-phiếu-một-hợp-đồng" (hàm ý ở §3/§5) | `uq_ie_commission_per_contract` **đã tồn tại** + advisory lock + pre-check `P0001` trong `create_commission_voucher`. **Cấm DROP/REPLACE index này** |
+
+### 2.3 SỬA (ý đúng, đích sai) — retarget
+
+| Hạng mục 29/07 | Đích mới |
+|---|---|
+| Mọi "Modify `src/pages/ThuTien.tsx`" | **`src/pages/ThanhToan.tsx`**. `ThuTien.tsx` (406 dòng) không còn `PeriodFeePanel/PeriodFeeSheet/usePeriodFees/useUtilityBills/useCommissionVoucher/useMaintenanceBatch`; `:258-259` chỉ `navigate('/thanh-toan')`. `/thanh-toan` gác bằng `thu_tien.**collect**` (`App.tsx:367`), `/thu-tien` bằng `thu_tien.view` (`App.tsx:363`) |
+| `UtilityDesktopPanel.tsx`, `UtilityBillSheet.tsx` | **Dead code, 0 importer.** Surface EN thật là `UtilityEnContent.tsx` (import duy nhất tại `PeriodFeePanel.tsx:37`, render `:503-505`) và khối EN inline của `PeriodFeeSheet.tsx` |
+| Danh sách defining migration của `resolve_fixed_expense_type/fee_type_matches/get_period_fee_status` | Bản canonical cuối là `20260728180000:944-1025`, **không phải** `20260708130100`. Thêm `20260710120100_pay_update_cancel_v2.sql`. Copy body từ bản 0708 sẽ **revert** canonicalization 28/07 (mất org-scope, mất `p_is_restricted` cho `quan_ly`) |
+| Owner helper mới (`special_fee_is_owner_or_superadmin_v1`, `useIsOrgOwner.ts`) | **EXTEND** `app_private.is_org_owner_v1` (đã kiểm cửa sổ hiệu lực của cả membership lẫn role_binding) + thêm `organizations.status='ACTIVE'` mà nó thiếu + bọc nhánh `is_super_admin()`. Và phải **chốt một định nghĩa duy nhất**: hàm live nhận diện owner bằng `organization_roles.name='Chủ sở hữu tổ chức'`, plan đòi `member_type='OWNER'`; ở DEMO hai định nghĩa lệch **2/3 người**, ở org thật trùng nhau |
+| `finance_v2_is_cashbook_period_open` là gate kỳ duy nhất (§6 invariant 13) | Dùng `app_private.cashbook_closed_through_v1` cho pre-check trước-khi-có-voucher và `app_private.assert_period_open_for_edit_v1` khi đã có voucher (ba code `[CASHBOOK_CLOSED]/[HANDOVER_LOCKED]/[PROFIT_LOCKED]`). Hàm cũ **chỉ đọc `accounts.lock_date`**, mà **0 account** có `lock_date` ⇒ hôm nay nó là no-op tuyệt đối |
+| "DOM dùng Playwright, không thêm testing-library" (§5) | Tiền đề đúng, kết luận sai: repo **đã có** harness render trong environment `node` — `renderToStaticMarkup`, 15 file dùng, mẫu chuẩn `BuildingFilterSelect.test.tsx:19-27`. Playwright chỉ cho luồng đa bước và upload thật |
+| Release adapter "bao phủ mọi terminal writer đã xác minh" (§3, §5) | Thêm **hai** writer public mới ship 30/07: `public.cancel_income_expense_flex_v1` (`20260730140000:119`, GRANT authenticated — **đường huỷ mặc định của `/thu-chi` sau Đợt 5**) và `public.reverse_invoice_collection_v5` (`20260730150000:460`). `app_private.cancel_collection_voucher_in_place_v1` là helper private (`postgres=X`) — không nợ coverage. Và **đẩy trigger backstop từ "backstop" lên "cơ chế chính"**, vì mặt cắt này nhận 4 migration huỷ trong một ngày |
+| "Seed một dòng `finance_flow_owner_adapters` + test unknown-owner fail-closed là đủ" (§6) | `dispatch_finance_decision_v2` route theo **`adapter_name`**, qua một `CASE` **năm nhánh đóng**, `ELSE` ném `0A000`. Bộ đã nối đúng bằng `{INVOICE_REFUND, PROFIT_PAYOUT, TERMINATION_FORFEIT_PAIR, TERMINATION_MOVE_OUT_PAIR, SALARY_BUNDLE}`. Lỗi này **đã hiện thực hoá trên prod** cho `flow_owner='UTILITY_RECURRING'` (adapter `CANONICAL_INCOME_EXPENSE` → `ELSE` → `0A000`) |
+| Bảo trì "101 voucher / 11 tên" (§3, backfill sizing) | **200 voucher / 31 tên / 80.289.556đ** cho cả họ `nrm_vn(category) LIKE 'bao tri%'` (plan 29/07 ghi 101/11 — số đo lại 30/07 là 200/31). 101/11/42.333.000đ chỉ là category "Bảo Trì Máy Lạnh". Ghi rõ Bảo Trì Toà Nhà (85), Tủ Lạnh (6), máy bơm (1) **ngoài phạm vi theo thiết kế** |
+| `repeat_due = 77` "recurring children đang due" (§4.3) | 77 dòng đó là **parent schedule**, không phải child (`repeat_parent_id IS NULL` cả 77). 76/77 APPROVED, 76/77 khớp một fixed kind, 64/77 `repeat_auto_approve=true`. Riêng child: **155 child sống, 155/155 đáp xuống một slot fixed-kind** (plan 29/07 ghi 146 child posted — số đo lại 30/07 là 155 child sống). Idempotency key phải là `(parent_id, target_month)`, không phải child id |
+| "Hai termination writer" (§5) | **Ba.** `terminate_contract_forfeit_impl` là writer thứ ba tạo dòng `contract_terminations` (26/37 dòng), audit insert bị nuốt tại `:262-263`. Nó **không** sinh phiếu hoàn (chỉ cặp offset EXPENSE + revenue INCOME) nên không nợ obligation — nhưng nợ attribution |
+| `/deposits` chỉ sửa `useDepositDashboard.ts` + `DepositsPage.tsx` | Thêm **`public.get_refund_forfeit_summary(uuid[])`** — hàm SQL SECURITY **INVOKER** nuôi ô KPI đầu trang, cộng `GREATEST(0, refund_amount)` trên **mọi** termination non-FORFEIT, không lọc status, không lọc posting (đếm cả DRAFT/PENDING_APPROVAL là "lần") |
+| Thứ tự migration canonical (§7) | Đánh số lại toàn bộ 16 file sang `20260731xxxxxx` — xem §8 |
+| Bảng gate §8 | Thêm `check-stable-fn-locks.mjs`, `check-permission-catalog.mjs`; bỏ/đổi tên phần không tồn tại — xem §9 |
+
+## 3. Yêu cầu nghiệp vụ đã khóa
+
+Bảng của bản 29/07 giữ nguyên cột luật (vẫn là ý chủ), thêm cột **chướng ngại mới phát hiện 30/07**.
+
+| Phạm vi | Quy tắc cuối cùng (giữ) | Chướng ngại mới đo được 30/07 |
+|---|---|---|
+| Ranh giới | Chỉ nút check của mục đặc biệt trên trang đóng tiền được auto duyệt/auto chi | Trang đó là **`/thanh-toan`** (gác `thu_tien.collect`), không phải `/thu-tien`. Mọi entry mới thêm vào `FEE_CATEGORIES` chỉ render trong `PeriodFeePanel/PeriodFeeSheet`, tức **sau** `collect` — xung đột với §3.3 Plan 2 đặt queue/lifecycle ở mức `thu_tien.view` |
+| Quyền cấu hình/ngoại lệ | Chỉ chủ sở hữu org và superadmin; superadmin cao nhất | Hai định nghĩa "chủ" đang cùng sống: `is_org_owner_v1` (theo **tên vai trò** tiếng Việt) vs plan (`member_type='OWNER'`). DEMO: 3 role-owner vs 1 member_type-owner ⇒ `demo.quanly` (STAFF) hiện được `/thu-chi` coi là chủ nhưng sẽ bị `/thanh-toan` từ chối, và E2E chạy bằng `demo.quanly` sẽ đỏ không rõ nguyên nhân. Đổi tên vai trò trong Cài đặt = tự sập cửa chủ ở nhiều nơi |
+| Phí cố định | 7 loại; mỗi toà × loại × tháng một slot; version theo `effective_from_month`; so tiền chính xác sau normalize 2 chữ số | **22 slot đã vi phạm sẵn** (45 phiếu, worst 3 = 108.400.000đ), 13 slot thuộc 07/2026 ⇒ **partial unique index không tạo được** trước khi dọn. Thêm 3 phiếu `quan_ly` toà `cb6592d8…` có item **NULL start/end date** ⇒ vô hình với cả reader lẫn guard. Và `building_fee_accounts.default_amount` **không phải cấu hình**: `pay_period_fee` ghi đè nó bằng `round(p_amount/months)` mỗi lần chi ⇒ import nó thành DRAFT rule là **tự khớp chính mình** |
+| Hồi tố | Đổi giá phải chọn "áp dụng từ tháng"; không sửa kỳ/voucher/snapshot cũ | `20260730240000_authz_remaining.sql:429-457` (untracked, chưa apply) mở rộng vị ngữ kỳ sang **kỳ dịch vụ của hạng mục** ⇒ phiếu có item thuộc tháng đã chốt lợi nhuận **không sửa/huỷ được**. 18 toà đã chốt 05/2026 |
+| Trả trước | Chỉ Internet, Công an, Rác, Thang máy; một phiếu con mỗi tháng; batch all-or-nothing | Chính vị ngữ trên: một child trả trước cho tháng đã chốt **không huỷ được vĩnh viễn** ⇒ slot bị chiếm mãi, phá đúng lời hứa của Plan 1. Phải quyết một trong ba: child đặt `business_result_accounting=false`, hoặc không đặt item period cho tháng quá khứ, hoặc đường release claim không đi qua vị ngữ đó |
+| Điện/nước | Mỗi đồng hồ × loại × tháng một phiếu; cảnh báo theo toà × loại; vượt mốc vẫn `APPROVED + POSTED`, alert snapshot | **Xung đột trực diện với quyết định của chủ ngày 29/07**: `ie_auto_approve_config` của org thật hạ ngưỡng xuống **600.000đ** lúc `2026-07-29T09:39:56Z`, và `pay_utility_bill` **tôn trọng ngưỡng đó** (`pay_period_fee` thì hardcode `'APPROVED'` — bất đối xứng). 64/72 hoá đơn EN sống ≥ 600k. Plan **không có ô trạng thái** "đúng rule nhưng phải chờ duyệt" ⇒ hoặc writer mới phá quy tắc duyệt tay của chủ, hoặc assert `POSTED` in-transaction rollback và nút chết. **Cần chủ quyết lại trước Slice 1** |
+| Hoa hồng môi giới | Một lần/HĐ; chỉ hiện check khi HĐ còn hiệu lực, thực thu đủ cọc, đã qua `start_date + 7 ngày`; hard block không proposal | Index một-phiếu-một-HĐ **đã có** ⇒ bỏ task tạo index, chỉ còn dọn **2 HĐ** đang có 2 phiếu broker APPROVED. Bậc hoa hồng: 21/21 toà đã khai và **21/21 đều hở** (chỉ phủ 5–6 và 10–12 tháng). `get_period_commissions` **đã có fallback ngầm 50%** trong khi `useCommissionVoucher.ts:46-48` trả 0đ ⇒ import DRAFT không `fallback_policy` sẽ **âm thầm đổi số đang hiển thị** cho 22 HĐ ở 7–9 tháng. Thêm 48 HĐ ở 13–17 tháng ngoài vùng phủ ⇒ `fallback_policy` là load-bearing, không phải trang trí |
+| Thưởng nóng Sale | Phiếu riêng, gộp UI "Hoa Hồng & Thưởng Sale"; chỉ trần + một slot/HĐ | **Không phải "chuyển", mà là làm mới hoàn toàn.** `PeriodCommissionModal.tsx:76` chỉ truyền `kind:'broker'`, không có nhánh Sale; 7 phiếu thưởng Sale hiện có đều sinh từ **trang hợp đồng**. Nguồn dữ liệu, tab, trần, báo cáo đều mới ⇒ phải tính lại effort |
+| Bảo trì máy lạnh | Theo phòng, tối đa một lần trong rolling 5 tháng, advisory lock | **Chiều "phòng" chưa tồn tại**: `MaintenanceBatchLine` chỉ có `{buildingId, subtype, amount}`, `get_period_maintenance` trả building/subtype không room. 13/101 phiếu AC không có room (77 phiếu org thật trên cả họ bảo trì không có room). **23 phiếu đã vi phạm chính luật 5 tháng.** Và `useMaintenanceBatch.ts:36-46` **INSERT thẳng vào `income_expense_types` từ browser** — phải bỏ trước |
+| Bảo trì máy giặt | Theo toà, tối đa một lần trong rolling 6 tháng | Chỉ **7 phiếu / 2 tên / 2.850.000đ**, 0 ca trùng ⇒ không có dữ liệu thật để hồi quy luật; **hạ ưu tiên** so với máy lạnh |
+| Giá bảo trì | ≤ chuẩn bình thường; > chuẩn ≤ trần là warning vẫn post; > trần hoặc vi phạm cadence là exception | Bảng ánh xạ chủ phải duyệt là **200 phiếu / 31 tên**, không phải 101/11 |
+| Ngoại lệ | Không phải phiếu chi; chủ/superadmin duyệt mới sinh phiếu posted; proposal immutable, TTL/reason | Cơ chế này chưa có; định nghĩa "chủ" chưa chốt (dòng trên). `[NOT_MANUAL]` của `assert_manual_voucher_v1` sẽ chặn flex-cancel mọi phiếu có `system_source` — đây là **fail-closed mong muốn** nhưng phải assert tường minh |
+| Hoàn cọc | Queue chỉ hoàn tất số canonical do settlement emitter sinh; manager không nhập amount | Không có **một** ca "hoàn cọc đúng và đã trả tiền" trên prod để làm mốc: org thật có đúng 3 termination `refund_amount > 0`, **2/3 lệch số** (−978.500 và **+500.000** — ca +500.000 vắng khỏi cả ba plan doc), ca thứ ba khớp nhưng **UNAPPROVED/UNPOSTED**. Gate "exact hash/amount" phải seed từ fixture DEMO tự dựng |
+| Hủy/reversal | Giải phóng hoặc chuyển claim đúng trạng thái, mọi terminal writer, không hard delete | Thêm 2 writer (§2.3). Và `cancel_period_fee` hôm nay nhận **mọi** phiếu EXPENSE có item khớp matcher (không chỉ `fixed_fee/utility.bill`) rồi `UPDATE … deleted_at` **không token** ⇒ 9 phiếu flow-owned đang mắc bẫy `55000`, gồm **1 phiếu thật `PC2607096`** đang hiện nút Huỷ bật sáng |
+| Chu trình phòng | Read model chỉ đọc; ưu tiên source snapshot; phân đoạn theo move-out/move-in; thiếu/ambiguous không fallback current room | Có **đường đổi phòng thứ hai** chưa ai biết: trigger `apply_contract_transfer` (DRAFT→APPROVED) ghi đè `room_id, rent_price, total_deposit` **và `start_date/end_date`**, đặt `status='TRANSFERRED'`. Plan chỉ đọc transfer `COMPLETED` ⇒ bỏ sạch đường này; và giả định "`contracts.start_date` là mốc đoạn đầu" **sai** vì chính cột đó bị ghi đè. Hiện 0 dòng đi đường này nhưng RLS cho phép |
+
+Ba câu bổ nghĩa của bản 29/07 giữ nguyên: (a) "giữ logic cũ ngoài trang đóng tiền" = không mở
+auto-approve/auto-post và không đổi permission của ordinary voucher; (b) refund voucher canonical là
+system-owned monetary artifact nên amount/items read-only ở mọi page; (c) với trả trước, **kỳ phí**
+và **ngày ghi sổ** là hai khái niệm khác nhau.
+
+Một ngoại lệ **mới** phải ghi vào (b): Đợt 2 đã ship năng lực ANNOTATE. Nhánh ANNOTATE của
+`guard_income_expense_owned_payload` fire cho **mọi** `flow_kind` và trả `NEW` khi chỉ
+`attachments/notes/updated_at` đổi; `public.annotate_income_expense_v1` là DEFINER, GRANT
+`authenticated`, **không đọc** `income_expense_flow_ownership`. Vì vậy một kế toán **vẫn dán được ảnh
+chứng từ vào phiếu hoàn cọc system-owned đã POSTED**. Plan 2 `:168` đòi freeze `attachments` ⇒ phải
+chọn: loại `attachments/notes` khỏi bộ đông cứng và khỏi header hash, **hoặc** xin chủ carve-out
+flow-owned refund voucher khỏi quyết định số 8. Hiện plan không làm gì cả.
+
+## 4. Slice −1 (mới) — tầng khuyết tật đang sống
+
+**Đây là quyết định biên tập không thương lượng.** Chín khuyết tật dưới đây độc lập với cả hai plan,
+đang làm mất hoặc khai sai tiền. Chúng đứng **trước** mọi thứ vì (i) tiền đang chảy sai, và (ii) ba
+trong số chúng làm gate của chính hai plan bất khả thi.
+
+Không migration nào của Slice −1 được thêm feature surface mới. Mỗi hạng mục có gate riêng.
+
+### −1.1 `pay_utility_bill`: phiếu điện/nước vô hình + không có chống trùng nào
+
+- **Sai gì.** `pay_utility_bill` đọc `app_private.ie_auto_approve_config` và sinh
+  `approval_status='UNAPPROVED'` (`approved_by/approved_at` NULL) khi `p_amount >= threshold`. Bảng
+  điện/nước lại **chỉ đọc APPROVED** (`useUtilityBills.ts:304 .eq('approval_status','APPROVED')`;
+  `:370-371 paidThisKy` chỉ đọc map đó). Ngưỡng org thật đã hạ xuống **600.000đ** lúc
+  `2026-07-29T09:39:56Z` (`updated_by 90450d5f`), trong khi **64/72** hoá đơn EN sống ≥ 600k. Và
+  `pay_utility_bill` **không có bất kỳ kiểm tra trùng nào** — mỗi lần bấm là một phiếu 6–15 triệu mới.
+- **Bằng chứng.** Body `:72-79 → :99`. `pay_period_fee:132` thì hardcode `'APPROVED'` (bất đối xứng).
+  Bug **đã lên nòng, chưa nổ ở org thật**: `max(created_at)` của `system_source='utility.bill'` =
+  `2026-07-22T09:33:17Z`, tức trước khi hạ ngưỡng; 0 phiếu EN tạo sau `2026-07-29 09:39:56`; 0 phiếu
+  EN `UNAPPROVED` sống. Nhánh này **đã nổ một lần ở DEMO**: `PC2607039`, 8.000.000 ≥ ngưỡng DEMO
+  5.000.000, `UNAPPROVED`, tạo và soft-delete cùng lúc `2026-07-20T01:29:33/34Z` (fixture E2E).
+- **Sửa nhỏ nhất an toàn.** (a) Reader hiện cả `UNAPPROVED`, nhãn **"Chờ duyệt"**, và `paidThisKy`
+  coi UNAPPROVED là "đã có phiếu" (không phải "đã đóng"); (b) thêm chốt chống trùng cấp DB theo
+  `(utility_account_id, utility_type, billing_month)` cho phiếu non-cancelled, dọn 2 slot đang vi phạm
+  trước; (c) **không** đổi hành vi ngưỡng trong Slice −1 — đó là quyết định của chủ, đưa lên §3.
+- **Gate.** Query live: 0 phiếu `utility.bill` non-cancelled trùng khoá trên; test hai-session bấm
+  check hai lần trên cùng công tơ/tháng ⇒ lần hai bị từ chối bằng lỗi nghiệp vụ (không phải 23505 trần);
+  spec Playwright khẳng định dòng có phiếu UNAPPROVED **không** còn hiện "chưa đóng".
+- **Chặn gì của plan.** Chặn Plan 1 Task 3–5: không thể xây unique index per-meter khi 2 slot đang
+  vi phạm, và không thể assert `VALID → APPROVED+POSTED` khi ngưỡng chủ đang bắt chờ duyệt.
+
+### −1.2 Batch bảo trì: cùng hình dạng "ghi vô hình → mời tạo lại"
+
+- **Sai gì.** `ie_compat_insert_v2` **cưỡng chế** `approval_status='UNAPPROVED'`, bất kể số tiền hay
+  ngưỡng; `get_period_maintenance` lọc `approval_status='APPROVED'`. Tạo batch xong, tab Bảo trì vẫn
+  render `'Kỳ này chưa có phiếu bảo trì.'` (`PeriodFeeSheet.tsx:525`), mời người dùng tạo lại. **Không
+  unique constraint, không cadence, không chiều phòng.**
+- **Bằng chứng.** Body `ie_compat_insert_v2` (`v_clean := … 'approval_status','UNAPPROVED' …`, return
+  `{'approval_status':'UNAPPROVED'}`); đường insert duy nhất `src/hooks/income-expenses/batch.ts:144-190`,
+  không có bước approve trước `:220`. Live: 91 phiếu bảo trì APPROVED+POSTED, 3 CANCELLED,
+  **0 UNAPPROVED và 0 batch child UNAPPROVED** ⇒ UI batch chưa được dùng lần nào kể từ khi compat
+  writer lên.
+- **Sửa nhỏ nhất an toàn.** (a) `get_period_maintenance` trả cả UNAPPROVED với cột trạng thái;
+  (b) bỏ `INSERT income_expense_types` phía browser (`useMaintenanceBatch.ts:36-46`) — chuyển vào
+  RPC; (c) chưa thêm chiều phòng ở Slice −1, chỉ ghi nợ.
+- **Gate.** Vitest: reader trả đúng 1 dòng cho batch UNAPPROVED vừa tạo; grep = 0 lời gọi
+  `from('income_expense_types').insert` trong `src/`.
+- **Chặn gì.** Chặn Plan 1 Task 1–4 (luật cadence AC/washer) vì chiều phòng và bộ đếm chưa có chỗ neo.
+
+### −1.3 `fee_type_matches` khớp sai: 34.206.744đ tiền lương nằm trong ô "Quản Lý"
+
+- **Sai gì.** `fee_type_matches('quan_ly', …)` là `nrm_vn(name) LIKE '%quan ly%'` ⇒ khớp luôn
+  `'Lương quản lý'` và `'Ứng lương quản lý'`. `get_period_fee_status` join **mọi** type khớp, không
+  dedupe, không LIMIT ⇒ **2 phiếu lương 34.206.744đ (org thật) được cộng vào ô phí Quản Lý**; DEMO có
+  3 phiếu `'Lương quản lý'` 1.100.000đ. Tệ hơn: **DEMO không có type `'Quản Lý'` nào** ⇒
+  `resolve_fixed_expense_type('quan_ly')` (order `is_default DESC, created_at, id LIMIT 1`, mọi dòng
+  `is_default=false`) sẽ **ghi một khoản chi Quản Lý vào type tiền lương**.
+- **Bằng chứng.** CTE `typed` của `get_period_fee_status:41-48`. Cùng lớp lỗi: `dien` khớp
+  `'Mua tủ lạnh'` cat `'Điện'` (1 phiếu 3.424.000đ) và `'thanh toán tiền điện lạnh '` cat
+  `'Bảo Trì Máy Lạnh'` (chính họ AIR_CONDITIONER của Plan 1); `ve_sinh` khớp `'Vệ Sinh Phòng'`
+  (620.000đ) + `'BTaskee'` (300.000đ); `rac` khớp `'Rửa thùng rác'` (60.000đ) + `'Bỏ rác'`
+  (3 phiếu 300.000đ). **5 phiếu `system_source='salary.staff'` đang được báo là `quan_ly` đã đóng.**
+  ⚠ Số tiền của chính type `'Quản Lý'` (43 phiếu) **chưa hoà giải**: một phép đo cho 18.500.000đ, một
+  cho 90.500.000đ — chênh ~5× đúng bằng dấu hiệu của khuyết tật §−1.4. Phải đo lại **một query**
+  (`SUM(items.amount)` vs `SUM(ie.total_amount)`) trước khi viết backfill. Con số load-bearing
+  34.206.744đ thì **cả hai phép đo đồng ý**.
+- **Sửa nhỏ nhất an toàn.** Không sửa `fee_type_matches` (IMMUTABLE, có `=X` cho PUBLIC, nhiều nơi
+  dùng). Thay vào đó: bảng ánh xạ `income_expense_type_id → special_fee_kind` **do chủ duyệt** áp cho
+  **cả read model**, không chỉ backfill; trong lúc chờ chủ duyệt thì loại tường minh các
+  `category IN ('Lương', …)` và `system_source LIKE 'salary.%'` khỏi read model.
+- **Gate.** Parity test âm: không type lương/giặt ủi/mua sắm nào vào được slot phí cố định. Báo cáo
+  trước/sau theo org cho từng ô, chủ ký nhận **con số giảm** (đừng để chủ đối chiếu "trước/sau khớp
+  nhau" rồi hợp thức hoá số sai).
+- **Chặn gì.** Chặn Plan 1 Task 6 (backfill claim) và Task 7 (read model): nếu read model mới derive
+  từ read model cũ thì 38,6 triệu tiền-không-phải-phí sẽ được đóng dấu canonical.
+
+### −1.4 `get_period_fee_status` cộng cả phiếu cho từng hạng mục ⇒ phiếu đa-hạng-mục đếm hai lần
+
+- **Sai gì.** CTE `vperv` (`:49-79`) chọn `ie.total_amount AS amount` (**tổng cả phiếu**) rồi
+  `GROUP BY (building, category, ie.id)`; `:84-85` `SUM(v.amount) FILTER (st='APPROVED')`.
+- **Bằng chứng.** Phiếu `5916661a-66c2-4a7c-88f1-b90e27d62564` tên `'Tiền Điện + Tiền nước'`,
+  `total_amount = 6.384.000`, hai item khớp `dien` 5.758.000 và `nuoc` 626.000 ⇒ nó góp
+  **6.384.000 vào ô Điện VÀ 6.384.000 vào ô Nước**.
+- **Sửa nhỏ nhất an toàn.** Cộng theo **tổng item khớp**, không phải `ie.total_amount`. Đồng thời xử
+  lý 5 item APPROVED có `start_date/end_date` NULL — trong đó 3 phiếu `quan_ly` cùng toà `cb6592d8…`
+  tạo một **slot trùng ba vô hình** với cả reader (`:76`) lẫn guard (`pay_period_fee:74`).
+- **Gate.** Test trên đúng phiếu `5916661a`: ô Điện = 5.758.000, ô Nước = 626.000. Query live: 0 item
+  APPROVED thuộc 7 kind có `start_date` hoặc `end_date` NULL (sau khi vá dữ liệu).
+- **Chặn gì.** Chặn mọi gate "amount đúng tuyệt đối" của Plan 1: hôm nay chính con số đối chiếu đã sai.
+
+### −1.5 Tự tạo công tơ trong im lặng ⇒ dòng đó không bao giờ hiện "đã đóng"
+
+- **Sai gì.** `metersOf()` render một dòng tổng hợp với `accountId=null` cho mọi toà/loại chưa có
+  công tơ. Bấm check gửi `p_utility_account_id=null`, nhánh ELSE của `pay_utility_bill`
+  **INSERT một dòng `building_utility_accounts` mới**. Vì `paidThisKy` khoá theo meter id và trả
+  `undefined` khi null, dòng đó **không bao giờ** hiện "đã đóng" trước refetch.
+- **Bằng chứng.** `useUtilityPayState.ts:84-89` (`{key:'syn:…', accountId:null, isSynthetic:true}`),
+  `:198 utilityAccountId: row.accountId`, `:370-371`. Live: **0** phiếu `utility.bill` có
+  `utility_account_id` NULL ⇒ nhánh này **đã chạy và tự che dấu vết** (`idx_bua_building_type` không
+  unique nên bảng cho phép nhiều công tơ).
+- **Sửa nhỏ nhất an toàn.** RPC **từ chối** `p_utility_account_id IS NULL` (mã lỗi nghiệp vụ rõ);
+  UI đổi dòng tổng hợp thành nút "Tạo công tơ" tường minh.
+- **Gate.** Test âm: gọi `pay_utility_bill` với `p_utility_account_id => null` ⇒ raise; đếm
+  `building_utility_accounts` trước/sau một lần bấm check = không đổi.
+
+### −1.6 Hai bề mặt cùng hiện, cùng ghi được, cho cùng một slot — và `p_force` cách một cú click
+
+- **Sai gì.** `/thanh-toan` ở ≥1024px mount **đồng thời** `PeriodFeePanel` và `PeriodFeeSheet`
+  (`ThanhToan.tsx:53-70`, `thu-tien.css:439-444`), mỗi bên gọi `usePeriodFeeState` **độc lập** nên
+  `amounts/bookSel/attach` là hai Record riêng. Chốt chống trùng của `pay_period_fee` chỉ chạy
+  `IF NOT p_force`, **chỉ đếm phiếu APPROVED** (draft UNAPPROVED không cảnh báo gì), và nút xác nhận
+  ghi thẳng chữ **"Đóng thêm"** (`PeriodFeeVoucherList.tsx:186-189`). Thêm: hai instance
+  `usePersistedState` dùng chung một key `sessionStorage` **không sync chéo** ⇒ hai bề mặt trên cùng
+  màn hình có thể đang hiện **hai hạng mục khác nhau**; `PeriodFeeSheet.tsx:96` mount
+  `useUtilityPayState` **vô điều kiện** nên query + paste listener EN vẫn sống khi đang chọn hạng mục GRID.
+- **Bằng chứng.** Đã hiện thực hoá trên prod: **22 slot phí cố định / 45 phiếu** (worst = toà
+  `175f4329…`, `tien_nha`, 05/2026, 3 phiếu APPROVED = **108.400.000đ**; 13/22 slot thuộc **07/2026**);
+  và các slot điện/nước trùng — ⚠ **cần đo lại một lần**: một phép đo cho **2** slot
+  `(công tơ, loại, tháng)` + **3** slot `(toà, loại, tháng)` (toà `d76268b2…`, ELECTRIC, 05/06/07,
+  slot tháng 07 nằm trên **hai công tơ khác nhau**), một phép đo khác cho **4 nhóm** (công tơ
+  `02660728…`, 07/2026, 4 phiếu, 7.308.077đ). Hai con số chưa hoà giải; **hình dạng backfill phụ
+  thuộc vào câu trả lời**.
+- **Sửa nhỏ nhất an toàn (KHÔNG phải "bỏ một surface").** Giữ layout hai cột (đó là chủ ý và có spec
+  `thanh-toan-page.spec.ts` bảo vệ). Thay vào đó: (a) **hoist state** — `usePeriodFeeState` /
+  `useUtilityPayState` gọi **một lần** ở `ThanhToan.tsx` rồi truyền xuống, để `amounts/bookSel/attach`
+  và bộ chọn hạng mục là **một nguồn duy nhất**; (b) `p_force` chỉ mở cho chủ/superadmin, và dialog
+  phải hiện **danh sách phiếu đang có** kèm số tiền trước khi cho bấm; (c) chốt chống trùng đếm cả
+  UNAPPROVED. **Đừng** đụng `useReceiptPasteTarget` — cơ chế arbitration cấp module ở `:27-31/:86-93`
+  đã vá đúng bug 28/07 và có spec hồi quy; "sửa double-fire" là sửa một lỗi không tồn tại.
+- **Gate.** `thanh-toan-page.spec.ts` và `utility-paste-receipt.spec.ts` **vẫn xanh** (đây là gate,
+  không phải tuỳ chọn); test: đổi hạng mục ở một bề mặt ⇒ bề mặt kia đổi theo; hai lần submit cùng
+  slot từ hai bề mặt ⇒ đúng một phiếu.
+- **Chặn gì.** Chặn Plan 1 Task 2 (partial unique BASE index): index không tạo được trên 22 slot vi phạm.
+
+### −1.7 `/deposits` báo "Đã hoàn" trước khi tiền ra khỏi két, và KPI nói số khác bảng
+
+- **Sai gì.** `useDepositDashboard.ts:282` là nguyên văn
+  `refund_done: !!t.refund_date || t.status === 'COMPLETED'`, dùng ở `DepositsPage.tsx:485`. Cả hai cờ
+  đều do **cùng một lệnh** đặt: `approve_contract_termination_v1` chạy
+  `update … set status='COMPLETED', refund_date = now()` **trước** khi INSERT phiếu, và phiếu đó ra
+  `UNAPPROVED` với `account_id` NULL.
+- **Bằng chứng.** Trong 11 termination dạng trả phòng, **7 dòng đang hiện tick xanh "Đã hoàn" mà
+  KHÔNG có một phiếu chi nào được ghi sổ** (chính xác: phiếu **có** tồn tại nhưng **không POSTED** —
+  `PC2607001` 50.000, `PC2607008` 40.000, `PC2607010` 30.000, tất cả UNAPPROVED/UNPOSTED,
+  `account_id` NULL, item `accounting_class='PNL'` **xếp sai loại**), và **2 dòng hiện sai số**.
+  Áp luật mới thì **9/11 dòng đổi trạng thái hoặc đổi số**. Hai HĐ DEMO `HD-2026-00015/00016` có
+  refund **−2.241.000đ** (khách còn nợ) vẫn hiện tick xanh **"Đã hoàn 0đ"**.
+  Ô KPI đầu trang: `get_refund_forfeit_summary` (SECURITY **INVOKER**, `STABLE`, không DEFINER) cộng
+  `GREATEST(0, refund_amount)` trên **mọi** termination non-FORFEIT, không lọc status/posting, đếm cả
+  DRAFT/PENDING_APPROVAL là "lần" ⇒ org thật hiện **8.290.000đ / 3 lần** trên một bảng mà số đúng
+  (phiếu POSTED có item cọc) là **4.302.000đ / 2 dòng** ⇒ **thổi phồng 3.988.000đ**.
+  (Con số 8.990.000đ / 11 lần là tổng **hai org qua service-role** — không người dùng nào thấy nó;
+  phần DEMO là 700.000đ / 8 lần.)
+  Thêm: cảnh báo "Phiếu thanh lý chờ xử lý" chỉ nhận ra **4/20** phiếu hoàn vì dò `notes LIKE`; và
+  2 HĐ mang **2 phiếu hoàn cùng số tiền** (`2.797.000đ` ×2 trên HĐ `a1584980`, `3.127.400đ` ×2 trên
+  HĐ `aa16a805`) ⇒ mọi reader correlate theo `contract_id` trả **2 dòng cho 1 termination**.
+- **Sửa nhỏ nhất an toàn.** (a) `refund_done` derive từ **phiếu POSTED + active posting**, bỏ cả
+  `refund_date` lẫn `COMPLETED`; (b) sửa **`get_refund_forfeit_summary`** cùng lúc (nếu không, KPI và
+  bảng trên cùng một trang nói hai số); (c) số âm hiện **"Khách còn nợ"**, không phải "Đã hoàn 0đ";
+  (d) bỏ matcher `notes LIKE` trong `useContractPendingTermination`.
+- **Gate.** KPI = tổng cột của bảng, kiểm trên cả hai org; test cặp phiếu-trùng-số trả đúng 1 dòng/termination;
+  test dòng refund âm hiện nhãn nợ.
+- **Chặn gì.** Chặn Plan 2 Task 4 + Task 7: gate "Đã hoàn chỉ khi POSTED" của plan **pass mà trang
+  vẫn sai**, vì Task 7 Step 6 không hề đọc KPI.
+
+### −1.8 `useApproveTermination`: fallback client ghi vào một bảng KHÔNG TỒN TẠI, không transaction
+
+- **Sai gì.** `src/hooks/useContracts.ts:1119` gọi `approve_contract_termination_v1`; `:1124` nếu là
+  fallback signal thì **tiếp tục** bằng REST: `:1126-1135` UPDATE `contract_terminations` →
+  `'APPROVED'`; `:1137-1145` UPDATE `contracts` → `'TERMINATED'`; `:1147-1155` UPDATE →
+  `'COMPLETED'` + `refund_date`; `:1159-1177` **INSERT INTO `public.cash_book`**. `to_regclass('public.cash_book')`
+  = **NULL**. Không transaction ⇒ khi bước cuối vỡ, hợp đồng đã TERMINATED và termination đã COMPLETED
+  mà **không có phiếu tiền nào**.
+- **Bằng chứng.** Hiện **0 call site** (grep chỉ khớp chính định nghĩa `:1101`), nhưng hàm còn export
+  và policy còn cho: `contract_terminations_update_rbac` cmd=UPDATE, qual
+  `is_super_admin() OR building_of_contract(contract_id) = ANY(app_private.buildings_for_v3('contracts.edit'))`.
+  Ba phiếu DEMO ngày 18–19/07 **không truy được ai gọi**.
+- **Sửa nhỏ nhất an toàn.** **Xoá** `useApproveTermination` / `usePendingTerminations` /
+  `useRejectTermination` (cả ba đã `@deprecated`, 0 call site). Không sửa, không giữ.
+- **Gate.** grep = 0 khớp ba identifier + 0 khớp `'cash_book'` trong `src/`; `npm run typecheck:baseline` xanh.
+
+### −1.9 Ai có `contracts.edit` đều UPDATE được `contract_terminations` qua REST
+
+- **Sai gì.** Policy trên cho phép sửa `outstanding_debt / total_deposit / early_termination_fee` ⇒
+  đổi luôn `refund_amount` **GENERATED**; hoặc set `status='APPROVED'` để trigger
+  `update_contract_on_termination_approved` tự đặt `contracts.status='TERMINATED'` — **không qua
+  writer nào**. Không ràng buộc cột, không guard trigger nào chặn sửa input quyết toán sau COMPLETED
+  (trigger duy nhất trên UPDATE là `auto_calculate_termination_financials`, chỉ điền khi NULL).
+- **Bằng chứng.** `pg_policies` (đã dẫn ở −1.8) + `pg_get_triggerdef`. Đây là lý do "snapshot bất
+  biến" của Plan 2 **không bảo vệ hàng nguồn**.
+- **Sửa nhỏ nhất an toàn.** REVOKE UPDATE trên `contract_terminations` khỏi `authenticated` (theo
+  đúng khuôn `20260730102000_money_tables_revoke_dml.sql`), chuyển mọi lối sửa hợp lệ về RPC. Nếu chủ
+  chưa muốn REVOKE thì tối thiểu: guard trigger đông cứng các cột đầu vào quyết toán khi
+  `status IN ('APPROVED','COMPLETED')`.
+  ⚠ Ghi rõ trong plan: `20260730102000` phủ **bốn** bảng, **không** phủ `invoices`/`payments` — hai
+  bảng đó vẫn GRANT `DELETE,INSERT,UPDATE` cho `authenticated`, và lá chắn duy nhất
+  (`a00_invoice_derived_guard`) chỉ canh **một** cột `paid_amount`.
+- **Gate.** `check-definer-acl.mjs` + một query ACL khẳng định `authenticated` không còn DML trên
+  `contract_terminations`; test âm gọi REST UPDATE ⇒ 42501.
+
+### 4.1 Cái gì trong Slice −1 là **điều kiện tồn tại** của plan
+
+| Gate của plan | Bị chặn bởi | Vì sao không thể tồn tại trước |
+|---|---|---|
+| Partial unique BASE index (toà × kind × tháng) — Plan 1 Task 2 | −1.6 (+ −1.4 cho slot NULL-date) | **ĐÃ GIẢI QUYẾT bằng §1bis.1**: index đặt trên `special_fee_claims` (bảng mới, trống lúc tạo) nên tạo được; ô có ≥2 phiếu vào **một claim `CONFLICT`**. Vẫn phụ thuộc −1.6/−1.4 để **không sinh thêm** ô trùng mới, và để phiếu item NULL-date không vô hình với backfill |
+| Unique index theo công tơ × loại × tháng — Plan 1 Task 3 | −1.1, −1.5 | 2 slot công tơ đang vi phạm; và nhánh tự-tạo-công-tơ sinh thêm khoá mới |
+| Claim cadence AC/washer — Plan 1 Task 1–4 | −1.2 | Chưa có chiều phòng để neo; 23 phiếu AC đã vi phạm luật 5 tháng |
+| "amount đúng tuyệt đối vs giá chủ công bố" — Plan 1 Task 3, 7 | −1.3, −1.4 | Số đối chiếu hôm nay đã sai (38,6tr lệch loại + 6,384tr đếm hai lần) |
+| "`VALID → APPROVED + POSTED`" — Plan 1 Task 5 | −1.1 | Ngưỡng 600.000đ của chủ bắt EN chờ duyệt ⇒ assert in-transaction rollback |
+| "`/deposits` Đã hoàn chỉ khi POSTED" — Plan 2 Task 4, 7 | −1.7 | KPI ngoài phạm vi plan sẽ tiếp tục nói số khác |
+| "Snapshot bất biến" — Plan 2 Task 1–2 | −1.9 | Hàng nguồn sửa được qua REST bởi bất kỳ ai có `contracts.edit` |
+| Bất kỳ queue hoàn cọc nào | −1.8 | Còn một writer thứ tư ngoài mô hình, ghi vào bảng không tồn tại |
+
+## 5. Ma trận đánh giá và quyết định sửa
+
+Ba cột verdict: **GIỮ** (quyết định 29/07 vẫn đúng) · **BỎ** (nhắm vào vấn đề không tồn tại) ·
+**SỬA** (ý đúng, đích/tiền đề sai). `ID` là mã patch để truy về bằng chứng tổng hợp.
+
+| ID | Quyết định 29/07 | Verdict | Căn cứ 30/07 và hành động |
+|---|---|---|---|
+| E13 | Forward-correct `thu_tien.view` không cần CASHBOOK (Task 0 Step 3d) | **BỎ** | `required_dimensions=[]`, `requires_cashbook_possession=false`, `ANY_MATCH`; catalog có 223 key, chỉ 9 key có `required_dimensions` khác rỗng và giá trị chỉ nhận `BUILDING|CASHBOOK`. Xoá Step 3d + test kèm, thay bằng **một assertion no-op**. Thêm sự thật quan trọng hơn: **không một trong 13 body legacy nào tham chiếu `thu_tien`** — authz thực tế là `can_access_building` (`buildings.view`) và `ie_all_buildings_scope` (`income_expenses.all_buildings`); và `buildings.view` **không có CASHBOOK** trong `scope_kinds` ⇒ một cạnh CASHBOOK-only thoả `thu_tien.view` nhưng vẫn fail `can_access_building`. Đó mới là lệch scope thật |
+| B3 | Digest-check + forward-define `ensure_income_expense_type_v1` / `normalize_income_expense_type_name` | **BỎ** | Defining migration tracked `20260728180000:13` và `:792`, live khớp 12 tham số. Phụ thuộc vào file đó; **cấm** forward-redefine từ snapshot live. (Tác giả plan không cẩu thả: file này vắng trên nhánh `fix/v5-collection-completion-20260722` nơi plan được viết) |
+| A-SVC | Registry technical SERVICE membership + `check-technical-membership-isolation.mjs` + sửa loạt selector, như deliverable Slice 0 | **BỎ** (giữ nhánh điều kiện) | 1 superadmin, 2 org, membership ACTIVE hợp lệ ở **cả hai** ⇒ nhánh provision **không tới được**. `member_type='SERVICE'` **đã có** trong CHECK, 0 dòng SERVICE. Giữ: preflight ghi nhánh này là dead-on-current-data; viết lại §147 ở **thể điều kiện**. Chuyển phần thật sự cần sang A-ACTOR |
+| A-ACTOR | (mới, tách từ trên) | **SỬA** | `app_private.resolve_finance_actor_v2()` **no-arg** ném `42501 'ambiguous membership'` cho đúng superadmin duy nhất, **chỉ vì** user đó có 2 membership thường. Vị ngữ đếm của nó không có chiều `member_type`/technical ⇒ bản vá plan đề xuất **không** giảm 2 xuống 1. Chỉ thị tuyệt đối: shared context **luôn** gọi overload org-scoped `resolve_finance_actor_v2(p_organization_id)`; thêm fixture actor 2-org |
+| E1 | "Task 0 sửa double-mount `ThuTien.tsx`" | **BỎ** như đặc tả · **SỬA** thành hoist-state | Xem §−1.6. Hai bề mặt cùng hiện là chủ ý (`thu-tien.css:439-444`) và **có spec bảo vệ** (`thanh-toan-page.spec.ts:20/:27/:32`, mobile dùng `toBeHidden()` tại `:143` ⇒ cả hai component **luôn** mounted, chỉ CSS ẩn). Thực thi theo breakpoint = **đổi sản phẩm** trá hình sửa bug, và làm đỏ chính gate Slice 0 |
+| D-BROKER | Tạo unique index broker | **BỎ** | `uq_ie_commission_per_contract` đã có (partial unique trên `(contract_id, commission_kind)` với `NOT commission_legacy_dup`) + advisory lock `commission:<contract>:<kind>` + pre-check `P0001`. **Cấm DROP/REPLACE.** Việc còn lại thu về **2 HĐ** (`16edb8f0…`, `b543b3cd…`) có 2 phiếu broker APPROVED, cộng 11 phiếu hoa hồng không gắn HĐ và 3 dòng `commission_legacy_dup=true` |
+| E-FILE | Mọi "Modify `src/pages/ThuTien.tsx`" | **SỬA** | → `src/pages/ThanhToan.tsx`. Kèm cảnh báo route: entry mới trong `FEE_CATEGORIES` nằm sau `thu_tien.collect`, xung đột §3.3 Plan 2 (queue/lifecycle ở `thu_tien.view`) — Task 7 Step 1 phải nói rõ hai entry mới mount ở đâu |
+| E-DEAD | Sửa `UtilityDesktopPanel.tsx` / `UtilityBillSheet.tsx` | **SỬA** | Dead code, 0 importer trong `src/` và `.e2e-fleet/`. ~36 KB sửa đổi sẽ rơi vào file không render, trong khi typecheck và checklist đều xanh. Đích thật: `UtilityEnContent.tsx` + khối EN inline của `PeriodFeeSheet.tsx` |
+| E-MIG | Danh sách defining migration của ba SQL surface phí cố định | **SỬA** | Bản canonical cuối `20260728180000:944`; thêm `20260710120100`. Bắt buộc `pg_get_functiondef` live rồi diff trước khi viết wrapper; **cấm** copy body từ `20260708130100` (sẽ revert canonicalization 28/07) |
+| D-OWNER | `member_type='OWNER'` OR `is_super_admin()` là định nghĩa "chủ" | **SỬA** | EXTEND `is_org_owner_v1` (+`organizations.status`, +nhánh superadmin, +thay literal `'Chủ sở hữu tổ chức'` bằng khoá bất biến), **không** tạo helper thứ hai. Phải chốt tường minh: DEMO có 3 role-owner vs 1 `member_type='OWNER'`; org thật hai định nghĩa **trùng nhau** (1 và 1) ⇒ lệch **một chiều** và **chỉ ở DEMO**. Test: STAFF-có-vai-trò-chủ **phải** là chủ; OWNER-không-vai-trò **không** phải |
+| E4 | `finance_v2_is_cashbook_period_open` là gate kỳ duy nhất | **SỬA** (hạ từ BLOCKER xuống MEDIUM) | Tiền không lọt vào sổ đã chốt: hai trigger cấp bảng **vô điều kiện** đã canh (`income_expenses_check_lock` theo `voucher_date`, `income_expense_posting_lines_check_lock` theo `posted_on`), cộng `income_expenses_check_profit_lock`. Khuyết tật thật là **chất lượng lỗi + vị trí gate**: pre-check báo OPEN rồi transaction chết sâu trong trigger. Dùng `cashbook_closed_through_v1` + `assert_period_open_for_edit_v1`, phát ba code có nhãn |
+| B13 | Không testing-library ⇒ mọi DOM assertion về Playwright | **SỬA** | Repo đã có harness `renderToStaticMarkup` (15 file, environment `node`, 12 assertion/4 file trong 1,54 s). Đẩy invariant render về unit test; Playwright chỉ cho luồng đa bước + upload thật |
+| E10 | Release adapter "bao phủ mọi terminal writer đã xác minh" | **SỬA** | Thiếu **hai** (không phải bốn): `cancel_income_expense_flex_v1`, `reverse_invoice_collection_v5`. `ie_compat_cancel_v2` **đã** có trong danh sách plan. Nâng trigger backstop lên cơ chế chính |
+| E8 | Seed `finance_flow_owner_adapters` + test unknown-owner là đủ | **SỬA** | `dispatch_finance_decision_v2` route theo `adapter_name` qua `CASE` 5 nhánh, `ELSE → 0A000`. Plan phải nói rõ: **reuse** một `adapter_name` đã nối, **hoặc** thêm nhánh CASE. Lỗi đã hiện thực hoá cho `UTILITY_RECURRING` |
+| E2 | Đặt `ie_transition_authorization` rồi register ownership, không ràng buộc `purpose` | **SỬA** (BLOCKER, xem §6.2) | `purpose` **không** là metadata tự do mà là kill switch của a85/a85b |
+| C-EV-1 | Evidence lineage "cùng hash" | **SỬA** | `finalize_finance_evidence_v2` **không bao giờ ghi `sha256`**: 159 dòng, **0** có `sha256`, **0** có `upload_token_hash`. Mọi guard so "cùng hash" đang so NULL với NULL. Chọn: (A) ghi thật `sha256`, hoặc (B) định nghĩa lại fingerprint = `(organization_id, bucket_id, object_name, byte_size, mime_type)` và **bỏ chữ "hash"**. Riêng `INHERITED_BATCH` thì plan **đúng**: CHECK hiện chỉ `('ORIGINAL','INHERITED_LEGACY_DELTA')`, 142/142 dòng là `ORIGINAL` ⇒ cần forward-update constraint |
+| C-EV-2 | Ghi `income_expense_audit_log` với field có cấu trúc | **SỬA** | `log_income_expense_action(p_id uuid, p_action text, p_note text)` — đúng 3 tham số; bảng **không có cột jsonb**, field tự do duy nhất là `note text`. Chọn (A) serialise JSON vào `note`, hoặc (B) thêm cột `details jsonb` **và chứng minh chuỗi `event_hash` của các Đợt trước không đổi** |
+| C-INFRA-10 | Auto-approve chỉ cần ghi audit action | **SỬA** | `check-approver-provenance.mjs` (CUTOFF `2026-07-23`) **fail** mọi phiếu `APPROVED` có `approved_by IS NULL AND system_source IS NULL`. Phiếu auto-approve **phải** set `system_source` (vd `special_fee.<route>`) trên chính dòng voucher. Tương tác: điều đó cũng làm `assert_manual_voucher_v1` ném `[NOT_MANUAL]` khi flex-cancel — đúng fail-closed, và **phải assert** |
+| C-ROLL-1 | Rollback dùng `force_freeze` | **SỬA** | `set_feature_freeze_v1` không tồn tại, và **không hàm nào trong toàn DB ghi `force_freeze`** (8 hàm chỉ đọc). Freeze hôm nay = UPDATE tay ⇒ **0 dòng `server_feature_flag_events`, không bump `config_version`** (bằng chứng: `income_expense.profit_close.v2` `force_freeze=true`, `config_version=1`, 0 event; 7 cờ đổi version không có event). Chọn: viết `set_feature_freeze_v1` có CAS + event + REVOKE + vào `check-definer-acl`, **hoặc** ghi thẳng rằng freeze là UPDATE tay qua Management API và phải lập biên bản |
+| C-ROLL-2 | "prod stored OFF + DEMO stored CANARY" | **SỬA** | `server_feature_flags` **không có `organization_id`** (PK = `feature_key`). Lật SHADOW→CANARY đẩy org thật từ SHADOW về **LEGACY** ⇒ **mất telemetry parity đúng lúc cần nó nhất**. Tiền lệ: `invoice.collection.v5` chỉ có **85 phút** cửa sổ shadow (22/07 05:38:50 → 07:03:53). Viết lại theo cặp stored-vs-evaluated; **thu đủ parity report TRƯỚC khi rời SHADOW**. Nếu cần hành vi per-org lâu dài thì theo tiền lệ `app_private.org_accounting_mode` |
+| C-ROLL-3 | Gọi `set_feature_route_v1` | **SỬA** | Đúng thứ tự positional nhưng **sai 3 tên tham số** (gọi named-arg ⇒ `42883`). ON/CANARY đòi `commit_sha` 40-hex, `migration_sha256` 64-hex, `maintenance_window_id`, `approval_reference` khác rỗng, else `22023`. ACL **chỉ `postgres=X`** — `service_role` bị từ chối ⇒ **không có đường nào trong app lật được route**; phải ghi rõ ai chạy và chạy bằng gì |
+| C-ROLL-6 | Idempotency "cùng key + hash trả cùng voucher" | **SỬA** (HIGH) | `claim_feature_operation_v1` INSERT trần vào bảng có `UNIQUE (feature_key, config_version, operation_key)` ⇒ replay y hệt ném **`23505` từ TRONG claim**, không phải "trả voucher cũ". Thêm luật vào lock order: **tra bảng idempotency của special-fee/termination TRƯỚC, hit thì trả voucher cũ và KHÔNG gọi claim**; không bao giờ dựa vào `server_feature_flag_operations` làm idempotency (khoá unique có `config_version`) |
+| C-DEP-KPI | `/deposits` chỉ sửa 2 file TS | **SỬA** | Thêm `get_refund_forfeit_summary` vào migration read của Task 4 và thêm assertion KPI vào Task 7 Step 6 |
+| C-DEP-BASE | Test list `/deposits` chỉ có "chỉ `contracts.view`" và "chỉ `deposits.view`" | **SỬA** | Baseline hôm nay là **`buildings.view` resolve qua PHÒNG HIỆN TẠI** (`contract_terminations_select_rbac` qual `can_access_building(building_of_contract(contract_id))`, join `contracts → rooms`). Thêm hai fixture: thành viên có `buildings.view` mà không có `deposits.view` (**mất** dòng đang thấy) và ngược lại. Ghi thêm: `deposits.refund` **đã tồn tại và chưa dùng** — phải giải thích vì sao không dùng nó làm gate, hoặc dùng |
+| C-TERM-1 | "Hai termination writer" | **SỬA** (MEDIUM) | Ba. `terminate_contract_forfeit_impl` (26/37 dòng). Nhưng **không** phải lỗ refund: FORFEIT chỉ sinh cặp offset EXPENSE + revenue INCOME (`:168-184`), và `DEPOSIT_FORFEIT_POSTED` **suy ra được** từ 8+8 phiếu `termination.forfeit_*` (31.000.000đ mỗi bên) mà `statusMutations.ts:39-42` đã đọc. Việc phải làm: đổi "hai" thành "ba", thêm attribution, và **quyết fail-close hay chấp nhận** audit insert bị nuốt `:262-263` |
+| C-TERM-METHOD | (không có trong 29/07) | **SỬA** (một câu) | Emitter **phải** set `contract_terminations.refund_method` (giữ `'TM'` parity) khi `refund_amount > 0`, không thì insert fail `23514` (`terminations_refund_method_required_if_refund`) |
+| C-ROOM-2 | Residence segment đọc transfer `COMPLETED`, mốc đầu là `contracts.start_date` | **SỬA** | Có **đường đổi phòng thứ hai**: trigger `apply_contract_transfer` (DRAFT→APPROVED) ghi đè `room_id, rent_price, total_deposit, start_date, end_date`, đặt `status='TRANSFERRED'`. `transfer_room` **cố ý né** trigger này. 0 dòng hôm nay, RLS cho phép ⇒ phải phủ, và **bỏ giả định mốc `start_date`** |
+| D9 | Bảo trì 101/11 | **SỬA** | 200/31/80.289.556đ cho cả họ (plan 29/07 ghi 101/11 — số đo lại 30/07 là 200/31). `special_fee_type_mappings` + `LEGACY_SCOPE_UNKNOWN` **hấp thụ được 200 dòng như 101**, nên thiết kế không sai — chỉ sai baseline và effort |
+| D13 | `repeat_due = 77` children | **SỬA** | 77 **parent** (0 child trong tập đó); 155 child sống, **155/155** đáp xuống slot fixed-kind ⇒ tích hợp external-holder **không phải edge case, là 100%**. Ghi rõ vị ngữ "due": 77 theo `repeat_next_date >= current_date`, 76 theo `add_cycle(...) <= current_date` |
+| C-RECUR | Recurring engine giữ approval semantics cũ | **GIỮ** + ghi thêm | Cron `recurring_vouchers_daily` (`0 18 * * *`) gọi `generate_recurring_vouchers(NULL)` = **toàn bộ parent trong DB**; nó **không đọc ngưỡng tự duyệt**, **copy `attachments` của parent cho MỌI child**, **nuốt lỗi từng child** (`EXCEPTION WHEN OTHERS → RAISE NOTICE`), và dùng `CURRENT_DATE` không theo timezone org. 64/77 parent `repeat_auto_approve=true` |
+| C-INFRA-4 | (không có trong 29/07) | **GIỮ**, phải ghi | **Cả hai org đang ở flexible mode** (`org_accounting_mode`: `aaaa` id=1 `strict_mode=false` 29/07 11:12; `dddd` id=4 `strict_mode=false` 29/07 11:26) ⇒ đường flex-cancel của Đợt 4/5 **đang sống trên production**, không ngủ |
+| C-AUTHZ-7 | Undo đòi exact CUSTODIAN | **SỬA** | Xung đột quyết định 30/07 của chủ ghi tại `20260730240000_authz_remaining.sql:34-38` ("với việc thu chỉ cần biết sổ là được") — chọn `ie_visible_cashbook_ids_v1` (4 cửa) thay vì so khớp `possession_kind`. Undo dùng **"ĐƯỢC NHÌN SỔ"**; exact CUSTODIAN chỉ dành cho submit/collect. ⚠ File đó **untracked và chưa apply** ⇒ phải quyết số phận nó trước (§8) |
+| C-INFRA-6 | (không có trong 29/07) | **SỬA** | `useRealtimeDataSync.ts:293 let hubActive = false` là singleton cấp module; instance thứ hai return `undefined` (không cleanup), cleanup của instance đầu `removeChannel` ⇒ **instance sống sót vĩnh viễn không subscribe**. Hôm nay chỉ mount một lần (`App.tsx:236`) nên invariant còn đúng, nhưng bất kỳ refactor mount-topology do plan gây ra là trigger hợp lý. Thêm ref-count + test hai consumer + `subscribe((status)=>…)` log `CHANNEL_ERROR` (hiện `:343` là `channel.subscribe()` trần) |
+| C-INFRA-7 | Thêm query key mới cho special-fee/lifecycle | **SỬA** | Phải thêm **4 key ĐANG CÓ mà đang thiếu**: `['period-fee-status']`, `['period-commissions']`, `['period-maintenance']`, `['fee-accounts']`; và `building_fee_accounts`/`building_utility_accounts` **vắng hẳn** khỏi `SYNC_TABLES` ⇒ `/thanh-toan` **không** live-refresh GRID/hoa hồng/bảo trì từ máy khác — **khuếch đại trực tiếp** rủi ro phiếu trùng ở −1.6. Cập nhật cả `docs/he-thong/realtime-sync.md:32-33` (còn ghi `accounts`/`payments` là "chưa có realtime") |
+| C-INFRA-8 | Mở rộng `useRealtimeDataSync.test.ts` | **SỬA** | Phải sửa đồng bộ **ba** assertion: `:252-267` `toEqual([11 tên đúng thứ tự])`, `:437-446` `toEqual([8 root])` + `:456 toHaveBeenCalledTimes(8)`, và ma trận `it.each` `:117-143/:271-281`. **KHÔNG** nới `toEqual` thành `toContain` — chính chúng chứng minh không bảng nào đăng ký hai lần. Giới hạn harness: `type RealtimeHandler = () => void`, `triggerTable` gọi **không tham số**, `vi.mock("react")` chỉ cấp `useEffect` ⇒ hook cần `useRef/useCallback/useMemo` sẽ throw |
+| C-INFRA-9 | E2E là gate | **SỬA** | `.e2e-fleet` **không có `package.json`, không có `tsconfig.json`** ⇒ 7 spec mới **không được typecheck** trong khi `typecheck:baseline` báo xanh. Thêm `.e2e-fleet/tsconfig.json` + script `typecheck:e2e`, hoặc ghi thẳng rằng lỗi type của spec chỉ hiện lúc runtime |
+| C-INFRA-11 | `reconcile-money.mjs` = "zero money drift" | **SỬA** | Script có thể **exit 3 (INCONCLUSIVE)** khi không kỳ nào >1000 phiếu, và cần `signInWithPassword` ⇒ **không headless-CI-safe**. Định nghĩa pass = `exit 0`; `exit 3` **không phải pass** |
+| C-INFRA-12 | (không có trong 29/07) | **GIỮ**, phải ghi | `supabase_migrations.schema_migrations`: `count=360`, `max_version='20260716170000'` — **không** dòng nào của 29–30/07 được ghi, dù ≥22 file trong đó đã apply. **"Vắng sổ" ≠ "chưa apply"**; mọi kiểm tra phải dùng catalog (`pg_proc/pg_class/pg_trigger/pg_constraint`) |
+| D11 | `income_expenses` ~2.496 dòng | **SỬA** | **2.625** dòng ngày 30/07 (2.276 `aaaa` + 349 `dddd`) — plan 29/07 ghi 2.496/2.528; số đo lại 30/07 là 2.625. Bảng dịch ~130 dòng trong một ngày ⇒ preflight phải so **delta với baseline đã ghi**, không bao giờ so bằng tuyệt đối |
+| D4 | KPI `/deposits` | **SỬA** | Số **theo org**: `get_refund_forfeit_summary` là `LANGUAGE sql STABLE`, **không** SECURITY DEFINER, và `relrowsecurity=true` trên `contract_terminations/contracts/rooms` ⇒ RLS scope theo tenant. **8.990.000đ / 11 lần là tổng cross-org qua service-role mà không người dùng nào thấy** |
+| C-DEP-7/8 | (không có trong 29/07) | **SỬA** | `TERMINATION_MOVE_OUT_PAIR` chiếm sẵn một slot adapter với 2 bảng **0 dòng** mà `terminate_contract_move_out_impl` không bao giờ ghi ⇒ quyết dọn hay giữ tường minh, để re-point `TERMINATION_REFUND` không đụng nó. Và `reserve_invoice_refund_obligation_v2` (~:80-82) còn **có thể mint hybrid**: `flow_kind='TERMINATION_REFUND'` trong khi `lifecycle_owner` hardcode `'INVOICE_REFUND'` — chặn hoặc xoá nhánh đó trong **cùng** migration re-point |
+| D7 | Frontend không đọc được ownership (`app_private` không có USAGE) | **SỬA** thành wording | Ownership của flow này là **hàm thuần của `income_expenses.system_source`**, mà `system_source` đã được client đọc khắp nơi (`statusMutations.ts:48`, `queries.ts:230/240/245/495/996`, `types.ts:147`, `src/lib/voucherSources.ts:1`). Prod có 20 phiếu `system_source='termination.refund'` (53.655.301đ). Viết lại thành "lookup nguồn phiếu đã đông cứng + trạng thái obligation" — **đừng expose `app_private`** |
+| D8 | "UI chọn writer theo global route trước khi xem ownership" | **GIỮ** (bản 29/07 đúng) | `IncomeExpensePage.tsx:350-351/:497/:994/:1009/:1056/:1083`, `ApprovalsPage.tsx:80/:86/:90`, `IncomeExpenseMobilePage.tsx:438-439` đều branch theo route flag; **không caller nào tra ownership**. Nhưng phải ghi một dư lượng nguy hiểm: lối tôn trọng ownership duy nhất đang tồn tại là **regex trên message tiếng Anh** — `financeV2Mutations.ts:46-48 /owned by system flow/i` dùng ở `:60`, lặp ở `statusMutations.ts:315/:352`, khớp chuỗi do `assert_income_expense_flow_owner_v2:20` phát. **Mọi adapter mới phải giữ nguyên đúng substring đó** cho tới khi routing ownership-first lên, không thì dispatch chết im sau toast "Duyệt phiếu thất bại" |
+| D-STATUS | "`APPROVED` không đủ để kết luận đã chi" | **GIỮ** | Bằng chứng sống: `PC2607005` (`system_source='contract.commission'`, `commission_kind='broker'`) đang `APPROVED` + `posting_status='UNPOSTED'` + `active_posting_id_v2 IS NULL` trên sổ **thật** ('ATam'), **2.730.000đ** — đã hiện "Đã chi" mà không có posting nào |
+| E5 | Bảng gate §8 là đủ | **SỬA** | Thiếu `check-stable-fn-locks.mjs` (tự khai "5 lần án lệ", "CHẠY SAU MỌI MIGRATION TẠO/SỬA HÀM", **không có CI coverage**) và `check-permission-catalog.mjs` (**gate CI bắt buộc** `ci-gates.yml:135-138`). Xem §9 |
+| E12 | Thứ tự migration canonical | **SỬA** | Xem §8 |
+
+## 6. Kiến trúc production đã chốt
+
+### 6.1 Sơ đồ (cập nhật)
+
+```text
+[SLICE −1] Hotfix trên bề mặt ĐANG CHẠY — không object mới
+   ├─ /thanh-toan: reader EN + reader bảo trì thấy UNAPPROVED; chống trùng EN;
+   │  bỏ tự-tạo-công-tơ; hoist state (một nguồn amounts/bookSel/attach); p_force owner-only
+   ├─ read model phí cố định: tổng ITEM KHỚP (không total_amount) + ánh xạ type do chủ duyệt
+   └─ /deposits: refund_done từ POSTED+active posting; SỬA get_refund_forfeit_summary;
+      xoá useApproveTermination; siết DML contract_terminations
+                    │
+                    ▼
+ThanhToan UI (thu_tien.collect) + ThuTien room surface (thu_tien.view) + Deposits read surface
+   ├─ authorized preview/list/status/lifecycle RPCs  ← TẤT CẢ khai VOLATILE
+   └─ submit_special_fee_payment_v1 / submit_termination_refund_from_special_page_v1
+             │
+             └─ app_private.special_page_submit_context_v1        ◀── CHƯA TỒN TẠI TRÊN PROD
+                  org/timezone → authz (buildings.view + income_expenses.all_buildings
+                  + thu_tien.collect) → idempotency LOOKUP TRƯỚC → feature route (evaluate
+                  ĐÚNG MỘT LẦN) → claim cap → domain/obligation → voucher/items
+                  → real cashbook (cashbook_closed_through_v1) → evidence
+             │
+             ├─ Plan 1: rule/claim → voucher nội bộ UNAPPROVED/UNPOSTED → evidence
+             └─ Plan 2: sticky subject + frozen birth voucher + obligation → one-shot finalize
+                          │
+                          └─ finance_v2_post_voucher_with_source_v1  ◀── CHƯA TỒN TẠI TRÊN PROD
+                                (MAIN + CHANGE + ROUNDING lines; period backstop bên trong)
+                                → assert → audit/alert/ledger
+```
+
+Hai hộp gạch `◀──` là lý do **Plan 2 Task 1–5 bị BLOCKED-BY Plan 1 Task 5** (§7).
+
+### 6.2 Invariant không được phá
+
+Mười tám invariant của bản 29/07 giữ nguyên. Bổ sung tám invariant **mới**, tất cả đều là điều kiện
+tồn tại chứ không phải khuyến nghị:
+
+1. **Token `purpose` là kill switch, không phải metadata.** `app_private.ie_transition_authorization`
+   có **PK trên `income_expense_id` một mình** (một dòng mỗi phiếu) và trigger
+   `a00_ie_transition_token_upsert` **ghi lại `purpose` mỗi lần INSERT**. Cầu `a85`/`a85b` chỉ skip
+   khi có token `purpose='FINANCE_V2_LIFECYCLE'` **đúng xid hiện tại**. Vì nhánh approve INVOICE_REFUND
+   của `dispatch_finance_decision_v2` dùng `finance_v2_transition_owned_approval` (**stamp
+   `purpose='APPROVED'`**), adapter nào copy nó sẽ để **cầu còn vũ trang** đúng lúc `approval_status`
+   lật sang `APPROVED`; và vì Task 5 Step 3 bắt phải có `account_id`, `total_amount>0`, sổ thật
+   không-virtual, `v_should = true` ⇒ `a85` **tự mint posting `source_kind='LEGACY_BRIDGE'`** rồi
+   stamp `posting_status='POSTED'` + `active_posting_id_v2` **trước** khi core của adapter chạy ⇒
+   **posting tiền trùng**, và assert của Task 5 Step 5 thấy `LEGACY_BRIDGE` thay vì `SPECIAL_PAGE_FEE`.
+   Cầu **đang sống**: `evaluate_feature_route('income_expense.posting.v2')` = CANONICAL trên prod ngay
+   lúc này. Thêm: cả hai helper **DELETE token ở cuối** nên mọi UPDATE `income_expenses` sau đó trong
+   cùng transaction đập vào freeze guard và fail `55000`. ⇒ **Hoặc** writer tự stamp
+   `purpose='FINANCE_V2_LIFECYCLE'` và tự quản lý vòng đời token, **hoặc** theo tiền lệ repo đã lập
+   tại `20260730120000_ie_annotate_v1.sql:113-116` và mang năng lực trong
+   **`app_private.ie_flex_writer_xids`** thay vì đi vay cột `purpose`. Bảng đó có
+   `begin_ie_flex_write_v1(p_voucher, p_scope)` / `end_ie_flex_write_v1`, CHECK scope
+   `('ANNOTATE','FLEX_EDIT')` — và `'FLEX_EDIT'` **đã được đặt chỗ trong CHECK nhưng chưa hiện thực
+   trong body guard**, đó chính là móc treo.
+2. **`dispatch_finance_decision_v2` route theo `adapter_name` qua `CASE` năm nhánh đóng.** Bộ đã nối:
+   `{INVOICE_REFUND, PROFIT_PAYOUT, TERMINATION_FORFEIT_PAIR, TERMINATION_MOVE_OUT_PAIR,
+   SALARY_BUNDLE}`; `ELSE` ném `0A000 'adapter % not wired for decision routing'`. Seed một
+   `adapter_name` mới thì migration **apply xanh** rồi **chết ở decision đầu tiên**. Test
+   "unknown owner fail closed" chạy đường `42501` và **không bao giờ** chạm `0A000` ⇒ vô dụng ở đây.
+3. **Họ trigger PROFIT_LOCKED là một tầng khoá độc lập, đang có hiệu lực.**
+   `income_expenses_check_profit_lock` + `income_expense_items_check_profit_lock` +
+   `a02_ie_profit_lock_*` + `20260730240000_profit_month_lock_guard.sql` +
+   `20260730260000_profit_lock_cover_out_of_pnl.sql`, cửa duy nhất là `is_org_owner_v1`.
+   **18 toà đã chốt lợi nhuận tháng 05/2026.** Ngược lại, **0 dòng `cashbook_closures` và 0 account
+   có `lock_date`** ⇒ nhánh "kỳ sổ quỹ đã đóng" của cả hai plan **chỉ kiểm được bằng ca dựng**, còn
+   nhánh chốt lợi nhuận thì có dữ liệu thật. **7/7 phiên bàn giao tiền mặt đang ở trạng thái đã xác nhận.**
+4. **Mọi read RPC phải khai VOLATILE (mặc định).** `20260730280000_stable_fn_row_lock_regression.sql:57-89`
+   cài `DO $guard$` đệ quy 4 tầng lời gọi, tự
+   `RAISE EXCEPTION 'Còn hàm public khai STABLE/IMMUTABLE mà chạm khoá dòng — sẽ ném 25006 qua PostgREST: %'`.
+   `app_private.authorize_tenant_action_v3` có `SELECT … FOR SHARE` (prod: `provolatile='v'`), danh
+   sách hàm hở hiện **rỗng (xanh)**. Khai `STABLE` cho bất kỳ read RPC nào của hai plan = vừa `25006`
+   qua PostgREST vừa **abort migration**.
+5. **Freeze-guard allowlist KHÔNG chứa `account_id` và `voucher_date`.** `guard_income_expense_owned_payload`
+   allowlist (`:59-79`) và cửa ANNOTATE (`:29-43`) đều không có hai cột đó ⇒ `pay_draft_fee_voucher:36-39`
+   (ghi `account_id`) **fail dù có token**. Đây là lý do 8 draft E2E DEMO không trả được. Mọi one-shot
+   finalize token (`TERMINATION_REFUND_FINALIZE`) phải là **mở rộng allowlist tường minh**, không phải
+   giả định.
+6. **Có một carve-out ANNOTATE hợp pháp làm biến đổi `attachments/notes` trên phiếu POSTED
+   system-owned.** Nhánh ANNOTATE của guard fire cho **mọi** `flow_kind` (comment trong body tự nói
+   vậy), trả `NEW` khi chỉ `attachments/notes/updated_at` đổi; `'notes'` còn nằm trong allowlist token.
+   `public.annotate_income_expense_v1` là DEFINER, GRANT `authenticated`, **không đọc**
+   `income_expense_flow_ownership`; theo `20260730270000:24-91` chỉ **xoá** file và **replace** notes
+   trên phiếu POSTED mới bị gác bởi chủ. ⇒ Header hash và bộ đông cứng của Plan 2 **phải loại
+   `attachments/notes`**, hoặc phải xin chủ carve-out tường minh.
+7. **`claim_feature_operation_v1` ném `23505` khi replay y hệt** ⇒ idempotency **phải short-circuit
+   TRƯỚC claim**. `operation_key = md5(concat_ws('|', feature_key, org, subject_scope, actor,
+   idempotency_key))`, INSERT trần, `UNIQUE (feature_key, config_version, operation_key)`. Và vì
+   `config_version` nằm trong khoá unique, **bump version giữa hai lần replay xoá sạch bảo vệ**.
+8. **`evaluate_feature_route` chỉ được gọi ĐÚNG MỘT LẦN mỗi transaction.** Nó dùng
+   `clock_timestamp()` (không stable theo transaction) nên hai lần evaluate trong một transaction có
+   thể vắt qua `starts_at/ends_at` (CANONICAL rồi FROZEN); `claim_feature_operation_v1` lấy
+   `clock_timestamp()` **riêng của nó** sau advisory lock, nên một writer có thể qua route rồi fail
+   "Canary window is no longer valid" trong cùng transaction. Thêm: `IF f.mode='ON' THEN RETURN
+   'CANONICAL'` nằm **trước** cả khối window ⇒ `ends_at` **không** là van tự hết hạn sau ON; và bộ
+   đếm cap **không có vị ngữ `organization_id`**. ⇒ Snapshot `(evaluated, stored mode, config_version)`
+   vào biến (và vào marker) rồi dùng lại; nếu dùng chung bảng ops để đếm thì thêm vị ngữ org; đặt
+   `max_operation_count` rộng tay (tiền lệ prod: `2147483647`).
+
+### 6.3 Primitives phải gọi (cập nhật)
+
+Giữ: `resolve_finance_actor_v2(p_organization_id)` (**bắt buộc overload org-scoped**),
+`authorize_tenant_action_v3`, `assert_cashbook_access_v2(...,'CUSTODIAN',...)`,
+`create_finance_evidence_upload_intent_v2` / `finalize_finance_evidence_v2`, shared
+`resolve_signed_contract_deposit_basis_v1`, `app_private.lock_org_for_decision_v1`.
+
+Thay: `finance_v2_is_cashbook_period_open` → `cashbook_closed_through_v1` (pre-voucher) +
+`assert_period_open_for_edit_v1` (khi đã có voucher).
+Bỏ khỏi danh sách forward-define: `ensure_income_expense_type_v1`,
+`normalize_income_expense_type_name` (chỉ **depend**).
+Thêm vào danh sách: `app_private.is_org_owner_v1` (extend), `app_private.ie_flex_writer_xids` +
+`begin/end_ie_flex_write_v1`, `app_private.ie_visible_cashbook_ids_v1` (cho undo),
+`app_private.income_expense_change_log` + `public.get_voucher_change_log_v1` (**dùng cho value-diff,
+đừng dựng ledger thứ ba**; `income_expense_audit_log` chỉ dành cho chuyển trạng thái nghiệp vụ mà
+trigger không thấy: proposal decision, claim release, warning).
+
+Ba mẫu phải tái dùng nguyên văn: migration thêm publication (`20260730230000_realtime_money_tables.sql`),
+bảng hành vi per-org (`app_private.org_accounting_mode`, sinh ra **chính vì** `server_feature_flags`
+không có `organization_id`), và vòng lặp prerequisite-assert
+(`20260723010000_finance_v2_semantics_snapshot.sql:69-96` — `to_regclass`/`to_regprocedure` raise
+`'Missing Finance V2 prerequisite relation %'`; đây cũng là câu trả lời cho lo ngại "clone chết với
+lỗi khó hiểu": nó **loud và tự chẩn đoán**).
+
+Lock order giữ nguyên bản 29/07, **thêm bước 0**: `LOOKUP idempotency record` trước tất cả.
+
+## 7. Thứ tự giao hàng bắt buộc
+
+| Slice | Nội dung | Ghi tiền? | Gate chuyển slice |
+|---|---|---:|---|
+| **−1** | Hotfix production §4: reader EN/bảo trì thấy UNAPPROVED; chống trùng EN; bỏ tự-tạo-công-tơ; read model phí cố định (tổng item khớp + loại type lương); hoist state `/thanh-toan` + `p_force` owner-only; `/deposits` refund_done + **KPI**; xoá `useApproveTermination`; siết DML `contract_terminations` | **Không phiếu mới**; chỉ sửa reader/guard/ACL | Từng gate ở §4.1–4.9 xanh; `thanh-toan-page.spec.ts` + `utility-paste-receipt.spec.ts` **vẫn xanh**; `reconcile-money.mjs` exit **0** (exit 3 không phải pass); **KHÔNG dọn phiếu nào** (§1bis) — thay vào đó chứng minh guard mới chặn được phiếu thứ 46 trên một ô đã trùng, và tổng/đếm phiếu trước-sau migration **không đổi một đồng** |
+| **0** | **Chỉ sửa văn bản plan + preflight, KHÔNG schema.** Áp mọi patch §5. Xoá Step 3d (E13) và forward-define `ensure_income_expense_type_v1` (B3). Đánh số lại 16 migration (E12). Chốt định nghĩa "chủ" (D-OWNER). Quyết số phận WP2 + 2 file untracked (§8). Sửa `AGENTS.md` về `npm run gen:types` không redirect. Thêm 2 gate (E5). **Đo lại 12 hạng mục §11.2** | Không | `typecheck:baseline` xanh; preflight script ghi timestamp/org/query hash/baseline; review worktree; chủ ký quyết định ngưỡng 600.000đ (§3 dòng Điện/nước) và bậc hoa hồng |
+| **1** | **Shared runtime (Plan 1), chỉ schema, route OFF.** Hợp đồng token với `purpose='FINANCE_V2_LIFECYCLE'` hoặc `ie_flex_writer_xids` (invariant 1). `finance_v2_post_voucher_with_source_v1` có MAIN+CHANGE+ROUNDING và period backstop bên trong. Ba code kỳ có nhãn (E4). Migration publication + 4 key realtime đang thiếu. Nhánh CASE cho `dispatch_finance_decision_v2` (invariant 2). **Mọi read RPC khai VOLATILE** | Không | `check-stable-fn-locks.mjs` xanh; `check-definer-acl.mjs`; test dispatcher chạy **cả** `42501` **và** `0A000`; test token: không có posting `LEGACY_BRIDGE` nào sinh ra |
+| **2** | Fail-closed transfer audit + residence segments (phủ **cả** `apply_contract_transfer`); chưa deploy RPC phụ thuộc obligation | Không | test incomplete/ambiguous/overlap (phải **tự dựng**, không có dữ liệu thật); cross-org segment read bị từ chối; no money drift |
+| **3** | Plan 1 rule version / cross-class BASE claim / conflict ở **SHADOW**; map + reconcile full-payload recurring/external holder (**155/155 child**) | Không | backfill report theo org; fan-out nhiều tháng; item delete/reinsert + concurrency preview; owner config DRAFT |
+| **4** | Owner config, **chỉ DRAFT**. Fixed rule version, utility ceiling, maintenance standard, `fallback_policy` hoa hồng, trần Sale | Không | Cửa sổ nhập liệu tường minh cho ~35 ô còn thiếu + **toàn bộ 21 ô `quan_ly`** + 109 dòng thiếu sổ + `fallback_policy` mở khoá **70 HĐ** |
+| **5** | Shared context + Plan 1 posting adapter, **DEMO/CANARY**. Seed bộ fixture DEMO thành checklist có tên | **Có, DEMO/canary** | evidence-before-post; restricted category; caps/cancel/reversal; E2E headless; **verify cả 5 decision trên owner mới không trả `0A000`** |
+| **6** | **Plan 2 adapter + 5 wrapper + routing ownership-first ở frontend — LÀM CÙNG NHAU, TRƯỚC birth CANARY** | Không | Nếu tách như bản 29/07 (birth ở Slice 4, routing ownership-first ở Slice 5) thì trong khoảng giữa, một phiếu hoàn canary mở trên `/thu-chi` vẫn đập vào 11 generic RPC assert `CANONICAL_INCOME_EXPENSE`. Giữ nguyên substring `owned by system flow` (D8) |
+| **7** | Plan 2 snapshot + sticky owned obligation birth, route OFF→SHADOW→**CANARY (DEMO)**; queue/preview/lifecycle/`/deposits` read-only | Chỉ termination canary; chưa cho submit | không phiếu hoàn canonical nào unowned; sticky rollback; read authz/chunk/snapshot attribution; **queue org thật ≤ 3 dòng** (lớn hơn = máy đang sinh nghĩa vụ hoàn cho ca khách còn nợ); KPI và bảng khớp nhau |
+| **8** | Exact refund writer + lifecycle UI | Có, canary rồi production | exact amount trên **cả hai** ca lệch (−978.500 **và** +500.000); manual race; reversal; room reconciliation; chủ ký |
+| **9** | Mở rộng production và theo dõi | Có | 24h không drift/duplicate/orphan; runbook rollback **đã thử**; nhớ rằng freeze hiện **không có đường có kiểm toán** (C-ROLL-1) |
+
+**Plan 2 Task 1–5 là BLOCKED-BY Plan 1 Task 5.** Không có `special_page_submit_context_v1`, không có
+`finance_v2_post_voucher_with_source_v1`, không có `special_fee_*`/`termination_refund_*`/
+`room_residence_segments`/`termination_settlement_snapshots` trên prod. Plan 2 được viết như thể
+shared runtime là tiền đề đã có; nó là **deliverable của Slice 1**. Task 0 và Task 6 của Plan 2
+(transfer audit + residence segments + room lifecycle read) **không** phụ thuộc obligation nên chạy
+song song được ở Slice 2.
+
+## 8. Đánh số migration
+
+**Luật:** mọi migration mới của hai plan phải sort **SAU** file đã apply cuối cùng
+(`20260730280000_stable_fn_row_lock_regression.sql`), tức thuộc dải `20260731xxxxxx`. Luật này chữa
+đồng thời hai lỗi: (a) đụng tên trực diện tại `20260730160000`, (b) hiểm hoạ **thứ tự replay** — mọi
+`CREATE OR REPLACE` mà Plan 1 đặt ở `202607300000xx` sẽ bị khối `20260730100000–20260730280000` ghi
+đè khi rebuild clone, làm clone **không phản ánh production** và gate rehearsal cho kết quả sai lệch.
+
+Thêm một bước preflight: **fail nếu timestamp mới trùng bất kỳ file đã có** trong `supabase/migrations/`.
+
+### 8.1 Thứ tự canonical sau khi đánh số lại (16 file)
+
+```text
+# Plan 1 — hạ tầng dùng chung (Slice 1)
+20260731010000_special_page_runtime.sql
+20260731010500_contract_transfer_audit_hardening.sql
+20260731011000_room_residence_segments.sql
+# Plan 1 — special fee (Slice 3 → 5)
+20260731020000_special_fee_schema.sql
+20260731021000_special_fee_rule_rpcs.sql
+20260731022000_special_fee_preview.sql
+20260731023000_special_fee_writer.sql
+20260731024000_special_fee_cancel_repeat.sql
+20260731025000_special_fee_read_wrappers.sql
+# Plan 2 — termination (Slice 6 → 8)
+20260731030000_termination_settlement_snapshot.sql
+20260731031000_termination_refund_obligations.sql
+20260731031500_termination_writer_canonicalization.sql
+20260731032000_termination_refund_read_rpcs.sql
+20260731032500_room_lifecycle_read_rpc.sql
+20260731033000_termination_lifecycle_backfill.sql
+20260731034000_termination_refund_special_writer.sql
+```
+
+Slice −1 dùng dải **trước** khối trên (`20260731000000 → 20260731002500`), theo đúng luật
+"sau `20260730280000`" — nó phải apply trước mọi file plan.
+
+`special_fee.payment.v1` seed **OFF** trong `20260731020000`; cả hai route termination seed **OFF**
+trong `20260731031000`, **trước** các writer migration. Writer chỉ **assert** route; enable theo
+slice ở §7, không theo timestamp.
+
+**Cách seed một dòng cờ cho đúng** (C-ROLL-4): bảng là `app_private.server_feature_flags` (không có
+bảng `public` cùng tên). NOT NULL có default: `max_operation_count`, `max_single_amount_vnd`,
+`max_total_amount_vnd`, `risk_class` (CHECK `IN ('MONEY','NON_MONEY')`). **`domain text NOT NULL`
+không có default — bắt buộc truyền.** CHECK `server_feature_flags_canary_limits_check` đòi
+`starts_at < ends_at` hữu hạn và **cả ba cap > 0**. Enrollment `server_feature_flag_canary_orgs` PK
+`(feature_key, organization_id)` có FK về cờ ⇒ **seed cờ trước**, không thì trigger
+`a10_accounting_canary_enrollment_guard` ném `55000 'Accounting feature is not configured'`. Bỏ câu
+"cap metadata để NULL". Enrollment chỉ cho **DEMO** (`dddd0000-0000-4000-8000-000000000001`), kèm
+DELETE rollback (tiền lệ `20260728150000_enable_non_cash_overpay_credit.sql:1015`).
+
+### 8.2 Hai file untracked phải xử lý TRƯỚC khi viết migration plan nào
+
+Cả hai đang ở trạng thái `??` trong cây làm việc, **trùng timestamp với file tracked đã apply**, và
+**chưa lên prod** (xác minh bằng catalog, không bằng `schema_migrations`):
+
+- **`supabase/migrations/20260730230000_annotate_evidence_protection.sql`** — 556 dòng, chưa apply
+  (`app_private.ie_evidence_locked_v1`, `ie_notes_append_only_v1`, bảng `ie_annotate_idempotency`
+  **không tồn tại** trên prod). `:289` là một `CREATE OR REPLACE FUNCTION public.annotate_income_expense_v1(...)`
+  **trần, không có guard "đã vá"** ⇒ apply nó sau file tracked đã apply `20260730270000` (file này vá
+  cùng hàm theo mẫu neo và đánh dấu "TIỀN ĐÃ RỜI KÉT") sẽ **xoá sạch lớp bảo vệ bằng chứng**. Cùng
+  timestamp còn có `20260730230000_realtime_money_tables.sql` (tracked, đã apply).
+- **`supabase/migrations/20260730240000_authz_remaining.sql`** ("WP2") — chưa apply (live
+  `assert_period_open_for_edit_v1` md5 `961eb62484c1f14370708e0821135ac3` **thiếu** marker
+  `WP2_PERIOD_ALL_THREE`; `app_private.cashbook_closures` **thiếu** `signed_by_super_admin`). Cùng
+  timestamp với `20260730240000_profit_month_lock_guard.sql` (tracked, đã apply). WP2 vừa mang quyết
+  định "được nhìn sổ" cho undo (C-AUTHZ-7) **vừa** mở rộng vị ngữ kỳ sang kỳ dịch vụ của hạng mục
+  (§3 dòng Hồi tố/Trả trước), và nó **viết lại `reverse_invoice_collection_v5` theo mẫu neo**.
+
+**Phải hỏi chủ trước khi apply hoặc đổi tên.** Và phải quyết số phận WP2 **trước** khi đụng
+`reverse_invoice_collection_v5`. Ghi chú công bằng: `origin/main` hôm nay **không có** cặp timestamp
+trùng nào — sự nhập nhằng chỉ sống trong cây làm việc bẩn này và biến mất nếu hai file `??` được đổi
+tên trước khi commit.
+
+### 8.3 Hiểm hoạ anchor-patch của Đợt 0–6 (C-INFRA-1)
+
+Đợt 0–6 vá nhiều hàm dùng chung theo **MẪU NEO**: `pg_get_functiondef → position(anchor) → replace →
+EXECUTE`, mỗi chỗ tự `RAISE` **"DỪNG, không vá mù"** khi neo biến mất. Forward-redefine mù một hàm
+như thế làm **các migration đó không chạy lại được** và **gãy mọi rehearsal về sau**.
+
+Hàm có nguy cơ mà hai plan định đụng, kèm neo:
+
+| Hàm | Migration:dòng | Neo |
+|---|---|---|
+| `ie_compat_update_pending_v2` | `20260730190000:36-83` | `v_meta_keys` / `v_money_keys` |
+| `update_income_expense_quick` | `20260730190000:91-115` | `notes = p_notes` |
+| `assert_period_open_for_edit_v1` | `20260730190000:179-211` (+ WP2 `:355`) | — |
+| `assert_manual_voucher_v1` | `20260730190000:213-237` | — |
+| `can_reverse_collection_v1` + `reverse_invoice_collection_v5` | `20260730250000:30-104` | `RAISE EXCEPTION 'Không có quyền hoàn tác trên sổ quỹ nguồn'` |
+| `ie_compat_cancel_v2` | `20260730250000:111-174` | `ie_flow_system_owned_v2` |
+| `annotate_income_expense_v1` | `20260730270000:24` | — |
+| `propose_cashbook_closing_v1` | `20260730210000:348-356` | `  IF p_counted_balance IS NULL THEN` |
+
+**KHÔNG** có nguy cơ (đã xác minh: `CREATE OR REPLACE` trần, không neo):
+`confirm_cashbook_closing_v1` (`20260730170000:369`, `20260730210000:173`) và
+`cashbook_balance_as_of_v1` (`20260730170000:562`, `20260730210000:63`).
+
+⇒ Thêm **Step 0′ trước mọi `CREATE OR REPLACE`**: *"Kiểm xem hàm đó có đang bị Đợt 0–6 vá theo MẪU NEO
+không (danh sách trên). Nếu có, phải cập nhật LUÔN mẫu neo trong migration Đợt tương ứng, hoặc thêm
+marker 'đã vá' để DO-block tự bỏ qua."*
+
+### 8.4 Rehearsal
+
+Rehearsal là **clone của production**, nên Đợt 0–6 đã thường trú và mọi guard được luyện. Nếu clone
+**không** mang được, phải ghi thẳng vào plan rằng rehearsal **không bao phủ**
+`a02_ie_profit_lock_*`, `trg_ie_check_lock_ins`, nhánh ANNOTATE của
+`guard_income_expense_owned_payload`, và `DO $guard$` của `20260730280000` — và phải có bộ test
+riêng chạy thẳng trên prod trong `BEGIN … ROLLBACK`. Không tài liệu nào được gọi là "dry-run
+production".
+
+## 9. Gate production tối thiểu
+
+```bash
+npm run typecheck:baseline
+npx vitest run scripts/__tests__/gen-supabase-types.test.ts
+npx vitest run src/lib/__tests__/feeCategories.test.ts
+npx vitest run src/lib/__tests__/specialFeeRules.test.ts src/lib/__tests__/specialFeeRules.property.test.ts
+npx vitest run src/lib/__tests__/roomLifecycle.test.ts src/lib/__tests__/roomLifecycle.property.test.ts src/lib/__tests__/terminationRefundStatuses.test.ts
+npx vitest run src/hooks/__tests__/specialFeeRouting.test.ts src/hooks/__tests__/terminationRefundRouting.test.ts src/hooks/__tests__/useRealtimeDataSync.test.ts
+node scripts/check-stable-fn-locks.mjs          # THÊM — sau MỌI migration tạo/sửa hàm
+node scripts/check-permission-catalog.mjs        # THÊM — gate CI bắt buộc, cần PAT
+node scripts/check-definer-acl.mjs
+node scripts/check-approver-provenance.mjs
+node scripts/check-view-invoker.mjs
+node scripts/reconcile-money.mjs 2026-07         # pass = exit 0; exit 3 KHÔNG phải pass
+node scripts/reconcile-money-v2.mjs 2026-07
+```
+
+Bốn thay đổi so với bản 29/07:
+
+1. **THÊM `check-stable-fn-locks.mjs`** — tự khai "GOTCHA đã có án lệ (5 lần)… CHẠY SAU MỌI MIGRATION
+   TẠO/SỬA HÀM. Exit 1 nếu có hàm hở". Nó **không có CI coverage** ⇒ vắng nó khỏi §8 là để **zero
+   backstop** cho đúng lớp bug đã giết `profit_close_state_v2` mười ngày.
+2. **THÊM `check-permission-catalog.mjs`** — đã là gate CI bắt buộc (`ci-gates.yml:135-138`), gác
+   permission key vô hình (đo được 11 key thiếu ngày 26/07). Plan 2 tạo permission key mới cho các
+   consumer khác nhau ⇒ bắt buộc.
+3. **BỎ `node scripts/check-technical-membership-isolation.mjs`** — script này **chưa tồn tại** và
+   theo A-SVC thì không còn deliverable để gác.
+4. **SỬA cách đọc `reconcile-money.mjs`** — pass = `exit 0`; `exit 3 (INCONCLUSIVE)` **không** phải
+   pass; nó cần `signInWithPassword` nên **không headless-CI-safe** như `check-view-invoker.mjs`.
+   Fallback: chọn kỳ có >1000 phiếu, hoặc dùng `reconcile-money-v2.mjs`.
+
+**Các script sau PHẢI ĐƯỢC TẠO** (chưa tồn tại — đừng viết chúng vào gate như thể đã có):
+`scripts/rehearse-sql.mjs` (refuse khi ref là production), `scripts/audit-special-fee-rollout.mjs`,
+`scripts/audit-room-lifecycle-rollout.mjs`, `scripts/test-special-page-runtime.mjs`,
+`scripts/test-special-fee-rules.mjs`, `scripts/test-special-fee-writer.mjs`,
+`scripts/test-special-fee-concurrency.mjs`, `scripts/test-contract-transfer-segments.mjs`,
+`scripts/test-termination-obligations.mjs`, `scripts/test-termination-refund-reads.mjs`,
+`scripts/test-termination-refund-special-page.mjs`, `scripts/test-room-lifecycle.mjs`.
+Mọi script preflight ghi timestamp, `organization_id`, query hash, và **digest của
+`public.fee_type_matches` + `public.nrm_vn`** (mọi đếm fixed-kind và refund-like đều phụ thuộc hai hàm
+này), rồi so **delta với baseline đã ghi** — không so bằng tuyệt đối (bảng dịch ~130 dòng/ngày).
+
+Sau deploy mới chạy fleet:
+
+```powershell
+Set-Location .e2e-fleet
+$env:FLEET_PASS_CHUNHA = '<runtime secret>'
+$env:FLEET_PASS_KETOAN = '<runtime secret>'
+$env:FLEET_PASS_QUANLY = '<runtime secret>'
+$env:FLEET_WORKERS = '8'
+npx playwright test specs/thanh-toan-page.spec.ts specs/utility-paste-receipt.spec.ts specs/special-fee-*.spec.ts specs/room-lifecycle.spec.ts
+```
+
+Hai spec đầu là **gate hồi quy của Slice −1** (chúng đang xanh và phải giữ xanh) — bản 29/07 không có
+`thanh-toan-page.spec.ts` vì file đó chưa tồn tại lúc viết plan. Bảy spec mới mà hai plan đặt tên
+**đều chưa tồn tại**. `.e2e-fleet` mặc định headless (`playwright.config.ts:15`), `FLEET_WORKERS`
+default 8, `FLEET_BASE_URL` default `https://ptcrm.vercel.app`, `slowMo 350` chỉ khi `FLEET_HEADED`;
+mật khẩu chỉ đến từ `FLEET_PASS_*` và thiếu thì throw tiếng Việt rõ ràng (`specs/auth.ts:19-23,:30-39`).
+Không commit secret, không dùng `$env:` trong bash fence, không chạy headed nếu chủ không yêu cầu.
+
+Ngoài lệnh tổng, gate bắt buộc phải có two-session test cho: hai slot CANARY cùng vượt daily cap;
+special submit vs recurring; traditional item delete/reinsert không để claim stale; refund submit vs
+manual edit/approve/post/reversal; canonical subject retry sau route OFF; list/preview/status
+cross-org; status chunk 501 và 1201; legacy multi-month fan-out; recurring external occurrence
+advance; `/deposits` không báo đã hoàn trước active posting và không dùng phòng hiện tại; **và mới:**
+`0A000` của `dispatch_finance_decision_v2`; `25006` của read RPC khai STABLE; replay idempotency **không**
+ném `23505`; ANNOTATE trên phiếu hoàn POSTED (quyết định của chủ, dù đường nào cũng phải có test).
+
+Sau khi mở production route theo cohort: giữ canary/monitor ≥ 24 giờ, đối chiếu
+duplicate/orphan/money drift **theo organization**. Bất kỳ drift nào ⇒ bật `force_freeze` để dừng
+writer mới, **không** tự rơi về legacy. Nhắc lại: hôm nay **không có lệnh có kiểm toán nào** để bật
+`force_freeze` (C-ROLL-1) ⇒ phải giải quyết trước khi tuyên bố có runbook rollback.
+
+## 10. Giá trị owner phải cấu hình trước khi bật
+
+Đây là dữ liệu vận hành, **không được đoán trong migration**. Thiếu một giá trị trả
+`CONFIG_REQUIRED`, không fail-open, và **không tự lấy số lịch sử làm giá chuẩn** — điều này giờ là
+luật cứng, vì `pay_period_fee` đang **ghi đè `building_fee_accounts.default_amount` bằng
+`round(p_amount/months)` mỗi lần chi** (toà `1eae0e82…` đang có "giá dự kiến" điện = **9.507.910đ**,
+đúng là một hoá đơn cũ, không phải mức phí).
+
+| Hạng mục | Độ trống đo được 30/07 |
+|---|---|
+| Fixed amount từng toà/kind + tháng hiệu lực | **0/21 toà** khai đủ cả 7 loại. Org thật: 126 ô, 46 ô không có dòng, 1 ô amount NULL, 79 ô có amount ⇒ **~35/126 (28%)** là nợ thật sau khi trừ 12 ô `thang_may` ở toà `has_elevator=false` (cả 6 toà có thang máy đã khai đủ: 600k/500k/500k/650k/600k/500k). DEMO: **21/21 thiếu**. **`quan_ly` thiếu giá ở CẢ 21 ô của cả hai org** — lỗ lớn nhất, và bản 29/07 không nêu |
+| Sổ quỹ mặc định | **0/109 dòng** `building_fee_accounts` có `default_account_id`. Ghi rõ: đây **không** gây "100% lỗi thiếu sổ" — 21/21 sổ org thật và 5/6 sổ DEMO có binding CUSTODIAN sống, actor chọn sổ lúc submit; `default_account_id` chỉ là prefill UI |
+| ⚠ Chưa đo: `buildings.hidden_fixed_expenses` | Cột `text[]` trên 21 dòng `buildings`, **nội dung chưa đo**, và **không plan nào nhắc**. Đây có thể là cơ chế thật cho "toà này không có loại phí này" thay vì `building_fee_accounts.not_applicable` (**false trên cả 109 dòng**). **Cho tới khi chủ trả lời, 35–46 ô thiếu KHÔNG được gọi là nợ cấu hình** |
+| Utility ceiling + max ratio từng toà × loại | Chưa có bảng; và phải chốt trước: ngưỡng tự duyệt **600.000đ** (org thật, đặt 29/07 09:39:56) — chưa rõ là chính sách hay nhầm, `updated_by 90450d5f`; DEMO 5.000.000đ |
+| AC/washer standard + ceiling từng toà | Chưa có bảng. Bảng ánh xạ chủ phải duyệt là **200 phiếu / 31 tên**. Máy giặt chỉ **7 phiếu / 2 tên** ⇒ không đủ dữ liệu hồi quy |
+| Commission tiers + `fallback_policy` | **21/21 toà đã khai, 21/21 đều hở**: chỉ phủ 5–6 và 10–12 tháng (18 toà dùng `[{5,6,50},{10,12,60}]`, 102LVT 70%, 44TL 80%, 1392QT `max_months` 13). Đã publish thì **152 HĐ** rơi đúng bậc (5th:25, 6th:6, 10th:10, 11th:56, 12th:55). Vùng hở cắn **48 HĐ ở 13–17 tháng** (13th:18, 14th:18, 17th:12) **+ 22 HĐ ở 7–9 tháng** nơi máy chủ suy ra 50%×tiền thuê còn trang hợp đồng trả **0đ** ⇒ `fallback_policy` là **load-bearing**, và import DRAFT không có nó sẽ **âm thầm đổi số đang hiển thị** cho 22 HĐ đó |
+| Trần thưởng nóng Sale | Chưa có, và **chưa có bề mặt nào**: `PeriodCommissionModal.tsx:76` chỉ truyền `kind:'broker'`; 7 phiếu Sale hiện có đều từ trang hợp đồng |
+| Real cashbook / evidence policy | **0 dòng `cashbook_closures`, 0 account có `lock_date`** ⇒ nhánh "kỳ đã đóng" chỉ kiểm được bằng ca dựng. Đối lại: **18 toà đã chốt lợi nhuận 05/2026** và **7/7 phiên bàn giao đã xác nhận** — hai tầng khoá này có dữ liệu thật và đang có hiệu lực |
+| CANARY safety cap (max single, max daily actor/org, max operation count) | Chưa có bucket theo ngày/actor/org: `server_feature_flag_operations` = `{id, feature_key, config_version, operation_key, organization_id, amount_vnd, created_at}`, bộ đếm **không lọc org, không lọc ngày**, `p_actor_id` chỉ được hash vào `operation_key`. Nếu writer mới dùng chung bảng này thì **thêm vị ngữ `organization_id`** (tiền lệ version dùng chung: `income_expense.create_draft.v1` v5 = 14 op DEMO + 2 op org thật) |
+| ~~Quyết định của chủ về 45 phiếu trùng cũ~~ — **ĐÃ CÓ 30/07: giữ nguyên, chỉ ghi nhận** (§1bis) | Còn lại là việc kế toán ngoài code: 4 cặp cùng số tiền, phơi nhiễm **164.500.000đ** (§1bis.2) |
+| Quyết định của chủ về shortcut "Chi & duyệt" | Plan 1 định đưa hoa hồng về "tự duyệt + vào sổ ngay", **trong khi 23/07/2026 chính chủ đã quyết BỎ shortcut đó** và bắt duyệt tại `/thu-chi`. Cả ba plan doc **0 lần** nhắc `12.7` / `Chi & duyệt` / `create-then-approve` ⇒ **cần chủ ký lại tường minh** |
+
+### 10.1 DEMO không diễn được một họ nào của Plan 1
+
+Điều này không phải lý do chặn (plan đã bắt "owner publish config DRAFT→PUBLISHED và fixture cleanup"
+trước DEMO CANARY, và giới hạn mọi fixture write vào `dddd0000-…0001` với org thật read-only), nhưng
+**phải thành checklist có tên** ở Slice 5 chứ không nằm trong văn xuôi:
+
+- **0 dòng** `building_fee_accounts` ở DEMO.
+- 2 dòng `building_utility_accounts` với `provider_code` **NULL**.
+- Không phiếu `utility.bill` sống (chỉ 2 dòng soft-deleted).
+- **Không có type `'Quản Lý'`** ⇒ một khoản chi Quản Lý ở DEMO sẽ được ghi vào type **tiền lương**.
+- Fixed amount đến từ bảng **mới** `special_fee_fixed_rule_versions`, rỗng ở **cả hai** org cho tới
+  khi chủ publish (`building_fee_accounts` chỉ là DRAFT import).
+- Đối lại, tiền đề sổ quỹ thì **ổn**: DEMO có **6 sổ sống, 5 sổ có binding CUSTODIAN**.
+
+## 11. Giới hạn và cách báo cáo
+
+### 11.1 Giới hạn của chính đợt kiểm toán này
+
+- **Không có bất kỳ lần chạy browser/E2E nào** trong cả 10 mảng kiểm toán (mandate read-only). Mọi
+  khẳng định về UI đều dựa trên dòng source + dữ liệu live + assertion của spec tracked, **không**
+  dựa trên một trang đã render được quan sát. Mọi kết luận UI ở §4 phải được xác minh lại bằng
+  Playwright trong Slice −1.
+- Không có staging clone đầy đủ của production; project authz-staging không đủ dữ liệu tài chính.
+- Số liệu live có thể trôi: đã đo `income_expenses` +32 dòng trong ~1 ngày, cộng hai rổ cọc dịch
+  giữa 29/07 và 30/07 (org thật null-source POSTED 15→17 dòng / +5.000.000; DEMO null-source virtual
+  13→18 dòng / +8.000.000).
+- `supabase_migrations.schema_migrations` đã chết (`max_version='20260716170000'`) ⇒ **không** dùng nó
+  để kết luận "đã apply chưa"; chỉ dùng catalog.
+- Có **2 test `BuildingFilterSelect` đang đỏ** trên nhánh này; **chưa biết** chúng có đỏ trên
+  `origin/main` (`31425d3`) hay không — kiểm việc đó cần checkout/diff làm bẩn cây làm việc.
+
+### 11.2 Mười hai hạng mục phải đo lại (một query mỗi hạng mục) trước khi viết backfill/gate
+
+1. **Slot điện/nước trùng** — hoà giải `(công tơ 02660728…, 07/2026, 4 phiếu, 7.308.077đ)` với
+   `(công tơ fea1d2f4…, ELECTRIC, 05/2026 và 06/2026, 2 phiếu mỗi slot)` và
+   `(toà d76268b2…, ELECTRIC, 05/06/07)`. Chốt khoá canonical **và** số đếm **trước** khi viết unique
+   index + conflict backfill.
+2. **Số tiền type `'Quản Lý'`** — 18.500.000 vs 90.500.000 trên cùng 43 phiếu. Báo **cả**
+   `SUM(items.amount)` **và** `SUM(ie.total_amount)`; chênh lệch **chính là** khuyết tật §−1.4.
+3. **Danh sách cột INSERT của `approve_contract_termination_v1`** — chỉ đọc được ~1.400 ký tự sau
+   `v_refund`. Xác nhận nó có set `building_id/room_id/contract_id` (writer move-out thì có) và item
+   có `accounting_class='PNL'` hay không.
+4. **Xuất xứ 3 termination DEMO chỉ có `refund_date`** (`6837641f`, `46b88b9f`, `75debc04`) — cả RPC
+   lẫn fallback client đã chết (`useContracts.ts:1147-1155`, 0 call site) đều set `refund_date`.
+5. **Toàn bộ body `terminate_contract_forfeit_impl`** (13.983 ký tự) — các nhánh tiền khác (forfeit
+   revenue / offset / extra invoice) chưa đọc.
+6. **Digest live-vs-migration của `fee_type_matches` và `get_period_fee_status`** — chỉ
+   `resolve_fixed_expense_type` được xác nhận khớp `20260728180000:944`. md5 tham chiếu đã có:
+   `ensure_income_expense_type_v1 = b1880461933551ccf20011ebec66ddd3`,
+   `normalize_income_expense_type_name = 7822a97fcc48128d4fe95d33ab2fb27c`.
+7. **Trạng thái `account_id` của 3 phiếu `INVOICE_REFUND`-owned tại thời điểm approve** — giả thuyết
+   giải thích vì sao bug posting-trùng qua `finance_v2_transition_owned_approval` **chưa nổ** (nếu
+   `account_id` NULL thì `v_should=false` nên cầu a85 không post).
+8. **Nội dung `buildings.hidden_fixed_expenses`** — quyết định 35–46 ô thiếu có phải nợ cấu hình hay không.
+9. **Bên nào đúng cho 2 phiếu hoàn lệch số** (−978.500 và +500.000) — chứng minh được lệch, **không**
+   chứng minh được nghiệp vụ coi số nào đúng; cần đọc dữ liệu invoice/cọc từng HĐ.
+10. **2 test `BuildingFilterSelect` có đỏ trên `origin/main` không.**
+11. **`role_permissions` của role "Super Admin"** — 18 binding active / 0 permission; chưa rõ 18 là 18
+    binding hay 18 scope-edge của một binding, và sự rỗng đó có phải chủ ý.
+12. **Revision browser Playwright** — cache có cả `chromium-1217` và `chromium-1228`;
+    `@playwright/test 1.61.1` được pin nhưng **không gì** xác minh nó cần revision nào, và không có
+    `postinstall`/`playwright install`.
+
+### 11.3 Cách báo cáo
+
+- Mọi count/sum phải phát **theo `organization_id`**, và so **delta với baseline đã ghi**, không so
+  bằng tuyệt đối.
+- Không `git push --force`, không tự merge remote diverged. Khi triển khai thật, stage **đúng**
+  migration/code của slice — cây làm việc repo này thường xuyên có hàng chục file dở dang từ phiên khác.
+- Tài liệu này **chưa** thực hiện migration/UI/test nào. "Production-ready plan" ở đây nghĩa là kế
+  hoạch đã khớp hiện trạng đo được ngày 30/07 và có gate. Chỉ được tuyên bố feature hoàn tất sau khi
+  chạy verification + browser theo `CLAUDE.md`, và với Slice −1 thì **bắt buộc** phải có bằng chứng
+  browser vì toàn bộ §4 hiện chỉ được chứng minh bằng source + dữ liệu live.

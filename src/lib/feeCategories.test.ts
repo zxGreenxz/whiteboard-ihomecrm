@@ -28,6 +28,74 @@ describe('FEE_CATEGORIES registry', () => {
   });
 });
 
+// §−1.3 (kiểm toán 30/07/2026): `fee_type_matches('quan_ly', …)` cũ chỉ dò
+// '%quan ly%' nên khớp luôn tên loại tiền LƯƠNG ⇒ 34.206.744đ (org thật) nằm
+// trong ô phí "Quản Lý" của trang đóng tiền, và `resolve_fixed_expense_type`
+// còn có thể GHI một khoản chi Quản Lý vào loại tiền lương.
+//
+// 4 loại đang khớp '%quan ly%' trên production (đo 30/07/2026):
+//   'Quản Lý'          · category 'Vận Hành' ← phí THẬT, phải khớp
+//   'Lương quản lý'    · category NULL       ← lương, phải KHÔNG khớp
+//   'Lương quản lý'    · category 'Lương'    ← lương, phải KHÔNG khớp
+//   'Ứng lương quản lý'· category 'Lương'    ← lương, phải KHÔNG khớp
+// Vì có ca category NULL nên chỉ loại theo category là KHÔNG đủ — phải loại
+// theo tên. Đây là mirror của nhánh SQL đã sửa (xem comment trong feeCategories.ts).
+//
+// HAI MẪU CUỐI LÀ MẪU PIN PARITY SQL↔TS (thêm sau rà vòng 2, 30/07): tên KHÔNG
+// mang chữ "lương" nhưng CATEGORY thì có, và category KHÁC hẳn 'Lương'. Đây đúng
+// chỗ hai bản từng lệch — migration bản nháp dùng `nrm_vn(p_cat) <> 'luong'` nên
+// SQL vẫn nhận, còn TS (`!c.includes('luong')`) thì loại. Cả hai giờ đều dùng
+// NOT LIKE '%luong%'. Nếu ai đổi một trong hai về so-bằng, mẫu này ĐỎ.
+describe('quan_ly KHÔNG được nuốt tiền lương (§−1.3)', () => {
+  const SALARY: Array<[string | null, string]> = [
+    [null, 'Lương quản lý'],
+    ['Lương', 'Lương quản lý'],
+    ['Lương', 'Ứng lương quản lý'],
+    ['Lương thưởng', 'Phí quản lý'],
+    ['Lương nhân viên', 'Chi phí quản lý'],
+  ];
+
+  it('không mẫu tiền lương nào lọt vào slot quan_ly', () => {
+    for (const [cat, name] of SALARY) {
+      expect({ cat, name, m: feeTypeMatches('quan_ly', cat, name) })
+        .toEqual({ cat, name, m: false });
+    }
+  });
+
+  it('hạng mục "Quản Lý" THẬT (category Vận Hành) vẫn khớp', () => {
+    expect(feeTypeMatches('quan_ly', 'Vận Hành', 'Quản Lý')).toBe(true);
+    expect(feeTypeMatches('quan_ly', 'Quản Lý', 'Phí quản lý tòa')).toBe(true);
+    expect(feeTypeMatches('quan_ly', null, 'Quản lý vận hành')).toBe(true);
+  });
+
+  it('tiền lương cũng không lọt vào 8 slot phí cố định còn lại', () => {
+    const OTHER = ['tien_nha', 'dien', 'nuoc', 'internet', 've_sinh', 'cong_an', 'rac', 'thang_may'];
+    for (const key of OTHER) {
+      for (const [cat, name] of SALARY) {
+        expect({ key, name, m: feeTypeMatches(key, cat, name) })
+          .toEqual({ key, name, m: false });
+      }
+    }
+  });
+
+  // TRIPWIRE có chủ ý: nơi thứ 2 của bộ ba đồng bộ (fixedExpenseCategories.ts →
+  // Báo cáo Lợi Nhuận) CHƯA được sửa cùng lúc vì thuộc bề mặt khác. Test này ghi
+  // nhận đúng mức lệch hiện tại; khi ai đó đồng bộ nốt nơi thứ 2, test sẽ ĐỎ —
+  // lúc đó XOÁ cả khối này và thêm 3 mẫu lương vào SAMPLES của khối parity dưới.
+  it('ghi nhận lệch parity với FIXED_EXPENSE_CATEGORIES (nơi thứ 2 chưa đồng bộ)', () => {
+    const fixed = FIXED_EXPENSE_CATEGORIES.find((c) => c.key === 'quan_ly')!;
+    const stillMatchedByFixed = SALARY.filter(([c, n]) => fixed.match(nrm(c), nrm(n))).length;
+    // `SALARY.length` chứ không phải hằng số: nơi thứ 2 chỉ dò `n.includes('quan ly')`
+    // nên nó khớp TẤT CẢ mẫu ở đây (mọi tên đều chứa "quản lý"). Khi ai đồng bộ nốt
+    // nơi thứ 2, con số tụt xuống và test ĐỎ — đúng ý tripwire, và thêm mẫu mới vào
+    // SALARY không phải sửa lại số.
+    expect(
+      stillMatchedByFixed,
+      'fixedExpenseCategories.ts đã đồng bộ? Xoá khối tripwire này và gộp mẫu lương vào SAMPLES parity.',
+    ).toBe(SALARY.length);
+  });
+});
+
 // PARITY: feeTypeMatches PHẢI khớp match() của FIXED_EXPENSE_CATEGORIES (cùng key)
 // cho mọi cặp (category, name) — đảm bảo trang đóng tiền & Báo cáo Lợi Nhuận nhận
 // diện hạng mục y hệt nhau (§3.3 CAVEAT bảo trì đồng bộ).

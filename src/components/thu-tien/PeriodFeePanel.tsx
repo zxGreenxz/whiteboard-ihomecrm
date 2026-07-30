@@ -17,6 +17,7 @@ import { fmtFull, fmtBillingMonth } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import {
@@ -63,6 +64,11 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const { data: isAdminFlag } = useIsAdmin();
   const { data: isSuperFlag } = useIsSuperAdmin();
   const isAdmin = !!isAdminFlag || !!isSuperFlag;
+  // Cổng "Đóng thêm" của server là `is_super_admin() OR is_org_owner_v1(org,uid)`.
+  // `isAdmin` KHÔNG mirror được nó: public.is_admin() nay chỉ còn
+  // `SELECT public.is_super_admin()` (xem useIsOrgOwner).
+  const { data: isOrgOwnerFlag } = useIsOrgOwner();
+  const canForceFee = !!isSuperFlag || !!isOrgOwnerFlag;
   const { data: perms } = useMyPermissions();
   // Quản Lý (hạn chế): ẩn hẳn với người thiếu quyền xem (đã chốt).
   const canRestricted = isAdmin || canUse(perms, 'income_expenses', 'restricted_view');
@@ -98,7 +104,16 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const maintenance = usePeriodMaintenance(period, buildingIds, { enabled: buildingIds.length > 0 && (isOverview || isBatch) });
 
   const gridCat = isGrid ? cat! : FEE_CATEGORIES.find((c) => c.family === 'GRID')!;
-  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf);
+  // canForce: `p_force` (đóng THÊM cho kỳ đã có phiếu) là đặc quyền chủ tổ chức /
+  // superadmin. Cờ này CHỈ là phỏng đoán TRƯỚC khi gọi RPC (super admin ∪ chủ ở
+  // BẤT KỲ org — is_org_owner_self_v1 không nhận org), dùng để không mời người
+  // chắc chắn bị từ chối bấm. Câu trả lời THẬT do server nói trong payload cảnh
+  // báo trùng (`can_force`, cùng vị ngữ với cổng chặn và siết theo ĐÚNG org của
+  // toà); usePeriodFeeState ưu tiên khoá đó và chỉ lùi về cờ này khi server bản
+  // cũ không trả. Trước Slice −1 nó truyền `isAdmin`, mà is_admin() =
+  // is_super_admin() nên CHỦ TỔ CHỨC THẬT không phải super admin bị khoá khỏi
+  // chính đặc quyền của mình.
+  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf, { canForce: canForceFee });
 
   // ── Helper: tòa hiển thị cho 1 hạng mục (thang máy = cờ ∪ tòa có phiếu kỳ này) ──
   const visibleIdsFor = (c: FeeCategory): string[] => {
@@ -163,9 +178,16 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           }
         }
       } else if (c.family === 'MAINTENANCE_BATCH') {
+        // Slice −1 A3a: reader nay trả CẢ phiếu CHỜ DUYỆT. Chúng là "đã có phiếu"
+        // nhưng KHÔNG phải "đã chi" — cộng vào rowPaidSum là đếm tiền chưa duyệt
+        // như đã tiêu.
         const lines = maintenance.data ?? [];
-        total = lines.length; paidN = lines.length;
-        for (const l of lines) rowPaidSum += l.amount;
+        total = lines.length;
+        paidN = lines.filter((l) => !l.pending).length;
+        for (const l of lines) {
+          if (l.pending) { rowDraftN++; rowDueSum += l.amount; }
+          else rowPaidSum += l.amount;
+        }
       }
       const dueN = total - paidN;
       dueCount += dueN; slots += total; dueSum += rowDueSum; paidSum += rowPaidSum; paidCount += paidN; draftCount += rowDraftN;
@@ -267,6 +289,9 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
     const st = S.paidOf(b.id);
     const paid = !!st && st.paidAmount > 0;
     const hasDraft = !!st && st.draftAmount > 0;
+    // Vừa bấm đóng xong, reader chưa refetch kịp → ô phải nói "đã tạo" và KHÔNG
+    // còn nút đóng. Đây là khe đã sinh 2 phiếu 66tr cách nhau 460ms (§−1.6).
+    const justPaid = !paid && !hasDraft ? S.justPaidOf(b.id) : undefined;
     if (onlyDue && paid) return null;
     const vouchers = S.vouchersOf(b.id);
     const draftVoucher = vouchers.find((v) => v.status === 'UNAPPROVED');
@@ -283,7 +308,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
     // đã có phiếu → append thẳng vào phiếu (như nút camera nhanh). Dòng phiếu
     // NHÁP không có ô đính ảnh nên cũng không nhận dán.
     const pasteVoucher = paid ? (single ?? paidVouchers[0])?.id ?? null : null;
-    const canPaste = paid ? !!pasteVoucher : !hasDraft;
+    const canPaste = paid ? !!pasteVoucher : !hasDraft && !justPaid;
     return (
       <tr key={b.id} {...(canPaste ? S.rowPasteProps(b.id, pasteVoucher) : {})}>
         <td className="ud-td-bld"><span className="ud-bldcode">{b.name}</span></td>
@@ -328,7 +353,12 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           ) : hasDraft ? (
             <div className="ud-paidamt">
               <span className="ud-paidamt-a draft">{fmtFull(st!.draftAmount)}</span>
-              <span className="ud-paidamt-m">phiếu chờ duyệt chờ thanh toán</span>
+              <span className="ud-paidamt-m">đã tạo, chờ duyệt · chờ thanh toán</span>
+            </div>
+          ) : justPaid ? (
+            <div className="ud-paidamt">
+              <span className="ud-paidamt-a draft">{fmtFull(justPaid.amount)}</span>
+              <span className="ud-paidamt-m">đã tạo phiếu — đang cập nhật danh sách</span>
             </div>
           ) : isEditingExp ? (
             <span className="ptt-expedit">
@@ -375,6 +405,10 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                 <HandCoins />Thanh toán
               </button>
               {vouchers.length > 1 && <button type="button" className="ptt-edit-btn" title={`${vouchers.length} phiếu`} onClick={() => setVlistFor(b.id)}><ListChecks /></button>}
+            </span>
+          ) : justPaid ? (
+            <span className="ud-acts">
+              <span className="ptt-badge-draft" title="Phiếu vừa tạo — danh sách đang tải lại">ĐÃ TẠO</span>
             </span>
           ) : (
             <span className="ud-acts">
@@ -733,6 +767,8 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                       <span className="ptt-batch-gic"><FeeIcon name="wrench" style={{ width: 16, height: 16 }} /></span>
                       <div className="ptt-batch-gh"><div className="ptt-batch-gtitle">{bt.payerName ?? 'Phiếu tổng'}</div><div className="ptt-batch-gmeta">Phiếu tổng · {bt.lines.length} tòa</div></div>
                       {bt.hasReceipt && <span className="ptt-batch-gtag">Có ảnh phiếu</span>}
+                      {/* Tiền chờ duyệt hiện RIÊNG, không gộp vào tổng đã chi (A3a). */}
+                      {bt.pendingTotal > 0 && <span className="ptt-badge-draft">chờ duyệt {fmtFull(bt.pendingTotal)}</span>}
                       <span className="ptt-batch-gtotal">{fmtFull(bt.total)}</span>
                     </div>
                     <table className="ud-table">
@@ -741,7 +777,10 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                         {bt.lines.map((ln) => (
                           <tr key={ln.voucherId}>
                             <td className="ud-td-bld"><span className="ud-bldcode">{ln.buildingName}</span></td>
-                            <td><span className={'ptt-mchip ' + ln.subtype}>{mText(ln.subtype)}</span></td>
+                            <td>
+                              <span className={'ptt-mchip ' + ln.subtype}>{mText(ln.subtype)}</span>
+                              {ln.pending && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}
+                            </td>
                             <td><span className="ud-bookchip"><BookIcon size={14} />{ln.accountName ?? '—'}</span></td>
                             <td className="num ud-mono">{fmtFull(ln.amount)}</td>
                           </tr>
@@ -758,6 +797,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                       <div className="ptt-batch-sorow" key={r.voucherId}>
                         <span className="ud-bldcode">{r.buildingName}</span>
                         <span className={'ptt-mchip ' + r.subtype}>{mText(r.subtype)}</span>
+                        {r.pending && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}
                         <span className="ptt-batch-someta">{fmtDate(r.voucherDate)} · {r.accountName ?? '—'}</span>
                         <span className="ptt-batch-soamt ud-mono">{fmtFull(r.amount)}</span>
                       </div>

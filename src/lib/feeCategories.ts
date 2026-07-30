@@ -9,6 +9,11 @@
 //   • fixedExpenseCategories.ts — FIXED_EXPENSE_CATEGORIES (Báo cáo Lợi Nhuận)
 //   • SQL: resolve_fixed_expense_type / fee_type_matches / get_period_fee_status
 // Test parity: src/lib/feeCategories.test.ts
+//
+// ⚠ 30/07/2026 — nhánh `quan_ly` ĐANG LỆCH có chủ ý: file này + SQL đã loại tiền
+// lương ra khỏi ô "Quản Lý" (§−1.3), `fixedExpenseCategories.ts` thì CHƯA (Báo
+// cáo Lợi Nhuận là bề mặt khác, sửa ở workstream khác). Xem describe
+// "quan_ly KHÔNG được nuốt tiền lương" trong feeCategories.test.ts.
 // =============================================================================
 
 import { nrm } from '@/lib/fixedExpenseCategories';
@@ -139,7 +144,23 @@ export const feeTypeMatches = (
     case 'dien': return c === 'dien' || n.includes('tien dien');
     case 'nuoc': return c === 'nuoc' || n.includes('tien nuoc');
     case 'tien_nha': return c === 'tien nha' || n.includes('tien nha');
-    case 'quan_ly': return n.includes('quan ly');
+    // quan_ly KHÔNG được nuốt tiền LƯƠNG. Bản cũ chỉ `n.includes('quan ly')` nên
+    // khớp luôn 'Lương quản lý' + 'Ứng lương quản lý' ⇒ 34.206.744đ tiền lương
+    // (org thật) bị cộng vào ô phí "Quản Lý" của trang đóng tiền (kiểm toán
+    // 30/07/2026 §−1.3). Dữ liệu live: 4 loại khớp '%quan ly%' — chỉ 'Quản Lý'
+    // (category 'Vận Hành') là phí thật; 3 loại còn lại là lương, một trong đó
+    // có category NULL ⇒ phải loại theo TÊN, không thể chỉ loại theo category.
+    // MIRROR CHÍNH XÁC nhánh 'quan_ly' của SQL public.fee_type_matches
+    // (supabase/migrations/20260731010000_slice_minus1_readers.sql — WHEN 'quan_ly'):
+    //   nrm_vn(name) LIKE '%quan ly%'
+    //     AND nrm_vn(name) NOT LIKE '%luong%'
+    //     AND nrm_vn(cat)  NOT LIKE '%luong%'
+    // Vế thứ 3 là NOT LIKE ở CẢ HAI nơi. Bản nháp migration từng viết
+    // `nrm_vn(p_cat) <> 'luong'` (bằng chính xác) ⇒ category 'Lương thưởng' /
+    // 'Lương nhân viên' lọt vào ô Quản Lý ở SQL nhưng bị loại ở TS: hai bề mặt ra
+    // hai con số cho cùng một phiếu. Đã sửa SQL cho khớp file này (rà vòng 2,
+    // 30/07); mẫu pin trong feeCategories.test.ts.
+    case 'quan_ly': return n.includes('quan ly') && !n.includes('luong') && !c.includes('luong');
     default: return false;
   }
 };

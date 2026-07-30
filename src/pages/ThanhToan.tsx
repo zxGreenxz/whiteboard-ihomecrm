@@ -9,6 +9,25 @@
 // Layout dùng lại nguyên bộ style của thu-tien.css (scope .tt-stage):
 //   ≥1024px  → grid 2 cột: PeriodFeePanel (.tt-udesk) | khung điện thoại
 //   <1024px  → .tt-udesk display:none, chỉ còn khung điện thoại + PeriodFeeSheet
+//
+// ⚠ HAI BỀ MẶT CÙNG MOUNT LÀ CHỦ Ý — ĐỪNG "sửa" bằng cách unmount theo breakpoint.
+// `.e2e-fleet/specs/thanh-toan-page.spec.ts:27/:32` assert cả panel desktop lẫn
+// sheet cùng render ở 1280px, và `:143` dùng `toBeHidden()` (chứ không phải
+// `toHaveCount(0)`) ở 390px — tức panel chỉ bị CSS ẩn, vẫn nằm trong DOM. Spec
+// `utility-paste-receipt.spec.ts` còn dán ảnh lần lượt vào bảng desktop rồi vào
+// thẻ trong khung điện thoại trong CÙNG một lần tải trang.
+// Rủi ro thật của thiết kế này là hai bề mặt ghi hai phiếu cho cùng một ô. Chỗ
+// chữa KHÔNG nằm ở đây mà ở `usePeriodFeeState` (kho state dùng chung khoá theo
+// hạng mục × kỳ + chốt in-flight) và `useUtilityPayState` (chốt in-flight cấp
+// module cho Điện & Nước), cộng với khoá slot phía server.
+//
+// ⚠ ĐÍNH CHÍNH (đo lại prod 30/07): cặp PC2606046/PC2606047 — 'tiền nhà' 102LVT,
+// 66.000.000đ ×2, created_at cách nhau 460ms — mang `system_source = NULL`, tức
+// KHÔNG do `pay_period_fee` và KHÔNG do lưới phí cố định của trang này sinh ra.
+// Toàn bộ 23 slot phí cố định trùng trên prod: 20 slot system_source NULL (đường
+// tạo phiếu chung bên Thu chi) + 3 slot 'utility.bill'; 0 slot 'fixed_fee'. Nó
+// vẫn là minh hoạ đúng cho LỚP lỗi (hai đường ghi cùng một slot, không ai khoá),
+// nhưng đừng dùng nó để kết luận trang này đã bịt xong lỗ đó.
 // =============================================================================
 
 import { useLocation, useNavigate } from 'react-router-dom';

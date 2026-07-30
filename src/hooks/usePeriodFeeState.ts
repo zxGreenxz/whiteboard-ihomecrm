@@ -12,9 +12,39 @@
 //   - Sửa/hủy/thanh toán theo TỪNG PHIẾU (vouchers payload) — hết mất ảnh/ghi chú.
 //   - appendReceipt: camera nhanh đính ảnh vào phiếu ngay trên dòng.
 //   - Thanh toán phiếu NHÁP (recurring draft-mode): draftTarget + submitPayDraft.
+//
+// V3 (30/07 — Slice −1 §−1.6): STATE NHẬP LIỆU RA KHO DÙNG CHUNG.
+//   /thanh-toan mount ĐỒNG THỜI PeriodFeePanel (cột trái) và PeriodFeeSheet
+//   (khung điện thoại) — đó là CHỦ Ý sản phẩm, có spec bảo vệ
+//   (.e2e-fleet/specs/thanh-toan-page.spec.ts:20/:27/:32 assert cả hai cùng
+//   render; :143 assert panel chỉ bị CSS ẩn ở <1024px). Nhưng trước V3 mỗi bề
+//   mặt gọi hook này riêng nên `amounts/bookSel/attach/payingKey` là HAI Record
+//   độc lập ⇒ cùng một (toà × hạng mục × kỳ) đóng được HAI lần.
+//   Hình dạng lỗi đã xảy ra thật trên production: PC2606046 + PC2606047,
+//   'tiền nhà 102LVT', 66.000.000đ ×2, cùng người tạo, cùng voucher_date, cả hai
+//   APPROVED+POSTED, cách nhau 460ms.
+//   ⚠ ĐÍNH CHÍNH (đo lại 30/07): cặp đó mang `system_source = NULL` ⇒ do đường
+//   TẠO PHIẾU CHUNG bên Thu chi, KHÔNG do `pay_period_fee`/lưới phí cố định này
+//   (hàm đó đóng dấu 'fixed_fee', và cả DB chỉ có 2 phiếu 'fixed_fee', không
+//   trùng nhau). 23 slot phí cố định trùng trên prod = 20 slot NULL + 3 slot
+//   'utility.bill', 0 slot 'fixed_fee'. Vậy V3 + khoá slot của pay_period_fee
+//   chặn ĐƯỜNG GHI CỦA CHÍNH TRANG NÀY; writer phiếu chung vẫn hở, đừng ghi nhận
+//   là "đã bịt lỗ 23 slot".
+//   Nay các Record đó nằm ở KHO NGOÀI REACT khoá theo (hạng mục | kỳ):
+//     • hai bề mặt đang cùng hạng mục ⇒ đọc/ghi CÙNG một ô nhớ;
+//     • hai bề mặt khác hạng mục ⇒ khoá khác nhau nên KHÔNG lây tiền chéo
+//       (giữ đúng FIX P0 leak của V2, nay bằng cấu trúc chứ không bằng reset);
+//     • một chốt in-flight ĐỒNG BỘ (Set, không qua React state) + cờ `justPaid`
+//       chặn cú bấm thứ hai trong khe 460ms giữa lúc RPC trả về và lúc reader
+//       refetch xong.
+//   KHÔNG hoist theo kiểu unmount một bề mặt theo breakpoint — làm vậy là làm
+//   đỏ chính spec ở trên. Cũng KHÔNG đụng `useReceiptPasteTarget` (arbitration
+//   cấp module đã đúng, có spec hồi quy riêng).
+//   Modal (edit/cancel/dup/draftpay) CỐ TÌNH giữ LOCAL từng bề mặt: mỗi bề mặt
+//   render bộ modal của mình, dùng chung state là mở hai hộp thoại xếp lớp.
 // =============================================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { fmtFull } from '@/lib/collect';
 import { getSessionUser } from '@/lib/authSession';
@@ -56,7 +86,16 @@ export interface FeeEditTarget {
   title: string;
   categoryLabel: string;
   buildingName: string;
+  /**
+   * TỔNG CẢ PHIẾU (`voucherTotal`), không phải phần thuộc hạng mục đang xem:
+   * `update_period_fee` ghi lại `p_amount` thành số tiền CỦA PHIẾU, nên seed bằng
+   * số một-phần là mời người dùng thu nhỏ phiếu mà tưởng chỉ sửa hạng mục.
+   */
   amount: number;
+  /** = amount; giữ tường minh để so với `itemAmount` khi phiếu đa hạng mục. */
+  voucherTotal: number;
+  /** Phần thuộc hạng mục đang xem (Σ item khớp) — chỉ để hiển thị đối chiếu. */
+  itemAmount: number;
   periodStart: string;
   periodEnd: string;
   multi: boolean;
@@ -77,6 +116,12 @@ export interface DupConfirm {
   amount: number;
   existingAmount: number;
   existingCount: number;
+  /**
+   * Quyền "Đóng thêm" theo lời SERVER (khoá `can_force` của payload cảnh báo trùng),
+   * đã lùi về cờ `canForce` của UI nếu server bản cũ không trả. Giữ lại trong đối
+   * tượng này để lần bấm xác nhận dùng ĐÚNG câu trả lời đã mở hộp thoại.
+   */
+  canForce: boolean;
 }
 
 /** Thanh toán phiếu NHÁP. */
@@ -87,12 +132,83 @@ export interface DraftPayTarget {
   categoryLabel: string;
 }
 
+/** Ô vừa gửi RPC xong nhưng reader chưa kịp thấy phiếu (khe refetch). */
+export interface JustPaidMark {
+  amount: number;
+  /** true = phiếu thứ 2+ do chủ xác nhận đóng thêm. */
+  force: boolean;
+}
+
+// ── KHO STATE DÙNG CHUNG (module-level) ─────────────────────────────────────
+// Khoá = `${hạng mục}|${kỳ}`. Cùng khuôn với `useReceiptPasteTarget`: hai
+// instance hook trên cùng một màn hình phải nói chuyện với nhau qua biến module,
+// vì React state không đi xuyên hai cây con.
+interface FeeSlot {
+  amounts: Record<string, number>;
+  bookSel: Record<string, string>;
+  attach: Record<string, string>;
+  periodN: Record<string, number>;
+  draft: Record<string, { code: string; holder: string }>;
+  payingKey: string | null;
+  justPaid: Record<string, JustPaidMark>;
+}
+
+const EMPTY_SLOT: FeeSlot = Object.freeze({
+  amounts: {}, bookSel: {}, attach: {}, periodN: {}, draft: {},
+  payingKey: null, justPaid: {},
+}) as FeeSlot;
+
+const slotStore = new Map<string, FeeSlot>();
+const slotSubs = new Map<string, Set<() => void>>();
+const slotRefs = new Map<string, number>();
+/** Chốt ĐỒNG BỘ theo `${scope}::${buildingId}` — chống re-entry trước cả re-render. */
+const inflightPays = new Set<string>();
+
+const readSlot = (scope: string): FeeSlot => slotStore.get(scope) ?? EMPTY_SLOT;
+
+const writeSlot = (scope: string, patch: (s: FeeSlot) => FeeSlot) => {
+  slotStore.set(scope, patch(readSlot(scope)));
+  slotSubs.get(scope)?.forEach((fn) => fn());
+};
+
+const subscribeSlot = (scope: string, fn: () => void) => {
+  let set = slotSubs.get(scope);
+  if (!set) { set = new Set(); slotSubs.set(scope, set); }
+  set.add(fn);
+  return () => {
+    set!.delete(fn);
+    if (set!.size === 0) slotSubs.delete(scope);
+  };
+};
+
+// Đếm consumer để BIẾT KHI NÀO được xoá ô nhớ: đổi hạng mục/kỳ trong khi bề mặt
+// kia vẫn ở hạng mục cũ thì KHÔNG được xoá (bên kia đang gõ dở). Về 0 mới xoá —
+// giữ đúng hành vi "đổi hạng mục là reset sạch" của V2.
+const retainSlot = (scope: string) => slotRefs.set(scope, (slotRefs.get(scope) ?? 0) + 1);
+const releaseSlot = (scope: string) => {
+  const n = (slotRefs.get(scope) ?? 1) - 1;
+  if (n > 0) { slotRefs.set(scope, n); return; }
+  slotRefs.delete(scope);
+  slotStore.delete(scope);
+  // CỐ TÌNH không dọn `inflightPays` ở đây: chốt phải sống đến khi RPC trả về
+  // (doPay tự xoá trong finally). Dọn sớm = mở lại đúng khe re-entry cần chặn
+  // cho ca "đổi hạng mục qua-lại trong lúc phiếu đang bay".
+};
+
 export function usePeriodFeeState(
   period: string,
   category: FeeCategory,
   buildings: { id: string; name: string }[],
   statusOf: (buildingId: string, categoryKey: string) => PeriodFeeStatus | undefined,
   accountOf: (buildingId: string, feeCategory: string) => FeeAccount | undefined,
+  opts?: {
+    /**
+     * Được phép gửi `p_force=true` (đóng THÊM cho kỳ đã có phiếu). Chỉ chủ tổ
+     * chức / superadmin — server cũng siết đúng lối này, cờ đây chỉ để không
+     * mời người khác bấm một nút chắc chắn bị từ chối.
+     */
+    canForce?: boolean;
+  },
 ) {
   const { data: accounts = [] } = useAccounts();
   const { data: uiPrefs } = useUiPreferences();
@@ -105,23 +221,38 @@ export function usePeriodFeeState(
   const upsertCfg = useUpsertFeeAccount();
 
   const key = category.serverKey;
+  const canForce = !!opts?.canForce;
 
-  const [amounts, setAmounts] = useState<Record<string, number>>({});
-  const [bookSel, setBookSel] = useState<Record<string, string>>({});
-  const [attach, setAttach] = useState<Record<string, string>>({});
-  const [periodN, setPeriodN] = useState<Record<string, number>>({});
-  const [draft, setDraft] = useState<Record<string, { code: string; holder: string }>>({});
+  // ── State NHẬP LIỆU: kho dùng chung, khoá theo (hạng mục | kỳ) ──
+  const scope = `${key}|${period}`;
+  const slot = useSyncExternalStore(
+    useCallback((cb: () => void) => subscribeSlot(scope, cb), [scope]),
+    useCallback(() => readSlot(scope), [scope]),
+    useCallback(() => readSlot(scope), [scope]),
+  );
+  useEffect(() => {
+    retainSlot(scope);
+    return () => releaseSlot(scope);
+  }, [scope]);
+  const { amounts, bookSel, attach, periodN, draft, payingKey } = slot;
+  const patch = (p: (s: FeeSlot) => Partial<FeeSlot>) =>
+    writeSlot(scope, (s) => ({ ...s, ...p(s) }));
+
+  // ── State CỦA RIÊNG BỀ MẶT (modal + spinner upload) ──
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
-  const [payingKey, setPayingKey] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<CancelTarget | null>(null);
+  // Toà của phiếu đang chờ xác nhận huỷ. CancelTarget (dùng chung với Điện &
+  // Nước) chỉ mang TÊN toà, mà cờ `justPaid` khoá theo id ⇒ phải giữ id riêng,
+  // xem confirmCancel.
+  const [cancelBId, setCancelBId] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<FeeEditTarget | null>(null);
   const [dupConfirm, setDupConfirm] = useState<DupConfirm | null>(null);
   const [draftTarget, setDraftTarget] = useState<DraftPayTarget | null>(null);
 
-  // FIX P0 leak: đổi hạng mục / kỳ → reset sạch input + modal đang treo.
+  // Đổi hạng mục / kỳ → đóng modal đang treo. Input KHÔNG cần reset ở đây nữa:
+  // đổi scope là đổi ô nhớ, và ô cũ bị xoá khi không còn bề mặt nào dùng.
   useEffect(() => {
-    setAmounts({}); setBookSel({}); setAttach({}); setPeriodN({}); setDraft({});
-    setEditTarget(null); setCancelTarget(null); setDupConfirm(null); setDraftTarget(null);
+    setEditTarget(null); setCancelTarget(null); setCancelBId(null); setDupConfirm(null); setDraftTarget(null);
     attachKeyRef.current = null; attachModeRef.current = 'pay';
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category.serverKey, period]);
@@ -170,11 +301,14 @@ export function usePeriodFeeState(
   const paidOf = (bId: string) => statusOf(bId, key);
   const vouchersOf = (bId: string): PeriodFeeVoucher[] => paidOf(bId)?.vouchers ?? [];
 
-  const setField = (bId: string, patch: Partial<{ code: string; holder: string }>) =>
-    setDraft((d) => ({ ...d, [bId]: { code: codeOf(bId), holder: holderOf(bId), ...patch } }));
-  const setAmount = (bId: string, v: number) => setAmounts((a) => ({ ...a, [bId]: v }));
-  const setBook = (bId: string, id: string) => setBookSel((s) => ({ ...s, [bId]: id }));
-  const setN = (bId: string, n: number) => setPeriodN((s) => ({ ...s, [bId]: Math.max(1, Math.min(36, Math.round(n) || 1)) }));
+  const setField = (bId: string, p: Partial<{ code: string; holder: string }>) =>
+    patch((s) => ({ draft: { ...s.draft, [bId]: { code: codeOf(bId), holder: holderOf(bId), ...p } } }));
+  const setAmount = (bId: string, v: number) =>
+    patch((s) => ({ amounts: { ...s.amounts, [bId]: v } }));
+  const setBook = (bId: string, id: string) =>
+    patch((s) => ({ bookSel: { ...s.bookSel, [bId]: id } }));
+  const setN = (bId: string, n: number) =>
+    patch((s) => ({ periodN: { ...s.periodN, [bId]: Math.max(1, Math.min(36, Math.round(n) || 1)) } }));
 
   const saveConfig = (bId: string) => {
     const code = codeOf(bId).trim();
@@ -243,7 +377,7 @@ export function usePeriodFeeState(
         await appendMut.mutateAsync({ voucherId, url });
         toast.success('Đã đính ảnh vào phiếu');
       } else {
-        setAttach((a) => ({ ...a, [bId!]: url }));
+        patch((s) => ({ attach: { ...s.attach, [bId!]: url } }));
         toast.success('Đã đính kèm ảnh phiếu');
       }
     } catch (ex) { toast.error('Không tải được ảnh: ' + (ex as Error).message); }
@@ -272,12 +406,37 @@ export function usePeriodFeeState(
     pasteProps(voucherId ? `quick:${bId}:${voucherId}` : `pay:${bId}`);
 
   // ── Đóng tiền (TỔNG cả khoảng; chống trùng 2 bước) ──
+  //
+  // Ô "vừa tạo phiếu": RPC đã trả về nhưng reader (get_period_fee_status) chưa
+  // refetch xong. Khe đó dài cỡ vài trăm ms — đúng khe đã sinh PC2606046/47 cách
+  // nhau 460ms. Trong khe này ô phải hiện "đã tạo" và KHÔNG cho bấm nữa. Không
+  // dùng hẹn giờ: cờ tự tan ngay khi reader thấy phiếu (paid/draft > 0).
+  const justPaidOf = (bId: string): JustPaidMark | undefined => {
+    const mark = slot.justPaid[bId];
+    if (!mark) return undefined;
+    const st = statusOf(bId, key);
+    if (st && (st.paidAmount > 0 || st.draftAmount > 0)) return undefined;
+    return mark;
+  };
+
   const doPay = async (bId: string, force: boolean) => {
+    // Chốt đồng bộ: chặn cú bấm thứ hai (bề mặt kia, hoặc double-click) NGAY,
+    // không chờ re-render như `disabled` của nút.
+    const lock = `${scope}::${bId}`;
+    if (inflightPays.has(lock)) {
+      toast.error('Đang gửi phiếu cho ô này — chờ kết quả rồi hãy bấm lại.');
+      return;
+    }
+    if (!force && justPaidOf(bId)) {
+      toast.error(`Vừa tạo phiếu cho ${buildingName(bId)} ở kỳ này — chờ danh sách cập nhật, đừng bấm lại.`);
+      return;
+    }
     const amount = amountOf(bId);
     const n = nOf(bId);
     const periodEnd = addMonths(period, n - 1);
     const accountId = bookSel[bId] ?? defaultBookFor(bId) ?? null;
-    setPayingKey(bId);
+    inflightPays.add(lock);
+    patch(() => ({ payingKey: bId }));
     try {
       const res = await payMut.mutateAsync({
         buildingId: bId, categoryKey: key, amount,
@@ -288,19 +447,48 @@ export function usePeriodFeeState(
         force,
       });
       if ('warning' in res && res.warning === 'duplicate') {
+        // Kỳ đã có phiếu. `p_force` là đặc quyền của chủ/superadmin — người khác
+        // KHÔNG được mời bấm "Đóng thêm" (server cũng từ chối), chỉ được báo rõ.
+        //
+        // AI TRẢ LỜI "có được đóng thêm không?" — SERVER, không phải UI. `can_force`
+        // là chính vị ngữ của cổng chặn (`is_super_admin() OR is_org_owner_v1(org
+        // của TOÀ, uid)`), nên nó không lệch được với hàng rào. Cờ `canForce` của
+        // UI chỉ còn là dự phòng cho thân hàm CŨ (chưa có khoá này): `??` chứ không
+        // `||`/`!!`, vì `can_force === false` là câu trả lời DỨT KHOÁT của server và
+        // phải thắng cờ lạc quan của client.
+        const mayForce = res.can_force ?? canForce;
+        if (!mayForce) {
+          toast.error(
+            `${buildingName(bId)} đã có ${res.existing_count ?? 1} phiếu ${category.label.toLowerCase()} ` +
+            `trong kỳ (tổng ${fmtFull(res.existing_amount ?? 0)}). Xem tab Lịch sử; muốn đóng THÊM phải nhờ chủ tổ chức.`,
+            { duration: 10_000 },
+          );
+          return;
+        }
         setDupConfirm({
           buildingId: bId, buildingName: buildingName(bId), amount,
           existingAmount: res.existing_amount ?? 0,
           existingCount: res.existing_count ?? 1,
+          canForce: mayForce,
         });
         return;
       }
-      setAmounts((a) => { const x = { ...a }; delete x[bId]; return x; });
-      setAttach((a) => { const x = { ...a }; delete x[bId]; return x; });
+      patch((s) => {
+        const nextAmounts = { ...s.amounts }; delete nextAmounts[bId];
+        const nextAttach = { ...s.attach }; delete nextAttach[bId];
+        return {
+          amounts: nextAmounts,
+          attach: nextAttach,
+          justPaid: { ...s.justPaid, [bId]: { amount, force } },
+        };
+      });
       if (accountId) rememberBook(bId, accountId);
       toast.success(`Đã chi ${fmtFull(amount)} — ${category.label} · ${buildingName(bId)}`);
     } catch (ex) { toast.error((ex as Error).message); }
-    finally { setPayingKey(null); }
+    finally {
+      inflightPays.delete(lock);
+      patch((s) => (s.payingKey === bId ? { payingKey: null } : {}));
+    }
   };
   const submitPay = async (bId: string) => {
     const amount = amountOf(bId);
@@ -311,6 +499,14 @@ export function usePeriodFeeState(
     if (!dupConfirm) return;
     const bId = dupConfirm.buildingId;
     setDupConfirm(null);
+    // Hàng rào thứ hai: dialog chỉ mở cho chủ, nhưng nếu quyền bị rút giữa lúc
+    // hộp thoại đang mở thì cũng không được gửi force. Dùng câu trả lời của SERVER
+    // đã mở hộp thoại này (dupConfirm.canForce), không dùng lại cờ đoán của UI —
+    // cờ UI là is_admin()/is_super_admin() nên chính nó là chỗ khoá chủ ra ngoài.
+    if (!dupConfirm.canForce) {
+      toast.error('Chỉ chủ tổ chức / superadmin được đóng thêm cho kỳ đã có phiếu.');
+      return;
+    }
     await doPay(bId, true);
   };
 
@@ -342,6 +538,7 @@ export function usePeriodFeeState(
     // Modal hiển thị "phiếu chi tiền {typeText}" → bỏ tiền tố "tiền " của label
     // (tránh "tiền tiền nhà").
     const label = category.label.toLowerCase().replace(/^tiền\s+/, '');
+    setCancelBId(bId);
     setCancelTarget({
       voucherId: v.id,
       bld: buildingName(bId),
@@ -357,10 +554,28 @@ export function usePeriodFeeState(
   };
   const confirmCancel = async () => {
     if (!cancelTarget) return;
+    const bId = cancelBId;
     try {
       await cancelMut.mutateAsync(cancelTarget.voucherId);
+      // BỎ CỜ "vừa tạo phiếu" của ĐÚNG toà vừa huỷ. Không bỏ là ô kẹt vĩnh viễn:
+      // `justPaidOf` chỉ ẩn cờ khi reader thấy paid/draft > 0, mà cancel_period_fee
+      // đặt deleted_at nên reader trả về 0 lại ⇒ cờ cũ hiện lên, ô render "đã tạo
+      // phiếu — đang cập nhật danh sách" + badge ĐÃ TẠO, không còn nút đóng, và
+      // doPay từ chối "đừng bấm lại". Cờ chỉ chết khi ô nhớ dùng chung hết
+      // consumer (đổi kỳ / tải lại trang) — trong khi chính thông báo lỗi lại bảo
+      // "phiếu cũ sai thì HUỶ nó rồi đóng lại". useUtilityPayState.confirmCancel
+      // đã dọn cờ tương ứng của Điện & Nước; đây là chỗ đối xứng còn thiếu.
+      // Chỉ xoá cờ của toà này, KHÔNG xoá cả scope: toà khác đang trong khe
+      // refetch phải giữ chốt chống bấm hai lần.
+      if (bId) patch((s) => {
+        if (!s.justPaid[bId]) return {};
+        const next = { ...s.justPaid };
+        delete next[bId];
+        return { justPaid: next };
+      });
       toast.success('Đã hủy phiếu chi');
       setCancelTarget(null);
+      setCancelBId(null);
     } catch (ex) { toast.error((ex as Error).message); }
   };
 
@@ -374,7 +589,9 @@ export function usePeriodFeeState(
       title: `${category.label} · ${buildingName(bId)}`,
       categoryLabel: category.label,
       buildingName: buildingName(bId),
-      amount: v.amount,
+      amount: v.voucherTotal,
+      voucherTotal: v.voucherTotal,
+      itemAmount: v.amount,
       periodStart: (v.start ?? period + '-01').slice(0, 7),
       periodEnd: (v.end ?? v.start ?? period + '-01').slice(0, 7),
       multi: category.multiPeriod,
@@ -417,9 +634,9 @@ export function usePeriodFeeState(
 
   return {
     myBooks, defaultBookFor, defaultBookId: thuBookId,
-    codeOf, holderOf, amountOf, defaultAmountOf, nOf, paidOf, vouchersOf,
+    codeOf, holderOf, amountOf, defaultAmountOf, nOf, paidOf, vouchersOf, justPaidOf,
     setField, setAmount, setBook, setN, saveConfig, saveExpected, setNotApplicable,
-    bookSel, attach, uploadingKey, payingKey,
+    bookSel, attach, uploadingKey, payingKey, canForce,
     fileRef, onFileChange, onAttachClick, onEditAttachClick, onQuickAttachClick, onDraftPayAttachClick,
     rowPasteProps,
     submitPay,
@@ -428,7 +645,7 @@ export function usePeriodFeeState(
     closePayDraft: () => { setDraftTarget(null); setDraftPayAttachments([]); },
     payingDraft: payDraftMut.isPending,
     cancelTarget, requestCancel, confirmCancel, cancelling: cancelMut.isPending,
-    closeCancel: () => setCancelTarget(null),
+    closeCancel: () => { setCancelTarget(null); setCancelBId(null); },
     editTarget, openEdit, submitEdit, closeEdit: () => setEditTarget(null),
     saving: updateMut.isPending,
   };
