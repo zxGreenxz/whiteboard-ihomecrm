@@ -60,7 +60,12 @@ create table public.openclaw_outbox (
   check (jsonb_typeof(canonical_payload) = 'object'),
   check (octet_length(canonical_payload_bytes) > 0),
   check (convert_from(canonical_payload_bytes, 'UTF8')::jsonb = canonical_payload),
-  check (payload_hash = encode(extensions.digest(canonical_payload_bytes, 'sha256'), 'hex')),
+  check (payload_hash = encode(extensions.digest(
+    convert_to('ihome-openclaw-' || 'send-v1', 'UTF8')
+      || decode('00', 'hex')
+      || canonical_payload_bytes,
+    'sha256'
+  ), 'hex')),
   check (
     (source_kind = 'MANUAL' and actor_id is not null and client_operation_id is not null
       and inbound_event_id is null and schedule_id is null and subscription_id is null)

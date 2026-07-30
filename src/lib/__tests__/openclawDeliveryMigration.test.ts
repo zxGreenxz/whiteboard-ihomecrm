@@ -107,7 +107,10 @@ describe("OpenClaw delivery, audit and operations migration", () => {
     expect(migration).toContain("canonical_payload jsonb not null");
     expect(migration).toContain("canonical_payload_bytes bytea not null");
     expect(migration).toContain("payload_hash text not null");
-    expect(migration).toContain("extensions.digest(canonical_payload_bytes, 'sha256')");
+    expect(migration).toContain("convert_to('ihome-openclaw-' || 'send-v1', 'UTF8')");
+    expect(migration).toMatch(
+      /convert_to\('ihome-openclaw-'\s*\|\|\s*'send-v1', 'UTF8'\)\s*\|\| decode\('00', 'hex'\)\s*\|\| canonical_payload_bytes/i,
+    );
     expect(migration).toContain("claim_generation bigint not null default 0");
     expect(migration).toContain("fencing_token bigint not null");
     expect(migration).toContain("session_generation bigint not null");
