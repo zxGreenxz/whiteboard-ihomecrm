@@ -9,7 +9,7 @@
 // app_private.cashbook_closures, không bảng nào ở FE join tới, nên nếu không có
 // một đường link thì trang biên bản in được sẽ là một URL không ai bấm tới.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,16 +40,40 @@ export interface CashbookClosingInboxProps {
   variant?: "desktop" | "mobile";
   /** Số biên bản đã ký hiển thị gần nhất. */
   recentLimit?: number;
+  /**
+   * Deep-link `?confirm=<request_id>` từ thông báo E6b: tự mở hộp thoại ký khi
+   * dòng tương ứng đã về. Dialog do component này sở hữu (nó có sẵn
+   * `PendingClosure` đầy đủ), nên trang chỉ cần chuyển id xuống.
+   */
+  autoOpenRequestId?: string | null;
 }
 
 export default function CashbookClosingInbox({
   cashbookId = null,
   variant = "desktop",
   recentLimit = 5,
+  autoOpenRequestId = null,
 }: CashbookClosingInboxProps) {
   const { data } = useCashbookClosings(cashbookId);
   const [target, setTarget] = useState<PendingClosure | null>(null);
   const pending = data?.pending ?? [];
+
+  // Mở đúng MỘT lần cho mỗi request_id: query poll 60s nên effect chạy lại
+  // nhiều lượt, không chốt lại thì hộp thoại bật lên sau khi người dùng đóng.
+  const autoOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoOpenRequestId) {
+      autoOpenedRef.current = null;
+      return;
+    }
+    if (autoOpenedRef.current === autoOpenRequestId) return;
+    const row = pending.find((p) => p.request_id === autoOpenRequestId);
+    if (!row) return; // dữ liệu chưa về — thử lại ở lượt sau
+    autoOpenedRef.current = autoOpenRequestId;
+    // Không phải người ký thì đừng mở hộp thoại ký; dòng vẫn hiện trong danh sách.
+    if (row.is_mine_to_confirm) setTarget(row);
+  }, [autoOpenRequestId, pending]);
+
   const closures: ConfirmedClosure[] = (data?.closures ?? []).slice(0, recentLimit);
 
   if (pending.length === 0 && closures.length === 0) return null;

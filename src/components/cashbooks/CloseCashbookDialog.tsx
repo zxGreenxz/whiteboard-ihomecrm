@@ -28,13 +28,20 @@ export interface CloseCashbookDialogProps {
   onOpenChange: (open: boolean) => void;
   cashbookId: string | null;
   cashbookName?: string | null;
+  /**
+   * Sổ ngân hàng thì "đếm tiền" không có nghĩa — số phải đối chiếu là số dư
+   * trên SAO KÊ. Cùng một nghi thức, chỉ đổi cách gọi cho khỏi bắt người dùng
+   * dịch trong đầu.
+   */
+  bankName?: string | null;
   /** Ai được chọn làm người xác nhận (đã lọc quyền ở phía gọi). */
   candidates: Array<{ user_id: string; full_name: string | null }>;
 }
 
 export default function CloseCashbookDialog({
-  open, onOpenChange, cashbookId, cashbookName, candidates,
+  open, onOpenChange, cashbookId, cashbookName, bankName, candidates,
 }: CloseCashbookDialogProps) {
+  const isBank = !!bankName?.trim();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [counted, setCounted] = useState("");
   const [confirmer, setConfirmer] = useState("");
@@ -134,11 +141,17 @@ export default function CloseCashbookDialog({
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="counted">Số tiền thực đếm trong két</Label>
+              <Label htmlFor="counted">
+                {isBank ? `Số dư trên sao kê ${bankName!.trim()}` : "Số tiền thực đếm trong két"}
+              </Label>
               <Input
                 id="counted" inputMode="numeric" value={counted}
                 onChange={(e) => setCounted(e.target.value)}
-                placeholder="Đếm tiền mặt rồi nhập vào đây"
+                placeholder={
+                  isBank
+                    ? "Mở sao kê / app ngân hàng rồi nhập số dư"
+                    : "Đếm tiền mặt rồi nhập vào đây"
+                }
               />
             </div>
             {diff !== null && (
@@ -192,7 +205,7 @@ export default function CloseCashbookDialog({
                 <span className="tabular-nums">{fmtVND(systemBalance)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Số thực đếm</span>
+                <span className="text-muted-foreground">{isBank ? "Số trên sao kê" : "Số thực đếm"}</span>
                 <span className="tabular-nums font-semibold">{fmtVND(countedNum)}</span>
               </div>
               <div className="flex justify-between">

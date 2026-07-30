@@ -1,4 +1,4 @@
-// Cấu hình thông báo CẤP TỔ CHỨC — bật/tắt từng sự kiện E1…E5 + giờ yên tĩnh.
+// Cấu hình thông báo CẤP TỔ CHỨC — bật/tắt từng sự kiện E1…E6 + giờ yên tĩnh.
 //
 // Đặt trong tab "Thông báo" của /settings/general. Đúng chỗ: route đó đã gate
 // `settings.view` và runtime chỉ vai trò "Chủ sở hữu tổ chức" giữ `settings.view/.edit`

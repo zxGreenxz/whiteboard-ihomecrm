@@ -825,11 +825,24 @@ export interface UnlockProfitMonthInput {
  * MỞ KHOÁ tháng đã chốt lợi nhuận — nhẹ hơn "Đặt lại tháng".
  *
  * Khác nhau ở chỗ nào:
- *   - Đặt lại tháng (profit_reset_checked_v2): XOÁ snapshot, huỷ cả phân bổ
- *     cổ đông đã tính. Dùng khi muốn làm lại từ đầu.
- *   - Mở khoá (unlock_profit_month_v1): chỉ gỡ `locked_at` để sửa/ghi phiếu
- *     của tháng đó, snapshot giữ nguyên. Dùng khi chỉ cần chỉnh vài phiếu rồi
- *     chốt lại.
+ *   - Đặt lại tháng (profit_reset_checked_v2): XOÁ hẳn snapshot. Đòi lý do
+ *     8–1000 ký tự + CAS state_hash + danh sách snapshot_ids.
+ *   - Mở khoá (unlock_profit_month_v1): GIỮ dòng `profit_monthly` nhưng lật về
+ *     DRAFT để sửa/ghi phiếu của tháng đó, rồi chốt lại.
+ *
+ * ⚠ ĐÍNH CHÍNH (31/07/2026): chỗ này từng ghi "snapshot giữ nguyên" — SAI. Đối
+ * chiếu thân hàm ĐANG CHẠY trên prod, `unlock_profit_month_v1` làm:
+ *     delete from public.profit_allocations         where profit_monthly_id = any(...);
+ *     delete from public.profit_manager_allocations where profit_monthly_id = any(...);
+ *     update public.profit_monthly set status='DRAFT', management_salary=0,
+ *            locked_at=null, locked_by=null …
+ * Tức là PHẦN ĐÃ CHIA BỊ XOÁ. Tài liệu người dùng nói đúng điều này, chỉ có
+ * comment + tooltip FE nói sai. `profit_unlock_v2` cũng xoá y như vậy — khác ở
+ * chỗ nó đòi reason + idempotency_key + CAS hash và ghi `profit_close_runs`.
+ *
+ * NỢ: FE đang gọi đường v1 KHÔNG audit (không reason, không idempotency, không
+ * CAS, không ghi profit_close_runs). Chuyển sang `profit_unlock_v2` cần thêm
+ * dialog nhập lý do — việc riêng, chưa làm.
  *
  * RPC đã tồn tại từ trước và tự gác bằng quyền `shareholder_profit.unlock`
  * (thực tế chỉ chủ tổ chức mỗi org có), nhưng tới 30/07/2026 mới được GRANT cho
@@ -851,7 +864,7 @@ export const useUnlockProfitMonth = () => {
       invalidateProfitCloseQueries(qc);
       qc.invalidateQueries({ queryKey: ["income-expenses"] });
       toast.success(
-        `Đã mở khoá ${count ?? 0} toà — giờ sửa/ghi phiếu của tháng này được. Nhớ chốt lại sau khi sửa xong.`,
+        `Đã mở khoá ${count ?? 0} toà — sửa/ghi phiếu của tháng này được. Phần đã phân bổ cho cổ đông đã bị xoá, PHẢI chốt lại sau khi sửa xong.`,
       );
     },
     onError: (error: any) => {

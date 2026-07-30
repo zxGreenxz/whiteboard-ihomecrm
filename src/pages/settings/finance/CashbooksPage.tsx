@@ -1,4 +1,4 @@
-import { useCallback, useState, lazy, Suspense } from "react";
+import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Search, Wallet } from "lucide-react";
 import {
+  useAccounts,
   useAccountsWithBalance,
   useDeleteAccount,
   type AccountWithBalance,
@@ -28,7 +29,10 @@ import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CloseCashbookDialog from "@/components/cashbooks/CloseCashbookDialog";
 import ConfirmCashbookClosingDialog from "@/components/cashbooks/ConfirmCashbookClosingDialog";
 import CashbookClosingInbox from "@/components/cashbooks/CashbookClosingInbox";
-import { useCashbookCloseConfirmers } from "@/hooks/useCashbookClosing";
+import {
+  useCashbookCloseConfirmers,
+  useCashbookClosingDeepLink,
+} from "@/hooks/useCashbookClosing";
 import CashbookDetailDialog from "@/components/cashbooks/CashbookDetailDialog";
 
 const CashbooksDesktop = () => {
@@ -69,9 +73,37 @@ const CashbooksDesktop = () => {
     setFormOpen(true);
   }, []);
 
-  const { data: confirmers } = useCashbookCloseConfirmers(closeTarget?.id ?? null);
+  // ── PA4 deep-link từ thông báo ──────────────────────────────────────
+  // `?close=<id>` (E6a "đã bàn giao xong — chốt sổ?") và `?confirm=<id>` (E6b).
+  //
+  // Sổ cần chốt có thể KHÔNG nằm trong `rows` (trang này phân trang 10 dòng),
+  // nên tra tên từ `useAccounts()` — danh sách đầy đủ, cùng cache `["accounts"]`
+  // mà nhiều màn khác đã nạp. Dialog chỉ cần `id` để chạy; tên/ngân hàng là để
+  // hiển thị, thiếu cũng không sai nghiệp vụ.
+  const { data: allAccounts } = useAccounts();
+  const [deepLinkBookId, setDeepLinkBookId] = useState<string | null>(null);
+  const [confirmRequestId, setConfirmRequestId] = useState<string | null>(null);
+
+  useCashbookClosingDeepLink({
+    onClose: useCallback((id: string) => {
+      setDeepLinkBookId(id);
+      setCloseOpen(true);
+    }, []),
+    onConfirm: useCallback((id: string) => setConfirmRequestId(id), []),
+  });
+
+  const closeBookId = closeTarget?.id ?? deepLinkBookId;
+  const closeBookMeta = useMemo(() => {
+    if (closeTarget) return { name: closeTarget.name, bankName: closeTarget.bank_name ?? null };
+    if (!deepLinkBookId) return { name: null, bankName: null };
+    const found = (allAccounts ?? []).find((a) => a.id === deepLinkBookId);
+    return { name: found?.name ?? null, bankName: found?.bank_name ?? null };
+  }, [closeTarget, deepLinkBookId, allAccounts]);
+
+  const { data: confirmers } = useCashbookCloseConfirmers(closeBookId ?? null);
 
   const handleClose = useCallback((acc: AccountWithBalance) => {
+    setDeepLinkBookId(null);
     setCloseTarget(acc);
     setCloseOpen(true);
   }, []);
@@ -112,7 +144,7 @@ const CashbooksDesktop = () => {
           </form>
 
           <div className="px-3 pt-3">
-            <CashbookClosingInbox />
+            <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
           </div>
 
           <CashbookListMobile
@@ -171,7 +203,7 @@ const CashbooksDesktop = () => {
             </form>
           </div>
 
-          <CashbookClosingInbox />
+          <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
 
           <CashbookList
             rows={rows}
@@ -209,10 +241,14 @@ const CashbooksDesktop = () => {
         open={closeOpen}
         onOpenChange={(o) => {
           setCloseOpen(o);
-          if (!o) setCloseTarget(null);
+          if (!o) {
+            setCloseTarget(null);
+            setDeepLinkBookId(null);
+          }
         }}
-        cashbookId={closeTarget?.id ?? null}
-        cashbookName={closeTarget?.name ?? null}
+        cashbookId={closeBookId ?? null}
+        cashbookName={closeBookMeta.name}
+        bankName={closeBookMeta.bankName}
         candidates={confirmers ?? []}
       />
 

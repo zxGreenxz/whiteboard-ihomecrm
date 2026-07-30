@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Wallet, Lock, X, Pencil, ArrowLeftRight, ReceiptText, FileText } from "lucide-react";
 import "@/styles/mobileApp.css";
@@ -8,7 +8,11 @@ import { useAccountsWithBalance, type AccountWithBalance } from "@/hooks/useAcco
 import CashbookForm from "@/components/cashbooks/CashbookForm";
 import CloseCashbookDialog from "@/components/cashbooks/CloseCashbookDialog";
 import CashbookClosingInbox, { closureRecordPath } from "@/components/cashbooks/CashbookClosingInbox";
-import { useCashbookCloseConfirmers, useCashbookClosings } from "@/hooks/useCashbookClosing";
+import {
+  useCashbookCloseConfirmers,
+  useCashbookClosingDeepLink,
+  useCashbookClosings,
+} from "@/hooks/useCashbookClosing";
 import { useCashbookVisibilityV2 } from "@/hooks/income-expenses/financeV2Mutations";
 
 const compact = (n: number) => {
@@ -51,7 +55,29 @@ export default function CashbooksMobilePage() {
   const [closeOpen, setCloseOpen] = useState(false);
   const [closeTarget, setCloseTarget] = useState<AccountWithBalance | null>(null);
 
-  const { data: confirmers } = useCashbookCloseConfirmers(closeTarget?.id ?? null);
+  // ── PA4 deep-link từ thông báo ────────────────────────────────────
+  // `?close=<id>` (E6a) và `?confirm=<id>` (E6b). BẮT BUỘC nối ở CẢ trang này:
+  // CashbooksPage rẽ nhánh bằng usePhoneViewport nên nối một bên desktop là
+  // điện thoại bấm thông báo xong nằm im — mà người nộp tiền dùng điện thoại.
+  // `funds` đã tải 100 dòng nên tra tên/ngân hàng ngay tại đây là đủ.
+  const [deepLinkBookId, setDeepLinkBookId] = useState<string | null>(null);
+  const [confirmRequestId, setConfirmRequestId] = useState<string | null>(null);
+
+  useCashbookClosingDeepLink({
+    onClose: useCallback((id: string) => {
+      setDeepLinkBookId(id);
+      setCloseOpen(true);
+    }, []),
+    onConfirm: useCallback((id: string) => setConfirmRequestId(id), []),
+  });
+
+  const closeBookId = closeTarget?.id ?? deepLinkBookId;
+  const closeBook = useMemo(
+    () => closeTarget ?? funds.find((f) => f.id === deepLinkBookId) ?? null,
+    [closeTarget, deepLinkBookId, funds],
+  );
+
+  const { data: confirmers } = useCashbookCloseConfirmers(closeBookId ?? null);
   const { data: closingData } = useCashbookClosings();
   const pendingForMe = (closingData?.pending ?? []).filter((p) => p.is_mine_to_confirm).length;
 
@@ -127,7 +153,7 @@ export default function CashbooksMobilePage() {
 
           <div className="mbody">
             {/* Đợt 6 — hộp thư chờ ký + đường ra biên bản. Tự ẩn khi rỗng. */}
-            <CashbookClosingInbox variant="mobile" />
+            <CashbookClosingInbox variant="mobile" autoOpenRequestId={confirmRequestId} />
 
             <div className="iestats">
               <div className="iestat">
@@ -320,6 +346,7 @@ export default function CashbooksMobilePage() {
                       className="primary"
                       style={{ background: "#b91c1c", width: "100%" }}
                       onClick={() => {
+                        setDeepLinkBookId(null);
                         setCloseTarget(detail);
                         setDetail(null);
                         setCloseOpen(true);
@@ -394,10 +421,14 @@ export default function CashbooksMobilePage() {
         open={closeOpen}
         onOpenChange={(o) => {
           setCloseOpen(o);
-          if (!o) setCloseTarget(null);
+          if (!o) {
+            setCloseTarget(null);
+            setDeepLinkBookId(null);
+          }
         }}
-        cashbookId={closeTarget?.id ?? null}
-        cashbookName={closeTarget?.name ?? null}
+        cashbookId={closeBookId ?? null}
+        cashbookName={closeBook?.name ?? null}
+        bankName={closeBook?.bank_name ?? null}
         candidates={confirmers ?? []}
       />
     </div>

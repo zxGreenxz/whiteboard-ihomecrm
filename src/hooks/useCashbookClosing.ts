@@ -9,7 +9,9 @@
 // Tương tự, mã lỗi mới là [CLOSURE_*]; [CASHBOOK_CLOSED] giữ nguyên nghĩa "kỳ
 // đã khoá" mà src/lib/cashbookClosing.ts đã dịch sẵn từ Đợt 3.
 
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -51,10 +53,36 @@ export interface ConfirmedClosure {
   confirmed_by_name: string | null;
 }
 
+/**
+ * PA4 — trạng thái chốt của từng sổ so với MỘT THÁNG. Đây là lưới an toàn:
+ * nghi thức đã đủ chức năng nhưng prod 0 closure vì không màn nào trả lời được
+ * "tháng này sổ nào chưa chốt".
+ */
+export interface MonthlyClosingStatus {
+  cashbook_id: string;
+  cashbook_name: string;
+  bank_name: string | null;
+  is_bank: boolean;
+  closed_through: string | null;
+  covered: boolean;
+  has_pending_request: boolean;
+  activity_count: number;
+  balance_at_month_end: number | null;
+  needs_closing: boolean;
+  /**
+   * false = KHÔNG chốt được vì thiếu người ký thứ hai (chỉ một người dính líu
+   * tới sổ). Nhắc chốt trong ca này là vô nghĩa — phải gán ai đó vào vai trò
+   * "Kế toán" trước. Đo 30/07: org thật có 10/16 sổ thuộc loại này.
+   */
+  can_be_closed: boolean;
+  confirmer_count: number;
+}
+
 /** Mọi thứ đọc được đều đổi sau một lần chốt — gom một chỗ để khỏi sót. */
 const CLOSING_KEYS = [
   ["cashbook-closings"],
   ["cashbook-closing-blockers"],
+  ["cashbook-closing-monthly"],
   ["accounts-with-balance"],
   ["accounts"],
   ["cash-book-summary"],
@@ -102,9 +130,43 @@ export const useCashbookBalanceAsOf = (
     },
   });
 
+/**
+ * Sổ nào chưa chốt tới hết tháng `month` (chuỗi `YYYY-MM-DD`, ngày nào trong
+ * tháng cũng được — server tự `date_trunc`).
+ *
+ * RPC khai VOLATILE vì gọi `authorize_tenant_action_v3` (bên trong có
+ * `FOR SHARE`); hàm ĐỌC khai STABLE mà lấy khoá dòng là chết câm qua PostgREST
+ * (`25006`) — án lệ `profit_close_state_v2` hỏng 10 ngày.
+ */
+export const useCashbookMonthlyClosingStatus = (
+  organizationId: string | null | undefined,
+  month: string | null | undefined,
+) =>
+  useQuery({
+    queryKey: ["cashbook-closing-monthly", organizationId ?? null, month ?? null],
+    enabled: !!organizationId && !!month,
+    // Mỗi dòng là một lượt gọi atav3 × số thành viên — không rẻ. Panel không cần
+    // tươi từng giây, người dùng vừa chốt xong thì CLOSING_KEYS đã invalidate.
+    staleTime: 120_000,
+    queryFn: async (): Promise<MonthlyClosingStatus[]> => {
+      const { data, error } = await (supabase.rpc as any)(
+        "cashbook_closing_monthly_status_v1",
+        { p_organization_id: organizationId, p_month: month },
+      );
+      if (error) throw new Error(error.message);
+      return (data ?? []) as MonthlyClosingStatus[];
+    },
+  });
+
 export const useCashbookClosings = (cashbookId?: string | null) =>
   useQuery({
     queryKey: ["cashbook-closings", cashbookId ?? null],
+    // Đề nghị chốt do NGƯỜI KHÁC tạo. Mặc định toàn app là staleTime 60s +
+    // refetchOnWindowFocus:false (App.tsx), nên người ký đứng sẵn trên trang sẽ
+    // KHÔNG BAO GIỜ thấy đề nghị mới. Đây đúng là chỗ nghi thức đối soát thế hệ
+    // 1 chết. Đường chính vẫn là thông báo E6b; poll là lưới thứ hai.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     queryFn: async (): Promise<{ pending: PendingClosure[]; closures: ConfirmedClosure[] }> => {
       const { data, error } = await (supabase.rpc as any)("list_cashbook_closings_v1", {
         p_cashbook: cashbookId ?? null,
@@ -186,6 +248,53 @@ export const useConfirmCashbookClosing = () => {
     onError: (e: Error) => toast.error(e.message || "Không xác nhận được"),
   });
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Deep-link `/finance/cashbooks?close=<cashbook_id>` (thông báo E6a) và
+ * `?confirm=<request_id>` (E6b).
+ *
+ * Dùng ở CẢ hai trang: `CashbooksPage` (desktop) và `CashbooksMobilePage` —
+ * trang cha rẽ nhánh theo `usePhoneViewport` nên chỉ nối một bên là điện thoại
+ * bấm thông báo xong nằm im.
+ *
+ * Xoá param sau khi xử lý (`replace: true`) để F5 không bật lại dialog, và giữ
+ * `handledRef` để lần render kế tiếp không mở hai lần. Cùng khuôn với deep-link
+ * `?handover=` ở ThuTien.tsx.
+ */
+export function useCashbookClosingDeepLink(handlers: {
+  onClose?: (cashbookId: string) => void;
+  onConfirm?: (requestId: string) => void;
+}) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const handledRef = useRef<string | null>(null);
+  const { onClose, onConfirm } = handlers;
+
+  useEffect(() => {
+    const closeId = searchParams.get("close");
+    const confirmId = searchParams.get("confirm");
+    const raw = closeId ?? confirmId;
+    if (!raw) {
+      handledRef.current = null;
+      return;
+    }
+    if (handledRef.current === raw) return;
+    handledRef.current = raw;
+
+    // Chuỗi rác thì chỉ dọn URL, không mở gì — allow-list thông báo đã lọc một
+    // lần nhưng người dùng vẫn có thể tự dán tay.
+    if (UUID_RE.test(raw)) {
+      if (closeId) onClose?.(closeId);
+      else if (confirmId) onConfirm?.(confirmId);
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("close");
+    next.delete("confirm");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, onClose, onConfirm]);
+}
 
 export const useCancelCashbookClosing = () => {
   const qc = useQueryClient();

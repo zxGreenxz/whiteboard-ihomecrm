@@ -48,6 +48,10 @@ export const VOUCHER_SOURCES: Record<string, VoucherSourceMeta> = {
 
   "adjustment.opening_balance": { label: "Điều chỉnh số dư đầu kỳ", group: "Điều chỉnh", internal: true },
   "adjustment.close_coc": { label: "Khoá sổ CỌC ảo (bút toán)", group: "Điều chỉnh", internal: true },
+  // Đợt 6: confirm_cashbook_closing_v1 lập phiếu này khi số đếm lệch số sổ.
+  // KHÔNG internal — tiền mặt thật thừa/thiếu trong két, chỉ là để ngoài KQKD
+  // để không đụng vào số đã chia cho cổ đông.
+  "cashbook.closing.diff": { label: "Chênh lệch kiểm quỹ khi chốt sổ", group: "Điều chỉnh" },
 };
 
 /** Nhãn nguồn phiếu; null/không rõ → "Nhập tay". */

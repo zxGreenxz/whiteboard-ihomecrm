@@ -20,6 +20,9 @@
 //   E3  → /income-expense/voucher/{id} hoặc /income-expense
 //   E4  → /tasks?job={job_id}
 //   E5  → /thu-tien?handover={handover_id}
+//   E6a → /finance/cashbooks?close={cashbook_id}       (nhắc chốt sau bàn giao)
+//   E6b → /finance/cashbooks?confirm={request_id}      (đề nghị chờ tôi ký)
+//   E6c → /finance/cashbooks/closure/{closure_id}      (biên bản — id là BIGINT)
 
 import { canUse, type PermsLike } from "@/lib/permissionPages";
 
@@ -30,6 +33,13 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const isUuid = (v: string) => UUID_RE.test(v);
+
+/**
+ * `app_private.cashbook_closures.id` là BIGSERIAL, không phải uuid — biên bản
+ * chốt sổ (E6c) là route duy nhất có khoá số. Chặn số 0/âm/có dấu và giới hạn
+ * 12 chữ số để không nhận chuỗi rác dài.
+ */
+const isPositiveInt = (v: string) => /^[1-9]\d{0,11}$/.test(v);
 
 /**
  * Union `IncomeExpenseFilters.approval_status` (hooks/income-expenses/types.ts).
@@ -59,8 +69,13 @@ export interface NotificationRoute {
    * `${path}/<uuid>` (đúng MỘT đoạn UUID, không sâu hơn).
    */
   readonly path: string;
-  /** true = còn đúng một đoạn UUID phía sau `path`. */
+  /** true = còn đúng một đoạn khoá phía sau `path` (kiểu theo `idKind`). */
   readonly idSegment?: boolean;
+  /**
+   * Kiểu của đoạn khoá khi `idSegment` = true. Mặc định `"uuid"`.
+   * `"int"` dành cho khoá BIGSERIAL — hiện chỉ biên bản chốt sổ.
+   */
+  readonly idKind?: "uuid" | "int";
   /**
    * Module dùng cho `RequirePermission` trong App.tsx (action luôn là `view`).
    * `null` = route KHÔNG bọc `RequirePermission` ⇒ ai đăng nhập cũng vào được.
@@ -105,6 +120,19 @@ export const NOTIFICATION_URL_ALLOWLIST: readonly NotificationRoute[] = [
   { path: "/thu-tien", module: "thu_tien", params: [["handover", isUuid]] },
   // App.tsx:434 — chỉ ProtectedRoute, trang tự rẽ admin ↔ self-view theo quyền.
   { path: "/finance/salary", module: null },
+  // App.tsx:468 — PA4. `?close=` mở CloseCashbookDialog (E6a),
+  // `?confirm=` mở ConfirmCashbookClosingDialog (E6b). Hai param loại trừ nhau
+  // về mặt sử dụng nhưng khai cả hai để một URL sai không làm mất luôn param kia.
+  {
+    path: "/finance/cashbooks",
+    module: "cashbooks",
+    params: [
+      ["close", isUuid],
+      ["confirm", isUuid],
+    ],
+  },
+  // App.tsx:471 — biên bản chốt sổ (E6c). `:closureId` là BIGINT, KHÔNG uuid.
+  { path: "/finance/cashbooks/closure", idSegment: true, idKind: "int", module: "cashbooks" },
   // App.tsx:365 / :345 — fallback cho các dòng thông báo cũ mang invoice_id/contract_id.
   { path: "/invoices", idSegment: true, module: "invoices" },
   { path: "/contracts", idSegment: true, module: "contracts" },
@@ -147,8 +175,8 @@ function matchRoute(path: string): NotificationRoute | null {
     const prefix = `${route.path}/`;
     if (!path.startsWith(prefix)) continue;
     const rest = path.slice(prefix.length);
-    // ĐÚNG một đoạn UUID — chặn `/invoices/<uuid>/../../x`.
-    if (isUuid(rest)) return route;
+    // ĐÚNG một đoạn khoá — chặn `/invoices/<uuid>/../../x`.
+    if (route.idKind === "int" ? isPositiveInt(rest) : isUuid(rest)) return route;
   }
   return null;
 }

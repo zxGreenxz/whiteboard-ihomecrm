@@ -20436,7 +20436,19 @@ export type Database = {
         Args: { _building_id: string; _owner: string }
         Returns: boolean
       }
+      can_reverse_collection_v1: {
+        Args: { p_collection_ids: string[] }
+        Returns: {
+          collection_id: string
+          mode: string
+          reason_code: string
+        }[]
+      }
       can_view_restricted_ie: { Args: never; Returns: boolean }
+      cancel_cashbook_closing_v1: {
+        Args: { p_reason: string; p_request: string }
+        Returns: Json
+      }
       cancel_income_expense_flex_v1: {
         Args: {
           p_expected_approval_version?: number
@@ -20509,6 +20521,43 @@ export type Database = {
         Returns: Json
       }
       cancel_utility_bill: { Args: { p_voucher_id: string }; Returns: Json }
+      cashbook_balance_as_of_v1: {
+        Args: { p_as_of?: string; p_cashbook: string }
+        Returns: number
+      }
+      cashbook_close_confirmers_v1: {
+        Args: { p_cashbook: string }
+        Returns: {
+          full_name: string
+          user_id: string
+        }[]
+      }
+      cashbook_closing_blockers_v1: {
+        Args: { p_cashbook: string }
+        Returns: {
+          blocking: boolean
+          code: string
+          count_n: number
+          detail: string
+        }[]
+      }
+      cashbook_closing_monthly_status_v1: {
+        Args: { p_month: string; p_organization_id: string }
+        Returns: {
+          activity_count: number
+          balance_at_month_end: number
+          bank_name: string
+          can_be_closed: boolean
+          cashbook_id: string
+          cashbook_name: string
+          closed_through: string
+          confirmer_count: number
+          covered: boolean
+          has_pending_request: boolean
+          is_bank: boolean
+          needs_closing: boolean
+        }[]
+      }
       cashbook_opening_balance: {
         Args: {
           p_account_id?: string
@@ -20595,6 +20644,10 @@ export type Database = {
       }
       confirm_cash_handover: {
         Args: { p_handover_id: string; p_to_account_id?: string }
+        Returns: Json
+      }
+      confirm_cashbook_closing_v1: {
+        Args: { p_counted_balance: number; p_request: string }
         Returns: Json
       }
       confirm_reconciliation: { Args: { p_id: string }; Returns: Json }
@@ -21609,6 +21662,7 @@ export type Database = {
         Args: { p_voucher: string }
         Returns: Json
       }
+      get_voucher_change_log_v1: { Args: { p_voucher: string }; Returns: Json }
       has_full_building_scope: { Args: never; Returns: boolean }
       has_perm_full_scope: {
         Args: { _action: string; _table: string }
@@ -21763,6 +21817,10 @@ export type Database = {
         Returns: boolean
       }
       list_authorization_catalog_v1: { Args: never; Returns: Json }
+      list_cashbook_closings_v1: {
+        Args: { p_cashbook?: string }
+        Returns: Json
+      }
       list_cashbook_visibility_v2: {
         Args: never
         Returns: {
@@ -22419,6 +22477,15 @@ export type Database = {
           p_organization_id: string
           p_period_month: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      propose_cashbook_closing_v1: {
+        Args: {
+          p_cashbook: string
+          p_confirmer: string
+          p_counted_balance: number
+          p_note?: string
         }
         Returns: Json
       }

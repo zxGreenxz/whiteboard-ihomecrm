@@ -2,7 +2,7 @@
 //
 // Hai lớp cấu hình RIÊNG BIỆT, đừng trộn:
 //
-//  1. CẤP TỔ CHỨC — `app_private.notification_org_config` (bật/tắt từng sự kiện E1…E5,
+//  1. CẤP TỔ CHỨC — `app_private.notification_org_config` (bật/tắt từng sự kiện E1…E6,
 //     ngưỡng tiền, giờ yên tĩnh). Đọc/ghi qua `get/set_notification_org_config_v1`,
 //     server tự gate `settings.view` / `settings.edit`. Render ở tab Thông báo của
 //     /settings/general (chỉ Chủ sở hữu tổ chức vào được route đó).
@@ -26,14 +26,15 @@ import { toast } from "sonner";
 /* ────────────────────────────── Kiểu dữ liệu ───────────────────────────── */
 
 /**
- * 5 HỌ sự kiện. `metadata.event` có 7 nhánh (E1, E2, E2b, E2c, E3, E4, E5) nhưng cấu
- * hình chỉ có 5 khoá — quy tắc ánh xạ `E2*` → `E2` nằm ở phía SQL (§B.7), frontend
- * không được tự ánh xạ lần nữa kẻo đẻ nguồn sự thật thứ hai.
+ * 6 HỌ sự kiện. `metadata.event` có 10 nhánh (E1, E2, E2b, E2c, E3, E4, E5, E6a,
+ * E6b, E6c) nhưng cấu hình chỉ có 6 khoá — quy tắc ánh xạ `E2*` → `E2` và
+ * `E6*` → `E6` nằm ở phía SQL (`notify_gate_v1`), frontend không được tự ánh xạ
+ * lần nữa kẻo đẻ nguồn sự thật thứ hai.
  */
-export const NOTIFICATION_EVENT_KEYS = ["E1", "E2", "E3", "E4", "E5"] as const;
+export const NOTIFICATION_EVENT_KEYS = ["E1", "E2", "E3", "E4", "E5", "E6"] as const;
 export type NotificationEventKey = (typeof NOTIFICATION_EVENT_KEYS)[number];
 
-/** Nhãn tiếng Việt cho 5 họ — dùng chung cho cả card tổ chức lẫn card cá nhân. */
+/** Nhãn tiếng Việt cho 6 họ — dùng chung cho cả card tổ chức lẫn card cá nhân. */
 export const NOTIFICATION_EVENT_LABELS: Record<
   NotificationEventKey,
   { title: string; desc: string }
@@ -57,6 +58,10 @@ export const NOTIFICATION_EVENT_LABELS: Record<
   E5: {
     title: "Bàn giao tiền mặt chờ tôi xác nhận",
     desc: "Ai đó bàn giao quỹ và đang đợi bạn nhận.",
+  },
+  E6: {
+    title: "Chốt sổ quỹ",
+    desc: "Nhắc chốt sổ sau khi bàn giao xong, đề nghị chốt chờ bạn ký, và biên bản đã ký.",
   },
 };
 

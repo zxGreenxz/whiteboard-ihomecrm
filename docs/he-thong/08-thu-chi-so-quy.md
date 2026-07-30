@@ -448,7 +448,16 @@ File: [RefundLogPage.tsx](src/pages/payments/RefundLogPage.tsx). Nhận `?accoun
 
 ### 5.5 `/finance/cashbooks` — Sổ quỹ
 
-File: [CashbooksPage.tsx](src/pages/settings/finance/CashbooksPage.tsx). `useAccountsWithBalance` (đọc view, JS-merge `owner_name` từ profiles). Thao tác: thêm/sửa (`useCreateAccount`/`useUpdateAccount` — chỉ admin đổi `user_id` phụ trách), xoá mềm (`useDeleteAccount`), **khoá/mở khoá** (`useLockAccount`/`useUnlockAccount` set/clear `lock_date`), xem chi tiết, "xem thu chi" → deep-link `/income-expense?account_id=` (§5.1). Search theo name/code. Các mutation kiểm quyền qua RLS (`select("id")` rỗng → báo "không có quyền").
+File: [CashbooksPage.tsx](src/pages/settings/finance/CashbooksPage.tsx). `useAccountsWithBalance` (đọc view, JS-merge `owner_name` từ profiles). Thao tác: thêm/sửa (`useCreateAccount`/`useUpdateAccount` — chỉ admin đổi `user_id` phụ trách), xoá mềm (`useDeleteAccount`), **Chốt sổ & bàn giao quỹ** (nghi thức hai bên — xem dưới), xem chi tiết, "xem thu chi" → deep-link `/income-expense?account_id=` (§5.1).
+
+> ⚠️ **ĐÃ THAY TỪ ĐỢT 6 (30/07/2026)**: nút "khoá/mở khoá" tay và cặp hook `useLockAccount`/`useUnlockAccount` **đã bị xoá**. Khoá kỳ giờ là *kết quả* của nghi thức chốt hai bên, không phải một nút bấm một mình:
+>
+> - người ĐANG GIỮ sổ đề nghị → [CloseCashbookDialog](src/components/cashbooks/CloseCashbookDialog.tsx) 3 bước (dọn rào → đếm tiền/đọc sao kê → gõ `CHOT SO`), gọi `propose_cashbook_closing_v1`;
+> - người NHẬN ký → [ConfirmCashbookClosingDialog](src/components/cashbooks/ConfirmCashbookClosingDialog.tsx) qua hộp thư [CashbookClosingInbox](src/components/cashbooks/CashbookClosingInbox.tsx), gọi `confirm_cashbook_closing_v1`; lệch số thì tự lập phiếu `cashbook.closing.diff` ngoài KQKD;
+> - nguồn sự thật ngày khoá là `app_private.cashbook_closures` (append-only), `accounts.lock_date` chỉ còn là cache đọc nhanh;
+> - **không ai mở lại được** — `lock_cashbook_period_v1(p_unlock => true)` luôn ném `[CASHBOOK_CLOSED]` và đã bị REVOKE khỏi `authenticated`.
+>
+> **PA4 (31/07/2026)** thêm lực đẩy vận hành, không đổi nghi thức: thông báo họ **E6** (`E6a` nhắc chốt sau khi bàn giao được xác nhận · `E6b` gọi người ký · `E6c` gửi biên bản), deep-link `/finance/cashbooks?close=<id>` và `?confirm=<request_id>`, panel "còn N sổ chưa chốt tháng M" ở tab *Chốt LN tháng*, và RPC đọc `cashbook_closing_monthly_status_v1(p_organization_id, p_month)`. Người ký thứ hai: vai trò **Kế toán** (tạo sẵn, 0 người — chủ tự gán) + **Chủ sở hữu tổ chức**. Search theo name/code. Các mutation kiểm quyền qua RLS (`select("id")` rỗng → báo "không có quyền").
 
 [CashbookForm](src/components/cashbooks/CashbookForm.tsx) gồm thêm:
 
