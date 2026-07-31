@@ -42,11 +42,13 @@ const CODE_KEY = 'qs_code_v1';
 interface WheelProps {
   teams: LuckyTeamPublic[];          // chỉ các đội in_wheel + đã điểm danh
   winnerId: string | null;           // server đã chốt → quay về đội này
-  drawnAt: string | null;            // đổi giá trị = kết quả mới → animate 1 lần
+  /** Đổi giá trị = quay một lần. null = đứng yên (vào trang sau khi đã quay,
+   *  chờ người xem bấm "Xem lại kết quả quay"). */
+  spinToken: string | null;
   onSpinDone: () => void;
 }
 
-function LuckyWheelCanvas({ teams, winnerId, drawnAt, onSpinDone }: WheelProps) {
+function LuckyWheelCanvas({ teams, winnerId, spinToken, onSpinDone }: WheelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const needleRef = useRef<SVGSVGElement | null>(null);
@@ -172,19 +174,17 @@ function LuckyWheelCanvas({ teams, winnerId, drawnAt, onSpinDone }: WheelProps) 
     draw();
   }, [teams, draw]);
 
-  // Server chốt kết quả → quay MỘT lần cho mỗi drawnAt.
+  // Quay MỘT lần cho mỗi spinToken.
   useEffect(() => {
-    if (!winnerId || !drawnAt) {
+    if (!winnerId || !spinToken) {
       animatedForRef.current = null;
-      rotRef.current = POINTER_ANGLE;
-      draw();
       return;
     }
-    if (animatedForRef.current === drawnAt) return;
+    if (animatedForRef.current === spinToken) return;
     const list = teamsRef.current;
     const winIdx = list.findIndex((t) => t.id === winnerId);
     if (winIdx < 0) return; // đợi poll mang danh sách đủ rồi tính tiếp
-    animatedForRef.current = drawnAt;
+    animatedForRef.current = spinToken;
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const to = targetRotation(winIdx, list.length, Math.random(), 6 + Math.floor(Math.random() * 3));
@@ -223,7 +223,7 @@ function LuckyWheelCanvas({ teams, winnerId, drawnAt, onSpinDone }: WheelProps) 
     };
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(frame);
-  }, [winnerId, drawnAt, teams, draw, onSpinDone]);
+  }, [winnerId, spinToken, teams, draw, onSpinDone]);
 
   return (
     <div className="qs-stage" ref={stageRef}>
@@ -310,6 +310,16 @@ export default function QuaySoPage() {
   const confettiRef = useRef<HTMLCanvasElement | null>(null);
   const drawCalledForRef = useRef<string | null>(null);
 
+  // drawnAt đã được BÁNH XE quay xong và công bố. Trước mốc này phải giấu tên
+  // đội trúng ở mọi chỗ, nếu không thì vừa bấm quay đã lộ đáp án, mất 5 giây
+  // hồi hộp — và người vào sau cũng bị spoil trước khi kịp bấm "xem lại".
+  const [revealedFor, setRevealedFor] = useState<string | null>(null);
+  // Tăng lên mỗi lần bấm "Xem lại kết quả quay".
+  const [spinNonce, setSpinNonce] = useState(0);
+  // Trang có chứng kiến sự kiện lúc còn 'open' không? Có = đang xem trực tiếp
+  // nên bánh xe tự quay; không = vào sau khi đã quay, chờ bấm nút.
+  const sawOpenRef = useRef(false);
+
   // Đồng hồ 1s cho đếm ngược.
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -341,6 +351,11 @@ export default function QuaySoPage() {
   const state = stateQuery.data;
   const event = state?.ok ? state.event : undefined;
   const teams = useMemo(() => (state?.ok ? state.teams ?? [] : []), [state]);
+
+  // Ghi nhận đã thấy sự kiện lúc còn mở → coi như đang xem trực tiếp.
+  useEffect(() => {
+    if (event?.status === 'open') sawOpenRef.current = true;
+  }, [event?.status]);
 
   // Mã lưu sẵn nhưng server bảo sai (đổi sự kiện, mã bị cấp lại) → gỡ để nhập lại.
   useEffect(() => {
@@ -386,7 +401,12 @@ export default function QuaySoPage() {
       });
   }, [event, msLeft, queryClient, queryKey, stateQuery]);
 
+  // Bánh xe dừng → mới công bố. Popup + pháo giấy CHỈ dành cho đội trúng;
+  // đội thua chỉ thấy kết quả hiện trên trang, không bị đập popup vào mặt.
+  const winnerIsMine = !!winner?.isMine;
   const onSpinDone = useCallback(() => {
+    if (event?.drawnAt) setRevealedFor(event.drawnAt);
+    if (!winnerIsMine) return;
     setShowWin(true);
     fireConfetti(confettiRef.current);
     if (navigator.vibrate) {
@@ -396,7 +416,7 @@ export default function QuaySoPage() {
         /* không hỗ trợ */
       }
     }
-  }, []);
+  }, [event?.drawnAt, winnerIsMine]);
 
   const submitCode = async () => {
     const code = codeInput.trim();
@@ -409,7 +429,13 @@ export default function QuaySoPage() {
     try {
       const res = await luckyCheckin(code);
       if (!res.ok) {
-        setCodeError(res.reason === 'bad_code' ? 'Mã không đúng hoặc sự kiện đã đóng.' : 'Không điểm danh được, thử lại.');
+        setCodeError(
+          res.reason === 'too_late'
+            ? 'Đã trễ giờ điểm danh — đội bạn không tham gia quay thưởng lần này.'
+            : res.reason === 'bad_code'
+              ? 'Mã không đúng hoặc sự kiện đã đóng.'
+              : 'Không điểm danh được, thử lại.',
+        );
         return;
       }
       try {
@@ -449,6 +475,19 @@ export default function QuaySoPage() {
   const drawn = event?.status === 'drawn';
   const closed = event?.status === 'closed';
   const soon = msLeft != null && msLeft <= 60_000 && msLeft > 0 && !drawn;
+
+  // Đã công bố (bánh xe quay xong) chưa?
+  const revealed = drawn && !!event?.drawnAt && revealedFor === event.drawnAt;
+  // Khi nào bánh xe được phép quay.
+  const spinToken =
+    drawn && event?.drawnAt
+      ? spinNonce > 0
+        ? `${event.drawnAt}#${spinNonce}`   // người xem bấm "xem lại"
+        : sawOpenRef.current
+          ? event.drawnAt                   // đang xem trực tiếp → tự quay
+          : null                            // vào sau → đứng yên chờ bấm
+      : null;
+  const canReplay = drawn && wheelCheckedIn.length > 0 && spinToken === null;
 
   return (
     <div className="qs-page">
@@ -537,13 +576,23 @@ export default function QuaySoPage() {
             {/* Đếm ngược */}
             <section className="qs-count" aria-live="polite">
               {drawn ? (
-                <>
-                  <p className="qs-eyebrow">Kết quả đã chốt</p>
-                  <div className="qs-clock qs-goldtext">{winner ? winner.name.toUpperCase() : '—'}</div>
-                  <span className="qs-when">
-                    {event.drawnAt ? `Quay lúc ${new Date(event.drawnAt).toLocaleString('vi-VN')}` : ''}
-                  </span>
-                </>
+                revealed ? (
+                  <>
+                    <p className="qs-eyebrow">Kết quả đã chốt</p>
+                    <div className="qs-clock qs-goldtext">{winner ? winner.name.toUpperCase() : '—'}</div>
+                    <span className="qs-when">
+                      {event.drawnAt ? `Quay lúc ${new Date(event.drawnAt).toLocaleString('vi-VN')}` : ''}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <p className="qs-eyebrow">Đã quay xong</p>
+                    <div className="qs-clock qs-soon">✦ ✦ ✦</div>
+                    <span className="qs-when">
+                      {canReplay ? 'Bấm “Xem lại kết quả quay” để mở đáp án.' : 'Bánh xe đang quay…'}
+                    </span>
+                  </>
+                )
               ) : closed ? (
                 <>
                   <p className="qs-eyebrow">Sự kiện đã đóng</p>
@@ -625,13 +674,13 @@ export default function QuaySoPage() {
                       'qs-team',
                       t.checkedIn ? 'qs-in' : '',
                       t.isMine ? 'qs-me' : '',
-                      t.id === event.winnerTeamId ? 'qs-win' : '',
+                      revealed && t.id === event.winnerTeamId ? 'qs-win' : '',
                     ].join(' ')}
                   >
                     <div className="qs-tname">{t.name}</div>
                     <div className="qs-tmeta">
                       <span>{t.deals} deal</span>
-                      {t.id === event.winnerTeamId ? (
+                      {revealed && t.id === event.winnerTeamId ? (
                         <span className="qs-winlabel">Trúng giải ✦</span>
                       ) : (
                         <span className="qs-tstate">{t.checkedIn ? 'Đã điểm danh ✓' : 'Chưa có mặt'}</span>
@@ -647,24 +696,43 @@ export default function QuaySoPage() {
               <LuckyWheelCanvas
                 teams={wheelCheckedIn}
                 winnerId={event.winnerTeamId}
-                drawnAt={event.drawnAt}
+                spinToken={spinToken}
                 onSpinDone={onSpinDone}
               />
+
+              {/* Vào trang sau khi đã quay: bánh xe đứng yên, người xem tự bấm
+                  để xem lại màn quay thay vì bị hiện thẳng đáp án. */}
+              {canReplay && (
+                <button type="button" className="qs-replay" onClick={() => setSpinNonce((n) => n + 1)}>
+                  ▶ Xem lại kết quả quay
+                </button>
+              )}
+
               <p className="qs-wheelnote" role="status">
-                {drawn && winner
+                {revealed && winner
                   ? `Chúc mừng ${winner.name} — ${event.prizeLabel} ${formatVnd(event.prizeAmount)}!`
-                  : wheelCheckedIn.length
-                    ? `${wheelCheckedIn.length} đội trên bánh xe · mỗi đội ${(100 / wheelCheckedIn.length).toFixed(1).replace('.', ',')}% cơ hội · quay tự động đúng giờ.`
-                    : 'Điểm danh để đội bạn xuất hiện trên bánh xe.'}
+                  : drawn
+                    ? canReplay
+                      ? 'Sự kiện đã quay xong — bấm nút trên để xem lại màn quay.'
+                      : 'Bánh xe đang quay, nín thở…'
+                    : wheelCheckedIn.length
+                      ? `${wheelCheckedIn.length} đội trên bánh xe · mỗi đội ${(100 / wheelCheckedIn.length).toFixed(1).replace('.', ',')}% cơ hội · quay tự động đúng giờ.`
+                      : 'Điểm danh để đội bạn xuất hiện trên bánh xe.'}
               </p>
-              {drawn && winner && (
-                <div className="qs-lastwin">
-                  <div className="qs-lw-txt">
-                    <small>Đội trúng {event.prizeLabel.toLowerCase()}</small>
-                    <strong>{winner.name}</strong>
+
+              {revealed && winner && (
+                <>
+                  <div className="qs-lastwin">
+                    <div className="qs-lw-txt">
+                      <small>Đội trúng {event.prizeLabel.toLowerCase()}</small>
+                      <strong>{winner.name}</strong>
+                    </div>
+                    <div className="qs-amt">{formatVnd(event.prizeAmount)}</div>
                   </div>
-                  <div className="qs-amt">{formatVnd(event.prizeAmount)}</div>
-                </div>
+                  <button type="button" className="qs-replay-mini" onClick={() => setSpinNonce((n) => n + 1)}>
+                    ↺ Quay lại màn công bố
+                  </button>
+                </>
               )}
             </section>
             </>

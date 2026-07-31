@@ -435,6 +435,42 @@
 }
 .qs-wheelnote { margin: 0; font-size: 12.5px; color: var(--qs-muted); text-align: center; }
 
+/* Nút xem lại màn quay cho người vào trang sau khi sự kiện đã quay xong */
+.qs-replay {
+  width: 100%;
+  padding: 17px;
+  border: 0;
+  border-radius: 15px;
+  font-family: var(--qs-display);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: #2A1500;
+  background: linear-gradient(180deg, var(--qs-gold-hi), var(--qs-gold) 40%, var(--qs-gold-dp));
+  box-shadow: 0 8px 0 -1px #8A5D08, 0 16px 34px -14px rgba(255, 194, 60, .9);
+  cursor: pointer;
+  transition: transform .12s, box-shadow .12s;
+}
+.qs-replay:hover { transform: translateY(-1px); }
+.qs-replay:active { transform: translateY(5px); box-shadow: 0 3px 0 -1px #8A5D08; }
+.qs-replay:focus-visible { outline: 2px solid var(--qs-cream); outline-offset: 3px; }
+
+.qs-replay-mini {
+  background: none;
+  border: 1px solid var(--qs-line);
+  color: var(--qs-muted);
+  font-family: var(--qs-data);
+  font-size: 10px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  padding: 8px 15px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.qs-replay-mini:hover { color: var(--qs-gold); border-color: rgba(255, 194, 60, .45); }
+.qs-replay-mini:focus-visible { outline: 2px solid var(--qs-gold); outline-offset: 2px; }
+
 .qs-lastwin {
   width: 100%;
   display: flex;
