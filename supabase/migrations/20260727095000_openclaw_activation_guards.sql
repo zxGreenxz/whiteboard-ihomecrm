@@ -25,19 +25,32 @@ drop trigger openclaw_automation_versions_append_only
 create or replace function app_private.openclaw_guard_automation_version_transition_v1()
 returns trigger
 language plpgsql
-security definer
 set search_path = ''
 as $function$
 begin
   if TG_OP='DELETE' then
     raise exception 'automation versions cannot be deleted' using errcode='55000';
   end if;
+  if current_user='openclaw_maintenance_writer'
+    and OLD.lifecycle_state='ARCHIVED' and NEW.lifecycle_state='ARCHIVED'
+    and NEW.template_body='[REDACTED_BY_RETENTION]'
+    and NEW.allowed_crm_fields='{}'::text[]
+    and NEW.configuration=jsonb_build_object('marker','REDACTED_BY_RETENTION')
+    and (to_jsonb(NEW)-array['template_body','allowed_crm_fields','configuration'])
+      is not distinct from
+        (to_jsonb(OLD)-array['template_body','allowed_crm_fields','configuration'])
+  then return NEW; end if;
   if OLD.lifecycle_state='DRAFT' and NEW.lifecycle_state='PUBLISHED'
     and OLD.published_at is null and NEW.published_at is not null
     and (to_jsonb(NEW)-array['lifecycle_state','published_at'])
       is not distinct from (to_jsonb(OLD)-array['lifecycle_state','published_at'])
   then return NEW; end if;
-  raise exception 'automation version permits only exact DRAFT to PUBLISHED transition'
+  if OLD.lifecycle_state='PUBLISHED' and NEW.lifecycle_state='ARCHIVED'
+    and OLD.archived_at is null and NEW.archived_at is not null
+    and (to_jsonb(NEW)-array['lifecycle_state','archived_at'])
+      is not distinct from (to_jsonb(OLD)-array['lifecycle_state','archived_at'])
+  then return NEW; end if;
+  raise exception 'automation version permits only exact publish, archive, or retention transition'
     using errcode='55000';
 end;
 $function$;
@@ -92,11 +105,64 @@ begin
   select run.* into v_run from public.openclaw_rollout_runs run
   where run.organization_id=(p_principal->>'organizationId')::uuid
     and run.id=(p_request->>'rolloutRunId')::uuid
-    and run.stage_version=(p_request->>'expectedStageVersion')::bigint;
+    and run.stage_version=(p_request->>'expectedStageVersion')::bigint
+  for update;
   if not found then raise exception 'rollout resume read CAS failed' using errcode='40001'; end if;
+  if v_run.status='PAUSED' then
+    update public.openclaw_rollout_runs run set status='RUNNING'
+    where run.organization_id=v_run.organization_id and run.id=v_run.id
+      and run.stage_version=v_run.stage_version and run.status='PAUSED'
+    returning run.* into v_run;
+    if not found then raise exception 'rollout resume write CAS failed' using errcode='40001'; end if;
+  elsif v_run.status<>'RUNNING' then
+    raise exception 'only a PAUSED or RUNNING rollout can resume' using errcode='42501';
+  end if;
   return jsonb_build_object('version',1,'rolloutRunId',v_run.id,'status',v_run.status,
     'stage',v_run.stage,'stageVersion',v_run.stage_version,
     'stageEnteredAt',v_run.stage_entered_at);
+end;
+$function$;
+
+create unique index openclaw_rollout_runs_one_active_uidx
+  on public.openclaw_rollout_runs(organization_id)
+  where status in ('RUNNING','PAUSED');
+
+create or replace function app_private.openclaw_rollout_manifest_hash_v1(
+  p_artifact_digests jsonb
+)
+returns text
+language plpgsql
+immutable
+security definer
+set search_path = ''
+as $function$
+declare
+  v_manifest constant text[] := array[
+    '20260727010000_openclaw_catalog_foundation.sql',
+    '20260727015000_openclaw_security_principals.sql',
+    '20260727020000_openclaw_inbox_schema.sql',
+    '20260727025000_openclaw_inbound_automation.sql',
+    '20260727030000_openclaw_policy_automation_knowledge.sql',
+    '20260727040000_openclaw_delivery_audit_ops.sql',
+    '20260727050000_openclaw_access_policies.sql',
+    '20260727060000_openclaw_rpc_surface.sql',
+    '20260727070000_openclaw_crm_event_sources.sql',
+    '20260727080000_openclaw_realtime_allowlist.sql',
+    '20260727090000_openclaw_maintenance_jobs.sql',
+    '20260727095000_openclaw_activation_guards.sql'
+  ];
+  v_entry text;
+  v_preimage text := '';
+begin
+  foreach v_entry in array v_manifest loop
+    if coalesce(p_artifact_digests->>v_entry,'') !~ '^[0-9a-f]{64}$' then
+      raise exception 'canonical rollout artifact digest missing for %',v_entry using errcode='42501';
+    end if;
+    v_preimage:=v_preimage||v_entry||':'||(p_artifact_digests->>v_entry)||E'\n';
+  end loop;
+  return encode(extensions.digest(
+    convert_to('ihome-openclaw-migration-manifest-v1','UTF8')||decode('00','hex')
+      ||convert_to(v_preimage,'UTF8'),'sha256'),'hex');
 end;
 $function$;
 
@@ -116,6 +182,9 @@ declare
   v_required_stage text := 'CONNECTION';
   v_is_activation boolean := false;
   v_run public.openclaw_rollout_runs%rowtype;
+  v_checkpoint public.openclaw_rollout_checkpoints%rowtype;
+  v_expected_hash text;
+  v_has_run boolean := false;
   v_stages constant text[] := array[
     'FOUNDATION','INFRASTRUCTURE','WAITING_OWNER_QR','CONNECTION','SHADOW',
     'WAITING_OWNER_INBOUND','LIMITED_OBSERVING','LIMITED_VERIFIED',
@@ -157,7 +226,7 @@ begin
       v_is_activation := NEW.connection_state='CONNECTED' or NEW.effective_mode<>'DRAFT_ONLY';
       v_required_stage := case NEW.effective_mode
         when 'SALES_GROUPS' then 'SALES_GROUPS' when 'PROACTIVE' then 'PROACTIVE'
-        when 'LIMITED_AUTO_REPLY' then 'LIMITED_VERIFIED' else 'CONNECTION' end;
+        when 'LIMITED_AUTO_REPLY' then 'LIMITED_VERIFIED' else 'WAITING_OWNER_QR' end;
     when 'openclaw_automations' then
       v_org:=NEW.organization_id;v_account:=NEW.account_id;
       v_is_activation:=NEW.lifecycle_state='PUBLISHED';v_required_stage:='LIMITED_VERIFIED';
@@ -197,6 +266,57 @@ begin
         and outbox.state='LEASED';
       if not found then raise exception 'outbound authorization has no exact claimed outbox binding'
         using errcode='42501'; end if;
+      if not exists (
+        select 1 from public.openclaw_control_states control
+        where control.organization_id=v_org and control.control_key='GLOBAL_STOP'
+          and control.feature_enabled and not control.global_stop
+          and (v_required_stage<>'LIMITED_VERIFIED' or control.limited_auto_reply_enabled)
+          and (v_required_stage<>'PROACTIVE' or control.proactive_enabled)
+          and (v_required_stage<>'SALES_GROUPS' or control.sales_groups_enabled)
+      ) then
+        raise exception 'outbound source-specific control flag is disabled' using errcode='42501';
+      end if;
+    when 'openclaw_rollout_runs' then
+      v_org:=NEW.organization_id;
+      v_run:=NEW;
+      v_has_run:=true;
+      v_required_stage:=NEW.stage;
+      v_is_activation:=TG_OP='UPDATE' and (
+        NEW.stage is distinct from OLD.stage
+        or (NEW.status is distinct from OLD.status and NEW.status in ('RUNNING','COMPLETE'))
+      );
+    when 'openclaw_rollout_checkpoints' then
+      v_org:=NEW.organization_id;
+      v_is_activation:=NEW.status='COMPLETE' and (
+        TG_OP='INSERT' or (TG_OP='UPDATE' and OLD.status='WAITING')
+      );
+      v_required_stage:=NEW.stage;
+      v_checkpoint:=NEW;
+    when 'openclaw_runtime_cells' then
+      v_org:=NEW.organization_id;v_account:=NEW.account_id;v_cell:=NEW.id;
+      v_is_activation:=NEW.is_current and NEW.state='READY';v_required_stage:='INFRASTRUCTURE';
+    when 'openclaw_runtime_credentials' then
+      v_org:=NEW.organization_id;v_account:=NEW.account_id;v_cell:=NEW.cell_id;
+      v_credential:=NEW.credential_generation;
+      v_is_activation:=NEW.revoked_at is null;v_required_stage:='INFRASTRUCTURE';
+    when 'openclaw_runtime_leases' then
+      v_org:=NEW.organization_id;v_account:=NEW.account_id;v_cell:=NEW.cell_id;
+      v_lease:=NEW.lease_generation;v_fence:=NEW.fencing_token;
+      v_is_activation:=NEW.status='ACTIVE' and NEW.expires_at>statement_timestamp();
+      v_required_stage:='INFRASTRUCTURE';
+    when 'openclaw_runtime_commands' then
+      v_org:=NEW.organization_id;v_account:=NEW.account_id;v_cell:=NEW.cell_id;
+      v_is_activation:=NEW.command_kind='QR_LOGIN' and NEW.state in ('PENDING','LEASED');
+      v_required_stage:='WAITING_OWNER_QR';
+    when 'openclaw_qr_challenges' then
+      v_org:=NEW.organization_id;v_account:=NEW.account_id;v_cell:=NEW.cell_id;
+      v_is_activation:=NEW.challenge_status='PENDING';v_required_stage:='WAITING_OWNER_QR';
+    when 'openclaw_account_connections' then
+      v_org:=NEW.organization_id;v_account:=NEW.account_id;
+      v_is_activation:=NEW.connection_state='CONNECTED';v_required_stage:='WAITING_OWNER_QR';
+    when 'openclaw_sales_group_allowlists' then
+      v_org:=NEW.organization_id;v_account:=NEW.account_id;
+      v_is_activation:=NEW.is_allowed;v_required_stage:='SALES_GROUPS';
     else
       raise exception 'deny unknown activation target public.%',TG_TABLE_NAME using errcode='42501';
   end case;
@@ -208,13 +328,26 @@ begin
     raise exception 'unresolved UNKNOWN blocks releasing or enabling OpenClaw'
       using errcode='42501';
   end if;
-  select run.* into v_run from public.openclaw_rollout_runs run
-  where run.organization_id=v_org and run.status in ('RUNNING','COMPLETE')
-    and run.migration_manifest_sha256 ~ '^[0-9a-f]{64}$'
-    and jsonb_typeof(run.artifact_digests)='object'
-  order by run.started_at desc,run.id desc limit 1;
-  if not found or array_position(v_stages,v_run.stage)<array_position(v_stages,v_required_stage) then
+  if TG_TABLE_NAME<>'openclaw_rollout_runs' then
+    select run.* into v_run from public.openclaw_rollout_runs run
+    where run.organization_id=v_org and run.status in ('RUNNING','COMPLETE')
+      and run.migration_manifest_sha256 ~ '^[0-9a-f]{64}$'
+      and jsonb_typeof(run.artifact_digests)='object'
+    order by (run.status='RUNNING') desc,run.started_at desc,run.id desc limit 1;
+    v_has_run:=found;
+  end if;
+  if not v_has_run or array_position(v_stages,v_run.stage)<array_position(v_stages,v_required_stage) then
     raise exception 'canonical rollout stage does not permit activation' using errcode='42501';
+  end if;
+  if v_run.project_ref<>'tryymsxyyckgbrmmvozx'
+     or app_private.openclaw_rollout_manifest_hash_v1(v_run.artifact_digests)
+       <>v_run.migration_manifest_sha256
+     or v_run.artifact_digests->>'cellReviewedCommitSha'<>v_run.reviewed_commit_sha
+     or coalesce(v_run.artifact_digests->>'cellImageDigest','') !~ '^sha256:[0-9a-f]{64}$'
+     or coalesce(v_run.artifact_digests->>'cellConfigDigest','') !~ '^[0-9a-f]{64}$'
+  then
+    raise exception 'canonical project_ref, migration manifest, or cell artifact identity mismatch'
+      using errcode='42501';
   end if;
   foreach v_entry in array v_manifest loop
     if not (v_run.artifact_digests ? v_entry)
@@ -222,21 +355,141 @@ begin
       raise exception 'canonical rollout artifact digest missing for %',v_entry using errcode='42501';
     end if;
   end loop;
+  if TG_TABLE_NAME in (
+    'openclaw_automations','openclaw_automation_versions','openclaw_schedules',
+    'openclaw_crm_event_subscriptions','openclaw_campaigns','openclaw_sales_group_allowlists'
+  ) and not exists (
+    select 1 from public.openclaw_control_states control
+    where control.organization_id=v_org and control.control_key='GLOBAL_STOP'
+      and control.feature_enabled and not control.global_stop
+      and (v_required_stage<>'LIMITED_VERIFIED' or control.limited_auto_reply_enabled)
+      and (v_required_stage<>'PROACTIVE' or control.proactive_enabled)
+      and (v_required_stage<>'SALES_GROUPS' or control.sales_groups_enabled)
+  ) then
+    raise exception 'activation target source-specific control flag is disabled' using errcode='42501';
+  end if;
+  if v_checkpoint.id is not null then
+    if v_checkpoint.checkpoint_name='WAITING_OWNER_QR'
+       and v_checkpoint.stage='WAITING_OWNER_QR' then
+      select encode(extensions.digest(
+        convert_to('ihome-openclaw-rollout-owner-qr-v1','UTF8')||decode('00','hex')
+          ||app_private.openclaw_jcs_bytes_v1(jsonb_build_object(
+            'version',1,'organizationId',connection.organization_id,
+            'rolloutRunId',v_run.id,'connectionId',connection.id,
+            'accountId',connection.account_id,'connectionGeneration',connection.connection_generation,
+            'connectionEvidenceHash',connection.evidence_hash,'reviewedCommitSha',v_run.reviewed_commit_sha
+          )),'sha256'),'hex')
+      into v_expected_hash
+      from public.openclaw_account_connections connection
+      where connection.organization_id=v_org and connection.id=v_checkpoint.trusted_evidence_id
+        and connection.connection_state='CONNECTED';
+    elsif v_checkpoint.checkpoint_name='WAITING_OWNER_INBOUND'
+       and v_checkpoint.stage='WAITING_OWNER_INBOUND' then
+      select encode(extensions.digest(
+        convert_to('ihome-openclaw-rollout-owner-inbound-v1','UTF8')||decode('00','hex')
+          ||app_private.openclaw_jcs_bytes_v1(jsonb_build_object(
+            'version',1,'organizationId',inbound.organization_id,
+            'rolloutRunId',v_run.id,'inboundEventId',inbound.id,
+            'accountId',inbound.account_id,'cellId',inbound.cell_id,
+            'sessionGeneration',inbound.session_generation,'payloadHash',inbound.payload_hash,
+            'targetId',target.id,'targetVersion',target.target_version,
+            'consentVersion',consent.consent_version,'consentEvidenceHash',consent.evidence_hash
+          )),'sha256'),'hex')
+      into v_expected_hash
+      from public.openclaw_inbound_events inbound
+      join public.openclaw_targets target
+        on target.organization_id=inbound.organization_id and target.account_id=inbound.account_id
+       and target.kind='PEER' and target.provider_id=inbound.target_provider_id and target.is_active
+      join lateral (
+        select consent.consent_version,consent.evidence_hash
+        from public.openclaw_consents consent
+        where consent.organization_id=target.organization_id and consent.account_id=target.account_id
+          and consent.target_id=target.id and consent.consent_scope='REPLY'
+          and consent.consent_status='ACTIVE'
+          and (consent.expires_at is null or consent.expires_at>statement_timestamp())
+        order by consent.consent_version desc limit 1
+      ) consent on true
+      where inbound.organization_id=v_org and inbound.id=v_checkpoint.trusted_evidence_id
+        and inbound.ingest_state='ACCEPTED' and inbound.target_kind='PEER'
+        and inbound.created_at>=v_run.stage_entered_at;
+    else
+      raise exception 'checkpoint name and stage are not canonical' using errcode='42501';
+    end if;
+    if v_expected_hash is null or v_expected_hash<>v_checkpoint.trusted_evidence_hash then
+      raise exception 'checkpoint trusted evidence row or canonical hash mismatch' using errcode='42501';
+    end if;
+  end if;
   if array_position(v_stages,v_required_stage)>=array_position(v_stages,'CONNECTION')
     and not exists (select 1 from public.openclaw_rollout_checkpoints checkpoint
+      join public.openclaw_account_connections connection
+        on connection.organization_id=checkpoint.organization_id
+       and connection.id=checkpoint.trusted_evidence_id
+       and connection.connection_state='CONNECTED'
       where checkpoint.organization_id=v_org and checkpoint.rollout_run_id=v_run.id
-        and checkpoint.checkpoint_name='WAITING_OWNER_QR' and checkpoint.status='COMPLETE'
+        and checkpoint.checkpoint_name='WAITING_OWNER_QR' and checkpoint.stage='WAITING_OWNER_QR'
+        and checkpoint.status='COMPLETE'
         and checkpoint.trusted_evidence_id is not null
         and checkpoint.trusted_evidence_hash is not null) then
     raise exception 'WAITING_OWNER_QR canonical checkpoint is incomplete' using errcode='42501';
   end if;
   if array_position(v_stages,v_required_stage)>=array_position(v_stages,'LIMITED_VERIFIED')
     and not exists (select 1 from public.openclaw_rollout_checkpoints checkpoint
+      join public.openclaw_inbound_events inbound
+        on inbound.organization_id=checkpoint.organization_id
+       and inbound.id=checkpoint.trusted_evidence_id and inbound.ingest_state='ACCEPTED'
+       and inbound.target_kind='PEER'
       where checkpoint.organization_id=v_org and checkpoint.rollout_run_id=v_run.id
-        and checkpoint.checkpoint_name='WAITING_OWNER_INBOUND' and checkpoint.status='COMPLETE'
+        and checkpoint.checkpoint_name='WAITING_OWNER_INBOUND'
+        and checkpoint.stage='WAITING_OWNER_INBOUND' and checkpoint.status='COMPLETE'
         and checkpoint.trusted_evidence_id is not null
         and checkpoint.trusted_evidence_hash is not null) then
     raise exception 'WAITING_OWNER_INBOUND canonical checkpoint is incomplete' using errcode='42501';
+  end if;
+
+  if TG_TABLE_NAME='openclaw_runtime_credentials' then
+    if not exists (
+      select 1 from public.openclaw_runtime_cells cell
+      where cell.organization_id=v_org and cell.account_id=v_account and cell.id=v_cell
+        and cell.is_current and cell.state in ('PROVISIONING','READY')
+        and cell.reviewed_commit_sha=v_run.reviewed_commit_sha
+        and cell.image_digest=v_run.artifact_digests->>'cellImageDigest'
+        and cell.config_digest=v_run.artifact_digests->>'cellConfigDigest'
+    ) or exists (
+      select 1 from public.openclaw_runtime_credentials newer
+      where newer.organization_id=v_org and newer.account_id=v_account and newer.cell_id=v_cell
+        and newer.revoked_at is null and newer.credential_generation>v_credential
+    ) then
+      raise exception 'runtime credential is not bound to the current reviewed cell generation'
+        using errcode='42501';
+    end if;
+    return NEW;
+  elsif TG_TABLE_NAME='openclaw_runtime_leases' then
+    if not exists (
+      select 1 from public.openclaw_runtime_cells cell
+      join public.openclaw_runtime_credentials credential
+        on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
+       and credential.cell_id=cell.id and credential.revoked_at is null
+      where cell.organization_id=v_org and cell.account_id=v_account and cell.id=v_cell
+        and cell.is_current and cell.state in ('PROVISIONING','READY')
+        and cell.reviewed_commit_sha=v_run.reviewed_commit_sha
+        and cell.image_digest=v_run.artifact_digests->>'cellImageDigest'
+        and cell.config_digest=v_run.artifact_digests->>'cellConfigDigest'
+        and not exists (
+          select 1 from public.openclaw_runtime_leases newer
+          where newer.organization_id=v_org and newer.account_id=v_account and newer.cell_id=v_cell
+            and newer.status='ACTIVE' and newer.expires_at>statement_timestamp()
+            and newer.lease_generation>v_lease
+        )
+    ) then
+      raise exception 'runtime lease is not bound to the current reviewed credential cell'
+        using errcode='42501';
+    end if;
+    return NEW;
+  end if;
+
+  if TG_TABLE_NAME='openclaw_rollout_runs'
+     and array_position(v_stages,v_required_stage)<=array_position(v_stages,'INFRASTRUCTURE') then
+    return NEW;
   end if;
 
   if v_account is null then
@@ -247,6 +500,8 @@ begin
     join public.openclaw_runtime_cells cell
       on cell.organization_id=account.organization_id and cell.account_id=account.id
      and cell.is_current and cell.state='READY' and cell.reviewed_commit_sha=v_run.reviewed_commit_sha
+     and cell.image_digest=v_run.artifact_digests->>'cellImageDigest'
+     and cell.config_digest=v_run.artifact_digests->>'cellConfigDigest'
     join public.openclaw_runtime_credentials credential
       on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
      and credential.cell_id=cell.id and credential.revoked_at is null
@@ -267,6 +522,8 @@ begin
      and lease.cell_id=cell.id and lease.status='ACTIVE' and lease.expires_at>statement_timestamp()
     where cell.organization_id=v_org and cell.account_id=v_account
       and cell.is_current and cell.state='READY' and cell.reviewed_commit_sha=v_run.reviewed_commit_sha
+      and cell.image_digest=v_run.artifact_digests->>'cellImageDigest'
+      and cell.config_digest=v_run.artifact_digests->>'cellConfigDigest'
     order by lease.lease_generation desc,credential.credential_generation desc limit 1;
   else
     if not exists (select 1 from public.openclaw_runtime_cells cell
@@ -281,7 +538,23 @@ begin
        and lease.expires_at>statement_timestamp()
       where cell.organization_id=v_org and cell.account_id=v_account and cell.id=v_cell
         and cell.is_current and cell.state='READY'
-        and cell.reviewed_commit_sha=v_run.reviewed_commit_sha) then
+        and cell.reviewed_commit_sha=v_run.reviewed_commit_sha
+        and cell.image_digest=v_run.artifact_digests->>'cellImageDigest'
+        and cell.config_digest=v_run.artifact_digests->>'cellConfigDigest'
+        and not exists (
+          select 1 from public.openclaw_runtime_credentials newer_credential
+          where newer_credential.organization_id=cell.organization_id
+            and newer_credential.account_id=cell.account_id and newer_credential.cell_id=cell.id
+            and newer_credential.revoked_at is null
+            and newer_credential.credential_generation>credential.credential_generation
+        )
+        and not exists (
+          select 1 from public.openclaw_runtime_leases newer_lease
+          where newer_lease.organization_id=cell.organization_id
+            and newer_lease.account_id=cell.account_id and newer_lease.cell_id=cell.id
+            and newer_lease.status='ACTIVE' and newer_lease.expires_at>statement_timestamp()
+            and newer_lease.lease_generation>lease.lease_generation
+        )) then
       raise exception 'stored outbound cell credential lease fence matrix is stale' using errcode='42501';
     end if;
   end if;
@@ -317,6 +590,33 @@ for each row execute function app_private.openclaw_guard_activation_v1();
 create trigger openclaw_outbound_authorizations_activation_guard
 before insert on public.openclaw_outbound_authorizations
 for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_rollout_runs_activation_guard
+before update on public.openclaw_rollout_runs
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_rollout_checkpoints_activation_guard
+before insert or update on public.openclaw_rollout_checkpoints
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_runtime_cells_activation_guard
+after insert or update on public.openclaw_runtime_cells
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_runtime_credentials_activation_guard
+after insert or update on public.openclaw_runtime_credentials
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_runtime_leases_activation_guard
+after insert or update on public.openclaw_runtime_leases
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_runtime_commands_activation_guard
+before insert or update on public.openclaw_runtime_commands
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_qr_challenges_activation_guard
+before insert or update on public.openclaw_qr_challenges
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_account_connections_activation_guard
+before insert on public.openclaw_account_connections
+for each row execute function app_private.openclaw_guard_activation_v1();
+create trigger openclaw_sales_group_allowlists_activation_guard
+before insert or update on public.openclaw_sales_group_allowlists
+for each row execute function app_private.openclaw_guard_activation_v1();
 
 create or replace function app_private.openclaw_finalize_account_connection_v1(
   p_principal jsonb,p_envelope jsonb,p_request jsonb
@@ -336,16 +636,43 @@ declare
   v_evidence jsonb;
   v_hash text;
 begin
+  if p_request->>'version'<>'1' then
+    raise exception 'account connection finalization version mismatch' using errcode='22023';
+  end if;
+  if not exists (
+    select 1 from public.openclaw_accounts account
+    join public.openclaw_runtime_cells cell
+      on cell.organization_id=account.organization_id and cell.account_id=account.id
+     and cell.id=v_cell and cell.is_current and cell.state='READY'
+    join public.openclaw_runtime_credentials credential
+      on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
+     and credential.cell_id=cell.id
+     and credential.credential_generation=(p_principal->>'credentialGeneration')::bigint
+     and credential.revoked_at is null
+    join public.openclaw_runtime_leases lease
+      on lease.organization_id=cell.organization_id and lease.account_id=cell.account_id
+     and lease.cell_id=cell.id and lease.lease_generation=(p_principal->>'leaseGeneration')::bigint
+     and lease.fencing_token=(p_principal->>'fencingToken')::bigint
+     and lease.status='ACTIVE' and lease.expires_at>statement_timestamp()
+    where account.organization_id=v_org and account.id=v_account and account.is_active
+      and account.session_generation=(p_principal->>'sessionGeneration')::bigint
+  ) then
+    raise exception 'account connection principal credential lease fence is stale' using errcode='42501';
+  end if;
   select challenge.* into v_challenge from public.openclaw_qr_challenges challenge
   where challenge.organization_id=v_org and challenge.account_id=v_account
     and challenge.cell_id=v_cell and challenge.id=(p_request->>'challengeId')::uuid
     and challenge.challenge_status='CONSUMED' and challenge.consumed_at is not null
+    and challenge.expires_at>challenge.consumed_at
     and challenge.material_version=0 for share;
   if not found then raise exception 'canonical consumed QR evidence required' using errcode='42501'; end if;
   select command.* into v_command from public.openclaw_runtime_commands command
-  where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+    where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
     and command.id=v_challenge.runtime_command_id and command.command_kind='QR_LOGIN'
-    and command.state='ACKNOWLEDGED' and command.result_hash is not null for share;
+    and command.state='ACKNOWLEDGED' and command.result_hash is not null
+    and command.expected_session_generation=(p_principal->>'sessionGeneration')::bigint
+    and command.expected_fencing_token=(p_principal->>'fencingToken')::bigint
+    for share;
   if not found then raise exception 'canonical QR runtime acknowledgement required' using errcode='42501'; end if;
   select account.connection_generation+1 into v_generation from public.openclaw_accounts account
   where account.organization_id=v_org and account.id=v_account for update;
@@ -375,6 +702,10 @@ $function$;
 
 alter function app_private.openclaw_guard_activation_v1() owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_guard_activation_v1()
+  from public, anon, authenticated, service_role;
+alter function app_private.openclaw_rollout_manifest_hash_v1(jsonb)
+  owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_rollout_manifest_hash_v1(jsonb)
   from public, anon, authenticated, service_role;
 alter function app_private.openclaw_guard_automation_version_transition_v1()
   owner to openclaw_function_owner;

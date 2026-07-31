@@ -4,6 +4,18 @@ select pg_catalog.pg_advisory_xact_lock(
   pg_catalog.hashtextextended('ihome-openclaw-maintenance-jobs-v1', 0)
 );
 
+do $binding_preflight$
+begin
+  if exists (select 1 from public.openclaw_send_work_items)
+     or exists (select 1 from public.openclaw_send_work_attempts)
+     or exists (select 1 from public.openclaw_maintenance_work_items)
+     or exists (select 1 from public.openclaw_maintenance_work_attempts) then
+    raise exception 'OPENCLAW_WORK_BINDING_PREFLIGHT_FAILED: historical work binding cannot be reconstructed'
+      using errcode='55000';
+  end if;
+end
+$binding_preflight$;
+
 -- Scheduling is deliberately a small, bounded language.  In particular there is
 -- no client supplied UTC cursor: the database owns both recurrence parsing and
 -- local-time resolution.
@@ -180,7 +192,9 @@ begin
     v_day := case extract(isodow from v_candidate)::integer
       when 1 then 'MO' when 2 then 'TU' when 3 then 'WE' when 4 then 'TH'
       when 5 then 'FR' when 6 then 'SA' else 'SU' end;
-    v_week := floor(extract(epoch from (date_trunc('day',v_candidate)-date_trunc('day',v_start))) / 604800)::integer;
+    v_week := floor(extract(epoch from (
+      date_trunc('week',v_candidate)-date_trunc('week',v_start)
+    )) / 604800)::integer;
     if v_candidate >= v_start and v_day = any(v_days) and mod(v_week,v_interval)=0 then
       return v_candidate;
     end if;
@@ -343,6 +357,43 @@ alter table public.openclaw_send_work_items
     foreign key (organization_id,crm_occurrence_id)
     references public.openclaw_crm_event_occurrences(organization_id,id) on delete restrict;
 
+do $drop_legacy_work_identity$
+declare
+  v_constraint text;
+begin
+  select constraint_row.conname into v_constraint
+  from pg_catalog.pg_constraint constraint_row
+  where constraint_row.conrelid='public.openclaw_send_work_items'::regclass
+    and constraint_row.contype='u'
+    and pg_catalog.pg_get_constraintdef(constraint_row.oid)
+      ilike 'UNIQUE (organization_id, account_id, work_kind, source_id, source_version)';
+  if v_constraint is null then
+    raise exception 'OPENCLAW_WORK_BINDING_PREFLIGHT_FAILED: legacy source_id/source_version identity is missing'
+      using errcode='55000';
+  end if;
+  execute format('alter table public.openclaw_send_work_items drop constraint %I',v_constraint);
+end
+$drop_legacy_work_identity$;
+
+alter table public.openclaw_send_work_items
+  alter column source_key set not null,
+  alter column target_id set not null,
+  alter column credential_generation set not null,
+  alter column runtime_lease_generation set not null,
+  add constraint openclaw_send_work_typed_identity_check check (
+    (work_kind='INBOUND_AUTOMATION'
+      and schedule_id is null and schedule_version is null and schedule_occurrence_id is null
+      and subscription_id is null and subscription_version is null and crm_occurrence_id is null)
+    or (work_kind='SCHEDULE_OCCURRENCE'
+      and schedule_id is not null and schedule_version is not null and schedule_occurrence_id is not null
+      and subscription_id is null and subscription_version is null and crm_occurrence_id is null
+      and source_id=schedule_occurrence_id)
+    or (work_kind='CRM_EVENT'
+      and schedule_id is null and schedule_version is null and schedule_occurrence_id is null
+      and subscription_id is not null and subscription_version is not null and crm_occurrence_id is not null
+      and source_id=crm_occurrence_id)
+  );
+
 create unique index openclaw_send_work_schedule_identity_uidx
   on public.openclaw_send_work_items(
     organization_id,schedule_id,schedule_version,schedule_occurrence_id,target_id
@@ -373,6 +424,32 @@ alter table public.openclaw_maintenance_work_items
       organization_id,maintenance_principal_id,lease_generation,fencing_token
     ) on delete restrict;
 
+alter table public.openclaw_maintenance_work_items
+  alter column source_key set not null,
+  alter column credential_generation set not null;
+
+alter table public.openclaw_send_work_attempts
+  add column credential_generation bigint not null,
+  add column runtime_lease_generation bigint not null,
+  add constraint openclaw_send_work_attempt_credential_binding_fkey
+    foreign key (organization_id,account_id,cell_id,credential_generation)
+    references public.openclaw_runtime_credentials(
+      organization_id,account_id,cell_id,credential_generation
+    ) on delete restrict,
+  add constraint openclaw_send_work_attempt_lease_binding_fkey
+    foreign key (organization_id,account_id,cell_id,runtime_lease_generation,fencing_token)
+    references public.openclaw_runtime_leases(
+      organization_id,account_id,cell_id,lease_generation,fencing_token
+    ) on delete restrict;
+
+alter table public.openclaw_maintenance_work_attempts
+  add column credential_generation bigint not null,
+  add constraint openclaw_maintenance_work_attempt_credential_binding_fkey
+    foreign key (organization_id,maintenance_principal_id,credential_generation)
+    references public.openclaw_maintenance_credentials(
+      organization_id,maintenance_principal_id,credential_generation
+    ) on delete restrict;
+
 create unique index openclaw_maintenance_work_source_key_uidx
   on public.openclaw_maintenance_work_items(organization_id,source_key)
   where source_key is not null;
@@ -391,6 +468,148 @@ alter table public.openclaw_outbox
       organization_id,account_id,cell_id,lease_generation,fencing_token
     ) on delete restrict;
 
+create or replace function app_private.guard_openclaw_send_work_insert_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_target uuid;
+  v_source_key text;
+  v_credential bigint;
+  v_lease bigint;
+begin
+  if NEW.work_kind='INBOUND_AUTOMATION' then
+    v_target := nullif(NEW.payload->>'targetId','')::uuid;
+    v_source_key := 'inbound:'||NEW.source_id||':'||NEW.source_version||':'||v_target;
+    if NEW.schedule_id is not null or NEW.schedule_version is not null
+       or NEW.schedule_occurrence_id is not null or NEW.subscription_id is not null
+       or NEW.subscription_version is not null or NEW.crm_occurrence_id is not null then
+      raise exception 'inbound work cannot carry schedule or CRM identity' using errcode='55000';
+    end if;
+  elsif NEW.work_kind='SCHEDULE_OCCURRENCE' then
+    v_target := NEW.target_id;
+    v_source_key := 'schedule:'||NEW.schedule_id||':'||NEW.schedule_version||':'
+      ||NEW.schedule_occurrence_id||':'||NEW.target_id;
+    if NEW.source_id is distinct from NEW.schedule_occurrence_id then
+      raise exception 'schedule work source identity mismatch' using errcode='55000';
+    end if;
+  elsif NEW.work_kind='CRM_EVENT' then
+    v_target := NEW.target_id;
+    v_source_key := 'crm:'||NEW.subscription_id||':'||NEW.subscription_version||':'
+      ||NEW.crm_occurrence_id||':'||NEW.target_id;
+    if NEW.source_id is distinct from NEW.crm_occurrence_id then
+      raise exception 'CRM work source identity mismatch' using errcode='55000';
+    end if;
+  else
+    raise exception 'unknown send work kind' using errcode='55000';
+  end if;
+  if v_target is null then
+    raise exception 'send work target must be frozen' using errcode='55000';
+  end if;
+  if NEW.target_id is not null and NEW.target_id<>v_target then
+    raise exception 'send work target differs from frozen payload identity' using errcode='55000';
+  end if;
+  if NEW.source_key is not null and NEW.source_key<>v_source_key then
+    raise exception 'send work source key is not canonical' using errcode='55000';
+  end if;
+
+  select credential.credential_generation,lease.lease_generation
+  into v_credential,v_lease
+  from public.openclaw_accounts account
+  join public.openclaw_runtime_cells cell
+    on cell.organization_id=account.organization_id and cell.account_id=account.id
+   and cell.id=NEW.cell_id and cell.is_current and cell.state='READY'
+  join public.openclaw_runtime_credentials credential
+    on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
+   and credential.cell_id=cell.id and credential.revoked_at is null
+  join public.openclaw_runtime_leases lease
+    on lease.organization_id=cell.organization_id and lease.account_id=cell.account_id
+   and lease.cell_id=cell.id and lease.status='ACTIVE'
+   and lease.expires_at>statement_timestamp() and lease.fencing_token=NEW.fencing_token
+  where account.organization_id=NEW.organization_id and account.id=NEW.account_id
+    and account.is_active and account.session_generation=NEW.session_generation
+  order by credential.credential_generation desc,lease.lease_generation desc
+  limit 1
+  for share of credential,lease;
+  if v_credential is null or v_lease is null then
+    raise exception 'send work has no current credential lease binding' using errcode='42501';
+  end if;
+  if NEW.credential_generation is not null and NEW.credential_generation<>v_credential then
+    raise exception 'send work credential generation is stale' using errcode='40001';
+  end if;
+  if NEW.runtime_lease_generation is not null and NEW.runtime_lease_generation<>v_lease then
+    raise exception 'send work lease generation is stale' using errcode='40001';
+  end if;
+  NEW.target_id:=v_target;
+  NEW.source_key:=v_source_key;
+  NEW.credential_generation:=v_credential;
+  NEW.runtime_lease_generation:=v_lease;
+  NEW.claim_generation:=greatest(NEW.claim_generation,1);
+  NEW.binding_defer_reason:=null;
+  return NEW;
+end;
+$function$;
+
+create trigger openclaw_send_work_items_binding_guard
+before insert on public.openclaw_send_work_items
+for each row execute function app_private.guard_openclaw_send_work_insert_v1();
+
+create or replace function app_private.guard_openclaw_work_attempt_insert_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_send public.openclaw_send_work_items%rowtype;
+  v_maintenance public.openclaw_maintenance_work_items%rowtype;
+begin
+  if TG_TABLE_NAME='openclaw_send_work_attempts' then
+    select work.* into strict v_send from public.openclaw_send_work_items work
+    where work.organization_id=NEW.organization_id and work.account_id=NEW.account_id
+      and work.id=NEW.work_item_id and work.cell_id=NEW.cell_id
+      and work.claim_generation=NEW.claim_generation
+      and work.fencing_token=NEW.fencing_token and work.session_generation=NEW.session_generation
+    for share;
+    if NEW.credential_generation is not null
+       and NEW.credential_generation<>v_send.credential_generation then
+      raise exception 'send attempt credential generation mismatch' using errcode='55000';
+    end if;
+    if NEW.runtime_lease_generation is not null
+       and NEW.runtime_lease_generation<>v_send.runtime_lease_generation then
+      raise exception 'send attempt lease generation mismatch' using errcode='55000';
+    end if;
+    NEW.credential_generation:=v_send.credential_generation;
+    NEW.runtime_lease_generation:=v_send.runtime_lease_generation;
+  elsif TG_TABLE_NAME='openclaw_maintenance_work_attempts' then
+    select work.* into strict v_maintenance from public.openclaw_maintenance_work_items work
+    where work.organization_id=NEW.organization_id
+      and work.maintenance_principal_id=NEW.maintenance_principal_id
+      and work.id=NEW.work_item_id and work.claim_generation=NEW.claim_generation
+      and work.maintenance_lease_generation=NEW.maintenance_lease_generation
+      and work.fencing_token=NEW.fencing_token
+    for share;
+    if NEW.credential_generation is not null
+       and NEW.credential_generation<>v_maintenance.credential_generation then
+      raise exception 'maintenance attempt credential generation mismatch' using errcode='55000';
+    end if;
+    NEW.credential_generation:=v_maintenance.credential_generation;
+  else
+    raise exception 'deny unknown work attempt target %',TG_TABLE_NAME using errcode='55000';
+  end if;
+  return NEW;
+end;
+$function$;
+
+create trigger openclaw_send_work_attempts_binding_guard
+before insert on public.openclaw_send_work_attempts
+for each row execute function app_private.guard_openclaw_work_attempt_insert_v1();
+create trigger openclaw_maintenance_work_attempts_binding_guard
+before insert on public.openclaw_maintenance_work_attempts
+for each row execute function app_private.guard_openclaw_work_attempt_insert_v1();
+
 create or replace function app_private.guard_openclaw_send_work_mutation_v1()
 returns trigger
 language plpgsql
@@ -400,10 +619,10 @@ as $function$
 declare
   v_binding_changed boolean := row(
     NEW.account_id,NEW.cell_id,NEW.credential_generation,NEW.runtime_lease_generation,
-    NEW.fencing_token,NEW.session_generation
+    NEW.fencing_token,NEW.session_generation,NEW.binding_defer_reason
   ) is distinct from row(
     OLD.account_id,OLD.cell_id,OLD.credential_generation,OLD.runtime_lease_generation,
-    OLD.fencing_token,OLD.session_generation
+    OLD.fencing_token,OLD.session_generation,OLD.binding_defer_reason
   );
 begin
   if row(
@@ -445,10 +664,10 @@ as $function$
 declare
   v_binding_changed boolean := row(
     NEW.maintenance_principal_id,NEW.credential_generation,
-    NEW.maintenance_lease_generation,NEW.fencing_token
+    NEW.maintenance_lease_generation,NEW.fencing_token,NEW.binding_defer_reason
   ) is distinct from row(
     OLD.maintenance_principal_id,OLD.credential_generation,
-    OLD.maintenance_lease_generation,OLD.fencing_token
+    OLD.maintenance_lease_generation,OLD.fencing_token,OLD.binding_defer_reason
   );
 begin
   if row(
@@ -636,6 +855,10 @@ declare
   v_fence bigint;
   v_session bigint;
   v_snapshot_hash text;
+  v_target_version bigint;
+  v_payload jsonb;
+  v_payload_bytes bytea;
+  v_inserted integer;
   v_created integer := 0;
 begin
   for schedule in
@@ -657,6 +880,41 @@ begin
     v_status := case when v_now>schedule.next_run_at
       + make_interval(secs=>schedule.occurrence_grace_seconds)
       then 'SKIPPED_MISSED' else 'MATERIALIZED' end;
+    v_cell:=null; v_credential:=null; v_lease:=null; v_fence:=null; v_session:=null;
+    if v_status='MATERIALIZED' then
+      select cell.id,credential.credential_generation,lease.lease_generation,
+        lease.fencing_token,account.session_generation
+      into v_cell,v_credential,v_lease,v_fence,v_session
+      from public.openclaw_accounts account
+      join public.openclaw_runtime_cells cell
+        on cell.organization_id=account.organization_id and cell.account_id=account.id
+       and cell.is_current and cell.state='READY'
+      join public.openclaw_runtime_leases lease
+        on lease.organization_id=cell.organization_id and lease.account_id=cell.account_id
+       and lease.cell_id=cell.id and lease.status='ACTIVE' and lease.expires_at>v_now
+      join public.openclaw_runtime_credentials credential
+        on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
+       and credential.cell_id=cell.id and credential.revoked_at is null
+      where account.organization_id=schedule.organization_id and account.id=schedule.account_id
+        and account.is_active
+      order by lease.lease_generation desc,credential.credential_generation desc
+      limit 1 for share of credential,lease;
+      if v_cell is null then
+        update public.openclaw_schedules set binding_defer_reason='NO_CURRENT_CHANNEL_BINDING',
+          updated_at=v_now
+        where organization_id=schedule.organization_id and id=schedule.id;
+        continue;
+      end if;
+    end if;
+    select snapshot.snapshot_hash,target.target_version
+    into strict v_snapshot_hash,v_target_version
+    from public.openclaw_schedule_snapshots snapshot
+    join public.openclaw_targets target
+      on target.organization_id=snapshot.organization_id and target.account_id=snapshot.account_id
+     and target.id=snapshot.target_id
+    where snapshot.organization_id=schedule.organization_id
+      and snapshot.account_id=schedule.account_id and snapshot.schedule_id=schedule.id
+      and snapshot.schedule_version=schedule.schedule_version;
     v_evidence := jsonb_build_object(
       'version',1,'scheduleId',schedule.id,'scheduleVersion',schedule.schedule_version,
       'targetId',schedule.target_id,'plannedLocal',schedule.next_nominal_local,
@@ -689,29 +947,11 @@ begin
     end if;
 
     if v_status='MATERIALIZED' then
-      select cell.id,credential.credential_generation,lease.lease_generation,
-        lease.fencing_token,account.session_generation
-      into v_cell,v_credential,v_lease,v_fence,v_session
-      from public.openclaw_accounts account
-      join public.openclaw_runtime_cells cell
-        on cell.organization_id=account.organization_id and cell.account_id=account.id
-       and cell.is_current and cell.state='READY'
-      join public.openclaw_runtime_leases lease
-        on lease.organization_id=cell.organization_id and lease.account_id=cell.account_id
-       and lease.cell_id=cell.id and lease.status='ACTIVE' and lease.expires_at>v_now
-      join public.openclaw_runtime_credentials credential
-        on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
-       and credential.cell_id=cell.id and credential.revoked_at is null
-      where account.organization_id=schedule.organization_id and account.id=schedule.account_id
-        and account.is_active
-      order by lease.lease_generation desc,credential.credential_generation desc
-      limit 1;
-      select snapshot.snapshot_hash into v_snapshot_hash
-      from public.openclaw_schedule_snapshots snapshot
-      where snapshot.organization_id=schedule.organization_id
-        and snapshot.account_id=schedule.account_id and snapshot.schedule_id=schedule.id
-        and snapshot.schedule_version=schedule.schedule_version;
-      if v_cell is not null then
+        v_payload:=jsonb_build_object('version',1,'scheduleId',schedule.id,
+          'scheduleVersion',schedule.schedule_version,'occurrenceId',v_occurrence_id,
+          'automationVersionId',schedule.automation_version_id,'targetId',schedule.target_id,
+          'targetVersion',v_target_version,'occurrenceEvidenceHash',v_hash);
+        v_payload_bytes:=app_private.openclaw_jcs_bytes_v1(v_payload);
         insert into public.openclaw_send_work_items(
           organization_id,account_id,cell_id,work_kind,source_id,source_version,source_key,
           source_hash,payload,payload_hash,state,claim_generation,fencing_token,
@@ -721,20 +961,13 @@ begin
           schedule.organization_id,schedule.account_id,v_cell,'SCHEDULE_OCCURRENCE',
           v_occurrence_id,schedule.schedule_version::text,
           'schedule:'||schedule.id||':'||schedule.schedule_version||':'||v_occurrence_id||':'||schedule.target_id,
-          v_snapshot_hash,
-          jsonb_build_object('version',1,'scheduleId',schedule.id,
-            'scheduleVersion',schedule.schedule_version,'occurrenceId',v_occurrence_id,
-            'automationVersionId',schedule.automation_version_id,'targetId',schedule.target_id,
-            'occurrenceEvidenceHash',v_hash),
-          encode(extensions.digest(v_bytes,'sha256'),'hex'),'QUEUED',1,v_fence,v_session,
+          v_snapshot_hash,v_payload,
+          encode(extensions.digest(v_payload_bytes,'sha256'),'hex'),'QUEUED',1,v_fence,v_session,
           schedule.target_id,v_credential,v_lease,schedule.id,schedule.schedule_version,v_occurrence_id
         ) on conflict (organization_id,schedule_id,schedule_version,schedule_occurrence_id,target_id)
           where work_kind='SCHEDULE_OCCURRENCE' do nothing;
-        v_created := v_created+1;
-      else
-        update public.openclaw_schedules set binding_defer_reason='NO_CURRENT_CHANNEL_BINDING'
-        where organization_id=schedule.organization_id and id=schedule.id;
-      end if;
+        get diagnostics v_inserted=row_count;
+        v_created := v_created+v_inserted;
     end if;
 
     v_next_local := app_private.openclaw_next_schedule_occurrence_v1(
@@ -744,6 +977,27 @@ begin
         select * into strict v_next from app_private.openclaw_resolve_local_occurrence_v1(
           v_next_local,schedule.timezone,schedule.dst_fold_policy);
         exit when v_next.planned_for>v_now;
+        v_evidence:=jsonb_build_object(
+          'version',1,'scheduleId',schedule.id,'scheduleVersion',schedule.schedule_version,
+          'targetId',schedule.target_id,'plannedLocal',v_next_local,
+          'resolvedLocal',v_next.resolved_local,'plannedFor',v_next.planned_for,
+          'utcOffsetSeconds',v_next.utc_offset_seconds,'resolution',v_next.resolution,
+          'occurrenceStatus','SKIPPED_MISSED','databaseTime',v_now
+        );
+        v_bytes:=app_private.openclaw_jcs_bytes_v1(v_evidence);
+        v_hash:=encode(extensions.digest(
+          convert_to('ihome-openclaw-schedule-occurrence-v1','UTF8')||decode('00','hex')||v_bytes,
+          'sha256'),'hex');
+        insert into public.openclaw_schedule_occurrences(
+          organization_id,account_id,schedule_id,schedule_version,target_id,planned_local,
+          resolved_local,planned_for,utc_offset_seconds,resolution,occurrence_status,
+          occurrence_evidence,occurrence_evidence_bytes,occurrence_evidence_hash
+        ) values (
+          schedule.organization_id,schedule.account_id,schedule.id,schedule.schedule_version,
+          schedule.target_id,v_next_local,v_next.resolved_local,v_next.planned_for,
+          v_next.utc_offset_seconds,v_next.resolution,'SKIPPED_MISSED',v_evidence,v_bytes,v_hash
+        ) on conflict (organization_id,account_id,schedule_id,schedule_version,planned_local)
+          do nothing;
         v_next_local := app_private.openclaw_next_schedule_occurrence_v1(
           schedule.local_recurrence_rule,v_next_local);
       end loop;
@@ -758,6 +1012,7 @@ begin
       next_utc_offset_seconds=case when v_next_local is null then null else v_next.utc_offset_seconds end,
       next_resolution=case when v_next_local is null then null else v_next.resolution end,
       cursor_version=current_schedule.cursor_version+1,
+      binding_defer_reason=null,
       status=case when v_next_local is null then 'COMPLETE' else current_schedule.status end,
       updated_at=v_now
     where current_schedule.organization_id=schedule.organization_id
@@ -786,6 +1041,7 @@ declare
   v_session bigint;
   v_payload jsonb;
   v_payload_bytes bytea;
+  v_inserted integer;
   v_created integer := 0;
 begin
   for item in
@@ -794,7 +1050,7 @@ begin
       occurrence.snapshot_hash,subscription.id subscription_id,
       subscription.account_id,subscription.subscription_version,
       subscription.automation_version_id,subscription.destination_target_id,
-      snapshot.snapshot_hash subscription_snapshot_hash
+      snapshot.snapshot_hash subscription_snapshot_hash,target.target_version
     from public.openclaw_crm_event_occurrences occurrence
     join public.openclaw_crm_event_subscriptions subscription
       on subscription.organization_id=occurrence.organization_id
@@ -802,10 +1058,14 @@ begin
     join public.openclaw_crm_event_subscription_snapshots snapshot
       on snapshot.organization_id=subscription.organization_id
      and snapshot.account_id=subscription.account_id and snapshot.subscription_id=subscription.id
-     and snapshot.subscription_version=subscription.subscription_version
+      and snapshot.subscription_version=subscription.subscription_version
+    join public.openclaw_targets target
+      on target.organization_id=subscription.organization_id
+     and target.account_id=subscription.account_id
+     and target.id=subscription.destination_target_id and target.is_active
     join public.openclaw_control_states control
       on control.organization_id=subscription.organization_id and control.control_key='GLOBAL_STOP'
-     and control.feature_enabled and not control.global_stop
+     and control.feature_enabled and control.proactive_enabled and not control.global_stop
     where not exists (
       select 1 from public.openclaw_send_work_items work
       where work.organization_id=occurrence.organization_id and work.work_kind='CRM_EVENT'
@@ -841,7 +1101,8 @@ begin
       'subscriptionVersion',item.subscription_version,'occurrenceId',item.crm_occurrence_id,
       'eventType',item.event_type,'eventSubtype',item.event_subtype,
       'automationVersionId',item.automation_version_id,
-      'targetId',item.destination_target_id,'sourceSnapshot',item.source_snapshot,
+      'targetId',item.destination_target_id,'targetVersion',item.target_version,
+      'sourceSnapshot',item.source_snapshot,
       'snapshotHash',item.snapshot_hash,'subscriptionSnapshotHash',item.subscription_snapshot_hash
     );
     v_payload_bytes := app_private.openclaw_jcs_bytes_v1(v_payload);
@@ -861,7 +1122,8 @@ begin
       item.subscription_id,item.subscription_version,item.crm_occurrence_id
     ) on conflict (organization_id,subscription_id,subscription_version,crm_occurrence_id,target_id)
       where work_kind='CRM_EVENT' do nothing;
-    v_created := v_created+1;
+    get diagnostics v_inserted=row_count;
+    v_created := v_created+v_inserted;
   end loop;
   return v_created;
 end;
@@ -895,6 +1157,7 @@ begin
     join public.openclaw_runtime_leases lease
       on lease.organization_id=cell.organization_id and lease.account_id=cell.account_id
      and lease.cell_id=cell.id and lease.status='ACTIVE' and lease.expires_at>v_now
+    where account.is_active
     order by account.organization_id,account.id,lease.lease_generation desc,
       credential.credential_generation desc
   ), candidates as (
@@ -970,6 +1233,153 @@ begin
 end;
 $function$;
 
+create or replace function app_private.openclaw_claim_inbound_automation_v1(
+  p_principal jsonb,p_envelope jsonb,p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_principal->>'organizationId')::uuid;
+  v_account uuid := (p_principal->>'accountId')::uuid;
+  v_cell uuid := (p_principal->>'cellId')::uuid;
+  v_limit integer := greatest(1,least(coalesce((p_request->>'limit')::integer,10),50));
+  v_seconds integer := greatest(5,least(coalesce((p_request->>'leaseSeconds')::integer,30),60));
+  v_expires timestamptz;
+  v_token text;
+  v_items jsonb;
+begin
+  if p_request->>'version'<>'1' or nullif(p_request->>'claimToken','') is null then
+    raise exception 'version 1 and claimToken required' using errcode='22023';
+  end if;
+  select least(lease.expires_at,statement_timestamp()+make_interval(secs=>v_seconds))
+  into v_expires
+  from public.openclaw_accounts account
+  join public.openclaw_runtime_cells cell
+    on cell.organization_id=account.organization_id and cell.account_id=account.id
+   and cell.id=v_cell and cell.is_current and cell.state='READY'
+  join public.openclaw_runtime_credentials credential
+    on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
+   and credential.cell_id=cell.id
+  join public.openclaw_runtime_leases lease
+    on lease.organization_id=cell.organization_id and lease.account_id=cell.account_id
+   and lease.cell_id=cell.id
+  where account.organization_id=v_org and account.id=v_account and account.is_active
+    and account.session_generation=(p_principal->>'sessionGeneration')::bigint
+    and credential.credential_generation=(p_principal->>'credentialGeneration')::bigint
+    and credential.revoked_at is null
+    and lease.lease_generation=(p_principal->>'leaseGeneration')::bigint
+    and lease.fencing_token=(p_principal->>'fencingToken')::bigint
+    and lease.status='ACTIVE' and lease.expires_at>statement_timestamp();
+  if v_expires is null then
+    raise exception 'inbound work credential or lease is stale' using errcode='42501';
+  end if;
+  v_token:=encode(extensions.digest(
+    convert_to('ihome-openclaw-inbound-automation-claim-v1','UTF8')||decode('00','hex')
+      ||convert_to(p_request->>'claimToken','UTF8'),'sha256'),'hex');
+  with candidates as (
+    select work.id from public.openclaw_send_work_items work
+    where work.organization_id=v_org and work.account_id=v_account and work.cell_id=v_cell
+      and work.work_kind='INBOUND_AUTOMATION' and work.state='QUEUED'
+      and work.credential_generation=(p_principal->>'credentialGeneration')::bigint
+      and work.runtime_lease_generation=(p_principal->>'leaseGeneration')::bigint
+      and work.fencing_token=(p_principal->>'fencingToken')::bigint
+      and work.session_generation=(p_principal->>'sessionGeneration')::bigint
+      and work.binding_defer_reason is null and work.claim_token_hash is null
+      and work.lease_expires_at is null and work.terminal_at is null
+      and (work.retry_not_before is null or work.retry_not_before<=statement_timestamp())
+    order by work.created_at,work.id for update skip locked limit v_limit
+  ), claimed as (
+    update public.openclaw_send_work_items work set state='LEASED',claim_token_hash=v_token,
+      claim_generation=work.claim_generation+1,lease_expires_at=v_expires,
+      attempt_count=work.attempt_count+1,updated_at=statement_timestamp()
+    from candidates where work.organization_id=v_org and work.id=candidates.id
+    returning work.*
+  ) select coalesce(jsonb_agg(jsonb_build_object(
+    'workItemId',id,'claimGeneration',claim_generation,'leaseExpiresAt',lease_expires_at,
+    'inboundEventId',source_id,'sourceKey',source_key,'targetId',target_id,
+    'sourceHash',source_hash,'payload',payload,'payloadHash',payload_hash
+  ) order by id),'[]'::jsonb) into v_items from claimed;
+  return jsonb_build_object('version',1,
+    'credentialGeneration',(p_principal->>'credentialGeneration')::bigint,
+    'leaseGeneration',(p_principal->>'leaseGeneration')::bigint,
+    'fencingToken',(p_principal->>'fencingToken')::bigint,
+    'items',v_items,'databaseTime',statement_timestamp());
+end;
+$function$;
+
+create or replace function app_private.openclaw_complete_inbound_automation_v1(
+  p_principal jsonb,p_envelope jsonb,p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_principal->>'organizationId')::uuid;
+  v_account uuid := (p_principal->>'accountId')::uuid;
+  v_cell uuid := (p_principal->>'cellId')::uuid;
+  v_work uuid := (p_request->>'workItemId')::uuid;
+  v_claim bigint := (p_request->>'claimGeneration')::bigint;
+  v_outcome text := p_request->>'outcome';
+  v_token text;
+  v_attempt integer;
+  v_evidence jsonb := coalesce(p_request->'evidence','{}'::jsonb);
+begin
+  if p_request->>'version'<>'1' or v_outcome not in ('COMPLETE','RETRY','FAILED','DEAD_LETTER') then
+    raise exception 'invalid inbound automation completion' using errcode='22023';
+  end if;
+  v_token:=encode(extensions.digest(
+    convert_to('ihome-openclaw-inbound-automation-claim-v1','UTF8')||decode('00','hex')
+      ||convert_to(p_request->>'claimToken','UTF8'),'sha256'),'hex');
+  select work.attempt_count into v_attempt
+  from public.openclaw_send_work_items work
+  join public.openclaw_runtime_credentials credential
+    on credential.organization_id=work.organization_id and credential.account_id=work.account_id
+   and credential.cell_id=work.cell_id and credential.credential_generation=work.credential_generation
+   and credential.revoked_at is null
+  join public.openclaw_runtime_leases lease
+    on lease.organization_id=work.organization_id and lease.account_id=work.account_id
+   and lease.cell_id=work.cell_id and lease.lease_generation=work.runtime_lease_generation
+   and lease.fencing_token=work.fencing_token and lease.status='ACTIVE'
+  where work.organization_id=v_org and work.account_id=v_account and work.id=v_work
+    and work.cell_id=v_cell and work.work_kind='INBOUND_AUTOMATION' and work.state='LEASED'
+    and work.claim_generation=v_claim and work.claim_token_hash=v_token
+    and work.credential_generation=(p_principal->>'credentialGeneration')::bigint
+    and work.runtime_lease_generation=(p_principal->>'leaseGeneration')::bigint
+    and work.fencing_token=(p_principal->>'fencingToken')::bigint
+    and work.session_generation=(p_principal->>'sessionGeneration')::bigint
+    and work.lease_expires_at>statement_timestamp() and lease.expires_at>statement_timestamp()
+  for update of work;
+  if not found then raise exception 'inbound automation completion binding CAS failed' using errcode='40001'; end if;
+  insert into public.openclaw_send_work_attempts(
+    organization_id,account_id,cell_id,work_item_id,claim_generation,fencing_token,
+    session_generation,credential_generation,runtime_lease_generation,
+    attempt_number,outcome,evidence,evidence_hash
+  ) values (
+    v_org,v_account,v_cell,v_work,v_claim,(p_principal->>'fencingToken')::bigint,
+    (p_principal->>'sessionGeneration')::bigint,
+    (p_principal->>'credentialGeneration')::bigint,(p_principal->>'leaseGeneration')::bigint,
+    v_attempt,v_outcome,v_evidence,
+    encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(v_evidence),'sha256'),'hex')
+  );
+  update public.openclaw_send_work_items work set
+    state=case when v_outcome='RETRY' then 'QUEUED' else v_outcome end,
+    claim_token_hash=null,lease_expires_at=null,
+    retry_not_before=case when v_outcome='RETRY' then statement_timestamp()
+      +make_interval(secs=>greatest(1,least(coalesce((p_request->>'retryAfterSeconds')::integer,5),3600))) end,
+    terminal_at=case when v_outcome='RETRY' then null else statement_timestamp() end,
+    updated_at=statement_timestamp()
+  where work.organization_id=v_org and work.id=v_work and work.state='LEASED'
+    and work.claim_generation=v_claim;
+  if not found then raise exception 'inbound automation completion CAS failed' using errcode='40001'; end if;
+  return jsonb_build_object('version',1,'workItemId',v_work,'outcome',v_outcome);
+end;
+$function$;
+
 create or replace function app_private.openclaw_claim_work_item_v1(
   p_principal jsonb,p_envelope jsonb,p_request jsonb
 )
@@ -986,6 +1396,8 @@ declare
   v_token_hash text;
   v_principal_expires timestamptz;
   v_items jsonb;
+  v_stale record;
+  v_stale_evidence jsonb;
 begin
   if p_request->>'version'<>'1' or v_kind not in ('CHANNEL','MAINTENANCE') then
     raise exception 'work claim version or principal kind invalid' using errcode='22023';
@@ -996,13 +1408,19 @@ begin
   if v_kind='CHANNEL' then
     select least(lease.expires_at,statement_timestamp()+make_interval(secs=>v_seconds))
     into v_principal_expires
-    from public.openclaw_runtime_credentials credential
+    from public.openclaw_accounts account
+    join public.openclaw_runtime_cells cell
+      on cell.organization_id=account.organization_id and cell.account_id=account.id
+     and cell.id=(p_principal->>'cellId')::uuid and cell.is_current and cell.state='READY'
+    join public.openclaw_runtime_credentials credential
+      on credential.organization_id=cell.organization_id and credential.account_id=cell.account_id
+     and credential.cell_id=cell.id
     join public.openclaw_runtime_leases lease
       on lease.organization_id=credential.organization_id and lease.account_id=credential.account_id
      and lease.cell_id=credential.cell_id
-    where credential.organization_id=v_org
-      and credential.account_id=(p_principal->>'accountId')::uuid
-      and credential.cell_id=(p_principal->>'cellId')::uuid
+    where account.organization_id=v_org
+      and account.id=(p_principal->>'accountId')::uuid and account.is_active
+      and account.session_generation=(p_principal->>'sessionGeneration')::bigint
       and credential.credential_generation=(p_principal->>'credentialGeneration')::bigint
       and credential.revoked_at is null
       and lease.lease_generation=(p_principal->>'leaseGeneration')::bigint
@@ -1042,12 +1460,16 @@ begin
   else
     select least(lease.expires_at,statement_timestamp()+make_interval(secs=>v_seconds))
     into v_principal_expires
-    from public.openclaw_maintenance_credentials credential
+    from public.openclaw_maintenance_principals principal
+    join public.openclaw_maintenance_credentials credential
+      on credential.organization_id=principal.organization_id
+     and credential.maintenance_principal_id=principal.id
     join public.openclaw_maintenance_leases lease
       on lease.organization_id=credential.organization_id
      and lease.maintenance_principal_id=credential.maintenance_principal_id
-    where credential.organization_id=v_org
-      and credential.maintenance_principal_id=(p_principal->>'maintenancePrincipalId')::uuid
+    where principal.organization_id=v_org
+      and principal.id=(p_principal->>'maintenancePrincipalId')::uuid
+      and principal.is_current and principal.revoked_at is null
       and credential.credential_generation=(p_principal->>'credentialGeneration')::bigint
       and credential.revoked_at is null
       and lease.lease_generation=(p_principal->>'leaseGeneration')::bigint
@@ -1056,6 +1478,60 @@ begin
     if v_principal_expires is null then
       raise exception 'maintenance credential or principal lease is stale' using errcode='42501';
     end if;
+    -- A hold lifecycle change invalidates a frozen QUARANTINE authorization
+    -- epoch. Retire that old item with immutable evidence before claiming new
+    -- work; otherwise the specialized completion would fail closed forever
+    -- and the lease sweeper would keep requeueing the same poison item.
+    perform app_private.openclaw_lock_retention_scope_v1(v_org);
+    for v_stale in
+      select work.*
+      from public.openclaw_maintenance_work_items work
+      left join public.openclaw_retention_hold_clocks clock
+        on clock.organization_id=work.organization_id
+      where work.organization_id=v_org
+        and work.maintenance_principal_id=(p_principal->>'maintenancePrincipalId')::uuid
+        and work.credential_generation=(p_principal->>'credentialGeneration')::bigint
+        and work.maintenance_lease_generation=(p_principal->>'leaseGeneration')::bigint
+        and work.fencing_token=(p_principal->>'fencingToken')::bigint
+        and work.work_kind='RETENTION_DELETE' and work.work_phase='QUARANTINE'
+        and work.state='QUEUED' and work.claim_token_hash is null
+        and work.lease_expires_at is null and work.terminal_at is null
+        and (work.payload->>'scopeVersion')::bigint<>coalesce(clock.hold_version,0)
+      order by work.created_at,work.id
+      for update of work skip locked
+      limit v_limit
+    loop
+      v_stale_evidence:=jsonb_build_object(
+        'version',1,'reason','STALE_RETENTION_SCOPE','workItemId',v_stale.id,
+        'frozenScopeVersion',(v_stale.payload->>'scopeVersion')::bigint,
+        'currentScopeVersion',coalesce((
+          select clock.hold_version
+          from public.openclaw_retention_hold_clocks clock
+          where clock.organization_id=v_org
+        ),0)
+      );
+      insert into public.openclaw_maintenance_work_attempts(
+        organization_id,maintenance_principal_id,work_item_id,claim_generation,
+        maintenance_lease_generation,fencing_token,credential_generation,
+        attempt_number,outcome,evidence,evidence_hash
+      ) values (
+        v_stale.organization_id,v_stale.maintenance_principal_id,v_stale.id,
+        v_stale.claim_generation,v_stale.maintenance_lease_generation,
+        v_stale.fencing_token,v_stale.credential_generation,
+        v_stale.attempt_count+1,'DEAD_LETTER',v_stale_evidence,
+        encode(extensions.digest(
+          app_private.openclaw_jcs_bytes_v1(v_stale_evidence),'sha256'
+        ),'hex')
+      ) on conflict (
+        organization_id,maintenance_principal_id,work_item_id,
+        claim_generation,attempt_number
+      ) do nothing;
+      update public.openclaw_maintenance_work_items work set
+        state='DEAD_LETTER',attempt_count=work.attempt_count+1,
+        terminal_at=statement_timestamp(),updated_at=statement_timestamp()
+      where work.organization_id=v_stale.organization_id and work.id=v_stale.id
+        and work.state='QUEUED' and work.claim_generation=v_stale.claim_generation;
+    end loop;
     with candidates as (
       select work.id from public.openclaw_maintenance_work_items work
       where work.organization_id=v_org
@@ -1126,10 +1602,12 @@ begin
     if not found then raise exception 'channel work completion binding CAS failed' using errcode='40001'; end if;
     insert into public.openclaw_send_work_attempts(
       organization_id,account_id,cell_id,work_item_id,claim_generation,fencing_token,
-      session_generation,attempt_number,outcome,evidence,evidence_hash
+      session_generation,credential_generation,runtime_lease_generation,
+      attempt_number,outcome,evidence,evidence_hash
     ) values (
       v_org,(p_principal->>'accountId')::uuid,(p_principal->>'cellId')::uuid,v_work,v_claim,
       (p_principal->>'fencingToken')::bigint,(p_principal->>'sessionGeneration')::bigint,
+      (p_principal->>'credentialGeneration')::bigint,(p_principal->>'leaseGeneration')::bigint,
       v_attempt,v_outcome,v_evidence,
       encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(v_evidence),'sha256'),'hex')
     );
@@ -1158,11 +1636,12 @@ begin
     end if;
     insert into public.openclaw_maintenance_work_attempts(
       organization_id,maintenance_principal_id,work_item_id,claim_generation,
-      maintenance_lease_generation,fencing_token,attempt_number,outcome,evidence,evidence_hash
+      maintenance_lease_generation,fencing_token,credential_generation,
+      attempt_number,outcome,evidence,evidence_hash
     ) values (
       v_org,(p_principal->>'maintenancePrincipalId')::uuid,v_work,v_claim,
       (p_principal->>'leaseGeneration')::bigint,(p_principal->>'fencingToken')::bigint,
-      v_attempt,v_outcome,v_evidence,
+      (p_principal->>'credentialGeneration')::bigint,v_attempt,v_outcome,v_evidence,
       encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(v_evidence),'sha256'),'hex')
     );
     update public.openclaw_maintenance_work_items work set
@@ -1241,30 +1720,240 @@ $function$;
 
 alter table public.openclaw_retention_holds
   drop constraint openclaw_retention_holds_target_kind_check,
+  add column scope_version bigint not null default 0 check (scope_version>=0),
   add constraint openclaw_retention_holds_target_kind_check
     check (target_kind in (
       'ORGANIZATION','CONVERSATION','MESSAGE','MEDIA','AI_DRAFT',
-      'KNOWLEDGE','AUDIT','DELIVERY'
+      'KNOWLEDGE','HEALTH','QR','AUDIT','POLICY','CONTROL','DELIVERY',
+      'UNKNOWN','SECURITY','CONSENT','RISK'
     ));
+
+alter table public.openclaw_retention_tombstones
+  drop constraint openclaw_retention_tombstones_subject_kind_check,
+  add constraint openclaw_retention_tombstones_subject_kind_check
+    check (subject_kind in (
+      'MESSAGE','AI_DRAFT','MEDIA','KNOWLEDGE','HEALTH','QR','AUDIT','POLICY',
+      'CONTROL','DELIVERY','UNKNOWN','SECURITY','CONSENT','RISK'
+    ));
+
+create or replace function app_private.guard_openclaw_retention_redaction_v1()
+returns trigger
+language plpgsql
+set search_path = ''
+as $function$
+begin
+  if TG_OP='DELETE' then
+    raise exception 'retention-protected evidence cannot be deleted' using errcode='55000';
+  end if;
+  if TG_TABLE_NAME in ('openclaw_policy_versions','openclaw_knowledge_versions') then
+    if OLD.lifecycle_state='DRAFT' and NEW.lifecycle_state='PUBLISHED'
+       and OLD.published_at is null and NEW.published_at is not null
+       and (to_jsonb(NEW)-array['lifecycle_state','published_at'])
+         is not distinct from
+           (to_jsonb(OLD)-array['lifecycle_state','published_at']) then
+      return NEW;
+    end if;
+    if OLD.lifecycle_state='PUBLISHED' and NEW.lifecycle_state='ARCHIVED'
+       and OLD.archived_at is null and NEW.archived_at is not null
+       and (to_jsonb(NEW)-array['lifecycle_state','archived_at'])
+         is not distinct from
+           (to_jsonb(OLD)-array['lifecycle_state','archived_at']) then
+      return NEW;
+    end if;
+  end if;
+  if current_user<>'openclaw_maintenance_writer' then
+    raise exception 'only openclaw_maintenance_writer may perform retention redaction'
+      using errcode='42501';
+  end if;
+
+  case TG_TABLE_NAME
+    when 'openclaw_messages' then
+      if NEW.text_content<>'[REDACTED_BY_RETENTION]'
+         or (to_jsonb(NEW)-'text_content') is distinct from
+            (to_jsonb(OLD)-'text_content') then
+        raise exception 'invalid message retention redaction' using errcode='55000';
+      end if;
+    when 'openclaw_ai_drafts' then
+      if NEW.draft_text<>'[REDACTED_BY_RETENTION]'
+         or NEW.result_payload<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or NEW.citations<>jsonb_build_array(jsonb_build_object('marker','REDACTED_BY_RETENTION'))
+         or (to_jsonb(NEW)-array['draft_text','result_payload','citations']) is distinct from
+            (to_jsonb(OLD)-array['draft_text','result_payload','citations']) then
+        raise exception 'invalid AI draft retention redaction' using errcode='55000';
+      end if;
+    when 'openclaw_knowledge_versions' then
+      if NEW.content<>'[REDACTED_BY_RETENTION]'
+         or NEW.metadata<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or NEW.validation_result is not null
+         or (to_jsonb(NEW)-array['content','metadata','validation_result']) is distinct from
+            (to_jsonb(OLD)-array['content','metadata','validation_result']) then
+        raise exception 'invalid knowledge version retention redaction' using errcode='55000';
+      end if;
+    when 'openclaw_knowledge_chunks' then
+      if NEW.chunk_text<>'[REDACTED_BY_RETENTION]'
+         or NEW.embedding is not null
+         or NEW.metadata<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or (to_jsonb(NEW)-array['chunk_text','embedding','metadata']) is distinct from
+            (to_jsonb(OLD)-array['chunk_text','embedding','metadata']) then
+        raise exception 'invalid knowledge chunk retention redaction' using errcode='55000';
+      end if;
+    when 'openclaw_policy_versions' then
+      if NEW.rate_limits<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or NEW.policy_payload<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or (to_jsonb(NEW)-array['rate_limits','policy_payload']) is distinct from
+            (to_jsonb(OLD)-array['rate_limits','policy_payload']) then
+        raise exception 'invalid policy retention redaction' using errcode='55000';
+      end if;
+    when 'openclaw_health_events' then
+      if NEW.content_free_metrics<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or (to_jsonb(NEW)-'content_free_metrics') is distinct from
+            (to_jsonb(OLD)-'content_free_metrics') then
+        raise exception 'invalid health retention redaction' using errcode='55000';
+      end if;
+    when 'openclaw_delivery_attempts' then
+      if NEW.known_provider_message_ids is distinct from OLD.known_provider_message_ids
+         or NEW.delivery_evidence<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or (to_jsonb(NEW)-'delivery_evidence') is distinct from
+            (to_jsonb(OLD)-'delivery_evidence') then
+        raise exception 'invalid delivery retention redaction' using errcode='55000';
+      end if;
+    when 'openclaw_inbound_automation_decisions' then
+      if NEW.frozen_inputs<>jsonb_build_object('marker','REDACTED_BY_RETENTION')
+         or (to_jsonb(NEW)-'frozen_inputs') is distinct from
+            (to_jsonb(OLD)-'frozen_inputs') then
+        raise exception 'invalid risk retention redaction' using errcode='55000';
+      end if;
+    else
+      raise exception 'deny unknown retention redaction target: %',TG_TABLE_NAME
+        using errcode='55000';
+  end case;
+  return NEW;
+end;
+$function$;
+
+drop trigger openclaw_messages_append_only on public.openclaw_messages;
+create trigger openclaw_messages_retention_guard
+before update or delete on public.openclaw_messages
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
+
+drop trigger openclaw_ai_drafts_append_only on public.openclaw_ai_drafts;
+create trigger openclaw_ai_drafts_retention_guard
+before update or delete on public.openclaw_ai_drafts
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
+
+drop trigger openclaw_knowledge_versions_append_only on public.openclaw_knowledge_versions;
+create trigger openclaw_knowledge_versions_retention_guard
+before update or delete on public.openclaw_knowledge_versions
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
+
+drop trigger openclaw_knowledge_chunks_append_only on public.openclaw_knowledge_chunks;
+create trigger openclaw_knowledge_chunks_retention_guard
+before update or delete on public.openclaw_knowledge_chunks
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
+
+drop trigger openclaw_policy_versions_append_only on public.openclaw_policy_versions;
+create trigger openclaw_policy_versions_retention_guard
+before update or delete on public.openclaw_policy_versions
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
+
+drop trigger openclaw_health_events_append_only on public.openclaw_health_events;
+create trigger openclaw_health_events_retention_guard
+before update or delete on public.openclaw_health_events
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
+
+drop trigger openclaw_delivery_attempts_append_only on public.openclaw_delivery_attempts;
+create trigger openclaw_delivery_attempts_retention_guard
+before update or delete on public.openclaw_delivery_attempts
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
+
+drop trigger openclaw_inbound_decisions_append_only
+  on public.openclaw_inbound_automation_decisions;
+create trigger openclaw_inbound_decisions_retention_guard
+before update or delete on public.openclaw_inbound_automation_decisions
+for each row execute function app_private.guard_openclaw_retention_redaction_v1();
 
 create table public.openclaw_retention_policies (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete restrict,
   policy_version bigint not null check (policy_version>0),
-  subject_kind text not null check (subject_kind in ('MESSAGE','AI_DRAFT','MEDIA')),
-  retain_for_seconds bigint not null check (retain_for_seconds between 86400 and 315576000),
+  subject_kind text not null check (subject_kind in (
+    'MESSAGE','AI_DRAFT','MEDIA','KNOWLEDGE','HEALTH','QR','AUDIT','POLICY',
+    'CONTROL','DELIVERY','UNKNOWN','SECURITY','CONSENT','RISK'
+  )),
+  retain_for_seconds bigint not null,
   is_active boolean not null default false,
   activated_at timestamptz,
   retired_at timestamptz,
   created_at timestamptz not null default statement_timestamp(),
   unique (organization_id,id),
   unique (organization_id,subject_kind,policy_version),
-  check ((is_active and activated_at is not null and retired_at is null) or not is_active)
+  check ((is_active and activated_at is not null and retired_at is null) or not is_active),
+  check (retain_for_seconds=case
+    when subject_kind in ('MESSAGE','AI_DRAFT') then 15552000
+    when subject_kind in ('MEDIA','HEALTH') then 7776000
+    when subject_kind='QR' then 604800
+    else 31536000
+  end)
 );
 
 create unique index openclaw_retention_policies_one_active_uidx
   on public.openclaw_retention_policies(organization_id,subject_kind)
   where is_active;
+
+create or replace function app_private.ensure_openclaw_retention_contract_v1()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_inserted integer;
+begin
+  with contract(subject_kind,retain_for_seconds) as (
+    values
+      ('MESSAGE'::text,15552000::bigint),
+      ('AI_DRAFT',15552000),
+      ('MEDIA',7776000),
+      ('KNOWLEDGE',31536000),
+      ('HEALTH',7776000),
+      ('QR',604800),
+      ('AUDIT',31536000),
+      ('POLICY',31536000),
+      ('CONTROL',31536000),
+      ('DELIVERY',31536000),
+      ('UNKNOWN',31536000),
+      ('SECURITY',31536000),
+      ('CONSENT',31536000),
+      ('RISK',31536000)
+  ), missing as (
+    select principal.organization_id,contract.subject_kind,contract.retain_for_seconds,
+      coalesce((
+        select max(history.policy_version)+1
+        from public.openclaw_retention_policies history
+        where history.organization_id=principal.organization_id
+          and history.subject_kind=contract.subject_kind
+      ),1) policy_version
+    from public.openclaw_maintenance_principals principal
+    cross join contract
+    where principal.is_current and principal.revoked_at is null
+      and not exists (
+        select 1 from public.openclaw_retention_policies active
+        where active.organization_id=principal.organization_id
+          and active.subject_kind=contract.subject_kind and active.is_active
+      )
+  )
+  insert into public.openclaw_retention_policies(
+    organization_id,policy_version,subject_kind,retain_for_seconds,
+    is_active,activated_at
+  )
+  select missing.organization_id,missing.policy_version,missing.subject_kind,
+    missing.retain_for_seconds,true,statement_timestamp()
+  from missing
+  on conflict do nothing;
+  get diagnostics v_inserted=row_count;
+  return v_inserted;
+end;
+$function$;
 
 create table public.openclaw_retention_hold_clocks (
   organization_id uuid primary key references public.organizations(id) on delete restrict,
@@ -1295,6 +1984,21 @@ create index openclaw_retention_hold_scopes_lookup_idx
   on public.openclaw_retention_hold_scopes(organization_id,scope_kind,scope_id,hold_version)
   where is_active;
 
+create or replace function app_private.openclaw_lock_retention_scope_v1(
+  p_organization_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'ihome-openclaw-retention-scope-v1:'||p_organization_id::text,0
+  ));
+end;
+$function$;
+
 create or replace function app_private.openclaw_expand_retention_hold_scopes_v1()
 returns trigger
 language plpgsql
@@ -1306,13 +2010,14 @@ declare
   v_active boolean := NEW.released_at is null
     and (NEW.expires_at is null or NEW.expires_at>statement_timestamp());
 begin
+  perform app_private.openclaw_lock_retention_scope_v1(NEW.organization_id);
   insert into public.openclaw_retention_hold_clocks(organization_id,hold_version,updated_at)
   values(NEW.organization_id,1,statement_timestamp())
   on conflict (organization_id) do update
     set hold_version=public.openclaw_retention_hold_clocks.hold_version+1,
         updated_at=statement_timestamp()
   returning hold_version into v_version;
-  NEW.hold_version := v_version;
+  NEW.scope_version := v_version;
 
   if TG_OP='UPDATE' then
     update public.openclaw_retention_hold_scopes scope
@@ -1336,7 +2041,7 @@ begin
   insert into public.openclaw_retention_hold_scopes(
     organization_id,hold_id,hold_version,scope_kind,scope_id,is_active
   ) values (
-    NEW.organization_id,NEW.id,NEW.hold_version,NEW.target_kind,
+    NEW.organization_id,NEW.id,NEW.scope_version,NEW.target_kind,
     case when NEW.target_kind='ORGANIZATION' then null else NEW.target_id end,v_active
   ) on conflict (organization_id,hold_id,scope_kind,scope_id) do update
     set hold_version=excluded.hold_version,is_active=excluded.is_active,
@@ -1348,7 +2053,7 @@ begin
       order by message.id for share;
     insert into public.openclaw_retention_hold_scopes(
       organization_id,hold_id,hold_version,scope_kind,scope_id,is_active
-    ) select NEW.organization_id,NEW.id,NEW.hold_version,'MESSAGE',message.id,v_active
+    ) select NEW.organization_id,NEW.id,NEW.scope_version,'MESSAGE',message.id,v_active
       from public.openclaw_messages message
       where message.organization_id=NEW.organization_id and message.conversation_id=NEW.target_id
     on conflict (organization_id,hold_id,scope_kind,scope_id) do update
@@ -1356,7 +2061,7 @@ begin
           updated_at=statement_timestamp();
     insert into public.openclaw_retention_hold_scopes(
       organization_id,hold_id,hold_version,scope_kind,scope_id,is_active
-    ) select NEW.organization_id,NEW.id,NEW.hold_version,'MEDIA',media.id,v_active
+    ) select NEW.organization_id,NEW.id,NEW.scope_version,'MEDIA',media.id,v_active
       from public.openclaw_message_media media
       where media.organization_id=NEW.organization_id and media.conversation_id=NEW.target_id
     on conflict (organization_id,hold_id,scope_kind,scope_id) do update
@@ -1364,7 +2069,7 @@ begin
           updated_at=statement_timestamp();
     insert into public.openclaw_retention_hold_scopes(
       organization_id,hold_id,hold_version,scope_kind,scope_id,is_active
-    ) select NEW.organization_id,NEW.id,NEW.hold_version,'AI_DRAFT',draft.id,v_active
+    ) select NEW.organization_id,NEW.id,NEW.scope_version,'AI_DRAFT',draft.id,v_active
       from public.openclaw_ai_drafts draft
       where draft.organization_id=NEW.organization_id and draft.conversation_id=NEW.target_id
     on conflict (organization_id,hold_id,scope_kind,scope_id) do update
@@ -1373,7 +2078,7 @@ begin
   elsif NEW.target_kind='MESSAGE' then
     insert into public.openclaw_retention_hold_scopes(
       organization_id,hold_id,hold_version,scope_kind,scope_id,is_active
-    ) select NEW.organization_id,NEW.id,NEW.hold_version,'MEDIA',media.id,v_active
+    ) select NEW.organization_id,NEW.id,NEW.scope_version,'MEDIA',media.id,v_active
       from public.openclaw_message_media media
       where media.organization_id=NEW.organization_id and media.message_id=NEW.target_id
     on conflict (organization_id,hold_id,scope_kind,scope_id) do update
@@ -1402,7 +2107,11 @@ set search_path = ''
 as $function$
   select exists (
     select 1 from public.openclaw_retention_hold_scopes scope
+    join public.openclaw_retention_holds hold
+      on hold.organization_id=scope.organization_id and hold.id=scope.hold_id
     where scope.organization_id=p_organization_id and scope.is_active
+      and hold.released_at is null
+      and (hold.expires_at is null or hold.expires_at>statement_timestamp())
       and (scope.scope_kind='ORGANIZATION'
         or (scope.scope_kind=p_subject_kind and scope.scope_id=p_subject_id))
   ) or exists (
@@ -1429,8 +2138,432 @@ as $function$
           select 1 from public.openclaw_message_media media
           where media.organization_id=p_organization_id and media.id=p_subject_id
             and media.message_id=hold.target_id))
+        or (hold.target_kind='KNOWLEDGE' and p_subject_kind='KNOWLEDGE' and exists (
+          select 1 from public.openclaw_knowledge_versions version
+          where version.organization_id=p_organization_id and version.id=p_subject_id
+            and version.source_id=hold.target_id))
+        or (hold.target_kind='POLICY' and p_subject_kind='POLICY' and exists (
+          select 1 from public.openclaw_policy_versions version
+          where version.organization_id=p_organization_id and version.id=p_subject_id
+            and version.policy_id=hold.target_id))
+        or (hold.target_kind='POLICY' and p_subject_kind='POLICY' and exists (
+          select 1 from public.openclaw_automation_versions version
+          where version.organization_id=p_organization_id and version.id=p_subject_id
+            and version.automation_id=hold.target_id))
       )
   );
+$function$;
+
+create table public.openclaw_retention_evidence_seals (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete restrict,
+  subject_kind text not null check (subject_kind in (
+    'KNOWLEDGE','HEALTH','QR','AUDIT','POLICY','CONTROL','DELIVERY',
+    'UNKNOWN','SECURITY','CONSENT','RISK'
+  )),
+  source_table text not null check (source_table in (
+    'openclaw_knowledge_versions','openclaw_health_events','openclaw_qr_challenges',
+    'openclaw_audit_events','openclaw_audit_roots','openclaw_policy_versions',
+    'openclaw_automation_versions','openclaw_control_states','openclaw_delivery_attempts',
+    'openclaw_unknown_resolutions','openclaw_runtime_credentials',
+    'openclaw_maintenance_credentials','openclaw_consents','openclaw_suppressions',
+    'openclaw_inbound_automation_decisions'
+  )),
+  subject_id uuid not null,
+  retention_version bigint not null check (retention_version>0),
+  retention_action text not null
+    check (retention_action in ('REDACTED','HASH_ONLY','EXTERNAL_ANCHOR')),
+  source_evidence_hash text not null check (source_evidence_hash ~ '^[0-9a-f]{64}$'),
+  hold_version bigint not null check (hold_version>=0),
+  due_at timestamptz not null,
+  sealed_at timestamptz not null default statement_timestamp(),
+  unique (organization_id,id),
+  unique (organization_id,source_table,subject_id,retention_version)
+);
+
+create index openclaw_retention_evidence_seals_cursor_idx
+  on public.openclaw_retention_evidence_seals
+    (organization_id,subject_kind,sealed_at,subject_id);
+
+create trigger openclaw_retention_evidence_seals_append_only
+before update or delete on public.openclaw_retention_evidence_seals
+for each row execute function app_private.reject_openclaw_append_only_v1();
+
+create or replace function app_private.enforce_openclaw_evidence_retention_v1(
+  p_limit integer default 100
+)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  candidate record;
+  v_action text;
+  v_hold_version bigint;
+  v_inserted integer;
+  v_sealed integer := 0;
+begin
+  for candidate in
+    select due.* from (
+      select policy.organization_id,policy.policy_version,'KNOWLEDGE'::text subject_kind,
+        'openclaw_knowledge_versions'::text source_table,version.id subject_id,
+        version.content_hash source_evidence_hash,
+        version.archived_at+make_interval(secs=>policy.retain_for_seconds::integer) due_at
+      from public.openclaw_retention_policies policy
+      join public.openclaw_knowledge_versions version
+        on version.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='KNOWLEDGE'
+        and version.lifecycle_state='ARCHIVED' and version.archived_at is not null
+        and version.archived_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+        and version.content is distinct from '[REDACTED_BY_RETENTION]'
+      union all
+      select policy.organization_id,policy.policy_version,'HEALTH',
+        'openclaw_health_events',health.id,
+        encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(
+          jsonb_build_object('fingerprint',health.fingerprint,'metrics',health.content_free_metrics)
+        ),'sha256'),'hex'),
+        health.observed_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_health_events health
+        on health.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='HEALTH'
+        and health.observed_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+        and health.content_free_metrics
+          is distinct from jsonb_build_object('marker','REDACTED_BY_RETENTION')
+      union all
+      select policy.organization_id,policy.policy_version,'QR',
+        'openclaw_qr_challenges',challenge.id,
+        encode(extensions.digest(convert_to(
+          challenge.auth_session_hash||':'||challenge.browser_nonce_hash,'UTF8'
+        ),'sha256'),'hex'),
+        challenge.issued_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_qr_challenges challenge
+        on challenge.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='QR' and challenge.material_version=0
+        and challenge.issued_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'AUDIT',
+        'openclaw_audit_events',event.id,event.event_hash,
+        event.occurred_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_audit_events event
+        on event.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='AUDIT'
+        and event.occurred_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+        and exists (
+          select 1 from public.openclaw_audit_roots root
+          where root.organization_id=event.organization_id and root.anchored_at is not null
+            and event.organization_sequence between root.first_sequence and root.last_sequence
+        )
+      union all
+      select policy.organization_id,policy.policy_version,'AUDIT',
+        'openclaw_audit_roots',root.id,root.root_hash,
+        root.created_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_audit_roots root
+        on root.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='AUDIT' and root.anchored_at is not null
+        and root.created_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'POLICY',
+        'openclaw_policy_versions',version.id,version.payload_hash,
+        version.archived_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_policy_versions version
+        on version.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='POLICY'
+        and version.lifecycle_state='ARCHIVED' and version.archived_at is not null
+        and version.archived_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+        and version.policy_payload
+          is distinct from jsonb_build_object('marker','REDACTED_BY_RETENTION')
+      union all
+      select policy.organization_id,policy.policy_version,'POLICY',
+        'openclaw_automation_versions',version.id,
+        coalesce(version.dry_run_hash,encode(extensions.digest(
+          app_private.openclaw_jcs_bytes_v1(version.configuration),'sha256'),'hex')),
+        version.archived_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_automation_versions version
+        on version.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='POLICY'
+        and version.lifecycle_state='ARCHIVED' and version.archived_at is not null
+        and version.archived_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'CONTROL',
+        'openclaw_control_states',control.id,
+        encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(jsonb_build_object(
+          'controlVersion',control.control_version,'reason',control.reason
+        )),'sha256'),'hex'),
+        control.updated_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_control_states control
+        on control.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='CONTROL'
+        and not control.feature_enabled and not control.limited_auto_reply_enabled
+        and not control.proactive_enabled and not control.sales_groups_enabled
+        and not control.first_contact_enabled and control.reason is not null
+        and control.updated_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'DELIVERY',
+        'openclaw_delivery_attempts',attempt.id,attempt.delivery_evidence_hash,
+        attempt.created_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_delivery_attempts attempt
+        on attempt.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='DELIVERY'
+        and attempt.created_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+        and attempt.delivery_evidence
+          is distinct from jsonb_build_object('marker','REDACTED_BY_RETENTION')
+      union all
+      select policy.organization_id,policy.policy_version,'UNKNOWN',
+        'openclaw_unknown_resolutions',resolution.id,
+        resolution.authoritative_evidence_hash,
+        resolution.resolved_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_unknown_resolutions resolution
+        on resolution.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='UNKNOWN'
+        and resolution.resolved_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'SECURITY',
+        'openclaw_runtime_credentials',credential.id,credential.credential_hash,
+        credential.revoked_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_runtime_credentials credential
+        on credential.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='SECURITY'
+        and credential.revoked_at is not null
+        and credential.revoked_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'SECURITY',
+        'openclaw_maintenance_credentials',credential.id,credential.credential_hash,
+        credential.revoked_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_maintenance_credentials credential
+        on credential.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='SECURITY'
+        and credential.revoked_at is not null
+        and credential.revoked_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'CONSENT',
+        'openclaw_consents',consent.id,consent.evidence_hash,
+        coalesce(consent.revoked_at,consent.expires_at)
+          +make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_consents consent
+        on consent.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='CONSENT'
+        and coalesce(consent.revoked_at,consent.expires_at) is not null
+        and coalesce(consent.revoked_at,consent.expires_at)<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'CONSENT',
+        'openclaw_suppressions',suppression.id,suppression.evidence_hash,
+        coalesce(suppression.released_at,suppression.expires_at)
+          +make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_suppressions suppression
+        on suppression.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='CONSENT'
+        and coalesce(suppression.released_at,suppression.expires_at) is not null
+        and coalesce(suppression.released_at,suppression.expires_at)<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+      union all
+      select policy.organization_id,policy.policy_version,'RISK',
+        'openclaw_inbound_automation_decisions',decision.id,decision.frozen_inputs_hash,
+        decision.created_at+make_interval(secs=>policy.retain_for_seconds::integer)
+      from public.openclaw_retention_policies policy
+      join public.openclaw_inbound_automation_decisions decision
+        on decision.organization_id=policy.organization_id
+      where policy.is_active and policy.subject_kind='RISK'
+        and decision.created_at<=statement_timestamp()
+          -make_interval(secs=>policy.retain_for_seconds::integer)
+        and decision.frozen_inputs
+          is distinct from jsonb_build_object('marker','REDACTED_BY_RETENTION')
+    ) due
+    where not exists (
+      select 1 from public.openclaw_retention_evidence_seals seal
+      where seal.organization_id=due.organization_id
+        and seal.source_table=due.source_table and seal.subject_id=due.subject_id
+        and seal.retention_version=due.policy_version
+    )
+    order by due.due_at,due.subject_id
+    limit greatest(1,least(coalesce(p_limit,100),500))
+  loop
+    perform app_private.openclaw_lock_retention_scope_v1(candidate.organization_id);
+    if app_private.openclaw_retention_subject_held_v1(
+      candidate.organization_id,candidate.subject_kind,candidate.subject_id
+    ) then
+      continue;
+    end if;
+    select coalesce(clock.hold_version,0) into v_hold_version
+    from (select 1) singleton left join public.openclaw_retention_hold_clocks clock
+      on clock.organization_id=candidate.organization_id;
+
+    -- Lock the canonical source after the organization hold lock. SKIP LOCKED
+    -- keeps concurrent minute runners non-blocking.
+    case candidate.source_table
+      when 'openclaw_knowledge_versions' then
+        perform version.id from public.openclaw_knowledge_versions version
+        where version.organization_id=candidate.organization_id
+          and version.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        update public.openclaw_knowledge_versions version set
+          content='[REDACTED_BY_RETENTION]',
+          metadata=jsonb_build_object('marker','REDACTED_BY_RETENTION'),
+          validation_result=null
+        where version.organization_id=candidate.organization_id
+          and version.id=candidate.subject_id
+          and version.content is distinct from '[REDACTED_BY_RETENTION]';
+        update public.openclaw_knowledge_chunks chunk set
+          chunk_text='[REDACTED_BY_RETENTION]',embedding=null,
+          metadata=jsonb_build_object('marker','REDACTED_BY_RETENTION')
+        where chunk.organization_id=candidate.organization_id
+          and chunk.knowledge_version_id=candidate.subject_id
+          and chunk.chunk_text is distinct from '[REDACTED_BY_RETENTION]';
+        v_action:='REDACTED';
+      when 'openclaw_health_events' then
+        perform health.id from public.openclaw_health_events health
+        where health.organization_id=candidate.organization_id
+          and health.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        update public.openclaw_health_events health
+        set content_free_metrics=jsonb_build_object('marker','REDACTED_BY_RETENTION')
+        where health.organization_id=candidate.organization_id
+          and health.id=candidate.subject_id;
+        v_action:='REDACTED';
+      when 'openclaw_policy_versions' then
+        perform version.id from public.openclaw_policy_versions version
+        where version.organization_id=candidate.organization_id
+          and version.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        update public.openclaw_policy_versions version set
+          rate_limits=jsonb_build_object('marker','REDACTED_BY_RETENTION'),
+          policy_payload=jsonb_build_object('marker','REDACTED_BY_RETENTION')
+        where version.organization_id=candidate.organization_id
+          and version.id=candidate.subject_id;
+        v_action:='REDACTED';
+      when 'openclaw_delivery_attempts' then
+        perform attempt.id from public.openclaw_delivery_attempts attempt
+        where attempt.organization_id=candidate.organization_id
+          and attempt.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        update public.openclaw_delivery_attempts attempt
+        set delivery_evidence=jsonb_build_object('marker','REDACTED_BY_RETENTION')
+        where attempt.organization_id=candidate.organization_id
+          and attempt.id=candidate.subject_id;
+        v_action:='REDACTED';
+      when 'openclaw_inbound_automation_decisions' then
+        perform decision.id from public.openclaw_inbound_automation_decisions decision
+        where decision.organization_id=candidate.organization_id
+          and decision.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        update public.openclaw_inbound_automation_decisions decision
+        set frozen_inputs=jsonb_build_object('marker','REDACTED_BY_RETENTION')
+        where decision.organization_id=candidate.organization_id
+          and decision.id=candidate.subject_id;
+        v_action:='REDACTED';
+      when 'openclaw_audit_events' then
+        perform event.id from public.openclaw_audit_events event
+        where event.organization_id=candidate.organization_id
+          and event.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        v_action:='EXTERNAL_ANCHOR';
+      when 'openclaw_audit_roots' then
+        perform root.id from public.openclaw_audit_roots root
+        where root.organization_id=candidate.organization_id
+          and root.id=candidate.subject_id and root.anchored_at is not null
+        for update skip locked;
+        if not found then continue; end if;
+        v_action:='EXTERNAL_ANCHOR';
+      when 'openclaw_qr_challenges' then
+        delete from public.openclaw_qr_challenges challenge
+        where challenge.organization_id=candidate.organization_id
+          and challenge.id=candidate.subject_id and challenge.material_version=0;
+        if not found then continue; end if;
+        v_action:='HASH_ONLY';
+      when 'openclaw_automation_versions' then
+        perform version.id from public.openclaw_automation_versions version
+        where version.organization_id=candidate.organization_id
+          and version.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        update public.openclaw_automation_versions version set
+          template_body='[REDACTED_BY_RETENTION]',
+          allowed_crm_fields='{}'::text[],
+          configuration=jsonb_build_object('marker','REDACTED_BY_RETENTION')
+        where version.organization_id=candidate.organization_id
+          and version.id=candidate.subject_id;
+        v_action:='REDACTED';
+      when 'openclaw_control_states' then
+        perform control.id from public.openclaw_control_states control
+        where control.organization_id=candidate.organization_id
+          and control.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        v_action:='HASH_ONLY';
+      when 'openclaw_unknown_resolutions' then
+        perform resolution.id from public.openclaw_unknown_resolutions resolution
+        where resolution.organization_id=candidate.organization_id
+          and resolution.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        v_action:='HASH_ONLY';
+      when 'openclaw_runtime_credentials' then
+        perform credential.id from public.openclaw_runtime_credentials credential
+        where credential.organization_id=candidate.organization_id
+          and credential.id=candidate.subject_id and credential.revoked_at is not null
+        for update skip locked;
+        if not found then continue; end if;
+        v_action:='HASH_ONLY';
+      when 'openclaw_maintenance_credentials' then
+        perform credential.id from public.openclaw_maintenance_credentials credential
+        where credential.organization_id=candidate.organization_id
+          and credential.id=candidate.subject_id and credential.revoked_at is not null
+        for update skip locked;
+        if not found then continue; end if;
+        v_action:='HASH_ONLY';
+      when 'openclaw_consents' then
+        perform consent.id from public.openclaw_consents consent
+        where consent.organization_id=candidate.organization_id
+          and consent.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        v_action:='HASH_ONLY';
+      when 'openclaw_suppressions' then
+        perform suppression.id from public.openclaw_suppressions suppression
+        where suppression.organization_id=candidate.organization_id
+          and suppression.id=candidate.subject_id for update skip locked;
+        if not found then continue; end if;
+        v_action:='HASH_ONLY';
+      else
+        raise exception 'deny unknown evidence retention source: %',candidate.source_table
+          using errcode='55000';
+    end case;
+
+    insert into public.openclaw_retention_evidence_seals(
+      organization_id,subject_kind,source_table,subject_id,retention_version,
+      retention_action,source_evidence_hash,hold_version,due_at
+    ) values (
+      candidate.organization_id,candidate.subject_kind,candidate.source_table,
+      candidate.subject_id,candidate.policy_version,v_action,
+      candidate.source_evidence_hash,v_hold_version,candidate.due_at
+    ) on conflict (organization_id,source_table,subject_id,retention_version) do nothing;
+    get diagnostics v_inserted=row_count;
+    v_sealed:=v_sealed+v_inserted;
+  end loop;
+  return v_sealed;
+end;
 $function$;
 
 create table public.openclaw_retention_delete_tickets (
@@ -1442,6 +2575,7 @@ create table public.openclaw_retention_delete_tickets (
   subject_id uuid not null,
   object_key text not null,
   ticket_jti uuid not null default gen_random_uuid(),
+  delete_authorization_jti uuid not null default gen_random_uuid(),
   claim_generation bigint not null check (claim_generation>0),
   credential_generation bigint not null check (credential_generation>0),
   maintenance_lease_generation bigint not null check (maintenance_lease_generation>0),
@@ -1455,14 +2589,16 @@ create table public.openclaw_retention_delete_tickets (
   ticket_hash text not null check (ticket_hash ~ '^[0-9a-f]{64}$'),
   expected_receipt_claims jsonb not null check (jsonb_typeof(expected_receipt_claims)='object'),
   state text not null default 'DELETE_AUTHORIZED'
-    check (state in ('DELETE_AUTHORIZED','FINALIZED')),
+    check (state in ('DELETE_AUTHORIZED','FINALIZED','REVOKED')),
   authorized_at timestamptz not null default statement_timestamp(),
+  expires_at timestamptz not null,
   receipt jsonb,
   receipt_hash text check (receipt_hash is null or receipt_hash ~ '^[0-9a-f]{64}$'),
   gateway_outcome text check (gateway_outcome is null or gateway_outcome in ('DELETED','NOT_FOUND')),
   finalized_at timestamptz,
   unique (organization_id,id),
   unique (organization_id,ticket_jti),
+  unique (organization_id,delete_authorization_jti),
   unique (organization_id,work_item_id),
   foreign key (organization_id,maintenance_principal_id,work_item_id)
     references public.openclaw_maintenance_work_items(
@@ -1475,6 +2611,7 @@ create table public.openclaw_retention_delete_tickets (
     convert_to('ihome-openclaw-retention-delete-ticket-v1','UTF8')||decode('00','hex')
       ||ticket_bytes,'sha256'),'hex')),
   check ((state='FINALIZED')=(finalized_at is not null)),
+  check (expires_at>authorized_at and expires_at<=authorized_at+interval '5 seconds'),
   check ((receipt is null)=(receipt_hash is null)),
   check ((receipt is null)=(gateway_outcome is null))
 );
@@ -1509,6 +2646,7 @@ declare
   v_payload jsonb;
   v_bytes bytea;
   v_hash text;
+  v_inserted integer;
   v_created integer := 0;
 begin
   for candidate in
@@ -1537,13 +2675,17 @@ begin
         and media.created_at<=statement_timestamp()-make_interval(secs=>policy.retain_for_seconds::integer)
         and media.object_key is not null and media.byte_state in ('CACHED','AVAILABLE')
     )
-    select subject.* from subjects subject
+    select subject.*,coalesce(clock.hold_version,0) scope_version
+    from subjects subject
+    left join public.openclaw_retention_hold_clocks clock
+      on clock.organization_id=subject.organization_id
     where not app_private.openclaw_retention_subject_held_v1(
       subject.organization_id,subject.subject_kind,subject.subject_id)
       and not exists (select 1 from public.openclaw_maintenance_work_items work
         where work.organization_id=subject.organization_id
           and work.source_key='retention:quarantine:'||subject.subject_kind||':'
-            ||subject.subject_id||':'||subject.policy_version)
+            ||subject.subject_id||':'||subject.policy_version||':'
+            ||coalesce(clock.hold_version,0))
     order by subject.subject_created_at,subject.subject_id
     limit greatest(1,least(coalesce(p_limit,100),500))
   loop
@@ -1565,9 +2707,7 @@ begin
     if binding.maintenance_principal_id is null then continue; end if;
     v_payload := jsonb_build_object('version',1,'subjectKind',candidate.subject_kind,
       'subjectId',candidate.subject_id,'retentionVersion',candidate.policy_version,
-      'scopeVersion',coalesce((select clock.hold_version
-        from public.openclaw_retention_hold_clocks clock
-        where clock.organization_id=candidate.organization_id),0));
+      'scopeVersion',candidate.scope_version);
     v_bytes := app_private.openclaw_jcs_bytes_v1(v_payload);
     v_hash := encode(extensions.digest(v_bytes,'sha256'),'hex');
     insert into public.openclaw_maintenance_work_items(
@@ -1576,12 +2716,14 @@ begin
       maintenance_lease_generation,fencing_token,credential_generation
     ) values (
       candidate.organization_id,binding.maintenance_principal_id,'RETENTION_DELETE','QUARANTINE',
-      candidate.subject_id,candidate.policy_version::text,
-      'retention:quarantine:'||candidate.subject_kind||':'||candidate.subject_id||':'||candidate.policy_version,
+      candidate.subject_id,candidate.policy_version||':'||candidate.scope_version,
+      'retention:quarantine:'||candidate.subject_kind||':'||candidate.subject_id||':'
+        ||candidate.policy_version||':'||candidate.scope_version,
       v_hash,v_payload,v_hash,'QUEUED',1,binding.lease_generation,
       binding.fencing_token,binding.credential_generation
     ) on conflict (organization_id,source_key) where source_key is not null do nothing;
-    v_created:=v_created+1;
+    get diagnostics v_inserted=row_count;
+    v_created:=v_created+v_inserted;
   end loop;
   return v_created;
 end;
@@ -1612,6 +2754,7 @@ begin
   if p_request->>'version'<>'1' then
     raise exception 'retention quarantine version mismatch' using errcode='22023';
   end if;
+  perform app_private.openclaw_lock_retention_scope_v1(v_org);
   v_token := encode(extensions.digest(convert_to('ihome-openclaw-work-claim-v1','UTF8')
     ||decode('00','hex')||convert_to(p_request->>'claimToken','UTF8'),'sha256'),'hex');
   select work.* into v_work from public.openclaw_maintenance_work_items work
@@ -1719,6 +2862,7 @@ declare
   v_payload jsonb;
   v_bytes bytea;
   v_hash text;
+  v_inserted integer;
   v_created integer := 0;
 begin
   for tombstone in
@@ -1773,7 +2917,8 @@ begin
       v_hash,v_payload,v_hash,'QUEUED',1,binding.lease_generation,
       binding.fencing_token,binding.credential_generation
     ) on conflict (organization_id,source_key) where source_key is not null do nothing;
-    v_created:=v_created+1;
+    get diagnostics v_inserted=row_count;
+    v_created:=v_created+v_inserted;
   end loop;
   return v_created;
 end;
@@ -1797,6 +2942,8 @@ declare
   v_signing bigint;
   v_ticket uuid := gen_random_uuid();
   v_ticket_jti uuid := gen_random_uuid();
+  v_authorization_jti uuid := gen_random_uuid();
+  v_expires timestamptz;
   v_domain_hash text;
   v_claims jsonb;
   v_payload jsonb;
@@ -1806,6 +2953,7 @@ begin
   if p_request->>'version'<>'1' then
     raise exception 'retention authorization version mismatch' using errcode='22023';
   end if;
+  perform app_private.openclaw_lock_retention_scope_v1(v_org);
   v_token := encode(extensions.digest(convert_to('ihome-openclaw-work-claim-v1','UTF8')
     ||decode('00','hex')||convert_to(p_request->>'claimToken','UTF8'),'sha256'),'hex');
   select work.* into v_work from public.openclaw_maintenance_work_items work
@@ -1858,28 +3006,37 @@ begin
     convert_to('ihome-openclaw-retention-delete-domain-v1','UTF8')||decode('00','hex')
       ||convert_to(v_org::text||':'||v_ticket_jti||':'||v_tomb.object_key,'UTF8'),
     'sha256'),'hex');
+  v_expires:=least(statement_timestamp()+interval '5 seconds',v_work.lease_expires_at);
   v_claims := jsonb_build_object('version',1,'organizationId',v_org,
-    'ticketJti',v_ticket_jti,'objectKey',v_tomb.object_key,'domainHash',v_domain_hash,
-    'signingKeyGeneration',v_signing);
+    'maintenancePrincipalId',v_maintenance,'workItemId',v_work.id,
+    'claimGeneration',v_work.claim_generation,
+    'credentialGeneration',v_work.credential_generation,
+    'leaseGeneration',v_work.maintenance_lease_generation,
+    'fencingToken',v_work.fencing_token,'deletePhase','FINAL_DELETE',
+    'ticketJti',v_ticket_jti,
+    'deleteAuthorizationJti',v_authorization_jti,
+    'objectKey',v_tomb.object_key,'holdVersion',v_hold_version,
+    'quarantineVersion',v_tomb.quarantine_version,'domainHash',v_domain_hash,
+    'signingKeyGeneration',v_signing,'expiresAt',v_expires);
   v_payload := v_claims||jsonb_build_object('workItemId',v_work.id,
     'tombstoneId',v_tomb.id,'subjectId',v_tomb.subject_id,
     'holdVersion',v_hold_version,'quarantineVersion',v_tomb.quarantine_version,
-    'authorizedAt',statement_timestamp());
+    'authorizedAt',statement_timestamp(),'expiresAt',v_expires);
   v_bytes := app_private.openclaw_jcs_bytes_v1(v_payload);
   v_hash := encode(extensions.digest(
     convert_to('ihome-openclaw-retention-delete-ticket-v1','UTF8')||decode('00','hex')
       ||v_bytes,'sha256'),'hex');
   insert into public.openclaw_retention_delete_tickets(
     id,organization_id,maintenance_principal_id,work_item_id,tombstone_id,subject_id,
-    object_key,ticket_jti,claim_generation,credential_generation,
+    object_key,ticket_jti,delete_authorization_jti,claim_generation,credential_generation,
     maintenance_lease_generation,fencing_token,hold_version,quarantine_version,
     signing_key_generation,domain_hash,ticket_payload,ticket_bytes,ticket_hash,
-    expected_receipt_claims
+    expected_receipt_claims,expires_at
   ) values (
     v_ticket,v_org,v_maintenance,v_work.id,v_tomb.id,v_tomb.subject_id,v_tomb.object_key,
-    v_ticket_jti,v_work.claim_generation,v_work.credential_generation,
+    v_ticket_jti,v_authorization_jti,v_work.claim_generation,v_work.credential_generation,
     v_work.maintenance_lease_generation,v_work.fencing_token,v_hold_version,
-    v_tomb.quarantine_version,v_signing,v_domain_hash,v_payload,v_bytes,v_hash,v_claims
+    v_tomb.quarantine_version,v_signing,v_domain_hash,v_payload,v_bytes,v_hash,v_claims,v_expires
   );
   update public.openclaw_maintenance_work_items work set state='DELETE_AUTHORIZED',
     claim_token_hash=null,lease_expires_at=null,retry_not_before=null,updated_at=statement_timestamp()
@@ -1887,7 +3044,8 @@ begin
     and work.claim_generation=v_work.claim_generation;
   if not found then raise exception 'DELETE_AUTHORIZED work transition CAS failed' using errcode='40001'; end if;
   return jsonb_build_object('version',1,'ticketId',v_ticket,'ticket',v_payload,
-    'ticketHash',v_hash,'state','DELETE_AUTHORIZED');
+    'ticketHash',v_hash,'deleteAuthorizationJti',v_authorization_jti,
+    'expiresAt',v_expires,'state','DELETE_AUTHORIZED');
 end;
 $function$;
 
@@ -1915,6 +3073,13 @@ begin
   where ticket.organization_id=v_org and ticket.id=(p_request->>'ticketId')::uuid
   for update;
   if not found then raise exception 'retention delete ticket not found' using errcode='40001'; end if;
+  if v_ticket.maintenance_principal_id<>(p_principal->>'maintenancePrincipalId')::uuid
+     or v_ticket.credential_generation<>(p_principal->>'credentialGeneration')::bigint
+     or v_ticket.maintenance_lease_generation<>(p_principal->>'leaseGeneration')::bigint
+     or v_ticket.fencing_token<>(p_principal->>'fencingToken')::bigint then
+    raise exception 'maintenance principal binding mismatch for retention receipt'
+      using errcode='42501';
+  end if;
   if v_ticket.state='FINALIZED' then
     if v_ticket.receipt_hash<>v_hash then
       raise exception 'finalized retention ticket replay mismatch' using errcode='40001';
@@ -1928,11 +3093,25 @@ begin
     or coalesce((v_receipt->>'preverified')::boolean,false) is not true
     or v_receipt->>'version'<>'1'
     or v_receipt->>'organizationId'<>v_ticket.organization_id::text
+    or v_receipt->>'maintenancePrincipalId'<>v_ticket.maintenance_principal_id::text
+    or v_receipt->>'workItemId'<>v_ticket.work_item_id::text
+    or (v_receipt->>'claimGeneration')::bigint<>v_ticket.claim_generation
+    or (v_receipt->>'credentialGeneration')::bigint<>v_ticket.credential_generation
+    or (v_receipt->>'leaseGeneration')::bigint<>v_ticket.maintenance_lease_generation
+    or (v_receipt->>'fencingToken')::bigint<>v_ticket.fencing_token
+    or v_receipt->>'deletePhase'<>'FINAL_DELETE'
     or v_receipt->>'ticketJti'<>v_ticket.ticket_jti::text
+    or v_receipt->>'deleteAuthorizationJti'<>v_ticket.delete_authorization_jti::text
     or v_receipt->>'objectKey'<>v_ticket.object_key
+    or (v_receipt->>'holdVersion')::bigint<>v_ticket.hold_version
+    or (v_receipt->>'quarantineVersion')::bigint<>v_ticket.quarantine_version
     or v_receipt->>'domainHash'<>v_ticket.domain_hash
     or (v_receipt->>'signingKeyGeneration')::bigint<>v_ticket.signing_key_generation
     or coalesce(v_receipt->>'signatureHash','') !~ '^[0-9a-f]{64}$'
+    or exists (
+      select 1 from pg_catalog.jsonb_each(v_ticket.expected_receipt_claims) expected(key,value)
+      where v_receipt -> (expected.key) is distinct from expected.value
+    )
   then
     raise exception 'gateway receipt claims do not exactly match preverified delete ticket'
       using errcode='42501';
@@ -1957,11 +3136,12 @@ begin
   if not found then raise exception 'authorized retention work CAS failed' using errcode='40001'; end if;
   insert into public.openclaw_maintenance_work_attempts(
     organization_id,maintenance_principal_id,work_item_id,claim_generation,
-    maintenance_lease_generation,fencing_token,attempt_number,outcome,
+    maintenance_lease_generation,fencing_token,credential_generation,attempt_number,outcome,
     gateway_receipt,receipt_hash,evidence,evidence_hash
   ) values (
     v_org,v_ticket.maintenance_principal_id,v_ticket.work_item_id,v_ticket.claim_generation,
-    v_ticket.maintenance_lease_generation,v_ticket.fencing_token,v_attempt,'COMPLETE',
+    v_ticket.maintenance_lease_generation,v_ticket.fencing_token,v_ticket.credential_generation,
+    v_attempt,'COMPLETE',
     v_receipt,v_hash,jsonb_build_object('ticketId',v_ticket.id,'gatewayOutcome',v_outcome),v_hash
   );
   update public.openclaw_maintenance_work_items work set state='COMPLETE',
@@ -2004,6 +3184,7 @@ declare
   v_payload jsonb;
   v_bytes bytea;
   v_hash text;
+  v_inserted integer;
   v_created integer := 0;
 begin
   for day in
@@ -2026,15 +3207,6 @@ begin
     order by root_date,event.organization_id
     limit greatest(1,least(coalesce(p_limit,31),366))
   loop
-    insert into public.openclaw_audit_roots(
-      organization_id,root_date,first_sequence,last_sequence,root_hash,event_count,
-      signing_key_generation,r2_anchor_key
-    ) values (
-      day.organization_id,day.root_date,day.first_sequence,day.last_sequence,
-      day.root_hash,day.event_count,day.signing_key_generation,
-      'v1/org/'||day.organization_id||'/audit/'||day.root_date||'/'||day.root_hash
-    ) on conflict (organization_id,root_date) do nothing returning id into v_root;
-    if v_root is null then continue; end if;
     select principal.id maintenance_principal_id,credential.credential_generation,
       lease.lease_generation,lease.fencing_token
     into binding
@@ -2050,10 +3222,21 @@ begin
       and principal.is_current and principal.revoked_at is null
     order by lease.lease_generation desc,credential.credential_generation desc limit 1;
     if binding.maintenance_principal_id is null then continue; end if;
+    v_root:=gen_random_uuid();
+    insert into public.openclaw_audit_roots(
+      id,organization_id,root_date,first_sequence,last_sequence,root_hash,event_count,
+      signing_key_generation,r2_anchor_key
+    ) values (
+      v_root,day.organization_id,day.root_date,day.first_sequence,day.last_sequence,
+      day.root_hash,day.event_count,day.signing_key_generation,
+      'v1/org/'||day.organization_id||'/audit/'||day.root_date||'/'||v_root||'.json'
+    ) on conflict (organization_id,root_date) do nothing returning id into v_root;
+    if v_root is null then continue; end if;
     v_payload := jsonb_build_object('version',1,'auditRootId',v_root,
       'rootDate',day.root_date,'rootHash',day.root_hash,
       'firstSequence',day.first_sequence,'lastSequence',day.last_sequence,
-      'eventCount',day.event_count,'signingKeyGeneration',day.signing_key_generation);
+      'eventCount',day.event_count,'signingKeyGeneration',day.signing_key_generation,
+      'r2AnchorKey','v1/org/'||day.organization_id||'/audit/'||day.root_date||'/'||v_root||'.json');
     v_bytes := app_private.openclaw_jcs_bytes_v1(v_payload);
     v_hash := encode(extensions.digest(v_bytes,'sha256'),'hex');
     insert into public.openclaw_maintenance_work_items(
@@ -2066,9 +3249,135 @@ begin
       v_hash,v_payload,v_hash,'QUEUED',1,binding.lease_generation,
       binding.fencing_token,binding.credential_generation
     ) on conflict (organization_id,source_key) where source_key is not null do nothing;
-    v_created:=v_created+1;
+    get diagnostics v_inserted=row_count;
+    v_created:=v_created+v_inserted;
   end loop;
   return v_created;
+end;
+$function$;
+
+create or replace function app_private.openclaw_ack_audit_anchor_v1(
+  p_principal jsonb,p_envelope jsonb,p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_principal->>'organizationId')::uuid;
+  v_maintenance uuid := (p_principal->>'maintenancePrincipalId')::uuid;
+  v_work public.openclaw_maintenance_work_items%rowtype;
+  v_root public.openclaw_audit_roots%rowtype;
+  v_receipt jsonb := p_request->'gatewayReceipt';
+  v_receipt_hash text;
+  v_token text;
+  v_attempt integer;
+begin
+  if p_request->>'version'<>'1' or jsonb_typeof(v_receipt)<>'object'
+     or nullif(p_request->>'verifyTicketJti','') is null then
+    raise exception 'audit anchor acknowledgement is invalid' using errcode='22023';
+  end if;
+  v_token:=encode(extensions.digest(convert_to('ihome-openclaw-work-claim-v1','UTF8')
+    ||decode('00','hex')||convert_to(p_request->>'claimToken','UTF8'),'sha256'),'hex');
+  v_receipt_hash:=encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(v_receipt),'sha256'),'hex');
+  select work.* into v_work
+  from public.openclaw_maintenance_work_items work
+  join public.openclaw_maintenance_credentials credential
+    on credential.organization_id=work.organization_id
+   and credential.maintenance_principal_id=work.maintenance_principal_id
+   and credential.credential_generation=work.credential_generation and credential.revoked_at is null
+  join public.openclaw_maintenance_leases lease
+    on lease.organization_id=work.organization_id
+   and lease.maintenance_principal_id=work.maintenance_principal_id
+   and lease.lease_generation=work.maintenance_lease_generation
+   and lease.fencing_token=work.fencing_token and lease.status='ACTIVE'
+  where work.organization_id=v_org and work.maintenance_principal_id=v_maintenance
+    and work.id=(p_request->>'workItemId')::uuid and work.work_kind='AUDIT_ANCHOR'
+    and work.work_phase='ANCHOR' and work.state='LEASED'
+    and work.claim_generation=(p_request->>'claimGeneration')::bigint
+    and work.claim_token_hash=v_token
+    and work.credential_generation=(p_principal->>'credentialGeneration')::bigint
+    and work.maintenance_lease_generation=(p_principal->>'leaseGeneration')::bigint
+    and work.fencing_token=(p_principal->>'fencingToken')::bigint
+    and work.lease_expires_at>statement_timestamp() and lease.expires_at>statement_timestamp()
+  for update of work;
+  if not found then
+    select work.* into v_work
+    from public.openclaw_maintenance_work_items work
+    join public.openclaw_maintenance_work_attempts attempt
+      on attempt.organization_id=work.organization_id
+     and attempt.maintenance_principal_id=work.maintenance_principal_id
+     and attempt.work_item_id=work.id
+     and attempt.claim_generation=work.claim_generation
+     and attempt.outcome='COMPLETE'
+     and attempt.receipt_hash=v_receipt_hash
+     and attempt.evidence->>'verifyTicketJti'=p_request->>'verifyTicketJti'
+     and attempt.evidence->>'claimTokenHash'=v_token
+    where work.organization_id=v_org and work.maintenance_principal_id=v_maintenance
+      and work.id=(p_request->>'workItemId')::uuid and work.work_kind='AUDIT_ANCHOR'
+      and work.work_phase='ANCHOR' and work.state='COMPLETE'
+      and work.claim_generation=(p_request->>'claimGeneration')::bigint
+      and work.credential_generation=(p_principal->>'credentialGeneration')::bigint
+      and work.maintenance_lease_generation=(p_principal->>'leaseGeneration')::bigint
+      and work.fencing_token=(p_principal->>'fencingToken')::bigint;
+    if found then
+      select root.* into strict v_root from public.openclaw_audit_roots root
+      where root.organization_id=v_org and root.id=(v_work.payload->>'auditRootId')::uuid;
+      if v_root.gateway_receipt_hash<>v_receipt_hash then
+        raise exception 'audit acknowledgement replay mismatch' using errcode='40001';
+      end if;
+      return jsonb_build_object('version',1,'auditRootId',v_root.id,
+        'gatewayReceiptHash',v_receipt_hash,'idempotentReplay',true);
+    end if;
+    raise exception 'audit work claim binding CAS failed' using errcode='40001';
+  end if;
+  select root.* into v_root from public.openclaw_audit_roots root
+  where root.organization_id=v_org and root.id=(v_work.payload->>'auditRootId')::uuid
+    and root.root_hash=v_work.payload->>'rootHash'
+    and root.r2_anchor_key=v_work.payload->>'r2AnchorKey'
+    and root.signing_key_generation=(v_work.payload->>'signingKeyGeneration')::bigint
+    and root.anchored_at is null for update;
+  if not found then raise exception 'audit root frozen work mismatch' using errcode='40001'; end if;
+  if coalesce((v_receipt->>'preverified')::boolean,false) is not true
+     or v_receipt->>'version'<>'1' or v_receipt->>'outcome'<>'VERIFIED'
+     or v_receipt->>'organizationId'<>v_org::text
+     or v_receipt->>'maintenancePrincipalId'<>v_maintenance::text
+     or v_receipt->>'workItemId'<>v_work.id::text
+     or (v_receipt->>'claimGeneration')::bigint<>v_work.claim_generation
+     or (v_receipt->>'credentialGeneration')::bigint<>v_work.credential_generation
+     or (v_receipt->>'leaseGeneration')::bigint<>v_work.maintenance_lease_generation
+     or (v_receipt->>'fencingToken')::bigint<>v_work.fencing_token
+     or v_receipt->>'auditRootId'<>v_root.id::text
+     or v_receipt->>'rootHash'<>v_root.root_hash
+     or v_receipt->>'objectKey'<>v_root.r2_anchor_key
+     or v_receipt->>'verifyTicketJti'<>p_request->>'verifyTicketJti'
+     or (v_receipt->>'signingKeyGeneration')::bigint<>v_root.signing_key_generation
+     or coalesce(v_receipt->>'signatureHash','') !~ '^[0-9a-f]{64}$' then
+    raise exception 'audit receipt does not match exact work/root claim' using errcode='42501';
+  end if;
+  update public.openclaw_audit_roots root set signature_hash=v_receipt->>'signatureHash',
+    gateway_receipt=v_receipt,gateway_receipt_hash=v_receipt_hash,anchored_at=statement_timestamp()
+  where root.organization_id=v_org and root.id=v_root.id and root.anchored_at is null;
+  v_attempt:=v_work.attempt_count;
+  insert into public.openclaw_maintenance_work_attempts(
+    organization_id,maintenance_principal_id,work_item_id,claim_generation,
+    maintenance_lease_generation,fencing_token,credential_generation,attempt_number,outcome,
+    gateway_receipt,receipt_hash,evidence,evidence_hash
+  ) values (
+    v_org,v_maintenance,v_work.id,v_work.claim_generation,v_work.maintenance_lease_generation,
+    v_work.fencing_token,v_work.credential_generation,v_attempt,'COMPLETE',v_receipt,v_receipt_hash,
+    jsonb_build_object('auditRootId',v_root.id,'verifyTicketJti',p_request->>'verifyTicketJti',
+      'claimTokenHash',v_token),
+    v_receipt_hash
+  );
+  update public.openclaw_maintenance_work_items work set state='COMPLETE',claim_token_hash=null,
+    lease_expires_at=null,terminal_at=statement_timestamp(),updated_at=statement_timestamp()
+  where work.organization_id=v_org and work.id=v_work.id and work.state='LEASED'
+    and work.claim_generation=v_work.claim_generation;
+  if not found then raise exception 'audit work completion CAS failed' using errcode='40001'; end if;
+  return jsonb_build_object('version',1,'auditRootId',v_root.id,
+    'gatewayReceiptHash',v_receipt_hash,'idempotentReplay',false);
 end;
 $function$;
 
@@ -2187,6 +3496,8 @@ begin
       where handoff.organization_id=outbox.organization_id
         and handoff.account_id=outbox.account_id and handoff.outbox_id=outbox.id
         and handoff.claim_generation=outbox.claim_generation
+        and handoff.consumed_at is not null
+        and handoff.authorized_handoff_at is not null
       order by handoff.issued_at desc limit 1
     ) handoff_match on true
     where (p_organization_id is null or outbox.organization_id=p_organization_id)
@@ -2400,6 +3711,9 @@ declare
   v_control bigint;
   v_takeover bigint;
   v_outbox uuid;
+  v_attempt integer;
+  v_inserted integer;
+  v_existing public.openclaw_outbox%rowtype;
 begin
   if p_request->>'version'<>'1' or jsonb_typeof(v_payload)<>'object' then
     raise exception 'version 1 canonical payload required' using errcode='22023';
@@ -2409,6 +3723,37 @@ begin
   v_inbound_token:=encode(extensions.digest(
     convert_to('ihome-openclaw-inbound-automation-claim-v1','UTF8')||decode('00','hex')
       ||convert_to(p_request->>'claimToken','UTF8'),'sha256'),'hex');
+  v_payload_hash:=app_private.openclaw_send_payload_hash_v1(v_payload);
+  select work.* into v_work
+  from public.openclaw_send_work_items work
+  join public.openclaw_send_work_attempts attempt
+    on attempt.organization_id=work.organization_id and attempt.account_id=work.account_id
+   and attempt.work_item_id=work.id
+   and attempt.claim_generation=(p_request->>'claimGeneration')::bigint
+   and attempt.outcome='COMPLETE'
+   and attempt.evidence->>'claimTokenHash' in (v_token,v_inbound_token)
+  where work.organization_id=v_org and work.account_id=v_account
+    and work.id=(p_request->>'workItemId')::uuid and work.state='COMPLETE'
+    and work.credential_generation=(p_principal->>'credentialGeneration')::bigint
+    and work.runtime_lease_generation=(p_principal->>'leaseGeneration')::bigint
+    and work.fencing_token=(p_principal->>'fencingToken')::bigint
+    and work.session_generation=(p_principal->>'sessionGeneration')::bigint;
+  if found then
+    select outbox.* into strict v_existing from public.openclaw_outbox outbox
+    join public.openclaw_send_work_attempts attempt
+      on attempt.organization_id=v_work.organization_id and attempt.account_id=v_work.account_id
+     and attempt.work_item_id=v_work.id and attempt.claim_generation=(p_request->>'claimGeneration')::bigint
+    where outbox.organization_id=v_org
+      and outbox.id=(attempt.evidence->>'outboxId')::uuid;
+    if v_payload_hash is distinct from p_request->>'payloadHash'
+       or v_existing.payload_hash is distinct from v_payload_hash
+       or v_work.source_hash is distinct from p_request->>'sourceSnapshotHash' then
+      raise exception 'idempotent work-to-outbox replay mismatch' using errcode='40001';
+    end if;
+    return jsonb_build_object('version',1,'workItemId',v_work.id,'outboxId',v_existing.id,
+      'sourceKind',v_existing.source_kind,'sourceSnapshotHash',v_work.source_hash,
+      'payloadHash',v_payload_hash,'idempotentReplay',true);
+  end if;
   select work.* into v_work from public.openclaw_send_work_items work
   join public.openclaw_runtime_credentials credential
     on credential.organization_id=work.organization_id and credential.account_id=work.account_id
@@ -2430,7 +3775,6 @@ begin
     and work.lease_expires_at>statement_timestamp() and lease.expires_at>statement_timestamp()
   for update of work;
   if not found then raise exception 'create outbox stored work binding CAS failed' using errcode='40001'; end if;
-  v_payload_hash:=app_private.openclaw_send_payload_hash_v1(v_payload);
   if v_payload_hash is distinct from p_request->>'payloadHash'
     or v_work.source_hash is distinct from p_request->>'sourceSnapshotHash' then
     raise exception 'canonical payload or frozen source hash mismatch' using errcode='40001';
@@ -2496,11 +3840,52 @@ begin
     v_payload->>'idempotencyKey',v_payload,
     app_private.openclaw_canonical_send_payload_bytes_v1(v_payload),v_payload_hash,
     v_work.fencing_token,v_work.session_generation,v_control,v_takeover,v_work.smoke_run_id
-  ) on conflict (organization_id,account_id,idempotency_key) do update
-    set updated_at=public.openclaw_outbox.updated_at returning id into v_outbox;
+  ) on conflict (organization_id,account_id,idempotency_key) do nothing
+  returning id into v_outbox;
+  get diagnostics v_inserted=row_count;
+  if v_inserted=0 then
+    select outbox.* into strict v_existing from public.openclaw_outbox outbox
+    where outbox.organization_id=v_org and outbox.account_id=v_account
+      and outbox.idempotency_key=v_payload->>'idempotencyKey' for share;
+    if v_existing.payload_hash is distinct from v_payload_hash
+       or v_existing.target_id is distinct from v_target
+       or v_existing.source_kind is distinct from v_source_kind
+       or v_existing.automation_version_id is distinct from v_automation
+       or v_existing.schedule_id is distinct from v_work.schedule_id
+       or v_existing.schedule_version is distinct from v_work.schedule_version
+       or v_existing.subscription_id is distinct from v_work.subscription_id
+       or v_existing.subscription_version is distinct from v_work.subscription_version
+       or v_existing.occurrence_id is distinct from coalesce(v_work.schedule_occurrence_id,v_work.crm_occurrence_id)
+    then
+      raise exception 'same idempotency key has different frozen work or payload' using errcode='40001';
+    end if;
+    v_outbox:=v_existing.id;
+  end if;
+  v_attempt:=v_work.attempt_count;
+  insert into public.openclaw_send_work_attempts(
+    organization_id,account_id,cell_id,work_item_id,claim_generation,fencing_token,
+    session_generation,credential_generation,runtime_lease_generation,
+    attempt_number,outcome,evidence,evidence_hash
+  ) values (
+    v_org,v_account,v_work.cell_id,v_work.id,v_work.claim_generation,v_work.fencing_token,
+    v_work.session_generation,v_work.credential_generation,v_work.runtime_lease_generation,
+    v_attempt,'COMPLETE',
+    jsonb_build_object('outboxId',v_outbox,'claimTokenHash',v_work.claim_token_hash,
+      'payloadHash',v_payload_hash,'sourceSnapshotHash',v_work.source_hash),
+    encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(jsonb_build_object(
+      'outboxId',v_outbox,'claimTokenHash',v_work.claim_token_hash,
+      'payloadHash',v_payload_hash,'sourceSnapshotHash',v_work.source_hash
+    )),'sha256'),'hex')
+  );
+  update public.openclaw_send_work_items work set state='COMPLETE',claim_token_hash=null,
+    lease_expires_at=null,retry_not_before=null,terminal_at=statement_timestamp(),
+    updated_at=statement_timestamp()
+  where work.organization_id=v_org and work.id=v_work.id and work.state='LEASED'
+    and work.claim_generation=v_work.claim_generation;
+  if not found then raise exception 'atomic work completion CAS failed' using errcode='40001'; end if;
   return jsonb_build_object('version',1,'workItemId',v_work.id,'outboxId',v_outbox,
     'sourceKind',v_source_kind,'sourceSnapshotHash',v_work.source_hash,
-    'payloadHash',v_payload_hash);
+    'payloadHash',v_payload_hash,'idempotentReplay',false);
 end;
 $function$;
 
@@ -2513,32 +3898,30 @@ as $function$
 declare
   v_lock bigint := pg_catalog.hashtextextended('ihome-openclaw-maintenance-runner-v1',0);
   v_result jsonb;
+  v_retention_policies integer;
 begin
-  if not pg_catalog.pg_try_advisory_lock(v_lock) then
+  if not pg_catalog.pg_try_advisory_xact_lock(v_lock) then
     return jsonb_build_object('version',1,'acquired',false,'databaseTime',statement_timestamp());
   end if;
-  begin
-    v_result := jsonb_build_object(
-      'version',1,'acquired',true,
-      'qrExpired',app_private.expire_openclaw_qr_challenges_v1(),
-      'runtimeLeasesExpired',app_private.expire_openclaw_runtime_leases_v1(),
-      'maintenanceLeasesExpired',app_private.expire_openclaw_maintenance_leases_v1(),
-      'deliverySweep',app_private.sweep_openclaw_delivery_claims_v1(null,null,null),
-      'workRebound',app_private.rebind_openclaw_unclaimed_work_v1(500),
-      'salesTasksEmitted',app_private.openclaw_sweep_due_sales_tasks_v1(500),
-      'scheduleWork',app_private.materialize_openclaw_schedule_work_v1(500),
-      'crmWork',app_private.materialize_openclaw_crm_work_v1(500),
-      'retentionQuarantine',app_private.materialize_openclaw_retention_quarantine_v1(500),
-      'retentionFinalDelete',app_private.materialize_openclaw_retention_final_delete_v1(500),
-      'auditRoots',app_private.materialize_openclaw_audit_root_v1(366),
-      'databaseTime',statement_timestamp()
-    );
-    perform pg_catalog.pg_advisory_unlock(v_lock);
-    return v_result;
-  exception when others then
-    perform pg_catalog.pg_advisory_unlock(v_lock);
-    raise;
-  end;
+  v_retention_policies:=app_private.ensure_openclaw_retention_contract_v1();
+  v_result := jsonb_build_object(
+    'version',1,'acquired',true,
+    'retentionPoliciesEnsured',v_retention_policies,
+    'qrExpired',app_private.expire_openclaw_qr_challenges_v1(),
+    'runtimeLeasesExpired',app_private.expire_openclaw_runtime_leases_v1(),
+    'maintenanceLeasesExpired',app_private.expire_openclaw_maintenance_leases_v1(),
+    'deliverySweep',app_private.sweep_openclaw_delivery_claims_v1(null,null,null),
+    'workRebound',app_private.rebind_openclaw_unclaimed_work_v1(500),
+    'salesTasksEmitted',app_private.openclaw_sweep_due_sales_tasks_v1(500),
+    'scheduleWork',app_private.materialize_openclaw_schedule_work_v1(500),
+    'crmWork',app_private.materialize_openclaw_crm_work_v1(500),
+    'retentionQuarantine',app_private.materialize_openclaw_retention_quarantine_v1(500),
+    'retentionFinalDelete',app_private.materialize_openclaw_retention_final_delete_v1(500),
+    'evidenceRetention',app_private.enforce_openclaw_evidence_retention_v1(500),
+    'auditRoots',app_private.materialize_openclaw_audit_root_v1(366),
+    'databaseTime',statement_timestamp()
+  );
+  return v_result;
 end;
 $function$;
 
@@ -2561,7 +3944,7 @@ begin
     'openclaw_schedule_occurrences','openclaw_retention_policies',
     'openclaw_retention_hold_clocks','openclaw_retention_hold_scopes',
     'openclaw_retention_delete_tickets','openclaw_retention_gateway_configs',
-    'openclaw_audit_signing_configs'
+    'openclaw_audit_signing_configs','openclaw_retention_evidence_seals'
   ] loop
     execute format('alter table public.%I owner to openclaw_function_owner',v_table);
     execute format('alter table public.%I enable row level security',v_table);
@@ -2584,11 +3967,81 @@ create policy openclaw_retention_hold_clocks_maintenance_all
 create policy openclaw_retention_delete_tickets_maintenance_all
   on public.openclaw_retention_delete_tickets for all to openclaw_maintenance_writer
   using (true) with check (true);
+create policy openclaw_retention_evidence_seals_maintenance_select
+  on public.openclaw_retention_evidence_seals for select to openclaw_maintenance_writer
+  using (true);
+create policy openclaw_retention_evidence_seals_maintenance_insert
+  on public.openclaw_retention_evidence_seals for insert to openclaw_maintenance_writer
+  with check (true);
+create policy openclaw_retention_policies_maintenance_select
+  on public.openclaw_retention_policies for select to openclaw_maintenance_writer
+  using (true);
+create policy openclaw_retention_gateway_configs_maintenance_select
+  on public.openclaw_retention_gateway_configs for select to openclaw_maintenance_writer
+  using (true);
+create policy openclaw_audit_signing_configs_maintenance_select
+  on public.openclaw_audit_signing_configs for select to openclaw_maintenance_writer
+  using (true);
+
+create policy openclaw_messages_maintenance_retention_select
+  on public.openclaw_messages for select to openclaw_maintenance_writer using (true);
+create policy openclaw_messages_maintenance_retention_update
+  on public.openclaw_messages for update to openclaw_maintenance_writer
+  using (true) with check (true);
+create policy openclaw_ai_drafts_maintenance_retention_select
+  on public.openclaw_ai_drafts for select to openclaw_maintenance_writer using (true);
+create policy openclaw_ai_drafts_maintenance_retention_update
+  on public.openclaw_ai_drafts for update to openclaw_maintenance_writer
+  using (true) with check (true);
+create policy openclaw_qr_challenges_maintenance_retention_delete
+  on public.openclaw_qr_challenges for delete to openclaw_maintenance_writer
+  using (true);
+
+do $retention_source_security$
+declare
+  v_table text;
+begin
+  foreach v_table in array array[
+    'openclaw_knowledge_versions','openclaw_knowledge_chunks',
+    'openclaw_health_events','openclaw_qr_challenges','openclaw_audit_events',
+    'openclaw_audit_roots','openclaw_policy_versions','openclaw_automation_versions',
+    'openclaw_control_states','openclaw_delivery_attempts','openclaw_unknown_resolutions',
+    'openclaw_runtime_credentials','openclaw_maintenance_credentials',
+    'openclaw_consents','openclaw_suppressions','openclaw_inbound_automation_decisions'
+  ] loop
+    execute format(
+      'create policy %I on public.%I for select to openclaw_maintenance_writer using (true)',
+      v_table||'_retention_writer_select',v_table
+    );
+    execute format('grant select on public.%I to openclaw_maintenance_writer',v_table);
+  end loop;
+  foreach v_table in array array[
+    'openclaw_knowledge_versions','openclaw_knowledge_chunks',
+    'openclaw_health_events','openclaw_policy_versions','openclaw_automation_versions',
+    'openclaw_delivery_attempts','openclaw_inbound_automation_decisions'
+  ] loop
+    execute format(
+      'create policy %I on public.%I for update to openclaw_maintenance_writer using (true) with check (true)',
+      v_table||'_retention_writer_update',v_table
+    );
+    execute format('grant update on public.%I to openclaw_maintenance_writer',v_table);
+  end loop;
+end;
+$retention_source_security$;
 
 grant select,insert on public.openclaw_schedule_occurrences to openclaw_runtime_writer;
 grant select,insert,update on public.openclaw_retention_hold_clocks,
   public.openclaw_retention_hold_scopes,public.openclaw_retention_delete_tickets
   to openclaw_maintenance_writer;
+grant select,insert on public.openclaw_retention_evidence_seals
+  to openclaw_maintenance_writer;
+grant select,update on
+  public.openclaw_messages,
+  public.openclaw_ai_drafts
+  to openclaw_maintenance_writer;
+grant delete on public.openclaw_qr_challenges to openclaw_maintenance_writer;
+grant usage on schema extensions
+  to openclaw_function_owner,openclaw_runtime_writer,openclaw_maintenance_writer;
 grant select on public.openclaw_retention_policies,
   public.openclaw_retention_gateway_configs,public.openclaw_audit_signing_configs
   to openclaw_maintenance_writer;
@@ -2617,9 +4070,11 @@ begin
     'app_private.openclaw_valid_local_recurrence_rule_v1(text)',
     'app_private.openclaw_next_schedule_occurrence_v1(text,timestamp without time zone)',
     'app_private.openclaw_resolve_local_occurrence_v1(timestamp without time zone,text,text)',
+    'app_private.openclaw_sweep_due_sales_tasks_v1(integer)',
     'app_private.materialize_openclaw_schedule_work_v1(integer)',
     'app_private.materialize_openclaw_crm_work_v1(integer)',
     'app_private.rebind_openclaw_unclaimed_work_v1(integer)',
+    'app_private.ensure_openclaw_retention_contract_v1()',
     'app_private.openclaw_retention_subject_held_v1(uuid,text,uuid)',
     'app_private.materialize_openclaw_retention_quarantine_v1(integer)',
     'app_private.materialize_openclaw_retention_final_delete_v1(integer)',
@@ -2635,6 +4090,42 @@ begin
   end loop;
 end;
 $function_security$;
+
+alter function app_private.guard_openclaw_send_work_insert_v1()
+  owner to openclaw_function_owner;
+alter function app_private.guard_openclaw_work_attempt_insert_v1()
+  owner to openclaw_function_owner;
+alter function app_private.guard_openclaw_retention_redaction_v1()
+  owner to openclaw_function_owner;
+revoke all on function app_private.guard_openclaw_send_work_insert_v1()
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.guard_openclaw_work_attempt_insert_v1()
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.guard_openclaw_retention_redaction_v1()
+  from public,anon,authenticated,service_role;
+alter function app_private.openclaw_expand_retention_hold_scopes_v1()
+  owner to openclaw_function_owner;
+alter function app_private.openclaw_persist_retention_hold_scopes_v1()
+  owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_expand_retention_hold_scopes_v1()
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.openclaw_persist_retention_hold_scopes_v1()
+  from public,anon,authenticated,service_role;
+alter function app_private.openclaw_lock_retention_scope_v1(uuid)
+  owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_lock_retention_scope_v1(uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function app_private.openclaw_lock_retention_scope_v1(uuid)
+  to openclaw_maintenance_writer;
+grant execute on function app_private.openclaw_retention_subject_held_v1(uuid,text,uuid)
+  to openclaw_maintenance_writer;
+
+alter function app_private.enforce_openclaw_evidence_retention_v1(integer)
+  owner to openclaw_maintenance_writer;
+revoke all on function app_private.enforce_openclaw_evidence_retention_v1(integer)
+  from public,anon,authenticated,service_role;
+grant execute on function app_private.enforce_openclaw_evidence_retention_v1(integer)
+  to openclaw_function_owner;
 
 revoke all on function app_private.run_openclaw_maintenance_jobs_v1()
   from public, anon, authenticated, service_role;

@@ -8,6 +8,19 @@ do $preflight$
 declare
   v_relation text;
 begin
+  if exists (
+    select 1 from pg_catalog.pg_publication_tables published
+    where published.pubname='supabase_realtime' and published.schemaname='public'
+      and published.tablename like 'openclaw\_%' escape '\'
+      and published.tablename<>all(array[
+        'openclaw_accounts','openclaw_account_connections','openclaw_runtime_cells',
+        'openclaw_conversations','openclaw_conversation_members',
+        'openclaw_messages','openclaw_message_media'
+      ]::text[])
+  ) then
+    raise exception 'Unsafe OpenClaw relation is already present in supabase_realtime'
+      using errcode='55000';
+  end if;
   if not exists (
     select 1
     from pg_catalog.pg_publication publication
