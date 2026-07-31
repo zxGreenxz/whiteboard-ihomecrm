@@ -111,6 +111,33 @@ Xem `git log --oneline` để theo style. Tóm tắt:
 - **KHÔNG bao giờ commit** `CLAUDE.local.md`, `.env.local`, hay bất kỳ token/password/PAT nào vào repo. Cả hai đã có trong `.gitignore`.
 - Khi cần Supabase admin access, đọc PAT từ `CLAUDE.local.md` trong runtime — không in ra console/log/commit message.
 
+## Ba công ty (org) trong cùng một DB — đọc trước khi động vào RLS/báo cáo
+
+| Org | ID | Là gì |
+|---|---|---|
+| THẬT | `aaaa0000-0000-4000-8000-000000000001` | sổ sách thật, **chỉ đọc** khi test |
+| DEMO | `dddd0000-0000-4000-8000-000000000001` | seed tay 2 toà (`scripts/docs-demo/`), có nút reset |
+| **TEST** | `cccc0000-0000-4000-8000-000000000001` | **bản sao dữ liệu công ty thật** — chỗ để thử tính năng mới của mọi plan |
+
+**Muốn thử tính năng mới trên dữ liệu thật thì dùng org TEST**, đăng nhập bằng
+`test.nguyentamca165` / `test.nathan` / `test.joey` / `test.bosshuy` (mật khẩu ở
+`CLAUDE.local.md`). Đồng bộ lại dữ liệu: *Cài đặt → Tổ chức → Đồng bộ dữ liệu mới nhất*,
+hoặc `node scripts/clone-org/clone.mjs`. Chi tiết + các bẫy đã cắn: `scripts/clone-org/README.md`.
+
+Hai điều PHẢI nhớ khi viết migration/RPC mới:
+
+1. **Bảng mới có `organization_id` + bật RLS ⇒ phải thêm policy `<bảng>_hide_sandbox_admin`**
+   (khuôn ở `supabase/migrations/20260801040000_fix_sandbox_hide_null_org.sql`), nếu không
+   dữ liệu org TEST sẽ lọt vào màn hình của chủ nhà và nhân đôi mọi con số.
+   Nhớ bọc `COALESCE(... , false)` — `NULL = ANY(...)` ra NULL sẽ giấu nhầm cả dòng
+   `organization_id IS NULL` của công ty thật.
+2. **Hàm SECURITY DEFINER không bị RLS chặn.** Báo cáo mới lọc toà thì lọc qua
+   `public.can_access_building()` / `accessible_building_ids()` (đã chặn sandbox sẵn),
+   đừng tự viết `is_super_admin() OR ...` — đó chính là lỗ đã làm `fa_occupancy_monthly`
+   trả thừa 12 toà của org TEST.
+
+Cửa chặn: `node scripts/clone-org/snapshot.mjs after` — phải ra "0/158 bảng rò rỉ".
+
 ## Cấu trúc nhanh
 
 - `src/pages/` — route entry

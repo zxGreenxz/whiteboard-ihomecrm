@@ -14,12 +14,18 @@ const EMAILS = {
   chunha: 'demo.chunha@username.ihomecrm.local',
   ketoan: 'demo.ketoan@username.ihomecrm.local',
   quanly: 'demo.quanly@username.ihomecrm.local',
+  // Công ty TEST (org cccc…0001) — bản sao dữ liệu công ty thật, xem
+  // scripts/clone-org/README.md. Dùng để thử tính năng mới trên dữ liệu thật.
+  testchu: 'test.nguyentamca165@username.ihomecrm.local',
+  testketoan: 'test.joey@username.ihomecrm.local',
 } as const;
 
 const PASS_ENV = {
   chunha: 'FLEET_PASS_CHUNHA',
   ketoan: 'FLEET_PASS_KETOAN',
   quanly: 'FLEET_PASS_QUANLY',
+  testchu: 'FLEET_PASS_TEST',
+  testketoan: 'FLEET_PASS_TEST',
 } as const;
 
 export type UserKey = keyof typeof EMAILS;

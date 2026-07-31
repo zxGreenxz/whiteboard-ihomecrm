@@ -84,3 +84,4 @@ scripts/.backfill-deposit-plan.json
 .ua/dashboard-logs/
 .ua/start-dashboard.ps1
 .ua/diff-overlay.json
+.clone-org-snapshots/

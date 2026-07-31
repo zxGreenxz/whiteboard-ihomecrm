@@ -9,9 +9,11 @@ import {
   Building2,
   CalendarClock,
   Check,
+  FlaskConical,
   Landmark,
   Loader2,
   Mail,
+  RefreshCw,
   ScrollText,
   ShieldCheck,
   Users,
@@ -19,6 +21,17 @@ import {
   X,
 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +47,7 @@ import {
   type AuthorizationAuditEvent,
 } from '@/hooks/useOrganizationAuthorization';
 import { LOAI_TV } from '@/components/authorization/MemberAuthorizationDialog';
+import { useCloneOrgSync, useCloneOrgSyncStatus } from '@/hooks/useCloneOrgSync';
 
 const NHAN_SU_KIEN: Record<string, string> = {
   MEMBER_AUTHORIZATION_UPDATED: 'Sửa phân quyền thành viên',
@@ -231,8 +245,106 @@ export default function OrganizationPage() {
             )}
           </CardContent>
         </Card>
+
+        <TheDongBoCongTyTest />
       </div>
     </MainLayout>
+  );
+}
+
+/**
+ * Chỉ hiện với super admin và chỉ khi org sandbox tồn tại — RPC
+ * clone_org_sync_status_v1() trả NULL cho mọi người khác.
+ */
+function TheDongBoCongTyTest() {
+  const { data: tt } = useCloneOrgSyncStatus();
+  const dongBo = useCloneOrgSync();
+  if (!tt) return null;
+  const dangChay = tt.pending?.state === 'PENDING' || tt.pending?.state === 'RUNNING';
+
+  return (
+    <Card className="border-amber-300/60 dark:border-amber-800/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FlaskConical className="h-4 w-4" />
+          {tt.org_name ?? 'Công ty TEST'}
+          <Badge variant="outline">bản sao để test</Badge>
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Công ty riêng mang đúng dữ liệu công ty thật, dùng để thử tính năng mới mà không đụng sổ
+          sách. Đăng nhập bằng các tài khoản <span className="font-mono">test.*</span>. Dữ liệu ở đó
+          KHÔNG hiện trên báo cáo của công ty thật.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm">
+          {tt.last_sync_at ? (
+            <>
+              Đồng bộ gần nhất: {new Date(tt.last_sync_at).toLocaleString('vi-VN')}
+              {tt.rows_copied != null && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {tt.rows_copied.toLocaleString('vi-VN')} dòng
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-muted-foreground">Chưa đồng bộ lần nào.</span>
+          )}
+        </p>
+
+        {dangChay && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {tt.pending?.state === 'PENDING' ? 'Đã xếp hàng, chờ tới lượt…' : 'Đang chép dữ liệu…'}
+          </p>
+        )}
+        {tt.pending?.state === 'ERROR' && (
+          <p className="text-sm text-destructive">
+            Lượt đồng bộ gần nhất lỗi: {tt.pending.error ?? 'không rõ'}
+          </p>
+        )}
+
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" disabled={dongBo.isPending || dangChay}>
+              {dongBo.isPending || dangChay ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {dangChay ? 'Đang đồng bộ…' : 'Đồng bộ dữ liệu mới nhất'}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Đồng bộ lại công ty TEST?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2 text-sm">
+                  <p>
+                    Toàn bộ dữ liệu hiện có của công ty TEST sẽ bị <b>xoá sạch</b> rồi chép lại từ
+                    công ty thật. Mọi thứ bạn đang thử dở trên đó sẽ mất.
+                  </p>
+                  <p>
+                    Dữ liệu công ty thật <b>không bị đụng tới</b> — thao tác chỉ ghi vào org TEST.
+                    Bắt đầu chạy sau ~15 giây (chờ tới lượt của bộ chạy nền), xong sau ~10 giây nữa.
+                  </p>
+                  <p className="text-muted-foreground">
+                    Ảnh/biên lai mới thêm sau lần chép file gần nhất sẽ chưa có; chạy
+                    <span className="font-mono"> scripts/clone-org/copy-files.mjs </span>
+                    nếu cần.
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Thôi</AlertDialogCancel>
+              <AlertDialogAction onClick={() => dongBo.mutate()}>Đồng bộ</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </CardContent>
+    </Card>
   );
 }
 
