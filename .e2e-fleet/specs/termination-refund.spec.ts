@@ -21,16 +21,30 @@ import { login, trackConsoleErrors } from './auth';
 
 const ROUTE = '/reports/real-estate/terminations';
 
+/**
+ * Chờ hộp thoại NẠP XONG rồi mới đọc. Bỏ bước này là đọc trúng lúc còn khung
+ * xương, nội dung rỗng, và assertion đỏ vì lý do không liên quan — đây là lần
+ * thứ hai cùng một lớp lỗi trong chính spec này (lần đầu là đếm nút ngay sau
+ * goto()). Ghi lại để lần sau khỏi mất công dò.
+ */
+async function waitDialogReady(dialog: import('@playwright/test').Locator) {
+  await expect(
+    dialog.getByText(/Số hoàn trên hồ sơ|không có khoản hoàn|Không đọc được/i).first(),
+  ).toBeVisible({ timeout: 20_000 });
+}
+
+
 test('hoàn cọc: mở được hồ sơ thanh lý và hệ thống tính ra số hoàn', async ({ page }) => {
   const errors = trackConsoleErrors(page);
   await login(page, 'chunha');
 
   await page.goto(ROUTE);
-  await expect(page).toHaveURL(new RegExp(ROUTE.replace(/\//g, '\\/')));
+  await expect(page.getByRole('heading', { name: /Báo cáo Bỏ trả/i })).toBeVisible();
 
-  // Bảng có thể rỗng ở một số kỳ — đó KHÔNG phải lỗi, nên xử lý tường minh
-  // thay vì để test đỏ vì lý do không liên quan.
+  // PHẢI chờ bảng render xong rồi mới đếm. Đếm ngay sau goto() thì luôn ra 0 và
+  // test tự bỏ qua — "bỏ qua" trông như xanh mà thật ra chưa kiểm gì cả.
   const checkButtons = page.getByRole('button', { name: 'Kiểm tra' });
+  await checkButtons.first().waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {});
   const n = await checkButtons.count();
   test.skip(n === 0, 'Kỳ này không có hồ sơ thanh lý nào — không có gì để kiểm');
 
@@ -38,6 +52,7 @@ test('hoàn cọc: mở được hồ sơ thanh lý và hệ thống tính ra s�
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await waitDialogReady(dialog);
 
   // Hộp thoại phải nói ra một trong hai: số hoàn tính được, hoặc lý do không hoàn.
   // Cả hai đều là kết quả HỢP LỆ — hồ sơ hoàn âm (khách còn nợ) thì không có
@@ -78,6 +93,7 @@ test('hoàn cọc: phiếu hoàn KHÔNG được tự duyệt (quyết định c
   await checkButtons.first().click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
+  await waitDialogReady(dialog);
 
   // Hộp thoại phải NÓI RA ĐIỀU GÌ ĐÓ. Hai kết cục hợp lệ:
   //   • có khoản hoàn  ⇒ phải nhắc phiếu nằm CHỜ DUYỆT (quyết định số 6 của chủ);
