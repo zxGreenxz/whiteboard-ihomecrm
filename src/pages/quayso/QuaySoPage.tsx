@@ -311,6 +311,10 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
   const [err, setErr] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [proofs, setProofs] = useState<LuckyProof[]>(team.proofs ?? []);
+  // Đã có STK thì mở ở chế độ xem gọn; chưa có gì thì mở sẵn ô điền.
+  const [editing, setEditing] = useState(
+    !(team.payoutAccount || team.payoutBank || team.payoutHolder),
+  );
   // Ảnh vừa chọn trong PHIÊN NÀY xem trước được (blob cục bộ). Bucket private,
   // anon không có quyền đọc nên tấm nộp từ phiên trước chỉ hiện tên file.
   const [localUrls, setLocalUrls] = useState<Record<string, string>>({});
@@ -396,12 +400,21 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
       });
       if (!res.ok) throw new Error('Không lưu được số tài khoản.');
       setMsg('Đã lưu số tài khoản ✓');
+      setEditing(false);          // lưu xong thu gọn lại, muốn sửa thì bấm "Chỉnh sửa"
       onSaved(res);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Lưu không thành công, thử lại.');
     } finally {
       setBusy(false);
     }
+  };
+
+  const cancelEdit = () => {
+    setAccount(team.payoutAccount ?? '');
+    setBank(team.payoutBank ?? '');
+    setHolder(team.payoutHolder ?? '');
+    setErr(null);
+    setEditing(false);
   };
 
   return (
@@ -455,41 +468,68 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         </span>
       </label>
 
-      <div className="qs-fields">
-        <label>
-          Số tài khoản nhận thưởng
-          <input
-            inputMode="numeric"
-            placeholder="vd 0123456789"
-            value={account}
-            disabled={busy}
-            onChange={(e) => setAccount(e.target.value)}
-          />
-        </label>
-        <div className="qs-field2">
+      {editing ? (
+        <div className="qs-fields">
           <label>
-            Ngân hàng
+            Số tài khoản nhận thưởng
             <input
-              placeholder="vd Vietcombank"
-              value={bank}
+              inputMode="numeric"
+              placeholder="vd 0123456789"
+              value={account}
               disabled={busy}
-              onChange={(e) => setBank(e.target.value)}
+              onChange={(e) => setAccount(e.target.value)}
             />
           </label>
-          <label>
-            Chủ tài khoản
-            <input
-              placeholder="vd NGUYEN VAN A"
-              value={holder}
-              disabled={busy}
-              onChange={(e) => setHolder(e.target.value)}
-            />
-          </label>
+          <div className="qs-field2">
+            <label>
+              Ngân hàng
+              <input
+                placeholder="vd Vietcombank"
+                value={bank}
+                disabled={busy}
+                onChange={(e) => setBank(e.target.value)}
+              />
+            </label>
+            <label>
+              Chủ tài khoản
+              <input
+                placeholder="vd NGUYEN VAN A"
+                value={holder}
+                disabled={busy}
+                onChange={(e) => setHolder(e.target.value)}
+              />
+            </label>
+          </div>
+          <button type="button" className="qs-savebtn" disabled={busy} onClick={() => void saveAccount()}>
+            {busy ? 'Đang lưu…' : 'Lưu số tài khoản'}
+          </button>
+          {(team.payoutAccount || team.payoutBank || team.payoutHolder) && (
+            <button type="button" className="qs-cancelbtn" disabled={busy} onClick={cancelEdit}>
+              Huỷ
+            </button>
+          )}
         </div>
-        <button type="button" className="qs-savebtn" disabled={busy} onClick={() => void saveAccount()}>
-          {busy ? 'Đang lưu…' : 'Lưu số tài khoản'}
-        </button>
-      </div>
+      ) : (
+        <div className="qs-savedbox">
+          <div className="qs-savedrows">
+            <div className="qs-savedrow">
+              <span>Số tài khoản</span>
+              <b>{account || '—'}</b>
+            </div>
+            <div className="qs-savedrow">
+              <span>Ngân hàng</span>
+              <b>{bank || '—'}</b>
+            </div>
+            <div className="qs-savedrow">
+              <span>Chủ tài khoản</span>
+              <b>{holder || '—'}</b>
+            </div>
+          </div>
+          <button type="button" className="qs-editbtn" disabled={busy} onClick={() => setEditing(true)}>
+            ✏️ Chỉnh sửa
+          </button>
+        </div>
+      )}
 
       {msg && <p className="qs-okmsg">{msg}</p>}
       {err && <p className="qs-codeerr">{err}</p>}
@@ -609,13 +649,14 @@ export default function QuaySoPage() {
       });
   }, [event, msLeft, queryClient, queryKey, stateQuery]);
 
-  // Bánh xe dừng → mới công bố. Popup + pháo giấy CHỈ dành cho đội trúng;
-  // đội thua chỉ thấy kết quả hiện trên trang, không bị đập popup vào mặt.
+  // Bánh xe dừng → mới công bố. Ai cũng có popup, nhưng nội dung khác nhau:
+  // đội trúng thì ăn mừng (kèm pháo giấy + rung), đội chưa trúng thì lời hẹn
+  // nhẹ nhàng. Pháo giấy chỉ nổ cho đội trúng.
   const winnerIsMine = !!winner?.isMine;
   const onSpinDone = useCallback(() => {
     if (event?.drawnAt) setRevealedFor(event.drawnAt);
-    if (!winnerIsMine) return;
     setShowWin(true);
+    if (!winnerIsMine) return;
     fireConfetti(confettiRef.current);
     if (navigator.vibrate) {
       try {
@@ -976,14 +1017,38 @@ export default function QuaySoPage() {
       <canvas className="qs-confetti" ref={confettiRef} aria-hidden="true" />
 
       {showWin && winner && event && (
-        <div className="qs-overlay" role="dialog" aria-modal="true" aria-labelledby="qs-win-title" onClick={(e) => e.target === e.currentTarget && setShowWin(false)}>
-          <div className="qs-winbox">
-            <p className="qs-eyebrow">{event.prizeLabel} gọi tên</p>
-            <h3 className="qs-display qs-goldtext" id="qs-win-title">{winner.name}</h3>
-            <div className="qs-payout">{formatVnd(event.prizeAmount)}</div>
-            <p className="qs-sub">{winner.isMine ? 'Chính là đội bạn — lên nhận thưởng ngay! 🎉' : 'Chúc mừng đội bạn nhé!'}</p>
-            <button type="button" onClick={() => setShowWin(false)}>Quá đã!</button>
-          </div>
+        <div
+          className="qs-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qs-win-title"
+          onClick={(e) => e.target === e.currentTarget && setShowWin(false)}
+        >
+          {winnerIsMine ? (
+            <div className="qs-winbox">
+              <p className="qs-eyebrow">{event.prizeLabel} gọi tên</p>
+              <h3 className="qs-display qs-goldtext" id="qs-win-title">{winner.name}</h3>
+              <div className="qs-winamount">{formatVnd(event.prizeAmount)}</div>
+              <p className="qs-sub">Chính là đội bạn — lên nhận thưởng ngay! 🎉</p>
+              <button type="button" onClick={() => setShowWin(false)}>Quá đã!</button>
+            </div>
+          ) : (
+            <div className="qs-winbox qs-softbox">
+              <p className="qs-eyebrow">Kết quả đã có</p>
+              <h3 className="qs-display" id="qs-win-title">
+                {myTeam ? <>Hẹn {myTeam.name} lần sau nhé!</> : <>Hẹn lần sau nhé!</>}
+              </h3>
+              <p className="qs-sub">
+                Lần này <b>{winner.name}</b> may mắn hơn một chút — {event.prizeLabel.toLowerCase()}{' '}
+                {formatVnd(event.prizeAmount)}.
+              </p>
+              <p className="qs-cheerline">
+                Cố lên team ơi — nỗ lực chốt phòng tham gia chương trình sale mới
+                để rinh thưởng đợt tới nhé! 💪🔥
+              </p>
+              <button type="button" onClick={() => setShowWin(false)}>Quyết tâm đợt tới!</button>
+            </div>
+          )}
         </div>
       )}
     </div>

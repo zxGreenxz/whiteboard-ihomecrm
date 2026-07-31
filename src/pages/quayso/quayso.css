@@ -679,6 +679,75 @@
 .qs-savebtn:focus-visible { outline: 2px solid var(--qs-cream); outline-offset: 3px; }
 .qs-okmsg { margin: 0; font-size: 13px; font-weight: 600; color: var(--qs-good); }
 
+.qs-cancelbtn {
+  background: none;
+  border: 1px solid var(--qs-line);
+  color: var(--qs-muted);
+  font-family: var(--qs-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  padding: 9px;
+  border-radius: 11px;
+  cursor: pointer;
+}
+.qs-cancelbtn:hover { color: var(--qs-cream); border-color: rgba(255, 242, 228, .3); }
+.qs-cancelbtn:focus-visible { outline: 2px solid var(--qs-gold); outline-offset: 2px; }
+
+/* Chế độ xem gọn sau khi lưu — muốn đổi thì bấm "Chỉnh sửa" */
+.qs-savedbox {
+  border: 1px solid rgba(51, 209, 122, .35);
+  border-radius: 14px;
+  background: rgba(51, 209, 122, .07);
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.qs-savedrows { display: flex; flex-direction: column; gap: 8px; }
+.qs-savedrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.qs-savedrow span {
+  flex: none;
+  font-family: var(--qs-data);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--qs-muted);
+}
+.qs-savedrow b {
+  font-family: var(--qs-data);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--qs-cream);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.qs-editbtn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid rgba(255, 194, 60, .45);
+  color: var(--qs-gold);
+  font-family: var(--qs-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.qs-editbtn:hover { background: rgba(255, 194, 60, .12); }
+.qs-editbtn:focus-visible { outline: 2px solid var(--qs-gold); outline-offset: 2px; }
+
 /* Lời cổ vũ cho đội chưa trúng */
 .qs-cheer {
   width: 100%;
@@ -744,14 +813,38 @@
 }
 @keyframes qs-slam { from { opacity: 0; transform: scale(.72) rotate(-3deg); } }
 .qs-winbox h3 { font-size: clamp(28px, 8.5vw, 40px); }
-.qs-winbox .qs-payout {
+/* Tên class riêng: trước dùng .qs-payout nên hộp công bố ăn nhầm viền + nền
+   của thẻ "Hồ sơ nhận thưởng". */
+.qs-winbox .qs-winamount {
   font-family: var(--qs-data);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   font-size: 27px;
   letter-spacing: -.03em;
+  color: var(--qs-cream);
 }
 .qs-winbox .qs-sub { margin: 0; color: var(--qs-muted); font-size: 13.5px; }
+.qs-winbox .qs-sub b { color: var(--qs-gold); font-weight: 700; }
+
+/* Biến thể nhẹ nhàng cho đội chưa trúng — không vàng rực như hộp ăn mừng */
+.qs-softbox {
+  border-color: rgba(255, 242, 228, .22);
+  background: linear-gradient(180deg, rgba(255, 242, 228, .09), var(--qs-ink-2) 55%);
+  box-shadow: 0 30px 80px -26px rgba(0, 0, 0, .8);
+}
+.qs-softbox h3 { color: var(--qs-cream); }
+.qs-softbox .qs-cheerline {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--qs-muted);
+  border-top: 1px solid var(--qs-line);
+  padding-top: 11px;
+}
+.qs-softbox button {
+  background: linear-gradient(180deg, #FFF6EA, #E4D3C6);
+  color: #2E2119;
+}
 .qs-winbox button {
   margin-top: 6px;
   width: 100%;
