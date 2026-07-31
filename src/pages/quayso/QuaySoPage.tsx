@@ -578,7 +578,7 @@ export default function QuaySoPage() {
                 <div className="qs-head">
                   <p className="qs-eyebrow">Trao giải</p>
                   <h2 className="qs-display"><span className="qs-skew qs-goldtext">Đội dẫn đầu</span></h2>
-                  <p>Điểm danh có mặt để nhận giải — không tham gia vòng xoay.</p>
+                  <p>Điểm danh có mặt để nhận giải.</p>
                 </div>
                 <div className="qs-champs">
                   {topTeams.map((t) => (
