@@ -5,7 +5,7 @@ export const NETWORK_CENTER_REALTIME_TABLES = [
   "network_interface_current",
   "network_incidents",
   "network_command_events",
-  "network_worker_heartbeats",
+  "network_worker_building_status",
 ] as const;
 
 export type NetworkCenterRealtimeTable = (typeof NETWORK_CENTER_REALTIME_TABLES)[number];

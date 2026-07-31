@@ -31,6 +31,7 @@ vi.mock("react", async (importOriginal) => {
     },
     useMemo: <T>(factory: () => T) => factory(),
     useRef: <T>(initialValue: T) => ({ current: initialValue }),
+    useState: <T>(initialValue: T) => [initialValue, vi.fn()] as const,
   };
 });
 
@@ -63,6 +64,30 @@ vi.mock("@tanstack/react-query", () => ({
     isPending: false,
     mutateAsync: vi.fn(),
   }),
+  useInfiniteQuery: (options: {
+    enabled?: boolean;
+    queryFn?: () => unknown;
+  }) => {
+    runtimeSpies.queryOptions.push(options);
+    if (options.enabled) {
+      try {
+        void options.queryFn?.();
+      } catch (error) {
+        runtimeSpies.queryErrors.push(error);
+      }
+    }
+    return {
+      data: undefined,
+      error: null,
+      hasNextPage: false,
+      isError: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      isSuccess: false,
+      fetchNextPage: vi.fn(async () => undefined),
+      refetch: vi.fn(async () => undefined),
+    };
+  },
 }));
 
 vi.mock("@/lib/network-center/runtime", async (importOriginal) => {
@@ -159,7 +184,7 @@ describe("Network Center React Query runtime", () => {
     expect(controller.mode).toBe("off");
     expect(controller.canView).toBe(false);
     expect(controller.canExecute).toBe(false);
-    expect(runtimeSpies.queryOptions).toHaveLength(2);
+    expect(runtimeSpies.queryOptions).toHaveLength(4);
     expect(runtimeSpies.queryOptions.every((options) => options.enabled === false)).toBe(true);
     expect(runtimeSpies.queryErrors).toEqual([]);
     expect(runtimeSpies.listFleet).not.toHaveBeenCalled();
@@ -171,10 +196,11 @@ describe("Network Center React Query runtime", () => {
       "network_interface_current",
       "network_incidents",
       "network_command_events",
-      "network_worker_heartbeats",
+      "network_worker_building_status",
     ]);
     expect(NETWORK_CENTER_REALTIME_TABLES).not.toContain("network_commands");
     expect(NETWORK_CENTER_REALTIME_TABLES).not.toContain("network_device_samples");
+    expect(NETWORK_CENTER_REALTIME_TABLES).not.toContain("network_worker_heartbeats");
   });
 
   it("targets building invalidation without trusting payloads as cached domain state", () => {
@@ -191,9 +217,9 @@ describe("Network Center React Query runtime", () => {
     )).toEqual({ invalidateFleet: true, buildingIds: ["building-selected"] });
 
     expect(resolveNetworkCenterRealtimeTarget(
-      "network_worker_heartbeats",
-      { new: { status: "ONLINE" } },
+      "network_worker_building_status",
+      { new: { building_id: "BUILDING-A", status: "ONLINE" } },
       undefined,
-    )).toEqual({ invalidateFleet: true, buildingIds: [] });
+    )).toEqual({ invalidateFleet: true, buildingIds: ["building-a"] });
   });
 });

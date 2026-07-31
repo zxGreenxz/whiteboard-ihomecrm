@@ -7,9 +7,16 @@ const migrationPath = resolve(
   process.cwd(),
   "supabase/migrations/20260729130000_network_center_worker_identity.sql",
 );
+const hardeningMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260729133000_network_center_hardening_rpcs.sql",
+);
 
 const sql = existsSync(migrationPath)
   ? readFileSync(migrationPath, "utf8").replace(/\r\n/g, "\n")
+  : "";
+const hardeningSql = existsSync(hardeningMigrationPath)
+  ? readFileSync(hardeningMigrationPath, "utf8").replace(/\r\n/g, "\n")
   : "";
 
 function sqlFunctionBody(functionName: string): string {
@@ -24,6 +31,22 @@ function sqlFunctionBody(functionName: string): string {
     .slice(start + 1)
     .search(/CREATE OR REPLACE FUNCTION\s+(?:public|app_private)\./i);
   return next < 0 ? sql.slice(start) : sql.slice(start, start + 1 + next);
+}
+
+function hardeningFunctionBody(functionName: string): string {
+  const start = hardeningSql.search(
+    new RegExp(
+      `CREATE OR REPLACE FUNCTION\\s+(?:public|app_private)\\.${functionName}\\b`,
+      "i",
+    ),
+  );
+  if (start < 0) return "";
+  const next = hardeningSql
+    .slice(start + 1)
+    .search(/CREATE OR REPLACE FUNCTION\s+(?:public|app_private)\./i);
+  return next < 0
+    ? hardeningSql.slice(start)
+    : hardeningSql.slice(start, start + 1 + next);
 }
 
 describe("Network Center per-worker identity migration", () => {
@@ -201,6 +224,265 @@ describe("Network Center per-worker identity migration", () => {
     );
     expect(sql).not.toMatch(
       /GRANT EXECUTE ON FUNCTION app_private\.network_center_authenticate_worker_v2\(text\)/i,
+    );
+  });
+});
+
+describe("Network Center assignment-scoped worker RPC hardening", () => {
+  const routeFunctions = [
+    "network_center_worker_heartbeat_v2",
+    "network_center_worker_list_connections_v2",
+    "network_center_worker_claim_v2",
+    "network_center_worker_renew_v2",
+    "network_center_worker_ingest_v2",
+    "network_center_worker_inventory_v2",
+    "network_center_worker_command_event_v2",
+    "network_center_worker_observe_v2",
+    "network_center_worker_complete_v2",
+    "network_center_worker_upsert_incident_v2",
+    "network_center_worker_snapshot_v2",
+    "network_center_worker_maintenance_v2",
+  ] as const;
+
+  it("creates the additive hardening migration and authenticates every worker route from the credential digest", () => {
+    expect(
+      existsSync(hardeningMigrationPath),
+      `Missing migration: ${hardeningMigrationPath}`,
+    ).toBe(true);
+
+    for (const functionName of routeFunctions) {
+      const body = hardeningFunctionBody(functionName);
+      expect(body, `Missing ${functionName}`).not.toBe("");
+      expect(body).toMatch(/p_credential_digest\s+text/i);
+      expect(body).toMatch(/network_center_authenticate_worker_v2/i);
+      expect(body).toMatch(/SECURITY DEFINER/i);
+      expect(body).toMatch(/SET search_path TO 'pg_catalog'/i);
+      expect(hardeningSql).toMatch(
+        new RegExp(
+          `REVOKE ALL ON FUNCTION public\\.${functionName}\\([\\s\\S]{0,800}?FROM PUBLIC, anon, authenticated, service_role`,
+          "i",
+        ),
+      );
+      expect(hardeningSql).toMatch(
+        new RegExp(
+          `GRANT EXECUTE ON FUNCTION public\\.${functionName}\\([\\s\\S]{0,800}?TO service_role`,
+          "i",
+        ),
+      );
+    }
+  });
+
+  it("checks an active explicit assignment and the registry operation capability at every final target", () => {
+    const helper = hardeningFunctionBody(
+      "network_center_worker_can_access_device_v2",
+    );
+    expect(helper).toMatch(/network_worker_assignments/i);
+    expect(helper).toMatch(/worker_id\s*=\s*p_worker_id/i);
+    expect(helper).toMatch(/organization_id\s*=\s*p_organization_id/i);
+    expect(helper).toMatch(/building_id\s*=\s*p_building_id/i);
+    expect(helper).toMatch(/device_id\s*=\s*p_device_id/i);
+    expect(helper).toMatch(/active_from\s*<=\s*p_now/i);
+    expect(helper).toMatch(/active_until\s+IS NULL[\s\S]{0,100}active_until\s*>\s*p_now/i);
+    expect(helper).toMatch(/HEARTBEAT|POLL|TELEMETRY|INVENTORY|EXECUTE|INCIDENT|SNAPSHOT|MAINTENANCE/);
+    expect(helper).toMatch(/network_workers/i);
+    expect(helper).toMatch(/status\s+IN\s*\('ACTIVE',\s*'DRAINING'\)/i);
+    expect(helper).toMatch(/p_required_capability\s*=\s*ANY\(worker\.capabilities\)/i);
+
+    for (const functionName of routeFunctions.slice(3)) {
+      const body = hardeningFunctionBody(functionName);
+      expect(
+        body,
+        `${functionName} must resolve and authorize its final target`,
+      ).toMatch(/network_center_worker_can_access_(?:device|building)_v2/i);
+    }
+
+    expect(hardeningFunctionBody("network_center_worker_list_connections_v2"))
+      .toMatch(/JOIN public\.network_worker_assignments/i);
+    expect(hardeningFunctionBody("network_center_worker_claim_v2"))
+      .toMatch(/network_worker_assignments[\s\S]{0,500}can_execute/i);
+    expect(hardeningFunctionBody("network_center_worker_renew_v2"))
+      .toMatch(/network_commands[\s\S]*?network_center_worker_can_access_device_v2/i);
+
+    const requiredCapability = new Map<string, RegExp>([
+      ["network_center_worker_heartbeat_v2", /'HEARTBEAT'/],
+      ["network_center_worker_list_connections_v2", /'POLL'/],
+      ["network_center_worker_claim_v2", /'EXECUTE'/],
+      ["network_center_worker_renew_v2", /'EXECUTE'/],
+      ["network_center_worker_ingest_v2", /'TELEMETRY'/],
+      ["network_center_worker_inventory_v2", /'INVENTORY'/],
+      ["network_center_worker_command_event_v2", /'EXECUTE'/],
+      ["network_center_worker_observe_v2", /'EXECUTE'/],
+      ["network_center_worker_complete_v2", /'EXECUTE'/],
+      ["network_center_worker_upsert_incident_v2", /'INCIDENT'/],
+      ["network_center_worker_snapshot_v2", /'SNAPSHOT'/],
+      ["network_center_worker_maintenance_v2", /'MAINTENANCE'/],
+    ]);
+    for (const [functionName, capability] of requiredCapability) {
+      expect(hardeningFunctionBody(functionName)).toMatch(capability);
+    }
+  });
+
+  it("keeps v1 only behind one expiring snapshot principal and a one-way finalizer", () => {
+    const legacyFunctions = [
+      "network_center_worker_heartbeat_v1",
+      "network_center_worker_list_connections_v1",
+      "network_center_worker_claim_v1",
+      "network_center_worker_renew_v1",
+      "network_center_worker_ingest_v1",
+      "network_center_worker_inventory_v1",
+      "network_center_worker_command_event_v1",
+      "network_center_worker_complete_v1",
+      "network_center_worker_upsert_incident_v1",
+      "network_center_worker_snapshot_v1",
+      "network_center_worker_maintenance_v1",
+    ];
+
+    for (const functionName of legacyFunctions) {
+      expect(hardeningSql).toMatch(
+        new RegExp(
+          `REVOKE ALL ON FUNCTION public\\.${functionName}\\([\\s\\S]{0,800}?FROM PUBLIC, anon, authenticated`,
+          "i",
+        ),
+      );
+      expect(hardeningFunctionBody(functionName)).toMatch(
+        /network_center_compatibility_worker_v1/i,
+      );
+      expect(hardeningFunctionBody(functionName)).not.toMatch(
+        /\bp_worker_id\s*:=|WHERE\s+worker_id\s*=\s*p_worker_id/i,
+      );
+      expect(hardeningSql).toMatch(
+        new RegExp(
+          `GRANT EXECUTE ON FUNCTION public\\.${functionName}\\([\\s\\S]{0,800}?TO service_role`,
+          "i",
+        ),
+      );
+    }
+
+    expect(hardeningSql).toMatch(
+      /CREATE TABLE app_private\.network_worker_compatibility_state/i,
+    );
+    expect(hardeningSql).toMatch(/expires_at\s*<=\s*activated_at\s*\+\s*INTERVAL '7 days'/i);
+    expect(hardeningSql).toMatch(/assignment_snapshot\s+jsonb/i);
+    expect(hardeningSql).toMatch(/can_execute[\s\S]{0,120}false/i);
+    expect(hardeningFunctionBody(
+      "network_center_compatibility_can_access_device_v1",
+    )).not.toMatch(/device_id\s+IS\s+NULL|p_device_id\s+IS\s+NULL/i);
+    expect(hardeningFunctionBody("network_center_worker_claim_v1")).toMatch(
+      /jsonb_build_object\(\s*'items',\s*'\[\]'::jsonb\s*\)/i,
+    );
+
+    const finalizer = hardeningFunctionBody(
+      "network_center_admin_finalize_worker_compatibility_v1",
+    );
+    expect(finalizer).toMatch(/finalized_at\s*=\s*v_now/i);
+    expect(finalizer).toMatch(/status\s*=\s*'DISABLED'/i);
+    expect(finalizer).toMatch(/active_until\s*=\s*greatest/i);
+    expect(finalizer).toMatch(/REVOKE EXECUTE ON FUNCTION public\.network_center_worker_heartbeat_v1/i);
+    expect(hardeningSql).toMatch(
+      /REVOKE ALL ON FUNCTION\s+public\.network_center_admin_finalize_worker_compatibility_v1\(\)[\s\S]{0,300}FROM PUBLIC, anon, authenticated, service_role/i,
+    );
+    expect(hardeningSql).toMatch(
+      /GRANT EXECUTE ON FUNCTION\s+public\.network_center_admin_finalize_worker_compatibility_v1\(\)[\s\S]{0,120}TO service_role/i,
+    );
+  });
+
+  it("filters claim candidates before leasing and revalidates managed targets", () => {
+    const body = hardeningFunctionBody("network_center_worker_claim_v2");
+    const reclaim = hardeningFunctionBody(
+      "network_center_reclaim_expired_commands_v2",
+    );
+    expect(reclaim).toMatch(/network_worker_assignments/i);
+    expect(reclaim).toMatch(/can_execute/i);
+    expect(reclaim).toMatch(/lease_expires_at\s*<=\s*p_now/i);
+    expect(body).toMatch(/network_center_reclaim_expired_commands_v2/i);
+    expect(body.indexOf("network_center_reclaim_expired_commands_v2")).toBeLessThan(
+      body.indexOf("FOR v_candidate IN"),
+    );
+    const assignment = body.search(/network_worker_assignments/i);
+    const leaseMutation = body.search(/INSERT INTO public\.network_device_leases/i);
+    expect(assignment).toBeGreaterThanOrEqual(0);
+    expect(leaseMutation).toBeGreaterThan(assignment);
+    expect(body).toMatch(/can_execute/i);
+    expect(body).toMatch(/worker\.status\s*=\s*'ACTIVE'/i);
+    expect(body).not.toMatch(/worker\.status\s+IN\s*\('ACTIVE',\s*'DRAINING'\)/i);
+    expect(body).toMatch(/'EXECUTE'\s*=\s*ANY\(worker\.capabilities\)/i);
+    expect(body).toMatch(/network_managed_resources/i);
+    expect(body).toMatch(/enrollment_state\s*=\s*'ENROLLED'/i);
+    expect(body).toMatch(/protected\s*=\s*false/i);
+  });
+
+  it("fences command writers and delegates observations and outcomes to typed private helpers", () => {
+    for (const functionName of [
+      "network_center_worker_renew_v2",
+      "network_center_worker_command_event_v2",
+      "network_center_worker_observe_v2",
+      "network_center_worker_complete_v2",
+    ]) {
+      const body = hardeningFunctionBody(functionName);
+      expect(body).toMatch(/p_fencing_generation\s+bigint/i);
+      expect(body).toMatch(/network_device_leases/i);
+      expect(body).toMatch(/lease_owner\s*=\s*v_worker_key/i);
+      expect(body).toMatch(/lease_token\s*=\s*p_lease_token/i);
+      expect(body).toMatch(/generation\s*=\s*p_fencing_generation/i);
+    }
+    expect(hardeningFunctionBody("network_center_worker_observe_v2"))
+      .toMatch(/network_center_record_command_observation_v1/i);
+    const complete = hardeningFunctionBody("network_center_worker_complete_v2");
+    expect(complete).toMatch(/network_center_transition_command_v1/i);
+    expect(complete).toMatch(/v_outcome[\s\S]{0,300}NOT IN[\s\S]{0,300}EVALUATE_POSTCONDITION/i);
+    expect(complete).not.toMatch(/'SUCCEEDED'\s*,/i);
+  });
+
+  it("authorizes every ingest target before invoking the all-or-nothing telemetry writer", () => {
+    const body = hardeningFunctionBody("network_center_worker_ingest_v2");
+    expect(body).toMatch(/p_payload->'devices'/i);
+    expect(body).toMatch(/p_payload->'interfaces'/i);
+    expect(body).toMatch(/p_payload->'clients'/i);
+    expect(body).toMatch(/network_center_worker_can_access_device_v2/i);
+    expect(body).toMatch(/unauthorized telemetry target/i);
+    expect(body.indexOf("network_center_worker_ingest_legacy_impl_v1")).toBeGreaterThan(
+      body.indexOf("unauthorized telemetry target"),
+    );
+  });
+
+  it("preserves inventory quarantine fields and replaces only the managed interface mapping", () => {
+    const body = hardeningFunctionBody("network_center_worker_inventory_v2");
+    expect(body).toMatch(/network_center_worker_inventory_legacy_impl_v1/i);
+    expect(body).toMatch(/network_center_managed_interface_mapping_v1/i);
+    expect(body).toMatch(/jsonb_set\([\s\S]{0,300}'\{interfaces\}'/i);
+    expect(body).not.toMatch(/-\s*'inventoryStatus'|-\s*'quarantinedCount'/i);
+  });
+
+  it("keeps maintenance assignment-scoped instead of invoking fleet maintenance", () => {
+    const body = hardeningFunctionBody("network_center_worker_maintenance_v2");
+    expect(body).toMatch(/network_worker_assignments/i);
+    expect(body).toMatch(/can_poll/i);
+    expect(body).toMatch(/'MAINTENANCE'/);
+    expect(body).not.toMatch(/network_center_worker_maintenance_v1/i);
+    expect(body).not.toMatch(/network_center_retention_v1|network_center_rollup_/i);
+  });
+
+  it("publishes only tenant-keyed worker building status and never raw heartbeat rows", () => {
+    const statusTable = hardeningSql.match(
+      /CREATE TABLE public\.network_worker_building_status\s*\([\s\S]*?\n\);/i,
+    )?.[0] ?? "";
+    expect(hardeningSql).toMatch(/public\.network_worker_building_status/i);
+    expect(hardeningSql).toMatch(
+      /ALTER TABLE public\.network_worker_building_status ENABLE ROW LEVEL SECURITY/i,
+    );
+    expect(statusTable).not.toBe("");
+    expect(statusTable).not.toMatch(/safe_metadata|credential|worker_key|worker_id/i);
+    expect(hardeningSql).toMatch(
+      /network_worker_building_status[\s\S]{0,1600}can_do_on_building\(\s*'network_center',\s*'view',\s*building_id\s*\)/i,
+    );
+    expect(hardeningSql).toMatch(
+      /REVOKE ALL ON TABLE public\.network_worker_heartbeats\s+FROM PUBLIC, anon, authenticated, service_role/i,
+    );
+    expect(hardeningSql).toMatch(
+      /ALTER PUBLICATION supabase_realtime\s+DROP TABLE public\.network_worker_heartbeats/i,
+    );
+    expect(hardeningSql).toMatch(
+      /ALTER PUBLICATION supabase_realtime\s+ADD TABLE public\.network_worker_building_status/i,
     );
   });
 });

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -11,8 +11,15 @@ const operationsMigrationPath = resolve(
   import.meta.dirname,
   "../../../supabase/migrations/20260729030000_network_center_operations.sql",
 );
+const hardeningMigrationPath = resolve(
+  import.meta.dirname,
+  "../../../supabase/migrations/20260729133000_network_center_hardening_rpcs.sql",
+);
 const sql = readFileSync(migrationPath, "utf8");
-const allSql = `${readFileSync(operationsMigrationPath, "utf8")}\n${sql}`;
+const hardeningSql = existsSync(hardeningMigrationPath)
+  ? readFileSync(hardeningMigrationPath, "utf8")
+  : "";
+const allSql = `${readFileSync(operationsMigrationPath, "utf8")}\n${sql}\n${hardeningSql}`;
 
 function functionDefinition(name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -37,6 +44,31 @@ describe("Network Center browser and kill-switch safety", () => {
     );
     expect(sql).toMatch(
       /ALTER\s+PUBLICATION\s+supabase_realtime\s+ADD\s+TABLE\s+public\.network_command_events/i,
+    );
+  });
+
+  it("replaces fleet-global heartbeat exposure with an RLS-scoped building projection", () => {
+    expect(
+      existsSync(hardeningMigrationPath),
+      `Missing migration: ${hardeningMigrationPath}`,
+    ).toBe(true);
+    expect(hardeningSql).toMatch(
+      /REVOKE ALL ON TABLE public\.network_worker_heartbeats\s+FROM PUBLIC, anon, authenticated, service_role/i,
+    );
+    expect(hardeningSql).not.toMatch(
+      /GRANT SELECT ON TABLE public\.network_worker_heartbeats TO authenticated/i,
+    );
+    expect(hardeningSql).toMatch(
+      /ALTER PUBLICATION supabase_realtime\s+DROP TABLE public\.network_worker_heartbeats/i,
+    );
+    expect(hardeningSql).toMatch(
+      /ALTER PUBLICATION supabase_realtime\s+ADD TABLE public\.network_worker_building_status/i,
+    );
+    expect(hardeningSql).toMatch(
+      /CREATE POLICY[\s\S]{0,500}ON public\.network_worker_building_status[\s\S]{0,500}can_do_on_building\(\s*'network_center',\s*'view',\s*building_id\s*\)/i,
+    );
+    expect(hardeningSql).toMatch(
+      /GRANT SELECT ON TABLE public\.network_worker_building_status TO authenticated/i,
     );
   });
 
