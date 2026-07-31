@@ -1038,10 +1038,6 @@ export default function QuaySoPage() {
               <h3 className="qs-display" id="qs-win-title">
                 {myTeam ? <>Hẹn {myTeam.name} lần sau nhé!</> : <>Hẹn lần sau nhé!</>}
               </h3>
-              <p className="qs-sub">
-                Lần này <b>{winner.name}</b> may mắn hơn một chút — {event.prizeLabel.toLowerCase()}{' '}
-                {formatVnd(event.prizeAmount)}.
-              </p>
               <p className="qs-cheerline">
                 Cố lên team ơi — nỗ lực chốt phòng tham gia chương trình sale mới
                 để rinh thưởng đợt tới nhé! 💪🔥
