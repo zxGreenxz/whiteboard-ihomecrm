@@ -453,9 +453,19 @@ BEGIN
 END
 $patch_gen$;
 
-REVOKE ALL ON FUNCTION public.generate_special_fees_v1(text, uuid[], text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.generate_special_fees_v1(text, uuid[], text)
-  TO authenticated, service_role;
+-- Cấp quyền cho vỏ 3 tham số — CHỈ KHI nó còn tồn tại.
+-- `20260801012000` gỡ hẳn vỏ này (nó gây PGRST203 chứ không cứu được tab cũ),
+-- nên REVOKE/GRANT trần ở đây sẽ ném 42883 và làm file hết chạy lại được.
+DO $grant_shim$
+BEGIN
+  IF to_regprocedure('public.generate_special_fees_v1(text,uuid[],text)') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.generate_special_fees_v1(text, uuid[], text) FROM PUBLIC, anon';
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.generate_special_fees_v1(text, uuid[], text) TO authenticated, service_role';
+  ELSE
+    RAISE NOTICE 'Vỏ 3 tham số đã được 20260801012000 gỡ — bỏ qua cấp quyền';
+  END IF;
+END
+$grant_shim$;
 
 -- Cấp quyền cho chữ ký MỚI (DROP bản cũ đã cuốn theo GRANT của nó).
 REVOKE ALL ON FUNCTION public.generate_special_fees_v1(text, uuid[], text, uuid)
@@ -496,11 +506,16 @@ BEGIN
     RAISE EXCEPTION 'pay_period_fee: chốt trùng vẫn chỉ đếm phiếu ĐÃ DUYỆT — phiếu chờ duyệt sẽ vô hình. DỪNG.';
   END IF;
 
-  -- Đúng HAI bản generate_special_fees_v1: bản thật 4 tham số + vỏ 3 tham số.
+  -- Bản thật 4 tham số phải có. Số bản tổng cộng là 1 (sau khi 20260801012000
+  -- gỡ vỏ) hoặc 2 (trước đó) — cả hai đều hợp lệ, nên chỉ chặn trường hợp mất
+  -- bản thật hoặc mọc thêm bản thứ ba.
   SELECT count(*) INTO v_n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public' AND p.proname = 'generate_special_fees_v1';
-  IF v_n <> 2 THEN
-    RAISE EXCEPTION 'Có % bản generate_special_fees_v1, phải đúng 2 (bản thật + vỏ tương thích). DỪNG.', v_n;
+  IF v_n NOT IN (1, 2) THEN
+    RAISE EXCEPTION 'Có % bản generate_special_fees_v1 — PostgREST sẽ nhập nhằng. DỪNG.', v_n;
+  END IF;
+  IF to_regprocedure('public.generate_special_fees_v1(text,uuid[],text,uuid)') IS NULL THEN
+    RAISE EXCEPTION 'Mất bản 4 tham số của generate_special_fees_v1. DỪNG.';
   END IF;
 END
 $verify$;
