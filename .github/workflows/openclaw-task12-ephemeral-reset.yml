@@ -1,0 +1,40 @@
+name: OpenClaw Task 12 Ephemeral Supabase Reset
+
+on:
+  push:
+    branches:
+      - codex/openclaw-task12-ephemeral-ci
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openclaw-task12-ephemeral-reset
+  cancel-in-progress: true
+
+jobs:
+  full-local-reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+
+      - name: Pin Supabase CLI
+        run: |
+          version="$(npx --yes supabase@2.109.1 --version)"
+          test "$version" = "2.109.1"
+
+      - name: Start disposable local Supabase Postgres
+        run: npx --yes supabase@2.109.1 db start
+
+      - name: Reset the complete repository migration chain
+        run: npx --yes supabase@2.109.1 db reset --local --no-seed --debug
+
+      - name: Destroy disposable local Supabase state
+        if: always()
+        run: npx --yes supabase@2.109.1 stop --no-backup || true
