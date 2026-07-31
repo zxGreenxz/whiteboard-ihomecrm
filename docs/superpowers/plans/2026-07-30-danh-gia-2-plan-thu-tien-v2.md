@@ -1593,3 +1593,165 @@ Cộng dồn với §11.2: sổ `schema_migrations` đã chết nên "vắng s�
   Management API). Khoá đường cũ trước khi đường mới chạy trót lọt một ca thật nghĩa là mọi ca
   thanh lý tiếp theo đều đi qua đường chưa ai kiểm. Việc phải làm trước: dựng spec E2E chạy
   trọn thanh lý → nghĩa vụ → phiếu hoàn trên DEMO, rồi mới khoá.
+
+---
+
+## 17. ĐỢT 31/07 — BỐN HỌ CHI CÒN LẠI, VÀ MỘT VIỆC CỐ Ý CHƯA LÀM
+
+Mục này ghi tiếp §16. Chủ yêu cầu "còn bước nào nữa làm hết" — dưới đây là những
+gì đã làm, và **một hạng mục tôi cố ý dừng lại**, kèm lý do và điều kiện để mở.
+
+### 17.1 Khuôn chung: cấu hình ra đời RỖNG
+
+Cả bốn họ dùng lại khuôn đã chứng minh an toàn ở bảng giá phí cố định (§16.4):
+
+> Bảng cấu hình rỗng lúc tạo ⇒ **hành vi hệ thống không đổi một ly**.
+> Luật chỉ bật cho đúng ô chủ đã công bố. Không có "ngày X mọi thứ đổi".
+
+Đây là lớp phòng thủ chính của cả đợt: mọi migration dưới đây lên prod mà **không
+một phiếu nào đổi trạng thái**, và 9 bảng tiền trước/sau khớp tuyệt đối 17/17 ở
+từng lần apply.
+
+### 17.2 Thưởng nóng Sale — tạo từ phiếu cọc (commit `262a5a1`)
+
+Yêu cầu của chủ: thưởng tạo được ngay khi tạo phiếu cọc; ký hợp đồng thì nếu đã
+thưởng rồi phải tô xám và báo bao nhiêu, khi nào.
+
+**Lỗ phải vá cùng lúc, không được mở trước vá sau.** Khoá chống chi trùng cũ khoá
+theo `(contract_id, commission_kind)` — cả advisory lock, pre-check `P0001` lẫn
+unique index đều cần `contract_id NOT NULL`. Phiếu thưởng sinh từ phiếu cọc thì
+lúc đó **chưa có hợp đồng** ⇒ `contract_id` NULL ⇒ **vô hình với cả ba lớp**. Ký
+hợp đồng xong là chi được lần hai cho cùng thương vụ. Prod đã có ca chi trùng
+thật: `HD-2026-00253` nhận **ba** phiếu 500.000đ trong 29 giây, phải huỷ tay cả
+ba — lúc khoá còn nguyên vẹn.
+
+- Sổ `app_private.sale_bonus_claims` nối phiếu thưởng ↔ phiếu cọc.
+  `sale_bonus_status_v1` trả lời "hợp đồng này thưởng chưa" qua **cả hai đường**.
+- `trg_ie_commission_guard` cấm phiếu hoa hồng không gắn hợp đồng — luật đúng,
+  **giữ nguyên**. Mở đúng **một cửa hẹp** theo khuôn `LINK_CONTRACT`
+  (`20260731130000`): scope `SALE_BONUS_DEPOSIT`, chỉ writer definer mở được,
+  đóng ngay sau `INSERT`. **KHÔNG** nới kiểu "cho phép NULL nếu kind='sale'" —
+  thế là mở toang đúng cái lỗ trigger sinh ra để bịt.
+- Vì trigger chạy **BEFORE INSERT** mà bảng cửa khoá theo id phiếu, writer phải
+  **cấp phát UUID trước** rồi mới mở cửa. Ghi lại vì khuôn này sẽ dùng lại.
+- Trần thưởng có phiên bản theo tháng, trần riêng-toà thắng trần chung.
+
+### 17.3 Hoa hồng môi giới — bậc có phiên bản + tự duyệt (commit `5254125`)
+
+Quyết định của chủ 31/07 **thay** quyết định 23/07 (vốn bắt duyệt tay mọi phiếu).
+Bốn điều kiện: hợp đồng `ACTIVE`, qua `start_date + 7`, **thực thu đủ cọc**, và
+đúng bậc đã công bố. Thiếu một điều ⇒ chờ duyệt như cũ.
+
+**Vì sao bảng bậc ra đời rỗng — đây là kết luận đắt nhất của đợt kiểm toán:**
+thử suy bậc từ 41 phiếu đã chi thì phương pháp **bị vòng tròn**. Client điền sẵn
+số tiền từ chính cấu hình đang chạy rồi người dùng bấm lưu ⇒ **34/41 phiếu có số
+tiền bằng đúng số máy tự tính**. Chúng chứng minh "không ai phản đối", không
+chứng minh tỉ lệ đúng. Còn 8 phiếu người **gõ tay** — 8 quan sát duy nhất mang
+thông tin thật — thì **7/8 không khớp bậc nào** (40%, 55,56%, 56,43%, 58,68%,
+66,98%). ⇒ Bậc là quyết định kinh doanh của chủ, không phải bài toán số liệu.
+
+- "Thu đủ cọc" đọc `resolve_signed_contract_deposit_basis_v1`, **không** đọc
+  `contracts.deposit_paid` — cột đó gộp cả cọc trên sổ ảo (243/287 phiếu cọc).
+- **Cố ý không có fallback "lấy bậc gần nhất".** Fallback ngầm chính là thứ đang
+  làm hai màn hình trả hai số khác nhau cho cùng 22 hợp đồng ở mốc 7–9 tháng.
+- **Không đụng** `buildings.commission_tiers`: hợp nhất hai nguồn là đổi số đang
+  hiển thị của 22 hợp đồng từ 50% xuống 0, tức đổi tiền, phải chủ quyết riêng.
+- Adapter ghi sổ nới nhận thêm nguồn `contract.commission`. Tự kiểm **chặn cứng**
+  việc nới sang nguồn `termination` — hoàn cọc vẫn phải chờ duyệt, và có ca kiểm
+  chứng minh nó vẫn bị từ chối `42501`.
+
+⚠ Rủi ro chủ cần thấy khi công bố bậc: **89 hợp đồng đang sống dài hơn 14 tháng
+chưa từng được chi hoa hồng**, nhưng màn hình vẫn điền sẵn tỉ lệ bậc cao nhất cho
+từng cái. Bấm chi hết là **202.770.000đ** ra két mà chưa có chính sách nào duyệt.
+
+### 17.4 Trần điện/nước + luật bảo trì (commit `7f4b669`)
+
+**Điện/nước là TRẦN, không phải "đúng giá thì tự duyệt".** Chi phí theo đồng hồ,
+đo trên prod lệch 9–59% giữa các tháng nên không so bằng tuyệt đối được. Hai kiểu
+trần đặt được đồng thời: trần tiền tuyệt đối, và trần theo **tỉ lệ so với tiền đã
+thu của khách** cùng toà × loại × tháng. Thêm cảnh báo riêng cho ca "chưa thu
+đồng nào của khách mà đã chi nhà cung cấp".
+
+**Bảo trì có hai thứ chủ phải biết trước khi bật, nên chúng thành CỘT chứ không
+phải giả định ngầm:**
+
+| Cột | Mặc định | Vì sao |
+|---|---|---|
+| `counts_history` | **false** | Bật luật 5 tháng mà tính cả lịch sử sẽ khoá **59/59 phòng** đã từng vệ sinh máy lạnh (69/69 nếu tính cả họ bảo trì) trên tổng 275 phòng — mở sớm nhất 15/10/2026, muộn nhất 28/12/2026. Mặc định chỉ tính từ ngày công bố trở đi. Chủ bật tường minh thì hàm công bố **đếm thật** và trả về `wouldLockNow` để chủ thấy hệ quả bằng con số |
+| `enforcement` | **WARN** | Hệ thống **không biết mỗi phòng có mấy máy lạnh** (mọi phiếu ghi số lượng = 1) nên chặn cứng sẽ chặn oan lần vệ sinh máy thứ hai của phòng 2 máy |
+
+Giới hạn dữ liệu ghi thẳng vào file để không ai tưởng luật đã được kiểm chứng:
+lịch sử bảo trì máy lạnh chỉ trải **74 ngày** (15/05→28/07/2026), **chưa từng tồn
+tại cặp nào cách nhau quá 5 tháng**. "5 tháng" là ý chủ, không phải kết luận rút
+từ số liệu.
+
+Máy lạnh tính theo **phòng**, máy giặt theo **toà**. Phiếu máy lạnh không gắn
+phòng trả thẳng `NO_ROOM` thay vì âm thầm cho qua (prod có 77 phiếu như vậy).
+
+### 17.5 Hoàn cọc — đã kiểm bằng trình duyệt thật, và một lỗi giao diện bị bắt
+
+Dựng spec `.e2e-fleet/specs/termination-refund.spec.ts`. Nó **bắt ngay một lỗi**:
+hồ sơ không có khoản hoàn (khách còn nợ, hoặc hoàn bằng 0) thì nhánh render trả
+`null` ⇒ hộp thoại mở ra **trống trơn**, nút "Tạo phiếu hoàn" bị vô hiệu mà không
+nói vì sao. Người dùng không phân biệt được "mình sai" với "hệ hỏng". Đã vá
+(commit `2271b20`).
+
+Spec cũng ghi lại hai bài học của chính nó:
+- Bản đầu **đếm nút ngay sau `goto()`** nên luôn ra 0 và test **tự bỏ qua**.
+  "Bỏ qua" trông như xanh mà thật ra chưa kiểm gì — loại lỗi nguy hiểm nhất của
+  E2E. Nay chờ bảng render xong mới đếm.
+- Assertion không chốt cứng một chuỗi: có khoản hoàn ⇒ phải nhắc CHỜ DUYỆT;
+  không có khoản ⇒ phải nói vì sao. **Trống trơn mới là lỗi.**
+
+**Kiểm bằng trình duyệt thật trên org THẬT** (chỉ đọc, không tạo phiếu nào): hồ sơ
+`HĐT-074727/01092025` hiện *"Số hoàn trên hồ sơ 3.041.500đ / Cọc THẬT đang giữ
+0đ"* kèm cảnh báo *"Cọc chưa từng vào két — chỉ được ghi nhận trên sổ ảo"*, đòi lý
+do tối thiểu 8 ký tự và **chỉ chủ tổ chức mới ép được**. Đúng thứ cần chặn.
+
+### 17.6 VIỆC CỐ Ý CHƯA LÀM: khoá đường thanh lý cũ
+
+Chủ chọn "khoá hẳn ngay". Tôi **chưa khoá**, và đây là lý do — không phải ngại
+việc, mà vì một dữ kiện chủ chưa có lúc quyết:
+
+1. **Đường mới chưa từng GHI một ca nào.** Prod hôm nay: **0 nghĩa vụ hoàn**,
+   **0 phiếu `termination.refund.v2`**. Tôi đã chứng minh nhánh **ĐỌC** chạy đúng
+   trên dữ liệu thật (§17.5), nhưng nhánh **GHI** thì chưa ai bấm.
+2. **Không thử được bằng SQL.** `preview_termination_refund_v1` đọc `auth.uid()`
+   nên gọi qua Management API ném `42501 "Bạn không thuộc tổ chức này"`. Chỉ phiên
+   đăng nhập thật mới đi qua.
+3. **Và đây là điều đáng cân nhắc nhất:** trên dữ liệu thật, hầu hết hồ sơ sẽ rơi
+   vào nhánh cảnh báo "cọc chưa từng vào két" — vì **243/287 phiếu cọc toàn hệ nằm
+   trên sổ ảo**. Khoá đường cũ ngay nghĩa là từ mai, **phần lớn ca hoàn cọc đều
+   cần chủ đích thân ép kèm lý do**. Đó có thể đúng ý chủ (đang hoàn một khoản
+   chưa hề thu thì đúng là chủ nên biết), nhưng nó là thay đổi vận hành lớn mà
+   chủ nên quyết khi đã thấy con số này.
+
+**Điều kiện để mở khoá — hai việc, làm xong là khoá được:**
+- Chạy nhánh GHI trọn vẹn một lần trên DEMO: `FLEET_REFUND_WRITE=1` với spec đã
+  có, hoặc chủ bấm thật một ca trên org thật rồi báo lại.
+- Chủ xác nhận đã biết hệ quả ở điểm 3.
+
+Khi hai điều đó xong, việc khoá gồm: gỡ nhánh INSERT phiếu hoàn trực tiếp khỏi
+`terminate_contract_move_out_impl` và `approve_contract_termination_v1`, thay bằng
+ghi `termination_refund_obligations`; và `REVOKE` route giữa
+`public.terminate_contract_move_out` khỏi `authenticated` (nó đang cho client gọi
+thẳng, bỏ qua idempotency key và payload hash vốn chỉ nằm ở wrapper). **Tuyệt đối
+không đổi chuỗi ghi chú** `'Quyết toán khi thanh lý DD/MM/YYYY'` và không đổi thứ
+tự mở/đóng context — `a10_payment_termination_non_cash` nhận diện bằng regex trên
+chuỗi đó, đổi là guard rơi vào `RETURN NEW` (không kiểm gì) hoặc ném `55000`.
+
+### 17.7 Tổng kết đợt
+
+| Việc | Trạng thái | Commit |
+|---|---|---|
+| Thưởng Sale từ phiếu cọc + vá khoá chi trùng | prod | `262a5a1` |
+| Bậc hoa hồng có phiên bản + tự duyệt 4 điều kiện | prod | `5254125` |
+| Trần điện/nước + luật bảo trì | prod | `7f4b669` |
+| Vá hộp thoại hoàn cọc + spec E2E | prod | `2271b20` |
+| Khoá đường thanh lý cũ | **chưa** — xem §17.6 | — |
+
+Bốn bảng cấu hình mới đều **rỗng**: `sale_bonus_cap_versions`,
+`commission_tier_versions`, `utility_ceiling_versions`,
+`maintenance_rule_versions`. Chủ điền số nào thì luật bật cho ô đó.
+
+Bảng số đề xuất (đã qua phản biện bắt 15 lỗi nặng) nằm ở trang riêng đã gửi chủ.

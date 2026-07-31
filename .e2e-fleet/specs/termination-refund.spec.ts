@@ -94,7 +94,7 @@ test('hoàn cọc: phiếu hoàn KHÔNG được tự duyệt (quyết định c
     ).toBeTruthy();
   } else {
     expect(
-      /không có khoản hoàn|còn nợ|bằng 0/i.test(body),
+      /không có khoản hoàn|còn nợ|hoàn đúng 0đ/i.test(body),
       `Nút tạo bị vô hiệu mà hộp thoại không nói vì sao. Nội dung: "${body.slice(0, 200)}"`,
     ).toBeTruthy();
   }
