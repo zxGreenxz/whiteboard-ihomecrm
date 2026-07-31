@@ -24,6 +24,8 @@ import {
   luckySavePayout,
   serverClockOffset,
   uploadLuckyProof,
+  PROOF_MAX_FILES,
+  type LuckyProof,
   type LuckyPublicState,
   type LuckyTeamPublic,
 } from '@/lib/luckyDrawApi';
@@ -307,31 +309,78 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  // Ảnh vừa chọn: xem trước ngay tại máy. Bucket private nên sau khi tải lại
-  // trang chỉ hiện tên file + dấu ✓, không tự xem lại được (chống đọc chéo).
-  const [preview, setPreview] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [proofs, setProofs] = useState<LuckyProof[]>(team.proofs ?? []);
+  // Ảnh vừa chọn trong PHIÊN NÀY xem trước được (blob cục bộ). Bucket private,
+  // anon không có quyền đọc nên tấm nộp từ phiên trước chỉ hiện tên file.
+  const [localUrls, setLocalUrls] = useState<Record<string, string>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  // Thu hồi blob URL khi rời trang để không rò bộ nhớ.
+  const urlsRef = useRef(localUrls);
+  urlsRef.current = localUrls;
+  useEffect(() => () => { Object.values(urlsRef.current).forEach(URL.revokeObjectURL); }, []);
 
-  const pickFile = async (file: File | undefined) => {
-    if (!file) return;
+  const persist = async (next: LuckyProof[], okMsg: string) => {
+    const res = await luckySavePayout(code, { proofs: next });
+    if (!res.ok) throw new Error('Không lưu được giấy cọc.');
+    setProofs(res.teams?.find((t) => t.isMine)?.proofs ?? next);
+    setMsg(okMsg);
+    onSaved(res);
+  };
+
+  const pickFiles = async (files: FileList | null) => {
+    const list = Array.from(files ?? []);
+    if (!list.length) return;
+    setErr(null);
+    setMsg(null);
+    setBusy(true);
+
+    const room = PROOF_MAX_FILES - proofs.length;
+    const take = list.slice(0, Math.max(0, room));
+    const added: LuckyProof[] = [];
+    const blobs: Record<string, string> = {};
+    try {
+      if (room <= 0) throw new Error(`Tối đa ${PROOF_MAX_FILES} tấm — xoá bớt rồi nộp tiếp nhé.`);
+      for (let i = 0; i < take.length; i++) {
+        setProgress(`Đang tải ${i + 1}/${take.length}…`);
+        const up = await uploadLuckyProof(eventId, take[i]);
+        added.push({ path: up.path, name: up.name });
+        if (take[i].type.startsWith('image/')) blobs[up.path] = URL.createObjectURL(take[i]);
+      }
+      const next = [...proofs, ...added];
+      setLocalUrls((m) => ({ ...m, ...blobs }));
+      await persist(
+        next,
+        list.length > take.length
+          ? `Đã nộp ${take.length} tấm (bỏ qua ${list.length - take.length} tấm vượt giới hạn) ✓`
+          : `Đã nộp ${take.length} tấm giấy cọc ✓`,
+      );
+    } catch (e) {
+      Object.values(blobs).forEach(URL.revokeObjectURL);
+      setErr(e instanceof Error ? e.message : 'Tải ảnh không thành công, thử lại.');
+    } finally {
+      setBusy(false);
+      setProgress(null);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const removeProof = async (path: string) => {
     setErr(null);
     setMsg(null);
     setBusy(true);
     try {
-      const up = await uploadLuckyProof(eventId, file);
-      const res = await luckySavePayout(code, { proofPath: up.path, proofName: up.name });
-      if (!res.ok) throw new Error('Không lưu được giấy cọc.');
-      if (preview) URL.revokeObjectURL(preview);
-      setPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
-      setMsg('Đã nộp giấy cọc ✓');
-      onSaved(res);
+      await persist(proofs.filter((p) => p.path !== path), 'Đã bỏ tấm giấy cọc ✓');
+      const url = localUrls[path];
+      if (url) {
+        URL.revokeObjectURL(url);
+        setLocalUrls(({ [path]: _drop, ...rest }) => rest);
+      }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Tải ảnh không thành công, thử lại.');
+      setErr(e instanceof Error ? e.message : 'Không bỏ được, thử lại.');
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
@@ -363,33 +412,48 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
         Nộp trước cho gọn — trúng thưởng là BTC chuyển khoản luôn, khỏi hỏi tới hỏi lui.
       </p>
 
-      <div className="qs-upload">
-        <label className="qs-uploadbox">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,application/pdf"
-            capture="environment"
-            disabled={busy}
-            onChange={(e) => void pickFile(e.target.files?.[0])}
-          />
-          {preview ? (
-            <img src={preview} alt="Giấy cọc vừa nộp" />
-          ) : team.hasProof ? (
-            <span className="qs-up-done">
-              ✓ Đã nộp giấy cọc
-              {team.proofName ? <em>{team.proofName}</em> : null}
-              <b>Chạm để nộp lại</b>
-            </span>
-          ) : (
-            <span className="qs-up-empty">
-              <b>＋</b>
-              Chụp / chọn ảnh giấy cọc
-              <em>JPG, PNG hoặc PDF · tối đa 10MB</em>
-            </span>
-          )}
-        </label>
-      </div>
+      {proofs.length > 0 && (
+        <ul className="qs-prooflist">
+          {proofs.map((p, i) => (
+            <li key={p.path} className="qs-proof">
+              {localUrls[p.path] ? (
+                <img src={localUrls[p.path]} alt={p.name} />
+              ) : (
+                <span className="qs-proof-ph">{/\.pdf$/i.test(p.name) ? 'PDF' : `#${i + 1}`}</span>
+              )}
+              <span className="qs-proof-name">{p.name}</span>
+              <button
+                type="button"
+                className="qs-proof-x"
+                aria-label={`Bỏ ${p.name}`}
+                disabled={busy}
+                onClick={() => void removeProof(p.path)}
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <label className="qs-uploadbox">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          disabled={busy}
+          onChange={(e) => void pickFiles(e.target.files)}
+        />
+        <span className="qs-up-empty">
+          <b>＋</b>
+          {progress ?? (proofs.length ? 'Nộp thêm ảnh giấy cọc' : 'Chụp / chọn ảnh giấy cọc')}
+          <em>
+            Chọn nhiều tấm một lần · JPG, PNG, PDF · mỗi tấm ≤10MB
+            {proofs.length ? ` · đã nộp ${proofs.length}/${PROOF_MAX_FILES}` : ''}
+          </em>
+        </span>
+      </label>
 
       <div className="qs-fields">
         <label>

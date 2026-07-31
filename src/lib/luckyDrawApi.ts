@@ -29,8 +29,14 @@ export interface LuckyTeamPublic {
   payoutAccount: string | null;
   payoutBank: string | null;
   payoutHolder: string | null;
-  proofName: string | null;
-  hasProof: boolean;
+  proofs: LuckyProof[];
+  proofCount: number;
+}
+
+export interface LuckyProof {
+  path: string;
+  name: string;
+  at?: string;
 }
 
 export interface LuckyEventPublic {
@@ -53,10 +59,8 @@ export interface LuckyPublicState {
 }
 
 export interface LuckyTeamAdmin
-  extends Omit<LuckyTeamPublic, 'isMine' | 'hasProof' | 'proofName'> {
+  extends Omit<LuckyTeamPublic, 'isMine' | 'proofCount'> {
   code: string;
-  proofPath: string | null;
-  proofName: string | null;
   proofUploadedAt: string | null;
 }
 
@@ -117,9 +121,12 @@ export interface LuckyPayoutInput {
   payoutAccount?: string;
   payoutBank?: string;
   payoutHolder?: string;
-  proofPath?: string;
-  proofName?: string;
+  /** NGUYÊN danh sách giấy cọc (thay thế toàn bộ) — thêm/bớt đều gửi cả list. */
+  proofs?: LuckyProof[];
 }
+
+/** Tối đa 10 tấm giấy cọc mỗi đội (server cũng cắt ở 10). */
+export const PROOF_MAX_FILES = 10;
 
 export function luckySavePayout(code: string, p: LuckyPayoutInput) {
   return publicRpc<LuckyPublicState>('lucky_save_payout_v1', { p_code: code, p });

@@ -333,15 +333,24 @@ export default function LuckyDrawAdminPage() {
                               ) : (
                                 <div className="text-muted-foreground">Chưa có STK</div>
                               )}
-                              {t.proofPath ? (
-                                <Button
-                                  size="sm"
-                                  variant="link"
-                                  className="h-auto p-0 text-xs"
-                                  onClick={() => void openProof(t.proofPath!)}
-                                >
-                                  📎 Xem giấy cọc
-                                </Button>
+                              {t.proofs?.length ? (
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                  <span className="text-muted-foreground">
+                                    📎 {t.proofs.length} tấm:
+                                  </span>
+                                  {t.proofs.map((pr, i) => (
+                                    <Button
+                                      key={pr.path}
+                                      size="sm"
+                                      variant="link"
+                                      className="h-auto p-0 text-xs"
+                                      title={pr.name}
+                                      onClick={() => void openProof(pr.path)}
+                                    >
+                                      #{i + 1}
+                                    </Button>
+                                  ))}
+                                </div>
                               ) : (
                                 <div className="text-muted-foreground">Chưa có giấy cọc</div>
                               )}
