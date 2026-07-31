@@ -303,13 +303,19 @@
   letter-spacing: -.02em;
   line-height: 1.1;
 }
+/* Mỗi dòng phụ nằm riêng một hàng — để inline thì "1 deal" và "đã có mặt"
+   dính liền nhau thành một khối chữ không đọc được. */
 .qs-champ .qs-who span {
+  display: block;
   font-family: var(--qs-data);
   font-size: 10px;
   letter-spacing: .11em;
   text-transform: uppercase;
   color: var(--qs-muted);
+  line-height: 1.5;
 }
+.qs-champ .qs-who .qs-here { color: var(--qs-good); font-weight: 700; }
+.qs-champ .qs-who .qs-await { color: var(--qs-muted); }
 .qs-champ .qs-cash {
   font-family: var(--qs-data);
   font-variant-numeric: tabular-nums;
@@ -319,14 +325,6 @@
 }
 .qs-c1 .qs-cash { color: var(--qs-gold); }
 .qs-c2 .qs-cash { color: #E4D3C6; }
-.qs-champ .qs-here {
-  font-family: var(--qs-data);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--qs-good);
-}
 
 /* Lưới đội quay */
 .qs-progress { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }

@@ -586,11 +586,10 @@ export default function QuaySoPage() {
                       <div className="qs-medal">{t.topRank}</div>
                       <div className="qs-who">
                         <strong>{t.name}</strong>
-                        <span>
-                          {t.deals} deal
-                          {t.checkedIn ? ' · đã có mặt' : ' · chưa điểm danh'}
+                        <span>{t.deals} deal</span>
+                        <span className={t.checkedIn ? 'qs-here' : 'qs-await'}>
+                          {t.checkedIn ? 'Đã có mặt · sẵn sàng nhận giải ✓' : 'Chưa điểm danh'}
                         </span>
-                        {t.checkedIn && <span className="qs-here">Sẵn sàng nhận giải ✓</span>}
                       </div>
                       {t.topPrizeAmount != null && <div className="qs-cash">{formatVnd(t.topPrizeAmount)}</div>}
                     </div>
@@ -599,7 +598,11 @@ export default function QuaySoPage() {
               </section>
             )}
 
-            {/* Lưới đội quay */}
+            {/* Lưới đội quay + bánh xe — CHỈ hiện khi thực sự có đội tham gia
+                quay. Sự kiện chỉ gồm đội TOP (đã có giải, không vào bánh xe)
+                thì vẽ vòng xoay rỗng là vô nghĩa. */}
+            {wheelTeams.length > 0 && (
+            <>
             <section>
               <div className="qs-head">
                 <p className="qs-eyebrow">Vòng xoay {formatVnd(event.prizeAmount)}</p>
@@ -664,6 +667,8 @@ export default function QuaySoPage() {
                 </div>
               )}
             </section>
+            </>
+            )}
           </>
         )}
 
