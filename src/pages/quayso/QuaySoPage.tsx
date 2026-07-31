@@ -21,7 +21,9 @@ import {
   formatVnd,
   luckyCheckin,
   luckyDraw,
+  luckySavePayout,
   serverClockOffset,
+  uploadLuckyProof,
   type LuckyPublicState,
   type LuckyTeamPublic,
 } from '@/lib/luckyDrawApi';
@@ -287,6 +289,148 @@ function fireConfetti(canvas: HTMLCanvasElement | null) {
     else ctx.clearRect(0, 0, window.innerWidth, H);
   };
   requestAnimationFrame(tick);
+}
+
+/* ────────────────────── Hồ sơ nhận thưởng của đội ───────────────────────── */
+
+interface PayoutFormProps {
+  eventId: string;
+  code: string;
+  team: LuckyTeamPublic;
+  onSaved: (s: LuckyPublicState) => void;
+}
+
+function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
+  const [account, setAccount] = useState(team.payoutAccount ?? '');
+  const [bank, setBank] = useState(team.payoutBank ?? '');
+  const [holder, setHolder] = useState(team.payoutHolder ?? '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  // Ảnh vừa chọn: xem trước ngay tại máy. Bucket private nên sau khi tải lại
+  // trang chỉ hiện tên file + dấu ✓, không tự xem lại được (chống đọc chéo).
+  const [preview, setPreview] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+
+  const pickFile = async (file: File | undefined) => {
+    if (!file) return;
+    setErr(null);
+    setMsg(null);
+    setBusy(true);
+    try {
+      const up = await uploadLuckyProof(eventId, file);
+      const res = await luckySavePayout(code, { proofPath: up.path, proofName: up.name });
+      if (!res.ok) throw new Error('Không lưu được giấy cọc.');
+      if (preview) URL.revokeObjectURL(preview);
+      setPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null);
+      setMsg('Đã nộp giấy cọc ✓');
+      onSaved(res);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Tải ảnh không thành công, thử lại.');
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const saveAccount = async () => {
+    setErr(null);
+    setMsg(null);
+    setBusy(true);
+    try {
+      const res = await luckySavePayout(code, {
+        payoutAccount: account,
+        payoutBank: bank,
+        payoutHolder: holder,
+      });
+      if (!res.ok) throw new Error('Không lưu được số tài khoản.');
+      setMsg('Đã lưu số tài khoản ✓');
+      onSaved(res);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Lưu không thành công, thử lại.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="qs-payout">
+      <p className="qs-eyebrow">Hồ sơ nhận thưởng</p>
+      <h2 className="qs-display"><span className="qs-skew">Nộp giấy cọc &amp; STK</span></h2>
+      <p className="qs-payout-hint">
+        Nộp trước cho gọn — trúng thưởng là BTC chuyển khoản luôn, khỏi hỏi tới hỏi lui.
+      </p>
+
+      <div className="qs-upload">
+        <label className="qs-uploadbox">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            disabled={busy}
+            onChange={(e) => void pickFile(e.target.files?.[0])}
+          />
+          {preview ? (
+            <img src={preview} alt="Giấy cọc vừa nộp" />
+          ) : team.hasProof ? (
+            <span className="qs-up-done">
+              ✓ Đã nộp giấy cọc
+              {team.proofName ? <em>{team.proofName}</em> : null}
+              <b>Chạm để nộp lại</b>
+            </span>
+          ) : (
+            <span className="qs-up-empty">
+              <b>＋</b>
+              Chụp / chọn ảnh giấy cọc
+              <em>JPG, PNG hoặc PDF · tối đa 10MB</em>
+            </span>
+          )}
+        </label>
+      </div>
+
+      <div className="qs-fields">
+        <label>
+          Số tài khoản nhận thưởng
+          <input
+            inputMode="numeric"
+            placeholder="vd 0123456789"
+            value={account}
+            disabled={busy}
+            onChange={(e) => setAccount(e.target.value)}
+          />
+        </label>
+        <div className="qs-field2">
+          <label>
+            Ngân hàng
+            <input
+              placeholder="vd Vietcombank"
+              value={bank}
+              disabled={busy}
+              onChange={(e) => setBank(e.target.value)}
+            />
+          </label>
+          <label>
+            Chủ tài khoản
+            <input
+              placeholder="vd NGUYEN VAN A"
+              value={holder}
+              disabled={busy}
+              onChange={(e) => setHolder(e.target.value)}
+            />
+          </label>
+        </div>
+        <button type="button" className="qs-savebtn" disabled={busy} onClick={() => void saveAccount()}>
+          {busy ? 'Đang lưu…' : 'Lưu số tài khoản'}
+        </button>
+      </div>
+
+      {msg && <p className="qs-okmsg">{msg}</p>}
+      {err && <p className="qs-codeerr">{err}</p>}
+    </section>
+  );
 }
 
 /* ─────────────────────────────── Trang chính ────────────────────────────── */
@@ -557,6 +701,16 @@ export default function QuaySoPage() {
           </section>
         )}
 
+        {/* Hồ sơ nhận thưởng — chỉ đội đã điểm danh mới nộp được */}
+        {event && myTeam && savedCode && (
+          <PayoutForm
+            eventId={event.id}
+            code={savedCode}
+            team={myTeam}
+            onSaved={(s) => queryClient.setQueryData(queryKey, s)}
+          />
+        )}
+
         {noEntry && (
           <div className="qs-empty">
             Chưa có mã? Hỏi BTC lấy mã 6 số của đội bạn — nhập mã là vào thẳng sự kiện.
@@ -729,6 +883,16 @@ export default function QuaySoPage() {
                     </div>
                     <div className="qs-amt">{formatVnd(event.prizeAmount)}</div>
                   </div>
+                  {/* Đội mình không trúng → cổ vũ, không im lặng cho hụt hẫng */}
+                  {myTeam && !winnerIsMine && (
+                    <div className="qs-cheer">
+                      <strong>Chưa tới lượt {myTeam.name} thôi!</strong>
+                      <span>
+                        Cố lên team ơi — nỗ lực chốt phòng tham gia chương trình sale mới
+                        để rinh thưởng đợt tới nhé! 💪🔥
+                      </span>
+                    </div>
+                  )}
                   <button type="button" className="qs-replay-mini" onClick={() => setSpinNonce((n) => n + 1)}>
                     ↺ Quay lại màn công bố
                   </button>

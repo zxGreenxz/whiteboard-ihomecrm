@@ -25,6 +25,12 @@ export interface LuckyTeamPublic {
   checkedIn: boolean;
   checkedInAt: string | null;
   isMine: boolean;
+  /** Hồ sơ nhận thưởng — server CHỈ trả cho chính đội đang xem. */
+  payoutAccount: string | null;
+  payoutBank: string | null;
+  payoutHolder: string | null;
+  proofName: string | null;
+  hasProof: boolean;
 }
 
 export interface LuckyEventPublic {
@@ -46,8 +52,12 @@ export interface LuckyPublicState {
   teams?: LuckyTeamPublic[];
 }
 
-export interface LuckyTeamAdmin extends Omit<LuckyTeamPublic, 'isMine'> {
+export interface LuckyTeamAdmin
+  extends Omit<LuckyTeamPublic, 'isMine' | 'hasProof' | 'proofName'> {
   code: string;
+  proofPath: string | null;
+  proofName: string | null;
+  proofUploadedAt: string | null;
 }
 
 export interface LuckyEventAdmin extends LuckyEventPublic {
@@ -101,6 +111,68 @@ export function luckyCheckin(code: string) {
 
 export function luckyDraw(eventId: string) {
   return publicRpc<LuckyPublicState>('lucky_draw_v1', { p_event: eventId });
+}
+
+export interface LuckyPayoutInput {
+  payoutAccount?: string;
+  payoutBank?: string;
+  payoutHolder?: string;
+  proofPath?: string;
+  proofName?: string;
+}
+
+export function luckySavePayout(code: string, p: LuckyPayoutInput) {
+  return publicRpc<LuckyPublicState>('lucky_save_payout_v1', { p_code: code, p });
+}
+
+export const PROOF_BUCKET = 'lucky-proofs';
+export const PROOF_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Upload giấy cọc lên bucket private `lucky-proofs`.
+ *
+ * Dùng REST storage bằng fetch thuần với anon key — KHÔNG qua supabase-js, cùng
+ * lý do như các RPC public (deadlock navigator.locks trong webview Zalo/iOS).
+ * Anon chỉ có quyền INSERT nên không đọc chéo được file đội khác.
+ * Đường dẫn: <eventId>/<uuid>.<ext> — policy INSERT bắt thư mục gốc là sự kiện
+ * còn mở, và RPC lưu path cũng kiểm lại tiền tố này.
+ */
+export async function uploadLuckyProof(
+  eventId: string,
+  file: File,
+): Promise<{ path: string; name: string }> {
+  if (file.size > PROOF_MAX_BYTES) {
+    throw new Error('Ảnh lớn hơn 10MB — chụp lại nhỏ hơn giúp mình nhé.');
+  }
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const rand =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `${eventId}/${rand}.${ext}`;
+
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/${PROOF_BUCKET}/${path}`;
+  const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        apikey,
+        Authorization: `Bearer ${apikey}`,
+        'Content-Type': file.type || 'application/octet-stream',
+        'x-upsert': 'false',
+        'cache-control': '3600',
+      },
+      body: file,
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Upload lỗi ${res.status}`);
+    return { path, name: file.name };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /* ─────────────────────────── RPC admin (supabase-js) ──────────────────────── */

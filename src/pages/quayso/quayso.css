@@ -509,6 +509,128 @@
   white-space: nowrap;
 }
 
+/* ── Hồ sơ nhận thưởng: giấy cọc + STK ── */
+.qs-payout {
+  border: 1px solid var(--qs-line);
+  border-radius: 20px;
+  background: var(--qs-ink-2);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.qs-payout h2 { font-size: 24px; }
+.qs-payout-hint { margin: -4px 0 0; font-size: 13px; color: var(--qs-muted); }
+
+.qs-uploadbox {
+  display: block;
+  position: relative;
+  border: 2px dashed var(--qs-line);
+  border-radius: 15px;
+  background: var(--qs-ink);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color .2s, background .2s;
+}
+.qs-uploadbox:hover { border-color: rgba(255, 194, 60, .5); }
+.qs-uploadbox:focus-within { border-color: var(--qs-gold); box-shadow: 0 0 0 3px rgba(255, 194, 60, .22); }
+.qs-uploadbox input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.qs-uploadbox img { display: block; width: 100%; max-height: 260px; object-fit: contain; background: #0E0509; }
+.qs-up-empty, .qs-up-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 26px 16px;
+  text-align: center;
+  font-family: var(--qs-data);
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--qs-muted);
+}
+.qs-up-empty b { font-size: 30px; line-height: 1; color: var(--qs-gold); font-weight: 400; }
+.qs-up-empty em, .qs-up-done em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: .1em;
+  color: var(--qs-muted);
+  opacity: .75;
+  word-break: break-all;
+}
+.qs-up-done { color: var(--qs-good); font-weight: 700; }
+.qs-up-done b { font-size: 10px; font-weight: 700; color: var(--qs-gold); letter-spacing: .13em; }
+
+.qs-fields { display: flex; flex-direction: column; gap: 10px; }
+.qs-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: var(--qs-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--qs-muted);
+}
+.qs-fields input {
+  background: var(--qs-ink);
+  border: 1px solid var(--qs-line);
+  border-radius: 11px;
+  color: var(--qs-cream);
+  font-family: var(--qs-data);
+  font-size: 15px;
+  letter-spacing: .04em;
+  padding: 11px 12px;
+  outline: none;
+  min-width: 0;
+}
+.qs-fields input:focus-visible { border-color: var(--qs-gold); box-shadow: 0 0 0 3px rgba(255, 194, 60, .22); }
+.qs-fields input:disabled { opacity: .55; }
+.qs-field2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 380px) { .qs-field2 { grid-template-columns: 1fr; } }
+
+.qs-savebtn {
+  margin-top: 2px;
+  padding: 13px;
+  border: 0;
+  border-radius: 12px;
+  font-family: var(--qs-display);
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #2A1500;
+  background: linear-gradient(180deg, var(--qs-gold-hi), var(--qs-gold) 45%, var(--qs-gold-dp));
+  box-shadow: 0 5px 0 -1px #8A5D08;
+  cursor: pointer;
+}
+.qs-savebtn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 -1px #8A5D08; }
+.qs-savebtn:disabled { color: var(--qs-muted); background: var(--qs-ink-3); box-shadow: none; cursor: not-allowed; }
+.qs-savebtn:focus-visible { outline: 2px solid var(--qs-cream); outline-offset: 3px; }
+.qs-okmsg { margin: 0; font-size: 13px; font-weight: 600; color: var(--qs-good); }
+
+/* Lời cổ vũ cho đội chưa trúng */
+.qs-cheer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: center;
+  padding: 15px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 51, 63, .4);
+  background: linear-gradient(165deg, rgba(245, 51, 63, .16), var(--qs-ink-2) 70%);
+}
+.qs-cheer strong {
+  font-weight: 900;
+  font-size: 17px;
+  text-transform: uppercase;
+  letter-spacing: -.02em;
+  color: var(--qs-cream);
+}
+.qs-cheer span { font-size: 13.5px; color: var(--qs-muted); line-height: 1.5; }
+
 /* Trạng thái trống / lỗi */
 .qs-empty {
   border: 1px dashed var(--qs-line);

@@ -22,8 +22,10 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { supabase } from '@/integrations/supabase/client';
+import { SIGNED_URL_TTL } from '@/lib/storage';
 import {
-  formatVnd, luckyAdminApi, luckyPublicUrl,
+  PROOF_BUCKET, formatVnd, luckyAdminApi, luckyPublicUrl,
   type LuckyEventAdmin, type LuckyTeamAdmin,
 } from '@/lib/luckyDrawApi';
 
@@ -115,6 +117,24 @@ export default function LuckyDrawAdminPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Bucket `lucky-proofs` là PRIVATE (anon chỉ upload được, không đọc) nên phải
+  // ký URL tạm mới xem được. Mở tab mới ngay trong handler click để Safari
+  // không chặn popup — điền URL sau khi ký xong.
+  const openProof = async (path: string) => {
+    const tab = window.open('', '_blank');
+    try {
+      const { data, error } = await supabase.storage
+        .from(PROOF_BUCKET)
+        .createSignedUrl(path, SIGNED_URL_TTL);
+      if (error || !data?.signedUrl) throw error ?? new Error('Không ký được URL.');
+      if (tab) tab.location.href = data.signedUrl;
+      else window.location.href = data.signedUrl;
+    } catch (e) {
+      tab?.close();
+      toast.error((e as Error)?.message || 'Không mở được giấy cọc.');
+    }
+  };
 
   const copy = async (text: string, label: string) => {
     try {
@@ -258,6 +278,7 @@ export default function LuckyDrawAdminPage() {
                         <th className="px-2 py-2">Mã</th>
                         <th className="px-2 py-2">Vai trò</th>
                         <th className="px-2 py-2">Điểm danh</th>
+                        <th className="px-2 py-2">Hồ sơ nhận thưởng</th>
                         <th className="px-2 py-2 text-right">Thao tác</th>
                       </tr>
                     </thead>
@@ -299,6 +320,33 @@ export default function LuckyDrawAdminPage() {
                               {t.checkedIn ? '✓ Có mặt' : 'Chưa'}
                             </Button>
                           </td>
+                          <td className="px-2 py-2">
+                            <div className="space-y-1 text-xs">
+                              {t.payoutAccount ? (
+                                <div className="font-mono font-semibold">
+                                  {t.payoutAccount}
+                                  {t.payoutBank ? ` · ${t.payoutBank}` : ''}
+                                  {t.payoutHolder ? (
+                                    <div className="font-sans font-normal text-muted-foreground">{t.payoutHolder}</div>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <div className="text-muted-foreground">Chưa có STK</div>
+                              )}
+                              {t.proofPath ? (
+                                <Button
+                                  size="sm"
+                                  variant="link"
+                                  className="h-auto p-0 text-xs"
+                                  onClick={() => void openProof(t.proofPath!)}
+                                >
+                                  📎 Xem giấy cọc
+                                </Button>
+                              ) : (
+                                <div className="text-muted-foreground">Chưa có giấy cọc</div>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-2 py-2 text-right">
                             <div className="flex justify-end gap-1">
                               <Button
@@ -333,7 +381,7 @@ export default function LuckyDrawAdminPage() {
                       ))}
                       {event.teams.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                          <td colSpan={6} className="py-6 text-center text-muted-foreground">
                             Chưa có đội nào — thêm bên dưới, web sẽ cấp mã tự động.
                           </td>
                         </tr>
