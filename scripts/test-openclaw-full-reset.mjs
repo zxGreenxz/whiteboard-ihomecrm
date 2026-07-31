@@ -314,9 +314,13 @@ function assertFrozenPlan(plan) {
 }
 
 function cliFailure(label, result) {
-  const details = redactSensitiveText(
+  const redacted = redactSensitiveText(
     `${result.stderr ?? ""}\n${result.stdout ?? ""}`,
-  ).trim().slice(0, 4_000);
+  ).trim();
+  const marker = "\n...[diagnostic output truncated]...\n";
+  const details = redacted.length <= 4_000
+    ? redacted
+    : `${redacted.slice(0, 900)}${marker}${redacted.slice(-(4_000 - 900 - marker.length))}`;
   return new Error(`${label} failed.${details ? ` ${details}` : ""}`);
 }
 
