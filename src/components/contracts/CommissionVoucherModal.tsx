@@ -29,6 +29,7 @@ import {
   useExistingCommissionVouchers,
   type ExistingCommissionVoucher,
 } from "@/hooks/useCommissionVoucher";
+import { useSaleBonusStatus } from "@/hooks/useSaleBonus";
 import { useAccounts } from "@/hooks/useAccounts";
 import BankSelect from "@/components/income-expenses/BankSelect";
 
@@ -91,6 +92,13 @@ export function CommissionVoucherModal({
   const existingSale = existingVouchers.find(
     (v) => v.commission_kind === "sale"
   );
+
+  // Thưởng Sale có thể đã được chi TỪ PHIẾU CỌC, lúc hợp đồng còn chưa tồn tại.
+  // Phiếu đó `contract_id` rỗng nên `useExistingCommissionVouchers` KHÔNG thấy —
+  // tin nó thì màn hình này mời người dùng thưởng lần hai cho cùng thương vụ.
+  // `sale_bonus_status_v1` dò cả đường phiếu cọc → hợp đồng.
+  const { data: saleBonus } = useSaleBonusStatus(open ? contractId : null);
+  const salePaidElsewhere = !!saleBonus?.alreadyPaid && !existingSale;
 
   // ---- Form state (no react-hook-form — lightweight modal) ----
   const [accountId, setAccountId] = useState<string>("");
@@ -166,10 +174,10 @@ export function CommissionVoucherModal({
     const saleAmt = typeof saleAmount === "number" ? saleAmount : 0;
     // Loại đã có phiếu sống → skip (RPC + unique index vẫn chặn nếu lách)
     const willCreateBroker = brokerAmount > 0 && !existingBroker;
-    const willCreateSale = saleAmt > 0 && !existingSale;
+    const willCreateSale = saleAmt > 0 && !existingSale && !salePaidElsewhere;
 
     if (!willCreateBroker && !willCreateSale) {
-      if (existingBroker || existingSale) {
+      if (existingBroker || existingSale || salePaidElsewhere) {
         toast.info(
           "HĐ này đã có phiếu hoa hồng — mỗi hợp đồng chỉ chi 1 lần, không tạo thêm."
         );
@@ -436,6 +444,19 @@ export function CommissionVoucherModal({
                     voucher={existingSale}
                     label="thưởng nóng Sale"
                   />
+                ) : salePaidElsewhere ? (
+                  /* Đã thưởng từ PHIẾU CỌC — tô xám, nói rõ bao nhiêu và khi nào. */
+                  <div className="rounded-md border bg-muted/50 p-3 text-sm space-y-1">
+                    <div className="font-medium text-muted-foreground">
+                      Hợp đồng này đã được thưởng Sale
+                    </div>
+                    <p className="text-muted-foreground">{saleBonus?.note}</p>
+                    {saleBonus?.status === "UNAPPROVED" && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Phiếu đó đang chờ duyệt.
+                      </p>
+                    )}
+                  </div>
                 ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="space-y-1">
