@@ -219,12 +219,17 @@ export default function LuckyWheelCanvas({
 
   return (
     <div className="qs-stage" ref={stageRef}>
-      <svg className="qs-needle" ref={needleRef} viewBox="0 0 30 40" aria-hidden="true">
-        <path d="M15 40 L2 8 A14 14 0 0 1 28 8 Z" fill="#FFC23C" stroke="#8A5D08" strokeWidth="1.6" strokeLinejoin="round" />
-        <circle cx="15" cy="10" r="4.4" fill="#8A5D08" />
-      </svg>
-      <canvas ref={canvasRef} role="img" aria-label="Vòng xoay may mắn" />
-      <div className="qs-hub" aria-hidden="true">{hubLabel}</div>
+      {/* Lớp bọc ôm SÁT canvas: kim và nắp trục neo theo bánh xe, không theo
+          khung sân khấu — khung này bị kéo cao ở màn quay nên nếu neo theo nó
+          thì kim trôi hẳn lên trên, rời khỏi bánh xe. */}
+      <div className="qs-wheelbox">
+        <svg className="qs-needle" ref={needleRef} viewBox="0 0 30 40" aria-hidden="true">
+          <path d="M15 40 L2 8 A14 14 0 0 1 28 8 Z" fill="#FFC23C" stroke="#8A5D08" strokeWidth="1.6" strokeLinejoin="round" />
+          <circle cx="15" cy="10" r="4.4" fill="#8A5D08" />
+        </svg>
+        <canvas ref={canvasRef} role="img" aria-label="Vòng xoay may mắn" />
+        <div className="qs-hub" aria-hidden="true">{hubLabel}</div>
+      </div>
     </div>
   );
 }

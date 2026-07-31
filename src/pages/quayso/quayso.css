@@ -425,6 +425,8 @@
   gap: 15px;
 }
 .qs-stage { position: relative; width: 100%; display: flex; justify-content: center; }
+/* Khung neo cho kim + nắp trục: cao đúng bằng canvas */
+.qs-wheelbox { position: relative; display: inline-flex; line-height: 0; }
 .qs-stage canvas {
   display: block;
   border-radius: 50%;
@@ -835,6 +837,8 @@
 
 /* Bánh xe chiếm phần giữa, tự co theo chiều cao còn lại */
 .qs-screen .qs-stage { flex: 1 1 auto; align-items: center; min-height: 0; }
+/* Chừa chỗ cho kim nhô lên khỏi vành, khỏi bị cắt cụt khi khung vừa khít */
+.qs-screen .qs-wheelbox { margin-top: 12px; }
 
 .qs-screen-foot {
   flex: none;
