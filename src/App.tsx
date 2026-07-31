@@ -155,6 +155,12 @@ const AppGuidePage = lazy(() => import("./pages/AppGuidePage"));
 // không rò font/nền sang phần còn lại của CRM.
 const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
 
+// Sự kiện trao thưởng + vòng xoay may mắn. Trang công khai /quayso có bộ style
+// riêng (quayso.css scope dưới .qs-page) nên lazy để không rò sang CRM; trang
+// quản trị /quayso/admin nằm trong app đã đăng nhập.
+const QuaySoPage = lazy(() => import("./pages/quayso/QuaySoPage"));
+const LuckyDrawAdminPage = lazy(() => import("./pages/quayso/LuckyDrawAdminPage"));
+
 // Trang "Thu tiền" (mobile, đi thu tiền mặt) — page phụ độc lập có bộ style
 // riêng (thu-tien.css scope dưới .tt-page). Lazy để CSS + font Be Vietnam Pro /
 // Space Mono chỉ nạp khi mở /thu-tien, không kế thừa/đụng theme site.
@@ -302,9 +308,32 @@ const App = () => (
             }
           />
 
+          {/* Sự kiện quay số may mắn — trang CÔNG KHAI cho sale (không đăng
+              nhập). Định danh bằng mã 6 số web cấp cho từng đội; link kèm
+              ?e=<eventId> để mở thẳng đúng sự kiện. */}
+          <Route
+            path="/quayso"
+            element={
+              <Suspense fallback={null}>
+                <QuaySoPage />
+              </Suspense>
+            }
+          />
+
           {/* ========================================
               PROTECTED ROUTES - Require authentication
               ======================================== */}
+
+          {/* Quản trị sự kiện quay số: server tự guard OWNER/STAFF qua RPC
+              (42501), route chỉ cần đăng nhập. */}
+          <Route
+            path="/quayso/admin"
+            element={
+              <ProtectedRoute>
+                <LuckyDrawAdminPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* === THEO DÕI NHANH === */}
           {/* "/" tách nhánh: mobile → Home launcher (web-app), desktop → Dashboard. */}
