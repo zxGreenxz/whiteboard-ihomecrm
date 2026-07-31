@@ -1,1 +1,16 @@
 project_id = "tryymsxyyckgbrmmvozx"
+
+[functions.openclaw-control]
+verify_jwt = true
+
+[functions.openclaw-qr]
+verify_jwt = true
+
+[functions.openclaw-object-tickets]
+verify_jwt = true
+
+[functions.openclaw-runtime-token]
+verify_jwt = false
+
+[functions.openclaw-runtime]
+verify_jwt = false

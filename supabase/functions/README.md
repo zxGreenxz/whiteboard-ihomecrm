@@ -66,3 +66,51 @@ supabase functions serve <function-name> --env-file supabase/.env.local
 - Kiểm typecheck baseline và build.
 - Với schema migration, regenerate Supabase types sau deploy.
 - Với function đụng tiền/quyền, test trên org DEMO và kiểm audit/console; không ghi dữ liệu vào org thật.
+
+## OpenClaw Zalo Personal
+
+OpenClaw dùng bundle riêng, không dùng chung transport hay secret với Zalo legacy.
+
+| Function | Entrypoint | Auth |
+|---|---|---|
+| `openclaw-control` | `openclaw-control/index.ts` | Supabase browser JWT; `verify_jwt=true` |
+| `openclaw-qr` | `openclaw-qr/index.ts` | Supabase browser JWT; `verify_jwt=true` |
+| `openclaw-object-tickets` | `openclaw-object-tickets/index.ts` | Supabase browser JWT; `verify_jwt=true` |
+| `openclaw-runtime-token` | `openclaw-runtime-token/index.ts` | Credential exchange riêng; `verify_jwt=false` |
+| `openclaw-runtime` | `openclaw-runtime/index.ts` | Request-bound runtime token; `verify_jwt=false` |
+
+Thứ tự deploy là `openclaw-control`, `openclaw-qr`, `openclaw-runtime-token`,
+`openclaw-runtime`, rồi `openclaw-object-tickets`. Mỗi lệnh dùng
+`node scripts/deploy-edge-fn.mjs <slug> --include-shared openclaw`; multipart chỉ
+chứa target function và `_shared/openclaw/**`.
+
+Ma trận/JWT mode được khóa từ shared-boundary task; chỉ chạy các lệnh deploy sau
+khi Task 14-16 đã tạo đủ năm `index.ts`. Bundler fail-closed nếu entrypoint thiếu,
+loại `*.test.ts`/`*.spec.ts` và từ chối dotfile hoặc file không phải TypeScript.
+
+Tên cấu hình bắt buộc, không ghi giá trị vào Git hoặc log:
+
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `OPENCLAW_RUNTIME_TOKEN_SIGNING_KEY`
+- `OPENCLAW_BROWSER_ORIGINS`
+
+Hai runtime function phải reject browser `Origin` trước mọi database call. Chúng
+derive organization/account/cell hoặc maintenance principal từ credential, lease,
+generation và fencing đã xác minh; body chỉ là request payload, không mở rộng scope.
+Browser function luôn gọi `auth.getUser()` và chỉ dùng organization trong request làm
+selector cho caller-scoped RPC.
+
+Gate cục bộ:
+
+```powershell
+npx vitest run supabase/functions/_shared/openclaw
+npx vitest run scripts/__tests__/deploy-openclaw-edge-bundle.test.mjs
+node scripts/check-openclaw-isolation.mjs
+```
+
+Mỗi endpoint phải có deny tests cho expired credential/token, wrong scope,
+cross-organization, replay, stale lease/fencing/session generation và idempotency.
+Không function nào được log Authorization, QR, session, model, workload credential,
+R2 ticket/signature/receipt, cookie, IMEI hoặc phone secret.
