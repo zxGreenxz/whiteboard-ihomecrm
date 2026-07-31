@@ -1,0 +1,35 @@
+name: OpenClaw Task 12 Full Reset V2
+
+on:
+  push:
+    branches:
+      - codex/openclaw-task12-ephemeral-ci-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openclaw-task12-full-reset-v2
+  cancel-in-progress: true
+
+jobs:
+  full-local-reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+
+      - name: Install reviewed dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Verify the full-reset unit boundary
+        run: npx vitest run scripts/__tests__/openclaw-full-reset-harness.test.mjs
+
+      - name: Run the mandatory 498-file Docker-backed reset and smoke gate
+        run: npm run test:openclaw:sql:full-reset
