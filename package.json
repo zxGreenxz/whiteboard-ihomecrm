@@ -14,6 +14,12 @@
     "lint": "eslint .",
     "typecheck:baseline": "node scripts/check-ts-baseline.mjs",
     "gen:types": "node scripts/gen-supabase-types.mjs",
+    "gen:openclaw:vectors": "node scripts/generate-openclaw-golden-vectors.mjs",
+    "test:openclaw:services": "node -e \"const m=/^v24\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.exec(process.version);if(!m||Number(m[1])<15){console.error('Official stable Node >=24.15.0 <25 is required');process.exit(1)}\" && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:upstream && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run vendor:prepare && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run typecheck && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge test && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run build && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run pack && npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:artifact && npm --prefix services/openclaw-zalo-cell/session-crypto run verify:dist && npm --prefix services/openclaw-zalo-cell/session-crypto test && npm --prefix services/openclaw-zalo-cell/session-crypto run typecheck && npm --prefix services/openclaw-zalo-bridge run build && npm --prefix services/openclaw-zalo-bridge test && npm --prefix services/openclaw-zalo-bridge run typecheck && npm --prefix services/openclaw-zalo-maintenance run build && npm --prefix services/openclaw-zalo-maintenance test && npm --prefix services/openclaw-zalo-maintenance run typecheck && npm --prefix services/openclaw-egress-broker run build && npm --prefix services/openclaw-egress-broker test && npm --prefix services/openclaw-egress-broker run typecheck && npm --prefix infra/openclaw-zalo-watchdog run build && npm --prefix infra/openclaw-zalo-watchdog test && npm --prefix infra/openclaw-zalo-watchdog run typecheck && vitest run supabase/functions/_shared/openclaw supabase/functions/openclaw-control supabase/functions/openclaw-qr supabase/functions/openclaw-runtime-token supabase/functions/openclaw-runtime supabase/functions/openclaw-object-tickets supabase/functions/openclaw-watchdog",
+    "test:openclaw:sql": "npm run test:openclaw:sql:local",
+    "test:openclaw:sql:local": "vitest run src/lib/__tests__/openclawZaloMigrations.test.ts scripts/__tests__/openclaw-sql-harness.test.mjs scripts/__tests__/openclaw-concurrency-harness.test.mjs scripts/__tests__/openclaw-browser-dml-matrix.test.mjs scripts/__tests__/openclaw-composite-fk-indexes.test.mjs scripts/__tests__/openclaw-schema-drift-harness.test.mjs && node scripts/test-openclaw-migrations.mjs --local && node scripts/test-openclaw-sql.mjs --local && node scripts/test-openclaw-concurrency.mjs --local",
+    "test:openclaw:sql:live-demo": "node scripts/test-openclaw-sql.mjs --live-demo && node scripts/test-openclaw-concurrency.mjs --live-demo",
+    "test:openclaw:r2": "npm --prefix infra/openclaw-media-gateway run build && npm --prefix infra/openclaw-media-gateway test && npm --prefix infra/openclaw-media-gateway run typecheck",
     "preview": "vite preview",
     "docs:dev": "npm --prefix docs-site run dev",
     "docs:build": "npm --prefix docs-site run build",
@@ -87,6 +93,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.4",
     "@eslint/js": "^9.32.0",
     "@playwright/test": "1.61.1",
     "@tailwindcss/typography": "^0.5.16",
@@ -103,6 +110,7 @@
     "globals": "^15.15.0",
     "lovable-tagger": "^1.1.11",
     "postcss": "^8.5.6",
+    "pg": "8.16.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",

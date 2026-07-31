@@ -862,12 +862,13 @@ declare
   v_created integer := 0;
 begin
   for schedule in
-    select schedule.*
-    from public.openclaw_schedules schedule
-    where schedule.status='ACTIVE' and schedule.next_run_at is not null
-      and schedule.next_run_at<=v_now
-    order by schedule.next_run_at,schedule.id
-    for update of schedule skip locked
+    select candidate_schedule.*
+    from public.openclaw_schedules candidate_schedule
+    where candidate_schedule.status='ACTIVE'
+      and candidate_schedule.next_run_at is not null
+      and candidate_schedule.next_run_at<=v_now
+    order by candidate_schedule.next_run_at,candidate_schedule.id
+    for update of candidate_schedule skip locked
     limit greatest(1,least(coalesce(p_limit,100),500))
   loop
     if schedule.campaign_id is not null or schedule.target_id is null then
@@ -1005,19 +1006,28 @@ begin
       select * into strict v_next from app_private.openclaw_resolve_local_occurrence_v1(
         v_next_local,schedule.timezone,schedule.dst_fold_policy);
     end if;
-    update public.openclaw_schedules current_schedule set
-      next_nominal_local=v_next_local,
-      next_resolved_local=case when v_next_local is null then null else v_next.resolved_local end,
-      next_run_at=case when v_next_local is null then null else v_next.planned_for end,
-      next_utc_offset_seconds=case when v_next_local is null then null else v_next.utc_offset_seconds end,
-      next_resolution=case when v_next_local is null then null else v_next.resolution end,
-      cursor_version=current_schedule.cursor_version+1,
-      binding_defer_reason=null,
-      status=case when v_next_local is null then 'COMPLETE' else current_schedule.status end,
-      updated_at=v_now
-    where current_schedule.organization_id=schedule.organization_id
-      and current_schedule.id=schedule.id
-      and current_schedule.schedule_version=schedule.schedule_version;
+    if v_next_local is null then
+      update public.openclaw_schedules current_schedule set
+        next_nominal_local=null,next_resolved_local=null,next_run_at=null,
+        next_utc_offset_seconds=null,next_resolution=null,
+        cursor_version=current_schedule.cursor_version+1,
+        binding_defer_reason=null,status='COMPLETE',updated_at=v_now
+      where current_schedule.organization_id=schedule.organization_id
+        and current_schedule.id=schedule.id
+        and current_schedule.schedule_version=schedule.schedule_version;
+    else
+      update public.openclaw_schedules current_schedule set
+        next_nominal_local=v_next_local,
+        next_resolved_local=v_next.resolved_local,
+        next_run_at=v_next.planned_for,
+        next_utc_offset_seconds=v_next.utc_offset_seconds,
+        next_resolution=v_next.resolution,
+        cursor_version=current_schedule.cursor_version+1,
+        binding_defer_reason=null,updated_at=v_now
+      where current_schedule.organization_id=schedule.organization_id
+        and current_schedule.id=schedule.id
+        and current_schedule.schedule_version=schedule.schedule_version;
+    end if;
   end loop;
   return v_created;
 end;
@@ -2721,7 +2731,7 @@ begin
         ||candidate.policy_version||':'||candidate.scope_version,
       v_hash,v_payload,v_hash,'QUEUED',1,binding.lease_generation,
       binding.fencing_token,binding.credential_generation
-    ) on conflict (organization_id,source_key) where source_key is not null do nothing;
+    ) on conflict do nothing;
     get diagnostics v_inserted=row_count;
     v_created:=v_created+v_inserted;
   end loop;
@@ -2857,7 +2867,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  tombstone record;
+  v_tombstone record;
   binding record;
   v_payload jsonb;
   v_bytes bytea;
@@ -2865,21 +2875,21 @@ declare
   v_inserted integer;
   v_created integer := 0;
 begin
-  for tombstone in
-    select tombstone.* from public.openclaw_retention_tombstones tombstone
-    where tombstone.subject_kind='MEDIA'
-      and tombstone.final_delete_not_before<=statement_timestamp()
-      and tombstone.object_key is not null
+  for v_tombstone in
+    select candidate.* from public.openclaw_retention_tombstones candidate
+    where candidate.subject_kind='MEDIA'
+      and candidate.final_delete_not_before<=statement_timestamp()
+      and candidate.object_key is not null
       and not app_private.openclaw_retention_subject_held_v1(
-        tombstone.organization_id,'MEDIA',tombstone.subject_id)
+        candidate.organization_id,'MEDIA',candidate.subject_id)
       and not exists (select 1 from public.openclaw_retention_delete_tickets ticket
-        where ticket.organization_id=tombstone.organization_id
-          and ticket.tombstone_id=tombstone.id)
+        where ticket.organization_id=candidate.organization_id
+          and ticket.tombstone_id=candidate.id)
       and not exists (select 1 from public.openclaw_maintenance_work_items work
-        where work.organization_id=tombstone.organization_id
-          and work.source_key='retention:final:'||tombstone.id||':'||tombstone.quarantine_version)
-    order by tombstone.final_delete_not_before,tombstone.id
-    for update of tombstone skip locked
+        where work.organization_id=candidate.organization_id
+          and work.source_key='retention:final:'||candidate.id||':'||candidate.quarantine_version)
+    order by candidate.final_delete_not_before,candidate.id
+    for update of candidate skip locked
     limit greatest(1,least(coalesce(p_limit,100),500))
   loop
     select principal.id maintenance_principal_id,credential.credential_generation,
@@ -2893,17 +2903,17 @@ begin
       on lease.organization_id=principal.organization_id
      and lease.maintenance_principal_id=principal.id
      and lease.status='ACTIVE' and lease.expires_at>statement_timestamp()
-    where principal.organization_id=tombstone.organization_id
+    where principal.organization_id=v_tombstone.organization_id
       and principal.is_current and principal.revoked_at is null
     order by lease.lease_generation desc,credential.credential_generation desc limit 1;
     if binding.maintenance_principal_id is null then continue; end if;
     v_payload := jsonb_build_object('version',1,'subjectKind','MEDIA',
-      'subjectId',tombstone.subject_id,'tombstoneId',tombstone.id,
-      'quarantineVersion',tombstone.quarantine_version,
-      'finalDeleteNotBefore',tombstone.final_delete_not_before,
+      'subjectId',v_tombstone.subject_id,'tombstoneId',v_tombstone.id,
+      'quarantineVersion',v_tombstone.quarantine_version,
+      'finalDeleteNotBefore',v_tombstone.final_delete_not_before,
       'scopeVersion',coalesce((select clock.hold_version
         from public.openclaw_retention_hold_clocks clock
-        where clock.organization_id=tombstone.organization_id),0));
+        where clock.organization_id=v_tombstone.organization_id),0));
     v_bytes := app_private.openclaw_jcs_bytes_v1(v_payload);
     v_hash := encode(extensions.digest(v_bytes,'sha256'),'hex');
     insert into public.openclaw_maintenance_work_items(
@@ -2911,9 +2921,9 @@ begin
       source_version,source_key,source_hash,payload,payload_hash,state,claim_generation,
       maintenance_lease_generation,fencing_token,credential_generation
     ) values (
-      tombstone.organization_id,binding.maintenance_principal_id,'RETENTION_DELETE','FINAL_DELETE',
-      tombstone.id,tombstone.quarantine_version::text,
-      'retention:final:'||tombstone.id||':'||tombstone.quarantine_version,
+      v_tombstone.organization_id,binding.maintenance_principal_id,'RETENTION_DELETE','FINAL_DELETE',
+      v_tombstone.id,v_tombstone.quarantine_version::text,
+      'retention:final:'||v_tombstone.id||':'||v_tombstone.quarantine_version,
       v_hash,v_payload,v_hash,'QUEUED',1,binding.lease_generation,
       binding.fencing_token,binding.credential_generation
     ) on conflict (organization_id,source_key) where source_key is not null do nothing;
@@ -3454,9 +3464,19 @@ begin
     or (OLD.state='LEASED' and NEW.state in ('QUEUED','DISPATCHING','UNKNOWN','FAILED','DEAD_LETTER'))
     or (OLD.state='DISPATCHING' and NEW.state in ('SENT','FAILED','UNKNOWN','DEAD_LETTER'))
   ) then raise exception 'invalid outbox state transition' using errcode='55000'; end if;
-  if OLD.state='UNKNOWN' and (to_jsonb(NEW)-'resolution_version')
-    is distinct from (to_jsonb(OLD)-'resolution_version') then
+  if OLD.state='UNKNOWN'
+    and (to_jsonb(NEW)-array['resolution_version','updated_at']::text[])
+      is distinct from
+        (to_jsonb(OLD)-array['resolution_version','updated_at']::text[]) then
     raise exception 'historical UNKNOWN evidence cannot be rewritten' using errcode='55000';
+  end if;
+  if OLD.state='UNKNOWN' and NEW.updated_at is distinct from OLD.updated_at
+    and not (
+      OLD.state='UNKNOWN' and NEW.state='UNKNOWN'
+      and OLD.resolution_version=0 and NEW.resolution_version=1
+    ) then
+    raise exception 'UNKNOWN timestamp may change only with the resolution CAS'
+      using errcode='55000';
   end if;
   if NEW.resolution_version is distinct from OLD.resolution_version and not (
     OLD.state='UNKNOWN' and NEW.state='UNKNOWN'

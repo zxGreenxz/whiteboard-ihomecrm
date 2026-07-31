@@ -8,8 +8,7 @@ const temporaryDirectories: string[] = [];
 type WrapperModule = typeof import('../gen-supabase-types.mjs');
 
 async function loadWrapper(): Promise<WrapperModule> {
-  // The query keeps the shebang-bearing CLI module inside Vitest's Vite transform pipeline.
-  return import('../gen-supabase-types.mjs?vitest');
+  return import('../gen-supabase-types.mjs');
 }
 
 async function makeTemporaryDirectory() {
@@ -97,6 +96,286 @@ describe('gen-supabase-types wrapper', () => {
     });
   });
 
+  test('builds a pinned, shell-free postgres-meta PGlite invocation', async () => {
+    const {
+      PGLITE_SOCKET_VERSION,
+      POSTGRES_META_VERSION,
+      buildOpenClawPgliteTypegenInvocation,
+    } = await loadWrapper();
+    const invocation = buildOpenClawPgliteTypegenInvocation(
+      'C:\\repo',
+      'win32',
+      {
+        execPath: 'C:\\Program Files\\nodejs\\node.exe',
+        npmExecPath: 'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js',
+      },
+    );
+    expect(invocation.shell).toBe(false);
+    expect(invocation.command).toBe('C:\\Program Files\\nodejs\\node.exe');
+    expect(invocation.args).toContain(`@supabase/postgres-meta@${POSTGRES_META_VERSION}`);
+    expect(invocation.args).toContain(`@electric-sql/pglite-socket@${PGLITE_SOCKET_VERSION}`);
+    expect(invocation.args).toContain('@electric-sql/pglite@0.5.4');
+    expect(invocation.args[invocation.args.length - 2]).toBe('node');
+    expect(invocation.args[invocation.args.length - 1]).toBe(
+      'C:\\repo\\scripts\\generate-openclaw-pglite-types.mjs',
+    );
+  });
+
+  test('builds local types without resolving or exposing a project ref or PAT', async () => {
+    const { GENERATED_TYPES_HEADER, SUPABASE_CLI_VERSION, generateSupabaseTypes } =
+      await loadWrapper();
+    const repoRoot = await makeTemporaryDirectory();
+    const targetDirectory = join(repoRoot, 'src', 'integrations', 'supabase');
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(join(repoRoot, 'package.json'), '{"name":"local-types"}\n', 'utf8');
+
+    await generateSupabaseTypes({
+      repoRoot,
+      environment: {
+        PATH: process.env.PATH,
+        SUPABASE_TYPES_SOURCE: 'local',
+        SUPABASE_PAT: 'sbp_must_not_reach_child-1234567890',
+        OPENAI_API_KEY: 'model-key-must-not-reach-child',
+        UNRELATED_SECRET: 'unrelated-secret-must-not-reach-child',
+      },
+      platform: 'linux',
+      runCli: async ({ command, args, env, shell }) => {
+        expect(command).toBe('npx');
+        expect(args).toEqual([
+          '--yes',
+          `supabase@${SUPABASE_CLI_VERSION}`,
+          'gen',
+          'types',
+          'typescript',
+          '--local',
+          '--schema',
+          'public',
+        ]);
+        expect(shell).toBe(false);
+        expect(env.SUPABASE_TYPES_SOURCE).toBe('local');
+        expect(env.SUPABASE_PAT).toBeUndefined();
+        expect(env.SUPABASE_ACCESS_TOKEN).toBeUndefined();
+        expect(env.OPENAI_API_KEY).toBeUndefined();
+        expect(env.UNRELATED_SECRET).toBeUndefined();
+        expect(args.join(' ')).not.toContain('project-id');
+        return {
+          exitCode: 0,
+          stdout: 'export type Json = string\nexport type Database = {}\n',
+          stderr: '',
+        };
+      },
+    });
+
+    expect(await readFile(join(targetDirectory, 'types.ts'), 'utf8')).toBe(
+      `${GENERATED_TYPES_HEADER}\nexport type Json = string\nexport type Database = {}\n`,
+    );
+  });
+
+  test('merges PGlite OpenClaw types without replacing the existing schema', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const baseline = `export type Json = string
+export type Database = {
+  public: {
+    Tables: {
+      lead_activities: {
+        Row: {
+          legacy_column: string
+        }
+        Insert: {
+          legacy_column: string
+        }
+        Update: {
+          legacy_column?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      legacy_view: {
+        Row: {
+          id: string
+        }
+        Relationships: []
+      }
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+`;
+    const generated = `export type Json = string
+export type Database = {
+  public: {
+    Tables: {
+      lead_activities: {
+        Row: {
+          openclaw_schedule_revision: number
+        }
+        Insert: {
+          openclaw_schedule_revision?: number
+        }
+        Update: {
+          openclaw_schedule_revision?: number
+        }
+        Relationships: []
+      }
+      openclaw_accounts: {
+        Row: {
+          id: string
+        }
+        Insert: {
+          id?: string
+        }
+        Update: {
+          id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      openclaw_status_v1: {
+        Args: never
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+`;
+
+    const merged = mergeOpenClawGeneratedTypes(baseline, generated);
+    expect(merged).toContain('legacy_column: string');
+    expect(merged).toContain('openclaw_schedule_revision: number');
+    expect(merged).toContain('openclaw_accounts: {');
+    expect(merged).toContain('openclaw_status_v1: {');
+    expect(merged).toContain('legacy_view: {');
+  });
+
+  test('uses the explicit PGlite engine without invoking the Supabase CLI', async () => {
+    const { GENERATED_TYPES_HEADER, generateSupabaseTypes } = await loadWrapper();
+    const repoRoot = await makeTemporaryDirectory();
+    const targetDirectory = join(repoRoot, 'src', 'integrations', 'supabase');
+    await mkdir(targetDirectory, { recursive: true });
+    await writeFile(join(repoRoot, 'package.json'), '{"name":"pglite-types"}\n', 'utf8');
+    const baseline = `export type Json = string
+export type Database = {
+  public: {
+    Tables: {
+      lead_activities: {
+        Row: {
+          legacy_column: string
+        }
+        Insert: {
+          legacy_column: string
+        }
+        Update: {
+          legacy_column?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+`;
+    const generated = `export type Json = string
+export type Database = {
+  public: {
+    Tables: {
+      lead_activities: {
+        Row: {
+          openclaw_schedule_revision: number
+        }
+        Insert: {
+          openclaw_schedule_revision?: number
+        }
+        Update: {
+          openclaw_schedule_revision?: number
+        }
+        Relationships: []
+      }
+      openclaw_accounts: {
+        Row: {
+          id: string
+        }
+        Insert: {
+          id?: string
+        }
+        Update: {
+          id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+`;
+    await writeFile(
+      join(targetDirectory, 'types.ts'),
+      `${GENERATED_TYPES_HEADER}\n${baseline}`,
+      'utf8',
+    );
+    let cliCalled = false;
+
+    await generateSupabaseTypes({
+      repoRoot,
+      environment: {
+        PATH: process.env.PATH,
+        SUPABASE_TYPES_SOURCE: 'local',
+        SUPABASE_TYPES_LOCAL_ENGINE: 'pglite',
+      },
+      runCli: async () => {
+        cliCalled = true;
+        throw new Error('CLI must not run');
+      },
+      runLocalPglite: async () => generated,
+    });
+
+    const output = await readFile(join(targetDirectory, 'types.ts'), 'utf8');
+    expect(cliCalled).toBe(false);
+    expect(output).toContain('legacy_column: string');
+    expect(output).toContain('openclaw_accounts: {');
+    expect(output).toContain('openclaw_schedule_revision: number');
+  });
+
   test('writes generated types atomically and clears the child PAT environment', async () => {
     const { GENERATED_TYPES_HEADER, generateSupabaseTypes } = await loadWrapper();
     const repoRoot = await makeTemporaryDirectory();
@@ -115,7 +394,11 @@ describe('gen-supabase-types wrapper', () => {
     let childEnvironment: NodeJS.ProcessEnv | undefined;
     await generateSupabaseTypes({
       repoRoot,
-      environment: { PATH: process.env.PATH },
+      environment: {
+        PATH: process.env.PATH,
+        OPENAI_API_KEY: 'model-key-must-not-reach-child',
+        UNRELATED_SECRET: 'unrelated-secret-must-not-reach-child',
+      },
       platform: 'win32',
       runCli: async ({ command, args, env, shell }) => {
         childEnvironment = env;
@@ -125,6 +408,8 @@ describe('gen-supabase-types wrapper', () => {
         expect(shell).toBe(false);
         expect(env.SUPABASE_ACCESS_TOKEN).toBe(fakePat);
         expect(env.SUPABASE_PAT).toBeUndefined();
+        expect(env.OPENAI_API_KEY).toBeUndefined();
+        expect(env.UNRELATED_SECRET).toBeUndefined();
         return {
           exitCode: 0,
           stdout: 'export type Json = string\r\nexport type Database = {}\r\n',

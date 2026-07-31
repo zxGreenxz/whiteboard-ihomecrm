@@ -50,7 +50,9 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
     expect(existsSync(paths.realtime)).toBe(true);
     const sql = source(paths.realtime);
     expect(sql).toContain("pg_advisory_xact_lock");
-    expect(sql).toContain("pg_publication_columns");
+    expect(sql).toContain("pg_publication_tables");
+    expect(sql).toContain("attnames");
+    expect(sql).not.toContain("pg_publication_columns");
     expect(sql).toContain("supabase_realtime");
     expect(sql).toContain("Unsafe OpenClaw relation is already present in supabase_realtime");
     expect(sql).toMatch(/published\.tablename<>all\s*\(array\[/i);
@@ -120,7 +122,8 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
     const sql = source(paths.maintenance);
     const body = functionBody(sql, "app_private", "materialize_openclaw_schedule_work_v1");
     expect(body).toContain("statement_timestamp()");
-    expect(body).toContain("for update of schedule skip locked");
+    expect(body).toContain("for update of candidate_schedule skip locked");
+    expect(body).not.toContain("select schedule.*");
     expect(body).toContain("schedule.next_run_at");
     expect(body).toContain("schedule.schedule_version");
     expect(body).toContain("openclaw_schedule_snapshots");
@@ -132,6 +135,29 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
     expect(body).not.toMatch(/catch.?up/i);
     expect(body).not.toMatch(/p_(?:now|clock|as_of)|nextRunAt/i);
     expect(body).not.toMatch(/\bhttp|net\.|r2\b/i);
+    expect(body).toMatch(/if v_next_local is null then[\s\S]*?status='COMPLETE'/i);
+    expect(body).not.toMatch(
+      /case when v_next_local is null then null else v_next\./i,
+    );
+  });
+
+  it("allows only the UNKNOWN resolution timestamp to move with the 0-to-1 CAS", () => {
+    const sql = source(paths.maintenance);
+    const guard = functionBody(
+      sql,
+      "app_private",
+      "reject_openclaw_unknown_state_rewrite_v1",
+    );
+    expect(guard).toContain(
+      "to_jsonb(NEW)-array['resolution_version','updated_at']::text[]",
+    );
+    expect(guard).toContain("NEW.updated_at is distinct from OLD.updated_at");
+    expect(guard).toMatch(
+      /OLD\.resolution_version=0[\s\S]*?NEW\.resolution_version=1/i,
+    );
+    expect(guard).toContain(
+      "UNKNOWN timestamp may change only with the resolution CAS",
+    );
   });
 
   it("fans typed CRM occurrences out once per exact subscription and target", () => {

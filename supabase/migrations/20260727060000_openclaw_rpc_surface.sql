@@ -4880,6 +4880,14 @@ begin
   elsif v_target.kind='PEER' and not exists (select 1 from public.openclaw_consents consent
       where consent.organization_id=v_org and consent.account_id=v_account and consent.target_id=v_outbox.target_id
         and consent.consent_status='ACTIVE' and (consent.expires_at is null or consent.expires_at > v_now)) then v_reason := 'CONSENT_MISSING';
+  elsif not exists (
+    select 1 from public.openclaw_policy_versions policy
+    where policy.organization_id=v_org and policy.account_id=v_account
+      and policy.id=(v_outbox.canonical_payload ->> 'policyVersionId')::uuid
+      and policy.lifecycle_state='PUBLISHED'
+      and policy.published_at is not null
+      and policy.archived_at is null
+  ) then v_reason := 'POLICY_STALE';
   elsif exists (
     select 1 from public.openclaw_policy_versions policy
     where policy.organization_id=v_org and policy.account_id=v_account

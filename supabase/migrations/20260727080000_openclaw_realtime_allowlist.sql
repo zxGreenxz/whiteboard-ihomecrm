@@ -181,12 +181,15 @@ begin
         ]::text[])
     ) as specification(table_name, column_names)
   loop
-    select pg_catalog.array_agg(columns.attname order by columns.attname)
+    select pg_catalog.array_agg(published_column.attname::text
+      order by published_column.attname::text)
       into v_actual
-    from pg_catalog.pg_publication_columns columns
-    where columns.pubname = 'supabase_realtime'
-      and columns.schemaname = 'public'
-      and columns.tablename = v_table;
+    from pg_catalog.pg_publication_tables published
+    cross join lateral pg_catalog.unnest(published.attnames)
+      as published_column(attname)
+    where published.pubname = 'supabase_realtime'
+      and published.schemaname = 'public'
+      and published.tablename = v_table;
 
     if coalesce(v_actual, array[]::text[])
        is distinct from (

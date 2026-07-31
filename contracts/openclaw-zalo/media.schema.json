@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ihome.invalid/openclaw-zalo/media.schema.json",
+  "title": "OpenClaw media ticket contracts",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "objectBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectKey", "sha256", "contentType", "contentLength"],
+      "properties": {
+        "objectKey": {
+          "type": "string",
+          "pattern": "^org/[0-9a-f-]{36}/openclaw/",
+          "maxLength": 1024
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "contentType": { "type": "string", "minLength": 3, "maxLength": 255 },
+        "contentLength": { "type": "integer", "minimum": 1, "maximum": 52428800 }
+      }
+    },
+    "mediaTicket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "ticketKind",
+        "ticketId",
+        "organizationId",
+        "operation",
+        "object",
+        "iat",
+        "exp",
+        "gatewayKeyGeneration",
+        "signature"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "ticketKind": { "const": "MEDIA_OBJECT" },
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "operation": { "enum": ["PUT", "GET", "DELETE"] },
+        "object": { "$ref": "#/$defs/objectBinding" },
+        "iat": { "type": "string", "format": "date-time" },
+        "exp": { "type": "string", "format": "date-time" },
+        "gatewayKeyGeneration": { "type": "integer", "minimum": 1 },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      }
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/mediaTicket" }],
+  "unevaluatedProperties": false
+}

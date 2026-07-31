@@ -632,6 +632,18 @@ revoke all on function app_private.openclaw_sweep_due_sales_tasks_v1(integer)
   from public,anon,authenticated,service_role;
 revoke all on function app_private.openclaw_bind_sales_task_organization_v1()
   from public,anon,authenticated,service_role;
+revoke all on function app_private.openclaw_reject_crm_occurrence_mutation_v1()
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.openclaw_bump_lead_assignment_revision_v1()
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.openclaw_emit_lead_occurrence_v1()
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.openclaw_bump_room_availability_revision_v1()
+  from public,anon,authenticated,service_role;
+revoke all on function public.trg_room_status_reconcile()
+  from public,anon,authenticated,service_role;
+revoke all on function app_private.openclaw_bump_sales_task_schedule_revision_v1()
+  from public,anon,authenticated,service_role;
 grant select,insert on public.openclaw_crm_event_occurrences to openclaw_function_owner;
 grant select on public.openclaw_crm_event_occurrences to openclaw_runtime_writer;
 grant select on public.rooms,public.leads to openclaw_function_owner;

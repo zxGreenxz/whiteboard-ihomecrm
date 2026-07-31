@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ihome.invalid/openclaw-zalo/policy.schema.json",
+  "title": "OpenClaw policy decision contracts",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sendDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "organizationId",
+        "accountId",
+        "targetId",
+        "policyVersionId",
+        "decision",
+        "reason",
+        "evaluatedAt",
+        "frozenInputsHash"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "accountId": { "$ref": "#/$defs/uuid" },
+        "targetId": { "$ref": "#/$defs/uuid" },
+        "policyVersionId": { "$ref": "#/$defs/uuid" },
+        "decision": { "enum": ["ALLOW", "DENY"] },
+        "reason": {
+          "enum": [
+            "GLOBAL_STOP",
+            "MODE_PAUSED",
+            "ACCOUNT_PAUSED",
+            "CAMPAIGN_CANCELLED",
+            "TAKEOVER_ACTIVE",
+            "SUPPRESSED",
+            "CONSENT_MISSING",
+            "QUIET_HOURS",
+            "RATE_LIMITED",
+            "GROUP_NOT_ALLOWLISTED",
+            "GROUP_DIRECTORY_STALE",
+            "ALLOWED"
+          ]
+        },
+        "evaluatedAt": { "type": "string", "format": "date-time" },
+        "frozenInputsHash": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "decision": { "const": "ALLOW" } } },
+          "then": { "properties": { "reason": { "const": "ALLOWED" } } },
+          "else": { "not": { "properties": { "reason": { "const": "ALLOWED" } } } }
+        }
+      ]
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/sendDecision" }],
+  "unevaluatedProperties": false
+}

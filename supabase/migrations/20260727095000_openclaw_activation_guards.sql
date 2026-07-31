@@ -722,4 +722,83 @@ revoke all on function app_private.openclaw_finalize_account_connection_v1(jsonb
 grant execute on function app_private.openclaw_finalize_account_connection_v1(jsonb,jsonb,jsonb)
   to openclaw_service_dispatcher;
 
+-- PostgreSQL does not create child-side indexes for foreign keys.  Materialize
+-- every still-missing composite FK prefix after the complete twelve-file schema
+-- exists so tenant-scoped deletes/updates never fall back to full child scans.
+do $openclaw_composite_fk_indexes$
+declare
+  v_fk record;
+  v_columns text;
+  v_index_name text;
+begin
+  for v_fk in
+    select
+      child_namespace.nspname as schema_name,
+      child.relname as table_name,
+      constraint_row.conname as constraint_name,
+      pg_catalog.array_agg(
+        attribute.attname order by key_column.ordinality
+      ) as column_names
+    from pg_catalog.pg_constraint constraint_row
+    join pg_catalog.pg_class child
+      on child.oid=constraint_row.conrelid
+    join pg_catalog.pg_namespace child_namespace
+      on child_namespace.oid=child.relnamespace
+    cross join lateral pg_catalog.unnest(constraint_row.conkey)
+      with ordinality key_column(attnum,ordinality)
+    join pg_catalog.pg_attribute attribute
+      on attribute.attrelid=constraint_row.conrelid
+     and attribute.attnum=key_column.attnum
+    where constraint_row.contype='f'
+      and child_namespace.nspname='public'
+      and child.relname like 'openclaw\_%' escape '\'
+      and pg_catalog.cardinality(constraint_row.conkey)>1
+      and not exists (
+        select 1
+        from pg_catalog.pg_index index_row
+        where index_row.indrelid=constraint_row.conrelid
+          and index_row.indisvalid
+          and index_row.indisready
+          and (
+            select pg_catalog.array_agg(
+              index_column.attnum order by index_column.ordinality
+            )
+            from pg_catalog.unnest(index_row.indkey)
+              with ordinality index_column(attnum,ordinality)
+            where index_column.ordinality <=
+              pg_catalog.cardinality(constraint_row.conkey)
+          )=constraint_row.conkey
+      )
+    group by
+      child_namespace.nspname,
+      child.relname,
+      constraint_row.conname,
+      constraint_row.conkey
+    order by child.relname,constraint_row.conname
+  loop
+    select pg_catalog.string_agg(
+      pg_catalog.format('%I',column_name),', ' order by ordinality
+    )
+    into v_columns
+    from pg_catalog.unnest(v_fk.column_names)
+      with ordinality columns_row(column_name,ordinality);
+
+    v_index_name:='openclaw_fk_'
+      ||pg_catalog.md5(
+        v_fk.schema_name||'.'||v_fk.table_name||'('
+        ||pg_catalog.array_to_string(v_fk.column_names,',')||')'
+      )
+      ||'_idx';
+
+    execute pg_catalog.format(
+      'create index if not exists %I on %I.%I (%s)',
+      v_index_name,
+      v_fk.schema_name,
+      v_fk.table_name,
+      v_columns
+    );
+  end loop;
+end;
+$openclaw_composite_fk_indexes$;
+
 commit;

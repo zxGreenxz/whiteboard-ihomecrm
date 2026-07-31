@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ihome.invalid/openclaw-zalo/state-machine.schema.json",
+  "title": "OpenClaw rollout and observation state-machine contracts",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "stage": {
+      "enum": [
+        "FOUNDATION",
+        "INFRASTRUCTURE",
+        "WAITING_OWNER_QR",
+        "CONNECTION",
+        "SHADOW",
+        "WAITING_OWNER_INBOUND",
+        "LIMITED_OBSERVING",
+        "LIMITED_VERIFIED",
+        "PROACTIVE",
+        "SALES_GROUPS",
+        "COMPLETE"
+      ]
+    },
+    "rollout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "rolloutRunId",
+        "organizationId",
+        "projectRef",
+        "reviewedCommitSha",
+        "migrationManifestSha256",
+        "artifactDigests",
+        "status",
+        "stage",
+        "stageVersion",
+        "stageEnteredAt"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "rolloutRunId": { "$ref": "#/$defs/uuid" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "projectRef": { "const": "tryymsxyyckgbrmmvozx" },
+        "reviewedCommitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "migrationManifestSha256": { "$ref": "#/$defs/sha256" },
+        "artifactDigests": {
+          "type": "object",
+          "minProperties": 15,
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64}|sha256:[0-9a-f]{64})$"
+          }
+        },
+        "status": { "enum": ["RUNNING", "PAUSED", "COMPLETE", "FAILED"] },
+        "stage": { "$ref": "#/$defs/stage" },
+        "stageVersion": { "type": "integer", "minimum": 1 },
+        "stageEnteredAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "checkpointId",
+        "organizationId",
+        "rolloutRunId",
+        "checkpointName",
+        "stage",
+        "status",
+        "trustedEvidenceId",
+        "trustedEvidenceHash",
+        "completedAt"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "checkpointId": { "$ref": "#/$defs/uuid" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "rolloutRunId": { "$ref": "#/$defs/uuid" },
+        "checkpointName": { "enum": ["WAITING_OWNER_QR", "WAITING_OWNER_INBOUND"] },
+        "stage": { "enum": ["WAITING_OWNER_QR", "WAITING_OWNER_INBOUND"] },
+        "status": { "enum": ["WAITING", "COMPLETE"] },
+        "trustedEvidenceId": {
+          "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "trustedEvidenceHash": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        },
+        "completedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "organizationId",
+        "rolloutRunId",
+        "observationKind",
+        "windowStartedAt",
+        "windowEndedAt",
+        "sampleCount",
+        "failureCount",
+        "evidenceHash"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "rolloutRunId": { "$ref": "#/$defs/uuid" },
+        "observationKind": {
+          "enum": ["SHADOW", "LIMITED_AUTO_REPLY", "PROACTIVE", "SALES_GROUPS"]
+        },
+        "windowStartedAt": { "type": "string", "format": "date-time" },
+        "windowEndedAt": { "type": "string", "format": "date-time" },
+        "sampleCount": { "type": "integer", "minimum": 0 },
+        "failureCount": { "type": "integer", "minimum": 0 },
+        "evidenceHash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "smokeCleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "organizationId",
+        "rolloutRunId",
+        "fixtureNamespace",
+        "createdCount",
+        "deletedCount",
+        "remainingCount",
+        "cleanupEvidenceHash",
+        "completedAt"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "rolloutRunId": { "$ref": "#/$defs/uuid" },
+        "fixtureNamespace": { "type": "string", "pattern": "^openclaw-smoke-[a-z0-9-]+$" },
+        "createdCount": { "type": "integer", "minimum": 0 },
+        "deletedCount": { "type": "integer", "minimum": 0 },
+        "remainingCount": { "const": 0 },
+        "cleanupEvidenceHash": { "$ref": "#/$defs/sha256" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/rollout" },
+    { "$ref": "#/$defs/checkpoint" },
+    { "$ref": "#/$defs/observation" },
+    { "$ref": "#/$defs/smokeCleanup" }
+  ],
+  "unevaluatedProperties": false
+}
