@@ -220,16 +220,29 @@ export default function LuckyDrawAdminPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <EventForm key={event.id} event={event} onSave={(p) => mUpsert.mutate({ id: event.id, ...p })} saving={mUpsert.isPending} />
-                <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                  <span className="text-muted-foreground">Link gửi sale: </span>
-                  <a
-                    href={`/quayso/${event.slug}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono font-semibold underline underline-offset-2"
-                  >
-                    {luckyPublicUrl(event.id, event.slug).replace(/^https?:\/\//, '')}
-                  </a>
+                <div className="space-y-1 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Link gửi sale: </span>
+                    <a
+                      href={`/quayso/${event.slug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono font-semibold underline underline-offset-2"
+                    >
+                      {luckyPublicUrl(event.id, event.slug).replace(/^https?:\/\//, '')}
+                    </a>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Màn quay để ghi hình: </span>
+                    <a
+                      href={`/quayso/${event.slug}/quay`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono font-semibold underline underline-offset-2"
+                    >
+                      {`${luckyPublicUrl(event.id, event.slug)}/quay`.replace(/^https?:\/\//, '')}
+                    </a>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 border-t pt-3">
                   <Button

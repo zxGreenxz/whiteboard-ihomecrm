@@ -159,6 +159,7 @@ const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
 // riêng (quayso.css scope dưới .qs-page) nên lazy để không rò sang CRM; trang
 // quản trị /quayso/admin nằm trong app đã đăng nhập.
 const QuaySoPage = lazy(() => import("./pages/quayso/QuaySoPage"));
+const QuaySoScreenPage = lazy(() => import("./pages/quayso/QuaySoScreenPage"));
 const LuckyDrawAdminPage = lazy(() => import("./pages/quayso/LuckyDrawAdminPage"));
 
 // Trang "Thu tiền" (mobile, đi thu tiền mặt) — page phụ độc lập có bộ style
@@ -328,6 +329,17 @@ const App = () => (
             element={
               <Suspense fallback={null}>
                 <QuaySoPage />
+              </Suspense>
+            }
+          />
+          {/* Màn quay riêng để chủ sự kiện ghi hình gửi group: chỉ bánh xe +
+              nút quay, vừa khít một màn hình điện thoại dọc. Cũng KHÔNG cần
+              đăng nhập. */}
+          <Route
+            path="/quayso/:slug/quay"
+            element={
+              <Suspense fallback={null}>
+                <QuaySoScreenPage />
               </Suspense>
             }
           />
