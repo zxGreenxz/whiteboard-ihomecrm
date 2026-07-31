@@ -278,6 +278,7 @@ function generateBuilding(building: PhysicalBuildingRecord): NetworkBuilding {
   const site: NetworkBuilding = {
     buildingId: building.id,
     buildingName: building.name,
+    rolloutState: building.rolloutState ?? "EXECUTE",
     roomsCount: building.roomsCount ?? 0,
     health,
     backupStatus: backupAgeHours > 30 ? "stale" : "fresh",

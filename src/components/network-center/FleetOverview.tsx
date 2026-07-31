@@ -23,6 +23,10 @@ export function FleetOverview({ controller }: { controller: NetworkCenterControl
     () => new Map(view.fleet.map((site) => [site.buildingId, site.buildingName])),
     [view.fleet],
   );
+  const rolloutStates = useMemo(
+    () => new Map(view.fleet.map((site) => [site.buildingId, site.rolloutState])),
+    [view.fleet],
+  );
 
   return (
     <div className="nc-page-stack">
@@ -49,6 +53,7 @@ export function FleetOverview({ controller }: { controller: NetworkCenterControl
         <IncidentRail
           incidents={view.incidents}
           buildingNames={buildingNames}
+          rolloutStates={rolloutStates}
           canExecute={controller.canExecute}
           disabledReason={controller.executeDisabledMessage}
           onAcknowledge={controller.acknowledgeIncident}

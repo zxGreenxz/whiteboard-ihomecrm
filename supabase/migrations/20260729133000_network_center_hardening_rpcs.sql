@@ -761,17 +761,16 @@ BEGIN
       ON worker.id = assignment.worker_id
      AND worker.status = 'ACTIVE'
      AND 'EXECUTE' = ANY(worker.capabilities)
+    JOIN public.network_site_settings settings
+      ON settings.organization_id = command.organization_id
+     AND settings.building_id = command.building_id
+     AND settings.rollout_state = 'EXECUTE'
     WHERE command.status IN ('QUEUED', 'RETRY_WAIT')
       AND command.available_at <= v_now
       AND command.attempt_count < command.max_attempts
       AND (
         command.action_type = 'CAPTURE_SNAPSHOT'
-        OR EXISTS (
-          SELECT 1 FROM public.network_site_settings settings
-          WHERE settings.organization_id = command.organization_id
-            AND settings.building_id = command.building_id
-            AND NOT settings.changes_paused
-        )
+        OR NOT settings.changes_paused
       )
       AND (
         command.action_type <> 'CYCLE_ACCESS_PORT'
@@ -823,7 +822,7 @@ BEGIN
       )
     ORDER BY command.priority DESC, command.available_at,
       command.created_at, command.id
-    FOR UPDATE OF command, assignment, worker SKIP LOCKED
+    FOR UPDATE OF command, assignment, worker, settings SKIP LOCKED
     LIMIT p_limit
   LOOP
     IF v_candidate.action_type = 'CYCLE_ACCESS_PORT' THEN
@@ -1336,6 +1335,7 @@ DECLARE
   v_worker_status text;
   v_capabilities text[];
   v_command public.network_commands%ROWTYPE;
+  v_rollout_state text;
 BEGIN
   SELECT authenticated.worker_id, authenticated.worker_key,
     authenticated.worker_status, authenticated.capabilities
@@ -1369,6 +1369,21 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Worker is not assigned to command target'
       USING ERRCODE = '42501';
+  END IF;
+  IF upper(btrim(coalesce(p_event_kind, ''))) = 'EXECUTION_STARTED' THEN
+    SELECT settings.rollout_state
+    INTO v_rollout_state
+    FROM public.network_site_settings settings
+    WHERE settings.organization_id = v_command.organization_id
+      AND settings.building_id = v_command.building_id
+    FOR UPDATE;
+
+    IF v_rollout_state = 'READ_ONLY' THEN
+      RAISE EXCEPTION 'NETWORK_CENTER_READ_ONLY' USING ERRCODE = '42501';
+    END IF;
+    IF v_rollout_state IS DISTINCT FROM 'EXECUTE' THEN
+      RAISE EXCEPTION 'NETWORK_CENTER_OFF' USING ERRCODE = '42501';
+    END IF;
   END IF;
   RETURN app_private.network_center_worker_command_event_legacy_impl_v1(
     v_worker_key, p_command_id, p_lease_token, p_event_kind, p_payload

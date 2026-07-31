@@ -16,6 +16,7 @@ import type {
   NetworkIncident,
   NetworkJob,
   NetworkMutationTarget,
+  NetworkRolloutState,
   NetworkSettings,
 } from "./contracts";
 
@@ -30,10 +31,12 @@ const nullableTimestampSchema = timestampSchema.nullable();
 const nullableNumberSchema = z.number().finite().nullable();
 const nullableStringSchema = z.string().nullable();
 const jsonObjectSchema = z.record(z.unknown());
+const rolloutStateSchema = z.enum(["OFF", "READ_ONLY", "EXECUTE"]).catch("OFF");
 
 const fleetItemSchema = z.object({
   buildingId: uuidSchema,
   buildingName: z.string().min(1).max(300),
+  rolloutState: rolloutStateSchema,
   roomsCount: z.number().int().nonnegative(),
   routerId: uuidSchema.nullable(),
   routerIdentity: nullableStringSchema,
@@ -139,6 +142,7 @@ const settingsSchema = z.object({
 const buildingSchema = z.object({
   buildingId: uuidSchema,
   buildingName: z.string().min(1).max(300),
+  rolloutState: rolloutStateSchema,
   roomsCount: z.number().int().nonnegative(),
   router: routerSchema.nullable(),
   interfaces: z.array(interfaceSchema).max(256),
@@ -481,6 +485,7 @@ function baseFleetBuilding(item: NetworkCenterFleetItemDto, now: number): Networ
   return {
     buildingId: item.buildingId,
     buildingName: item.buildingName,
+    rolloutState: item.rolloutState as NetworkRolloutState,
     roomsCount: item.roomsCount,
     health: mapHealth(item.reachable, item.healthStatus, item.lifecycleStatus),
     backupStatus: backupAgeHours >= 0 && backupAgeHours <= 30 ? "fresh" : "stale",
@@ -759,6 +764,7 @@ export function mergeNetworkCenterBuilding(
     ...fallback,
     buildingId: detail.buildingId,
     buildingName: detail.buildingName,
+    rolloutState: detail.rolloutState as NetworkRolloutState,
     roomsCount: detail.roomsCount,
     health: router
       ? mapHealth(router.reachable, router.healthStatus, router.lifecycleStatus)

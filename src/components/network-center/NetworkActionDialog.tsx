@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { NetworkActionRequest, NetworkActionType, NetworkBuilding, NetworkJob, NetworkJobStatus } from "@/lib/network-center/contracts";
 import type { NetworkActionIntent, NetworkIntentStatus } from "@/lib/network-center/intentRegistry";
 import { NETWORK_ACTION_DEFINITIONS } from "@/lib/network-center/model";
+import { allowsNetworkExecution } from "@/lib/network-center/model";
 import { ExecuteButton } from "./ExecuteGuard";
 
 interface NetworkActionDialogProps {
@@ -88,6 +89,7 @@ export function NetworkActionDialog({
     persistedStatus: persistedIntent?.status ?? null,
   });
   const canRetryUnknown = canRetryActionIntent(persistedIntent?.status);
+  const executionAllowed = allowsNetworkExecution(canExecute, site.rolloutState);
 
   const resetDraft = useCallback(() => {
     setType("flush_dns_cache");
@@ -168,9 +170,13 @@ export function NetworkActionDialog({
     }
   };
 
-  if (!canExecute) {
+  if (!executionAllowed) {
     return (
-      <ExecuteButton canExecute={false} disabledReason={disabledReason}>
+      <ExecuteButton
+        canExecute={canExecute}
+        rolloutState={site.rolloutState}
+        disabledReason={disabledReason}
+      >
         <Play data-icon="inline-start" aria-hidden="true" /> Thao tác MikroTik
       </ExecuteButton>
     );
@@ -282,7 +288,7 @@ export function NetworkActionDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => changeOpen(false)}>Đóng</Button>
-            <Button type="submit" disabled={!canExecute || (draftLocked && !canRetryUnknown)}>
+            <Button type="submit" disabled={!executionAllowed || (draftLocked && !canRetryUnknown)}>
               {submitting
                 ? "Đang gửi…"
                 : canRetryUnknown

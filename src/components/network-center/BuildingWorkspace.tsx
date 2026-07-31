@@ -18,6 +18,14 @@ export function BuildingWorkspace({ site, controller }: { site: NetworkBuilding;
           <p className="nc-building-subtitle"><Router /> {site.router.identity} · {site.router.model} · RouterOS {site.router.firmware} · {site.router.lastSeenLabel}</p>
         </div>
         <div className="nc-building-statuses">
+          <NetworkStatus
+            kind={site.rolloutState === "EXECUTE" ? "execute" : "view-only"}
+            label={site.rolloutState === "READ_ONLY"
+              ? "Chỉ đọc"
+              : site.rolloutState === "OFF"
+                ? "Đã tắt"
+                : undefined}
+          />
           <NetworkStatus kind={site.health} />
           <NetworkStatus kind={site.backupStatus} label={site.backupAgeHours < 0 ? "Backup chưa có" : `Backup ${backupAgeText(site.backupAgeHours)}`} />
           {site.maintenance ? <NetworkStatus kind="maintenance" /> : null}

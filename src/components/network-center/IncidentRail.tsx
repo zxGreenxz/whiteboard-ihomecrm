@@ -2,19 +2,20 @@ import { ArrowRight, Check } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { NetworkIncident } from "@/lib/network-center/contracts";
+import type { NetworkIncident, NetworkRolloutState } from "@/lib/network-center/contracts";
 import { ExecuteButton } from "./ExecuteGuard";
 import { NetworkStatus } from "./NetworkStatus";
 
 interface IncidentRailProps {
   incidents: NetworkIncident[];
   buildingNames: Map<string, string>;
+  rolloutStates: Map<string, NetworkRolloutState>;
   canExecute: boolean;
   disabledReason: string;
   onAcknowledge: (buildingId: string, incidentId: string) => Promise<void>;
 }
 
-export function IncidentRail({ incidents, buildingNames, canExecute, disabledReason, onAcknowledge }: IncidentRailProps) {
+export function IncidentRail({ incidents, buildingNames, rolloutStates, canExecute, disabledReason, onAcknowledge }: IncidentRailProps) {
   const [pendingIncidentId, setPendingIncidentId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const acknowledge = async (buildingId: string, incidentId: string) => {
@@ -51,6 +52,7 @@ export function IncidentRail({ incidents, buildingNames, canExecute, disabledRea
               {incident.status === "open" ? (
                 <ExecuteButton
                   canExecute={canExecute}
+                  rolloutState={rolloutStates.get(incident.buildingId) ?? "OFF"}
                   disabledReason={disabledReason}
                   variant="outline"
                   size="sm"

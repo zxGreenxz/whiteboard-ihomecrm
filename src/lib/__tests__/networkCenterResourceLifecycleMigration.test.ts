@@ -7,13 +7,37 @@ const migrationPath = resolve(
   process.cwd(),
   "supabase/migrations/20260729131000_network_center_resource_lifecycle.sql",
 );
+const baseMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260729040000_network_center_rls_rpcs_realtime.sql",
+);
+const workerHardeningMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260729133000_network_center_hardening_rpcs.sql",
+);
 const sql = existsSync(migrationPath)
   ? readFileSync(migrationPath, "utf8").replace(/\r\n/g, "\n")
+  : "";
+const baseSql = existsSync(baseMigrationPath)
+  ? readFileSync(baseMigrationPath, "utf8").replace(/\r\n/g, "\n")
+  : "";
+const workerHardeningSql = existsSync(workerHardeningMigrationPath)
+  ? readFileSync(workerHardeningMigrationPath, "utf8").replace(/\r\n/g, "\n")
   : "";
 
 function functionBody(name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return sql.match(
+    new RegExp(
+      `CREATE OR REPLACE FUNCTION\\s+(?:public|app_private)\\.${escaped}\\b[\\s\\S]*?\\$fn\\$;`,
+      "i",
+    ),
+  )?.[0] ?? "";
+}
+
+function functionBodyFrom(source: string, name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source.match(
     new RegExp(
       `CREATE OR REPLACE FUNCTION\\s+(?:public|app_private)\\.${escaped}\\b[\\s\\S]*?\\$fn\\$;`,
       "i",
@@ -27,6 +51,77 @@ describe("Network Center resource lifecycle hardening migration", () => {
     expect(sql.match(/^BEGIN;$/gim)).toHaveLength(1);
     expect(sql.match(/^COMMIT;$/gim)).toHaveLength(1);
     expect(sql).toMatch(/NOTIFY pgrst, 'reload schema';\s*$/i);
+  });
+
+  it("defaults every building rollout to OFF and constrains the indexed state", () => {
+    expect(sql).toMatch(
+      /ALTER TABLE public\.network_site_settings[\s\S]{0,300}ADD COLUMN(?: IF NOT EXISTS)? rollout_state text NOT NULL DEFAULT 'OFF'/i,
+    );
+    expect(sql).toMatch(
+      /CHECK\s*\(rollout_state\s+IN\s*\('OFF',\s*'READ_ONLY',\s*'EXECUTE'\)\)/i,
+    );
+    expect(sql).toMatch(
+      /CREATE INDEX[\s\S]{0,220}network_site_settings[\s\S]{0,220}\(\s*rollout_state,\s*organization_id,\s*building_id\)/i,
+    );
+  });
+
+  it("checks rollout only after execute permission and returns stable denial codes", () => {
+    const requireExecute = functionBody("network_center_require_execute_v1");
+    expect(requireExecute).not.toBe("");
+    const permission = requireExecute.indexOf("can_do_on_building");
+    const rollout = requireExecute.indexOf("SELECT settings.rollout_state");
+    expect(permission).toBeGreaterThan(-1);
+    expect(rollout).toBeGreaterThan(permission);
+    expect(requireExecute).toMatch(/NETWORK_CENTER_READ_ONLY/);
+    expect(requireExecute).toMatch(/NETWORK_CENTER_OFF/);
+
+    for (const functionName of [
+      "network_center_ack_incident_v1",
+      "network_center_create_maintenance_v1",
+      "network_center_cancel_maintenance_v1",
+      "network_center_update_settings_v1",
+    ]) {
+      expect(functionBodyFrom(baseSql, functionName)).toMatch(
+        /network_center_require_execute_v1/i,
+      );
+    }
+    for (const functionName of [
+      "network_center_request_snapshot_v1",
+      "network_center_execute_action_v1",
+    ]) {
+      expect(functionBody(functionName)).toMatch(/network_center_require_execute_v1/i);
+    }
+  });
+
+  it("returns rollout state from fleet/building reads and filters worker claims to EXECUTE", () => {
+    expect(functionBody("network_center_list_fleet_v1")).toMatch(
+      /'rolloutState'[\s\S]{0,160}rollout_state/i,
+    );
+    expect(functionBody("network_center_get_building_v1")).toMatch(
+      /'rolloutState'[\s\S]{0,160}rollout_state/i,
+    );
+    expect(functionBodyFrom(
+      workerHardeningSql,
+      "network_center_worker_claim_v2",
+    )).toMatch(/rollout_state\s*=\s*'EXECUTE'/i);
+  });
+
+  it("rechecks rollout before durable execution start but never blocks completion", () => {
+    const commandEvent = functionBodyFrom(
+      workerHardeningSql,
+      "network_center_worker_command_event_v2",
+    );
+    expect(commandEvent).toMatch(
+      /p_event_kind[\s\S]{0,500}EXECUTION_STARTED[\s\S]{0,1200}network_site_settings[\s\S]{0,500}rollout_state/i,
+    );
+    expect(commandEvent).toMatch(/NETWORK_CENTER_READ_ONLY/);
+    expect(commandEvent).toMatch(/NETWORK_CENTER_OFF/);
+
+    const complete = functionBodyFrom(
+      workerHardeningSql,
+      "network_center_worker_complete_v2",
+    );
+    expect(complete).not.toMatch(/rollout_state/i);
   });
 
   it("adds canonical semantic identity and indexes every admission budget", () => {

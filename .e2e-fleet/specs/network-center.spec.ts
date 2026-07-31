@@ -79,6 +79,8 @@ test.describe('Network Center deterministic frontend', () => {
 
     await tabList.getByRole('tab', { name: 'Cấu hình', exact: true }).click();
     await page.getByRole('button', { name: 'Thao tác MikroTik' }).click();
+    const actionDialog = page.getByRole('dialog', { name: 'Mô phỏng thao tác MikroTik cục bộ' });
+    await expect(actionDialog).toBeVisible();
     await expect(page.getByText('kiểm tra đầu vào → sao lưu → thực hiện → kiểm tra sau → hoàn tất', { exact: false })).toBeVisible();
     const actionPreview = page.getByLabel('Xem trước thao tác');
     await expect(actionPreview.getByText('Trước / Sau', { exact: true })).toBeVisible();
@@ -86,7 +88,8 @@ test.describe('Network Center deterministic frontend', () => {
     await page.getByLabel('Lý do thao tác').fill('Làm mới DNS sau kiểm tra định kỳ');
     await page.getByRole('button', { name: 'Kiểm tra và mô phỏng cục bộ' }).click();
     await expect(page.getByText(/không có thiết bị thật nào bị thay đổi/i)).toBeVisible();
-    await page.getByRole('button', { name: 'Đóng' }).click();
+    await page.keyboard.press('Escape');
+    await expect(actionDialog).toBeHidden();
 
     await tabList.getByRole('tab', { name: 'Thay đổi', exact: true }).click();
     await expect(page.getByText('Làm mới bộ nhớ đệm DNS', { exact: true })).toBeVisible();

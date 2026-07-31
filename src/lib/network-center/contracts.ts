@@ -2,12 +2,14 @@ export type NetworkHealth = "online" | "degraded" | "offline";
 export type IncidentSeverity = "critical" | "high" | "medium" | "low";
 export type IncidentStatus = "open" | "acknowledged" | "resolved";
 export type BackupStatus = "fresh" | "stale";
+export type NetworkRolloutState = "OFF" | "READ_ONLY" | "EXECUTE";
 
 export interface PhysicalBuildingRecord {
   id: string;
   name: string;
   roomsCount?: number;
   organizationId?: string;
+  rolloutState?: NetworkRolloutState;
 }
 
 export interface RouterSummary {
@@ -221,6 +223,7 @@ export interface NetworkSettings {
 export interface NetworkBuilding {
   buildingId: string;
   buildingName: string;
+  rolloutState: NetworkRolloutState;
   roomsCount: number;
   health: NetworkHealth;
   backupStatus: BackupStatus;

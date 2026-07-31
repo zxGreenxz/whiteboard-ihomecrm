@@ -8,8 +8,27 @@ import type {
   NetworkActionType,
   NetworkBuilding,
   NetworkIncident,
+  NetworkRolloutState,
   NetworkSettings,
 } from "./contracts";
+
+export function allowsNetworkExecution(
+  canExecute: boolean,
+  rolloutState: NetworkRolloutState,
+): boolean {
+  return canExecute && rolloutState === "EXECUTE";
+}
+
+export function networkRolloutDisabledMessage(
+  canExecute: boolean,
+  rolloutState: NetworkRolloutState,
+  permissionMessage: string,
+): string {
+  if (!canExecute) return permissionMessage;
+  if (rolloutState === "READ_ONLY") return "Tòa nhà đang ở chế độ chỉ đọc";
+  if (rolloutState === "OFF") return "Network Center đang tắt cho tòa nhà này";
+  return permissionMessage;
+}
 
 export const NETWORK_CENTER_TABS = [
   { value: "overview", label: "Tổng quan" },

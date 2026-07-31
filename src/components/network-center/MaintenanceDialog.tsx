@@ -14,23 +14,27 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { NetworkRolloutState } from "@/lib/network-center/contracts";
+import { allowsNetworkExecution } from "@/lib/network-center/model";
 import { ExecuteButton } from "./ExecuteGuard";
 
 interface MaintenanceDialogProps {
   buildingId: string;
   buildingName: string;
   canExecute: boolean;
+  rolloutState: NetworkRolloutState;
   disabledReason: string;
   isDemo?: boolean;
   onCreate: (input: { durationMinutes: number; reason: string }) => Promise<unknown>;
 }
 
-export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabledReason, isDemo = false, onCreate }: MaintenanceDialogProps) {
+export function MaintenanceDialog({ buildingId, buildingName, canExecute, rolloutState, disabledReason, isDemo = false, onCreate }: MaintenanceDialogProps) {
   const [open, setOpen] = useState(false);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const executionAllowed = allowsNetworkExecution(canExecute, rolloutState);
 
   const resetDraft = useCallback(() => {
     setDurationMinutes(60);
@@ -63,9 +67,9 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabl
     }
   };
 
-  if (!canExecute) {
+  if (!executionAllowed) {
     return (
-      <ExecuteButton canExecute={false} disabledReason={disabledReason} variant="outline">
+      <ExecuteButton canExecute={canExecute} rolloutState={rolloutState} disabledReason={disabledReason} variant="outline">
         <CalendarClock data-icon="inline-start" aria-hidden="true" /> Tạo bảo trì
       </ExecuteButton>
     );
@@ -109,7 +113,7 @@ export function MaintenanceDialog({ buildingId, buildingName, canExecute, disabl
           {error ? <p className="nc-form-error" role="alert">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => changeOpen(false)}>Huỷ</Button>
-            <Button type="submit" disabled={!canExecute || submitting}>
+            <Button type="submit" disabled={!executionAllowed || submitting}>
               {submitting ? "Đang tạo…" : isDemo ? "Tạo mô phỏng cục bộ" : "Tạo bảo trì"}
             </Button>
           </DialogFooter>

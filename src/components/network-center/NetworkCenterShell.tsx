@@ -32,6 +32,20 @@ export function NetworkCenterShell({
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const selectedBuilding = buildings.find(
+    (building) => building.id === selectedBuildingId,
+  );
+  const rolloutStatus = selectedBuilding?.rolloutState;
+  const fleetFullyExecutable = buildings.every(
+    (building) => building.rolloutState === "EXECUTE",
+  );
+  const statusLabel = rolloutStatus === "READ_ONLY"
+    ? "Chỉ đọc"
+    : rolloutStatus === "OFF"
+      ? "Đã tắt"
+      : !selectedBuildingId && !fleetFullyExecutable
+        ? "Theo từng tòa"
+        : undefined;
 
   const switchBuilding = (buildingId: string) => {
     const tab = searchParams.get("tab");
@@ -60,7 +74,14 @@ export function NetworkCenterShell({
 
         <div className="nc-header-tools">
           <div className="nc-demo-label"><Database aria-hidden="true" /> {mode === "demo" ? "Dữ liệu mô phỏng" : "Dữ liệu trực tiếp"}</div>
-          <NetworkStatus kind={canExecute ? "execute" : "view-only"} />
+          <NetworkStatus
+            kind={canExecute && (selectedBuildingId
+              ? rolloutStatus === "EXECUTE"
+              : fleetFullyExecutable)
+              ? "execute"
+              : "view-only"}
+            label={statusLabel}
+          />
           <div className="nc-building-picker">
             <span><Building2 aria-hidden="true" /> Chuyển toà nhà</span>
             <Select value={selectedBuildingId} onValueChange={switchBuilding}>

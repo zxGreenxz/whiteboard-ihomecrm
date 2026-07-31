@@ -35,7 +35,7 @@ export function BackupsTab({ site, controller }: { site: NetworkBuilding; contro
         <div><p className="nc-eyebrow">Bản cấu hình đã làm sạch</p><h3>Sao lưu & so sánh</h3></div>
         <div className="nc-heading-actions">
           <ConfigDiffDialog siteId={site.buildingId} revisions={site.revisions} compare={(from, to) => controller.compareRevisions(site.buildingId, from, to)} />
-          <ExecuteButton canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} disabled={capturing} onClick={() => void capture()}>
+          <ExecuteButton canExecute={controller.canExecute} rolloutState={site.rolloutState} disabledReason={controller.executeDisabledMessage} disabled={capturing} onClick={() => void capture()}>
             <Camera data-icon="inline-start" /> {capturing ? "Đang gửi…" : "Chụp cấu hình"}
           </ExecuteButton>
         </div>

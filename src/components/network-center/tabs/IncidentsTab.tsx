@@ -32,9 +32,9 @@ export function IncidentsTab({ site, controller }: { site: NetworkBuilding; cont
         <div className="nc-panel-heading">
           <div><p className="nc-eyebrow">Dòng thời gian sự cố</p><h3>Sự cố & SLA</h3></div>
           <div className="nc-heading-actions">
-            <MaintenanceDialog buildingId={site.buildingId} buildingName={site.buildingName} canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} isDemo={controller.isDemo} onCreate={(input) => controller.createMaintenance(site.buildingId, input)} />
+            <MaintenanceDialog buildingId={site.buildingId} buildingName={site.buildingName} canExecute={controller.canExecute} rolloutState={site.rolloutState} disabledReason={controller.executeDisabledMessage} isDemo={controller.isDemo} onCreate={(input) => controller.createMaintenance(site.buildingId, input)} />
             {site.maintenance ? (
-              <ExecuteButton canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} variant="outline" disabled={pendingKey === "maintenance"} onClick={() => void run("maintenance", () => controller.cancelMaintenance(site.buildingId, site.maintenance!.id))}>
+              <ExecuteButton canExecute={controller.canExecute} rolloutState={site.rolloutState} disabledReason={controller.executeDisabledMessage} variant="outline" disabled={pendingKey === "maintenance"} onClick={() => void run("maintenance", () => controller.cancelMaintenance(site.buildingId, site.maintenance!.id))}>
                 <X data-icon="inline-start" /> {pendingKey === "maintenance" ? "Đang huỷ…" : "Huỷ bảo trì"}
               </ExecuteButton>
             ) : null}
@@ -51,7 +51,7 @@ export function IncidentsTab({ site, controller }: { site: NetworkBuilding; cont
               <div className="nc-incident-meta"><NetworkStatus kind={incident.severity} /><NetworkStatus kind={incident.status} /></div>
               <h4>{incident.title}</h4><p>{incident.detail}</p><time>{new Date(incident.openedAt).toLocaleString("vi-VN")}</time>
               {incident.status === "open" ? (
-                <ExecuteButton canExecute={controller.canExecute} disabledReason={controller.executeDisabledMessage} variant="outline" size="sm" disabled={pendingKey === incident.id} onClick={() => void run(incident.id, () => controller.acknowledgeIncident(site.buildingId, incident.id))}>
+                <ExecuteButton canExecute={controller.canExecute} rolloutState={site.rolloutState} disabledReason={controller.executeDisabledMessage} variant="outline" size="sm" disabled={pendingKey === incident.id} onClick={() => void run(incident.id, () => controller.acknowledgeIncident(site.buildingId, incident.id))}>
                   <Check data-icon="inline-start" /> {pendingKey === incident.id ? "Đang xác nhận…" : "Xác nhận sự cố"}
                 </ExecuteButton>
               ) : null}

@@ -257,6 +257,7 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       name: building.buildingName,
       roomsCount: building.roomsCount,
       organizationId: physicalBuildingById.get(normalizeId(building.buildingId))?.organizationId,
+      rolloutState: building.rolloutState,
     })),
     [fleet, physicalBuildingById],
   );

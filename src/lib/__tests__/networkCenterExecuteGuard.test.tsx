@@ -2,8 +2,9 @@ import { Children, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { ExecuteButton } from "@/components/network-center/ExecuteGuard";
+import type { NetworkRolloutState } from "@/lib/network-center/contracts";
 import {
   canRetryActionIntent,
   shouldPreserveActionDraft,
@@ -12,10 +13,27 @@ import {
 function getGuardedControl(onClick: () => void) {
   const tree = ExecuteButton({
     canExecute: false,
+    rolloutState: "EXECUTE",
     disabledReason: "Bạn chỉ có quyền xem",
     onClick,
     children: "Xác nhận sự cố",
   }) as ReactElement<any>;
+  const trigger = Children.toArray(tree.props.children)[0] as ReactElement<any>;
+  return trigger.props.children as ReactElement<any>;
+}
+
+function getRolloutGuardedControl(
+  rolloutState: NetworkRolloutState,
+  onClick: () => void,
+) {
+  const tree = ExecuteButton({
+    canExecute: true,
+    rolloutState,
+    disabledReason: "Thiếu quyền thực thi",
+    onClick,
+    children: "Thực thi",
+  }) as ReactElement<any>;
+  if (tree.type !== Tooltip) return tree;
   const trigger = Children.toArray(tree.props.children)[0] as ReactElement<any>;
   return trigger.props.children as ReactElement<any>;
 }
@@ -26,6 +44,7 @@ describe("ExecuteButton accessibility guard", () => {
       <TooltipProvider>
         <ExecuteButton
           canExecute={false}
+          rolloutState="EXECUTE"
           disabledReason="Bạn chỉ có quyền xem"
           onClick={() => undefined}
         >
@@ -55,6 +74,37 @@ describe("ExecuteButton accessibility guard", () => {
     expect(onClick).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it.each(["OFF", "READ_ONLY"] as const)(
+    "blocks %s even when the user has execute permission",
+    (rolloutState) => {
+      const onClick = vi.fn();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+      const control = getRolloutGuardedControl(rolloutState, onClick);
+
+      control.props.onClick({ preventDefault, stopPropagation });
+
+      expect(onClick).not.toHaveBeenCalled();
+      expect(preventDefault).toHaveBeenCalledOnce();
+      expect(stopPropagation).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("allows EXECUTE when the user also has execute permission", () => {
+    const onClick = vi.fn();
+    const control = ExecuteButton({
+      canExecute: true,
+      rolloutState: "EXECUTE",
+      disabledReason: "Thiếu quyền thực thi",
+      onClick,
+      children: "Thực thi",
+    }) as ReactElement<any>;
+
+    control.props.onClick({ preventDefault: vi.fn(), stopPropagation: vi.fn() });
+
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it("keeps the active intent locked across close and reopen", () => {

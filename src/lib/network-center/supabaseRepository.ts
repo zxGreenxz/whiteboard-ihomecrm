@@ -110,6 +110,23 @@ function actionName(type: NetworkActionRequest["type"]): string {
   return type.toUpperCase();
 }
 
+function denialMessage(
+  rpcName: string,
+  error: NonNullable<NetworkCenterRpcResult["error"]>,
+): string {
+  const stableError = `${error.message ?? ""} ${error.details ?? ""}`;
+  if (stableError.includes("NETWORK_CENTER_READ_ONLY")) {
+    return "Tòa nhà đang ở chế độ chỉ đọc; không thể thực thi thay đổi";
+  }
+  if (stableError.includes("NETWORK_CENTER_OFF")) {
+    return "Network Center đang tắt cho tòa nhà này";
+  }
+  if (rpcName === "network_center_update_settings_v1" && error.code === "40001") {
+    return "Cài đặt đã thay đổi; vui lòng tải lại trước khi lưu";
+  }
+  return "Dịch vụ Network Center từ chối yêu cầu";
+}
+
 export class SupabaseNetworkCenterRepository implements NetworkCenterRepository {
   constructor(private readonly rpc: NetworkCenterRpcCall = defaultRpc) {}
 
@@ -331,7 +348,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       if (duplicate) {
         return this.getCommand(buildingId, { commandId: duplicate.commandId });
       }
-      throw new NetworkCenterRepositoryError("Dịch vụ Network Center từ chối yêu cầu", {
+      throw new NetworkCenterRepositoryError(denialMessage(rpcName, response.error), {
         rpcName,
         code: response.error.code,
       });
@@ -449,11 +466,7 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       });
     }
     if (response.error) {
-      const message = rpcName === "network_center_update_settings_v1"
-        && response.error.code === "40001"
-        ? "Cài đặt đã thay đổi; vui lòng tải lại trước khi lưu"
-        : "Dịch vụ Network Center từ chối yêu cầu";
-      throw new NetworkCenterRepositoryError(message, {
+      throw new NetworkCenterRepositoryError(denialMessage(rpcName, response.error), {
         rpcName,
         code: response.error.code,
       });

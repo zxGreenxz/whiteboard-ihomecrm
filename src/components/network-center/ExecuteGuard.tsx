@@ -3,14 +3,18 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import type { ButtonProps } from "@/components/ui/button";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { NetworkRolloutState } from "@/lib/network-center/contracts";
+import { networkRolloutDisabledMessage } from "@/lib/network-center/model";
 
 interface ExecuteButtonProps extends ButtonProps {
   canExecute: boolean;
+  rolloutState: NetworkRolloutState;
   disabledReason: string;
 }
 
 export function ExecuteButton({
   canExecute,
+  rolloutState,
   disabledReason,
   disabled,
   children,
@@ -18,7 +22,12 @@ export function ExecuteButton({
   onKeyDown,
   ...props
 }: ExecuteButtonProps) {
-  const guarded = !canExecute;
+  const guarded = !canExecute || rolloutState !== "EXECUTE";
+  const guardedReason = networkRolloutDisabledMessage(
+    canExecute,
+    rolloutState,
+    disabledReason,
+  );
   const blockActivation = (event: MouseEvent<HTMLButtonElement> | KeyboardEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -41,14 +50,14 @@ export function ExecuteButton({
     </Button>
   );
 
-  if (canExecute) return control;
+  if (!guarded) return control;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         {control}
       </TooltipTrigger>
       <TooltipContent className="network-center nc-tooltip-content">
-        {disabledReason}
+        {guardedReason}
       </TooltipContent>
     </Tooltip>
   );

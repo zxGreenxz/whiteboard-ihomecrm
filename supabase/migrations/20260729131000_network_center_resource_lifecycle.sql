@@ -5,6 +5,155 @@ BEGIN;
 
 SELECT pg_advisory_xact_lock(20260729131000::bigint);
 
+ALTER TABLE public.network_site_settings
+  ADD COLUMN IF NOT EXISTS rollout_state text NOT NULL DEFAULT 'OFF';
+
+DO $constraints$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_constraint
+    WHERE conrelid = 'public.network_site_settings'::regclass
+      AND conname = 'network_site_settings_rollout_state_check'
+  ) THEN
+    ALTER TABLE public.network_site_settings
+      ADD CONSTRAINT network_site_settings_rollout_state_check
+      CHECK (rollout_state IN ('OFF', 'READ_ONLY', 'EXECUTE'));
+  END IF;
+END;
+$constraints$;
+
+CREATE INDEX IF NOT EXISTS network_site_settings_rollout_scope_idx
+  ON public.network_site_settings (rollout_state, organization_id, building_id);
+
+CREATE OR REPLACE FUNCTION app_private.network_center_require_execute_v1(
+  p_building_id uuid
+)
+RETURNS TABLE (organization_id uuid, building_name text, actor_id uuid)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public', 'app_private'
+AS $fn$
+DECLARE
+  v_state text;
+BEGIN
+  actor_id := (SELECT auth.uid());
+  IF actor_id IS NULL OR p_building_id IS NULL THEN
+    RAISE EXCEPTION 'Network Center execute permission is required'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT building.organization_id, building.name
+  INTO organization_id, building_name
+  FROM public.buildings building
+  WHERE building.id = p_building_id
+    AND building.deleted_at IS NULL
+    AND building.is_virtual = false
+  FOR UPDATE;
+
+  IF organization_id IS NULL
+     OR NOT public.can_do_on_building(
+       'network_center', 'execute', p_building_id
+     ) THEN
+    RAISE EXCEPTION 'Network Center execute permission is required'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT settings.rollout_state
+  INTO v_state
+  FROM public.network_site_settings settings
+  WHERE settings.organization_id = organization_id
+    AND settings.building_id = p_building_id
+  FOR UPDATE;
+
+  IF v_state = 'READ_ONLY' THEN
+    RAISE EXCEPTION 'NETWORK_CENTER_READ_ONLY' USING ERRCODE = '42501';
+  END IF;
+  IF v_state IS DISTINCT FROM 'EXECUTE' THEN
+    RAISE EXCEPTION 'NETWORK_CENTER_OFF' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN NEXT;
+END;
+$fn$;
+
+ALTER FUNCTION public.network_center_list_fleet_v1()
+  RENAME TO network_center_list_fleet_base_v1;
+ALTER FUNCTION public.network_center_list_fleet_base_v1()
+  SET SCHEMA app_private;
+REVOKE ALL ON FUNCTION app_private.network_center_list_fleet_base_v1()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.network_center_list_fleet_v1()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'pg_catalog'
+AS $fn$
+  WITH base AS (
+    SELECT app_private.network_center_list_fleet_base_v1() AS payload
+  ), items AS (
+    SELECT entry.item, entry.ordinality
+    FROM base
+    CROSS JOIN LATERAL jsonb_array_elements(base.payload->'items')
+      WITH ORDINALITY AS entry(item, ordinality)
+  )
+  SELECT jsonb_build_object(
+    'items', coalesce(jsonb_agg(
+      items.item || jsonb_build_object(
+        'rolloutState', coalesce(settings.rollout_state, 'OFF')
+      ) ORDER BY items.ordinality
+    ), '[]'::jsonb)
+  )
+  FROM items
+  LEFT JOIN public.network_site_settings settings
+    ON settings.building_id = (items.item->>'buildingId')::uuid;
+$fn$;
+
+ALTER FUNCTION public.network_center_get_building_v1(uuid)
+  RENAME TO network_center_get_building_base_v1;
+ALTER FUNCTION public.network_center_get_building_base_v1(uuid)
+  SET SCHEMA app_private;
+REVOKE ALL ON FUNCTION app_private.network_center_get_building_base_v1(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.network_center_get_building_v1(
+  p_building_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'pg_catalog'
+AS $fn$
+DECLARE
+  v_payload jsonb;
+  v_rollout_state text;
+BEGIN
+  v_payload := app_private.network_center_get_building_base_v1(p_building_id);
+  SELECT coalesce(settings.rollout_state, 'OFF')
+  INTO v_rollout_state
+  FROM public.network_site_settings settings
+  WHERE settings.building_id = p_building_id;
+
+  RETURN v_payload || jsonb_build_object(
+    'rolloutState', coalesce(v_rollout_state, 'OFF')
+  );
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION app_private.network_center_require_execute_v1(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.network_center_list_fleet_v1()
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.network_center_list_fleet_v1()
+  TO authenticated;
+REVOKE ALL ON FUNCTION public.network_center_get_building_v1(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.network_center_get_building_v1(uuid)
+  TO authenticated;
+
 ALTER TABLE public.network_commands
   ADD COLUMN IF NOT EXISTS semantic_fingerprint character(64);
 

@@ -2,12 +2,18 @@ import { Activity, DatabaseBackup, Network, Users } from "lucide-react";
 
 import type { NetworkCenterController } from "@/hooks/network-center/useNetworkCenter";
 import type { NetworkBuilding } from "@/lib/network-center/contracts";
-import { summarizeAruba } from "@/lib/network-center/model";
+import { allowsNetworkExecution, networkRolloutDisabledMessage, summarizeAruba } from "@/lib/network-center/model";
 import { MaintenanceDialog } from "../MaintenanceDialog";
 import { NetworkActionDialog } from "../NetworkActionDialog";
 import { NetworkStatus } from "../NetworkStatus";
 
 export function OverviewTab({ site, controller }: { site: NetworkBuilding; controller: NetworkCenterController }) {
+  const executionAllowed = allowsNetworkExecution(controller.canExecute, site.rolloutState);
+  const executionDisabledMessage = networkRolloutDisabledMessage(
+    controller.canExecute,
+    site.rolloutState,
+    controller.executeDisabledMessage,
+  );
   const aruba = summarizeAruba(site);
   const arubaOnline = aruba.online ?? 0;
   const openIncidents = site.incidents.filter((incident) => incident.status !== "resolved").length;
@@ -46,7 +52,7 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
 
         <aside className="nc-panel nc-safe-actions">
           <div className="nc-panel-heading"><div><p className="nc-eyebrow">Danh sách được phép</p><h3>Thao tác an toàn</h3></div></div>
-          {!controller.canExecute ? <div className="nc-locked-note"><NetworkStatus kind="view-only" /><p>{controller.executeDisabledMessage}</p></div> : null}
+          {!executionAllowed ? <div className="nc-locked-note"><NetworkStatus kind="view-only" /><p>{executionDisabledMessage}</p></div> : null}
           {site.maintenance ? <div className="nc-safe-copy"><strong>Đang bảo trì</strong><span>{site.maintenance.reason} · {site.maintenance.durationMinutes} phút</span></div> : null}
           <NetworkActionDialog
             site={site}
@@ -60,6 +66,7 @@ export function OverviewTab({ site, controller }: { site: NetworkBuilding; contr
             buildingId={site.buildingId}
             buildingName={site.buildingName}
             canExecute={controller.canExecute}
+            rolloutState={site.rolloutState}
             disabledReason={controller.executeDisabledMessage}
             isDemo={controller.isDemo}
             onCreate={(input) => controller.createMaintenance(site.buildingId, input)}

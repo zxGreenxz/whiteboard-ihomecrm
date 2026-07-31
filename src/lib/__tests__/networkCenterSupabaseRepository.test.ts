@@ -79,6 +79,7 @@ function fleetResponse(overrides: Record<string, unknown> = {}) {
     items: [{
       buildingId: BUILDING_ID,
       buildingName: "Tòa Demo",
+      rolloutState: "OFF",
       roomsCount: 24,
       routerId: ROUTER_ID,
       routerIdentity: "MikroTik — Tòa Demo",
@@ -110,6 +111,7 @@ function buildingResponse(overrides: Record<string, unknown> = {}) {
   return {
     buildingId: BUILDING_ID,
     buildingName: "Tòa Demo",
+    rolloutState: "OFF",
     roomsCount: 24,
     router: {
       id: ROUTER_ID,
@@ -502,6 +504,45 @@ describe("Network Center Supabase repository boundary", () => {
     });
   });
 
+  it.each(["OFF", "READ_ONLY", "EXECUTE"] as const)(
+    "preserves %s rollout state across fleet and building DTOs",
+    async (rolloutState) => {
+      const harness = createRpcHarness({
+        fleet: fleetResponse({ rolloutState }),
+      });
+      const repository = new RepositoryConstructor(async (name, args) => {
+        if (name === "network_center_get_building_v1") {
+          return { data: buildingResponse({ rolloutState }), error: null };
+        }
+        return harness.rpc(name, args);
+      });
+
+      const [fleetBuilding] = await repository.listFleet();
+      const building = await repository.getBuilding(BUILDING_ID, fleetBuilding);
+
+      expect(fleetBuilding.rolloutState).toBe(rolloutState);
+      expect(building?.rolloutState).toBe(rolloutState);
+    },
+  );
+
+  it("fails closed to OFF for missing or invalid rollout DTO state", async () => {
+    const missingState = fleetResponse();
+    delete (missingState.items[0] as Record<string, unknown>).rolloutState;
+    const harness = createRpcHarness({ fleet: missingState });
+    const repository = new RepositoryConstructor(async (name, args) => {
+      if (name === "network_center_get_building_v1") {
+        return { data: buildingResponse({ rolloutState: "UNKNOWN" }), error: null };
+      }
+      return harness.rpc(name, args);
+    });
+
+    const [fleetBuilding] = await repository.listFleet();
+    const building = await repository.getBuilding(BUILDING_ID, fleetBuilding);
+
+    expect(fleetBuilding.rolloutState).toBe("OFF");
+    expect(building?.rolloutState).toBe("OFF");
+  });
+
   it("accepts bounded Aruba pages up to 250 and rejects a larger request before RPC", async () => {
     const harness = createRpcHarness();
     const repository = new RepositoryConstructor(harness.rpc);
@@ -725,6 +766,46 @@ describe("Network Center Supabase repository boundary", () => {
     expect(failure).toBeInstanceOf(NetworkCenterRepositoryError);
     expect(String((failure as Error).message)).toMatch(/đã thay đổi.*tải lại/i);
     expect(String((failure as Error).message)).not.toContain("do-not-leak");
+  });
+
+  it("surfaces a sanitized read-only rollout denial", async () => {
+    const repository = new RepositoryConstructor(async () => ({
+      data: null,
+      error: { code: "P0001", message: "NETWORK_CENTER_READ_ONLY backend-secret" },
+    }));
+
+    const failure = await repository.updateSettings(
+      BUILDING_ID,
+      { pollingSeconds: 90 },
+      { id: "browser-user-id", label: "Nhân viên" },
+      REQUEST_ID,
+      7,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(NetworkCenterRepositoryError);
+    expect(String((failure as Error).message)).toMatch(/chỉ đọc/i);
+    expect(String((failure as Error).message)).not.toContain("backend-secret");
+    expect(String((failure as Error).message)).not.toContain("NETWORK_CENTER_READ_ONLY");
+  });
+
+  it("surfaces a sanitized OFF rollout denial", async () => {
+    const repository = new RepositoryConstructor(async () => ({
+      data: null,
+      error: { code: "P0001", message: "NETWORK_CENTER_OFF backend-secret" },
+    }));
+
+    const failure = await repository.updateSettings(
+      BUILDING_ID,
+      { pollingSeconds: 90 },
+      { id: "browser-user-id", label: "Nhân viên" },
+      REQUEST_ID,
+      7,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(NetworkCenterRepositoryError);
+    expect(String((failure as Error).message)).toMatch(/đang tắt/i);
+    expect(String((failure as Error).message)).not.toContain("backend-secret");
+    expect(String((failure as Error).message)).not.toContain("NETWORK_CENTER_OFF");
   });
 
   it("does not reuse a building DTO across a later permission or backend boundary", async () => {
