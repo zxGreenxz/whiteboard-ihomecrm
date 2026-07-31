@@ -125,7 +125,16 @@ export function TerminationRefundDialog({ terminationId, onOpenChange }: Props) 
               khi có người duyệt.
             </p>
           </>
-        ) : null}
+        ) : (
+          /* Không có dữ liệu xem trước: trước đây render `null` nên hộp thoại mở ra
+             TRỐNG TRƠN, nút bị vô hiệu mà không nói vì sao — người dùng không biết
+             mình đã làm sai hay hệ thống hỏng. Bắt được khi chạy E2E trên DEMO. */
+          <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+            Hồ sơ thanh lý này <strong>không có khoản hoàn nào</strong> để chi — thường
+            là do sau khi cấn trừ thì khách còn nợ, hoặc số hoàn bằng 0. Không có phiếu
+            chi nào được tạo.
+          </div>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Đóng</Button>
