@@ -381,4 +381,37 @@ describe("OpenClaw complete Supabase reset harness", () => {
     ]);
     expect(cleanup).toHaveBeenCalledOnce();
   });
+
+  it("keeps the terminal cause when verbose CLI diagnostics are bounded", async () => {
+    const cleanup = vi.fn(async () => {});
+    const runCli = vi
+      .fn()
+      .mockResolvedValueOnce({ code: 0, stdout: "2.109.1\n", stderr: "" })
+      .mockResolvedValueOnce({
+        code: 1,
+        stdout: "",
+        stderr: `${"pull progress\n".repeat(1_000)}no space left on device`,
+      })
+      .mockResolvedValueOnce({ code: 0, stdout: "stopped", stderr: "" });
+
+    await expect(runFullResetHarness({
+      args: ["--local"],
+      dependencies: {
+        prepareProject: vi.fn(async () => ({
+          root: "C:/temp/openclaw-full-reset",
+          plan: {
+            entries: Array.from({ length: 498 }, (_, index) => ({
+              sourceFile: `migration-${index}.sql`,
+              targetVersion: String(index + 1),
+            })),
+            duplicateOriginalVersionGroups: 18,
+            aggregateSha256: "e".repeat(64),
+          },
+          cleanup,
+        })),
+        runCli,
+      },
+    })).rejects.toThrow(/no space left on device/i);
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
 });
