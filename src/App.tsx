@@ -309,10 +309,22 @@ const App = () => (
           />
 
           {/* Sự kiện quay số may mắn — trang CÔNG KHAI cho sale (không đăng
-              nhập). Định danh bằng mã 6 số web cấp cho từng đội; link kèm
-              ?e=<eventId> để mở thẳng đúng sự kiện. */}
+              nhập). Định danh bằng mã 6 số web cấp cho từng đội.
+              Link đẹp: /quayso/<slug> (vd /quayso/deal). Link cũ /quayso?e=<uuid>
+              giữ nguyên cho ai đã lỡ phát ra. */}
           <Route
             path="/quayso"
+            element={
+              <Suspense fallback={null}>
+                <QuaySoPage />
+              </Suspense>
+            }
+          />
+          {/* Đặt SAU /quayso/admin trong bảng route cũng được — React Router xếp
+              hạng đoạn tĩnh cao hơn đoạn động, nên "admin" không rơi vào đây.
+              Slug 'admin' cũng đã bị CHECK constraint chặn ở DB. */}
+          <Route
+            path="/quayso/:slug"
             element={
               <Suspense fallback={null}>
                 <QuaySoPage />

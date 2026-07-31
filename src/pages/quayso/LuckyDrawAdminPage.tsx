@@ -220,8 +220,23 @@ export default function LuckyDrawAdminPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <EventForm key={event.id} event={event} onSave={(p) => mUpsert.mutate({ id: event.id, ...p })} saving={mUpsert.isPending} />
+                <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Link gửi sale: </span>
+                  <a
+                    href={`/quayso/${event.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono font-semibold underline underline-offset-2"
+                  >
+                    {luckyPublicUrl(event.id, event.slug).replace(/^https?:\/\//, '')}
+                  </a>
+                </div>
                 <div className="flex flex-wrap gap-2 border-t pt-3">
-                  <Button variant="outline" size="sm" onClick={() => void copy(luckyPublicUrl(event.id), 'link công khai')}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void copy(luckyPublicUrl(event.id, event.slug), 'link công khai')}
+                  >
                     📋 Copy link gửi sale
                   </Button>
                   <Button
@@ -555,10 +570,17 @@ function EventForm({
   saving,
 }: {
   event: LuckyEventAdmin;
-  onSave: (p: { title: string; prizeLabel: string; prizeAmount: number; drawAt: string | null }) => void;
+  onSave: (p: {
+    title: string;
+    slug: string;
+    prizeLabel: string;
+    prizeAmount: number;
+    drawAt: string | null;
+  }) => void;
   saving: boolean;
 }) {
   const [title, setTitle] = useState(event.title);
+  const [slug, setSlug] = useState(event.slug);
   const [prizeLabel, setPrizeLabel] = useState(event.prizeLabel);
   const [prizeAmount, setPrizeAmount] = useState(event.prizeAmount);
   const [drawAtLocal, setDrawAtLocal] = useState(isoToLocalInput(event.drawAt));
@@ -568,6 +590,28 @@ function EventForm({
       <div className="min-w-48 flex-1">
         <Label htmlFor="ev-title">Tiêu đề</Label>
         <Input id="ev-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+      </div>
+      <div className="w-52">
+        <Label htmlFor="ev-slug">Đường dẫn ngắn</Label>
+        <div className="flex items-center gap-1">
+          <span className="whitespace-nowrap text-xs text-muted-foreground">/quayso/</span>
+          <Input
+            id="ev-slug"
+            value={slug}
+            placeholder="deal"
+            // Gõ sao cũng ra slug hợp lệ: hạ chữ thường, đổi khoảng trắng thành
+            // gạch ngang, bỏ ký tự lạ (kể cả dấu tiếng Việt).
+            onChange={(e) =>
+              setSlug(
+                e.target.value
+                  .toLowerCase()
+                  .replace(/\s+/g, '-')
+                  .replace(/[^a-z0-9-]/g, '')
+                  .slice(0, 32),
+              )
+            }
+          />
+        </div>
       </div>
       <div className="w-40">
         <Label htmlFor="ev-plabel">Tên giải</Label>
@@ -598,6 +642,7 @@ function EventForm({
         onClick={() =>
           onSave({
             title: title.trim(),
+            slug: slug.trim(),
             prizeLabel: prizeLabel.trim() || 'Giải may mắn',
             prizeAmount,
             drawAt: localInputToIso(drawAtLocal),

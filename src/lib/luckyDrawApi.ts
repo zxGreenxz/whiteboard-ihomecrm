@@ -41,6 +41,8 @@ export interface LuckyProof {
 
 export interface LuckyEventPublic {
   id: string;
+  /** Đường dẫn ngắn: /quayso/<slug>. */
+  slug: string;
   title: string;
   prizeLabel: string;
   prizeAmount: number;
@@ -102,10 +104,15 @@ async function publicRpc<T>(fn: string, args: Record<string, unknown>): Promise<
   }
 }
 
-export function fetchLuckyPublicState(eventId: string | null, code: string | null) {
+export function fetchLuckyPublicState(
+  eventId: string | null,
+  code: string | null,
+  slug: string | null = null,
+) {
   return publicRpc<LuckyPublicState>('lucky_public_state_v1', {
     p_event: eventId,
     p_code: code || null,
+    p_slug: slug || null,
   });
 }
 
@@ -200,11 +207,12 @@ export const luckyAdminApi = {
   upsertEvent: (p: {
     id?: string;
     title?: string;
+    slug?: string;
     prizeLabel?: string;
     prizeAmount?: number;
     drawAt?: string | null;
     status?: 'open' | 'closed';
-  }) => adminRpc<{ ok: boolean; eventId: string }>('lucky_admin_upsert_event_v1', { p }),
+  }) => adminRpc<{ ok: boolean; eventId: string; slug: string }>('lucky_admin_upsert_event_v1', { p }),
   addTeam: (p: {
     eventId: string;
     name: string;
@@ -246,9 +254,12 @@ export const luckyAdminApi = {
 const VND = new Intl.NumberFormat('vi-VN');
 export const formatVnd = (n: number) => `${VND.format(n)}đ`;
 
-/** Link công khai của sự kiện — đưa cho sale / dán vào group. */
-export const luckyPublicUrl = (eventId: string) =>
-  `${window.location.origin}/quayso?e=${eventId}`;
+/** Link công khai của sự kiện — đưa cho sale / dán vào group.
+ *  Ưu tiên slug cho gọn; chưa có slug thì lui về ?e=<uuid>. */
+export const luckyPublicUrl = (eventIdOrSlug: string, slug?: string | null) =>
+  slug
+    ? `${window.location.origin}/quayso/${slug}`
+    : `${window.location.origin}/quayso?e=${eventIdOrSlug}`;
 
 /** Lệch giờ server-client (ms): serverNow của payload trừ Date.now() lúc nhận. */
 export function serverClockOffset(serverNowIso: string): number {

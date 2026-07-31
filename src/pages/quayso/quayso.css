@@ -187,34 +187,61 @@
 .qs-codebtn:disabled { color: var(--qs-muted); background: var(--qs-ink-3); box-shadow: none; cursor: not-allowed; }
 .qs-codeerr { margin: 0; font-size: 13px; color: #FF8E86; }
 
-/* Thẻ "đội của bạn" */
+/* Thẻ "đội của bạn" — phải đập vào mắt, sale mở lên là biết ngay mình là đội nào */
 .qs-mine {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid rgba(255, 194, 60, .5);
-  border-radius: 16px;
-  background: linear-gradient(120deg, rgba(255, 194, 60, .16), var(--qs-ink-2) 62%);
-  padding: 13px 15px;
+  flex-direction: column;
+  gap: 11px;
+  border: 2px solid var(--qs-gold);
+  border-radius: 18px;
+  background: linear-gradient(150deg, rgba(255, 194, 60, .2), var(--qs-ink-2) 65%);
+  box-shadow: 0 0 0 4px rgba(255, 194, 60, .1), 0 14px 40px -18px rgba(255, 194, 60, .55);
+  padding: 15px 16px;
+}
+.qs-mine-main { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.qs-mine-badge {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 24px;
+  line-height: 1;
+  color: #34190A;
+  background: radial-gradient(circle at 34% 28%, var(--qs-gold-hi), var(--qs-gold) 48%, var(--qs-gold-dp));
+  transform: skewX(-7deg);
 }
 .qs-mine .qs-mine-txt { flex: 1; min-width: 0; }
-.qs-mine small {
+.qs-mine strong {
+  display: block;
+  font-weight: 900;
+  font-size: clamp(22px, 6.6vw, 28px);
+  line-height: 1.05;
+  text-transform: uppercase;
+  letter-spacing: -.03em;
+  color: var(--qs-gold);
+  overflow-wrap: anywhere;   /* tên dài xuống dòng, KHÔNG cắt cụt */
+}
+.qs-mine-sub {
+  display: block;
+  margin-top: 3px;
   font-family: var(--qs-data);
-  font-size: 9.5px;
-  letter-spacing: .15em;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .11em;
   text-transform: uppercase;
   color: var(--qs-muted);
-  display: block;
 }
-.qs-mine strong {
-  font-weight: 900;
-  font-size: 19px;
-  text-transform: uppercase;
-  letter-spacing: -.02em;
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.qs-mine-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 194, 60, .22);
+  padding-top: 10px;
 }
 .qs-mine .qs-ok {
   font-family: var(--qs-data);
@@ -223,7 +250,6 @@
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--qs-good);
-  white-space: nowrap;
 }
 .qs-mine button {
   background: none;
@@ -234,6 +260,8 @@
   text-decoration: underline;
   padding: 0;
 }
+.qs-mine button:hover { color: var(--qs-cream); }
+.qs-mine button:focus-visible { outline: 2px solid var(--qs-gold); outline-offset: 3px; }
 
 /* Đếm ngược */
 .qs-count {

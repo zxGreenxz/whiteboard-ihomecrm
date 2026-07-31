@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   fetchLuckyPublicState,
   formatVnd,
@@ -541,7 +541,9 @@ function PayoutForm({ eventId, code, team, onSaved }: PayoutFormProps) {
 
 export default function QuaySoPage() {
   const [params] = useSearchParams();
+  const { slug: slugParam } = useParams<{ slug?: string }>();
   const eventParam = params.get('e');
+  const slug = slugParam ?? null;
   const queryClient = useQueryClient();
 
   const [savedCode, setSavedCode] = useState<string>(() => {
@@ -576,12 +578,15 @@ export default function QuaySoPage() {
   }, []);
   void tick;
 
-  const queryKey = useMemo(() => ['quayso', eventParam, savedCode] as const, [eventParam, savedCode]);
+  const queryKey = useMemo(
+    () => ['quayso', eventParam, slug, savedCode] as const,
+    [eventParam, slug, savedCode],
+  );
 
   const stateQuery = useQuery<LuckyPublicState>({
     queryKey,
-    enabled: Boolean(eventParam || savedCode),
-    queryFn: () => fetchLuckyPublicState(eventParam, savedCode || null),
+    enabled: Boolean(eventParam || slug || savedCode),
+    queryFn: () => fetchLuckyPublicState(eventParam, savedCode || null, slug),
     refetchIntervalInBackground: true,
     refetchInterval: (query) => {
       const s = query.state.data;
@@ -694,7 +699,7 @@ export default function QuaySoPage() {
       }
       setSavedCode(code);
       setCodeInput('');
-      queryClient.setQueryData(['quayso', eventParam, code], res);
+      queryClient.setQueryData(['quayso', eventParam, slug, code], res);
       if (navigator.vibrate) {
         try {
           navigator.vibrate(18);
@@ -720,7 +725,7 @@ export default function QuaySoPage() {
 
   /* ── Render ── */
 
-  const noEntry = !eventParam && !savedCode;
+  const noEntry = !eventParam && !slug && !savedCode;
   const drawn = event?.status === 'drawn';
   const closed = event?.status === 'closed';
   const soon = msLeft != null && msLeft <= 60_000 && msLeft > 0 && !drawn;
@@ -772,14 +777,27 @@ export default function QuaySoPage() {
         {/* Nhập mã / đội của tôi */}
         {myTeam ? (
           <section className="qs-mine">
-            <div className="qs-mine-txt">
-              <small>Đội của bạn · {myTeam.deals} deal</small>
-              <strong>{myTeam.name}</strong>
-              <button type="button" onClick={forgetCode}>Đổi mã khác</button>
+            <p className="qs-eyebrow">Bạn đang điểm danh với tư cách đội</p>
+            <div className="qs-mine-main">
+              <span className="qs-mine-badge" aria-hidden="true">
+                {myTeam.name.trim().charAt(0).toUpperCase()}
+              </span>
+              <div className="qs-mine-txt">
+                <strong>{myTeam.name}</strong>
+                <span className="qs-mine-sub">
+                  {myTeam.deals} deal ·{' '}
+                  {myTeam.topRank
+                    ? `TOP ${myTeam.topRank}${myTeam.topPrizeAmount != null ? ` — ${formatVnd(myTeam.topPrizeAmount)}` : ''}`
+                    : 'Tham gia vòng xoay'}
+                </span>
+              </div>
             </div>
-            <span className="qs-ok">
-              {myTeam.topRank ? `Đã có mặt nhận giải TOP ${myTeam.topRank} ✓` : 'Đã điểm danh ✓'}
-            </span>
+            <div className="qs-mine-foot">
+              <span className="qs-ok">
+                {myTeam.topRank ? `Đã có mặt nhận giải TOP ${myTeam.topRank} ✓` : 'Đã điểm danh ✓'}
+              </span>
+              <button type="button" onClick={forgetCode}>Không phải đội bạn? Đổi mã</button>
+            </div>
           </section>
         ) : (
           <section className="qs-codebox">
