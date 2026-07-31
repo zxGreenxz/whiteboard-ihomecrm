@@ -33,6 +33,15 @@ export function TerminationRefundDialog({ terminationId, onOpenChange }: Props) 
 
   const p = preview.data;
   const warn = p && p.obligationStatus !== 'OK';
+  /**
+   * Số hoàn ÂM = sau khi cấn trừ thì KHÁCH CÒN NỢ, không phải "hoàn 0đ".
+   * Bắt được khi chạy E2E trên DEMO: hồ sơ −2.241.000đ đang hiện dấu tích xanh
+   * "Số hoàn khớp với cọc thật đã thu" — vừa sai vừa dễ làm người dùng tưởng
+   * mọi thứ ổn. Đây đúng lớp lỗi mà /deposits từng mắc (hiện "Đã hoàn 0đ" cho
+   * hợp đồng khách còn nợ) và đã sửa ở Đợt −1.
+   */
+  const customerOwes = !!p && p.requestedAmount < 0;
+  const nothingToRefund = !!p && p.requestedAmount === 0;
 
   const run = async () => {
     if (!terminationId || !p) return;
@@ -113,6 +122,21 @@ export function TerminationRefundDialog({ terminationId, onOpenChange }: Props) 
                   Chỉ <strong>chủ tổ chức</strong> mới ép được khi đang cảnh báo.
                 </p>
               </div>
+            ) : customerOwes ? (
+              <div className="rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm space-y-1">
+                <div className="font-medium text-amber-700 dark:text-amber-400">
+                  Khách còn nợ {fmt(Math.abs(p.requestedAmount))}
+                </div>
+                <p className="text-muted-foreground">
+                  Sau khi cấn trừ thì hồ sơ này <strong>không phải hoàn tiền</strong> — khách
+                  còn thiếu. Không có phiếu chi nào được tạo.
+                </p>
+              </div>
+            ) : nothingToRefund ? (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Hồ sơ này <strong>hoàn đúng 0đ</strong> — cấn trừ vừa khít. Không có phiếu
+                chi nào được tạo.
+              </div>
             ) : (
               <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm
                               text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
@@ -120,10 +144,12 @@ export function TerminationRefundDialog({ terminationId, onOpenChange }: Props) 
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground">
-              Phiếu tạo ra ở trạng thái <strong>CHỜ DUYỆT</strong> — tiền chỉ ra khỏi két
-              khi có người duyệt.
-            </p>
+            {!customerOwes && !nothingToRefund && (
+              <p className="text-xs text-muted-foreground">
+                Phiếu tạo ra ở trạng thái <strong>CHỜ DUYỆT</strong> — tiền chỉ ra khỏi két
+                khi có người duyệt.
+              </p>
+            )}
           </>
         ) : (
           /* Không có dữ liệu xem trước: trước đây render `null` nên hộp thoại mở ra
