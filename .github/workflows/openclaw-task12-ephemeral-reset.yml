@@ -29,20 +29,56 @@ jobs:
           version="$(npx --yes supabase@2.109.1 --version)"
           test "$version" = "2.109.1"
 
-      - name: Start disposable local Supabase Postgres
-        run: npx --yes supabase@2.109.1 db start
+      - name: Build a byte-preserving unique-version migration copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          reset_root="$RUNNER_TEMP/openclaw-task12-reset"
+          migration_root="$reset_root/supabase/migrations"
+          mkdir -p "$migration_root"
+          cp supabase/config.toml "$reset_root/supabase/config.toml"
+          sed -i \
+            's/^project_id = .*/project_id = "openclaw_task12_ephemeral"/' \
+            "$reset_root/supabase/config.toml"
 
-      - name: Reset the complete repository migration chain
+          mapfile -d '' sources < <(
+            find supabase/migrations -maxdepth 1 -type f -name '*.sql' \
+              -print0 | sort -z
+          )
+          test "${#sources[@]}" -eq 498
+
+          : > "$reset_root/migration-byte-manifest.txt"
+          index=0
+          for source in "${sources[@]}"; do
+            index=$((index + 1))
+            version=$((80000000000000 + index))
+            original="$(basename "$source")"
+            target="$migration_root/${version}_${original}"
+            cp -- "$source" "$target"
+            sha256sum "$source" \
+              | sed "s#  supabase/migrations/#  #" \
+              >> "$reset_root/migration-byte-manifest.txt"
+          done
+          test "$(wc -l < "$reset_root/migration-byte-manifest.txt")" -eq 498
+
+      - name: Start and reset the complete repository migration chain
         shell: bash
         run: |
           set +e
-          npx --yes supabase@2.109.1 db reset --local --no-seed --debug \
-            2>&1 | tee /tmp/openclaw-task12-reset.log
+          reset_root="$RUNNER_TEMP/openclaw-task12-reset"
+          (
+            set -e
+            npx --yes supabase@2.109.1 db start --workdir "$reset_root"
+            npx --yes supabase@2.109.1 db reset --local --no-seed --debug \
+              --workdir "$reset_root"
+          ) 2>&1 | tee /tmp/openclaw-task12-reset.log
           reset_code="${PIPESTATUS[0]}"
 
           {
             echo "reviewed_commit=$GITHUB_SHA"
             echo "reset_exit_code=$reset_code"
+            echo "migration_file_count=498"
+            echo "migration_manifest_sha256=$(sha256sum "$reset_root/migration-byte-manifest.txt" | cut -d' ' -f1)"
             echo "diagnostic_begin"
             grep -Eai 'error|failed|duplicate|migration|does not exist|syntax' \
               /tmp/openclaw-task12-reset.log \
@@ -64,4 +100,6 @@ jobs:
 
       - name: Destroy disposable local Supabase state
         if: always()
-        run: npx --yes supabase@2.109.1 stop --no-backup || true
+        run: |
+          npx --yes supabase@2.109.1 stop --no-backup \
+            --workdir "$RUNNER_TEMP/openclaw-task12-reset" || true
