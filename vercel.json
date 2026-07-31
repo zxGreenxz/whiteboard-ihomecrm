@@ -42,6 +42,10 @@
     ],
     "rewrites": [
         {
+            "source": "/quayso",
+            "destination": "/quayso/index.html"
+        },
+        {
             "source": "/((?!assets/|api/).*)",
             "destination": "/index.html"
         }

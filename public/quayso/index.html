@@ -1,0 +1,1377 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#150A10">
+<meta name="robots" content="noindex">
+<title>IHOME · Trao thưởng — 2 giải TOP + Vòng xoay 500K</title>
+<meta property="og:title" content="IHOME · Trao thưởng — Vòng xoay may mắn 500K">
+<meta property="og:description" content="2 giải TOP đã có chủ · 10 đội điểm danh quay 500K. Vào điểm danh ngay!">
+<meta property="og:type" content="website">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🎰</text></svg>'>
+<style>
+  /* ── Thế giới hình ảnh: một màn hình "đêm trao thưởng". Cố ý chỉ có một tông
+     (nền mực mận + đỏ sơn mài + vàng nung) — đây là màn hình sự kiện chiếu tại chỗ,
+     không phải tài liệu, nên nó không đổi theo light/dark của máy người xem. ── */
+  :root {
+    --ink:      #150A10;
+    --ink-2:    #221019;
+    --ink-3:    #2E1622;
+    --line:     #3D1D2B;
+    --ember:    #F5333F;
+    --ember-dp: #A8121C;
+    --gold:     #FFC23C;
+    --gold-hi:  #FFEDB0;
+    --gold-dp:  #C98A12;
+    --cream:    #FFF2E4;
+    --muted:    #B08F9C;
+    --good:     #33D17A;
+
+    --font-display: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-body:    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-data:    ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", Menlo, monospace;
+
+    --shell: 520px;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--cream);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* Nền sân khấu: hai quầng đèn + vệt sọc chéo kiểu băng-rôn */
+  .arena { position: relative; min-height: 100vh; isolation: isolate; }
+  .arena::before,
+  .arena::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+  .arena::before {
+    background:
+      radial-gradient(60% 42% at 50% -6%, rgba(245, 51, 63, .38), transparent 70%),
+      radial-gradient(46% 34% at 92% 22%, rgba(255, 194, 60, .14), transparent 72%),
+      radial-gradient(52% 40% at 4% 76%, rgba(168, 18, 28, .22), transparent 72%);
+  }
+  .arena::after {
+    background-image: repeating-linear-gradient(
+      -34deg,
+      rgba(255, 242, 228, .028) 0 2px,
+      transparent 2px 16px
+    );
+  }
+
+  /* ── Nhịp chữ ── */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -.025em;
+    line-height: .94;
+    text-wrap: balance;
+    margin: 0;
+  }
+  .skew { display: inline-block; transform: skewX(-7deg); }
+  .goldtext {
+    background: linear-gradient(178deg, var(--gold-hi) 4%, var(--gold) 46%, var(--gold-dp) 98%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .eyebrow {
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  /* ── Khung điện thoại ── */
+  .shell {
+    width: 100%;
+    max-width: var(--shell);
+    margin: 0 auto;
+    padding: 0 16px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+  }
+
+  /* ── Ticker ── */
+  .ticker {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    overflow: hidden;
+    background: linear-gradient(90deg, var(--ember-dp), var(--ember) 50%, var(--ember-dp));
+    border-bottom: 2px solid var(--gold);
+    box-shadow: 0 6px 26px rgba(168, 18, 28, .5);
+  }
+  .ticker-track { display: flex; width: max-content; animation: slide 24s linear infinite; }
+  .ticker-track span {
+    font-family: var(--font-data);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #FFF6E9;
+    padding: 8px 22px;
+    white-space: nowrap;
+  }
+  @keyframes slide { to { transform: translateX(-50%); } }
+
+  /* ── Hero ── */
+  .hero { padding-top: 30px; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--gold);
+    border: 1px solid rgba(255, 194, 60, .4);
+    background: rgba(255, 194, 60, .07);
+    border-radius: 999px;
+    padding: 6px 15px;
+  }
+  .flag i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 0 0 rgba(51, 209, 122, .7);
+    animation: pulse 1.9s ease-out infinite;
+  }
+  @keyframes pulse { to { box-shadow: 0 0 0 9px rgba(51, 209, 122, 0); } }
+  .hero h1 { font-size: clamp(46px, 15vw, 74px); }
+  .hero h1 .l2 { display: block; color: var(--cream); }
+  .hero p.tag { margin: 0; max-width: 32ch; color: var(--muted); font-size: 14.5px; }
+
+  /* ── Nồi tiền hôm nay ── */
+  .prizebox {
+    position: relative;
+    border: 1px solid rgba(255, 194, 60, .34);
+    border-radius: 22px;
+    background:
+      linear-gradient(180deg, rgba(255, 194, 60, .1), rgba(34, 16, 25, .86) 58%),
+      var(--ink-2);
+    padding: 24px 20px 20px;
+    text-align: center;
+    overflow: hidden;
+  }
+  .prizebox::after {
+    content: "";
+    position: absolute;
+    inset: -60% -20% auto;
+    height: 120%;
+    background: radial-gradient(50% 50% at 50% 50%, rgba(255, 194, 60, .16), transparent 70%);
+    pointer-events: none;
+  }
+  .prizebox .amount {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: clamp(40px, 13vw, 62px);
+    letter-spacing: -.04em;
+    line-height: 1;
+    margin: 10px 0 4px;
+  }
+  .prizebox .sub { font-size: 13px; color: var(--muted); margin: 0; }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    margin-top: 20px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .stats div { background: var(--ink-2); padding: 12px 6px; }
+  .stats b {
+    display: block;
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gold);
+    line-height: 1.15;
+  }
+  .stats small {
+    display: block;
+    font-family: var(--font-data);
+    font-size: 9.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  /* ── Tiêu đề mục ── */
+  .head { display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px; }
+  .head h2 { font-size: 28px; }
+  .head p { margin: 0; font-size: 13.5px; color: var(--muted); }
+
+  /* ── Hai nhà vô địch ── */
+  .champs { display: flex; flex-direction: column; gap: 12px; }
+  .champ {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--ink-2);
+    padding: 16px 16px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+    animation: rise .5s cubic-bezier(.2, .8, .25, 1) backwards;
+  }
+  .champ.c1 {
+    border-color: rgba(255, 194, 60, .55);
+    background: linear-gradient(120deg, rgba(255, 194, 60, .16), var(--ink-2) 62%);
+    box-shadow: 0 14px 40px -18px rgba(255, 194, 60, .55);
+  }
+  .champ.c2 {
+    border-color: rgba(255, 242, 228, .3);
+    background: linear-gradient(120deg, rgba(255, 242, 228, .08), var(--ink-2) 62%);
+  }
+  .champ .toprow { display: flex; align-items: center; gap: 13px; }
+  .champ .medal {
+    flex: none;
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 22px;
+    transform: skewX(-7deg);
+  }
+  .c1 .medal { background: radial-gradient(circle at 34% 28%, var(--gold-hi), var(--gold) 45%, var(--gold-dp)); color: #34190A; }
+  .c2 .medal { background: radial-gradient(circle at 34% 28%, #FFFFFF, #D9C9BC 45%, #9E8B7E); color: #2E2119; }
+  .champ .who { min-width: 0; flex: 1; }
+  .champ .who strong {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(20px, 6vw, 24px);
+    text-transform: uppercase;
+    letter-spacing: -.02em;
+    line-height: 1.05;
+  }
+  .champ .who span {
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .champ .cash {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: clamp(21px, 6.4vw, 26px);
+    letter-spacing: -.03em;
+    white-space: nowrap;
+  }
+  .c1 .cash { color: var(--gold); }
+  .c2 .cash { color: #E4D3C6; }
+  .champ .claim {
+    width: 100%;
+    padding: 13px 12px;
+    border-radius: 12px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    cursor: pointer;
+    background: rgba(245, 51, 63, .16);
+    color: #FF8E86;
+    border: 1px solid rgba(245, 51, 63, .38);
+    transition: background .2s, color .2s, border-color .2s, transform .12s;
+  }
+  .champ .claim:active { transform: scale(.98); }
+  .champ .claim:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+  .champ[data-claimed="true"] .claim {
+    background: var(--gold);
+    color: #2A1500;
+    border-color: var(--gold-hi);
+  }
+  .champ { position: relative; overflow: hidden; }
+  .champ.just::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% 55%, rgba(255, 237, 176, .8), transparent 62%);
+    animation: spark .55s ease-out forwards;
+    pointer-events: none;
+  }
+
+  /* ── Lưới điểm danh quay số ── */
+  .progress { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; }
+  .bar { flex: 1; height: 7px; border-radius: 999px; background: var(--ink-3); overflow: hidden; }
+  .bar i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--ember), var(--gold));
+    transition: width .5s cubic-bezier(.2, .8, .25, 1);
+  }
+  .progress .count {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: left;
+    padding: 14px 13px 13px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--ink-2);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform .18s cubic-bezier(.2, .8, .25, 1), border-color .18s, box-shadow .25s;
+    animation: rise .5s cubic-bezier(.2, .8, .25, 1) backwards;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  .card:hover { transform: translateY(-2px); border-color: rgba(255, 194, 60, .45); }
+  .card:active { transform: scale(.975); }
+  .card:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+  .card .deals {
+    align-self: flex-start;
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 9px;
+  }
+  /* Tên dài không có khoảng trắng (THIENKHANG, BESTCHOICE) tràn khỏi thẻ ở
+     dải 360–400px, nơi lưới vẫn 2 cột — co cỡ chữ theo bề ngang màn hình. */
+  .card .name {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: clamp(16px, 4.4vw, 19px);
+    text-transform: uppercase;
+    letter-spacing: -.025em;
+    line-height: 1.08;
+    min-height: 2.16em;
+    overflow-wrap: anywhere;
+  }
+  .card .cta {
+    margin-top: 2px;
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    padding: 9px 10px;
+    border-radius: 9px;
+    text-align: center;
+    background: rgba(245, 51, 63, .16);
+    color: #FF8E86;
+    border: 1px solid rgba(245, 51, 63, .38);
+    transition: background .2s, color .2s, border-color .2s;
+  }
+
+  .card[aria-pressed="true"] {
+    border-color: var(--gold);
+    background: linear-gradient(165deg, rgba(255, 194, 60, .17), var(--ink-2) 60%);
+    box-shadow: 0 0 0 1px rgba(255, 194, 60, .3), 0 10px 30px -12px rgba(255, 194, 60, .55);
+  }
+  .card[aria-pressed="true"] .cta {
+    background: var(--gold);
+    color: #2A1500;
+    border-color: var(--gold-hi);
+  }
+  .card[aria-pressed="true"] .deals { color: var(--gold); border-color: rgba(255, 194, 60, .45); }
+  .card.just::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% 55%, rgba(255, 237, 176, .8), transparent 62%);
+    animation: spark .55s ease-out forwards;
+    pointer-events: none;
+  }
+  @keyframes spark { to { opacity: 0; transform: scale(1.5); } }
+
+  .bulk { display: flex; gap: 9px; margin-top: 13px; }
+  .bulk button {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    padding: 10px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: color .2s, border-color .2s;
+  }
+  .bulk button:hover { color: var(--gold); border-color: rgba(255, 194, 60, .45); }
+  .bulk button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* Khoá điểm danh khi vòng xoay đang quay: đổi danh sách giữa chừng sẽ làm
+     kim chỉ một ô còn tên công bố lại là đội khác. */
+  .locked { opacity: .45; pointer-events: none; filter: saturate(.4); transition: opacity .25s; }
+
+  /* ── Vòng xoay ── */
+  .wheelwrap {
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: var(--ink-2);
+    padding: 22px 18px 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 17px;
+  }
+  .stage { position: relative; width: 100%; display: flex; justify-content: center; }
+  .stage canvas {
+    display: block;
+    border-radius: 50%;
+    box-shadow: 0 0 0 6px var(--ink-3), 0 0 0 8px var(--gold-dp), 0 22px 60px -18px rgba(245, 51, 63, .75);
+  }
+  .needle {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    width: 30px;
+    height: 40px;
+    margin-left: -15px;
+    z-index: 3;
+    transform-origin: 50% 14%;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .6));
+    transition: transform .07s ease-out;
+  }
+  .needle.kick { transform: rotate(-13deg); }
+  .hubcap {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 64px; height: 64px;
+    margin: -32px 0 0 -32px;
+    border-radius: 50%;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle at 34% 28%, var(--gold-hi), var(--gold) 42%, var(--gold-dp));
+    border: 3px solid var(--ink-3);
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 13px;
+    letter-spacing: -.02em;
+    color: #34190A;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  .spin {
+    width: 100%;
+    padding: 18px;
+    border: 0;
+    border-radius: 15px;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 20px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #2A1500;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 40%, var(--gold-dp));
+    box-shadow: 0 8px 0 -1px #8A5D08, 0 16px 34px -14px rgba(255, 194, 60, .9);
+    cursor: pointer;
+    transition: transform .12s, box-shadow .12s;
+  }
+  .spin:hover:not(:disabled) { transform: translateY(-1px); }
+  .spin:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 3px 0 -1px #8A5D08; }
+  .spin:focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; }
+  .spin:disabled { cursor: not-allowed; color: var(--muted); background: var(--ink-3); box-shadow: none; }
+  .wheelnote { margin: 0; font-size: 12.5px; color: var(--muted); text-align: center; }
+
+  .lastwin {
+    width: 100%;
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 15px;
+    border-radius: 13px;
+    border: 1px solid rgba(255, 194, 60, .45);
+    background: rgba(255, 194, 60, .08);
+  }
+  .lastwin.on { display: flex; }
+  .lastwin .txt { flex: 1; min-width: 0; }
+  .lastwin small {
+    font-family: var(--font-data);
+    font-size: 9.5px;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: block;
+  }
+  .lastwin strong {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 19px;
+    text-transform: uppercase;
+    color: var(--gold);
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lastwin .amt {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--gold);
+    white-space: nowrap;
+  }
+
+  /* ── Luật ── */
+  details.rules {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--ink-2);
+    overflow: hidden;
+  }
+  details.rules + details.rules { margin-top: 10px; }
+  details.rules summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 15px 17px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: -.01em;
+  }
+  details.rules summary::-webkit-details-marker { display: none; }
+  details.rules summary::after {
+    content: "+";
+    font-family: var(--font-data);
+    font-size: 19px;
+    font-weight: 400;
+    color: var(--gold);
+    line-height: 1;
+  }
+  details.rules[open] summary::after { content: "–"; }
+  details.rules summary:focus-visible { outline: 2px solid var(--gold); outline-offset: -3px; }
+  .rulebody { padding: 0 17px 17px; display: flex; flex-direction: column; gap: 11px; }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13.5px;
+  }
+  .row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .row span { color: var(--muted); }
+  .row b {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    color: var(--cream);
+    white-space: nowrap;
+  }
+  .row b.hot { color: var(--gold); }
+  .row b.done { color: var(--good); }
+  .note { margin: 0; font-size: 13px; color: var(--muted); }
+
+  footer { text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+  footer p { margin: 0; font-size: 11.5px; color: var(--muted); max-width: 38ch; }
+  .reset {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-family: var(--font-data);
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    padding: 8px 15px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .reset:hover { color: var(--ember); border-color: rgba(245, 51, 63, .5); }
+  .reset:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* ── Lớp phủ ăn mừng ── */
+  /* Canvas là phần tử replaced: phải khai width/height rõ, không dựa vào inset:0 */
+  #confetti { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 60; pointer-events: none; }
+  #overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: none;
+    place-items: center;
+    padding: 24px;
+    background: rgba(21, 10, 16, .84);
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
+  }
+  #overlay.on { display: grid; }
+  .winbox {
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+    padding: 34px 26px 26px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 194, 60, .55);
+    background: linear-gradient(180deg, rgba(255, 194, 60, .2), var(--ink-2) 55%);
+    box-shadow: 0 30px 80px -22px rgba(255, 194, 60, .5);
+    animation: slam .45s cubic-bezier(.2, 1.5, .4, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+    align-items: center;
+  }
+  @keyframes slam { from { opacity: 0; transform: scale(.72) rotate(-3deg); } }
+  .winbox h3 { font-size: clamp(30px, 9vw, 42px); }
+  .winbox .payout {
+    font-family: var(--font-data);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 28px;
+    letter-spacing: -.03em;
+    color: var(--cream);
+  }
+  .winbox .close {
+    margin-top: 6px;
+    width: 100%;
+    padding: 14px;
+    border: 0;
+    border-radius: 13px;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 15px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #2A1500;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+    cursor: pointer;
+  }
+  .winbox .close:focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+    .ticker-track { animation: none; }
+  }
+
+  @media (max-width: 350px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="arena">
+  <div class="ticker">
+    <div class="ticker-track" id="tickerTrack"></div>
+  </div>
+
+  <main class="shell">
+
+    <section class="hero">
+      <span class="flag"><i></i>Chốt sổ 15 deal · Trao tại chỗ</span>
+      <h1 class="display"><span class="skew goldtext">IHOME</span><span class="l2 skew">Trao thưởng</span></h1>
+      <p class="tag">Hai đội dẫn đầu nhận giải TOP — mười đội còn lại quay vòng xoay 500K.</p>
+    </section>
+
+    <section class="prizebox">
+      <p class="eyebrow">Tổng tiền trao hôm nay</p>
+      <p class="amount goldtext" id="pot">0đ</p>
+      <p class="sub">2 giải TOP đã có chủ + 1 giải may mắn quay tại chỗ</p>
+      <div class="stats">
+        <div><b id="statTop">0/2</b><small>Giải TOP đã nhận</small></div>
+        <div><b>10</b><small>Đội quay số</small></div>
+        <div><b id="statCheck">0</b><small>Đã điểm danh</small></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="head">
+        <p class="eyebrow">Trao giải</p>
+        <h2 class="display"><span class="skew goldtext">2 đội dẫn đầu</span></h2>
+        <p>Mời đại diện đội điểm danh có mặt để nhận tiền ngay. Hai đội này không tham gia vòng xoay.</p>
+      </div>
+      <div class="champs">
+        <div class="champ c1" id="champ-phungdao" data-claimed="false" style="animation-delay:0ms">
+          <div class="toprow">
+            <div class="medal">1</div>
+            <div class="who"><strong>Phụng Đào</strong><span>3 deal · Quán quân</span></div>
+            <div class="cash">2.500.000đ</div>
+          </div>
+          <button class="claim" type="button" data-champ="phungdao">Điểm danh nhận giải</button>
+        </div>
+        <div class="champ c2" id="champ-hkhouse" data-claimed="false" style="animation-delay:60ms">
+          <div class="toprow">
+            <div class="medal">2</div>
+            <div class="who"><strong>Hkhouse</strong><span>2 deal · Á quân</span></div>
+            <div class="cash">1.500.000đ</div>
+          </div>
+          <button class="claim" type="button" data-champ="hkhouse">Điểm danh nhận giải</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="head">
+        <p class="eyebrow">Bước 1</p>
+        <h2 class="display"><span class="skew">Điểm danh quay số</span></h2>
+        <p>10 đội chưa có giải TOP. Chạm vào thẻ đội mình — chưa điểm danh thì không lên vòng xoay.</p>
+      </div>
+      <div class="progress">
+        <div class="bar"><i id="barFill"></i></div>
+        <span class="count" id="barCount">0/10 đội</span>
+      </div>
+      <div class="grid" id="grid"></div>
+      <div class="bulk">
+        <button type="button" id="allBtn">Điểm danh tất cả</button>
+        <button type="button" id="noneBtn">Bỏ chọn hết</button>
+      </div>
+    </section>
+
+    <section>
+      <div class="head">
+        <p class="eyebrow">Bước 2</p>
+        <h2 class="display"><span class="skew goldtext">Vòng xoay 500K</span></h2>
+        <p>Mỗi đội một ô, cơ hội bằng nhau. Quay ra chủ nhân giải may mắn cuối cùng.</p>
+      </div>
+      <div class="wheelwrap">
+        <div class="stage">
+          <svg class="needle" id="needle" viewBox="0 0 30 40" aria-hidden="true">
+            <path d="M15 40 L2 8 A14 14 0 0 1 28 8 Z" fill="#FFC23C" stroke="#8A5D08" stroke-width="1.6" stroke-linejoin="round"/>
+            <circle cx="15" cy="10" r="4.4" fill="#8A5D08"/>
+          </svg>
+          <canvas id="wheel" role="img" aria-label="Vòng xoay may mắn"></canvas>
+          <div class="hubcap" aria-hidden="true">500K</div>
+        </div>
+        <button class="spin" id="spinBtn" type="button">Quay số</button>
+        <p class="wheelnote" id="wheelNote" role="status">Cần ít nhất 2 đội điểm danh mới quay được.</p>
+        <div class="lastwin" id="lastWin">
+          <div class="txt">
+            <small>Đội trúng giải may mắn</small>
+            <strong id="lastWinName">—</strong>
+          </div>
+          <div class="amt">500.000đ</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="head">
+        <p class="eyebrow">Minh bạch</p>
+        <h2 class="display"><span class="skew">Thể lệ</span></h2>
+      </div>
+
+      <details class="rules" open>
+        <summary>Giải hôm nay</summary>
+        <div class="rulebody">
+          <div class="row"><span>Hạng 1 — Phụng Đào (3 deal)</span><b class="hot">2.500.000đ</b></div>
+          <div class="row"><span>Hạng 2 — Hkhouse (2 deal)</span><b class="hot">1.500.000đ</b></div>
+          <div class="row"><span>Giải may mắn — quay số</span><b class="hot">500.000đ</b></div>
+          <div class="row"><span>Đội tham gia quay</span><b>10 đội × 1 ô</b></div>
+          <p class="note">Hai đội đã nhận giải TOP không vào vòng xoay. 10 đội còn lại (mỗi đội ≥ 1 giao dịch) chia ô đều nhau — trúng là nhận 500K tại chỗ.</p>
+        </div>
+      </details>
+
+      <details class="rules">
+        <summary>Đã trao trước đó</summary>
+        <div class="rulebody">
+          <div class="row"><span>Thưởng deal 200K/phòng</span><b class="done">Đã trao</b></div>
+          <div class="row"><span>Thưởng deal 100K/phòng</span><b class="done">Đã trao</b></div>
+          <p class="note">Toàn bộ thưởng theo từng deal đã thanh toán xong, không tính lại trên trang này.</p>
+        </div>
+      </details>
+    </section>
+
+    <footer>
+      <button class="reset" id="resetBtn" type="button">Xoá điểm danh trên máy này</button>
+      <p>Điểm danh lưu trên chính máy này. Máy của MC là bản chốt để quay số trên màn hình lớn.</p>
+    </footer>
+
+  </main>
+</div>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<div id="overlay" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+  <div class="winbox">
+    <p class="eyebrow">Giải may mắn gọi tên</p>
+    <h3 class="display goldtext" id="winTitle">—</h3>
+    <div class="payout">500.000đ</div>
+    <p style="margin:0;color:var(--muted);font-size:13.5px" id="winSub"></p>
+    <button class="close" id="closeBtn" type="button">Quá đã!</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var VND = new Intl.NumberFormat("vi-VN");
+  function money(n) { return VND.format(n) + "đ"; }
+
+  var REDUCE = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // 2 đội dẫn đầu — nhận giải TOP, KHÔNG tham gia vòng xoay
+  var TOP_TEAMS = [
+    { id: "phungdao", name: "Phụng Đào", prize: 2500000 },
+    { id: "hkhouse",  name: "Hkhouse",   prize: 1500000 }
+  ];
+
+  // 10 đội còn lại — quay giải may mắn 500K
+  var WHEEL_TEAMS = [
+    { id: "gohome",     name: "Gohome",     deals: 1 },
+    { id: "thienkhang", name: "Thienkhang", deals: 1 },
+    { id: "fphouse",    name: "Fphouse",    deals: 1 },
+    { id: "xuanlam",    name: "Xuân Lâm",   deals: 1 },
+    { id: "staynests",  name: "staynests",  deals: 1 },
+    { id: "megas",      name: "megas",      deals: 1 },
+    { id: "bestchoice", name: "bestchoice", deals: 1 },
+    { id: "vietcuong",  name: "Việt Cường", deals: 1 },
+    { id: "starhouse",  name: "star house", deals: 1 },
+    { id: "ezhouse",    name: "Ez House",   deals: 1 }
+  ];
+
+  var LUCKY_PRIZE = 500000;
+  var POT = 2500000 + 1500000 + LUCKY_PRIZE;
+
+  var STORE       = "ihome-trao-2026-checkin-v3";
+  var STORE_WIN   = "ihome-trao-2026-winner-v3";
+  var STORE_TOP   = "ihome-trao-2026-topclaim-v3";
+
+  function wheelById(id) {
+    for (var i = 0; i < WHEEL_TEAMS.length; i++) { if (WHEEL_TEAMS[i].id === id) return WHEEL_TEAMS[i]; }
+    return null;
+  }
+
+  var checked = new Set();
+  var claimedTop = new Set();
+  var luckyWinner = null;
+  try {
+    var raw = localStorage.getItem(STORE);
+    if (raw) { JSON.parse(raw).forEach(function (id) { if (wheelById(id)) checked.add(id); }); }
+    var rawTop = localStorage.getItem(STORE_TOP);
+    if (rawTop) { JSON.parse(rawTop).forEach(function (id) { claimedTop.add(id); }); }
+    var w = localStorage.getItem(STORE_WIN);
+    luckyWinner = (w && wheelById(w)) ? w : null;   // chặn dữ liệu cũ trỏ vào đội TOP
+  } catch (e) { /* trình duyệt chặn lưu — chạy tạm trong bộ nhớ */ }
+
+  function persist() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify(Array.from(checked)));
+      localStorage.setItem(STORE_TOP, JSON.stringify(Array.from(claimedTop)));
+      if (luckyWinner) { localStorage.setItem(STORE_WIN, luckyWinner); }
+      else { localStorage.removeItem(STORE_WIN); }
+    } catch (e) {}
+  }
+
+  /* ── Ticker ── */
+  (function ticker() {
+    var msgs = [
+      "Hạng 1: Phụng Đào — 2.500.000đ",
+      "Hạng 2: Hkhouse — 1.500.000đ",
+      "10 đội còn lại: quay may mắn 500.000đ",
+      "Thưởng deal 200K / 100K đã trao xong",
+      "Điểm danh xong mới lên vòng xoay"
+    ];
+    var html = msgs.map(function (m) { return "<span>" + m + " ✦</span>"; }).join("");
+    document.getElementById("tickerTrack").innerHTML = html + html;
+  }());
+
+  /* ── Đếm tổng tiền ── */
+  (function countPot() {
+    var el = document.getElementById("pot");
+    if (REDUCE) { el.textContent = money(POT); return; }
+    var t0 = null, DUR = 1300;
+    function step(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / DUR);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = money(Math.round(POT * eased / 1000) * 1000);
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = money(POT);
+    }
+    requestAnimationFrame(step);
+  }());
+
+  /* ── Trao giải TOP ── */
+  function refreshChamp(id, sparkle) {
+    var box = document.getElementById("champ-" + id);
+    if (!box) return;
+    var on = claimedTop.has(id);
+    box.setAttribute("data-claimed", String(on));
+    box.querySelector(".claim").textContent = on ? "Đã có mặt — nhận giải ✓" : "Điểm danh nhận giải";
+    if (sparkle && on && !REDUCE) {
+      box.classList.remove("just");
+      void box.offsetWidth;
+      box.classList.add("just");
+    }
+  }
+
+  function refreshTopStats() {
+    document.getElementById("statTop").textContent = claimedTop.size + "/2";
+  }
+
+  document.querySelector(".champs").addEventListener("click", function (ev) {
+    var btn = ev.target.closest(".claim");
+    if (!btn) return;
+    var id = btn.getAttribute("data-champ");
+    var was = claimedTop.has(id);
+    if (was) { claimedTop.delete(id); } else { claimedTop.add(id); }
+    persist();
+    refreshChamp(id, true);
+    refreshTopStats();
+    if (!was) { burst(80); }
+    if (navigator.vibrate) { try { navigator.vibrate(was ? 12 : [20, 40, 60]); } catch (e) {} }
+  });
+
+  /* ── Lưới điểm danh quay số ── */
+  var grid = document.getElementById("grid");
+
+  function cardMarkup(t, i) {
+    var on = checked.has(t.id);
+    return '<button class="card" type="button" data-id="' + t.id + '" aria-pressed="' + on + '" ' +
+        'style="animation-delay:' + (i * 35) + 'ms">' +
+      '<div class="deals">' + t.deals + " deal</div>" +
+      '<div class="name">' + t.name + "</div>" +
+      '<div class="cta">' + (on ? "Đã điểm danh ✓" : "Điểm danh") + "</div>" +
+    "</button>";
+  }
+
+  function renderGrid() { grid.innerHTML = WHEEL_TEAMS.map(cardMarkup).join(""); }
+
+  function refreshCard(id, sparkle) {
+    var el = grid.querySelector('[data-id="' + id + '"]');
+    if (!el) return;
+    var on = checked.has(id);
+    el.setAttribute("aria-pressed", String(on));
+    el.querySelector(".cta").textContent = on ? "Đã điểm danh ✓" : "Điểm danh";
+    if (sparkle && on && !REDUCE) {
+      el.classList.remove("just");
+      void el.offsetWidth;
+      el.classList.add("just");
+    }
+  }
+
+  function refreshAllCards() {
+    WHEEL_TEAMS.forEach(function (t) { refreshCard(t.id, false); });
+  }
+
+  function refreshStats() {
+    var n = checked.size;
+    document.getElementById("barFill").style.width = (n / WHEEL_TEAMS.length * 100) + "%";
+    document.getElementById("barCount").textContent = n + "/" + WHEEL_TEAMS.length + " đội";
+    document.getElementById("statCheck").textContent = n;
+  }
+
+  grid.addEventListener("click", function (ev) {
+    if (spinning) return;
+    var btn = ev.target.closest(".card");
+    if (!btn) return;
+    var id = btn.getAttribute("data-id");
+    if (checked.has(id)) { checked.delete(id); } else { checked.add(id); }
+    persist();
+    refreshCard(id, true);
+    refreshStats();
+    drawWheel();
+    refreshSpinState();
+    if (navigator.vibrate) { try { navigator.vibrate(18); } catch (e) {} }
+  });
+
+  function setAll(on) {
+    if (spinning) return;
+    checked.clear();
+    if (on) { WHEEL_TEAMS.forEach(function (t) { checked.add(t.id); }); }
+    persist();
+    refreshAllCards();
+    refreshStats();
+    drawWheel();
+    refreshSpinState();
+  }
+
+  document.getElementById("allBtn").addEventListener("click", function () { setAll(true); });
+  document.getElementById("noneBtn").addEventListener("click", function () { setAll(false); });
+
+  document.getElementById("resetBtn").addEventListener("click", function () {
+    if (spinning) return;
+    if (!checked.size && !luckyWinner && !claimedTop.size) return;
+    if (!window.confirm("Xoá toàn bộ điểm danh, trạng thái nhận giải TOP và kết quả quay số trên máy này?")) return;
+    checked.clear();
+    claimedTop.clear();
+    luckyWinner = null;
+    persist();
+    refreshAllCards();
+    TOP_TEAMS.forEach(function (t) { refreshChamp(t.id, false); });
+    refreshTopStats();
+    refreshStats();
+    showLastWin();
+    drawWheel();
+    refreshSpinState();
+  });
+
+  /* ── Vòng xoay ── */
+  var canvas = document.getElementById("wheel");
+  var ctx = canvas.getContext("2d");
+  var needle = document.getElementById("needle");
+  var spinBtn = document.getElementById("spinBtn");
+  var wheelNote = document.getElementById("wheelNote");
+
+  var POINTER = -Math.PI / 2;   // kim ở đúng 12 giờ
+  var rot = POINTER;            // góc xoay hiện tại
+  var spinning = false;
+  var size = 300;
+
+  var SEG_A = "#B01521";
+  var SEG_B = "#7C0E19";
+
+  function entrants() {
+    return WHEEL_TEAMS.filter(function (t) { return checked.has(t.id); });
+  }
+
+  function sizeCanvas() {
+    var stageW = canvas.parentElement.clientWidth;
+    // Nếu sân khấu chưa có bề ngang thật (khung nhúng bố trí muộn), suy từ cửa sổ
+    if (!stageW) { stageW = Math.min(520, window.innerWidth || 360) - 68; }
+    size = Math.max(220, Math.min(360, stageW - 24));
+    var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+    canvas.style.width = size + "px";
+    canvas.style.height = size + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function drawWheel() {
+    var list = entrants();
+    var R = size / 2;
+    var stack = getComputedStyle(document.body).fontFamily;
+    ctx.clearRect(0, 0, size, size);
+
+    if (!list.length) {
+      ctx.save();
+      ctx.translate(R, R);
+      ctx.beginPath();
+      ctx.arc(0, 0, R - 2, 0, Math.PI * 2);
+      ctx.fillStyle = "#2E1622";
+      ctx.fill();
+      ctx.fillStyle = "#B08F9C";
+      ctx.font = "600 13px " + stack;
+      ctx.textAlign = "center";
+      ctx.fillText("Chưa có đội nào", 0, -6);
+      ctx.fillText("điểm danh", 0, 14);
+      ctx.restore();
+      return;
+    }
+
+    var n = list.length;
+    var seg = (Math.PI * 2) / n;
+
+    ctx.save();
+    ctx.translate(R, R);
+    ctx.rotate(rot);
+
+    for (var i = 0; i < n; i++) {
+      var a0 = i * seg;
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, R - 3, a0, a0 + seg);
+      ctx.closePath();
+      // Số ô lẻ: ô cuối cạnh ô 0 nên đổi sắc thứ ba để không dính màu
+      ctx.fillStyle = (n % 2 === 1 && i === n - 1) ? "#93111C" : (i % 2 ? SEG_B : SEG_A);
+      ctx.fill();
+      ctx.strokeStyle = "#FFC23C";
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
+      // Nhãn tên đội, chạy dọc bán kính
+      ctx.save();
+      ctx.rotate(a0 + seg / 2);
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#FFF2E4";
+      var fs = n > 9 ? 12.5 : n > 6 ? 14 : 16;
+      ctx.font = "800 " + fs + "px " + stack;
+      ctx.shadowColor = "rgba(0,0,0,.55)";
+      ctx.shadowBlur = 3;
+      ctx.fillText(list[i].name.toUpperCase(), R - 18, 0, R - 48);
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    // Vành vàng + chấm đèn
+    ctx.save();
+    ctx.translate(R, R);
+    ctx.beginPath();
+    ctx.arc(0, 0, R - 2.5, 0, Math.PI * 2);
+    ctx.strokeStyle = "#FFC23C";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    for (var k = 0; k < 16; k++) {
+      var ang = (k / 16) * Math.PI * 2 + rot * 0.35;
+      ctx.beginPath();
+      ctx.arc(Math.cos(ang) * (R - 9), Math.sin(ang) * (R - 9), 2.1, 0, Math.PI * 2);
+      ctx.fillStyle = k % 2 ? "#FFEDB0" : "#C98A12";
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function norm(a) {
+    var x = a % (Math.PI * 2);
+    return x < 0 ? x + Math.PI * 2 : x;
+  }
+
+  function indexAtPointer(count) {
+    var seg = (Math.PI * 2) / count;
+    return Math.min(count - 1, Math.floor(norm(POINTER - rot) / seg));
+  }
+
+  function oddsText(n) {
+    return (Math.round(1000 / n) / 10).toFixed(1).replace(".", ",") + "%";
+  }
+
+  function refreshSpinState() {
+    var n = entrants().length;
+    spinBtn.disabled = spinning || n < 2;
+    grid.classList.toggle("locked", spinning);
+    document.querySelector(".bulk").classList.toggle("locked", spinning);
+    if (spinning) {
+      spinBtn.textContent = "Đang quay…";
+      wheelNote.textContent = "Nín thở…";
+    } else if (n < 2) {
+      spinBtn.textContent = "Quay số";
+      wheelNote.textContent = "Cần ít nhất 2 đội điểm danh mới quay được — hiện có " + n + ".";
+    } else {
+      spinBtn.textContent = luckyWinner ? "Quay lại" : "Quay số";
+      wheelNote.textContent = n + " đội trên vòng xoay · mỗi đội " + oddsText(n) + " cơ hội.";
+    }
+  }
+
+  function showLastWin() {
+    var box = document.getElementById("lastWin");
+    var t = luckyWinner ? wheelById(luckyWinner) : null;
+    if (!t) { box.classList.remove("on"); return; }
+    document.getElementById("lastWinName").textContent = t.name;
+    box.classList.add("on");
+  }
+
+  function spin() {
+    var list = entrants();
+    if (spinning || list.length < 2) return;
+
+    spinning = true;
+    refreshSpinState();
+
+    var n = list.length;
+    var seg = (Math.PI * 2) / n;
+    var winIdx = Math.floor(Math.random() * n);
+    if (winIdx >= n) winIdx = n - 1;               // chặn biên khi random trả về 1
+    var jitter = (Math.random() - 0.5) * seg * 0.7;
+    var targetLocal = winIdx * seg + seg / 2 + jitter;
+    var turns = 6 + Math.floor(Math.random() * 3);
+    var from = rot;
+    var to = POINTER - targetLocal - turns * Math.PI * 2;
+
+    function finish() {
+      rot = norm(to);
+      drawWheel();
+      spinning = false;
+      luckyWinner = list[winIdx].id;
+      persist();
+      showLastWin();
+      refreshSpinState();
+      celebrate(list[winIdx]);
+    }
+
+    if (REDUCE) { finish(); return; }
+
+    var DUR = 5200;
+    var t0 = null;
+    var lastIdx = indexAtPointer(n);
+
+    function frame(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / DUR);
+      var eased = 1 - Math.pow(1 - p, 5);
+      rot = from + (to - from) * eased;
+      drawWheel();
+
+      var nowIdx = indexAtPointer(n);
+      if (nowIdx !== lastIdx) {
+        lastIdx = nowIdx;
+        needle.classList.add("kick");
+        setTimeout(function () { needle.classList.remove("kick"); }, 70);
+      }
+
+      if (p < 1) requestAnimationFrame(frame);
+      else finish();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  spinBtn.addEventListener("click", spin);
+
+  /* ── Pháo giấy ── */
+  var cc = document.getElementById("confetti");
+  var cctx = cc.getContext("2d");
+  var bits = [];
+  var ccRunning = false;
+
+  function fitConfetti() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cc.width = Math.round(window.innerWidth * dpr);
+    cc.height = Math.round(window.innerHeight * dpr);
+    cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function burst(count) {
+    if (REDUCE) return;
+    fitConfetti();
+    var colors = ["#FFC23C", "#FFEDB0", "#F5333F", "#FFF2E4", "#C98A12"];
+    var W = window.innerWidth;
+    bits = [];
+    var total = count || 150;
+    for (var i = 0; i < total; i++) {
+      bits.push({
+        x: W / 2 + (Math.random() - 0.5) * W * 0.55,
+        y: window.innerHeight * 0.42 + (Math.random() - 0.5) * 60,
+        vx: (Math.random() - 0.5) * 13,
+        vy: -7 - Math.random() * 13,
+        w: 5 + Math.random() * 7,
+        h: 8 + Math.random() * 9,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.34,
+        c: colors[i % colors.length],
+        life: 1
+      });
+    }
+    if (!ccRunning) { ccRunning = true; requestAnimationFrame(tick); }
+  }
+
+  function tick() {
+    var W = window.innerWidth, H = window.innerHeight;
+    cctx.clearRect(0, 0, W, H);
+    var alive = 0;
+    for (var i = 0; i < bits.length; i++) {
+      var b = bits[i];
+      b.vy += 0.42;
+      b.vx *= 0.992;
+      b.x += b.vx;
+      b.y += b.vy;
+      b.rot += b.vr;
+      if (b.y > H * 0.62) b.life -= 0.016;
+      if (b.life <= 0) continue;
+      alive++;
+      cctx.save();
+      cctx.globalAlpha = Math.max(0, b.life);
+      cctx.translate(b.x, b.y);
+      cctx.rotate(b.rot);
+      cctx.fillStyle = b.c;
+      cctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
+      cctx.restore();
+    }
+    if (alive > 0) { requestAnimationFrame(tick); }
+    else { ccRunning = false; cctx.clearRect(0, 0, W, H); }
+  }
+
+  /* ── Lớp phủ công bố ── */
+  var overlay = document.getElementById("overlay");
+  var closeBtn = document.getElementById("closeBtn");
+  var lastFocus = null;
+
+  function celebrate(team) {
+    document.getElementById("winTitle").textContent = team.name;
+    document.getElementById("winSub").textContent = "Giải may mắn cuối cùng — nhận 500K ngay tại chỗ";
+    lastFocus = document.activeElement;
+    overlay.classList.add("on");
+    closeBtn.focus();
+    burst(150);
+    if (navigator.vibrate) { try { navigator.vibrate([30, 60, 120]); } catch (e) {} }
+  }
+
+  function closeOverlay() {
+    overlay.classList.remove("on");
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  closeBtn.addEventListener("click", closeOverlay);
+  overlay.addEventListener("click", function (ev) { if (ev.target === overlay) closeOverlay(); });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && overlay.classList.contains("on")) closeOverlay();
+  });
+
+  // Giữ tiêu điểm bàn phím trong hộp công bố khi nó đang mở
+  overlay.addEventListener("keydown", function (ev) {
+    if (ev.key === "Tab" && overlay.classList.contains("on")) {
+      ev.preventDefault();
+      closeBtn.focus();
+    }
+  });
+
+  /* ── Khởi động ── */
+  var resizeTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { sizeCanvas(); drawWheel(); }, 120);
+  });
+
+  renderGrid();
+  TOP_TEAMS.forEach(function (t) { refreshChamp(t.id, false); });
+  refreshTopStats();
+  refreshStats();
+  sizeCanvas();
+  drawWheel();
+  refreshSpinState();
+  showLastWin();
+}());
+</script>
+</body>
+</html>
