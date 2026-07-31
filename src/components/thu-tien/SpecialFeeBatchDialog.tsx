@@ -6,12 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { Sparkles, AlertTriangle, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useSpecialFeePreview, useGenerateSpecialFees, FEE_LABEL,
   type SpecialFeePreviewRow,
 } from '@/hooks/useSpecialFeeBatch';
+import { useAccounts } from '@/hooks/useAccounts';
 
 const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('vi-VN') + 'đ');
 
@@ -39,7 +44,16 @@ interface Props {
 export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
   const preview = useSpecialFeePreview(period, undefined, open);
   const generate = useGenerateSpecialFees();
+  const accounts = useAccounts({ enabled: open });
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
+  /** '' = không chọn sổ ⇒ phiếu ra chờ duyệt, y như trước. */
+  const [accountId, setAccountId] = useState<string>('');
+
+  // Chỉ sổ THẬT: phí cố định là tiền ra khỏi két, sổ ảo không ghi sổ quỹ được.
+  const realAccounts = useMemo(
+    () => (accounts.data ?? []).filter((a: any) => !a.is_virtual),
+    [accounts.data],
+  );
 
   const rows = preview.data ?? [];
   const willGenerate = useMemo(
@@ -59,12 +73,21 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
     const ids = [...new Set(willGenerate.map((r) => r.buildingId))];
     if (!ids.length) return;
     try {
-      const res = await generate.mutateAsync({ period, buildingIds: ids });
-      toast.success(
-        res.created > 0
-          ? `Đã sinh ${res.created} phiếu — tổng ${fmt(res.totalAmount)}. Tất cả đang CHỜ DUYỆT.`
-          : 'Không có ô nào cần sinh thêm.',
-      );
+      const res = await generate.mutateAsync({
+        period, buildingIds: ids, accountId: accountId || null,
+      });
+      if (res.created === 0) {
+        toast.success('Không có ô nào cần sinh thêm.');
+      } else if (res.posted > 0) {
+        toast.success(
+          `Đã sinh ${res.created} phiếu — tổng ${fmt(res.totalAmount)}. ` +
+          `${res.posted} phiếu đã tự duyệt và vào sổ; ${res.created - res.posted} phiếu chờ duyệt.`,
+        );
+      } else {
+        toast.success(
+          `Đã sinh ${res.created} phiếu — tổng ${fmt(res.totalAmount)}. Tất cả đang CHỜ DUYỆT.`,
+        );
+      }
       onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Không sinh được phiếu');
@@ -99,8 +122,27 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
                 <strong className="tabular-nums">{fmt(total)}</strong>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Phiếu sinh ra ở trạng thái <strong>CHỜ DUYỆT</strong> — hệ đề xuất, bạn duyệt.
                 Bấm hai lần cũng không sinh trùng.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="sfb-account">Chi từ sổ quỹ</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger id="sfb-account">
+                  <SelectValue placeholder="Chưa chọn — phiếu sẽ nằm chờ duyệt" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Chưa chọn — phiếu nằm chờ duyệt</SelectItem>
+                  {realAccounts.map((a: any) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {accountId
+                  ? 'Ô nào đóng đúng giá bạn đã công bố sẽ TỰ DUYỆT và vào sổ ngay. Ô lệch giá vẫn nằm chờ duyệt.'
+                  : 'Không chọn sổ thì mọi phiếu ra ở trạng thái CHỜ DUYỆT — hệ đề xuất, bạn duyệt.'}
               </p>
             </div>
 
@@ -164,7 +206,9 @@ export function SpecialFeeBatchDialog({ open, onOpenChange, period }: Props) {
             <Check className="h-4 w-4 mr-1" />
             {generate.isPending
               ? 'Đang sinh…'
-              : `Sinh ${willGenerate.length} phiếu chờ duyệt`}
+              : accountId
+                ? `Sinh & chi ${willGenerate.length} phiếu`
+                : `Sinh ${willGenerate.length} phiếu chờ duyệt`}
           </Button>
         </DialogFooter>
       </DialogContent>

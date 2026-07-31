@@ -53,20 +53,29 @@ export const useSpecialFeePreview = (period: string, buildingIds?: string[], ena
 export interface GenerateResult {
   period: string;
   created: number;
+  /** Bao nhiêu phiếu đã TỰ DUYỆT + vào sổ (chỉ khác 0 khi có chọn sổ quỹ). */
+  posted: number;
   totalAmount: number;
   voucherIds: string[];
   note: string;
 }
 
 /**
- * Sinh hàng loạt. Phiếu ra ở trạng thái CHỜ DUYỆT — máy đề xuất, người duyệt.
- * Server có ba lớp chống trùng (sổ claim + loại ô đã có phiếu duyệt + khoá theo
- * kỳ) nên bấm hai lần không đẻ hai lượt; không cần chặn thêm ở client.
+ * Sinh hàng loạt. Server có ba lớp chống trùng (sổ claim + loại ô đã có phiếu
+ * duyệt + khoá theo kỳ) nên bấm hai lần không đẻ hai lượt.
+ *
+ * `accountId` quyết định phiếu ra ở trạng thái nào:
+ *   • KHÔNG chọn sổ ⇒ phiếu ra CHỜ DUYỆT, y như trước.
+ *   • CÓ chọn sổ ⇒ ô nào đóng đúng giá chủ đã công bố thì phiếu tự duyệt và vào
+ *     sổ luôn; ô lệch giá vẫn nằm chờ duyệt. Sổ phải là sổ THẬT (không phải sổ ảo)
+ *     vì đây là tiền ra khỏi két.
  */
 export const useGenerateSpecialFees = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (a: { period: string; buildingIds: string[] }): Promise<GenerateResult> => {
+    mutationFn: async (
+      a: { period: string; buildingIds: string[]; accountId?: string | null },
+    ): Promise<GenerateResult> => {
       const { data, error } = await (supabase as any).rpc('generate_special_fees_v1', {
         p_period: a.period,
         p_building_ids: a.buildingIds,
@@ -74,12 +83,14 @@ export const useGenerateSpecialFees = () => {
         // liền nhau dùng chung một khoá mà lượt sau (cố ý) vẫn tạo được khoá mới.
         p_idempotency_key:
           `sf-${a.period}-${a.buildingIds.length}-${Math.floor(Date.now() / 60000)}`,
+        p_account_id: a.accountId ?? null,
       });
       if (error) throw new Error(error.message);
       const d = data as any;
       return {
         period: d.period,
         created: Number(d.created ?? 0),
+        posted: Number(d.posted ?? 0),
         totalAmount: Number(d.totalAmount ?? 0),
         voucherIds: (d.voucherIds ?? []) as string[],
         note: d.note ?? '',

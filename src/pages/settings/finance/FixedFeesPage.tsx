@@ -9,12 +9,17 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { RefreshCw, Check, X, Pencil, Eraser, AlertTriangle } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { RefreshCw, Check, X, Pencil, Eraser, AlertTriangle, BadgeCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   FEE_KINDS, useFeeConfigMatrix, useSaveFeeConfig,
   type FeeConfigCell, type FeeKind,
 } from '@/hooks/useFeeConfigMatrix';
+import { useSpecialFeePrices, useSetSpecialFeePrice } from '@/hooks/useSpecialFeePrices';
 
 const fmt = (n: number | null) =>
   n == null ? '—' : n.toLocaleString('vi-VN') + 'đ';
@@ -34,11 +39,30 @@ interface EditState {
   accountHolder: string;
 }
 
+/** Hộp thoại công bố giá — chỉ chủ tổ chức thấy. */
+interface PublishState {
+  buildingId: string;
+  buildingName: string;
+  feeCategory: FeeKind;
+  feeLabel: string;
+  amount: string;
+  month: string;           // 'YYYY-MM'
+  currentAmount: number | null;
+}
+
+const thisMonth = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
 export default function FixedFeesPage() {
   const { data, isLoading, isError, error, refetch, isFetching, byBuilding, summary } =
     useFeeConfigMatrix();
   const save = useSaveFeeConfig();
+  const prices = useSpecialFeePrices();
+  const setPrice = useSetSpecialFeePrice();
   const [edit, setEdit] = useState<EditState | null>(null);
+  const [publish, setPublish] = useState<PublishState | null>(null);
   const [onlyMissing, setOnlyMissing] = useState(false);
 
   const buildings = useMemo(() => {
@@ -77,6 +101,27 @@ export default function FixedFeesPage() {
     }
   };
 
+  const commitPublish = async () => {
+    if (!publish) return;
+    const parsed = parseAmount(publish.amount);
+    if (!parsed || parsed <= 0) {
+      toast.error('Nhập giá lớn hơn 0');
+      return;
+    }
+    try {
+      const res = await setPrice.mutateAsync({
+        buildingId: publish.buildingId,
+        feeCategory: publish.feeCategory,
+        amount: parsed,
+        effectiveFromMonth: publish.month,
+      });
+      toast.success(res?.note ?? 'Đã công bố giá');
+      setPublish(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không công bố được');
+    }
+  };
+
   const toggleNotApplicable = async (c: FeeConfigCell) => {
     try {
       await save.mutateAsync({
@@ -99,10 +144,13 @@ export default function FixedFeesPage() {
           <div>
             <h1 className="text-2xl font-semibold">Phí cố định theo toà</h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-              Giá mặc định của từng hạng mục cho từng toà. Trang Thanh toán dùng giá này để
-              gợi ý số tiền mỗi kỳ — bạn vẫn sửa được số tiền và chọn sổ quỹ ở lúc đóng.
-              Hệ thống cũng <strong>tự học</strong> giá này sau mỗi lần đóng, nên phần lớn ô sẽ
-              tự điền dần.
+              Mỗi ô có <strong>hai con số</strong>, đừng nhầm:{' '}
+              <strong className="text-foreground">Giá công bố</strong> là mức phí bạn chốt —
+              ai đóng đúng mức này thì phiếu <strong>tự duyệt và vào sổ ngay</strong>, đóng lệch
+              thì phiếu chờ bạn duyệt.{' '}
+              <span className="text-foreground">Gợi ý</span> chỉ là số điền sẵn cho nhanh, lấy
+              từ lần đóng gần nhất — nó <em>không</em> quyết định gì.
+              Ô chưa công bố giá thì mọi thứ chạy y như trước.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
@@ -132,14 +180,24 @@ export default function FixedFeesPage() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <Stat label="Ô cần khai" value={String(summary.total - summary.notApplicable)}
                     hint="Không tính ô đã tắt" />
-              <Stat label="Đã có giá" value={String(summary.priced)} tone="ok" />
-              <Stat label="Còn thiếu giá" value={String(summary.missing)}
-                    tone={summary.missing > 0 ? 'warn' : 'ok'} />
+              <Stat label="Đã công bố giá" value={String(prices.publishedCount)} tone="ok"
+                    hint="Ô đóng đúng giá sẽ tự duyệt" />
+              <Stat label="Chưa công bố"
+                    value={String(Math.max(0, (summary.total - summary.notApplicable) - prices.publishedCount))}
+                    tone={prices.publishedCount === 0 ? 'warn' : undefined}
+                    hint="Vẫn chạy như trước" />
               <Stat label="Đang chạy thật" value={String(summary.running)}
                     hint="Đã có phiếu chi đã duyệt" />
               <Stat label="Đã tắt" value={String(summary.notApplicable)}
                     hint="Không áp dụng cho toà đó" />
             </div>
+
+            {!prices.canEditAny && !prices.isLoading && (
+              <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Bạn xem được giá công bố nhưng không đổi được — chỉ <strong>chủ tổ chức</strong> mới
+                công bố giá, vì con số này quyết định phiếu nào được tự duyệt.
+              </div>
+            )}
 
             <label className="flex items-center gap-2 text-sm cursor-pointer w-fit">
               <Checkbox checked={onlyMissing}
@@ -228,17 +286,59 @@ export default function FixedFeesPage() {
                                   <Badge variant="outline" className="text-muted-foreground">
                                     Không áp dụng
                                   </Badge>
-                                ) : (
-                                  <button type="button"
-                                          onClick={() => beginEdit(c)}
-                                          className="group flex items-center gap-1 text-sm hover:underline"
-                                          aria-label={`Sửa ${k.label} của ${b.name}`}>
-                                    <span className={c.defaultAmount == null ? 'text-muted-foreground italic' : 'font-medium tabular-nums'}>
-                                      {c.defaultAmount == null ? 'chưa có giá' : fmt(c.defaultAmount)}
-                                    </span>
-                                    <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60" />
-                                  </button>
-                                )}
+                                ) : (() => {
+                                  const p = prices.byCell.get(`${b.id}:${k.key}`);
+                                  return (
+                                    <>
+                                      {/* Giá CÔNG BỐ — con số quyết định tự duyệt. */}
+                                      {p?.amount != null ? (
+                                        <div className="flex items-baseline gap-1">
+                                          <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                          <span className="font-semibold tabular-nums text-sm">
+                                            {fmt(p.amount)}
+                                          </span>
+                                          {p.effectiveFrom && (
+                                            <span className="text-[11px] text-muted-foreground">
+                                              từ {p.effectiveFrom.slice(5)}/{p.effectiveFrom.slice(0, 4)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="text-[11px] text-muted-foreground italic">
+                                          chưa công bố giá
+                                        </div>
+                                      )}
+
+                                      {/* Giá GỢI Ý — chỉ để điền sẵn. */}
+                                      <button type="button"
+                                              onClick={() => beginEdit(c)}
+                                              className="group flex items-center gap-1 text-[11px] text-muted-foreground hover:underline"
+                                              aria-label={`Sửa gợi ý ${k.label} của ${b.name}`}>
+                                        <span className="tabular-nums">
+                                          Gợi ý: {c.defaultAmount == null ? '—' : fmt(c.defaultAmount)}
+                                        </span>
+                                        <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60" />
+                                      </button>
+
+                                      {p?.canEdit && (
+                                        <button type="button"
+                                                onClick={() => setPublish({
+                                                  buildingId: b.id,
+                                                  buildingName: b.name,
+                                                  feeCategory: k.key,
+                                                  feeLabel: k.label,
+                                                  amount: p.amount != null ? String(p.amount)
+                                                        : (c.defaultAmount != null ? String(c.defaultAmount) : ''),
+                                                  month: thisMonth(),
+                                                  currentAmount: p.amount,
+                                                })}
+                                                className="block text-[11px] text-primary hover:underline">
+                                          {p.amount == null ? 'Công bố giá' : 'Đổi giá'}
+                                        </button>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                                 {c.providerCode && (
                                   <div className="text-[11px] text-muted-foreground truncate max-w-[8rem]"
                                        title={c.providerCode}>
@@ -269,12 +369,71 @@ export default function FixedFeesPage() {
             </div>
 
             <p className="text-xs text-muted-foreground max-w-3xl">
-              Bấm vào số tiền để sửa. Bỏ trống ô giá rồi lưu thì <strong>giữ nguyên giá cũ</strong> —
-              muốn bỏ hẳn giá thì bấm nút xoá (biểu tượng cục tẩy). “Tắt hạng mục” dùng cho toà
-              không phát sinh khoản đó; ô đã tắt sẽ không còn bị tính là còn thiếu.
+              Bấm “Gợi ý” để sửa số điền sẵn. Bỏ trống ô rồi lưu thì{' '}
+              <strong>giữ nguyên số cũ</strong> — muốn bỏ hẳn thì bấm cục tẩy.
+              “Tắt hạng mục” dùng cho toà không phát sinh khoản đó.
+              Đổi <strong>giá công bố</strong> không làm thay đổi phiếu của các tháng trước:
+              mỗi lần công bố bạn chọn “áp dụng từ tháng nào”, tháng cũ vẫn đối chiếu theo giá cũ.
             </p>
           </>
         )}
+
+        {/* ── Công bố giá ─────────────────────────────────────────────── */}
+        <Dialog open={publish !== null} onOpenChange={(o) => !o && setPublish(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {publish?.currentAmount == null ? 'Công bố giá' : 'Đổi giá công bố'}
+              </DialogTitle>
+              <DialogDescription>
+                {publish?.feeLabel} — {publish?.buildingName}
+              </DialogDescription>
+            </DialogHeader>
+
+            {publish && (
+              <div className="space-y-4"
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter') { e.preventDefault(); commitPublish(); }
+                   }}>
+                <div className="space-y-1.5">
+                  <Label htmlFor="sfp-amount">Mức phí mỗi tháng</Label>
+                  <Input id="sfp-amount" autoFocus inputMode="numeric"
+                         placeholder="Ví dụ: 1.500.000"
+                         value={publish.amount}
+                         onChange={(e) => setPublish({ ...publish, amount: e.target.value })} />
+                  {publish.currentAmount != null && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Đang công bố: {fmt(publish.currentAmount)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="sfp-month">Áp dụng từ tháng</Label>
+                  <Input id="sfp-month" type="month" value={publish.month}
+                         onChange={(e) => setPublish({ ...publish, month: e.target.value })} />
+                  <p className="text-[11px] text-muted-foreground">
+                    Phiếu của các tháng <strong>trước</strong> tháng này giữ nguyên giá cũ —
+                    không có gì bị tính lại.
+                  </p>
+                </div>
+
+                <div className="rounded-md border bg-muted/40 p-2.5 text-[11px] text-muted-foreground">
+                  Sau khi công bố: ai đóng <strong>đúng</strong> mức này cho hạng mục và toà trên
+                  thì phiếu tự duyệt và vào sổ ngay. Đóng <strong>lệch</strong> mức thì phiếu vẫn
+                  tạo được nhưng nằm chờ bạn duyệt.
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setPublish(null)}>Huỷ</Button>
+              <Button onClick={() => commitPublish()} disabled={setPrice.isPending}>
+                {setPrice.isPending ? 'Đang lưu…' : 'Công bố'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
