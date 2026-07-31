@@ -6,13 +6,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   FULL_RESET_MANIFEST_DOMAIN,
-  FULL_RESET_SYNTHETIC_BASE,
   SUPABASE_CLI_VERSION,
   buildFullResetPlan,
   loadRepositoryMigrationInputs,
+  parseSupabaseStatus,
   parseFullResetArgs,
   prepareDisposableFullResetProject,
   runFullResetHarness,
+  runFullResetSmokeAssertions,
 } from "../test-openclaw-full-reset.mjs";
 
 describe("OpenClaw complete Supabase reset harness", () => {
@@ -23,19 +24,22 @@ describe("OpenClaw complete Supabase reset harness", () => {
     expect(packageJson.scripts["test:openclaw:sql:full-reset"]).toBe(
       "node scripts/test-openclaw-full-reset.mjs --local",
     );
-    expect(packageJson.scripts["test:openclaw:sql:local"]).toContain(
+    expect(packageJson.scripts["test:openclaw:sql:fast"]).toContain(
       "openclaw-full-reset-harness.test.mjs",
     );
-    expect(packageJson.scripts["test:openclaw:sql:local"]).toContain(
+    expect(packageJson.scripts["test:openclaw:sql:fast"]).toContain(
       "test-openclaw-full-reset.mjs --plan-only",
     );
-    expect(packageJson.scripts["test:openclaw:sql:local"].indexOf(
+    expect(packageJson.scripts["test:openclaw:sql:fast"].indexOf(
       "test-openclaw-full-reset.mjs --plan-only",
-    )).toBeLessThan(packageJson.scripts["test:openclaw:sql:local"].indexOf(
+    )).toBeLessThan(packageJson.scripts["test:openclaw:sql:fast"].indexOf(
       "test-openclaw-migrations.mjs --local",
     ));
-    expect(packageJson.scripts["test:openclaw:sql:local"]).not.toContain(
+    expect(packageJson.scripts["test:openclaw:sql:fast"]).not.toContain(
       "test-openclaw-full-reset.mjs --local",
+    );
+    expect(packageJson.scripts["test:openclaw:sql:local"]).toBe(
+      "npm run test:openclaw:sql:fast && npm run test:openclaw:sql:full-reset",
     );
   });
 
@@ -53,9 +57,14 @@ describe("OpenClaw complete Supabase reset harness", () => {
       "017_z.sql",
     ]);
     expect(plan.entries.map((entry) => entry.targetVersion)).toEqual([
-      String(FULL_RESET_SYNTHETIC_BASE + 1),
-      String(FULL_RESET_SYNTHETIC_BASE + 2),
-      String(FULL_RESET_SYNTHETIC_BASE + 3),
+      "0161",
+      "0162",
+      "017",
+    ]);
+    expect(plan.entries.map((entry) => entry.targetFile)).toEqual([
+      "0161_a.sql",
+      "0162_b.sql",
+      "017_z.sql",
     ]);
     expect(new Set(plan.entries.map((entry) => entry.targetVersion)).size).toBe(3);
     expect(plan.duplicateOriginalVersionGroups).toBe(1);
@@ -111,8 +120,15 @@ describe("OpenClaw complete Supabase reset harness", () => {
     expect(runCli).not.toHaveBeenCalled();
   });
 
-  it("prepares an isolated byte-identical Supabase project", async () => {
+  it("prepares isolated byte-identical projects with unique Docker ownership", async () => {
     const prepared = await prepareDisposableFullResetProject({
+      inputs: [
+        { file: "016_a.sql", bytes: Buffer.from("select 'a';\n") },
+        { file: "016_b.sql", bytes: Buffer.from("select 'b';\n") },
+      ],
+      configToml: 'project_id = "production-ref"\n[db]\nmajor_version = 17\n',
+    });
+    const second = await prepareDisposableFullResetProject({
       inputs: [
         { file: "016_a.sql", bytes: Buffer.from("select 'a';\n") },
         { file: "016_b.sql", bytes: Buffer.from("select 'b';\n") },
@@ -121,8 +137,13 @@ describe("OpenClaw complete Supabase reset harness", () => {
     });
     try {
       const config = await readFile(join(prepared.root, "supabase", "config.toml"), "utf8");
-      expect(config).toContain('project_id = "openclaw_task12_ephemeral"');
+      const secondConfig = await readFile(
+        join(second.root, "supabase", "config.toml"),
+        "utf8",
+      );
+      expect(config).toMatch(/project_id = "openclaw_task12_[a-z0-9]+"/);
       expect(config).not.toContain("production-ref");
+      expect(secondConfig).not.toBe(config);
       for (const entry of prepared.plan.entries) {
         const copied = await readFile(
           join(prepared.root, "supabase", "migrations", entry.targetFile),
@@ -131,6 +152,7 @@ describe("OpenClaw complete Supabase reset harness", () => {
       }
     } finally {
       await prepared.cleanup();
+      await second.cleanup();
     }
   });
 
@@ -141,6 +163,7 @@ describe("OpenClaw complete Supabase reset harness", () => {
     expect(() => parseFullResetArgs(["--linked"])).toThrow(/explicit/i);
 
     const cleanup = vi.fn(async () => {});
+    const assertReset = vi.fn(async () => {});
     const prepareProject = vi.fn(async () => ({
       root: "C:/temp/openclaw-full-reset",
       plan: {
@@ -159,11 +182,16 @@ describe("OpenClaw complete Supabase reset harness", () => {
       })
       .mockResolvedValueOnce({ code: 0, stdout: "started", stderr: "" })
       .mockResolvedValueOnce({ code: 0, stdout: "reset", stderr: "" })
+      .mockResolvedValueOnce({
+        code: 0,
+        stdout: JSON.stringify({ DB_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres" }),
+        stderr: "",
+      })
       .mockResolvedValueOnce({ code: 0, stdout: "stopped", stderr: "" });
 
     const result = await runFullResetHarness({
       args: ["--local"],
-      dependencies: { prepareProject, runCli },
+      dependencies: { prepareProject, runCli, assertReset },
     });
     expect(result.summary).toMatch(/PASS.*498-file/i);
     expect(runCli.mock.calls.map(([args]) => args)).toEqual([
@@ -177,10 +205,108 @@ describe("OpenClaw complete Supabase reset harness", () => {
         "--workdir",
         "C:/temp/openclaw-full-reset",
       ],
+      ["status", "-o", "json", "--workdir", "C:/temp/openclaw-full-reset"],
       ["stop", "--no-backup", "--workdir", "C:/temp/openclaw-full-reset"],
     ]);
+    expect(assertReset).toHaveBeenCalledOnce();
+    expect(assertReset).toHaveBeenCalledWith(expect.objectContaining({
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      plan: expect.objectContaining({ aggregateSha256: "a".repeat(64) }),
+    }));
     expect(cleanup).toHaveBeenCalledOnce();
     expect(SUPABASE_CLI_VERSION).toBe("2.109.1");
+  });
+
+  it("accepts only a loopback local Supabase database URL", () => {
+    expect(parseSupabaseStatus(JSON.stringify({
+      DB_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    }))).toBe("postgresql://postgres:postgres@127.0.0.1:54322/postgres");
+    expect(() => parseSupabaseStatus("{}"))
+      .toThrow(/DB_URL/i);
+    expect(() => parseSupabaseStatus(JSON.stringify({
+      DB_URL: "postgresql://postgres:postgres@db.example.com:5432/postgres",
+    }))).toThrow(/loopback/i);
+  });
+
+  it("asserts exact migration identity, disabled OpenClaw state, ACLs, and snapshot fidelity", async () => {
+    const plan = buildFullResetPlan([
+      { file: "20260722000000_before.sql", bytes: Buffer.from("select 1") },
+      { file: "20260723010000_finance_v2_semantics_snapshot.sql", bytes: Buffer.from("select 2") },
+      { file: "20260727010000_openclaw_catalog_foundation.sql", bytes: Buffer.from("select 3") },
+    ]);
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: plan.entries.map((entry) => ({ version: entry.targetVersion })),
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          openclaw_table_count: 1,
+          browser_dml_leak_count: 0,
+          unsafe_public_view_count: 0,
+          public_execute_leak_count: 0,
+          bad_activation_default_count: 0,
+          enabled_control_row_count: 0,
+          finance_snapshot_tail: "20260722000000",
+        }],
+      });
+    const end = vi.fn(async () => {});
+    const connect = vi.fn(async () => ({ query, end }));
+
+    await runFullResetSmokeAssertions({
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      plan,
+      connect,
+    });
+
+    expect(connect).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(end).toHaveBeenCalledOnce();
+  });
+
+  it("propagates a post-reset smoke failure and still stops plus cleans", async () => {
+    const cleanup = vi.fn(async () => {});
+    const assertReset = vi.fn(async () => {
+      throw new Error("post-reset ACL smoke failed");
+    });
+    const runCli = vi
+      .fn()
+      .mockResolvedValueOnce({ code: 0, stdout: "2.109.1\n", stderr: "" })
+      .mockResolvedValueOnce({ code: 0, stdout: "started", stderr: "" })
+      .mockResolvedValueOnce({ code: 0, stdout: "reset", stderr: "" })
+      .mockResolvedValueOnce({
+        code: 0,
+        stdout: JSON.stringify({ DB_URL: "postgresql://postgres:postgres@127.0.0.1:54322/postgres" }),
+        stderr: "",
+      })
+      .mockResolvedValueOnce({ code: 0, stdout: "stopped", stderr: "" });
+
+    await expect(runFullResetHarness({
+      args: ["--local"],
+      dependencies: {
+        prepareProject: vi.fn(async () => ({
+          root: "C:/temp/openclaw-full-reset",
+          plan: {
+            entries: Array.from({ length: 498 }, (_, index) => ({
+              sourceFile: `migration-${index}.sql`,
+              targetVersion: String(index + 1),
+            })),
+            duplicateOriginalVersionGroups: 18,
+            aggregateSha256: "d".repeat(64),
+          },
+          cleanup,
+        })),
+        runCli,
+        assertReset,
+      },
+    })).rejects.toThrow(/post-reset ACL smoke failed/i);
+    expect(runCli.mock.calls.at(-1)[0]).toEqual([
+      "stop",
+      "--no-backup",
+      "--workdir",
+      "C:/temp/openclaw-full-reset",
+    ]);
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 
   it("cleans a prepared project and propagates validation plus cleanup failures", async () => {
