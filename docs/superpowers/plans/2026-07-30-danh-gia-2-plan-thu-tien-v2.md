@@ -1460,3 +1460,136 @@ Ngoài ba thứ đó: **không dừng hỏi**.
   khi so vị trí.
 - **Chạy E2E ≥8 luồng gây `57014` trên prod.** Tôi suýt đổ cho bản vá của mình; hàm
   không liên quan cũng timeout mới lộ ra là do tải. ⇒ Dùng **4 luồng**.
+
+---
+
+## 16. ĐỢT 3/7/8 + BƯỚC 1/2 — ghi sổ ngày 31/07/2026
+
+Mục này viết **sau** khi thi hành nên nó thắng mọi câu "sẽ làm" ở trên khi hai bên lệch.
+Nó cũng vá một khoảng trống của chính tài liệu này: **§12–§15 dừng ở Đợt 1/2, trong khi
+Đợt 3, 7, 8 đã lên prod mà không có một dòng ghi nhận nào.**
+
+### 16.1 Đính chính tài liệu — ba mục đã lỗi thời
+
+| Chỗ | Tài liệu đang nói | Thực tế 31/07 |
+|---|---|---|
+| §14.3 + §14.7 | "36 hàm dùng `CURRENT_DATE` **chưa** chuyển" | **ĐÃ chuyển hết** — commit `7f553ac`, 78 chỗ / 36 hàm |
+| §4.7 (Đợt −1.7) | "`/deposits` sẽ sửa `refund_done` + `get_refund_forfeit_summary`" | **ĐÃ xong** ở Đợt −1. `refund_done` nay derive từ phiếu POSTED (`useDepositDashboard.ts:483`), hàm KPI đã có đủ `refund_posted_orphan_*`, `customer_debt_*`, `refund_pending_*` |
+| §11.2 hạng mục 6 | "digest live-vs-migration của `fee_type_matches`" | Nhánh `quan_ly` trên prod **đã tự loại `%luong%`** ở cả `name` lẫn `category` — kiểm lại: 0/43 dòng `quan_ly` đến từ `salary.*`. Khuyết tật §−1.3 ở phần lương **đã hết** |
+
+### 16.2 Đợt 3/7/8 — đã lên prod trước ngày 31/07
+
+| Đợt | Object | Trạng thái dữ liệu |
+|---|---|---|
+| 3 — sinh phiếu phí cố định | `preview/generate/cancel_special_fees_v1` + `special_fee_claims`, route `special_fee.generate.v1` **mode=ON** | **0 claim / 0 phiếu** — đã bật, chưa ai dùng thật |
+| 7 — nghĩa vụ hoàn cọc | `termination_refund_obligations` + `preview/record_termination_refund_obligation_v1` | **0 nghĩa vụ** |
+| 8 — sinh phiếu hoàn | `create_termination_refund_voucher_v1` + `TerminationRefundDialog` trên báo cáo thanh lý | **0 phiếu `termination.refund.v2`** |
+
+**Điểm rẽ kiến trúc, có chủ ý, khác plan gốc:** plan đòi hoàn cọc `APPROVED + POSTED` nguyên
+tử qua posting adapter + sticky marker + 5 named wrapper. Thi hành thực tế **giản lược**: phiếu
+ra `UNAPPROVED`, self-check **cấm** writer tự ghi sổ (`position('post_voucher_with_source')>0
+→ RAISE`), nghĩa vụ lệch phải **chủ ép kèm lý do ≥8 ký tự**, chặn sổ ảo, gọi lại trả phiếu cũ.
+Không có đường tiền tự động ⇒ **không cần cờ**; người duyệt là cổng. Chốt của chủ 31/07 xác nhận
+hướng này: *"riêng hoàn cọc vẫn chờ duyệt kể cả khi số khớp"*.
+
+### 16.3 Bước 1 — hai file dở dang (commit `4bae1ee`)
+
+`20260730230000_annotate_evidence_protection.sql` và `20260730240000_authz_remaining.sql` nằm
+ngoài git suốt, chưa từng apply, trong khi dải `20260730*` đã có 24 migration lên prod sau đó.
+Đổi sang dải `20260801*`. Cách rà: **chạy khan từng khối** (`BEGIN` → khối → `ROLLBACK`) trên prod.
+
+- WP2: **5/6 khối còn áp được nguyên**. Khối `ie_compat_cancel_v2` **mất neo** vì một migration
+  sau đã làm 2/3 (cổng quyền + sổ dấu vết huỷ). Viết lại thu hẹp còn đúng phần thiếu: **chốt
+  hạng mục hạn chế** — người có `income_expenses.cancel` trên toà nhưng không có
+  `can_view_restricted_ie` vẫn huỷ được phiếu lương của người khác.
+- WP1: chốt digest **đã nổ đúng thiết kế** (prod `a68c8662…`, file chờ `cebb54db…`). Đã diff tay
+  đầy đủ: bản sống **không có gì** mà bản mới thiếu; bản mới chặt hơn ở 5 chỗ. Nay nhận cả hai
+  digest để chạy được trên prod lẫn clone dựng lại.
+- Mốc khoá bằng chứng đổi từ "chưa POSTED" sang "**còn là bản nháp**" — bịt 310 phiếu
+  `NOT_APPLICABLE` (sổ ảo) vốn không bao giờ thành POSTED nên cửa gỡ ảnh của chúng mở vĩnh viễn.
+
+### 16.4 Bước 2 — "đúng giá công bố thì tự duyệt" (commit `c0c17be`)
+
+**Gốc vấn đề tìm được khi làm, không có trong plan nào:** `building_fee_accounts.default_amount`
+vừa là chỗ trang Cài đặt ghi giá, **vừa bị `pay_period_fee` ghi đè bằng `round(số vừa chi / số
+tháng)` sau MỖI lần chi**. Hệ quả đo được:
+
+| Toà · hạng mục | Cột đang lưu | Giá thật (từ phiếu chi) | Sai |
+|---|---:|---:|---|
+| 405PVB · công an | **7.000đ** | 500.000đ/tháng | **71 lần** |
+| 45/3 Trần Thái Tông · rác | 60.000đ | 900.000đ/tháng | 15 lần |
+| toà `1eae0e82…` · điện | 9.507.910đ | — (là một hoá đơn cũ) | — |
+
+Mọi phép so "đúng giá chưa" dựng trên cột đó là **tự khớp chính mình**.
+
+Đã ship: bảng giá **có phiên bản theo tháng** trong `app_private` (đường chi không với tới),
+máy kiểm rule ba kết quả, adapter ghi sổ có xuất xứ, gỡ mệnh đề ghi đè khỏi `pay_period_fee`,
+UI tách bạch "Giá công bố" với "Gợi ý".
+
+**Bảng giá ra đời RỖNG, cố ý.** Không gieo từ dữ liệu bẩn ⇒ hành vi hệ thống không đổi một ly;
+luật sáng dần từng ô đúng lúc chủ công bố giá ô đó. Không có "ngày X mọi thứ đổi".
+
+### 16.5 Review đối kháng bắt 2 BLOCKER + 6 lỗi nặng trong code tôi vừa viết
+
+Năm lăng kính độc lập, mỗi phát hiện bị phản biện riêng. **Ghi lại vì đây là các khuôn lỗi sẽ
+lặp ở Đợt 5/6:**
+
+1. **BLOCKER** — gọi lại adapter sau khi bút toán đã bị **ĐẢO** ⇒ đóng dấu `POSTED` lên bút
+   toán chết. Phiếu nói "đã chi", sổ quỹ nói "chưa" — tiền biến mất khỏi tồn quỹ mà giao diện
+   vẫn xanh. Khuôn lỗi: **replay chỉ kiểm "còn con trỏ", không kiểm "bút toán còn sống"**.
+2. **NẶNG** — phiếu lệch giá nằm ở `UNAPPROVED`, mà chốt chống trùng của `pay_period_fee`
+   **chỉ đếm phiếu `APPROVED`** ⇒ bấm lần hai là đóng tiền hai lần cho cùng một tháng.
+   Khuôn lỗi: **thêm một trạng thái mới mà quên rà mọi nơi đang lọc theo trạng thái cũ**.
+3. Adapter thiếu chốt loại phiếu ⇒ tự duyệt được cả **phiếu hoàn cọc**, trái thẳng quyết định
+   số 6 của chủ.
+4. Sổ ảo: bản nháp **ném lỗi**, tức lấy mất một năng lực đang có (hôm nay đóng phí từ sổ ảo vẫn
+   chạy). Khuôn lỗi: **"chặt hơn" không phải lúc nào cũng đúng**.
+5. Không trả token `FINANCE_V2_LIFECYCLE` ⇒ cầu a85 **câm hết transaction**.
+6. Người tạo đã rời tổ chức ⇒ lõi ném `23502` trần.
+7. Kỳ lẻ vắt qua mốc tháng bị đòi tiền **gấp đôi** (đếm tháng lịch thay vì độ dài kỳ).
+8. Vòng lặp `WHILE` không trần; `to_char` cho ra `9,507,910đ` kiểu Anh (người Việt đọc dấu
+   phẩy là dấu thập phân).
+
+### 16.6 GOTCHA hạ tầng mới — Management API trả 201 mà object KHÔNG lên
+
+Lần áp đầu của `20260801010000`: HTTP **201**, nhưng `to_regclass` của bảng giá trả **NULL**
+trong khi `special_fee_approve_and_post_v1` (cùng file, nằm SAU bảng) **lại có**. Áp lại lần
+hai thì đủ. Chưa truy được nguyên nhân.
+
+⇒ **Luật mới: không tin mã trạng thái HTTP. Sau mỗi lần áp phải kiểm catalog từng object.**
+Cộng dồn với §11.2: sổ `schema_migrations` đã chết nên "vắng sổ ≠ chưa apply" — nay thêm
+"**HTTP 201 ≠ đã apply**".
+
+### 16.7 Bằng chứng
+
+- 9 bảng tiền trước/sau **khớp tuyệt đối 17/17** ở cả Bước 1 lẫn Bước 2.
+- Áp lại 3 lần = no-op. Bước 2 phải sửa một chốt idempotent mới đạt: mệnh đề nhận-đã-vá soi
+  nhầm vào bản 3 tham số vốn đã thành vỏ chuyển tiếp sau lần áp đầu.
+- 9 phép kiểm hành vi chạy trên bản **đã áp** rồi rollback, gồm ca nặng nhất: tạo phiếu →
+  adapter → **đúng 1 bút toán**, `source_kind='SPECIAL_PAGE_FEE'` (không phải `LEGACY_BRIDGE`
+  ⇒ cầu đã tắt đúng), tồn quỹ −250.000đ, gọi lại không đẻ thêm; phiếu hoàn cọc và phiếu thu
+  bị từ chối `42501`; sổ ảo duyệt nhưng 0 bút toán.
+- `thanh-toan-page.spec.ts` **7/7 xanh** sau khi đổi `pay_period_fee`.
+- Trình duyệt thật: trang Cài đặt render đúng hai con số, hộp thoại công bố giá mở/đóng được,
+  **0 lỗi console**.
+- `check-stable-fn-locks` OK · `check-view-invoker` 12/12 · `typecheck:baseline` khớp 30 fingerprint.
+- `check-definer-acl` **đỏ 5 hàm `lucky_*`** của trang quay số — endpoint công khai có chủ ý,
+  pre-existing, không liên quan hai đợt này.
+
+### 16.8 Còn nợ — và vì sao
+
+- **Đợt 3/4/6 (điện nước, hoa hồng, bảo trì) chờ chủ duyệt bảng số.** Bảng đã dựng lại từ phiếu
+  chi thật và **đã qua phản biện bắt 15 lỗi nặng** — nặng nhất: cách chấm độ tin cậy đếm số
+  *tháng* thay vì số *phiếu riêng biệt*, làm một phiếu trải 3 tháng cũng được gắn nhãn "chắc chắn".
+- **Hoa hồng: không suy ra được từ dữ liệu.** 34/41 phiếu có số tiền bằng đúng số máy điền sẵn
+  ⇒ chúng là tiếng vọng của cấu hình cũ, không phải bằng chứng độc lập. 8 phiếu người gõ tay thì
+  **đều mâu thuẫn** với bảng bậc hiện có. Đây là quyết định kinh doanh, không phải bài toán số liệu.
+- **Bảo trì máy lạnh: bật luật 5 tháng hôm nay là khoá 59/59 phòng đã từng vệ sinh** tới
+  15/10–28/12/2026. Phải để chủ biết trước khi bật.
+- **Bước 5 (khoá đường thanh lý cũ) — KHUYÊN CHƯA KHOÁ NGAY.** Chủ đã chọn "khoá hẳn ngay",
+  nhưng có một dữ kiện chủ chưa có lúc quyết: **đường hoàn cọc mới chưa từng chạy với dữ liệu
+  thật — 0 nghĩa vụ trên prod**, và nó **không thử được bằng SQL** (đòi phiên đăng nhập thật;
+  `preview_termination_refund_v1` ném `42501 'Bạn không thuộc tổ chức này'` khi gọi qua
+  Management API). Khoá đường cũ trước khi đường mới chạy trót lọt một ca thật nghĩa là mọi ca
+  thanh lý tiếp theo đều đi qua đường chưa ai kiểm. Việc phải làm trước: dựng spec E2E chạy
+  trọn thanh lý → nghĩa vụ → phiếu hoàn trên DEMO, rồi mới khoá.
