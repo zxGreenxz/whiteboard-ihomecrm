@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./phongTrong.css";
 import { Icon } from "./icons";
-import { FloorPlan, ListView, OverviewView } from "./PhongTrongParts";
+import { FilterBar, FloorPlan, ListView, OverviewView, PRICE_BANDS } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
 import { SAMPLE_BUILDINGS, type Building, type Room } from "./sampleData";
 import { usePhongTrong } from "./usePhongTrong";
@@ -45,8 +45,14 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const [propId, setPropId] = usePersistedState<string>("flt:phong-trong:propId", OVERVIEW);
   const [view, setView] = usePersistedState<"map" | "list">("flt:phong-trong:view", "list");
   const [district, setDistrict] = usePersistedState("flt:phong-trong:district", "all");
+  const [band, setBand] = usePersistedState<string>("flt:phong-trong:band", "all");
   const showRented = false;
   const isOverview = propId === OVERVIEW;
+  // Id lạ trong localStorage (dải giá cũ) → coi như "Mọi giá".
+  const bandTest = useMemo(
+    () => (PRICE_BANDS.find((b) => b.id === band) ?? PRICE_BANDS[0]).test,
+    [band],
+  );
 
   const [room, setRoom] = useState<Room | null>(null);
   const [sheetShow, setSheetShow] = useState(false);
@@ -123,6 +129,12 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
     if (first) setPropId(first.id);
   };
 
+  // Chọn dải giá (chip) — ghi building_select kèm metadata (event_type có CHECK ở DB, không thêm loại mới).
+  const pickBand = (id: string) => {
+    tracker.track("building_select", { metadata: { kind: "price_band", band: id } });
+    setBand(id);
+  };
+
   // Chọn tòa (chip) — ghi building_select.
   const selectBuilding = (id: string) => {
     setPropId(id);
@@ -148,9 +160,9 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const listRooms = useMemo(() => {
     if (!building) return [] as Room[];
     return building.rooms
-      .filter((r) => showRented || r.status !== "rented")
+      .filter((r) => (showRented || r.status !== "rented") && bandTest(r.price))
       .sort((a, b) => b.floor - a.floor || a.no - b.no);
-  }, [building]);
+  }, [building, bandTest]);
 
   // Đo thời gian xem chi tiết mỗi phòng: chốt dwell khi đóng / mở phòng khác / rời trang.
   const roomDwell = useRef<{ id: string; code: string; no: number; bid: string; bname: string; at: number } | null>(null);
@@ -187,7 +199,6 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
 
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
-  const alwaysTrue = () => true;
 
   // Ghi lỗi tải dữ liệu / token sai (không log giá trị token).
   useEffect(() => {
@@ -265,17 +276,20 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
               </button>
             ))}
           </div>
+
+          <div className="sel-lbl">Khoảng giá</div>
+          <FilterBar band={band} setBand={pickBand} />
         </div>
 
         <div className="scroll">
           {view === "map"
             ? (isOverview
                 ? visibleBuildings.map((b) => (
-                    <FloorPlan key={b.id} building={b} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />
+                    <FloorPlan key={b.id} building={b} showRented={showRented} bandTest={bandTest} onOpen={openRoom} />
                   ))
-                : <FloorPlan building={building} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />)
+                : <FloorPlan building={building} showRented={showRented} bandTest={bandTest} onOpen={openRoom} />)
             : (isOverview
-                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} onQuickDeposit={canQuickDeposit ? openDeposit : undefined} />
+                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={bandTest} onOpen={openRoom} onQuickDeposit={canQuickDeposit ? openDeposit : undefined} />
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
