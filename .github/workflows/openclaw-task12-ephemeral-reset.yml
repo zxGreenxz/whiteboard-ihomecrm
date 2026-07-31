@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: openclaw-task12-ephemeral-reset
@@ -33,7 +33,34 @@ jobs:
         run: npx --yes supabase@2.109.1 db start
 
       - name: Reset the complete repository migration chain
-        run: npx --yes supabase@2.109.1 db reset --local --no-seed --debug
+        shell: bash
+        run: |
+          set +e
+          npx --yes supabase@2.109.1 db reset --local --no-seed --debug \
+            2>&1 | tee /tmp/openclaw-task12-reset.log
+          reset_code="${PIPESTATUS[0]}"
+
+          {
+            echo "reviewed_commit=$GITHUB_SHA"
+            echo "reset_exit_code=$reset_code"
+            echo "diagnostic_begin"
+            grep -Eai 'error|failed|duplicate|migration|does not exist|syntax' \
+              /tmp/openclaw-task12-reset.log \
+              | tail -n 100 \
+              | sed -E \
+                  -e 's#postgres(ql)?://[^[:space:]]+#postgresql://[REDACTED]#g' \
+                  -e 's#eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+#[REDACTED_JWT]#g'
+            echo "diagnostic_end"
+          } > openclaw-task12-reset-result.txt
+
+          git config user.name "OpenClaw Task 12 CI"
+          git config user.email "noreply@openai.com"
+          result_branch="codex/openclaw-task12-result-${GITHUB_SHA:0:12}"
+          git switch -c "$result_branch"
+          git add openclaw-task12-reset-result.txt
+          git commit -m "ci(openclaw-zalo): record ephemeral reset result"
+          git push origin "HEAD:refs/heads/$result_branch"
+          exit "$reset_code"
 
       - name: Destroy disposable local Supabase state
         if: always()
