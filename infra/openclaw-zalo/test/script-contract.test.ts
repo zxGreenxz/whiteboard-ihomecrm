@@ -1,5 +1,7 @@
-import { readFile, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -149,15 +151,76 @@ describe("Task 19 host and lifecycle scripts", () => {
     const stop = source.indexOf("compose stop --timeout 30 cell");
     const clear = source.indexOf("rm -f /var/lib/openclaw-session/zalouser/credentials.json");
     const replace = source.indexOf('mv -f "$tmp" "$secret_dir/$name"');
-    const restart = source.lastIndexOf("compose up -d --no-build --wait cell");
+    const recreateCommand = "compose up -d --no-build --force-recreate --no-deps --wait cell";
+    const restart = source.lastIndexOf(recreateCommand);
     expect(stop).toBeGreaterThan(-1);
     expect(clear).toBeGreaterThan(stop);
     expect(replace).toBeGreaterThan(clear);
     expect(restart).toBeGreaterThan(replace);
+    expect(source.match(new RegExp(recreateCommand, "g"))).toHaveLength(2);
+    expect(source).not.toContain("compose up -d --no-build --wait cell");
     expect(source).toContain("resume_after_rotation_failure");
     expect(source).toContain("QR login required");
     expect(source).not.toMatch(/cat\s+.*(?:secret|source_file)|set\s+-x/i);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "recreates only the cell after replacing the session-key inode",
+    async () => {
+      const work = await mkdtemp(join(tmpdir(), "openclaw-rotate-"));
+      try {
+        const bin = join(work, "bin");
+        const runtimeRoot = join(work, "runtime");
+        const runtimeEnv = join(work, "runtime.env");
+        const sourceKey = join(work, "new-session-key");
+        const dockerLog = join(work, "docker.log");
+        const fakeDocker = join(bin, "docker");
+        await mkdir(bin, { recursive: true });
+        await writeFile(runtimeEnv, "OPENCLAW_CELL_ID=dddd2000-0000-4000-8000-000000000001\n");
+        await chmod(runtimeEnv, 0o600);
+        await writeFile(sourceKey, "0123456789abcdef0123456789abcdef\n");
+        await writeFile(
+          fakeDocker,
+          `#!/bin/sh\nprintf '%s\\n' "$*" >> "$OPENCLAW_DOCKER_LOG"\ncase " $* " in\n  *" ps -q cell "*) printf '%s\\n' fake-cell ;;\nesac\n`,
+        );
+        await chmod(fakeDocker, 0o755);
+
+        const result = spawnSync(
+          "sh",
+          [
+            resolve(root, "infra/openclaw-zalo/scripts/rotate-secrets.sh"),
+            "--runtime-env",
+            runtimeEnv,
+            "--name",
+            "openclaw_session_key",
+            "--source-file",
+            sourceKey,
+          ],
+          {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              OPENCLAW_DOCKER_LOG: dockerLog,
+              OPENCLAW_RUNTIME_ROOT: runtimeRoot,
+              PATH: `${bin}:${process.env.PATH ?? ""}`,
+            },
+          },
+        );
+        expect(result.status, result.stderr).toBe(0);
+
+        const commands = (await readFile(dockerLog, "utf8")).trim().split("\n");
+        const stop = commands.findIndex((command) => command.includes(" stop --timeout 30 cell"));
+        const clear = commands.findIndex((command) => command.includes(" run --rm --no-deps -T --entrypoint sh cell"));
+        const recreate = commands.findIndex((command) => command.includes(" up -d --no-build --force-recreate --no-deps --wait cell"));
+        expect(stop).toBeGreaterThan(-1);
+        expect(clear).toBeGreaterThan(stop);
+        expect(recreate).toBeGreaterThan(clear);
+        expect(commands.filter((command) => command.includes(" up "))).toHaveLength(1);
+      } finally {
+        await rm(work, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("applies the approved systemd limits to the rootless service user only", async () => {
     const userUnit = await text("infra/openclaw-zalo/systemd/user/openclaw-stack@.service");

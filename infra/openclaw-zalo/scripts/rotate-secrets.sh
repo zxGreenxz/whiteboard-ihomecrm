@@ -43,7 +43,7 @@ resume_after_rotation_failure() {
   status=$?
   trap - EXIT
   if [ "$status" -ne 0 ] && [ "$session_rotation_started" -eq 1 ] && [ "$cell_was_running" -eq 1 ]; then
-    compose up -d --no-build --wait cell || echo "failed to restart cell after rotation error" >&2
+    compose up -d --no-build --force-recreate --no-deps --wait cell || echo "failed to recreate cell after rotation error" >&2
   fi
   exit "$status"
 }
@@ -70,7 +70,7 @@ sync -f "$secret_dir"
 
 if [ "$name" = "openclaw_session_key" ]; then
   if [ "$cell_was_running" -eq 1 ]; then
-    compose up -d --no-build --wait cell
+    compose up -d --no-build --force-recreate --no-deps --wait cell
   fi
   session_rotation_started=0
   trap - EXIT
