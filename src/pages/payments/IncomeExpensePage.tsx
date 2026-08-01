@@ -93,6 +93,13 @@ import {
   useCancelVoucherFlex,
   flexCancelGate,
 } from "@/hooks/income-expenses/flexMutations";
+// ĐỢT A: phiếu THU đi cửa riêng cancel_income_voucher_v1 (huỷ ở đâu cũng được,
+// tự liên kết hoá đơn). Phiếu CHI giữ nguyên thang cũ — hai đường tách hẳn.
+import {
+  useIncomeCancelEligibility,
+  useCancelIncomeVoucher,
+  voucherCancelDecision,
+} from "@/hooks/income-expenses/incomeVoucherCancel";
 import VoucherHistoryDialog from "@/components/income-expenses/VoucherHistoryDialog";
 
 const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
@@ -330,6 +337,7 @@ const IncomeExpenseDesktopPage = () => {
 
   const cancelMutation = useCancelIncomeExpense();
   const flexCancelMutation = useCancelVoucherFlex();
+  const cancelIncomeMutation = useCancelIncomeVoucher();
   const restoreMutation = useRestoreIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
@@ -369,6 +377,19 @@ const IncomeExpenseDesktopPage = () => {
   );
   const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
 
+  // ĐỢT A: phiếu THU hỏi reader riêng (can_cancel_income_voucher_v1) — nó biết
+  // cả thứ tự LIFO của đợt thu lẫn tiền thừa đã cấn đi đâu, những thứ reader
+  // của phiếu chi không có khái niệm.
+  const incomeCancelIds = useMemo(
+    () =>
+      vouchers
+        .filter((v) => v.type === "INCOME" && v.approval_status !== "CANCELLED")
+        .map((v) => v.id),
+    [vouchers],
+  );
+  const { data: incomeCancelEligibility } =
+    useIncomeCancelEligibility(incomeCancelIds);
+
   // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
   const cancelTargetVoucher = cancelTarget
     ? vouchers.find((v) => v.id === cancelTarget) ?? null
@@ -378,9 +399,13 @@ const IncomeExpenseDesktopPage = () => {
   // Hộp thoại xác nhận cũng phải tôn trọng câu trả lời của server: phiếu mở từ
   // chi tiết/đợt có thể không nằm trong trang hiện tại ⇒ không có dòng ⇒ gate
   // mặc định "cho bấm", writer là chốt chặn cuối.
-  const cancelTargetGate = flexCancelGate(
-    cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
-  );
+  const cancelTargetGate = voucherCancelDecision({
+    type: cancelTargetVoucher?.type,
+    income: cancelTarget ? incomeCancelEligibility?.[cancelTarget] : undefined,
+    flexGate: flexCancelGate(
+      cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
+    ),
+  });
 
   const isShareholderPayout = !!approveTarget?.shareholder_id;
   const approvalAccounts = isShareholderPayout
@@ -569,11 +594,15 @@ const IncomeExpenseDesktopPage = () => {
   const confirmCancel = useCallback(() => {
     const reason = cancelReason.trim();
     if (cancelTarget) {
-      // Đợt 4: phiếu nào server đã xác nhận huỷ-nhanh-được thì đi THẲNG writer
-      // linh hoạt — đó là đường duy nhất truyền được CAS hai version. Đường cũ
-      // (useCancelIncomeExpense) luôn gửi null nên hai người bấm cùng lúc là
-      // huỷ đè lên nhau trong im lặng.
-      if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
+      // ĐỢT A: phiếu THU đi cửa riêng — server tự rẽ nhánh đợt thu hoá đơn /
+      // cặp bỏ cọc / phiếu thường và tự mở lại nợ hoá đơn. Không còn thang 6
+      // bậc, không còn "owned by system flow".
+      if (cancelTargetGate.useIncomeDoor) {
+        cancelIncomeMutation.mutate({ voucherId: cancelTarget, reason });
+      } else if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
+        // Đợt 4 (phiếu CHI): writer linh hoạt là đường duy nhất truyền được CAS
+        // hai version. Đường cũ luôn gửi null nên hai người bấm cùng lúc là huỷ
+        // đè lên nhau trong im lặng.
         flexCancelMutation.mutate({
           voucherId: cancelTarget,
           reason,
@@ -592,7 +621,9 @@ const IncomeExpenseDesktopPage = () => {
     cancelTarget,
     cancelReason,
     cancelMutation,
+    cancelIncomeMutation,
     cancelTargetGate.useFlexWriter,
+    cancelTargetGate.useIncomeDoor,
     cancelTargetVoucher,
     flexCancelMutation,
   ]);
@@ -774,6 +805,7 @@ const IncomeExpenseDesktopPage = () => {
             onCopy={(v) => setCopyVoucher(v)}
             onHistory={(v) => setHistoryVoucher(v)}
             cancelEligibility={cancelEligibility}
+            incomeCancelEligibility={incomeCancelEligibility}
             pagination={pagination}
             totalCount={totalCount}
           />
@@ -899,15 +931,29 @@ const IncomeExpenseDesktopPage = () => {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {/* Sự thật về QUYỀN (đo lại trên prod 30/07/2026, thân hàm
-              cancel_income_expense_flex_v1): super admin, chủ tổ chức và NGƯỜI
-              TẠO phiếu vào thẳng, không cần giữ sổ. Chỉ người ngoài ba nhóm đó
-              mới phải vừa có quyền huỷ thu chi trên toà, vừa là CUSTODIAN của
-              sổ. Câu cũ ("chỉ CUSTODIAN") là sai và làm người dùng không dám bấm. */}
+          {/* ĐỢT A: phiếu THU đi cửa riêng, huỷ CẢ ĐỢT THU nếu lần thu đó gồm
+              nhiều phiếu (bộ đếm toàn vẹn định nghĩa bất biến ở mức đợt thu,
+              huỷ lẻ một phiếu sẽ kẹt cổng an toàn của hệ thống). */}
+          {cancelTargetIsIncome && cancelTargetGate.mode === "COLLECTION" && (
+            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+              Đây là khoản thu của một hoá đơn. Huỷ sẽ gỡ <b>cả lần thu đó</b>{" "}
+              (kể cả khi lần thu gồm nhiều phiếu ở nhiều sổ quỹ) và{" "}
+              <b>mở lại nợ trên hoá đơn</b> để thu lại.
+            </p>
+          )}
+          {cancelTargetIsIncome && cancelTargetGate.mode === "FORFEIT_PAIR" && (
+            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+              Phiếu này là một chân của cặp cấn cọc bỏ cọc — huỷ sẽ lật{" "}
+              <b>cả hai chân</b> để hai sổ không lệch nhau.
+            </p>
+          )}
+          {/* Sự thật về QUYỀN. Phiếu THU (ĐỢT A, quyết định của chủ 01/08/2026):
+              chỉ người đã thu / chủ tổ chức / super admin — không còn đòi giữ
+              sổ, không còn đòi quyền theo toà. Phiếu CHI giữ luật cũ. */}
           <p className="text-xs text-muted-foreground">
-            Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc
-            người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của
-            phiếu (CUSTODIAN).
+            {cancelTargetIsIncome
+              ? "Người huỷ được: chính người đã thu khoản này, chủ tổ chức, hoặc super admin."
+              : "Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của phiếu (CUSTODIAN)."}
           </p>
           {/* Server đã nói trước là không huỷ được thì nói luôn ở đây, đừng để
               người dùng gõ xong lý do rồi mới ăn toast lỗi. */}
@@ -945,6 +991,7 @@ const IncomeExpenseDesktopPage = () => {
                 cancelReason.trim().length < 8 ||
                 !cancelTargetGate.canCancel ||
                 flexCancelMutation.isPending ||
+                cancelIncomeMutation.isPending ||
                 cancelMutation.isPending
               }
               className="bg-red-600 hover:bg-red-700"

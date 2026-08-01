@@ -205,7 +205,12 @@ export function IncomeExpenseDetailDialog({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  title="Sửa sổ quỹ / hình ảnh / ghi chú"
+                  // ĐỢT C: sổ quỹ chỉ sửa được ở phiếu THU.
+                  title={
+                    voucher.type === "INCOME"
+                      ? "Sửa sổ quỹ / hình ảnh / ghi chú"
+                      : "Sửa hình ảnh / ghi chú"
+                  }
                   onClick={() => {
                     onQuickEdit!(voucher);
                     onOpenChange(false);

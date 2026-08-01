@@ -108,6 +108,12 @@ import {
   useCancelVoucherFlex,
   flexCancelGate,
 } from "@/hooks/income-expenses/flexMutations";
+// ĐỢT A (parity desktop): phiếu THU đi cửa riêng cancel_income_voucher_v1.
+import {
+  useIncomeCancelEligibility,
+  useCancelIncomeVoucher,
+  voucherCancelDecision,
+} from "@/hooks/income-expenses/incomeVoucherCancel";
 import VoucherHistoryDialog from "@/components/income-expenses/VoucherHistoryDialog";
 import { groupReversalVouchers, groupNetAmount } from "@/lib/voucherReversalGrouping";
 
@@ -418,6 +424,7 @@ export default function IncomeExpenseMobilePage() {
 
   const cancelMutation = useCancelIncomeExpense();
   const flexCancelMutation = useCancelVoucherFlex();
+  const cancelIncomeMutation = useCancelIncomeVoucher();
   const restoreMutation = useRestoreIncomeExpense();
   const approveMutation = useApproveVoucher();
   const quickUpdateMutation = useQuickUpdateIncomeExpense();
@@ -455,6 +462,17 @@ export default function IncomeExpenseMobilePage() {
   );
   const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
 
+  // ĐỢT A: phiếu THU hỏi reader riêng (biết LIFO đợt thu + tiền thừa đã cấn).
+  const incomeCancelIds = useMemo(
+    () =>
+      vouchers
+        .filter((v) => v.type === "INCOME" && v.approval_status !== "CANCELLED")
+        .map((v) => v.id),
+    [vouchers],
+  );
+  const { data: incomeCancelEligibility } =
+    useIncomeCancelEligibility(incomeCancelIds);
+
   // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
   const cancelTargetVoucher = cancelTarget
     ? vouchers.find((x) => x.id === cancelTarget) ?? null
@@ -463,9 +481,13 @@ export default function IncomeExpenseMobilePage() {
     (cancelTargetVoucher as { posting_status?: string | null } | null)
       ?.posting_status === "POSTED";
   const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
-  const cancelTargetGate = flexCancelGate(
-    cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
-  );
+  const cancelTargetGate = voucherCancelDecision({
+    type: cancelTargetVoucher?.type,
+    income: cancelTarget ? incomeCancelEligibility?.[cancelTarget] : undefined,
+    flexGate: flexCancelGate(
+      cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
+    ),
+  });
 
   // Duyệt phiếu: nếu người dùng đổi sổ quỹ hoặc thêm/bớt ảnh thì lưu trước
   // (update_income_expense_quick chỉ áp cho phiếu nháp) rồi mới ghi vào tồn quỹ.
@@ -1082,12 +1104,23 @@ export default function IncomeExpenseMobilePage() {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {/* Giữ Y HỆT bản desktop: super admin / chủ tổ chức / người tạo phiếu
-              vào thẳng; người khác mới cần quyền huỷ + giữ sổ (CUSTODIAN). */}
+          {/* ĐỢT A (giữ y hệt bản desktop): phiếu THU huỷ theo CẢ ĐỢT THU. */}
+          {cancelTargetIsIncome && cancelTargetGate.mode === "COLLECTION" && (
+            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+              Đây là khoản thu của một hoá đơn. Huỷ sẽ gỡ <b>cả lần thu đó</b> và{" "}
+              <b>mở lại nợ trên hoá đơn</b> để thu lại.
+            </p>
+          )}
+          {cancelTargetIsIncome && cancelTargetGate.mode === "FORFEIT_PAIR" && (
+            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+              Phiếu này là một chân của cặp cấn cọc bỏ cọc — huỷ sẽ lật{" "}
+              <b>cả hai chân</b>.
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
-            Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc
-            người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của
-            phiếu (CUSTODIAN).
+            {cancelTargetIsIncome
+              ? "Người huỷ được: chính người đã thu khoản này, chủ tổ chức, hoặc super admin."
+              : "Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của phiếu (CUSTODIAN)."}
           </p>
           {cancelTargetGate.reason && (
             <p
@@ -1121,14 +1154,17 @@ export default function IncomeExpenseMobilePage() {
                 cancelReason.trim().length < 8 ||
                 !cancelTargetGate.canCancel ||
                 flexCancelMutation.isPending ||
+                cancelIncomeMutation.isPending ||
                 cancelMutation.isPending
               }
               onClick={() => {
                 const reason = cancelReason.trim();
                 if (cancelTarget) {
-                  // Đợt 4: đi writer linh hoạt khi server đã gật, vì chỉ đường
-                  // đó nhận p_expected_approval_version/p_expected_posting_version.
-                  if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
+                  // ĐỢT A: phiếu THU đi cửa riêng, server tự rẽ nhánh.
+                  if (cancelTargetGate.useIncomeDoor) {
+                    cancelIncomeMutation.mutate({ voucherId: cancelTarget, reason });
+                  } else if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
+                    // Đợt 4 (phiếu CHI): chỉ đường này nhận CAS hai version.
                     flexCancelMutation.mutate({
                       voucherId: cancelTarget,
                       reason,

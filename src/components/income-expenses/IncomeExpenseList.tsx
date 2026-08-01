@@ -52,6 +52,10 @@ import {
   type FlexCancelEligibility,
 } from '@/hooks/income-expenses/flexMutations';
 import {
+  voucherCancelDecision,
+  type IncomeCancelEligibility,
+} from '@/hooks/income-expenses/incomeVoucherCancel';
+import {
   groupReversalVouchers,
   groupNetAmount,
 } from '@/lib/voucherReversalGrouping';
@@ -93,6 +97,8 @@ interface IncomeExpenseListProps {
   /** Đợt 4: kết quả can_flex_cancel_v1 theo id — mờ nút Huỷ kèm lý do thay vì
    *  bày nút rồi mới bắn toast lỗi. Thiếu (undefined) = chưa biết, giữ nút bật. */
   cancelEligibility?: Record<string, FlexCancelEligibility>;
+  /** ĐỢT A: kết quả can_cancel_income_voucher_v1 — chỉ dùng cho phiếu THU. */
+  incomeCancelEligibility?: Record<string, IncomeCancelEligibility>;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -201,6 +207,7 @@ const IncomeExpenseList = ({
   onCopy,
   onHistory,
   cancelEligibility,
+  incomeCancelEligibility,
   pagination,
   totalCount,
 }: IncomeExpenseListProps) => {
@@ -301,8 +308,13 @@ const IncomeExpenseList = ({
             const isCreator =
               !!currentUserId && voucher.user_id === currentUserId;
             const isVerified = !!voucher.verified_at;
-            // Đợt 4: server đã nói trước phiếu này huỷ được hay không.
-            const cancelGate = flexCancelGate(cancelEligibility?.[voucher.id]);
+            // Đợt 4 / ĐỢT A: server đã nói trước phiếu này huỷ được hay không.
+            // Phiếu THU hỏi reader riêng (biết LIFO + tiền thừa đã cấn đi đâu).
+            const cancelGate = voucherCancelDecision({
+              type: voucher.type,
+              income: incomeCancelEligibility?.[voucher.id],
+              flexGate: flexCancelGate(cancelEligibility?.[voucher.id]),
+            });
             // B4: lớp phiếu — Nội bộ (bút toán) hiển thị trung tính.
             const layer = voucherLayer({
               approval_status: voucher.approval_status,
@@ -392,7 +404,13 @@ const IncomeExpenseList = ({
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         onClick={() => onQuickEdit!(voucher)}
-                        title="Sửa sổ quỹ / hình ảnh / ghi chú"
+                        // ĐỢT C: sổ quỹ chỉ sửa được ở phiếu THU; câu cũ ghi
+                        // "Sửa sổ quỹ" cho cả phiếu chi là hứa hão.
+                        title={
+                          voucher.type === 'INCOME'
+                            ? 'Sửa sổ quỹ / hình ảnh / ghi chú'
+                            : 'Sửa hình ảnh / ghi chú'
+                        }
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
