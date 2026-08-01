@@ -74,7 +74,7 @@ jobs:
           printf 'openclaw-runner:100000:65536\n' > /etc/subuid
           printf 'openclaw-runner:100000:65536\n' > /etc/subgid
 
-          git_version="$(apt-cache madison git | awk -F'|' '{gsub(/[[:space:]]/,"",$2); if ($2 ~ /^1:2\\.53\\.0([.-]|$)/) {print $2; exit}')"
+          git_version="$(apt-cache madison git | awk -F'|' '{gsub(/[[:space:]]/,"",$2); if ($2 ~ /^1:2\\.53\\.0([.-]|$)/) {print $2; exit}}')"
           test -n "$git_version"
           apt-get install -y --no-install-recommends "git=$git_version"
           test "$(/usr/bin/git --version)" = 'git version 2.53.0'
