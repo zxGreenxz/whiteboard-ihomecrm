@@ -92,8 +92,6 @@ jobs:
           test "$(stat -c '%s' "$node_root/bin/node")" = 122889056
           test "$(sha256sum "$node_root/bin/node" | cut -d' ' -f1)" = d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c
           test "$("$node_root/bin/node" --version)" = v24.15.0
-          "$node_root/bin/node" "$node_root/lib/node_modules/npm/bin/npm-cli.js" install \
-            --global npm@11.12.1 --ignore-scripts --no-audit --no-fund
           test "$("$node_root/bin/node" "$node_root/lib/node_modules/npm/bin/npm-cli.js" --version)" = 11.12.1
 
           test ! -e "$pwsh_root" && mkdir "$pwsh_root"
