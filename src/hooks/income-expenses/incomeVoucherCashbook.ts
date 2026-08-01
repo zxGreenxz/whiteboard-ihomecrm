@@ -16,12 +16,21 @@ import { periodBlockMessage } from "@/lib/cashbookClosing";
 
 export interface CashbookAccessRow {
   cashbook_id: string;
+  /** RPC trả sẵn TÊN sổ — bắt buộc dùng, xem cảnh báo dưới. */
+  cashbook_name: string | null;
   possession_kind: "CUSTODIAN" | "KNOWER" | "OPERATOR";
+  since?: string | null;
 }
 
 /**
  * Sổ quỹ người dùng GIỮ hoặc BIẾT — đúng tập mà server cho phép làm sổ ĐẾN.
  * `enabled` để không gọi khi hộp thoại chưa mở.
+ *
+ * GOTCHA (đo trên prod 01/08/2026): ĐỪNG giao danh sách này với `useAccounts()`
+ * để lấy tên. `useAccounts()` đọc thẳng `public.accounts` qua RLS, và RLS đó
+ * hẹp hơn possession rất nhiều — tài khoản chủ nhà DEMO giữ 5 sổ nhưng chỉ
+ * NHÌN được 1 qua bảng accounts. Giao hai danh sách làm dropdown đổi sổ quỹ
+ * rỗng gần hết. RPC này đã trả sẵn `cashbook_name`, dùng thẳng.
  */
 export const useMyCashbookAccess = (enabled = true) =>
   useQuery({

@@ -85,15 +85,36 @@ export function IncomeExpenseQuickEditDialog({
 
   if (!voucher) return null;
 
-  // Sổ ĐẾN hợp lệ = sổ mình GIỮ hoặc BIẾT, còn sống, không phải sổ ảo.
-  const allowedIds = new Set(
-    cashbookAccess
-      .filter((r) => r.possession_kind === "CUSTODIAN" || r.possession_kind === "KNOWER")
-      .map((r) => r.cashbook_id),
-  );
-  const moveOptions = allAccounts.filter(
-    (a) => allowedIds.has(a.id) && !a.is_virtual && a.id !== voucher.account_id,
-  );
+  // Sổ ĐẾN hợp lệ = sổ mình GIỮ hoặc BIẾT (đúng luật server).
+  //
+  // Tên sổ lấy TỪ CHÍNH RPC possession, KHÔNG giao với useAccounts(): bảng
+  // `accounts` có RLS hẹp hơn possession rất nhiều (đo prod 01/08/2026: chủ nhà
+  // DEMO giữ 5 sổ nhưng chỉ nhìn được 1 qua bảng đó), giao hai danh sách làm
+  // dropdown rỗng gần hết. Sổ ảo cũng không lọc được ở client vì RPC không trả
+  // cờ đó — server đã chặn sẵn bằng câu tiếng Việt rõ ràng.
+  const virtualIds = new Set(allAccounts.filter((a) => a.is_virtual).map((a) => a.id));
+  const moveOptions = cashbookAccess
+    .filter(
+      (r) =>
+        (r.possession_kind === "CUSTODIAN" || r.possession_kind === "KNOWER") &&
+        r.cashbook_id !== voucher.account_id &&
+        !virtualIds.has(r.cashbook_id),
+    )
+    // Một sổ có thể có nhiều dòng possession (vừa giữ vừa biết) — gộp theo id.
+    .filter((r, i, arr) => arr.findIndex((x) => x.cashbook_id === r.cashbook_id) === i)
+    .map((r) => ({
+      id: r.cashbook_id,
+      name:
+        r.cashbook_name ??
+        allAccounts.find((a) => a.id === r.cashbook_id)?.name ??
+        "Sổ không rõ tên",
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "vi"));
+
+  const currentBookName =
+    allAccounts.find((a) => a.id === voucher.account_id)?.name ??
+    cashbookAccess.find((r) => r.cashbook_id === voucher.account_id)?.cashbook_name ??
+    "Sổ hiện tại";
   const accountChanged = !!accountId && accountId !== voucher.account_id;
 
   const original: string[] = voucher.attachments ?? [];
@@ -180,9 +201,7 @@ export function IncomeExpenseQuickEditDialog({
                       kể cả khi họ chỉ BIẾT chứ không GIỮ sổ đó. */}
                   {voucher.account_id && (
                     <SelectItem value={voucher.account_id}>
-                      {allAccounts.find((a) => a.id === voucher.account_id)?.name ??
-                        "Sổ hiện tại"}{" "}
-                      (đang dùng)
+                      {currentBookName} (đang dùng)
                     </SelectItem>
                   )}
                   {moveOptions.map((a) => (
