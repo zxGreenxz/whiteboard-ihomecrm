@@ -42,7 +42,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voucher: IncomeExpenseWithRelations | null;
-  onCancel?: (id: string) => void;
+  onCancel?: (id: string, type?: string | null) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho creator của
    *  phiếu đã ghi nhận/đã huỷ, không cần super admin. */
@@ -254,7 +254,7 @@ export function IncomeExpenseDetailDialog({
                   className="h-8 w-8 bg-orange-500 hover:bg-orange-600"
                   title="Huỷ phiếu"
                   onClick={() => {
-                    onCancel(voucher.id);
+                    onCancel(voucher.id, voucher.type);
                     onOpenChange(false);
                   }}
                 >

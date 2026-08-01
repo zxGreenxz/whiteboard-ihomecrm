@@ -40,7 +40,7 @@ interface Props {
   onEdit?: (v: IncomeExpenseWithRelations) => void;
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
-  onCancel?: (id: string) => void;
+  onCancel?: (id: string, type?: string | null) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
   /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
@@ -251,7 +251,7 @@ export function IncomeExpenseDetailMobile({
                 style={{ background: "#f97316" }}
                 aria-label="Huỷ"
                 onClick={() => {
-                  onCancel(v.id);
+                  onCancel(v.id, v.type);
                   onClose();
                 }}
               >

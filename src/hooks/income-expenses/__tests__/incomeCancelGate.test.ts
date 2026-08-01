@@ -23,6 +23,8 @@ const ALL_CODES: IncomeCancelBlockCode[] = [
   "LIFO_ORDER",
   "CREDIT_SPENT",
   "IS_REVERSAL",
+  "COUNTER_ALIVE",
+  "INVOICE_NO_PAYMENT",
   "UNKNOWN",
 ];
 
@@ -57,6 +59,13 @@ describe("incomeCancelBlockText", () => {
       row({ reason_code: "LIFO_ORDER", blocking_voucher_code: "PT2607125" }),
     );
     expect(text).toContain("PT2607125");
+  });
+
+  it("COUNTER_ALIVE nêu đích danh phiếu chi đối ứng", () => {
+    const text = incomeCancelBlockText(
+      row({ reason_code: "COUNTER_ALIVE", blocking_voucher_code: "PC2607145" }),
+    );
+    expect(text).toContain("PC2607145");
   });
 
   it("LIFO không có mã phiếu vẫn ra câu đọc được", () => {

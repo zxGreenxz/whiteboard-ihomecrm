@@ -30,6 +30,8 @@ export type IncomeCancelBlockCode =
   | "LIFO_ORDER"
   | "CREDIT_SPENT"
   | "IS_REVERSAL"
+  | "COUNTER_ALIVE"
+  | "INVOICE_NO_PAYMENT"
   | "UNKNOWN";
 
 export interface IncomeCancelEligibility {
@@ -56,6 +58,10 @@ const BLOCK_TEXT: Record<IncomeCancelBlockCode, string> = {
   CREDIT_SPENT:
     "Tiền thừa của lần thu này đã được cấn sang hoá đơn khác — gỡ khoản đã cấn trước",
   IS_REVERSAL: "Đây là bút toán đối ứng — huỷ phiếu gốc thay vì huỷ phiếu này",
+  COUNTER_ALIVE:
+    "Khoản thu này đã được hoàn tác bằng phiếu chi đối ứng — huỷ phiếu đối ứng đó",
+  INVOICE_NO_PAYMENT:
+    "Khoản thu gắn hoá đơn nhưng không có khoản thanh toán liên kết — huỷ ở màn hình hoá đơn/thanh lý",
   UNKNOWN: "Không huỷ được phiếu này",
 };
 
@@ -66,6 +72,9 @@ export const incomeCancelBlockText = (
   const base = BLOCK_TEXT[code] ?? BLOCK_TEXT.UNKNOWN;
   if (code === "LIFO_ORDER" && row?.blocking_voucher_code) {
     return `Phải huỷ phiếu ${row.blocking_voucher_code} trước — hệ thống gỡ khoản thu theo thứ tự ngược thời gian`;
+  }
+  if (code === "COUNTER_ALIVE" && row?.blocking_voucher_code) {
+    return `Khoản thu này đã được hoàn tác bằng phiếu chi ${row.blocking_voucher_code} — huỷ phiếu đó thay vì huỷ lại ở đây`;
   }
   return base;
 };

@@ -213,6 +213,9 @@ export default function IncomeExpenseMobilePage() {
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  // Loại phiếu đang huỷ — phiếu mở từ CHI TIẾT ĐỢT không nằm trong danh sách lẻ
+  // nên tra ngược sẽ ra null và rơi ngược về thang huỷ CŨ.
+  const [cancelTargetType, setCancelTargetType] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] =
     useState<IncomeExpenseWithRelations | null>(null);
@@ -480,9 +483,10 @@ export default function IncomeExpenseMobilePage() {
   const cancelTargetPosted =
     (cancelTargetVoucher as { posting_status?: string | null } | null)
       ?.posting_status === "POSTED";
-  const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
+  const cancelTargetIsIncome =
+    (cancelTargetVoucher?.type ?? cancelTargetType) === "INCOME";
   const cancelTargetGate = voucherCancelDecision({
-    type: cancelTargetVoucher?.type,
+    type: cancelTargetVoucher?.type ?? cancelTargetType,
     income: cancelTarget ? incomeCancelEligibility?.[cancelTarget] : undefined,
     flexGate: flexCancelGate(
       cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
@@ -887,7 +891,10 @@ export default function IncomeExpenseMobilePage() {
               onEdit={(v) => setEditingVoucher(v)}
               onQuickEdit={(v) => setQuickEditVoucher(v)}
               onApprove={(v) => setApproveTarget(v)}
-              onCancel={(id) => setCancelTarget(id)}
+              onCancel={(id, type) => {
+                setCancelTarget(id);
+                setCancelTargetType(type ?? null);
+              }}
               onRestore={(id) => setRestoreTarget(id)}
               onCopy={(v) => setCopyVoucher(v)}
               onPostApproved={(v) => setPostApprovedTarget(v)}
@@ -902,7 +909,10 @@ export default function IncomeExpenseMobilePage() {
               onClose={() => setDetailBatchId(null)}
               onCancelBatch={setCancelBatchTarget}
               onEditVoucher={(v) => setEditingVoucher(v)}
-              onCancelVoucher={setCancelTarget}
+              onCancelVoucher={(id, type) => {
+                setCancelTarget(id);
+                setCancelTargetType(type ?? null);
+              }}
               onApproveVoucher={setApproveTarget}
             />
           )}
@@ -1080,6 +1090,7 @@ export default function IncomeExpenseMobilePage() {
         onOpenChange={(o) => {
           if (!o) {
             setCancelTarget(null);
+            setCancelTargetType(null);
             setCancelReason("");
           }
         }}

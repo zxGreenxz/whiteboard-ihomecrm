@@ -149,6 +149,10 @@ const IncomeExpenseDesktopPage = () => {
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  // Loại phiếu đang huỷ, nhớ riêng vì phiếu mở từ CHI TIẾT ĐỢT (phiếu tổng)
+  // hầu như không nằm trong trang danh sách lẻ hiện tại: tra ngược trong
+  // `vouchers` sẽ ra null ⇒ type=undefined ⇒ rơi ngược về thang huỷ CŨ.
+  const [cancelTargetType, setCancelTargetType] = useState<string | null>(null);
   // Huỷ phiếu ĐÃ CHI: cảnh báo hoàn-tác-tiền + lý do (ghi vào reversal).
   const [cancelReason, setCancelReason] = useState("");
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
@@ -395,12 +399,13 @@ const IncomeExpenseDesktopPage = () => {
     ? vouchers.find((v) => v.id === cancelTarget) ?? null
     : null;
   const cancelTargetPosted = cancelTargetVoucher?.posting_status === "POSTED";
-  const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
+  const cancelTargetIsIncome =
+    (cancelTargetVoucher?.type ?? cancelTargetType) === "INCOME";
   // Hộp thoại xác nhận cũng phải tôn trọng câu trả lời của server: phiếu mở từ
   // chi tiết/đợt có thể không nằm trong trang hiện tại ⇒ không có dòng ⇒ gate
   // mặc định "cho bấm", writer là chốt chặn cuối.
   const cancelTargetGate = voucherCancelDecision({
-    type: cancelTargetVoucher?.type,
+    type: cancelTargetVoucher?.type ?? cancelTargetType,
     income: cancelTarget ? incomeCancelEligibility?.[cancelTarget] : undefined,
     flexGate: flexCancelGate(
       cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
@@ -572,8 +577,9 @@ const IncomeExpenseDesktopPage = () => {
     setUnapproveTarget(null);
   }, [unapproveTarget, unapproveMutation]);
 
-  const handleCancelVoucher = useCallback((id: string) => {
+  const handleCancelVoucher = useCallback((id: string, type?: string | null) => {
     setCancelTarget(id);
+    setCancelTargetType(type ?? null);
   }, []);
 
   const handleRestoreVoucher = useCallback((id: string) => {
@@ -616,6 +622,7 @@ const IncomeExpenseDesktopPage = () => {
       }
     }
     setCancelTarget(null);
+    setCancelTargetType(null);
     setCancelReason("");
   }, [
     cancelTarget,
@@ -908,6 +915,7 @@ const IncomeExpenseDesktopPage = () => {
         open={!!cancelTarget}
         onOpenChange={() => {
           setCancelTarget(null);
+          setCancelTargetType(null);
           setCancelReason("");
         }}
       >

@@ -71,7 +71,8 @@ interface IncomeExpenseListProps {
   vouchers: IncomeExpenseWithRelations[];
   isLoading: boolean;
   onView: (voucher: IncomeExpenseWithRelations) => void;
-  onCancel: (id: string) => void;
+  /** Kèm `type` để trang cha biết đi cửa THU hay đường CHI mà không phải tra ngược. */
+  onCancel: (id: string, type?: string | null) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
   /** Dừng lặp lại cho 1 phiếu gốc (repeat_cycle != NONE, không phải phiếu con). */
@@ -514,7 +515,7 @@ const IncomeExpenseList = ({
                             ? 'h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50'
                             : 'h-8 w-8 text-zinc-300'
                         }
-                        onClick={() => onCancel(voucher.id)}
+                        onClick={() => onCancel(voucher.id, voucher.type)}
                         title={
                           cancelGate.reason
                             ? `Huỷ phiếu — ${cancelGate.reason}`

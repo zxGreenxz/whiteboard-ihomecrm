@@ -18,7 +18,7 @@ interface Props {
   onClose: () => void;
   onCancelBatch?: (batchId: string) => void;
   onEditVoucher?: (voucher: IncomeExpenseWithRelations) => void;
-  onCancelVoucher?: (voucherId: string) => void;
+  onCancelVoucher?: (voucherId: string, type?: string | null) => void;
   onApproveVoucher?: (voucher: IncomeExpenseWithRelations) => void;
 }
 
@@ -289,7 +289,8 @@ export function IncomeExpenseBatchDetailMobile({
             onCancelVoucher
               ? (id) => {
                   setChild(null);
-                  onCancelVoucher(id);
+                  // Cả đợt cùng một loại — lấy thẳng từ batch.
+                  onCancelVoucher(id, batch.type);
                 }
               : undefined
           }
