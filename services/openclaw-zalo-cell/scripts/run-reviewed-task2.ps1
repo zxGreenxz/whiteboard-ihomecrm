@@ -371,7 +371,13 @@ function Invoke-ReviewedPowerShellBlob {
   $helperEnvironment.OPENCLAW_PWSH_LOGICAL_PATH = $logicalPath
   $helperEnvironment.OPENCLAW_PWSH_BLOB_SIZE = $blob.Size.ToString([Globalization.CultureInfo]::InvariantCulture)
   $helperEnvironment.OPENCLAW_PWSH_BLOB_SHA256 = $blob.Sha256
-  $helperEnvironment.OPENCLAW_PWSH_ARGUMENTS_JSON = [Text.Json.JsonSerializer]::Serialize([string[]]$Arguments)
+  # Bind the non-generic overload explicitly; PowerShell 7.6 cannot infer the
+  # generic Serialize<T> overload from a single array argument.
+  $helperEnvironment.OPENCLAW_PWSH_ARGUMENTS_JSON = [Text.Json.JsonSerializer]::Serialize(
+    [object][string[]]$Arguments,
+    [type][string[]],
+    [Text.Json.JsonSerializerOptions]::new()
+  )
   $before = (Get-FileHash -LiteralPath $script:PinnedPwshPath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($before -ne $script:ExpectedPwshSha256) { throw 'PowerShell changed before reviewed helper dispatch' }
   Invoke-LauncherNativeBytes -FilePath $script:PinnedPwshPath `

@@ -2062,6 +2062,10 @@ test("Task 2 routes both phases through a raw-R Node launcher and pinned-pwsh in
   assert.match(inner, /^#Requires -Version 7\.3/m);
   assert.match(inner, /Invoke-ReviewedSourceGate -Commit \$ReviewedTree/);
   assert.match(inner, /Invoke-ReviewedPowerShellBlob/);
+  assert.match(
+    inner,
+    /JsonSerializer\]::Serialize\(\s*\[object\]\[string\[\]\]\$Arguments,\s*\[type\]\[string\[\]\],\s*\[Text\.Json\.JsonSerializerOptions\]::new\(\)\s*\)/s,
+  );
   assert.match(inner, /Parser\]::ParseInput/);
   assert.match(inner, /GetScriptBlock\(\)/);
   assert.match(inner, /build-reproducible-image\.ps1/);
