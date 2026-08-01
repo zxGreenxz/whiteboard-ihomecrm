@@ -358,7 +358,7 @@ jobs:
             "$diagnostic_source" "$diagnostic_output" "$diagnostic_home" "$diagnostic_cache"
           trap 'status=$?; printf "diagnostic_exit=%s\n" "$status" > "$diagnostic_output/diagnostic-status.txt"; chown openclaw-runner:openclaw-runner "$diagnostic_output/diagnostic-status.txt"' EXIT
 
-          /usr/bin/git -C "$source_root" archive --format=tar "$REVIEWED_R" | \
+          runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" archive --format=tar "$REVIEWED_R" | \
             tar --extract --directory "$diagnostic_source"
           cp "$vendor_root/FORK.json" "$diagnostic_output/reviewed-FORK.json"
           cp "$vendor_root/artifacts/openclaw-zalouser-2026.7.1.tgz" \
