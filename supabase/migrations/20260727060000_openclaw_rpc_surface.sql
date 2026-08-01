@@ -1881,6 +1881,58 @@ begin
 end;
 $function$;
 
+create or replace function public.openclaw_resolve_media_object_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_result jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','mediaId'],
+    array['version','organizationId','mediaId']
+  );
+  v_context := app_private.openclaw_browser_context_v1(
+    p_request, 'openclaw_zalo.view', 'xem media OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  -- Only rows whose bytes are readable resolve. QUARANTINED and DELETED media
+  -- never yield a ticket, so issuance stops the moment retention acts.
+  select jsonb_build_object(
+    'version', 1,
+    'mediaId', media.id,
+    'organizationId', media.organization_id,
+    'accountId', media.account_id,
+    'conversationId', media.conversation_id,
+    'messageId', media.message_id,
+    'mime', media.mime,
+    'byteLength', media.byte_length,
+    'sha256', media.sha256,
+    'objectKey', media.object_key,
+    'byteState', media.byte_state,
+    'sessionGeneration', account.session_generation
+  ) into v_result
+  from public.openclaw_message_media media
+  join public.openclaw_accounts account
+    on account.organization_id = media.organization_id
+   and account.id = media.account_id
+  where media.organization_id = v_org
+    and media.id = (p_request ->> 'mediaId')::uuid
+    and media.byte_state in ('CACHED','AVAILABLE')
+    and media.object_key is not null
+    and media.sha256 is not null;
+  if v_result is null then
+    raise exception 'media object is not available' using errcode = 'P0002';
+  end if;
+  return v_result;
+end;
+$function$;
+
 create or replace function public.openclaw_list_unknown_v1(p_request jsonb)
 returns jsonb
 language plpgsql
@@ -6595,6 +6647,9 @@ grant execute on function public.openclaw_get_overview_v1(jsonb) to authenticate
 alter function public.openclaw_list_conversations_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_conversations_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_conversations_v1(jsonb) to authenticated;
+alter function public.openclaw_resolve_media_object_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_resolve_media_object_v1(jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_resolve_media_object_v1(jsonb) to authenticated;
 alter function public.openclaw_list_messages_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_messages_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_messages_v1(jsonb) to authenticated;

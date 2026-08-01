@@ -28,6 +28,7 @@ const browserReadRpcs = [
   "openclaw_list_health_events_v1",
   "openclaw_list_legal_holds_v1",
   "openclaw_poll_qr_login_v1",
+  "openclaw_resolve_media_object_v1",
 ] as const;
 
 const browserWriterRpcs = [
@@ -184,7 +185,7 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
   it("creates the versioned migration and exact 47/35/35 RPC inventory", () => {
     expect(existsSync(migrationPath)).toBe(true);
     const source = sql();
-    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(47);
+    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(48);
     expect(serviceRoutines).toHaveLength(35);
 
     for (const name of browserReadRpcs) {
@@ -217,7 +218,7 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     const actualPublic = [...source.matchAll(
       /^create\s+or\s+replace\s+function\s+public\.(openclaw_[a-z0-9_]+)\s*\(/gim,
     )].map((match) => match[1]);
-    expect(actualPublic).toHaveLength(82);
+    expect(actualPublic).toHaveLength(83);
     expect(new Set(actualPublic)).toEqual(new Set([
       ...browserReadRpcs,
       ...browserWriterRpcs,

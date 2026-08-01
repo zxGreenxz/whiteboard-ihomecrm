@@ -1,0 +1,21 @@
+{
+  "name": "@ihome/openclaw-media-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit false --outDir dist",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "deploy": "npm run build && npm test && npm run typecheck && node scripts/deploy.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260801.1",
+    "@types/node": "22.16.5",
+    "typescript": "5.8.3",
+    "vitest": "4.1.10"
+  }
+}

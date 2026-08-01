@@ -1,0 +1,24 @@
+name = "openclaw-media-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# The gateway is private: no workers.dev subdomain, no Worker custom domain,
+# and no public R2 endpoint. Browser reads arrive only through the exact zone
+# route below.
+workers_dev = false
+
+routes = [
+  { pattern = "openclaw-media.chillhome.io.vn/*", zone_name = "chillhome.io.vn" }
+]
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "ihome-openclaw-media-private"
+
+[[durable_objects.bindings]]
+name = "TICKET_STATE"
+class_name = "TicketState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TicketState"]
