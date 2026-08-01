@@ -7,10 +7,17 @@ runtime_root=${OPENCLAW_RUNTIME_ROOT:-/srv/openclaw-runtime}
 runtime_env=
 name=
 source_file=
-session_rotation_started=0
-cell_was_running=0
+rotation_started=0
+affected_services=
+running_services=
 node_path=/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node
 active_secret_snapshot=
+current_pointer=
+live_backup=
+snapshot_backup=
+snapshot_update=
+snapshot_restore=
+live_restore=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -26,8 +33,26 @@ done
   exit 64
 }
 [ -n "$source_file" ] && [ -f "$source_file" ] || { echo "--source-file is required" >&2; exit 64; }
+docker_host=${DOCKER_HOST:-}
+case "$docker_host" in
+  unix:///run/user/*/docker.sock) ;;
+  *) echo "DOCKER_HOST must use the dedicated rootless Unix socket" >&2; exit 64 ;;
+esac
+docker_host_uid=${docker_host#unix:///run/user/}
+docker_host_uid=${docker_host_uid%/docker.sock}
+case "$docker_host_uid" in
+  ''|*[!0-9]*) echo "DOCKER_HOST rootless UID is invalid" >&2; exit 64 ;;
+esac
+[ "$docker_host_uid" = "$(id -u)" ] || {
+  echo "DOCKER_HOST must belong to the current rootless runner" >&2
+  exit 64
+}
 case "$name" in
-  openclaw_session_key|openclaw_zalo_bridge_hmac|openclaw_customer_ai_key|openclaw_runtime_credential|openclaw_gateway_device_token|openclaw_gateway_device_identity|openclaw_qr_encryption_key|openclaw_maintenance_credential|openclaw_audit_private_key) ;;
+  openclaw_session_key) affected_services=cell ;;
+  openclaw_zalo_bridge_hmac) affected_services="cell bridge" ;;
+  openclaw_customer_ai_key) affected_services=cell ;;
+  openclaw_runtime_credential|openclaw_gateway_device_token|openclaw_gateway_device_identity|openclaw_qr_encryption_key) affected_services=bridge ;;
+  openclaw_maintenance_credential|openclaw_audit_private_key) affected_services=maintenance ;;
   *) echo "secret name is not reviewed" >&2; exit 64 ;;
 esac
 cell_id=$(sed -n 's/^OPENCLAW_CELL_ID=//p' "$runtime_env")
@@ -42,6 +67,12 @@ esac
 project="openclaw-zalo-$cell_id"
 secret_dir="$runtime_root/secrets/$cell_id"
 install -d -m 0700 "$secret_dir"
+rm -f \
+  "$secret_dir/$name.backup."* \
+  "$secret_dir/$name.restore."* \
+  "$secret_dir/$name.rollback."* \
+  "$secret_dir/$name.tmp."*
+sync -f "$secret_dir"
 tmp="$secret_dir/$name.tmp.$$"
 cleanup_candidate() {
   status=$?
@@ -91,89 +122,135 @@ resolve_active_secret_snapshot() {
   esac
   active_secret_snapshot="$runtime_root/secrets/$cell_id/.deployments/$snapshot_name"
   [ -d "$active_secret_snapshot" ] && [ ! -L "$active_secret_snapshot" ] && \
-    [ -s "$active_secret_snapshot/$name" ] && [ ! -L "$active_secret_snapshot/$name" ] && \
+    [ -f "$active_secret_snapshot/$name" ] && [ ! -L "$active_secret_snapshot/$name" ] && \
+    [ -s "$active_secret_snapshot/$name" ] && \
+    [ "$(stat -c %u "$active_secret_snapshot/$name")" = "$(id -u)" ] && \
     [ "$(stat -c %a "$active_secret_snapshot/$name")" = "400" ] || {
     echo "active deployment secret snapshot is invalid" >&2
     return 1
   }
 }
 
-update_active_secret_snapshot() {
+prepare_rotation_backups() {
+  [ -f "$secret_dir/$name" ] && [ ! -L "$secret_dir/$name" ] && \
+    [ -s "$secret_dir/$name" ] && \
+    [ "$(stat -c %u "$secret_dir/$name")" = "$(id -u)" ] && \
+    [ "$(stat -c %a "$secret_dir/$name")" = "400" ] || {
+    echo "active secret must be a runner-owned 0400 regular file" >&2
+    return 1
+  }
+  live_backup="$secret_dir/$name.backup.$$"
+  if ! install -m 0400 "$secret_dir/$name" "$live_backup" || ! sync -f "$live_backup"; then
+    rm -f "$live_backup"
+    live_backup=
+    return 1
+  fi
   [ -n "$active_secret_snapshot" ] || return 0
+  rm -f \
+    "$active_secret_snapshot/$name.backup."* \
+    "$active_secret_snapshot/$name.update."* \
+    "$active_secret_snapshot/$name.restore."*
   snapshot_backup="$active_secret_snapshot/$name.backup.$$"
-  snapshot_update="$active_secret_snapshot/$name.update.$$"
   if ! install -m 0400 "$active_secret_snapshot/$name" "$snapshot_backup" ||
     ! sync -f "$snapshot_backup"
   then
-    rm -f "$snapshot_backup"
-    live_restore="$secret_dir/$name.restore.$$"
-    if install -m 0400 "$active_secret_snapshot/$name" "$live_restore" &&
-      sync -f "$live_restore" &&
-      mv -f "$live_restore" "$secret_dir/$name" &&
-      sync -f "$secret_dir"
-    then
-      echo "failed to prepare deployment snapshot update; restored prior key" >&2
-      return 1
-    fi
-    rm -f "$current_pointer" "$live_restore"
-    echo "secret rollback failed; deployment snapshot invalidated" >&2
+    rm -f "$live_backup" "$snapshot_backup"
+    live_backup=
+    snapshot_backup=
     return 1
   fi
-  if install -m 0400 "$secret_dir/$name" "$snapshot_update" &&
+}
+
+update_active_secret_snapshot() {
+  [ -n "$active_secret_snapshot" ] || return 0
+  snapshot_update="$active_secret_snapshot/$name.update.$$"
+  install -m 0400 "$secret_dir/$name" "$snapshot_update" &&
     sync -f "$snapshot_update" &&
     mv -f "$snapshot_update" "$active_secret_snapshot/$name" &&
     sync -f "$active_secret_snapshot"
-  then
-    rm -f "$snapshot_backup"
-    sync -f "$active_secret_snapshot"
-    return 0
-  else
-    update_status=$?
-  fi
+}
 
-  echo "failed to update active deployment secret snapshot; restoring prior key" >&2
-  snapshot_restore="$active_secret_snapshot/$name.restore.$$"
+compose() {
+  /usr/bin/env -i PATH="$PATH" DOCKER_HOST="$docker_host" \
+    docker compose --project-name "$project" --env-file "$runtime_env" \
+    -f "$infra_dir/compose.cell.yaml" "$@"
+}
+
+recreate_affected_services() {
+  [ -n "$running_services" ] || return 0
+  # Values come only from the closed mapping above; word splitting is intentional.
+  compose up -d --no-build --force-recreate --no-deps --wait $running_services
+}
+
+finish_rotation() {
+  rm -f "$live_backup" "$snapshot_backup" "$snapshot_update" "$snapshot_restore" "$live_restore"
+  sync -f "$secret_dir"
+  [ -z "$active_secret_snapshot" ] || sync -f "$active_secret_snapshot"
+}
+
+restore_rotation_state() {
+  restored=1
+  if [ -n "$active_secret_snapshot" ]; then
+    snapshot_restore="$active_secret_snapshot/$name.restore.$$"
+    if install -m 0400 "$snapshot_backup" "$snapshot_restore" &&
+      sync -f "$snapshot_restore" &&
+      mv -f "$snapshot_restore" "$active_secret_snapshot/$name" &&
+      sync -f "$active_secret_snapshot"
+    then
+      :
+    else
+      restored=0
+    fi
+  fi
   live_restore="$secret_dir/$name.restore.$$"
-  if install -m 0400 "$snapshot_backup" "$snapshot_restore" &&
-    sync -f "$snapshot_restore" &&
-    mv -f "$snapshot_restore" "$active_secret_snapshot/$name" &&
-    sync -f "$active_secret_snapshot" &&
-    install -m 0400 "$snapshot_backup" "$live_restore" &&
+  if install -m 0400 "$live_backup" "$live_restore" &&
     sync -f "$live_restore" &&
     mv -f "$live_restore" "$secret_dir/$name" &&
     sync -f "$secret_dir"
   then
-    rm -f "$snapshot_backup" "$snapshot_update"
-    return "$update_status"
+    :
+  else
+    restored=0
   fi
-  rm -f "$current_pointer" "$snapshot_backup" "$snapshot_update" "$snapshot_restore" "$live_restore"
+
+  if [ "$restored" -eq 1 ] && recreate_affected_services; then
+    finish_rotation
+    return 0
+  fi
+  if [ -n "$current_pointer" ]; then
+    rm -f "$current_pointer"
+    sync -f "$deployment_root"
+  fi
+  finish_rotation
   echo "secret rollback failed; deployment snapshot invalidated" >&2
   return 1
-}
-
-compose() {
-  docker compose --project-name "$project" --env-file "$runtime_env" \
-    -f "$infra_dir/compose.cell.yaml" "$@"
 }
 
 resume_after_rotation_failure() {
   status=$?
   trap - EXIT
   if [ -n "$tmp" ] && [ -f "$tmp" ]; then rm -f "$tmp"; fi
-  if [ "$status" -ne 0 ] && [ "$session_rotation_started" -eq 1 ] && [ "$cell_was_running" -eq 1 ]; then
-    compose up -d --no-build --force-recreate --no-deps --wait cell || echo "failed to recreate cell after rotation error" >&2
+  if [ "$status" -ne 0 ] && [ "$rotation_started" -eq 1 ]; then
+    restore_rotation_state || echo "failed to recover services after rotation error" >&2
   fi
   exit "$status"
 }
 
 resolve_active_secret_snapshot
-if [ "$name" = "openclaw_session_key" ]; then
-  trap resume_after_rotation_failure EXIT
-  session_rotation_started=1
-  if [ -n "$(compose ps -q cell)" ]; then
-    cell_was_running=1
-    compose stop --timeout 30 cell
+for service in $affected_services; do
+  if [ -n "$(compose ps -q "$service")" ]; then
+    running_services="$running_services $service"
   fi
+done
+prepare_rotation_backups
+rotation_started=1
+trap resume_after_rotation_failure EXIT
+if [ "$name" = "openclaw_session_key" ]; then
+  case " $running_services " in
+    *" cell "*)
+    compose stop --timeout 30 cell
+    ;;
+  esac
   # Remove ciphertext while the old key is still installed. Any later failure
   # therefore leaves either the old usable pair or a clean QR-login state.
   compose run --rm --no-deps -T --entrypoint sh cell -c \
@@ -184,15 +261,15 @@ mv -f "$tmp" "$secret_dir/$name"
 tmp=
 sync -f "$secret_dir"
 update_active_secret_snapshot
+recreate_affected_services
+rotation_started=0
+finish_rotation
+trap - EXIT
 
 if [ "$name" = "openclaw_session_key" ]; then
-  if [ "$cell_was_running" -eq 1 ]; then
-    compose up -d --no-build --force-recreate --no-deps --wait cell
-  fi
-  session_rotation_started=0
-  trap - EXIT
   echo "rotated $name for $cell_id; encrypted session cleared and QR login required"
+elif [ -n "$running_services" ]; then
+  echo "rotated $name for $cell_id; force-recreated:$running_services"
 else
-  trap - EXIT
-  echo "rotated $name for $cell_id; restart the affected service"
+  echo "rotated $name for $cell_id; affected services will load it on next start"
 fi

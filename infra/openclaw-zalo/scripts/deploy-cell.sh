@@ -62,6 +62,32 @@ compose() {
   compose_with "$runtime_env" "$infra_dir/compose.cell.yaml" "$@"
 }
 
+cleanup_live_secret_temporaries() {
+  live_secret_dir="$runtime_root/secrets/$cell_id"
+  [ -d "$live_secret_dir" ] && [ ! -L "$live_secret_dir" ] || {
+    echo "candidate secret directory is unsafe" >&2
+    return 1
+  }
+  for secret in \
+    openclaw_session_key \
+    openclaw_zalo_bridge_hmac \
+    openclaw_customer_ai_key \
+    openclaw_runtime_credential \
+    openclaw_gateway_device_token \
+    openclaw_gateway_device_identity \
+    openclaw_qr_encryption_key \
+    openclaw_maintenance_credential \
+    openclaw_audit_private_key
+  do
+    rm -f \
+      "$live_secret_dir/$secret.backup."* \
+      "$live_secret_dir/$secret.rollback."* \
+      "$live_secret_dir/$secret.restore."* \
+      "$live_secret_dir/$secret.tmp."*
+  done
+  sync -f "$live_secret_dir"
+}
+
 validate_candidate() {
   candidate_images=$(compose config --images)
   [ -n "$candidate_images" ] || { echo "candidate stack has no reviewed images" >&2; return 1; }
@@ -84,8 +110,17 @@ validate_candidate() {
     openclaw_maintenance_credential \
     openclaw_audit_private_key
   do
-    [ -s "$secret_dir/$secret" ] || {
-      echo "candidate secret is missing or empty: $secret" >&2
+    [ -f "$secret_dir/$secret" ] && [ ! -L "$secret_dir/$secret" ] && \
+      [ -s "$secret_dir/$secret" ] || {
+      echo "candidate secret must be a non-empty regular file: $secret" >&2
+      return 1
+    }
+    [ "$(stat -c %u "$secret_dir/$secret")" = "$(id -u)" ] || {
+      echo "candidate secret owner must be the rootless runner: $secret" >&2
+      return 1
+    }
+    [ "$(stat -c %a "$secret_dir/$secret")" = "400" ] || {
+      echo "candidate secret mode must be 0400: $secret" >&2
       return 1
     }
   done
@@ -456,6 +491,7 @@ cell_id=$(sed -n 's/^OPENCLAW_CELL_ID=//p' "$runtime_env")
 project="openclaw-zalo-$cell_id"
 baseline_dir="$runtime_root/operations/$cell_id"
 install -d -m 0700 "$baseline_dir"
+cleanup_live_secret_temporaries
 validate_candidate
 capture_active_stack
 if [ "$had_active_stack" -eq 1 ]; then

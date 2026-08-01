@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,10 @@ async function text(path: string) {
   return readFile(resolve(root, path), "utf8");
 }
 
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
 describe("Task 19 host and lifecycle scripts", () => {
   it("ships strict POSIX entrypoints and never targets rootful/global host controls", async () => {
     for (const name of scripts) {
@@ -37,6 +41,10 @@ describe("Task 19 host and lifecycle scripts", () => {
       expect(source).not.toMatch(/\bufw\b|iptables|nft\s/i);
       expect(source).not.toMatch(/ssh[^\n]*(?:9router|cli-proxy)|DOCKER_HOST[^\n]*(?:9router|cli-proxy)/i);
       expect(source).not.toMatch(/\beval\b/);
+      if (source.includes("docker compose")) {
+        expect(source).toContain("/usr/bin/env -i");
+        expect(source).toContain('DOCKER_HOST="$docker_host"');
+      }
     }
   });
 
@@ -86,6 +94,11 @@ describe("Task 19 host and lifecycle scripts", () => {
     expect(source).toContain("persist_active_snapshot");
     expect(source).toContain("cleanup_failed_snapshot");
     expect(source).toContain("cleanup_superseded_snapshots");
+    expect(source).toContain("cleanup_live_secret_temporaries");
+    expect(source).toContain('"$live_secret_dir/$secret.backup."*');
+    expect(source).toContain('"$live_secret_dir/$secret.rollback."*');
+    expect(source).toContain('"$live_secret_dir/$secret.restore."*');
+    expect(source).toContain('"$live_secret_dir/$secret.tmp."*');
     expect(source).toContain('"$snapshots_root"/snapshot-*');
     expect(source).toContain('"$secret_snapshots_root"/snapshot-*');
     expect(source).toContain("active_secret_snapshot");
@@ -239,6 +252,16 @@ describe("Task 19 host and lifecycle scripts", () => {
           );
           await chmod(join(orphanSecretRoot, `openclaw_session_key.${suffix}`), 0o400);
         }
+        const liveCrashLeftovers = [
+          join(liveSecretRoot, "openclaw_session_key.backup.200"),
+          join(liveSecretRoot, "openclaw_session_key.rollback.201"),
+          join(liveSecretRoot, "openclaw_session_key.restore.202"),
+          join(liveSecretRoot, "openclaw_session_key.tmp.203"),
+        ];
+        for (const leftover of liveCrashLeftovers) {
+          await writeFile(leftover, "live-crash-leftover\n");
+          await chmod(leftover, 0o400);
+        }
 
         for (const helper of [
           "preflight-host.sh",
@@ -256,7 +279,7 @@ describe("Task 19 host and lifecycle scripts", () => {
         const fakeDocker = join(fakeBin, "docker");
         const dockerSource = [
           "#!/bin/sh",
-          "printf '%s\\n' \"$*\" >> \"$OPENCLAW_DOCKER_LOG\"",
+          "printf '%s\\n' \"$*\" >> " + shellQuote(dockerLog),
           "case \"$*\" in",
           "  *\" config --images\")",
           ...services.map(
@@ -280,11 +303,11 @@ describe("Task 19 host and lifecycle scripts", () => {
           ]),
           "  *\"{{.State.Running}} \"*) printf '%s\\n' true; exit 0 ;;",
           "  *\" up -d \"*)",
-          "    printf '%s\\n' \"${OPENCLAW_FENCING_TOKEN-unset}\" >> \"$OPENCLAW_UP_ENV_LOG\"",
+          "    printf '%s\\n' \"${OPENCLAW_FENCING_TOKEN-unset}\" >> " + shellQuote(upEnvLog),
           "    count=0",
-          "    [ ! -f \"$OPENCLAW_UP_COUNT\" ] || count=$(cat \"$OPENCLAW_UP_COUNT\")",
+          "    [ ! -f " + shellQuote(upCount) + " ] || count=$(cat " + shellQuote(upCount) + ")",
           "    count=$((count + 1))",
-          "    printf '%s\\n' \"$count\" > \"$OPENCLAW_UP_COUNT\"",
+          "    printf '%s\\n' \"$count\" > " + shellQuote(upCount),
           "    [ \"$count\" -ne 1 ] || exit 42",
           "    exit 0 ;;",
           "esac",
@@ -317,6 +340,9 @@ describe("Task 19 host and lifecycle scripts", () => {
           },
         );
         expect(result.status, result.stderr).toBe(42);
+        for (const leftover of liveCrashLeftovers) {
+          expect(existsSync(leftover)).toBe(false);
+        }
         expect(await readFile(liveConfig, "utf8")).toBe("active-allowlist\n");
         for (const secret of secretNames) {
           expect(await readFile(join(liveSecretRoot, secret), "utf8")).toBe(
@@ -392,6 +418,110 @@ describe("Task 19 host and lifecycle scripts", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "rejects host-readable and linked candidate secrets before deployment mutation",
+    async () => {
+      const work = await mkdtemp(join(tmpdir(), "openclaw-deploy-secret-mode-"));
+      const cellId = "dddd2000-0000-4000-8000-000000000001";
+      const secretNames = [
+        "openclaw_session_key",
+        "openclaw_zalo_bridge_hmac",
+        "openclaw_customer_ai_key",
+        "openclaw_runtime_credential",
+        "openclaw_gateway_device_token",
+        "openclaw_gateway_device_identity",
+        "openclaw_qr_encryption_key",
+        "openclaw_maintenance_credential",
+        "openclaw_audit_private_key",
+      ] as const;
+      try {
+        const fakeInfra = join(work, "infra");
+        const fakeScripts = join(fakeInfra, "scripts");
+        const fakeBin = join(work, "bin");
+        const runtimeRoot = join(work, "runtime");
+        const runtimeEnv = join(work, "runtime.env");
+        const secretRoot = join(runtimeRoot, "secrets", cellId);
+        const dockerLog = join(work, "docker.log");
+        await mkdir(fakeScripts, { recursive: true });
+        await mkdir(fakeBin, { recursive: true });
+        await mkdir(secretRoot, { recursive: true });
+        await mkdir(join(runtimeRoot, "operations"), { recursive: true });
+        await writeFile(join(runtimeRoot, "operations", "transfer-quota.json"), "{}\n");
+        await writeFile(runtimeEnv, `OPENCLAW_CELL_ID=${cellId}\n`);
+        await chmod(runtimeEnv, 0o600);
+        await writeFile(join(fakeInfra, "compose.cell.yaml"), "name: candidate\n");
+        await copyFile(
+          resolve(root, "infra/openclaw-zalo/scripts/deploy-cell.sh"),
+          join(fakeScripts, "deploy-cell.sh"),
+        );
+        await chmod(join(fakeScripts, "deploy-cell.sh"), 0o755);
+        for (const helper of [
+          "preflight-host.sh",
+          "render-cell.sh",
+          "snapshot-host-baseline.sh",
+          "verify-isolation.sh",
+          "smoke-cell.sh",
+          "rollback-cell.sh",
+        ]) {
+          await writeFile(join(fakeScripts, helper), "#!/bin/sh\nexit 0\n");
+          await chmod(join(fakeScripts, helper), 0o755);
+        }
+        for (const secret of secretNames) {
+          await writeFile(join(secretRoot, secret), `${secret}-value\n`);
+          await chmod(join(secretRoot, secret), 0o400);
+        }
+        const fakeDocker = join(fakeBin, "docker");
+        await writeFile(
+          fakeDocker,
+          [
+            "#!/bin/sh",
+            "printf '%s\\n' \"$*\" >> " + shellQuote(dockerLog),
+            'case "$*" in',
+            '  *" config --images") printf \'%s\\n\' "ihome/test@sha256:' + "a".repeat(64) + '" ;;',
+            "esac",
+            "exit 0",
+            "",
+          ].join("\n"),
+        );
+        await chmod(fakeDocker, 0o755);
+        const runDeploy = () =>
+          spawnSync("sh", [join(fakeScripts, "deploy-cell.sh"), "--runtime-env", runtimeEnv], {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              DOCKER_HOST: `unix:///run/user/${process.getuid?.() ?? 1001}/docker.sock`,
+              OPENCLAW_RUNTIME_ROOT: runtimeRoot,
+              OPENCLAW_TRANSFER_QUOTA_RECORD: join(
+                runtimeRoot,
+                "operations",
+                "transfer-quota.json",
+              ),
+              PATH: [fakeBin, process.env.PATH ?? ""].join(":"),
+            },
+          });
+
+        const auditKey = join(secretRoot, "openclaw_audit_private_key");
+        await chmod(auditKey, 0o644);
+        const readableResult = runDeploy();
+        expect(readableResult.status).not.toBe(0);
+        expect(readableResult.stderr).toContain("mode must be 0400");
+
+        await rm(auditKey);
+        const linkedTarget = join(work, "linked-audit-key");
+        await writeFile(linkedTarget, "linked-secret\n");
+        await chmod(linkedTarget, 0o400);
+        await symlink(linkedTarget, auditKey);
+        const linkedResult = runDeploy();
+        expect(linkedResult.status).not.toBe(0);
+        expect(linkedResult.stderr).toContain("non-empty regular file");
+        const commands = (await readFile(dockerLog, "utf8")).trim().split("\n");
+        expect(commands.some((command) => command.includes(" up -d "))).toBe(false);
+      } finally {
+        await rm(work, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("tests direct isolation from every app container and uses only the DEMO caller vector", async () => {
     const source = await text("infra/openclaw-zalo/scripts/verify-isolation.sh");
     for (const service of ["cell", "bridge", "maintenance"]) {
@@ -443,15 +573,13 @@ describe("Task 19 host and lifecycle scripts", () => {
     const stop = source.indexOf("compose stop --timeout 30 cell");
     const clear = source.indexOf("rm -f /var/lib/openclaw-session/zalouser/credentials.json");
     const replace = source.indexOf('mv -f "$tmp" "$secret_dir/$name"');
-    const recreateCommand = "compose up -d --no-build --force-recreate --no-deps --wait cell";
-    const restart = source.lastIndexOf(recreateCommand);
     expect(validate).toBeGreaterThan(-1);
     expect(stop).toBeGreaterThan(validate);
     expect(clear).toBeGreaterThan(stop);
     expect(replace).toBeGreaterThan(clear);
-    expect(restart).toBeGreaterThan(replace);
-    expect(source.match(new RegExp(recreateCommand, "g"))).toHaveLength(2);
-    expect(source).not.toContain("compose up -d --no-build --wait cell");
+    expect(source).toContain("recreate_affected_services");
+    expect(source).toContain('openclaw_zalo_bridge_hmac) affected_services="cell bridge"');
+    expect(source).toContain('stat -c %a "$secret_dir/$name"');
     expect(source).toContain("resume_after_rotation_failure");
     expect(source).toContain("update_active_secret_snapshot");
     expect(source).toContain("active_secret_snapshot");
@@ -469,10 +597,26 @@ describe("Task 19 host and lifecycle scripts", () => {
         const runtimeEnv = join(work, "runtime.env");
         const sourceKey = join(work, "new-session-key");
         const dockerLog = join(work, "docker.log");
+        const dockerEnvLog = join(work, "docker-env.log");
         const fakeDocker = join(bin, "docker");
         await mkdir(bin, { recursive: true });
+        const activeSecretDir = join(
+          runtimeRoot,
+          "secrets",
+          "dddd2000-0000-4000-8000-000000000001",
+        );
+        await mkdir(activeSecretDir, { recursive: true });
         await writeFile(runtimeEnv, "OPENCLAW_CELL_ID=dddd2000-0000-4000-8000-000000000001\n");
         await chmod(runtimeEnv, 0o600);
+        await writeFile(
+          join(activeSecretDir, "openclaw_session_key"),
+          JSON.stringify({
+            activeGeneration: "g0",
+            keys: { g0: Buffer.alloc(32, 0x10).toString("base64") },
+            version: 1,
+          }) + "\n",
+        );
+        await chmod(join(activeSecretDir, "openclaw_session_key"), 0o400);
         await writeFile(
           sourceKey,
           JSON.stringify({
@@ -483,7 +627,15 @@ describe("Task 19 host and lifecycle scripts", () => {
         );
         await writeFile(
           fakeDocker,
-          `#!/bin/sh\nprintf '%s\\n' "$*" >> "$OPENCLAW_DOCKER_LOG"\ncase " $* " in\n  *" ps -q cell "*) printf '%s\\n' fake-cell ;;\nesac\n`,
+          [
+            "#!/bin/sh",
+            "printf '%s\\n' \"$*\" >> " + shellQuote(dockerLog),
+            "printf '%s\\n' \"${OPENCLAW_FENCING_TOKEN-unset}\" >> " + shellQuote(dockerEnvLog),
+            'case " $* " in',
+            '  *" ps -q cell "*) printf \'%s\\n\' fake-cell ;;',
+            "esac",
+            "",
+          ].join("\n"),
         );
         await chmod(fakeDocker, 0o755);
 
@@ -502,8 +654,9 @@ describe("Task 19 host and lifecycle scripts", () => {
             encoding: "utf8",
             env: {
               ...process.env,
-              OPENCLAW_DOCKER_LOG: dockerLog,
               OPENCLAW_RUNTIME_ROOT: runtimeRoot,
+              OPENCLAW_FENCING_TOKEN: "ambient-must-not-win",
+              DOCKER_HOST: `unix:///run/user/${process.getuid?.() ?? 1001}/docker.sock`,
               PATH: `${bin}:${process.env.PATH ?? ""}`,
             },
           },
@@ -518,6 +671,110 @@ describe("Task 19 host and lifecycle scripts", () => {
         expect(clear).toBeGreaterThan(stop);
         expect(recreate).toBeGreaterThan(clear);
         expect(commands.filter((command) => command.includes(" up "))).toHaveLength(1);
+        expect((await readFile(dockerEnvLog, "utf8")).trim().split("\n")).toEqual(
+          commands.map(() => "unset"),
+        );
+      } finally {
+        await rm(work, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "force-recreates non-session consumers and restores both copies after activation failure",
+    async () => {
+      const work = await mkdtemp(join(tmpdir(), "openclaw-rotate-runtime-"));
+      const cellId = "dddd2000-0000-4000-8000-000000000001";
+      const name = "openclaw_runtime_credential";
+      try {
+        const bin = join(work, "bin");
+        const runtimeRoot = join(work, "runtime");
+        const runtimeEnv = join(work, "runtime.env");
+        const sourceSecret = join(work, "new-runtime-secret");
+        const dockerLog = join(work, "docker.log");
+        const dockerEnvLog = join(work, "docker-env.log");
+        const upCount = join(work, "up-count");
+        const secretDir = join(runtimeRoot, "secrets", cellId);
+        const snapshotName = "snapshot-active";
+        const snapshotDir = join(secretDir, ".deployments", snapshotName);
+        const deploymentRoot = join(runtimeRoot, "operations", cellId, "deployments");
+        const oldSecret = "old-runtime-secret\n";
+        const newSecret = "new-runtime-secret\n";
+        await mkdir(bin, { recursive: true });
+        await mkdir(snapshotDir, { recursive: true });
+        await mkdir(deploymentRoot, { recursive: true });
+        await writeFile(runtimeEnv, `OPENCLAW_CELL_ID=${cellId}\n`);
+        await chmod(runtimeEnv, 0o600);
+        await writeFile(sourceSecret, newSecret);
+        await chmod(sourceSecret, 0o400);
+        await writeFile(join(secretDir, name), oldSecret);
+        await chmod(join(secretDir, name), 0o400);
+        await writeFile(join(snapshotDir, name), oldSecret);
+        await chmod(join(snapshotDir, name), 0o400);
+        await writeFile(join(deploymentRoot, "current"), `${snapshotName}\n`);
+        await chmod(join(deploymentRoot, "current"), 0o600);
+
+        const fakeDocker = join(bin, "docker");
+        await writeFile(
+          fakeDocker,
+          [
+            "#!/bin/sh",
+            "printf '%s\\n' \"$*\" >> " + shellQuote(dockerLog),
+            "printf '%s\\n' \"${OPENCLAW_FENCING_TOKEN-unset}\" >> " + shellQuote(dockerEnvLog),
+            'case " $* " in',
+            '  *" ps -q bridge "*) printf \'%s\\n\' fake-bridge ;;',
+            '  *" up -d "*)',
+            "    count=0",
+            "    [ ! -f " + shellQuote(upCount) + " ] || count=$(cat " + shellQuote(upCount) + ")",
+            "    count=$((count + 1))",
+            "    printf '%s\\n' \"$count\" > " + shellQuote(upCount),
+            '    [ "$count" -ne 1 ] || exit 42 ;;',
+            "esac",
+            "exit 0",
+            "",
+          ].join("\n"),
+        );
+        await chmod(fakeDocker, 0o755);
+        const runRotation = () =>
+          spawnSync(
+            "sh",
+            [
+              resolve(root, "infra/openclaw-zalo/scripts/rotate-secrets.sh"),
+              "--runtime-env",
+              runtimeEnv,
+              "--name",
+              name,
+              "--source-file",
+              sourceSecret,
+            ],
+            {
+              encoding: "utf8",
+              env: {
+                ...process.env,
+                DOCKER_HOST: `unix:///run/user/${process.getuid?.() ?? 1001}/docker.sock`,
+                OPENCLAW_FENCING_TOKEN: "ambient-must-not-win",
+                OPENCLAW_RUNTIME_ROOT: runtimeRoot,
+                PATH: [bin, process.env.PATH ?? ""].join(":"),
+              },
+            },
+          );
+
+        const failed = runRotation();
+        expect(failed.status).toBe(42);
+        expect(await readFile(join(secretDir, name), "utf8")).toBe(oldSecret);
+        expect(await readFile(join(snapshotDir, name), "utf8")).toBe(oldSecret);
+
+        const succeeded = runRotation();
+        expect(succeeded.status, succeeded.stderr).toBe(0);
+        expect(await readFile(join(secretDir, name), "utf8")).toBe(newSecret);
+        expect(await readFile(join(snapshotDir, name), "utf8")).toBe(newSecret);
+        const commands = (await readFile(dockerLog, "utf8")).trim().split("\n");
+        const upCommands = commands.filter((command) => command.includes(" up -d "));
+        expect(upCommands).toHaveLength(3);
+        expect(upCommands.every((command) => command.endsWith(" bridge"))).toBe(true);
+        expect((await readFile(dockerEnvLog, "utf8")).trim().split("\n")).toEqual(
+          commands.map(() => "unset"),
+        );
       } finally {
         await rm(work, { recursive: true, force: true });
       }
@@ -600,6 +857,7 @@ describe("Task 19 host and lifecycle scripts", () => {
               ...process.env,
               OPENCLAW_DOCKER_LOG: dockerLog,
               OPENCLAW_RUNTIME_ROOT: runtimeRoot,
+              DOCKER_HOST: `unix:///run/user/${process.getuid?.() ?? 1001}/docker.sock`,
               PATH: [bin, process.env.PATH ?? ""].join(":"),
             },
           },
