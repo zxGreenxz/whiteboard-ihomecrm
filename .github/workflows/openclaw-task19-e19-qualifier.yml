@@ -1,0 +1,464 @@
+name: OpenClaw Task 19 E19 qualifier
+
+on:
+  push:
+    branches:
+      - codex/openclaw-e19-qualifier-8d2df9a
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openclaw-task19-e19-qualifier
+  cancel-in-progress: false
+
+env:
+  # The workflow branch is only the runner vehicle. The source branch is the
+  # reviewed product branch that the evidence helper advances from R to E.
+  EXPECTED_M: 0650187981ad9728d295fae34eff92b508e36bc8
+  REVIEWED_R: 8d2df9af619d5c7541c5f1ce29193d43980cc97a
+  SOURCE_BRANCH: codex/openclaw-zalo-20260726
+  M_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiTSIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiMDY1MDE4Nzk4MWFkOTcyOGQyOTVmYWUzNGVmZjkyYjUwOGUzNmJjOCIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC9yZXZpZXdfY2hlY2twb2ludF9tX3NwZWNfMDYyZGRmNCIsInJldmlld2VyUm9sZSI6InJldmlldmVyIiwicmV2aWV3ZXJSdW5JZCI6Ik0wNjUwMTg3LTIwMjYwNzI3VDEyMzczNFotcmV2aWV3Iiwic2NoZW1hIjoxfQo=
+  R_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiUiIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiOGQyZGY5YWY2MTlkNWM3NTQxYzVmMWNlMjkxOTNkNDM5ODBjYzk3YSIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC90MTlfZXhhY3RfcmV2aWV3MyIsInJldmlld2VyUm9sZSI6InJldmlld2VyIiwicmV2aWV3ZXJSdW5JZCI6IlIxOS04ZDJkZjlhLXQxOV9leGFjdF9yZXZpZXczLTIwMjYwODAyVDAzMjY1NCswNzAwIiwic2NoZW1hIjoxfQo=
+  R_REVIEW_REPORT_SIZE: 263
+  R_REVIEW_REPORT_SHA256: 39d58c6e6daf91a629a41901ad143780af423119bb8931f6018e8ebb35f43cf7
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    container:
+      image: ubuntu:26.04@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb
+      options: --privileged --init
+    defaults:
+      run:
+        shell: bash
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Refuse to run without the independent R approval
+        run: |
+          set -euo pipefail
+          case "$R_REVIEW_REPORT_B64" in
+            __PENDING_*|"")
+              echo "::error::R review approval is not staged; refusing qualification and E push"
+              exit 1
+              ;;
+          esac
+          [[ "$EXPECTED_M" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$REVIEWED_R" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_BRANCH" =~ ^[A-Za-z0-9._/-]+$ && "$SOURCE_BRANCH" != *..* ]]
+          [[ "$R_REVIEW_REPORT_SIZE" =~ ^[1-9][0-9]*$ ]]
+          [[ "$R_REVIEW_REPORT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Provision the pinned Linux amd64 toolchain and rootless runtime
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl xz-utils tar gzip jq make gcc g++ pkg-config \
+            libicu-dev libssl-dev zlib1g libunwind8 liblttng-ust1 \
+            uidmap dbus-user-session iproute2 iptables slirp4netns \
+            fuse-overlayfs procps
+
+          if ! getent group openclaw-runner >/dev/null; then
+            groupadd --gid 1001 openclaw-runner
+          fi
+          if ! id -u openclaw-runner >/dev/null 2>&1; then
+            useradd --uid 1001 --gid 1001 --create-home --shell /bin/bash openclaw-runner
+          fi
+          test "$(id -u openclaw-runner)" = 1001
+          test "$(id -g openclaw-runner)" = 1001
+          printf 'openclaw-runner:100000:65536\n' > /etc/subuid
+          printf 'openclaw-runner:100000:65536\n' > /etc/subgid
+
+          git_version="$(apt-cache madison git | awk -F'|' '{gsub(/[[:space:]]/,"",$2); if ($2 ~ /^1:2\\.53\\.0([.-]|$)/) {print $2; exit}')"
+          test -n "$git_version"
+          apt-get install -y --no-install-recommends "git=$git_version"
+          test "$(/usr/bin/git --version)" = 'git version 2.53.0'
+          test "$(sha256sum /usr/bin/git | cut -d' ' -f1)" = 5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a
+
+          tools_root=/opt/openclaw-tools
+          node_root="$tools_root/node-v24.15.0-linux-x64"
+          pwsh_root="$tools_root/powershell-7.6.2"
+          mkdir -p "$tools_root"
+          test ! -e "$node_root" && mkdir "$node_root"
+          curl --fail --location --retry 3 --retry-all-errors \
+            https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.xz \
+            -o /tmp/node-v24.15.0-linux-x64.tar.xz
+          tar --extract --file /tmp/node-v24.15.0-linux-x64.tar.xz --strip-components=1 --directory "$node_root"
+          test "$(stat -c '%s' "$node_root/bin/node")" = 122889056
+          test "$(sha256sum "$node_root/bin/node" | cut -d' ' -f1)" = d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c
+          test "$("$node_root/bin/node" --version)" = v24.15.0
+          "$node_root/bin/node" "$node_root/lib/node_modules/npm/bin/npm-cli.js" install \
+            --global npm@11.12.1 --ignore-scripts --no-audit --no-fund
+          test "$("$node_root/bin/node" "$node_root/lib/node_modules/npm/bin/npm-cli.js" --version)" = 11.12.1
+
+          test ! -e "$pwsh_root" && mkdir "$pwsh_root"
+          curl --fail --location --retry 3 --retry-all-errors \
+            https://github.com/PowerShell/PowerShell/releases/download/v7.6.2/powershell-7.6.2-linux-x64.tar.gz \
+            -o /tmp/powershell-7.6.2-linux-x64.tar.gz
+          tar --extract --file /tmp/powershell-7.6.2-linux-x64.tar.gz --directory "$pwsh_root"
+          chmod 0755 "$pwsh_root/pwsh"
+          test "$(sha256sum "$pwsh_root/pwsh" | cut -d' ' -f1)" = cd7ac031490349b4ffd203cadf8922af85113b84ab9bfc28a50d03730d9309bc
+          test "$("$pwsh_root/pwsh" -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()')" = 7.6.2
+
+          buildx_path="$tools_root/docker-buildx-v0.13.1"
+          curl --fail --location --retry 3 --retry-all-errors \
+            https://github.com/docker/buildx/releases/download/v0.13.1/buildx-v0.13.1.linux-amd64 \
+            -o "$buildx_path"
+          chmod 0755 "$buildx_path"
+          test "$(sha256sum "$buildx_path" | cut -d' ' -f1)" = 3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c
+          "$buildx_path" version | grep -Eq '(^|[^0-9])v?0\.13\.1([^0-9]|$)'
+
+          curl --fail --location --retry 3 --retry-all-errors \
+            https://download.docker.com/linux/static/stable/x86_64/docker-29.1.3.tgz \
+            -o /tmp/docker-29.1.3.tgz
+          mkdir /tmp/docker-static
+          tar --extract --file /tmp/docker-29.1.3.tgz --directory /tmp/docker-static
+          cp /tmp/docker-static/docker/* /usr/bin/
+          curl --fail --location --retry 3 --retry-all-errors \
+            https://download.docker.com/linux/static/stable/x86_64/docker-rootless-extras-29.1.3.tgz \
+            -o /tmp/docker-rootless-extras-29.1.3.tgz
+          mkdir /tmp/docker-rootless-static
+          tar --extract --file /tmp/docker-rootless-extras-29.1.3.tgz --directory /tmp/docker-rootless-static
+          for name in dockerd-rootless.sh dockerd-rootless-setuptool.sh rootlesskit vpnkit vpnkit-expose-port; do
+            candidate="$(find /tmp/docker-rootless-static -type f -name "$name" -print -quit)"
+            if [ -n "$candidate" ]; then cp "$candidate" "/usr/bin/$name"; fi
+          done
+          test -x /usr/bin/docker && test -x /usr/bin/dockerd-rootless.sh && test -x /usr/bin/rootlesskit
+          test "$(sha256sum /usr/bin/docker | cut -d' ' -f1)" = 40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a
+          /usr/bin/docker --version | grep -Eq '^Docker version 29\.1\.3, build [0-9A-Za-z._+-]+$'
+
+          chown -R root:root "$tools_root"
+          find "$tools_root" -type d -exec chmod go-w {} +
+          find "$tools_root" -type f -exec chmod go-w {} +
+          chmod 0755 "$node_root/bin/node" "$pwsh_root/pwsh" "$buildx_path"
+          install -d -o openclaw-runner -g openclaw-runner -m 0700 /run/user/1001
+
+      - name: Fetch exact R and stage canonical review inputs
+        run: |
+          set -euo pipefail
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1
+          source_root=/opt/openclaw-qualification/repository
+          test ! -e "$source_root"
+          install -d -o root -g root -m 0755 /opt/openclaw-qualification
+          /usr/bin/git init "$source_root"
+          /usr/bin/git -C "$source_root" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          /usr/bin/git -c "http.extraHeader=$auth_header" -C "$source_root" fetch --no-tags origin \
+            "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          test "$(/usr/bin/git -C "$source_root" rev-parse "refs/remotes/origin/$SOURCE_BRANCH")" = "$REVIEWED_R"
+          /usr/bin/git -C "$source_root" switch --create "$SOURCE_BRANCH" "$REVIEWED_R"
+          test "$(/usr/bin/git -C "$source_root" symbolic-ref --short HEAD)" = "$SOURCE_BRANCH"
+          test "$(/usr/bin/git -C "$source_root" rev-parse HEAD)" = "$REVIEWED_R"
+
+          review_root="$source_root/services/openclaw-zalo-cell/.release/reviews"
+          install -d -o root -g root -m 0755 "$review_root"
+          printf '%s' "$M_REVIEW_REPORT_B64" | base64 --decode > "$review_root/m-review-report-v1-$EXPECTED_M.json"
+          printf '%s' "$R_REVIEW_REPORT_B64" | base64 --decode > "$review_root/r-review-report-v1-$REVIEWED_R.json"
+          chmod 0444 "$review_root"/*.json
+          chown root:root "$review_root"/*.json
+          test "$(sha256sum "$review_root/m-review-report-v1-$EXPECTED_M.json" | cut -d' ' -f1)" = c58b477b61a27e2e5d6177abdbb09c213aefe53be3fba5a1ad37d8f599f0b11d
+          test "$(stat -c '%s' "$review_root/r-review-report-v1-$REVIEWED_R.json")" = "$R_REVIEW_REPORT_SIZE"
+          test "$(sha256sum "$review_root/r-review-report-v1-$REVIEWED_R.json" | cut -d' ' -f1)" = "$R_REVIEW_REPORT_SHA256"
+          /usr/bin/git -C "$source_root" merge-base --is-ancestor "$EXPECTED_M" "$REVIEWED_R"
+          printf '%s\n' "$source_root" > /tmp/openclaw-source-root
+
+      - name: Build the closed R-bound approval manifest
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          node_root=/opt/openclaw-tools/node-v24.15.0-linux-x64
+          npm_root="$node_root/lib/node_modules/npm"
+          npm_authority="$(runuser -u openclaw-runner -- /usr/bin/env -i \
+            "$node_root/bin/node" \
+            "$source_root/services/openclaw-zalo-cell/scripts/verify-package-manager-authority.mjs" \
+            --node-path "$node_root/bin/node" --npm-root "$npm_root")"
+          printf '%s\n' "$npm_authority" > /tmp/openclaw-npm-authority.json
+          install -d -o root -g root -m 0755 "/opt/openclaw-tools/reviewed-task2-approvals/$REVIEWED_R"
+          export SOURCE_ROOT="$source_root" EXPECTED_M REVIEWED_R NPM_AUTHORITY_JSON="$npm_authority"
+          /opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+          import { join, resolve } from "node:path";
+          import { spawnSync } from "node:child_process";
+
+          const sourceRoot = process.env.SOURCE_ROOT;
+          const expectedM = process.env.EXPECTED_M;
+          const reviewedR = process.env.REVIEWED_R;
+          const npmAuthority = JSON.parse(process.env.NPM_AUTHORITY_JSON);
+          const nodePath = "/opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node";
+          const npmRoot = "/opt/openclaw-tools/node-v24.15.0-linux-x64/lib/node_modules/npm";
+          const gitPath = "/usr/bin/git";
+          const powershellPath = "/opt/openclaw-tools/powershell-7.6.2/pwsh";
+          const buildxPath = "/opt/openclaw-tools/docker-buildx-v0.13.1";
+          const dockerPath = "/usr/bin/docker";
+          const authorityPaths = {
+            installer: "services/openclaw-zalo-cell/scripts/install-reviewed-task2-launcher.mjs",
+            launcher: "services/openclaw-zalo-cell/scripts/launch-reviewed-task2.mjs",
+            orchestrator: "services/openclaw-zalo-cell/scripts/run-reviewed-task2.ps1",
+            source_gate: "services/openclaw-zalo-cell/scripts/verify-reviewed-source-gate.mjs",
+            build_helper: "services/openclaw-zalo-cell/scripts/build-reproducible-image.ps1",
+            evidence_helper: "services/openclaw-zalo-cell/scripts/create-evidence-child.ps1",
+          };
+          const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+          const gitBlobOid = (bytes) => createHash("sha1")
+            .update(Buffer.from(`blob ${bytes.length}\0`, "ascii"))
+            .update(bytes)
+            .digest("hex");
+          const gitBlob = (path) => {
+            const result = spawnSync(gitPath, ["-C", sourceRoot, "cat-file", "blob", `${reviewedR}:${path}`], {
+              env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_NO_REPLACE_OBJECTS: "1" },
+              encoding: null,
+            });
+            if (result.status !== 0 || result.stderr?.length) throw new Error(`unable to read raw-R blob ${path}`);
+            return Buffer.from(result.stdout);
+          };
+          const binding = (path) => {
+            const bytes = gitBlob(path);
+            return { repository_path: path, blob_oid: gitBlobOid(bytes), size: bytes.length, sha256: sha256(bytes) };
+          };
+          const modeString = (item) => (item.mode & 0o7777).toString(8).padStart(4, "0");
+          const compareUtf8 = (left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+          const directoryTree = (root, domain) => {
+            const records = [];
+            const walk = (directory, prefix = "") => {
+              for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => compareUtf8(a.name, b.name))) {
+                const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+                const absolute = join(directory, entry.name);
+                const item = lstatSync(absolute);
+                if (item.isSymbolicLink()) throw new Error(`authority contains symbolic link: ${path}`);
+                if (item.isDirectory()) {
+                  records.push({ path, type: "directory", mode: modeString(item), size: 0, sha256: sha256(Buffer.alloc(0)) });
+                  walk(absolute, path);
+                } else if (item.isFile()) {
+                  if (item.nlink !== 1) throw new Error(`authority contains hardlink: ${path}`);
+                  const bytes = readFileSync(absolute);
+                  records.push({ path, type: "file", mode: modeString(item), size: bytes.length, sha256: sha256(bytes) });
+                } else throw new Error(`authority contains special entry: ${path}`);
+              }
+            };
+            walk(root);
+            records.sort((a, b) => compareUtf8(a.path, b.path));
+            const aggregate = createHash("sha256").update(Buffer.from(`${domain}\0`, "utf8"));
+            for (const record of records) aggregate.update(Buffer.from(
+              `${record.path}\0${record.type}\0${record.mode}\0${record.size}\0${record.sha256}\0`, "utf8",
+            ));
+            return { entryCount: records.length, sha256: aggregate.digest("hex") };
+          };
+          const mReportPath = resolve(sourceRoot, "services/openclaw-zalo-cell/.release/reviews", `m-review-report-v1-${expectedM}.json`);
+          const rReportPath = resolve(sourceRoot, "services/openclaw-zalo-cell/.release/reviews", `r-review-report-v1-${reviewedR}.json`);
+          const mReport = readFileSync(mReportPath);
+          const rReport = readFileSync(rReportPath);
+          const psTree = directoryTree("/opt/openclaw-tools/powershell-7.6.2", "ihome-openclaw-powershell-authority-v1");
+          const runtime = {
+            node: { path: nodePath, version: "v24.15.0", size: 122889056, sha256: sha256(readFileSync(nodePath)) },
+            git: { path: gitPath, version: "git version 2.53.0", sha256: sha256(readFileSync(gitPath)) },
+            powershell: { path: powershellPath, version: "7.6.2", sha256: sha256(readFileSync(powershellPath)), tree_sha256: psTree.sha256 },
+            npm: {
+              root_path: npmRoot,
+              version: npmAuthority.version,
+              entry_count: npmAuthority.entry_count,
+              root_sha256: npmAuthority.root_sha256,
+              cli_path: resolve(npmRoot, "bin/npm-cli.js"),
+              cli_size: npmAuthority.cli_size,
+              cli_sha256: npmAuthority.cli_sha256,
+            },
+            buildx: { path: buildxPath, version: "0.13.1", sha256: sha256(readFileSync(buildxPath)) },
+            docker: { path: dockerPath, version: "29.1.3", sha256: sha256(readFileSync(dockerPath)), host: "unix:///run/user/1001/docker.sock" },
+          };
+          if (runtime.node.sha256 !== "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c") throw new Error("Node authority hash mismatch");
+          if (runtime.git.sha256 !== "5516c9f362c29376ab9a499a33082f9f611941d8c75930c880e30ad109e39c9a") throw new Error("Git authority hash mismatch");
+          if (runtime.powershell.sha256 !== "cd7ac031490349b4ffd203cadf8922af85113b84ab9bfc28a50d03730d9309bc") throw new Error("PowerShell authority hash mismatch");
+          if (runtime.npm.version !== "11.12.1" || runtime.npm.entry_count !== 2169 || runtime.npm.root_sha256 !== "aebb5b5b1892a7dd23c04af9b5afa24747f752beff2e4f2e781d9eb3830f93d9" || runtime.npm.cli_size !== 54 || runtime.npm.cli_sha256 !== "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7") throw new Error("npm authority closure mismatch");
+          if (runtime.buildx.sha256 !== "3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c") throw new Error("buildx authority hash mismatch");
+          if (runtime.docker.sha256 !== "40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a") throw new Error("Docker authority hash mismatch");
+          const manifest = {
+            schema_version: 1,
+            expected_m: expectedM,
+            reviewed_tree: reviewedR,
+            authorities: Object.fromEntries(Object.entries(authorityPaths).map(([key, path]) => [key, binding(path)])),
+            review_reports: {
+              M: { checkpoint: "M", file_name: `m-review-report-v1-${expectedM}.json`, size: mReport.length, sha256: sha256(mReport) },
+              R: { checkpoint: "R", file_name: `r-review-report-v1-${reviewedR}.json`, size: rReport.length, sha256: sha256(rReport) },
+            },
+            runtime,
+          };
+          const output = "/opt/openclaw-tools/reviewed-task2-approvals/" + reviewedR + "/approval-manifest-v1.json";
+          writeFileSync(output, `${JSON.stringify(manifest)}\n`, { mode: 0o444 });
+          console.log(JSON.stringify({ output, powerShellEntries: psTree.entryCount, npmEntries: npmAuthority.entry_count }));
+          NODE
+          chmod 0444 "/opt/openclaw-tools/reviewed-task2-approvals/$REVIEWED_R/approval-manifest-v1.json"
+          chown root:root "/opt/openclaw-tools/reviewed-task2-approvals/$REVIEWED_R/approval-manifest-v1.json"
+
+      - name: Install the exact raw-R launcher as root
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          bootstrap=/opt/openclaw-tools/reviewed-task2-bootstrap/install-reviewed-task2-launcher.mjs
+          approval=/opt/openclaw-tools/reviewed-task2-approvals/$REVIEWED_R/approval-manifest-v1.json
+          install -d -o root -g root -m 0755 /opt/openclaw-tools/reviewed-task2-bootstrap
+          /usr/bin/git -C "$source_root" cat-file blob "$REVIEWED_R:services/openclaw-zalo-cell/scripts/install-reviewed-task2-launcher.mjs" > "$bootstrap"
+          chown root:root "$bootstrap"
+          chmod 0444 "$bootstrap"
+          /opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node "$bootstrap" \
+            --repository-root "$source_root" --approval-manifest "$approval"
+          test -f "/opt/openclaw-tools/reviewed-task2/$REVIEWED_R/launch-reviewed-task2.mjs"
+          test -f "/opt/openclaw-tools/reviewed-task2/$REVIEWED_R/approval-manifest-v1.json"
+          chown -R openclaw-runner:openclaw-runner "$source_root"
+          chmod 0644 "$source_root/services/openclaw-zalo-cell/.release/reviews"/*.json
+
+      - name: Run Linux Task 19 infra behavior contracts before qualification
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          node_root=/opt/openclaw-tools/node-v24.15.0-linux-x64
+          npm_cli="$node_root/lib/node_modules/npm/bin/npm-cli.js"
+          test_root=/tmp/openclaw-task19-infra-tests
+          install -d -o openclaw-runner -g openclaw-runner -m 0700 "$test_root"
+          runuser -u openclaw-runner -- /usr/bin/env -i \
+            HOME="$test_root" LANG=C LC_ALL=C TZ=UTC \
+            PATH="$node_root/bin:/usr/bin:/bin" \
+            "$node_root/bin/node" "$npm_cli" ci --ignore-scripts --no-audit --no-fund \
+            --prefix "$source_root"
+          runuser -u openclaw-runner -- /usr/bin/env -i \
+            HOME="$test_root" LANG=C LC_ALL=C TZ=UTC \
+            PATH="$node_root/bin:/usr/bin:/bin" \
+            "$node_root/bin/node" "$source_root/node_modules/vitest/vitest.mjs" run \
+            --root "$source_root" \
+            infra/openclaw-zalo/test/script-contract.test.ts \
+            infra/openclaw-zalo/test/compose-contract.test.ts
+
+      - name: Start and pin the UID 1001 rootless Docker daemon
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          docker_host=unix:///run/user/1001/docker.sock
+          docker_data=/home/openclaw-runner/.local/share/docker
+          install -d -o openclaw-runner -g openclaw-runner -m 0700 /run/user/1001 "$docker_data"
+          if [ -e /run/user/1001/docker.sock ]; then rm -f /run/user/1001/docker.sock; fi
+          runuser -u openclaw-runner -- /usr/bin/env -i \
+            HOME=/home/openclaw-runner USER=openclaw-runner LOGNAME=openclaw-runner \
+            XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin \
+            DOCKER_HOST="$docker_host" DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns \
+            DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=slirp4netns \
+            /usr/bin/nohup /usr/bin/dockerd-rootless.sh \
+              --host="$docker_host" \
+              --data-root="$docker_data" --exec-root=/run/user/1001/docker \
+              --pidfile=/run/user/1001/docker.pid \
+            >/tmp/openclaw-rootless-dockerd.log 2>&1 &
+          for attempt in $(seq 1 120); do
+            if runuser -u openclaw-runner -- /usr/bin/env -i \
+              HOME=/home/openclaw-runner XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin \
+              DOCKER_HOST="$docker_host" /usr/bin/docker info >/dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" = 120 ]; then
+              cat /tmp/openclaw-rootless-dockerd.log
+              exit 1
+            fi
+            sleep 1
+          done
+          server_client="$(runuser -u openclaw-runner -- /usr/bin/env -i \
+            HOME=/home/openclaw-runner XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin \
+            DOCKER_HOST="$docker_host" /usr/bin/docker version --format '{{.Client.Version}}|{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}')"
+          test "$server_client" = '29.1.3|29.1.3|linux|amd64'
+
+      - name: Run the reviewed Task 2 qualification phase as openclaw-runner
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          launcher=/opt/openclaw-tools/reviewed-task2/$REVIEWED_R/launch-reviewed-task2.mjs
+          approval=/opt/openclaw-tools/reviewed-task2/$REVIEWED_R/approval-manifest-v1.json
+          runuser -u openclaw-runner -- /usr/bin/env -i \
+            /opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node "$launcher" \
+            --phase qualification --repository-root "$source_root" --approval-manifest "$approval"
+          test "$(runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" rev-parse HEAD)" = "$REVIEWED_R"
+          test -s "$source_root/services/openclaw-zalo-cell/.release/task2-build-evidence.json"
+          for artifact in \
+            openclaw-zalo-cell-fork-a-linux-amd64.oci.tar \
+            openclaw-zalo-cell-fork-b-linux-amd64.oci.tar \
+            openclaw-zalo-cell-stock-linux-amd64.oci.tar \
+            zalouser-2026.7.1-verified.tgz; do
+            test -s "$source_root/services/openclaw-zalo-cell/.release/$artifact"
+          done
+
+      - name: Create the evidence-only child checkpoint E
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          launcher=/opt/openclaw-tools/reviewed-task2/$REVIEWED_R/launch-reviewed-task2.mjs
+          approval=/opt/openclaw-tools/reviewed-task2/$REVIEWED_R/approval-manifest-v1.json
+          runuser -u openclaw-runner -- /usr/bin/env -i \
+            /opt/openclaw-tools/node-v24.15.0-linux-x64/bin/node "$launcher" \
+            --phase evidence --repository-root "$source_root" --approval-manifest "$approval"
+          test "$(runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" rev-parse HEAD^)" = "$REVIEWED_R"
+          evidence_commit="$(runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" rev-parse HEAD)"
+          test "$evidence_commit" != "$REVIEWED_R"
+          diff_raw="$(runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" diff-tree --root --no-commit-id --no-abbrev --raw -r HEAD^ HEAD)"
+          expected_raw="$(printf ':000000 100644 0000000000000000000000000000000000000000 %s A\tservices/openclaw-zalo-cell/build-evidence.json' "$(runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" rev-parse HEAD:services/openclaw-zalo-cell/build-evidence.json)")"
+          test "$diff_raw" = "$expected_raw"
+          test -s "$source_root/services/openclaw-zalo-cell/build-evidence.json"
+          cp /opt/openclaw-tools/reviewed-task2-approvals/$REVIEWED_R/approval-manifest-v1.json \
+            "$source_root/services/openclaw-zalo-cell/.release/approval-manifest-v1.json"
+          chmod 0444 "$source_root/services/openclaw-zalo-cell/.release/approval-manifest-v1.json"
+          runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" bundle create \
+            /tmp/openclaw-task19-e19.bundle "$SOURCE_BRANCH"
+          runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" bundle verify \
+            /tmp/openclaw-task19-e19.bundle
+          result=/tmp/openclaw-task19-e19-result.txt
+          printf 'reviewed_r=%s\nevidence_e=%s\n' "$REVIEWED_R" "$evidence_commit" > "$result"
+          for artifact in \
+            "$source_root/services/openclaw-zalo-cell/build-evidence.json" \
+            "$source_root/services/openclaw-zalo-cell/.release/approval-manifest-v1.json" \
+            "$source_root/services/openclaw-zalo-cell/.release/task2-build-evidence.json" \
+            "$source_root/services/openclaw-zalo-cell/.release/openclaw-zalo-cell-fork-a-linux-amd64.oci.tar" \
+            "$source_root/services/openclaw-zalo-cell/.release/openclaw-zalo-cell-fork-b-linux-amd64.oci.tar" \
+            "$source_root/services/openclaw-zalo-cell/.release/openclaw-zalo-cell-stock-linux-amd64.oci.tar" \
+            "$source_root/services/openclaw-zalo-cell/.release/zalouser-2026.7.1-verified.tgz" \
+            "$source_root/services/openclaw-zalo-cell/.release/reviews/m-review-report-v1-$EXPECTED_M.json" \
+            "$source_root/services/openclaw-zalo-cell/.release/reviews/r-review-report-v1-$REVIEWED_R.json" \
+            /tmp/openclaw-task19-e19.bundle; do
+            printf 'artifact=%s size=%s sha256=%s\n' \
+              "$(basename "$artifact")" "$(stat -c '%s' "$artifact")" \
+              "$(sha256sum "$artifact" | cut -d' ' -f1)" >> "$result"
+          done
+
+      - name: Upload retained E19 qualification artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: openclaw-task19-e19-${{ github.run_id }}
+          if-no-files-found: error
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 30
+          path: |
+            /tmp/openclaw-task19-e19-result.txt
+            /tmp/openclaw-task19-e19.bundle
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/build-evidence.json
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release/approval-manifest-v1.json
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release/task2-build-evidence.json
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release/openclaw-zalo-cell-fork-a-linux-amd64.oci.tar
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release/openclaw-zalo-cell-fork-b-linux-amd64.oci.tar
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release/openclaw-zalo-cell-stock-linux-amd64.oci.tar
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release/zalouser-2026.7.1-verified.tgz
+            /opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release/reviews/*.json
+
+      - name: Push E with an exact R-bound force-with-lease
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          auth_header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          remote_r="$(runuser -u openclaw-runner -- /usr/bin/git -c "http.extraHeader=$auth_header" -C "$source_root" ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_r" = "$REVIEWED_R"
+          evidence_e="$(runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" rev-parse HEAD)"
+          runuser -u openclaw-runner -- /usr/bin/git -c "http.extraHeader=$auth_header" -C "$source_root" \
+            -c user.name='OpenClaw E19 CI' -c user.email='noreply@openai.com' \
+            push origin "HEAD:refs/heads/$SOURCE_BRANCH" \
+            "--force-with-lease=refs/heads/$SOURCE_BRANCH:$REVIEWED_R"
+          remote_e="$(runuser -u openclaw-runner -- /usr/bin/git -c "http.extraHeader=$auth_header" -C "$source_root" ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_e" = "$evidence_e"
+          echo "Pushed evidence-only child E=$evidence_e from exact R=$REVIEWED_R"
