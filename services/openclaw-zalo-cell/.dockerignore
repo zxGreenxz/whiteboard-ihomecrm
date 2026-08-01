@@ -7,6 +7,7 @@
 !scripts/
 !scripts/install-vendored-zalouser.sh
 !scripts/normalize-openclaw-install.mjs
+!scripts/entrypoint.sh
 !vendor/
 !vendor/zalouser-bridge/
 !vendor/zalouser-bridge/FORK.json

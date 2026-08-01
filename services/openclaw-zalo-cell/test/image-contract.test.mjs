@@ -44,6 +44,7 @@ const CONTEXT_INPUTS = [
   ".dockerignore",
   "Dockerfile",
   "config/openclaw.json.tmpl",
+  "scripts/entrypoint.sh",
   "scripts/install-vendored-zalouser.sh",
   "scripts/normalize-openclaw-install.mjs",
   ...SESSION_DIST,
@@ -422,6 +423,11 @@ test("Dockerfile is an exact two-stage pinned offline image assembly", async () 
     dockerfile,
     /session-crypto\/(src|package-lock\.json|tsconfig|node_modules|dist\/.*\.d\.ts)/,
   );
+  assert.match(
+    dockerfile,
+    /COPY --chmod=0555 --chown=node:node scripts\/entrypoint\.sh \/opt\/openclaw-cell\/entrypoint\.sh/,
+  );
+  assert.doesNotMatch(dockerfile, /^(?:ENTRYPOINT|CMD|ENV)\b/m);
 });
 
 test("stock behavior control installs the authenticated upstream ZaloUser offline", async () => {
@@ -459,6 +465,7 @@ test("docker context is deny-by-default and admits only reviewed runtime inputs"
     "!scripts/",
     "!scripts/install-vendored-zalouser.sh",
     "!scripts/normalize-openclaw-install.mjs",
+    "!scripts/entrypoint.sh",
     "!vendor/",
     "!vendor/zalouser-bridge/",
     "!vendor/zalouser-bridge/FORK.json",
@@ -3844,6 +3851,18 @@ test("runtime delta requires the exact installed fork, session closure, and conf
     gid: 1000,
     mtime: epoch,
   });
+  const entrypoint = lock.inputs.find(
+    ({ path }) => path === "scripts/entrypoint.sh",
+  );
+  records.push({
+    ...entrypoint,
+    path: "opt/openclaw-cell/entrypoint.sh",
+    type: "file",
+    mode: entrypoint.mode === "100755" ? "0755" : "0644",
+    uid: 1000,
+    gid: 1000,
+    mtime: epoch,
+  });
 
   const delta = verifyRuntimeDeltaRecords({ fork, lock, records });
   assert.equal(delta.records.length, records.length);
@@ -3854,6 +3873,7 @@ test("runtime delta requires the exact installed fork, session closure, and conf
   );
   assert.equal(delta.fork_records.length, fork.installedTree.entries.length);
   assert.equal(delta.config_record.path, "opt/openclaw-cell/openclaw.json.tmpl");
+  assert.equal(delta.entrypoint_record.path, "opt/openclaw-cell/entrypoint.sh");
   assert.throws(
     () =>
       verifyRuntimeDeltaRecords({

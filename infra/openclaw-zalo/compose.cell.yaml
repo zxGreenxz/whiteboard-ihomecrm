@@ -1,0 +1,272 @@
+name: "openclaw-zalo-${OPENCLAW_CELL_ID:?cell id required}"
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  init: true
+  restart: unless-stopped
+  pids_limit: 128
+  pull_policy: never
+  logging:
+    driver: local
+    options:
+      max-size: 10m
+      max-file: "3"
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=64m
+
+x-proxy-environment: &proxy-environment
+  NODE_USE_ENV_PROXY: "1"
+  HTTP_PROXY: http://egress-broker:8080
+  HTTPS_PROXY: http://egress-broker:8080
+  ALL_PROXY: http://egress-broker:8080
+  NO_PROXY: localhost,127.0.0.1,::1,cell,bridge,maintenance,egress-broker
+
+services:
+  cell:
+    <<: *hardened
+    image: "ihome/openclaw-zalo-cell@sha256:${OPENCLAW_CELL_IMAGE_SHA256:?cell image digest required}"
+    user: "1000:1000"
+    command: ["/opt/openclaw-cell/entrypoint.sh", "node", "openclaw.mjs", "gateway"]
+    environment:
+      <<: *proxy-environment
+      OPENCLAW_CELL_ID: "${OPENCLAW_CELL_ID}"
+      OPENCLAW_CONFIG_PATH: /run/openclaw/openclaw.json
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_SESSION_PLAINTEXT_ROOT: /home/node/.openclaw/credentials
+      OPENCLAW_SESSION_CIPHERTEXT_ROOT: /var/lib/openclaw-session
+      OPENCLAW_INTERNAL_AGENT_RUNS_DIR: /home/node/.openclaw/internal-agent-runs
+      OPENCLAW_ZALO_BRIDGE_URL: http://bridge:8080
+      OPENCLAW_ZALO_BRIDGE_SECRET_FILE: /run/secrets/openclaw_zalo_bridge_hmac
+      OPENCLAW_ZALO_ORGANIZATION_ID: "${OPENCLAW_ORGANIZATION_ID:?organization id required}"
+      OPENCLAW_ZALO_ACCOUNT_ID: "${OPENCLAW_ACCOUNT_ID:?account id required}"
+      OPENCLAW_ZALO_CELL_ID: "${OPENCLAW_CELL_ID}"
+      OPENCLAW_ZALO_SESSION_GENERATION: "${OPENCLAW_SESSION_GENERATION:?session generation required}"
+      OPENCLAW_ZALO_FENCING_TOKEN: "${OPENCLAW_FENCING_TOKEN:?fencing token required}"
+      OPENCLAW_ZALO_CONTROL_VERSION: "${OPENCLAW_CONTROL_VERSION:?control version required}"
+      OPENCLAW_ZALO_TAKEOVER_VERSION: "${OPENCLAW_TAKEOVER_VERSION:?takeover version required}"
+      OPENCLAW_ZALO_GATEWAY_DEVICE_ID: "${OPENCLAW_GATEWAY_DEVICE_ID:?gateway device id required}"
+      OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL: "${OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL:?model base url required}"
+      OPENCLAW_ZALO_CUSTOMER_AI_MODEL: "${OPENCLAW_ZALO_CUSTOMER_AI_MODEL:?model id required}"
+      OPENCLAW_CUSTOMER_AI_KEY_FILE: /run/secrets/openclaw_customer_ai_key
+    secrets:
+      - source: openclaw_session_key
+        target: openclaw_session_key
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_zalo_bridge_hmac
+        target: openclaw_zalo_bridge_hmac
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_customer_ai_key
+        target: openclaw_customer_ai_key
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+    volumes:
+      - type: volume
+        source: session-ciphertext
+        target: /var/lib/openclaw-session
+        volume:
+          nocopy: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=64m
+      - /home/node/.openclaw/credentials:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=32m
+      - /home/node/.openclaw/agents:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=256m
+      - /home/node/.openclaw/internal-agent-runs:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=64m
+      - /run/openclaw:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=16m
+    networks:
+      application:
+        aliases: [cell]
+    depends_on:
+      egress-broker:
+        condition: service_healthy
+    mem_limit: 1200m
+    cpus: 0.8
+
+  bridge:
+    <<: *hardened
+    image: "ihome/openclaw-zalo-bridge@sha256:${OPENCLAW_BRIDGE_IMAGE_SHA256:?bridge image digest required}"
+    user: "1000:1000"
+    environment:
+      <<: *proxy-environment
+      OPENCLAW_BRIDGE_HOST: 0.0.0.0
+      OPENCLAW_BRIDGE_PORT: "8080"
+      OPENCLAW_ORGANIZATION_ID: "${OPENCLAW_ORGANIZATION_ID:?organization id required}"
+      OPENCLAW_ACCOUNT_ID: "${OPENCLAW_ACCOUNT_ID:?account id required}"
+      OPENCLAW_CELL_ID: "${OPENCLAW_CELL_ID}"
+      OPENCLAW_SESSION_GENERATION: "${OPENCLAW_SESSION_GENERATION:?session generation required}"
+      OPENCLAW_FENCING_TOKEN: "${OPENCLAW_FENCING_TOKEN:?fencing token required}"
+      OPENCLAW_FUNCTIONS_BASE_URL: "${OPENCLAW_FUNCTIONS_BASE_URL:?functions base url required}"
+      OPENCLAW_GATEWAY_URL: ws://cell:18789
+      OPENCLAW_MEDIA_GATEWAY_URL: "${OPENCLAW_MEDIA_GATEWAY_URL:?media gateway url required}"
+      OPENCLAW_MEDIA_ALLOWLIST: "${OPENCLAW_MEDIA_ALLOWLIST:?media allowlist required}"
+      OPENCLAW_SPOOL_PATH: /var/lib/openclaw-bridge/spool/spool.db
+      OPENCLAW_MEDIA_TEMP_DIRECTORY: /var/lib/openclaw-bridge/temp
+      OPENCLAW_RUNTIME_CREDENTIAL_FILE: /run/secrets/openclaw_runtime_credential
+      OPENCLAW_ZALO_BRIDGE_SECRET_FILE: /run/secrets/openclaw_zalo_bridge_hmac
+      OPENCLAW_GATEWAY_DEVICE_TOKEN_FILE: /run/secrets/openclaw_gateway_device_token
+      OPENCLAW_GATEWAY_DEVICE_IDENTITY_FILE: /run/secrets/openclaw_gateway_device_identity
+      OPENCLAW_QR_ENCRYPTION_KEY_FILE: /run/secrets/openclaw_qr_encryption_key
+    secrets:
+      - source: openclaw_runtime_credential
+        target: openclaw_runtime_credential
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_zalo_bridge_hmac
+        target: openclaw_zalo_bridge_hmac
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_gateway_device_token
+        target: openclaw_gateway_device_token
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_gateway_device_identity
+        target: openclaw_gateway_device_identity
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_qr_encryption_key
+        target: openclaw_qr_encryption_key
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+    volumes:
+      - type: volume
+        source: bridge-spool
+        target: /var/lib/openclaw-bridge/spool
+        volume:
+          nocopy: true
+      - type: volume
+        source: bridge-temp
+        target: /var/lib/openclaw-bridge/temp
+        volume:
+          nocopy: true
+    networks:
+      application:
+        aliases: [bridge]
+    depends_on:
+      cell:
+        condition: service_started
+      egress-broker:
+        condition: service_healthy
+    mem_limit: 900m
+    cpus: 0.6
+
+  maintenance:
+    <<: *hardened
+    image: "ihome/openclaw-zalo-maintenance@sha256:${OPENCLAW_MAINTENANCE_IMAGE_SHA256:?maintenance image digest required}"
+    user: "1000:1000"
+    environment:
+      <<: *proxy-environment
+      OPENCLAW_FUNCTIONS_BASE_URL: "${OPENCLAW_FUNCTIONS_BASE_URL:?functions base url required}"
+      OPENCLAW_MEDIA_GATEWAY_URL: "${OPENCLAW_MEDIA_GATEWAY_URL:?media gateway url required}"
+      OPENCLAW_MAINTENANCE_ORGANIZATION_ID: "${OPENCLAW_ORGANIZATION_ID:?organization id required}"
+      OPENCLAW_MAINTENANCE_PRINCIPAL_ID: "${OPENCLAW_MAINTENANCE_PRINCIPAL_ID:?maintenance principal required}"
+      OPENCLAW_MAINTENANCE_CREDENTIAL_FILE: /run/secrets/openclaw_maintenance_credential
+      OPENCLAW_AUDIT_PRIVATE_KEY_FILE: /run/secrets/openclaw_audit_private_key
+      OPENCLAW_AUDIT_SIGNING_KEY_GENERATION: "${OPENCLAW_AUDIT_SIGNING_KEY_GENERATION:?audit generation required}"
+      OPENCLAW_MAINTENANCE_CONCURRENCY: "1"
+    secrets:
+      - source: openclaw_maintenance_credential
+        target: openclaw_maintenance_credential
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: openclaw_audit_private_key
+        target: openclaw_audit_private_key
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+    networks:
+      application:
+        aliases: [maintenance]
+    depends_on:
+      egress-broker:
+        condition: service_healthy
+    mem_limit: 300m
+    cpus: 0.2
+
+  egress-broker:
+    <<: *hardened
+    image: "ihome/openclaw-egress-broker@sha256:${OPENCLAW_EGRESS_BROKER_IMAGE_SHA256:?egress broker image digest required}"
+    user: "1000:1000"
+    environment:
+      OPENCLAW_EGRESS_HOST: 0.0.0.0
+      OPENCLAW_EGRESS_PORT: "8080"
+      OPENCLAW_EGRESS_ALLOWLIST_PATH: /etc/openclaw-egress/allowlist.yaml
+      OPENCLAW_EGRESS_LOG_REDACTION: strict
+    configs:
+      - source: egress_allowlist
+        target: /etc/openclaw-egress/allowlist.yaml
+        uid: "1000"
+        gid: "1000"
+        mode: 0444
+    networks:
+      application:
+        aliases: [egress-broker]
+      egress: {}
+    mem_limit: 300m
+    cpus: 0.2
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/livez').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  application:
+    internal: true
+    driver: bridge
+    labels:
+      ihome.openclaw.scope: "${OPENCLAW_CELL_ID}"
+  egress:
+    internal: false
+    driver: bridge
+    labels:
+      ihome.openclaw.scope: "${OPENCLAW_CELL_ID}"
+
+volumes:
+  session-ciphertext:
+    labels:
+      ihome.openclaw.kind: encrypted-session-backing
+      ihome.openclaw.scope: "${OPENCLAW_CELL_ID}"
+  bridge-spool:
+    labels:
+      ihome.openclaw.kind: durable-spool
+      ihome.openclaw.scope: "${OPENCLAW_CELL_ID}"
+  bridge-temp:
+    labels:
+      ihome.openclaw.kind: bounded-temp
+      ihome.openclaw.scope: "${OPENCLAW_CELL_ID}"
+
+configs:
+  egress_allowlist:
+    file: "/srv/openclaw-runtime/config/${OPENCLAW_CELL_ID}/egress-allowlist.yaml"
+
+secrets:
+  openclaw_session_key:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_session_key"
+  openclaw_zalo_bridge_hmac:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_zalo_bridge_hmac"
+  openclaw_customer_ai_key:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_customer_ai_key"
+  openclaw_runtime_credential:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_runtime_credential"
+  openclaw_gateway_device_token:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_gateway_device_token"
+  openclaw_gateway_device_identity:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_gateway_device_identity"
+  openclaw_qr_encryption_key:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_qr_encryption_key"
+  openclaw_maintenance_credential:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_maintenance_credential"
+  openclaw_audit_private_key:
+    file: "/srv/openclaw-runtime/secrets/${OPENCLAW_CELL_ID}/openclaw_audit_private_key"

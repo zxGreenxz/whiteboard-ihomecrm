@@ -1,0 +1,11 @@
+[Unit]
+Description=Bounded GC for the dedicated rootless OpenClaw engine
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock
+Environment=OPENCLAW_RUNTIME_ROOT=/srv/openclaw-runtime
+ExecStart=/bin/sh -eu -c 'docker container prune --force --filter until=168h; docker image prune --force --filter until=168h; docker builder prune --force --filter until=168h --keep-storage 10GB; test "$(df -Pk /srv/openclaw-runtime | awk "NR==2 {print \$2}")" -le 20971520'
+Slice=openclaw-runner.slice

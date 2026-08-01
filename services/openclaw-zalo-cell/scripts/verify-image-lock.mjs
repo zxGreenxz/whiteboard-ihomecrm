@@ -3319,6 +3319,7 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
   const forkRoot = "home/node/.openclaw/npm/projects/zalouser";
   const sessionRoot = "opt/openclaw-cell/session-crypto/dist";
   const configPath = "opt/openclaw-cell/openclaw.json.tmpl";
+  const entrypointPath = "opt/openclaw-cell/entrypoint.sh";
   const expected = new Map();
   for (const entry of fork.installedTree.entries) {
     expected.set(`${forkRoot}/${entry.path}`, { ...entry, uid: 1000, gid: 1000, mtime: epoch });
@@ -3349,6 +3350,18 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
     gid: 1000,
     size: configInput.size,
     sha256: configInput.sha256,
+    mtime: epoch,
+  });
+  const entrypointInput = lock.inputs.find(({ path }) => path === "scripts/entrypoint.sh");
+  if (!entrypointInput) throw new Error("runtime entrypoint input is missing");
+  expected.set(entrypointPath, {
+    path: entrypointInput.path,
+    type: "file",
+    mode: entrypointInput.mode === "100755" ? "0755" : "0644",
+    uid: 1000,
+    gid: 1000,
+    size: entrypointInput.size,
+    sha256: entrypointInput.sha256,
     mtime: epoch,
   });
 
@@ -3411,7 +3424,9 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
       ? "installed fork"
       : path.startsWith(`${sessionRoot}/`)
         ? "session"
-        : "runtime config";
+        : path === entrypointPath
+          ? "runtime entrypoint"
+          : "runtime config";
     if (
       !found ||
       found.type !== wanted.type ||
@@ -3429,8 +3444,10 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
   const forkRecords = fork.installedTree.entries.map((entry) => actual.get(`${forkRoot}/${entry.path}`));
   const sessionRecords = SESSION_DIST.map((path) => actual.get(`opt/openclaw-cell/${path}`));
   const configRecord = actual.get(configPath);
+  const entrypointRecord = actual.get(entrypointPath);
   return {
     config_path: configPath,
+    entrypoint_path: entrypointPath,
     fork_root: forkRoot,
     record_count: exactRecords.length,
     session_paths: SESSION_DIST.map((path) => `opt/openclaw-cell/${path}`),
@@ -3449,6 +3466,7 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
     fork_records: forkRecords,
     session_records: sessionRecords,
     config_record: configRecord,
+    entrypoint_record: entrypointRecord,
   };
 }
 

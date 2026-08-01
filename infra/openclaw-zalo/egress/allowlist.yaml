@@ -1,0 +1,26 @@
+version: 1
+destinations:
+  - host: tryymsxyyckgbrmmvozx.supabase.co
+    port: 443
+    purpose: supabase control plane
+  - host: openclaw-media.chillhome.io.vn
+    port: 443
+    purpose: private media gateway
+  - host: ai.chillhome.io.vn
+    port: 443
+    purpose: independent model provider
+  - host: chat.zalo.me
+    port: 443
+    purpose: Zalo chat transport
+  - host: id.zalo.me
+    port: 443
+    purpose: Zalo identity transport
+  - host: jr.chat.zalo.me
+    port: 443
+    purpose: Zalo realtime chat transport
+  - host: wpa.chat.zalo.me
+    port: 443
+    purpose: Zalo websocket transport
+  - host: openclaw.chillhome.io.vn
+    port: 443
+    purpose: OpenClaw control endpoint

@@ -18,7 +18,7 @@ const RESTRICTED_PACKAGE = [
 const RAW_RESTRICTED_FALLBACK = [
   {
     rule: "stock-generic-send",
-    pattern: /\bopenclaw(?:\s+|[./:-])(?:message\s+)?send\b/gi,
+    pattern: /\bopenclaw(?:\s+|[./:])(?:message\s+)?send\b/gi,
   },
 ];
 

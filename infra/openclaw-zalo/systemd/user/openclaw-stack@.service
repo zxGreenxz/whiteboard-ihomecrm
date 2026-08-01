@@ -1,0 +1,21 @@
+[Unit]
+Description=Rootless OpenClaw Zalo cell %i
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=DOCKER_HOST=unix:///run/user/%U/docker.sock
+Environment=OPENCLAW_RUNTIME_ROOT=/srv/openclaw-runtime
+Environment=COMPOSE_PROJECT_NAME=openclaw-zalo-%i
+EnvironmentFile=/srv/openclaw-runtime/cells/%i/runtime.env
+ExecStart=/opt/ihome-openclaw/infra/openclaw-zalo/scripts/deploy-cell.sh --runtime-env /srv/openclaw-runtime/cells/%i/runtime.env
+ExecStop=/opt/ihome-openclaw/infra/openclaw-zalo/scripts/rollback-cell.sh --runtime-env /srv/openclaw-runtime/cells/%i/runtime.env
+TimeoutStartSec=10min
+TimeoutStopSec=2min
+Slice=openclaw-runner.slice
+
+[Install]
+WantedBy=default.target

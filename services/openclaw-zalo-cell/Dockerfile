@@ -21,3 +21,4 @@ COPY --chown=node:node session-crypto/dist/package.json /opt/openclaw-cell/sessi
 COPY --chown=node:node session-crypto/dist/crypto.js /opt/openclaw-cell/session-crypto/dist/crypto.js
 COPY --chown=node:node session-crypto/dist/daemon.js /opt/openclaw-cell/session-crypto/dist/daemon.js
 COPY --chown=node:node config/openclaw.json.tmpl /opt/openclaw-cell/openclaw.json.tmpl
+COPY --chmod=0555 --chown=node:node scripts/entrypoint.sh /opt/openclaw-cell/entrypoint.sh
