@@ -56,8 +56,8 @@
       "path": "scripts/install-vendored-zalouser.sh",
       "type": "blob",
       "mode": "100755",
-      "size": 5585,
-      "sha256": "17fe26cfbe2207ac57aa636c33a66fb8bd1b4952d8d53280132d94cc94a6f074"
+      "size": 5604,
+      "sha256": "e4475b39998f74e4cbf14e2b69806b6c7becff53cbc8e85c47637a294de3ea76"
     },
     {
       "path": "scripts/normalize-openclaw-install.mjs",

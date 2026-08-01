@@ -447,6 +447,7 @@ test("stock behavior control installs the authenticated upstream ZaloUser offlin
   assert.match(installer, /NPM_CONFIG_REGISTRY=http:\/\/127\.0\.0\.1:9/);
   assert.match(installer, /--offline/);
   assert.match(installer, /--ignore-scripts/);
+  assert.match(installer, /--no-bin-links/);
   assert.doesNotMatch(installer, /curl|wget|https:\/\//i);
 });
 
@@ -553,6 +554,7 @@ test("vendored installer verifies the local artifact before a no-network npm ins
   assert.ok(verifyOffset >= 0 && verifyOffset < installOffset);
   assert.match(script, /--offline/);
   assert.match(script, /--ignore-scripts/);
+  assert.match(script, /--no-bin-links/);
   assert.match(script, /--no-audit/);
   assert.match(script, /--no-fund/);
   assert.match(script, /--package-lock=false/);

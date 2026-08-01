@@ -82,6 +82,7 @@ npm install \
   --cache "$cache" \
   --offline \
   --ignore-scripts \
+  --no-bin-links \
   --no-audit \
   --no-fund \
   --package-lock=false \
