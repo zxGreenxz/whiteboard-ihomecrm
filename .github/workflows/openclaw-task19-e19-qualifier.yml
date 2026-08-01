@@ -320,7 +320,8 @@ jobs:
           install -d -o openclaw-runner -g openclaw-runner -m 0700 "$test_root"
           test ! -e "$test_source"
           install -d -o openclaw-runner -g openclaw-runner -m 0700 "$test_source"
-          /usr/bin/git -C "$source_root" archive --format=tar "$REVIEWED_R" | \
+          runuser -u openclaw-runner -- /usr/bin/git -C "$source_root" \
+            archive --format=tar "$REVIEWED_R" | \
             tar --extract --directory "$test_source"
           chown -R openclaw-runner:openclaw-runner "$test_source"
           runuser -u openclaw-runner -- /usr/bin/env -i \
