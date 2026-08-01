@@ -186,7 +186,29 @@ function buildTar(packageRoot, sourceDateEpoch) {
     if (padding) chunks.push(Buffer.alloc(padding));
   }
   chunks.push(Buffer.alloc(1024));
-  return gzipSync(Buffer.concat(chunks), { level: 9 });
+  return normalizeGzipHeader(gzipSync(Buffer.concat(chunks), { level: 9 }));
+}
+
+export function normalizeGzipHeader(compressed) {
+  if (
+    !Buffer.isBuffer(compressed) ||
+    compressed.length < 18 ||
+    compressed[0] !== 0x1f ||
+    compressed[1] !== 0x8b ||
+    compressed[2] !== 8 ||
+    compressed[3] !== 0 ||
+    compressed[4] !== 0 ||
+    compressed[5] !== 0 ||
+    compressed[6] !== 0 ||
+    compressed[7] !== 0 ||
+    compressed[8] !== 2
+  ) {
+    throw new Error("gzip header is not the reviewed deterministic form");
+  }
+  const normalized = Buffer.from(compressed);
+  // RFC 1952 defines OS=3 as Unix; pin it so Windows and Linux emit identical bytes.
+  normalized[9] = 3;
+  return normalized;
 }
 
 function readNullTerminatedAscii(buffer, offset, length) {

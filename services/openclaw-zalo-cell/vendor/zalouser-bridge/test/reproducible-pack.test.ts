@@ -90,7 +90,7 @@ function latestPreparedRoot() {
 async function loadArtifactScripts() {
   const [
     { analyzeEmittedRuntimeSites, buildPreparedTree, createMetafileImportClaims },
-    { canonicalSha256, controlledNpmEnvironment, forkMetadata, packArtifact },
+    { canonicalSha256, controlledNpmEnvironment, forkMetadata, normalizeGzipHeader, packArtifact },
     { prepareVendorTree },
     { verifyArtifact, verifyRuntimeReachabilityMetadata },
   ] = await Promise.all([
@@ -106,12 +106,52 @@ async function loadArtifactScripts() {
     canonicalSha256,
     controlledNpmEnvironment,
     forkMetadata,
+    normalizeGzipHeader,
     packArtifact,
     prepareVendorTree,
     verifyArtifact,
     verifyRuntimeReachabilityMetadata,
   };
 }
+
+describe("portable artifact compression", () => {
+  it("normalizes every host gzip byte to the reviewed Linux value", async () => {
+    const { normalizeGzipHeader } = await loadArtifactScripts();
+    const reviewed = readFileSync(
+      resolve(vendorRoot, "artifacts/openclaw-zalouser-2026.7.1.tgz"),
+    );
+    const normalized = [0, 3, 10, 255].map((operatingSystem) => {
+      const candidate = Buffer.from(reviewed);
+      candidate[9] = operatingSystem;
+      return normalizeGzipHeader(candidate);
+    });
+
+    const [canonical] = normalized;
+    if (!canonical) throw new Error("gzip normalization fixture is empty");
+    expect(normalized.every((candidate) => candidate[9] === 3)).toBe(true);
+    expect(normalized.every((candidate) => candidate.equals(canonical))).toBe(true);
+    expect(() => normalizeGzipHeader(Buffer.from("not gzip", "utf8"))).toThrow(
+      /gzip header is not the reviewed deterministic form/,
+    );
+  });
+
+  it("pins the Linux-canonical artifact and matching FORK hashes", () => {
+    const artifact = readFileSync(
+      resolve(vendorRoot, "artifacts/openclaw-zalouser-2026.7.1.tgz"),
+    );
+    const forkBytes = readFileSync(resolve(vendorRoot, "FORK.json"));
+    const fork = JSON.parse(forkBytes.toString("utf8"));
+    const artifactSha256 = createHash("sha256").update(artifact).digest("hex");
+
+    expect(artifact[9]).toBe(3);
+    expect(artifactSha256).toBe("3db159b14394dc142704453460b3f51cf5df3843544545d87d5ba9e99db0fb45");
+    expect(fork.artifactSha256).toBe(artifactSha256);
+    expect(fork.builtTgzSha256).toBe(artifactSha256);
+    expect(createHash("sha256").update(forkBytes).digest("hex")).toBe(
+      "c80be1785d076987af8bba0933bc8aabf073803d90f301da30d7b0305b5e48b4",
+    );
+  });
+});
 
 describe("controlled npm child environment", () => {
   it("does not let a mutated test copy replace the selected prepared fixture", () => {

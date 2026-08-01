@@ -12,8 +12,8 @@
   },
   "sourceDateEpoch": 1785062400,
   "artifactPath": "artifacts/openclaw-zalouser-2026.7.1.tgz",
-  "artifactSha256": "49f9b0233bc27a07895a8ade153b560870318835ec60e1040d9695e5abbecc10",
-  "builtTgzSha256": "49f9b0233bc27a07895a8ade153b560870318835ec60e1040d9695e5abbecc10",
+  "artifactSha256": "3db159b14394dc142704453460b3f51cf5df3843544545d87d5ba9e99db0fb45",
+  "builtTgzSha256": "3db159b14394dc142704453460b3f51cf5df3843544545d87d5ba9e99db0fb45",
   "artifactMembers": [
     {
       "path": "package/LICENSE",
