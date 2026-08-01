@@ -16,12 +16,12 @@ env:
   # The workflow branch is only the runner vehicle. The source branch is the
   # reviewed product branch that the evidence helper advances from R to E.
   EXPECTED_M: 0650187981ad9728d295fae34eff92b508e36bc8
-  REVIEWED_R: 8d2df9af619d5c7541c5f1ce29193d43980cc97a
+  REVIEWED_R: 8294f83b37ea8513a37ed4dddcb492d8fa613ab2
   SOURCE_BRANCH: codex/openclaw-zalo-20260726
   M_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiTSIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiMDY1MDE4Nzk4MWFkOTcyOGQyOTVmYWUzNGVmZjkyYjUwOGUzNmJjOCIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC9yZXZpZXdfY2hlY2twb2ludF9tX3NwZWNfMDYyZGRmNCIsInJldmlld2VyUm9sZSI6InJldmlldmVyIiwicmV2aWV3ZXJSdW5JZCI6Ik0wNjUwMTg3LTIwMjYwNzI3VDEyMzczNFotcmV2aWV3Iiwic2NoZW1hIjoxfQo=
-  R_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiUiIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiOGQyZGY5YWY2MTlkNWM3NTQxYzVmMWNlMjkxOTNkNDM5ODBjYzk3YSIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC90MTlfZXhhY3RfcmV2aWV3MyIsInJldmlld2VyUm9sZSI6InJldmlld2VyIiwicmV2aWV3ZXJSdW5JZCI6IlIxOS04ZDJkZjlhLXQxOV9leGFjdF9yZXZpZXczLTIwMjYwODAyVDAzMjY1NCswNzAwIiwic2NoZW1hIjoxfQo=
-  R_REVIEW_REPORT_SIZE: 263
-  R_REVIEW_REPORT_SHA256: 39d58c6e6daf91a629a41901ad143780af423119bb8931f6018e8ebb35f43cf7
+  R_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiUiIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiODI5NGY4M2IzN2VhODUxM2EzN2VkNGRkZGNiNDkyZDhmYTYxM2FiMiIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC90MTlfZXhhY3RfcmV2aWV3MyIsInJldmlld2VyUm9sZSI6InJldmlld2VyIiwicmV2aWV3ZXJSdW5JZCI6IlIxOS04Mjk0ZjgzYi10MTlfZXhhY3RfcmV2aWV3My0yMDI2MDgwMlQwMzQ4NDIrMDcwMCIsInNjaGVtYSI6MX0K
+  R_REVIEW_REPORT_SIZE: 264
+  R_REVIEW_REPORT_SHA256: 848cd69cf45e37a2667fe884ff16fda5d66302e91ac361c02957898bff1fc709
 
 jobs:
   qualify:
@@ -129,7 +129,7 @@ jobs:
             if [ -n "$candidate" ]; then cp "$candidate" "/usr/bin/$name"; fi
           done
           test -x /usr/bin/docker && test -x /usr/bin/dockerd-rootless.sh && test -x /usr/bin/rootlesskit
-          test "$(sha256sum /usr/bin/docker | cut -d' ' -f1)" = 40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a
+          test "$(sha256sum /usr/bin/docker | cut -d' ' -f1)" = 226408f543344f0d2bfc84c7df4243c5364baccf509e8984d04e1e62c74efac0
           /usr/bin/docker --version | grep -Eq '^Docker version 29\.1\.3, build [0-9A-Za-z._+-]+$'
 
           chown -R root:root "$tools_root"
@@ -275,7 +275,7 @@ jobs:
           if (runtime.powershell.sha256 !== "cd7ac031490349b4ffd203cadf8922af85113b84ab9bfc28a50d03730d9309bc") throw new Error("PowerShell authority hash mismatch");
           if (runtime.npm.version !== "11.12.1" || runtime.npm.entry_count !== 2169 || runtime.npm.root_sha256 !== "aebb5b5b1892a7dd23c04af9b5afa24747f752beff2e4f2e781d9eb3830f93d9" || runtime.npm.cli_size !== 54 || runtime.npm.cli_sha256 !== "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7") throw new Error("npm authority closure mismatch");
           if (runtime.buildx.sha256 !== "3e2bc8ed25a9125d6aeec07df4e0211edea6288e075b524160ef3fd305d3d74c") throw new Error("buildx authority hash mismatch");
-          if (runtime.docker.sha256 !== "40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a") throw new Error("Docker authority hash mismatch");
+          if (runtime.docker.sha256 !== "226408f543344f0d2bfc84c7df4243c5364baccf509e8984d04e1e62c74efac0") throw new Error("Docker authority hash mismatch");
           const manifest = {
             schema_version: 1,
             expected_m: expectedM,
