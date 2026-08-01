@@ -231,6 +231,7 @@ describe("Task 19 host and lifecycle scripts", () => {
         );
         await writeFile(join(deploymentRoot, "current"), snapshotName + "\n");
         await chmod(join(deploymentRoot, "current"), 0o600);
+        await chmod(liveConfig, 0o600);
         await writeFile(liveConfig, "candidate-allowlist\n");
         for (const secret of secretNames) {
           await writeFile(join(liveSecretRoot, secret), "candidate-" + secret + "\n");
