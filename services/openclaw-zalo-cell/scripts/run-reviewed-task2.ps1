@@ -147,7 +147,7 @@ function Invoke-LauncherNativeBytes {
       $process.StandardInput.BaseStream.Close()
     }
     $process.WaitForExit()
-    $stdoutTask.GetAwaiter().GetResult()
+    $null = $stdoutTask.GetAwaiter().GetResult()
     $stderr = $stderrTask.GetAwaiter().GetResult()
     $exitCode = $process.ExitCode
     if ($exitCode -ne 0) {
