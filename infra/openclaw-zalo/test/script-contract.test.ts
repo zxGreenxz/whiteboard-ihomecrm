@@ -60,17 +60,36 @@ describe("Task 19 host and lifecycle scripts", () => {
     expect(source).not.toMatch(/cat\s+.*(?:secret|runtime-env)|set\s+-x/i);
   });
 
-  it("snapshots before deploy, changes only one Compose project, verifies isolation, and rolls back on failure", async () => {
+  it("prevalidates candidates and restores the exact active stack after a failed update", async () => {
     const source = await text("infra/openclaw-zalo/scripts/deploy-cell.sh");
+    const validate = source.indexOf("validate_candidate");
+    const inspect = source.indexOf('docker image inspect "$image"');
+    const capture = source.indexOf("capture_active_stack");
     const snapshot = source.indexOf("snapshot-host-baseline.sh");
-    const deploy = source.indexOf(" up -d ");
+    const mutate = source.lastIndexOf("mutation_started=1");
+    const deploy = source.lastIndexOf(" up -d ");
     const verify = source.indexOf("verify-isolation.sh");
+    expect(validate).toBeGreaterThan(-1);
+    expect(inspect).toBeGreaterThan(validate);
+    expect(capture).toBeGreaterThan(validate);
     expect(snapshot).toBeGreaterThan(-1);
+    expect(mutate).toBeGreaterThan(snapshot);
     expect(deploy).toBeGreaterThan(snapshot);
     expect(verify).toBeGreaterThan(deploy);
     expect(source).toContain("rollback-cell.sh");
+    expect(source).toContain("restore_active_stack");
+    expect(source).toContain("had_active_stack");
+    for (const digest of [
+      "old_cell_digest",
+      "old_bridge_digest",
+      "old_maintenance_digest",
+      "old_egress_digest",
+    ]) {
+      expect(source).toContain(digest);
+    }
     expect(source).toContain("--project-name");
     expect(source).toContain("pull_policy");
+    expect(source).not.toMatch(/compose\s+down/);
     expect(source).not.toMatch(/docker\s+(?:stop|rm|restart|system\s+prune)\b/);
 
     const rollback = await text("infra/openclaw-zalo/scripts/rollback-cell.sh");
@@ -115,8 +134,29 @@ describe("Task 19 host and lifecycle scripts", () => {
     expect(source).toContain("trap 'shutdown INT' INT");
     expect(source).toContain("session_restore");
     expect(source).toContain("session_persist");
+    expect(source).toContain("wait_for_child");
+    expect(source).toContain('kill -0 "$child_pid"');
+    expect(source).toContain('exit "$child_status"');
+    expect(source).toMatch(/AUTHENTICATION_FAILED\|UNKNOWN_KEY_GENERATION\|MALFORMED_ENVELOPE/);
+    expect(source).toContain("encrypted Zalo session unavailable; starting QR login");
+    expect(source).toMatch(/case "\$error_code"[\s\S]+\*\)[\s\S]+response_ok/);
     expect(source).toContain("/opt/openclaw-cell/session-crypto/dist/daemon.js");
     expect(source).not.toMatch(/npm\s+(?:install|ci)|openclaw[^\n]+rpc|zalouser\.bridge\.[a-z-]+/i);
+  });
+
+  it("forces an ordered QR relogin when rotating the session encryption key", async () => {
+    const source = await text("infra/openclaw-zalo/scripts/rotate-secrets.sh");
+    const stop = source.indexOf("compose stop --timeout 30 cell");
+    const clear = source.indexOf("rm -f /var/lib/openclaw-session/zalouser/credentials.json");
+    const replace = source.indexOf('mv -f "$tmp" "$secret_dir/$name"');
+    const restart = source.lastIndexOf("compose up -d --no-build --wait cell");
+    expect(stop).toBeGreaterThan(-1);
+    expect(clear).toBeGreaterThan(stop);
+    expect(replace).toBeGreaterThan(clear);
+    expect(restart).toBeGreaterThan(replace);
+    expect(source).toContain("resume_after_rotation_failure");
+    expect(source).toContain("QR login required");
+    expect(source).not.toMatch(/cat\s+.*(?:secret|source_file)|set\s+-x/i);
   });
 
   it("applies the approved systemd limits to the rootless service user only", async () => {

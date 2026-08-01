@@ -49,8 +49,8 @@
       "path": "scripts/entrypoint.sh",
       "type": "blob",
       "mode": "100755",
-      "size": 3565,
-      "sha256": "3e3a1a7e0d690668e457e27bc9a066021cb8eb04b61e3d4cb218742d9f3dd9b3"
+      "size": 4705,
+      "sha256": "ed227d00e87ba4821013c564cde75688834c48aa6d8c692cfe6605666ba9a016"
     },
     {
       "path": "scripts/install-vendored-zalouser.sh",

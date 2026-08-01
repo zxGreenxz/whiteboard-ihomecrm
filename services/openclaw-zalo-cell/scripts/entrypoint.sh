@@ -15,6 +15,7 @@ crypto_daemon=/opt/openclaw-cell/session-crypto/dist/daemon.js
 session_path=zalouser/credentials.json
 child_pid=
 shutdown_signal=
+child_status=0
 
 case "$cell_id" in
   ????????-????-4???-[89abAB]???-????????????) ;;
@@ -50,11 +51,33 @@ response_ok() {
   node -e 'const value=JSON.parse(require("node:fs").readFileSync(0,"utf8"));if(!value.ok)process.exit(1)'
 }
 
+response_error_code() {
+  node -e 'const value=JSON.parse(require("node:fs").readFileSync(0,"utf8"));process.stdout.write(typeof value?.error?.code === "string" ? value.error.code : "")'
+}
+
 session_restore() {
   [ -f "$persistent_root/zalouser/credentials.json" ] || return 0
   version=$(sha256sum "$persistent_root/zalouser/credentials.json" | awk '{print $1}')
-  response=$(crypto_request restore "\"$version\"" restore-start)
-  printf '%s\n' "$response" | response_ok
+  if response=$(crypto_request restore "\"$version\"" restore-start); then
+    :
+  fi
+  if printf '%s\n' "$response" | response_ok; then
+    return 0
+  fi
+  error_code=$(printf '%s\n' "$response" | response_error_code) || error_code=
+  case "$error_code" in
+    AUTHENTICATION_FAILED|UNKNOWN_KEY_GENERATION|MALFORMED_ENVELOPE)
+      # A ciphertext that cannot be authenticated is unusable; start clean for QR login.
+      rm -f \
+        "$plaintext_root/zalouser/credentials.json" \
+        "$persistent_root/zalouser/credentials.json"
+      echo "encrypted Zalo session unavailable; starting QR login" >&2
+      return 0
+      ;;
+    *)
+      printf '%s\n' "$response" | response_ok
+      ;;
+  esac
 }
 
 session_persist() {
@@ -81,6 +104,21 @@ cleanup() {
   cleanup_internal_runs
   rm -f "$plaintext_root/zalouser/credentials.json"
   exit "$status"
+}
+
+wait_for_child() {
+  while :; do
+    if wait "$child_pid"; then
+      child_status=0
+    else
+      child_status=$?
+    fi
+    # A signal can interrupt wait before the child has flushed its final state.
+    if kill -0 "$child_pid" 2>/dev/null; then
+      continue
+    fi
+    return "$child_status"
+  done
 }
 
 trap 'shutdown TERM' TERM
@@ -111,4 +149,7 @@ if [ "$#" -eq 0 ]; then
 fi
 "$@" &
 child_pid=$!
-wait "$child_pid"
+if wait_for_child; then
+  :
+fi
+exit "$child_status"
