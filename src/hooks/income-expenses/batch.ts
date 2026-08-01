@@ -22,6 +22,53 @@ const compatRpc = (
     a?: Record<string, unknown>,
   ) => PromiseLike<CompatRpcResult>)(fn, args);
 
+/**
+ * Huỷ một danh sách phiếu lẫn lộn THU/CHI, mỗi loại đi ĐÚNG cửa của nó.
+ *
+ * ie_compat_cancel_v2 từ chối phiếu ĐÃ GHI SỔ ("dùng reversal, không hủy trực
+ * tiếp"). Từ Đợt B, phiếu THU tự ghi sổ ngay khi tạo ⇒ mọi đợt có phiếu thu sẽ
+ * hỏng nếu vẫn đẩy tất cả vào compat. Phiếu THU đi cửa riêng
+ * cancel_income_voucher_v1 (tự đảo bút toán, tự mở lại nợ hoá đơn); phiếu CHI
+ * giữ nguyên đường cũ.
+ *
+ * Trả về số phiếu đã huỷ + danh sách lỗi theo từng phiếu để caller báo cho
+ * đúng, thay vì hỏng cả mẻ chỉ vì một phiếu.
+ */
+async function cancelVouchersSplitByType(
+  vouchers: { id: string; type?: string | null }[],
+  reason: string,
+): Promise<{ cancelled: number; failures: { id: string; message: string }[] }> {
+  const incomes = vouchers.filter((v) => v.type === "INCOME");
+  const others = vouchers.filter((v) => v.type !== "INCOME");
+  const failures: { id: string; message: string }[] = [];
+  let cancelled = 0;
+
+  if (others.length > 0) {
+    const { data, error } = await compatRpc("ie_compat_cancel_v2", {
+      p_ids: others.map((v) => v.id),
+      p_reason: reason,
+    });
+    if (error) {
+      for (const v of others) failures.push({ id: v.id, message: error.message ?? "Không huỷ được" });
+    } else {
+      cancelled += (data as { cancelled?: number } | null)?.cancelled ?? others.length;
+    }
+  }
+
+  // Cửa phiếu thu nhận TỪNG phiếu (mỗi phiếu là một transaction atomic ở
+  // server) — lỗi một phiếu không kéo đổ những phiếu đã huỷ xong.
+  for (const v of incomes) {
+    const { error } = await compatRpc("cancel_income_voucher_v1", {
+      p_voucher: v.id,
+      p_reason: reason,
+    });
+    if (error) failures.push({ id: v.id, message: error.message ?? "Không huỷ được" });
+    else cancelled += 1;
+  }
+
+  return { cancelled, failures };
+}
+
 // Import phiếu thu/chi hàng loạt từ Excel
 export const useImportIncomeExpenses = () => {
   const queryClient = useQueryClient();
@@ -145,7 +192,9 @@ export const useCreateIncomeExpenseBatch = () => {
       //    call, birth UNAPPROVED — §8). Tạo TỪNG phiếu để giữ thứ tự rõ ràng
       //    (tương ứng với items input). Nếu lỗi ở giữa: rollback bằng cách xoá
       //    batch (CASCADE xoá junction) + huỷ phiếu con đã tạo.
-      const childVouchers: { id: string }[] = [];
+      // Mang theo `type`: rollback phải biết phiếu nào đi cửa THU, phiếu nào đi
+      // đường compat cũ (cả đợt cùng một type nên gán thẳng từ input).
+      const childVouchers: { id: string; type?: string | null }[] = [];
       try {
         for (const item of input.items) {
           const { data: created, error: voucherError } = await compatRpc(
@@ -186,7 +235,7 @@ export const useCreateIncomeExpenseBatch = () => {
           if (voucherError || !voucherId) {
             throw voucherError ?? new Error("Không thể tạo phiếu con");
           }
-          childVouchers.push({ id: voucherId });
+          childVouchers.push({ id: voucherId, type: input.type });
         }
 
         // 3. INSERT junction rows (bảng batch_items — ngoài phạm vi drain).
@@ -203,11 +252,9 @@ export const useCreateIncomeExpenseBatch = () => {
         // Phiếu con đã tạo sẽ thành phiếu lẻ standalone — huỷ chúng qua RPC
         // (Stage-7: client không còn UPDATE/DELETE trực tiếp income_expenses).
         if (childVouchers.length > 0) {
-          const ids = childVouchers.map((v) => v.id);
-          await compatRpc("ie_compat_cancel_v2", {
-            p_ids: ids,
-            p_reason: "Rollback tạo phiếu tổng lỗi",
-          });
+          // Tách THU/CHI: phiếu thu vừa tạo nay đã GHI SỔ ngay (Đợt B) nên
+          // đường compat sẽ từ chối, để lại phiếu mồ côi sống nhăn.
+          await cancelVouchersSplitByType(childVouchers, "Rollback tạo phiếu tổng lỗi");
         }
         await supabase
           .from("income_expense_batches")
@@ -265,17 +312,25 @@ export const useCancelIncomeExpenseBatch = () => {
       const activeVouchers = (vouchers ?? []) as any[];
       if (activeVouchers.length === 0) return { count: 0 };
 
-      const { data: cancelResult, error } = await compatRpc("ie_compat_cancel_v2", {
-        p_ids: activeVouchers.map((v) => v.id),
-        p_reason: null,
-      });
-      if (error) {
-        toast.error(error.message || "Không thể huỷ phiếu trong đợt");
-        throw error;
+      const { cancelled, failures } = await cancelVouchersSplitByType(
+        activeVouchers,
+        "Huỷ cả đợt phiếu",
+      );
+      if (failures.length > 0 && cancelled === 0) {
+        toast.error(failures[0].message || "Không thể huỷ phiếu trong đợt");
+        throw new Error(failures[0].message);
+      }
+      if (failures.length > 0) {
+        toast.warning(
+          `Đã huỷ ${cancelled} phiếu; ${failures.length} phiếu không huỷ được: ${failures[0].message}`,
+        );
       }
 
+      // Phiếu THU đã được server gỡ khoản thanh toán bên trong
+      // cancel_income_voucher_v1 (đánh dấu reversed_at, hoá đơn tự mở lại nợ).
+      // Chỉ còn phiếu CHI đường cũ mới cần client dọn payments hộ.
       const paymentIdsToDelete = activeVouchers
-        .filter((v) => v.type === "INCOME" && v.payment_id)
+        .filter((v) => v.type !== "INCOME" && v.payment_id)
         .map((v) => v.payment_id);
       if (paymentIdsToDelete.length > 0) {
         const { error: payErr } = await supabase
@@ -288,9 +343,6 @@ export const useCancelIncomeExpenseBatch = () => {
         }
       }
 
-      const cancelled =
-        (cancelResult as { cancelled?: number } | null)?.cancelled ??
-        activeVouchers.length;
       return { count: cancelled };
     },
     onSuccess: ({ count }) => {
