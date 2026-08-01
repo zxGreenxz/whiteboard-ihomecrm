@@ -41,6 +41,17 @@ BEGIN
 END;
 $fn$;
 
+INSERT INTO auth.users (
+  id, aud, role, email, created_at, updated_at
+) VALUES (
+  '10000000-0000-4000-8000-000000000001',
+  'authenticated',
+  'authenticated',
+  'task11-network-center@example.invalid',
+  clock_timestamp(),
+  clock_timestamp()
+);
+
 INSERT INTO public.organizations (id, slug, name, is_demo)
 VALUES (
   '20000000-0000-4000-8000-000000000001',
