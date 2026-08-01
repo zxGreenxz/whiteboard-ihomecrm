@@ -2030,3 +2030,32 @@ remote diverged thì **dừng và báo**, không force-push/merge lịch sử ng
   plan ran **no browser/E2E**, so every UI claim in it rests on source lines + live data + tracked spec
   assertions. Per `CLAUDE.md`, a feature is only "xong" after verification **and** a real (headless) browser
   run.
+
+---
+
+## PHỤ LỤC THI HÀNH — cập nhật 01/08/2026 (đọc kèm `danh-gia…-v2.md §16-§18`)
+
+Plan này là VĂN BẢN THIẾT KẾ; trạng thái thi hành thật ghi ở danh-gia v2. Tóm
+tắt phần đã thành hiện thực khác/vượt so với văn bản:
+
+- **Tự duyệt phí cố định ĐÃ CHẠY** theo kiến trúc GIẢN LƯỢC (danh-gia §16.4,
+  §17.1): bảng giá `special_fee_price_versions` có phiên bản theo tháng, RỖNG
+  lúc ra đời; máy kiểm `special_fee_rule_check_v1` (VALID / AMOUNT_MISMATCH /
+  CONFIG_REQUIRED); adapter `special_fee_approve_and_post_v1` với token
+  FINANCE_V2_LIFECYCLE. KHÔNG có rule-version/proposal/claim ledger như Task 2
+  mô tả — các bảng đó chưa tồn tại và không còn là đường đã chọn.
+- **Hoa hồng**: `commission_tier_versions` + `commission_autopay_check_v1`
+  (4 điều kiện chủ chốt 31/07). CỐ Ý không fallback bậc gần nhất, không hợp nhất
+  với `buildings.commission_tiers` (§17.3).
+- **Thưởng Sale từ phiếu cọc**: `sale_bonus_claims` + cửa hẹp
+  `SALE_BONUS_DEPOSIT` trên `trg_ie_commission_guard` (§17.2) — thay thế phần
+  SALE_HOT_BONUS của Task 6.
+- **Trần điện/nước + luật bảo trì**: `utility_ceiling_versions` /
+  `maintenance_rule_versions` với `counts_history=false`, `enforcement=WARN`
+  mặc định (§17.4).
+- **UI /thanh-toan Task 7**: nay có thêm nhóm "Thanh lý & Cọc" — 3 sổ theo dõi
+  (§18.2). Bảng Tổng quan LOẠI 3 family này (LEDGER_FAMILIES).
+- **⚠ BẮT BUỘC cho mọi RPC mới của plan**: sự cố lẫn tổ chức 01/08 (§18.1) —
+  RPC SECURITY DEFINER đi vòng qua RLS. Mọi hàm trả danh sách phải áp
+  `app_private.building_org_visible_v1(building_id)` hoặc hai mệnh đề RLS tương
+  đương. Đo bằng phép đối chứng "số hàm trả = số đọc thẳng bảng".

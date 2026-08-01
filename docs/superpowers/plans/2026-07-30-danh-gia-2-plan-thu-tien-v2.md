@@ -1755,3 +1755,107 @@ Bốn bảng cấu hình mới đều **rỗng**: `sale_bonus_cap_versions`,
 `maintenance_rule_versions`. Chủ điền số nào thì luật bật cho ô đó.
 
 Bảng số đề xuất (đã qua phản biện bắt 15 lỗi nặng) nằm ở trang riêng đã gửi chủ.
+
+---
+
+## 18. NGÀY 01/08/2026 — SỰ CỐ LẪN TỔ CHỨC, BA SỔ THEO DÕI, CỌC CŨ VÀO ATam
+
+Ghi tiếp §17. Ba mạch việc trong một ngày, đều đã lên production.
+
+### 18.1 SỰ CỐ: trang Thanh toán trộn dữ liệu ba tổ chức (4 migration `20260801060000`→`090000`)
+
+Chủ chụp màn hình: hợp đồng "Tòa DEMO A" của org DEMO lẫn vào /thanh-toan của org
+thật, và **mọi dòng nhân đôi**.
+
+**Gốc rễ — hai lớp bảo vệ, chỉ lớp dưới đúng.** RLS trên bảng ĐÃ đúng sẵn (hai
+policy RESTRICTIVE, `sandbox_org_ids()` đã khai org Test, 3/3 toà DEMO thuộc
+`demo_user_ids()`). Nhưng các RPC nạp dữ liệu đều `SECURITY DEFINER` — đi vòng
+qua RLS — và chỉ kiểm quyền theo TOÀ, không hề biết tới tổ chức. **Hệ không có
+khái niệm "tổ chức đang xem"** (543 lời gọi `supabase.from()` chỉ 4 chỗ lọc
+organization_id, toàn ở đường ghi).
+
+**Nhân đôi vì:** org "iHome CRM (Test)" (tạo 17:04 ngày 31/07, một phiên khác
+clone) là bản sao 1:1 org thật — hợp đồng 321/321, phiếu 2301/2301, hoá đơn
+1101/1101, TRÙNG SỐ hợp đồng.
+
+**Hai đường rò khác nhau:** DEMO rò qua `buildings_for_v3` → `my_org_ids()` (chủ
+là thành viên cả hai org); TEST rò qua các mệnh đề `OR is_super_admin()` rải rác
+(chủ KHÔNG thuộc org Test).
+
+**Đã vá — áp đúng luật RLS sẵn có vào nhánh definer, không bịa luật mới:**
+
+| Migration | Vá gì |
+|---|---|
+| `20260801060000` | `building_org_visible_v1` + 5 hàm trang Thanh toán |
+| `20260801070000` | **Gốc**: `buildings_for_v3` lọc kết quả cuối theo 2 mệnh đề RLS |
+| `20260801080000` | 3 báo cáo (invoice_statistics 2106→1053, collection_cycle 36→17 toà, cashbook_settlement 15→6 sổ) + 2 policy `hide_demo` còn sót |
+| `20260801090000` | `ie_form_buildings` 21→18 toà, `ie_form_rooms` 294→275 phòng — nguồn danh sách toà THẬT của trang |
+
+Kiểm trình duyệt thật sau vá: 19 toà→17, 89 khoản→73, hết Tòa DEMO.
+
+**HAI PHÉP ĐO TỰ LỪA — án lệ mới, đã vào memory:**
+1. Đặt `request.jwt.claims` mà quên `SET LOCAL ROLE authenticated` ⇒ chạy dưới
+   quyền quản trị, RLS bị bỏ qua ⇒ **báo rò nhầm** ("hợp đồng rò 340 dòng" — thực 0).
+2. Phân loại kết quả hàm definer bằng cách **nối sang bảng có RLS** ⇒ JOIN ẩn
+   đúng dòng cần đếm ⇒ **báo sạch nhầm** (hàm rò 3 toà mà test nói 0).
+   ⇒ Luật: luôn đối chứng **số hàm trả về = số đọc thẳng bảng**.
+
+**KHÔNG xoá org Test** (4 tài khoản test riêng, 66 phiếu mới, đã khai sandbox
+sẵn — ai đó lập có chủ đích). Còn nợ: 1 dòng `income_expense_items` không che
+được vì luật ẩn demo khoá theo NGƯỜI TẠO, không theo tổ chức.
+
+### 18.2 Ba SỔ THEO DÕI trên /thanh-toan (commit `21392a7`)
+
+Chủ: *"không có nơi quản lý phiếu thưởng, phiếu cọc đã thu, và quan trọng nhất
+là phiếu chi thanh lý trong page thanh toán"*. Thêm nhóm **"Thanh lý & Cọc"**
+vào registry `FEE_CATEGORIES` với 3 family mới, render ở CẢ panel lẫn sheet:
+
+- **Chi thanh lý** (`TERMINATION_REFUND`): hàng đợi hồ sơ theo kỳ, mỗi dòng đặt
+  song song "số hoàn trên hồ sơ" và "phiếu hoàn thật"; nút Kiểm tra mở
+  `TerminationRefundDialog` sẵn có. — Đây chính là bề mặt mà **Plan 2 §2.2
+  RETARGET** mô tả ("Hoàn cọc mount trên /thanh-toan qua registry
+  FEE_CATEGORIES"), nay đã có thật.
+- **Thưởng Sale** (`SALE_BONUS`): phiếu thưởng theo kỳ, phân biệt nguồn
+  phiếu-cọc vs ký-HĐ.
+- **Cọc đã thu** (`DEPOSIT_LEDGER`): tách 3 rổ két thật / sổ ảo / chờ duyệt.
+
+Ranh giới cố ý: 3 family bị **loại khỏi bảng Tổng quan** (qua `LEDGER_FAMILIES`)
+vì Tổng quan cam kết khớp Báo cáo Lợi Nhuận, còn cọc/hoàn không thuộc lãi lỗ.
+Hook đọc **thẳng bảng qua RLS**, không qua hàm definer — sau §18.1, RLS là đường
+đã chứng minh chốt đúng. `feeCategories.test.ts` 10→13 hạng mục, 17/17 xanh.
+
+### 18.3 Cọc cũ vào sổ ATam — chủ xác nhận "toàn bộ phần cọc đó tôi đã nhận"
+
+Chủ chốt: tất cả vào **ATam**, ngày ghi sổ **01/03/2026**, giữ voucher_date gốc.
+
+| Đợt | Phạm vi | Kết quả |
+|---|---|---|
+| 1 (`158ca53`) | 217 phiếu HĐ **đang thuê** (trừ P.103-102LVT — kiểm ra 0 phiếu cọc, vốn ngoài danh sách) | **+940.700.000đ**, ATam −1.518,8tr → −578,1tr |
+| 2 (`01e2376`) | 23/34 phiếu HĐ **đã trả phòng** có dòng-tiền-sau-đó rõ ràng | **+94.340.000đ** |
+
+Đợt 2 chia theo bằng chứng dòng tiền SAU-KHI-NHẬN: 7 phiếu đã-hoàn-thật (chiều
+RA đã POSTED, chiều VÀO thiếu ⇒ ghi vào là CÂN sổ); 5 phiếu đã-tịch-thu (cặp
+forfeit revenue/offset 10/10 đều sổ ảo ⇒ không trùng đếm); 11 phiếu hồ sơ FORFEIT
+(tiền ở lại két, không chiều ra). **11 phiếu / 38,9tr ĐỂ LẠI chờ chủ**: 2 thanh
+lý thường không phiếu hoàn (có thể đã hoàn tiền mặt không ghi) + 9 không hồ sơ.
+Hai ca thanh lý thường xử được ngay bằng nút Kiểm tra mới (một ca là
+HĐT-074727/01092025 — 3.041.500đ, đúng hồ sơ đã thấy hôm 31/07).
+
+Bất biến giữ nguyên cả hai đợt: `business_result_accounting` NULL toàn bộ ⇒
+**lãi lỗ không xê dịch một đồng**; token `FINANCE_V2_LIFECYCLE` đặt TRƯỚC khi đổi
+`account_id` (không thì cầu a85 đúc bút toán trùng sai ngày); preflight chốt cứng
+số phiếu/số tiền đã trình chủ, lệch là DỪNG.
+
+**ATam sau tất cả: ~−541tr.** Vẫn âm ⇒ vẫn còn khoản thu khác chưa ghi sổ, chưa
+truy ra — việc mở cho đợt sau.
+
+### 18.4 Trạng thái ba tài liệu plan sau ngày 01/08
+
+- **Plan 1 v2** (special-payment-governance): phần "UI /thanh-toan" của Task 7
+  nay có thêm 3 sổ theo dõi; 5 hàm `get_period_*`/`get_fee_config_matrix` đã có
+  chốt tổ chức (§18.1) — mọi RPC mới của plan PHẢI theo cùng khuôn
+  `building_org_visible_v1`.
+- **Plan 2 v2** (room-lifecycle-refund): hàng đợi Hoàn cọc trên /thanh-toan mà
+  §2.2 RETARGET yêu cầu ĐÃ TỒN TẠI (mục Chi thanh lý). Khoá đường thanh lý cũ
+  vẫn CHƯA làm — điều kiện ở §17.6 giữ nguyên.
+- Bảng số đề xuất + trang trình chủ duyệt: không đổi, vẫn chờ chủ điền.

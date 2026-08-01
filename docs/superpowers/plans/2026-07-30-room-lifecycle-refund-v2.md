@@ -1825,3 +1825,36 @@ danh sách cột INSERT của `approve_contract_termination_v1`, xuất xứ 3 t
 toàn bộ body `terminate_contract_forfeit_impl` (13.983 ký tự, các nhánh tiền khác chưa đọc), và **bên nào
 đúng cho hai phiếu hoàn lệch số** (−978.500 và +500.000 — chứng minh được **lệch**, **không** chứng minh
 được nghiệp vụ coi số nào đúng).
+
+---
+
+## PHỤ LỤC THI HÀNH — cập nhật 01/08/2026 (đọc kèm `danh-gia…-v2.md §16-§18`)
+
+Plan này là VĂN BẢN THIẾT KẾ; trạng thái thi hành thật ghi ở danh-gia v2. Phần
+đã thành hiện thực, và chỗ thi hành RẼ HƯỚNG so với văn bản:
+
+- **Hàng đợi Hoàn cọc trên `/thanh-toan` ĐÃ TỒN TẠI** (danh-gia §18.2) — đúng bề
+  mặt mà §2.2 RETARGET của plan này yêu cầu (mount qua registry `FEE_CATEGORIES`,
+  render trong PeriodFeePanel/Sheet, sau cổng `thu_tien.collect`). Tên trên UI:
+  mục **"Chi thanh lý (hoàn cọc)"**, nhóm "Thanh lý & Cọc". Mỗi dòng đặt song
+  song "số hoàn trên hồ sơ" vs "phiếu hoàn thật"; nút Kiểm tra mở
+  `TerminationRefundDialog`.
+- **Đường hoàn cọc giản lược** (danh-gia §16.2): `termination_refund_obligations`
+  + preview/record/create — phiếu ra `UNAPPROVED`, KHÔNG auto-POSTED, không
+  sticky marker, không 5 named wrapper. Chốt của chủ 31/07 ("hoàn cọc vẫn chờ
+  duyệt kể cả khi số khớp") xác nhận hướng này; phần lớn Task 1/5 của plan vì
+  thế KHÔNG còn là đường đã chọn.
+- **Sửa hai lỗi giao diện hộp thoại hoàn** (danh-gia §17.5): hồ sơ không có
+  khoản hoàn từng render trống trơn; hồ sơ khách CÒN NỢ từng hiện tích xanh
+  "số hoàn khớp". E2E `termination-refund.spec.ts` 2/2 xanh.
+- **Cọc cũ đã vào sổ ATam** (danh-gia §18.3): 217 + 23 phiếu, tổng ~1,035 tỉ.
+  Hệ quả cho plan này: cảnh báo "cọc chưa từng vào két" của nút Kiểm tra sẽ Ít
+  đi nhiều so với lúc plan được viết (243/287 phiếu cọc trên sổ ảo là con số CŨ).
+  Còn 11 phiếu khách-đã-đi chờ chủ quyết (danh-gia §18.3).
+- **Khoá đường thanh lý cũ: CHƯA LÀM** — điều kiện và những gì phải sửa khi khoá
+  ghi ở danh-gia §17.6 (gồm ràng buộc cứng: không đổi chuỗi ghi chú
+  'Quyết toán khi thanh lý DD/MM/YYYY' vì guard regex trên payments).
+- **⚠ BẮT BUỘC cho mọi read RPC mới của plan**: sự cố lẫn tổ chức 01/08
+  (danh-gia §18.1) — hàm SECURITY DEFINER đi vòng qua RLS. Mọi hàm trả danh sách
+  phải áp `app_private.building_org_visible_v1(building_id)` hoặc hai mệnh đề
+  RLS tương đương, và đo bằng đối chứng "số hàm trả = số đọc thẳng bảng".
