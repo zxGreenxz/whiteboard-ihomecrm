@@ -83,7 +83,7 @@ const PINNED_BUILDX = Object.freeze({
 const PINNED_DOCKER = Object.freeze({
   path: "/usr/bin/docker",
   version: "29.1.3",
-  sha256: "40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a",
+  sha256: "226408f543344f0d2bfc84c7df4243c5364baccf509e8984d04e1e62c74efac0",
   host: "unix:///run/user/1001/docker.sock",
 });
 

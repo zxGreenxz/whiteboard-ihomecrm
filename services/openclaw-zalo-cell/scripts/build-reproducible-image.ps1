@@ -540,7 +540,7 @@ $dockerItem = Get-Item -LiteralPath $resolvedDocker -Force
 if ($dockerItem.PSIsContainer -or ($dockerItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
   throw 'DockerPath must be a regular non-reparse file'
 }
-$expectedDockerSha256 = '40cdaf7fd0f21089dd9e15b0c3a7dd7f2399027f010e366dac6304ae0615954a'
+$expectedDockerSha256 = '226408f543344f0d2bfc84c7df4243c5364baccf509e8984d04e1e62c74efac0'
 $actualDockerSha256 = (Get-FileHash -LiteralPath $resolvedDocker -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualDockerSha256 -ne $expectedDockerSha256) {
   throw 'Docker binary SHA-256 does not match image-lock.json'
