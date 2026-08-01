@@ -16,6 +16,9 @@ import { toast } from 'sonner';
 import { fmtFull, fmtBillingMonth } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useBuildings } from '@/hooks/useBuildings';
+import {
+  TerminationRefundQueueSection, SaleBonusSection, DepositLedgerSection,
+} from './SettlementPanels';
 import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
@@ -27,7 +30,7 @@ import {
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -94,6 +97,9 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const isGrid = catVisible && cat!.family === 'GRID';
   const isComm = catVisible && cat!.family === 'COMMISSION';
   const isBatch = catVisible && cat!.family === 'MAINTENANCE_BATCH';
+  const isTermQ = catVisible && cat!.family === 'TERMINATION_REFUND';
+  const isSaleB = catVisible && cat!.family === 'SALE_BONUS';
+  const isDepL  = catVisible && cat!.family === 'DEPOSIT_LEDGER';
 
   // ── Data ──
   const feeStatus = usePeriodFeeStatus(period, gridKeys, buildingIds, { enabled: buildingIds.length > 0 });
@@ -144,7 +150,9 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
     let dueCount = 0, slots = 0, dueSum = 0, paidSum = 0, paidCount = 0, draftCount = 0;
     const dueBld = new Set<string>();
     const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
-    const rows = visibleCats.map((c) => {
+    // Ba family "sổ theo dõi" nằm ngoài Tổng quan: Tổng quan cam kết khớp Báo
+    // cáo Lợi Nhuận, còn cọc/hoàn cọc/thưởng không thuộc lãi lỗ.
+    const rows = visibleCats.filter((c) => !LEDGER_FAMILIES.has(c.family)).map((c) => {
       let total = 0, paidN = 0, rowDueSum = 0, rowPaidSum = 0, rowDraftN = 0; const dueList: string[] = [];
       if (c.family === 'EN') {
         for (const b of buildingIds) {
@@ -456,8 +464,8 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
                       <button key={c.key} type="button" className={'ptt-menu-item' + (active ? ' on' : '')} onClick={() => pickCategory(c.key)}>
                         <span className="ptt-menu-ic" style={{ background: active ? '#1b1813' : c.accent + '18', color: active ? '#fff' : c.accent }}><FeeIcon name={c.icon} style={{ width: 15, height: 15 }} /></span>
                         <span className="ptt-menu-lbl grow">{c.label}{c.restricted && <span className="ptt-tag-restricted">hạn chế</span>}</span>
-                        {due > 0 && c.family !== 'MAINTENANCE_BATCH' && <span className="ptt-badge">{due}</span>}
-                        {due === 0 && c.family !== 'MAINTENANCE_BATCH' && c.family !== 'COMMISSION' && <span className="ptt-badge done">đủ</span>}
+                        {due > 0 && c.family !== 'MAINTENANCE_BATCH' && !LEDGER_FAMILIES.has(c.family) && <span className="ptt-badge">{due}</span>}
+                        {due === 0 && c.family !== 'MAINTENANCE_BATCH' && c.family !== 'COMMISSION' && !LEDGER_FAMILIES.has(c.family) && <span className="ptt-badge done">đủ</span>}
                         {active && <Check className="ptt-menu-check" />}
                       </button>
                     );
@@ -646,6 +654,11 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
           )}
         </div>
       )}
+
+      {/* ===== SỔ THEO DÕI: chi thanh lý · thưởng Sale · cọc đã thu ===== */}
+      {isTermQ && <TerminationRefundQueueSection period={period} />}
+      {isSaleB && <SaleBonusSection period={period} />}
+      {isDepL && <DepositLedgerSection period={period} />}
 
       {/* ===== COMMISSION ===== */}
       {isComm && (

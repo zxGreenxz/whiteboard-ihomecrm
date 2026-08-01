@@ -3,9 +3,11 @@ import { FEE_CATEGORIES, FEE_GROUPS, feeTypeMatches, feeCategoryOf } from './fee
 import { FIXED_EXPENSE_CATEGORIES, nrm } from './fixedExpenseCategories';
 
 describe('FEE_CATEGORIES registry', () => {
-  it('đủ 10 hạng mục + 3 nhóm', () => {
-    expect(FEE_CATEGORIES).toHaveLength(10);
-    expect(FEE_GROUPS).toEqual(['Phí theo tòa', 'Hoa hồng', 'Bảo trì']);
+  it('đủ 13 hạng mục + 4 nhóm', () => {
+    // 01/08/2026: thêm nhóm "Thanh lý & Cọc" — ba SỔ THEO DÕI (chi thanh lý,
+    // thưởng Sale, cọc đã thu). Chúng không phải nút chi theo kỳ.
+    expect(FEE_CATEGORIES).toHaveLength(13);
+    expect(FEE_GROUPS).toEqual(['Phí theo tòa', 'Hoa hồng', 'Bảo trì', 'Thanh lý & Cọc']);
     expect(FEE_CATEGORIES.every((c) => FEE_GROUPS.includes(c.group))).toBe(true);
   });
 

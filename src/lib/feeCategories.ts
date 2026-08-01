@@ -18,8 +18,15 @@
 
 import { nrm } from '@/lib/fixedExpenseCategories';
 
-export type FeeFamily = 'EN' | 'GRID' | 'COMMISSION' | 'MAINTENANCE_BATCH';
-export type FeeGroup = 'Phí theo tòa' | 'Hoa hồng' | 'Bảo trì';
+export type FeeFamily =
+  | 'EN' | 'GRID' | 'COMMISSION' | 'MAINTENANCE_BATCH'
+  // Ba mảng SỔ theo dõi (01/08/2026): không phải nút chi theo kỳ mà là nơi
+  // QUẢN LÝ phiếu đã/sắp phát sinh — hàng đợi chi thanh lý, phiếu thưởng
+  // Sale, và cọc đã thu. Chúng bị LOẠI khỏi bảng Tổng quan vì Tổng quan cam
+  // kết khớp Báo cáo Lợi Nhuận, còn ba mảng này là tiền cọc/hoàn — không
+  // thuộc lãi lỗ.
+  | 'TERMINATION_REFUND' | 'SALE_BONUS' | 'DEPOSIT_LEDGER';
+export type FeeGroup = 'Phí theo tòa' | 'Hoa hồng' | 'Bảo trì' | 'Thanh lý & Cọc';
 
 export interface FeeCategory {
   key: string;                 // registry key ('dien_nuoc','internet',…)
@@ -108,9 +115,38 @@ export const FEE_CATEGORIES: FeeCategory[] = [
       { key: 'mg', label: 'Máy giặt', canonicalTypeName: 'Bảo trì máy giặt', canonicalCategory: 'Bảo Trì' },
     ],
   },
+  {
+    key: 'chi_thanh_ly', label: 'Chi thanh lý (hoàn cọc)', group: 'Thanh lý & Cọc',
+    sub: 'hồ sơ trả phòng · đối chiếu cọc thật rồi mới chi', family: 'TERMINATION_REFUND',
+    icon: 'wallet', accent: '#b3541e',
+    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
+    serverKey: 'chi_thanh_ly', canonicalTypeName: 'Hoàn tiền cọc', canonicalCategory: 'Hoàn cọc',
+  },
+  {
+    key: 'thuong_sale', label: 'Thưởng Sale', group: 'Thanh lý & Cọc',
+    sub: 'phiếu thưởng nóng theo phiếu cọc / hợp đồng', family: 'SALE_BONUS',
+    icon: 'handcoins', accent: '#9c27b0',
+    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
+    serverKey: 'thuong_sale', canonicalTypeName: 'Thưởng nóng Sale', canonicalCategory: 'Hoa hồng',
+  },
+  {
+    key: 'coc_da_thu', label: 'Cọc đã thu', group: 'Thanh lý & Cọc',
+    sub: 'phiếu thu cọc trong kỳ · két thật vs sổ ảo', family: 'DEPOSIT_LEDGER',
+    icon: 'piggybank', accent: '#00695c',
+    multiPeriod: false, providerConfig: false, restricted: false, elevatorGated: false,
+    serverKey: 'coc_da_thu', canonicalTypeName: 'Tiền cọc', canonicalCategory: 'Cọc',
+  },
 ];
 
-export const FEE_GROUPS: FeeGroup[] = ['Phí theo tòa', 'Hoa hồng', 'Bảo trì'];
+/**
+ * Ba family "sổ theo dõi" — nơi nào dựng bảng Tổng quan-khớp-Lợi-Nhuận hay đếm
+ * "còn thiếu phiếu theo toà" thì phải LOẠI các family này ra (tiền cọc/hoàn
+ * không thuộc lãi lỗ; đếm chúng vào là lệch số với Báo cáo Lợi Nhuận).
+ */
+export const LEDGER_FAMILIES: ReadonlySet<FeeFamily> =
+  new Set(['TERMINATION_REFUND', 'SALE_BONUS', 'DEPOSIT_LEDGER']);
+
+export const FEE_GROUPS: FeeGroup[] = ['Phí theo tòa', 'Hoa hồng', 'Bảo trì', 'Thanh lý & Cọc'];
 
 export const feeCategoryOf = (key: string): FeeCategory | undefined =>
   FEE_CATEGORIES.find((c) => c.key === key);

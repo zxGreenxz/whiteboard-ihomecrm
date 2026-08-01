@@ -24,7 +24,7 @@ import {
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -32,6 +32,9 @@ import { UtilityReceiptThumb } from './UtilityReceiptThumb';
 import { PeriodFeeEditModal } from './PeriodFeeEditModal';
 import { PeriodFeeVoucherList, PeriodFeePayDraftModal, PeriodFeeDupConfirmModal } from './PeriodFeeVoucherList';
 import { PeriodCommissionModal } from './PeriodCommissionModal';
+import {
+  TerminationRefundQueueSection, SaleBonusSection, DepositLedgerSection,
+} from './SettlementPanels';
 import { BookIcon } from './utilityIcons';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -126,7 +129,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
 
   const overview = useMemo(() => {
     let dueCount = 0, dueSum = 0, draftCount = 0; const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
-    const rows = visibleCats.map((c) => {
+    const rows = visibleCats.filter((c) => !LEDGER_FAMILIES.has(c.family)).map((c) => {
       let total = 0, paidN = 0, rowDue = 0, rowDraftN = 0; const dueList: string[] = [];
       if (c.family === 'EN') { for (const b of buildingIds) for (const k of ['dien', 'nuoc'] as const) { const st = feeStatus.statusOf(b, k); if (st?.notApplicable) continue; total++; if (st && st.paidAmount > 0) paidN++; else { rowDue += st?.expectedAmount ?? 0; if (!dueList.includes(nameOf(b))) dueList.push(nameOf(b)); } } }
       else if (c.family === 'GRID') { for (const b of activeIdsFor(c)) { const st = feeStatus.statusOf(b, c.serverKey); total++; if (st && st.paidAmount > 0) paidN++; else { if (st && st.draftAmount > 0) { rowDraftN++; rowDue += st.draftAmount; } else rowDue += st?.expectedAmount ?? 0; dueList.push(nameOf(b)); } } }
@@ -520,6 +523,9 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           })()}
 
           {/* MAINTENANCE */}
+          {fam === 'TERMINATION_REFUND' && <TerminationRefundQueueSection period={period} />}
+          {fam === 'SALE_BONUS' && <SaleBonusSection period={period} />}
+          {fam === 'DEPOSIT_LEDGER' && <DepositLedgerSection period={period} />}
           {fam === 'MAINTENANCE_BATCH' && (
             <div className="ptt-m-batch">
               <button type="button" className={'ptt-batch-create wide' + (createOpen ? ' on' : '')} disabled={!canRecordPayment} onClick={() => { setCreateOpen((v) => !v); if (!createOpen && batchLines.length === 0) addLine(); }}><Plus />Tạo phiếu tổng mới</button>
@@ -599,7 +605,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                     <button key={c.key} type="button" className={'ptt-menu-item' + (active ? ' on' : '')} onClick={() => pick(c.key)}>
                       <span className="ptt-menu-ic" style={{ background: active ? '#1b1813' : c.accent + '18', color: active ? '#fff' : c.accent }}><FeeIcon name={c.icon} style={{ width: 15, height: 15 }} /></span>
                       <span className="ptt-menu-lbl grow">{c.label}</span>
-                      {due > 0 && c.family !== 'MAINTENANCE_BATCH' && <span className="ptt-badge">{due}</span>}
+                      {due > 0 && c.family !== 'MAINTENANCE_BATCH' && !LEDGER_FAMILIES.has(c.family) && <span className="ptt-badge">{due}</span>}
                       {active && <Check className="ptt-menu-check" />}
                     </button>
                   );
