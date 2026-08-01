@@ -48,6 +48,7 @@ interface TestCredentialExchangeRpcInput {
     runtimeTimestamp: number;
     runtimeNonce: string;
     runtimeBodySha256: string;
+    localSessionGeneration?: number;
   };
 }
 
@@ -92,6 +93,8 @@ function channelExchangeReceipt(
     leaseGeneration: "2",
     fencingToken: "3",
     sessionGeneration: "4",
+    localSessionGeneration: "4",
+    authMode: "NORMAL",
     requestedOperation: input.request.requestedOperation,
     runtimeMethod: input.request.runtimeMethod,
     runtimePath: input.request.runtimePath,
@@ -142,6 +145,8 @@ const channelPrincipal = {
   leaseGeneration: 2,
   fencingToken: 3,
   sessionGeneration: 4,
+  localSessionGeneration: 4,
+  authMode: "NORMAL" as const,
 };
 
 const maintenancePrincipal = {
@@ -240,6 +245,19 @@ describe("OpenClaw shared runtime authentication", () => {
     }
   });
 
+  it("authorizes the declared work-context and media-upload-complete routes", () => {
+    expect(deriveRuntimeRequirement({
+      method: "POST",
+      path: "/v1/work/context",
+      body: {},
+    })).toEqual({ operation: "work.context", principalKind: "CHANNEL" });
+    expect(deriveRuntimeRequirement({
+      method: "POST",
+      path: "/v1/media/upload-complete",
+      body: {},
+    })).toEqual({ operation: "media.issue", principalKind: "CHANNEL" });
+  });
+
   it("exchanges a credential for a single request-bound five-minute token", async () => {
     const body = new TextEncoder().encode('{"limit":10}');
     const authenticateCredential = vi.fn((input: TestCredentialExchangeRpcInput) =>
@@ -252,6 +270,7 @@ describe("OpenClaw shared runtime authentication", () => {
       timestamp: 1_785_062_400,
       nonce: "00000000-0000-4000-8000-000000000001",
       exchangeNonce: EXCHANGE_NONCE,
+      localSessionGeneration: 4,
       principalSelector: {
         organizationId: ORGANIZATION_ID,
         accountId: ACCOUNT_ID,
@@ -300,6 +319,7 @@ describe("OpenClaw shared runtime authentication", () => {
       runtimeTimestamp: 1_785_062_400,
       runtimeNonce: "00000000-0000-4000-8000-000000000001",
       runtimeBodySha256,
+      localSessionGeneration: 4,
     };
     const exchangeOperation = "openclaw_exchange_runtime_credential_v1";
     const exchangeRequestHash = independentCredentialExchangeRequestHash(
@@ -389,6 +409,7 @@ describe("OpenClaw shared runtime authentication", () => {
       timestamp: 1_785_062_400,
       nonce: "00000000-0000-4000-8000-000000000020",
       exchangeNonce: "00000000-0000-4000-8000-000000000021",
+      localSessionGeneration: 4,
       principalSelector: {
         organizationId: ORGANIZATION_ID,
         accountId: ACCOUNT_ID,
@@ -407,6 +428,8 @@ describe("OpenClaw shared runtime authentication", () => {
       { authenticatedAt: "2000-01-01T00:00:00.000Z" },
       { leaseExpiresAt: new Date(1_785_062_400_000).toISOString() },
       { credentialGeneration: "9007199254740992" },
+      { localSessionGeneration: "5" },
+      { authMode: "COMMAND_TRANSITION" },
       { extra: "forbidden" },
     ];
 
@@ -417,6 +440,54 @@ describe("OpenClaw shared runtime authentication", () => {
         .rejects.toBeInstanceOf(OpenClawHttpError);
       expect(authenticateCredential).toHaveBeenCalledOnce();
     }
+  });
+
+  it("accepts command-transition authority only for an exact heartbeat binding", async () => {
+    const body = new TextEncoder().encode('{"version":1}');
+    const authenticateCredential = vi.fn((input: TestCredentialExchangeRpcInput) =>
+      Promise.resolve(channelExchangeReceipt(input, {
+        sessionGeneration: "4",
+        localSessionGeneration: "3",
+        authMode: "COMMAND_TRANSITION",
+      })));
+    const token = await exchangeRuntimeCredential({
+      credential: CHANNEL_CREDENTIAL,
+      method: "POST",
+      path: "/v1/heartbeat",
+      body,
+      timestamp: 1_785_062_400,
+      nonce: "00000000-0000-4000-8000-000000000024",
+      exchangeNonce: "00000000-0000-4000-8000-000000000025",
+      localSessionGeneration: 3,
+      principalSelector: {
+        organizationId: ORGANIZATION_ID,
+        accountId: ACCOUNT_ID,
+        cellId: CELL_ID,
+      },
+      signingKey: SIGNING_KEY,
+      nowEpochSeconds: 1_785_062_400,
+      authenticateCredential,
+    });
+
+    const verified = await verifyRuntimeRequest({
+      token,
+      method: "POST",
+      path: "/v1/heartbeat",
+      body,
+      timestamp: 1_785_062_400,
+      nonce: "00000000-0000-4000-8000-000000000024",
+      signingKey: SIGNING_KEY,
+      nowEpochSeconds: 1_785_062_401,
+      revalidatePrincipal: (principal) => Promise.resolve(principal),
+      consumeNonce: () => Promise.resolve(),
+    });
+
+    expect(verified.principal).toMatchObject({
+      sessionGeneration: 4,
+      localSessionGeneration: 3,
+      authMode: "COMMAND_TRANSITION",
+    });
+    expect(authenticateCredential.mock.calls[0][0].request.localSessionGeneration).toBe(3);
   });
 
   it("rejects invalid credential exchanges before credential lookup", async () => {
@@ -444,10 +515,6 @@ describe("OpenClaw shared runtime authentication", () => {
       { origin: "https://ptcrm.vercel.app" },
       { method: "GET" },
       { path: "/v1/not-allowed" },
-      {
-        path: "/v1/work/claim",
-        routeBody: { requestedKinds: ["RETENTION_DELETE"] },
-      },
       { timestamp: 1_785_062_461 },
       { nonce: "not-a-uuid" },
       { exchangeNonce: "not-a-uuid" },

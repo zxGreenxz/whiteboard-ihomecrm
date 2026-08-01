@@ -118,53 +118,160 @@ function parseSectionEntries(lines, sectionName) {
   const { start, end } = findObjectSection(lines, sectionName);
   const starts = [];
   for (let index = start + 1; index < end; index += 1) {
-    const match = /^      ([A-Za-z_][A-Za-z0-9_]*):(?: |{)/.exec(lines[index]);
-    if (match) starts.push({ index, name: match[1] });
+    const match = /^      (?:(?<name>[A-Za-z_][A-Za-z0-9_]*)|"(?:[^"\\]|\\.)+"|\[[^\]]+\])(?:\?)?:/.exec(
+      lines[index],
+    );
+    if (match) starts.push({ index, name: match.groups?.name });
   }
   const entries = new Map();
+  const blocks = [];
   for (let index = 0; index < starts.length; index += 1) {
     const current = starts[index];
     const next = starts[index + 1]?.index ?? end;
-    entries.set(current.name, lines.slice(current.index, next));
+    const block = lines.slice(current.index, next);
+    blocks.push({ name: current.name, lines: block });
+    if (current.name) entries.set(current.name, block);
   }
-  return { start, end, entries };
+  const firstEntry = starts[0]?.index ?? end;
+  return {
+    start,
+    end,
+    entries,
+    blocks,
+    prefix: lines.slice(start + 1, firstEntry),
+  };
+}
+
+const TABLE_OBJECT_NAMES = Object.freeze(['Row', 'Insert', 'Update']);
+const REQUIRED_OPENCLAW_TABLE_NAMES = Object.freeze([
+  'openclaw_accounts',
+  'openclaw_conversations',
+  'openclaw_outbox',
+  'openclaw_retention_policies',
+  'openclaw_runtime_cells',
+]);
+const REQUIRED_OPENCLAW_FUNCTION_NAMES = Object.freeze([
+  'openclaw_create_send_intent_v1',
+  'openclaw_get_bootstrap_v1',
+  'openclaw_service_acquire_cell_lease_v1',
+]);
+const REQUIRED_OPENCLAW_ACCOUNT_FIELDS = Object.freeze([
+  'connection_generation',
+  'id',
+  'organization_id',
+  'session_generation',
+]);
+const REQUIRED_OPENCLAW_SHARED_COLUMNS = Object.freeze({
+  lead_activities: Object.freeze([
+    'openclaw_schedule_revision',
+    'openclaw_schedule_timezone',
+    'openclaw_scheduled_at_utc',
+  ]),
+  leads: Object.freeze(['openclaw_assignment_revision']),
+  rooms: Object.freeze(['openclaw_availability_revision']),
+});
+
+function compareCodePoints(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function parseTableObjectFields(block, objectName) {
+  const start = block.findIndex((line) => line === `        ${objectName}: {`);
+  if (start < 0) {
+    throw new Error(`Table type is missing ${objectName}.`);
+  }
+  const end = block.findIndex(
+    (line, index) => index > start && line === '        }',
+  );
+  if (end < 0) {
+    throw new Error(`Table type has an unterminated ${objectName}.`);
+  }
+  const fields = new Map();
+  for (const line of block.slice(start + 1, end)) {
+    const match = /^          ([A-Za-z_][A-Za-z0-9_]*)(?:\?)?:/.exec(line);
+    if (match) fields.set(match[1], line);
+  }
+  return { start, end, fields };
+}
+
+function tableHasOpenClawFields(block) {
+  return TABLE_OBJECT_NAMES.some((objectName) =>
+    [...parseTableObjectFields(block, objectName).fields.keys()]
+      .some((name) => name.startsWith('openclaw_')),
+  );
+}
+
+function assertRequiredOpenClawSchema(generatedLines) {
+  const tables = parseSectionEntries(generatedLines, 'Tables').entries;
+  const functions = parseSectionEntries(generatedLines, 'Functions').entries;
+  const missing = [];
+  for (const tableName of REQUIRED_OPENCLAW_TABLE_NAMES) {
+    if (!tables.has(tableName)) missing.push(`public.Tables.${tableName}`);
+  }
+  for (const functionName of REQUIRED_OPENCLAW_FUNCTION_NAMES) {
+    if (!functions.has(functionName)) missing.push(`public.Functions.${functionName}`);
+  }
+  const accounts = tables.get('openclaw_accounts');
+  if (accounts) {
+    for (const objectName of TABLE_OBJECT_NAMES) {
+      try {
+        const fields = parseTableObjectFields(accounts, objectName).fields;
+        for (const fieldName of REQUIRED_OPENCLAW_ACCOUNT_FIELDS) {
+          if (!fields.has(fieldName)) {
+            missing.push(`public.Tables.openclaw_accounts.${objectName}.${fieldName}`);
+          }
+        }
+      } catch {
+        missing.push(`public.Tables.openclaw_accounts.${objectName}`);
+      }
+    }
+  }
+  for (const [tableName, requiredColumns] of Object.entries(
+    REQUIRED_OPENCLAW_SHARED_COLUMNS,
+  )) {
+    const table = tables.get(tableName);
+    for (const objectName of TABLE_OBJECT_NAMES) {
+      let fields;
+      try {
+        fields = table ? parseTableObjectFields(table, objectName).fields : new Map();
+      } catch {
+        fields = new Map();
+      }
+      for (const fieldName of requiredColumns) {
+        if (!fields.has(fieldName)) {
+          missing.push(`public.Tables.${tableName}.${objectName}.${fieldName}`);
+        }
+      }
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Generated types are missing required OpenClaw schema sentinels: ${missing.join(', ')}.`,
+    );
+  }
 }
 
 function mergeTableObjectFields(baselineBlock, generatedBlock) {
   let merged = [...baselineBlock];
-  for (const objectName of ['Row', 'Insert', 'Update']) {
-    const mergeObject = (block, sourceBlock) => {
-      const start = block.findIndex((line) => line === `        ${objectName}: {`);
-      const sourceStart = sourceBlock.findIndex(
-        (line) => line === `        ${objectName}: {`,
+  for (const objectName of TABLE_OBJECT_NAMES) {
+    const { start, end } = parseTableObjectFields(merged, objectName);
+    const preservedBaselineLines = merged
+      .slice(start + 1, end)
+      .filter(
+        (line) => !/^          openclaw_[A-Za-z0-9_]*(?:\?)?:/.test(line),
       );
-      if (start < 0 || sourceStart < 0) {
-        throw new Error(`Table type is missing ${objectName}.`);
-      }
-      const end = block.findIndex(
-        (line, index) => index > start && line === '        }',
-      );
-      const sourceEnd = sourceBlock.findIndex(
-        (line, index) => index > sourceStart && line === '        }',
-      );
-      if (end < 0 || sourceEnd < 0) {
-        throw new Error(`Table type has an unterminated ${objectName}.`);
-      }
-      const fields = new Map();
-      for (const line of block.slice(start + 1, end)) {
-        const match = /^          ([A-Za-z_][A-Za-z0-9_]*)(?:\?)?:/.exec(line);
-        if (match) fields.set(match[1], line);
-      }
-      for (const line of sourceBlock.slice(sourceStart + 1, sourceEnd)) {
-        const match = /^          (openclaw_[A-Za-z0-9_]*)(?:\?)?:/.exec(line);
-        if (match) fields.set(match[1], line);
-      }
-      const sorted = [...fields.entries()]
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([, line]) => line);
-      return [...block.slice(0, start + 1), ...sorted, ...block.slice(end)];
-    };
-    merged = mergeObject(merged, generatedBlock);
+    const generatedFields = generatedBlock
+      ? [...parseTableObjectFields(generatedBlock, objectName).fields]
+        .filter(([name]) => name.startsWith('openclaw_'))
+        .sort(([left], [right]) => compareCodePoints(left, right))
+        .map(([, line]) => line)
+      : [];
+    merged = [
+      ...merged.slice(0, start + 1),
+      ...preservedBaselineLines,
+      ...generatedFields,
+      ...merged.slice(end),
+    ];
   }
   return merged;
 }
@@ -172,32 +279,98 @@ function mergeTableObjectFields(baselineBlock, generatedBlock) {
 function replaceSectionEntries(lines, sectionName, generatedLines) {
   const baselineSection = parseSectionEntries(lines, sectionName);
   const generatedSection = parseSectionEntries(generatedLines, sectionName);
-  const entries = new Map(baselineSection.entries);
-  for (const [name, block] of generatedSection.entries) {
-    if (name.startsWith('openclaw_')) entries.set(name, block);
-  }
+  let baselineBlocks = baselineSection.blocks.filter(
+    ({ name }) => !name?.startsWith('openclaw_'),
+  );
   if (sectionName === 'Tables') {
-    for (const tableName of ['lead_activities', 'leads', 'rooms']) {
-      const baselineBlock = entries.get(tableName);
+    const tableNames = new Set();
+    const replacements = new Map();
+    for (const [tableName, block] of baselineSection.entries) {
+      if (!tableName.startsWith('openclaw_') && tableHasOpenClawFields(block)) {
+        tableNames.add(tableName);
+      }
+    }
+    for (const [tableName, block] of generatedSection.entries) {
+      if (!tableName.startsWith('openclaw_') && tableHasOpenClawFields(block)) {
+        tableNames.add(tableName);
+      }
+    }
+    for (const tableName of tableNames) {
+      const baselineBlock = baselineSection.entries.get(tableName);
       const generatedBlock = generatedSection.entries.get(tableName);
-      if (!baselineBlock && !generatedBlock) continue;
-      if (!baselineBlock || !generatedBlock) {
+      if (!baselineBlock) {
         throw new Error(`Cannot merge OpenClaw columns into public.${tableName}.`);
       }
-      entries.set(
+      replacements.set(
         tableName,
         mergeTableObjectFields(baselineBlock, generatedBlock),
       );
     }
+    baselineBlocks = baselineBlocks.map((block) => ({
+      ...block,
+      lines: block.name && replacements.has(block.name)
+        ? replacements.get(block.name)
+        : block.lines,
+    }));
   }
-  const mergedEntries = [...entries.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .flatMap(([, block]) => block);
+  const generatedOpenClawBlocks = generatedSection.blocks
+    .filter(({ name }) => name?.startsWith('openclaw_'))
+    .sort((left, right) => compareCodePoints(left.name, right.name));
   return [
     ...lines.slice(0, baselineSection.start + 1),
-    ...mergedEntries,
+    ...baselineSection.prefix,
+    ...baselineBlocks.flatMap(({ lines: block }) => block),
+    ...generatedOpenClawBlocks.flatMap(({ lines: block }) => block),
     ...lines.slice(baselineSection.end),
   ];
+}
+
+function assertExactOpenClawOverlay(mergedLines, generatedLines) {
+  for (const sectionName of [
+    'Tables',
+    'Views',
+    'Functions',
+    'Enums',
+    'CompositeTypes',
+  ]) {
+    const mergedEntries = parseSectionEntries(mergedLines, sectionName).entries;
+    const generatedEntries = parseSectionEntries(generatedLines, sectionName).entries;
+    const selectOpenClawBlocks = (entries) => [...entries]
+      .filter(([name]) => name.startsWith('openclaw_'))
+      .sort(([left], [right]) => compareCodePoints(left, right));
+    if (
+      JSON.stringify(selectOpenClawBlocks(mergedEntries)) !==
+      JSON.stringify(selectOpenClawBlocks(generatedEntries))
+    ) {
+      throw new Error(
+        `OpenClaw generated type parity mismatch in public.${sectionName} entries.`,
+      );
+    }
+  }
+
+  const mergedTables = parseSectionEntries(mergedLines, 'Tables').entries;
+  const generatedTables = parseSectionEntries(generatedLines, 'Tables').entries;
+  const tableNames = new Set([...mergedTables.keys(), ...generatedTables.keys()]);
+  for (const tableName of tableNames) {
+    if (tableName.startsWith('openclaw_')) continue;
+    const mergedBlock = mergedTables.get(tableName);
+    const generatedBlock = generatedTables.get(tableName);
+    for (const objectName of TABLE_OBJECT_NAMES) {
+      const selectOpenClawFields = (block) => block
+        ? [...parseTableObjectFields(block, objectName).fields]
+          .filter(([name]) => name.startsWith('openclaw_'))
+          .sort(([left], [right]) => compareCodePoints(left, right))
+        : [];
+      if (
+        JSON.stringify(selectOpenClawFields(mergedBlock)) !==
+        JSON.stringify(selectOpenClawFields(generatedBlock))
+      ) {
+        throw new Error(
+          `OpenClaw generated type parity mismatch in public.${tableName}.${objectName} columns.`,
+        );
+      }
+    }
+  }
 }
 
 export function mergeOpenClawGeneratedTypes(baselineOutput, generatedOutput) {
@@ -217,6 +390,7 @@ export function mergeOpenClawGeneratedTypes(baselineOutput, generatedOutput) {
   }
   let lines = baseline.replace(/\s*$/, '\n').split('\n');
   const generatedLines = generated.replace(/\s*$/, '\n').split('\n');
+  assertRequiredOpenClawSchema(generatedLines);
   for (const sectionName of [
     'Tables',
     'Views',
@@ -226,13 +400,8 @@ export function mergeOpenClawGeneratedTypes(baselineOutput, generatedOutput) {
   ]) {
     lines = replaceSectionEntries(lines, sectionName, generatedLines);
   }
+  assertExactOpenClawOverlay(lines, generatedLines);
   const merged = lines.join('\n').replace(/\s*$/, '\n');
-  if (
-    !merged.includes('      openclaw_accounts: {') ||
-    !merged.includes('openclaw_schedule_revision')
-  ) {
-    throw new Error('OpenClaw generated types are incomplete after merge.');
-  }
   return merged;
 }
 

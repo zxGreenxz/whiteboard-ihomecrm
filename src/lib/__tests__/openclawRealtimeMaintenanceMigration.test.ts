@@ -516,13 +516,31 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
   it("makes recurrence cursors and runtime bindings effective, not client assertions", () => {
     const sql = source(paths.maintenance);
     const scheduleWrite = functionBody(sql, "app_private", "openclaw_apply_schedule_write_v1");
+    const materializeSchedule = functionBody(
+      sql,
+      "app_private",
+      "materialize_openclaw_schedule_work_v1",
+    );
     const resolver = functionBody(sql, "app_private", "openclaw_resolve_local_occurrence_v1");
     const claimWork = functionBody(sql, "app_private", "openclaw_claim_work_item_v1");
     const claimOutbox = functionBody(sql, "app_private", "openclaw_claim_outbox_v1");
 
     expect(scheduleWrite).toMatch(/p_request\s*\?\s*'nextRunAt'/i);
     expect(scheduleWrite).toContain("database-derived");
-    expect(scheduleWrite).toContain("direct target only");
+    expect(scheduleWrite).toContain("immutable campaignVersionId");
+    expect(scheduleWrite).toMatch(
+      /from public\.openclaw_campaign_runs campaign_version[\s\S]*?campaign_version\.id=\(p_request->>'campaignVersionId'\)::uuid[\s\S]*?campaign_version\.automation_version_id=\(p_request->>'automationVersionId'\)::uuid/i,
+    );
+    expect(scheduleWrite).toContain("'campaignVersionId',v_schedule.campaign_version_id");
+    expect(materializeSchedule).toContain(
+      "snapshot.campaign_version_id=schedule.campaign_version_id",
+    );
+    expect(materializeSchedule).toContain(
+      "'campaignVersionId',schedule.campaign_version_id",
+    );
+    expect(materializeSchedule).toMatch(
+      /schedule_occurrence_id,campaign_version_id[\s\S]*?v_occurrence_id,schedule\.campaign_version_id/i,
+    );
     expect(resolver).toContain("generate_series");
     expect(resolver).toContain("interval '26 hours'");
     expect(resolver).toContain("GAP_SHIFT_FORWARD");
@@ -538,16 +556,53 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
   it("keeps retention authorization replayable and activation predicate-only", () => {
     const maintenance = source(paths.maintenance);
     const activation = source(paths.activation);
+    const issueTicket = functionBody(
+      maintenance,
+      "app_private",
+      "openclaw_issue_retention_delete_ticket_v1",
+    );
     const authorize = functionBody(maintenance, "app_private", "openclaw_authorize_retention_delete_v1");
+    const issueMedia = functionBody(maintenance, "app_private", "openclaw_issue_media_ticket_v1");
     const finalize = functionBody(maintenance, "app_private", "openclaw_finalize_retention_delete_v1");
     const guard = functionBody(activation, "app_private", "openclaw_guard_activation_v1");
     const resume = functionBody(activation, "app_private", "openclaw_resume_rollout_v1");
 
+    expect(issueTicket).toContain("v_work.source_id");
+    expect(issueTicket).toContain("insert into public.openclaw_retention_delete_tickets");
+    expect(issueTicket).toContain("TICKET_ISSUED");
+    expect(issueTicket).toContain("idempotent");
+    expect(authorize).toContain("v_work.source_id");
+    expect(authorize).not.toContain("v_work.payload->>'tombstoneId'");
+    for (const body of [issueTicket, authorize]) {
+      expect(body).toContain("array['version','workItemId','claimGeneration','claimToken']");
+      expect(body).not.toMatch(/p_request\s*->>\s*'(?:tombstoneId|holdVersion|deleteTicketJti|deleteAuthorizationJti|gatewaySigningKeyGeneration)'/i);
+      expect(body).not.toContain("preverified");
+    }
     expect(authorize).toContain("DELETE_AUTHORIZED");
+    expect(authorize).toContain("v_ticket.ticket_hash");
+    expect(authorize).toContain("v_ticket.ticket_jti");
+    expect(authorize).toContain("v_ticket.delete_authorization_jti");
     expect(authorize).toContain("for share");
+    expect(issueMedia).toContain("documentSha256");
+    expect(issueMedia).toContain("documentByteLength");
+    expect(issueMedia).toContain("ANCHOR_VERIFY");
+    expect(issueMedia).toContain("gatewayKeyGeneration");
+    expect(maintenance).toContain(
+      "create or replace function public.openclaw_service_issue_retention_delete_ticket_v1",
+    );
     expect(finalize).toContain("idempotentReplay");
-    expect(finalize).toContain("preverified");
-    expect(finalize).not.toMatch(/expires_at\s*>\s*statement_timestamp/i);
+    expect(finalize).not.toContain("preverified");
+    expect(finalize).not.toMatch(/v_ticket\.expires_at\s*>\s*statement_timestamp/i);
+    expect(finalize).toContain("recovery_lease_expires_at>statement_timestamp()");
+    expect(finalize).toContain("ihome-openclaw-retention-receipt-v1");
+    expect(finalize).toContain("app_private.openclaw_jcs_bytes_v1(v_receipt)");
+    expect(finalize).toContain("r2VersionOrEtag");
+    expect(finalize).toContain("gatewaySigningKeyGeneration");
+    expect(finalize).toContain("proofJti");
+    expect(finalize).toContain("v_ticket.receipt is distinct from v_receipt");
+    expect(finalize).toMatch(
+      /objectStatus'[\s\S]*?DELETED'[\s\S]*?r2VersionOrEtag'[\s\S]*?NOT_FOUND/i,
+    );
     expect(finalize).toMatch(
       /v_ticket\.maintenance_principal_id\s*<>\s*\(p_principal->>'maintenancePrincipalId'\)::uuid/i,
     );
@@ -561,7 +616,7 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
       /v_ticket\.fencing_token\s*<>\s*\(p_principal->>'fencingToken'\)::bigint/i,
     );
     expect(finalize.indexOf("maintenance principal binding mismatch"))
-      .toBeLessThan(finalize.indexOf("v_ticket.state='FINALIZED'"));
+      .toBeGreaterThan(finalize.indexOf("v_ticket.state='FINALIZED'"));
     expect(guard).toContain("artifact_digests");
     expect(guard).toContain("migration_manifest_sha256");
     expect(guard).toContain("deny unknown activation target");
@@ -624,17 +679,38 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
   it("creates an outbox and completes its send work in one idempotent CAS", () => {
     const sql = source(paths.maintenance);
     const body = functionBody(sql, "app_private", "openclaw_create_outbox_from_work_v1");
+    const resultBuilder = body.match(
+      /v_result\s*:=\s*jsonb_build_object\(([\s\S]*?)\);\s*v_internal_evidence\s*:=/i,
+    );
     expect(body).toContain("openclaw_send_work_attempts");
     expect(body).toMatch(/state\s*=\s*'COMPLETE'/i);
     expect(body).toContain("terminal_at");
     expect(body).toContain("claimTokenHash");
-    expect(body).toContain("idempotentReplay");
-    expect(body).toMatch(/payload_hash[\s\S]*?is distinct from[\s\S]*?raise exception/i);
-    expect(
-      body.match(
-        /v_payload_hash\s+is\s+distinct\s+from\s+p_request->>'payloadHash'/gi,
-      ),
-    ).toHaveLength(2);
+    expect(body).not.toContain("idempotentReplay");
+    expect(resultBuilder, "missing exact OpenClawWorkCompletionResult builder").not.toBeNull();
+    expect(resultBuilder![1].replace(/\s+/g, "")).toBe(
+      "'version',1,'workItemId',v_work.id,'claimGeneration',v_work.claim_generation," +
+      "'outcome','COMPLETED','canonicalEvidenceHash',v_completion_hash," +
+      "'completedAt',v_now,'retryNotBefore',null",
+    );
+    expect(body).toContain(
+      "v_completion_evidence:=jsonb_build_object('outboxId',v_outbox,'payloadHash',v_payload_hash)",
+    );
+    expect(body).toContain("ihome-openclaw-send-work-completion-v1");
+    expect(body).toContain("app_private.openclaw_jcs_bytes_v1(v_completion_evidence)");
+    expect(body).toMatch(
+      /attempt\.work_item_id=\(v_claim->>'workItemId'\)::uuid[\s\S]*?attempt\.claim_generation=\(v_claim->>'claimGeneration'\)::bigint[\s\S]*?attempt\.outcome='COMPLETE'[\s\S]*?claimTokenHash[\s\S]*?sourceSnapshotHash[\s\S]*?clientEvidence,payloadHash/i,
+    );
+    expect(body).toContain("return v_existing_attempt.evidence->'result'");
+    expect(body).toMatch(/'COMPLETE',v_internal_evidence,v_completion_hash/i);
+    expect(body).toMatch(
+      /if v_payload_hash\s+is\s+distinct\s+from\s+p_request->>'payloadHash'[\s\S]*?canonical send payload hash mismatch/i,
+    );
+    expect(body).toMatch(
+      /v_existing\.payload_hash is distinct from v_payload_hash[\s\S]*?idempotent work-to-outbox replay mismatch/i,
+    );
+    expect(body).toContain("v_existing.target_id is distinct from v_target.id");
+    expect(body).not.toMatch(/v_existing\.target_id\s+is\s+distinct\s+from\s+v_target\s*(?:\n|or)/i);
     expect(body).not.toMatch(/on conflict[^;]+do update\s+set\s+updated_at\s*=\s*public\.openclaw_outbox\.updated_at/i);
   });
 
@@ -727,16 +803,31 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
     const acknowledge = functionBody(sql, "app_private", "openclaw_ack_audit_anchor_v1");
     expect(materialize.indexOf("openclaw_maintenance_principals"))
       .toBeLessThan(materialize.indexOf("insert into public.openclaw_audit_roots"));
-    expect(materialize).toContain("r2AnchorKey");
+    expect(materialize).toContain("'anchorKey','v1/org/'");
+    expect(materialize).toContain(
+      "'auditSigningKeyGeneration',day.signing_key_generation",
+    );
+    expect(materialize).not.toContain("'r2AnchorKey'");
+    expect(materialize).not.toContain("'signingKeyGeneration'");
     expect(materialize).toContain(".json");
     expect(acknowledge).toContain("openclaw_maintenance_work_items");
     expect(acknowledge).toContain("credential_generation");
     expect(acknowledge).toContain("maintenance_lease_generation");
     expect(acknowledge).toContain("verifyTicketJti");
     expect(acknowledge).toContain("gatewayReceiptHash");
+    expect(acknowledge).toContain("v_work.payload->>'anchorKey'");
+    expect(acknowledge).toContain("v_work.payload->>'auditSigningKeyGeneration'");
+    expect(acknowledge).not.toContain("preverified");
+    expect(acknowledge).toContain("ihome-openclaw-audit-receipt-v1");
+    expect(acknowledge).toContain("app_private.openclaw_jcs_bytes_v1(v_receipt)");
+    expect(acknowledge).toContain("receiptKind");
+    expect(acknowledge).toContain("AUDIT_ANCHOR_VERIFY");
+    expect(acknowledge).toContain("objectVersionOrEtag");
+    expect(acknowledge).toContain("gatewaySigningKeyGeneration");
+    expect(acknowledge).toContain("v_root.gateway_receipt is distinct from v_receipt");
     expect(acknowledge).toContain("idempotentReplay");
-    expect(acknowledge.match(/openclaw_maintenance_work_attempts/g)).toHaveLength(2);
-    expect(acknowledge.match(/claimTokenHash/g)).toHaveLength(2);
+    expect(acknowledge.match(/openclaw_maintenance_work_attempts/g)).toHaveLength(1);
+    expect(acknowledge).toContain("claim_token_hash");
     expect(acknowledge).toMatch(
       /state='COMPLETE'[\s\S]*?credential_generation[\s\S]*?maintenance_lease_generation[\s\S]*?fencing_token/i,
     );

@@ -8,7 +8,7 @@ export const OPENCLAW_QR_CHALLENGE_TTL_SECONDS = 120;
 export const QR_OPERATION_RPCS = Object.freeze({
   BEGIN: "openclaw_begin_qr_login_v1",
   POLL: "openclaw_poll_qr_login_v1",
-  CONSUME: "openclaw_consume_qr_challenge_v1",
+  CONSUME: "openclaw_service_consume_qr_challenge_v1",
 } as const);
 
 export type QrOperation = keyof typeof QR_OPERATION_RPCS;
@@ -30,6 +30,8 @@ export interface QrPollRequest {
   operation: "POLL";
   organizationId: string;
   challengeId: string;
+  browserNonceHash: string;
+  authSessionHash: string;
 }
 
 export interface QrConsumeRequest {
@@ -37,6 +39,7 @@ export interface QrConsumeRequest {
   operation: "CONSUME";
   clientOperationId: string;
   organizationId: string;
+  accountId: string;
   challengeId: string;
   browserNonceHash: string;
   authSessionHash: string;
@@ -73,13 +76,21 @@ const BEGIN_KEYS = [
   "disclosureVersion",
 ] as const;
 
-const POLL_KEYS = ["version", "operation", "organizationId", "challengeId"] as const;
+const POLL_KEYS = [
+  "version",
+  "operation",
+  "organizationId",
+  "challengeId",
+  "browserNonceHash",
+  "authSessionHash",
+] as const;
 
 const CONSUME_KEYS = [
   "version",
   "operation",
   "clientOperationId",
   "organizationId",
+  "accountId",
   "challengeId",
   "browserNonceHash",
   "authSessionHash",
@@ -103,9 +114,8 @@ export const qrRequestSchema = {
         !isUuid(value.cellId) ||
         !isSha256(value.browserNonceHash) ||
         !isSha256(value.authSessionHash) ||
-        typeof value.disclosureVersion !== "number" ||
-        !Number.isInteger(value.disclosureVersion) ||
-        value.disclosureVersion < 0
+        !Number.isSafeInteger(value.disclosureVersion) ||
+        Number(value.disclosureVersion) < 1
       ) {
         return { success: false, error: "begin request is invalid" };
       }
@@ -116,7 +126,12 @@ export const qrRequestSchema = {
       if (!hasExactKeys(value, POLL_KEYS)) {
         return { success: false, error: "poll request has unexpected keys" };
       }
-      if (!isUuid(value.organizationId) || !isUuid(value.challengeId)) {
+      if (
+        !isUuid(value.organizationId) ||
+        !isUuid(value.challengeId) ||
+        !isSha256(value.browserNonceHash) ||
+        !isSha256(value.authSessionHash)
+      ) {
         return { success: false, error: "poll request is invalid" };
       }
       return { success: true, data: value as unknown as QrPollRequest };
@@ -129,6 +144,7 @@ export const qrRequestSchema = {
       if (
         !isUuid(value.clientOperationId) ||
         !isUuid(value.organizationId) ||
+        !isUuid(value.accountId) ||
         !isUuid(value.challengeId) ||
         !isSha256(value.browserNonceHash) ||
         !isSha256(value.authSessionHash)

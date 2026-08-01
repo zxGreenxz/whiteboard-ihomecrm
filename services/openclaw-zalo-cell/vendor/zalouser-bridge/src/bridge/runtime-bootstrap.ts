@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { isIP } from "node:net";
 import {
   businessFramesFromPayload,
   MAX_MEDIA_PART_BYTES,
@@ -135,6 +136,42 @@ function checkedBaseUrl(value: string): URL {
   return url;
 }
 
+export function validateCustomerAiBaseUrl(value: string): string {
+  if (typeof value !== "string" || value.trim() !== value || value === "") {
+    throw failure("AI_CONFIGURATION_INVALID", "customer AI base URL is invalid");
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw failure("AI_CONFIGURATION_INVALID", "customer AI base URL is invalid");
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/gu, "");
+  const forbiddenHostname =
+    hostname.endsWith(".") ||
+    hostname === "ai.chillhome.io.vn" ||
+    hostname.includes("9router") ||
+    hostname.includes("router9") ||
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal") ||
+    hostname.endsWith(".home.arpa");
+  const canonical = `https://${url.hostname}/v1`;
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" || url.password !== "" || url.port !== "" ||
+    url.search !== "" || url.hash !== "" || url.pathname !== "/v1" ||
+    value !== canonical || isIP(hostname) !== 0 || !hostname.includes(".") || forbiddenHostname
+  ) {
+    throw failure(
+      "AI_CONFIGURATION_INVALID",
+      "customer AI base URL must be a dedicated canonical public HTTPS /v1 endpoint",
+    );
+  }
+  return value;
+}
+
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, code: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -149,14 +186,11 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, code: st
   }
 }
 
-function bindingMatches(request: ZaloUserBridgeSendParamsV1, binding: BridgeRuntimeBindingV1): void {
+function requestIdentityMatches(request: ZaloUserBridgeSendParamsV1, binding: BridgeRuntimeBindingV1): void {
   if (
     request.payload.organizationId !== binding.organizationId ||
     request.payload.accountId !== binding.accountId ||
-    request.authorization.authorizationMarker.sessionGeneration !== binding.sessionGeneration ||
-    request.authorization.authorizationMarker.fencingToken !== binding.fencingToken ||
-    request.authorization.authorizationMarker.controlVersion !== binding.controlVersion ||
-    request.authorization.authorizationMarker.takeoverVersion !== binding.takeoverVersion
+    request.authorization.authorizationMarker.sessionGeneration !== binding.sessionGeneration
   ) {
     throw failure("BRIDGE_BINDING_MISMATCH", "send request does not match the installed cell binding");
   }
@@ -481,6 +515,7 @@ export function createProductionBridgeRuntime(
       typeof options.nonce !== "function" || typeof options.loadProviderSender !== "function") {
     throw new TypeError("fetch, now, nonce, and loadProviderSender must be functions");
   }
+  const authorizedRequests = new WeakSet<ZaloUserBridgeSendParamsV1>();
 
   const post = async (
     path: string,
@@ -508,7 +543,7 @@ export function createProductionBridgeRuntime(
   const prepare = async (
     request: ZaloUserBridgeSendParamsV1,
   ): Promise<PreparedPrivateOutboundExecutionV1> => {
-    bindingMatches(request, options.binding);
+    requestIdentityMatches(request, options.binding);
     const sink = providerSinkFromPayload(request.payload);
     const batch = createPreparedOutboundBatch(
       sink,
@@ -608,9 +643,18 @@ export function createProductionBridgeRuntime(
         throw failure("PRIVATE_BRIDGE_CLIENT_DENIED", "gateway client is not the authenticated bridge device");
       }
     },
+    assertAuthorizationCurrent: (request) => {
+      requestIdentityMatches(request, options.binding);
+      if (!authorizedRequests.has(request)) {
+        throw failure("AUTHORIZATION_PROOF_MISSING", "signed Bridge authorization proof is missing");
+      }
+      if (Date.parse(request.authorization.authorizationMarker.expiresAt) <= options.now()) {
+        throw failure("AUTHORIZATION_EXPIRED", "authorization expired before provider handoff");
+      }
+    },
     prepare,
     authorize: async (request) => {
-      bindingMatches(request, options.binding);
+      requestIdentityMatches(request, options.binding);
       const responseBody = await post(
         "/v1/outbox/authorize-send",
         "outbox.authorize-send",
@@ -627,6 +671,7 @@ export function createProductionBridgeRuntime(
       if (record.version !== 1 || record.status !== "AUTHORIZED") {
         throw failure("AUTHORIZATION_DENIED", "bridge denied the send authorization");
       }
+      authorizedRequests.add(request);
     },
   });
 }
@@ -666,6 +711,9 @@ export function installProductionBridgeRuntimeFromEnvironment(
     "OPENCLAW_ZALO_CONTROL_VERSION",
     "OPENCLAW_ZALO_TAKEOVER_VERSION",
     "OPENCLAW_ZALO_GATEWAY_DEVICE_ID",
+    "OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL",
+    "OPENCLAW_ZALO_CUSTOMER_AI_API_KEY",
+    "OPENCLAW_ZALO_CUSTOMER_AI_MODEL",
   ] as const;
   const configuredCount = requiredNames.reduce(
     (count, name) => count + (environment[name]?.trim() ? 1 : 0),
@@ -711,6 +759,7 @@ export function installProductionBridgeRuntimeFromEnvironment(
     controlVersion: versionFromEnvironment("OPENCLAW_ZALO_CONTROL_VERSION", 0),
     takeoverVersion: versionFromEnvironment("OPENCLAW_ZALO_TAKEOVER_VERSION", 0),
   });
+  validateCustomerAiBaseUrl(requiredEnvironment(environment, "OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL"));
   const shared = {
     binding,
     bridgeBaseUrl: requiredEnvironment(environment, "OPENCLAW_ZALO_BRIDGE_URL"),

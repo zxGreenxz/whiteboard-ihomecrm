@@ -61,6 +61,7 @@ export const SQL_AUTHORIZATION_PROOFS = Object.freeze([
 ]);
 export const CREDENTIAL_EXCHANGE_AUTHORIZATION_PROOFS = Object.freeze([
   "credential.channel-success",
+  "credential.declared-channel-routes",
   "credential.maintenance-success",
   "credential.wrong-proof-domain-separated",
   "credential.cross-binding-denied",
@@ -71,6 +72,7 @@ export const CREDENTIAL_EXCHANGE_AUTHORIZATION_PROOFS = Object.freeze([
   "credential.auth-failure-does-not-consume-nonce",
   "credential.nonce-replay-denied",
   "credential.exchange-nonce-namespace-separated",
+  "credential.disconnect-transition-heartbeat-only",
 ]);
 export const BROWSER_DML_PRIVILEGE_MATRIX = Object.freeze([
   Object.freeze({ role: "anon", privilege: "INSERT" }),
@@ -532,7 +534,7 @@ export async function assertMigrationSmoke(database, expectedCount = 12) {
 
 let sqlHarnessSavepoint = 0;
 
-async function withSqlHarnessSavepoint(database, operation, { rollback = true } = {}) {
+export async function withSqlHarnessSavepoint(database, operation, { rollback = true } = {}) {
   sqlHarnessSavepoint += 1;
   const name = `openclaw_harness_${sqlHarnessSavepoint}`;
   await database.exec(`savepoint ${name}`);
@@ -782,7 +784,7 @@ export async function runDisposableSqlAuthorizationMatrix() {
     prove("qr.unique");
 
     await runDisposableConcurrencyScenario(database, "PRE_HANDOFF_REQUEUE");
-    await runDisposableConcurrencyScenario(database, "OUTBOX_SINGLE_CLAIM");
+    const outboxClaim = await runDisposableConcurrencyScenario(database, "OUTBOX_SINGLE_CLAIM");
     const claimedOutbox = await database.query(`
       select id,payload_hash,claim_generation,fencing_token,session_generation,
         control_version,takeover_version,lease_expires_at
@@ -812,7 +814,8 @@ export async function runDisposableSqlAuthorizationMatrix() {
         '${DEMO_ORG_ID}','11111111-1111-4111-8111-111111111111',
         '55555555-5555-4555-8555-555555555555','REPLY','ACTIVE',
         'sql-matrix',repeat('a',64),statement_timestamp()
-      );
+      ) on conflict (organization_id,account_id,target_id,consent_scope,consent_version)
+        do update set consent_status='ACTIVE',revoked_at=null;
       set session_replication_role='origin';
     `);
     const stalePolicy = await database.query(
@@ -825,7 +828,7 @@ export async function runDisposableSqlAuthorizationMatrix() {
           version: 1,
           outboxId: "bbbbbbbb-bbbb-4bbb-8bbb-000000000001",
           claimGeneration: 1,
-          claimToken: "claim-a",
+          claimToken: outboxClaim.claimToken,
         }),
       ],
     );
@@ -926,9 +929,12 @@ export async function runDisposableSqlAuthorizationMatrix() {
         sourceTimestamp: "2026-07-31T00:00:00.000Z",
         callbackReceivedAt: "2026-07-31T00:00:01.000Z",
         rawEnvelope: { bounded: true },
-        rawEnvelopeSha256: "a".repeat(64),
-        normalized: { text: "atomic" },
-        normalizedSha256: "b".repeat(64),
+        rawEnvelopeSha256: createHash("sha256")
+          .update('{"bounded":true}', "utf8").digest("hex"),
+        normalized: { text: "atomic", replyToProviderMessageId: null, mediaManifest: [] },
+        normalizedSha256: createHash("sha256")
+          .update('{"mediaManifest":[],"replyToProviderMessageId":null,"text":"atomic"}', "utf8")
+          .digest("hex"),
       },
       {
         version: 1,
@@ -942,9 +948,18 @@ export async function runDisposableSqlAuthorizationMatrix() {
         sourceTimestamp: "not-a-timestamp",
         callbackReceivedAt: "2026-07-31T00:00:01.000Z",
         rawEnvelope: { bounded: true },
-        rawEnvelopeSha256: "c".repeat(64),
-        normalized: { text: "must roll back" },
-        normalizedSha256: "d".repeat(64),
+        rawEnvelopeSha256: createHash("sha256")
+          .update('{"bounded":true}', "utf8").digest("hex"),
+        normalized: {
+          text: "must roll back",
+          replyToProviderMessageId: null,
+          mediaManifest: [],
+        },
+        normalizedSha256: createHash("sha256")
+          .update(
+            '{"mediaManifest":[],"replyToProviderMessageId":null,"text":"must roll back"}',
+            "utf8",
+          ).digest("hex"),
       },
     ];
     await expectSqlHarnessRejection(
@@ -958,7 +973,10 @@ export async function runDisposableSqlAuthorizationMatrix() {
           JSON.stringify(channelPrincipal()),
           JSON.stringify({
             version: 1,
-            requestId: "99000000-0000-4000-8000-000000000001",
+            organizationId: DEMO_ORG_ID,
+            accountId: "11111111-1111-4111-8111-111111111111",
+            cellId: "22222222-2222-4222-8222-222222222222",
+            sessionGeneration: 1,
             events: atomicEvents,
           }),
         ],
@@ -989,6 +1007,7 @@ export async function runDisposableSqlAuthorizationMatrix() {
     prove("inbound.atomic-commit");
 
     await runDisposableConcurrencyScenario(database, "DUPLICATE_SCHEDULE_MATERIALIZER");
+    const sqlMatrixWorkClaimToken = concurrencyClaimToken("sql-matrix-work-claim");
     const workClaim = await database.query(
       `select app_private.openclaw_claim_work_item_v1(
         $1::jsonb,'{}'::jsonb,$2::jsonb
@@ -997,14 +1016,20 @@ export async function runDisposableSqlAuthorizationMatrix() {
         JSON.stringify(channelPrincipal()),
         JSON.stringify({
           version: 1,
-          claimToken: "sql-matrix-work-claim",
+          claimToken: sqlMatrixWorkClaimToken,
           limit: 1,
           leaseSeconds: 30,
+          requestedKinds: ["SCHEDULE_OCCURRENCE"],
         }),
       ],
     );
     const claimedWork = workClaim.rows[0].result.items[0];
     assertProof(claimedWork?.workItemId, "Schedule work could not be claimed for rollback proof.");
+    const claimedWorkSource = await database.query(
+      `select source_hash from public.openclaw_send_work_items
+       where organization_id=$1 and id=$2`,
+      [DEMO_ORG_ID, claimedWork.workItemId],
+    );
     await expectSqlHarnessRejection(
       database,
       "Work-to-outbox payload hash mismatch",
@@ -1016,9 +1041,8 @@ export async function runDisposableSqlAuthorizationMatrix() {
           JSON.stringify(channelPrincipal()),
           JSON.stringify({
             version: 1,
-            workItemId: claimedWork.workItemId,
-            claimGeneration: claimedWork.claimGeneration,
-            claimToken: "sql-matrix-work-claim",
+            principalKind: "CHANNEL",
+            claim: claimedWork,
             canonicalPayload: {
               version: 1,
               organizationId: DEMO_ORG_ID,
@@ -1049,7 +1073,7 @@ export async function runDisposableSqlAuthorizationMatrix() {
               },
             },
             payloadHash: "0".repeat(64),
-            sourceSnapshotHash: claimedWork.sourceHash,
+            sourceSnapshotHash: claimedWorkSource.rows[0].source_hash,
           }),
         ],
       ),
@@ -1100,8 +1124,16 @@ export async function runDisposableSqlAuthorizationMatrix() {
       for (const scenario of [
         "FORGED_AUDIT_RECEIPT",
         "LOST_AUDIT_ACKNOWLEDGEMENT",
+        "MAINTENANCE_FAILURE_READINESS",
       ]) {
         await runDisposableConcurrencyScenario(receiptDatabase, scenario);
+      }
+      const auditRecoveryDatabase = await createDisposableOpenClawDatabase();
+      try {
+        await prepareDisposableConcurrencyFixtures(auditRecoveryDatabase);
+        await runDisposableConcurrencyScenario(auditRecoveryDatabase, "AUDIT_RECOVERY_REFRESH");
+      } finally {
+        await auditRecoveryDatabase.close().catch(() => {});
       }
       prove("audit.immutability-receipt");
 
@@ -1114,6 +1146,16 @@ export async function runDisposableSqlAuthorizationMatrix() {
         "LOST_DB_FINALIZATION",
       ]) {
         await runDisposableConcurrencyScenario(receiptDatabase, scenario);
+      }
+      const retentionRecoveryDatabase = await createDisposableOpenClawDatabase();
+      try {
+        await prepareDisposableConcurrencyFixtures(retentionRecoveryDatabase);
+        await runDisposableConcurrencyScenario(
+          retentionRecoveryDatabase,
+          "RETENTION_RECOVERY_REFRESH",
+        );
+      } finally {
+        await retentionRecoveryDatabase.close().catch(() => {});
       }
     } finally {
       await receiptDatabase.close().catch(() => {});
@@ -1275,7 +1317,12 @@ export async function runDisposableSqlAuthorizationMatrix() {
             organizationId: PROD_ORG_ID,
             accountId: "96000000-0000-4000-8000-000000000001",
           }),
-          JSON.stringify({ version: 1, claimToken: "cross-org", limit: 1 }),
+          JSON.stringify({
+            version: 1,
+            claimToken: concurrencyClaimToken("cross-org"),
+            limit: 1,
+            leaseSeconds: 30,
+          }),
         ],
       ),
       /stale|binding|credential|lease/i,
@@ -1291,9 +1338,10 @@ export async function runDisposableSqlAuthorizationMatrix() {
           JSON.stringify({ ...channelPrincipal(), credentialGeneration: 99 }),
           JSON.stringify({
             version: 1,
-            claimToken: "stale-credential",
+            claimToken: concurrencyClaimToken("stale-credential"),
             limit: 1,
             leaseSeconds: 30,
+            requestedKinds: ["SCHEDULE_OCCURRENCE"],
           }),
         ],
       ),
@@ -1356,6 +1404,7 @@ async function buildCredentialExchangeInvocation(database, {
   runtimeTimestamp,
   runtimeNonce = nextCredentialExchangeNonce(),
   runtimeBodySha256 = createHash("sha256").update("{}").digest("hex"),
+  localSessionGeneration = 1,
   requestMutation,
   envelopeMutation,
 } = {}) {
@@ -1377,6 +1426,7 @@ async function buildCredentialExchangeInvocation(database, {
         "outbox.requeue": "/v1/outbox/requeue",
         "outbox.complete": "/v1/outbox/complete",
         "work.claim": "/v1/work/claim",
+        "work.context": "/v1/work/context",
         "work.complete": "/v1/work/complete",
         "media.issue": "/v1/media/upload-ticket",
       }[requestedOperation]
@@ -1398,6 +1448,7 @@ async function buildCredentialExchangeInvocation(database, {
     runtimeTimestamp: runtimeTimestamp ?? times.rows[0].runtime_timestamp,
     runtimeNonce,
     runtimeBodySha256,
+    ...(principalKind === "CHANNEL" ? { localSessionGeneration } : {}),
     ...requestMutation,
   };
   const requestHash = await database.query(
@@ -1431,7 +1482,7 @@ async function executeCredentialExchange(database, invocation) {
   );
 }
 
-async function executeAuthenticatedServiceCall(database, {
+export async function executeAuthenticatedServiceCall(database, {
   operation,
   facade,
   nonce,
@@ -1461,6 +1512,8 @@ async function executeAuthenticatedServiceCall(database, {
     leaseGeneration: "1",
     fencingToken: "1",
     sessionGeneration: "1",
+    localSessionGeneration: "1",
+    authMode: "NORMAL",
     allowedOperations: [operation],
     ...principalOverrides,
   };
@@ -1583,6 +1636,8 @@ export async function runDisposableCredentialExchangeAuthorizationMatrix() {
         channelReceipt?.leaseGeneration === "1" &&
         channelReceipt?.fencingToken === "1" &&
         channelReceipt?.sessionGeneration === "1" &&
+        channelReceipt?.localSessionGeneration === "1" &&
+        channelReceipt?.authMode === "NORMAL" &&
         channelReceipt?.requestedOperation === "outbox.claim" &&
         channelReceipt?.runtimeMethod === "POST" &&
         channelReceipt?.runtimePath === "/v1/outbox/claim" &&
@@ -1598,6 +1653,26 @@ export async function runDisposableCredentialExchangeAuthorizationMatrix() {
       "Authenticated channel exchange did not return its DB-derived binding.",
     );
     prove("credential.channel-success");
+
+    for (const [requestedOperation, runtimePath] of [
+      ["work.context", "/v1/work/context"],
+      ["media.issue", "/v1/media/upload-complete"],
+    ]) {
+      const invocation = await buildCredentialExchangeInvocation(database, {
+        principalKind: "CHANNEL",
+        principal: channelPrincipal,
+        credentialProofSha256: channelProof,
+        requestedOperation,
+        runtimePath,
+      });
+      const result = await executeCredentialExchange(database, invocation);
+      assertProof(
+        result.rows[0].result?.requestedOperation === requestedOperation &&
+          result.rows[0].result?.runtimePath === runtimePath,
+        `Declared runtime route was rejected by credential exchange: ${runtimePath}`,
+      );
+    }
+    prove("credential.declared-channel-routes");
 
     const maintenanceSuccess = await buildCredentialExchangeInvocation(database, {
       principalKind: "MAINTENANCE",
@@ -1781,6 +1856,7 @@ export async function runDisposableCredentialExchangeAuthorizationMatrix() {
       runtimeTimestamp: authenticationFailureInvocation.request.runtimeTimestamp,
       runtimeNonce: authenticationFailureInvocation.request.runtimeNonce,
       runtimeBodySha256: authenticationFailureInvocation.request.runtimeBodySha256,
+      localSessionGeneration: authenticationFailureInvocation.request.localSessionGeneration,
     });
     await executeCredentialExchange(database, correctRetry);
     assertProof(
@@ -1852,6 +1928,64 @@ export async function runDisposableCredentialExchangeAuthorizationMatrix() {
     );
     prove("credential.exchange-nonce-namespace-separated");
 
+    const transitionCommandId = "dddd7100-0000-4000-8000-000000000099";
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_accounts set
+        session_generation=2,connection_generation=1,connection_state='DISCONNECTING'
+      where organization_id='${DEMO_ORG_ID}'
+        and id='11111111-1111-4111-8111-111111111111';
+      with payload as (
+        select jsonb_build_object(
+          'version',1,'reasonCode','ACCOUNT_DISCONNECT',
+          'revocationId','dddd7100-0000-4000-8000-000000000098',
+          'revokedSessionGeneration',1,'minimumSessionGeneration',2
+        ) value
+      )
+      insert into public.openclaw_runtime_commands(
+        id,organization_id,account_id,cell_id,command_key,command_kind,
+        source_session_generation,target_session_generation,
+        source_connection_generation,target_connection_generation,
+        expected_session_generation,expected_connection_generation,expected_fencing_token,
+        payload,payload_bytes,payload_hash,created_by
+      ) select '${transitionCommandId}','${DEMO_ORG_ID}',
+        '11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222',
+        'credential-transition','DISCONNECT',1,2,0,1,2,0,1,value,
+        app_private.openclaw_jcs_bytes_v1(value),
+        encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(value),'sha256'),'hex'),
+        '99999999-9999-4999-8999-999999999999'
+      from payload;
+      set session_replication_role='origin';
+    `);
+    const transitionExchange = await buildCredentialExchangeInvocation(database, {
+      principalKind: "CHANNEL",
+      principal: channelPrincipal,
+      credentialProofSha256: channelProof,
+      requestedOperation: "heartbeat",
+      localSessionGeneration: 1,
+    });
+    const transitionReceipt = (await executeCredentialExchange(
+      database,
+      transitionExchange,
+    )).rows[0].result;
+    assertProof(
+      transitionReceipt.authMode === "COMMAND_TRANSITION" &&
+        transitionReceipt.localSessionGeneration === "1" &&
+        transitionReceipt.sessionGeneration === "2",
+      "Exact disconnect transition did not mint heartbeat-only transition authority.",
+    );
+    await reject(
+      "Old Bridge ordinary authority after disconnect",
+      await buildCredentialExchangeInvocation(database, {
+        principalKind: "CHANNEL",
+        principal: channelPrincipal,
+        credentialProofSha256: channelProof,
+        requestedOperation: "outbox.claim",
+        localSessionGeneration: 1,
+      }),
+    );
+    prove("credential.disconnect-transition-heartbeat-only");
+
     return {
       summary: "PASS OpenClaw credential exchange authorization matrix",
       proofs,
@@ -1904,11 +2038,60 @@ export async function prepareDisposableConcurrencyFixtures(database) {
       '${DEMO_ORG_ID}','99993000-0000-4000-8000-000000000001',
       '99992000-0000-4000-8000-000000000001'
     ) on conflict (role_binding_id,scope_id) do nothing;
+    with manifest(file_name) as (values
+      ('20260727010000_openclaw_catalog_foundation.sql'),
+      ('20260727015000_openclaw_security_principals.sql'),
+      ('20260727020000_openclaw_inbox_schema.sql'),
+      ('20260727025000_openclaw_inbound_automation.sql'),
+      ('20260727030000_openclaw_policy_automation_knowledge.sql'),
+      ('20260727040000_openclaw_delivery_audit_ops.sql'),
+      ('20260727050000_openclaw_access_policies.sql'),
+      ('20260727060000_openclaw_rpc_surface.sql'),
+      ('20260727070000_openclaw_crm_event_sources.sql'),
+      ('20260727080000_openclaw_realtime_allowlist.sql'),
+      ('20260727090000_openclaw_maintenance_jobs.sql'),
+      ('20260727095000_openclaw_activation_guards.sql')
+    ), artifacts as (
+      select jsonb_object_agg(file_name,repeat('d',64)) || jsonb_build_object(
+        'cellReviewedCommitSha',repeat('a',40),
+        'cellImageDigest','sha256:'||repeat('b',64),
+        'cellConfigDigest',repeat('c',64)
+      ) payload from manifest
+    )
+    insert into public.openclaw_rollout_runs(
+      id,organization_id,reviewed_commit_sha,migration_manifest_sha256,
+      upstream_sri,upstream_git_head,patch_series_sha256,built_tgz_sha256,
+      artifact_digests,stage,status,completed_at
+    )
+    select '99994000-0000-4000-8000-000000000001','${DEMO_ORG_ID}',
+      repeat('a',40),app_private.openclaw_rollout_manifest_hash_v1(payload),
+      'sha512-disposable',repeat('e',40),repeat('f',64),repeat('9',64),
+      payload,'COMPLETE','COMPLETE',statement_timestamp()
+    from artifacts
+    on conflict (organization_id,id) do nothing;
     insert into public.openclaw_accounts(
       id,organization_id,account_profile,is_active
     ) values (
       '11111111-1111-4111-8111-111111111111',
       '${DEMO_ORG_ID}','concurrency',true
+    ) on conflict (organization_id,id) do nothing;
+    insert into public.openclaw_account_connections(
+      id,organization_id,account_id,connection_generation,connection_state,
+      session_risk_state,configured_mode,effective_mode,reason_code,
+      disclosure_version,disclosure_acknowledged_version,evidence_hash
+    ) values (
+      '99995000-0000-4000-8000-000000000001','${DEMO_ORG_ID}',
+      '11111111-1111-4111-8111-111111111111',1,'CONNECTED','HEALTHY',
+      'DRAFT_ONLY','DRAFT_ONLY','CONCURRENCY_FIXTURE',1,1,repeat('e',64)
+    ) on conflict (organization_id,id) do nothing;
+    insert into public.openclaw_rollout_checkpoints(
+      id,organization_id,rollout_run_id,checkpoint_name,stage,status,
+      trusted_evidence_id,trusted_evidence_hash,completed_at
+    ) values (
+      '99996000-0000-4000-8000-000000000001','${DEMO_ORG_ID}',
+      '99994000-0000-4000-8000-000000000001','WAITING_OWNER_QR',
+      'WAITING_OWNER_QR','COMPLETE','99995000-0000-4000-8000-000000000001',
+      repeat('f',64),statement_timestamp()
     ) on conflict (organization_id,id) do nothing;
     insert into public.openclaw_runtime_cells(
       id,organization_id,account_id,cell_generation,state,is_current,
@@ -1929,8 +2112,8 @@ export async function prepareDisposableConcurrencyFixtures(database) {
           || decode('00','hex')
           || convert_to('${DISPOSABLE_CHANNEL_ROOT_CREDENTIAL}','UTF8'),
         'sha256'),'hex'),
-      array['outbox.claim','outbox.preflight','outbox.authorize-send',
-        'outbox.requeue','outbox.complete','credential.exchange']
+      array['heartbeat','outbox.claim','outbox.preflight','outbox.authorize-send',
+        'outbox.requeue','outbox.complete','work.context','media.issue','credential.exchange']
     ) on conflict (organization_id,account_id,cell_id,credential_generation) do nothing;
     insert into public.openclaw_runtime_leases(
       id,organization_id,account_id,cell_id,lease_generation,fencing_token,
@@ -2002,7 +2185,19 @@ const concurrencyOutboxIds = Object.freeze({
   STALE_FENCE_REJECTED: "bbbbbbbb-bbbb-4bbb-8bbb-000000000003",
   PRE_HANDOFF_REQUEUE: "bbbbbbbb-bbbb-4bbb-8bbb-000000000004",
   UNKNOWN_SINGLE_WINNER: "bbbbbbbb-bbbb-4bbb-8bbb-000000000005",
+  CANONICAL_OUTBOX_COMPLETION: "bbbbbbbb-bbbb-4bbb-8bbb-000000000006",
 });
+
+function concurrencyClaimToken(label) {
+  return `concurrency:${label}`.padEnd(32, "x");
+}
+
+function canonicalDomainHash(domain, value) {
+  return createHash("sha256")
+    .update(`${domain}\0`, "utf8")
+    .update(canonicalComparisonJson(value), "utf8")
+    .digest("hex");
+}
 
 async function insertConcurrencyOutbox(database, scenario, state = "QUEUED") {
   const outboxId = concurrencyOutboxIds[scenario];
@@ -2017,7 +2212,9 @@ async function insertConcurrencyOutbox(database, scenario, state = "QUEUED") {
     idempotencyKey: `concurrency:${scenario}`,
     parts: [{ version: 1, partIndex: 0, kind: "TEXT", text: scenario }],
     replyToProviderMessageId: null,
-    policyVersionId: "66666666-6666-4666-8666-666666666666",
+    policyVersionId: scenario === "OUTBOX_SINGLE_CLAIM"
+      ? "66666666-6666-4666-8666-666666666666"
+      : "66666666-6666-4666-8666-666666666662",
     automationVersionId: null,
     templateVersionId: null,
     frozenInputs: {
@@ -2099,6 +2296,8 @@ function channelPrincipal(fencingToken = 1) {
     leaseGeneration: 1,
     fencingToken,
     sessionGeneration: 1,
+    localSessionGeneration: 1,
+    authMode: "NORMAL",
   };
 }
 
@@ -2114,6 +2313,50 @@ function maintenancePrincipal(fencingToken = 1) {
   };
 }
 
+function rotatedMaintenancePrincipal() {
+  return {
+    version: 1,
+    principalKind: "MAINTENANCE",
+    organizationId: DEMO_ORG_ID,
+    maintenancePrincipalId: "44444444-4444-4444-8444-444444444445",
+    credentialGeneration: 2,
+    leaseGeneration: 2,
+    fencingToken: 2,
+  };
+}
+
+async function prepareRotatedMaintenancePrincipal(database) {
+  await database.exec(`
+    set session_replication_role='replica';
+    update public.openclaw_maintenance_principals set is_current=false
+    where organization_id='${DEMO_ORG_ID}' and is_current;
+    insert into public.openclaw_maintenance_principals(
+      id,organization_id,principal_generation,is_current
+    ) values (
+      '44444444-4444-4444-8444-444444444445','${DEMO_ORG_ID}',2,true
+    ) on conflict (organization_id,id) do update set is_current=true,revoked_at=null;
+    insert into public.openclaw_maintenance_credentials(
+      organization_id,maintenance_principal_id,credential_generation,
+      credential_hash,allowed_scopes
+    ) values (
+      '${DEMO_ORG_ID}','44444444-4444-4444-8444-444444444445',2,
+      repeat('f',64),array['maintenance.claim','maintenance.complete']
+    ) on conflict (organization_id,maintenance_principal_id,credential_generation)
+      do update set revoked_at=null,revoked_reason=null;
+    insert into public.openclaw_maintenance_leases(
+      organization_id,maintenance_principal_id,lease_generation,fencing_token,
+      status,expires_at
+    ) values (
+      '${DEMO_ORG_ID}','44444444-4444-4444-8444-444444444445',2,2,
+      'ACTIVE',statement_timestamp()+interval '1 hour'
+    ) on conflict (organization_id,maintenance_principal_id,lease_generation)
+      do update set fencing_token=2,status='ACTIVE',released_at=null,
+        expires_at=statement_timestamp()+interval '1 hour';
+    set session_replication_role='origin';
+  `);
+  return rotatedMaintenancePrincipal();
+}
+
 async function prepareAutomationFixtures(database) {
   await database.exec(`
     set session_replication_role='replica';
@@ -2125,12 +2368,13 @@ async function prepareAutomationFixtures(database) {
     ) on conflict (organization_id,id) do nothing;
     insert into public.openclaw_policy_versions(
       id,organization_id,account_id,policy_id,version,lifecycle_state,timezone,
-      rate_limits,disclosure_version,policy_payload,payload_hash,published_at
+      quiet_hours_start,quiet_hours_end,rate_limits,disclosure_version,
+      policy_payload,payload_hash,published_at
     ) values (
       '66666666-6666-4666-8666-666666666662','${DEMO_ORG_ID}',
       '11111111-1111-4111-8111-111111111111',
       '66666666-6666-4666-8666-666666666661',1,'PUBLISHED','Asia/Bangkok',
-      '{"perPeer":1}'::jsonb,1,'{"version":1}'::jsonb,repeat('6',64),
+      '00:00','00:00','{"perPeer":1}'::jsonb,1,'{"version":1}'::jsonb,repeat('6',64),
       statement_timestamp()
     ) on conflict (organization_id,id) do nothing;
     insert into public.openclaw_automations(
@@ -2152,11 +2396,45 @@ async function prepareAutomationFixtures(database) {
       '66666666-6666-4666-8666-666666666662','{}'::jsonb,repeat('7',64),
       statement_timestamp()
     ) on conflict (organization_id,id) do nothing;
+    insert into public.openclaw_campaigns(
+      id,organization_id,account_id,automation_version_id,name,status
+    ) values (
+      '66666666-6666-4666-8666-666666666665','${DEMO_ORG_ID}',
+      '11111111-1111-4111-8111-111111111111',
+      '66666666-6666-4666-8666-666666666664','Concurrency campaign','ACTIVE'
+    ) on conflict (organization_id,id) do nothing;
+    insert into public.openclaw_campaign_runs(
+      id,organization_id,account_id,campaign_id,campaign_version,
+      automation_version_id,run_key,status,target_snapshot_hash
+    ) values (
+      '66666666-6666-4666-8666-666666666666','${DEMO_ORG_ID}',
+      '11111111-1111-4111-8111-111111111111',
+      '66666666-6666-4666-8666-666666666665',1,
+      '66666666-6666-4666-8666-666666666664','concurrency-campaign-v1',
+      'PLANNED',repeat('9',64)
+    ) on conflict (organization_id,id) do nothing;
     insert into public.openclaw_control_states(
       organization_id,control_key,global_stop,feature_enabled,proactive_enabled
     ) values ('${DEMO_ORG_ID}','GLOBAL_STOP',false,true,true)
     on conflict (organization_id,control_key) do update set
       global_stop=false,feature_enabled=true,proactive_enabled=true;
+    set session_replication_role='origin';
+  `);
+}
+
+async function prepareCanonicalManualDispatchFixtures(database) {
+  await prepareAutomationFixtures(database);
+  await database.exec(`
+    set session_replication_role='replica';
+    insert into public.openclaw_consents(
+      organization_id,account_id,target_id,consent_scope,consent_status,
+      consent_source,evidence_hash,granted_at
+    ) values (
+      '${DEMO_ORG_ID}','11111111-1111-4111-8111-111111111111',
+      '55555555-5555-4555-8555-555555555555','REPLY','ACTIVE',
+      'canonical-manual-dispatch',repeat('a',64),statement_timestamp()
+    ) on conflict (organization_id,account_id,target_id,consent_scope,consent_version)
+      do update set consent_status='ACTIVE',revoked_at=null;
     set session_replication_role='origin';
   `);
 }
@@ -2175,7 +2453,8 @@ async function prepareScheduleFixture(database) {
       from timing
     )
     insert into public.openclaw_schedules(
-      id,organization_id,account_id,automation_version_id,target_id,
+      id,organization_id,account_id,automation_version_id,target_id,campaign_id,
+      campaign_version_id,
       schedule_version,status,timezone,local_recurrence_rule,next_run_at,
       next_nominal_local,next_resolved_local,next_utc_offset_seconds,next_resolution
     )
@@ -2183,7 +2462,9 @@ async function prepareScheduleFixture(database) {
       '77777777-7777-4777-8777-777777777771','${DEMO_ORG_ID}',
       '11111111-1111-4111-8111-111111111111',
       '66666666-6666-4666-8666-666666666664',
-      '55555555-5555-4555-8555-555555555555',1,'ACTIVE','Asia/Bangkok',
+      '55555555-5555-4555-8555-555555555555',
+      '66666666-6666-4666-8666-666666666665',
+      '66666666-6666-4666-8666-666666666666',1,'ACTIVE','Asia/Bangkok',
       recurrence,run_at,local_at,local_at,25200,'EXACT'
     from schedule_values
     on conflict (organization_id,id) do nothing;
@@ -2192,6 +2473,7 @@ async function prepareScheduleFixture(database) {
         jsonb_build_object(
           'version',1,'scheduleId',schedule.id,'scheduleVersion',schedule.schedule_version,
           'automationVersionId',schedule.automation_version_id,'targetId',schedule.target_id,
+          'campaignVersionId',schedule.campaign_version_id,
           'status',schedule.status,'timezone',schedule.timezone,
           'localRecurrenceRule',schedule.local_recurrence_rule,
           'missedOccurrencePolicy',schedule.missed_occurrence_policy,
@@ -2207,12 +2489,14 @@ async function prepareScheduleFixture(database) {
     )
     insert into public.openclaw_schedule_snapshots(
       organization_id,account_id,schedule_id,schedule_version,automation_version_id,
-      target_id,status,timezone,local_recurrence_rule,missed_occurrence_policy,
+      target_id,campaign_id,campaign_version_id,status,timezone,local_recurrence_rule,
+      missed_occurrence_policy,
       occurrence_grace_seconds,dst_fold_policy,snapshot,snapshot_bytes,snapshot_hash
     )
     select
       organization_id,account_id,id,schedule_version,automation_version_id,target_id,
-      status,timezone,local_recurrence_rule,missed_occurrence_policy,
+      campaign_id,campaign_version_id,status,timezone,local_recurrence_rule,
+      missed_occurrence_policy,
       occurrence_grace_seconds,dst_fold_policy,snapshot,snapshot_bytes,
       encode(extensions.digest(
         convert_to('ihome-openclaw-schedule-snapshot-v1','UTF8')
@@ -2271,8 +2555,12 @@ async function prepareCrmFixture(database) {
     on conflict (organization_id,account_id,subscription_id,subscription_version) do nothing;
     with occurrence as (
       select jsonb_build_object(
-        'version',1,'leadId','88888888-8888-4888-8888-888888888883',
-        'customerName','Concurrency customer'
+        'version',1,'eventType','lead_created_or_assigned','eventSubtype','CREATED',
+        'sourceTable','leads','sourceId','88888888-8888-4888-8888-888888888883',
+        'sourceVersion','1','snapshot',jsonb_build_object(
+          'leadId','88888888-8888-4888-8888-888888888883',
+          'assignedStaffId',null,'status','NEW'
+        )
       ) snapshot
     ), canonical as (
       select snapshot,app_private.openclaw_jcs_bytes_v1(snapshot) snapshot_bytes
@@ -2324,22 +2612,23 @@ async function prepareRetentionQuarantineRace(database) {
   if (Number(materialized.rows[0].value) !== 1) {
     throw new Error("Retention quarantine fixture did not materialize one work item.");
   }
-  await database.query(
+  const claimed = await database.query(
     `select app_private.openclaw_claim_work_item_v1(
       $1::jsonb,'{}'::jsonb,$2::jsonb
-    )`,
+    ) result`,
     [
       JSON.stringify(maintenancePrincipal()),
       JSON.stringify({
         version: 1,
-        claimToken: "retention-quarantine-hold",
+        claimToken: concurrencyClaimToken("retention-quarantine-hold"),
         limit: 1,
         leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
       }),
     ],
   );
   const work = await database.query(`
-    select id::text id,claim_generation
+    select id::text id,claim_generation::integer claim_generation
     from public.openclaw_maintenance_work_items
     where source_id='99999999-9999-4999-8999-000000000001'
       and work_phase='QUARANTINE' and state='LEASED'
@@ -2400,10 +2689,10 @@ async function prepareRetentionQuarantineSuccess(database) {
   await database.query(
     `select app_private.materialize_openclaw_retention_quarantine_v1(10)`,
   );
-  await database.query(
+  const claimed = await database.query(
     `select app_private.openclaw_claim_work_item_v1(
       $1::jsonb,'{}'::jsonb,$2::jsonb
-    )`,
+    ) result`,
     [
       JSON.stringify(maintenancePrincipal()),
       JSON.stringify({
@@ -2411,16 +2700,33 @@ async function prepareRetentionQuarantineSuccess(database) {
         claimToken,
         limit: 10,
         leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
       }),
     ],
   );
   const work = await database.query(`
-    select id::text id,claim_generation
+    select id::text id,claim_generation::integer claim_generation
     from public.openclaw_maintenance_work_items
     where source_id='${subjectId}' and work_phase='QUARANTINE' and state='LEASED'
   `);
   if (!work.rows[0]) {
     throw new Error("R2-independent quarantine work was not leased.");
+  }
+  const claim = claimed.rows[0].result.items.find((item) => item.workItemId === work.rows[0].id);
+  if (
+    !claim || canonicalComparisonJson(Object.keys(claim).sort()) !== canonicalComparisonJson([
+      "claimGeneration","claimToken","credentialGeneration","fencingToken",
+      "leaseExpiresAt","leaseGeneration","maintenancePrincipalId","organizationId",
+      "payload","sourceKey","version","workItemId",
+    ].sort()) ||
+    claim.version !== 1 || claim.organizationId !== DEMO_ORG_ID ||
+    claim.maintenancePrincipalId !== "44444444-4444-4444-8444-444444444444" ||
+    claim.credentialGeneration !== 1 || claim.leaseGeneration !== 1 ||
+    claim.claimToken !== claimToken || claim.claimGeneration !== work.rows[0].claim_generation ||
+    claim.fencingToken !== 1 || claim.payload?.kind !== "RETENTION_DELETE" ||
+    claim.payload?.deletePhase !== "QUARANTINE"
+  ) {
+    throw new Error("Maintenance claim did not match the canonical discriminated contract.");
   }
   return { ...work.rows[0], subjectId, claimToken, objectKey };
 }
@@ -2440,12 +2746,12 @@ async function prepareFinalDeleteHoldRace(database) {
     ) on conflict (organization_id,id) do nothing;
     insert into public.openclaw_message_media(
       id,organization_id,account_id,conversation_id,message_id,media_index,
-      media_kind,byte_state,object_key,retention_delete_not_before
+      media_kind,mime,byte_length,sha256,byte_state,object_key,retention_delete_not_before
     ) values (
       '99999999-9999-4999-8999-000000000011','${DEMO_ORG_ID}',
       '11111111-1111-4111-8111-111111111111',
       '55555555-5555-4555-8555-555555555556',
-      '99999999-9999-4999-8999-000000000010',0,'IMAGE',
+      '99999999-9999-4999-8999-000000000010',0,'IMAGE','image/png',64,repeat('1',64),
       'QUARANTINED',null,statement_timestamp()-interval '1 day'
     ) on conflict (organization_id,id) do nothing;
     insert into public.openclaw_maintenance_work_items(
@@ -2497,7 +2803,92 @@ async function prepareFinalDeleteHoldRace(database) {
       ),'hex'),
       1,1,1,statement_timestamp()+interval '30 seconds',1,1
     ) on conflict (organization_id,id) do nothing;
+    insert into public.openclaw_retention_gateway_configs(
+      id,organization_id,signing_key_generation,ticket_key_generation,
+      public_key_hash,is_active,enabled_at
+    ) values (
+      '99999999-9999-4999-8999-000000000018','${DEMO_ORG_ID}',1,1,
+      repeat('a',64),true,statement_timestamp()
+    ) on conflict (organization_id,signing_key_generation) do nothing;
     set session_replication_role='origin';
+  `);
+  const request = {
+    version: 1,
+    workItemId: "99999999-9999-4999-8999-000000000014",
+    claimGeneration: 1,
+    claimToken,
+  };
+  let forgedIssueRejected = false;
+  try {
+    await database.query(
+      `select app_private.openclaw_issue_retention_delete_ticket_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      )`,
+      [
+        JSON.stringify(maintenancePrincipal()),
+        JSON.stringify({
+          ...request,
+          tombstoneId: "99999999-9999-4999-8999-000000000013",
+        }),
+      ],
+    );
+  } catch (error) {
+    forgedIssueRejected = error?.code === "22023";
+  }
+  if (!forgedIssueRejected) {
+    throw new Error("Retention delete ticket accepted a caller-supplied trusted field.");
+  }
+  await database.query(
+    `select app_private.openclaw_issue_retention_delete_ticket_v1(
+      $1::jsonb,'{}'::jsonb,$2::jsonb
+    )`,
+    [
+      JSON.stringify(maintenancePrincipal()),
+      JSON.stringify(request),
+    ],
+  );
+  let forgedAuthorizationRejected = false;
+  try {
+    await database.query(
+      `select app_private.openclaw_authorize_retention_delete_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      )`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({ ...request, preverified: true })],
+    );
+  } catch (error) {
+    forgedAuthorizationRejected = error?.code === "22023";
+  }
+  if (!forgedAuthorizationRejected) {
+    throw new Error("Retention authorization accepted a caller-supplied trusted field.");
+  }
+  await database.exec(`
+    update public.openclaw_retention_gateway_configs
+    set ticket_key_generation=2
+    where organization_id='${DEMO_ORG_ID}' and is_active;
+  `);
+  let keyMismatchRejected = false;
+  try {
+    await database.query(
+      `select app_private.openclaw_authorize_retention_delete_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      )`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify(request)],
+    );
+  } catch (error) {
+    keyMismatchRejected = error?.code === "42501";
+  }
+  const mismatchState = await database.query(
+    `select state from public.openclaw_retention_delete_tickets
+     where organization_id=$1 and work_item_id=$2`,
+    [DEMO_ORG_ID, request.workItemId],
+  );
+  if (!keyMismatchRejected || mismatchState.rows[0]?.state !== "TICKET_ISSUED") {
+    throw new Error("Retention ticket-key mismatch did not fail closed before authorization.");
+  }
+  await database.exec(`
+    update public.openclaw_retention_gateway_configs
+    set ticket_key_generation=1
+    where organization_id='${DEMO_ORG_ID}' and is_active;
     insert into public.openclaw_retention_holds(
       organization_id,target_kind,target_id,reason,created_by
     ) values (
@@ -2510,6 +2901,7 @@ async function prepareFinalDeleteHoldRace(database) {
   return {
     claimToken,
     workItemId: "99999999-9999-4999-8999-000000000014",
+    tombstoneId: "99999999-9999-4999-8999-000000000013",
     mediaId: "99999999-9999-4999-8999-000000000011",
   };
 }
@@ -2521,10 +2913,8 @@ async function prepareRetentionDeleteTicket(database, code) {
   const quarantineWorkId = `99992000-0000-4000-8000-${suffix}`;
   const tombstoneId = `99993000-0000-4000-8000-${suffix}`;
   const workItemId = `99994000-0000-4000-8000-${suffix}`;
-  const ticketId = `99995000-0000-4000-8000-${suffix}`;
-  const ticketJti = `99996000-0000-4000-8000-${suffix}`;
-  const authorizationJti = `99997000-0000-4000-8000-${suffix}`;
   const objectKey = `v1/org/${DEMO_ORG_ID}/retention/${code}`;
+  const claimToken = `retention-ticket-${code}`;
   await database.exec(
     `
       set session_replication_role='replica';
@@ -2538,11 +2928,11 @@ async function prepareRetentionDeleteTicket(database, code) {
       ) on conflict (organization_id,id) do nothing;
       insert into public.openclaw_message_media(
         id,organization_id,account_id,conversation_id,message_id,media_index,
-        media_kind,byte_state,object_key,retention_delete_not_before
+        media_kind,mime,byte_length,sha256,byte_state,object_key,retention_delete_not_before
       ) values (
         '${mediaId}','${DEMO_ORG_ID}','11111111-1111-4111-8111-111111111111',
         '55555555-5555-4555-8555-555555555556','${messageId}',0,'IMAGE',
-        'QUARANTINED',null,statement_timestamp()-interval '1 day'
+        'image/png',64,repeat('c',64),'QUARANTINED',null,statement_timestamp()-interval '1 day'
       ) on conflict (organization_id,id) do nothing;
       insert into public.openclaw_maintenance_work_items(
         id,organization_id,maintenance_principal_id,work_kind,work_phase,
@@ -2569,8 +2959,8 @@ async function prepareRetentionDeleteTicket(database, code) {
       insert into public.openclaw_maintenance_work_items(
         id,organization_id,maintenance_principal_id,work_kind,work_phase,
         source_id,source_version,source_key,source_hash,payload,payload_hash,
-        state,claim_generation,maintenance_lease_generation,fencing_token,
-        attempt_count,credential_generation
+        state,claim_token_hash,claim_generation,maintenance_lease_generation,fencing_token,
+        lease_expires_at,attempt_count,credential_generation
       ) values (
         '${workItemId}','${DEMO_ORG_ID}','44444444-4444-4444-8444-444444444444',
         'RETENTION_DELETE','FINAL_DELETE','${tombstoneId}','1',
@@ -2582,66 +2972,72 @@ async function prepareRetentionDeleteTicket(database, code) {
           'quarantineVersion',1,
           'finalDeleteNotBefore',statement_timestamp()-interval '1 day',
           'scopeVersion',0
-        ),repeat('9',64),'DELETE_AUTHORIZED',1,1,1,1,1
-      ) on conflict (organization_id,id) do nothing;
-      with timing as (
-        select statement_timestamp() authorized_at,
-          statement_timestamp()+interval '4 seconds' expires_at
-      ), claims as (
-        select timing.*,
-          jsonb_build_object(
-            'version',1,'organizationId','${DEMO_ORG_ID}',
-            'maintenancePrincipalId','44444444-4444-4444-8444-444444444444',
-            'workItemId','${workItemId}','claimGeneration',1,'credentialGeneration',1,
-            'leaseGeneration',1,'fencingToken',1,'deletePhase','FINAL_DELETE',
-            'ticketJti','${ticketJti}',
-            'deleteAuthorizationJti','${authorizationJti}',
-            'objectKey','${objectKey}',
-            'holdVersion',0,'quarantineVersion',1,'domainHash',repeat('a',64),
-            'signingKeyGeneration',1,'expiresAt',timing.expires_at
-          ) expected
-        from timing
-      ), payload as (
-        select claims.*,
-          expected||jsonb_build_object(
-            'tombstoneId','${tombstoneId}','subjectId','${mediaId}',
-            'authorizedAt',authorized_at
-          ) ticket_payload
-        from claims
-      ), canonical as (
-        select payload.*,
-          app_private.openclaw_jcs_bytes_v1(ticket_payload) ticket_bytes
-        from payload
-      )
-      insert into public.openclaw_retention_delete_tickets(
-        id,organization_id,maintenance_principal_id,work_item_id,tombstone_id,
-        subject_id,object_key,ticket_jti,delete_authorization_jti,
-        claim_generation,credential_generation,maintenance_lease_generation,
-        fencing_token,hold_version,quarantine_version,signing_key_generation,
-        domain_hash,ticket_payload,ticket_bytes,ticket_hash,
-        expected_receipt_claims,authorized_at,expires_at
-      )
-      select
-        '${ticketId}','${DEMO_ORG_ID}','44444444-4444-4444-8444-444444444444',
-        '${workItemId}','${tombstoneId}','${mediaId}','${objectKey}',
-        '${ticketJti}','${authorizationJti}',1,1,1,1,0,1,1,repeat('a',64),
-        ticket_payload,ticket_bytes,
+        ),repeat('9',64),'LEASED',
         encode(extensions.digest(
-          convert_to('ihome-openclaw-retention-delete-ticket-v1','UTF8')
-            ||decode('00','hex')||ticket_bytes,'sha256'
-        ),'hex'),expected,authorized_at,expires_at
-      from canonical
-      on conflict (organization_id,id) do nothing;
+          convert_to('ihome-openclaw-work-claim-v1','UTF8')||decode('00','hex')
+            ||convert_to('${claimToken}','UTF8'),'sha256'
+        ),'hex'),1,1,1,statement_timestamp()+interval '30 seconds',1,1
+      ) on conflict (organization_id,id) do nothing;
+      insert into public.openclaw_retention_gateway_configs(
+        organization_id,signing_key_generation,ticket_key_generation,
+        public_key_hash,is_active,enabled_at
+      ) values (
+        '${DEMO_ORG_ID}',1,1,repeat('a',64),true,statement_timestamp()
+      ) on conflict (organization_id,signing_key_generation) do nothing;
       set session_replication_role='origin';
     `,
   );
+  const request = {
+    version: 1,
+    workItemId,
+    claimGeneration: 1,
+    claimToken,
+  };
+  const firstIssue = await database.query(
+    `select app_private.openclaw_issue_retention_delete_ticket_v1(
+      $1::jsonb,'{}'::jsonb,$2::jsonb
+    ) result`,
+    [JSON.stringify(maintenancePrincipal()), JSON.stringify(request)],
+  );
+  const replayedIssue = await database.query(
+    `select app_private.openclaw_issue_retention_delete_ticket_v1(
+      $1::jsonb,'{}'::jsonb,$2::jsonb
+    ) result`,
+    [JSON.stringify(maintenancePrincipal()), JSON.stringify(request)],
+  );
+  if (
+    JSON.stringify(firstIssue.rows[0].result) !== JSON.stringify(replayedIssue.rows[0].result) ||
+    firstIssue.rows[0].result.ticketId === firstIssue.rows[0].result.ticket.jti
+  ) {
+    throw new Error("Retention delete ticket replay was not deterministic or used ticketId as jti.");
+  }
+  const firstAuthorization = await database.query(
+    `select app_private.openclaw_authorize_retention_delete_v1(
+      $1::jsonb,'{}'::jsonb,$2::jsonb
+    ) result`,
+    [JSON.stringify(maintenancePrincipal()), JSON.stringify(request)],
+  );
+  const replayedAuthorization = await database.query(
+    `select app_private.openclaw_authorize_retention_delete_v1(
+      $1::jsonb,'{}'::jsonb,$2::jsonb
+    ) result`,
+    [JSON.stringify(maintenancePrincipal()), JSON.stringify(request)],
+  );
+  if (
+    JSON.stringify(firstAuthorization.rows[0].result) !==
+      JSON.stringify(replayedAuthorization.rows[0].result) ||
+    firstAuthorization.rows[0].result.ticketHash !== firstIssue.rows[0].result.ticketHash
+  ) {
+    throw new Error("Retention authorization replay did not preserve the issued ticket binding.");
+  }
+  const issuedTicketId = firstIssue.rows[0].result.ticketId;
   const ticket = await database.query(
     `select id::text id,expected_receipt_claims
      from public.openclaw_retention_delete_tickets where id=$1`,
-    [ticketId],
+    [issuedTicketId],
   );
   return {
-    ticketId,
+    ticketId: issuedTicketId,
     workItemId,
     mediaId,
     expectedReceiptClaims: ticket.rows[0].expected_receipt_claims,
@@ -2651,9 +3047,11 @@ async function prepareRetentionDeleteTicket(database, code) {
 function retentionReceipt(ticket, outcome, overrides = {}) {
   return {
     ...ticket.expectedReceiptClaims,
-    preverified: true,
-    outcome,
-    signatureHash: "b".repeat(64),
+    receiptId: ticket.ticketId,
+    objectStatus: outcome,
+    r2VersionOrEtag: outcome === "DELETED" ? "r2-version-1" : null,
+    completedAt: "2026-07-31T00:00:10.000Z",
+    signature: "A".repeat(86),
     ...overrides,
   };
 }
@@ -2678,19 +3076,27 @@ async function prepareAuditAnchorFixture(database, code) {
   const suffix = String(code).padStart(12, "0");
   const auditRootId = `aaaa0000-0000-4000-8000-${suffix}`;
   const workItemId = `aaaa1000-0000-4000-8000-${suffix}`;
-  const verifyTicketJti = `aaaa2000-0000-4000-8000-${suffix}`;
   const claimToken = `audit-anchor-${code}`;
-  const rootHash = code === 21 ? "c".repeat(64) : "d".repeat(64);
-  const rootDate = code === 21 ? "2026-06-21" : "2026-06-22";
+  const rootHash = createHash("sha256").update(`audit-root-${code}`).digest("hex");
+  const rootDate = new Date(Date.UTC(2026, 5, code)).toISOString().slice(0, 10);
   const objectKey =
     `v1/org/${DEMO_ORG_ID}/audit/${rootDate}/${auditRootId}.json`;
   await database.exec(`
     set session_replication_role='replica';
+    insert into public.openclaw_audit_signing_configs(
+      id,organization_id,signing_key_generation,public_key_hash,is_active,enabled_at
+    ) values (
+      'aaaa4000-0000-4000-8000-000000000001','${DEMO_ORG_ID}',1,
+      repeat('a',64),true,statement_timestamp()
+    ) on conflict (organization_id,signing_key_generation) do update set
+      public_key_hash=excluded.public_key_hash,is_active=true,
+      enabled_at=excluded.enabled_at,retired_at=null;
     insert into public.openclaw_audit_roots(
-      id,organization_id,root_date,first_sequence,last_sequence,root_hash,
+      id,organization_id,root_date,first_sequence,last_sequence,previous_root_hash,
+      merkle_root_hash,root_hash,
       event_count,signing_key_generation,r2_anchor_key
     ) values (
-      '${auditRootId}','${DEMO_ORG_ID}','${rootDate}',1,1,'${rootHash}',
+      '${auditRootId}','${DEMO_ORG_ID}','${rootDate}',1,1,null,'${rootHash}','${rootHash}',
       1,1,'${objectKey}'
     ) on conflict (organization_id,id) do nothing;
     insert into public.openclaw_maintenance_work_items(
@@ -2705,19 +3111,51 @@ async function prepareAuditAnchorFixture(database, code) {
       jsonb_build_object(
         'version',1,'auditRootId','${auditRootId}','rootDate','${rootDate}',
         'rootHash','${rootHash}','firstSequence',1,'lastSequence',1,
-        'eventCount',1,'signingKeyGeneration',1,'r2AnchorKey','${objectKey}'
+        'eventCount',1,'previousRootHash',null,'merkleRootHash','${rootHash}',
+        'auditSigningKeyGeneration',1,
+        'auditSigningPublicKeyHash',repeat('a',64),'anchorKey','${objectKey}'
       ),repeat('e',64),'LEASED',
       encode(extensions.digest(
         convert_to('ihome-openclaw-work-claim-v1','UTF8')||decode('00','hex')
           ||convert_to('${claimToken}','UTF8'),'sha256'
       ),'hex'),1,1,1,statement_timestamp()+interval '30 seconds',1,1
     ) on conflict (organization_id,id) do nothing;
+    insert into public.openclaw_retention_gateway_configs(
+      id,organization_id,signing_key_generation,public_key_hash,is_active,enabled_at
+    ) values (
+      'aaaa3000-0000-4000-8000-000000000001','${DEMO_ORG_ID}',1,
+      repeat('a',64),true,statement_timestamp()
+    ) on conflict (organization_id,signing_key_generation) do nothing;
     set session_replication_role='origin';
   `);
+  const verifyTicket = await database.query(
+    `select app_private.openclaw_issue_media_ticket_v1(
+      $1::jsonb,'{}'::jsonb,$2::jsonb
+    ) result`,
+    [
+      JSON.stringify(maintenancePrincipal()),
+      JSON.stringify({
+        version: 1,
+        operation: "ANCHOR_VERIFY",
+        workItemId,
+        claimGeneration: 1,
+        claimToken,
+        auditRootId,
+        rootHash,
+        anchorKey: objectKey,
+        signatureHash: "f".repeat(64),
+        auditSigningKeyGeneration: 1,
+        auditSigningPublicKeyHash: "a".repeat(64),
+        documentSha256: "b".repeat(64),
+        documentByteLength: 128,
+      }),
+    ],
+  );
+  const verifyTicketJti = verifyTicket.rows[0].result.ticketId;
   const receipt = {
     version: 1,
-    preverified: true,
-    outcome: "VERIFIED",
+    receiptKind: "AUDIT_ANCHOR_VERIFY",
+    receiptId: verifyTicketJti,
     organizationId: DEMO_ORG_ID,
     maintenancePrincipalId: "44444444-4444-4444-8444-444444444444",
     workItemId,
@@ -2727,10 +3165,14 @@ async function prepareAuditAnchorFixture(database, code) {
     fencingToken: 1,
     auditRootId,
     rootHash,
-    objectKey,
+    anchorKey: objectKey,
     verifyTicketJti,
-    signingKeyGeneration: 1,
+    auditSigningKeyGeneration: 1,
     signatureHash: "f".repeat(64),
+    objectVersionOrEtag: "audit-version-1",
+    verifiedAt: "2026-07-31T00:00:10.000Z",
+    gatewaySigningKeyGeneration: 1,
+    signature: "A".repeat(86),
   };
   return {
     auditRootId,
@@ -2771,19 +3213,21 @@ async function runConcurrent(database, operations, { settled = false } = {}) {
 export async function runDisposableConcurrencyScenario(database, scenario) {
   if (scenario === "OUTBOX_SINGLE_CLAIM") {
     const outboxId = await insertConcurrencyOutbox(database, scenario);
+    const outboxClaimTokenA = concurrencyClaimToken("outbox-claim-a");
+    const outboxClaimTokenB = concurrencyClaimToken("outbox-claim-b");
     const claims = await runConcurrent(database, [
       (session) => session.query(
         `select app_private.openclaw_claim_outbox_v1($1::jsonb,'{}'::jsonb,$2::jsonb) result`,
         [
           JSON.stringify(channelPrincipal()),
-          JSON.stringify({ version: 1, claimToken: "claim-a", limit: 1, leaseSeconds: 30 }),
+          JSON.stringify({ version: 1, claimToken: outboxClaimTokenA, limit: 1, leaseSeconds: 30 }),
         ],
       ),
       (session) => session.query(
         `select app_private.openclaw_claim_outbox_v1($1::jsonb,'{}'::jsonb,$2::jsonb) result`,
         [
           JSON.stringify(channelPrincipal()),
-          JSON.stringify({ version: 1, claimToken: "claim-b", limit: 1, leaseSeconds: 30 }),
+          JSON.stringify({ version: 1, claimToken: outboxClaimTokenB, limit: 1, leaseSeconds: 30 }),
         ],
       ),
     ]);
@@ -2791,6 +3235,8 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
     if (JSON.stringify(itemCounts) !== JSON.stringify([0, 1])) {
       throw new Error("Concurrent outbox claims did not produce exactly one winner.");
     }
+    const winningIndex = claims.findIndex((claim) => claim.rows[0].result.items.length === 1);
+    const winningToken = winningIndex === 0 ? outboxClaimTokenA : outboxClaimTokenB;
     const row = await database.query(
       `select state,claim_generation from public.openclaw_outbox where id=$1`,
       [outboxId],
@@ -2798,17 +3244,20 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
     if (row.rows[0].state !== "LEASED" || Number(row.rows[0].claim_generation) !== 1) {
       throw new Error("Outbox winner did not persist the exact claim generation.");
     }
-    return;
+    return { outboxId, claimToken: winningToken };
   }
   if (scenario === "WORK_SINGLE_CLAIM") {
     const workId = "bbbbbbbb-bbbb-4bbb-8bbb-000000000101";
+    const workClaimTokenA = concurrencyClaimToken("work-claim-a");
+    const workClaimTokenB = concurrencyClaimToken("work-claim-b");
     await database.exec(`
       set session_replication_role='replica';
       insert into public.openclaw_send_work_items(
         id,organization_id,account_id,cell_id,work_kind,source_id,source_version,
         source_key,source_hash,payload,payload_hash,state,claim_generation,
         fencing_token,session_generation,target_id,credential_generation,
-        runtime_lease_generation,schedule_id,schedule_version,schedule_occurrence_id
+        runtime_lease_generation,schedule_id,schedule_version,schedule_occurrence_id,
+        campaign_version_id
       ) values (
         '${workId}','${DEMO_ORG_ID}','11111111-1111-4111-8111-111111111111',
         '22222222-2222-4222-8222-222222222222','SCHEDULE_OCCURRENCE',
@@ -2818,7 +3267,8 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
           '55555555-5555-4555-8555-555555555555'),repeat('b',64),
         'QUEUED',0,1,1,'55555555-5555-4555-8555-555555555555',1,1,
         'bbbbbbbb-bbbb-4bbb-8bbb-000000000103',1,
-        'bbbbbbbb-bbbb-4bbb-8bbb-000000000102'
+        'bbbbbbbb-bbbb-4bbb-8bbb-000000000102',
+        'bbbbbbbb-bbbb-4bbb-8bbb-000000000104'
       ) on conflict (organization_id,id) do nothing;
       set session_replication_role='origin';
     `);
@@ -2831,9 +3281,10 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
           JSON.stringify(channelPrincipal()),
           JSON.stringify({
             version: 1,
-            claimToken: "work-claim-a",
+            claimToken: workClaimTokenA,
             limit: 1,
             leaseSeconds: 30,
+            requestedKinds: ["SCHEDULE_OCCURRENCE"],
           }),
         ],
       ),
@@ -2845,14 +3296,18 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
           JSON.stringify(channelPrincipal()),
           JSON.stringify({
             version: 1,
-            claimToken: "work-claim-b",
+            claimToken: workClaimTokenB,
             limit: 1,
             leaseSeconds: 30,
+            requestedKinds: ["SCHEDULE_OCCURRENCE"],
           }),
         ],
       ),
     ]);
     const itemCounts = claims.map((claim) => claim.rows[0].result.items.length).sort();
+    const winningIndex = claims.findIndex((claim) => claim.rows[0].result.items.length === 1);
+    const winningItem = winningIndex < 0 ? null : claims[winningIndex].rows[0].result.items[0];
+    const winningToken = winningIndex === 0 ? workClaimTokenA : workClaimTokenB;
     const row = await database.query(
       `select state,claim_generation,credential_generation,
         runtime_lease_generation,fencing_token
@@ -2865,9 +3320,23 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
       Number(row.rows[0].claim_generation) !== 1 ||
       Number(row.rows[0].credential_generation) !== 1 ||
       Number(row.rows[0].runtime_lease_generation) !== 1 ||
-      Number(row.rows[0].fencing_token) !== 1
+      Number(row.rows[0].fencing_token) !== 1 ||
+      canonicalComparisonJson(Object.keys(winningItem ?? {}).sort()) !== canonicalComparisonJson([
+        "accountId","cellId","claimGeneration","claimToken","credentialGeneration",
+        "fencingToken","leaseExpiresAt","leaseGeneration","organizationId","payload",
+        "sourceKey","version","workItemId",
+      ].sort()) ||
+      winningItem.version !== 1 || winningItem.workItemId !== workId ||
+      winningItem.organizationId !== DEMO_ORG_ID ||
+      winningItem.accountId !== "11111111-1111-4111-8111-111111111111" ||
+      winningItem.cellId !== "22222222-2222-4222-8222-222222222222" ||
+      winningItem.credentialGeneration !== 1 || winningItem.leaseGeneration !== 1 ||
+      winningItem.claimToken !== winningToken || winningItem.claimGeneration !== 1 ||
+      winningItem.fencingToken !== 1 ||
+      winningItem.sourceKey !== "concurrency:work:single-claim" ||
+      winningItem.payload?.kind !== "SCHEDULE_OCCURRENCE"
     ) {
-      throw new Error("Concurrent send-work claims did not preserve one exact winner.");
+      throw new Error("Concurrent send-work claims did not return one canonical exact winner.");
     }
     return;
   }
@@ -2913,19 +3382,55 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
     return;
   }
   if (scenario === "PRE_HANDOFF_REQUEUE") {
+    await prepareCanonicalManualDispatchFixtures(database);
     const outboxId = await insertConcurrencyOutbox(database, scenario);
-    await database.query(
-      `select app_private.openclaw_claim_outbox_v1($1::jsonb,'{}'::jsonb,$2::jsonb)`,
+    const claimToken = concurrencyClaimToken("pre-handoff-requeue");
+    const claimed = await database.query(
+      `select app_private.openclaw_claim_outbox_v1($1::jsonb,'{}'::jsonb,$2::jsonb) result`,
       [
         JSON.stringify(channelPrincipal()),
         JSON.stringify({
           version: 1,
-          claimToken: "pre-handoff-requeue",
+          claimToken,
           limit: 1,
           leaseSeconds: 30,
         }),
       ],
     );
+    const claim = claimed.rows[0].result.items[0];
+    const preflight = await database.query(
+      `select app_private.openclaw_preflight_outbox_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [
+        JSON.stringify(channelPrincipal()),
+        JSON.stringify({
+          version: 1,
+          outboxId,
+          claimGeneration: claim.claimGeneration,
+          claimToken,
+        }),
+      ],
+    );
+    const marker = preflight.rows[0].result.authorizationMarker;
+    if (preflight.rows[0].result.decision !== "ALLOWED" || !marker) {
+      throw new Error(
+        `Canonical pre-handoff fixture was not authorized: ${JSON.stringify(preflight.rows[0].result)}`,
+      );
+    }
+    const evidence = {
+      version: 1,
+      evidenceKind: "OUTBOX_PRE_HANDOFF",
+      outboxId,
+      claimGeneration: claim.claimGeneration,
+      payloadHash: claim.payloadHash,
+      authorizationMarker: marker,
+      reasonCode: "ADAPTER_NOT_READY",
+      authorizedHandoffRecorded: false,
+    };
+    const retryNotBefore = new Date(
+      new Date(preflight.rows[0].result.databaseTime).valueOf() + 5_000,
+    ).toISOString();
     const result = await database.query(
       `select app_private.openclaw_requeue_pre_handoff_v1(
         $1::jsonb,'{}'::jsonb,$2::jsonb
@@ -2934,10 +3439,19 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
         JSON.stringify(channelPrincipal()),
         JSON.stringify({
           version: 1,
-          outboxId,
-          claimGeneration: 1,
-          claimToken: "pre-handoff-requeue",
-          retryAfterSeconds: 1,
+          authorization: {
+            version: 1,
+            claimToken,
+            authorizationMarker: marker,
+          },
+          outcome: "SAFE_RETRY",
+          reasonCode: "ADAPTER_NOT_READY",
+          preHandoffEvidence: evidence,
+          preHandoffEvidenceHash: canonicalDomainHash(
+            "ihome-openclaw-pre-handoff-evidence-v1",
+            evidence,
+          ),
+          retryNotBefore,
         }),
       ],
     );
@@ -2953,6 +3467,117 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
       row.rows[0].claim_token_hash !== null
     ) {
       throw new Error("Pre-handoff requeue did not atomically revoke the claim.");
+    }
+    return;
+  }
+  if (scenario === "CANONICAL_OUTBOX_COMPLETION") {
+    await prepareCanonicalManualDispatchFixtures(database);
+    const outboxId = await insertConcurrencyOutbox(database, scenario);
+    const claimToken = concurrencyClaimToken("canonical-completion");
+    const claimed = await database.query(
+      `select app_private.openclaw_claim_outbox_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [
+        JSON.stringify(channelPrincipal()),
+        JSON.stringify({ version: 1, claimToken, limit: 1, leaseSeconds: 30 }),
+      ],
+    );
+    const claim = claimed.rows[0].result.items[0];
+    const preflight = await database.query(
+      `select app_private.openclaw_preflight_outbox_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [
+        JSON.stringify(channelPrincipal()),
+        JSON.stringify({
+          version: 1,
+          outboxId,
+          claimGeneration: claim.claimGeneration,
+          claimToken,
+        }),
+      ],
+    );
+    const marker = preflight.rows[0].result.authorizationMarker;
+    if (preflight.rows[0].result.decision !== "ALLOWED" || !marker) {
+      throw new Error(
+        `Canonical completion fixture was not authorized: ${JSON.stringify(preflight.rows[0].result)}`,
+      );
+    }
+    const authorization = {
+      version: 1,
+      claimToken,
+      authorizationMarker: marker,
+    };
+    await database.query(
+      `select app_private.openclaw_authorize_outbox_send_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(channelPrincipal()), JSON.stringify(authorization)],
+    );
+    const deliveryEvidence = {
+      version: 1,
+      evidenceKind: "OUTBOX_DELIVERY",
+      outboxId,
+      claimGeneration: claim.claimGeneration,
+      payloadHash: claim.payloadHash,
+      authorizationMarker: marker,
+      totalPartCount: 1,
+      knownProviderMessageIds: ["provider-canonical-1"],
+      possibleHandoffPrefixLength: 1,
+      outcome: "SENT",
+      reasonCode: "ALL_PARTS_ACKNOWLEDGED",
+    };
+    const deliveryEvidenceHash = canonicalDomainHash(
+      "ihome-openclaw-delivery-evidence-v1",
+      deliveryEvidence,
+    );
+    const completion = {
+      version: 1,
+      authorization,
+      deliveryEvidence,
+      deliveryEvidenceHash,
+      outcome: "SENT",
+      reasonCode: "ALL_PARTS_ACKNOWLEDGED",
+    };
+    let forgedRejected = false;
+    try {
+      await database.query(
+        `select app_private.openclaw_complete_outbox_v1(
+          $1::jsonb,'{}'::jsonb,$2::jsonb
+        )`,
+        [
+          JSON.stringify(channelPrincipal()),
+          JSON.stringify({ ...completion, deliveryEvidenceHash: "f".repeat(64) }),
+        ],
+      );
+    } catch (error) {
+      forgedRejected = /hash|contract/i.test(String(error?.message ?? error));
+    }
+    if (!forgedRejected) throw new Error("Forged canonical delivery evidence hash was accepted.");
+    const result = await database.query(
+      `select app_private.openclaw_complete_outbox_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(channelPrincipal()), JSON.stringify(completion)],
+    );
+    const persisted = await database.query(
+      `select outbox.state,attempt.delivery_evidence_hash,
+        attempt.known_provider_message_ids
+       from public.openclaw_outbox outbox
+       join public.openclaw_delivery_attempts attempt
+         on attempt.organization_id=outbox.organization_id
+        and attempt.account_id=outbox.account_id and attempt.outbox_id=outbox.id
+       where outbox.organization_id=$1 and outbox.id=$2`,
+      [DEMO_ORG_ID, outboxId],
+    );
+    if (
+      result.rows[0].result.state !== "SENT" ||
+      persisted.rows[0]?.state !== "SENT" ||
+      persisted.rows[0]?.delivery_evidence_hash !== deliveryEvidenceHash ||
+      persisted.rows[0]?.known_provider_message_ids?.[0] !== "provider-canonical-1"
+    ) {
+      throw new Error("Canonical outbox completion was not persisted exactly.");
     }
     return;
   }
@@ -3111,7 +3736,7 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
             version: 1,
             workItemId: work.id,
             claimGeneration: work.claim_generation,
-            claimToken: "retention-quarantine-hold",
+            claimToken: concurrencyClaimToken("retention-quarantine-hold"),
           }),
         ],
       );
@@ -3165,10 +3790,14 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
     if (
       !rejected ||
       proof.rows[0].byte_state !== "QUARANTINED" ||
-      proof.rows[0].ticket_count !== 0
+      proof.rows[0].ticket_count !== 1
     ) {
       throw new Error("A legal hold did not block final delete authorization.");
     }
+    return;
+  }
+  if (scenario === "CANONICAL_MAINTENANCE_CLAIM") {
+    await prepareRetentionQuarantineSuccess(database);
     return;
   }
   if (scenario === "RETENTION_QUARANTINE_R2_INDEPENDENT") {
@@ -3228,6 +3857,723 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
       throw new Error(
         `Quarantine was not DB-only or did not bind the exact seven-day grace: ${diagnostic}`,
       );
+    }
+    return;
+  }
+  if (scenario === "MAINTENANCE_FAILURE_READINESS") {
+    const work = await prepareRetentionQuarantineSuccess(database);
+    const evidence = {
+      version: 1,
+      evidenceKind: "WORK_FAILURE",
+      reasonCode: "MAINTENANCE_WORK_RETRY",
+      failureFingerprint: "a".repeat(64),
+    };
+    const request = {
+      version: 1,
+      workItemId: work.id,
+      organizationId: DEMO_ORG_ID,
+      maintenancePrincipalId: maintenancePrincipal().maintenancePrincipalId,
+      credentialGeneration: 1,
+      leaseGeneration: 1,
+      fencingToken: 1,
+      claimToken: work.claimToken,
+      claimGeneration: work.claim_generation,
+      outcome: "RETRY",
+      evidence,
+      evidenceHash: canonicalDomainHash(
+        "ihome-openclaw-maintenance-work-failure-v1",
+        evidence,
+      ),
+      retryAfterSeconds: 1,
+    };
+    const first = await database.query(
+      `select app_private.openclaw_complete_maintenance_work_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify(request)],
+    );
+    const replay = await database.query(
+      `select app_private.openclaw_complete_maintenance_work_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify(request)],
+    );
+    const blockedClaim = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        claimToken: concurrencyClaimToken("maintenance-failure-backoff-blocked"),
+        limit: 1,
+        leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
+      })],
+    );
+    if (
+      first.rows[0].result.state !== "FAILURE_RECORDED" ||
+      first.rows[0].result.outcome !== "SAFE_RETRY" ||
+      canonicalComparisonJson(first.rows[0].result) !==
+        canonicalComparisonJson(replay.rows[0].result) ||
+      blockedClaim.rows[0].result.items.length !== 0 ||
+      blockedClaim.rows[0].result.unresolvedFailures.retentionDelete !== 1 ||
+      blockedClaim.rows[0].result.unresolvedFailures.auditAnchor !== 0
+    ) {
+      throw new Error("Maintenance failure was not durably replayed with exact readiness.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    const retryToken = concurrencyClaimToken("maintenance-failure-retry-claim");
+    const retried = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        claimToken: retryToken,
+        limit: 1,
+        leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
+      })],
+    );
+    const retriedItem = retried.rows[0].result.items.find((item) => item.workItemId === work.id);
+    if (!retriedItem || retried.rows[0].result.unresolvedFailures.retentionDelete !== 1) {
+      throw new Error("Exact failed maintenance item did not become retryable after backoff.");
+    }
+    await database.query(
+      `select app_private.openclaw_complete_retention_quarantine_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        workItemId: work.id,
+        claimGeneration: retriedItem.claimGeneration,
+        claimToken: retryToken,
+      })],
+    );
+    const cleared = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        claimToken: concurrencyClaimToken("maintenance-failure-cleared-check"),
+        limit: 1,
+        leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
+      })],
+    );
+    if (cleared.rows[0].result.unresolvedFailures.retentionDelete !== 0) {
+      throw new Error("Exact maintenance item success did not clear its durable failure.");
+    }
+    return;
+  }
+  if (scenario === "MAINTENANCE_RECOVERY_FAILURE") {
+    const ticket = await prepareRetentionDeleteTicket(database, 18);
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_maintenance_work_items
+      set recovery_lease_expires_at=statement_timestamp()-interval '1 second',
+          updated_at=statement_timestamp()
+      where organization_id='${DEMO_ORG_ID}' and id='${ticket.workItemId}';
+      set session_replication_role='origin';
+    `);
+    const firstToken = concurrencyClaimToken("maintenance-recovery-failure-first");
+    const firstClaim = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        claimToken: firstToken,
+        limit: 1,
+        leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
+      })],
+    );
+    const recovery = firstClaim.rows[0].result.items[0];
+    const evidence = {
+      version: 1,
+      evidenceKind: "WORK_FAILURE",
+      reasonCode: "MAINTENANCE_RECOVERY_RETRY",
+      failureFingerprint: "b".repeat(64),
+    };
+    const failureRequest = {
+      version: 1,
+      workItemId: ticket.workItemId,
+      organizationId: DEMO_ORG_ID,
+      maintenancePrincipalId: maintenancePrincipal().maintenancePrincipalId,
+      credentialGeneration: 1,
+      leaseGeneration: 1,
+      fencingToken: 1,
+      claimToken: firstToken,
+      recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+      recoveryGeneration: recovery.recoveryGeneration,
+      frozenClaim: recovery.frozenClaim,
+      outcome: "RETRY",
+      evidence,
+      evidenceHash: canonicalDomainHash(
+        "ihome-openclaw-maintenance-work-failure-v1",
+        evidence,
+      ),
+      retryAfterSeconds: 1,
+    };
+    const firstFailure = await database.query(
+      `select app_private.openclaw_complete_maintenance_work_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify(failureRequest)],
+    );
+    const replayFailure = await database.query(
+      `select app_private.openclaw_complete_maintenance_work_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify(failureRequest)],
+    );
+    const blocked = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        claimToken: concurrencyClaimToken("maintenance-recovery-failure-blocked"),
+        limit: 1,
+        leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
+      })],
+    );
+    if (
+      firstFailure.rows[0].result.outcome !== "SAFE_RETRY" ||
+      canonicalComparisonJson(firstFailure.rows[0].result) !==
+        canonicalComparisonJson(replayFailure.rows[0].result) ||
+      blocked.rows[0].result.items.length !== 0 ||
+      blocked.rows[0].result.unresolvedFailures.retentionDelete !== 1
+    ) {
+      throw new Error("Recovery failure was not durable, replayable, or backoff-bound.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    const secondToken = concurrencyClaimToken("maintenance-recovery-failure-second");
+    const secondClaim = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        claimToken: secondToken,
+        limit: 1,
+        leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
+      })],
+    );
+    const reclaimed = secondClaim.rows[0].result.items.find((item) =>
+      item.workItemId === ticket.workItemId
+    );
+    if (!reclaimed || reclaimed.recoveryGeneration <= recovery.recoveryGeneration) {
+      throw new Error("Recovery failure did not reclaim with a fresh recovery generation.");
+    }
+    await database.query(
+      `select app_private.openclaw_complete_maintenance_work_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+        workItemId: ticket.workItemId,
+        recoveryGeneration: reclaimed.recoveryGeneration,
+        claimToken: secondToken,
+        ticketId: ticket.ticketId,
+        gatewayReceipt: retentionReceipt(ticket, "DELETED"),
+      })],
+    );
+    const cleared = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify({
+        version: 1,
+        claimToken: concurrencyClaimToken("maintenance-recovery-failure-cleared"),
+        limit: 1,
+        leaseSeconds: 30,
+        requestedKinds: ["RETENTION_DELETE"],
+      })],
+    );
+    if (cleared.rows[0].result.unresolvedFailures.retentionDelete !== 0) {
+      throw new Error("Exact recovery item success did not clear durable readiness.");
+    }
+    return;
+  }
+  if (scenario === "HEARTBEAT_COMMAND_DELIVERY") {
+    const transitionPrincipal = {
+      ...channelPrincipal(),
+      sessionGeneration: 2,
+      localSessionGeneration: 1,
+      authMode: "COMMAND_TRANSITION",
+    };
+    const normalPrincipal = {
+      ...channelPrincipal(),
+      sessionGeneration: 2,
+      localSessionGeneration: 2,
+      authMode: "NORMAL",
+    };
+    const qrCommandId = "dddd7100-0000-4000-8000-000000000001";
+    const challengeId = "dddd7100-0000-4000-8000-000000000002";
+    const disconnectCommandId = "dddd7100-0000-4000-8000-000000000003";
+    const revocationId = "dddd7100-0000-4000-8000-000000000004";
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_accounts set session_generation=2,connection_generation=1,
+        connection_state='DISCONNECTING',effective_mode='DRAFT_ONLY'
+      where organization_id='${DEMO_ORG_ID}'
+        and id='11111111-1111-4111-8111-111111111111';
+      insert into public.openclaw_runtime_commands(
+        id,organization_id,account_id,cell_id,command_key,command_kind,
+        source_session_generation,target_session_generation,
+        source_connection_generation,target_connection_generation,
+        expected_session_generation,expected_connection_generation,expected_fencing_token,
+        payload,payload_bytes,payload_hash
+      ) select '${qrCommandId}','${DEMO_ORG_ID}',
+        '11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222',
+        'heartbeat:qr','QR_LOGIN',2,2,0,1,2,0,1,payload.value,
+        app_private.openclaw_jcs_bytes_v1(payload.value),
+        encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(payload.value),'sha256'),'hex')
+      from (values (jsonb_build_object(
+        'version',1,'challengeId','${challengeId}','browserNonceHash',repeat('a',64)
+      ))) payload(value)
+      on conflict (organization_id,id) do nothing;
+      insert into public.openclaw_qr_challenges(
+        id,organization_id,account_id,cell_id,runtime_command_id,challenge_version,
+        challenge_status,active_slot,material_version,actor_id,auth_session_hash,
+        browser_nonce_hash,issued_at,expires_at
+      ) values (
+        '${challengeId}','${DEMO_ORG_ID}','11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222','${qrCommandId}',1,
+        'PENDING',true,0,'99999999-9999-4999-8999-999999999999',repeat('b',64),
+        repeat('a',64),statement_timestamp(),statement_timestamp()+interval '120 seconds'
+      ) on conflict (organization_id,id) do nothing;
+      insert into public.openclaw_runtime_commands(
+        id,organization_id,account_id,cell_id,command_key,command_kind,
+        source_session_generation,target_session_generation,
+        source_connection_generation,target_connection_generation,
+        expected_session_generation,expected_connection_generation,expected_fencing_token,
+        payload,payload_bytes,payload_hash
+      ) select '${disconnectCommandId}','${DEMO_ORG_ID}',
+        '11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222',
+        'heartbeat:disconnect','DISCONNECT',1,2,0,1,2,0,1,payload.value,
+        app_private.openclaw_jcs_bytes_v1(payload.value),
+        encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(payload.value),'sha256'),'hex')
+      from (values (jsonb_build_object(
+        'version',1,'reasonCode','ACCOUNT_DISCONNECT','revocationId','${revocationId}',
+        'revokedSessionGeneration',1,'minimumSessionGeneration',2
+      ))) payload(value)
+      on conflict (organization_id,id) do nothing;
+      insert into public.openclaw_generation_revocations(
+        id,organization_id,principal_kind,account_id,cell_id,revocation_kind,
+        revoked_generation,minimum_valid_generation,command_id,reason_code
+      ) values (
+        '${revocationId}','${DEMO_ORG_ID}','CHANNEL',
+        '11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222',
+        'SESSION',1,2,'${disconnectCommandId}','ACCOUNT_DISCONNECT'
+      ) on conflict (organization_id,id) do nothing;
+      set session_replication_role='origin';
+    `);
+    const firstToken = concurrencyClaimToken("heartbeat-command-first");
+    const heartbeat = (
+      principal,
+      claimToken,
+      commandStarts = [],
+      commandResults = [],
+      commandLeaseSeconds = 60,
+    ) => database.query(
+      `select app_private.openclaw_runtime_heartbeat_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(principal), JSON.stringify({
+        version: 1,
+        commandClaimToken: claimToken,
+        commandLeaseSeconds,
+        commandStarts,
+        commandResults,
+      })],
+    );
+    const first = await heartbeat(transitionPrincipal, firstToken);
+    const replay = await heartbeat(transitionPrincipal, firstToken);
+    const commands = first.rows[0].result.commands;
+    if (
+      commands.length !== 1 || commands[0].runtimeCommandId !== disconnectCommandId ||
+      commands[0].sourceSessionGeneration !== 1 || commands[0].targetSessionGeneration !== 2 ||
+      commands[0].executionState !== "LEASED" ||
+      canonicalComparisonJson(first.rows[0].result.commands) !==
+        canonicalComparisonJson(replay.rows[0].result.commands)
+    ) throw new Error("Heartbeat command claim was not bounded, ordered, or replayable.");
+    const other = await heartbeat(
+      transitionPrincipal,
+      concurrencyClaimToken("heartbeat-command-other"),
+    );
+    if (other.rows[0].result.commands.length !== 0) {
+      throw new Error("A different heartbeat claim token stole an active command lease.");
+    }
+    const disconnect = commands[0];
+    const start = {
+      version: 1,
+      runtimeCommandId: disconnectCommandId,
+      commandKind: "DISCONNECT",
+      claimGeneration: disconnect.claimGeneration,
+      claimToken: firstToken,
+      payloadHash: disconnect.payloadHash,
+    };
+    const started = await heartbeat(transitionPrincipal, firstToken, [start]);
+    if (
+      started.rows[0].result.commands[0].executionState !== "STARTED" ||
+      !started.rows[0].result.commands[0].effectDeadlineAt
+    ) throw new Error("Disconnect command was not durably STARTED before provider effect.");
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_runtime_commands set lease_expires_at=statement_timestamp()-interval '1 second'
+      where organization_id='${DEMO_ORG_ID}' and id='${disconnectCommandId}';
+      set session_replication_role='origin';
+    `);
+    const notReclaimed = await heartbeat(
+      transitionPrincipal,
+      concurrencyClaimToken("heartbeat-command-started-other"),
+    );
+    if (notReclaimed.rows[0].result.commands.length !== 0) {
+      throw new Error("A STARTED command was reclaimed by another token.");
+    }
+    const reconciled = await heartbeat(transitionPrincipal, firstToken);
+    if (reconciled.rows[0].result.commands[0].executionState !== "STARTED") {
+      throw new Error("The original token could not renew and reconcile STARTED work.");
+    }
+    const providerResult = {
+      version: 1,
+      revocationId,
+      revokedSessionGeneration: 1,
+      minimumSessionGeneration: 2,
+      channel: "zalouser",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      credentialsCleared: false,
+      loggedOut: true,
+      status: "PROVIDER_LOGGED_OUT",
+    };
+    const completion = {
+      version: 1,
+      runtimeCommandId: disconnectCommandId,
+      commandKind: "DISCONNECT",
+      claimGeneration: disconnect.claimGeneration,
+      claimToken: firstToken,
+      outcome: "PROVIDER_LOGGED_OUT",
+      result: providerResult,
+    };
+    const completed = await heartbeat(transitionPrincipal, firstToken, [], [completion]);
+    const completionReplay = await heartbeat(transitionPrincipal, firstToken, [], [completion]);
+    const expectedResultHash = createHash("sha256")
+      .update(canonicalComparisonJson(providerResult), "utf8").digest("hex");
+    if (
+      completed.rows[0].result.commands.length !== 0 ||
+      completed.rows[0].result.commandResultAcks[0].resultHash !== expectedResultHash ||
+      completed.rows[0].result.commandResultAcks[0].adoptSessionGeneration !== 2 ||
+      canonicalComparisonJson(completed.rows[0].result.commandResultAcks) !==
+        canonicalComparisonJson(completionReplay.rows[0].result.commandResultAcks)
+    ) throw new Error("Provider result acknowledgement was not exact or replayable.");
+    const beforeGatewayAck = await database.query(`
+      select account.connection_state,
+        revocation.acknowledgement_hash,revocation.acknowledged_at
+      from public.openclaw_accounts account
+      join public.openclaw_generation_revocations revocation
+        on revocation.organization_id=account.organization_id and revocation.account_id=account.id
+      where account.organization_id='${DEMO_ORG_ID}'
+        and account.id='11111111-1111-4111-8111-111111111111'
+        and revocation.id='${revocationId}'
+    `);
+    if (
+      beforeGatewayAck.rows[0].connection_state !== "DISCONNECTING" ||
+      beforeGatewayAck.rows[0].acknowledgement_hash !== null ||
+      beforeGatewayAck.rows[0].acknowledged_at !== null
+    ) throw new Error("Heartbeat forged Gateway acknowledgement or finalized disconnect early.");
+    await database.query(`
+      update public.openclaw_generation_revocations set
+        acknowledgement_hash=repeat('f',64),acknowledged_at=statement_timestamp()
+      where organization_id=$1 and id=$2
+    `, [DEMO_ORG_ID, revocationId]);
+    await database.query(
+      `select app_private.openclaw_try_finalize_disconnect_v1($1,$2,$3) connection_state`,
+      [DEMO_ORG_ID, "11111111-1111-4111-8111-111111111111", disconnectCommandId],
+    );
+    const finalized = await database.query(`
+      select connection_state from public.openclaw_accounts
+      where organization_id=$1 and id=$2
+    `, [DEMO_ORG_ID, "11111111-1111-4111-8111-111111111111"]);
+    if (finalized.rows[0].connection_state !== "DISCONNECTED") {
+      throw new Error("Disconnect did not finalize after both independent durable evidences.");
+    }
+    const qrToken = concurrencyClaimToken("heartbeat-command-qr");
+    const qrClaim = await heartbeat(normalPrincipal, qrToken);
+    const qr = qrClaim.rows[0].result.commands[0];
+    if (qr.runtimeCommandId !== qrCommandId || qr.executionState !== "LEASED") {
+      throw new Error("Normal authority did not claim the QR command after session adoption.");
+    }
+    const qrStart = {
+      version: 1,
+      runtimeCommandId: qrCommandId,
+      commandKind: "QR_LOGIN",
+      claimGeneration: qr.claimGeneration,
+      claimToken: qrToken,
+      payloadHash: qr.payloadHash,
+    };
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_rollout_runs set stage='INFRASTRUCTURE'
+      where organization_id='${DEMO_ORG_ID}'
+        and id='99994000-0000-4000-8000-000000000001';
+      set session_replication_role='origin';
+    `);
+    let startBlockedByRollout = false;
+    try {
+      await heartbeat(normalPrincipal, qrToken, [qrStart]);
+    } catch (error) {
+      startBlockedByRollout = /rollout stage/i.test(String(error?.message ?? error));
+    }
+    if (!startBlockedByRollout) {
+      throw new Error("A QR command crossed into STARTED below WAITING_OWNER_QR rollout stage.");
+    }
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_rollout_runs set stage='COMPLETE'
+      where organization_id='${DEMO_ORG_ID}'
+        and id='99994000-0000-4000-8000-000000000001';
+      set session_replication_role='origin';
+    `);
+    await heartbeat(normalPrincipal, qrToken, [qrStart]);
+    const ciphertext = Buffer.from("qr-data-url", "utf8").toString("base64");
+    const iv = Buffer.from("123456789012", "utf8").toString("base64");
+    const tag = Buffer.from("1234567890123456", "utf8").toString("base64");
+    const publishRequest = {
+      version: 1,
+      challengeId,
+      runtimeCommandId: qrCommandId,
+      claimGeneration: qr.claimGeneration,
+      claimToken: qrToken,
+      ciphertextB64: ciphertext,
+      cipherIvB64: iv,
+      authTagB64: tag,
+    };
+    const published = await database.query(
+      `select app_private.openclaw_submit_qr_result_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(normalPrincipal), JSON.stringify(publishRequest)],
+    );
+    const publishReplay = await database.query(
+      `select app_private.openclaw_submit_qr_result_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(normalPrincipal), JSON.stringify(publishRequest)],
+    );
+    if (
+      published.rows[0].result.materialVersion !== 1 ||
+      canonicalComparisonJson(published.rows[0].result) !==
+        canonicalComparisonJson(publishReplay.rows[0].result)
+    ) throw new Error("QR command publication was not claim-bound or replayable.");
+
+    const insertQrCommand = async (commandId, commandKey) => {
+      await database.query(`
+        insert into public.openclaw_runtime_commands(
+          id,organization_id,account_id,cell_id,command_key,command_kind,
+          source_session_generation,target_session_generation,
+          source_connection_generation,target_connection_generation,
+          expected_session_generation,expected_connection_generation,expected_fencing_token,
+          payload,payload_bytes,payload_hash
+        ) select $1,$2,$3,$4,$5,'QR_LOGIN',2,2,1,1,2,1,1,payload.value,
+          app_private.openclaw_jcs_bytes_v1(payload.value),
+          encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(payload.value),'sha256'),'hex')
+        from (values (jsonb_build_object(
+          'version',1,'challengeId',$6::uuid,'browserNonceHash',repeat('a',64)
+        ))) payload(value)
+      `, [
+        commandId,
+        DEMO_ORG_ID,
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        commandKey,
+        commandId,
+      ]);
+    };
+
+    const failedCommandId = "dddd7100-0000-4000-8000-000000000005";
+    await insertQrCommand(failedCommandId, "heartbeat:failed-before-start");
+    const failedToken = concurrencyClaimToken("heartbeat-command-failed-before-start");
+    const failedClaim = (await heartbeat(normalPrincipal, failedToken)).rows[0].result.commands[0];
+    const failedResult = {
+      version: 1,
+      reasonCode: "PROVIDER_UNAVAILABLE",
+      failureFingerprint: "1".repeat(64),
+      status: "FAILED_BEFORE_START",
+    };
+    const failedCompletion = {
+      version: 1,
+      runtimeCommandId: failedCommandId,
+      commandKind: "QR_LOGIN",
+      claimGeneration: failedClaim.claimGeneration,
+      claimToken: failedToken,
+      outcome: "FAILED",
+      result: failedResult,
+    };
+    const failed = await heartbeat(normalPrincipal, failedToken, [], [failedCompletion]);
+    const failedReplay = await heartbeat(normalPrincipal, failedToken, [], [failedCompletion]);
+    if (
+      failed.rows[0].result.commandResultAcks[0].outcome !== "FAILED" ||
+      failed.rows[0].result.commandResultAcks[0].adoptSessionGeneration !== null ||
+      canonicalComparisonJson(failed.rows[0].result.commandResultAcks) !==
+        canonicalComparisonJson(failedReplay.rows[0].result.commandResultAcks)
+    ) throw new Error("A failed-before-start command was not sealed and replayed exactly.");
+
+    const startedFailureId = "dddd7100-0000-4000-8000-000000000006";
+    await insertQrCommand(startedFailureId, "heartbeat:started-failure");
+    const startedFailureToken = concurrencyClaimToken("heartbeat-command-started-failure");
+    const startedFailureClaim = (await heartbeat(normalPrincipal, startedFailureToken))
+      .rows[0].result.commands[0];
+    await heartbeat(normalPrincipal, startedFailureToken, [{
+      version: 1,
+      runtimeCommandId: startedFailureId,
+      commandKind: "QR_LOGIN",
+      claimGeneration: startedFailureClaim.claimGeneration,
+      claimToken: startedFailureToken,
+      payloadHash: startedFailureClaim.payloadHash,
+    }]);
+    let startedFailureRejected = false;
+    try {
+      await heartbeat(normalPrincipal, startedFailureToken, [], [{
+        ...failedCompletion,
+        runtimeCommandId: startedFailureId,
+        claimGeneration: startedFailureClaim.claimGeneration,
+        claimToken: startedFailureToken,
+      }]);
+    } catch (error) {
+      startedFailureRejected = /started command cannot be failed/i.test(String(error?.message ?? error));
+    }
+    if (!startedFailureRejected) {
+      throw new Error("A STARTED command accepted a pre-start failure result.");
+    }
+
+    const shortLeaseId = "dddd7100-0000-4000-8000-000000000007";
+    await insertQrCommand(shortLeaseId, "heartbeat:short-effect-margin");
+    const shortLeaseToken = concurrencyClaimToken("heartbeat-command-short-margin");
+    const shortLeaseClaim = (await heartbeat(normalPrincipal, shortLeaseToken, [], [], 5))
+      .rows[0].result.commands[0];
+    let shortMarginRejected = false;
+    try {
+      await heartbeat(normalPrincipal, shortLeaseToken, [{
+        version: 1,
+        runtimeCommandId: shortLeaseId,
+        commandKind: "QR_LOGIN",
+        claimGeneration: shortLeaseClaim.claimGeneration,
+        claimToken: shortLeaseToken,
+        payloadHash: shortLeaseClaim.payloadHash,
+      }], [], 5);
+    } catch (error) {
+      shortMarginRejected = /start ownership CAS failed|effect margin is insufficient/i.test(
+        String(error?.message ?? error),
+      );
+    }
+    if (!shortMarginRejected) {
+      throw new Error("A runtime command started without the required effect margin.");
+    }
+
+    const gatewayFirstCommandId = "dddd7100-0000-4000-8000-000000000008";
+    const gatewayFirstRevocationId = "dddd7100-0000-4000-8000-000000000009";
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_accounts set session_generation=3,connection_generation=2,
+        connection_state='DISCONNECTING',effective_mode='DRAFT_ONLY'
+      where organization_id='${DEMO_ORG_ID}'
+        and id='11111111-1111-4111-8111-111111111111';
+      insert into public.openclaw_runtime_commands(
+        id,organization_id,account_id,cell_id,command_key,command_kind,
+        source_session_generation,target_session_generation,
+        source_connection_generation,target_connection_generation,
+        expected_session_generation,expected_connection_generation,expected_fencing_token,
+        payload,payload_bytes,payload_hash,created_by
+      ) select '${gatewayFirstCommandId}','${DEMO_ORG_ID}',
+        '11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222',
+        'heartbeat:gateway-first','DISCONNECT',2,3,1,2,3,1,1,payload.value,
+        app_private.openclaw_jcs_bytes_v1(payload.value),
+        encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(payload.value),'sha256'),'hex'),
+        '99999999-9999-4999-8999-999999999999'
+      from (values (jsonb_build_object(
+        'version',1,'reasonCode','ACCOUNT_DISCONNECT','revocationId','${gatewayFirstRevocationId}',
+        'revokedSessionGeneration',2,'minimumSessionGeneration',3
+      ))) payload(value);
+      insert into public.openclaw_generation_revocations(
+        id,organization_id,principal_kind,account_id,cell_id,revocation_kind,
+        revoked_generation,minimum_valid_generation,command_id,reason_code
+      ) values (
+        '${gatewayFirstRevocationId}','${DEMO_ORG_ID}','CHANNEL',
+        '11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222',
+        'SESSION',2,3,'${gatewayFirstCommandId}','ACCOUNT_DISCONNECT'
+      );
+      set session_replication_role='origin';
+    `);
+    await database.query(
+      `select public.openclaw_service_ack_disconnect_revocation_v1($1::uuid,$2::jsonb) result`,
+      [
+        "99999999-9999-4999-8999-999999999999",
+        JSON.stringify({
+          version: 1,
+          organizationId: DEMO_ORG_ID,
+          accountId: "11111111-1111-4111-8111-111111111111",
+          revocationId: gatewayFirstRevocationId,
+          minimumValidGeneration: 3,
+          acknowledgementHash: "2".repeat(64),
+        }),
+      ],
+    );
+    const gatewayFirstPending = await database.query(`
+      select connection_state from public.openclaw_accounts
+      where organization_id=$1 and id=$2
+    `, [DEMO_ORG_ID, "11111111-1111-4111-8111-111111111111"]);
+    if (gatewayFirstPending.rows[0].connection_state !== "DISCONNECTING") {
+      throw new Error("Gateway acknowledgement finalized a disconnect before provider evidence.");
+    }
+    const gatewayFirstPrincipal = {
+      ...channelPrincipal(),
+      sessionGeneration: 3,
+      localSessionGeneration: 2,
+      authMode: "COMMAND_TRANSITION",
+    };
+    const gatewayFirstToken = concurrencyClaimToken("heartbeat-command-gateway-first");
+    const gatewayFirstClaim = (await heartbeat(gatewayFirstPrincipal, gatewayFirstToken))
+      .rows[0].result.commands[0];
+    await heartbeat(gatewayFirstPrincipal, gatewayFirstToken, [{
+      version: 1,
+      runtimeCommandId: gatewayFirstCommandId,
+      commandKind: "DISCONNECT",
+      claimGeneration: gatewayFirstClaim.claimGeneration,
+      claimToken: gatewayFirstToken,
+      payloadHash: gatewayFirstClaim.payloadHash,
+    }]);
+    await heartbeat(gatewayFirstPrincipal, gatewayFirstToken, [], [{
+      version: 1,
+      runtimeCommandId: gatewayFirstCommandId,
+      commandKind: "DISCONNECT",
+      claimGeneration: gatewayFirstClaim.claimGeneration,
+      claimToken: gatewayFirstToken,
+      outcome: "PROVIDER_LOGGED_OUT",
+      result: {
+        version: 1,
+        revocationId: gatewayFirstRevocationId,
+        revokedSessionGeneration: 2,
+        minimumSessionGeneration: 3,
+        channel: "zalouser",
+        accountId: "11111111-1111-4111-8111-111111111111",
+        credentialsCleared: false,
+        loggedOut: true,
+        status: "PROVIDER_LOGGED_OUT",
+      },
+    }]);
+    const gatewayFirstFinalized = await database.query(`
+      select connection_state from public.openclaw_accounts
+      where organization_id=$1 and id=$2
+    `, [DEMO_ORG_ID, "11111111-1111-4111-8111-111111111111"]);
+    if (gatewayFirstFinalized.rows[0].connection_state !== "DISCONNECTED") {
+      throw new Error("Gateway-first disconnect did not finalize after provider evidence.");
     }
     return;
   }
@@ -3405,9 +4751,17 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
   }
   if (scenario === "FORGED_AUDIT_RECEIPT") {
     const fixture = await prepareAuditAnchorFixture(database, 21);
+    const beforeForgery = await database.query(
+      `select root.anchored_at,root.signature_hash,work.state
+       from public.openclaw_audit_roots root
+       join public.openclaw_maintenance_work_items work
+         on work.organization_id=root.organization_id and work.source_id=root.id
+       where root.id=$1`,
+      [fixture.auditRootId],
+    );
     const forged = {
       ...fixture.receipt,
-      rootHash: "0".repeat(64),
+      signatureHash: "0".repeat(64),
     };
     let rejected = false;
     try {
@@ -3416,7 +4770,7 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
       rejected = error?.code === "42501" || /receipt/i.test(String(error?.message ?? error));
     }
     const proof = await database.query(
-      `select root.anchored_at,work.state
+      `select root.anchored_at,root.signature_hash,work.state
        from public.openclaw_audit_roots root
        join public.openclaw_maintenance_work_items work
          on work.organization_id=root.organization_id and work.source_id=root.id
@@ -3425,8 +4779,7 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
     );
     if (
       !rejected ||
-      proof.rows[0].anchored_at !== null ||
-      proof.rows[0].state !== "LEASED"
+      JSON.stringify(proof.rows[0]) !== JSON.stringify(beforeForgery.rows[0])
     ) {
       throw new Error("A forged audit receipt changed the immutable audit root.");
     }
@@ -3462,6 +4815,570 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
       proof.rows[0].attempt_count !== 1
     ) {
       throw new Error("A lost audit acknowledgement was not idempotently replayed.");
+    }
+    return;
+  }
+  if (scenario === "RETENTION_AUTHORIZED_RECLAIM") {
+    const ticket = await prepareRetentionDeleteTicket(database, 15);
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_maintenance_work_items
+      set recovery_lease_expires_at=statement_timestamp()-interval '1 second',
+          updated_at=statement_timestamp()
+      where organization_id='${DEMO_ORG_ID}' and id='${ticket.workItemId}';
+      set session_replication_role='origin';
+    `);
+    const recoveryToken = concurrencyClaimToken("retention-authorized-recovery");
+    const claimed = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [
+        JSON.stringify(maintenancePrincipal()),
+        JSON.stringify({
+          version: 1,
+          claimToken: recoveryToken,
+          limit: 1,
+          leaseSeconds: 30,
+          requestedKinds: ["RETENTION_DELETE"],
+        }),
+      ],
+    );
+    const recovery = claimed.rows[0].result.items[0];
+    if (
+      recovery?.recoveryKind !== "RETENTION_DELETE_AUTHORIZED" ||
+      recovery.workItemId !== ticket.workItemId ||
+      recovery.claimToken !== recoveryToken ||
+      recovery.frozenClaim?.claimGeneration !== 1 ||
+      recovery.ticketId !== ticket.ticketId ||
+      recovery.gatewayReceipt !== null
+    ) {
+      throw new Error("DELETE_AUTHORIZED work was not reclaimed with exact frozen lineage.");
+    }
+    return;
+  }
+  if (scenario === "AUDIT_VERIFY_RECLAIM") {
+    const fixture = await prepareAuditAnchorFixture(database, 23);
+    const originalRequest = {
+      version: 1,
+      operation: "ANCHOR_VERIFY",
+      workItemId: fixture.workItemId,
+      claimGeneration: 1,
+      claimToken: fixture.claimToken,
+      auditRootId: fixture.auditRootId,
+      rootHash: fixture.receipt.rootHash,
+      anchorKey: fixture.receipt.anchorKey,
+      signatureHash: fixture.receipt.signatureHash,
+      auditSigningKeyGeneration: 1,
+      auditSigningPublicKeyHash: "a".repeat(64),
+      documentSha256: "b".repeat(64),
+      documentByteLength: 128,
+    };
+    const original = await database.query(
+      `select app_private.openclaw_issue_media_ticket_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(maintenancePrincipal()), JSON.stringify(originalRequest)],
+    );
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_maintenance_work_items
+      set recovery_lease_expires_at=statement_timestamp()-interval '1 second',
+          updated_at=statement_timestamp()
+      where organization_id='${DEMO_ORG_ID}' and id='${fixture.workItemId}';
+      set session_replication_role='origin';
+    `);
+    const recoveryToken = concurrencyClaimToken("audit-verify-recovery");
+    const reclaimed = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [
+        JSON.stringify(maintenancePrincipal()),
+        JSON.stringify({
+          version: 1,
+          claimToken: recoveryToken,
+          limit: 1,
+          leaseSeconds: 30,
+          requestedKinds: ["AUDIT_ANCHOR"],
+        }),
+      ],
+    );
+    const result = reclaimed.rows[0].result.items[0];
+    if (
+      result.recoveryKind !== "AUDIT_VERIFY_AUTHORIZED" ||
+      result.claimToken !== recoveryToken ||
+      result.frozenClaim?.claimGeneration !== 1 ||
+      result.verifyTicketId !== original.rows[0].result.ticketId ||
+      result.verifyTicket?.jti !== original.rows[0].result.ticket.jti ||
+      result.gatewayReceipt !== null
+    ) {
+      throw new Error("Audit recovery claim did not preserve original Gateway lineage.");
+    }
+    return;
+  }
+  if (scenario === "RETENTION_RECOVERY_REFRESH") {
+    const ticket = await prepareRetentionDeleteTicket(database, 16);
+    const before = await database.query(
+      `select ticket_jti::text,delete_authorization_jti::text,expected_receipt_claims
+       from public.openclaw_retention_delete_tickets
+       where organization_id=$1 and id=$2`,
+      [DEMO_ORG_ID, ticket.ticketId],
+    );
+    await new Promise((resolve) => setTimeout(resolve, 5_100));
+    await database.exec(`
+      set session_replication_role='replica';
+      update public.openclaw_maintenance_work_items
+      set recovery_lease_expires_at=statement_timestamp()-interval '1 second',
+          updated_at=statement_timestamp()
+      where organization_id='${DEMO_ORG_ID}' and id='${ticket.workItemId}';
+      set session_replication_role='origin';
+    `);
+    const recoveryPrincipal = await prepareRotatedMaintenancePrincipal(database);
+    const recoveryToken = concurrencyClaimToken("retention-refresh-recovery");
+    const claimed = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [
+        JSON.stringify(recoveryPrincipal),
+        JSON.stringify({
+          version: 1,
+          claimToken: recoveryToken,
+          limit: 1,
+          leaseSeconds: 30,
+          requestedKinds: ["RETENTION_DELETE"],
+        }),
+      ],
+    );
+    const recovery = claimed.rows[0].result.items[0];
+    const refreshRequest = {
+      version: 1,
+      recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+      workItemId: ticket.workItemId,
+      recoveryGeneration: recovery.recoveryGeneration,
+      claimToken: recoveryToken,
+      ticketId: ticket.ticketId,
+      expiredTicketJti: before.rows[0].ticket_jti,
+      expiredDeleteAuthorizationJti: before.rows[0].delete_authorization_jti,
+      gatewayDenial: { status: 410, code: "TICKET_EXPIRED_NO_WORK" },
+    };
+    const pointerBeforeRejection = await database.query(
+      `select ticket_jti::text,delete_authorization_jti::text,
+        (select count(*)::integer
+         from public.openclaw_retention_delete_ticket_lineage lineage
+         where lineage.organization_id=ticket.organization_id
+           and lineage.logical_ticket_id=ticket.id) lineage_count
+       from public.openclaw_retention_delete_tickets ticket
+       where ticket.organization_id=$1 and ticket.id=$2`,
+      [DEMO_ORG_ID, ticket.ticketId],
+    );
+    let wrongStatusRejected = false;
+    try {
+      await database.query(
+        `select app_private.openclaw_authorize_retention_delete_v1(
+          $1::jsonb,'{}'::jsonb,$2::jsonb
+        ) result`,
+        [
+          JSON.stringify(recoveryPrincipal),
+          JSON.stringify({
+            ...refreshRequest,
+            gatewayDenial: { status: 409, code: "TICKET_EXPIRED_NO_WORK" },
+          }),
+        ],
+      );
+    } catch (error) {
+      wrongStatusRejected = error?.code === "22023";
+    }
+    let extraDenialKeyRejected = false;
+    try {
+      await database.query(
+        `select app_private.openclaw_authorize_retention_delete_v1(
+          $1::jsonb,'{}'::jsonb,$2::jsonb
+        ) result`,
+        [
+          JSON.stringify(recoveryPrincipal),
+          JSON.stringify({
+            ...refreshRequest,
+            gatewayDenial: {
+              status: 410,
+              code: "TICKET_EXPIRED_NO_WORK",
+              detail: "not allowed",
+            },
+          }),
+        ],
+      );
+    } catch (error) {
+      extraDenialKeyRejected = error?.code === "22023";
+    }
+    const pointerAfterRejection = await database.query(
+      `select ticket_jti::text,delete_authorization_jti::text,
+        (select count(*)::integer
+         from public.openclaw_retention_delete_ticket_lineage lineage
+         where lineage.organization_id=ticket.organization_id
+           and lineage.logical_ticket_id=ticket.id) lineage_count
+       from public.openclaw_retention_delete_tickets ticket
+       where ticket.organization_id=$1 and ticket.id=$2`,
+      [DEMO_ORG_ID, ticket.ticketId],
+    );
+    if (
+      !wrongStatusRejected ||
+      !extraDenialKeyRejected ||
+      JSON.stringify(pointerAfterRejection.rows[0]) !==
+        JSON.stringify(pointerBeforeRejection.rows[0])
+    ) {
+      throw new Error("Invalid retention recovery evidence mutated authoritative lineage.");
+    }
+    const first = await database.query(
+      `select app_private.openclaw_authorize_retention_delete_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(refreshRequest)],
+    );
+    const replay = await database.query(
+      `select app_private.openclaw_authorize_retention_delete_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(refreshRequest)],
+    );
+    const refreshed = first.rows[0].result;
+    const lineage = await database.query(
+      `select count(*)::integer count,
+        count(*) filter (where ticket_jti=$3::uuid)::integer old_ticket_rows,
+        count(*) filter (where ticket_jti=$4::uuid)::integer new_ticket_rows
+       from public.openclaw_retention_delete_ticket_lineage
+       where organization_id=$1 and logical_ticket_id=$2`,
+      [DEMO_ORG_ID, ticket.ticketId, refreshRequest.expiredTicketJti, refreshed.ticket.jti],
+    );
+    const expectedFrozenClaim = {
+      maintenancePrincipalId: maintenancePrincipal().maintenancePrincipalId,
+      credentialGeneration: maintenancePrincipal().credentialGeneration,
+      leaseGeneration: maintenancePrincipal().leaseGeneration,
+      fencingToken: maintenancePrincipal().fencingToken,
+      claimGeneration: 1,
+    };
+    if (
+      refreshed.state !== "RECOVERY_REFRESHED" ||
+      refreshed.ticketId !== ticket.ticketId ||
+      refreshed.replacesTicketJti !== refreshRequest.expiredTicketJti ||
+      refreshed.replacesDeleteAuthorizationJti !== refreshRequest.expiredDeleteAuthorizationJti ||
+      refreshed.ticket.jti === refreshRequest.expiredTicketJti ||
+      refreshed.authorization.authorizationJti === refreshRequest.expiredDeleteAuthorizationJti ||
+      refreshed.ticket.claimGeneration !== undefined ||
+      refreshed.authorization.claimGeneration !== undefined ||
+      refreshed.ticket.maintenancePrincipalId !== recoveryPrincipal.maintenancePrincipalId ||
+      refreshed.ticket.credentialGeneration !== recoveryPrincipal.credentialGeneration ||
+      refreshed.ticket.leaseGeneration !== recoveryPrincipal.leaseGeneration ||
+      refreshed.ticket.fencingToken !== recoveryPrincipal.fencingToken ||
+      refreshed.ticket.workItemId !== ticket.workItemId ||
+      refreshed.authorization.maintenancePrincipalId !== recoveryPrincipal.maintenancePrincipalId ||
+      refreshed.authorization.credentialGeneration !== recoveryPrincipal.credentialGeneration ||
+      refreshed.authorization.leaseGeneration !== recoveryPrincipal.leaseGeneration ||
+      refreshed.authorization.fencingToken !== recoveryPrincipal.fencingToken ||
+      refreshed.authorization.workItemId !== ticket.workItemId ||
+      refreshed.ticket.recoveryKind !== "RETENTION_DELETE_AUTHORIZED" ||
+      refreshed.authorization.recoveryGeneration !== recovery.recoveryGeneration ||
+      canonicalComparisonJson(refreshed.ticket.frozenClaim) !==
+        canonicalComparisonJson(expectedFrozenClaim) ||
+      canonicalComparisonJson(refreshed.authorization.frozenClaim) !==
+        canonicalComparisonJson(expectedFrozenClaim) ||
+      JSON.stringify(first.rows[0].result) !== JSON.stringify(replay.rows[0].result) ||
+      lineage.rows[0].count !== 2 || lineage.rows[0].old_ticket_rows !== 1 ||
+      lineage.rows[0].new_ticket_rows !== 1
+    ) {
+      throw new Error("Retention recovery refresh did not rotate and preserve exact lineage.");
+    }
+    const oldReceipt = retentionReceipt({
+      ...ticket,
+      expectedReceiptClaims: before.rows[0].expected_receipt_claims,
+    }, "DELETED");
+    const completionRequest = {
+      version: 1,
+      recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+      workItemId: ticket.workItemId,
+      recoveryGeneration: recovery.recoveryGeneration,
+      claimToken: recoveryToken,
+      ticketId: ticket.ticketId,
+      gatewayReceipt: oldReceipt,
+    };
+    const completed = await database.query(
+      `select app_private.openclaw_finalize_retention_delete_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(completionRequest)],
+    );
+    const refreshAfterTerminal = await database.query(
+      `select app_private.openclaw_authorize_retention_delete_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(refreshRequest)],
+    );
+    const completedReplay = await database.query(
+      `select app_private.openclaw_finalize_retention_delete_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(completionRequest)],
+    );
+    if (
+      completed.rows[0].result.idempotentReplay !== false ||
+      completedReplay.rows[0].result.idempotentReplay !== true ||
+      canonicalComparisonJson(refreshAfterTerminal.rows[0].result) !==
+        canonicalComparisonJson(first.rows[0].result)
+    ) {
+      throw new Error("Late old retention receipt was not terminally replayable.");
+    }
+    return;
+  }
+  if (scenario === "AUDIT_RECOVERY_REFRESH") {
+    const fixture = await prepareAuditAnchorFixture(database, 24);
+    const oldTicket = await database.query(
+      `select ticket_payload from public.openclaw_audit_gateway_tickets
+       where organization_id=$1 and ticket_jti=$2`,
+      [DEMO_ORG_ID, fixture.verifyTicketJti],
+    );
+    await database.exec(`
+      set session_replication_role='replica';
+      with expired as (
+        select ticket.id,
+          jsonb_set(jsonb_set(ticket.ticket_payload,'{iat}',to_jsonb(
+            extract(epoch from date_trunc('second',statement_timestamp()-interval '2 minutes'))::bigint
+          )),'{exp}',to_jsonb(
+            extract(epoch from date_trunc('second',statement_timestamp()-interval '1 minute'))::bigint
+          )) payload
+        from public.openclaw_audit_gateway_tickets ticket
+        where ticket.organization_id='${DEMO_ORG_ID}'
+          and ticket.ticket_jti='${fixture.verifyTicketJti}'
+      ), canonical as (
+        select expired.*,app_private.openclaw_jcs_bytes_v1(expired.payload) bytes
+        from expired
+      )
+      update public.openclaw_audit_gateway_tickets ticket
+      set issued_at=date_trunc('second',statement_timestamp()-interval '2 minutes'),
+          expires_at=date_trunc('second',statement_timestamp()-interval '1 minute'),
+          ticket_payload=canonical.payload,ticket_bytes=canonical.bytes,
+          ticket_hash=encode(extensions.digest(
+            convert_to('ihome-openclaw-media-ticket-v1','UTF8')||decode('00','hex')
+              ||canonical.bytes,'sha256'),'hex')
+      from canonical where ticket.id=canonical.id;
+      update public.openclaw_maintenance_work_items
+      set recovery_lease_expires_at=statement_timestamp()-interval '1 second',
+          updated_at=statement_timestamp()
+      where organization_id='${DEMO_ORG_ID}' and id='${fixture.workItemId}';
+      set session_replication_role='origin';
+    `);
+    const recoveryPrincipal = await prepareRotatedMaintenancePrincipal(database);
+    const recoveryToken = concurrencyClaimToken("audit-refresh-recovery");
+    const claimed = await database.query(
+      `select app_private.openclaw_claim_work_item_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [
+        JSON.stringify(recoveryPrincipal),
+        JSON.stringify({
+          version: 1,
+          claimToken: recoveryToken,
+          limit: 1,
+          leaseSeconds: 30,
+          requestedKinds: ["AUDIT_ANCHOR"],
+        }),
+      ],
+    );
+    const recovery = claimed.rows[0].result.items[0];
+    const old = oldTicket.rows[0].ticket_payload;
+    const refreshRequest = {
+      version: 1,
+      operation: "ANCHOR_VERIFY",
+      recoveryKind: "AUDIT_VERIFY_AUTHORIZED",
+      workItemId: fixture.workItemId,
+      recoveryGeneration: recovery.recoveryGeneration,
+      claimToken: recoveryToken,
+      expiredVerifyTicketJti: fixture.verifyTicketJti,
+      gatewayDenial: { status: 410, code: "TICKET_EXPIRED_NO_WORK" },
+      auditRootId: fixture.auditRootId,
+      rootHash: fixture.receipt.rootHash,
+      anchorKey: fixture.receipt.anchorKey,
+      signatureHash: fixture.receipt.signatureHash,
+      auditSigningKeyGeneration: 1,
+      auditSigningPublicKeyHash: "a".repeat(64),
+      documentSha256: old.sha256,
+      documentByteLength: old.contentLength,
+    };
+    const lineageBeforeRejection = await database.query(
+      `select count(*)::integer count,
+        count(*) filter (where is_authoritative)::integer authoritative,
+        max(ticket_jti::text) filter (where is_authoritative) authoritative_ticket_jti
+       from public.openclaw_audit_gateway_tickets
+       where organization_id=$1 and work_item_id=$2`,
+      [DEMO_ORG_ID, fixture.workItemId],
+    );
+    let wrongStatusRejected = false;
+    try {
+      await database.query(
+        `select app_private.openclaw_issue_media_ticket_v1(
+          $1::jsonb,'{}'::jsonb,$2::jsonb
+        ) result`,
+        [
+          JSON.stringify(recoveryPrincipal),
+          JSON.stringify({
+            ...refreshRequest,
+            gatewayDenial: { status: 409, code: "TICKET_EXPIRED_NO_WORK" },
+          }),
+        ],
+      );
+    } catch (error) {
+      wrongStatusRejected = error?.code === "22023";
+    }
+    let extraDenialKeyRejected = false;
+    try {
+      await database.query(
+        `select app_private.openclaw_issue_media_ticket_v1(
+          $1::jsonb,'{}'::jsonb,$2::jsonb
+        ) result`,
+        [
+          JSON.stringify(recoveryPrincipal),
+          JSON.stringify({
+            ...refreshRequest,
+            gatewayDenial: {
+              status: 410,
+              code: "TICKET_EXPIRED_NO_WORK",
+              detail: "not allowed",
+            },
+          }),
+        ],
+      );
+    } catch (error) {
+      extraDenialKeyRejected = error?.code === "22023";
+    }
+    const lineageAfterRejection = await database.query(
+      `select count(*)::integer count,
+        count(*) filter (where is_authoritative)::integer authoritative,
+        max(ticket_jti::text) filter (where is_authoritative) authoritative_ticket_jti
+       from public.openclaw_audit_gateway_tickets
+       where organization_id=$1 and work_item_id=$2`,
+      [DEMO_ORG_ID, fixture.workItemId],
+    );
+    if (
+      !wrongStatusRejected ||
+      !extraDenialKeyRejected ||
+      JSON.stringify(lineageAfterRejection.rows[0]) !==
+        JSON.stringify(lineageBeforeRejection.rows[0])
+    ) {
+      throw new Error("Invalid audit recovery evidence mutated authoritative lineage.");
+    }
+    const first = await database.query(
+      `select app_private.openclaw_issue_media_ticket_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(refreshRequest)],
+    );
+    const replay = await database.query(
+      `select app_private.openclaw_issue_media_ticket_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(refreshRequest)],
+    );
+    const refreshed = first.rows[0].result;
+    const lineage = await database.query(
+      `select count(*)::integer count,
+        count(*) filter (where is_authoritative)::integer authoritative,
+        count(*) filter (where ticket_jti=$3::uuid and not is_authoritative)::integer old_rows
+       from public.openclaw_audit_gateway_tickets
+       where organization_id=$1 and work_item_id=$2`,
+      [DEMO_ORG_ID, fixture.workItemId, fixture.verifyTicketJti],
+    );
+    const expectedFrozenClaim = {
+      maintenancePrincipalId: maintenancePrincipal().maintenancePrincipalId,
+      credentialGeneration: maintenancePrincipal().credentialGeneration,
+      leaseGeneration: maintenancePrincipal().leaseGeneration,
+      fencingToken: maintenancePrincipal().fencingToken,
+      claimGeneration: 1,
+    };
+    if (
+      refreshed.state !== "RECOVERY_REFRESHED" ||
+      refreshed.replacesVerifyTicketJti !== fixture.verifyTicketJti ||
+      refreshed.ticketId === fixture.verifyTicketJti ||
+      refreshed.ticket.claimGeneration !== undefined ||
+      refreshed.ticket.maintenancePrincipalId !== recoveryPrincipal.maintenancePrincipalId ||
+      refreshed.ticket.credentialGeneration !== recoveryPrincipal.credentialGeneration ||
+      refreshed.ticket.leaseGeneration !== recoveryPrincipal.leaseGeneration ||
+      refreshed.ticket.fencingToken !== recoveryPrincipal.fencingToken ||
+      refreshed.ticket.workItemId !== fixture.workItemId ||
+      refreshed.ticket.recoveryKind !== "AUDIT_VERIFY_AUTHORIZED" ||
+      refreshed.ticket.recoveryGeneration !== recovery.recoveryGeneration ||
+      canonicalComparisonJson(refreshed.ticket.frozenClaim) !==
+        canonicalComparisonJson(expectedFrozenClaim) ||
+      JSON.stringify(first.rows[0].result) !== JSON.stringify(replay.rows[0].result) ||
+      lineage.rows[0].count !== 2 || lineage.rows[0].authoritative !== 1 ||
+      lineage.rows[0].old_rows !== 1
+    ) {
+      throw new Error("Audit recovery refresh did not rotate and preserve exact lineage.");
+    }
+    const completionRequest = {
+      version: 1,
+      recoveryKind: "AUDIT_VERIFY_AUTHORIZED",
+      workItemId: fixture.workItemId,
+      recoveryGeneration: recovery.recoveryGeneration,
+      claimToken: recoveryToken,
+      verifyTicketJti: fixture.verifyTicketJti,
+      gatewayReceipt: fixture.receipt,
+    };
+    let forgedSignatureRejected = false;
+    try {
+      await database.query(
+        `select app_private.openclaw_ack_audit_anchor_v1(
+          $1::jsonb,'{}'::jsonb,$2::jsonb
+        ) result`,
+        [JSON.stringify(recoveryPrincipal), JSON.stringify({
+          ...completionRequest,
+          gatewayReceipt: {
+            ...fixture.receipt,
+            signatureHash: "0".repeat(64),
+          },
+        })],
+      );
+    } catch (error) {
+      forgedSignatureRejected = error?.code === "42501";
+    }
+    const stateAfterForgery = await database.query(
+      `select root.anchored_at,work.state
+       from public.openclaw_audit_roots root
+       join public.openclaw_maintenance_work_items work
+         on work.organization_id=root.organization_id and work.source_id=root.id
+       where root.id=$1`,
+      [fixture.auditRootId],
+    );
+    if (
+      !forgedSignatureRejected ||
+      stateAfterForgery.rows[0].anchored_at !== null ||
+      stateAfterForgery.rows[0].state !== "AUDIT_VERIFY_AUTHORIZED"
+    ) {
+      throw new Error("A forged recovery audit signature hash changed terminal state.");
+    }
+    const completed = await database.query(
+      `select app_private.openclaw_ack_audit_anchor_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(completionRequest)],
+    );
+    const refreshAfterTerminal = await database.query(
+      `select app_private.openclaw_issue_media_ticket_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(refreshRequest)],
+    );
+    const completedReplay = await database.query(
+      `select app_private.openclaw_ack_audit_anchor_v1(
+        $1::jsonb,'{}'::jsonb,$2::jsonb
+      ) result`,
+      [JSON.stringify(recoveryPrincipal), JSON.stringify(completionRequest)],
+    );
+    if (
+      completed.rows[0].result.idempotentReplay !== false ||
+      completedReplay.rows[0].result.idempotentReplay !== true ||
+      canonicalComparisonJson(refreshAfterTerminal.rows[0].result) !==
+        canonicalComparisonJson(first.rows[0].result)
+    ) {
+      throw new Error("Late old audit receipt was not terminally replayable.");
     }
     return;
   }

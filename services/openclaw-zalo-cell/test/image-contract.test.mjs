@@ -663,15 +663,38 @@ test("normalizer creates a deterministic regular-file inventory and rejects link
   );
 });
 
-test("runtime config template is valid JSON and contains no tenant or secret material", async () => {
+test("runtime config pins a dedicated toolless customer AI provider without secret material", async () => {
   const raw = await readCell("config/openclaw.json.tmpl");
   const config = JSON.parse(raw);
 
   assert.equal(config.plugins.entries.zalouser.enabled, true);
   assert.equal(config.channels.zalouser.enabled, true);
+  const provider = config.models.providers["ihome-customer-ai"];
+  assert.equal(provider.baseUrl, "${OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL}");
+  assert.equal(provider.api, "openai-completions");
+  assert.deepEqual(provider.apiKey, {
+    source: "env",
+    provider: "default",
+    id: "OPENCLAW_ZALO_CUSTOMER_AI_API_KEY",
+  });
+  assert.equal(provider.models.length, 1);
+  assert.equal(provider.models[0].id, "${OPENCLAW_ZALO_CUSTOMER_AI_MODEL}");
+  assert.equal(provider.models[0].compat.supportsTools, false);
+  const agent = config.agents.list.find(({ id }) => id === "zalo-customer-drafting");
+  assert.equal(agent.default, undefined);
+  assert.deepEqual(agent.model, {
+    primary: "ihome-customer-ai/${OPENCLAW_ZALO_CUSTOMER_AI_MODEL}",
+    fallbacks: [],
+  });
+  assert.deepEqual(agent.tools, {
+    allow: [],
+    deny: ["*"],
+    elevated: { enabled: false },
+    exec: { mode: "deny", security: "deny", ask: "off" },
+  });
   assert.doesNotMatch(
     raw,
-    /organization(?:Id)?|account(?:Id)?|customer|phone|token|secret|password|cookie|imei|api[_-]?key|provider/i,
+    /organization(?:Id)?|account(?:Id)?|phone|password|cookie|imei|9router|router9|ai\.chillhome\.io\.vn|sk-[a-z0-9]/i,
   );
 });
 

@@ -88,18 +88,99 @@
             "eventKind": "MESSAGE",
             "providerEventId": "evt-001",
             "providerMessageId": "msg-001",
-            "targetKind": "PEER",
-            "targetProviderId": "zalo-peer-001",
-            "providerOccurredAt": "2026-07-31T00:00:00.000Z",
-            "payloadHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-            "payload": {
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.text",
+            "sourceTimestamp": "2026-07-31T00:00:00.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:01.000Z",
+            "rawEnvelope": {
+              "event": "message.text",
               "text": "xin chao"
-            }
+            },
+            "rawEnvelopeSha256": "626d5664b70d56acb71f09f24aba8cf4ff047464d91e8662da0f5bfa76add269",
+            "normalized": {
+              "text": "xin chao",
+              "replyToProviderMessageId": null,
+              "mediaManifest": []
+            },
+            "normalizedSha256": "649460329468421771da7017b5b7efaded85b641d6173bed3257c92d1d6a0dee"
           }
         ]
       },
-      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"events\":[{\"eventKind\":\"MESSAGE\",\"payload\":{\"text\":\"xin chao\"},\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"providerEventId\":\"evt-001\",\"providerMessageId\":\"msg-001\",\"providerOccurredAt\":\"2026-07-31T00:00:00.000Z\",\"targetKind\":\"PEER\",\"targetProviderId\":\"zalo-peer-001\",\"version\":1}],\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"sessionGeneration\":1,\"version\":1}",
-      "sha256": "a9ca41161667b81fe04b49ae0d8ce798c839572996181bf97bc885ea4155d1ef"
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"events\":[{\"callbackReceivedAt\":\"2026-07-31T00:00:01.000Z\",\"eventKind\":\"MESSAGE\",\"normalized\":{\"mediaManifest\":[],\"replyToProviderMessageId\":null,\"text\":\"xin chao\"},\"normalizedSha256\":\"649460329468421771da7017b5b7efaded85b641d6173bed3257c92d1d6a0dee\",\"providerConversationId\":\"conversation-zalo-001\",\"providerEventId\":\"evt-001\",\"providerEventType\":\"message.text\",\"providerMessageId\":\"msg-001\",\"providerSenderId\":\"zalo-peer-001\",\"providerTarget\":{\"kind\":\"PEER\",\"providerId\":\"zalo-peer-001\"},\"rawEnvelope\":{\"event\":\"message.text\",\"text\":\"xin chao\"},\"rawEnvelopeSha256\":\"626d5664b70d56acb71f09f24aba8cf4ff047464d91e8662da0f5bfa76add269\",\"sourceTimestamp\":\"2026-07-31T00:00:00.000Z\",\"version\":1}],\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"sessionGeneration\":1,\"version\":1}",
+      "sha256": "baecce084a8419b65eab539db362e2a01464be208f49dc3750979037ebb893bd"
+    },
+    {
+      "name": "inbound-message-media",
+      "schema": "inbound.schema.json",
+      "domain": "ihome-openclaw-inbound-v1\u0000",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "7d539f06cc8f0e630546c415acbe67951ca4798a998820b7ef3c4224fbed874b"
+          }
+        ]
+      },
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"events\":[{\"callbackReceivedAt\":\"2026-07-31T00:00:03.000Z\",\"eventKind\":\"MESSAGE\",\"normalized\":{\"mediaManifest\":[{\"byteLength\":512,\"byteState\":\"PENDING\",\"fetchRef\":\"https://media.invalid/image-001\",\"index\":0,\"kind\":\"IMAGE\",\"mime\":\"image/png\",\"providerChecksum\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"providerMediaId\":\"provider-media-001\",\"version\":1},{\"byteLength\":1024,\"byteState\":\"PENDING\",\"fetchRef\":null,\"index\":1,\"kind\":\"FILE\",\"mime\":\"application/pdf\",\"providerChecksum\":null,\"providerMediaId\":null,\"version\":1}],\"replyToProviderMessageId\":\"msg-parent-001\",\"text\":null},\"normalizedSha256\":\"7d539f06cc8f0e630546c415acbe67951ca4798a998820b7ef3c4224fbed874b\",\"providerConversationId\":\"conversation-zalo-001\",\"providerEventId\":\"evt-media-001\",\"providerEventType\":\"message.media\",\"providerMessageId\":\"msg-media-001\",\"providerSenderId\":\"zalo-peer-001\",\"providerTarget\":{\"kind\":\"PEER\",\"providerId\":\"zalo-peer-001\"},\"rawEnvelope\":{\"attachments\":[\"provider-media-001\",\"provider-file-001\"],\"event\":\"message.media\"},\"rawEnvelopeSha256\":\"09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423\",\"sourceTimestamp\":\"2026-07-31T00:00:02.000Z\",\"version\":1}],\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"sessionGeneration\":1,\"version\":1}",
+      "sha256": "327f8123a23f1200d669bc2c6fc3c241d9b81f294d3d06d3add47d44bce34380"
     },
     {
       "name": "maintenance-claim",
@@ -133,28 +214,66 @@
       "sha256": "a912b97f2ebceeab52ee0352e1e2291000313b59e18b3059914c64f8bb6feb00"
     },
     {
-      "name": "media-ticket",
+      "name": "maintenance-audit-claim",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-maintenance-claim-v1\u0000",
+      "value": {
+        "version": 1,
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "sourceKey": "audit:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:1",
+        "claimToken": "claim-token-0123456789abcdef0123456789abcdef",
+        "claimGeneration": 1,
+        "fencingToken": 1,
+        "leaseExpiresAt": "2026-07-31T00:01:00.000Z",
+        "payload": {
+          "kind": "AUDIT_ANCHOR",
+          "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "rootDate": "2026-07-31",
+          "firstSequence": 1,
+          "lastSequence": 1,
+          "eventCount": 1,
+          "previousRootHash": null,
+          "merkleRootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "auditSigningKeyGeneration": 1,
+          "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "anchorKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json"
+        }
+      },
+      "canonicalJson": "{\"claimGeneration\":1,\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"credentialGeneration\":1,\"fencingToken\":1,\"leaseExpiresAt\":\"2026-07-31T00:01:00.000Z\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"payload\":{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"eventCount\":1,\"firstSequence\":1,\"kind\":\"AUDIT_ANCHOR\",\"lastSequence\":1,\"merkleRootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"previousRootHash\":null,\"rootDate\":\"2026-07-31\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"sourceKey\":\"audit:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:1\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "c819f9d39994ecc803f2d77c6b70d4300adbd733057011ee611545564b800050"
+    },
+    {
+      "name": "media-browser-get-ticket",
       "schema": "media.schema.json",
       "domain": "ihome-openclaw-media-ticket-v1\u0000",
       "value": {
         "version": 1,
-        "ticketKind": "MEDIA_OBJECT",
-        "ticketId": "33333333-3333-4333-8333-333333333333",
+        "aud": "openclaw-media-gateway",
         "organizationId": "dddd0000-0000-4000-8000-000000000001",
-        "operation": "GET",
-        "object": {
-          "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
-          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-          "contentType": "image/jpeg",
-          "contentLength": 1024
-        },
-        "iat": "2026-07-31T00:00:00.000Z",
-        "exp": "2026-07-31T00:05:00.000Z",
+        "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "image/jpeg",
+        "contentLength": 1024,
         "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "GET",
+        "subject": "BROWSER",
+        "jti": "77777777-7777-4777-8777-777777777701",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "sessionGeneration": 1,
+        "browserUserId": "44444444-4444-4444-8444-444444444444",
+        "browserSessionIdSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "browserAccessTokenSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
       },
-      "canonicalJson": "{\"exp\":\"2026-07-31T00:05:00.000Z\",\"gatewayKeyGeneration\":1,\"iat\":\"2026-07-31T00:00:00.000Z\",\"object\":{\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"operation\":\"GET\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"ticketId\":\"33333333-3333-4333-8333-333333333333\",\"ticketKind\":\"MEDIA_OBJECT\",\"version\":1}",
-      "sha256": "84574b852e87997a316f92c518e7be7e47c1bd6a23399ebb346917e050c942f7"
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"aud\":\"openclaw-media-gateway\",\"browserAccessTokenSha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"browserSessionIdSha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"browserUserId\":\"44444444-4444-4444-8444-444444444444\",\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"exp\":1785062430,\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777701\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"operation\":\"GET\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"sessionGeneration\":1,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"subject\":\"BROWSER\",\"version\":1}",
+      "sha256": "fe48b5c5f95052dd55deb7ed617e24169d072059598d04f3e4a22d268a2ff4df"
     },
     {
       "name": "retention-receipt",
@@ -177,15 +296,44 @@
         "quarantineVersion": 1,
         "deleteTicketJti": "ticketJti0123456789",
         "deleteAuthorizationJti": "authorizationJti012345",
-        "proofJti": "proofJti012345678901",
+        "proofJti": "authorizationJti012345",
         "objectStatus": "DELETED",
         "r2VersionOrEtag": "etag-001",
         "completedAt": "2026-07-31T00:00:10.000Z",
         "gatewaySigningKeyGeneration": 1,
         "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
       },
-      "canonicalJson": "{\"claimGeneration\":1,\"completedAt\":\"2026-07-31T00:00:10.000Z\",\"credentialGeneration\":1,\"deleteAuthorizationJti\":\"authorizationJti012345\",\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"ticketJti0123456789\",\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"objectStatus\":\"DELETED\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"proofJti\":\"proofJti012345678901\",\"quarantineVersion\":1,\"r2VersionOrEtag\":\"etag-001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"RETENTION_FINAL_DELETE\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
-      "sha256": "4e169cbffc1fe94926d7b9fa0dd6942cdf803d2048742d0b30af5968af57e947"
+      "canonicalJson": "{\"claimGeneration\":1,\"completedAt\":\"2026-07-31T00:00:10.000Z\",\"credentialGeneration\":1,\"deleteAuthorizationJti\":\"authorizationJti012345\",\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"ticketJti0123456789\",\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"objectStatus\":\"DELETED\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"proofJti\":\"authorizationJti012345\",\"quarantineVersion\":1,\"r2VersionOrEtag\":\"etag-001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"RETENTION_FINAL_DELETE\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "3a74144091de6988acfaecf8cb04dafd67f917b8a5d4ccd50d8a68dc025e8854"
+    },
+    {
+      "name": "media-upload-receipt",
+      "schema": "receipts.schema.json",
+      "domain": "ihome-openclaw-media-upload-receipt-v1\u0000",
+      "value": {
+        "version": 1,
+        "receiptKind": "MEDIA_UPLOAD",
+        "receiptId": "77777777-7777-4777-8777-777777777777",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "mediaId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "objectKey": "v1/org/dddd0000-0000-4000-8000-000000000001/account/11111111-1111-4111-8111-111111111111/conversation/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba1/message/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba2/media/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/original",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "image/png",
+        "contentLength": 512,
+        "uploadTicketJti": "77777777-7777-4777-8777-777777777778",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "sessionGeneration": 1,
+        "objectVersionOrEtag": "etag-media-001",
+        "storedAt": "2026-07-31T00:00:10.000Z",
+        "gatewaySigningKeyGeneration": 1,
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"contentLength\":512,\"contentType\":\"image/png\",\"credentialGeneration\":1,\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"leaseGeneration\":1,\"mediaId\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\",\"objectKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/account/11111111-1111-4111-8111-111111111111/conversation/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba1/message/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba2/media/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/original\",\"objectVersionOrEtag\":\"etag-media-001\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"MEDIA_UPLOAD\",\"sessionGeneration\":1,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"storedAt\":\"2026-07-31T00:00:10.000Z\",\"uploadTicketJti\":\"77777777-7777-4777-8777-777777777778\",\"version\":1}",
+      "sha256": "31b4db6d346a193267236351d5ad7c1e515b5bad946262d7f765fafd66bf152b"
     },
     {
       "name": "policy-allow",
@@ -414,12 +562,12 @@
           "outcome": "SENT",
           "reasonCode": "ALL_PARTS_ACKNOWLEDGED"
         },
-        "deliveryEvidenceHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "deliveryEvidenceHash": "2dc922e29a0ba4b83b2922976763b62f7141c17e8a91c595af4bf7f71eeb47df",
         "outcome": "SENT",
         "reasonCode": "ALL_PARTS_ACKNOWLEDGED"
       },
-      "canonicalJson": "{\"authorization\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"version\":1},\"deliveryEvidence\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"claimGeneration\":1,\"evidenceKind\":\"OUTBOX_DELIVERY\",\"knownProviderMessageIds\":[\"msg-001\",\"msg-002\"],\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"outcome\":\"SENT\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"possibleHandoffPrefixLength\":2,\"reasonCode\":\"ALL_PARTS_ACKNOWLEDGED\",\"totalPartCount\":2,\"version\":1},\"deliveryEvidenceHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"outcome\":\"SENT\",\"reasonCode\":\"ALL_PARTS_ACKNOWLEDGED\",\"version\":1}",
-      "sha256": "ca8cf709ab4eb35e95cb8cb1e2bc2c36f69f06bb361cc76c3cb447f4654920d0"
+      "canonicalJson": "{\"authorization\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"version\":1},\"deliveryEvidence\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"claimGeneration\":1,\"evidenceKind\":\"OUTBOX_DELIVERY\",\"knownProviderMessageIds\":[\"msg-001\",\"msg-002\"],\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"outcome\":\"SENT\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"possibleHandoffPrefixLength\":2,\"reasonCode\":\"ALL_PARTS_ACKNOWLEDGED\",\"totalPartCount\":2,\"version\":1},\"deliveryEvidenceHash\":\"2dc922e29a0ba4b83b2922976763b62f7141c17e8a91c595af4bf7f71eeb47df\",\"outcome\":\"SENT\",\"reasonCode\":\"ALL_PARTS_ACKNOWLEDGED\",\"version\":1}",
+      "sha256": "564ff4ddc8f24239d876566722bdf0288f9e6982dc1db849597ce3bcb52b4227"
     },
     {
       "name": "runtime-pre-handoff-requeue",
@@ -466,11 +614,11 @@
           "reasonCode": "ADAPTER_NOT_READY",
           "authorizedHandoffRecorded": false
         },
-        "preHandoffEvidenceHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "preHandoffEvidenceHash": "4476e876f20ff887c5a95f0ae0cfe3eda8bd09d1460d3229684ab290118a493c",
         "retryNotBefore": "2026-07-31T00:00:10.000Z"
       },
-      "canonicalJson": "{\"authorization\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"version\":1},\"outcome\":\"SAFE_RETRY\",\"preHandoffEvidence\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"authorizedHandoffRecorded\":false,\"claimGeneration\":1,\"evidenceKind\":\"OUTBOX_PRE_HANDOFF\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"reasonCode\":\"ADAPTER_NOT_READY\",\"version\":1},\"preHandoffEvidenceHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"reasonCode\":\"ADAPTER_NOT_READY\",\"retryNotBefore\":\"2026-07-31T00:00:10.000Z\",\"version\":1}",
-      "sha256": "26dd56261d2f9267a14ad0eb6d4ab0e939f235aa6bff8eb5060a47825cd0e41e"
+      "canonicalJson": "{\"authorization\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"version\":1},\"outcome\":\"SAFE_RETRY\",\"preHandoffEvidence\":{\"authorizationMarker\":{\"claimGeneration\":1,\"controlVersion\":1,\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"markerNonce\":\"marker-nonce-0123456789abcdef\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":1,\"takeoverVersion\":0,\"version\":1},\"authorizedHandoffRecorded\":false,\"claimGeneration\":1,\"evidenceKind\":\"OUTBOX_PRE_HANDOFF\",\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"reasonCode\":\"ADAPTER_NOT_READY\",\"version\":1},\"preHandoffEvidenceHash\":\"4476e876f20ff887c5a95f0ae0cfe3eda8bd09d1460d3229684ab290118a493c\",\"reasonCode\":\"ADAPTER_NOT_READY\",\"retryNotBefore\":\"2026-07-31T00:00:10.000Z\",\"version\":1}",
+      "sha256": "8538b1c1f25f2cbb5f045ab3892525688bf35e1f677a87080365f023443fd178"
     },
     {
       "name": "runtime-unknown-resolution",
@@ -517,19 +665,26 @@
       "domain": "ihome-openclaw-inbound-result-v1\u0000",
       "value": {
         "version": 1,
+        "requestId": "77777777-7777-4777-8777-777777777781",
         "accepted": 1,
         "deduplicated": 0,
         "quarantined": 0,
         "results": [
           {
             "index": 0,
-            "state": "ACCEPTED",
-            "inboundEventId": "33333333-3333-4333-8333-333333333333"
+            "status": "ACCEPTED",
+            "inboundEventId": "33333333-3333-4333-8333-333333333333",
+            "messageId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba2",
+            "decisionId": "66666666-6666-4666-8666-666666666666",
+            "decisionKind": "NO_SEND",
+            "noSendReason": "NO_AUTOMATION_MATCH",
+            "workItemId": null,
+            "media": []
           }
         ]
       },
-      "canonicalJson": "{\"accepted\":1,\"deduplicated\":0,\"quarantined\":0,\"results\":[{\"inboundEventId\":\"33333333-3333-4333-8333-333333333333\",\"index\":0,\"state\":\"ACCEPTED\"}],\"version\":1}",
-      "sha256": "e50c0d550965d786cb501e6c30405a164b0b86e5a636a20ed99fff846782419d"
+      "canonicalJson": "{\"accepted\":1,\"deduplicated\":0,\"quarantined\":0,\"requestId\":\"77777777-7777-4777-8777-777777777781\",\"results\":[{\"decisionId\":\"66666666-6666-4666-8666-666666666666\",\"decisionKind\":\"NO_SEND\",\"inboundEventId\":\"33333333-3333-4333-8333-333333333333\",\"index\":0,\"media\":[],\"messageId\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba2\",\"noSendReason\":\"NO_AUTOMATION_MATCH\",\"status\":\"ACCEPTED\",\"workItemId\":null}],\"version\":1}",
+      "sha256": "9d22f9de0fbbd27fc6e05f0728c1af3935e26112693a9390984400fb790a500b"
     },
     {
       "name": "qr-challenge",
@@ -663,12 +818,12 @@
         "workItemId": "33333333-3333-4333-8333-333333333333",
         "claimGeneration": 1,
         "outcome": "COMPLETED",
-        "canonicalEvidenceHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "canonicalEvidenceHash": "a1716a9b9dbe9d028752f45544545dccc256df57b4463acaa41bf797976eceac",
         "completedAt": "2026-07-31T00:00:10.000Z",
         "retryNotBefore": null
       },
-      "canonicalJson": "{\"canonicalEvidenceHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"claimGeneration\":1,\"completedAt\":\"2026-07-31T00:00:10.000Z\",\"outcome\":\"COMPLETED\",\"retryNotBefore\":null,\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
-      "sha256": "9e1bc94b72d2ea676ebc538c6a4e67b0b35a878f128e1bea11a089ed499d06a3"
+      "canonicalJson": "{\"canonicalEvidenceHash\":\"a1716a9b9dbe9d028752f45544545dccc256df57b4463acaa41bf797976eceac\",\"claimGeneration\":1,\"completedAt\":\"2026-07-31T00:00:10.000Z\",\"outcome\":\"COMPLETED\",\"retryNotBefore\":null,\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "cf36167fdbfa12122dc7116fc3e909b4d9c4812eb134810b2ae0e6fdc520ef9f"
     },
     {
       "name": "send-work-completion-request",
@@ -687,14 +842,77 @@
         "fencingToken": 1,
         "outcome": "COMPLETE",
         "evidence": {
-          "outboxId": "33333333-3333-4333-8333-333333333333",
-          "payloadHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          "version": 1,
+          "evidenceKind": "NO_SEND",
+          "reasonCode": "TAKEOVER_ACTIVE"
         },
-        "evidenceHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "evidenceHash": "a1716a9b9dbe9d028752f45544545dccc256df57b4463acaa41bf797976eceac",
         "retryAfterSeconds": null
       },
-      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"claimGeneration\":1,\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"credentialGeneration\":1,\"evidence\":{\"outboxId\":\"33333333-3333-4333-8333-333333333333\",\"payloadHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"evidenceHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"fencingToken\":1,\"leaseGeneration\":1,\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"outcome\":\"COMPLETE\",\"retryAfterSeconds\":null,\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
-      "sha256": "eb337d388b636536d2525ef8503bb468a75b2b32121f46e8977ad47f4345f8c5"
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"claimGeneration\":1,\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"credentialGeneration\":1,\"evidence\":{\"evidenceKind\":\"NO_SEND\",\"reasonCode\":\"TAKEOVER_ACTIVE\",\"version\":1},\"evidenceHash\":\"a1716a9b9dbe9d028752f45544545dccc256df57b4463acaa41bf797976eceac\",\"fencingToken\":1,\"leaseGeneration\":1,\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"outcome\":\"COMPLETE\",\"retryAfterSeconds\":null,\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "aa9631bef3db3d9fc21ccff306c107ba930634497af86339c76cbaf94ca1aae1"
+    },
+    {
+      "name": "send-work-completion-human-draft",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-send-work-completion-v1\u0000",
+      "value": {
+        "version": 1,
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "claimToken": "claim-token-0123456789abcdef0123456789abcdef",
+        "claimGeneration": 1,
+        "fencingToken": 1,
+        "outcome": "COMPLETE",
+        "evidence": {
+          "version": 1,
+          "evidenceKind": "HUMAN_DRAFT",
+          "reasonCode": "DLP_BLOCKED",
+          "classification": "TENANT_SUPPORT",
+          "confidenceBasisPoints": 7500,
+          "findings": [
+            "EMAIL"
+          ],
+          "draftText": "Lien he [REDACTED_EMAIL].",
+          "draftHash": "ae058bcebd6c54ba9581879292a7b05052f394e911e57ddba9e3f5782aa73fd4"
+        },
+        "evidenceHash": "94d97a5049c6d5bf17ef083f1f2f638c0e56955d6e061446a5a8cf082f840f86",
+        "retryAfterSeconds": null
+      },
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"claimGeneration\":1,\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"credentialGeneration\":1,\"evidence\":{\"classification\":\"TENANT_SUPPORT\",\"confidenceBasisPoints\":7500,\"draftHash\":\"ae058bcebd6c54ba9581879292a7b05052f394e911e57ddba9e3f5782aa73fd4\",\"draftText\":\"Lien he [REDACTED_EMAIL].\",\"evidenceKind\":\"HUMAN_DRAFT\",\"findings\":[\"EMAIL\"],\"reasonCode\":\"DLP_BLOCKED\",\"version\":1},\"evidenceHash\":\"94d97a5049c6d5bf17ef083f1f2f638c0e56955d6e061446a5a8cf082f840f86\",\"fencingToken\":1,\"leaseGeneration\":1,\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"outcome\":\"COMPLETE\",\"retryAfterSeconds\":null,\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "5709e73561d7a6c28fbfbe63df0c29e83f5cf105ec276907b7e472d46b822e72"
+    },
+    {
+      "name": "send-work-completion-work-failure",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-send-work-completion-v1\u0000",
+      "value": {
+        "version": 1,
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "claimToken": "claim-token-0123456789abcdef0123456789abcdef",
+        "claimGeneration": 1,
+        "fencingToken": 1,
+        "outcome": "RETRY",
+        "evidence": {
+          "version": 1,
+          "evidenceKind": "WORK_FAILURE",
+          "reasonCode": "UPSTREAM_TIMEOUT",
+          "failureFingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        "evidenceHash": "25788a88273128f7f5edcb53503e5c5c6290072afc0d55cb6a2ce2bc8ca6c676",
+        "retryAfterSeconds": 7
+      },
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"claimGeneration\":1,\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"credentialGeneration\":1,\"evidence\":{\"evidenceKind\":\"WORK_FAILURE\",\"failureFingerprint\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"reasonCode\":\"UPSTREAM_TIMEOUT\",\"version\":1},\"evidenceHash\":\"25788a88273128f7f5edcb53503e5c5c6290072afc0d55cb6a2ce2bc8ca6c676\",\"fencingToken\":1,\"leaseGeneration\":1,\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"outcome\":\"RETRY\",\"retryAfterSeconds\":7,\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "58d19e473b6a2e7048b29ce9f78ce4a64a4ff827a16a131e355ec52a989248e9"
     },
     {
       "name": "retention-quarantine-request",
@@ -730,7 +948,7 @@
       "domain": "ihome-openclaw-retention-delete-finalization-request-v1\u0000",
       "value": {
         "version": 1,
-        "ticketId": "77777777-7777-4777-8777-777777777777",
+        "ticketId": "77777777-7777-4777-8777-777777777780",
         "gatewayReceipt": {
           "version": 1,
           "receiptKind": "RETENTION_FINAL_DELETE",
@@ -748,7 +966,7 @@
           "quarantineVersion": 1,
           "deleteTicketJti": "ticketJti0123456789",
           "deleteAuthorizationJti": "authorizationJti012345",
-          "proofJti": "proofJti012345678901",
+          "proofJti": "authorizationJti012345",
           "objectStatus": "DELETED",
           "r2VersionOrEtag": "etag-001",
           "completedAt": "2026-07-31T00:00:10.000Z",
@@ -756,8 +974,8 @@
           "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         }
       },
-      "canonicalJson": "{\"gatewayReceipt\":{\"claimGeneration\":1,\"completedAt\":\"2026-07-31T00:00:10.000Z\",\"credentialGeneration\":1,\"deleteAuthorizationJti\":\"authorizationJti012345\",\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"ticketJti0123456789\",\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"objectStatus\":\"DELETED\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"proofJti\":\"proofJti012345678901\",\"quarantineVersion\":1,\"r2VersionOrEtag\":\"etag-001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"RETENTION_FINAL_DELETE\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"ticketId\":\"77777777-7777-4777-8777-777777777777\",\"version\":1}",
-      "sha256": "f925827ed496873b17222d3a5448334fc39ff3cde250b6fb1f5c5393c09d0b44"
+      "canonicalJson": "{\"gatewayReceipt\":{\"claimGeneration\":1,\"completedAt\":\"2026-07-31T00:00:10.000Z\",\"credentialGeneration\":1,\"deleteAuthorizationJti\":\"authorizationJti012345\",\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"ticketJti0123456789\",\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"objectStatus\":\"DELETED\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"proofJti\":\"authorizationJti012345\",\"quarantineVersion\":1,\"r2VersionOrEtag\":\"etag-001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"RETENTION_FINAL_DELETE\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"ticketId\":\"77777777-7777-4777-8777-777777777780\",\"version\":1}",
+      "sha256": "2dbd96ee943affab3718386f5adcf0438be96a716cdebf45936bcb2c608a088d"
     },
     {
       "name": "audit-anchor-ack-request",
@@ -768,7 +986,7 @@
         "workItemId": "33333333-3333-4333-8333-333333333333",
         "claimGeneration": 1,
         "claimToken": "claim-token-0123456789abcdef0123456789abcdef",
-        "verifyTicketJti": "77777777-7777-4777-8777-777777777777",
+        "verifyTicketJti": "77777777-7777-4777-8777-777777777779",
         "gatewayReceipt": {
           "version": 1,
           "receiptKind": "AUDIT_ANCHOR_VERIFY",
@@ -785,15 +1003,15 @@
           "anchorKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
           "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           "auditSigningKeyGeneration": 1,
-          "verifyTicketJti": "verifyTicketJti012345",
+          "verifyTicketJti": "77777777-7777-4777-8777-777777777779",
           "objectVersionOrEtag": "etag-audit-001",
           "verifiedAt": "2026-07-31T00:00:10.000Z",
           "gatewaySigningKeyGeneration": 1,
           "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
         }
       },
-      "canonicalJson": "{\"claimGeneration\":1,\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"gatewayReceipt\":{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectVersionOrEtag\":\"etag-audit-001\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"AUDIT_ANCHOR_VERIFY\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"verifiedAt\":\"2026-07-31T00:00:10.000Z\",\"verifyTicketJti\":\"verifyTicketJti012345\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"verifyTicketJti\":\"77777777-7777-4777-8777-777777777777\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
-      "sha256": "2b1e53841221b2b8129bc6ce6f81f09185212a60363caa64888451579dfc3532"
+      "canonicalJson": "{\"claimGeneration\":1,\"claimToken\":\"claim-token-0123456789abcdef0123456789abcdef\",\"gatewayReceipt\":{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectVersionOrEtag\":\"etag-audit-001\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"AUDIT_ANCHOR_VERIFY\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"verifiedAt\":\"2026-07-31T00:00:10.000Z\",\"verifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"verifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "bcb733ab133f952b5a8a047cf3cbe5ef6316c48887f0a8a267ff8249290d4232"
     },
     {
       "name": "maintenance-specialized-result",
@@ -801,14 +1019,14 @@
       "domain": "ihome-openclaw-maintenance-specialized-result-v1\u0000",
       "value": {
         "version": 1,
-        "ticketId": "77777777-7777-4777-8777-777777777777",
+        "ticketId": "77777777-7777-4777-8777-777777777780",
         "gatewayOutcome": "DELETED",
-        "receiptHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "receiptHash": "3a74144091de6988acfaecf8cb04dafd67f917b8a5d4ccd50d8a68dc025e8854",
         "finalized": true,
         "idempotentReplay": false
       },
-      "canonicalJson": "{\"finalized\":true,\"gatewayOutcome\":\"DELETED\",\"idempotentReplay\":false,\"receiptHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"ticketId\":\"77777777-7777-4777-8777-777777777777\",\"version\":1}",
-      "sha256": "73104c0973d1427b47814630c287804022269aad2dda2821c3c3e8625d87fe24"
+      "canonicalJson": "{\"finalized\":true,\"gatewayOutcome\":\"DELETED\",\"idempotentReplay\":false,\"receiptHash\":\"3a74144091de6988acfaecf8cb04dafd67f917b8a5d4ccd50d8a68dc025e8854\",\"ticketId\":\"77777777-7777-4777-8777-777777777780\",\"version\":1}",
+      "sha256": "c6668b9078fc659faff85f619e9c507525350ad57870b500276e571cde948c9c"
     },
     {
       "name": "retention-authorization",
@@ -841,7 +1059,7 @@
     {
       "name": "audit-anchor-receipt",
       "schema": "receipts.schema.json",
-      "domain": "ihome-openclaw-audit-anchor-receipt-v1\u0000",
+      "domain": "ihome-openclaw-audit-receipt-v1\u0000",
       "value": {
         "version": 1,
         "receiptKind": "AUDIT_ANCHOR_VERIFY",
@@ -858,14 +1076,779 @@
         "anchorKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
         "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         "auditSigningKeyGeneration": 1,
-        "verifyTicketJti": "verifyTicketJti012345",
+        "verifyTicketJti": "77777777-7777-4777-8777-777777777779",
         "objectVersionOrEtag": "etag-audit-001",
         "verifiedAt": "2026-07-31T00:00:10.000Z",
         "gatewaySigningKeyGeneration": 1,
         "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
       },
-      "canonicalJson": "{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectVersionOrEtag\":\"etag-audit-001\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"AUDIT_ANCHOR_VERIFY\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"verifiedAt\":\"2026-07-31T00:00:10.000Z\",\"verifyTicketJti\":\"verifyTicketJti012345\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
-      "sha256": "cc0e3e1341680f27128665a6fbb89354fe6abbe718382871909d965964beb5e4"
+      "canonicalJson": "{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectVersionOrEtag\":\"etag-audit-001\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"AUDIT_ANCHOR_VERIFY\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"verifiedAt\":\"2026-07-31T00:00:10.000Z\",\"verifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "8c191b9cc856173fb8c902ed978523a3e3d044ab959c04f58df4461fa489c479"
+    },
+    {
+      "name": "media-runtime-put-ticket",
+      "schema": "media.schema.json",
+      "domain": "ihome-openclaw-media-ticket-v1\u0000",
+      "value": {
+        "version": 1,
+        "aud": "openclaw-media-gateway",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "image/jpeg",
+        "contentLength": 1024,
+        "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "PUT",
+        "subject": "RUNTIME",
+        "jti": "77777777-7777-4777-8777-777777777702",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "sessionGeneration": 1,
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "receiptSigningKeyGeneration": 1,
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"aud\":\"openclaw-media-gateway\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"credentialGeneration\":1,\"exp\":1785062430,\"fencingToken\":1,\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777702\",\"leaseGeneration\":1,\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"operation\":\"PUT\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptSigningKeyGeneration\":1,\"sessionGeneration\":1,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"subject\":\"RUNTIME\",\"version\":1}",
+      "sha256": "e465a39724f625b0c3ec5c639d6b8e8eb1f0cff55b23c558cdd57f649207675f"
+    },
+    {
+      "name": "media-runtime-get-ticket",
+      "schema": "media.schema.json",
+      "domain": "ihome-openclaw-media-ticket-v1\u0000",
+      "value": {
+        "version": 1,
+        "aud": "openclaw-media-gateway",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "image/jpeg",
+        "contentLength": 1024,
+        "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "GET",
+        "subject": "RUNTIME",
+        "jti": "77777777-7777-4777-8777-777777777703",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "sessionGeneration": 1,
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "receiptSigningKeyGeneration": 1,
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "canonicalJson": "{\"accountId\":\"11111111-1111-4111-8111-111111111111\",\"aud\":\"openclaw-media-gateway\",\"cellId\":\"22222222-2222-4222-8222-222222222222\",\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"credentialGeneration\":1,\"exp\":1785062430,\"fencingToken\":1,\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777703\",\"leaseGeneration\":1,\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"operation\":\"GET\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptSigningKeyGeneration\":1,\"sessionGeneration\":1,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"subject\":\"RUNTIME\",\"version\":1}",
+      "sha256": "1c313f3c8762d82d5e93c791aef1726b5dde2f9bd20f2f42707b49743f3ab7a2"
+    },
+    {
+      "name": "media-maintenance-delete-ticket",
+      "schema": "media.schema.json",
+      "domain": "ihome-openclaw-media-ticket-v1\u0000",
+      "value": {
+        "version": 1,
+        "aud": "openclaw-media-gateway",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "image/jpeg",
+        "contentLength": 1024,
+        "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "DELETE",
+        "subject": "MAINTENANCE",
+        "jti": "77777777-7777-4777-8777-777777777704",
+        "accountId": null,
+        "sessionGeneration": 0,
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "claimGeneration": 1,
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "receiptSigningKeyGeneration": 1,
+        "deletePhase": "FINAL_DELETE",
+        "quarantineVersion": 1,
+        "finalDeleteNotBefore": 1785062399,
+        "holdVersion": 0,
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "canonicalJson": "{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"claimGeneration\":1,\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"credentialGeneration\":1,\"deletePhase\":\"FINAL_DELETE\",\"exp\":1785062430,\"fencingToken\":1,\"finalDeleteNotBefore\":1785062399,\"gatewayKeyGeneration\":1,\"holdVersion\":0,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777704\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"operation\":\"DELETE\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"quarantineVersion\":1,\"receiptSigningKeyGeneration\":1,\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "dd91e1632a29574fe1fdb310f77aff64241a86b5f2f36eea5a5d7a4d169fe234"
+    },
+    {
+      "name": "media-maintenance-anchor-ticket",
+      "schema": "media.schema.json",
+      "domain": "ihome-openclaw-media-ticket-v1\u0000",
+      "value": {
+        "version": 1,
+        "aud": "openclaw-media-gateway",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "objectKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "application/json",
+        "contentLength": 1024,
+        "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "ANCHOR",
+        "subject": "MAINTENANCE",
+        "jti": "77777777-7777-4777-8777-777777777705",
+        "accountId": null,
+        "sessionGeneration": 0,
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "claimGeneration": 1,
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "receiptSigningKeyGeneration": 1,
+        "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "auditSigningKeyGeneration": 1,
+        "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "canonicalJson": "{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"claimGeneration\":1,\"contentLength\":1024,\"contentType\":\"application/json\",\"credentialGeneration\":1,\"exp\":1785062430,\"fencingToken\":1,\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777705\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"operation\":\"ANCHOR\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptSigningKeyGeneration\":1,\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "b73b9591288626c5d40115b2c933ba5b2f9db1e065cd77d22be7bf0386fd615b"
+    },
+    {
+      "name": "media-maintenance-anchor-verify-ticket",
+      "schema": "media.schema.json",
+      "domain": "ihome-openclaw-media-ticket-v1\u0000",
+      "value": {
+        "version": 1,
+        "aud": "openclaw-media-gateway",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "objectKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "application/json",
+        "contentLength": 1024,
+        "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "ANCHOR_VERIFY",
+        "subject": "MAINTENANCE",
+        "jti": "77777777-7777-4777-8777-777777777779",
+        "accountId": null,
+        "sessionGeneration": 0,
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "claimGeneration": 1,
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "receiptSigningKeyGeneration": 1,
+        "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "auditSigningKeyGeneration": 1,
+        "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "canonicalJson": "{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"claimGeneration\":1,\"contentLength\":1024,\"contentType\":\"application/json\",\"credentialGeneration\":1,\"exp\":1785062430,\"fencingToken\":1,\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777779\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"operation\":\"ANCHOR_VERIFY\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptSigningKeyGeneration\":1,\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "2a6ea2866fde76ac1a66d7e594feff8e27c29e42a9d0c2c1a2e355ff4a802c27"
+    },
+    {
+      "name": "media-retention-recovery-ticket",
+      "schema": "media.schema.json",
+      "domain": "ihome-openclaw-media-ticket-v1\u0000",
+      "value": {
+        "version": 1,
+        "aud": "openclaw-media-gateway",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "image/jpeg",
+        "contentLength": 1024,
+        "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "DELETE",
+        "subject": "MAINTENANCE",
+        "jti": "77777777-7777-4777-8777-777777777706",
+        "accountId": null,
+        "sessionGeneration": 0,
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "receiptSigningKeyGeneration": 1,
+        "deletePhase": "FINAL_DELETE",
+        "quarantineVersion": 1,
+        "finalDeleteNotBefore": 1785062399,
+        "holdVersion": 0,
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+        "recoveryGeneration": 2,
+        "replacesTicketJti": "77777777-7777-4777-8777-777777777704",
+        "replacesDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+        "frozenClaim": {
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "claimGeneration": 1
+        }
+      },
+      "canonicalJson": "{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"credentialGeneration\":1,\"deletePhase\":\"FINAL_DELETE\",\"exp\":1785062430,\"fencingToken\":1,\"finalDeleteNotBefore\":1785062399,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayKeyGeneration\":1,\"holdVersion\":0,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777706\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"operation\":\"DELETE\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"quarantineVersion\":1,\"receiptSigningKeyGeneration\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"replacesDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"replacesTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "3d3a604cebd8eb5f53ab4e27f4b6a9eb56889f0ac448749e1e6cafb7ffbcb12b"
+    },
+    {
+      "name": "media-audit-recovery-ticket",
+      "schema": "media.schema.json",
+      "domain": "ihome-openclaw-media-ticket-v1\u0000",
+      "value": {
+        "version": 1,
+        "aud": "openclaw-media-gateway",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "objectKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "application/json",
+        "contentLength": 1024,
+        "gatewayKeyGeneration": 1,
+        "iat": 1785062400,
+        "exp": 1785062430,
+        "operation": "ANCHOR_VERIFY",
+        "subject": "MAINTENANCE",
+        "jti": "77777777-7777-4777-8777-777777777708",
+        "accountId": null,
+        "sessionGeneration": 0,
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "receiptSigningKeyGeneration": 1,
+        "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "auditSigningKeyGeneration": 1,
+        "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "recoveryKind": "AUDIT_VERIFY_AUTHORIZED",
+        "recoveryGeneration": 2,
+        "replacesVerifyTicketJti": "77777777-7777-4777-8777-777777777779",
+        "frozenClaim": {
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "claimGeneration": 1
+        }
+      },
+      "canonicalJson": "{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"contentLength\":1024,\"contentType\":\"application/json\",\"credentialGeneration\":1,\"exp\":1785062430,\"fencingToken\":1,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777708\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"operation\":\"ANCHOR_VERIFY\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptSigningKeyGeneration\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"AUDIT_VERIFY_AUTHORIZED\",\"replacesVerifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "7eff538b3c1d126433eb3d65c0a10f427c75e8bfbbbfb25736b369dedcd88caa"
+    },
+    {
+      "name": "retention-recovery-authorization",
+      "schema": "receipts.schema.json",
+      "domain": "ihome-openclaw-retention-authorization-v1\u0000",
+      "value": {
+        "version": 1,
+        "authorizationKind": "RETENTION_FINAL_DELETE",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+        "recoveryGeneration": 2,
+        "replacesTicketJti": "77777777-7777-4777-8777-777777777704",
+        "replacesDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+        "frozenClaim": {
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "claimGeneration": 1
+        },
+        "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+        "deletePhase": "FINAL_DELETE",
+        "holdVersion": 0,
+        "quarantineVersion": 1,
+        "deleteTicketJti": "77777777-7777-4777-8777-777777777706",
+        "authorizationJti": "77777777-7777-4777-8777-777777777709",
+        "iat": "2026-07-31T00:00:00.000Z",
+        "exp": "2026-07-31T00:00:05.000Z",
+        "gatewaySigningKeyGeneration": 1,
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "canonicalJson": "{\"authorizationJti\":\"77777777-7777-4777-8777-777777777709\",\"authorizationKind\":\"RETENTION_FINAL_DELETE\",\"credentialGeneration\":1,\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"77777777-7777-4777-8777-777777777706\",\"exp\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"iat\":\"2026-07-31T00:00:00.000Z\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"quarantineVersion\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"replacesDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"replacesTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "d1778f7f792876c03be85788ba67066002a5e3ac420006669798d0e2bdd79d6b"
+    },
+    {
+      "name": "maintenance-audit-recovery-claim",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-audit-recovery-claim-v1\u0000",
+      "value": {
+        "version": 1,
+        "recoveryKind": "AUDIT_VERIFY_AUTHORIZED",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "credentialGeneration": 2,
+        "leaseGeneration": 2,
+        "fencingToken": 2,
+        "sourceKey": "audit:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:recovery",
+        "claimToken": "recovery-token-0123456789abcdef0123456789abcdef",
+        "recoveryGeneration": 2,
+        "recoveryLeaseExpiresAt": "2026-07-31T00:01:00.000Z",
+        "frozenClaim": {
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "claimGeneration": 1
+        },
+        "payload": {
+          "kind": "AUDIT_ANCHOR",
+          "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "rootDate": "2026-07-31",
+          "firstSequence": 1,
+          "lastSequence": 1,
+          "eventCount": 1,
+          "previousRootHash": null,
+          "merkleRootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "auditSigningKeyGeneration": 1,
+          "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "anchorKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json"
+        },
+        "verifyTicketId": "77777777-7777-4777-8777-777777777708",
+        "verifyTicketHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "verifyTicket": {
+          "version": 1,
+          "aud": "openclaw-media-gateway",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "objectKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "contentType": "application/json",
+          "contentLength": 1024,
+          "gatewayKeyGeneration": 1,
+          "iat": 1785062400,
+          "exp": 1785062430,
+          "operation": "ANCHOR_VERIFY",
+          "subject": "MAINTENANCE",
+          "jti": "77777777-7777-4777-8777-777777777708",
+          "accountId": null,
+          "sessionGeneration": 0,
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "receiptSigningKeyGeneration": 1,
+          "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "auditSigningKeyGeneration": 1,
+          "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "recoveryKind": "AUDIT_VERIFY_AUTHORIZED",
+          "recoveryGeneration": 2,
+          "replacesVerifyTicketJti": "77777777-7777-4777-8777-777777777779",
+          "frozenClaim": {
+            "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+            "credentialGeneration": 1,
+            "leaseGeneration": 1,
+            "fencingToken": 1,
+            "claimGeneration": 1
+          }
+        },
+        "gatewayReceipt": null
+      },
+      "canonicalJson": "{\"claimToken\":\"recovery-token-0123456789abcdef0123456789abcdef\",\"credentialGeneration\":2,\"fencingToken\":2,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayReceipt\":null,\"leaseGeneration\":2,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"payload\":{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"eventCount\":1,\"firstSequence\":1,\"kind\":\"AUDIT_ANCHOR\",\"lastSequence\":1,\"merkleRootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"previousRootHash\":null,\"rootDate\":\"2026-07-31\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"recoveryGeneration\":2,\"recoveryKind\":\"AUDIT_VERIFY_AUTHORIZED\",\"recoveryLeaseExpiresAt\":\"2026-07-31T00:01:00.000Z\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sourceKey\":\"audit:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:recovery\",\"verifyTicket\":{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"contentLength\":1024,\"contentType\":\"application/json\",\"credentialGeneration\":1,\"exp\":1785062430,\"fencingToken\":1,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777708\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"operation\":\"ANCHOR_VERIFY\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptSigningKeyGeneration\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"AUDIT_VERIFY_AUTHORIZED\",\"replacesVerifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"verifyTicketHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"verifyTicketId\":\"77777777-7777-4777-8777-777777777708\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "1208a4052b21fa072ec216222669218675d61b4ee831e164210efe4b48d2f574"
+    },
+    {
+      "name": "maintenance-retention-recovery-claim",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-retention-recovery-claim-v1\u0000",
+      "value": {
+        "version": 1,
+        "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+        "credentialGeneration": 2,
+        "leaseGeneration": 2,
+        "fencingToken": 2,
+        "sourceKey": "retention:55555555-5555-4555-8555-555555555555:recovery",
+        "claimToken": "recovery-token-0123456789abcdef0123456789abcdef",
+        "recoveryGeneration": 2,
+        "recoveryLeaseExpiresAt": "2026-07-31T00:01:00.000Z",
+        "frozenClaim": {
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "claimGeneration": 1
+        },
+        "payload": {
+          "kind": "RETENTION_DELETE",
+          "deletePhase": "FINAL_DELETE",
+          "subjectKind": "MEDIA",
+          "subjectId": "55555555-5555-4555-8555-555555555555",
+          "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+          "retentionVersion": 1,
+          "holdVersion": 0,
+          "quarantineVersion": 1,
+          "finalDeleteNotBefore": "2026-07-31T00:00:00.000Z"
+        },
+        "ticketId": "77777777-7777-4777-8777-777777777780",
+        "ticketHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "ticket": {
+          "version": 1,
+          "aud": "openclaw-media-gateway",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "contentType": "image/jpeg",
+          "contentLength": 1024,
+          "gatewayKeyGeneration": 1,
+          "iat": 1785062400,
+          "exp": 1785062430,
+          "operation": "DELETE",
+          "subject": "MAINTENANCE",
+          "jti": "77777777-7777-4777-8777-777777777706",
+          "accountId": null,
+          "sessionGeneration": 0,
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "receiptSigningKeyGeneration": 1,
+          "deletePhase": "FINAL_DELETE",
+          "quarantineVersion": 1,
+          "finalDeleteNotBefore": 1785062399,
+          "holdVersion": 0,
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+          "recoveryGeneration": 2,
+          "replacesTicketJti": "77777777-7777-4777-8777-777777777704",
+          "replacesDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+          "frozenClaim": {
+            "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+            "credentialGeneration": 1,
+            "leaseGeneration": 1,
+            "fencingToken": 1,
+            "claimGeneration": 1
+          }
+        },
+        "authorizationHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "authorization": {
+          "version": 1,
+          "authorizationKind": "RETENTION_FINAL_DELETE",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+          "recoveryGeneration": 2,
+          "replacesTicketJti": "77777777-7777-4777-8777-777777777704",
+          "replacesDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+          "frozenClaim": {
+            "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+            "credentialGeneration": 1,
+            "leaseGeneration": 1,
+            "fencingToken": 1,
+            "claimGeneration": 1
+          },
+          "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+          "deletePhase": "FINAL_DELETE",
+          "holdVersion": 0,
+          "quarantineVersion": 1,
+          "deleteTicketJti": "77777777-7777-4777-8777-777777777706",
+          "authorizationJti": "77777777-7777-4777-8777-777777777709",
+          "iat": "2026-07-31T00:00:00.000Z",
+          "exp": "2026-07-31T00:00:05.000Z",
+          "gatewaySigningKeyGeneration": 1,
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        },
+        "authorizationExpiresAt": "2026-07-31T00:00:05.000Z",
+        "gatewayReceipt": null
+      },
+      "canonicalJson": "{\"authorization\":{\"authorizationJti\":\"77777777-7777-4777-8777-777777777709\",\"authorizationKind\":\"RETENTION_FINAL_DELETE\",\"credentialGeneration\":1,\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"77777777-7777-4777-8777-777777777706\",\"exp\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"iat\":\"2026-07-31T00:00:00.000Z\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"quarantineVersion\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"replacesDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"replacesTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"authorizationExpiresAt\":\"2026-07-31T00:00:05.000Z\",\"authorizationHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"claimToken\":\"recovery-token-0123456789abcdef0123456789abcdef\",\"credentialGeneration\":2,\"fencingToken\":2,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayReceipt\":null,\"leaseGeneration\":2,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"payload\":{\"deletePhase\":\"FINAL_DELETE\",\"finalDeleteNotBefore\":\"2026-07-31T00:00:00.000Z\",\"holdVersion\":0,\"kind\":\"RETENTION_DELETE\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"quarantineVersion\":1,\"retentionVersion\":1,\"subjectId\":\"55555555-5555-4555-8555-555555555555\",\"subjectKind\":\"MEDIA\"},\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"recoveryLeaseExpiresAt\":\"2026-07-31T00:01:00.000Z\",\"sourceKey\":\"retention:55555555-5555-4555-8555-555555555555:recovery\",\"ticket\":{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"credentialGeneration\":1,\"deletePhase\":\"FINAL_DELETE\",\"exp\":1785062430,\"fencingToken\":1,\"finalDeleteNotBefore\":1785062399,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayKeyGeneration\":1,\"holdVersion\":0,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777706\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"operation\":\"DELETE\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"quarantineVersion\":1,\"receiptSigningKeyGeneration\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"replacesDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"replacesTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"ticketHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"ticketId\":\"77777777-7777-4777-8777-777777777780\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "45bb94a24552680243c464ac54b6588c8c2dd143cb28e49d2ff70695006bac91"
+    },
+    {
+      "name": "audit-recovery-completion-request",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-audit-recovery-completion-v1\u0000",
+      "value": {
+        "version": 1,
+        "recoveryKind": "AUDIT_VERIFY_AUTHORIZED",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "recoveryGeneration": 2,
+        "claimToken": "recovery-token-0123456789abcdef0123456789abcdef",
+        "verifyTicketJti": "77777777-7777-4777-8777-777777777779",
+        "gatewayReceipt": {
+          "version": 1,
+          "receiptKind": "AUDIT_ANCHOR_VERIFY",
+          "receiptId": "77777777-7777-4777-8777-777777777777",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "claimGeneration": 1,
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "anchorKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
+          "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "auditSigningKeyGeneration": 1,
+          "verifyTicketJti": "77777777-7777-4777-8777-777777777779",
+          "objectVersionOrEtag": "etag-audit-001",
+          "verifiedAt": "2026-07-31T00:00:10.000Z",
+          "gatewaySigningKeyGeneration": 1,
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "canonicalJson": "{\"claimToken\":\"recovery-token-0123456789abcdef0123456789abcdef\",\"gatewayReceipt\":{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectVersionOrEtag\":\"etag-audit-001\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"AUDIT_ANCHOR_VERIFY\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"verifiedAt\":\"2026-07-31T00:00:10.000Z\",\"verifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"recoveryGeneration\":2,\"recoveryKind\":\"AUDIT_VERIFY_AUTHORIZED\",\"verifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "f0b97f53979fd680057cbe6732ed90f01602399c4a5a3a9d4eaae04d953c766b"
+    },
+    {
+      "name": "retention-recovery-completion-request",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-retention-recovery-completion-v1\u0000",
+      "value": {
+        "version": 1,
+        "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "recoveryGeneration": 2,
+        "claimToken": "recovery-token-0123456789abcdef0123456789abcdef",
+        "ticketId": "77777777-7777-4777-8777-777777777780",
+        "gatewayReceipt": {
+          "version": 1,
+          "receiptKind": "RETENTION_FINAL_DELETE",
+          "receiptId": "77777777-7777-4777-8777-777777777777",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "claimGeneration": 1,
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+          "deletePhase": "FINAL_DELETE",
+          "holdVersion": 0,
+          "quarantineVersion": 1,
+          "deleteTicketJti": "ticketJti0123456789",
+          "deleteAuthorizationJti": "authorizationJti012345",
+          "proofJti": "authorizationJti012345",
+          "objectStatus": "DELETED",
+          "r2VersionOrEtag": "etag-001",
+          "completedAt": "2026-07-31T00:00:10.000Z",
+          "gatewaySigningKeyGeneration": 1,
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "canonicalJson": "{\"claimToken\":\"recovery-token-0123456789abcdef0123456789abcdef\",\"gatewayReceipt\":{\"claimGeneration\":1,\"completedAt\":\"2026-07-31T00:00:10.000Z\",\"credentialGeneration\":1,\"deleteAuthorizationJti\":\"authorizationJti012345\",\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"ticketJti0123456789\",\"fencingToken\":1,\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"objectStatus\":\"DELETED\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"proofJti\":\"authorizationJti012345\",\"quarantineVersion\":1,\"r2VersionOrEtag\":\"etag-001\",\"receiptId\":\"77777777-7777-4777-8777-777777777777\",\"receiptKind\":\"RETENTION_FINAL_DELETE\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"ticketId\":\"77777777-7777-4777-8777-777777777780\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "5c34b45807c35da9f0a314badcb278911c729f776893507987323f149606d2e9"
+    },
+    {
+      "name": "audit-recovery-refresh-request",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-audit-recovery-refresh-request-v1\u0000",
+      "value": {
+        "version": 1,
+        "operation": "ANCHOR_VERIFY",
+        "recoveryKind": "AUDIT_VERIFY_AUTHORIZED",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "recoveryGeneration": 2,
+        "claimToken": "recovery-token-0123456789abcdef0123456789abcdef",
+        "expiredVerifyTicketJti": "77777777-7777-4777-8777-777777777779",
+        "gatewayDenial": {
+          "status": 410,
+          "code": "TICKET_EXPIRED_NO_WORK"
+        },
+        "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "anchorKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
+        "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "auditSigningKeyGeneration": 1,
+        "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "documentSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "documentByteLength": 1024
+      },
+      "canonicalJson": "{\"anchorKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"claimToken\":\"recovery-token-0123456789abcdef0123456789abcdef\",\"documentByteLength\":1024,\"documentSha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"expiredVerifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"gatewayDenial\":{\"code\":\"TICKET_EXPIRED_NO_WORK\",\"status\":410},\"operation\":\"ANCHOR_VERIFY\",\"recoveryGeneration\":2,\"recoveryKind\":\"AUDIT_VERIFY_AUTHORIZED\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "a7604caa18a46d498c106f5fa4420c024082ec1499db2b8f3a258e75c3295357"
+    },
+    {
+      "name": "retention-recovery-refresh-request",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-retention-recovery-refresh-request-v1\u0000",
+      "value": {
+        "version": 1,
+        "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+        "workItemId": "33333333-3333-4333-8333-333333333333",
+        "recoveryGeneration": 2,
+        "claimToken": "recovery-token-0123456789abcdef0123456789abcdef",
+        "ticketId": "77777777-7777-4777-8777-777777777780",
+        "expiredTicketJti": "77777777-7777-4777-8777-777777777704",
+        "expiredDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+        "gatewayDenial": {
+          "status": 410,
+          "code": "TICKET_EXPIRED_NO_WORK"
+        }
+      },
+      "canonicalJson": "{\"claimToken\":\"recovery-token-0123456789abcdef0123456789abcdef\",\"expiredDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"expiredTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"gatewayDenial\":{\"code\":\"TICKET_EXPIRED_NO_WORK\",\"status\":410},\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"ticketId\":\"77777777-7777-4777-8777-777777777780\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"}",
+      "sha256": "80c0775b79c1fabb42dae1dc5559188571b3c58b98b798d4de19e3496ab63a2e"
+    },
+    {
+      "name": "audit-recovery-refresh-result",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-audit-recovery-refresh-result-v1\u0000",
+      "value": {
+        "version": 1,
+        "ticketId": "77777777-7777-4777-8777-777777777708",
+        "ticketHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "expiresAt": "2026-07-31T00:00:30.000Z",
+        "state": "RECOVERY_REFRESHED",
+        "replacesVerifyTicketJti": "77777777-7777-4777-8777-777777777779",
+        "ticket": {
+          "version": 1,
+          "aud": "openclaw-media-gateway",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "objectKey": "v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "contentType": "application/json",
+          "contentLength": 1024,
+          "gatewayKeyGeneration": 1,
+          "iat": 1785062400,
+          "exp": 1785062430,
+          "operation": "ANCHOR_VERIFY",
+          "subject": "MAINTENANCE",
+          "jti": "77777777-7777-4777-8777-777777777708",
+          "accountId": null,
+          "sessionGeneration": 0,
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "receiptSigningKeyGeneration": 1,
+          "auditRootId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "rootHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "signatureHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "auditSigningKeyGeneration": 1,
+          "auditSigningPublicKeyHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "recoveryKind": "AUDIT_VERIFY_AUTHORIZED",
+          "recoveryGeneration": 2,
+          "replacesVerifyTicketJti": "77777777-7777-4777-8777-777777777779",
+          "frozenClaim": {
+            "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+            "credentialGeneration": 1,
+            "leaseGeneration": 1,
+            "fencingToken": 1,
+            "claimGeneration": 1
+          }
+        }
+      },
+      "canonicalJson": "{\"expiresAt\":\"2026-07-31T00:00:30.000Z\",\"replacesVerifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"state\":\"RECOVERY_REFRESHED\",\"ticket\":{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"auditRootId\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"auditSigningKeyGeneration\":1,\"auditSigningPublicKeyHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"contentLength\":1024,\"contentType\":\"application/json\",\"credentialGeneration\":1,\"exp\":1785062430,\"fencingToken\":1,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayKeyGeneration\":1,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777708\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"v1/org/dddd0000-0000-4000-8000-000000000001/audit/2026-07-31/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.json\",\"operation\":\"ANCHOR_VERIFY\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"receiptSigningKeyGeneration\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"AUDIT_VERIFY_AUTHORIZED\",\"replacesVerifyTicketJti\":\"77777777-7777-4777-8777-777777777779\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"ticketHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"ticketId\":\"77777777-7777-4777-8777-777777777708\",\"version\":1}",
+      "sha256": "e290c5ccd0de90f74339f97e48ed65c9d6dde11f830acce6b3779b81be675bab"
+    },
+    {
+      "name": "retention-recovery-refresh-result",
+      "schema": "maintenance.schema.json",
+      "domain": "ihome-openclaw-retention-recovery-refresh-result-v1\u0000",
+      "value": {
+        "version": 1,
+        "ticketId": "77777777-7777-4777-8777-777777777780",
+        "ticketHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "deleteAuthorizationJti": "77777777-7777-4777-8777-777777777709",
+        "expiresAt": "2026-07-31T00:00:05.000Z",
+        "state": "RECOVERY_REFRESHED",
+        "replacesTicketJti": "77777777-7777-4777-8777-777777777704",
+        "replacesDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+        "ticket": {
+          "version": 1,
+          "aud": "openclaw-media-gateway",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "contentType": "image/jpeg",
+          "contentLength": 1024,
+          "gatewayKeyGeneration": 1,
+          "iat": 1785062400,
+          "exp": 1785062430,
+          "operation": "DELETE",
+          "subject": "MAINTENANCE",
+          "jti": "77777777-7777-4777-8777-777777777706",
+          "accountId": null,
+          "sessionGeneration": 0,
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "receiptSigningKeyGeneration": 1,
+          "deletePhase": "FINAL_DELETE",
+          "quarantineVersion": 1,
+          "finalDeleteNotBefore": 1785062399,
+          "holdVersion": 0,
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+          "recoveryGeneration": 2,
+          "replacesTicketJti": "77777777-7777-4777-8777-777777777704",
+          "replacesDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+          "frozenClaim": {
+            "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+            "credentialGeneration": 1,
+            "leaseGeneration": 1,
+            "fencingToken": 1,
+            "claimGeneration": 1
+          }
+        },
+        "authorization": {
+          "version": 1,
+          "authorizationKind": "RETENTION_FINAL_DELETE",
+          "organizationId": "dddd0000-0000-4000-8000-000000000001",
+          "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+          "workItemId": "33333333-3333-4333-8333-333333333333",
+          "credentialGeneration": 1,
+          "leaseGeneration": 1,
+          "fencingToken": 1,
+          "recoveryKind": "RETENTION_DELETE_AUTHORIZED",
+          "recoveryGeneration": 2,
+          "replacesTicketJti": "77777777-7777-4777-8777-777777777704",
+          "replacesDeleteAuthorizationJti": "77777777-7777-4777-8777-777777777707",
+          "frozenClaim": {
+            "maintenancePrincipalId": "44444444-4444-4444-8444-444444444444",
+            "credentialGeneration": 1,
+            "leaseGeneration": 1,
+            "fencingToken": 1,
+            "claimGeneration": 1
+          },
+          "objectKey": "org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1",
+          "deletePhase": "FINAL_DELETE",
+          "holdVersion": 0,
+          "quarantineVersion": 1,
+          "deleteTicketJti": "77777777-7777-4777-8777-777777777706",
+          "authorizationJti": "77777777-7777-4777-8777-777777777709",
+          "iat": "2026-07-31T00:00:00.000Z",
+          "exp": "2026-07-31T00:00:05.000Z",
+          "gatewaySigningKeyGeneration": 1,
+          "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "canonicalJson": "{\"authorization\":{\"authorizationJti\":\"77777777-7777-4777-8777-777777777709\",\"authorizationKind\":\"RETENTION_FINAL_DELETE\",\"credentialGeneration\":1,\"deletePhase\":\"FINAL_DELETE\",\"deleteTicketJti\":\"77777777-7777-4777-8777-777777777706\",\"exp\":\"2026-07-31T00:00:05.000Z\",\"fencingToken\":1,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewaySigningKeyGeneration\":1,\"holdVersion\":0,\"iat\":\"2026-07-31T00:00:00.000Z\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"quarantineVersion\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"replacesDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"replacesTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"deleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777709\",\"expiresAt\":\"2026-07-31T00:00:05.000Z\",\"replacesDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"replacesTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"state\":\"RECOVERY_REFRESHED\",\"ticket\":{\"accountId\":null,\"aud\":\"openclaw-media-gateway\",\"contentLength\":1024,\"contentType\":\"image/jpeg\",\"credentialGeneration\":1,\"deletePhase\":\"FINAL_DELETE\",\"exp\":1785062430,\"fencingToken\":1,\"finalDeleteNotBefore\":1785062399,\"frozenClaim\":{\"claimGeneration\":1,\"credentialGeneration\":1,\"fencingToken\":1,\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\"},\"gatewayKeyGeneration\":1,\"holdVersion\":0,\"iat\":1785062400,\"jti\":\"77777777-7777-4777-8777-777777777706\",\"leaseGeneration\":1,\"maintenancePrincipalId\":\"44444444-4444-4444-8444-444444444444\",\"objectKey\":\"org/dddd0000-0000-4000-8000-000000000001/openclaw/media/image-1\",\"operation\":\"DELETE\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"quarantineVersion\":1,\"receiptSigningKeyGeneration\":1,\"recoveryGeneration\":2,\"recoveryKind\":\"RETENTION_DELETE_AUTHORIZED\",\"replacesDeleteAuthorizationJti\":\"77777777-7777-4777-8777-777777777707\",\"replacesTicketJti\":\"77777777-7777-4777-8777-777777777704\",\"sessionGeneration\":0,\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"subject\":\"MAINTENANCE\",\"version\":1,\"workItemId\":\"33333333-3333-4333-8333-333333333333\"},\"ticketHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"ticketId\":\"77777777-7777-4777-8777-777777777780\",\"version\":1}",
+      "sha256": "353673035c06b4a3b25b9ffe6405c1814da7339b1673b41507248a0a1333c879"
     },
     {
       "name": "rollout-state",
@@ -964,6 +1947,552 @@
       },
       "canonicalJson": "{\"canonicalRootJson\":\"{\\\"auditSigningKeyGeneration\\\":1,\\\"eventCount\\\":1,\\\"firstSequence\\\":1,\\\"lastSequence\\\":1,\\\"merkleRootHash\\\":\\\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\\\",\\\"organizationId\\\":\\\"dddd0000-0000-4000-8000-000000000001\\\",\\\"previousRootHash\\\":null,\\\"rootDate\\\":\\\"2026-07-31\\\",\\\"rootHash\\\":\\\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\\\",\\\"version\\\":1}\",\"root\":{\"auditSigningKeyGeneration\":1,\"eventCount\":1,\"firstSequence\":1,\"lastSequence\":1,\"merkleRootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"organizationId\":\"dddd0000-0000-4000-8000-000000000001\",\"previousRootHash\":null,\"rootDate\":\"2026-07-31\",\"rootHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"version\":1},\"signature\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"signatureHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signingDomain\":\"ihome-openclaw-audit-root-v1\\u0000\",\"version\":1}",
       "sha256": "ff2dfe67c961652125bbbd96e15fb5a621a792aeb853972c5201b677518dc56d"
+    }
+  ],
+  "negativeVectors": [
+    {
+      "name": "media-upload-receipt-abbreviated-object-key",
+      "schema": "receipts.schema.json",
+      "reason": "MEDIA_UPLOAD_OBJECT_KEY_NOT_CANONICAL",
+      "value": {
+        "version": 1,
+        "receiptKind": "MEDIA_UPLOAD",
+        "receiptId": "77777777-7777-4777-8777-777777777777",
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "mediaId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "objectKey": "v1/org/dddd0000-0000-4000-8000-000000000001/account/11111111-1111-4111-8111-111111111111/media/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/original",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "contentType": "image/png",
+        "contentLength": 512,
+        "uploadTicketJti": "77777777-7777-4777-8777-777777777778",
+        "credentialGeneration": 1,
+        "leaseGeneration": 1,
+        "fencingToken": 1,
+        "sessionGeneration": 1,
+        "objectVersionOrEtag": "etag-media-001",
+        "storedAt": "2026-07-31T00:00:10.000Z",
+        "gatewaySigningKeyGeneration": 1,
+        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "name": "inbound-media-manifest-index-starts-at-one",
+      "schema": "inbound.schema.json",
+      "reason": "MEDIA_MANIFEST_INDEX_NOT_ARRAY_POSITION",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "15a07bf04c9aaf1fd8f632b6037a03338dcf634d6c6286b6cffcb16a5bd76020"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inbound-media-manifest-index-duplicated",
+      "schema": "inbound.schema.json",
+      "reason": "MEDIA_MANIFEST_INDEX_DUPLICATED",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "e056be8f2ba0e305bd9573c3ed03c48e7789c7b1972b29dfc96bebff86388d99"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inbound-media-manifest-index-out-of-range",
+      "schema": "inbound.schema.json",
+      "reason": "MEDIA_MANIFEST_INDEX_OUT_OF_RANGE",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 20,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "dafd583c0e5151581bdb1574fdebea6963d6e451f7345fd02c74b676848637fd"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inbound-media-empty-provider-media-id",
+      "schema": "inbound.schema.json",
+      "reason": "PROVIDER_MEDIA_ID_EMPTY",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": "",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "4b30fec23bea72eb7fb424438524d159e60fd96f57ad3d52c959968ac489e2eb"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inbound-media-empty-fetch-ref",
+      "schema": "inbound.schema.json",
+      "reason": "FETCH_REF_EMPTY",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "b12c3a1e06c0c000a46e182a73aedd74c10860865ef31c693a9225813cb53ece"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inbound-media-empty-provider-event-id",
+      "schema": "inbound.schema.json",
+      "reason": "PROVIDER_EVENT_ID_EMPTY",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "7d539f06cc8f0e630546c415acbe67951ca4798a998820b7ef3c4224fbed874b"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inbound-media-empty-provider-message-id",
+      "schema": "inbound.schema.json",
+      "reason": "PROVIDER_MESSAGE_ID_EMPTY",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "msg-parent-001",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "7d539f06cc8f0e630546c415acbe67951ca4798a998820b7ef3c4224fbed874b"
+          }
+        ]
+      }
+    },
+    {
+      "name": "inbound-media-empty-reply-to-provider-message-id",
+      "schema": "inbound.schema.json",
+      "reason": "REPLY_TO_PROVIDER_MESSAGE_ID_EMPTY",
+      "value": {
+        "version": 1,
+        "organizationId": "dddd0000-0000-4000-8000-000000000001",
+        "accountId": "11111111-1111-4111-8111-111111111111",
+        "cellId": "22222222-2222-4222-8222-222222222222",
+        "sessionGeneration": 1,
+        "events": [
+          {
+            "version": 1,
+            "eventKind": "MESSAGE",
+            "providerEventId": "evt-media-001",
+            "providerMessageId": "msg-media-001",
+            "providerConversationId": "conversation-zalo-001",
+            "providerSenderId": "zalo-peer-001",
+            "providerTarget": {
+              "kind": "PEER",
+              "providerId": "zalo-peer-001"
+            },
+            "providerEventType": "message.media",
+            "sourceTimestamp": "2026-07-31T00:00:02.000Z",
+            "callbackReceivedAt": "2026-07-31T00:00:03.000Z",
+            "rawEnvelope": {
+              "event": "message.media",
+              "attachments": [
+                "provider-media-001",
+                "provider-file-001"
+              ]
+            },
+            "rawEnvelopeSha256": "09b92b5cfe94a58e8c6ab7d60996228b5a1dad0ece51b7fc1945afba22706423",
+            "normalized": {
+              "text": null,
+              "replyToProviderMessageId": "",
+              "mediaManifest": [
+                {
+                  "version": 1,
+                  "index": 0,
+                  "providerMediaId": "provider-media-001",
+                  "kind": "IMAGE",
+                  "mime": "image/png",
+                  "byteLength": 512,
+                  "providerChecksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                  "fetchRef": "https://media.invalid/image-001",
+                  "byteState": "PENDING"
+                },
+                {
+                  "version": 1,
+                  "index": 1,
+                  "providerMediaId": null,
+                  "kind": "FILE",
+                  "mime": "application/pdf",
+                  "byteLength": 1024,
+                  "providerChecksum": null,
+                  "fetchRef": null,
+                  "byteState": "PENDING"
+                }
+              ]
+            },
+            "normalizedSha256": "36680caa5f3e7cc22431ab8f55b8ae2a7e4c952cdf1230c727fdbebc9bc4596b"
+          }
+        ]
+      }
     }
   ]
 }

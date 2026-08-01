@@ -397,6 +397,8 @@ create table public.openclaw_audit_roots (
   root_date date not null,
   first_sequence bigint not null check (first_sequence > 0),
   last_sequence bigint not null check (last_sequence >= first_sequence),
+  previous_root_hash text check (previous_root_hash is null or previous_root_hash ~ '^[0-9a-f]{64}$'),
+  merkle_root_hash text not null check (merkle_root_hash ~ '^[0-9a-f]{64}$'),
   root_hash text not null check (root_hash ~ '^[0-9a-f]{64}$'),
   event_count bigint not null check (event_count > 0),
   signing_key_generation bigint not null check (signing_key_generation > 0),
@@ -410,6 +412,9 @@ create table public.openclaw_audit_roots (
   UNIQUE (organization_id, id),
   unique (organization_id, root_date),
   unique (organization_id, root_hash),
+  check (last_sequence <= 9007199254740991),
+  check (event_count <= 9007199254740991),
+  check (event_count = last_sequence - first_sequence + 1),
   check (
     (anchored_at is null and signature_hash is null
       and gateway_receipt is null and gateway_receipt_hash is null)

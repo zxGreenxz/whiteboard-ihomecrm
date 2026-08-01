@@ -28,6 +28,7 @@ export type PreparedPrivateOutboundExecutionV1 = Readonly<{
 
 export type PrivateOutboundRuntime = Readonly<{
   assertClient(client: unknown): Promise<void>;
+  assertAuthorizationCurrent(request: PrivateBridgeSendRequestV1): void;
   prepare(request: PrivateBridgeSendRequestV1): Promise<PreparedPrivateOutboundExecutionV1>;
   authorize(
     request: PrivateBridgeSendRequestV1,
@@ -51,6 +52,7 @@ type GatewayApi = Readonly<{
 
 type AuthorizedProviderScope = {
   readonly expected: PreparedProviderCallV1;
+  readonly assertAuthorizationCurrent: (() => void) | undefined;
   wrapperChecked: boolean;
   providerIoEntered: boolean;
 };
@@ -63,6 +65,7 @@ type UnknownReasonCodeV1 =
 
 let privateOutboundRuntime: PrivateOutboundRuntime | undefined;
 const authorizedProviderScope = new AsyncLocalStorage<AuthorizedProviderScope>();
+const provenPreHandoffFailures = new WeakSet<object>();
 
 function failure(code: string, message: string): Error & { code: string } {
   return Object.assign(new Error(message), { code });
@@ -70,6 +73,26 @@ function failure(code: string, message: string): Error & { code: string } {
 
 function privateRpcRequired(): Error & { code: string } {
   return failure(PRIVATE_RPC_REQUIRED, "business sends require the private bridge RPC");
+}
+
+function provenPreHandoffFailure(error: unknown): Error & {
+  code: string;
+  authorizedHandoffRecorded: false;
+} {
+  const record = error && typeof error === "object" ? error as Record<string, unknown> : undefined;
+  const marked = Object.assign(
+    new Error(error instanceof Error ? error.message : String(error), { cause: error }),
+    {
+      code: typeof record?.code === "string" ? record.code : "AUTHORIZATION_BARRIER_FAILED",
+      authorizedHandoffRecorded: false as const,
+    },
+  );
+  provenPreHandoffFailures.add(marked);
+  return marked;
+}
+
+export function isProvenPreHandoffFailure(error: unknown): boolean {
+  return !!error && typeof error === "object" && provenPreHandoffFailures.has(error);
 }
 
 function snapshotRequest(value: unknown): PrivateBridgeSendRequestV1 {
@@ -191,18 +214,27 @@ export function assertAuthorizedProviderIo(actualSinkValue: ProviderSinkV1): voi
   if (!sinksEqual(actualSink, scope.expected.sink)) {
     throw failure("AUTHORIZED_PROVIDER_SINK_MISMATCH", "provider sink does not match authorization");
   }
+  if (scope.assertAuthorizationCurrent) {
+    try {
+      scope.assertAuthorizationCurrent();
+    } catch (error) {
+      throw provenPreHandoffFailure(error);
+    }
+  }
   scope.providerIoEntered = true;
 }
 
 async function invokePreparedCall(
   call: PreparedProviderCallV1,
   sendPrepared: PreparedPrivateOutboundExecutionV1["sendPrepared"],
+  assertAuthorizationCurrent?: () => void,
 ): Promise<
   | Readonly<{ ok: true; receipt: { providerMessageId?: string } }>
   | Readonly<{ ok: false; error: unknown; possibleHandoff: boolean }>
 > {
   const scope: AuthorizedProviderScope = {
     expected: call,
+    assertAuthorizationCurrent,
     wrapperChecked: false,
     providerIoEntered: false,
   };
@@ -215,7 +247,7 @@ async function invokePreparedCall(
       return Object.freeze({
         ok: false as const,
         error,
-        possibleHandoff: scope.providerIoEntered,
+        possibleHandoff: scope.providerIoEntered && !isProvenPreHandoffFailure(error),
       });
     }
   });
@@ -224,11 +256,13 @@ async function invokePreparedCall(
 export function createPrivateOutboundRpc(options: Pick<
   PrivateOutboundRuntime,
   "prepare" | "authorize"
->) {
+> & Partial<Pick<PrivateOutboundRuntime, "assertAuthorizationCurrent">>) {
   if (
     !options ||
     typeof options.prepare !== "function" ||
-    typeof options.authorize !== "function"
+    typeof options.authorize !== "function" ||
+    (options.assertAuthorizationCurrent !== undefined &&
+      typeof options.assertAuthorizationCurrent !== "function")
   ) {
     throw new TypeError("prepare and authorize must be functions");
   }
@@ -247,7 +281,13 @@ export function createPrivateOutboundRpc(options: Pick<
       const receipts: ProviderReceiptV1[] = [];
       const totalPartCount = execution.batch.calls.length;
       for (const call of execution.batch.calls) {
-        const result = await invokePreparedCall(call, execution.sendPrepared);
+        const result = await invokePreparedCall(
+          call,
+          execution.sendPrepared,
+          options.assertAuthorizationCurrent === undefined
+            ? undefined
+            : () => options.assertAuthorizationCurrent?.(request),
+        );
         if (!result.ok) {
           if (result.possibleHandoff || receipts.length > 0) {
             return unknownResult(
@@ -316,9 +356,11 @@ export function registerPrivateOutboundRpc(
           ? error as Record<string, unknown>
           : undefined;
         const message = error instanceof Error ? error.message : String(error);
+        const preHandoff = isProvenPreHandoffFailure(error);
         (request as GatewayRequest).respond(false, undefined, {
           code: typeof errorRecord?.code === "string" ? errorRecord.code : "PRIVATE_RPC_FAILED",
           message,
+          ...(preHandoff ? { authorizedHandoffRecorded: false as const } : {}),
         });
       }
     },

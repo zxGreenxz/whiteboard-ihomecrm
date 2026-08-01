@@ -8,6 +8,7 @@ const UUID_PATTERN =
  */
 export const CONTROL_OPERATION_RPCS = Object.freeze({
   ACKNOWLEDGE_RISK: "openclaw_acknowledge_risk_v1",
+  ACKNOWLEDGE_DISCLOSURE: "openclaw_acknowledge_disclosure_v1",
   DISCONNECT_ACCOUNT: "openclaw_disconnect_account_v1",
   CREATE_SEND_INTENT: "openclaw_create_send_intent_v1",
   TAKEOVER_CONVERSATION: "openclaw_takeover_conversation_v1",
@@ -83,6 +84,15 @@ function hasExactKeys(value: Record<string, unknown>, expected: readonly string[
   return keys.length === expected.length && expected.every((key) => key in value);
 }
 
+function validDisclosureAcknowledgementPayload(value: Record<string, unknown>): boolean {
+  return hasExactKeys(value, [
+    "version", "organizationId", "accountId", "disclosureVersion",
+  ]) && value.version === 1 &&
+    typeof value.organizationId === "string" && UUID_PATTERN.test(value.organizationId) &&
+    typeof value.accountId === "string" && UUID_PATTERN.test(value.accountId) &&
+    Number.isSafeInteger(value.disclosureVersion) && Number(value.disclosureVersion) >= 1;
+}
+
 /**
  * Mirrors the `safeParse` shape `readStrictJson` expects without pulling a
  * bundler-hostile `npm:` specifier into the shared Edge modules.
@@ -119,6 +129,12 @@ export const controlRequestSchema = {
         !UUID_PATTERN.test(value.clientOperationId)
       ) {
         return { success: false, error: "clientOperationId must be a UUID" };
+      }
+      if (
+        value.operation === "ACKNOWLEDGE_DISCLOSURE" &&
+        !validDisclosureAcknowledgementPayload(value.payload)
+      ) {
+        return { success: false, error: "disclosure acknowledgement payload is invalid" };
       }
       return {
         success: true,

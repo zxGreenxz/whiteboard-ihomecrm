@@ -72,6 +72,10 @@ create table public.openclaw_runtime_commands (
   command_kind text not null
     check (command_kind in ('QR_LOGIN','DISCONNECT','DIRECTORY_SYNC','CELL_REBIND','GENERATION_REVOKE')),
   command_version bigint not null default 1 check (command_version > 0),
+  source_session_generation bigint not null check (source_session_generation > 0),
+  target_session_generation bigint not null check (target_session_generation > 0),
+  source_connection_generation bigint not null check (source_connection_generation >= 0),
+  target_connection_generation bigint not null check (target_connection_generation >= 0),
   expected_session_generation bigint not null check (expected_session_generation > 0),
   expected_connection_generation bigint not null check (expected_connection_generation >= 0),
   expected_fencing_token bigint not null check (expected_fencing_token > 0),
@@ -79,12 +83,22 @@ create table public.openclaw_runtime_commands (
   payload_bytes bytea not null check (octet_length(payload_bytes) > 0),
   payload_hash text not null check (payload_hash ~ '^[0-9a-f]{64}$'),
   state text not null default 'PENDING'
-    check (state in ('PENDING','LEASED','ACKNOWLEDGED','FAILED','EXPIRED','REVOKED')),
+    check (state in ('PENDING','LEASED','STARTED','ACKNOWLEDGED','FAILED','EXPIRED','REVOKED')),
   claim_token_hash text check (claim_token_hash is null or claim_token_hash ~ '^[0-9a-f]{64}$'),
   claim_generation bigint not null default 0 check (claim_generation >= 0),
   lease_expires_at timestamptz,
+  started_at timestamptz,
+  effect_deadline_at timestamptz,
+  effect_disposition text not null default 'NONE'
+    check (effect_disposition in ('NONE','PROVIDER_CONFIRMED','SEALED_UNCONFIRMED')),
+  sealed_at timestamptz,
+  seal_reason text,
   result jsonb,
   result_hash text check (result_hash is null or result_hash ~ '^[0-9a-f]{64}$'),
+  completion_claim_token_hash text
+    check (completion_claim_token_hash is null or completion_claim_token_hash ~ '^[0-9a-f]{64}$'),
+  completion_claim_generation bigint
+    check (completion_claim_generation is null or completion_claim_generation > 0),
   acknowledged_at timestamptz,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default statement_timestamp(),
@@ -97,9 +111,17 @@ create table public.openclaw_runtime_commands (
     references public.openclaw_runtime_cells(organization_id, account_id, id) on delete restrict,
   check (convert_from(payload_bytes, 'UTF8')::jsonb = payload),
   check (payload_hash = encode(extensions.digest(payload_bytes, 'sha256'), 'hex')),
-  check ((state = 'LEASED') = (claim_token_hash is not null)),
-  check ((state = 'LEASED') = (lease_expires_at is not null)),
+  check (expected_session_generation = target_session_generation),
+  check (expected_connection_generation = source_connection_generation),
+  check ((state in ('LEASED','STARTED')) = (claim_token_hash is not null)),
+  check ((state in ('LEASED','STARTED')) = (lease_expires_at is not null)),
+  check (state <> 'STARTED' or (started_at is not null and effect_deadline_at is not null)),
+  check (started_at is null or state in ('STARTED','ACKNOWLEDGED','FAILED','REVOKED')),
+  check ((sealed_at is null) = (seal_reason is null)),
+  check ((effect_disposition = 'SEALED_UNCONFIRMED') = (sealed_at is not null)),
+  check (effect_disposition = 'NONE' or state in ('ACKNOWLEDGED','FAILED','REVOKED')),
   check ((result is null) = (result_hash is null)),
+  check ((completion_claim_token_hash is null) = (completion_claim_generation is null)),
   check ((acknowledged_at is not null) = (state = 'ACKNOWLEDGED'))
 );
 
@@ -165,7 +187,7 @@ create table public.openclaw_cell_rebinds (
   new_fencing_token bigint not null check (new_fencing_token > old_fencing_token),
   revocation_id uuid,
   acknowledgement_hash text check (acknowledgement_hash is null or acknowledgement_hash ~ '^[0-9a-f]{64}$'),
-  status text not null default 'PREPARED' check (status in ('PREPARED','COMPLETED','ABORTED')),
+  status text not null default 'PREPARED' check (status in ('PREPARED','AWAITING_ACK','COMPLETED','ABORTED')),
   prepared_at timestamptz not null default statement_timestamp(),
   completed_at timestamptz,
   aborted_at timestamptz,
@@ -184,12 +206,13 @@ create table public.openclaw_cell_rebinds (
   check (old_cell_id <> new_cell_id),
   check ((status = 'COMPLETED') = (completed_at is not null)),
   check ((status = 'ABORTED') = (aborted_at is not null)),
-  check (status <> 'COMPLETED' or (revocation_id is not null and acknowledgement_hash is not null))
+  check (status not in ('AWAITING_ACK','COMPLETED') or revocation_id is not null),
+  check (status <> 'COMPLETED' or acknowledgement_hash is not null)
 );
 
 create unique index openclaw_cell_rebinds_one_prepared_uidx
   on public.openclaw_cell_rebinds (organization_id, account_id)
-  where status = 'PREPARED';
+  where status in ('PREPARED','AWAITING_ACK');
 
 create table public.openclaw_schedule_snapshots (
   id uuid primary key default gen_random_uuid(),
@@ -438,7 +461,7 @@ alter table public.openclaw_runtime_credentials
     check (allowed_scopes <@ array[
       'heartbeat','qr.publish','qr.result','inbound.commit','outbox.claim',
       'outbox.preflight','outbox.authorize-send','outbox.requeue','outbox.complete',
-      'work.claim','work.complete','media.issue','lease.acquire','cell.rebind',
+      'work.claim','work.context','work.complete','media.issue','lease.acquire','cell.rebind',
       'generation.ack','credential.exchange','runtime.sweep'
     ]::text[]);
 
@@ -458,6 +481,12 @@ alter table public.openclaw_qr_challenges
   add column runtime_command_id uuid,
   add column material_version integer not null default 0,
   add column material_published_at timestamptz,
+  add column poll_window_started_at timestamptz,
+  add column poll_count integer not null default 0,
+  add constraint openclaw_qr_poll_count_check
+    check (poll_count between 0 and 10),
+  add constraint openclaw_qr_poll_window_consistency_check
+    check ((poll_count = 0) = (poll_window_started_at is null)),
   add constraint openclaw_qr_runtime_command_fkey
     foreign key (organization_id, account_id, cell_id, runtime_command_id)
     references public.openclaw_runtime_commands(organization_id, account_id, cell_id, id)
@@ -1421,19 +1450,45 @@ declare
   v_lease_generation bigint;
   v_fencing_token bigint;
   v_session_generation bigint;
+  v_local_session_generation bigint;
+  v_auth_mode text;
   v_request_hash text;
   v_scope text;
   v_iat timestamptz;
   v_exp timestamptz;
+  v_channel_operations constant text[] := array[
+    'openclaw_runtime_heartbeat_v1','openclaw_submit_qr_result_v1',
+    'openclaw_finalize_account_connection_v1','openclaw_ingest_inbound_batch_v1',
+    'openclaw_claim_inbound_automation_v1','openclaw_complete_inbound_automation_v1',
+    'openclaw_claim_outbox_v1','openclaw_preflight_outbox_v1',
+    'openclaw_authorize_outbox_send_v1','openclaw_requeue_pre_handoff_v1',
+    'openclaw_complete_outbox_v1','openclaw_claim_work_item_v1','openclaw_get_work_context_v1',
+    'openclaw_complete_work_item_v1','openclaw_create_outbox_from_work_v1',
+    'openclaw_issue_media_ticket_v1','openclaw_finalize_media_upload_v1','openclaw_acquire_cell_lease_v1',
+    'openclaw_begin_cell_rebind_v1','openclaw_complete_cell_rebind_v1',
+    'openclaw_ack_generation_revocation_v1','openclaw_sweep_runtime_v1'
+  ];
+  v_maintenance_operations constant text[] := array[
+    'openclaw_claim_work_item_v1','openclaw_complete_maintenance_work_v1',
+    'openclaw_issue_media_ticket_v1','openclaw_complete_retention_quarantine_v1',
+    'openclaw_issue_retention_delete_ticket_v1','openclaw_authorize_retention_delete_v1',
+    'openclaw_finalize_retention_delete_v1','openclaw_ack_audit_anchor_v1',
+    'openclaw_record_watchdog_health_v1','openclaw_begin_rollout_v1',
+    'openclaw_record_rollout_checkpoint_v1','openclaw_record_rollout_observation_v1',
+    'openclaw_resume_rollout_v1','openclaw_advance_rollout_stage_v1',
+    'openclaw_begin_smoke_run_v1','openclaw_record_smoke_observation_v1',
+    'openclaw_cleanup_smoke_run_v1','openclaw_verify_smoke_cleanup_v1',
+    'openclaw_sweep_runtime_v1'
+  ];
 begin
   perform app_private.openclaw_assert_strict_object_v1(
     p_principal,
     array['version','principalKind','organizationId','accountId','cellId',
       'maintenancePrincipalId','credentialGeneration','leaseGeneration','fencingToken',
-      'sessionGeneration','allowedOperations'],
+      'sessionGeneration','localSessionGeneration','authMode','allowedOperations'],
     array['version','principalKind','organizationId','accountId','cellId',
       'maintenancePrincipalId','credentialGeneration','leaseGeneration','fencingToken',
-      'sessionGeneration','allowedOperations']
+      'sessionGeneration','localSessionGeneration','authMode','allowedOperations']
   );
   perform app_private.openclaw_assert_strict_object_v1(
     p_envelope,
@@ -1478,9 +1533,14 @@ begin
   v_lease_generation := (p_principal ->> 'leaseGeneration')::bigint;
   v_fencing_token := (p_principal ->> 'fencingToken')::bigint;
   v_session_generation := coalesce(nullif(p_principal ->> 'sessionGeneration', '')::bigint, 0);
+  v_local_session_generation := coalesce(
+    nullif(p_principal ->> 'localSessionGeneration', '')::bigint, 0
+  );
+  v_auth_mode := p_principal ->> 'authMode';
   v_scope := case p_expected_operation
     when 'openclaw_runtime_heartbeat_v1' then 'heartbeat'
-    when 'openclaw_submit_qr_result_v1' then 'qr.result'
+    when 'openclaw_submit_qr_result_v1' then 'qr.publish'
+    when 'openclaw_finalize_account_connection_v1' then 'qr.result'
     when 'openclaw_ingest_inbound_batch_v1' then 'inbound.commit'
     when 'openclaw_claim_outbox_v1' then 'outbox.claim'
     when 'openclaw_preflight_outbox_v1' then 'outbox.preflight'
@@ -1488,15 +1548,19 @@ begin
     when 'openclaw_requeue_pre_handoff_v1' then 'outbox.requeue'
     when 'openclaw_complete_outbox_v1' then 'outbox.complete'
     when 'openclaw_claim_work_item_v1' then case when v_kind = 'CHANNEL' then 'work.claim' else 'maintenance.claim' end
-    when 'openclaw_complete_work_item_v1' then case when v_kind = 'CHANNEL' then 'work.complete' else 'maintenance.complete' end
+    when 'openclaw_get_work_context_v1' then 'work.context'
+    when 'openclaw_complete_work_item_v1' then 'work.complete'
+    when 'openclaw_complete_maintenance_work_v1' then 'maintenance.complete'
     when 'openclaw_create_outbox_from_work_v1' then 'work.complete'
-    when 'openclaw_issue_media_ticket_v1' then 'media.issue'
+    when 'openclaw_issue_media_ticket_v1' then case when v_kind = 'CHANNEL' then 'media.issue' else 'maintenance.complete' end
+    when 'openclaw_finalize_media_upload_v1' then 'media.issue'
     when 'openclaw_acquire_cell_lease_v1' then 'lease.acquire'
     when 'openclaw_begin_cell_rebind_v1' then 'cell.rebind'
     when 'openclaw_complete_cell_rebind_v1' then 'cell.rebind'
     when 'openclaw_ack_generation_revocation_v1' then 'generation.ack'
     when 'openclaw_complete_retention_quarantine_v1' then 'maintenance.complete'
-    when 'openclaw_authorize_retention_delete_v1' then 'retention.authorize'
+    when 'openclaw_issue_retention_delete_ticket_v1' then 'maintenance.complete'
+    when 'openclaw_authorize_retention_delete_v1' then 'maintenance.complete'
     when 'openclaw_finalize_retention_delete_v1' then 'maintenance.complete'
     when 'openclaw_ack_audit_anchor_v1' then 'maintenance.complete'
     when 'openclaw_record_watchdog_health_v1' then 'watchdog.health'
@@ -1517,6 +1581,9 @@ begin
   end if;
 
   if v_kind = 'CHANNEL' then
+    if not (p_expected_operation = any(v_channel_operations)) then
+      raise exception 'channel service operation matrix mismatch' using errcode = '42501';
+    end if;
     if v_account is null or v_cell is null or v_maintenance is not null
        or not exists (
          select 1
@@ -1544,13 +1611,40 @@ begin
            and lease.expires_at > statement_timestamp()
            and cell.is_current and cell.state = 'READY'
            and account.session_generation = v_session_generation
+           and (
+             (v_auth_mode='NORMAL' and v_local_session_generation=v_session_generation)
+             or (
+               v_auth_mode='COMMAND_TRANSITION'
+               and p_expected_operation='openclaw_runtime_heartbeat_v1'
+               and account.connection_state='DISCONNECTING'
+               and v_session_generation=v_local_session_generation+1
+               and exists (
+                 select 1
+                 from public.openclaw_runtime_commands command
+                 where command.organization_id=account.organization_id
+                   and command.account_id=account.id
+                   and command.cell_id=cell.id
+                   and command.command_kind='DISCONNECT'
+                   and command.source_session_generation=v_local_session_generation
+                   and command.target_session_generation=v_session_generation
+                   and command.source_connection_generation+1=command.target_connection_generation
+                   and command.target_connection_generation=account.connection_generation
+                   and command.expected_fencing_token=v_fencing_token
+                   and command.state in ('PENDING','LEASED','STARTED')
+               )
+             )
+           )
        )
     then
       raise exception 'credential generation mismatch, lease generation mismatch, fencing token mismatch, or channel principal is stale'
         using errcode = '42501';
     end if;
   elsif v_kind = 'MAINTENANCE' then
+    if not (p_expected_operation = any(v_maintenance_operations)) then
+      raise exception 'maintenance service operation matrix mismatch' using errcode = '42501';
+    end if;
     if v_account is not null or v_cell is not null or v_maintenance is null
+       or v_session_generation<>0 or v_local_session_generation<>0 or v_auth_mode<>'NORMAL'
        or not exists (
          select 1
          from public.openclaw_maintenance_credentials credential
@@ -1585,7 +1679,9 @@ begin
     'maintenancePrincipalId', v_maintenance,
     'credentialGeneration', v_credential_generation,
     'leaseGeneration', v_lease_generation, 'fencingToken', v_fencing_token,
-    'sessionGeneration', v_session_generation, 'operation', p_expected_operation,
+    'sessionGeneration', v_session_generation,
+    'localSessionGeneration',v_local_session_generation,'authMode',v_auth_mode,
+    'operation', p_expected_operation,
     'scope', v_scope, 'requestHash', v_request_hash,
     'iat', v_iat, 'exp', v_exp, 'nonce', p_envelope ->> 'nonce'
   );
@@ -2429,32 +2525,74 @@ language plpgsql
 security definer
 set search_path = ''
 as $function$
-declare v_context jsonb; v_org uuid; v_result jsonb;
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_now timestamptz := statement_timestamp();
+  v_challenge public.openclaw_qr_challenges%rowtype;
+  v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(
-    p_request, array['version','organizationId','challengeId'],
-    array['version','organizationId','challengeId']
+    p_request,
+    array['version','organizationId','challengeId','browserNonceHash','authSessionHash'],
+    array['version','organizationId','challengeId','browserNonceHash','authSessionHash']
   );
   v_context := app_private.openclaw_browser_context_v1(
     p_request, 'openclaw_zalo.manage_connections', 'theo dõi QR OpenClaw Zalo'
   );
   v_org := (v_context ->> 'organizationId')::uuid;
-  select jsonb_build_object(
-    'challengeId', challenge.id, 'accountId', challenge.account_id,
-    'cellId', challenge.cell_id, 'challengeVersion', challenge.challenge_version,
-    'challengeStatus', case
-      when challenge.active_slot and challenge.expires_at <= statement_timestamp() then 'EXPIRED'
-      when challenge.material_version = 1 then 'READY'
-      else challenge.challenge_status
-    end,
-    'materialVersion', challenge.material_version,
-    'issuedAt', challenge.issued_at, 'expiresAt', challenge.expires_at,
-    'consumedAt', challenge.consumed_at, 'revokedAt', challenge.revoked_at
-  ) into v_result
+  if (p_request ->> 'browserNonceHash') !~ '^[0-9a-f]{64}$'
+     or (p_request ->> 'authSessionHash') !~ '^[0-9a-f]{64}$'
+  then
+    raise exception 'QR poll binding invalid' using errcode = '22023';
+  end if;
+  select challenge.* into v_challenge
   from public.openclaw_qr_challenges challenge
+  join public.openclaw_accounts account
+    on account.organization_id=challenge.organization_id
+   and account.id=challenge.account_id
+   and account.connection_generation=challenge.challenge_version
+   and account.connection_state in ('QR_PENDING','CONNECTING')
+  join public.openclaw_runtime_commands command
+    on command.organization_id=challenge.organization_id
+   and command.account_id=challenge.account_id
+   and command.cell_id=challenge.cell_id
+   and command.id=challenge.runtime_command_id
+   and command.expected_session_generation=account.session_generation
+   and command.expected_connection_generation+1=challenge.challenge_version
   where challenge.organization_id = v_org
     and challenge.id = (p_request ->> 'challengeId')::uuid
-    and challenge.actor_id = (select auth.uid());
+    and challenge.actor_id = (select auth.uid())
+    and challenge.browser_nonce_hash = p_request ->> 'browserNonceHash'
+    and challenge.auth_session_hash = p_request ->> 'authSessionHash'
+  for update of challenge;
+  if not found then
+    return jsonb_build_object('version', 1, 'challenge', null);
+  end if;
+  if v_challenge.poll_window_started_at is null
+     or v_challenge.poll_window_started_at <= v_now - interval '10 seconds'
+  then
+    update public.openclaw_qr_challenges set
+      poll_window_started_at=v_now,poll_count=1
+    where organization_id=v_org and id=v_challenge.id;
+  elsif v_challenge.poll_count >= 10 then
+    raise exception 'QR poll rate limit exceeded' using errcode='P0003';
+  else
+    update public.openclaw_qr_challenges set poll_count=poll_count+1
+    where organization_id=v_org and id=v_challenge.id;
+  end if;
+  v_result:=jsonb_build_object(
+    'challengeId',v_challenge.id,'accountId',v_challenge.account_id,
+    'cellId',v_challenge.cell_id,'challengeVersion',v_challenge.challenge_version,
+    'challengeStatus',case
+      when v_challenge.active_slot and v_challenge.expires_at<=v_now then 'EXPIRED'
+      when v_challenge.material_version=1 then 'READY'
+      else v_challenge.challenge_status
+    end,
+    'materialVersion',v_challenge.material_version,
+    'issuedAt',v_challenge.issued_at,'expiresAt',v_challenge.expires_at,
+    'consumedAt',v_challenge.consumed_at,'revokedAt',v_challenge.revoked_at
+  );
   return jsonb_build_object('version', 1, 'challenge', v_result);
 end;
 $function$;
@@ -2525,6 +2663,7 @@ declare
   v_cell public.openclaw_runtime_cells%rowtype; v_lease public.openclaw_runtime_leases%rowtype;
   v_command_id uuid := gen_random_uuid(); v_challenge_id uuid := gen_random_uuid();
   v_payload jsonb; v_payload_bytes bytea; v_result jsonb;
+  v_issued_at timestamptz := statement_timestamp();
 begin
   perform app_private.openclaw_assert_strict_object_v1(
     p_request,
@@ -2542,7 +2681,41 @@ begin
   v_request_hash := v_operation ->> 'requestHash';
   select account.* into strict v_account from public.openclaw_accounts account
   where account.organization_id = v_org and account.id = (p_request ->> 'accountId')::uuid
-    and account.is_active for update;
+    and account.is_active
+    and account.connection_state in ('DISCONNECTED','QR_PENDING')
+    and not exists (
+      select 1 from public.openclaw_generation_revocations revocation
+      where revocation.organization_id=account.organization_id
+        and revocation.account_id=account.id
+        and revocation.principal_kind='CHANNEL'
+        and revocation.revocation_kind in ('SESSION','MEDIA')
+        and revocation.acknowledged_at is null
+    )
+    and not exists (
+      select 1
+      from public.openclaw_runtime_commands command
+      join public.openclaw_generation_revocations revocation
+        on revocation.organization_id=command.organization_id
+       and revocation.command_id=command.id
+       and revocation.account_id=command.account_id
+       and revocation.cell_id=command.cell_id
+       and revocation.principal_kind='CHANNEL'
+       and revocation.revocation_kind='SESSION'
+      where command.organization_id=account.organization_id
+        and command.account_id=account.id
+        and command.command_kind='DISCONNECT'
+        and (
+          revocation.acknowledged_at is null
+          or not (
+            (command.state='ACKNOWLEDGED'
+              and command.effect_disposition='PROVIDER_CONFIRMED')
+            or (command.state in ('FAILED','REVOKED')
+              and command.effect_disposition='SEALED_UNCONFIRMED'
+              and command.sealed_at is not null)
+          )
+        )
+    )
+  for update;
   select cell.* into strict v_cell from public.openclaw_runtime_cells cell
   where cell.organization_id = v_org and cell.account_id = v_account.id
     and cell.id = (p_request ->> 'cellId')::uuid and cell.is_current and cell.state = 'READY'
@@ -2551,24 +2724,49 @@ begin
   where lease.organization_id = v_org and lease.account_id = v_account.id
     and lease.cell_id = v_cell.id and lease.status = 'ACTIVE'
     and lease.expires_at > statement_timestamp() for update;
+  if v_account.disclosure_acknowledged_version is distinct from v_account.disclosure_version
+     or v_account.disclosure_acknowledged_at is null
+  then
+    raise exception 'current disclosure acknowledgement required' using errcode = '42501';
+  end if;
   if (p_request ->> 'browserNonceHash') !~ '^[0-9a-f]{64}$'
      or (p_request ->> 'authSessionHash') !~ '^[0-9a-f]{64}$'
      or (p_request ->> 'disclosureVersion')::integer <> v_account.disclosure_version
   then raise exception 'QR request binding mismatch' using errcode = '40001'; end if;
   update public.openclaw_qr_challenges
-  set active_slot = false, challenge_status = 'REVOKED', revoked_at = statement_timestamp()
+  set active_slot = false, challenge_status = 'REVOKED', revoked_at = statement_timestamp(),
+      ciphertext=null,cipher_iv=null,auth_tag=null,
+      material_version=0,material_published_at=null
   where organization_id = v_org and account_id = v_account.id and active_slot;
+  update public.openclaw_runtime_commands command set
+    state='REVOKED',claim_token_hash=null,lease_expires_at=null,
+    acknowledged_at=null,updated_at=statement_timestamp()
+  where command.organization_id=v_org and command.account_id=v_account.id
+    and command.command_kind='QR_LOGIN'
+    and command.state in ('PENDING','LEASED','ACKNOWLEDGED')
+    and exists (
+      select 1 from public.openclaw_qr_challenges challenge
+      where challenge.organization_id=command.organization_id
+        and challenge.account_id=command.account_id
+        and challenge.runtime_command_id=command.id
+        and challenge.challenge_status='REVOKED'
+        and challenge.revoked_at=statement_timestamp()
+    );
   v_payload := jsonb_build_object(
     'version', 1, 'challengeId', v_challenge_id, 'browserNonceHash', p_request ->> 'browserNonceHash'
   );
   v_payload_bytes := app_private.openclaw_jcs_bytes_v1(v_payload);
   insert into public.openclaw_runtime_commands (
     id, organization_id, account_id, cell_id, command_key, command_kind,
+    source_session_generation,target_session_generation,
+    source_connection_generation,target_connection_generation,
     expected_session_generation, expected_connection_generation, expected_fencing_token,
     payload, payload_bytes, payload_hash, created_by
   ) values (
     v_command_id, v_org, v_account.id, v_cell.id, 'qr:' || v_challenge_id::text,
-    'QR_LOGIN', v_account.session_generation, v_account.connection_generation,
+    'QR_LOGIN',v_account.session_generation,v_account.session_generation,
+    v_account.connection_generation,v_account.connection_generation+1,
+    v_account.session_generation, v_account.connection_generation,
     v_lease.fencing_token, v_payload, v_payload_bytes,
     encode(extensions.digest(v_payload_bytes, 'sha256'), 'hex'), v_actor
   );
@@ -2582,7 +2780,7 @@ begin
     v_account.connection_generation + 1, 'PENDING', true,
     null, null, null, 0, null, v_actor,
     p_request ->> 'authSessionHash', p_request ->> 'browserNonceHash',
-    statement_timestamp(), statement_timestamp() + interval '120 seconds'
+    v_issued_at, v_issued_at + interval '120 seconds'
   );
   update public.openclaw_accounts
   set connection_state = 'QR_PENDING', effective_mode = 'DRAFT_ONLY',
@@ -2592,7 +2790,8 @@ begin
     'version', 1, 'organizationId', v_org, 'accountId', v_account.id,
     'cellId', v_cell.id, 'challengeId', v_challenge_id,
     'runtimeCommandId', v_command_id,
-    'expiresAt', statement_timestamp() + interval '120 seconds', 'status', 'PENDING'
+    'issuedAt',v_issued_at,'expiresAt',v_issued_at + interval '120 seconds',
+    'status', 'PENDING'
   );
   return app_private.openclaw_finish_browser_write_v1(
     v_org, v_actor, 'openclaw_begin_qr_login_v1', p_client_operation_id,
@@ -2668,7 +2867,8 @@ declare
   v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_account public.openclaw_accounts%rowtype;
   v_cell public.openclaw_runtime_cells%rowtype; v_lease public.openclaw_runtime_leases%rowtype;
-  v_command_id uuid := gen_random_uuid(); v_payload jsonb; v_payload_bytes bytea; v_result jsonb;
+  v_command_id uuid := gen_random_uuid(); v_revocation_id uuid := gen_random_uuid();
+  v_new_session_generation bigint; v_payload jsonb; v_payload_bytes bytea; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(
     p_request, array['version','organizationId','accountId','expectedConnectionGeneration','reasonCode'],
@@ -2695,26 +2895,82 @@ begin
   select lease.* into strict v_lease from public.openclaw_runtime_leases lease
   where lease.organization_id = v_org and lease.account_id = v_account.id
     and lease.cell_id = v_cell.id and lease.status = 'ACTIVE' for update;
-  v_payload := jsonb_build_object('version', 1, 'reasonCode', p_request ->> 'reasonCode');
+  if exists (
+    select 1 from public.openclaw_runtime_commands command
+    where command.organization_id=v_org and command.account_id=v_account.id
+      and command.cell_id=v_cell.id and command.command_kind='DISCONNECT'
+      and command.state='STARTED'
+  ) then
+    raise exception 'started disconnect command cannot be superseded' using errcode='40001';
+  end if;
+  update public.openclaw_runtime_commands command set
+    state='REVOKED',claim_token_hash=null,lease_expires_at=null,
+    effect_disposition='NONE',sealed_at=null,seal_reason=null,
+    updated_at=statement_timestamp()
+  where command.organization_id=v_org and command.account_id=v_account.id
+    and command.cell_id=v_cell.id and command.command_kind='DISCONNECT'
+    and command.state in ('PENDING','LEASED');
+  v_new_session_generation:=v_account.session_generation+1;
+  v_payload := jsonb_build_object(
+    'version',1,'reasonCode',p_request->>'reasonCode',
+    'revocationId',v_revocation_id,
+    'revokedSessionGeneration',v_account.session_generation,
+    'minimumSessionGeneration',v_new_session_generation
+  );
   v_payload_bytes := app_private.openclaw_jcs_bytes_v1(v_payload);
   insert into public.openclaw_runtime_commands (
     id, organization_id, account_id, cell_id, command_key, command_kind,
+    source_session_generation,target_session_generation,
+    source_connection_generation,target_connection_generation,
     expected_session_generation, expected_connection_generation, expected_fencing_token,
     payload, payload_bytes, payload_hash, created_by
   ) values (
     v_command_id, v_org, v_account.id, v_cell.id, 'disconnect:' || p_client_operation_id::text,
-    'DISCONNECT', v_account.session_generation, v_account.connection_generation,
+    'DISCONNECT',v_account.session_generation,v_new_session_generation,
+    v_account.connection_generation,v_account.connection_generation+1,
+    v_new_session_generation, v_account.connection_generation,
     v_lease.fencing_token, v_payload, v_payload_bytes,
     encode(extensions.digest(v_payload_bytes, 'sha256'), 'hex'), v_actor
   );
+  insert into public.openclaw_generation_revocations(
+    id,organization_id,principal_kind,account_id,cell_id,revocation_kind,
+    revoked_generation,minimum_valid_generation,command_id,reason_code
+  ) values (
+    v_revocation_id,v_org,'CHANNEL',v_account.id,v_cell.id,'SESSION',
+    v_account.session_generation,v_new_session_generation,v_command_id,'ACCOUNT_DISCONNECT'
+  );
+  update public.openclaw_qr_challenges challenge set
+    active_slot=false,challenge_status='REVOKED',revoked_at=statement_timestamp(),
+    ciphertext=null,cipher_iv=null,auth_tag=null,
+    material_version=0,material_published_at=null
+  where challenge.organization_id=v_org and challenge.account_id=v_account.id
+    and challenge.active_slot;
+  update public.openclaw_runtime_commands command set
+    state='REVOKED',claim_token_hash=null,lease_expires_at=null,
+    acknowledged_at=null,updated_at=statement_timestamp()
+  where command.organization_id=v_org and command.account_id=v_account.id
+    and command.command_kind='QR_LOGIN'
+    and command.state in ('PENDING','LEASED','ACKNOWLEDGED')
+    and exists (
+      select 1 from public.openclaw_qr_challenges challenge
+      where challenge.organization_id=command.organization_id
+        and challenge.account_id=command.account_id
+        and challenge.runtime_command_id=command.id
+        and challenge.challenge_status='REVOKED'
+        and challenge.revoked_at=statement_timestamp()
+    );
   update public.openclaw_accounts set connection_state = 'DISCONNECTING',
     effective_mode = 'DRAFT_ONLY', paused_at = statement_timestamp(),
+    session_generation=v_new_session_generation,
     connection_generation = connection_generation + 1, updated_at = statement_timestamp()
   where organization_id = v_org and id = v_account.id;
   v_result := jsonb_build_object(
     'version', 1, 'organizationId', v_org, 'accountId', v_account.id,
-    'runtimeCommandId', v_command_id, 'connectionState', 'DISCONNECTING',
-    'effectiveMode', 'DRAFT_ONLY'
+    'cellId',v_cell.id,'runtimeCommandId',v_command_id,
+    'revocationId',v_revocation_id,'revocationKind','SESSION',
+    'revokedGeneration',v_account.session_generation,
+    'minimumValidGeneration',v_new_session_generation,
+    'connectionState', 'DISCONNECTING','effectiveMode', 'DRAFT_ONLY'
   );
   return app_private.openclaw_finish_browser_write_v1(
     v_org, v_actor, 'openclaw_disconnect_account_v1', p_client_operation_id,
@@ -3682,8 +3938,10 @@ declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organiz
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
     array['version','organizationId','scheduleId','expectedScheduleVersion','accountId',
-      'automationVersionId','targetId','campaignId','timezone','localRecurrenceRule','nextRunAt'],
-    array['version','organizationId','accountId','automationVersionId','timezone','localRecurrenceRule']);
+      'automationVersionId','targetId','campaignVersionId','timezone','localRecurrenceRule',
+      'occurrenceGraceSeconds','dstFoldPolicy'],
+    array['version','organizationId','accountId','automationVersionId','targetId',
+      'campaignVersionId','timezone','localRecurrenceRule']);
   if v_actor is null then raise exception 'authentication required' using errcode='42501'; end if;
   perform app_private.lock_org_for_decision_v1(v_org);
   perform app_private.require_perm_v1(v_org,'openclaw_zalo.manage_automation','cập nhật lịch OpenClaw Zalo');
@@ -3781,10 +4039,14 @@ begin
   v_payload:=jsonb_build_object('version',1,'requestedBy',v_actor);
   v_bytes:=app_private.openclaw_jcs_bytes_v1(v_payload);
   insert into public.openclaw_runtime_commands(id,organization_id,account_id,cell_id,
-    command_key,command_kind,expected_session_generation,expected_connection_generation,
+    command_key,command_kind,source_session_generation,target_session_generation,
+    source_connection_generation,target_connection_generation,
+    expected_session_generation,expected_connection_generation,
     expected_fencing_token,payload,payload_bytes,payload_hash,created_by)
   values(v_id,v_org,v_account.id,v_cell.id,'directory:'||p_client_operation_id::text,
-    'DIRECTORY_SYNC',v_account.session_generation,v_account.connection_generation,
+    'DIRECTORY_SYNC',v_account.session_generation,v_account.session_generation,
+    v_account.connection_generation,v_account.connection_generation,
+    v_account.session_generation,v_account.connection_generation,
     v_lease.fencing_token,v_payload,v_bytes,encode(extensions.digest(v_bytes,'sha256'),'hex'),v_actor);
   v_result:=jsonb_build_object('version',1,'runtimeCommandId',v_id,'status','PENDING');
   return app_private.openclaw_finish_browser_write_v1(v_org,v_actor,
@@ -4092,10 +4354,10 @@ begin
     authoritative_evidence_domain,authoritative_evidence_hash,operator_evidence_hash,
     reason_code,resolved_by,client_operation_id,request_hash
   ) values (
-    v_resolution_id,v_org,v_outbox.account_id,v_outbox.id,v_outcome,v_new_outbox_id,
-    p_request->>'expectedEvidenceDomain',v_authority_hash,p_request->>'operatorEvidenceHash',
-    v_reason,v_actor,p_client_operation_id,v_request_hash
-  );
+      v_resolution_id,v_org,v_outbox.account_id,v_outbox.id,v_outcome,v_new_outbox_id,
+      p_request->>'expectedEvidenceDomain',v_authority_hash,p_request->>'operatorEvidenceHash',
+      v_reason,v_actor,p_client_operation_id,v_request_hash
+    );
   v_result:=jsonb_build_object(
     'version',1,'resolutionId',v_resolution_id,'organizationId',v_org,
     'accountId',v_outbox.account_id,'outboxId',v_outbox.id,'resolutionVersion',1,
@@ -4110,16 +4372,355 @@ begin
 end;
 $function$;
 
+create or replace function app_private.openclaw_try_finalize_disconnect_v1(
+  p_organization_id uuid,
+  p_account_id uuid,
+  p_runtime_command_id uuid
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_state text;
+begin
+  update public.openclaw_accounts account set
+    connection_state='DISCONNECTED',effective_mode='DRAFT_ONLY',updated_at=statement_timestamp()
+  from public.openclaw_runtime_commands command
+  join public.openclaw_generation_revocations revocation
+    on revocation.organization_id=command.organization_id
+   and revocation.command_id=command.id
+   and revocation.account_id=command.account_id
+   and revocation.cell_id=command.cell_id
+   and revocation.principal_kind='CHANNEL'
+   and revocation.revocation_kind='SESSION'
+  where account.organization_id=p_organization_id and account.id=p_account_id
+    and command.organization_id=account.organization_id and command.account_id=account.id
+    and command.id=p_runtime_command_id and command.command_kind='DISCONNECT'
+    and command.state='ACKNOWLEDGED'
+    and command.effect_disposition='PROVIDER_CONFIRMED'
+    and command.target_session_generation=account.session_generation
+    and command.target_connection_generation=account.connection_generation
+    and revocation.minimum_valid_generation=command.target_session_generation
+    and revocation.acknowledgement_hash is not null and revocation.acknowledged_at is not null
+    and account.connection_state in ('DISCONNECTING','DISCONNECTED')
+  returning account.connection_state into v_state;
+  if v_state is null then
+    select account.connection_state into strict v_state
+    from public.openclaw_accounts account
+    where account.organization_id=p_organization_id and account.id=p_account_id
+    for update;
+  end if;
+  return v_state;
+end;
+$function$;
+
 create or replace function app_private.openclaw_runtime_heartbeat_v1(
   p_principal jsonb, p_envelope jsonb, p_request jsonb
 )
 returns jsonb
 language plpgsql security definer set search_path = ''
 as $function$
-declare v_org uuid:=(p_principal->>'organizationId')::uuid;
-  v_account uuid:=(p_principal->>'accountId')::uuid;
-  v_cell uuid:=(p_principal->>'cellId')::uuid; v_observed timestamptz:=statement_timestamp();
+declare
+  v_org uuid := (p_principal->>'organizationId')::uuid;
+  v_account uuid := (p_principal->>'accountId')::uuid;
+  v_cell uuid := (p_principal->>'cellId')::uuid;
+  v_current_session bigint := (p_principal->>'sessionGeneration')::bigint;
+  v_local_session bigint := coalesce(
+    nullif(p_principal->>'localSessionGeneration','')::bigint,
+    (p_principal->>'sessionGeneration')::bigint
+  );
+  v_auth_mode text := coalesce(p_principal->>'authMode','NORMAL');
+  v_observed timestamptz := statement_timestamp();
+  v_claim_hash text;
+  v_item_claim_hash text;
+  v_lease_expires timestamptz;
+  v_effect_deadline timestamptz;
+  v_current_connection bigint;
+  v_existing_count integer := 0;
+  v_item jsonb;
+  v_command public.openclaw_runtime_commands%rowtype;
+  v_result_hash text;
+  v_commands jsonb := '[]'::jsonb;
+  v_result_acks jsonb := '[]'::jsonb;
 begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','commandClaimToken','commandLeaseSeconds','commandStarts','commandResults',
+      'severity','healthKind','status','fingerprint','contentFreeMetrics'],
+    array['version','commandClaimToken','commandLeaseSeconds','commandStarts','commandResults']
+  );
+  if p_request->>'version'<>'1'
+     or char_length(p_request->>'commandClaimToken') not between 32 and 512
+     or coalesce(p_request->>'commandLeaseSeconds','') !~ '^[0-9]+$'
+     or (p_request->>'commandLeaseSeconds')::integer not between 5 and 60
+     or jsonb_typeof(p_request->'commandStarts')<>'array'
+     or jsonb_array_length(p_request->'commandStarts')>8
+     or jsonb_typeof(p_request->'commandResults')<>'array'
+     or jsonb_array_length(p_request->'commandResults')>8
+     or v_auth_mode not in ('NORMAL','COMMAND_TRANSITION')
+  then raise exception 'heartbeat command envelope is invalid' using errcode='22023'; end if;
+
+  select account.connection_generation into strict v_current_connection
+  from public.openclaw_accounts account
+  where account.organization_id=v_org and account.id=v_account
+    and account.session_generation=v_current_session
+  for update;
+
+  v_claim_hash:=encode(extensions.digest(
+    convert_to('ihome-openclaw-runtime-command-claim-v1','UTF8')||decode('00','hex')
+      ||convert_to(p_request->>'commandClaimToken','UTF8'),'sha256'),'hex');
+  select least(lease.expires_at,
+    v_observed+make_interval(secs=>(p_request->>'commandLeaseSeconds')::integer))
+  into v_lease_expires
+  from public.openclaw_runtime_leases lease
+  where lease.organization_id=v_org and lease.account_id=v_account and lease.cell_id=v_cell
+    and lease.lease_generation=(p_principal->>'leaseGeneration')::bigint
+    and lease.fencing_token=(p_principal->>'fencingToken')::bigint
+    and lease.status='ACTIVE' and lease.expires_at>v_observed;
+  if v_lease_expires is null then
+    raise exception 'heartbeat runtime lease is stale' using errcode='42501';
+  end if;
+
+  update public.openclaw_runtime_commands command set
+    lease_expires_at=v_lease_expires,updated_at=v_observed
+  where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+    and command.command_kind in ('QR_LOGIN','DISCONNECT')
+    and command.state in ('LEASED','STARTED') and command.claim_token_hash=v_claim_hash
+    and command.claim_generation>0
+    and command.lease_expires_at<=v_observed+interval '30 seconds'
+    and command.source_session_generation=v_local_session
+    and command.target_session_generation=v_current_session
+    and command.target_connection_generation=v_current_connection
+    and command.expected_fencing_token=(p_principal->>'fencingToken')::bigint;
+
+  update public.openclaw_runtime_commands command set
+    state='EXPIRED',claim_token_hash=null,lease_expires_at=null,
+    effect_disposition='NONE',updated_at=v_observed
+  where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+    and command.command_kind='QR_LOGIN' and command.state in ('PENDING','LEASED')
+    and exists (
+      select 1 from public.openclaw_qr_challenges challenge
+      where challenge.organization_id=command.organization_id
+        and challenge.runtime_command_id=command.id and challenge.expires_at<=v_observed
+    );
+  update public.openclaw_runtime_commands command set
+    state='PENDING',claim_token_hash=null,lease_expires_at=null,updated_at=v_observed
+  where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+    and command.command_kind in ('QR_LOGIN','DISCONNECT') and command.state='LEASED'
+    and command.lease_expires_at<=v_observed and command.claim_token_hash<>v_claim_hash;
+
+  for v_item in select item from jsonb_array_elements(p_request->'commandStarts') item loop
+    perform app_private.openclaw_assert_strict_object_v1(
+      v_item,
+      array['version','runtimeCommandId','commandKind','claimGeneration','claimToken','payloadHash'],
+      array['version','runtimeCommandId','commandKind','claimGeneration','claimToken','payloadHash']
+    );
+    if v_item->>'version'<>'1' or v_item->>'commandKind' not in ('QR_LOGIN','DISCONNECT')
+       or char_length(v_item->>'claimToken') not between 32 and 512
+       or coalesce(v_item->>'payloadHash','') !~ '^[0-9a-f]{64}$'
+    then raise exception 'runtime command start is invalid' using errcode='22023'; end if;
+    v_item_claim_hash:=encode(extensions.digest(
+      convert_to('ihome-openclaw-runtime-command-claim-v1','UTF8')||decode('00','hex')
+        ||convert_to(v_item->>'claimToken','UTF8'),'sha256'),'hex');
+    select command.* into v_command
+    from public.openclaw_runtime_commands command
+    where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+      and command.id=(v_item->>'runtimeCommandId')::uuid
+      and command.command_kind=v_item->>'commandKind'
+    for update;
+    if not found then raise exception 'runtime command start binding not found' using errcode='40001'; end if;
+    if v_command.state='STARTED' then
+      if v_command.claim_generation<>(v_item->>'claimGeneration')::bigint
+         or v_command.claim_token_hash<>v_item_claim_hash
+         or v_command.payload_hash<>v_item->>'payloadHash'
+      then raise exception 'runtime command start replay mismatch' using errcode='40001'; end if;
+      continue;
+    end if;
+    if v_command.state<>'LEASED'
+       or v_command.claim_generation<>(v_item->>'claimGeneration')::bigint
+       or v_command.claim_token_hash<>v_item_claim_hash
+       or v_command.payload_hash<>v_item->>'payloadHash'
+       or v_command.lease_expires_at<=v_observed+interval '15 seconds'
+       or v_command.source_session_generation<>v_local_session
+       or v_command.target_session_generation<>v_current_session
+       or v_command.target_connection_generation<>v_current_connection
+       or v_command.expected_fencing_token<>(p_principal->>'fencingToken')::bigint
+       or (v_auth_mode='COMMAND_TRANSITION' and v_command.command_kind<>'DISCONNECT')
+    then raise exception 'runtime command start ownership CAS failed' using errcode='40001'; end if;
+    v_effect_deadline:=least(
+      v_command.lease_expires_at,
+      coalesce(nullif(p_envelope->>'exp','')::timestamptz,v_command.lease_expires_at)
+    );
+    if v_effect_deadline<=v_observed+interval '15 seconds' then
+      raise exception 'runtime command effect margin is insufficient' using errcode='40001';
+    end if;
+    update public.openclaw_runtime_commands command set
+      state='STARTED',started_at=v_observed,effect_deadline_at=v_effect_deadline,updated_at=v_observed
+    where command.organization_id=v_org and command.id=v_command.id
+      and command.state='LEASED' and command.claim_generation=v_command.claim_generation
+      and command.claim_token_hash=v_item_claim_hash;
+    if not found then raise exception 'runtime command start CAS failed' using errcode='40001'; end if;
+  end loop;
+
+  for v_item in select item from jsonb_array_elements(p_request->'commandResults') item loop
+    perform app_private.openclaw_assert_strict_object_v1(
+      v_item,
+      array['version','runtimeCommandId','commandKind','claimGeneration','claimToken','outcome','result'],
+      array['version','runtimeCommandId','commandKind','claimGeneration','claimToken','outcome','result']
+    );
+    if v_item->>'version'<>'1' or v_item->>'commandKind' not in ('QR_LOGIN','DISCONNECT')
+       or v_item->>'outcome' not in ('PROVIDER_LOGGED_OUT','FAILED')
+       or char_length(v_item->>'claimToken') not between 32 and 512
+       or (v_item->>'outcome'='PROVIDER_LOGGED_OUT' and v_item->>'commandKind'<>'DISCONNECT')
+    then raise exception 'heartbeat command result is invalid' using errcode='22023'; end if;
+    if v_item->>'outcome'='PROVIDER_LOGGED_OUT' then
+      perform app_private.openclaw_assert_strict_object_v1(
+        v_item->'result',
+        array['version','revocationId','revokedSessionGeneration','minimumSessionGeneration',
+          'channel','accountId','credentialsCleared','loggedOut','status'],
+        array['version','revocationId','revokedSessionGeneration','minimumSessionGeneration',
+          'channel','accountId','credentialsCleared','loggedOut','status']
+      );
+      if v_item->'result'->>'version'<>'1'
+         or v_item->'result'->>'channel'<>'zalouser'
+         or (v_item->'result'->>'accountId')::uuid<>v_account
+         or (v_item->'result'->>'credentialsCleared')::boolean
+         or not (v_item->'result'->>'loggedOut')::boolean
+         or v_item->'result'->>'status'<>'PROVIDER_LOGGED_OUT'
+      then raise exception 'disconnect provider result is invalid' using errcode='22023'; end if;
+    else
+      perform app_private.openclaw_assert_strict_object_v1(
+        v_item->'result',array['version','reasonCode','failureFingerprint','status'],
+        array['version','reasonCode','failureFingerprint','status']
+      );
+      if v_item->'result'->>'version'<>'1'
+         or v_item->'result'->>'status'<>'FAILED_BEFORE_START'
+         or coalesce(v_item->'result'->>'reasonCode','') !~ '^[A-Z][A-Z0-9_]{1,63}$'
+         or coalesce(v_item->'result'->>'failureFingerprint','') !~ '^[0-9a-f]{64}$'
+      then raise exception 'failed command result is invalid' using errcode='22023'; end if;
+    end if;
+    v_item_claim_hash:=encode(extensions.digest(
+      convert_to('ihome-openclaw-runtime-command-claim-v1','UTF8')||decode('00','hex')
+        ||convert_to(v_item->>'claimToken','UTF8'),'sha256'),'hex');
+    v_result_hash:=encode(extensions.digest(
+      app_private.openclaw_jcs_bytes_v1(v_item->'result'),'sha256'),'hex');
+    select command.* into v_command
+    from public.openclaw_runtime_commands command
+    where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+      and command.id=(v_item->>'runtimeCommandId')::uuid
+      and command.command_kind=v_item->>'commandKind'
+    for update;
+    if not found then raise exception 'runtime command result binding not found' using errcode='40001'; end if;
+    if v_command.state in ('ACKNOWLEDGED','FAILED') then
+      if v_command.completion_claim_generation<>(v_item->>'claimGeneration')::bigint
+         or v_command.completion_claim_token_hash<>v_item_claim_hash
+         or v_command.result_hash<>v_result_hash
+         or v_command.result is distinct from v_item->'result'
+      then raise exception 'runtime command result replay mismatch' using errcode='40001'; end if;
+    else
+      if v_command.claim_generation<>(v_item->>'claimGeneration')::bigint
+         or v_command.claim_token_hash<>v_item_claim_hash
+         or v_command.source_session_generation<>v_local_session
+         or v_command.target_session_generation<>v_current_session
+         or v_command.target_connection_generation<>v_current_connection
+         or v_command.expected_fencing_token<>(p_principal->>'fencingToken')::bigint
+      then raise exception 'runtime command result ownership CAS failed' using errcode='40001'; end if;
+      if v_item->>'outcome'='PROVIDER_LOGGED_OUT' then
+        if v_command.state<>'STARTED'
+           or v_command.payload->>'revocationId' is distinct from v_item->'result'->>'revocationId'
+           or v_command.payload->'revokedSessionGeneration' is distinct from
+             v_item->'result'->'revokedSessionGeneration'
+           or v_command.payload->'minimumSessionGeneration' is distinct from
+             v_item->'result'->'minimumSessionGeneration'
+        then raise exception 'disconnect provider result payload mismatch' using errcode='40001'; end if;
+        update public.openclaw_runtime_commands command set
+          state='ACKNOWLEDGED',claim_token_hash=null,lease_expires_at=null,
+          result=v_item->'result',result_hash=v_result_hash,
+          completion_claim_token_hash=v_item_claim_hash,
+          completion_claim_generation=(v_item->>'claimGeneration')::bigint,
+          effect_disposition='PROVIDER_CONFIRMED',acknowledged_at=v_observed,updated_at=v_observed
+        where command.organization_id=v_org and command.id=v_command.id
+          and command.state='STARTED' and command.claim_generation=v_command.claim_generation
+          and command.claim_token_hash=v_item_claim_hash;
+        if not found then raise exception 'disconnect provider result CAS failed' using errcode='40001'; end if;
+        perform app_private.openclaw_try_finalize_disconnect_v1(v_org,v_account,v_command.id);
+      else
+        if v_command.state<>'LEASED' or v_command.started_at is not null then
+          raise exception 'started command cannot be failed without reconciliation' using errcode='40001';
+        end if;
+        update public.openclaw_runtime_commands command set
+          state='FAILED',claim_token_hash=null,lease_expires_at=null,
+          result=v_item->'result',result_hash=v_result_hash,
+          completion_claim_token_hash=v_item_claim_hash,
+          completion_claim_generation=(v_item->>'claimGeneration')::bigint,
+          effect_disposition='NONE',updated_at=v_observed
+        where command.organization_id=v_org and command.id=v_command.id
+          and command.state='LEASED' and command.claim_generation=v_command.claim_generation
+          and command.claim_token_hash=v_item_claim_hash;
+        if not found then raise exception 'runtime command failure CAS failed' using errcode='40001'; end if;
+      end if;
+    end if;
+    v_result_acks:=v_result_acks||jsonb_build_array(jsonb_build_object(
+      'version',1,'runtimeCommandId',v_command.id,'commandKind',v_command.command_kind,
+      'claimGeneration',(v_item->>'claimGeneration')::bigint,'outcome',v_item->>'outcome',
+      'resultHash',v_result_hash,
+      'adoptSessionGeneration',case when v_item->>'outcome'='PROVIDER_LOGGED_OUT'
+        then v_command.target_session_generation else null end,
+      'status','ACCEPTED'
+    ));
+  end loop;
+
+  select count(*)::integer into v_existing_count
+  from public.openclaw_runtime_commands command
+  where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+    and command.command_kind in ('QR_LOGIN','DISCONNECT')
+    and command.state in ('LEASED','STARTED') and command.claim_token_hash=v_claim_hash
+    and command.source_session_generation=v_local_session
+    and command.target_session_generation=v_current_session
+    and command.target_connection_generation=v_current_connection
+    and command.expected_fencing_token=(p_principal->>'fencingToken')::bigint
+    and (v_auth_mode='NORMAL' or command.command_kind='DISCONNECT');
+  with candidates as (
+    select command.id from public.openclaw_runtime_commands command
+    where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+      and command.command_kind in ('QR_LOGIN','DISCONNECT') and command.state='PENDING'
+      and command.source_session_generation=v_local_session
+      and command.target_session_generation=v_current_session
+      and command.target_connection_generation=v_current_connection
+      and command.expected_fencing_token=(p_principal->>'fencingToken')::bigint
+      and (v_auth_mode='NORMAL' or command.command_kind='DISCONNECT')
+    order by command.created_at,command.id for update skip locked
+    limit greatest(0,8-v_existing_count)
+  )
+  update public.openclaw_runtime_commands command set
+    state='LEASED',claim_token_hash=v_claim_hash,
+    claim_generation=command.claim_generation+1,lease_expires_at=v_lease_expires,
+    updated_at=v_observed
+  from candidates where command.organization_id=v_org and command.id=candidates.id;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'version',1,'runtimeCommandId',command.id,'commandKind',command.command_kind,
+    'commandVersion',command.command_version,'claimGeneration',command.claim_generation,
+    'claimToken',p_request->>'commandClaimToken','leaseExpiresAt',command.lease_expires_at,
+    'sourceSessionGeneration',command.source_session_generation,
+    'targetSessionGeneration',command.target_session_generation,
+    'sourceConnectionGeneration',command.source_connection_generation,
+    'targetConnectionGeneration',command.target_connection_generation,
+    'expectedFencingToken',command.expected_fencing_token,
+    'executionState',command.state,'effectDeadlineAt',command.effect_deadline_at,
+    'payload',command.payload,'payloadHash',command.payload_hash
+  ) order by command.created_at,command.id),'[]'::jsonb) into v_commands
+  from public.openclaw_runtime_commands command
+  where command.organization_id=v_org and command.account_id=v_account and command.cell_id=v_cell
+    and command.command_kind in ('QR_LOGIN','DISCONNECT')
+    and command.state in ('LEASED','STARTED') and command.claim_token_hash=v_claim_hash
+    and command.source_session_generation=v_local_session
+    and command.target_session_generation=v_current_session
+    and command.target_connection_generation=v_current_connection
+    and command.expected_fencing_token=(p_principal->>'fencingToken')::bigint
+    and (v_auth_mode='NORMAL' or command.command_kind='DISCONNECT');
   update public.openclaw_runtime_cells set last_heartbeat_at=v_observed,state='READY'
   where organization_id=v_org and account_id=v_account and id=v_cell and is_current;
   if not found then raise exception 'heartbeat cell is not current' using errcode='40001'; end if;
@@ -4130,7 +4731,10 @@ begin
     coalesce(p_request->>'fingerprint','runtime-heartbeat'),
     coalesce(p_request->'contentFreeMetrics','{}'::jsonb),v_observed);
   return jsonb_build_object('version',1,'organizationId',v_org,'accountId',v_account,
-    'cellId',v_cell,'observedAt',v_observed,'accepted',true);
+    'cellId',v_cell,'observedAt',v_observed,'accepted',true,'authMode',v_auth_mode,
+    'currentSessionGeneration',v_current_session,
+    'currentConnectionGeneration',v_current_connection,
+    'commandResultAcks',v_result_acks,'commands',v_commands);
 end;
 $function$;
 
@@ -4151,6 +4755,7 @@ declare
   v_requested_operation text;
   v_expected_requested_operation text;
   v_runtime_timestamp bigint;
+  v_local_session_generation bigint;
   v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(
@@ -4166,9 +4771,9 @@ begin
   perform app_private.openclaw_assert_strict_object_v1(
     p_request,
     array['version','credentialProofSha256','requestedOperation','runtimeMethod',
-      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256'],
+      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256','localSessionGeneration'],
     array['version','credentialProofSha256','requestedOperation','runtimeMethod',
-      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256']
+      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256','localSessionGeneration']
   );
 
   if p_principal -> 'version' is distinct from '1'::jsonb
@@ -4201,6 +4806,8 @@ begin
      or p_request ->> 'runtimeNonce' = p_envelope ->> 'nonce'
      or jsonb_typeof(p_request -> 'runtimeBodySha256') <> 'string'
      or p_request ->> 'runtimeBodySha256' !~ '^[0-9a-f]{64}$'
+     or jsonb_typeof(p_request -> 'localSessionGeneration') <> 'number'
+     or p_request ->> 'localSessionGeneration' !~ '^[1-9][0-9]*$'
   then
     raise exception 'credential exchange request invalid' using errcode = '22023';
   end if;
@@ -4217,9 +4824,11 @@ begin
     when '/v1/outbox/requeue' then 'outbox.requeue'
     when '/v1/outbox/complete' then 'outbox.complete'
     when '/v1/work/claim' then 'work.claim'
+    when '/v1/work/context' then 'work.context'
     when '/v1/work/complete' then 'work.complete'
     when '/v1/work/create-outbox' then 'work.complete'
     when '/v1/media/upload-ticket' then 'media.issue'
+    when '/v1/media/upload-complete' then 'media.issue'
     else null
   end;
   if v_requested_operation is distinct from v_expected_requested_operation then
@@ -4233,6 +4842,7 @@ begin
     v_iat := (p_envelope ->> 'iat')::timestamptz;
     v_exp := (p_envelope ->> 'exp')::timestamptz;
     v_runtime_timestamp := (p_request ->> 'runtimeTimestamp')::bigint;
+    v_local_session_generation := (p_request ->> 'localSessionGeneration')::bigint;
   exception when others then
     raise exception 'credential exchange request invalid' using errcode = '22023';
   end;
@@ -4263,6 +4873,9 @@ begin
     'leaseGeneration',lease.lease_generation::text,
     'fencingToken',lease.fencing_token::text,
     'sessionGeneration',account.session_generation::text,
+    'localSessionGeneration',v_local_session_generation::text,
+    'authMode',case when v_local_session_generation=account.session_generation
+      then 'NORMAL' else 'COMMAND_TRANSITION' end,
     'requestedOperation',v_requested_operation,
     'runtimeMethod',p_request->>'runtimeMethod',
     'runtimePath',p_request->>'runtimePath',
@@ -4295,6 +4908,29 @@ begin
     and cell.is_current and cell.state='READY'
     and lease.expires_at>v_now
     and account.is_active
+    and (
+      v_local_session_generation=account.session_generation
+      or (
+        v_requested_operation='heartbeat'
+        and p_request->>'runtimePath'='/v1/heartbeat'
+        and account.connection_state='DISCONNECTING'
+        and account.session_generation=v_local_session_generation+1
+        and exists (
+          select 1
+          from public.openclaw_runtime_commands command
+          where command.organization_id=account.organization_id
+            and command.account_id=account.id
+            and command.cell_id=cell.id
+            and command.command_kind='DISCONNECT'
+            and command.source_session_generation=v_local_session_generation
+            and command.target_session_generation=account.session_generation
+            and command.source_connection_generation+1=command.target_connection_generation
+            and command.target_connection_generation=account.connection_generation
+            and command.expected_fencing_token=lease.fencing_token
+            and command.state in ('PENDING','LEASED','STARTED')
+        )
+      )
+    )
   for share of credential,cell,lease,account;
   if v_result is null then
     raise exception 'credential exchange denied' using errcode = '42501';
@@ -4466,31 +5102,100 @@ as $function$
 declare v_org uuid:=(p_principal->>'organizationId')::uuid;
   v_account uuid:=(p_principal->>'accountId')::uuid;
   v_cell uuid:=(p_principal->>'cellId')::uuid;
-  v_challenge public.openclaw_qr_challenges%rowtype; v_now timestamptz:=statement_timestamp();
+  v_challenge public.openclaw_qr_challenges%rowtype;
+  v_now timestamptz:=statement_timestamp();
+  v_ciphertext bytea;
+  v_iv bytea;
+  v_tag bytea;
+  v_result jsonb;
+  v_result_hash text;
+  v_claim_hash text;
 begin
-  select challenge.* into strict v_challenge from public.openclaw_qr_challenges challenge
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','challengeId','runtimeCommandId','claimGeneration','claimToken',
+      'ciphertextB64','cipherIvB64','authTagB64'],
+    array['version','challengeId','runtimeCommandId','claimGeneration','claimToken',
+      'ciphertextB64','cipherIvB64','authTagB64']
+  );
+  if p_request->>'version'<>'1' or char_length(p_request->>'claimToken') not between 32 and 512 then
+    raise exception 'QR result version mismatch' using errcode='22023';
+  end if;
+  v_claim_hash:=encode(extensions.digest(
+    convert_to('ihome-openclaw-runtime-command-claim-v1','UTF8')||decode('00','hex')
+      ||convert_to(p_request->>'claimToken','UTF8'),'sha256'),'hex');
+  begin
+    v_ciphertext:=decode(p_request->>'ciphertextB64','base64');
+    v_iv:=decode(p_request->>'cipherIvB64','base64');
+    v_tag:=decode(p_request->>'authTagB64','base64');
+  exception when others then
+    raise exception 'QR result ciphertext encoding is invalid' using errcode='22023';
+  end;
+  if octet_length(v_ciphertext) not between 1 and 1048576
+     or octet_length(v_iv)<>12 or octet_length(v_tag)<>16 then
+    raise exception 'QR result ciphertext bounds are invalid' using errcode='22023';
+  end if;
+  select challenge.* into v_challenge from public.openclaw_qr_challenges challenge
   where challenge.organization_id=v_org and challenge.account_id=v_account
     and challenge.cell_id=v_cell and challenge.id=(p_request->>'challengeId')::uuid
     and challenge.runtime_command_id=(p_request->>'runtimeCommandId')::uuid
     and challenge.active_slot and challenge.challenge_status='PENDING'
-    and challenge.material_version=0 and challenge.expires_at>v_now for update;
+    and challenge.expires_at>v_now for update;
+  if not found then
+    raise exception 'QR challenge is not available for publication' using errcode='40001';
+  end if;
+  v_result:=jsonb_build_object(
+    'version',1,'challengeId',v_challenge.id,'materialVersion',1
+  );
+  v_result_hash:=encode(extensions.digest(
+    app_private.openclaw_jcs_bytes_v1(v_result),'sha256'
+  ),'hex');
+  if v_challenge.material_version=1 then
+    if v_challenge.ciphertext is distinct from v_ciphertext
+       or v_challenge.cipher_iv is distinct from v_iv
+       or v_challenge.auth_tag is distinct from v_tag
+       or v_challenge.material_published_at is null
+       or not exists (
+         select 1 from public.openclaw_runtime_commands command
+         where command.organization_id=v_org and command.id=v_challenge.runtime_command_id
+           and command.account_id=v_account and command.cell_id=v_cell
+           and command.expected_session_generation=(p_principal->>'sessionGeneration')::bigint
+            and command.expected_fencing_token=(p_principal->>'fencingToken')::bigint
+            and command.state='ACKNOWLEDGED' and command.result=v_result
+            and command.result_hash=v_result_hash
+            and command.completion_claim_generation=(p_request->>'claimGeneration')::bigint
+            and command.completion_claim_token_hash=v_claim_hash
+       ) then
+      raise exception 'QR result publication replay mismatch' using errcode='40001';
+    end if;
+    return jsonb_build_object('version',1,'challengeId',v_challenge.id,
+      'materialVersion',1,'publishedAt',v_challenge.material_published_at,'accepted',true);
+  end if;
+  if v_challenge.material_version<>0 then
+    raise exception 'QR material version is invalid' using errcode='40001';
+  end if;
   update public.openclaw_qr_challenges set
-    ciphertext=decode(p_request->>'ciphertextB64','base64'),
-    cipher_iv=decode(p_request->>'cipherIvB64','base64'),
-    auth_tag=decode(p_request->>'authTagB64','base64'),
+    ciphertext=v_ciphertext,
+    cipher_iv=v_iv,
+    auth_tag=v_tag,
     material_version=1,material_published_at=v_now
-  where organization_id=v_org and id=v_challenge.id;
+  where organization_id=v_org and id=v_challenge.id and material_version=0;
+  if not found then
+    raise exception 'QR material publication CAS failed' using errcode='40001';
+  end if;
   update public.openclaw_runtime_commands set state='ACKNOWLEDGED',
     claim_token_hash=null,lease_expires_at=null,
-    result=jsonb_build_object('version',1,'challengeId',v_challenge.id,'materialVersion',1),
-    result_hash=encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(
-      jsonb_build_object('version',1,'challengeId',v_challenge.id,'materialVersion',1)
-    ),'sha256'),'hex'),acknowledged_at=v_now,updated_at=v_now
+    result=v_result,result_hash=v_result_hash,
+    completion_claim_token_hash=v_claim_hash,
+    completion_claim_generation=(p_request->>'claimGeneration')::bigint,
+    effect_disposition='PROVIDER_CONFIRMED',acknowledged_at=v_now,updated_at=v_now
   where organization_id=v_org and id=v_challenge.runtime_command_id
     and account_id=v_account and cell_id=v_cell
-    and expected_session_generation=(p_principal->>'sessionGeneration')::bigint
+    and source_session_generation=(p_principal->>'localSessionGeneration')::bigint
+    and target_session_generation=(p_principal->>'sessionGeneration')::bigint
     and expected_fencing_token=(p_principal->>'fencingToken')::bigint
-    and state in ('PENDING','LEASED');
+    and state='STARTED' and claim_generation=(p_request->>'claimGeneration')::bigint
+    and claim_token_hash=v_claim_hash;
   if not found then raise exception 'QR runtime command acknowledgement CAS failed' using errcode='40001'; end if;
   return jsonb_build_object('version',1,'challengeId',v_challenge.id,
     'materialVersion',1,'publishedAt',v_now,'accepted',true);
@@ -4549,9 +5254,13 @@ begin
   v_payload:=jsonb_build_object('version',1,'oldCellId',v_old,'newCellId',v_new,
     'rebindGeneration',v_generation); v_bytes:=app_private.openclaw_jcs_bytes_v1(v_payload);
   insert into public.openclaw_runtime_commands(id,organization_id,account_id,cell_id,
-    command_key,command_kind,expected_session_generation,expected_connection_generation,
+    command_key,command_kind,source_session_generation,target_session_generation,
+    source_connection_generation,target_connection_generation,
+    expected_session_generation,expected_connection_generation,
     expected_fencing_token,payload,payload_bytes,payload_hash)
   select v_command,v_org,v_account,v_new,'rebind:'||v_generation::text,'CELL_REBIND',
+    account.session_generation,account.session_generation,
+    account.connection_generation,account.connection_generation,
     account.session_generation,account.connection_generation,v_new_lease.fencing_token,
     v_payload,v_bytes,encode(extensions.digest(v_bytes,'sha256'),'hex')
   from public.openclaw_accounts account where account.organization_id=v_org and account.id=v_account;
@@ -4575,7 +5284,14 @@ language plpgsql security definer set search_path = ''
 as $function$
 declare v_org uuid:=(p_principal->>'organizationId')::uuid;
   v_rebind public.openclaw_cell_rebinds%rowtype; v_revocation uuid:=gen_random_uuid();
+  v_command_result jsonb;
 begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,array['version','rebindId'],array['version','rebindId']
+  );
+  if p_request->'version' is distinct from '1'::jsonb
+     or p_request->>'rebindId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+  then raise exception 'cell rebind completion request invalid' using errcode='22023'; end if;
   select rebind.* into strict v_rebind from public.openclaw_cell_rebinds rebind
   where rebind.organization_id=v_org and rebind.id=(p_request->>'rebindId')::uuid
     and rebind.account_id=(p_principal->>'accountId')::uuid
@@ -4583,28 +5299,41 @@ begin
     and rebind.old_fencing_token=(p_principal->>'fencingToken')::bigint
     and rebind.expected_session_generation=(p_principal->>'sessionGeneration')::bigint
     and rebind.status='PREPARED' for update;
-  update public.openclaw_runtime_cells set is_current=false,state='FENCED',retired_at=statement_timestamp()
-  where organization_id=v_org and account_id=v_rebind.account_id and id=v_rebind.old_cell_id;
-  update public.openclaw_runtime_cells set is_current=true,state='READY',retired_at=null
-  where organization_id=v_org and account_id=v_rebind.account_id and id=v_rebind.new_cell_id;
-  update public.openclaw_runtime_credentials set revoked_at=statement_timestamp(),
-    revoked_reason='CELL_REBIND'
-  where organization_id=v_org and account_id=v_rebind.account_id
-    and cell_id=v_rebind.old_cell_id and revoked_at is null;
-  update public.openclaw_runtime_leases set status='REVOKED',released_at=statement_timestamp()
-  where organization_id=v_org and account_id=v_rebind.account_id
-    and cell_id=v_rebind.old_cell_id and status='ACTIVE';
+  perform 1 from public.openclaw_accounts account
+  where account.organization_id=v_org and account.id=v_rebind.account_id
+    and account.session_generation=v_rebind.expected_session_generation
+  for update;
+  if not found then raise exception 'cell rebind account generation CAS failed' using errcode='40001'; end if;
+  v_command_result:=jsonb_build_object(
+    'version',1,'rebindId',v_rebind.id,'status','ACKNOWLEDGED'
+  );
+  update public.openclaw_runtime_commands command set
+    state='ACKNOWLEDGED',claim_token_hash=null,lease_expires_at=null,
+    result=v_command_result,
+    result_hash=encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(v_command_result),'sha256'),'hex'),
+    acknowledged_at=statement_timestamp(),updated_at=statement_timestamp()
+  where command.organization_id=v_org and command.id=v_rebind.runtime_command_id
+    and command.account_id=v_rebind.account_id and command.cell_id=v_rebind.new_cell_id
+    and command.command_kind='CELL_REBIND'
+    and command.expected_session_generation=v_rebind.expected_session_generation
+    and command.expected_fencing_token=v_rebind.new_fencing_token
+    and command.state in ('PENDING','LEASED');
+  if not found then raise exception 'cell rebind command acknowledgement CAS failed' using errcode='40001'; end if;
   insert into public.openclaw_generation_revocations(id,organization_id,principal_kind,
     account_id,cell_id,revocation_kind,revoked_generation,minimum_valid_generation,
-    command_id,reason_code,acknowledgement_hash,acknowledged_at)
+    command_id,reason_code)
   values(v_revocation,v_org,'CHANNEL',v_rebind.account_id,v_rebind.old_cell_id,'CELL',
-    v_rebind.old_lease_generation,v_rebind.new_lease_generation,v_rebind.runtime_command_id,
-    'CELL_REBIND',p_request->>'acknowledgementHash',statement_timestamp());
-  update public.openclaw_cell_rebinds set status='COMPLETED',revocation_id=v_revocation,
-    acknowledgement_hash=p_request->>'acknowledgementHash',completed_at=statement_timestamp()
+    v_rebind.old_fencing_token,v_rebind.new_fencing_token,v_rebind.runtime_command_id,
+    'CELL_REBIND');
+  update public.openclaw_cell_rebinds set status='AWAITING_ACK',revocation_id=v_revocation
   where organization_id=v_org and id=v_rebind.id;
   return jsonb_build_object('version',1,'rebindId',v_rebind.id,'revocationId',v_revocation,
-    'status','COMPLETED','newCellId',v_rebind.new_cell_id);
+    'status','AWAITING_ACK','newCellId',v_rebind.new_cell_id,
+    'revocationBody',jsonb_build_object('version',1,'organizationId',v_org,
+      'principalKind','CHANNEL','accountId',v_rebind.account_id,'cellId',v_rebind.old_cell_id,
+      'maintenancePrincipalId',null,'revocationId',v_revocation,'revocationKind','CELL',
+      'revokedGeneration',v_rebind.old_fencing_token,
+      'minimumValidGeneration',v_rebind.new_fencing_token));
 end;
 $function$;
 
@@ -4614,15 +5343,96 @@ create or replace function app_private.openclaw_ack_generation_revocation_v1(
 returns jsonb
 language plpgsql security definer set search_path = ''
 as $function$
-declare v_org uuid:=(p_principal->>'organizationId')::uuid; v_id uuid;
+declare
+  v_org uuid:=(p_principal->>'organizationId')::uuid;
+  v_hash text:=p_request->>'acknowledgementHash';
+  v_minimum bigint;
+  v_rebind public.openclaw_cell_rebinds%rowtype;
+  v_revocation public.openclaw_generation_revocations%rowtype;
+  v_result jsonb;
 begin
-  update public.openclaw_generation_revocations set
-    acknowledgement_hash=p_request->>'acknowledgementHash',acknowledged_at=statement_timestamp()
-  where organization_id=v_org and id=(p_request->>'revocationId')::uuid
-    and acknowledgement_hash is null
-  returning id into v_id;
-  if v_id is null then raise exception 'generation revocation acknowledgement CAS failed' using errcode='40001'; end if;
-  return jsonb_build_object('version',1,'revocationId',v_id,'acknowledged',true);
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','revocationId','minimumValidGeneration','acknowledgementHash'],
+    array['version','revocationId','minimumValidGeneration','acknowledgementHash']
+  );
+  if p_request->'version' is distinct from '1'::jsonb
+     or p_request->>'revocationId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or jsonb_typeof(p_request->'minimumValidGeneration') <> 'number'
+     or p_request->>'minimumValidGeneration' !~ '^[1-9][0-9]*$'
+     or v_hash !~ '^[0-9a-f]{64}$'
+  then raise exception 'generation revocation acknowledgement request invalid' using errcode='22023'; end if;
+  begin
+    v_minimum:=(p_request->>'minimumValidGeneration')::bigint;
+  exception when others then
+    raise exception 'generation revocation acknowledgement request invalid' using errcode='22023';
+  end;
+  select rebind.* into v_rebind
+  from public.openclaw_cell_rebinds rebind
+  where rebind.organization_id=v_org
+    and rebind.revocation_id=(p_request->>'revocationId')::uuid
+    and rebind.account_id=(p_principal->>'accountId')::uuid
+    and rebind.new_cell_id=(p_principal->>'cellId')::uuid
+    and rebind.expected_session_generation=(p_principal->>'sessionGeneration')::bigint
+    and rebind.new_lease_generation=(p_principal->>'leaseGeneration')::bigint
+    and rebind.new_fencing_token=(p_principal->>'fencingToken')::bigint
+    and rebind.status in ('AWAITING_ACK','COMPLETED')
+  for update;
+  if v_rebind.id is null then
+    raise exception 'generation revocation principal binding mismatch' using errcode='42501';
+  end if;
+  select revocation.* into v_revocation
+  from public.openclaw_generation_revocations revocation
+  where revocation.organization_id=v_org and revocation.id=v_rebind.revocation_id
+    and revocation.principal_kind='CHANNEL'
+    and revocation.account_id=v_rebind.account_id and revocation.cell_id=v_rebind.old_cell_id
+    and revocation.maintenance_principal_id is null and revocation.revocation_kind='CELL'
+    and revocation.revoked_generation=v_rebind.old_fencing_token
+    and revocation.minimum_valid_generation=v_rebind.new_fencing_token
+    and revocation.minimum_valid_generation=v_minimum
+    and revocation.reason_code='CELL_REBIND'
+  for update;
+  if v_revocation.id is null then
+    raise exception 'generation revocation binding mismatch' using errcode='42501';
+  end if;
+  v_result:=jsonb_build_object(
+    'version',1,'revocationId',v_revocation.id,'acknowledged',true
+  );
+  if v_rebind.status='COMPLETED' then
+    if v_revocation.acknowledgement_hash is distinct from v_hash
+       or v_rebind.acknowledgement_hash is distinct from v_hash
+    then raise exception 'generation revocation acknowledgement CAS failed' using errcode='40001'; end if;
+    return v_result;
+  end if;
+  update public.openclaw_generation_revocations revocation set
+    acknowledgement_hash=v_hash,acknowledged_at=statement_timestamp()
+  where revocation.organization_id=v_org and revocation.id=v_revocation.id
+    and revocation.acknowledgement_hash is null;
+  if not found then raise exception 'generation revocation acknowledgement CAS failed' using errcode='40001'; end if;
+  update public.openclaw_runtime_cells cell set
+    is_current=false,state='FENCED',retired_at=statement_timestamp()
+  where cell.organization_id=v_org and cell.account_id=v_rebind.account_id
+    and cell.id=v_rebind.old_cell_id and cell.is_current;
+  if not found then raise exception 'old CELL cutover CAS failed' using errcode='40001'; end if;
+  update public.openclaw_runtime_cells cell set
+    is_current=true,state='READY',retired_at=null
+  where cell.organization_id=v_org and cell.account_id=v_rebind.account_id
+    and cell.id=v_rebind.new_cell_id and not cell.is_current;
+  if not found then raise exception 'new CELL cutover CAS failed' using errcode='40001'; end if;
+  update public.openclaw_runtime_credentials credential set
+    revoked_at=statement_timestamp(),revoked_reason='CELL_REBIND'
+  where credential.organization_id=v_org and credential.account_id=v_rebind.account_id
+    and credential.cell_id=v_rebind.old_cell_id and credential.revoked_at is null;
+  update public.openclaw_runtime_leases lease set
+    status='REVOKED',released_at=statement_timestamp()
+  where lease.organization_id=v_org and lease.account_id=v_rebind.account_id
+    and lease.cell_id=v_rebind.old_cell_id and lease.status='ACTIVE';
+  update public.openclaw_cell_rebinds rebind set
+    status='COMPLETED',acknowledgement_hash=v_hash,completed_at=statement_timestamp()
+  where rebind.organization_id=v_org and rebind.id=v_rebind.id
+    and rebind.status='AWAITING_ACK';
+  if not found then raise exception 'cell rebind acknowledgement CAS failed' using errcode='40001'; end if;
+  return v_result;
 end;
 $function$;
 
@@ -4640,16 +5450,33 @@ declare
   v_cell uuid := (p_principal ->> 'cellId')::uuid;
   v_session_generation bigint := (p_principal ->> 'sessionGeneration')::bigint;
   v_fencing_token bigint := (p_principal ->> 'fencingToken')::bigint;
-  v_request_id uuid := coalesce(nullif(p_request ->> 'requestId', '')::uuid, gen_random_uuid());
-  v_event jsonb; v_index bigint; v_identity record; v_existing record; v_existing_found boolean;
+  v_request_id uuid := gen_random_uuid();
+  v_event jsonb; v_index bigint; v_manifest jsonb; v_manifest_index bigint;
+  v_identity record; v_existing record; v_existing_found boolean;
   v_event_id uuid; v_message_id uuid; v_target_id uuid; v_contact_id uuid; v_group_id uuid;
+  v_target_version bigint; v_target_directory_refreshed_at timestamptz;
   v_conversation_id uuid; v_decision_id uuid; v_work_id uuid; v_payload_hash text;
   v_event_stable text; v_message_stable text; v_event_kind text; v_pair_kind text; v_pair_value text;
   v_fallback text; v_collision text; v_decision_kind text; v_no_send text;
-  v_automation_version uuid; v_policy_version uuid; v_knowledge_ids uuid[] := '{}'::uuid[];
+  v_automation_version uuid; v_policy_version uuid; v_template_version uuid;
+  v_knowledge_ids uuid[] := '{}'::uuid[];
   v_frozen jsonb; v_frozen_hash text; v_work_payload jsonb; v_results jsonb := '[]'::jsonb;
-  v_audit jsonb;
+  v_audit jsonb; v_media jsonb;
+  v_accepted integer := 0; v_deduplicated integer := 0; v_quarantined integer := 0;
 begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','cellId','sessionGeneration','events'],
+    array['version','organizationId','accountId','cellId','sessionGeneration','events']
+  );
+  if p_request -> 'version' is distinct from '1'::jsonb
+     or p_request ->> 'organizationId' is distinct from p_principal ->> 'organizationId'
+     or p_request ->> 'accountId' is distinct from p_principal ->> 'accountId'
+     or p_request ->> 'cellId' is distinct from p_principal ->> 'cellId'
+     or p_request -> 'sessionGeneration' is distinct from p_principal -> 'sessionGeneration'
+  then
+    raise exception 'inbound batch principal binding mismatch' using errcode = '42501';
+  end if;
   if jsonb_typeof(p_request -> 'events') <> 'array'
      or jsonb_array_length(p_request -> 'events') < 1
      or jsonb_array_length(p_request -> 'events') > 100
@@ -4661,12 +5488,70 @@ begin
     select item.value, item.ordinality - 1
     from jsonb_array_elements(p_request -> 'events') with ordinality item(value, ordinality)
   loop
+    perform app_private.openclaw_assert_strict_object_v1(
+      v_event,
+      array['version','eventKind','providerEventId','providerMessageId',
+        'providerConversationId','providerSenderId','providerTarget','providerEventType',
+        'sourceTimestamp','callbackReceivedAt','rawEnvelope','rawEnvelopeSha256',
+        'normalized','normalizedSha256'],
+      array['version','eventKind','providerEventId','providerMessageId',
+        'providerConversationId','providerSenderId','providerTarget','providerEventType',
+        'sourceTimestamp','callbackReceivedAt','rawEnvelope','rawEnvelopeSha256',
+        'normalized','normalizedSha256']
+    );
+    perform app_private.openclaw_assert_strict_object_v1(
+      v_event -> 'providerTarget',array['kind','providerId'],array['kind','providerId']
+    );
+    perform app_private.openclaw_assert_strict_object_v1(
+      v_event -> 'normalized',
+      array['text','replyToProviderMessageId','mediaManifest'],
+      array['text','replyToProviderMessageId','mediaManifest']
+    );
+    if v_event -> 'version' is distinct from '1'::jsonb
+       or v_event ->> 'eventKind' not in (
+         'MESSAGE','REACTION','DELIVERY_RECEIPT','SEEN','TYPING','MEMBERSHIP','OTHER'
+       )
+       or v_event #>> '{providerTarget,kind}' not in ('PEER','SALES_GROUP')
+       or jsonb_typeof(v_event #> '{normalized,mediaManifest}') <> 'array'
+       or jsonb_array_length(v_event #> '{normalized,mediaManifest}') > 20
+       or v_event ->> 'rawEnvelopeSha256' is distinct from encode(extensions.digest(
+         app_private.openclaw_jcs_bytes_v1(v_event -> 'rawEnvelope'),'sha256'),'hex')
+       or v_event ->> 'normalizedSha256' is distinct from encode(extensions.digest(
+         app_private.openclaw_jcs_bytes_v1(v_event -> 'normalized'),'sha256'),'hex')
+    then
+      raise exception 'inbound event shape or hash invalid' using errcode = '22023';
+    end if;
+    for v_manifest,v_manifest_index in
+      select item.value,item.ordinality-1
+      from jsonb_array_elements(v_event #> '{normalized,mediaManifest}')
+        with ordinality item(value,ordinality)
+    loop
+      perform app_private.openclaw_assert_strict_object_v1(
+        v_manifest,
+        array['version','index','providerMediaId','kind','mime','byteLength',
+          'providerChecksum','fetchRef','byteState'],
+        array['version','index','providerMediaId','kind','mime','byteLength',
+          'providerChecksum','fetchRef','byteState']
+      );
+      if v_manifest->>'version'<>'1'
+         or (v_manifest->>'index')::bigint<>v_manifest_index
+         or v_manifest->>'kind' not in ('IMAGE','VIDEO','AUDIO','FILE','STICKER','OTHER')
+         or v_manifest->>'byteState'<>'PENDING'
+         or (nullif(v_manifest->>'providerChecksum','') is not null
+           and (v_manifest->>'providerChecksum') !~ '^[0-9a-f]{64}$')
+         or (nullif(v_manifest->>'byteLength','') is not null
+           and (v_manifest->>'byteLength')::bigint not between 0 and 52428800)
+      then
+        raise exception 'inbound media manifest is invalid' using errcode='22023';
+      end if;
+    end loop;
     v_event_kind := v_event ->> 'eventKind';
     v_event_stable := nullif(v_event ->> 'providerEventId', '');
     v_message_stable := nullif(v_event ->> 'providerMessageId', '');
     v_payload_hash := encode(extensions.digest(
       convert_to('ihome-openclaw-inbound-payload-v1', 'UTF8')
-        || decode('00', 'hex') || app_private.openclaw_jcs_bytes_v1(v_event),
+        || decode('00', 'hex')
+        || app_private.openclaw_jcs_bytes_v1(v_event - 'callbackReceivedAt'),
       'sha256'
     ), 'hex');
 
@@ -4718,8 +5603,19 @@ begin
         else null
       end;
       if v_collision is null then
+        v_deduplicated := v_deduplicated + 1;
+        select coalesce(jsonb_agg(jsonb_build_object(
+          'manifestIndex',media.media_index,'mediaId',media.id
+        ) order by media.media_index),'[]'::jsonb) into v_media
+        from public.openclaw_messages message
+        join public.openclaw_message_media media
+          on media.organization_id=message.organization_id
+         and media.account_id=message.account_id and media.message_id=message.id
+        where message.organization_id=v_org and message.account_id=v_account
+          and message.source_inbound_event_id=v_existing.inbound_event_id;
         v_results := v_results || jsonb_build_array(jsonb_build_object(
-          'index', v_index, 'status', 'DUPLICATE', 'inboundEventId', v_existing.inbound_event_id
+          'index', v_index, 'status', 'DUPLICATE', 'inboundEventId', v_existing.inbound_event_id,
+          'media',v_media
         ));
         continue;
       end if;
@@ -4747,6 +5643,7 @@ begin
       v_results := v_results || jsonb_build_array(jsonb_build_object(
         'index', v_index, 'status', 'QUARANTINED', 'collisionKind', v_collision
       ));
+      v_quarantined := v_quarantined + 1;
       continue;
     end if;
 
@@ -4778,10 +5675,22 @@ begin
           v_results := v_results || jsonb_build_array(jsonb_build_object(
             'index', v_index, 'status', 'QUARANTINED', 'collisionKind', v_collision
           ));
+          v_quarantined := v_quarantined + 1;
         else
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'manifestIndex',media.media_index,'mediaId',media.id
+          ) order by media.media_index),'[]'::jsonb) into v_media
+          from public.openclaw_messages message
+          join public.openclaw_message_media media
+            on media.organization_id=message.organization_id
+           and media.account_id=message.account_id and media.message_id=message.id
+          where message.organization_id=v_org and message.account_id=v_account
+            and message.source_inbound_event_id=v_existing.id;
           v_results := v_results || jsonb_build_array(jsonb_build_object(
-            'index', v_index, 'status', 'DUPLICATE', 'inboundEventId', v_existing.id
+            'index', v_index, 'status', 'DUPLICATE', 'inboundEventId', v_existing.id,
+            'media',v_media
           ));
+          v_deduplicated := v_deduplicated + 1;
         end if;
         continue;
       end if;
@@ -4849,7 +5758,8 @@ begin
       ) on conflict (organization_id, account_id, kind, provider_id) do update
         set directory_refreshed_at = excluded.directory_refreshed_at,
             updated_at = statement_timestamp()
-      returning id into v_target_id;
+      returning id,target_version,directory_refreshed_at
+      into v_target_id,v_target_version,v_target_directory_refreshed_at;
     else
       insert into public.openclaw_sales_groups(
         organization_id, account_id, provider_id, display_name, directory_refreshed_at
@@ -4870,7 +5780,8 @@ begin
       ) on conflict (organization_id, account_id, kind, provider_id) do update
         set directory_refreshed_at = excluded.directory_refreshed_at,
             updated_at = statement_timestamp()
-      returning id into v_target_id;
+      returning id,target_version,directory_refreshed_at
+      into v_target_id,v_target_version,v_target_directory_refreshed_at;
     end if;
 
     insert into public.openclaw_conversations(
@@ -4904,6 +5815,31 @@ begin
     update public.openclaw_conversations set last_message_id = v_message_id
     where organization_id = v_org and id = v_conversation_id;
 
+    with manifest as (
+      select item.value, item.ordinality-1 manifest_index,gen_random_uuid() media_id
+      from jsonb_array_elements(v_event #> '{normalized,mediaManifest}')
+        with ordinality item(value,ordinality)
+    )
+    insert into public.openclaw_message_media(
+      id,organization_id,account_id,conversation_id,message_id,media_index,
+      provider_media_id,media_kind,mime,byte_length,sha256,object_key,byte_state
+    )
+    select manifest.media_id,v_org,v_account,v_conversation_id,v_message_id,
+      manifest.manifest_index,nullif(manifest.value->>'providerMediaId',''),
+      manifest.value->>'kind',nullif(manifest.value->>'mime',''),
+      nullif(manifest.value->>'byteLength','')::bigint,
+      nullif(manifest.value->>'providerChecksum',''),
+      'v1/org/'||v_org||'/account/'||v_account||'/conversation/'||v_conversation_id
+        ||'/message/'||v_message_id||'/media/'||manifest.media_id||'/original',
+      'PENDING'
+    from manifest;
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'manifestIndex',media.media_index,'mediaId',media.id
+    ) order by media.media_index),'[]'::jsonb) into v_media
+    from public.openclaw_message_media media
+    where media.organization_id=v_org and media.account_id=v_account
+      and media.message_id=v_message_id;
+
     v_decision_kind := 'NO_SEND'; v_no_send := 'TARGET_INELIGIBLE';
     if v_event ->> 'providerEventType' = 'HISTORY_SYNC' then
       v_no_send := 'HISTORY_SYNC';
@@ -4919,8 +5855,9 @@ begin
     ) then
       v_no_send := 'MODE_DISABLED';
     else
-      select version.id, version.policy_version_id, version.knowledge_version_ids
-      into v_automation_version, v_policy_version, v_knowledge_ids
+      select version.id, version.policy_version_id, version.content_version_id,
+        version.knowledge_version_ids
+      into v_automation_version, v_policy_version, v_template_version, v_knowledge_ids
       from public.openclaw_automation_versions version
       join public.openclaw_automations automation
         on automation.organization_id = version.organization_id
@@ -4940,7 +5877,10 @@ begin
     v_frozen := jsonb_build_object(
       'version', 1, 'inboundEventId', v_event_id, 'messageId', v_message_id,
       'conversationId', v_conversation_id, 'targetId', v_target_id,
+      'targetVersion',v_target_version,
+      'targetDirectoryRefreshedAt',v_target_directory_refreshed_at,
       'automationVersionId', v_automation_version,
+      'templateVersionId',v_template_version,
       'policyVersionId', v_policy_version, 'knowledgeVersionIds', to_jsonb(v_knowledge_ids)
     );
     v_frozen_hash := encode(extensions.digest(
@@ -4961,7 +5901,10 @@ begin
       v_work_payload := jsonb_build_object(
         'kind', 'INBOUND_AUTOMATION', 'inboundEventId', v_event_id,
         'messageId', v_message_id, 'conversationId', v_conversation_id,
-        'targetId', v_target_id, 'automationVersionId', v_automation_version,
+        'targetId', v_target_id, 'targetVersion',v_target_version,
+        'targetDirectoryRefreshedAt',v_target_directory_refreshed_at,
+        'automationVersionId', v_automation_version,
+        'templateVersionId',v_template_version,
         'knowledgeVersionIds', to_jsonb(v_knowledge_ids),
         'eligibilityDecisionHash', v_frozen_hash
       );
@@ -4982,10 +5925,15 @@ begin
       'index', v_index, 'status', 'ACCEPTED', 'inboundEventId', v_event_id,
       'messageId', v_message_id, 'decisionId', v_decision_id,
       'decisionKind', v_decision_kind, 'noSendReason', v_no_send,
-      'workItemId', v_work_id
+      'workItemId', v_work_id,'media',v_media
     ));
+    v_accepted := v_accepted + 1;
   end loop;
-  return jsonb_build_object('version', 1, 'requestId', v_request_id, 'results', v_results);
+  return jsonb_build_object(
+    'version',1,'requestId',v_request_id,
+    'accepted',v_accepted,'deduplicated',v_deduplicated,'quarantined',v_quarantined,
+    'results',v_results
+  );
 end;
 $function$;
 
@@ -5153,16 +6101,27 @@ begin
         session_generation = (p_principal ->> 'sessionGeneration')::bigint,
         attempt_count = outbox.attempt_count + 1, updated_at = statement_timestamp()
     from candidates where outbox.organization_id = v_org and outbox.id = candidates.id
-    returning outbox.id, outbox.claim_generation, outbox.lease_expires_at,
-      outbox.target_id, outbox.source_kind, outbox.canonical_payload, outbox.payload_hash
+    returning outbox.id, outbox.organization_id, outbox.account_id,
+      outbox.claim_generation, outbox.lease_expires_at, outbox.fencing_token,
+      outbox.session_generation, outbox.control_version, outbox.takeover_version,
+      outbox.canonical_payload, outbox.payload_hash
   )
   select coalesce(jsonb_agg(jsonb_build_object(
-    'outboxId', claimed.id, 'claimGeneration', claimed.claim_generation,
-    'leaseExpiresAt', claimed.lease_expires_at, 'targetId', claimed.target_id,
-    'sourceKind', claimed.source_kind, 'canonicalPayload', claimed.canonical_payload,
-    'payloadHash', claimed.payload_hash
+    'version', 1,
+    'outboxId', claimed.id,
+    'organizationId', claimed.organization_id,
+    'accountId', claimed.account_id,
+    'claimToken', p_request ->> 'claimToken',
+    'claimGeneration', claimed.claim_generation,
+    'fencingToken', claimed.fencing_token,
+    'sessionGeneration', claimed.session_generation,
+    'controlVersion', claimed.control_version,
+    'takeoverVersion', claimed.takeover_version,
+    'leaseExpiresAt', claimed.lease_expires_at,
+    'payloadHash', claimed.payload_hash,
+    'payload', claimed.canonical_payload
   ) order by claimed.id), '[]'::jsonb) into v_items from claimed;
-  return jsonb_build_object('version', 1, 'items', v_items, 'databaseTime', statement_timestamp());
+  return jsonb_build_object('version', 1, 'items', v_items);
 end;
 $function$;
 
@@ -5188,6 +6147,9 @@ declare
   v_expires_at timestamptz;
   v_authorization_marker jsonb;
   v_now timestamptz := statement_timestamp();
+  v_disposition text := 'HANDOFF_AUTHORIZED';
+  v_retry_not_before timestamptz;
+  v_transition_applied boolean := false;
 begin
   perform app_private.openclaw_assert_strict_object_v1(
     p_request,
@@ -5316,10 +6278,36 @@ begin
       'markerNonce',v_marker_nonce,
       'expiresAt',v_expires_at
     );
+  elsif v_reason='CAMPAIGN_CANCELLED' then
+    update public.openclaw_outbox outbox set
+      state='FAILED',claim_token_hash=null,claimed_cell_id=null,lease_expires_at=null,
+      retry_not_before=null,terminal_at=v_now,updated_at=v_now
+    where outbox.organization_id=v_org and outbox.account_id=v_account
+      and outbox.id=v_outbox.id and outbox.state='LEASED'
+      and outbox.claim_generation=v_outbox.claim_generation;
+    if not found then raise exception 'terminal preflight transition CAS failed' using errcode='40001'; end if;
+    v_disposition:='TERMINAL_NO_SEND';
+    v_transition_applied:=true;
+  else
+    v_retry_not_before:=v_now+make_interval(secs=>case
+      when v_reason='RATE_LIMITED' then 60
+      when v_reason in ('QUIET_HOURS','CONSENT_MISSING','GROUP_DIRECTORY_STALE','GROUP_NOT_ALLOWLISTED') then 300
+      else 30 end);
+    update public.openclaw_outbox outbox set
+      state='QUEUED',claim_token_hash=null,claimed_cell_id=null,lease_expires_at=null,
+      retry_not_before=v_retry_not_before,terminal_at=null,updated_at=v_now
+    where outbox.organization_id=v_org and outbox.account_id=v_account
+      and outbox.id=v_outbox.id and outbox.state='LEASED'
+      and outbox.claim_generation=v_outbox.claim_generation;
+    if not found then raise exception 'retry preflight transition CAS failed' using errcode='40001'; end if;
+    v_disposition:='SAFE_RETRY';
+    v_transition_applied:=true;
   end if;
   return jsonb_build_object('version',1,'outboxId',v_outbox.id,'decision',v_reason,
+    'disposition',v_disposition,'transitionApplied',v_transition_applied,
     'canonicalPayload',case when v_reason='ALLOWED' then v_outbox.canonical_payload else null end,
-    'authorizationMarker',v_authorization_marker,'databaseTime',v_now);
+    'authorizationMarker',v_authorization_marker,'databaseTime',v_now,
+    'retryNotBefore',v_retry_not_before);
 end;
 $function$;
 
@@ -5435,36 +6423,134 @@ as $function$
 declare
   v_org uuid := (p_principal ->> 'organizationId')::uuid;
   v_account uuid := (p_principal ->> 'accountId')::uuid;
-  v_updated uuid;
-  v_generation bigint;
+  v_authorization jsonb := p_request -> 'authorization';
+  v_marker jsonb := p_request -> 'authorization' -> 'authorizationMarker';
+  v_evidence jsonb := p_request -> 'preHandoffEvidence';
+  v_outbox public.openclaw_outbox%rowtype;
+  v_handoff public.openclaw_outbound_authorizations%rowtype;
   v_token_hash text;
+  v_marker_hash text;
+  v_evidence_hash text;
+  v_retry_not_before timestamptz;
+  v_now timestamptz := statement_timestamp();
 begin
-  if p_request ->> 'version' <> '1' then raise exception 'requeue version mismatch' using errcode='22023'; end if;
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','authorization','outcome','reasonCode','preHandoffEvidence',
+      'preHandoffEvidenceHash','retryNotBefore'],
+    array['version','authorization','outcome','reasonCode','preHandoffEvidence',
+      'preHandoffEvidenceHash','retryNotBefore']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    v_authorization,
+    array['version','claimToken','authorizationMarker'],
+    array['version','claimToken','authorizationMarker']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    v_marker,
+    array['version','outboxId','claimGeneration','payloadHash','fencingToken',
+      'sessionGeneration','controlVersion','takeoverVersion','markerNonce','expiresAt'],
+    array['version','outboxId','claimGeneration','payloadHash','fencingToken',
+      'sessionGeneration','controlVersion','takeoverVersion','markerNonce','expiresAt']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    v_evidence,
+    array['version','evidenceKind','outboxId','claimGeneration','payloadHash',
+      'authorizationMarker','reasonCode','authorizedHandoffRecorded'],
+    array['version','evidenceKind','outboxId','claimGeneration','payloadHash',
+      'authorizationMarker','reasonCode','authorizedHandoffRecorded']
+  );
+  if p_request ->> 'version' <> '1'
+     or v_authorization ->> 'version' <> '1'
+     or v_marker ->> 'version' <> '1'
+     or v_evidence ->> 'version' <> '1'
+     or p_request ->> 'outcome' <> 'SAFE_RETRY'
+     or v_evidence ->> 'evidenceKind' <> 'OUTBOX_PRE_HANDOFF'
+     or p_request ->> 'reasonCode' not in (
+       'AUTHORIZATION_EXPIRED','LEASE_EXPIRED','CELL_FENCED',
+       'SESSION_GENERATION_CHANGED','CONTROL_VERSION_CHANGED','TAKEOVER_VERSION_CHANGED',
+       'POLICY_CHANGED_BEFORE_HANDOFF','ADAPTER_NOT_READY','EGRESS_BLOCKED_BEFORE_HANDOFF'
+     )
+     or v_evidence ->> 'reasonCode' is distinct from p_request ->> 'reasonCode'
+     or v_evidence -> 'authorizedHandoffRecorded' is distinct from 'false'::jsonb
+     or char_length(v_authorization ->> 'claimToken') not between 32 and 512
+     or v_evidence -> 'authorizationMarker' is distinct from v_marker
+     or v_evidence ->> 'outboxId' is distinct from v_marker ->> 'outboxId'
+     or v_evidence ->> 'claimGeneration' is distinct from v_marker ->> 'claimGeneration'
+     or v_evidence ->> 'payloadHash' is distinct from v_marker ->> 'payloadHash'
+     or coalesce(v_marker ->> 'payloadHash','') !~ '^[0-9a-f]{64}$'
+  then
+    raise exception 'canonical pre-handoff requeue contract is invalid' using errcode='22023';
+  end if;
+  v_retry_not_before := (p_request ->> 'retryNotBefore')::timestamptz;
+  if v_retry_not_before < v_now or v_retry_not_before > v_now + interval '1 hour' then
+    raise exception 'pre-handoff retryNotBefore is outside the bounded window' using errcode='22023';
+  end if;
+  v_evidence_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-pre-handoff-evidence-v1','UTF8') || decode('00','hex')
+      || app_private.openclaw_jcs_bytes_v1(v_evidence),
+    'sha256'
+  ),'hex');
+  if p_request ->> 'preHandoffEvidenceHash' is distinct from v_evidence_hash then
+    raise exception 'pre-handoff evidence hash mismatch' using errcode='22023';
+  end if;
   v_token_hash := encode(extensions.digest(convert_to('ihome-openclaw-outbox-claim-v1','UTF8')
-    || decode('00','hex') || convert_to(p_request ->> 'claimToken','UTF8'),'sha256'),'hex');
+    || decode('00','hex') || convert_to(v_authorization ->> 'claimToken','UTF8'),'sha256'),'hex');
+  v_marker_hash := encode(extensions.digest(convert_to('ihome-openclaw-handoff-marker-v1','UTF8')
+    || decode('00','hex') || convert_to(v_marker ->> 'markerNonce','UTF8'),'sha256'),'hex');
+  select outbox.* into v_outbox
+  from public.openclaw_outbox outbox
+  where outbox.organization_id=v_org and outbox.account_id=v_account
+    and outbox.id=(v_marker ->> 'outboxId')::uuid
+    and outbox.state='LEASED'
+    and outbox.claim_generation=(v_marker ->> 'claimGeneration')::bigint
+    and outbox.payload_hash=v_marker ->> 'payloadHash'
+    and outbox.claim_token_hash=v_token_hash
+    and outbox.claimed_cell_id=(p_principal ->> 'cellId')::uuid
+    and outbox.fencing_token=(v_marker ->> 'fencingToken')::bigint
+    and outbox.fencing_token=(p_principal ->> 'fencingToken')::bigint
+    and outbox.session_generation=(v_marker ->> 'sessionGeneration')::bigint
+    and outbox.session_generation=(p_principal ->> 'sessionGeneration')::bigint
+    and outbox.control_version=(v_marker ->> 'controlVersion')::bigint
+    and outbox.takeover_version=(v_marker ->> 'takeoverVersion')::bigint
+  for update;
+  if not found then raise exception 'pre-handoff requeue CAS failed' using errcode='40001'; end if;
+  select handoff.* into v_handoff
+  from public.openclaw_outbound_authorizations handoff
+  where handoff.organization_id=v_org and handoff.account_id=v_account
+    and handoff.outbox_id=v_outbox.id and handoff.claim_generation=v_outbox.claim_generation
+    and handoff.payload_hash=v_outbox.payload_hash
+    and handoff.fencing_token=v_outbox.fencing_token
+    and handoff.session_generation=v_outbox.session_generation
+    and handoff.control_version=v_outbox.control_version
+    and handoff.takeover_version=v_outbox.takeover_version
+    and handoff.marker_nonce_hash=v_marker_hash
+    and handoff.expires_at=(v_marker ->> 'expiresAt')::timestamptz
+    and handoff.consumed_at is null and handoff.authorized_handoff_at is null
+  for update;
+  if not found then raise exception 'pre-handoff authorization marker CAS failed' using errcode='40001'; end if;
+  insert into public.openclaw_delivery_attempts(
+    organization_id,account_id,outbox_id,authorization_id,claim_generation,
+    attempt_number,outcome,reason_code,total_part_count,
+    possible_handoff_prefix_length,known_provider_message_ids,evidence_kind,
+    delivery_evidence,delivery_evidence_hash,started_at,finished_at
+  ) values (
+    v_org,v_account,v_outbox.id,v_handoff.id,v_outbox.claim_generation,
+    v_outbox.attempt_count,'SAFE_RETRY',p_request ->> 'reasonCode',1,
+    0,'{}'::text[],'OUTBOX_PRE_HANDOFF',v_evidence,v_evidence_hash,v_now,v_now
+  );
   update public.openclaw_outbox outbox
   set state = 'QUEUED', claim_token_hash = null, claimed_cell_id = null,
       claim_generation = outbox.claim_generation + 1,
-      lease_expires_at = null, retry_not_before = statement_timestamp()
-        + make_interval(secs => greatest(1,least(coalesce((p_request ->> 'retryAfterSeconds')::integer,5),3600))),
+      lease_expires_at = null, retry_not_before = v_retry_not_before,
       updated_at = statement_timestamp()
   where outbox.organization_id=v_org and outbox.account_id=v_account
-    and outbox.id=(p_request ->> 'outboxId')::uuid
-    and outbox.state='LEASED' and outbox.claim_generation=(p_request ->> 'claimGeneration')::bigint
-    and outbox.claim_token_hash=v_token_hash
-    and outbox.claimed_cell_id=(p_principal ->> 'cellId')::uuid
-    and outbox.fencing_token=(p_principal ->> 'fencingToken')::bigint
-    and outbox.session_generation=(p_principal ->> 'sessionGeneration')::bigint
-    and not exists (
-      select 1 from public.openclaw_outbound_authorizations handoff
-      where handoff.organization_id=v_org and handoff.account_id=v_account
-        and handoff.outbox_id=outbox.id and handoff.claim_generation=outbox.claim_generation
-        and not (handoff.authorized_handoff_at is null)
-    )
-  returning outbox.id,outbox.claim_generation into v_updated,v_generation;
-  if v_updated is null then raise exception 'pre-handoff requeue CAS failed' using errcode='40001'; end if;
-  return jsonb_build_object('version',1,'outboxId',v_updated,'state','QUEUED',
-    'claimGeneration',v_generation);
+    and outbox.id=v_outbox.id and outbox.state='LEASED'
+    and outbox.claim_generation=v_outbox.claim_generation;
+  if not found then raise exception 'pre-handoff requeue transition CAS failed' using errcode='40001'; end if;
+  return jsonb_build_object('version',1,'outboxId',v_outbox.id,'state','QUEUED',
+    'claimGeneration',v_outbox.claim_generation+1,
+    'preHandoffEvidenceHash',v_evidence_hash,'retryNotBefore',v_retry_not_before);
 end;
 $function$;
 
@@ -5479,49 +6565,155 @@ as $function$
 declare
   v_org uuid := (p_principal ->> 'organizationId')::uuid;
   v_account uuid := (p_principal ->> 'accountId')::uuid;
+  v_authorization_request jsonb := p_request -> 'authorization';
+  v_marker jsonb := p_request -> 'authorization' -> 'authorizationMarker';
+  v_evidence jsonb := p_request -> 'deliveryEvidence';
   v_outbox public.openclaw_outbox%rowtype;
   v_authorization public.openclaw_outbound_authorizations%rowtype;
   v_outcome text := p_request ->> 'outcome';
-  v_ids text[] := coalesce(array(select jsonb_array_elements_text(p_request -> 'knownProviderMessageIds')), '{}'::text[]);
-  v_prefix integer := coalesce((p_request ->> 'possibleHandoffPrefixLength')::integer,0);
-  v_parts integer := coalesce((p_request ->> 'totalPartCount')::integer,1);
-  v_evidence jsonb := coalesce(p_request -> 'evidence','{}'::jsonb);
+  v_reason text := p_request ->> 'reasonCode';
+  v_ids text[];
+  v_prefix integer;
+  v_parts integer;
   v_claim_token_hash text;
+  v_marker_hash text;
+  v_evidence_hash text;
+  v_now timestamptz := statement_timestamp();
+  v_existing record;
 begin
-  if p_request ->> 'version' <> '1' or v_outcome not in ('SENT','FAILED','UNKNOWN') then
-    raise exception 'invalid outbox completion outcome' using errcode='22023';
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','authorization','deliveryEvidence','deliveryEvidenceHash','outcome','reasonCode'],
+    array['version','authorization','deliveryEvidence','deliveryEvidenceHash','outcome','reasonCode']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    v_authorization_request,
+    array['version','claimToken','authorizationMarker'],
+    array['version','claimToken','authorizationMarker']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    v_marker,
+    array['version','outboxId','claimGeneration','payloadHash','fencingToken',
+      'sessionGeneration','controlVersion','takeoverVersion','markerNonce','expiresAt'],
+    array['version','outboxId','claimGeneration','payloadHash','fencingToken',
+      'sessionGeneration','controlVersion','takeoverVersion','markerNonce','expiresAt']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    v_evidence,
+    array['version','evidenceKind','outboxId','claimGeneration','payloadHash',
+      'authorizationMarker','totalPartCount','knownProviderMessageIds',
+      'possibleHandoffPrefixLength','outcome','reasonCode'],
+    array['version','evidenceKind','outboxId','claimGeneration','payloadHash',
+      'authorizationMarker','totalPartCount','knownProviderMessageIds',
+      'possibleHandoffPrefixLength','outcome','reasonCode']
+  );
+  if p_request ->> 'version' <> '1'
+     or v_authorization_request ->> 'version' <> '1'
+     or v_marker ->> 'version' <> '1'
+     or v_evidence ->> 'version' <> '1'
+     or v_evidence ->> 'evidenceKind' <> 'OUTBOX_DELIVERY'
+     or v_outcome not in ('SENT','FAILED','UNKNOWN')
+     or v_evidence ->> 'outcome' is distinct from v_outcome
+     or v_evidence ->> 'reasonCode' is distinct from v_reason
+     or v_evidence -> 'authorizationMarker' is distinct from v_marker
+     or v_evidence ->> 'outboxId' is distinct from v_marker ->> 'outboxId'
+     or v_evidence ->> 'claimGeneration' is distinct from v_marker ->> 'claimGeneration'
+     or v_evidence ->> 'payloadHash' is distinct from v_marker ->> 'payloadHash'
+     or char_length(v_authorization_request ->> 'claimToken') not between 32 and 512
+     or coalesce(v_marker ->> 'payloadHash','') !~ '^[0-9a-f]{64}$'
+     or jsonb_typeof(v_evidence -> 'knownProviderMessageIds') <> 'array'
+  then
+    raise exception 'canonical outbox completion contract is invalid' using errcode='22023';
   end if;
-  if (p_request ->> 'finishedAt')::timestamptz < (p_request ->> 'startedAt')::timestamptz
-     or (p_request ->> 'finishedAt')::timestamptz > statement_timestamp()+interval '30 seconds' then
-    raise exception 'stale reconciliation evidence' using errcode='40001';
+  v_ids := coalesce(array(select jsonb_array_elements_text(
+    v_evidence -> 'knownProviderMessageIds'
+  )), '{}'::text[]);
+  v_prefix := (v_evidence ->> 'possibleHandoffPrefixLength')::integer;
+  v_parts := (v_evidence ->> 'totalPartCount')::integer;
+  if v_parts not between 1 and 20 or v_prefix < 0 or v_prefix > v_parts
+     or cardinality(v_ids) > v_prefix
+     or exists (select 1 from unnest(v_ids) provider_id
+       where char_length(provider_id) not between 1 and 255)
+     or (v_outcome='SENT' and (
+       v_reason<>'ALL_PARTS_ACKNOWLEDGED' or v_prefix<>v_parts or cardinality(v_ids)<>v_parts
+     ))
+     or (v_outcome='FAILED' and (
+       v_reason<>'PROVIDER_REJECTED_BEFORE_ACCEPT' or v_prefix<>0 or cardinality(v_ids)<>0
+     ))
+     or (v_outcome='UNKNOWN' and (
+       v_prefix<1 or v_reason not in (
+         'PROVIDER_TIMEOUT_AFTER_POSSIBLE_HANDOFF',
+         'PROVIDER_DISCONNECT_AFTER_POSSIBLE_HANDOFF',
+         'ACK_LOST_AFTER_HANDOFF'
+       )
+     ))
+  then
+    raise exception 'canonical delivery evidence outcome is inconsistent' using errcode='22023';
+  end if;
+  v_evidence_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-delivery-evidence-v1','UTF8') || decode('00','hex')
+      || app_private.openclaw_jcs_bytes_v1(v_evidence),
+    'sha256'
+  ),'hex');
+  if p_request ->> 'deliveryEvidenceHash' is distinct from v_evidence_hash then
+    raise exception 'delivery evidence hash mismatch' using errcode='22023';
   end if;
   v_claim_token_hash := encode(extensions.digest(convert_to('ihome-openclaw-outbox-claim-v1','UTF8')
-    || decode('00','hex') || convert_to(p_request ->> 'claimToken','UTF8'),'sha256'),'hex');
+    || decode('00','hex') || convert_to(v_authorization_request ->> 'claimToken','UTF8'),'sha256'),'hex');
+  v_marker_hash := encode(extensions.digest(convert_to('ihome-openclaw-handoff-marker-v1','UTF8')
+    || decode('00','hex') || convert_to(v_marker ->> 'markerNonce','UTF8'),'sha256'),'hex');
+
+  select outbox.id,outbox.state,attempt.delivery_evidence_hash,
+    attempt.known_provider_message_ids,attempt.possible_handoff_prefix_length
+  into v_existing
+  from public.openclaw_outbox outbox
+  join public.openclaw_delivery_attempts attempt
+    on attempt.organization_id=outbox.organization_id and attempt.account_id=outbox.account_id
+   and attempt.outbox_id=outbox.id
+  join public.openclaw_outbound_authorizations handoff
+    on handoff.organization_id=attempt.organization_id and handoff.account_id=attempt.account_id
+   and handoff.id=attempt.authorization_id
+  where outbox.organization_id=v_org and outbox.account_id=v_account
+    and outbox.id=(v_marker ->> 'outboxId')::uuid and outbox.state=v_outcome
+    and attempt.claim_generation=(v_marker ->> 'claimGeneration')::bigint
+    and attempt.delivery_evidence_hash=v_evidence_hash
+    and handoff.marker_nonce_hash=v_marker_hash;
+  if found then
+    return jsonb_build_object('version',1,'outboxId',v_existing.id,'state',v_existing.state,
+      'knownProviderMessageIds',to_jsonb(v_existing.known_provider_message_ids),
+      'possibleHandoffPrefixLength',v_existing.possible_handoff_prefix_length,
+      'deliveryEvidenceHash',v_existing.delivery_evidence_hash);
+  end if;
+
   select outbox.* into v_outbox from public.openclaw_outbox outbox
   where outbox.organization_id=v_org and outbox.account_id=v_account
-    and outbox.id=(p_request ->> 'outboxId')::uuid
+    and outbox.id=(v_marker ->> 'outboxId')::uuid
     and outbox.state = 'DISPATCHING'
-    and outbox.claim_generation=(p_request ->> 'claimGeneration')::bigint
+    and outbox.claim_generation=(v_marker ->> 'claimGeneration')::bigint
+    and outbox.payload_hash=v_marker ->> 'payloadHash'
     and outbox.claim_token_hash=v_claim_token_hash
     and outbox.claimed_cell_id=(p_principal ->> 'cellId')::uuid
+    and outbox.fencing_token=(v_marker ->> 'fencingToken')::bigint
     and outbox.fencing_token=(p_principal ->> 'fencingToken')::bigint
+    and outbox.session_generation=(v_marker ->> 'sessionGeneration')::bigint
     and outbox.session_generation=(p_principal ->> 'sessionGeneration')::bigint
+    and outbox.control_version=(v_marker ->> 'controlVersion')::bigint
+    and outbox.takeover_version=(v_marker ->> 'takeoverVersion')::bigint
   for update;
   if not found then raise exception 'outbox completion CAS failed' using errcode='40001'; end if;
   select handoff.* into v_authorization
   from public.openclaw_outbound_authorizations handoff
   where handoff.organization_id=v_org and handoff.account_id=v_account
-    and handoff.id=(p_request ->> 'authorizationId')::uuid
     and handoff.outbox_id=v_outbox.id and handoff.claim_generation=v_outbox.claim_generation
+    and handoff.payload_hash=v_outbox.payload_hash
+    and handoff.fencing_token=v_outbox.fencing_token
+    and handoff.session_generation=v_outbox.session_generation
+    and handoff.control_version=v_outbox.control_version
+    and handoff.takeover_version=v_outbox.takeover_version
+    and handoff.marker_nonce_hash=v_marker_hash
+    and handoff.expires_at=(v_marker ->> 'expiresAt')::timestamptz
     and handoff.consumed_at is not null and handoff.authorized_handoff_at is not null;
-  if not found or (p_request ->> 'startedAt')::timestamptz < v_authorization.authorized_handoff_at then
-    raise exception 'stale reconciliation evidence' using errcode='40001';
-  end if;
-  if v_prefix < 0 or v_prefix > v_parts or cardinality(v_ids) > v_prefix
-     or (v_outcome='SENT' and (v_prefix<>v_parts or cardinality(v_ids)<>v_parts))
-     or (v_outcome='FAILED' and (v_prefix<>0 or cardinality(v_ids)<>0)) then
-    raise exception 'invalid known_provider_message_ids or possible_handoff_prefix_length' using errcode='22023';
-  end if;
+  if not found then raise exception 'authorized handoff evidence is stale' using errcode='40001'; end if;
   insert into public.openclaw_delivery_attempts(
     organization_id, account_id, outbox_id, authorization_id, claim_generation,
     attempt_number, outcome, reason_code, total_part_count,
@@ -5529,10 +6721,9 @@ begin
     delivery_evidence, delivery_evidence_hash, started_at, finished_at
   ) values (
     v_org,v_account,v_outbox.id,v_authorization.id,v_outbox.claim_generation,
-    v_outbox.attempt_count,v_outcome,coalesce(p_request ->> 'reasonCode',v_outcome),v_parts,
-    v_prefix,v_ids,'OUTBOX_DELIVERY',v_evidence,
-    encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(v_evidence),'sha256'),'hex'),
-    (p_request ->> 'startedAt')::timestamptz,(p_request ->> 'finishedAt')::timestamptz
+    v_outbox.attempt_count,v_outcome,v_reason,v_parts,
+    v_prefix,v_ids,'OUTBOX_DELIVERY',v_evidence,v_evidence_hash,
+    v_authorization.authorized_handoff_at,v_now
   );
   update public.openclaw_outbox outbox
   set state=v_outcome, claim_token_hash=null, claimed_cell_id=null, lease_expires_at=null,
@@ -5540,7 +6731,8 @@ begin
   where outbox.organization_id=v_org and outbox.id=v_outbox.id
     and outbox.state='DISPATCHING' and outbox.claim_generation=v_outbox.claim_generation;
   return jsonb_build_object('version',1,'outboxId',v_outbox.id,'state',v_outcome,
-    'knownProviderMessageIds',to_jsonb(v_ids),'possibleHandoffPrefixLength',v_prefix);
+    'knownProviderMessageIds',to_jsonb(v_ids),'possibleHandoffPrefixLength',v_prefix,
+    'deliveryEvidenceHash',v_evidence_hash);
 end;
 $function$;
 
@@ -6783,6 +7975,11 @@ grant execute on function public.openclaw_replay_dead_letter_v1(jsonb,uuid) to a
 alter function app_private.openclaw_runtime_heartbeat_v1(jsonb,jsonb,jsonb) owner to openclaw_runtime_writer;
 revoke all on function app_private.openclaw_runtime_heartbeat_v1(jsonb,jsonb,jsonb) from public, anon, authenticated, service_role;
 grant execute on function app_private.openclaw_runtime_heartbeat_v1(jsonb,jsonb,jsonb) to openclaw_service_dispatcher;
+alter function app_private.openclaw_try_finalize_disconnect_v1(uuid,uuid,uuid) owner to openclaw_runtime_writer;
+revoke all on function app_private.openclaw_try_finalize_disconnect_v1(uuid,uuid,uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function app_private.openclaw_try_finalize_disconnect_v1(uuid,uuid,uuid)
+  to openclaw_function_owner;
 alter function app_private.openclaw_exchange_runtime_credential_v1(jsonb,jsonb,jsonb) owner to openclaw_runtime_writer;
 revoke all on function app_private.openclaw_exchange_runtime_credential_v1(jsonb,jsonb,jsonb) from public, anon, authenticated, service_role;
 grant execute on function app_private.openclaw_exchange_runtime_credential_v1(jsonb,jsonb,jsonb) to openclaw_service_dispatcher;
@@ -7703,5 +8900,353 @@ grant execute on function public.openclaw_service_verify_smoke_cleanup_v1(jsonb,
 alter function public.openclaw_service_sweep_runtime_v1(jsonb,jsonb,jsonb) owner to openclaw_service_dispatcher;
 revoke all on function public.openclaw_service_sweep_runtime_v1(jsonb,jsonb,jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_service_sweep_runtime_v1(jsonb,jsonb,jsonb) to service_role;
+
+-- The browser-facing consume facade intentionally never returns encrypted
+-- material. QR reveal therefore uses this service-only, actor-bound atomic
+-- consume: the locked row is copied into the one response while its stored
+-- ciphertext is cleared in the same transaction. A replay is a stable
+-- unavailable result and can never reveal the same QR twice.
+create or replace function public.openclaw_service_consume_qr_challenge_v1(
+  p_actor_id uuid,
+  p_request jsonb,
+  p_client_operation_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_request->>'organizationId')::uuid;
+  v_account uuid := (p_request->>'accountId')::uuid;
+  v_allowed boolean;
+  v_request_hash text;
+  v_operation public.openclaw_client_operations%rowtype;
+  v_result_hash text;
+  v_challenge public.openclaw_qr_challenges%rowtype;
+  v_safe_result jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','challengeId','browserNonceHash','authSessionHash'],
+    array['version','organizationId','accountId','challengeId','browserNonceHash','authSessionHash']
+  );
+  if p_actor_id is null or p_client_operation_id is null or p_request->>'version'<>'1'
+     or (p_request->>'browserNonceHash')!~'^[0-9a-f]{64}$'
+     or (p_request->>'authSessionHash')!~'^[0-9a-f]{64}$'
+  then
+    raise exception 'QR challenge is not available' using errcode='P0001';
+  end if;
+  perform app_private.lock_org_for_decision_v1(v_org);
+  select decision.allowed into v_allowed
+  from app_private.authorize_tenant_action_v3(
+    p_actor_id,v_org,'openclaw_zalo.manage_connections',null,null
+  ) decision;
+  if not coalesce(v_allowed,false) then
+    raise exception 'permission denied' using errcode='42501';
+  end if;
+  v_request_hash:=app_private.openclaw_client_request_hash_v1(
+    'openclaw_consume_qr_challenge_v1',p_request
+  );
+  insert into public.openclaw_client_operations(
+    organization_id,actor_id,operation_key,client_operation_id,
+    request_hash,replay_policy
+  ) values (
+    v_org,p_actor_id,'openclaw_consume_qr_challenge_v1',p_client_operation_id,
+    v_request_hash,'SINGLE_USE'
+  ) on conflict (organization_id,actor_id,operation_key,client_operation_id)
+    do nothing;
+  select operation_row.* into strict v_operation
+  from public.openclaw_client_operations operation_row
+  where operation_row.organization_id=v_org
+    and operation_row.actor_id=p_actor_id
+    and operation_row.operation_key='openclaw_consume_qr_challenge_v1'
+    and operation_row.client_operation_id=p_client_operation_id
+  for update;
+  if v_operation.request_hash is distinct from v_request_hash
+     or v_operation.completed_at is not null
+  then
+    raise exception 'QR challenge is not available' using errcode='P0001';
+  end if;
+  select challenge.* into strict v_challenge
+  from public.openclaw_qr_challenges challenge
+  where challenge.organization_id=v_org
+    and challenge.account_id=v_account
+    and challenge.id=(p_request->>'challengeId')::uuid
+    and challenge.actor_id=p_actor_id
+    and challenge.active_slot
+    and challenge.challenge_status='PENDING'
+    and challenge.material_version=1
+    and challenge.ciphertext is not null
+    and challenge.cipher_iv is not null
+    and challenge.auth_tag is not null
+    and challenge.expires_at>statement_timestamp()
+    and challenge.browser_nonce_hash=p_request->>'browserNonceHash'
+    and challenge.auth_session_hash=p_request->>'authSessionHash'
+  for update;
+  update public.openclaw_qr_challenges challenge set
+    challenge_status='CONSUMED',active_slot=false,
+    consumed_at=statement_timestamp(),ciphertext=null,cipher_iv=null,auth_tag=null,
+    material_version=0,material_published_at=null
+  where challenge.organization_id=v_org and challenge.id=v_challenge.id;
+  v_safe_result:=jsonb_build_object(
+    'version',1,'organizationId',v_org,'accountId',v_account,
+    'challengeId',v_challenge.id,
+    'status','CONSUMED','materialVersion',v_challenge.material_version
+  );
+  perform app_private.append_openclaw_audit_v1(
+    v_org,'OPENCLAW_QR_CHALLENGE_CONSUMED',p_actor_id,null,
+    p_client_operation_id,p_client_operation_id,v_safe_result,
+    app_private.openclaw_jcs_bytes_v1(v_safe_result)
+  );
+  v_result_hash:=encode(extensions.digest(
+    convert_to('ihome-openclaw-client-result-v1','UTF8') || decode('00','hex')
+      || app_private.openclaw_jcs_bytes_v1(v_safe_result),
+    'sha256'
+  ),'hex');
+  update public.openclaw_client_operations operation_row set
+    safe_result=v_safe_result,result_hash=v_result_hash,completed_at=statement_timestamp()
+  where operation_row.organization_id=v_org
+    and operation_row.actor_id=p_actor_id
+    and operation_row.operation_key='openclaw_consume_qr_challenge_v1'
+    and operation_row.client_operation_id=p_client_operation_id
+    and operation_row.request_hash=v_request_hash
+    and operation_row.completed_at is null;
+  if not found then
+    raise exception 'QR challenge is not available' using errcode='P0001';
+  end if;
+  return v_safe_result || jsonb_build_object(
+    'ciphertextB64',encode(v_challenge.ciphertext,'base64'),
+    'cipherIvB64',encode(v_challenge.cipher_iv,'base64'),
+    'authTagB64',encode(v_challenge.auth_tag,'base64')
+  );
+exception
+  when no_data_found then
+    raise exception 'QR challenge is not available' using errcode='P0001';
+end;
+$function$;
+
+alter function public.openclaw_service_consume_qr_challenge_v1(uuid,jsonb,uuid)
+  owner to openclaw_function_owner;
+revoke all on function public.openclaw_service_consume_qr_challenge_v1(uuid,jsonb,uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.openclaw_service_consume_qr_challenge_v1(uuid,jsonb,uuid)
+  to service_role;
+revoke execute on function public.openclaw_consume_qr_challenge_v1(jsonb,uuid)
+  from authenticated;
+
+create or replace function public.openclaw_acknowledge_disclosure_v1(
+  p_request jsonb,
+  p_client_operation_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_actor uuid := (select auth.uid());
+  v_org uuid := (p_request->>'organizationId')::uuid;
+  v_operation jsonb;
+  v_request_hash text;
+  v_account public.openclaw_accounts%rowtype;
+  v_acknowledged_at timestamptz;
+  v_result jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','disclosureVersion'],
+    array['version','organizationId','accountId','disclosureVersion']
+  );
+  if v_actor is null or p_request->>'version'<>'1'
+     or jsonb_typeof(p_request->'disclosureVersion')<>'number'
+     or (p_request->>'disclosureVersion')::integer<1
+  then
+    raise exception 'disclosure acknowledgement invalid' using errcode='22023';
+  end if;
+  perform app_private.lock_org_for_decision_v1(v_org);
+  perform app_private.require_perm_v1(
+    v_org,'openclaw_zalo.manage_connections','xac nhan cong bo OpenClaw Zalo'
+  );
+  v_operation:=app_private.openclaw_begin_client_operation_v1(
+    v_org,v_actor,'openclaw_acknowledge_disclosure_v1',p_client_operation_id,p_request
+  );
+  if coalesce((v_operation->>'conflict')::boolean,false) then return v_operation; end if;
+  if coalesce((v_operation->>'isReplay')::boolean,false) then
+    return (v_operation->'safeResult') || jsonb_build_object('idempotentReplay',true);
+  end if;
+  v_request_hash:=v_operation->>'requestHash';
+  select account.* into strict v_account
+  from public.openclaw_accounts account
+  where account.organization_id=v_org
+    and account.id=(p_request->>'accountId')::uuid
+  for update;
+  if v_account.disclosure_version<>(p_request->>'disclosureVersion')::integer then
+    raise exception 'disclosure version mismatch' using errcode='40001';
+  end if;
+  update public.openclaw_accounts account set
+    disclosure_acknowledged_version=v_account.disclosure_version,
+    disclosure_acknowledged_at=statement_timestamp(),
+    updated_at=statement_timestamp()
+  where account.organization_id=v_org and account.id=v_account.id
+  returning account.disclosure_acknowledged_at into v_acknowledged_at;
+  v_result:=jsonb_build_object(
+    'version',1,'organizationId',v_org,'accountId',v_account.id,
+    'disclosureAcknowledgedVersion',v_account.disclosure_version,
+    'disclosureAcknowledgedAt',v_acknowledged_at,
+    'idempotentReplay',false
+  );
+  return app_private.openclaw_finish_browser_write_v1(
+    v_org,v_actor,'openclaw_acknowledge_disclosure_v1',p_client_operation_id,
+    v_request_hash,'OPENCLAW_DISCLOSURE_ACKNOWLEDGED',v_result
+  );
+end;
+$function$;
+
+alter function public.openclaw_acknowledge_disclosure_v1(jsonb,uuid)
+  owner to openclaw_function_owner;
+revoke all on function public.openclaw_acknowledge_disclosure_v1(jsonb,uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.openclaw_acknowledge_disclosure_v1(jsonb,uuid)
+  to authenticated;
+
+create or replace function public.openclaw_service_resume_disconnect_revocation_v1(
+  p_actor_id uuid,
+  p_organization_id uuid,
+  p_client_operation_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_operation public.openclaw_client_operations%rowtype;
+  v_result jsonb;
+  v_revocation public.openclaw_generation_revocations%rowtype;
+begin
+  if p_actor_id is null or p_organization_id is null or p_client_operation_id is null then
+    raise exception 'disconnect revocation not found' using errcode='P0002';
+  end if;
+  perform app_private.lock_org_for_decision_v1(p_organization_id);
+  select operation_row.* into strict v_operation
+  from public.openclaw_client_operations operation_row
+  where operation_row.organization_id=p_organization_id
+    and operation_row.actor_id=p_actor_id
+    and operation_row.operation_key='openclaw_disconnect_account_v1'
+    and operation_row.client_operation_id=p_client_operation_id
+    and operation_row.completed_at is not null
+    and operation_row.safe_result is not null
+  for update;
+  v_result:=v_operation.safe_result;
+  select revocation.* into strict v_revocation
+  from public.openclaw_generation_revocations revocation
+  join public.openclaw_runtime_commands command
+    on command.organization_id=revocation.organization_id
+   and command.id=revocation.command_id
+   and command.account_id=revocation.account_id
+   and command.cell_id=revocation.cell_id
+   and command.command_kind='DISCONNECT'
+   and command.created_by=p_actor_id
+  join public.openclaw_accounts account
+    on account.organization_id=revocation.organization_id
+   and account.id=revocation.account_id
+   and account.connection_state='DISCONNECTING'
+   and account.session_generation=revocation.minimum_valid_generation
+  where revocation.organization_id=p_organization_id
+    and revocation.id=(v_result->>'revocationId')::uuid
+    and revocation.account_id=(v_result->>'accountId')::uuid
+    and revocation.cell_id=(v_result->>'cellId')::uuid
+    and revocation.principal_kind='CHANNEL'
+    and revocation.revocation_kind='SESSION'
+    and revocation.revoked_generation=(v_result->>'revokedGeneration')::bigint
+    and revocation.minimum_valid_generation=(v_result->>'minimumValidGeneration')::bigint
+    and revocation.acknowledged_at is null
+    and command.id=(v_result->>'runtimeCommandId')::uuid
+  for update of revocation;
+  return v_result;
+exception
+  when no_data_found then
+    raise exception 'disconnect revocation not found' using errcode='P0002';
+end;
+$function$;
+
+alter function public.openclaw_service_resume_disconnect_revocation_v1(uuid,uuid,uuid)
+  owner to openclaw_function_owner;
+revoke all on function public.openclaw_service_resume_disconnect_revocation_v1(uuid,uuid,uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.openclaw_service_resume_disconnect_revocation_v1(uuid,uuid,uuid)
+  to service_role;
+
+create or replace function public.openclaw_service_ack_disconnect_revocation_v1(
+  p_actor_id uuid,
+  p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_request->>'organizationId')::uuid;
+  v_account uuid := (p_request->>'accountId')::uuid;
+  v_revocation public.openclaw_generation_revocations%rowtype;
+  v_connection_state text;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','revocationId','minimumValidGeneration','acknowledgementHash'],
+    array['version','organizationId','accountId','revocationId','minimumValidGeneration','acknowledgementHash']
+  );
+  if p_actor_id is null or p_request->>'version'<>'1'
+     or (p_request->>'acknowledgementHash')!~'^[0-9a-f]{64}$'
+  then
+    raise exception 'disconnect acknowledgement invalid' using errcode='22023';
+  end if;
+  perform app_private.lock_org_for_decision_v1(v_org);
+  select revocation.* into strict v_revocation
+  from public.openclaw_generation_revocations revocation
+  join public.openclaw_runtime_commands command
+    on command.organization_id=revocation.organization_id
+   and command.id=revocation.command_id
+   and command.account_id=revocation.account_id
+   and command.cell_id=revocation.cell_id
+   and command.command_kind='DISCONNECT'
+   and command.created_by=p_actor_id
+  where revocation.organization_id=v_org
+    and revocation.id=(p_request->>'revocationId')::uuid
+    and revocation.account_id=v_account
+    and revocation.principal_kind='CHANNEL'
+    and revocation.revocation_kind='SESSION'
+    and revocation.minimum_valid_generation=(p_request->>'minimumValidGeneration')::bigint
+  for update;
+  if v_revocation.acknowledgement_hash is null then
+    update public.openclaw_generation_revocations revocation set
+      acknowledgement_hash=p_request->>'acknowledgementHash',
+      acknowledged_at=statement_timestamp()
+    where revocation.organization_id=v_org and revocation.id=v_revocation.id;
+  elsif v_revocation.acknowledgement_hash is distinct from p_request->>'acknowledgementHash' then
+    raise exception 'disconnect acknowledgement mismatch' using errcode='40001';
+  end if;
+  v_connection_state:=app_private.openclaw_try_finalize_disconnect_v1(
+    v_org,v_account,v_revocation.command_id
+  );
+  return jsonb_build_object(
+    'version',1,'organizationId',v_org,'accountId',v_account,
+    'revocationId',v_revocation.id,'minimumValidGeneration',v_revocation.minimum_valid_generation,
+    'acknowledged',true,'connectionState',v_connection_state
+  );
+exception
+  when no_data_found then
+    raise exception 'disconnect acknowledgement invalid' using errcode='P0002';
+end;
+$function$;
+
+alter function public.openclaw_service_ack_disconnect_revocation_v1(uuid,jsonb)
+  owner to openclaw_function_owner;
+revoke all on function public.openclaw_service_ack_disconnect_revocation_v1(uuid,jsonb)
+  from public,anon,authenticated,service_role;
+grant execute on function public.openclaw_service_ack_disconnect_revocation_v1(uuid,jsonb)
+  to service_role;
 
 commit;

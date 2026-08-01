@@ -11,6 +11,7 @@ export interface ChannelExchangeRequest {
   organizationId: string;
   accountId: string;
   cellId: string;
+  localSessionGeneration: number;
   runtimeMethod: "POST";
   runtimePath: string;
   runtimeTimestamp: number;
@@ -42,6 +43,7 @@ const CHANNEL_KEYS = [
   "organizationId",
   "accountId",
   "cellId",
+  "localSessionGeneration",
   "runtimeMethod",
   "runtimePath",
   "runtimeTimestamp",
@@ -113,6 +115,8 @@ export const runtimeTokenRequestSchema = {
         !isUuid(value.organizationId) ||
         !isUuid(value.accountId) ||
         !isUuid(value.cellId) ||
+        !Number.isSafeInteger(value.localSessionGeneration) ||
+        Number(value.localSessionGeneration) < 1 ||
         !commonFieldsValid(value)
       ) {
         return { success: false, error: "channel request is invalid" };

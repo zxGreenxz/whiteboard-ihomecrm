@@ -17,6 +17,128 @@ async function makeTemporaryDirectory() {
   return directory;
 }
 
+const REQUIRED_OPENCLAW_TABLE_NAMES = [
+  'openclaw_conversations',
+  'openclaw_outbox',
+  'openclaw_retention_policies',
+  'openclaw_runtime_cells',
+];
+const REQUIRED_OPENCLAW_FUNCTION_NAMES = [
+  'openclaw_create_send_intent_v1',
+  'openclaw_get_bootstrap_v1',
+  'openclaw_service_acquire_cell_lease_v1',
+];
+
+function makeOptionalFields(fields: string) {
+  return fields.replace(/^(\s+[A-Za-z_][A-Za-z0-9_]*):/gm, '$1?:');
+}
+
+function buildTableBlock(name: string, fields = '          id: string') {
+  return `      ${name}: {
+        Row: {
+${fields}
+        }
+        Insert: {
+${makeOptionalFields(fields)}
+        }
+        Update: {
+${makeOptionalFields(fields)}
+        }
+        Relationships: []
+      }`;
+}
+
+function buildRequiredOpenClawTables(accountsTable?: string) {
+  const accounts = accountsTable ?? buildTableBlock(
+    'openclaw_accounts',
+    `          connection_generation: number
+          id: string
+          organization_id: string
+          session_generation: number`,
+  );
+  return [
+    accounts,
+    ...REQUIRED_OPENCLAW_TABLE_NAMES.map((name) => buildTableBlock(name)),
+  ].join('\n');
+}
+
+function buildRequiredOpenClawFunctions() {
+  return REQUIRED_OPENCLAW_FUNCTION_NAMES.map(
+    (name) => `      ${name}: { Args: never; Returns: Json }`,
+  ).join('\n');
+}
+
+function buildOpenClawMergeFixture({
+  leadActivityFields = `          openclaw_schedule_revision: number
+          openclaw_schedule_timezone: string
+          openclaw_scheduled_at_utc: string | null`,
+  additionalTables = '',
+  functions = '',
+  includeRequiredSurface = true,
+  accountsTable,
+}: {
+  leadActivityFields?: string;
+  additionalTables?: string;
+  functions?: string;
+  includeRequiredSurface?: boolean;
+  accountsTable?: string;
+} = {}) {
+  const requiredTables = includeRequiredSurface
+    ? `${buildRequiredOpenClawTables(accountsTable)}
+${buildTableBlock('leads', '          openclaw_assignment_revision: number')}
+${buildTableBlock('rooms', '          openclaw_availability_revision: number')}`
+    : '';
+  const requiredFunctions = includeRequiredSurface
+    ? buildRequiredOpenClawFunctions()
+    : '';
+  return `export type Json = string
+export type Database = {
+  public: {
+    Tables: {
+      lead_activities: {
+        Row: {
+          "legacy-lead-field": string
+          legacy_column: string
+${leadActivityFields}
+        }
+        Insert: {
+          "legacy-lead-field": string
+          legacy_column: string
+${makeOptionalFields(leadActivityFields)}
+        }
+        Update: {
+          "legacy-lead-field"?: string
+          legacy_column?: string
+${makeOptionalFields(leadActivityFields)}
+        }
+        Relationships: []
+      }
+${requiredTables}
+${additionalTables}
+    }
+    Views: {
+      legacy_view: {
+        Row: {
+          id: string
+        }
+        Relationships: []
+      }
+    }
+    Functions: {
+${requiredFunctions}
+${functions}
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+`;
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
@@ -173,97 +295,187 @@ describe('gen-supabase-types wrapper', () => {
 
   test('merges PGlite OpenClaw types without replacing the existing schema', async () => {
     const { mergeOpenClawGeneratedTypes } = await loadWrapper();
-    const baseline = `export type Json = string
-export type Database = {
-  public: {
-    Tables: {
-      lead_activities: {
+    const baseline = buildOpenClawMergeFixture({
+      additionalTables: `      "legacy-table": {
         Row: {
-          legacy_column: string
+          "legacy-field": string
         }
         Insert: {
-          legacy_column: string
+          "legacy-field": string
         }
         Update: {
-          legacy_column?: string
+          "legacy-field"?: string
         }
         Relationships: []
-      }
-    }
-    Views: {
-      legacy_view: {
-        Row: {
-          id: string
-        }
-        Relationships: []
-      }
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
-`;
-    const generated = `export type Json = string
-export type Database = {
-  public: {
-    Tables: {
-      lead_activities: {
-        Row: {
-          openclaw_schedule_revision: number
-        }
-        Insert: {
-          openclaw_schedule_revision?: number
-        }
-        Update: {
-          openclaw_schedule_revision?: number
-        }
-        Relationships: []
-      }
-      openclaw_accounts: {
-        Row: {
-          id: string
-        }
-        Insert: {
-          id?: string
-        }
-        Update: {
-          id?: string
-        }
-        Relationships: []
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      openclaw_status_v1: {
+      }`,
+    });
+    const generated = buildOpenClawMergeFixture({
+      functions: `      openclaw_status_v1: {
         Args: never
         Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
-`;
+      }`,
+    });
 
     const merged = mergeOpenClawGeneratedTypes(baseline, generated);
     expect(merged).toContain('legacy_column: string');
+    expect(merged).toContain('"legacy-table": {');
+    expect(merged).toContain('"legacy-lead-field": string');
     expect(merged).toContain('openclaw_schedule_revision: number');
     expect(merged).toContain('openclaw_accounts: {');
     expect(merged).toContain('openclaw_status_v1: {');
     expect(merged).toContain('legacy_view: {');
+    expect(merged).toContain('[_ in never]: never');
+  });
+
+  test('removes an OpenClaw table that is absent from the current PGlite output', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const staleTable = `      openclaw_retired_jobs: {
+        Row: {
+          id: string
+        }
+        Insert: {
+          id?: string
+        }
+        Update: {
+          id?: string
+        }
+        Relationships: []
+      }`;
+    const baseline = buildOpenClawMergeFixture({
+      additionalTables: staleTable,
+    });
+    const generated = buildOpenClawMergeFixture();
+
+    const merged = mergeOpenClawGeneratedTypes(baseline, generated);
+
+    expect(merged).not.toContain('openclaw_retired_jobs: {');
+    expect(merged).toContain('openclaw_accounts: {');
+    expect(merged).toContain('legacy_view: {');
+  });
+
+  test('removes an OpenClaw function that is absent from the current PGlite output', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const currentFunction = `      openclaw_status_v1: {
+        Args: never
+        Returns: Json
+      }`;
+    const staleFunction = currentFunction.replace('openclaw_status_v1', 'openclaw_retired_v1');
+    const baseline = buildOpenClawMergeFixture({
+      functions: `${staleFunction}\n${currentFunction}`,
+    });
+    const generated = buildOpenClawMergeFixture({
+      functions: currentFunction,
+    });
+
+    const merged = mergeOpenClawGeneratedTypes(baseline, generated);
+
+    expect(merged).not.toContain('openclaw_retired_v1: {');
+    expect(merged).toContain('openclaw_status_v1: {');
+  });
+
+  test('removes an OpenClaw column that is absent from the current PGlite output', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const currentSharedTable = `      customer_records: {
+        Row: {
+          id: string
+          openclaw_current_revision: number
+        }
+        Insert: {
+          id?: string
+          openclaw_current_revision?: number
+        }
+        Update: {
+          id?: string
+          openclaw_current_revision?: number
+        }
+        Relationships: []
+      }`;
+    const staleSharedTable = currentSharedTable
+      .replace(
+        '          openclaw_current_revision: number',
+        `          openclaw_current_revision: number
+          openclaw_retired_revision: number`,
+      )
+      .replaceAll(
+        '          openclaw_current_revision?: number',
+        `          openclaw_current_revision?: number
+          openclaw_retired_revision?: number`,
+      );
+    const baseline = buildOpenClawMergeFixture({
+      additionalTables: staleSharedTable,
+    });
+    const generated = buildOpenClawMergeFixture({
+      additionalTables: currentSharedTable,
+    });
+
+    const merged = mergeOpenClawGeneratedTypes(baseline, generated);
+
+    expect(merged).not.toContain('openclaw_retired_revision');
+    expect(merged).toContain('openclaw_current_revision: number');
+    expect(merged).toContain('id: string');
+  });
+
+  test('rejects structurally valid generated types with no required OpenClaw schema', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const baseline = buildOpenClawMergeFixture();
+    const generated = buildOpenClawMergeFixture({
+      leadActivityFields: '',
+      includeRequiredSurface: false,
+    });
+
+    expect(() => mergeOpenClawGeneratedTypes(baseline, generated)).toThrow(
+      /required OpenClaw schema/i,
+    );
+  });
+
+  test('rejects a malformed required OpenClaw accounts table shape', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const baseline = buildOpenClawMergeFixture();
+    const generated = buildOpenClawMergeFixture({
+      accountsTable: `      openclaw_accounts: {
+        BROKEN: never
+      }`,
+    });
+
+    expect(() => mergeOpenClawGeneratedTypes(baseline, generated)).toThrow(
+      /required OpenClaw schema.*openclaw_accounts\.Row/i,
+    );
+  });
+
+  test('rejects a partial OpenClaw surface even when the old sentinels are present', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const baseline = buildOpenClawMergeFixture();
+    const generated = buildOpenClawMergeFixture({
+      leadActivityFields: '          openclaw_schedule_revision: number',
+      includeRequiredSurface: false,
+      additionalTables: `      openclaw_accounts: {
+        Row: {
+        }
+        Insert: {
+        }
+        Update: {
+        }
+        Relationships: []
+      }`,
+    });
+
+    expect(() => mergeOpenClawGeneratedTypes(baseline, generated)).toThrow(
+      /required OpenClaw schema/i,
+    );
+  });
+
+  test('orders generated OpenClaw entries by deterministic ASCII code points', async () => {
+    const { mergeOpenClawGeneratedTypes } = await loadWrapper();
+    const generated = buildOpenClawMergeFixture({
+      additionalTables: `${buildTableBlock('openclaw_a_')}
+${buildTableBlock('openclaw_a0')}`,
+    });
+
+    const merged = mergeOpenClawGeneratedTypes(buildOpenClawMergeFixture(), generated);
+
+    expect(merged.indexOf('      openclaw_a0: {')).toBeLessThan(
+      merged.indexOf('      openclaw_a_: {'),
+    );
   });
 
   test('uses the explicit PGlite engine without invoking the Supabase CLI', async () => {
@@ -272,82 +484,8 @@ export type Database = {
     const targetDirectory = join(repoRoot, 'src', 'integrations', 'supabase');
     await mkdir(targetDirectory, { recursive: true });
     await writeFile(join(repoRoot, 'package.json'), '{"name":"pglite-types"}\n', 'utf8');
-    const baseline = `export type Json = string
-export type Database = {
-  public: {
-    Tables: {
-      lead_activities: {
-        Row: {
-          legacy_column: string
-        }
-        Insert: {
-          legacy_column: string
-        }
-        Update: {
-          legacy_column?: string
-        }
-        Relationships: []
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
-`;
-    const generated = `export type Json = string
-export type Database = {
-  public: {
-    Tables: {
-      lead_activities: {
-        Row: {
-          openclaw_schedule_revision: number
-        }
-        Insert: {
-          openclaw_schedule_revision?: number
-        }
-        Update: {
-          openclaw_schedule_revision?: number
-        }
-        Relationships: []
-      }
-      openclaw_accounts: {
-        Row: {
-          id: string
-        }
-        Insert: {
-          id?: string
-        }
-        Update: {
-          id?: string
-        }
-        Relationships: []
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      [_ in never]: never
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
-}
-`;
+    const baseline = buildOpenClawMergeFixture();
+    const generated = buildOpenClawMergeFixture();
     await writeFile(
       join(targetDirectory, 'types.ts'),
       `${GENERATED_TYPES_HEADER}\n${baseline}`,

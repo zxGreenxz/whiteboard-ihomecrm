@@ -1,25 +1,14 @@
-import { createHash } from "node:crypto";
-
-import { canonicalJson } from "../spool/checksum.js";
 import {
-  evaluateMarker,
-  type MarkerFields,
-} from "../outbox/state-machine.js";
-
-/**
- * The private ZaloUser bridge RPC adapter.
- *
- * Business delivery uses exactly one private request, `zalouser.bridge.send`,
- * carrying the complete canonical payload plus a short-lived authorization
- * marker. The stock generic `send` is never used for business traffic: it is
- * denied outside the authorized fork context, which is what makes every other
- * bypass path (message tool, pairing notification, direct adapter call) unable
- * to move customer content.
- */
+  hashCanonicalSendPayload as hashPayload,
+  snapshotCanonicalSendPayload,
+  type CanonicalSendPayloadV1,
+  type OutboxAuthorizeSendRequestV1,
+  type ZaloUserBridgeSendPartV1,
+} from "../runtime-api/schemas.js";
+import { evaluateMarker, type MarkerFields } from "../outbox/state-machine.js";
 
 export const PRIVATE_SEND_RPC = "zalouser.bridge.send";
 
-/** Ordinary cell control RPCs the adapter is allowed to call. */
 export const ALLOWED_CONTROL_RPCS = Object.freeze([
   "web.login.start",
   "web.login.wait",
@@ -31,34 +20,15 @@ export const ALLOWED_CONTROL_RPCS = Object.freeze([
 ] as const);
 
 export type ControlRpc = (typeof ALLOWED_CONTROL_RPCS)[number];
-
-export type SendPartKind = "TEXT" | "MEDIA";
-
-export interface SendPart {
-  kind: SendPartKind;
-  /** TEXT parts carry text; MEDIA parts carry a verified object reference. */
-  text?: string;
-  mediaId?: string;
-  sha256?: string;
-  mime?: string;
-  byteLength?: number;
-}
-
-export interface CanonicalSendPayloadV1 {
-  version: 1;
-  outboxId: string;
-  organizationId: string;
-  accountId: string;
-  cellId: string;
-  targetStableId: string;
-  accountProfile: string;
-  idempotencyKey: string;
-  parts: SendPart[];
-}
+export type SendPart = ZaloUserBridgeSendPartV1;
+export type { CanonicalSendPayloadV1 };
 
 export type SendDenial =
   | "UNSUPPORTED_PART_KIND"
   | "EMPTY_BATCH"
+  | "TOO_MANY_PARTS"
+  | "PART_INDEX_INVALID"
+  | "TEXT_TOO_LONG"
   | "MEDIA_UNVERIFIED"
   | "MARKER_INVALID"
   | "GENERIC_SEND_FORBIDDEN"
@@ -73,61 +43,53 @@ export interface SendAttemptResult {
   outcome?: "SENT" | "UNKNOWN" | "FAILED";
 }
 
-/**
- * RFC8785-style canonical hash of the send payload. JavaScript, SQL, and the
- * vendored fork must all agree on this value; disagreement is what a stale or
- * tampered marker looks like.
- */
 export function hashCanonicalSendPayload(payload: CanonicalSendPayloadV1): string {
-  return createHash("sha256")
-    .update("ihome-openclaw-send-payload-v1", "utf8")
-    .update(Buffer.from([0]))
-    .update(canonicalJson(payload), "utf8")
-    .digest("hex");
+  return hashPayload(payload);
 }
 
-/**
- * Materializes the exact ordered provider batch. Only TEXT and MEDIA are
- * representable; a link or reaction request is a bypass attempt and fails here,
- * before authorization and before any provider I/O.
- */
 export function materializeBatch(
   payload: CanonicalSendPayloadV1,
 ): { ok: boolean; denial?: SendDenial; parts: SendPart[] } {
-  if (payload.parts.length === 0) return { ok: false, denial: "EMPTY_BATCH", parts: [] };
-  for (const part of payload.parts) {
-    if (part.kind !== "TEXT" && part.kind !== "MEDIA") {
+  if (!Array.isArray(payload.parts) || payload.parts.length === 0) {
+    return { ok: false, denial: "EMPTY_BATCH", parts: [] };
+  }
+  if (payload.parts.length > 20) return { ok: false, denial: "TOO_MANY_PARTS", parts: [] };
+  for (const [index, part] of payload.parts.entries()) {
+    if (!part || typeof part !== "object" || (part.kind !== "TEXT" && part.kind !== "MEDIA")) {
       return { ok: false, denial: "UNSUPPORTED_PART_KIND", parts: [] };
     }
-    if (part.kind === "MEDIA") {
-      // Every media byte sequence must already be verified: digest, MIME, and
-      // length are all required before the batch may be authorized.
-      if (
-        typeof part.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(part.sha256) ||
-        typeof part.mime !== "string" || part.mime.length === 0 ||
-        typeof part.byteLength !== "number" || !Number.isInteger(part.byteLength) ||
-        part.byteLength <= 0
-      ) {
-        return { ok: false, denial: "MEDIA_UNVERIFIED", parts: [] };
+    if (part.version !== 1 || part.partIndex !== index) {
+      return { ok: false, denial: "PART_INDEX_INVALID", parts: [] };
+    }
+    if (part.kind === "TEXT") {
+      if (typeof part.text !== "string" || part.text.length === 0) {
+        return { ok: false, denial: "UNSUPPORTED_PART_KIND", parts: [] };
       }
-    }
-    if (part.kind === "TEXT" && (typeof part.text !== "string" || part.text.length === 0)) {
-      return { ok: false, denial: "UNSUPPORTED_PART_KIND", parts: [] };
+      if (Array.from(part.text).length > 2_000) {
+        return { ok: false, denial: "TEXT_TOO_LONG", parts: [] };
+      }
+    } else if (
+      typeof part.objectKey !== "string" || part.objectKey.trim().length === 0 ||
+      typeof part.sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(part.sha256) ||
+      typeof part.mime !== "string" ||
+      !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/u.test(part.mime) ||
+      !Number.isSafeInteger(part.bytes) || part.bytes <= 0
+    ) {
+      return { ok: false, denial: "MEDIA_UNVERIFIED", parts: [] };
     }
   }
-  return { ok: true, parts: [...payload.parts] };
+  try {
+    return { ok: true, parts: [...snapshotCanonicalSendPayload(payload).parts] };
+  } catch {
+    return { ok: false, denial: "UNSUPPORTED_PART_KIND", parts: [] };
+  }
 }
 
 export interface SendDependencies {
-  /**
-   * Calls `/v1/outbox/authorize-send`. This is the final awaited operation
-   * before the first provider I/O.
-   */
   authorizeSend: (input: {
-    payloadSha256: string;
+    payloadHash: string;
     marker: MarkerFields;
   }) => Promise<{ authorized: boolean }>;
-  /** Emits one provider frame; the adapter counts every call. */
   emitProviderFrame: (part: SendPart, index: number) => Promise<string>;
   nowEpochMs: () => number;
   leaseExpiresAtEpochMs: number;
@@ -139,7 +101,9 @@ export interface SendDependencies {
 }
 
 /**
- * The single authorized business-send entry point.
+ * Unit-level model of the fork's last-moment authorization seam. Production
+ * workers call the private RPC adapter below; the reviewed fork owns provider
+ * materialization and I/O.
  */
 export async function zalouserBridgeSend(
   payload: CanonicalSendPayloadV1,
@@ -155,13 +119,12 @@ export async function zalouserBridgeSend(
       providerMessageIds: [],
     };
   }
-
-  const payloadSha256 = hashCanonicalSendPayload(payload);
+  const payloadHash = hashCanonicalSendPayload(payload);
   const markerVerdict = evaluateMarker({
     marker,
     nowEpochMs: dependencies.nowEpochMs(),
     leaseExpiresAtEpochMs: dependencies.leaseExpiresAtEpochMs,
-    expectedPayloadSha256: payloadSha256,
+    expectedPayloadSha256: payloadHash,
     currentFencingToken: dependencies.currentFencingToken,
     currentSessionGeneration: dependencies.currentSessionGeneration,
     currentControlVersion: dependencies.currentControlVersion,
@@ -171,65 +134,91 @@ export async function zalouserBridgeSend(
   if (!markerVerdict.ok) {
     return {
       authorized: false,
-      denial: marker.payloadSha256 !== payloadSha256
-        ? "PAYLOAD_HASH_MISMATCH"
-        : "MARKER_INVALID",
+      denial: marker.payloadHash !== payloadHash ? "PAYLOAD_HASH_MISMATCH" : "MARKER_INVALID",
+      providerFramesEmitted: 0,
+      providerMessageIds: [],
+    };
+  }
+  try {
+    const authorization = await dependencies.authorizeSend({ payloadHash, marker });
+    if (!authorization.authorized) {
+      return {
+        authorized: false,
+        denial: "MARKER_INVALID",
+        providerFramesEmitted: 0,
+        providerMessageIds: [],
+      };
+    }
+  } catch {
+    return {
+      authorized: false,
+      denial: "MARKER_INVALID",
       providerFramesEmitted: 0,
       providerMessageIds: [],
     };
   }
 
-  let authorization: { authorized: boolean };
-  try {
-    authorization = await dependencies.authorizeSend({ payloadSha256, marker });
-  } catch {
-    // An Edge error, timeout, or bridge failure yields zero provider frames.
-    return {
-      authorized: false,
-      denial: "MARKER_INVALID",
-      providerFramesEmitted: 0,
-      providerMessageIds: [],
-    };
+  const handoffBarrierNow = dependencies.nowEpochMs();
+  const markerExpiresAt = Date.parse(marker.expiresAt);
+  if (markerExpiresAt <= handoffBarrierNow) {
+    throw Object.assign(new Error("authorization expired before provider handoff"), {
+      code: "AUTHORIZATION_EXPIRED",
+      authorizedHandoffRecorded: false as const,
+    });
   }
-  if (!authorization.authorized) {
-    return {
-      authorized: false,
-      denial: "MARKER_INVALID",
-      providerFramesEmitted: 0,
-      providerMessageIds: [],
-    };
+  if (dependencies.leaseExpiresAtEpochMs <= handoffBarrierNow) {
+    throw Object.assign(new Error("lease expired before provider handoff"), {
+      code: "LEASE_EXPIRED",
+      authorizedHandoffRecorded: false as const,
+    });
   }
 
   const providerMessageIds: string[] = [];
-  let framesEmitted = 0;
+  let providerFramesEmitted = 0;
   for (const [index, part] of batch.parts.entries()) {
     try {
-      framesEmitted += 1;
+      providerFramesEmitted += 1;
       providerMessageIds.push(await dependencies.emitProviderFrame(part, index));
     } catch {
-      // Any failure after the first possible handoff makes the whole outbox
-      // UNKNOWN, even when later parts are known to be unsent.
       return {
         authorized: true,
-        providerFramesEmitted: framesEmitted,
+        providerFramesEmitted,
         providerMessageIds,
         outcome: "UNKNOWN",
       };
     }
   }
-
   return {
     authorized: true,
-    providerFramesEmitted: framesEmitted,
+    providerFramesEmitted,
     providerMessageIds,
     outcome: "SENT",
   };
 }
 
-/**
- * The stock generic `send` path. It exists only to be refused: business content
- * must travel through `zalouserBridgeSend`.
- */
+export interface CellRpcTransport {
+  invoke(method: string, params: unknown): Promise<unknown>;
+}
+
+/** The only production business-delivery call the bridge can make. */
+export function createZaloUserBridgeRpcAdapter(transport: CellRpcTransport) {
+  if (!transport || typeof transport.invoke !== "function") {
+    throw new TypeError("cell RPC transport is required");
+  }
+  return Object.freeze({
+    send: async (payload: CanonicalSendPayloadV1, authorization: OutboxAuthorizeSendRequestV1) =>
+      await transport.invoke(PRIVATE_SEND_RPC, {
+        version: 1,
+        payload: snapshotCanonicalSendPayload(payload),
+        authorization,
+      }),
+    control: async (method: ControlRpc, params: unknown) => {
+      if (!isAllowedControlRpc(method)) throw new Error("CONTROL_RPC_FORBIDDEN");
+      return await transport.invoke(method, params);
+    },
+  });
+}
+
 export function genericSend(): SendAttemptResult {
   return {
     authorized: false,
@@ -243,7 +232,6 @@ export function isAllowedControlRpc(name: string): name is ControlRpc {
   return (ALLOWED_CONTROL_RPCS as readonly string[]).includes(name);
 }
 
-/** Typing, seen, and delivery receipts are content-free and mint nothing. */
 export const CONTROL_TRAFFIC_KINDS = Object.freeze([
   "typing",
   "seen",

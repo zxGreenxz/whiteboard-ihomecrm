@@ -18,6 +18,13 @@ const sha256 = "0123456789abcdef".repeat(4);
 const signature = "A".repeat(86);
 const rolloutRunId = "88888888-8888-4888-8888-888888888888";
 const receiptId = "77777777-7777-4777-8777-777777777777";
+const mediaUploadTicketJti = "77777777-7777-4777-8777-777777777778";
+const auditVerifyTicketJti = "77777777-7777-4777-8777-777777777779";
+const retentionTicketId = "77777777-7777-4777-8777-777777777780";
+const inboundRequestId = "77777777-7777-4777-8777-777777777781";
+const mediaConversationId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba1";
+const mediaMessageId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbba2";
+const retentionAuthorizationJti = "authorizationJti012345";
 const auditRootId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const anchorKey =
   `v1/org/${ids.organization}/audit/2026-07-31/${auditRootId}.json`;
@@ -37,8 +44,8 @@ const retentionReceiptValue = {
   holdVersion: 0,
   quarantineVersion: 1,
   deleteTicketJti: "ticketJti0123456789",
-  deleteAuthorizationJti: "authorizationJti012345",
-  proofJti: "proofJti012345678901",
+  deleteAuthorizationJti: retentionAuthorizationJti,
+  proofJti: retentionAuthorizationJti,
   objectStatus: "DELETED",
   r2VersionOrEtag: "etag-001",
   completedAt: "2026-07-31T00:00:10.000Z",
@@ -61,9 +68,175 @@ const auditAnchorReceiptValue = {
   anchorKey,
   signatureHash: sha256,
   auditSigningKeyGeneration: 1,
-  verifyTicketJti: "verifyTicketJti012345",
+  verifyTicketJti: auditVerifyTicketJti,
   objectVersionOrEtag: "etag-audit-001",
   verifiedAt: "2026-07-31T00:00:10.000Z",
+  gatewaySigningKeyGeneration: 1,
+  signature,
+};
+const mediaUploadReceiptValue = {
+  version: 1,
+  receiptKind: "MEDIA_UPLOAD",
+  receiptId,
+  organizationId: ids.organization,
+  accountId: ids.account,
+  cellId: ids.cell,
+  mediaId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  objectKey: `v1/org/${ids.organization}/account/${ids.account}/conversation/${mediaConversationId}/message/${mediaMessageId}/media/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/original`,
+  sha256,
+  contentType: "image/png",
+  contentLength: 512,
+  uploadTicketJti: mediaUploadTicketJti,
+  credentialGeneration: 1,
+  leaseGeneration: 1,
+  fencingToken: 1,
+  sessionGeneration: 1,
+  objectVersionOrEtag: "etag-media-001",
+  storedAt: "2026-07-31T00:00:10.000Z",
+  gatewaySigningKeyGeneration: 1,
+  signature,
+};
+const ticketIat = 1_785_062_400;
+const ticketExp = ticketIat + 30;
+const frozenMaintenanceClaim = {
+  maintenancePrincipalId: ids.principal,
+  credentialGeneration: 1,
+  leaseGeneration: 1,
+  fencingToken: 1,
+  claimGeneration: 1,
+};
+const ticketBase = {
+  version: 1,
+  aud: "openclaw-media-gateway",
+  organizationId: ids.organization,
+  objectKey: `org/${ids.organization}/openclaw/media/image-1`,
+  sha256,
+  contentType: "image/jpeg",
+  contentLength: 1024,
+  gatewayKeyGeneration: 1,
+  iat: ticketIat,
+  exp: ticketExp,
+};
+const browserGetTicket = {
+  ...ticketBase,
+  operation: "GET",
+  subject: "BROWSER",
+  jti: "77777777-7777-4777-8777-777777777701",
+  accountId: ids.account,
+  sessionGeneration: 1,
+  browserUserId: ids.principal,
+  browserSessionIdSha256: sha256,
+  browserAccessTokenSha256: sha256,
+  signature,
+};
+const runtimePutTicket = {
+  ...ticketBase,
+  operation: "PUT",
+  subject: "RUNTIME",
+  jti: "77777777-7777-4777-8777-777777777702",
+  accountId: ids.account,
+  sessionGeneration: 1,
+  cellId: ids.cell,
+  credentialGeneration: 1,
+  leaseGeneration: 1,
+  fencingToken: 1,
+  receiptSigningKeyGeneration: 1,
+  signature,
+};
+const runtimeGetTicket = {
+  ...runtimePutTicket,
+  operation: "GET",
+  jti: "77777777-7777-4777-8777-777777777703",
+};
+const maintenanceDeleteTicket = {
+  ...ticketBase,
+  operation: "DELETE",
+  subject: "MAINTENANCE",
+  jti: "77777777-7777-4777-8777-777777777704",
+  accountId: null,
+  sessionGeneration: 0,
+  maintenancePrincipalId: ids.principal,
+  workItemId: ids.work,
+  claimGeneration: 1,
+  credentialGeneration: 1,
+  leaseGeneration: 1,
+  fencingToken: 1,
+  receiptSigningKeyGeneration: 1,
+  deletePhase: "FINAL_DELETE",
+  quarantineVersion: 1,
+  finalDeleteNotBefore: ticketIat - 1,
+  holdVersion: 0,
+  signature,
+};
+const maintenanceAnchorTicket = {
+  ...ticketBase,
+  operation: "ANCHOR",
+  subject: "MAINTENANCE",
+  jti: "77777777-7777-4777-8777-777777777705",
+  accountId: null,
+  objectKey: anchorKey,
+  contentType: "application/json",
+  sessionGeneration: 0,
+  maintenancePrincipalId: ids.principal,
+  workItemId: ids.work,
+  claimGeneration: 1,
+  credentialGeneration: 1,
+  leaseGeneration: 1,
+  fencingToken: 1,
+  receiptSigningKeyGeneration: 1,
+  auditRootId,
+  rootHash: sha256,
+  signatureHash: sha256,
+  auditSigningKeyGeneration: 1,
+  auditSigningPublicKeyHash: sha256,
+  signature,
+};
+const maintenanceAnchorVerifyTicket = {
+  ...maintenanceAnchorTicket,
+  operation: "ANCHOR_VERIFY",
+  jti: auditVerifyTicketJti,
+};
+const retentionRecoveryTicket = {
+  ...maintenanceDeleteTicket,
+  jti: "77777777-7777-4777-8777-777777777706",
+  recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+  recoveryGeneration: 2,
+  replacesTicketJti: maintenanceDeleteTicket.jti,
+  replacesDeleteAuthorizationJti: "77777777-7777-4777-8777-777777777707",
+  frozenClaim: frozenMaintenanceClaim,
+};
+delete retentionRecoveryTicket.claimGeneration;
+const auditRecoveryTicket = {
+  ...maintenanceAnchorVerifyTicket,
+  jti: "77777777-7777-4777-8777-777777777708",
+  recoveryKind: "AUDIT_VERIFY_AUTHORIZED",
+  recoveryGeneration: 2,
+  replacesVerifyTicketJti: maintenanceAnchorVerifyTicket.jti,
+  frozenClaim: frozenMaintenanceClaim,
+};
+delete auditRecoveryTicket.claimGeneration;
+const retentionRecoveryAuthorization = {
+  version: 1,
+  authorizationKind: "RETENTION_FINAL_DELETE",
+  organizationId: ids.organization,
+  maintenancePrincipalId: ids.principal,
+  workItemId: ids.work,
+  credentialGeneration: 1,
+  leaseGeneration: 1,
+  fencingToken: 1,
+  recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+  recoveryGeneration: 2,
+  replacesTicketJti: maintenanceDeleteTicket.jti,
+  replacesDeleteAuthorizationJti: retentionRecoveryTicket.replacesDeleteAuthorizationJti,
+  frozenClaim: frozenMaintenanceClaim,
+  objectKey: retentionRecoveryTicket.objectKey,
+  deletePhase: "FINAL_DELETE",
+  holdVersion: 0,
+  quarantineVersion: 1,
+  deleteTicketJti: retentionRecoveryTicket.jti,
+  authorizationJti: "77777777-7777-4777-8777-777777777709",
+  iat: "2026-07-31T00:00:00.000Z",
+  exp: "2026-07-31T00:00:05.000Z",
   gatewaySigningKeyGeneration: 1,
   signature,
 };
@@ -76,6 +249,71 @@ export function canonicalJson(value) {
     .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
     .join(",")}}`;
 }
+
+export function domainSha256(domain, value) {
+  return createHash("sha256")
+    .update(domain, "utf8")
+    .update(canonicalJson(value), "utf8")
+    .digest("hex");
+}
+
+export function domainTextSha256(domain, value) {
+  return createHash("sha256")
+    .update(domain, "utf8")
+    .update(value, "utf8")
+    .digest("hex");
+}
+
+export function canonicalSha256(value) {
+  return createHash("sha256")
+    .update(canonicalJson(value), "utf8")
+    .digest("hex");
+}
+
+const inboundRawEnvelope = { event: "message.text", text: "xin chao" };
+const inboundNormalizedEnvelope = {
+  text: "xin chao",
+  replyToProviderMessageId: null,
+  mediaManifest: [],
+};
+const inboundMediaManifest = [
+  {
+    version: 1,
+    index: 0,
+    providerMediaId: "provider-media-001",
+    kind: "IMAGE",
+    mime: "image/png",
+    byteLength: 512,
+    providerChecksum: sha256,
+    fetchRef: "https://media.invalid/image-001",
+    byteState: "PENDING",
+  },
+  {
+    version: 1,
+    index: 1,
+    providerMediaId: null,
+    kind: "FILE",
+    mime: "application/pdf",
+    byteLength: 1024,
+    providerChecksum: null,
+    fetchRef: null,
+    byteState: "PENDING",
+  },
+];
+const inboundMediaRawEnvelope = {
+  event: "message.media",
+  attachments: ["provider-media-001", "provider-file-001"],
+};
+const inboundMediaNormalizedEnvelope = {
+  text: null,
+  replyToProviderMessageId: "msg-parent-001",
+  mediaManifest: inboundMediaManifest,
+};
+
+const retentionReceiptHash = domainSha256(
+  "ihome-openclaw-retention-receipt-v1\0",
+  retentionReceiptValue,
+);
 
 const sourceVectors = [
   {
@@ -152,11 +390,46 @@ const sourceVectors = [
           eventKind: "MESSAGE",
           providerEventId: "evt-001",
           providerMessageId: "msg-001",
-          targetKind: "PEER",
-          targetProviderId: "zalo-peer-001",
-          providerOccurredAt: "2026-07-31T00:00:00.000Z",
-          payloadHash: sha256,
-          payload: { text: "xin chao" },
+          providerConversationId: "conversation-zalo-001",
+          providerSenderId: "zalo-peer-001",
+          providerTarget: { kind: "PEER", providerId: "zalo-peer-001" },
+          providerEventType: "message.text",
+          sourceTimestamp: "2026-07-31T00:00:00.000Z",
+          callbackReceivedAt: "2026-07-31T00:00:01.000Z",
+          rawEnvelope: inboundRawEnvelope,
+          rawEnvelopeSha256: canonicalSha256(inboundRawEnvelope),
+          normalized: inboundNormalizedEnvelope,
+          normalizedSha256: canonicalSha256(inboundNormalizedEnvelope),
+        },
+      ],
+    },
+  },
+  {
+    name: "inbound-message-media",
+    schema: "inbound.schema.json",
+    domain: "ihome-openclaw-inbound-v1\0",
+    value: {
+      version: 1,
+      organizationId: ids.organization,
+      accountId: ids.account,
+      cellId: ids.cell,
+      sessionGeneration: 1,
+      events: [
+        {
+          version: 1,
+          eventKind: "MESSAGE",
+          providerEventId: "evt-media-001",
+          providerMessageId: "msg-media-001",
+          providerConversationId: "conversation-zalo-001",
+          providerSenderId: "zalo-peer-001",
+          providerTarget: { kind: "PEER", providerId: "zalo-peer-001" },
+          providerEventType: "message.media",
+          sourceTimestamp: "2026-07-31T00:00:02.000Z",
+          callbackReceivedAt: "2026-07-31T00:00:03.000Z",
+          rawEnvelope: inboundMediaRawEnvelope,
+          rawEnvelopeSha256: canonicalSha256(inboundMediaRawEnvelope),
+          normalized: inboundMediaNormalizedEnvelope,
+          normalizedSha256: canonicalSha256(inboundMediaNormalizedEnvelope),
         },
       ],
     },
@@ -191,32 +464,54 @@ const sourceVectors = [
     },
   },
   {
-    name: "media-ticket",
-    schema: "media.schema.json",
-    domain: "ihome-openclaw-media-ticket-v1\0",
+    name: "maintenance-audit-claim",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-maintenance-claim-v1\0",
     value: {
       version: 1,
-      ticketKind: "MEDIA_OBJECT",
-      ticketId: ids.work,
+      workItemId: ids.work,
       organizationId: ids.organization,
-      operation: "GET",
-      object: {
-        objectKey: `org/${ids.organization}/openclaw/media/image-1`,
-        sha256,
-        contentType: "image/jpeg",
-        contentLength: 1024,
+      maintenancePrincipalId: ids.principal,
+      credentialGeneration: 1,
+      leaseGeneration: 1,
+      sourceKey: `audit:${auditRootId}:1`,
+      claimToken: "claim-token-0123456789abcdef0123456789abcdef",
+      claimGeneration: 1,
+      fencingToken: 1,
+      leaseExpiresAt: "2026-07-31T00:01:00.000Z",
+      payload: {
+        kind: "AUDIT_ANCHOR",
+        auditRootId,
+        rootDate: "2026-07-31",
+        firstSequence: 1,
+        lastSequence: 1,
+        eventCount: 1,
+        previousRootHash: null,
+        merkleRootHash: sha256,
+        rootHash: sha256,
+        auditSigningKeyGeneration: 1,
+        auditSigningPublicKeyHash: sha256,
+        anchorKey,
       },
-      iat: "2026-07-31T00:00:00.000Z",
-      exp: "2026-07-31T00:05:00.000Z",
-      gatewayKeyGeneration: 1,
-      signature,
     },
+  },
+  {
+    name: "media-browser-get-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: browserGetTicket,
   },
   {
     name: "retention-receipt",
     schema: "receipts.schema.json",
     domain: "ihome-openclaw-retention-receipt-v1\0",
     value: retentionReceiptValue,
+  },
+  {
+    name: "media-upload-receipt",
+    schema: "receipts.schema.json",
+    domain: "ihome-openclaw-media-upload-receipt-v1\0",
+    value: mediaUploadReceiptValue,
   },
   {
     name: "policy-allow",
@@ -304,6 +599,45 @@ const deliveryEvidence = {
   outcome: "SENT",
   reasonCode: "ALL_PARTS_ACKNOWLEDGED",
 };
+const preHandoffEvidence = {
+  version: 1,
+  evidenceKind: "OUTBOX_PRE_HANDOFF",
+  outboxId: ids.work,
+  claimGeneration: 1,
+  payloadHash: sha256,
+  authorizationMarker,
+  reasonCode: "ADAPTER_NOT_READY",
+  authorizedHandoffRecorded: false,
+};
+const noSendEvidence = {
+  version: 1,
+  evidenceKind: "NO_SEND",
+  reasonCode: "TAKEOVER_ACTIVE",
+};
+const humanDraftText = "Lien he [REDACTED_EMAIL].";
+const humanDraftEvidence = {
+  version: 1,
+  evidenceKind: "HUMAN_DRAFT",
+  reasonCode: "DLP_BLOCKED",
+  classification: "TENANT_SUPPORT",
+  confidenceBasisPoints: 7500,
+  findings: ["EMAIL"],
+  draftText: humanDraftText,
+  draftHash: domainTextSha256(
+    "ihome-openclaw-human-draft-v1\0",
+    humanDraftText,
+  ),
+};
+const workFailureEvidence = {
+  version: 1,
+  evidenceKind: "WORK_FAILURE",
+  reasonCode: "UPSTREAM_TIMEOUT",
+  failureFingerprint: sha256,
+};
+const noSendEvidenceHash = domainSha256(
+  "ihome-openclaw-send-work-completion-v1\0",
+  noSendEvidence,
+);
 sourceVectors.push(
   {
     name: "control-runtime-principal",
@@ -369,7 +703,10 @@ sourceVectors.push(
       version: 1,
       authorization: authorizeSend,
       deliveryEvidence,
-      deliveryEvidenceHash: sha256,
+      deliveryEvidenceHash: domainSha256(
+        "ihome-openclaw-delivery-evidence-v1\0",
+        deliveryEvidence,
+      ),
       outcome: "SENT",
       reasonCode: "ALL_PARTS_ACKNOWLEDGED",
     },
@@ -383,17 +720,11 @@ sourceVectors.push(
       authorization: authorizeSend,
       outcome: "SAFE_RETRY",
       reasonCode: "ADAPTER_NOT_READY",
-      preHandoffEvidence: {
-        version: 1,
-        evidenceKind: "OUTBOX_PRE_HANDOFF",
-        outboxId: ids.work,
-        claimGeneration: 1,
-        payloadHash: sha256,
-        authorizationMarker,
-        reasonCode: "ADAPTER_NOT_READY",
-        authorizedHandoffRecorded: false,
-      },
-      preHandoffEvidenceHash: sha256,
+      preHandoffEvidence,
+      preHandoffEvidenceHash: domainSha256(
+        "ihome-openclaw-pre-handoff-evidence-v1\0",
+        preHandoffEvidence,
+      ),
       retryNotBefore: "2026-07-31T00:00:10.000Z",
     },
   },
@@ -438,10 +769,23 @@ sourceVectors.push(
     domain: "ihome-openclaw-inbound-result-v1\0",
     value: {
       version: 1,
+      requestId: inboundRequestId,
       accepted: 1,
       deduplicated: 0,
       quarantined: 0,
-      results: [{ index: 0, state: "ACCEPTED", inboundEventId: ids.work }],
+      results: [
+        {
+          index: 0,
+          status: "ACCEPTED",
+          inboundEventId: ids.work,
+          messageId: mediaMessageId,
+          decisionId: ids.policy,
+          decisionKind: "NO_SEND",
+          noSendReason: "NO_AUTOMATION_MATCH",
+          workItemId: null,
+          media: [],
+        },
+      ],
     },
   },
   {
@@ -566,7 +910,7 @@ sourceVectors.push(
       workItemId: ids.work,
       claimGeneration: 1,
       outcome: "COMPLETED",
-      canonicalEvidenceHash: sha256,
+      canonicalEvidenceHash: noSendEvidenceHash,
       completedAt: "2026-07-31T00:00:10.000Z",
       retryNotBefore: null,
     },
@@ -587,9 +931,57 @@ sourceVectors.push(
       claimGeneration: 1,
       fencingToken: 1,
       outcome: "COMPLETE",
-      evidence: { outboxId: ids.work, payloadHash: sha256 },
-      evidenceHash: sha256,
+      evidence: noSendEvidence,
+      evidenceHash: noSendEvidenceHash,
       retryAfterSeconds: null,
+    },
+  },
+  {
+    name: "send-work-completion-human-draft",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-send-work-completion-v1\0",
+    value: {
+      version: 1,
+      workItemId: ids.work,
+      organizationId: ids.organization,
+      accountId: ids.account,
+      cellId: ids.cell,
+      credentialGeneration: 1,
+      leaseGeneration: 1,
+      claimToken: authorizeSend.claimToken,
+      claimGeneration: 1,
+      fencingToken: 1,
+      outcome: "COMPLETE",
+      evidence: humanDraftEvidence,
+      evidenceHash: domainSha256(
+        "ihome-openclaw-send-work-completion-v1\0",
+        humanDraftEvidence,
+      ),
+      retryAfterSeconds: null,
+    },
+  },
+  {
+    name: "send-work-completion-work-failure",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-send-work-completion-v1\0",
+    value: {
+      version: 1,
+      workItemId: ids.work,
+      organizationId: ids.organization,
+      accountId: ids.account,
+      cellId: ids.cell,
+      credentialGeneration: 1,
+      leaseGeneration: 1,
+      claimToken: authorizeSend.claimToken,
+      claimGeneration: 1,
+      fencingToken: 1,
+      outcome: "RETRY",
+      evidence: workFailureEvidence,
+      evidenceHash: domainSha256(
+        "ihome-openclaw-send-work-completion-v1\0",
+        workFailureEvidence,
+      ),
+      retryAfterSeconds: 7,
     },
   },
   {
@@ -622,7 +1014,7 @@ sourceVectors.push(
     domain: "ihome-openclaw-retention-delete-finalization-request-v1\0",
     value: {
       version: 1,
-      ticketId: receiptId,
+      ticketId: retentionTicketId,
       gatewayReceipt: retentionReceiptValue,
     },
   },
@@ -635,7 +1027,7 @@ sourceVectors.push(
       workItemId: ids.work,
       claimGeneration: 1,
       claimToken: authorizeSend.claimToken,
-      verifyTicketJti: receiptId,
+      verifyTicketJti: auditAnchorReceiptValue.verifyTicketJti,
       gatewayReceipt: auditAnchorReceiptValue,
     },
   },
@@ -645,9 +1037,9 @@ sourceVectors.push(
     domain: "ihome-openclaw-maintenance-specialized-result-v1\0",
     value: {
       version: 1,
-      ticketId: receiptId,
+      ticketId: retentionTicketId,
       gatewayOutcome: "DELETED",
-      receiptHash: sha256,
+      receiptHash: retentionReceiptHash,
       finalized: true,
       idempotentReplay: false,
     },
@@ -671,7 +1063,7 @@ sourceVectors.push(
       holdVersion: 0,
       quarantineVersion: 1,
       deleteTicketJti: "ticketJti0123456789",
-      authorizationJti: "authorizationJti012345",
+      authorizationJti: retentionAuthorizationJti,
       iat: "2026-07-31T00:00:00.000Z",
       exp: "2026-07-31T00:00:05.000Z",
       gatewaySigningKeyGeneration: 1,
@@ -681,8 +1073,231 @@ sourceVectors.push(
   {
     name: "audit-anchor-receipt",
     schema: "receipts.schema.json",
-    domain: "ihome-openclaw-audit-anchor-receipt-v1\0",
+    domain: "ihome-openclaw-audit-receipt-v1\0",
     value: auditAnchorReceiptValue,
+  },
+  {
+    name: "media-runtime-put-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: runtimePutTicket,
+  },
+  {
+    name: "media-runtime-get-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: runtimeGetTicket,
+  },
+  {
+    name: "media-maintenance-delete-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: maintenanceDeleteTicket,
+  },
+  {
+    name: "media-maintenance-anchor-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: maintenanceAnchorTicket,
+  },
+  {
+    name: "media-maintenance-anchor-verify-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: maintenanceAnchorVerifyTicket,
+  },
+  {
+    name: "media-retention-recovery-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: retentionRecoveryTicket,
+  },
+  {
+    name: "media-audit-recovery-ticket",
+    schema: "media.schema.json",
+    domain: "ihome-openclaw-media-ticket-v1\0",
+    value: auditRecoveryTicket,
+  },
+  {
+    name: "retention-recovery-authorization",
+    schema: "receipts.schema.json",
+    domain: "ihome-openclaw-retention-authorization-v1\0",
+    value: retentionRecoveryAuthorization,
+  },
+  {
+    name: "maintenance-audit-recovery-claim",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-audit-recovery-claim-v1\0",
+    value: {
+      version: 1,
+      recoveryKind: "AUDIT_VERIFY_AUTHORIZED",
+      workItemId: ids.work,
+      organizationId: ids.organization,
+      maintenancePrincipalId: ids.principal,
+      credentialGeneration: 2,
+      leaseGeneration: 2,
+      fencingToken: 2,
+      sourceKey: `audit:${auditRootId}:recovery`,
+      claimToken: "recovery-token-0123456789abcdef0123456789abcdef",
+      recoveryGeneration: 2,
+      recoveryLeaseExpiresAt: "2026-07-31T00:01:00.000Z",
+      frozenClaim: frozenMaintenanceClaim,
+      payload: {
+        kind: "AUDIT_ANCHOR",
+        auditRootId,
+        rootDate: "2026-07-31",
+        firstSequence: 1,
+        lastSequence: 1,
+        eventCount: 1,
+        previousRootHash: null,
+        merkleRootHash: sha256,
+        rootHash: sha256,
+        auditSigningKeyGeneration: 1,
+        auditSigningPublicKeyHash: sha256,
+        anchorKey,
+      },
+      verifyTicketId: auditRecoveryTicket.jti,
+      verifyTicketHash: sha256,
+      signatureHash: sha256,
+      verifyTicket: auditRecoveryTicket,
+      gatewayReceipt: null,
+    },
+  },
+  {
+    name: "maintenance-retention-recovery-claim",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-retention-recovery-claim-v1\0",
+    value: {
+      version: 1,
+      recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+      workItemId: ids.work,
+      organizationId: ids.organization,
+      maintenancePrincipalId: ids.principal,
+      credentialGeneration: 2,
+      leaseGeneration: 2,
+      fencingToken: 2,
+      sourceKey: `retention:${ids.target}:recovery`,
+      claimToken: "recovery-token-0123456789abcdef0123456789abcdef",
+      recoveryGeneration: 2,
+      recoveryLeaseExpiresAt: "2026-07-31T00:01:00.000Z",
+      frozenClaim: frozenMaintenanceClaim,
+      payload: {
+        kind: "RETENTION_DELETE",
+        deletePhase: "FINAL_DELETE",
+        subjectKind: "MEDIA",
+        subjectId: ids.target,
+        objectKey: retentionRecoveryTicket.objectKey,
+        retentionVersion: 1,
+        holdVersion: 0,
+        quarantineVersion: 1,
+        finalDeleteNotBefore: "2026-07-31T00:00:00.000Z",
+      },
+      ticketId: retentionTicketId,
+      ticketHash: sha256,
+      ticket: retentionRecoveryTicket,
+      authorizationHash: sha256,
+      authorization: retentionRecoveryAuthorization,
+      authorizationExpiresAt: retentionRecoveryAuthorization.exp,
+      gatewayReceipt: null,
+    },
+  },
+  {
+    name: "audit-recovery-completion-request",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-audit-recovery-completion-v1\0",
+    value: {
+      version: 1,
+      recoveryKind: "AUDIT_VERIFY_AUTHORIZED",
+      workItemId: ids.work,
+      recoveryGeneration: 2,
+      claimToken: "recovery-token-0123456789abcdef0123456789abcdef",
+      verifyTicketJti: auditAnchorReceiptValue.verifyTicketJti,
+      gatewayReceipt: auditAnchorReceiptValue,
+    },
+  },
+  {
+    name: "retention-recovery-completion-request",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-retention-recovery-completion-v1\0",
+    value: {
+      version: 1,
+      recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+      workItemId: ids.work,
+      recoveryGeneration: 2,
+      claimToken: "recovery-token-0123456789abcdef0123456789abcdef",
+      ticketId: retentionTicketId,
+      gatewayReceipt: retentionReceiptValue,
+    },
+  },
+  {
+    name: "audit-recovery-refresh-request",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-audit-recovery-refresh-request-v1\0",
+    value: {
+      version: 1,
+      operation: "ANCHOR_VERIFY",
+      recoveryKind: "AUDIT_VERIFY_AUTHORIZED",
+      workItemId: ids.work,
+      recoveryGeneration: 2,
+      claimToken: "recovery-token-0123456789abcdef0123456789abcdef",
+      expiredVerifyTicketJti: maintenanceAnchorVerifyTicket.jti,
+      gatewayDenial: { status: 410, code: "TICKET_EXPIRED_NO_WORK" },
+      auditRootId,
+      rootHash: sha256,
+      anchorKey,
+      signatureHash: sha256,
+      auditSigningKeyGeneration: 1,
+      auditSigningPublicKeyHash: sha256,
+      documentSha256: sha256,
+      documentByteLength: 1024,
+    },
+  },
+  {
+    name: "retention-recovery-refresh-request",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-retention-recovery-refresh-request-v1\0",
+    value: {
+      version: 1,
+      recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+      workItemId: ids.work,
+      recoveryGeneration: 2,
+      claimToken: "recovery-token-0123456789abcdef0123456789abcdef",
+      ticketId: retentionTicketId,
+      expiredTicketJti: maintenanceDeleteTicket.jti,
+      expiredDeleteAuthorizationJti: retentionRecoveryTicket.replacesDeleteAuthorizationJti,
+      gatewayDenial: { status: 410, code: "TICKET_EXPIRED_NO_WORK" },
+    },
+  },
+  {
+    name: "audit-recovery-refresh-result",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-audit-recovery-refresh-result-v1\0",
+    value: {
+      version: 1,
+      ticketId: auditRecoveryTicket.jti,
+      ticketHash: sha256,
+      expiresAt: "2026-07-31T00:00:30.000Z",
+      state: "RECOVERY_REFRESHED",
+      replacesVerifyTicketJti: maintenanceAnchorVerifyTicket.jti,
+      ticket: auditRecoveryTicket,
+    },
+  },
+  {
+    name: "retention-recovery-refresh-result",
+    schema: "maintenance.schema.json",
+    domain: "ihome-openclaw-retention-recovery-refresh-result-v1\0",
+    value: {
+      version: 1,
+      ticketId: retentionTicketId,
+      ticketHash: sha256,
+      deleteAuthorizationJti: retentionRecoveryAuthorization.authorizationJti,
+      expiresAt: retentionRecoveryAuthorization.exp,
+      state: "RECOVERY_REFRESHED",
+      replacesTicketJti: maintenanceDeleteTicket.jti,
+      replacesDeleteAuthorizationJti: retentionRecoveryTicket.replacesDeleteAuthorizationJti,
+      ticket: retentionRecoveryTicket,
+      authorization: retentionRecoveryAuthorization,
+    },
   },
   {
     name: "rollout-state",
@@ -756,17 +1371,81 @@ const vectors = sourceVectors.map((vector) => {
   return {
     ...vector,
     canonicalJson: canonical,
-    sha256: createHash("sha256")
-      .update(vector.domain, "utf8")
-      .update(canonical, "utf8")
-      .digest("hex"),
+    sha256: domainSha256(vector.domain, vector.value),
   };
 });
+
+const inboundMediaValue = sourceVectors.find(
+  (vector) => vector.name === "inbound-message-media",
+).value;
+
+function inboundMediaNegative(name, reason, mutate) {
+  const value = structuredClone(inboundMediaValue);
+  const event = value.events[0];
+  mutate(event);
+  event.normalizedSha256 = canonicalSha256(event.normalized);
+  return { name, schema: "inbound.schema.json", reason, value };
+}
+
+const negativeVectors = [
+  {
+    name: "media-upload-receipt-abbreviated-object-key",
+    schema: "receipts.schema.json",
+    reason: "MEDIA_UPLOAD_OBJECT_KEY_NOT_CANONICAL",
+    value: {
+      ...mediaUploadReceiptValue,
+      objectKey: `v1/org/${ids.organization}/account/${ids.account}/media/${mediaUploadReceiptValue.mediaId}/original`,
+    },
+  },
+  inboundMediaNegative(
+    "inbound-media-manifest-index-starts-at-one",
+    "MEDIA_MANIFEST_INDEX_NOT_ARRAY_POSITION",
+    (event) => {
+      event.normalized.mediaManifest = [event.normalized.mediaManifest[0]];
+      event.normalized.mediaManifest[0].index = 1;
+    },
+  ),
+  inboundMediaNegative(
+    "inbound-media-manifest-index-duplicated",
+    "MEDIA_MANIFEST_INDEX_DUPLICATED",
+    (event) => { event.normalized.mediaManifest[1].index = 0; },
+  ),
+  inboundMediaNegative(
+    "inbound-media-manifest-index-out-of-range",
+    "MEDIA_MANIFEST_INDEX_OUT_OF_RANGE",
+    (event) => { event.normalized.mediaManifest[0].index = 20; },
+  ),
+  inboundMediaNegative(
+    "inbound-media-empty-provider-media-id",
+    "PROVIDER_MEDIA_ID_EMPTY",
+    (event) => { event.normalized.mediaManifest[0].providerMediaId = ""; },
+  ),
+  inboundMediaNegative(
+    "inbound-media-empty-fetch-ref",
+    "FETCH_REF_EMPTY",
+    (event) => { event.normalized.mediaManifest[0].fetchRef = ""; },
+  ),
+  inboundMediaNegative(
+    "inbound-media-empty-provider-event-id",
+    "PROVIDER_EVENT_ID_EMPTY",
+    (event) => { event.providerEventId = ""; },
+  ),
+  inboundMediaNegative(
+    "inbound-media-empty-provider-message-id",
+    "PROVIDER_MESSAGE_ID_EMPTY",
+    (event) => { event.providerMessageId = ""; },
+  ),
+  inboundMediaNegative(
+    "inbound-media-empty-reply-to-provider-message-id",
+    "REPLY_TO_PROVIDER_MESSAGE_ID_EMPTY",
+    (event) => { event.normalized.replyToProviderMessageId = ""; },
+  ),
+];
 
 await writeFile(
   outputPath,
   `${JSON.stringify(
-    { version: 1, algorithm: "RFC8785-JCS+SHA-256", vectors },
+    { version: 1, algorithm: "RFC8785-JCS+SHA-256", vectors, negativeVectors },
     null,
     2,
   )}\n`,

@@ -12,15 +12,16 @@ import {
 const NOW = 1_785_062_400_000;
 
 const marker: MarkerFields = {
+  version: 1,
   outboxId: "dddd8000-0000-4000-8000-000000000001",
   claimGeneration: 3,
-  payloadSha256: "a".repeat(64),
+  payloadHash: "a".repeat(64),
   fencingToken: 7,
   sessionGeneration: 5,
   controlVersion: 2,
   takeoverVersion: 1,
   markerNonce: "dddd7000-0000-4000-8000-000000000001",
-  expiresAtEpochMs: NOW + 10_000,
+  expiresAt: new Date(NOW + 10_000).toISOString(),
 };
 
 function check(overrides: Record<string, unknown> = {}) {
@@ -28,7 +29,7 @@ function check(overrides: Record<string, unknown> = {}) {
     marker,
     nowEpochMs: NOW,
     leaseExpiresAtEpochMs: NOW + 30_000,
-    expectedPayloadSha256: marker.payloadSha256,
+    expectedPayloadSha256: marker.payloadHash,
     currentFencingToken: marker.fencingToken,
     currentSessionGeneration: marker.sessionGeneration,
     currentControlVersion: marker.controlVersion,
@@ -111,12 +112,12 @@ describe("Authorization marker revalidation", () => {
 
   it("caps the marker TTL at fifteen seconds and at the lease", () => {
     expect(MARKER_MAX_TTL_MS).toBe(15_000);
-    expect(check({ marker: { ...marker, expiresAtEpochMs: NOW + 15_000 } })).toEqual({ ok: true });
-    expect(check({ marker: { ...marker, expiresAtEpochMs: NOW + 15_001 } }).failure)
+    expect(check({ marker: { ...marker, expiresAt: new Date(NOW + 15_000).toISOString() } })).toEqual({ ok: true });
+    expect(check({ marker: { ...marker, expiresAt: new Date(NOW + 15_001).toISOString() } }).failure)
       .toBe("MARKER_TTL_TOO_LONG");
     expect(
       check({
-        marker: { ...marker, expiresAtEpochMs: NOW + 12_000 },
+        marker: { ...marker, expiresAt: new Date(NOW + 12_000).toISOString() },
         leaseExpiresAtEpochMs: NOW + 11_000,
       }).failure,
     ).toBe("MARKER_BEYOND_LEASE");

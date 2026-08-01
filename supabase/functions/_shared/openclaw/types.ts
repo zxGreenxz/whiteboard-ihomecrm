@@ -10,6 +10,8 @@ export interface ChannelPrincipal {
   leaseGeneration: number;
   fencingToken: number;
   sessionGeneration: number;
+  localSessionGeneration: number;
+  authMode: "NORMAL" | "COMMAND_TRANSITION";
 }
 
 export interface MaintenancePrincipal {
@@ -34,4 +36,6 @@ export interface RuntimeVerification {
   principal: RuntimePrincipal;
   nonce: string;
   bodySha256: string;
+  issuedAtEpochSeconds: number;
+  expiresAtEpochSeconds: number;
 }

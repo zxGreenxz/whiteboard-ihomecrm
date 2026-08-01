@@ -3,9 +3,25 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+const migrationDirectory = resolve(process.cwd(), "supabase/migrations");
+const migrationManifest = [
+  "20260727010000_openclaw_catalog_foundation.sql",
+  "20260727015000_openclaw_security_principals.sql",
+  "20260727020000_openclaw_inbox_schema.sql",
+  "20260727025000_openclaw_inbound_automation.sql",
+  "20260727030000_openclaw_policy_automation_knowledge.sql",
+  "20260727040000_openclaw_delivery_audit_ops.sql",
+  "20260727050000_openclaw_access_policies.sql",
+  "20260727060000_openclaw_rpc_surface.sql",
+  "20260727070000_openclaw_crm_event_sources.sql",
+  "20260727080000_openclaw_realtime_allowlist.sql",
+  "20260727090000_openclaw_maintenance_jobs.sql",
+  "20260727095000_openclaw_activation_guards.sql",
+] as const;
+
 const migrationPath = resolve(
-  process.cwd(),
-  "supabase/migrations/20260727060000_openclaw_rpc_surface.sql",
+  migrationDirectory,
+  migrationManifest[7],
 );
 
 const browserReadRpcs = [
@@ -32,6 +48,7 @@ const browserReadRpcs = [
 ] as const;
 
 const browserWriterRpcs = [
+  "openclaw_acknowledge_disclosure_v1",
   "openclaw_acknowledge_risk_v1",
   "openclaw_begin_qr_login_v1",
   "openclaw_consume_qr_challenge_v1",
@@ -98,6 +115,25 @@ const serviceRoutines = [
   "openclaw_cleanup_smoke_run_v1",
   "openclaw_verify_smoke_cleanup_v1",
   "openclaw_sweep_runtime_v1",
+] as const;
+
+const additionalFinalServiceFacades = [
+  "openclaw_service_ack_disconnect_revocation_v1",
+  "openclaw_service_consume_qr_challenge_v1",
+  "openclaw_service_finalize_account_connection_v1",
+  "openclaw_service_finalize_media_upload_v1",
+  "openclaw_service_get_work_context_v1",
+  "openclaw_service_complete_maintenance_work_v1",
+  "openclaw_service_issue_retention_delete_ticket_v1",
+  "openclaw_service_resume_disconnect_revocation_v1",
+] as const;
+
+const legacyServiceFacades = [
+  "openclaw_service_claim_inbound_automation_v1",
+  "openclaw_service_complete_inbound_automation_v1",
+  "openclaw_service_complete_retention_quarantine_v1",
+  "openclaw_service_finalize_retention_delete_v1",
+  "openclaw_service_ack_audit_anchor_v1",
 ] as const;
 
 const credentialExchangeRoutines = [
@@ -171,6 +207,23 @@ const routedRoutines = [
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const sql = () => readFileSync(migrationPath, "utf8");
+const manifestSql = () => migrationManifest.map((migration) =>
+  readFileSync(resolve(migrationDirectory, migration), "utf8")
+);
+
+const finalPublicRpcSurface = () => {
+  const surface = new Set<string>();
+  for (const source of manifestSql()) {
+    const operations = source.matchAll(
+      /^(create(?:\s+or\s+replace)?\s+function|drop\s+function\s+if\s+exists)\s+public\.(openclaw_[a-z0-9_]+)\s*\(/gim,
+    );
+    for (const operation of operations) {
+      if (/^drop/i.test(operation[1])) surface.delete(operation[2]);
+      else surface.add(operation[2]);
+    }
+  }
+  return surface;
+};
 
 const functionBody = (source: string, schema: "public" | "app_private", name: string) => {
   const match = source.match(new RegExp(
@@ -182,10 +235,14 @@ const functionBody = (source: string, schema: "public" | "app_private", name: st
 };
 
 describe("OpenClaw browser and runtime RPC surface migration", () => {
-  it("creates the versioned migration and exact 47/35/35 RPC inventory", () => {
+  it("computes the exact final RPC inventory across the authoritative migration manifest", () => {
     expect(existsSync(migrationPath)).toBe(true);
     const source = sql();
-    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(48);
+    expect(migrationManifest).toHaveLength(12);
+    for (const migration of migrationManifest) {
+      expect(existsSync(resolve(migrationDirectory, migration)), `missing ${migration}`).toBe(true);
+    }
+    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(49);
     expect(serviceRoutines).toHaveLength(35);
 
     for (const name of browserReadRpcs) {
@@ -215,15 +272,26 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
       expect(publicFn.definitionSql).toContain(`app_private.${name}`);
     }
 
-    const actualPublic = [...source.matchAll(
-      /^create\s+or\s+replace\s+function\s+public\.(openclaw_[a-z0-9_]+)\s*\(/gim,
-    )].map((match) => match[1]);
-    expect(actualPublic).toHaveLength(83);
-    expect(new Set(actualPublic)).toEqual(new Set([
+    const droppedPublicFacades = manifestSql().flatMap((migrationSource) =>
+      [...migrationSource.matchAll(
+        /^drop\s+function\s+if\s+exists\s+public\.(openclaw_[a-z0-9_]+)\s*\(/gim,
+      )].map((match) => match[1])
+    );
+    expect(droppedPublicFacades).toEqual([...legacyServiceFacades]);
+
+    const expectedFinalPublic = new Set([
       ...browserReadRpcs,
       ...browserWriterRpcs,
       ...serviceRoutines.map((name) => `openclaw_service_${name.slice("openclaw_".length)}`),
-    ]));
+      ...additionalFinalServiceFacades,
+    ].filter((name) => !legacyServiceFacades.includes(
+      name as (typeof legacyServiceFacades)[number],
+    )));
+    const actualFinalPublic = finalPublicRpcSurface();
+    expect(actualFinalPublic).toEqual(expectedFinalPublic);
+    for (const legacyFacade of legacyServiceFacades) {
+      expect(actualFinalPublic.has(legacyFacade), `${legacyFacade} must be dropped`).toBe(false);
+    }
 
     const actualPrivateService = [...source.matchAll(
       /^create\s+or\s+replace\s+function\s+app_private\.(openclaw_[a-z0-9_]+)\s*\(\s*p_principal\s+jsonb\s*,\s*p_envelope\s+jsonb\s*,\s*p_request\s+jsonb\s*\)/gim,
@@ -254,7 +322,7 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     expect(source).toContain("replay_policy in ('RETURN_SAFE_RESULT','SINGLE_USE')");
     expect(source).toContain("openclaw_client_operations_incomplete_idx");
     expect(source).toContain("command_kind in ('QR_LOGIN','DISCONNECT','DIRECTORY_SYNC','CELL_REBIND','GENERATION_REVOKE')");
-    expect(source).toContain("state in ('PENDING','LEASED','ACKNOWLEDGED','FAILED','EXPIRED','REVOKED')");
+    expect(source).toContain("state in ('PENDING','LEASED','STARTED','ACKNOWLEDGED','FAILED','EXPIRED','REVOKED')");
     expect(source).toContain("openclaw_runtime_commands_claimable_idx");
     expect(source).toContain("principal_kind in ('CHANNEL','MAINTENANCE')");
     expect(source).toContain("openclaw_generation_revocations_channel_uidx");
@@ -382,6 +450,7 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
   it("locks browser writers to auth-derived actors, exact permissions and replay-safe operations", () => {
     const source = sql();
     const permissions: Record<(typeof browserWriterRpcs)[number], string> = {
+      openclaw_acknowledge_disclosure_v1: "openclaw_zalo.manage_connections",
       openclaw_acknowledge_risk_v1: "openclaw_zalo.manage_connections",
       openclaw_begin_qr_login_v1: "openclaw_zalo.manage_connections",
       openclaw_consume_qr_challenge_v1: "openclaw_zalo.manage_connections",
@@ -575,7 +644,10 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
 
     const completion = functionBody(source, "app_private", "openclaw_complete_outbox_v1").definitionSql;
     expect(completion).toContain("state = 'DISPATCHING'");
-    expect(completion).toContain("stale reconciliation evidence");
+    expect(completion).toContain("authorized handoff evidence is stale");
+    expect(completion).toMatch(
+      /handoff\.consumed_at is not null and handoff\.authorized_handoff_at is not null[\s\S]*?authorized handoff evidence is stale/i,
+    );
     expect(completion).toContain("known_provider_message_ids");
     expect(completion).toContain("possible_handoff_prefix_length");
     expect(completion).toContain("claim_token_hash");
@@ -676,6 +748,11 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
 
   it("strict-validates service principals, envelopes and atomically consumes nonces", () => {
     const source = sql();
+    const validateContext = functionBody(
+      source,
+      "app_private",
+      "openclaw_validate_service_context_v1",
+    ).definitionSql;
     expect(source).toContain("app_private.openclaw_validate_service_context_v1");
     expect(source).toContain("app_private.openclaw_consume_service_nonce_v1");
     expect(source).toContain("openclaw_service_nonces");
@@ -684,6 +761,9 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     expect(source).toContain("credential generation mismatch");
     expect(source).toContain("lease generation mismatch");
     expect(source).toContain("fencing token mismatch");
+    expect(validateContext).toContain("channel service operation matrix mismatch");
+    expect(validateContext).toContain("maintenance service operation matrix mismatch");
+    expect(validateContext).toContain("openclaw_issue_retention_delete_ticket_v1");
 
     for (const name of authenticatedServiceRoutines) {
       const privateFn = functionBody(source, "app_private", name).definitionSql;

@@ -18,29 +18,48 @@ const NOW = 1_785_062_400_000;
 function payload(overrides: Partial<CanonicalSendPayloadV1> = {}): CanonicalSendPayloadV1 {
   return {
     version: 1,
-    outboxId: "dddd8000-0000-4000-8000-000000000001",
     organizationId: "dddd0000-0000-4000-8000-000000000001",
     accountId: "dddd1000-0000-4000-8000-000000000001",
-    cellId: "dddd2000-0000-4000-8000-000000000001",
-    targetStableId: "peer-stable-1",
+    target: { kind: "PEER", providerId: "peer-stable-1" },
+    channel: "zalouser",
     accountProfile: "primary",
     idempotencyKey: "idem-1",
-    parts: [{ kind: "TEXT", text: "xin chào" }],
+    parts: [{ version: 1, partIndex: 0, kind: "TEXT", text: "xin chào" }],
+    replyToProviderMessageId: null,
+    policyVersionId: "dddd3000-0000-4000-8000-000000000001",
+    automationVersionId: null,
+    templateVersionId: null,
+    frozenInputs: {
+      campaignVersionId: null,
+      scheduleVersion: null,
+      subscriptionVersion: null,
+      subscriptionId: null,
+      occurrenceId: null,
+      sourceTable: null,
+      sourceId: null,
+      sourceVersion: null,
+      knowledgeVersionIds: [],
+      sourceSnapshotHash: null,
+      targetVersion: 1,
+      targetDirectoryRefreshedAt: "2026-08-01T00:00:00.000Z",
+      fieldMappingHash: null,
+    },
     ...overrides,
   };
 }
 
 function marker(payloadSha256: string, overrides: Partial<MarkerFields> = {}): MarkerFields {
   return {
+    version: 1,
     outboxId: "dddd8000-0000-4000-8000-000000000001",
     claimGeneration: 3,
-    payloadSha256,
+    payloadHash: payloadSha256,
     fencingToken: 7,
     sessionGeneration: 5,
     controlVersion: 2,
     takeoverVersion: 1,
     markerNonce: "dddd7000-0000-4000-8000-000000000001",
-    expiresAtEpochMs: NOW + 10_000,
+    expiresAt: new Date(NOW + 10_000).toISOString(),
     ...overrides,
   };
 }
@@ -113,13 +132,15 @@ describe("Provider batch materialization", () => {
     const result = materializeBatch(
       payload({
         parts: [
-          { kind: "TEXT", text: "a" },
+          { version: 1, partIndex: 0, kind: "TEXT", text: "a" },
           {
+            version: 1,
+            partIndex: 1,
             kind: "MEDIA",
-            mediaId: "m1",
+            objectKey: "v1/org/o/account/a/conversation/c/message/m/media/x/original",
             sha256: "a".repeat(64),
             mime: "image/png",
-            byteLength: 10,
+            bytes: 10,
           },
         ],
       }),
@@ -131,7 +152,7 @@ describe("Provider batch materialization", () => {
   it("rejects link and reaction bypass attempts before authorization", () => {
     for (const kind of ["LINK", "REACTION", "STICKER"]) {
       const result = materializeBatch(
-        payload({ parts: [{ kind: kind as never }] }),
+        payload({ parts: [{ version: 1, partIndex: 0, kind: kind as never }] }),
       );
       expect(result.ok, kind).toBe(false);
       expect(result.denial, kind).toBe("UNSUPPORTED_PART_KIND");
@@ -146,16 +167,18 @@ describe("Provider batch materialization", () => {
     for (const mutation of [
       { sha256: "short" },
       { mime: "" },
-      { byteLength: 0 },
+      { bytes: 0 },
     ]) {
       const result = materializeBatch(
         payload({
           parts: [{
+            version: 1,
+            partIndex: 0,
             kind: "MEDIA",
-            mediaId: "m1",
+            objectKey: "v1/org/o/account/a/conversation/c/message/m/media/x/original",
             sha256: "a".repeat(64),
             mime: "image/png",
-            byteLength: 10,
+            bytes: 10,
             ...mutation,
           }],
         }),
@@ -188,12 +211,34 @@ describe("Authorized single-call dispatch", () => {
     expect(result.providerMessageIds).toEqual(["provider-message-0"]);
   });
 
+  it("fails closed when authorization expires after authorize returns but before the first frame", async () => {
+    const send = payload();
+    let now = NOW;
+    const dependency = dependencies({
+      nowEpochMs: () => now,
+      authorizeSend: vi.fn(async () => {
+        now = NOW + 10_000;
+        return { authorized: true };
+      }),
+    });
+
+    await expect(zalouserBridgeSend(
+      send,
+      marker(hashCanonicalSendPayload(send)),
+      dependency,
+    )).rejects.toMatchObject({
+      code: "AUTHORIZATION_EXPIRED",
+      authorizedHandoffRecorded: false,
+    });
+    expect(dependency.emitProviderFrame).not.toHaveBeenCalled();
+  });
+
   it("returns every provider message id in order on full success", async () => {
     const send = payload({
       parts: [
-        { kind: "TEXT", text: "a" },
-        { kind: "TEXT", text: "b" },
-        { kind: "TEXT", text: "c" },
+        { version: 1, partIndex: 0, kind: "TEXT", text: "a" },
+        { version: 1, partIndex: 1, kind: "TEXT", text: "b" },
+        { version: 1, partIndex: 2, kind: "TEXT", text: "c" },
       ],
     });
     const result = await zalouserBridgeSend(
@@ -278,8 +323,8 @@ describe("Authorized single-call dispatch", () => {
   it("makes the whole outbox UNKNOWN when a later part fails after handoff", async () => {
     const send = payload({
       parts: [
-        { kind: "TEXT", text: "a" },
-        { kind: "TEXT", text: "b" },
+        { version: 1, partIndex: 0, kind: "TEXT", text: "a" },
+        { version: 1, partIndex: 1, kind: "TEXT", text: "b" },
       ],
     });
     const dependency = dependencies({
@@ -306,5 +351,22 @@ describe("Authorized single-call dispatch", () => {
     expect(hashCanonicalSendPayload(send)).not.toBe(
       hashCanonicalSendPayload(payload({ idempotencyKey: "idem-2" })),
     );
+  });
+
+  it("uses the exact cross-runtime hash domain and excludes the outbox id", () => {
+    const send = payload();
+    expect(hashCanonicalSendPayload(send)).toBe(
+      "6a6a42a66c7eee53bc53669a5b225ac4d615dc8543b6be7c2693de98abffb4e6",
+    );
+    expect("outboxId" in send).toBe(false);
+  });
+
+  it("rejects non-contiguous partIndex and text over 2,000 Unicode code points", () => {
+    expect(materializeBatch(payload({
+      parts: [{ version: 1, partIndex: 1, kind: "TEXT", text: "a" }],
+    })).denial).toBe("PART_INDEX_INVALID");
+    expect(materializeBatch(payload({
+      parts: [{ version: 1, partIndex: 0, kind: "TEXT", text: "😀".repeat(2_001) }],
+    })).denial).toBe("TEXT_TOO_LONG");
   });
 });

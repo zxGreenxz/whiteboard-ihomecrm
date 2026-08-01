@@ -9,6 +9,7 @@ export const MAX_REDIRECTS = 3;
 export type RedirectDenialReason =
   | "TOO_MANY_REDIRECTS"
   | "SCHEME_DOWNGRADE"
+  | "NON_DEFAULT_PORT"
   | "HOST_NOT_ALLOWED"
   | "INVALID_URL";
 
@@ -36,6 +37,7 @@ export function evaluateRedirectChain(
       return { allowed: false, reason: "INVALID_URL" };
     }
     if (url.protocol !== "https:") return { allowed: false, reason: "SCHEME_DOWNGRADE" };
+    if (url.port !== "") return { allowed: false, reason: "NON_DEFAULT_PORT" };
     if (url.username || url.password) return { allowed: false, reason: "INVALID_URL" };
     if (!isAllowedMediaHost(url.hostname, allowlist)) {
       return { allowed: false, reason: "HOST_NOT_ALLOWED" };

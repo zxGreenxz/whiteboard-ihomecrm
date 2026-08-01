@@ -11,6 +11,7 @@ import {
   controlRequestSchema,
   isControlWriteRequest,
   type ControlRequest,
+  type ControlWriteRequest,
 } from "./schemas.ts";
 
 /**
@@ -28,14 +29,222 @@ export interface ControlSupabaseClient {
   rpc(
     name: string,
     args: Record<string, unknown>,
-  ): Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+  ): PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>;
 }
 
 export interface ControlDependencies {
   environment: OpenClawEnvironment;
   createBrowserClient: (request: Request, environment: OpenClawEnvironment) => ControlSupabaseClient;
+  createAdminClient?: (environment: OpenClawEnvironment) => Pick<ControlSupabaseClient, "rpc">;
+  propagateGenerationRevocation?: (
+    revocation: DisconnectRevocationV1,
+  ) => Promise<{ acknowledgementHash: string }>;
   logger?: { error: (message: string, context: unknown) => void };
   requestIdFactory?: () => string;
+}
+
+export interface DisconnectRevocationV1 {
+  version: 1;
+  organizationId: string;
+  accountId: string;
+  cellId: string;
+  runtimeCommandId: string;
+  revocationId: string;
+  revocationKind: "SESSION";
+  revokedGeneration: number;
+  minimumValidGeneration: number;
+  connectionState: "DISCONNECTING";
+  effectiveMode: "DRAFT_ONLY";
+}
+
+interface DisconnectAcknowledgementV1 {
+  version: 1;
+  acknowledged: true;
+  connectionState: "DISCONNECTING" | "DISCONNECTED";
+}
+
+const REVOCATION_PENDING = () =>
+  new OpenClawHttpError(
+    503,
+    "REVOCATION_PENDING",
+    "Disconnect is pending generation revocation; retry safely.",
+  );
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const SQL_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/u;
+
+function disconnectRevocation(
+  value: unknown,
+  expectedOrganizationId: unknown,
+  expectedAccountId: unknown,
+): DisconnectRevocationV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OpenClawHttpError(500, "REVOCATION_INVALID", "Disconnect revocation is invalid.", {
+      expose: false,
+    });
+  }
+  const row = value as Record<string, unknown>;
+  const required = [
+    "version", "organizationId", "accountId", "cellId", "runtimeCommandId",
+    "revocationId", "revocationKind", "revokedGeneration", "minimumValidGeneration",
+    "connectionState", "effectiveMode",
+  ];
+  if (
+    Object.keys(row).sort().join("\0") !== required.sort().join("\0") ||
+    row.version !== 1 || row.revocationKind !== "SESSION" ||
+    row.organizationId !== expectedOrganizationId || row.accountId !== expectedAccountId ||
+    row.connectionState !== "DISCONNECTING" || row.effectiveMode !== "DRAFT_ONLY" ||
+    ["organizationId", "accountId", "cellId", "runtimeCommandId", "revocationId"]
+      .some((key) => typeof row[key] !== "string" || !UUID.test(String(row[key]))) ||
+    !Number.isSafeInteger(row.revokedGeneration) ||
+    !Number.isSafeInteger(row.minimumValidGeneration) ||
+    Number(row.revokedGeneration) < 1 ||
+    Number(row.minimumValidGeneration) !== Number(row.revokedGeneration) + 1
+  ) {
+    throw new OpenClawHttpError(500, "REVOCATION_INVALID", "Disconnect revocation is invalid.", {
+      expose: false,
+    });
+  }
+  return row as unknown as DisconnectRevocationV1;
+}
+
+function disconnectAcknowledgement(
+  value: unknown,
+  revocation: DisconnectRevocationV1,
+): DisconnectAcknowledgementV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OpenClawHttpError(502, "REVOCATION_ACK_INVALID", "Revocation acknowledgement is invalid.", {
+      expose: false,
+    });
+  }
+  const row = value as Record<string, unknown>;
+  const connectionState = row.connectionState;
+  const expected = [
+    "version", "organizationId", "accountId", "revocationId",
+    "minimumValidGeneration", "acknowledged", "connectionState",
+  ].sort();
+  if (
+    Object.keys(row).sort().join("\0") !== expected.join("\0") ||
+    row.version !== 1 || row.organizationId !== revocation.organizationId ||
+    row.accountId !== revocation.accountId || row.revocationId !== revocation.revocationId ||
+    row.minimumValidGeneration !== revocation.minimumValidGeneration ||
+    row.acknowledged !== true ||
+    (connectionState !== "DISCONNECTING" && connectionState !== "DISCONNECTED")
+  ) {
+    throw new OpenClawHttpError(502, "REVOCATION_ACK_INVALID", "Revocation acknowledgement is invalid.", {
+      expose: false,
+    });
+  }
+  return { version: 1, acknowledged: true, connectionState };
+}
+
+function disclosureAcknowledgement(
+  value: unknown,
+  request: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new OpenClawHttpError(500, "DISCLOSURE_ACK_INVALID", "Disclosure acknowledgement is invalid.", {
+      expose: false,
+    });
+  }
+  const row = value as Record<string, unknown>;
+  const expected = [
+    "version", "organizationId", "accountId", "disclosureAcknowledgedVersion",
+    "disclosureAcknowledgedAt", "idempotentReplay",
+  ].sort();
+  const acknowledgedAt = typeof row.disclosureAcknowledgedAt === "string"
+    ? Date.parse(row.disclosureAcknowledgedAt)
+    : Number.NaN;
+  if (
+    Object.keys(row).sort().join("\0") !== expected.join("\0") ||
+    row.version !== 1 || row.organizationId !== request.organizationId ||
+    row.accountId !== request.accountId ||
+    row.disclosureAcknowledgedVersion !== request.disclosureVersion ||
+    typeof row.idempotentReplay !== "boolean" || !Number.isFinite(acknowledgedAt) ||
+    !SQL_TIMESTAMP.test(String(row.disclosureAcknowledgedAt))
+  ) {
+    throw new OpenClawHttpError(500, "DISCLOSURE_ACK_INVALID", "Disclosure acknowledgement is invalid.", {
+      expose: false,
+    });
+  }
+  return row;
+}
+
+async function acknowledgeDisconnectRevocation(
+  admin: Pick<ControlSupabaseClient, "rpc">,
+  actorId: string,
+  revocation: DisconnectRevocationV1,
+  acknowledgementHash: string,
+): Promise<DisconnectAcknowledgementV1> {
+  if (!/^[0-9a-f]{64}$/.test(acknowledgementHash)) {
+    throw new OpenClawHttpError(502, "REVOCATION_ACK_INVALID", "Revocation acknowledgement is invalid.", {
+      expose: false,
+    });
+  }
+  let acknowledged: Awaited<ReturnType<ControlSupabaseClient["rpc"]>>;
+  try {
+    acknowledged = await admin.rpc("openclaw_service_ack_disconnect_revocation_v1", {
+      p_actor_id: actorId,
+      p_request: {
+        version: 1,
+        organizationId: revocation.organizationId,
+        accountId: revocation.accountId,
+        revocationId: revocation.revocationId,
+        minimumValidGeneration: revocation.minimumValidGeneration,
+        acknowledgementHash,
+      },
+    });
+  } catch {
+    throw REVOCATION_PENDING();
+  }
+  if (acknowledged.error) throw REVOCATION_PENDING();
+  return disconnectAcknowledgement(acknowledged.data, revocation);
+}
+
+async function recoverDeniedDisconnect(
+  admin: Pick<ControlSupabaseClient, "rpc"> | undefined,
+  propagate: ControlDependencies["propagateGenerationRevocation"],
+  actorId: string,
+  request: ControlWriteRequest,
+): Promise<void> {
+  const organizationId = request.payload.organizationId;
+  const accountId = request.payload.accountId;
+  if (
+    !admin || !propagate || typeof organizationId !== "string" || !UUID.test(organizationId) ||
+    typeof accountId !== "string" || !UUID.test(accountId)
+  ) throw REVOCATION_PENDING();
+  let recovered: Awaited<ReturnType<ControlSupabaseClient["rpc"]>>;
+  try {
+    recovered = await admin.rpc("openclaw_service_resume_disconnect_revocation_v1", {
+      p_actor_id: actorId,
+      p_organization_id: organizationId,
+      p_client_operation_id: request.clientOperationId,
+    });
+  } catch (error) {
+    if (
+      error && typeof error === "object" &&
+      (error as { code?: unknown }).code === "P0002"
+    ) return;
+    throw REVOCATION_PENDING();
+  }
+  if (recovered.error) {
+    if (recovered.error.code === "P0002") return;
+    throw REVOCATION_PENDING();
+  }
+
+  let revocation: DisconnectRevocationV1;
+  try {
+    revocation = disconnectRevocation(recovered.data, organizationId, accountId);
+  } catch {
+    throw REVOCATION_PENDING();
+  }
+  try {
+    const { acknowledgementHash } = await propagate(revocation);
+    await acknowledgeDisconnectRevocation(admin, actorId, revocation, acknowledgementHash);
+  } catch {
+    throw REVOCATION_PENDING();
+  }
 }
 
 /**
@@ -92,7 +301,7 @@ export async function handleControlRequest(
     const controlRequest = parsed.data;
 
     const client = dependencies.createBrowserClient(request, dependencies.environment);
-    await requireBrowserUser(client);
+    const user = await requireBrowserUser(client);
 
     const rpcName = resolveRpcName(controlRequest);
     const args: Record<string, unknown> = { p_request: controlRequest.payload };
@@ -106,8 +315,15 @@ export async function handleControlRequest(
         requestId,
         operation: controlRequest.operation,
         code: error.code,
-        message: error.message,
       }));
+      if (controlRequest.operation === "DISCONNECT_ACCOUNT" && error.code === "42501") {
+        await recoverDeniedDisconnect(
+          dependencies.createAdminClient?.(dependencies.environment),
+          dependencies.propagateGenerationRevocation,
+          user.id,
+          controlRequest,
+        );
+      }
       throw mapRpcError(error);
     }
 
@@ -121,7 +337,36 @@ export async function handleControlRequest(
       );
     }
 
-    return jsonResponse({ version: 1, requestId, result: data }, 200, requestId, corsHeaders);
+    let result = data;
+    if (controlRequest.operation === "ACKNOWLEDGE_DISCLOSURE") {
+      result = disclosureAcknowledgement(data, controlRequest.payload);
+    }
+    if (controlRequest.operation === "DISCONNECT_ACCOUNT") {
+      const revocation = disconnectRevocation(
+        data,
+        controlRequest.payload.organizationId,
+        controlRequest.payload.accountId,
+      );
+      const admin = dependencies.createAdminClient?.(dependencies.environment);
+      const propagate = dependencies.propagateGenerationRevocation;
+      if (!admin || !propagate) {
+        throw new OpenClawHttpError(500, "REVOCATION_SERVICE_UNAVAILABLE", "Revocation service is unavailable.", {
+          expose: false,
+        });
+      }
+      let acknowledgementHash: string;
+      try {
+        ({ acknowledgementHash } = await propagate(revocation));
+      } catch {
+        // The DB transition is intentionally already durable. A retry with the
+        // same client operation id receives the same revocation and propagates
+        // it idempotently; until then the account stays DISCONNECTING.
+        throw REVOCATION_PENDING();
+      }
+      result = await acknowledgeDisconnectRevocation(admin, user.id, revocation, acknowledgementHash);
+    }
+
+    return jsonResponse({ version: 1, requestId, result }, 200, requestId, corsHeaders);
   } catch (error) {
     if (!(error instanceof OpenClawHttpError)) {
       dependencies.logger?.error(

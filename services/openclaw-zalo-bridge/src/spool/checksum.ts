@@ -44,17 +44,12 @@ export function fallbackFingerprint(input: {
   organizationId: string;
   accountId: string;
   eventKind: string;
-  payloadSha256: string;
-  providerTimestamp: number;
+  providerConversationId: string;
+  providerSenderId: string;
+  sourceTimestamp: string;
+  providerEventType: string;
+  content: unknown;
+  mediaChecksums: readonly (string | null)[];
 }): string {
-  return sha256Hex(
-    [
-      "ihome-openclaw-inbound-fallback-v1",
-      input.organizationId,
-      input.accountId,
-      input.eventKind,
-      input.payloadSha256,
-      String(input.providerTimestamp),
-    ].join("\u0000"),
-  );
+  return sha256Hex(`ihome-openclaw-inbound-fallback-v1\0${canonicalJson(input)}`);
 }

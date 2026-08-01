@@ -48,7 +48,7 @@ index 89fb477..10b0989 100644
      const account = resolveZalouserAccountSync({ cfg });
      const authenticated = await checkZcaAuthenticated(account.profile);
 diff --git a/src/monitor.ts b/src/monitor.ts
-index 837148c..c7ad962 100644
+index b30eef5..0d6e9f4 100644
 --- a/src/monitor.ts
 +++ b/src/monitor.ts
 @@ -67,6 +67,12 @@ export type ZalouserMonitorResult = {
@@ -81,7 +81,7 @@ index 837148c..c7ad962 100644
    const tableMode = params.tableMode ?? "code";
    let visibleReplySent = false;
 diff --git a/src/send.ts b/src/send.ts
-index 26cd582..42cd7a0 100644
+index 26cd582..25d58cd 100644
 --- a/src/send.ts
 +++ b/src/send.ts
 @@ -1,6 +1,11 @@
@@ -117,7 +117,7 @@ index 26cd582..42cd7a0 100644
  type ZalouserSendOptions = ZaloSendOptions;
  type ZalouserSendResult = ZaloSendResult;
 
-@@ -87,7 +96,23 @@ export async function sendTypingZalouser(
+@@ -87,7 +97,23 @@ export async function sendTypingZalouser(
    threadId: string,
    options: Pick<ZalouserSendOptions, "profile" | "isGroup"> = {},
  ): Promise<void> {
@@ -142,7 +142,7 @@ index 26cd582..42cd7a0 100644
  }
 
  export async function sendReactionZalouser(params: {
-@@ -106,6 +131,7 @@ export async function sendReactionZalouser(params: {
+@@ -106,6 +132,7 @@ export async function sendReactionZalouser(params: {
  export async function sendPreparedProviderCallZalouser(
    call: PreparedProviderCallV1,
    materializedMedia?: Buffer,
@@ -150,7 +150,7 @@ index 26cd582..42cd7a0 100644
  ): Promise<{ providerMessageId?: string }> {
    const { frame, sink } = call;
    if (frame.kind !== "text" && frame.kind !== "media") return unsupportedBusinessPart();
-@@ -119,7 +145,7 @@ export async function sendPreparedProviderCallZalouser(
+@@ -119,7 +146,7 @@ export async function sendPreparedProviderCallZalouser(
    assertAuthorizedProviderCall(call);
    if (frame.kind === "media") {
      const verifiedMedia = media ?? preparedMediaMismatch("materialized media is missing");
@@ -159,7 +159,7 @@ index 26cd582..42cd7a0 100644
      if (!result.ok) throw new Error(result.error || "Failed to send Zalouser media");
      return result.messageId === undefined ? {} : { providerMessageId: result.messageId };
    }
-@@ -128,6 +154,7 @@ export async function sendPreparedProviderCallZalouser(
+@@ -128,6 +155,7 @@ export async function sendPreparedProviderCallZalouser(
      frame.text,
      { profile: sink.accountProfile, isGroup: sink.isGroup },
      sink,
@@ -167,7 +167,7 @@ index 26cd582..42cd7a0 100644
    );
    if (!result.ok) throw new Error(result.error || "Failed to send Zalouser message");
    return result.messageId === undefined ? {} : { providerMessageId: result.messageId };
-@@ -139,7 +166,29 @@ export async function sendDeliveredZalouser(params: {
+@@ -139,7 +167,29 @@ export async function sendDeliveredZalouser(params: {
    message: ZaloEventMessage;
    isSeen?: boolean;
  }): Promise<void> {
@@ -198,7 +198,7 @@ index 26cd582..42cd7a0 100644
  }
 
  export async function sendSeenZalouser(params: {
-@@ -147,5 +196,23 @@ export async function sendSeenZalouser(params: {
+@@ -147,5 +197,23 @@ export async function sendSeenZalouser(params: {
    isGroup?: boolean;
    message: ZaloEventMessage;
  }): Promise<void> {
@@ -265,16 +265,25 @@ index 1fc1763..e60cab4 100644
          if (!target.threadId || !params.url) {
            throw new Error("threadId and url required for link action");
 diff --git a/src/zalo-js.ts b/src/zalo-js.ts
-index f218f67..c994ef5 100644
+index 3b51aba..f518a45 100644
 --- a/src/zalo-js.ts
 +++ b/src/zalo-js.ts
-@@ -68,7 +68,48 @@ const apiByProfile = new Map<string, API>();
- const apiByProfile = new Map<string, API>();
+@@ -28,7 +28,10 @@ import {
+ } from "openclaw/plugin-sdk/string-coerce-runtime";
+ import { sleep, truncateUtf16Safe } from "openclaw/plugin-sdk/text-utility-runtime";
+ import { captureProviderCallbackReceivedAt } from "./bridge/inbound-listener.js";
+-import { assertAuthorizedProviderIo } from "./bridge/outbound-rpc.js";
++import {
++  assertAuthorizedProviderIo,
++  isProvenPreHandoffFailure,
++} from "./bridge/outbound-rpc.js";
+ import type {
+   MediaBusinessFrameV1,
+   PreparedProviderCallV1,
+@@ -76,6 +79,47 @@ const apiByProfile = new Map<string, API>();
  const apiInitByProfile = new Map<string, Promise<API>>();
--const credentialSignaturesByProfile = new Map<string, string>();
--
-+const credentialSignaturesByProfile = new Map<string, string>();
-+
+ const credentialSignaturesByProfile = new Map<string, string>();
+
 +export type BehaviorProbeZaloApiV1 = Pick<
 +  API,
 +  "getContext" | "getCookie" | "sendMessage" | "uploadAttachment" | "sendVoice" | "sendTypingEvent"
@@ -319,7 +328,7 @@ index f218f67..c994ef5 100644
  type ActiveZaloQrLogin = {
    id: string;
    profile: string;
-@@ -1009,16 +1009,53 @@ async function ensureApi(
+@@ -1009,16 +1053,53 @@ async function ensureApi(
    }
  }
 
@@ -374,7 +383,7 @@ index f218f67..c994ef5 100644
    const result = await operation(api);
    if (options.shouldPersist?.(result) ?? true) {
      persistApiCredentialsIfChanged(profile, api);
-@@ -1474,6 +1511,7 @@ export async function sendZaloTextMessage(
+@@ -1474,6 +1555,7 @@ export async function sendZaloTextMessage(
    text: string,
    options: ZaloSendOptions = {},
    providerSink?: ProviderSinkV1,
@@ -382,7 +391,15 @@ index f218f67..c994ef5 100644
  ): Promise<ZaloSendResult> {
    const profile = normalizeProfile(options.profile);
    const trimmedThreadId = threadId.trim();
-@@ -1528,13 +1566,14 @@ export async function sendZaloTextMessage(
+@@ -1521,6 +1603,7 @@ export async function sendZaloTextMessage(
+           }),
+         };
+       } catch (error) {
++        if (isProvenPreHandoffFailure(error)) throw error;
+         return {
+           ok: false,
+           error: toErrorMessage(error),
+@@ -1528,13 +1611,14 @@ export async function sendZaloTextMessage(
          };
        }
      },
@@ -398,7 +415,15 @@ index f218f67..c994ef5 100644
  ): Promise<ZaloSendResult> {
    if (call.frame.kind !== "media" || !("objectKey" in call.frame)) {
      throw Object.assign(new Error("prepared provider call is not media"), {
-@@ -1632,6 +1671,6 @@ export async function sendZaloPreparedMediaMessage(
+@@ -1622,6 +1706,7 @@ export async function sendZaloPreparedMediaMessage(
+           }),
+         };
+       } catch (error) {
++        if (isProvenPreHandoffFailure(error)) throw error;
+         return {
+           ok: false,
+           error: toErrorMessage(error),
+@@ -1632,6 +1717,6 @@ export async function sendZaloPreparedMediaMessage(
          };
        }
      },

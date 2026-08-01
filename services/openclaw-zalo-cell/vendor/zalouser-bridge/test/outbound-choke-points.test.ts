@@ -40,6 +40,73 @@ describe("private outbound RPC exact choke point", () => {
       .toThrowError(expect.objectContaining({ code: "BRIDGE_CONFIGURATION_INVALID" }));
   });
 
+  it("accepts only a dedicated canonical public HTTPS customer AI base URL", () => {
+    const validate = (outboundRuntimeModule as unknown as {
+      validateCustomerAiBaseUrl(value: string): string;
+    }).validateCustomerAiBaseUrl;
+
+    expect(validate("https://customer-ai.example.com/v1"))
+      .toBe("https://customer-ai.example.com/v1");
+    for (const value of [
+      "http://customer-ai.example.com/v1",
+      "https://customer-ai.example.com/v1/",
+      "https://customer-ai.example.com/v2",
+      "https://customer-ai.example.com:8443/v1",
+      "https://customer-ai.example.com/v1?fallback=1",
+      "https://ai.chillhome.io.vn/v1",
+      "https://api.9router.example/v1",
+      "https://router9.example/v1",
+      "https://localhost/v1",
+      "https://localhost./v1",
+      "https://customer-ai.internal/v1",
+      "https://customer-ai.internal./v1",
+      "https://ai.chillhome.io.vn./v1",
+      "https://customer-ai.example.com./v1",
+      "https://127.0.0.1/v1",
+      "https://10.0.0.5/v1",
+      "https://[::1]/v1",
+    ]) {
+      expect(() => validate(value), value).toThrowError(
+        expect.objectContaining({ code: "AI_CONFIGURATION_INVALID" }),
+      );
+    }
+  });
+
+  it("fails production startup on a forbidden customer AI base URL before reading secrets", () => {
+    const environment = {
+      OPENCLAW_ZALO_BRIDGE_URL: "http://bridge.internal",
+      OPENCLAW_ZALO_ORGANIZATION_ID: "organization-a",
+      OPENCLAW_ZALO_ACCOUNT_ID: "account-a",
+      OPENCLAW_ZALO_CELL_ID: "cell-a",
+      OPENCLAW_ZALO_SESSION_GENERATION: "7",
+      OPENCLAW_ZALO_FENCING_TOKEN: "9",
+      OPENCLAW_ZALO_CONTROL_VERSION: "3",
+      OPENCLAW_ZALO_TAKEOVER_VERSION: "2",
+      OPENCLAW_ZALO_GATEWAY_DEVICE_ID: "bridge-device-a",
+      OPENCLAW_ZALO_BRIDGE_SECRET_FILE: "/run/secrets/openclaw_zalo_bridge_hmac",
+      OPENCLAW_ZALO_CUSTOMER_AI_API_KEY: "test-only-placeholder",
+      OPENCLAW_ZALO_CUSTOMER_AI_MODEL: "customer-drafting-model",
+    } as const;
+
+    for (const baseUrl of [
+      "https://ai.chillhome.io.vn/v1",
+      "https://api.9router.example/v1",
+      "https://169.254.169.254/v1",
+      "https://[fe80::1]/v1",
+      "https://localhost/v1",
+      "https://customer-ai.internal./v1",
+      "https://customer-ai.example.com/v1?fallback=1",
+    ]) {
+      expect(
+        () => outboundRuntimeModule.installProductionBridgeRuntimeFromEnvironment({
+          ...environment,
+          OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL: baseUrl,
+        }),
+        baseUrl,
+      ).toThrowError(expect.objectContaining({ code: "AI_CONFIGURATION_INVALID" }));
+    }
+  });
+
   it("binds private RPC access to the authenticated nested gateway device principal", async () => {
     const factory = (outboundRuntimeModule as unknown as {
       createProductionBridgeRuntime(options: unknown): Parameters<typeof createPrivateOutboundRpc>[0] & {
@@ -96,7 +163,7 @@ describe("private outbound RPC exact choke point", () => {
     }
   });
 
-  it("installs a production runtime that materializes media before immediate authorization", async () => {
+  it("materializes media with startup transport binding before authorizing refreshed live versions", async () => {
     const bytes = Buffer.from("real-media-bytes", "utf8");
     const mediaRequest = makeRequest([
       Object.freeze({
@@ -108,7 +175,11 @@ describe("private outbound RPC exact choke point", () => {
         mime: "image/png",
         bytes: bytes.length,
       }),
-    ]);
+    ], {
+      fencingToken: 10,
+      controlVersion: 4,
+      takeoverVersion: 3,
+    });
     const mediaPart = mediaRequest.payload.parts[0];
     if (!mediaPart || mediaPart.kind !== "MEDIA") throw new Error("missing media fixture");
     const events: string[] = [];
@@ -141,6 +212,7 @@ describe("private outbound RPC exact choke point", () => {
       })(),
       fetch: async (_url: string, init: RequestInit) => {
         const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
+        expect(envelope.binding).toEqual(binding);
         events.push(envelope.operation);
         const signed = (body: unknown) => createSignedBridgeResponse({
           operation: envelope.operation,
@@ -264,7 +336,7 @@ describe("private outbound RPC exact choke point", () => {
       gatewayDeviceId: "bridge-client-a",
       now: () => Date.parse("2026-07-29T10:00:00.000Z"),
       nonce: () => "authorization-overflow-nonce-a",
-      fetch: async (_url, init) => {
+      fetch: async (_url: string, init: RequestInit) => {
         requestSignal = init.signal ?? null;
         return new Response(new ReadableStream<Uint8Array>({
           start(controller) {
@@ -349,7 +421,7 @@ describe("private outbound RPC exact choke point", () => {
       bridgeSecret: Buffer.alloc(32, 0x39),
       now: () => Date.parse("2026-07-29T10:00:00.000Z"),
       nonce: () => "control-unusable-response-nonce-a",
-      fetch: async (_url, init) => {
+      fetch: async (_url: string, init: RequestInit) => {
         requestSignal = init.signal ?? null;
         return new Response(new ReadableStream<Uint8Array>({
           start(controller) {
@@ -560,31 +632,181 @@ describe("private outbound RPC exact choke point", () => {
     for (const listener of added) expect(removed).toContain(listener);
   });
 
-  it("rejects a stale fencing/control/takeover binding before any bridge or provider call", async () => {
+  it("propagates a production authorization expiry before provider I/O", async () => {
+    const binding: BridgeRuntimeBindingV1 = Object.freeze({
+      organizationId: "organization-a",
+      accountId: "account-a",
+      cellId: "cell-a",
+      sessionGeneration: 7,
+      fencingToken: 9,
+      controlVersion: 3,
+      takeoverVersion: 2,
+    });
+    const bridgeSecret = Buffer.alloc(32, 0x46);
+    const request = makeRequest([TEXT_PART]);
+    const requestNow = Date.parse("2026-07-29T10:00:00.000Z");
+    const responseNow = Date.parse("2026-07-29T10:00:14.000Z");
+    const expiresAt = Date.parse(request.authorization.authorizationMarker.expiresAt);
+    const times = [requestNow, responseNow, expiresAt];
+    const providerIo: string[] = [];
+    const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+      binding,
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret,
+      gatewayDeviceId: "gateway-a",
+      now: () => times.shift() ?? expiresAt,
+      nonce: () => "authorization-expiry-nonce-a",
+      fetch: async (_url, init) => {
+        const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
+        return new Response(JSON.stringify(createSignedBridgeResponse({
+          operation: envelope.operation,
+          requestNonce: envelope.nonce,
+          binding,
+          body: { version: 1, status: "AUTHORIZED" },
+          secret: bridgeSecret,
+          now: responseNow,
+          ttlMs: 1_000,
+        })), { status: 200, headers: { "content-type": "application/json" } });
+      },
+      loadProviderSender: async () => ({
+        prepareSession: async () => Object.freeze({ ready: true }),
+        send: async (call: ReturnType<typeof prepareRequest>["calls"][number]) => {
+          assertAuthorizedProviderCall(call);
+          assertAuthorizedProviderIo(call.sink);
+          providerIo.push("send");
+          return { providerMessageId: "must-not-send" };
+        },
+      }),
+    });
+    const uninstall = installPrivateOutboundRuntime(runtime);
+    runtimeCleanups.push(uninstall);
+    let handler: ((request: unknown) => Promise<void>) | undefined;
+    registerPrivateOutboundRpc({
+      registerGatewayMethod(_method, registeredHandler) {
+        handler = registeredHandler;
+      },
+    });
+    let response: unknown;
+
+    await handler?.({
+      client: {
+        isDeviceTokenAuth: true,
+        connect: {
+          client: { id: "gateway-client", mode: "backend" },
+          device: { id: "gateway-a" },
+        },
+      },
+      params: request,
+      respond(ok: boolean, payload: unknown, error: unknown) {
+        response = { ok, payload, error };
+      },
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      payload: undefined,
+      error: {
+        code: "AUTHORIZATION_EXPIRED",
+        message: "authorization expired before provider handoff",
+        authorizedHandoffRecorded: false,
+      },
+    });
+    expect(providerIo).toEqual([]);
+  });
+
+  it("accepts refreshed fencing/control/takeover versions only after signed Bridge authorization", async () => {
     const factory = (outboundRuntimeModule as unknown as {
       createProductionBridgeRuntime(options: unknown): Parameters<typeof createPrivateOutboundRpc>[0];
     }).createProductionBridgeRuntime;
-    const fetchCalls: string[] = [];
+    const binding: BridgeRuntimeBindingV1 = Object.freeze({
+      organizationId: "organization-a",
+      accountId: "account-a",
+      cellId: "cell-a",
+      sessionGeneration: 7,
+      fencingToken: 9,
+      controlVersion: 3,
+      takeoverVersion: 2,
+    });
+    const request = makeRequest([TEXT_PART], {
+      fencingToken: 10,
+      controlVersion: 4,
+      takeoverVersion: 3,
+    });
+    const bridgeSecret = Buffer.alloc(32, 0x33);
+    const bridgeNow = Date.parse("2026-07-29T10:00:00.000Z");
+    const authorizationBodies: unknown[] = [];
+    const providerIo: string[] = [];
     const runtime = factory({
+      binding,
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret,
+      gatewayDeviceId: "bridge-client-a",
+      now: () => bridgeNow,
+      nonce: () => "live-binding-refresh-nonce-a",
+      fetch: async (_url: string, init: RequestInit) => {
+        const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
+        expect(envelope.binding).toEqual(binding);
+        expect(envelope.operation).toBe("outbox.authorize-send");
+        authorizationBodies.push(envelope.body);
+        return new Response(JSON.stringify(createSignedBridgeResponse({
+          operation: envelope.operation,
+          requestNonce: envelope.nonce,
+          binding,
+          body: { version: 1, status: "AUTHORIZED" },
+          secret: bridgeSecret,
+          now: bridgeNow,
+          ttlMs: 1_000,
+        })), { status: 200, headers: { "content-type": "application/json" } });
+      },
+      loadProviderSender: async () => ({
+        prepareSession: async () => Object.freeze({ ready: true }),
+        send: async (call: ReturnType<typeof prepareRequest>["calls"][number]) => {
+          assertAuthorizedProviderCall(call);
+          assertAuthorizedProviderIo(call.sink);
+          providerIo.push("send");
+          return { providerMessageId: "provider-live-binding-a" };
+        },
+      }),
+    });
+
+    await expect(createPrivateOutboundRpc(runtime).invoke("zalouser.bridge.send", request))
+      .resolves.toMatchObject({
+        status: "SENT",
+        knownProviderMessageIds: ["provider-live-binding-a"],
+      });
+    expect(authorizationBodies).toEqual([request.authorization]);
+    expect(providerIo).toEqual(["send"]);
+  });
+
+  it.each([
+    ["organization", { organizationId: "organization-b" }],
+    ["account", { accountId: "account-b" }],
+    ["session generation", { sessionGeneration: 8 }],
+  ] as const)("rejects an immutable %s mismatch before Bridge or provider preparation", async (_label, overrides) => {
+    const fetchCalls: string[] = [];
+    const providerLoads: string[] = [];
+    const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
       binding: {
         organizationId: "organization-a",
         accountId: "account-a",
         cellId: "cell-a",
         sessionGeneration: 7,
-        fencingToken: 10,
+        fencingToken: 9,
         controlVersion: 3,
         takeoverVersion: 2,
+        ...overrides,
       },
       bridgeBaseUrl: "http://bridge.internal",
-      bridgeSecret: Buffer.alloc(32, 0x33),
+      bridgeSecret: Buffer.alloc(32, 0x48),
       gatewayDeviceId: "bridge-client-a",
       now: () => Date.parse("2026-07-29T10:00:00.000Z"),
-      nonce: () => "unused-nonce",
+      nonce: () => "unused-identity-mismatch-nonce-a",
       fetch: async () => {
         fetchCalls.push("fetch");
-        throw new Error("must not call bridge");
+        throw new Error("must not call Bridge");
       },
       loadProviderSender: async () => {
+        providerLoads.push("load");
         throw new Error("must not load provider");
       },
     });
@@ -592,6 +814,76 @@ describe("private outbound RPC exact choke point", () => {
     await expect(createPrivateOutboundRpc(runtime).invoke("zalouser.bridge.send", REQUEST))
       .rejects.toMatchObject({ code: "BRIDGE_BINDING_MISMATCH" });
     expect(fetchCalls).toEqual([]);
+    expect(providerLoads).toEqual([]);
+  });
+
+  it("does not transfer a signed authorization proof to a structurally equal request", async () => {
+    const binding: BridgeRuntimeBindingV1 = Object.freeze({
+      organizationId: "organization-a",
+      accountId: "account-a",
+      cellId: "cell-a",
+      sessionGeneration: 7,
+      fencingToken: 9,
+      controlVersion: 3,
+      takeoverVersion: 2,
+    });
+    const bridgeSecret = Buffer.alloc(32, 0x49);
+    const bridgeNow = Date.parse("2026-07-29T10:00:00.000Z");
+    const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+      binding,
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret,
+      gatewayDeviceId: "bridge-client-a",
+      now: () => bridgeNow,
+      nonce: () => "authorization-proof-nonce-a",
+      fetch: async (_url: string, init: RequestInit) => {
+        const envelope = JSON.parse(String(init.body)) as SignedBridgeRequestV1;
+        return new Response(JSON.stringify(createSignedBridgeResponse({
+          operation: envelope.operation,
+          requestNonce: envelope.nonce,
+          binding,
+          body: { version: 1, status: "AUTHORIZED" },
+          secret: bridgeSecret,
+          now: bridgeNow,
+          ttlMs: 1_000,
+        })), { status: 200, headers: { "content-type": "application/json" } });
+      },
+      loadProviderSender: async () => { throw new Error("must not load provider"); },
+    });
+    const authorized = makeRequest([TEXT_PART]);
+    const equalClone = makeRequest([TEXT_PART]);
+
+    await expect(runtime.authorize(authorized, prepareRequest(authorized))).resolves.toBeUndefined();
+    expect(() => runtime.assertAuthorizationCurrent(authorized)).not.toThrow();
+    expect(() => runtime.assertAuthorizationCurrent(equalClone)).toThrowError(
+      expect.objectContaining({ code: "AUTHORIZATION_PROOF_MISSING" }),
+    );
+  });
+
+  it("requires an internal authorization proof for the exact snapshotted request", () => {
+    const request = makeRequest([TEXT_PART]);
+    const runtime = outboundRuntimeModule.createProductionBridgeRuntime({
+      binding: {
+        organizationId: "organization-a",
+        accountId: "account-a",
+        cellId: "cell-a",
+        sessionGeneration: 7,
+        fencingToken: 9,
+        controlVersion: 3,
+        takeoverVersion: 2,
+      },
+      bridgeBaseUrl: "http://bridge.internal",
+      bridgeSecret: Buffer.alloc(32, 0x47),
+      gatewayDeviceId: "bridge-client-a",
+      now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+      nonce: () => "unused-proof-nonce-a",
+      fetch: async () => { throw new Error("must not call bridge"); },
+      loadProviderSender: async () => { throw new Error("must not load provider"); },
+    });
+
+    expect(() => runtime.assertAuthorizationCurrent(request)).toThrowError(
+      expect.objectContaining({ code: "AUTHORIZATION_PROOF_MISSING" }),
+    );
   });
 
   it("materializes the execution before authorization and performs no awaited preparation after it", async () => {
@@ -715,6 +1007,7 @@ describe("private outbound RPC exact choke point", () => {
       assertClient: async (client) => {
         if ((client as { id?: string })?.id !== "bridge-a") throw new Error("wrong bridge client");
       },
+      assertAuthorizationCurrent: () => undefined,
       prepare: async (request) => Object.freeze({
         batch: prepareRequest(request),
         sendPrepared: async (call: ReturnType<typeof prepareRequest>["calls"][number]) => {
@@ -755,6 +1048,7 @@ describe("private outbound RPC exact choke point", () => {
   it("rejects a concurrent runtime replacement", () => {
     const runtime = {
       assertClient: async () => undefined,
+      assertAuthorizationCurrent: () => undefined,
       prepare: async (request: ZaloUserBridgeSendParamsV1) => Object.freeze({
         batch: prepareRequest(request),
         sendPrepared: async () => ({}),

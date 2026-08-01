@@ -22,6 +22,7 @@ export type TemplateField = (typeof TEMPLATE_FIELD_ALLOWLIST)[number];
 
 export type RenderFailure =
   | "UNKNOWN_FIELD"
+  | "FIELD_NOT_ALLOWED"
   | "MISSING_REQUIRED_VALUE"
   | "OUTPUT_TOO_LONG"
   | "MALFORMED_TEMPLATE";
@@ -36,14 +37,20 @@ export interface RenderResult {
 export const MAX_RENDERED_CODE_POINTS = 4_000;
 
 const PLACEHOLDER = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;
+const CLOSED_PLACEHOLDER = /\{\{([\s\S]*?)\}\}/g;
+const VALID_FIELD = /^\s*([A-Za-z0-9_]+)\s*$/;
 
 /**
  * Control and markup characters are escaped deterministically so a value taken
  * from a customer record cannot alter the shape of the outgoing message.
  */
 export function escapeTemplateValue(value: string): string {
-  return value
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+  const withoutForbiddenControls = [...value].filter((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return !(codePoint <= 8 || codePoint === 11 || codePoint === 12 ||
+      (codePoint >= 14 && codePoint <= 31) || codePoint === 127);
+  }).join("");
+  return withoutForbiddenControls
     .replace(/[<>]/g, (character) => (character === "<" ? "\u2039" : "\u203a"))
     .replace(/\r\n?/g, "\n");
 }
@@ -52,10 +59,12 @@ export function renderTemplate({
   template,
   values,
   requiredFields = [],
+  allowedFields,
 }: {
   template: string;
   values: Partial<Record<TemplateField, string>>;
   requiredFields?: readonly TemplateField[];
+  allowedFields?: readonly TemplateField[];
 }): RenderResult {
   if (typeof template !== "string" || template.length === 0) {
     return { ok: false, failure: "MALFORMED_TEMPLATE" };
@@ -66,10 +75,38 @@ export function renderTemplate({
     return { ok: false, failure: "MALFORMED_TEMPLATE" };
   }
 
-  const referenced = [...template.matchAll(PLACEHOLDER)].map((match) => match[1] ?? "");
+  // Validate every closed token, not only tokens matching the allowlist syntax.
+  // Otherwise invalid placeholders remain literal customer-facing text.
+  const closed = [...template.matchAll(CLOSED_PLACEHOLDER)];
+  const withoutClosed = template.replace(CLOSED_PLACEHOLDER, "");
+  if (withoutClosed.includes("{{") || withoutClosed.includes("}}")) {
+    return { ok: false, failure: "MALFORMED_TEMPLATE" };
+  }
+
+  const referenced: string[] = [];
+  for (const match of closed) {
+    const rawField = match[1] ?? "";
+    const fieldMatch = rawField.match(VALID_FIELD);
+    if (!fieldMatch) {
+      const field = rawField.trim();
+      if (field.length === 0 || rawField.includes("{") || rawField.includes("}")) {
+        return { ok: false, failure: "MALFORMED_TEMPLATE" };
+      }
+      return { ok: false, failure: "UNKNOWN_FIELD", field };
+    }
+    const field = fieldMatch[1];
+    if (field === undefined) {
+      return { ok: false, failure: "MALFORMED_TEMPLATE" };
+    }
+    referenced.push(field);
+  }
+  const allowed = allowedFields === undefined ? null : new Set<string>(allowedFields);
   for (const field of referenced) {
     if (!(TEMPLATE_FIELD_ALLOWLIST as readonly string[]).includes(field)) {
       return { ok: false, failure: "UNKNOWN_FIELD", field };
+    }
+    if (allowed !== null && !allowed.has(field)) {
+      return { ok: false, failure: "FIELD_NOT_ALLOWED", field };
     }
   }
   for (const field of requiredFields) {

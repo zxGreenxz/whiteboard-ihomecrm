@@ -42,8 +42,8 @@
       "path": "config/openclaw.json.tmpl",
       "type": "blob",
       "mode": "100644",
-      "size": 165,
-      "sha256": "9a14f210f3da745d3895817998b765cf0594b38f32160541abfcf28f70d9c021"
+      "size": 1600,
+      "sha256": "f8c51f1f4567fe25ce7b746e43058940f9c11b0846be30e63183a26844f5cca8"
     },
     {
       "path": "scripts/install-vendored-zalouser.sh",
@@ -85,14 +85,14 @@
       "type": "blob",
       "mode": "100644",
       "size": 241277,
-      "sha256": "41713cc0aaf8e488595b8aadf0675403bca63c6803ded7150ade91fbca3f5703"
+      "sha256": "9d17ee46db47e19fb94912d2e74c2eeb32bbed96e658ec168aa1ebb1974750c9"
     },
     {
       "path": "vendor/zalouser-bridge/artifacts/openclaw-zalouser-2026.7.1.tgz",
       "type": "blob",
       "mode": "100644",
-      "size": 422633,
-      "sha256": "331c1e2f218e0f8bf2aedef826a814ad5cb6feaa972372db274211af378ba1e1"
+      "size": 422562,
+      "sha256": "49f9b0233bc27a07895a8ade153b560870318835ec60e1040d9695e5abbecc10"
     }
   ]
 }

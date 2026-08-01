@@ -5,7 +5,7 @@ const UUID_PATTERN =
  * The browser asks for a ticket by naming a canonical media row, never a bucket,
  * a key, or a path fragment. Edge derives everything else from trusted rows.
  */
-export const OBJECT_TICKET_OPERATIONS = Object.freeze(["GET", "PUT"] as const);
+export const OBJECT_TICKET_OPERATIONS = Object.freeze(["GET"] as const);
 
 export type ObjectTicketOperation = (typeof OBJECT_TICKET_OPERATIONS)[number];
 

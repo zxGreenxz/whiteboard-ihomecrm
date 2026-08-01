@@ -46,9 +46,11 @@ const ROUTES = new Map<string, RuntimeRequirement>([
   ["POST /v1/outbox/requeue", { operation: "outbox.requeue", principalKind: "CHANNEL" }],
   ["POST /v1/outbox/complete", { operation: "outbox.complete", principalKind: "CHANNEL" }],
   ["POST /v1/work/claim", { operation: "work.claim", principalKind: "CHANNEL" }],
+  ["POST /v1/work/context", { operation: "work.context", principalKind: "CHANNEL" }],
   ["POST /v1/work/complete", { operation: "work.complete", principalKind: "CHANNEL" }],
   ["POST /v1/work/create-outbox", { operation: "work.complete", principalKind: "CHANNEL" }],
   ["POST /v1/media/upload-ticket", { operation: "media.issue", principalKind: "CHANNEL" }],
+  ["POST /v1/media/upload-complete", { operation: "media.issue", principalKind: "CHANNEL" }],
   ["POST /v1/maintenance/work/claim", { operation: "maintenance.claim", principalKind: "MAINTENANCE" }],
   ["POST /v1/maintenance/work/complete", { operation: "maintenance.complete", principalKind: "MAINTENANCE" }],
   ["POST /v1/maintenance/media/upload-ticket", { operation: "maintenance.complete", principalKind: "MAINTENANCE" }],
@@ -114,13 +116,16 @@ interface IssueRuntimeTokenInput {
   principal: RuntimePrincipal;
   method: string;
   path: string;
-  body: Uint8Array;
+  body?: Uint8Array;
+  /** Used by credential exchange, which binds a future request by digest. */
+  bodySha256?: string;
   routeBody?: unknown;
   timestamp: number;
   nonce: string;
   signingKey: Uint8Array;
   nowEpochSeconds: number;
   ttlSeconds?: number;
+  validateWorkKinds?: boolean;
 }
 
 export interface CredentialExchangeRequest {
@@ -132,6 +137,7 @@ export interface CredentialExchangeRequest {
   runtimeTimestamp: number;
   runtimeNonce: string;
   runtimeBodySha256: string;
+  localSessionGeneration?: number;
 }
 
 export interface CredentialExchangeRpcInput {
@@ -150,7 +156,7 @@ export interface CredentialExchangeRpcInput {
 type RuntimeEnvelopeInput = Pick<
   IssueRuntimeTokenInput,
   "method" | "path" | "routeBody" | "timestamp" | "nonce" | "nowEpochSeconds" | "ttlSeconds"
->;
+> & { validateWorkKinds?: boolean };
 
 function authError(code: string, message: string, status = 403): OpenClawHttpError {
   return new OpenClawHttpError(status, code, message);
@@ -168,7 +174,7 @@ function concatenateBytes(parts: readonly Uint8Array[]): Uint8Array {
   return output;
 }
 
-export async function deriveCredentialProofSha256(
+export function deriveCredentialProofSha256(
   principalKind: PrincipalKind,
   credential: string,
 ): Promise<string> {
@@ -186,7 +192,7 @@ export async function deriveCredentialProofSha256(
   return sha256Hex(preimage);
 }
 
-export async function deriveCredentialExchangeRequestHash(
+export function deriveCredentialExchangeRequestHash(
   operation: string,
   request: CredentialExchangeRequest,
 ): Promise<string> {
@@ -240,12 +246,20 @@ function assertPrincipal(value: unknown): asserts value is RuntimePrincipal {
         "leaseGeneration",
         "fencingToken",
         "sessionGeneration",
+        "localSessionGeneration",
+        "authMode",
       ]) ||
       typeof principal.accountId !== "string" ||
       !UUID_PATTERN.test(principal.accountId) ||
       typeof principal.cellId !== "string" ||
       !UUID_PATTERN.test(principal.cellId) ||
       !positiveInteger(principal.sessionGeneration, true)
+      || !positiveInteger(principal.localSessionGeneration)
+      || !["NORMAL", "COMMAND_TRANSITION"].includes(String(principal.authMode))
+      || (principal.authMode === "NORMAL" &&
+        principal.localSessionGeneration !== principal.sessionGeneration)
+      || (principal.authMode === "COMMAND_TRANSITION" &&
+        principal.sessionGeneration !== principal.localSessionGeneration + 1)
     ) {
       throw authError("PRINCIPAL_INVALID", "Channel principal is invalid.");
     }
@@ -284,10 +298,12 @@ export function deriveRuntimeRequirement({
   method,
   path,
   body,
+  validateWorkKinds = true,
 }: {
   method: string;
   path: string;
   body: unknown;
+  validateWorkKinds?: boolean;
 }): RuntimeRequirement {
   if (path.includes("?") || path.includes("#")) {
     throw authError("ROUTE_NOT_FOUND", "Runtime route is not allowed.", 404);
@@ -296,13 +312,13 @@ export function deriveRuntimeRequirement({
   if (!requirement) {
     throw authError("ROUTE_NOT_FOUND", "Runtime route is not allowed.", 404);
   }
-  if (path === "/v1/work/claim") {
+  if (validateWorkKinds && path === "/v1/work/claim") {
     const kinds = requestedKinds(body);
     if (kinds.length === 0 || kinds.some((kind) => !CHANNEL_WORK_KINDS.has(kind))) {
       throw authError("WORK_KIND_DENIED", "Channel work kind is not allowed.");
     }
   }
-  if (path === "/v1/maintenance/work/claim") {
+  if (validateWorkKinds && path === "/v1/maintenance/work/claim") {
     const kinds = requestedKinds(body);
     if (kinds.length === 0 || kinds.some((kind) => !MAINTENANCE_WORK_KINDS.has(kind))) {
       throw authError("WORK_KIND_DENIED", "Maintenance work kind is not allowed.");
@@ -316,6 +332,7 @@ function validateRuntimeEnvelope(input: RuntimeEnvelopeInput): RuntimeRequiremen
     method: input.method,
     path: input.path,
     body: input.routeBody ?? {},
+    validateWorkKinds: input.validateWorkKinds,
   });
   if (!Number.isSafeInteger(input.nowEpochSeconds) ||
       !Number.isSafeInteger(input.timestamp) ||
@@ -334,7 +351,10 @@ function validateRuntimeEnvelope(input: RuntimeEnvelopeInput): RuntimeRequiremen
 
 function validateIssueInput(input: IssueRuntimeTokenInput): RuntimeRequirement {
   assertPrincipal(input.principal);
-  const requirement = validateRuntimeEnvelope(input);
+  const requirement = validateRuntimeEnvelope({
+    ...input,
+    validateWorkKinds: input.validateWorkKinds,
+  });
   if (input.principal.principalKind !== requirement.principalKind) {
     throw authError("PRINCIPAL_ROUTE_MISMATCH", "Principal does not match the route.");
   }
@@ -450,7 +470,7 @@ function validateCredentialExchangeReceipt({
     "leaseExpiresAt",
   ];
   const keys = requirement.principalKind === "CHANNEL"
-    ? [...commonKeys, "accountId", "cellId", "sessionGeneration"]
+    ? [...commonKeys, "accountId", "cellId", "sessionGeneration", "localSessionGeneration", "authMode"]
     : [...commonKeys, "maintenancePrincipalId"];
   if (
     !exactKeys(receipt, keys) ||
@@ -491,7 +511,18 @@ function validateCredentialExchangeReceipt({
   if (requirement.principalKind === "CHANNEL") {
     if (
       receipt.accountId !== principalSelector.accountId ||
-      receipt.cellId !== principalSelector.cellId
+      receipt.cellId !== principalSelector.cellId ||
+      receipt.localSessionGeneration !== String(rpcInput.request.localSessionGeneration) ||
+      !["NORMAL", "COMMAND_TRANSITION"].includes(String(receipt.authMode))
+    ) {
+      throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+    }
+    const sessionGeneration = parseReceiptGeneration(receipt.sessionGeneration, true);
+    const localSessionGeneration = parseReceiptGeneration(receipt.localSessionGeneration);
+    if (
+      (receipt.authMode === "NORMAL" && localSessionGeneration !== sessionGeneration) ||
+      (receipt.authMode === "COMMAND_TRANSITION" &&
+        (requirement.operation !== "heartbeat" || sessionGeneration !== localSessionGeneration + 1))
     ) {
       throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
     }
@@ -504,7 +535,9 @@ function validateCredentialExchangeReceipt({
       credentialGeneration,
       leaseGeneration,
       fencingToken,
-      sessionGeneration: parseReceiptGeneration(receipt.sessionGeneration, true),
+      sessionGeneration,
+      localSessionGeneration,
+      authMode: receipt.authMode as "NORMAL" | "COMMAND_TRANSITION",
     };
   } else {
     if (receipt.maintenancePrincipalId !== principalSelector.maintenancePrincipalId) {
@@ -524,6 +557,26 @@ function validateCredentialExchangeReceipt({
   return { principal, databaseEpochSeconds, leaseExpiresAt };
 }
 
+async function resolveRuntimeBodySha256(
+  body: Uint8Array | undefined,
+  precomputed: string | undefined,
+): Promise<string> {
+  if (precomputed !== undefined && !SHA256_PATTERN.test(precomputed)) {
+    throw authError("BODY_HASH_INVALID", "Runtime request body hash is invalid.");
+  }
+  if (body === undefined) {
+    if (precomputed === undefined) {
+      throw authError("BODY_HASH_REQUIRED", "Runtime request body hash is required.");
+    }
+    return precomputed;
+  }
+  const computed = await sha256Hex(body);
+  if (precomputed !== undefined && precomputed !== computed) {
+    throw authError("BODY_HASH_INVALID", "Runtime request body hash is invalid.");
+  }
+  return computed;
+}
+
 export async function issueRuntimeToken(input: IssueRuntimeTokenInput): Promise<string> {
   const requirement = validateIssueInput(input);
   const ttl = input.ttlSeconds ?? OPENCLAW_RUNTIME_TOKEN_TTL_SECONDS;
@@ -539,7 +592,7 @@ export async function issueRuntimeToken(input: IssueRuntimeTokenInput): Promise<
     exp: input.nowEpochSeconds + ttl,
     timestamp: input.timestamp,
     nonce: input.nonce,
-    bodySha256: await sha256Hex(input.body),
+    bodySha256: await resolveRuntimeBodySha256(input.body, input.bodySha256),
     principal: input.principal,
   };
   const header = { alg: "HS256", typ: "JWT", kid: "openclaw-runtime-v1" };
@@ -690,6 +743,8 @@ export async function verifyRuntimeRequest({
     principal: currentPrincipal,
     nonce,
     bodySha256,
+    issuedAtEpochSeconds: payload.iat,
+    expiresAtEpochSeconds: payload.exp,
   };
   await consumeNonce(verification);
   return verification;
@@ -700,10 +755,12 @@ export async function exchangeRuntimeCredential({
   method,
   path,
   body,
+  runtimeBodySha256,
   routeBody = {},
   timestamp,
   nonce,
   exchangeNonce,
+  localSessionGeneration,
   principalSelector,
   signingKey,
   nowEpochSeconds,
@@ -713,11 +770,13 @@ export async function exchangeRuntimeCredential({
   credential: string;
   method: string;
   path: string;
-  body: Uint8Array;
+  body?: Uint8Array;
+  runtimeBodySha256?: string;
   routeBody?: unknown;
   timestamp: number;
   nonce: string;
   exchangeNonce: string;
+  localSessionGeneration?: number;
   principalSelector: Record<string, string>;
   signingKey: Uint8Array;
   nowEpochSeconds: number;
@@ -737,8 +796,15 @@ export async function exchangeRuntimeCredential({
     timestamp,
     nonce,
     nowEpochSeconds,
+    validateWorkKinds: false,
   });
   assertPrincipalSelector(principalSelector, requirement.principalKind);
+  if (
+    (requirement.principalKind === "CHANNEL" && !positiveInteger(localSessionGeneration)) ||
+    (requirement.principalKind === "MAINTENANCE" && localSessionGeneration !== undefined)
+  ) {
+    throw authError("LOCAL_SESSION_GENERATION_INVALID", "Local session generation is invalid.");
+  }
   if (
     typeof exchangeNonce !== "string" ||
     !UUID_PATTERN.test(exchangeNonce) ||
@@ -750,7 +816,7 @@ export async function exchangeRuntimeCredential({
     requirement.principalKind,
     credential,
   );
-  const runtimeBodySha256 = await sha256Hex(body);
+  const boundRuntimeBodySha256 = await resolveRuntimeBodySha256(body, runtimeBodySha256);
   const exchangeOperation = CREDENTIAL_EXCHANGE_OPERATIONS[requirement.principalKind];
   const request: CredentialExchangeRequest = {
     version: 1,
@@ -760,7 +826,8 @@ export async function exchangeRuntimeCredential({
     runtimePath: path,
     runtimeTimestamp: timestamp,
     runtimeNonce: nonce,
-    runtimeBodySha256,
+    runtimeBodySha256: boundRuntimeBodySha256,
+    ...(requirement.principalKind === "CHANNEL" ? { localSessionGeneration } : {}),
   };
   const exchangeRequestHash = await deriveCredentialExchangeRequestHash(
     exchangeOperation,
@@ -796,12 +863,13 @@ export async function exchangeRuntimeCredential({
     principal: receipt.principal,
     method,
     path,
-    body,
+    bodySha256: boundRuntimeBodySha256,
     routeBody,
     timestamp,
     nonce,
     signingKey,
     nowEpochSeconds: Math.floor(receipt.databaseEpochSeconds),
     ttlSeconds,
+    validateWorkKinds: false,
   });
 }

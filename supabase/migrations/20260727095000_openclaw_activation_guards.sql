@@ -306,7 +306,7 @@ begin
       v_required_stage:='INFRASTRUCTURE';
     when 'openclaw_runtime_commands' then
       v_org:=NEW.organization_id;v_account:=NEW.account_id;v_cell:=NEW.cell_id;
-      v_is_activation:=NEW.command_kind='QR_LOGIN' and NEW.state in ('PENDING','LEASED');
+      v_is_activation:=NEW.command_kind='QR_LOGIN' and NEW.state in ('PENDING','LEASED','STARTED');
       v_required_stage:='WAITING_OWNER_QR';
     when 'openclaw_qr_challenges' then
       v_org:=NEW.organization_id;v_account:=NEW.account_id;v_cell:=NEW.cell_id;
@@ -510,7 +510,7 @@ begin
      and lease.cell_id=cell.id and lease.status='ACTIVE' and lease.expires_at>statement_timestamp()
     where account.organization_id=v_org and account.is_active
     order by lease.lease_generation desc,credential.credential_generation desc limit 1;
-  elsif v_cell is null then
+  elsif v_cell is null or v_credential is null or v_lease is null or v_fence is null then
     select cell.id,credential.credential_generation,lease.lease_generation,lease.fencing_token
     into v_cell,v_credential,v_lease,v_fence
     from public.openclaw_runtime_cells cell
@@ -633,9 +633,16 @@ declare
   v_challenge public.openclaw_qr_challenges%rowtype;
   v_command public.openclaw_runtime_commands%rowtype;
   v_generation bigint;
+  v_existing_generation bigint;
+  v_connection_state text;
+  v_disclosure_version integer;
+  v_disclosure_acknowledged_version integer;
   v_evidence jsonb;
   v_hash text;
 begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,array['version','challengeId'],array['version','challengeId']
+  );
   if p_request->>'version'<>'1' then
     raise exception 'account connection finalization version mismatch' using errcode='22023';
   end if;
@@ -659,6 +666,13 @@ begin
   ) then
     raise exception 'account connection principal credential lease fence is stale' using errcode='42501';
   end if;
+  select account.connection_generation,account.connection_state,
+    account.disclosure_version,account.disclosure_acknowledged_version
+  into strict v_generation,v_connection_state,
+    v_disclosure_version,v_disclosure_acknowledged_version
+  from public.openclaw_accounts account
+  where account.organization_id=v_org and account.id=v_account
+  for update;
   select challenge.* into v_challenge from public.openclaw_qr_challenges challenge
   where challenge.organization_id=v_org and challenge.account_id=v_account
     and challenge.cell_id=v_cell and challenge.id=(p_request->>'challengeId')::uuid
@@ -674,8 +688,6 @@ begin
     and command.expected_fencing_token=(p_principal->>'fencingToken')::bigint
     for share;
   if not found then raise exception 'canonical QR runtime acknowledgement required' using errcode='42501'; end if;
-  select account.connection_generation+1 into v_generation from public.openclaw_accounts account
-  where account.organization_id=v_org and account.id=v_account for update;
   v_evidence:=jsonb_build_object('version',1,'challengeId',v_challenge.id,
     'runtimeCommandId',v_command.id,'runtimeResultHash',v_command.result_hash,
     'consumedAt',v_challenge.consumed_at,'cellId',v_cell,
@@ -683,6 +695,30 @@ begin
     'leaseGeneration',(p_principal->>'leaseGeneration')::bigint,
     'fencingToken',(p_principal->>'fencingToken')::bigint);
   v_hash:=encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(v_evidence),'sha256'),'hex');
+  select connection.connection_generation into v_existing_generation
+  from public.openclaw_account_connections connection
+  where connection.organization_id=v_org and connection.account_id=v_account
+    and connection.reason_code='CANONICAL_QR_FINALIZED'
+    and connection.evidence_hash=v_hash
+  order by connection.connection_generation desc limit 1;
+  if found then
+    if v_connection_state<>'CONNECTED' or v_generation<>v_existing_generation then
+      raise exception 'QR challenge generation is stale' using errcode='40001';
+    end if;
+    return jsonb_build_object('version',1,'accountId',v_account,
+      'connectionGeneration',v_existing_generation,
+      'connectionState','CONNECTED','evidenceHash',v_hash);
+  end if;
+  if v_connection_state not in ('QR_PENDING','CONNECTING')
+     or v_generation<>v_challenge.challenge_version
+     or v_command.expected_connection_generation+1<>v_challenge.challenge_version
+  then
+    raise exception 'QR challenge generation is stale' using errcode='40001';
+  end if;
+  if v_disclosure_acknowledged_version is distinct from v_disclosure_version then
+    raise exception 'current disclosure acknowledgement required' using errcode='42501';
+  end if;
+  v_generation:=v_generation+1;
   insert into public.openclaw_account_connections(
     organization_id,account_id,connection_generation,connection_state,session_risk_state,
     configured_mode,effective_mode,reason_code,disclosure_version,
@@ -699,6 +735,122 @@ begin
     'connectionGeneration',v_generation,'connectionState','CONNECTED','evidenceHash',v_hash);
 end;
 $function$;
+
+create or replace function public.openclaw_service_finalize_account_connection_v1(
+  p_principal jsonb,p_envelope jsonb,p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_context jsonb;
+begin
+  v_context := app_private.openclaw_validate_service_context_v1(
+    p_principal,p_envelope,p_request,'openclaw_finalize_account_connection_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context,p_envelope,p_request,'RUNTIME'
+  );
+  return app_private.openclaw_finalize_account_connection_v1(
+    v_context,p_envelope,p_request
+  );
+end;
+$function$;
+
+create or replace function app_private.openclaw_complete_maintenance_work_v1(
+  p_principal jsonb,p_envelope jsonb,p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  if p_request ? 'outcome' then
+    return app_private.openclaw_complete_maintenance_failure_v1(
+      p_principal,p_envelope,p_request
+    );
+  elsif p_request->>'recoveryKind'='RETENTION_DELETE_AUTHORIZED' then
+    perform app_private.openclaw_assert_strict_object_v1(
+      p_request,
+      array['version','recoveryKind','workItemId','recoveryGeneration','claimToken','ticketId','gatewayReceipt'],
+      array['version','recoveryKind','workItemId','recoveryGeneration','claimToken','ticketId','gatewayReceipt']
+    );
+    return app_private.openclaw_finalize_retention_delete_v1(
+      p_principal,p_envelope,p_request
+    );
+  elsif p_request->>'recoveryKind'='AUDIT_VERIFY_AUTHORIZED' then
+    perform app_private.openclaw_assert_strict_object_v1(
+      p_request,
+      array['version','recoveryKind','workItemId','recoveryGeneration','claimToken','verifyTicketJti','gatewayReceipt'],
+      array['version','recoveryKind','workItemId','recoveryGeneration','claimToken','verifyTicketJti','gatewayReceipt']
+    );
+    return app_private.openclaw_ack_audit_anchor_v1(
+      p_principal,p_envelope,p_request
+    );
+  elsif p_request ? 'ticketId' then
+    perform app_private.openclaw_assert_strict_object_v1(
+      p_request,
+      array['version','ticketId','gatewayReceipt'],
+      array['version','ticketId','gatewayReceipt']
+    );
+    return app_private.openclaw_finalize_retention_delete_v1(
+      p_principal,p_envelope,p_request
+    );
+  elsif p_request ? 'verifyTicketJti' then
+    perform app_private.openclaw_assert_strict_object_v1(
+      p_request,
+      array['version','workItemId','claimGeneration','claimToken','verifyTicketJti','gatewayReceipt'],
+      array['version','workItemId','claimGeneration','claimToken','verifyTicketJti','gatewayReceipt']
+    );
+    return app_private.openclaw_ack_audit_anchor_v1(
+      p_principal,p_envelope,p_request
+    );
+  elsif p_request ? 'subjectKind' then
+    perform app_private.openclaw_assert_strict_object_v1(
+      p_request,
+      array['version','workItemId','claimGeneration','claimToken','subjectKind','subjectId'],
+      array['version','workItemId','claimGeneration','claimToken','subjectKind','subjectId']
+    );
+    return app_private.openclaw_complete_retention_quarantine_v1(
+      p_principal,p_envelope,p_request
+    );
+  end if;
+  raise exception 'maintenance completion discriminator is invalid' using errcode='22023';
+end;
+$function$;
+
+create or replace function public.openclaw_service_complete_maintenance_work_v1(
+  p_principal jsonb,p_envelope jsonb,p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_context jsonb;
+begin
+  v_context := app_private.openclaw_validate_service_context_v1(
+    p_principal,p_envelope,p_request,'openclaw_complete_maintenance_work_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context,p_envelope,p_request,'RUNTIME'
+  );
+  return app_private.openclaw_complete_maintenance_work_v1(
+    v_context,p_envelope,p_request
+  );
+end;
+$function$;
+
+-- The unified claim/completion routes are the only production service path.
+-- Remove the earlier per-kind facades so service_role cannot bypass the
+-- checked route matrix with a legacy payload contract.
+drop function if exists public.openclaw_service_claim_inbound_automation_v1(jsonb,jsonb,jsonb);
+drop function if exists public.openclaw_service_complete_inbound_automation_v1(jsonb,jsonb,jsonb);
+drop function if exists public.openclaw_service_complete_retention_quarantine_v1(jsonb,jsonb,jsonb);
+drop function if exists public.openclaw_service_finalize_retention_delete_v1(jsonb,jsonb,jsonb);
+drop function if exists public.openclaw_service_ack_audit_anchor_v1(jsonb,jsonb,jsonb);
 
 alter function app_private.openclaw_guard_activation_v1() owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_guard_activation_v1()
@@ -721,6 +873,24 @@ revoke all on function app_private.openclaw_finalize_account_connection_v1(jsonb
   from public, anon, authenticated, service_role;
 grant execute on function app_private.openclaw_finalize_account_connection_v1(jsonb,jsonb,jsonb)
   to openclaw_service_dispatcher;
+alter function public.openclaw_service_finalize_account_connection_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_service_dispatcher;
+revoke all on function public.openclaw_service_finalize_account_connection_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_service_finalize_account_connection_v1(jsonb,jsonb,jsonb)
+  to service_role;
+alter function app_private.openclaw_complete_maintenance_work_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_maintenance_writer;
+revoke all on function app_private.openclaw_complete_maintenance_work_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function app_private.openclaw_complete_maintenance_work_v1(jsonb,jsonb,jsonb)
+  to openclaw_service_dispatcher;
+alter function public.openclaw_service_complete_maintenance_work_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_service_dispatcher;
+revoke all on function public.openclaw_service_complete_maintenance_work_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_service_complete_maintenance_work_v1(jsonb,jsonb,jsonb)
+  to service_role;
 
 -- PostgreSQL does not create child-side indexes for foreign keys.  Materialize
 -- every still-missing composite FK prefix after the complete twelve-file schema

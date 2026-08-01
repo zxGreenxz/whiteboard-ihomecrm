@@ -496,6 +496,20 @@ describe("executable patched outbound source", () => {
     );
   });
 
+  it("rethrows internally proven pre-handoff failures before provider error normalization", () => {
+    const root = preparePatchedSource();
+    const source = readFileSync(resolve(root, "src/zalo-js.ts"), "utf8");
+    const textBody = declaration(root, "src/zalo-js.ts", "sendZaloTextMessage");
+    const mediaBody = declaration(root, "src/zalo-js.ts", "sendZaloPreparedMediaMessage");
+
+    expect(source).toContain("isProvenPreHandoffFailure");
+    for (const body of [textBody, mediaBody]) {
+      expect(body).toMatch(
+        /catch \(error\) \{\s*if \(isProvenPreHandoffFailure\(error\)\) throw error;\s*return/u,
+      );
+    }
+  });
+
   it("preserves exactly 2000 Unicode code points and rejects 2001 before provider I/O", () => {
     const root = preparePatchedSource();
     const exactProviderText = compileFunction(root, "src/zalo-js.ts", "exactProviderText", [])({});

@@ -11,6 +11,33 @@
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
+    "frozenMaintenanceClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maintenancePrincipalId",
+        "credentialGeneration",
+        "leaseGeneration",
+        "fencingToken",
+        "claimGeneration"
+      ],
+      "properties": {
+        "maintenancePrincipalId": { "$ref": "#/$defs/uuid" },
+        "credentialGeneration": { "type": "integer", "minimum": 1 },
+        "leaseGeneration": { "type": "integer", "minimum": 1 },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "claimGeneration": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "expiredNoWorkDenial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "code"],
+      "properties": {
+        "status": { "const": 410 },
+        "code": { "const": "TICKET_EXPIRED_NO_WORK" }
+      }
+    },
     "sendPayload": {
       "oneOf": [
         {
@@ -200,16 +227,30 @@
             "kind",
             "auditRootId",
             "rootDate",
+            "firstSequence",
+            "lastSequence",
+            "eventCount",
+            "previousRootHash",
+            "merkleRootHash",
             "rootHash",
             "auditSigningKeyGeneration",
+            "auditSigningPublicKeyHash",
             "anchorKey"
           ],
           "properties": {
             "kind": { "const": "AUDIT_ANCHOR" },
             "auditRootId": { "$ref": "#/$defs/uuid" },
             "rootDate": { "type": "string", "format": "date" },
+            "firstSequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "lastSequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "eventCount": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+            "previousRootHash": {
+              "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+            },
+            "merkleRootHash": { "$ref": "#/$defs/sha256" },
             "rootHash": { "$ref": "#/$defs/sha256" },
             "auditSigningKeyGeneration": { "type": "integer", "minimum": 1 },
+            "auditSigningPublicKeyHash": { "$ref": "#/$defs/sha256" },
             "anchorKey": { "type": "string", "minLength": 1, "maxLength": 1024 }
           }
         }
@@ -281,14 +322,89 @@
         "payload": { "$ref": "#/$defs/maintenancePayload" }
       }
     },
-    "sendWorkEvidence": {
+    "noSendEvidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["outboxId", "payloadHash"],
+      "required": ["version", "evidenceKind", "reasonCode"],
       "properties": {
-        "outboxId": { "$ref": "#/$defs/uuid" },
-        "payloadHash": { "$ref": "#/$defs/sha256" }
+        "version": { "const": 1 },
+        "evidenceKind": { "const": "NO_SEND" },
+        "reasonCode": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+        }
       }
+    },
+    "humanDraftEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "evidenceKind",
+        "reasonCode",
+        "classification",
+        "confidenceBasisPoints",
+        "findings",
+        "draftText",
+        "draftHash"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "evidenceKind": { "const": "HUMAN_DRAFT" },
+        "reasonCode": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+        },
+        "classification": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "confidenceBasisPoints": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "PHONE_NUMBER",
+              "EMAIL",
+              "NATIONAL_ID",
+              "BANK_ACCOUNT",
+              "CREDENTIAL",
+              "URL_NOT_ALLOWED",
+              "CONTROL_CHARACTERS"
+            ]
+          }
+        },
+        "draftText": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "draftHash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "workFailureEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "evidenceKind", "reasonCode", "failureFingerprint"],
+      "properties": {
+        "version": { "const": 1 },
+        "evidenceKind": { "const": "WORK_FAILURE" },
+        "reasonCode": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+        },
+        "failureFingerprint": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sendWorkEvidence": {
+      "oneOf": [
+        { "$ref": "#/$defs/noSendEvidence" },
+        { "$ref": "#/$defs/humanDraftEvidence" },
+        { "$ref": "#/$defs/workFailureEvidence" }
+      ]
     },
     "workCompletionResult": {
       "type": "object",
@@ -379,18 +495,26 @@
         {
           "properties": {
             "outcome": { "const": "COMPLETE" },
+            "evidence": {
+              "oneOf": [
+                { "$ref": "#/$defs/noSendEvidence" },
+                { "$ref": "#/$defs/humanDraftEvidence" }
+              ]
+            },
             "retryAfterSeconds": { "const": null }
           }
         },
         {
           "properties": {
             "outcome": { "const": "RETRY" },
+            "evidence": { "$ref": "#/$defs/workFailureEvidence" },
             "retryAfterSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 }
           }
         },
         {
           "properties": {
             "outcome": { "enum": ["FAILED", "DEAD_LETTER"] },
+            "evidence": { "$ref": "#/$defs/workFailureEvidence" },
             "retryAfterSeconds": { "const": null }
           }
         }
@@ -458,6 +582,289 @@
         "verifyTicketJti": { "$ref": "#/$defs/uuid" },
         "gatewayReceipt": {
           "$ref": "receipts.schema.json#/$defs/auditAnchorReceipt"
+        }
+      }
+    },
+    "auditRecoveryWorkClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "recoveryKind",
+        "workItemId",
+        "organizationId",
+        "maintenancePrincipalId",
+        "credentialGeneration",
+        "leaseGeneration",
+        "fencingToken",
+        "sourceKey",
+        "claimToken",
+        "recoveryGeneration",
+        "recoveryLeaseExpiresAt",
+        "frozenClaim",
+        "payload",
+        "verifyTicketId",
+        "verifyTicketHash",
+        "signatureHash",
+        "verifyTicket",
+        "gatewayReceipt"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "recoveryKind": { "const": "AUDIT_VERIFY_AUTHORIZED" },
+        "workItemId": { "$ref": "#/$defs/uuid" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "maintenancePrincipalId": { "$ref": "#/$defs/uuid" },
+        "credentialGeneration": { "type": "integer", "minimum": 1 },
+        "leaseGeneration": { "type": "integer", "minimum": 1 },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "sourceKey": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "claimToken": { "type": "string", "minLength": 32, "maxLength": 512 },
+        "recoveryGeneration": { "type": "integer", "minimum": 1 },
+        "recoveryLeaseExpiresAt": { "type": "string", "format": "date-time" },
+        "frozenClaim": { "$ref": "#/$defs/frozenMaintenanceClaim" },
+        "payload": { "$ref": "#/$defs/maintenancePayload" },
+        "verifyTicketId": { "$ref": "#/$defs/uuid" },
+        "verifyTicketHash": { "$ref": "#/$defs/sha256" },
+        "signatureHash": { "$ref": "#/$defs/sha256" },
+        "verifyTicket": {
+          "oneOf": [
+            { "$ref": "media.schema.json#/$defs/maintenanceAuditTicket" },
+            { "$ref": "media.schema.json#/$defs/auditRecoveryTicket" }
+          ]
+        },
+        "gatewayReceipt": {
+          "oneOf": [
+            { "$ref": "receipts.schema.json#/$defs/auditAnchorReceipt" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "retentionRecoveryWorkClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "recoveryKind",
+        "workItemId",
+        "organizationId",
+        "maintenancePrincipalId",
+        "credentialGeneration",
+        "leaseGeneration",
+        "fencingToken",
+        "sourceKey",
+        "claimToken",
+        "recoveryGeneration",
+        "recoveryLeaseExpiresAt",
+        "frozenClaim",
+        "payload",
+        "ticketId",
+        "ticketHash",
+        "ticket",
+        "authorizationHash",
+        "authorization",
+        "authorizationExpiresAt",
+        "gatewayReceipt"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "recoveryKind": { "const": "RETENTION_DELETE_AUTHORIZED" },
+        "workItemId": { "$ref": "#/$defs/uuid" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "maintenancePrincipalId": { "$ref": "#/$defs/uuid" },
+        "credentialGeneration": { "type": "integer", "minimum": 1 },
+        "leaseGeneration": { "type": "integer", "minimum": 1 },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "sourceKey": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "claimToken": { "type": "string", "minLength": 32, "maxLength": 512 },
+        "recoveryGeneration": { "type": "integer", "minimum": 1 },
+        "recoveryLeaseExpiresAt": { "type": "string", "format": "date-time" },
+        "frozenClaim": { "$ref": "#/$defs/frozenMaintenanceClaim" },
+        "payload": { "$ref": "#/$defs/maintenancePayload" },
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "ticketHash": { "$ref": "#/$defs/sha256" },
+        "ticket": {
+          "oneOf": [
+            { "$ref": "media.schema.json#/$defs/maintenanceDeleteTicket" },
+            { "$ref": "media.schema.json#/$defs/retentionRecoveryTicket" }
+          ]
+        },
+        "authorizationHash": { "$ref": "#/$defs/sha256" },
+        "authorization": {
+          "oneOf": [
+            { "$ref": "receipts.schema.json#/$defs/retentionAuthorization" },
+            { "$ref": "receipts.schema.json#/$defs/retentionRecoveryAuthorization" }
+          ]
+        },
+        "authorizationExpiresAt": { "type": "string", "format": "date-time" },
+        "gatewayReceipt": {
+          "oneOf": [
+            { "$ref": "receipts.schema.json#/$defs/retentionReceipt" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "auditRecoveryCompletionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "recoveryKind",
+        "workItemId",
+        "recoveryGeneration",
+        "claimToken",
+        "verifyTicketJti",
+        "gatewayReceipt"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "recoveryKind": { "const": "AUDIT_VERIFY_AUTHORIZED" },
+        "workItemId": { "$ref": "#/$defs/uuid" },
+        "recoveryGeneration": { "type": "integer", "minimum": 1 },
+        "claimToken": { "type": "string", "minLength": 32, "maxLength": 512 },
+        "verifyTicketJti": { "$ref": "#/$defs/uuid" },
+        "gatewayReceipt": { "$ref": "receipts.schema.json#/$defs/auditAnchorReceipt" }
+      }
+    },
+    "retentionRecoveryCompletionRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "recoveryKind",
+        "workItemId",
+        "recoveryGeneration",
+        "claimToken",
+        "ticketId",
+        "gatewayReceipt"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "recoveryKind": { "const": "RETENTION_DELETE_AUTHORIZED" },
+        "workItemId": { "$ref": "#/$defs/uuid" },
+        "recoveryGeneration": { "type": "integer", "minimum": 1 },
+        "claimToken": { "type": "string", "minLength": 32, "maxLength": 512 },
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "gatewayReceipt": { "$ref": "receipts.schema.json#/$defs/retentionReceipt" }
+      }
+    },
+    "auditRecoveryRefreshRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "operation",
+        "recoveryKind",
+        "workItemId",
+        "recoveryGeneration",
+        "claimToken",
+        "expiredVerifyTicketJti",
+        "gatewayDenial",
+        "auditRootId",
+        "rootHash",
+        "anchorKey",
+        "signatureHash",
+        "auditSigningKeyGeneration",
+        "auditSigningPublicKeyHash",
+        "documentSha256",
+        "documentByteLength"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "operation": { "const": "ANCHOR_VERIFY" },
+        "recoveryKind": { "const": "AUDIT_VERIFY_AUTHORIZED" },
+        "workItemId": { "$ref": "#/$defs/uuid" },
+        "recoveryGeneration": { "type": "integer", "minimum": 1 },
+        "claimToken": { "type": "string", "minLength": 32, "maxLength": 512 },
+        "expiredVerifyTicketJti": { "$ref": "#/$defs/uuid" },
+        "gatewayDenial": { "$ref": "#/$defs/expiredNoWorkDenial" },
+        "auditRootId": { "$ref": "#/$defs/uuid" },
+        "rootHash": { "$ref": "#/$defs/sha256" },
+        "anchorKey": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "signatureHash": { "$ref": "#/$defs/sha256" },
+        "auditSigningKeyGeneration": { "type": "integer", "minimum": 1 },
+        "auditSigningPublicKeyHash": { "$ref": "#/$defs/sha256" },
+        "documentSha256": { "$ref": "#/$defs/sha256" },
+        "documentByteLength": { "type": "integer", "minimum": 1, "maximum": 52428800 }
+      }
+    },
+    "retentionRecoveryRefreshRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "recoveryKind",
+        "workItemId",
+        "recoveryGeneration",
+        "claimToken",
+        "ticketId",
+        "expiredTicketJti",
+        "expiredDeleteAuthorizationJti",
+        "gatewayDenial"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "recoveryKind": { "const": "RETENTION_DELETE_AUTHORIZED" },
+        "workItemId": { "$ref": "#/$defs/uuid" },
+        "recoveryGeneration": { "type": "integer", "minimum": 1 },
+        "claimToken": { "type": "string", "minLength": 32, "maxLength": 512 },
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "expiredTicketJti": { "$ref": "#/$defs/uuid" },
+        "expiredDeleteAuthorizationJti": { "$ref": "#/$defs/uuid" },
+        "gatewayDenial": { "$ref": "#/$defs/expiredNoWorkDenial" }
+      }
+    },
+    "auditRecoveryRefreshResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "ticketId",
+        "ticketHash",
+        "expiresAt",
+        "state",
+        "replacesVerifyTicketJti",
+        "ticket"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "ticketHash": { "$ref": "#/$defs/sha256" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "state": { "const": "RECOVERY_REFRESHED" },
+        "replacesVerifyTicketJti": { "$ref": "#/$defs/uuid" },
+        "ticket": { "$ref": "media.schema.json#/$defs/auditRecoveryTicket" }
+      }
+    },
+    "retentionRecoveryRefreshResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "ticketId",
+        "ticketHash",
+        "deleteAuthorizationJti",
+        "expiresAt",
+        "state",
+        "replacesTicketJti",
+        "replacesDeleteAuthorizationJti",
+        "ticket",
+        "authorization"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "ticketId": { "$ref": "#/$defs/uuid" },
+        "ticketHash": { "$ref": "#/$defs/sha256" },
+        "deleteAuthorizationJti": { "$ref": "#/$defs/uuid" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "state": { "const": "RECOVERY_REFRESHED" },
+        "replacesTicketJti": { "$ref": "#/$defs/uuid" },
+        "replacesDeleteAuthorizationJti": { "$ref": "#/$defs/uuid" },
+        "ticket": { "$ref": "media.schema.json#/$defs/retentionRecoveryTicket" },
+        "authorization": {
+          "$ref": "receipts.schema.json#/$defs/retentionRecoveryAuthorization"
         }
       }
     },
@@ -550,6 +957,14 @@
     { "$ref": "#/$defs/retentionDeleteAuthorizationRequest" },
     { "$ref": "#/$defs/retentionDeleteFinalizationRequest" },
     { "$ref": "#/$defs/auditAnchorAcknowledgementRequest" },
+    { "$ref": "#/$defs/auditRecoveryWorkClaim" },
+    { "$ref": "#/$defs/retentionRecoveryWorkClaim" },
+    { "$ref": "#/$defs/auditRecoveryCompletionRequest" },
+    { "$ref": "#/$defs/retentionRecoveryCompletionRequest" },
+    { "$ref": "#/$defs/auditRecoveryRefreshRequest" },
+    { "$ref": "#/$defs/retentionRecoveryRefreshRequest" },
+    { "$ref": "#/$defs/auditRecoveryRefreshResult" },
+    { "$ref": "#/$defs/retentionRecoveryRefreshResult" },
     { "$ref": "#/$defs/specializedMaintenanceResult" }
   ],
   "unevaluatedProperties": false

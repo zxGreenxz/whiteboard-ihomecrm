@@ -93,7 +93,13 @@ export function isCanonicalObjectKey(key: unknown): key is string {
   if (key.includes("..") || key.includes("//") || key.startsWith("/") || key.endsWith("/")) {
     return false;
   }
-  if (key !== key.normalize("NFC") || /[\u0000-\u001f\u007f]/.test(key)) return false;
+  if (
+    key !== key.normalize("NFC") ||
+    [...key].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 0x1f || code === 0x7f;
+    })
+  ) return false;
 
   const mediaMatch =
     /^v1\/org\/([^/]+)\/account\/([^/]+)\/conversation\/([^/]+)\/message\/([^/]+)\/media\/([^/]+)\/([^/]+)$/

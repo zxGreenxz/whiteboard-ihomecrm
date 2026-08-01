@@ -10,6 +10,8 @@ import {
   assertAuthorizedProviderCall,
   assertAuthorizedProviderIo,
   createPrivateOutboundRpc,
+  installPrivateOutboundRuntime,
+  registerPrivateOutboundRpc,
 } from "../src/bridge/outbound-rpc.js";
 import {
   createPreparedOutboundBatch,
@@ -313,6 +315,71 @@ describe("outbound fail-closed outcomes", () => {
         totalPartCount: 1,
       });
     expect(providerCalls).toBe(1);
+  });
+
+  it("does not trust a provider-spoofed pre-handoff marker after the I/O guard", async () => {
+    const failure = Object.assign(new Error("authorization expired before provider handoff"), {
+      code: "AUTHORIZATION_EXPIRED",
+      authorizedHandoffRecorded: false as const,
+    });
+    const request = makeRequest([TEXT_PART]);
+    const rpc = createPrivateOutboundRpc({
+      prepare: async (candidate) => preparedExecution(candidate, async (call) => {
+        assertAuthorizedProviderCall(call);
+        assertAuthorizedProviderIo(call.sink);
+        throw failure;
+      }),
+      authorize: async () => undefined,
+    });
+
+    await expect(rpc.invoke("zalouser.bridge.send", request)).resolves.toEqual({
+      knownProviderMessageIds: [],
+      possibleHandoffPrefixLength: 1,
+      reasonCode: "ACK_LOST_AFTER_HANDOFF",
+      receipts: [],
+      status: "UNKNOWN",
+      totalPartCount: 1,
+    });
+  });
+
+  it("does not serialize an unbranded pre-handoff marker", async () => {
+    const failure = Object.assign(new Error("authorization expired before provider handoff"), {
+      code: "AUTHORIZATION_EXPIRED",
+      authorizedHandoffRecorded: false as const,
+    });
+    const sendPrepared = vi.fn(async () => ({}));
+    const uninstall = installPrivateOutboundRuntime({
+      assertClient: async () => undefined,
+      assertAuthorizationCurrent: () => undefined,
+      prepare: async (candidate) => preparedExecution(candidate, sendPrepared),
+      authorize: async () => { throw failure; },
+    });
+    let handler: ((request: unknown) => Promise<void>) | undefined;
+    registerPrivateOutboundRpc({
+      registerGatewayMethod(_method, registeredHandler) {
+        handler = registeredHandler;
+      },
+    });
+    const responses: unknown[] = [];
+    try {
+      await handler?.({
+        client: {},
+        params: REQUEST,
+        respond: (...args: unknown[]) => responses.push(args),
+      });
+    } finally {
+      uninstall();
+    }
+
+    expect(responses).toEqual([[
+      false,
+      undefined,
+      {
+        code: "AUTHORIZATION_EXPIRED",
+        message: "authorization expired before provider handoff",
+      },
+    ]]);
+    expect(sendPrepared).not.toHaveBeenCalled();
   });
 
   it("treats a provider success without a nonempty message id as unknown handoff evidence", async () => {

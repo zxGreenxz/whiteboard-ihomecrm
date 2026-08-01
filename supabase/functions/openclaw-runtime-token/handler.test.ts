@@ -20,6 +20,7 @@ const channelBody = {
   organizationId: ORGANIZATION_ID,
   accountId: ACCOUNT_ID,
   cellId: CELL_ID,
+  localSessionGeneration: 4,
   runtimeMethod: "POST",
   runtimePath: "/v1/outbox/claim",
   runtimeTimestamp: 1_785_062_400,
@@ -103,6 +104,19 @@ describe("OpenClaw runtime token schema", () => {
     ).toBe(false);
   });
 
+  it("requires an exact local session generation for channel exchanges only", () => {
+    const { localSessionGeneration: _missing, ...withoutLocalGeneration } = channelBody;
+    expect(runtimeTokenRequestSchema.safeParse(withoutLocalGeneration).success).toBe(false);
+    expect(runtimeTokenRequestSchema.safeParse({
+      ...channelBody,
+      localSessionGeneration: 0,
+    }).success).toBe(false);
+    expect(runtimeTokenRequestSchema.safeParse({
+      ...maintenanceBody,
+      localSessionGeneration: 4,
+    }).success).toBe(false);
+  });
+
   it("derives a principal selector with no extra fields", () => {
     expect(principalSelectorFor(channelBody as never)).toEqual({
       organizationId: ORGANIZATION_ID,
@@ -135,6 +149,7 @@ describe("OpenClaw runtime token handler", () => {
       cellId: CELL_ID,
     });
     expect(call.path).toBe("/v1/outbox/claim");
+    expect(call.localSessionGeneration).toBe(4);
   });
 
   it("exchanges a maintenance credential without any channel account binding", async () => {

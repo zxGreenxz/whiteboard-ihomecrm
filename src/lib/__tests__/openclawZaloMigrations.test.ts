@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { validateRuntimeResponseBody } from
+  "../../../supabase/functions/openclaw-runtime/contracts";
+
 const root = process.cwd();
 const migrationDirectory = join(root, "supabase", "migrations");
 const contractDirectory = join(root, "contracts", "openclaw-zalo");
@@ -152,6 +155,15 @@ function schemaValid(
     } else if (schema.items && typeof schema.items === "object" &&
         !value.every((entry) =>
           schemaValid(entry, schema.items as Record<string, unknown>, root))) return false;
+    if (schema.contains && typeof schema.contains === "object") {
+      const matchCount = value.filter((entry) =>
+        schemaValid(entry, schema.contains as Record<string, unknown>, root)).length;
+      const minimum = typeof schema.minContains === "number" ? schema.minContains : 1;
+      const maximum = typeof schema.maxContains === "number"
+        ? schema.maxContains
+        : Number.POSITIVE_INFINITY;
+      if (matchCount < minimum || matchCount > maximum) return false;
+    }
   }
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     const object = value as Record<string, unknown>;
@@ -288,7 +300,30 @@ describe("OpenClaw shared JSON contracts", () => {
       "retentionDeleteFinalizationRequest",
       "auditAnchorAcknowledgementRequest",
       "specializedMaintenanceResult",
+      "auditRecoveryWorkClaim",
+      "retentionRecoveryWorkClaim",
+      "auditRecoveryCompletionRequest",
+      "retentionRecoveryCompletionRequest",
+      "auditRecoveryRefreshRequest",
+      "retentionRecoveryRefreshRequest",
+      "auditRecoveryRefreshResult",
+      "retentionRecoveryRefreshResult",
     ]));
+    const media = JSON.parse(
+      read(join(contractDirectory, "media.schema.json")),
+    ) as { $defs: Record<string, unknown> };
+    expect(Object.keys(media.$defs)).toEqual(expect.arrayContaining([
+      "browserGetTicket",
+      "runtimeTicket",
+      "maintenanceDeleteTicket",
+      "maintenanceAuditTicket",
+      "retentionRecoveryTicket",
+      "auditRecoveryTicket",
+    ]));
+    const receipts = JSON.parse(
+      read(join(contractDirectory, "receipts.schema.json")),
+    ) as { $defs: Record<string, unknown> };
+    expect(receipts.$defs).toHaveProperty("retentionRecoveryAuthorization");
   });
 
   it("keeps cross-runtime golden vectors canonical and domain-separated", () => {
@@ -333,10 +368,26 @@ describe("OpenClaw shared JSON contracts", () => {
         "retention-delete-finalization-request",
         "audit-anchor-ack-request",
         "maintenance-specialized-result",
-        "media-ticket",
+        "media-browser-get-ticket",
+        "media-runtime-put-ticket",
+        "media-runtime-get-ticket",
+        "media-maintenance-delete-ticket",
+        "media-maintenance-anchor-ticket",
+        "media-maintenance-anchor-verify-ticket",
+        "media-retention-recovery-ticket",
+        "media-audit-recovery-ticket",
         "retention-authorization",
+        "retention-recovery-authorization",
         "retention-receipt",
         "audit-anchor-receipt",
+        "maintenance-audit-recovery-claim",
+        "maintenance-retention-recovery-claim",
+        "audit-recovery-completion-request",
+        "retention-recovery-completion-request",
+        "audit-recovery-refresh-request",
+        "retention-recovery-refresh-request",
+        "audit-recovery-refresh-result",
+        "retention-recovery-refresh-result",
         "policy-allow",
         "rollout-state",
         "rollout-owner-checkpoint",
@@ -427,6 +478,7 @@ describe("OpenClaw shared JSON contracts", () => {
       read(join(contractDirectory, "golden-vectors.json")),
     ) as {
       vectors: Array<{ name: string; schema: string; value: Record<string, unknown> }>;
+      negativeVectors?: Array<{ name: string; schema: string; value: unknown }>;
     };
     const schemas = Object.fromEntries(
       contractManifest.map((file) => [
@@ -440,6 +492,53 @@ describe("OpenClaw shared JSON contracts", () => {
       return structuredClone(found!);
     };
     const invalid: Array<{ name: string; schema: string; value: unknown }> = [];
+    invalid.push(...(vectors.negativeVectors ?? []));
+
+    const acceptedCounterMismatch = vector("inbound-result");
+    acceptedCounterMismatch.value.accepted = 0;
+    invalid.push({ ...acceptedCounterMismatch, name: "accepted-counter-with-accepted-result" });
+
+    const duplicateCounterWithoutResult = vector("inbound-result");
+    duplicateCounterWithoutResult.value.deduplicated = 1;
+    invalid.push({ ...duplicateCounterWithoutResult, name: "duplicate-counter-without-result" });
+
+    const noSendWithWorkItem = vector("inbound-result");
+    (noSendWithWorkItem.value.results as Array<Record<string, unknown>>)[0].workItemId =
+      "99999999-9999-4999-8999-999999999999";
+    invalid.push({ ...noSendWithWorkItem, name: "no-send-with-work-item" });
+
+    const workEligibleWithoutWorkItem = vector("inbound-result");
+    Object.assign(
+      (workEligibleWithoutWorkItem.value.results as Array<Record<string, unknown>>)[0],
+      { decisionKind: "WORK_ELIGIBLE", noSendReason: null, workItemId: null },
+    );
+    invalid.push({ ...workEligibleWithoutWorkItem, name: "eligible-without-work-item" });
+
+    const manifestStartsAtOne = vector("inbound-result");
+    (manifestStartsAtOne.value.results as Array<Record<string, unknown>>)[0].media = [
+      { manifestIndex: 1, mediaId: "99999999-9999-4999-8999-999999999991" },
+    ];
+    invalid.push({ ...manifestStartsAtOne, name: "manifest-index-does-not-match-position" });
+
+    const duplicateManifestIndex = vector("inbound-result");
+    (duplicateManifestIndex.value.results as Array<Record<string, unknown>>)[0].media = [
+      { manifestIndex: 0, mediaId: "99999999-9999-4999-8999-999999999991" },
+      { manifestIndex: 0, mediaId: "99999999-9999-4999-8999-999999999992" },
+    ];
+    invalid.push({ ...duplicateManifestIndex, name: "duplicate-manifest-index" });
+
+    const completeWithFailureEvidence = vector("send-work-completion-work-failure");
+    completeWithFailureEvidence.value.outcome = "COMPLETE";
+    completeWithFailureEvidence.value.retryAfterSeconds = null;
+    invalid.push({
+      ...completeWithFailureEvidence,
+      name: "complete-with-work-failure-evidence",
+    });
+
+    const retryWithNoSendEvidence = vector("send-work-completion-request");
+    retryWithNoSendEvidence.value.outcome = "RETRY";
+    retryWithNoSendEvidence.value.retryAfterSeconds = 7;
+    invalid.push({ ...retryWithNoSendEvidence, name: "retry-with-no-send-evidence" });
 
     const oversized = vector("canonical-send-unicode");
     ((oversized.value.parts as Array<Record<string, unknown>>)[0]).text = "x".repeat(2001);
@@ -516,5 +615,29 @@ describe("OpenClaw shared JSON contracts", () => {
       ).toBe(false);
     }
     expect(schemas["runtime.schema.json"].$defs).toHaveProperty("unknownResolution");
+  });
+
+  it("uses the runtime response validator for inbound-result semantics", () => {
+    const document = JSON.parse(
+      read(join(contractDirectory, "golden-vectors.json")),
+    ) as { vectors: Array<{ name: string; value: Record<string, unknown> }> };
+    const inbound = structuredClone(
+      document.vectors.find((entry) => entry.name === "inbound-result")!.value,
+    );
+    expect(validateRuntimeResponseBody("/v1/inbound/batch", inbound)).toBe(true);
+
+    const wrongCount = structuredClone(inbound);
+    wrongCount.accepted = 2;
+    expect(validateRuntimeResponseBody("/v1/inbound/batch", wrongCount)).toBe(false);
+
+    const wrongResultPosition = structuredClone(inbound);
+    (wrongResultPosition.results as Array<Record<string, unknown>>)[0].index = 1;
+    expect(validateRuntimeResponseBody("/v1/inbound/batch", wrongResultPosition)).toBe(false);
+
+    const wrongManifestPosition = structuredClone(inbound);
+    (wrongManifestPosition.results as Array<Record<string, unknown>>)[0].media = [
+      { manifestIndex: 1, mediaId: "99999999-9999-4999-8999-999999999991" },
+    ];
+    expect(validateRuntimeResponseBody("/v1/inbound/batch", wrongManifestPosition)).toBe(false);
   });
 });

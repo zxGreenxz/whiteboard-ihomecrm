@@ -15,7 +15,7 @@ export interface RuntimeTokenServiceClient {
   rpc(
     name: string,
     args: Record<string, unknown>,
-  ): Promise<{ data: unknown; error: { code?: string; message?: string } | null }>;
+  ): PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>;
 }
 
 export interface RuntimeTokenDependencies {
@@ -25,11 +25,13 @@ export interface RuntimeTokenDependencies {
     credential: string;
     method: string;
     path: string;
-    body: Uint8Array;
+    body?: Uint8Array;
+    runtimeBodySha256?: string;
     routeBody: unknown;
     timestamp: number;
     nonce: string;
     exchangeNonce: string;
+    localSessionGeneration?: number;
     principalSelector: Record<string, string>;
     signingKey: Uint8Array;
     nowEpochSeconds: number;
@@ -84,11 +86,14 @@ export async function handleRuntimeTokenRequest(
       credential,
       method: exchangeRequest.runtimeMethod,
       path: exchangeRequest.runtimePath,
-      body: new Uint8Array(),
+      runtimeBodySha256: exchangeRequest.runtimeBodySha256,
       routeBody: {},
       timestamp: exchangeRequest.runtimeTimestamp,
       nonce: exchangeRequest.runtimeNonce,
       exchangeNonce: exchangeRequest.exchangeNonce,
+      localSessionGeneration: exchangeRequest.principalKind === "CHANNEL"
+        ? exchangeRequest.localSessionGeneration
+        : undefined,
       principalSelector: principalSelectorFor(exchangeRequest),
       signingKey: new TextEncoder().encode(
         dependencies.environment.runtimeTokenSigningKey,

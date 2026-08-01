@@ -18,6 +18,9 @@ const OBJECT_KEY =
   "/media/dddd6000-0000-4000-8000-000000000001/original";
 
 const NOW = 1_785_062_400;
+const CELL_ID = "dddd2000-0000-4000-8000-000000000001";
+const MAINTENANCE_PRINCIPAL_ID = "dddd2000-0000-4000-8000-000000000002";
+const WORK_ITEM_ID = "dddd3000-0000-4000-8000-000000000001";
 
 function runtimeTicket(overrides: Partial<MediaTicketClaims> = {}): MediaTicketClaims {
   return {
@@ -33,7 +36,12 @@ function runtimeTicket(overrides: Partial<MediaTicketClaims> = {}): MediaTicketC
     contentType: "image/png",
     contentLength: 16,
     sessionGeneration: 5,
+    cellId: CELL_ID,
+    credentialGeneration: 2,
+    leaseGeneration: 3,
+    fencingToken: 4,
     gatewayKeyGeneration: 1,
+    receiptSigningKeyGeneration: 1,
     iat: NOW,
     exp: NOW + 60,
     ...overrides,
@@ -41,20 +49,29 @@ function runtimeTicket(overrides: Partial<MediaTicketClaims> = {}): MediaTicketC
 }
 
 const browserProof = {
-  userId: "user-1",
+  userId: "dddd9000-0000-4000-8000-000000000001",
   sessionIdSha256: "b".repeat(64),
   accessTokenSha256: "c".repeat(64),
 };
 
 function browserTicket(overrides: Partial<MediaTicketClaims> = {}): MediaTicketClaims {
-  return runtimeTicket({
+  const {
+    cellId: _cellId,
+    credentialGeneration: _credentialGeneration,
+    leaseGeneration: _leaseGeneration,
+    fencingToken: _fencingToken,
+    receiptSigningKeyGeneration: _receiptSigningKeyGeneration,
+    ...common
+  } = runtimeTicket();
+  return {
+    ...common,
     subject: "BROWSER",
     operation: "GET",
     browserUserId: browserProof.userId,
     browserSessionIdSha256: browserProof.sessionIdSha256,
     browserAccessTokenSha256: browserProof.accessTokenSha256,
     ...overrides,
-  });
+  };
 }
 
 function verify(overrides: Record<string, unknown> = {}) {
@@ -87,7 +104,7 @@ describe("OpenClaw media ticket verification", () => {
     expect(verify({ claims: runtimeTicket({ aud: "other" as never }) }).failure)
       .toBe("TICKET_MALFORMED");
     expect(verify({ claims: runtimeTicket({ operation: "DELETE" }) }).failure)
-      .toBe("TICKET_OPERATION");
+      .toBe("TICKET_MALFORMED");
   });
 
   it("rejects a ticket minted for a different object key", () => {
@@ -145,17 +162,88 @@ describe("OpenClaw media ticket verification", () => {
       }),
     ).toEqual({ ok: true });
   });
+
+  it("requires the exact runtime cell/session/credential/lease/fence claim set", () => {
+    const exactRuntime = runtimeTicket({
+      cellId: CELL_ID,
+      credentialGeneration: 2,
+      leaseGeneration: 3,
+      fencingToken: 4,
+    });
+    expect(verify({ claims: exactRuntime })).toEqual({ ok: true });
+
+    for (const field of ["cellId", "credentialGeneration", "leaseGeneration", "fencingToken"]) {
+      const incomplete = { ...exactRuntime } as Record<string, unknown>;
+      delete incomplete[field];
+      expect(verify({ claims: incomplete }).failure, field).toBe("TICKET_MALFORMED");
+    }
+    expect(verify({ claims: { ...exactRuntime, browserUserId: "foreign-principal" } }).failure)
+      .toBe("TICKET_MALFORMED");
+  });
+
+  it("allows only an exact browser GET claim set", () => {
+    expect(
+      evaluateTicket({
+        claims: browserTicket({ operation: "PUT" }),
+        nowEpochSeconds: NOW + 1,
+        expectedOperation: "PUT",
+        expectedObjectKey: OBJECT_KEY,
+        minimumGeneration: 0,
+        browserProof,
+      }).failure,
+    ).toBe("TICKET_MALFORMED");
+    expect(
+      evaluateTicket({
+        claims: { ...browserTicket(), cellId: CELL_ID },
+        nowEpochSeconds: NOW + 1,
+        expectedOperation: "GET",
+        expectedObjectKey: OBJECT_KEY,
+        minimumGeneration: 0,
+        browserProof,
+      }).failure,
+    ).toBe("TICKET_MALFORMED");
+  });
 });
 
 describe("OpenClaw retention delete tickets", () => {
   function deleteTicket(overrides: Partial<MediaTicketClaims> = {}) {
-    return runtimeTicket({
+    const {
+      cellId: _cellId,
+      credentialGeneration: _credentialGeneration,
+      leaseGeneration: _leaseGeneration,
+      fencingToken: _fencingToken,
+      ...common
+    } = runtimeTicket();
+    return {
+      ...common,
       subject: "MAINTENANCE",
       operation: "DELETE",
       accountId: null,
+      sessionGeneration: 0,
+      maintenancePrincipalId: MAINTENANCE_PRINCIPAL_ID,
+      workItemId: WORK_ITEM_ID,
+      claimGeneration: 2,
+      credentialGeneration: 3,
+      leaseGeneration: 4,
+      fencingToken: 5,
+      holdVersion: 0,
       deletePhase: "FINAL_DELETE",
       quarantineVersion: 2,
       finalDeleteNotBefore: NOW - 10,
+      ...overrides,
+    } as MediaTicketClaims;
+  }
+
+  function exactDeleteTicket(overrides: Partial<MediaTicketClaims> = {}) {
+    return deleteTicket({
+      sessionGeneration: 0,
+      maintenancePrincipalId: MAINTENANCE_PRINCIPAL_ID,
+      workItemId: WORK_ITEM_ID,
+      claimGeneration: 2,
+      credentialGeneration: 3,
+      leaseGeneration: 4,
+      fencingToken: 5,
+      holdVersion: 0,
       ...overrides,
     });
   }
@@ -178,7 +266,7 @@ describe("OpenClaw retention delete tickets", () => {
 
   it("refuses a QUARANTINE ticket on the delete path", () => {
     expect(verifyDelete({ claims: deleteTicket({ deletePhase: "QUARANTINE" }) }).failure)
-      .toBe("DELETE_PHASE_INVALID");
+      .toBe("TICKET_MALFORMED");
   });
 
   it("refuses a delete before the grace period elapses", () => {
@@ -188,12 +276,69 @@ describe("OpenClaw retention delete tickets", () => {
 
   it("refuses a delete without a prior quarantine version", () => {
     expect(verifyDelete({ claims: deleteTicket({ quarantineVersion: 0 }) }).failure)
-      .toBe("DELETE_PHASE_INVALID");
+      .toBe("TICKET_MALFORMED");
   });
 
   it("refuses a delete ticket that arrives without the authorization proof", () => {
     expect(verifyDelete({ deleteAuthorizationPresent: false }).failure)
       .toBe("DELETE_AUTHORIZATION_REQUIRED");
+  });
+
+  it("requires the exact maintenance work/credential/lease/fence claim set", () => {
+    const exact = exactDeleteTicket();
+    expect(verifyDelete({ claims: exact })).toEqual({ ok: true });
+    for (const field of [
+      "maintenancePrincipalId",
+      "workItemId",
+      "claimGeneration",
+      "credentialGeneration",
+      "leaseGeneration",
+      "fencingToken",
+      "holdVersion",
+    ]) {
+      const incomplete = { ...exact } as Record<string, unknown>;
+      delete incomplete[field];
+      expect(verifyDelete({ claims: incomplete }).failure, field).toBe("TICKET_MALFORMED");
+    }
+    expect(verifyDelete({ claims: { ...exact, cellId: CELL_ID } }).failure)
+      .toBe("TICKET_MALFORMED");
+  });
+
+  it("accepts the exact SQL-shaped recovery union with current admission and frozen lineage", () => {
+    const original = exactDeleteTicket();
+    const recovery = { ...original } as Record<string, unknown>;
+    delete recovery.claimGeneration;
+    Object.assign(recovery, {
+      jti: "dddd7000-0000-4000-8000-000000000011",
+      credentialGeneration: 13,
+      leaseGeneration: 14,
+      fencingToken: 15,
+      recoveryKind: "RETENTION_DELETE_AUTHORIZED",
+      recoveryGeneration: 2,
+      replacesTicketJti: original.jti,
+      replacesDeleteAuthorizationJti: "dddd7000-0000-4000-8000-000000000012",
+      frozenClaim: {
+        maintenancePrincipalId: original.maintenancePrincipalId,
+        credentialGeneration: original.credentialGeneration,
+        leaseGeneration: original.leaseGeneration,
+        fencingToken: original.fencingToken,
+        claimGeneration: original.claimGeneration,
+      },
+    });
+    expect(verifyDelete({
+      claims: recovery,
+      generationFloors: {
+        sessionGeneration: 0,
+        credentialGeneration: 13,
+        leaseGeneration: 14,
+        fencingToken: 15,
+      },
+    })).toEqual({ ok: true });
+    expect(verifyDelete({ claims: { ...recovery, claimGeneration: 2 } }).failure)
+      .toBe("TICKET_MALFORMED");
+    expect(verifyDelete({
+      claims: { ...recovery, frozenClaim: { ...recovery.frozenClaim as object, extra: true } },
+    }).failure).toBe("TICKET_MALFORMED");
   });
 });
 

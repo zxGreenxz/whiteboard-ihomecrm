@@ -8037,13 +8037,13 @@ export type Database = {
           new_value: Json | null
           notes: string | null
           old_value: Json | null
-          openclaw_schedule_revision: number
-          openclaw_schedule_timezone: string
-          openclaw_scheduled_at_utc: string | null
           organization_id: string | null
           performed_by: string | null
           scheduled_at: string | null
           user_id: string
+          openclaw_schedule_revision: number
+          openclaw_schedule_timezone: string
+          openclaw_scheduled_at_utc: string | null
         }
         Insert: {
           activity_type: string
@@ -8055,13 +8055,13 @@ export type Database = {
           new_value?: Json | null
           notes?: string | null
           old_value?: Json | null
-          openclaw_schedule_revision?: number
-          openclaw_schedule_timezone?: string
-          openclaw_scheduled_at_utc?: string | null
           organization_id?: string | null
           performed_by?: string | null
           scheduled_at?: string | null
           user_id: string
+          openclaw_schedule_revision?: number
+          openclaw_schedule_timezone?: string
+          openclaw_scheduled_at_utc?: string | null
         }
         Update: {
           activity_type?: string
@@ -8073,13 +8073,13 @@ export type Database = {
           new_value?: Json | null
           notes?: string | null
           old_value?: Json | null
-          openclaw_schedule_revision?: number
-          openclaw_schedule_timezone?: string
-          openclaw_scheduled_at_utc?: string | null
           organization_id?: string | null
           performed_by?: string | null
           scheduled_at?: string | null
           user_id?: string
+          openclaw_schedule_revision?: number
+          openclaw_schedule_timezone?: string
+          openclaw_scheduled_at_utc?: string | null
         }
         Relationships: [
           {
@@ -8122,7 +8122,6 @@ export type Database = {
           next_follow_up_date: string | null
           notes: string | null
           num_occupants: number | null
-          openclaw_assignment_revision: number
           organization_id: string | null
           phone: string
           preferred_room_type: string | null
@@ -8132,6 +8131,7 @@ export type Database = {
           status: Database["public"]["Enums"]["lead_status"] | null
           updated_at: string
           user_id: string
+          openclaw_assignment_revision: number
         }
         Insert: {
           appointment_date?: string | null
@@ -8156,7 +8156,6 @@ export type Database = {
           next_follow_up_date?: string | null
           notes?: string | null
           num_occupants?: number | null
-          openclaw_assignment_revision?: number
           organization_id?: string | null
           phone: string
           preferred_room_type?: string | null
@@ -8166,6 +8165,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["lead_status"] | null
           updated_at?: string
           user_id: string
+          openclaw_assignment_revision?: number
         }
         Update: {
           appointment_date?: string | null
@@ -8190,7 +8190,6 @@ export type Database = {
           next_follow_up_date?: string | null
           notes?: string | null
           num_occupants?: number | null
-          openclaw_assignment_revision?: number
           organization_id?: string | null
           phone?: string
           preferred_room_type?: string | null
@@ -8200,6 +8199,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["lead_status"] | null
           updated_at?: string
           user_id?: string
+          openclaw_assignment_revision?: number
         }
         Relationships: [
           {
@@ -9319,5007 +9319,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_account_connections: {
-        Row: {
-          account_id: string
-          changed_at: string
-          changed_by: string | null
-          configured_mode: string
-          connection_generation: number
-          connection_state: string
-          disclosure_acknowledged_version: number | null
-          disclosure_version: number
-          effective_mode: string
-          evidence_hash: string | null
-          id: string
-          organization_id: string
-          reason_code: string
-          session_risk_state: string
-        }
-        Insert: {
-          account_id: string
-          changed_at?: string
-          changed_by?: string | null
-          configured_mode: string
-          connection_generation: number
-          connection_state: string
-          disclosure_acknowledged_version?: number | null
-          disclosure_version: number
-          effective_mode: string
-          evidence_hash?: string | null
-          id?: string
-          organization_id: string
-          reason_code: string
-          session_risk_state: string
-        }
-        Update: {
-          account_id?: string
-          changed_at?: string
-          changed_by?: string | null
-          configured_mode?: string
-          connection_generation?: number
-          connection_state?: string
-          disclosure_acknowledged_version?: number | null
-          disclosure_version?: number
-          effective_mode?: string
-          evidence_hash?: string | null
-          id?: string
-          organization_id?: string
-          reason_code?: string
-          session_risk_state?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_account_connections_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_accounts: {
-        Row: {
-          account_profile: string
-          configured_mode: string
-          connection_generation: number
-          connection_state: string
-          created_at: string
-          disclosure_acknowledged_at: string | null
-          disclosure_acknowledged_version: number | null
-          disclosure_version: number
-          display_name: string | null
-          effective_mode: string
-          id: string
-          is_active: boolean
-          organization_id: string
-          paused_at: string | null
-          provider_account_id: string | null
-          session_generation: number
-          session_risk_state: string
-          updated_at: string
-        }
-        Insert: {
-          account_profile?: string
-          configured_mode?: string
-          connection_generation?: number
-          connection_state?: string
-          created_at?: string
-          disclosure_acknowledged_at?: string | null
-          disclosure_acknowledged_version?: number | null
-          disclosure_version?: number
-          display_name?: string | null
-          effective_mode?: string
-          id?: string
-          is_active?: boolean
-          organization_id: string
-          paused_at?: string | null
-          provider_account_id?: string | null
-          session_generation?: number
-          session_risk_state?: string
-          updated_at?: string
-        }
-        Update: {
-          account_profile?: string
-          configured_mode?: string
-          connection_generation?: number
-          connection_state?: string
-          created_at?: string
-          disclosure_acknowledged_at?: string | null
-          disclosure_acknowledged_version?: number | null
-          disclosure_version?: number
-          display_name?: string | null
-          effective_mode?: string
-          id?: string
-          is_active?: boolean
-          organization_id?: string
-          paused_at?: string | null
-          provider_account_id?: string | null
-          session_generation?: number
-          session_risk_state?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_accounts_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_ai_drafts: {
-        Row: {
-          account_id: string
-          automation_decision_id: string | null
-          automation_version_id: string | null
-          citations: Json
-          conversation_id: string
-          created_at: string
-          created_by: string | null
-          dlp_decision: string
-          dlp_evidence_hash: string
-          draft_text: string
-          draft_version: number
-          human_edit_version: number
-          id: string
-          inbound_event_id: string | null
-          knowledge_version_ids: string[]
-          organization_id: string
-          policy_version_id: string | null
-          prompt_input_hash: string
-          publication_intent_id: string | null
-          publication_state: string
-          result_payload: Json
-          result_schema_version: number
-        }
-        Insert: {
-          account_id: string
-          automation_decision_id?: string | null
-          automation_version_id?: string | null
-          citations?: Json
-          conversation_id: string
-          created_at?: string
-          created_by?: string | null
-          dlp_decision: string
-          dlp_evidence_hash: string
-          draft_text: string
-          draft_version: number
-          human_edit_version?: number
-          id?: string
-          inbound_event_id?: string | null
-          knowledge_version_ids?: string[]
-          organization_id: string
-          policy_version_id?: string | null
-          prompt_input_hash: string
-          publication_intent_id?: string | null
-          publication_state?: string
-          result_payload: Json
-          result_schema_version: number
-        }
-        Update: {
-          account_id?: string
-          automation_decision_id?: string | null
-          automation_version_id?: string | null
-          citations?: Json
-          conversation_id?: string
-          created_at?: string
-          created_by?: string | null
-          dlp_decision?: string
-          dlp_evidence_hash?: string
-          draft_text?: string
-          draft_version?: number
-          human_edit_version?: number
-          id?: string
-          inbound_event_id?: string | null
-          knowledge_version_ids?: string[]
-          organization_id?: string
-          policy_version_id?: string | null
-          prompt_input_hash?: string
-          publication_intent_id?: string | null
-          publication_state?: string
-          result_payload?: Json
-          result_schema_version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_ai_drafts_organization_id_account_id_automation_d_fkey"
-            columns: ["organization_id", "account_id", "automation_decision_id"]
-            referencedRelation: "openclaw_inbound_automation_decisions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_ai_drafts_organization_id_account_id_conversation_fkey"
-            columns: ["organization_id", "account_id", "conversation_id"]
-            referencedRelation: "openclaw_conversations"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_ai_drafts_organization_id_account_id_inbound_even_fkey"
-            columns: ["organization_id", "account_id", "inbound_event_id"]
-            referencedRelation: "openclaw_inbound_events"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_audit_events: {
-        Row: {
-          actor_id: string | null
-          correlation_id: string | null
-          event_hash: string
-          event_type: string
-          evidence_hash: string
-          id: string
-          occurred_at: string
-          organization_id: string
-          organization_sequence: number
-          previous_hash: string
-          redacted_evidence: Json
-          redacted_evidence_bytes: string
-          request_id: string | null
-          workload_principal: string | null
-        }
-        Insert: {
-          actor_id?: string | null
-          correlation_id?: string | null
-          event_hash: string
-          event_type: string
-          evidence_hash: string
-          id?: string
-          occurred_at?: string
-          organization_id: string
-          organization_sequence: number
-          previous_hash: string
-          redacted_evidence: Json
-          redacted_evidence_bytes: string
-          request_id?: string | null
-          workload_principal?: string | null
-        }
-        Update: {
-          actor_id?: string | null
-          correlation_id?: string | null
-          event_hash?: string
-          event_type?: string
-          evidence_hash?: string
-          id?: string
-          occurred_at?: string
-          organization_id?: string
-          organization_sequence?: number
-          previous_hash?: string
-          redacted_evidence?: Json
-          redacted_evidence_bytes?: string
-          request_id?: string | null
-          workload_principal?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_audit_events_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_audit_roots: {
-        Row: {
-          anchored_at: string | null
-          created_at: string
-          event_count: number
-          first_sequence: number
-          gateway_receipt: Json | null
-          gateway_receipt_hash: string | null
-          id: string
-          last_sequence: number
-          organization_id: string
-          r2_anchor_key: string
-          root_date: string
-          root_hash: string
-          signature_algorithm: string
-          signature_hash: string | null
-          signing_key_generation: number
-        }
-        Insert: {
-          anchored_at?: string | null
-          created_at?: string
-          event_count: number
-          first_sequence: number
-          gateway_receipt?: Json | null
-          gateway_receipt_hash?: string | null
-          id?: string
-          last_sequence: number
-          organization_id: string
-          r2_anchor_key: string
-          root_date: string
-          root_hash: string
-          signature_algorithm?: string
-          signature_hash?: string | null
-          signing_key_generation: number
-        }
-        Update: {
-          anchored_at?: string | null
-          created_at?: string
-          event_count?: number
-          first_sequence?: number
-          gateway_receipt?: Json | null
-          gateway_receipt_hash?: string | null
-          id?: string
-          last_sequence?: number
-          organization_id?: string
-          r2_anchor_key?: string
-          root_date?: string
-          root_hash?: string
-          signature_algorithm?: string
-          signature_hash?: string | null
-          signing_key_generation?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_audit_roots_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_audit_signing_configs: {
-        Row: {
-          enabled_at: string | null
-          id: string
-          is_active: boolean
-          organization_id: string
-          public_key_hash: string
-          retired_at: string | null
-          signing_key_generation: number
-        }
-        Insert: {
-          enabled_at?: string | null
-          id?: string
-          is_active?: boolean
-          organization_id: string
-          public_key_hash: string
-          retired_at?: string | null
-          signing_key_generation: number
-        }
-        Update: {
-          enabled_at?: string | null
-          id?: string
-          is_active?: boolean
-          organization_id?: string
-          public_key_hash?: string
-          retired_at?: string | null
-          signing_key_generation?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_audit_signing_configs_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_automation_versions: {
-        Row: {
-          account_id: string
-          allowed_crm_fields: string[]
-          archived_at: string | null
-          automation_id: string
-          configuration: Json
-          content_version_id: string
-          created_at: string
-          created_by: string | null
-          dry_run_hash: string | null
-          escaping_mode: string
-          id: string
-          knowledge_version_ids: string[]
-          lifecycle_state: string
-          maximum_rendered_codepoints: number
-          missing_value_policy: string
-          mode: string
-          organization_id: string
-          policy_version_id: string
-          published_at: string | null
-          template_body: string
-          version: number
-        }
-        Insert: {
-          account_id: string
-          allowed_crm_fields?: string[]
-          archived_at?: string | null
-          automation_id: string
-          configuration: Json
-          content_version_id?: string
-          created_at?: string
-          created_by?: string | null
-          dry_run_hash?: string | null
-          escaping_mode: string
-          id?: string
-          knowledge_version_ids?: string[]
-          lifecycle_state: string
-          maximum_rendered_codepoints: number
-          missing_value_policy: string
-          mode: string
-          organization_id: string
-          policy_version_id: string
-          published_at?: string | null
-          template_body: string
-          version: number
-        }
-        Update: {
-          account_id?: string
-          allowed_crm_fields?: string[]
-          archived_at?: string | null
-          automation_id?: string
-          configuration?: Json
-          content_version_id?: string
-          created_at?: string
-          created_by?: string | null
-          dry_run_hash?: string | null
-          escaping_mode?: string
-          id?: string
-          knowledge_version_ids?: string[]
-          lifecycle_state?: string
-          maximum_rendered_codepoints?: number
-          missing_value_policy?: string
-          mode?: string
-          organization_id?: string
-          policy_version_id?: string
-          published_at?: string | null
-          template_body?: string
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_automation_versions_organization_id_account_id_au_fkey"
-            columns: ["organization_id", "account_id", "automation_id"]
-            referencedRelation: "openclaw_automations"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_automation_versions_organization_id_account_id_po_fkey"
-            columns: ["organization_id", "account_id", "policy_version_id"]
-            referencedRelation: "openclaw_policy_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_automations: {
-        Row: {
-          account_id: string
-          automation_kind: string
-          created_at: string
-          current_version: number
-          id: string
-          lifecycle_state: string
-          name: string
-          organization_id: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          automation_kind: string
-          created_at?: string
-          current_version?: number
-          id?: string
-          lifecycle_state?: string
-          name: string
-          organization_id: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          automation_kind?: string
-          created_at?: string
-          current_version?: number
-          id?: string
-          lifecycle_state?: string
-          name?: string
-          organization_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_automations_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_campaign_runs: {
-        Row: {
-          account_id: string
-          automation_version_id: string
-          campaign_id: string
-          campaign_version: number
-          created_at: string
-          finished_at: string | null
-          id: string
-          organization_id: string
-          run_key: string
-          started_at: string | null
-          status: string
-          target_snapshot_hash: string
-        }
-        Insert: {
-          account_id: string
-          automation_version_id: string
-          campaign_id: string
-          campaign_version: number
-          created_at?: string
-          finished_at?: string | null
-          id?: string
-          organization_id: string
-          run_key: string
-          started_at?: string | null
-          status: string
-          target_snapshot_hash: string
-        }
-        Update: {
-          account_id?: string
-          automation_version_id?: string
-          campaign_id?: string
-          campaign_version?: number
-          created_at?: string
-          finished_at?: string | null
-          id?: string
-          organization_id?: string
-          run_key?: string
-          started_at?: string | null
-          status?: string
-          target_snapshot_hash?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_campaign_runs_organization_id_account_id_automati_fkey"
-            columns: ["organization_id", "account_id", "automation_version_id"]
-            referencedRelation: "openclaw_automation_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_campaign_runs_organization_id_account_id_campaign_fkey"
-            columns: ["organization_id", "account_id", "campaign_id"]
-            referencedRelation: "openclaw_campaigns"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_campaigns: {
-        Row: {
-          account_id: string
-          automation_version_id: string
-          cancellation_version: number
-          cancelled_at: string | null
-          created_at: string
-          id: string
-          name: string
-          organization_id: string
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          automation_version_id: string
-          cancellation_version?: number
-          cancelled_at?: string | null
-          created_at?: string
-          id?: string
-          name: string
-          organization_id: string
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          automation_version_id?: string
-          cancellation_version?: number
-          cancelled_at?: string | null
-          created_at?: string
-          id?: string
-          name?: string
-          organization_id?: string
-          status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_campaigns_organization_id_account_id_automation_v_fkey"
-            columns: ["organization_id", "account_id", "automation_version_id"]
-            referencedRelation: "openclaw_automation_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_cell_rebinds: {
-        Row: {
-          aborted_at: string | null
-          account_id: string
-          acknowledgement_hash: string | null
-          completed_at: string | null
-          expected_session_generation: number
-          id: string
-          new_cell_id: string
-          new_fencing_token: number
-          new_lease_generation: number
-          old_cell_id: string
-          old_fencing_token: number
-          old_lease_generation: number
-          organization_id: string
-          prepared_at: string
-          rebind_generation: number
-          revocation_id: string | null
-          runtime_command_id: string
-          status: string
-        }
-        Insert: {
-          aborted_at?: string | null
-          account_id: string
-          acknowledgement_hash?: string | null
-          completed_at?: string | null
-          expected_session_generation: number
-          id?: string
-          new_cell_id: string
-          new_fencing_token: number
-          new_lease_generation: number
-          old_cell_id: string
-          old_fencing_token: number
-          old_lease_generation: number
-          organization_id: string
-          prepared_at?: string
-          rebind_generation: number
-          revocation_id?: string | null
-          runtime_command_id: string
-          status?: string
-        }
-        Update: {
-          aborted_at?: string | null
-          account_id?: string
-          acknowledgement_hash?: string | null
-          completed_at?: string | null
-          expected_session_generation?: number
-          id?: string
-          new_cell_id?: string
-          new_fencing_token?: number
-          new_lease_generation?: number
-          old_cell_id?: string
-          old_fencing_token?: number
-          old_lease_generation?: number
-          organization_id?: string
-          prepared_at?: string
-          rebind_generation?: number
-          revocation_id?: string | null
-          runtime_command_id?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_cell_rebinds_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_cell_rebinds_organization_id_account_id_new_cell__fkey"
-            columns: ["organization_id", "account_id", "new_cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_cell_rebinds_organization_id_account_id_old_cell__fkey"
-            columns: ["organization_id", "account_id", "old_cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_cell_rebinds_organization_id_revocation_id_fkey"
-            columns: ["organization_id", "revocation_id"]
-            referencedRelation: "openclaw_generation_revocations"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_cell_rebinds_organization_id_runtime_command_id_fkey"
-            columns: ["organization_id", "runtime_command_id"]
-            referencedRelation: "openclaw_runtime_commands"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_client_operations: {
-        Row: {
-          actor_id: string
-          client_operation_id: string
-          completed_at: string | null
-          created_at: string
-          id: string
-          operation_key: string
-          organization_id: string
-          replay_policy: string
-          request_hash: string
-          result_hash: string | null
-          safe_result: Json | null
-        }
-        Insert: {
-          actor_id: string
-          client_operation_id: string
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          operation_key: string
-          organization_id: string
-          replay_policy?: string
-          request_hash: string
-          result_hash?: string | null
-          safe_result?: Json | null
-        }
-        Update: {
-          actor_id?: string
-          client_operation_id?: string
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          operation_key?: string
-          organization_id?: string
-          replay_policy?: string
-          request_hash?: string
-          result_hash?: string | null
-          safe_result?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_client_operations_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_consents: {
-        Row: {
-          account_id: string
-          consent_scope: string
-          consent_source: string
-          consent_status: string
-          consent_version: number
-          created_at: string
-          evidence_hash: string
-          expires_at: string | null
-          granted_at: string
-          id: string
-          organization_id: string
-          revoked_at: string | null
-          target_id: string
-        }
-        Insert: {
-          account_id: string
-          consent_scope: string
-          consent_source: string
-          consent_status?: string
-          consent_version?: number
-          created_at?: string
-          evidence_hash: string
-          expires_at?: string | null
-          granted_at: string
-          id?: string
-          organization_id: string
-          revoked_at?: string | null
-          target_id: string
-        }
-        Update: {
-          account_id?: string
-          consent_scope?: string
-          consent_source?: string
-          consent_status?: string
-          consent_version?: number
-          created_at?: string
-          evidence_hash?: string
-          expires_at?: string | null
-          granted_at?: string
-          id?: string
-          organization_id?: string
-          revoked_at?: string | null
-          target_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_consents_organization_id_account_id_target_id_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_contacts: {
-        Row: {
-          account_id: string
-          avatar_object_key: string | null
-          created_at: string
-          directory_refreshed_at: string
-          directory_version: number
-          display_name: string | null
-          id: string
-          organization_id: string
-          provider_id: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          avatar_object_key?: string | null
-          created_at?: string
-          directory_refreshed_at: string
-          directory_version?: number
-          display_name?: string | null
-          id?: string
-          organization_id: string
-          provider_id: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          avatar_object_key?: string | null
-          created_at?: string
-          directory_refreshed_at?: string
-          directory_version?: number
-          display_name?: string | null
-          id?: string
-          organization_id?: string
-          provider_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_contacts_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_control_states: {
-        Row: {
-          control_key: string
-          control_version: number
-          disclosure_version: number
-          feature_enabled: boolean
-          first_contact_enabled: boolean
-          global_stop: boolean
-          id: string
-          limited_auto_reply_enabled: boolean
-          organization_id: string
-          proactive_enabled: boolean
-          reason: string | null
-          sales_groups_enabled: boolean
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          control_key?: string
-          control_version?: number
-          disclosure_version?: number
-          feature_enabled?: boolean
-          first_contact_enabled?: boolean
-          global_stop?: boolean
-          id?: string
-          limited_auto_reply_enabled?: boolean
-          organization_id: string
-          proactive_enabled?: boolean
-          reason?: string | null
-          sales_groups_enabled?: boolean
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          control_key?: string
-          control_version?: number
-          disclosure_version?: number
-          feature_enabled?: boolean
-          first_contact_enabled?: boolean
-          global_stop?: boolean
-          id?: string
-          limited_auto_reply_enabled?: boolean
-          organization_id?: string
-          proactive_enabled?: boolean
-          reason?: string | null
-          sales_groups_enabled?: boolean
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_control_states_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_conversation_members: {
-        Row: {
-          account_id: string
-          conversation_id: string
-          created_at: string
-          display_name: string | null
-          id: string
-          joined_at: string | null
-          left_at: string | null
-          member_role: string
-          organization_id: string
-          provider_member_id: string
-        }
-        Insert: {
-          account_id: string
-          conversation_id: string
-          created_at?: string
-          display_name?: string | null
-          id?: string
-          joined_at?: string | null
-          left_at?: string | null
-          member_role?: string
-          organization_id: string
-          provider_member_id: string
-        }
-        Update: {
-          account_id?: string
-          conversation_id?: string
-          created_at?: string
-          display_name?: string | null
-          id?: string
-          joined_at?: string | null
-          left_at?: string | null
-          member_role?: string
-          organization_id?: string
-          provider_member_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_conversation_members_organization_id_account_id_c_fkey"
-            columns: ["organization_id", "account_id", "conversation_id"]
-            referencedRelation: "openclaw_conversations"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_conversations: {
-        Row: {
-          account_id: string
-          assigned_membership_id: string | null
-          created_at: string
-          id: string
-          last_message_id: string | null
-          last_received_at: string | null
-          organization_id: string
-          provider_conversation_id: string
-          status: string
-          target_id: string
-          unread_count: number
-          updated_at: string
-          version: number
-        }
-        Insert: {
-          account_id: string
-          assigned_membership_id?: string | null
-          created_at?: string
-          id?: string
-          last_message_id?: string | null
-          last_received_at?: string | null
-          organization_id: string
-          provider_conversation_id: string
-          status?: string
-          target_id: string
-          unread_count?: number
-          updated_at?: string
-          version?: number
-        }
-        Update: {
-          account_id?: string
-          assigned_membership_id?: string | null
-          created_at?: string
-          id?: string
-          last_message_id?: string | null
-          last_received_at?: string | null
-          organization_id?: string
-          provider_conversation_id?: string
-          status?: string
-          target_id?: string
-          unread_count?: number
-          updated_at?: string
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_conversations_last_message_fkey"
-            columns: ["organization_id", "account_id", "last_message_id"]
-            referencedRelation: "openclaw_messages"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_conversations_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_conversations_organization_id_account_id_target_i_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_conversations_organization_id_assigned_membership_fkey"
-            columns: ["organization_id", "assigned_membership_id"]
-            referencedRelation: "organization_memberships"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_crm_event_occurrences: {
-        Row: {
-          created_at: string
-          event_subtype: string
-          event_type: string
-          id: string
-          occurred_at: string
-          organization_id: string
-          snapshot_bytes: string
-          snapshot_hash: string
-          source_id: string
-          source_snapshot: Json
-          source_table: string
-          source_version: number
-        }
-        Insert: {
-          created_at?: string
-          event_subtype: string
-          event_type: string
-          id?: string
-          occurred_at: string
-          organization_id: string
-          snapshot_bytes: string
-          snapshot_hash: string
-          source_id: string
-          source_snapshot: Json
-          source_table: string
-          source_version: number
-        }
-        Update: {
-          created_at?: string
-          event_subtype?: string
-          event_type?: string
-          id?: string
-          occurred_at?: string
-          organization_id?: string
-          snapshot_bytes?: string
-          snapshot_hash?: string
-          source_id?: string
-          source_snapshot?: Json
-          source_table?: string
-          source_version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_crm_event_occurrences_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_crm_event_subscription_snapshots: {
-        Row: {
-          account_id: string
-          automation_version_id: string
-          created_at: string
-          created_by: string | null
-          destination_target_id: string
-          event_type: string
-          field_mapping: Json
-          field_mapping_hash: string
-          id: string
-          is_active: boolean
-          organization_id: string
-          snapshot: Json
-          snapshot_bytes: string
-          snapshot_hash: string
-          subscription_id: string
-          subscription_version: number
-        }
-        Insert: {
-          account_id: string
-          automation_version_id: string
-          created_at?: string
-          created_by?: string | null
-          destination_target_id: string
-          event_type: string
-          field_mapping: Json
-          field_mapping_hash: string
-          id?: string
-          is_active: boolean
-          organization_id: string
-          snapshot: Json
-          snapshot_bytes: string
-          snapshot_hash: string
-          subscription_id: string
-          subscription_version: number
-        }
-        Update: {
-          account_id?: string
-          automation_version_id?: string
-          created_at?: string
-          created_by?: string | null
-          destination_target_id?: string
-          event_type?: string
-          field_mapping?: Json
-          field_mapping_hash?: string
-          id?: string
-          is_active?: boolean
-          organization_id?: string
-          snapshot?: Json
-          snapshot_bytes?: string
-          snapshot_hash?: string
-          subscription_id?: string
-          subscription_version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_crm_event_subscript_organization_id_account_id_a_fkey1"
-            columns: ["organization_id", "account_id", "automation_version_id"]
-            referencedRelation: "openclaw_automation_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_crm_event_subscript_organization_id_account_id_d_fkey1"
-            columns: ["organization_id", "account_id", "destination_target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_crm_event_subscripti_organization_id_account_id_s_fkey"
-            columns: ["organization_id", "account_id", "subscription_id"]
-            referencedRelation: "openclaw_crm_event_subscriptions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_crm_event_subscriptions: {
-        Row: {
-          account_id: string
-          automation_version_id: string
-          created_at: string
-          destination_target_id: string
-          event_type: string
-          field_mapping: Json
-          field_mapping_hash: string
-          id: string
-          is_active: boolean
-          organization_id: string
-          subscription_version: number
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          automation_version_id: string
-          created_at?: string
-          destination_target_id: string
-          event_type: string
-          field_mapping: Json
-          field_mapping_hash: string
-          id?: string
-          is_active?: boolean
-          organization_id: string
-          subscription_version: number
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          automation_version_id?: string
-          created_at?: string
-          destination_target_id?: string
-          event_type?: string
-          field_mapping?: Json
-          field_mapping_hash?: string
-          id?: string
-          is_active?: boolean
-          organization_id?: string
-          subscription_version?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_crm_event_subscripti_organization_id_account_id_a_fkey"
-            columns: ["organization_id", "account_id", "automation_version_id"]
-            referencedRelation: "openclaw_automation_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_crm_event_subscripti_organization_id_account_id_d_fkey"
-            columns: ["organization_id", "account_id", "destination_target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_dead_letters: {
-        Row: {
-          account_id: string
-          created_at: string
-          evidence: Json
-          id: string
-          organization_id: string
-          outbox_id: string | null
-          payload_hash: string
-          reason_code: string
-          send_work_item_id: string | null
-        }
-        Insert: {
-          account_id: string
-          created_at?: string
-          evidence: Json
-          id?: string
-          organization_id: string
-          outbox_id?: string | null
-          payload_hash: string
-          reason_code: string
-          send_work_item_id?: string | null
-        }
-        Update: {
-          account_id?: string
-          created_at?: string
-          evidence?: Json
-          id?: string
-          organization_id?: string
-          outbox_id?: string | null
-          payload_hash?: string
-          reason_code?: string
-          send_work_item_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_dead_letters_organization_id_account_id_outbox_id_fkey"
-            columns: ["organization_id", "account_id", "outbox_id"]
-            referencedRelation: "openclaw_outbox"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_dead_letters_send_work_fkey"
-            columns: ["organization_id", "account_id", "send_work_item_id"]
-            referencedRelation: "openclaw_send_work_items"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_delivery_attempts: {
-        Row: {
-          account_id: string
-          attempt_number: number
-          authorization_id: string | null
-          claim_generation: number
-          created_at: string
-          delivery_evidence: Json
-          delivery_evidence_hash: string
-          evidence_kind: string
-          finished_at: string
-          id: string
-          known_provider_message_ids: string[]
-          organization_id: string
-          outbox_id: string
-          outcome: string
-          possible_handoff_prefix_length: number
-          reason_code: string
-          started_at: string
-          total_part_count: number
-        }
-        Insert: {
-          account_id: string
-          attempt_number: number
-          authorization_id?: string | null
-          claim_generation: number
-          created_at?: string
-          delivery_evidence: Json
-          delivery_evidence_hash: string
-          evidence_kind: string
-          finished_at: string
-          id?: string
-          known_provider_message_ids?: string[]
-          organization_id: string
-          outbox_id: string
-          outcome: string
-          possible_handoff_prefix_length: number
-          reason_code: string
-          started_at: string
-          total_part_count: number
-        }
-        Update: {
-          account_id?: string
-          attempt_number?: number
-          authorization_id?: string | null
-          claim_generation?: number
-          created_at?: string
-          delivery_evidence?: Json
-          delivery_evidence_hash?: string
-          evidence_kind?: string
-          finished_at?: string
-          id?: string
-          known_provider_message_ids?: string[]
-          organization_id?: string
-          outbox_id?: string
-          outcome?: string
-          possible_handoff_prefix_length?: number
-          reason_code?: string
-          started_at?: string
-          total_part_count?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_delivery_attempts_organization_id_account_id_auth_fkey"
-            columns: ["organization_id", "account_id", "authorization_id"]
-            referencedRelation: "openclaw_outbound_authorizations"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_delivery_attempts_organization_id_account_id_outb_fkey"
-            columns: ["organization_id", "account_id", "outbox_id"]
-            referencedRelation: "openclaw_outbox"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_generation_revocations: {
-        Row: {
-          account_id: string | null
-          acknowledged_at: string | null
-          acknowledgement_hash: string | null
-          cell_id: string | null
-          command_id: string | null
-          created_at: string
-          id: string
-          maintenance_principal_id: string | null
-          minimum_valid_generation: number
-          organization_id: string
-          principal_kind: string
-          reason_code: string
-          revocation_kind: string
-          revoked_generation: number
-        }
-        Insert: {
-          account_id?: string | null
-          acknowledged_at?: string | null
-          acknowledgement_hash?: string | null
-          cell_id?: string | null
-          command_id?: string | null
-          created_at?: string
-          id?: string
-          maintenance_principal_id?: string | null
-          minimum_valid_generation: number
-          organization_id: string
-          principal_kind: string
-          reason_code: string
-          revocation_kind: string
-          revoked_generation: number
-        }
-        Update: {
-          account_id?: string | null
-          acknowledged_at?: string | null
-          acknowledgement_hash?: string | null
-          cell_id?: string | null
-          command_id?: string | null
-          created_at?: string
-          id?: string
-          maintenance_principal_id?: string | null
-          minimum_valid_generation?: number
-          organization_id?: string
-          principal_kind?: string
-          reason_code?: string
-          revocation_kind?: string
-          revoked_generation?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_generation_revocatio_organization_id_account_id_c_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_generation_revocatio_organization_id_maintenance__fkey"
-            columns: ["organization_id", "maintenance_principal_id"]
-            referencedRelation: "openclaw_maintenance_principals"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_generation_revocations_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_generation_revocations_organization_id_command_id_fkey"
-            columns: ["organization_id", "command_id"]
-            referencedRelation: "openclaw_runtime_commands"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_generation_revocations_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_health_events: {
-        Row: {
-          account_id: string | null
-          cell_id: string | null
-          content_free_metrics: Json
-          created_at: string
-          fingerprint: string
-          health_kind: string
-          id: string
-          observed_at: string
-          organization_id: string
-          severity: string
-          status: string
-        }
-        Insert: {
-          account_id?: string | null
-          cell_id?: string | null
-          content_free_metrics?: Json
-          created_at?: string
-          fingerprint: string
-          health_kind: string
-          id?: string
-          observed_at: string
-          organization_id: string
-          severity: string
-          status: string
-        }
-        Update: {
-          account_id?: string | null
-          cell_id?: string | null
-          content_free_metrics?: Json
-          created_at?: string
-          fingerprint?: string
-          health_kind?: string
-          id?: string
-          observed_at?: string
-          organization_id?: string
-          severity?: string
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_health_events_organization_id_account_id_cell_id_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_health_events_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_health_events_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_inbound_automation_decisions: {
-        Row: {
-          account_id: string
-          automation_version_id: string | null
-          created_at: string
-          decision_kind: string
-          decision_version: number
-          eligibility_reason: string | null
-          frozen_inputs: Json
-          frozen_inputs_hash: string
-          id: string
-          inbound_event_id: string
-          knowledge_version_ids: string[]
-          no_send_reason: string | null
-          organization_id: string
-          policy_version_id: string | null
-          recovery_code: string | null
-        }
-        Insert: {
-          account_id: string
-          automation_version_id?: string | null
-          created_at?: string
-          decision_kind: string
-          decision_version?: number
-          eligibility_reason?: string | null
-          frozen_inputs?: Json
-          frozen_inputs_hash: string
-          id?: string
-          inbound_event_id: string
-          knowledge_version_ids?: string[]
-          no_send_reason?: string | null
-          organization_id: string
-          policy_version_id?: string | null
-          recovery_code?: string | null
-        }
-        Update: {
-          account_id?: string
-          automation_version_id?: string | null
-          created_at?: string
-          decision_kind?: string
-          decision_version?: number
-          eligibility_reason?: string | null
-          frozen_inputs?: Json
-          frozen_inputs_hash?: string
-          id?: string
-          inbound_event_id?: string
-          knowledge_version_ids?: string[]
-          no_send_reason?: string | null
-          organization_id?: string
-          policy_version_id?: string | null
-          recovery_code?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_inbound_automation_d_organization_id_account_id_i_fkey"
-            columns: ["organization_id", "account_id", "inbound_event_id"]
-            referencedRelation: "openclaw_inbound_events"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_inbound_collisions: {
-        Row: {
-          account_id: string
-          batch_index: number
-          cell_id: string
-          collision_kind: string
-          created_at: string
-          event_kind: string
-          evidence_hash: string
-          existing_inbound_event_id: string | null
-          id: string
-          normalized_hash: string
-          organization_id: string
-          payload_hash: string
-          provider_event_id: string | null
-          provider_message_id: string | null
-          quarantined_envelope: Json
-          raw_envelope_hash: string
-          request_id: string
-        }
-        Insert: {
-          account_id: string
-          batch_index: number
-          cell_id: string
-          collision_kind: string
-          created_at?: string
-          event_kind: string
-          evidence_hash: string
-          existing_inbound_event_id?: string | null
-          id?: string
-          normalized_hash: string
-          organization_id: string
-          payload_hash: string
-          provider_event_id?: string | null
-          provider_message_id?: string | null
-          quarantined_envelope: Json
-          raw_envelope_hash: string
-          request_id: string
-        }
-        Update: {
-          account_id?: string
-          batch_index?: number
-          cell_id?: string
-          collision_kind?: string
-          created_at?: string
-          event_kind?: string
-          evidence_hash?: string
-          existing_inbound_event_id?: string | null
-          id?: string
-          normalized_hash?: string
-          organization_id?: string
-          payload_hash?: string
-          provider_event_id?: string | null
-          provider_message_id?: string | null
-          quarantined_envelope?: Json
-          raw_envelope_hash?: string
-          request_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_inbound_collisions_organization_id_account_id_cel_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_inbound_collisions_organization_id_account_id_exi_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "existing_inbound_event_id",
-            ]
-            referencedRelation: "openclaw_inbound_events"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_inbound_events: {
-        Row: {
-          account_id: string
-          callback_received_at: string
-          cell_id: string
-          created_at: string
-          event_kind: string
-          fallback_fingerprint: string | null
-          id: string
-          ingest_state: string
-          normalized_envelope: Json
-          normalized_sha256: string
-          organization_id: string
-          payload_hash: string
-          provider_conversation_id: string
-          provider_event_id: string | null
-          provider_event_type: string
-          provider_message_id: string | null
-          provider_sender_id: string
-          quarantine_reason: string | null
-          raw_envelope: Json
-          raw_envelope_sha256: string
-          session_generation: number
-          source_timestamp: string
-          target_kind: string
-          target_provider_id: string
-        }
-        Insert: {
-          account_id: string
-          callback_received_at: string
-          cell_id: string
-          created_at?: string
-          event_kind: string
-          fallback_fingerprint?: string | null
-          id?: string
-          ingest_state?: string
-          normalized_envelope: Json
-          normalized_sha256: string
-          organization_id: string
-          payload_hash: string
-          provider_conversation_id: string
-          provider_event_id?: string | null
-          provider_event_type: string
-          provider_message_id?: string | null
-          provider_sender_id: string
-          quarantine_reason?: string | null
-          raw_envelope: Json
-          raw_envelope_sha256: string
-          session_generation: number
-          source_timestamp: string
-          target_kind: string
-          target_provider_id: string
-        }
-        Update: {
-          account_id?: string
-          callback_received_at?: string
-          cell_id?: string
-          created_at?: string
-          event_kind?: string
-          fallback_fingerprint?: string | null
-          id?: string
-          ingest_state?: string
-          normalized_envelope?: Json
-          normalized_sha256?: string
-          organization_id?: string
-          payload_hash?: string
-          provider_conversation_id?: string
-          provider_event_id?: string | null
-          provider_event_type?: string
-          provider_message_id?: string | null
-          provider_sender_id?: string
-          quarantine_reason?: string | null
-          raw_envelope?: Json
-          raw_envelope_sha256?: string
-          session_generation?: number
-          source_timestamp?: string
-          target_kind?: string
-          target_provider_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_inbound_events_organization_id_account_id_cell_id_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_inbound_events_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_inbound_provider_identities: {
-        Row: {
-          account_id: string
-          created_at: string
-          event_kind: string
-          id: string
-          inbound_event_id: string
-          organization_id: string
-          paired_stable_id_kind: string | null
-          paired_stable_id_value: string | null
-          payload_hash: string
-          stable_id_kind: string
-          stable_id_value: string
-        }
-        Insert: {
-          account_id: string
-          created_at?: string
-          event_kind: string
-          id?: string
-          inbound_event_id: string
-          organization_id: string
-          paired_stable_id_kind?: string | null
-          paired_stable_id_value?: string | null
-          payload_hash: string
-          stable_id_kind: string
-          stable_id_value: string
-        }
-        Update: {
-          account_id?: string
-          created_at?: string
-          event_kind?: string
-          id?: string
-          inbound_event_id?: string
-          organization_id?: string
-          paired_stable_id_kind?: string | null
-          paired_stable_id_value?: string | null
-          payload_hash?: string
-          stable_id_kind?: string
-          stable_id_value?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_inbound_provider_ide_organization_id_account_id_i_fkey"
-            columns: ["organization_id", "account_id", "inbound_event_id"]
-            referencedRelation: "openclaw_inbound_events"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_knowledge_chunks: {
-        Row: {
-          account_id: string
-          chunk_hash: string
-          chunk_index: number
-          chunk_text: string
-          created_at: string
-          embedding: Json | null
-          id: string
-          knowledge_version_id: string
-          metadata: Json
-          organization_id: string
-          sensitivity: string
-          source_id: string
-        }
-        Insert: {
-          account_id: string
-          chunk_hash: string
-          chunk_index: number
-          chunk_text: string
-          created_at?: string
-          embedding?: Json | null
-          id?: string
-          knowledge_version_id: string
-          metadata?: Json
-          organization_id: string
-          sensitivity: string
-          source_id: string
-        }
-        Update: {
-          account_id?: string
-          chunk_hash?: string
-          chunk_index?: number
-          chunk_text?: string
-          created_at?: string
-          embedding?: Json | null
-          id?: string
-          knowledge_version_id?: string
-          metadata?: Json
-          organization_id?: string
-          sensitivity?: string
-          source_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_knowledge_chunks_organization_id_account_id_sourc_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "source_id",
-              "knowledge_version_id",
-              "sensitivity",
-            ]
-            referencedRelation: "openclaw_knowledge_versions"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "source_id",
-              "id",
-              "sensitivity",
-            ]
-          },
-        ]
-      }
-      openclaw_knowledge_sources: {
-        Row: {
-          account_id: string
-          created_at: string
-          current_version: number
-          id: string
-          lifecycle_state: string
-          organization_id: string
-          sensitivity: string
-          source_kind: string
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          created_at?: string
-          current_version?: number
-          id?: string
-          lifecycle_state?: string
-          organization_id: string
-          sensitivity: string
-          source_kind: string
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          created_at?: string
-          current_version?: number
-          id?: string
-          lifecycle_state?: string
-          organization_id?: string
-          sensitivity?: string
-          source_kind?: string
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_knowledge_sources_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_knowledge_versions: {
-        Row: {
-          account_id: string
-          archived_at: string | null
-          content: string
-          content_hash: string
-          created_at: string
-          created_by: string | null
-          id: string
-          lifecycle_state: string
-          metadata: Json
-          organization_id: string
-          published_at: string | null
-          sensitivity: string
-          source_id: string
-          validation_result: Json | null
-          version: number
-        }
-        Insert: {
-          account_id: string
-          archived_at?: string | null
-          content: string
-          content_hash: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          lifecycle_state: string
-          metadata?: Json
-          organization_id: string
-          published_at?: string | null
-          sensitivity: string
-          source_id: string
-          validation_result?: Json | null
-          version: number
-        }
-        Update: {
-          account_id?: string
-          archived_at?: string | null
-          content?: string
-          content_hash?: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          lifecycle_state?: string
-          metadata?: Json
-          organization_id?: string
-          published_at?: string | null
-          sensitivity?: string
-          source_id?: string
-          validation_result?: Json | null
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_knowledge_versions_organization_id_account_id_sou_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "source_id",
-              "sensitivity",
-            ]
-            referencedRelation: "openclaw_knowledge_sources"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "id",
-              "sensitivity",
-            ]
-          },
-        ]
-      }
-      openclaw_maintenance_credentials: {
-        Row: {
-          allowed_scopes: string[]
-          credential_generation: number
-          credential_hash: string
-          enabled_at: string
-          id: string
-          maintenance_principal_id: string
-          organization_id: string
-          revoked_at: string | null
-          revoked_reason: string | null
-        }
-        Insert: {
-          allowed_scopes: string[]
-          credential_generation: number
-          credential_hash: string
-          enabled_at?: string
-          id?: string
-          maintenance_principal_id: string
-          organization_id: string
-          revoked_at?: string | null
-          revoked_reason?: string | null
-        }
-        Update: {
-          allowed_scopes?: string[]
-          credential_generation?: number
-          credential_hash?: string
-          enabled_at?: string
-          id?: string
-          maintenance_principal_id?: string
-          organization_id?: string
-          revoked_at?: string | null
-          revoked_reason?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_maintenance_credenti_organization_id_maintenance__fkey"
-            columns: ["organization_id", "maintenance_principal_id"]
-            referencedRelation: "openclaw_maintenance_principals"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_maintenance_leases: {
-        Row: {
-          acquired_at: string
-          expires_at: string
-          fencing_token: number
-          id: string
-          lease_generation: number
-          maintenance_principal_id: string
-          organization_id: string
-          released_at: string | null
-          status: string
-        }
-        Insert: {
-          acquired_at?: string
-          expires_at: string
-          fencing_token: number
-          id?: string
-          lease_generation: number
-          maintenance_principal_id: string
-          organization_id: string
-          released_at?: string | null
-          status?: string
-        }
-        Update: {
-          acquired_at?: string
-          expires_at?: string
-          fencing_token?: number
-          id?: string
-          lease_generation?: number
-          maintenance_principal_id?: string
-          organization_id?: string
-          released_at?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_maintenance_leases_organization_id_maintenance_pr_fkey"
-            columns: ["organization_id", "maintenance_principal_id"]
-            referencedRelation: "openclaw_maintenance_principals"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_maintenance_principals: {
-        Row: {
-          enabled_at: string
-          id: string
-          is_current: boolean
-          organization_id: string
-          principal_generation: number
-          revoked_at: string | null
-        }
-        Insert: {
-          enabled_at?: string
-          id?: string
-          is_current?: boolean
-          organization_id: string
-          principal_generation: number
-          revoked_at?: string | null
-        }
-        Update: {
-          enabled_at?: string
-          id?: string
-          is_current?: boolean
-          organization_id?: string
-          principal_generation?: number
-          revoked_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_maintenance_principals_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_maintenance_work_attempts: {
-        Row: {
-          attempt_number: number
-          claim_generation: number
-          created_at: string
-          credential_generation: number
-          evidence: Json
-          evidence_hash: string
-          fencing_token: number
-          gateway_receipt: Json | null
-          id: string
-          maintenance_lease_generation: number
-          maintenance_principal_id: string
-          organization_id: string
-          outcome: string
-          receipt_hash: string | null
-          work_item_id: string
-        }
-        Insert: {
-          attempt_number: number
-          claim_generation: number
-          created_at?: string
-          credential_generation: number
-          evidence: Json
-          evidence_hash: string
-          fencing_token: number
-          gateway_receipt?: Json | null
-          id?: string
-          maintenance_lease_generation: number
-          maintenance_principal_id: string
-          organization_id: string
-          outcome: string
-          receipt_hash?: string | null
-          work_item_id: string
-        }
-        Update: {
-          attempt_number?: number
-          claim_generation?: number
-          created_at?: string
-          credential_generation?: number
-          evidence?: Json
-          evidence_hash?: string
-          fencing_token?: number
-          gateway_receipt?: Json | null
-          id?: string
-          maintenance_lease_generation?: number
-          maintenance_principal_id?: string
-          organization_id?: string
-          outcome?: string
-          receipt_hash?: string | null
-          work_item_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_maintenance_work_att_organization_id_maintenance__fkey"
-            columns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "work_item_id",
-            ]
-            referencedRelation: "openclaw_maintenance_work_items"
-            referencedColumns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "id",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_maintenance_work_attempt_credential_binding_fkey"
-            columns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "credential_generation",
-            ]
-            referencedRelation: "openclaw_maintenance_credentials"
-            referencedColumns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "credential_generation",
-            ]
-          },
-        ]
-      }
-      openclaw_maintenance_work_items: {
-        Row: {
-          attempt_count: number
-          binding_defer_reason: string | null
-          claim_generation: number
-          claim_token_hash: string | null
-          created_at: string
-          credential_generation: number
-          fencing_token: number
-          id: string
-          lease_expires_at: string | null
-          maintenance_lease_generation: number
-          maintenance_principal_id: string
-          organization_id: string
-          payload: Json
-          payload_hash: string
-          retry_not_before: string | null
-          smoke_run_id: string | null
-          source_hash: string
-          source_id: string
-          source_key: string
-          source_version: string
-          state: string
-          terminal_at: string | null
-          updated_at: string
-          work_kind: string
-          work_phase: string
-        }
-        Insert: {
-          attempt_count?: number
-          binding_defer_reason?: string | null
-          claim_generation?: number
-          claim_token_hash?: string | null
-          created_at?: string
-          credential_generation: number
-          fencing_token: number
-          id?: string
-          lease_expires_at?: string | null
-          maintenance_lease_generation: number
-          maintenance_principal_id: string
-          organization_id: string
-          payload: Json
-          payload_hash: string
-          retry_not_before?: string | null
-          smoke_run_id?: string | null
-          source_hash: string
-          source_id: string
-          source_key: string
-          source_version: string
-          state?: string
-          terminal_at?: string | null
-          updated_at?: string
-          work_kind: string
-          work_phase: string
-        }
-        Update: {
-          attempt_count?: number
-          binding_defer_reason?: string | null
-          claim_generation?: number
-          claim_token_hash?: string | null
-          created_at?: string
-          credential_generation?: number
-          fencing_token?: number
-          id?: string
-          lease_expires_at?: string | null
-          maintenance_lease_generation?: number
-          maintenance_principal_id?: string
-          organization_id?: string
-          payload?: Json
-          payload_hash?: string
-          retry_not_before?: string | null
-          smoke_run_id?: string | null
-          source_hash?: string
-          source_id?: string
-          source_key?: string
-          source_version?: string
-          state?: string
-          terminal_at?: string | null
-          updated_at?: string
-          work_kind?: string
-          work_phase?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_maintenance_work_credential_binding_fkey"
-            columns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "credential_generation",
-            ]
-            referencedRelation: "openclaw_maintenance_credentials"
-            referencedColumns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "credential_generation",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_maintenance_work_ite_organization_id_maintenance__fkey"
-            columns: ["organization_id", "maintenance_principal_id"]
-            referencedRelation: "openclaw_maintenance_principals"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_maintenance_work_lease_binding_fkey"
-            columns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "maintenance_lease_generation",
-              "fencing_token",
-            ]
-            referencedRelation: "openclaw_maintenance_leases"
-            referencedColumns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "lease_generation",
-              "fencing_token",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_maintenance_work_smoke_run_fkey"
-            columns: ["organization_id", "smoke_run_id"]
-            referencedRelation: "openclaw_smoke_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_message_media: {
-        Row: {
-          account_id: string
-          byte_length: number | null
-          byte_state: string
-          conversation_id: string
-          created_at: string
-          id: string
-          media_index: number
-          media_kind: string
-          message_id: string
-          mime: string | null
-          object_key: string | null
-          organization_id: string
-          provider_media_id: string | null
-          retention_delete_not_before: string | null
-          sha256: string | null
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          byte_length?: number | null
-          byte_state?: string
-          conversation_id: string
-          created_at?: string
-          id?: string
-          media_index: number
-          media_kind: string
-          message_id: string
-          mime?: string | null
-          object_key?: string | null
-          organization_id: string
-          provider_media_id?: string | null
-          retention_delete_not_before?: string | null
-          sha256?: string | null
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          byte_length?: number | null
-          byte_state?: string
-          conversation_id?: string
-          created_at?: string
-          id?: string
-          media_index?: number
-          media_kind?: string
-          message_id?: string
-          mime?: string | null
-          object_key?: string | null
-          organization_id?: string
-          provider_media_id?: string | null
-          retention_delete_not_before?: string | null
-          sha256?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_message_media_organization_id_account_id_conversa_fkey"
-            columns: ["organization_id", "account_id", "conversation_id"]
-            referencedRelation: "openclaw_conversations"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_message_media_organization_id_account_id_message__fkey"
-            columns: ["organization_id", "account_id", "message_id"]
-            referencedRelation: "openclaw_messages"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_messages: {
-        Row: {
-          account_id: string
-          conversation_id: string
-          created_at: string
-          direction: string
-          event_kind: string
-          id: string
-          organization_id: string
-          payload_hash: string
-          provider_message_id: string | null
-          provider_sender_id: string | null
-          provider_timestamp: string | null
-          received_at: string
-          reply_to_provider_message_id: string | null
-          source_inbound_event_id: string | null
-          text_content: string | null
-        }
-        Insert: {
-          account_id: string
-          conversation_id: string
-          created_at?: string
-          direction: string
-          event_kind?: string
-          id?: string
-          organization_id: string
-          payload_hash: string
-          provider_message_id?: string | null
-          provider_sender_id?: string | null
-          provider_timestamp?: string | null
-          received_at?: string
-          reply_to_provider_message_id?: string | null
-          source_inbound_event_id?: string | null
-          text_content?: string | null
-        }
-        Update: {
-          account_id?: string
-          conversation_id?: string
-          created_at?: string
-          direction?: string
-          event_kind?: string
-          id?: string
-          organization_id?: string
-          payload_hash?: string
-          provider_message_id?: string | null
-          provider_sender_id?: string | null
-          provider_timestamp?: string | null
-          received_at?: string
-          reply_to_provider_message_id?: string | null
-          source_inbound_event_id?: string | null
-          text_content?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_messages_organization_id_account_id_conversation__fkey"
-            columns: ["organization_id", "account_id", "conversation_id"]
-            referencedRelation: "openclaw_conversations"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_messages_organization_id_account_id_source_inboun_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "source_inbound_event_id",
-            ]
-            referencedRelation: "openclaw_inbound_events"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_outbound_authorizations: {
-        Row: {
-          account_id: string
-          authorized_handoff_at: string | null
-          claim_generation: number
-          consumed_at: string | null
-          control_version: number
-          expires_at: string
-          fencing_token: number
-          id: string
-          issued_at: string
-          lease_expires_at: string
-          marker_nonce_hash: string
-          organization_id: string
-          outbox_id: string
-          payload_hash: string
-          session_generation: number
-          takeover_version: number
-        }
-        Insert: {
-          account_id: string
-          authorized_handoff_at?: string | null
-          claim_generation: number
-          consumed_at?: string | null
-          control_version: number
-          expires_at: string
-          fencing_token: number
-          id?: string
-          issued_at?: string
-          lease_expires_at: string
-          marker_nonce_hash: string
-          organization_id: string
-          outbox_id: string
-          payload_hash: string
-          session_generation: number
-          takeover_version: number
-        }
-        Update: {
-          account_id?: string
-          authorized_handoff_at?: string | null
-          claim_generation?: number
-          consumed_at?: string | null
-          control_version?: number
-          expires_at?: string
-          fencing_token?: number
-          id?: string
-          issued_at?: string
-          lease_expires_at?: string
-          marker_nonce_hash?: string
-          organization_id?: string
-          outbox_id?: string
-          payload_hash?: string
-          session_generation?: number
-          takeover_version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_outbound_authorizati_organization_id_account_id_o_fkey"
-            columns: ["organization_id", "account_id", "outbox_id"]
-            referencedRelation: "openclaw_outbox"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_outbox: {
-        Row: {
-          account_id: string
-          actor_id: string | null
-          attempt_count: number
-          automation_version_id: string | null
-          campaign_id: string | null
-          campaign_version: number | null
-          canonical_payload: Json
-          canonical_payload_bytes: string
-          claim_generation: number
-          claim_token_hash: string | null
-          claimed_cell_id: string | null
-          client_operation_id: string | null
-          control_version: number
-          created_at: string
-          credential_generation: number | null
-          dispatching_at: string | null
-          fencing_token: number
-          id: string
-          idempotency_key: string
-          inbound_event_id: string | null
-          lease_expires_at: string | null
-          occurrence_id: string | null
-          organization_id: string
-          payload_hash: string
-          resolution_version: number
-          retry_not_before: string | null
-          runtime_lease_generation: number | null
-          schedule_id: string | null
-          schedule_version: number | null
-          session_generation: number
-          smoke_run_id: string | null
-          source_kind: string
-          state: string
-          subscription_id: string | null
-          subscription_version: number | null
-          takeover_version: number
-          target_id: string
-          terminal_at: string | null
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          actor_id?: string | null
-          attempt_count?: number
-          automation_version_id?: string | null
-          campaign_id?: string | null
-          campaign_version?: number | null
-          canonical_payload: Json
-          canonical_payload_bytes: string
-          claim_generation?: number
-          claim_token_hash?: string | null
-          claimed_cell_id?: string | null
-          client_operation_id?: string | null
-          control_version?: number
-          created_at?: string
-          credential_generation?: number | null
-          dispatching_at?: string | null
-          fencing_token?: number
-          id?: string
-          idempotency_key: string
-          inbound_event_id?: string | null
-          lease_expires_at?: string | null
-          occurrence_id?: string | null
-          organization_id: string
-          payload_hash: string
-          resolution_version?: number
-          retry_not_before?: string | null
-          runtime_lease_generation?: number | null
-          schedule_id?: string | null
-          schedule_version?: number | null
-          session_generation?: number
-          smoke_run_id?: string | null
-          source_kind: string
-          state?: string
-          subscription_id?: string | null
-          subscription_version?: number | null
-          takeover_version?: number
-          target_id: string
-          terminal_at?: string | null
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          actor_id?: string | null
-          attempt_count?: number
-          automation_version_id?: string | null
-          campaign_id?: string | null
-          campaign_version?: number | null
-          canonical_payload?: Json
-          canonical_payload_bytes?: string
-          claim_generation?: number
-          claim_token_hash?: string | null
-          claimed_cell_id?: string | null
-          client_operation_id?: string | null
-          control_version?: number
-          created_at?: string
-          credential_generation?: number | null
-          dispatching_at?: string | null
-          fencing_token?: number
-          id?: string
-          idempotency_key?: string
-          inbound_event_id?: string | null
-          lease_expires_at?: string | null
-          occurrence_id?: string | null
-          organization_id?: string
-          payload_hash?: string
-          resolution_version?: number
-          retry_not_before?: string | null
-          runtime_lease_generation?: number | null
-          schedule_id?: string | null
-          schedule_version?: number | null
-          session_generation?: number
-          smoke_run_id?: string | null
-          source_kind?: string
-          state?: string
-          subscription_id?: string | null
-          subscription_version?: number | null
-          takeover_version?: number
-          target_id?: string
-          terminal_at?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_outbox_claim_credential_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "claimed_cell_id",
-              "credential_generation",
-            ]
-            referencedRelation: "openclaw_runtime_credentials"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "credential_generation",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_claim_lease_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "claimed_cell_id",
-              "runtime_lease_generation",
-              "fencing_token",
-            ]
-            referencedRelation: "openclaw_runtime_leases"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "lease_generation",
-              "fencing_token",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_crm_subscription_snapshot_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "subscription_id",
-              "subscription_version",
-            ]
-            referencedRelation: "openclaw_crm_event_subscription_snapshots"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "subscription_id",
-              "subscription_version",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_automation_vers_fkey"
-            columns: ["organization_id", "account_id", "automation_version_id"]
-            referencedRelation: "openclaw_automation_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_campaign_id_fkey"
-            columns: ["organization_id", "account_id", "campaign_id"]
-            referencedRelation: "openclaw_campaigns"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_claimed_cell_id_fkey"
-            columns: ["organization_id", "account_id", "claimed_cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_inbound_event_i_fkey"
-            columns: ["organization_id", "account_id", "inbound_event_id"]
-            referencedRelation: "openclaw_inbound_events"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_schedule_id_fkey"
-            columns: ["organization_id", "account_id", "schedule_id"]
-            referencedRelation: "openclaw_schedules"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_subscription_id_fkey"
-            columns: ["organization_id", "account_id", "subscription_id"]
-            referencedRelation: "openclaw_crm_event_subscriptions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_organization_id_account_id_target_id_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_schedule_snapshot_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "schedule_id",
-              "schedule_version",
-            ]
-            referencedRelation: "openclaw_schedule_snapshots"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "schedule_id",
-              "schedule_version",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_outbox_smoke_run_fkey"
-            columns: ["organization_id", "smoke_run_id"]
-            referencedRelation: "openclaw_smoke_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_policies: {
-        Row: {
-          account_id: string
-          created_at: string
-          current_version: number
-          id: string
-          lifecycle_state: string
-          name: string
-          organization_id: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          created_at?: string
-          current_version?: number
-          id?: string
-          lifecycle_state?: string
-          name: string
-          organization_id: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          created_at?: string
-          current_version?: number
-          id?: string
-          lifecycle_state?: string
-          name?: string
-          organization_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_policies_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_policy_versions: {
-        Row: {
-          account_id: string
-          archived_at: string | null
-          consent_required: boolean
-          created_at: string
-          created_by: string | null
-          disclosure_version: number
-          id: string
-          lifecycle_state: string
-          organization_id: string
-          payload_hash: string
-          policy_id: string
-          policy_payload: Json
-          published_at: string | null
-          quiet_hours_end: string
-          quiet_hours_start: string
-          rate_limits: Json
-          timezone: string
-          version: number
-        }
-        Insert: {
-          account_id: string
-          archived_at?: string | null
-          consent_required?: boolean
-          created_at?: string
-          created_by?: string | null
-          disclosure_version: number
-          id?: string
-          lifecycle_state: string
-          organization_id: string
-          payload_hash: string
-          policy_id: string
-          policy_payload: Json
-          published_at?: string | null
-          quiet_hours_end?: string
-          quiet_hours_start?: string
-          rate_limits: Json
-          timezone: string
-          version: number
-        }
-        Update: {
-          account_id?: string
-          archived_at?: string | null
-          consent_required?: boolean
-          created_at?: string
-          created_by?: string | null
-          disclosure_version?: number
-          id?: string
-          lifecycle_state?: string
-          organization_id?: string
-          payload_hash?: string
-          policy_id?: string
-          policy_payload?: Json
-          published_at?: string | null
-          quiet_hours_end?: string
-          quiet_hours_start?: string
-          rate_limits?: Json
-          timezone?: string
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_policy_versions_organization_id_account_id_policy_fkey"
-            columns: ["organization_id", "account_id", "policy_id"]
-            referencedRelation: "openclaw_policies"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_qr_challenges: {
-        Row: {
-          account_id: string
-          active_slot: boolean
-          actor_id: string
-          auth_session_hash: string
-          auth_tag: string | null
-          browser_nonce_hash: string
-          cell_id: string
-          challenge_status: string
-          challenge_version: number
-          cipher_iv: string | null
-          ciphertext: string | null
-          consumed_at: string | null
-          expires_at: string
-          id: string
-          issued_at: string
-          material_published_at: string | null
-          material_version: number
-          organization_id: string
-          revoked_at: string | null
-          runtime_command_id: string | null
-        }
-        Insert: {
-          account_id: string
-          active_slot?: boolean
-          actor_id: string
-          auth_session_hash: string
-          auth_tag?: string | null
-          browser_nonce_hash: string
-          cell_id: string
-          challenge_status?: string
-          challenge_version?: number
-          cipher_iv?: string | null
-          ciphertext?: string | null
-          consumed_at?: string | null
-          expires_at: string
-          id?: string
-          issued_at?: string
-          material_published_at?: string | null
-          material_version?: number
-          organization_id: string
-          revoked_at?: string | null
-          runtime_command_id?: string | null
-        }
-        Update: {
-          account_id?: string
-          active_slot?: boolean
-          actor_id?: string
-          auth_session_hash?: string
-          auth_tag?: string | null
-          browser_nonce_hash?: string
-          cell_id?: string
-          challenge_status?: string
-          challenge_version?: number
-          cipher_iv?: string | null
-          ciphertext?: string | null
-          consumed_at?: string | null
-          expires_at?: string
-          id?: string
-          issued_at?: string
-          material_published_at?: string | null
-          material_version?: number
-          organization_id?: string
-          revoked_at?: string | null
-          runtime_command_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_qr_challenges_organization_id_account_id_cell_id_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_qr_challenges_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_qr_runtime_command_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "runtime_command_id",
-            ]
-            referencedRelation: "openclaw_runtime_commands"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "id",
-            ]
-          },
-        ]
-      }
-      openclaw_retention_delete_authorizations: {
-        Row: {
-          authorization_bytes: string
-          authorization_hash: string
-          authorization_payload: Json
-          claim_generation: number
-          delete_authorization_jti: string
-          delete_ticket_jti: string
-          expires_at: string
-          fencing_token: number
-          finalized_at: string | null
-          gateway_signing_key_generation: number
-          hold_version: number
-          id: string
-          issued_at: string
-          maintenance_principal_id: string
-          object_key: string
-          organization_id: string
-          quarantine_version: number
-          receipt: Json | null
-          receipt_hash: string | null
-          revoked_at: string | null
-          revoked_reason: string | null
-          tombstone_id: string
-          work_item_id: string
-          work_lease_expires_at: string
-        }
-        Insert: {
-          authorization_bytes: string
-          authorization_hash: string
-          authorization_payload: Json
-          claim_generation: number
-          delete_authorization_jti: string
-          delete_ticket_jti: string
-          expires_at: string
-          fencing_token: number
-          finalized_at?: string | null
-          gateway_signing_key_generation: number
-          hold_version: number
-          id?: string
-          issued_at?: string
-          maintenance_principal_id: string
-          object_key: string
-          organization_id: string
-          quarantine_version: number
-          receipt?: Json | null
-          receipt_hash?: string | null
-          revoked_at?: string | null
-          revoked_reason?: string | null
-          tombstone_id: string
-          work_item_id: string
-          work_lease_expires_at: string
-        }
-        Update: {
-          authorization_bytes?: string
-          authorization_hash?: string
-          authorization_payload?: Json
-          claim_generation?: number
-          delete_authorization_jti?: string
-          delete_ticket_jti?: string
-          expires_at?: string
-          fencing_token?: number
-          finalized_at?: string | null
-          gateway_signing_key_generation?: number
-          hold_version?: number
-          id?: string
-          issued_at?: string
-          maintenance_principal_id?: string
-          object_key?: string
-          organization_id?: string
-          quarantine_version?: number
-          receipt?: Json | null
-          receipt_hash?: string | null
-          revoked_at?: string | null
-          revoked_reason?: string | null
-          tombstone_id?: string
-          work_item_id?: string
-          work_lease_expires_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_delete_aut_organization_id_maintenance__fkey"
-            columns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "work_item_id",
-            ]
-            referencedRelation: "openclaw_maintenance_work_items"
-            referencedColumns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "id",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_retention_delete_aut_organization_id_tombstone_id_fkey"
-            columns: ["organization_id", "tombstone_id"]
-            referencedRelation: "openclaw_retention_tombstones"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_retention_delete_tickets: {
-        Row: {
-          authorized_at: string
-          claim_generation: number
-          credential_generation: number
-          delete_authorization_jti: string
-          domain_hash: string
-          expected_receipt_claims: Json
-          expires_at: string
-          fencing_token: number
-          finalized_at: string | null
-          gateway_outcome: string | null
-          hold_version: number
-          id: string
-          maintenance_lease_generation: number
-          maintenance_principal_id: string
-          object_key: string
-          organization_id: string
-          quarantine_version: number
-          receipt: Json | null
-          receipt_hash: string | null
-          signing_key_generation: number
-          state: string
-          subject_id: string
-          ticket_bytes: string
-          ticket_hash: string
-          ticket_jti: string
-          ticket_payload: Json
-          tombstone_id: string
-          work_item_id: string
-        }
-        Insert: {
-          authorized_at?: string
-          claim_generation: number
-          credential_generation: number
-          delete_authorization_jti?: string
-          domain_hash: string
-          expected_receipt_claims: Json
-          expires_at: string
-          fencing_token: number
-          finalized_at?: string | null
-          gateway_outcome?: string | null
-          hold_version: number
-          id?: string
-          maintenance_lease_generation: number
-          maintenance_principal_id: string
-          object_key: string
-          organization_id: string
-          quarantine_version: number
-          receipt?: Json | null
-          receipt_hash?: string | null
-          signing_key_generation: number
-          state?: string
-          subject_id: string
-          ticket_bytes: string
-          ticket_hash: string
-          ticket_jti?: string
-          ticket_payload: Json
-          tombstone_id: string
-          work_item_id: string
-        }
-        Update: {
-          authorized_at?: string
-          claim_generation?: number
-          credential_generation?: number
-          delete_authorization_jti?: string
-          domain_hash?: string
-          expected_receipt_claims?: Json
-          expires_at?: string
-          fencing_token?: number
-          finalized_at?: string | null
-          gateway_outcome?: string | null
-          hold_version?: number
-          id?: string
-          maintenance_lease_generation?: number
-          maintenance_principal_id?: string
-          object_key?: string
-          organization_id?: string
-          quarantine_version?: number
-          receipt?: Json | null
-          receipt_hash?: string | null
-          signing_key_generation?: number
-          state?: string
-          subject_id?: string
-          ticket_bytes?: string
-          ticket_hash?: string
-          ticket_jti?: string
-          ticket_payload?: Json
-          tombstone_id?: string
-          work_item_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_delete_tic_organization_id_maintenance__fkey"
-            columns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "work_item_id",
-            ]
-            referencedRelation: "openclaw_maintenance_work_items"
-            referencedColumns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "id",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_retention_delete_tic_organization_id_tombstone_id_fkey"
-            columns: ["organization_id", "tombstone_id"]
-            referencedRelation: "openclaw_retention_tombstones"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_retention_evidence_seals: {
-        Row: {
-          due_at: string
-          hold_version: number
-          id: string
-          organization_id: string
-          retention_action: string
-          retention_version: number
-          sealed_at: string
-          source_evidence_hash: string
-          source_table: string
-          subject_id: string
-          subject_kind: string
-        }
-        Insert: {
-          due_at: string
-          hold_version: number
-          id?: string
-          organization_id: string
-          retention_action: string
-          retention_version: number
-          sealed_at?: string
-          source_evidence_hash: string
-          source_table: string
-          subject_id: string
-          subject_kind: string
-        }
-        Update: {
-          due_at?: string
-          hold_version?: number
-          id?: string
-          organization_id?: string
-          retention_action?: string
-          retention_version?: number
-          sealed_at?: string
-          source_evidence_hash?: string
-          source_table?: string
-          subject_id?: string
-          subject_kind?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_evidence_seals_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_retention_gateway_configs: {
-        Row: {
-          enabled_at: string | null
-          id: string
-          is_active: boolean
-          organization_id: string
-          public_key_hash: string
-          retired_at: string | null
-          signing_key_generation: number
-        }
-        Insert: {
-          enabled_at?: string | null
-          id?: string
-          is_active?: boolean
-          organization_id: string
-          public_key_hash: string
-          retired_at?: string | null
-          signing_key_generation: number
-        }
-        Update: {
-          enabled_at?: string | null
-          id?: string
-          is_active?: boolean
-          organization_id?: string
-          public_key_hash?: string
-          retired_at?: string | null
-          signing_key_generation?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_gateway_configs_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_retention_hold_clocks: {
-        Row: {
-          hold_version: number
-          organization_id: string
-          updated_at: string
-        }
-        Insert: {
-          hold_version: number
-          organization_id: string
-          updated_at?: string
-        }
-        Update: {
-          hold_version?: number
-          organization_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_hold_clocks_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_retention_hold_scopes: {
-        Row: {
-          created_at: string
-          hold_id: string
-          hold_version: number
-          id: string
-          is_active: boolean
-          organization_id: string
-          scope_id: string | null
-          scope_kind: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          hold_id: string
-          hold_version: number
-          id?: string
-          is_active: boolean
-          organization_id: string
-          scope_id?: string | null
-          scope_kind: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          hold_id?: string
-          hold_version?: number
-          id?: string
-          is_active?: boolean
-          organization_id?: string
-          scope_id?: string | null
-          scope_kind?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_hold_scopes_organization_id_hold_id_fkey"
-            columns: ["organization_id", "hold_id"]
-            referencedRelation: "openclaw_retention_holds"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_retention_holds: {
-        Row: {
-          created_at: string
-          created_by: string
-          expires_at: string | null
-          hold_version: number
-          id: string
-          organization_id: string
-          reason: string
-          release_reason: string | null
-          released_at: string | null
-          released_by: string | null
-          scope_version: number
-          target_id: string
-          target_kind: string
-        }
-        Insert: {
-          created_at?: string
-          created_by: string
-          expires_at?: string | null
-          hold_version?: number
-          id?: string
-          organization_id: string
-          reason: string
-          release_reason?: string | null
-          released_at?: string | null
-          released_by?: string | null
-          scope_version?: number
-          target_id: string
-          target_kind: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string
-          expires_at?: string | null
-          hold_version?: number
-          id?: string
-          organization_id?: string
-          reason?: string
-          release_reason?: string | null
-          released_at?: string | null
-          released_by?: string | null
-          scope_version?: number
-          target_id?: string
-          target_kind?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_holds_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_retention_policies: {
-        Row: {
-          activated_at: string | null
-          created_at: string
-          id: string
-          is_active: boolean
-          organization_id: string
-          policy_version: number
-          retain_for_seconds: number
-          retired_at: string | null
-          subject_kind: string
-        }
-        Insert: {
-          activated_at?: string | null
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          organization_id: string
-          policy_version: number
-          retain_for_seconds: number
-          retired_at?: string | null
-          subject_kind: string
-        }
-        Update: {
-          activated_at?: string | null
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          organization_id?: string
-          policy_version?: number
-          retain_for_seconds?: number
-          retired_at?: string | null
-          subject_kind?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_policies_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_retention_tombstones: {
-        Row: {
-          final_delete_not_before: string | null
-          hold_version: number
-          id: string
-          maintenance_principal_id: string
-          object_key: string | null
-          organization_id: string
-          quarantine_version: number
-          quarantined_at: string
-          redaction_evidence_hash: string
-          retention_version: number
-          subject_id: string
-          subject_kind: string
-          work_item_id: string
-        }
-        Insert: {
-          final_delete_not_before?: string | null
-          hold_version: number
-          id?: string
-          maintenance_principal_id: string
-          object_key?: string | null
-          organization_id: string
-          quarantine_version: number
-          quarantined_at?: string
-          redaction_evidence_hash: string
-          retention_version: number
-          subject_id: string
-          subject_kind: string
-          work_item_id: string
-        }
-        Update: {
-          final_delete_not_before?: string | null
-          hold_version?: number
-          id?: string
-          maintenance_principal_id?: string
-          object_key?: string | null
-          organization_id?: string
-          quarantine_version?: number
-          quarantined_at?: string
-          redaction_evidence_hash?: string
-          retention_version?: number
-          subject_id?: string
-          subject_kind?: string
-          work_item_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_retention_tombstones_organization_id_maintenance__fkey"
-            columns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "work_item_id",
-            ]
-            referencedRelation: "openclaw_maintenance_work_items"
-            referencedColumns: [
-              "organization_id",
-              "maintenance_principal_id",
-              "id",
-            ]
-          },
-        ]
-      }
-      openclaw_rollout_checkpoints: {
-        Row: {
-          checkpoint_name: string
-          completed_at: string | null
-          created_at: string
-          id: string
-          organization_id: string
-          rollout_run_id: string
-          stage: string
-          status: string
-          trusted_evidence_hash: string | null
-          trusted_evidence_id: string | null
-        }
-        Insert: {
-          checkpoint_name: string
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          organization_id: string
-          rollout_run_id: string
-          stage: string
-          status: string
-          trusted_evidence_hash?: string | null
-          trusted_evidence_id?: string | null
-        }
-        Update: {
-          checkpoint_name?: string
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          organization_id?: string
-          rollout_run_id?: string
-          stage?: string
-          status?: string
-          trusted_evidence_hash?: string | null
-          trusted_evidence_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_rollout_checkpoints_organization_id_rollout_run_i_fkey"
-            columns: ["organization_id", "rollout_run_id"]
-            referencedRelation: "openclaw_rollout_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_rollout_observations: {
-        Row: {
-          content_free_metrics: Json
-          created_at: string
-          id: string
-          observation_hash: string
-          organization_id: string
-          passed: boolean
-          rollout_run_id: string
-          stage: string
-          window_ended_at: string
-          window_started_at: string
-        }
-        Insert: {
-          content_free_metrics: Json
-          created_at?: string
-          id?: string
-          observation_hash: string
-          organization_id: string
-          passed: boolean
-          rollout_run_id: string
-          stage: string
-          window_ended_at: string
-          window_started_at: string
-        }
-        Update: {
-          content_free_metrics?: Json
-          created_at?: string
-          id?: string
-          observation_hash?: string
-          organization_id?: string
-          passed?: boolean
-          rollout_run_id?: string
-          stage?: string
-          window_ended_at?: string
-          window_started_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_rollout_observations_organization_id_rollout_run__fkey"
-            columns: ["organization_id", "rollout_run_id"]
-            referencedRelation: "openclaw_rollout_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_rollout_runs: {
-        Row: {
-          artifact_digests: Json
-          built_tgz_sha256: string
-          completed_at: string | null
-          continuous_green_started_at: string | null
-          id: string
-          migration_manifest_sha256: string
-          organization_id: string
-          patch_series_sha256: string
-          project_ref: string
-          reviewed_commit_sha: string
-          shadow_started_at: string | null
-          stage: string
-          stage_entered_at: string
-          stage_version: number
-          started_at: string
-          status: string
-          upstream_git_head: string
-          upstream_sri: string
-        }
-        Insert: {
-          artifact_digests: Json
-          built_tgz_sha256: string
-          completed_at?: string | null
-          continuous_green_started_at?: string | null
-          id?: string
-          migration_manifest_sha256: string
-          organization_id: string
-          patch_series_sha256: string
-          project_ref?: string
-          reviewed_commit_sha: string
-          shadow_started_at?: string | null
-          stage?: string
-          stage_entered_at?: string
-          stage_version?: number
-          started_at?: string
-          status?: string
-          upstream_git_head: string
-          upstream_sri: string
-        }
-        Update: {
-          artifact_digests?: Json
-          built_tgz_sha256?: string
-          completed_at?: string | null
-          continuous_green_started_at?: string | null
-          id?: string
-          migration_manifest_sha256?: string
-          organization_id?: string
-          patch_series_sha256?: string
-          project_ref?: string
-          reviewed_commit_sha?: string
-          shadow_started_at?: string | null
-          stage?: string
-          stage_entered_at?: string
-          stage_version?: number
-          started_at?: string
-          status?: string
-          upstream_git_head?: string
-          upstream_sri?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_rollout_runs_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_runtime_cells: {
-        Row: {
-          account_id: string
-          cell_generation: number
-          config_digest: string
-          created_at: string
-          id: string
-          image_digest: string
-          is_current: boolean
-          last_heartbeat_at: string | null
-          organization_id: string
-          retired_at: string | null
-          reviewed_commit_sha: string
-          state: string
-        }
-        Insert: {
-          account_id: string
-          cell_generation: number
-          config_digest: string
-          created_at?: string
-          id?: string
-          image_digest: string
-          is_current?: boolean
-          last_heartbeat_at?: string | null
-          organization_id: string
-          retired_at?: string | null
-          reviewed_commit_sha: string
-          state?: string
-        }
-        Update: {
-          account_id?: string
-          cell_generation?: number
-          config_digest?: string
-          created_at?: string
-          id?: string
-          image_digest?: string
-          is_current?: boolean
-          last_heartbeat_at?: string | null
-          organization_id?: string
-          retired_at?: string | null
-          reviewed_commit_sha?: string
-          state?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_runtime_cells_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_runtime_commands: {
-        Row: {
-          account_id: string
-          acknowledged_at: string | null
-          cell_id: string
-          claim_generation: number
-          claim_token_hash: string | null
-          command_key: string
-          command_kind: string
-          command_version: number
-          created_at: string
-          created_by: string | null
-          expected_connection_generation: number
-          expected_fencing_token: number
-          expected_session_generation: number
-          id: string
-          lease_expires_at: string | null
-          organization_id: string
-          payload: Json
-          payload_bytes: string
-          payload_hash: string
-          result: Json | null
-          result_hash: string | null
-          state: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          acknowledged_at?: string | null
-          cell_id: string
-          claim_generation?: number
-          claim_token_hash?: string | null
-          command_key: string
-          command_kind: string
-          command_version?: number
-          created_at?: string
-          created_by?: string | null
-          expected_connection_generation: number
-          expected_fencing_token: number
-          expected_session_generation: number
-          id?: string
-          lease_expires_at?: string | null
-          organization_id: string
-          payload: Json
-          payload_bytes: string
-          payload_hash: string
-          result?: Json | null
-          result_hash?: string | null
-          state?: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          acknowledged_at?: string | null
-          cell_id?: string
-          claim_generation?: number
-          claim_token_hash?: string | null
-          command_key?: string
-          command_kind?: string
-          command_version?: number
-          created_at?: string
-          created_by?: string | null
-          expected_connection_generation?: number
-          expected_fencing_token?: number
-          expected_session_generation?: number
-          id?: string
-          lease_expires_at?: string | null
-          organization_id?: string
-          payload?: Json
-          payload_bytes?: string
-          payload_hash?: string
-          result?: Json | null
-          result_hash?: string | null
-          state?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_runtime_commands_organization_id_account_id_cell__fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_runtime_commands_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_runtime_credentials: {
-        Row: {
-          account_id: string
-          allowed_scopes: string[]
-          cell_id: string
-          credential_generation: number
-          credential_hash: string
-          enabled_at: string
-          id: string
-          organization_id: string
-          revoked_at: string | null
-          revoked_reason: string | null
-        }
-        Insert: {
-          account_id: string
-          allowed_scopes: string[]
-          cell_id: string
-          credential_generation: number
-          credential_hash: string
-          enabled_at?: string
-          id?: string
-          organization_id: string
-          revoked_at?: string | null
-          revoked_reason?: string | null
-        }
-        Update: {
-          account_id?: string
-          allowed_scopes?: string[]
-          cell_id?: string
-          credential_generation?: number
-          credential_hash?: string
-          enabled_at?: string
-          id?: string
-          organization_id?: string
-          revoked_at?: string | null
-          revoked_reason?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_runtime_credentials_organization_id_account_id_ce_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_runtime_credentials_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_runtime_leases: {
-        Row: {
-          account_id: string
-          acquired_at: string
-          cell_id: string
-          expires_at: string
-          fencing_token: number
-          id: string
-          lease_generation: number
-          organization_id: string
-          released_at: string | null
-          status: string
-        }
-        Insert: {
-          account_id: string
-          acquired_at?: string
-          cell_id: string
-          expires_at: string
-          fencing_token: number
-          id?: string
-          lease_generation: number
-          organization_id: string
-          released_at?: string | null
-          status?: string
-        }
-        Update: {
-          account_id?: string
-          acquired_at?: string
-          cell_id?: string
-          expires_at?: string
-          fencing_token?: number
-          id?: string
-          lease_generation?: number
-          organization_id?: string
-          released_at?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_runtime_leases_organization_id_account_id_cell_id_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_runtime_leases_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_sales_group_allowlists: {
-        Row: {
-          account_id: string
-          allowlist_version: number
-          approved_at: string | null
-          approved_by: string | null
-          created_at: string
-          directory_expires_at: string
-          directory_refreshed_at: string
-          evidence_hash: string
-          id: string
-          is_allowed: boolean
-          organization_id: string
-          sales_group_target_id: string
-          sales_group_target_kind: string
-        }
-        Insert: {
-          account_id: string
-          allowlist_version: number
-          approved_at?: string | null
-          approved_by?: string | null
-          created_at?: string
-          directory_expires_at: string
-          directory_refreshed_at: string
-          evidence_hash: string
-          id?: string
-          is_allowed?: boolean
-          organization_id: string
-          sales_group_target_id: string
-          sales_group_target_kind?: string
-        }
-        Update: {
-          account_id?: string
-          allowlist_version?: number
-          approved_at?: string | null
-          approved_by?: string | null
-          created_at?: string
-          directory_expires_at?: string
-          directory_refreshed_at?: string
-          evidence_hash?: string
-          id?: string
-          is_allowed?: boolean
-          organization_id?: string
-          sales_group_target_id?: string
-          sales_group_target_kind?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_sales_group_allowlis_organization_id_account_id_s_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "sales_group_target_id",
-              "sales_group_target_kind",
-            ]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id", "kind"]
-          },
-        ]
-      }
-      openclaw_sales_groups: {
-        Row: {
-          account_id: string
-          created_at: string
-          directory_refreshed_at: string
-          directory_version: number
-          display_name: string
-          id: string
-          member_count: number | null
-          organization_id: string
-          provider_id: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          created_at?: string
-          directory_refreshed_at: string
-          directory_version?: number
-          display_name: string
-          id?: string
-          member_count?: number | null
-          organization_id: string
-          provider_id: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          created_at?: string
-          directory_refreshed_at?: string
-          directory_version?: number
-          display_name?: string
-          id?: string
-          member_count?: number | null
-          organization_id?: string
-          provider_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_sales_groups_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_schedule_occurrences: {
-        Row: {
-          account_id: string
-          created_at: string
-          id: string
-          occurrence_evidence: Json
-          occurrence_evidence_bytes: string
-          occurrence_evidence_hash: string
-          occurrence_status: string
-          organization_id: string
-          planned_for: string
-          planned_local: string
-          resolution: string
-          resolved_local: string
-          schedule_id: string
-          schedule_version: number
-          target_id: string
-          utc_offset_seconds: number
-        }
-        Insert: {
-          account_id: string
-          created_at?: string
-          id?: string
-          occurrence_evidence: Json
-          occurrence_evidence_bytes: string
-          occurrence_evidence_hash: string
-          occurrence_status: string
-          organization_id: string
-          planned_for: string
-          planned_local: string
-          resolution: string
-          resolved_local: string
-          schedule_id: string
-          schedule_version: number
-          target_id: string
-          utc_offset_seconds: number
-        }
-        Update: {
-          account_id?: string
-          created_at?: string
-          id?: string
-          occurrence_evidence?: Json
-          occurrence_evidence_bytes?: string
-          occurrence_evidence_hash?: string
-          occurrence_status?: string
-          organization_id?: string
-          planned_for?: string
-          planned_local?: string
-          resolution?: string
-          resolved_local?: string
-          schedule_id?: string
-          schedule_version?: number
-          target_id?: string
-          utc_offset_seconds?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_schedule_occurrences_organization_id_account_id_s_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "schedule_id",
-              "schedule_version",
-            ]
-            referencedRelation: "openclaw_schedule_snapshots"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "schedule_id",
-              "schedule_version",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_schedule_occurrences_organization_id_account_id_t_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_schedule_snapshots: {
-        Row: {
-          account_id: string
-          automation_version_id: string
-          campaign_id: string | null
-          created_at: string
-          created_by: string | null
-          dst_fold_policy: string
-          id: string
-          local_recurrence_rule: string
-          missed_occurrence_policy: string
-          occurrence_grace_seconds: number
-          organization_id: string
-          schedule_id: string
-          schedule_version: number
-          snapshot: Json
-          snapshot_bytes: string
-          snapshot_hash: string
-          status: string
-          target_id: string | null
-          timezone: string
-        }
-        Insert: {
-          account_id: string
-          automation_version_id: string
-          campaign_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          dst_fold_policy?: string
-          id?: string
-          local_recurrence_rule: string
-          missed_occurrence_policy: string
-          occurrence_grace_seconds?: number
-          organization_id: string
-          schedule_id: string
-          schedule_version: number
-          snapshot: Json
-          snapshot_bytes: string
-          snapshot_hash: string
-          status: string
-          target_id?: string | null
-          timezone: string
-        }
-        Update: {
-          account_id?: string
-          automation_version_id?: string
-          campaign_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          dst_fold_policy?: string
-          id?: string
-          local_recurrence_rule?: string
-          missed_occurrence_policy?: string
-          occurrence_grace_seconds?: number
-          organization_id?: string
-          schedule_id?: string
-          schedule_version?: number
-          snapshot?: Json
-          snapshot_bytes?: string
-          snapshot_hash?: string
-          status?: string
-          target_id?: string | null
-          timezone?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_aut_fkey"
-            columns: ["organization_id", "account_id", "automation_version_id"]
-            referencedRelation: "openclaw_automation_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_cam_fkey"
-            columns: ["organization_id", "account_id", "campaign_id"]
-            referencedRelation: "openclaw_campaigns"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_sch_fkey"
-            columns: ["organization_id", "account_id", "schedule_id"]
-            referencedRelation: "openclaw_schedules"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_tar_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_schedules: {
-        Row: {
-          account_id: string
-          automation_version_id: string
-          binding_defer_reason: string | null
-          campaign_id: string | null
-          created_at: string
-          cursor_version: number
-          dst_fold_policy: string
-          id: string
-          local_recurrence_rule: string
-          missed_occurrence_policy: string
-          next_nominal_local: string | null
-          next_resolution: string | null
-          next_resolved_local: string | null
-          next_run_at: string | null
-          next_utc_offset_seconds: number | null
-          occurrence_grace_seconds: number
-          organization_id: string
-          schedule_version: number
-          status: string
-          target_id: string | null
-          timezone: string
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          automation_version_id: string
-          binding_defer_reason?: string | null
-          campaign_id?: string | null
-          created_at?: string
-          cursor_version?: number
-          dst_fold_policy?: string
-          id?: string
-          local_recurrence_rule: string
-          missed_occurrence_policy?: string
-          next_nominal_local?: string | null
-          next_resolution?: string | null
-          next_resolved_local?: string | null
-          next_run_at?: string | null
-          next_utc_offset_seconds?: number | null
-          occurrence_grace_seconds?: number
-          organization_id: string
-          schedule_version: number
-          status?: string
-          target_id?: string | null
-          timezone: string
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          automation_version_id?: string
-          binding_defer_reason?: string | null
-          campaign_id?: string | null
-          created_at?: string
-          cursor_version?: number
-          dst_fold_policy?: string
-          id?: string
-          local_recurrence_rule?: string
-          missed_occurrence_policy?: string
-          next_nominal_local?: string | null
-          next_resolution?: string | null
-          next_resolved_local?: string | null
-          next_run_at?: string | null
-          next_utc_offset_seconds?: number | null
-          occurrence_grace_seconds?: number
-          organization_id?: string
-          schedule_version?: number
-          status?: string
-          target_id?: string | null
-          timezone?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_schedules_organization_id_account_id_automation_v_fkey"
-            columns: ["organization_id", "account_id", "automation_version_id"]
-            referencedRelation: "openclaw_automation_versions"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_schedules_organization_id_account_id_campaign_id_fkey"
-            columns: ["organization_id", "account_id", "campaign_id"]
-            referencedRelation: "openclaw_campaigns"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_schedules_organization_id_account_id_target_id_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_send_work_attempts: {
-        Row: {
-          account_id: string
-          attempt_number: number
-          cell_id: string
-          claim_generation: number
-          created_at: string
-          credential_generation: number
-          evidence: Json
-          evidence_hash: string
-          fencing_token: number
-          id: string
-          organization_id: string
-          outcome: string
-          runtime_lease_generation: number
-          session_generation: number
-          work_item_id: string
-        }
-        Insert: {
-          account_id: string
-          attempt_number: number
-          cell_id: string
-          claim_generation: number
-          created_at?: string
-          credential_generation: number
-          evidence: Json
-          evidence_hash: string
-          fencing_token: number
-          id?: string
-          organization_id: string
-          outcome: string
-          runtime_lease_generation: number
-          session_generation: number
-          work_item_id: string
-        }
-        Update: {
-          account_id?: string
-          attempt_number?: number
-          cell_id?: string
-          claim_generation?: number
-          created_at?: string
-          credential_generation?: number
-          evidence?: Json
-          evidence_hash?: string
-          fencing_token?: number
-          id?: string
-          organization_id?: string
-          outcome?: string
-          runtime_lease_generation?: number
-          session_generation?: number
-          work_item_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_send_work_attempt_credential_binding_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "credential_generation",
-            ]
-            referencedRelation: "openclaw_runtime_credentials"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "credential_generation",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_attempt_lease_binding_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "runtime_lease_generation",
-              "fencing_token",
-            ]
-            referencedRelation: "openclaw_runtime_leases"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "lease_generation",
-              "fencing_token",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_attempts_organization_id_account_id_cel_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_attempts_organization_id_account_id_wor_fkey"
-            columns: ["organization_id", "account_id", "work_item_id"]
-            referencedRelation: "openclaw_send_work_items"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_send_work_items: {
-        Row: {
-          account_id: string
-          attempt_count: number
-          binding_defer_reason: string | null
-          cell_id: string
-          claim_generation: number
-          claim_token_hash: string | null
-          created_at: string
-          credential_generation: number
-          crm_occurrence_id: string | null
-          fencing_token: number
-          id: string
-          lease_expires_at: string | null
-          organization_id: string
-          payload: Json
-          payload_hash: string
-          retry_not_before: string | null
-          runtime_lease_generation: number
-          schedule_id: string | null
-          schedule_occurrence_id: string | null
-          schedule_version: number | null
-          session_generation: number
-          smoke_run_id: string | null
-          source_hash: string
-          source_id: string
-          source_key: string
-          source_version: string
-          state: string
-          subscription_id: string | null
-          subscription_version: number | null
-          target_id: string
-          terminal_at: string | null
-          updated_at: string
-          work_kind: string
-        }
-        Insert: {
-          account_id: string
-          attempt_count?: number
-          binding_defer_reason?: string | null
-          cell_id: string
-          claim_generation?: number
-          claim_token_hash?: string | null
-          created_at?: string
-          credential_generation: number
-          crm_occurrence_id?: string | null
-          fencing_token: number
-          id?: string
-          lease_expires_at?: string | null
-          organization_id: string
-          payload: Json
-          payload_hash: string
-          retry_not_before?: string | null
-          runtime_lease_generation: number
-          schedule_id?: string | null
-          schedule_occurrence_id?: string | null
-          schedule_version?: number | null
-          session_generation: number
-          smoke_run_id?: string | null
-          source_hash: string
-          source_id: string
-          source_key: string
-          source_version: string
-          state?: string
-          subscription_id?: string | null
-          subscription_version?: number | null
-          target_id: string
-          terminal_at?: string | null
-          updated_at?: string
-          work_kind: string
-        }
-        Update: {
-          account_id?: string
-          attempt_count?: number
-          binding_defer_reason?: string | null
-          cell_id?: string
-          claim_generation?: number
-          claim_token_hash?: string | null
-          created_at?: string
-          credential_generation?: number
-          crm_occurrence_id?: string | null
-          fencing_token?: number
-          id?: string
-          lease_expires_at?: string | null
-          organization_id?: string
-          payload?: Json
-          payload_hash?: string
-          retry_not_before?: string | null
-          runtime_lease_generation?: number
-          schedule_id?: string | null
-          schedule_occurrence_id?: string | null
-          schedule_version?: number | null
-          session_generation?: number
-          smoke_run_id?: string | null
-          source_hash?: string
-          source_id?: string
-          source_key?: string
-          source_version?: string
-          state?: string
-          subscription_id?: string | null
-          subscription_version?: number | null
-          target_id?: string
-          terminal_at?: string | null
-          updated_at?: string
-          work_kind?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_send_work_credential_binding_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "credential_generation",
-            ]
-            referencedRelation: "openclaw_runtime_credentials"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "credential_generation",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_crm_occurrence_fkey"
-            columns: ["organization_id", "crm_occurrence_id"]
-            referencedRelation: "openclaw_crm_event_occurrences"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_items_organization_id_account_id_cell_i_fkey"
-            columns: ["organization_id", "account_id", "cell_id"]
-            referencedRelation: "openclaw_runtime_cells"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_items_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_lease_binding_fkey"
-            columns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "runtime_lease_generation",
-              "fencing_token",
-            ]
-            referencedRelation: "openclaw_runtime_leases"
-            referencedColumns: [
-              "organization_id",
-              "account_id",
-              "cell_id",
-              "lease_generation",
-              "fencing_token",
-            ]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_schedule_occurrence_fkey"
-            columns: ["organization_id", "account_id", "schedule_occurrence_id"]
-            referencedRelation: "openclaw_schedule_occurrences"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_smoke_run_fkey"
-            columns: ["organization_id", "smoke_run_id"]
-            referencedRelation: "openclaw_smoke_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_send_work_target_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_service_nonces: {
-        Row: {
-          account_id: string | null
-          cell_id: string | null
-          consumed_at: string | null
-          credential_generation: number
-          envelope_hash: string
-          expires_at: string
-          fencing_token: number
-          id: string
-          issued_at: string
-          lease_generation: number
-          maintenance_principal_id: string | null
-          nonce_hash: string
-          operation: string
-          organization_id: string
-          principal_kind: string
-          request_hash: string
-          result_hash: string | null
-        }
-        Insert: {
-          account_id?: string | null
-          cell_id?: string | null
-          consumed_at?: string | null
-          credential_generation: number
-          envelope_hash: string
-          expires_at: string
-          fencing_token: number
-          id?: string
-          issued_at: string
-          lease_generation: number
-          maintenance_principal_id?: string | null
-          nonce_hash: string
-          operation: string
-          organization_id: string
-          principal_kind: string
-          request_hash: string
-          result_hash?: string | null
-        }
-        Update: {
-          account_id?: string | null
-          cell_id?: string | null
-          consumed_at?: string | null
-          credential_generation?: number
-          envelope_hash?: string
-          expires_at?: string
-          fencing_token?: number
-          id?: string
-          issued_at?: string
-          lease_generation?: number
-          maintenance_principal_id?: string | null
-          nonce_hash?: string
-          operation?: string
-          organization_id?: string
-          principal_kind?: string
-          request_hash?: string
-          result_hash?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_service_nonces_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      openclaw_smoke_cleanup_proofs: {
-        Row: {
-          cleanup_generation: number
-          dispatching_residual: number
-          id: string
-          leased_residual: number
-          organization_id: string
-          proof_hash: string
-          queued_residual: number
-          smoke_run_id: string
-          verified_at: string
-        }
-        Insert: {
-          cleanup_generation: number
-          dispatching_residual: number
-          id?: string
-          leased_residual: number
-          organization_id: string
-          proof_hash: string
-          queued_residual: number
-          smoke_run_id: string
-          verified_at?: string
-        }
-        Update: {
-          cleanup_generation?: number
-          dispatching_residual?: number
-          id?: string
-          leased_residual?: number
-          organization_id?: string
-          proof_hash?: string
-          queued_residual?: number
-          smoke_run_id?: string
-          verified_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_smoke_cleanup_proofs_organization_id_smoke_run_id_fkey"
-            columns: ["organization_id", "smoke_run_id"]
-            referencedRelation: "openclaw_smoke_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_smoke_observations: {
-        Row: {
-          content_free_metrics: Json
-          id: string
-          lineage_hash: string
-          observation_kind: string
-          observed_at: string
-          organization_id: string
-          rollout_run_id: string
-          rollout_stage: string
-          rollout_stage_version: number
-          smoke_run_id: string
-          trusted_row_ids: string[]
-          trusted_rows_hash: string
-        }
-        Insert: {
-          content_free_metrics: Json
-          id?: string
-          lineage_hash: string
-          observation_kind: string
-          observed_at?: string
-          organization_id: string
-          rollout_run_id: string
-          rollout_stage: string
-          rollout_stage_version: number
-          smoke_run_id: string
-          trusted_row_ids: string[]
-          trusted_rows_hash: string
-        }
-        Update: {
-          content_free_metrics?: Json
-          id?: string
-          lineage_hash?: string
-          observation_kind?: string
-          observed_at?: string
-          organization_id?: string
-          rollout_run_id?: string
-          rollout_stage?: string
-          rollout_stage_version?: number
-          smoke_run_id?: string
-          trusted_row_ids?: string[]
-          trusted_rows_hash?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_smoke_observations_organization_id_rollout_run_id_fkey"
-            columns: ["organization_id", "rollout_run_id"]
-            referencedRelation: "openclaw_rollout_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_smoke_observations_organization_id_smoke_run_id_fkey"
-            columns: ["organization_id", "smoke_run_id"]
-            referencedRelation: "openclaw_smoke_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_smoke_runs: {
-        Row: {
-          cleanup_generation: number
-          command_scope: Json
-          command_scope_hash: string
-          finished_at: string | null
-          id: string
-          lineage_hash: string | null
-          organization_id: string
-          project_ref: string | null
-          reviewed_commit_sha: string | null
-          rollout_run_id: string
-          rollout_stage: string | null
-          rollout_stage_version: number | null
-          started_at: string | null
-          status: string
-        }
-        Insert: {
-          cleanup_generation?: number
-          command_scope: Json
-          command_scope_hash: string
-          finished_at?: string | null
-          id?: string
-          lineage_hash?: string | null
-          organization_id: string
-          project_ref?: string | null
-          reviewed_commit_sha?: string | null
-          rollout_run_id: string
-          rollout_stage?: string | null
-          rollout_stage_version?: number | null
-          started_at?: string | null
-          status?: string
-        }
-        Update: {
-          cleanup_generation?: number
-          command_scope?: Json
-          command_scope_hash?: string
-          finished_at?: string | null
-          id?: string
-          lineage_hash?: string | null
-          organization_id?: string
-          project_ref?: string | null
-          reviewed_commit_sha?: string | null
-          rollout_run_id?: string
-          rollout_stage?: string | null
-          rollout_stage_version?: number | null
-          started_at?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_smoke_runs_organization_id_fkey"
-            columns: ["organization_id"]
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "openclaw_smoke_runs_organization_id_rollout_run_id_fkey"
-            columns: ["organization_id", "rollout_run_id"]
-            referencedRelation: "openclaw_rollout_runs"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_suppressions: {
-        Row: {
-          account_id: string
-          active_from: string
-          created_at: string
-          evidence_hash: string
-          expires_at: string | null
-          id: string
-          organization_id: string
-          released_at: string | null
-          suppression_reason: string
-          suppression_scope: string
-          suppression_version: number
-          target_id: string | null
-        }
-        Insert: {
-          account_id: string
-          active_from?: string
-          created_at?: string
-          evidence_hash: string
-          expires_at?: string | null
-          id?: string
-          organization_id: string
-          released_at?: string | null
-          suppression_reason: string
-          suppression_scope: string
-          suppression_version?: number
-          target_id?: string | null
-        }
-        Update: {
-          account_id?: string
-          active_from?: string
-          created_at?: string
-          evidence_hash?: string
-          expires_at?: string | null
-          id?: string
-          organization_id?: string
-          released_at?: string | null
-          suppression_reason?: string
-          suppression_scope?: string
-          suppression_version?: number
-          target_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_suppressions_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_suppressions_organization_id_account_id_target_id_fkey"
-            columns: ["organization_id", "account_id", "target_id"]
-            referencedRelation: "openclaw_targets"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_takeovers: {
-        Row: {
-          account_id: string
-          conversation_id: string
-          expires_at: string
-          id: string
-          organization_id: string
-          owner_membership_id: string
-          release_reason: string | null
-          released_at: string | null
-          started_at: string
-          takeover_version: number
-        }
-        Insert: {
-          account_id: string
-          conversation_id: string
-          expires_at: string
-          id?: string
-          organization_id: string
-          owner_membership_id: string
-          release_reason?: string | null
-          released_at?: string | null
-          started_at?: string
-          takeover_version: number
-        }
-        Update: {
-          account_id?: string
-          conversation_id?: string
-          expires_at?: string
-          id?: string
-          organization_id?: string
-          owner_membership_id?: string
-          release_reason?: string | null
-          released_at?: string | null
-          started_at?: string
-          takeover_version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_takeovers_organization_id_account_id_conversation_fkey"
-            columns: ["organization_id", "account_id", "conversation_id"]
-            referencedRelation: "openclaw_conversations"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_takeovers_organization_id_owner_membership_id_fkey"
-            columns: ["organization_id", "owner_membership_id"]
-            referencedRelation: "organization_memberships"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      openclaw_targets: {
-        Row: {
-          account_id: string
-          contact_id: string | null
-          created_at: string
-          directory_refreshed_at: string
-          id: string
-          is_active: boolean
-          kind: string
-          organization_id: string
-          provider_id: string
-          sales_group_id: string | null
-          target_version: number
-          updated_at: string
-        }
-        Insert: {
-          account_id: string
-          contact_id?: string | null
-          created_at?: string
-          directory_refreshed_at: string
-          id?: string
-          is_active?: boolean
-          kind: string
-          organization_id: string
-          provider_id: string
-          sales_group_id?: string | null
-          target_version?: number
-          updated_at?: string
-        }
-        Update: {
-          account_id?: string
-          contact_id?: string | null
-          created_at?: string
-          directory_refreshed_at?: string
-          id?: string
-          is_active?: boolean
-          kind?: string
-          organization_id?: string
-          provider_id?: string
-          sales_group_id?: string | null
-          target_version?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_targets_organization_id_account_id_contact_id_fkey"
-            columns: ["organization_id", "account_id", "contact_id"]
-            referencedRelation: "openclaw_contacts"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_targets_organization_id_account_id_fkey"
-            columns: ["organization_id", "account_id"]
-            referencedRelation: "openclaw_accounts"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_targets_organization_id_account_id_sales_group_id_fkey"
-            columns: ["organization_id", "account_id", "sales_group_id"]
-            referencedRelation: "openclaw_sales_groups"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-        ]
-      }
-      openclaw_unknown_resolutions: {
-        Row: {
-          account_id: string
-          authoritative_evidence_domain: string
-          authoritative_evidence_hash: string
-          client_operation_id: string
-          id: string
-          new_outbox_id: string | null
-          operator_evidence_hash: string
-          organization_id: string
-          outbox_id: string
-          outcome: string
-          reason_code: string
-          request_hash: string
-          resolution_version: number
-          resolved_at: string
-          resolved_by: string
-        }
-        Insert: {
-          account_id: string
-          authoritative_evidence_domain?: string
-          authoritative_evidence_hash: string
-          client_operation_id: string
-          id?: string
-          new_outbox_id?: string | null
-          operator_evidence_hash: string
-          organization_id: string
-          outbox_id: string
-          outcome: string
-          reason_code: string
-          request_hash: string
-          resolution_version?: number
-          resolved_at?: string
-          resolved_by: string
-        }
-        Update: {
-          account_id?: string
-          authoritative_evidence_domain?: string
-          authoritative_evidence_hash?: string
-          client_operation_id?: string
-          id?: string
-          new_outbox_id?: string | null
-          operator_evidence_hash?: string
-          organization_id?: string
-          outbox_id?: string
-          outcome?: string
-          reason_code?: string
-          request_hash?: string
-          resolution_version?: number
-          resolved_at?: string
-          resolved_by?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "openclaw_unknown_resolutions_organization_id_account_id_ne_fkey"
-            columns: ["organization_id", "account_id", "new_outbox_id"]
-            referencedRelation: "openclaw_outbox"
-            referencedColumns: ["organization_id", "account_id", "id"]
-          },
-          {
-            foreignKeyName: "openclaw_unknown_resolutions_organization_id_account_id_ou_fkey"
-            columns: ["organization_id", "account_id", "outbox_id"]
-            referencedRelation: "openclaw_outbox"
-            referencedColumns: ["organization_id", "account_id", "id"]
           },
         ]
       }
@@ -16231,7 +11230,6 @@ export type Database = {
           max_occupants: number | null
           name: string
           name_sort: string | null
-          openclaw_availability_revision: number
           organization_id: string | null
           rent_price: number
           room_type: string | null
@@ -16239,6 +11237,7 @@ export type Database = {
           sale_note: string | null
           status: Database["public"]["Enums"]["room_status"]
           updated_at: string
+          openclaw_availability_revision: number
         }
         Insert: {
           amenities?: Json | null
@@ -16257,7 +11256,6 @@ export type Database = {
           max_occupants?: number | null
           name: string
           name_sort?: string | null
-          openclaw_availability_revision?: number
           organization_id?: string | null
           rent_price: number
           room_type?: string | null
@@ -16265,6 +11263,7 @@ export type Database = {
           sale_note?: string | null
           status?: Database["public"]["Enums"]["room_status"]
           updated_at?: string
+          openclaw_availability_revision?: number
         }
         Update: {
           amenities?: Json | null
@@ -16283,7 +11282,6 @@ export type Database = {
           max_occupants?: number | null
           name?: string
           name_sort?: string | null
-          openclaw_availability_revision?: number
           organization_id?: string | null
           rent_price?: number
           room_type?: string | null
@@ -16291,6 +11289,7 @@ export type Database = {
           sale_note?: string | null
           status?: Database["public"]["Enums"]["room_status"]
           updated_at?: string
+          openclaw_availability_revision?: number
         }
         Relationships: [
           {
@@ -18879,6 +13878,5569 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_account_connections: {
+        Row: {
+          account_id: string
+          changed_at: string
+          changed_by: string | null
+          configured_mode: string
+          connection_generation: number
+          connection_state: string
+          disclosure_acknowledged_version: number | null
+          disclosure_version: number
+          effective_mode: string
+          evidence_hash: string | null
+          id: string
+          organization_id: string
+          reason_code: string
+          session_risk_state: string
+        }
+        Insert: {
+          account_id: string
+          changed_at?: string
+          changed_by?: string | null
+          configured_mode: string
+          connection_generation: number
+          connection_state: string
+          disclosure_acknowledged_version?: number | null
+          disclosure_version: number
+          effective_mode: string
+          evidence_hash?: string | null
+          id?: string
+          organization_id: string
+          reason_code: string
+          session_risk_state: string
+        }
+        Update: {
+          account_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          configured_mode?: string
+          connection_generation?: number
+          connection_state?: string
+          disclosure_acknowledged_version?: number | null
+          disclosure_version?: number
+          effective_mode?: string
+          evidence_hash?: string | null
+          id?: string
+          organization_id?: string
+          reason_code?: string
+          session_risk_state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_account_connections_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_accounts: {
+        Row: {
+          account_profile: string
+          configured_mode: string
+          connection_generation: number
+          connection_state: string
+          created_at: string
+          disclosure_acknowledged_at: string | null
+          disclosure_acknowledged_version: number | null
+          disclosure_version: number
+          display_name: string | null
+          effective_mode: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          paused_at: string | null
+          provider_account_id: string | null
+          session_generation: number
+          session_risk_state: string
+          updated_at: string
+        }
+        Insert: {
+          account_profile?: string
+          configured_mode?: string
+          connection_generation?: number
+          connection_state?: string
+          created_at?: string
+          disclosure_acknowledged_at?: string | null
+          disclosure_acknowledged_version?: number | null
+          disclosure_version?: number
+          display_name?: string | null
+          effective_mode?: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          paused_at?: string | null
+          provider_account_id?: string | null
+          session_generation?: number
+          session_risk_state?: string
+          updated_at?: string
+        }
+        Update: {
+          account_profile?: string
+          configured_mode?: string
+          connection_generation?: number
+          connection_state?: string
+          created_at?: string
+          disclosure_acknowledged_at?: string | null
+          disclosure_acknowledged_version?: number | null
+          disclosure_version?: number
+          display_name?: string | null
+          effective_mode?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          paused_at?: string | null
+          provider_account_id?: string | null
+          session_generation?: number
+          session_risk_state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_ai_drafts: {
+        Row: {
+          account_id: string
+          automation_decision_id: string | null
+          automation_version_id: string | null
+          citations: Json
+          conversation_id: string
+          created_at: string
+          created_by: string | null
+          dlp_decision: string
+          dlp_evidence_hash: string
+          draft_text: string
+          draft_version: number
+          human_edit_version: number
+          id: string
+          inbound_event_id: string | null
+          knowledge_version_ids: string[]
+          organization_id: string
+          policy_version_id: string | null
+          prompt_input_hash: string
+          publication_intent_id: string | null
+          publication_state: string
+          result_payload: Json
+          result_schema_version: number
+        }
+        Insert: {
+          account_id: string
+          automation_decision_id?: string | null
+          automation_version_id?: string | null
+          citations?: Json
+          conversation_id: string
+          created_at?: string
+          created_by?: string | null
+          dlp_decision: string
+          dlp_evidence_hash: string
+          draft_text: string
+          draft_version: number
+          human_edit_version?: number
+          id?: string
+          inbound_event_id?: string | null
+          knowledge_version_ids?: string[]
+          organization_id: string
+          policy_version_id?: string | null
+          prompt_input_hash: string
+          publication_intent_id?: string | null
+          publication_state?: string
+          result_payload: Json
+          result_schema_version: number
+        }
+        Update: {
+          account_id?: string
+          automation_decision_id?: string | null
+          automation_version_id?: string | null
+          citations?: Json
+          conversation_id?: string
+          created_at?: string
+          created_by?: string | null
+          dlp_decision?: string
+          dlp_evidence_hash?: string
+          draft_text?: string
+          draft_version?: number
+          human_edit_version?: number
+          id?: string
+          inbound_event_id?: string | null
+          knowledge_version_ids?: string[]
+          organization_id?: string
+          policy_version_id?: string | null
+          prompt_input_hash?: string
+          publication_intent_id?: string | null
+          publication_state?: string
+          result_payload?: Json
+          result_schema_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_ai_drafts_organization_id_account_id_automation_d_fkey"
+            columns: ["organization_id", "account_id", "automation_decision_id"]
+            referencedRelation: "openclaw_inbound_automation_decisions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_ai_drafts_organization_id_account_id_conversation_fkey"
+            columns: ["organization_id", "account_id", "conversation_id"]
+            referencedRelation: "openclaw_conversations"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_ai_drafts_organization_id_account_id_inbound_even_fkey"
+            columns: ["organization_id", "account_id", "inbound_event_id"]
+            referencedRelation: "openclaw_inbound_events"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_audit_events: {
+        Row: {
+          actor_id: string | null
+          correlation_id: string | null
+          event_hash: string
+          event_type: string
+          evidence_hash: string
+          id: string
+          occurred_at: string
+          organization_id: string
+          organization_sequence: number
+          previous_hash: string
+          redacted_evidence: Json
+          redacted_evidence_bytes: string
+          request_id: string | null
+          workload_principal: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          correlation_id?: string | null
+          event_hash: string
+          event_type: string
+          evidence_hash: string
+          id?: string
+          occurred_at?: string
+          organization_id: string
+          organization_sequence: number
+          previous_hash: string
+          redacted_evidence: Json
+          redacted_evidence_bytes: string
+          request_id?: string | null
+          workload_principal?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          correlation_id?: string | null
+          event_hash?: string
+          event_type?: string
+          evidence_hash?: string
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          organization_sequence?: number
+          previous_hash?: string
+          redacted_evidence?: Json
+          redacted_evidence_bytes?: string
+          request_id?: string | null
+          workload_principal?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_audit_events_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_audit_gateway_tickets: {
+        Row: {
+          audit_root_id: string
+          audit_signing_key_generation: number
+          audit_signing_public_key_hash: string
+          claim_generation: number
+          credential_generation: number
+          expires_at: string
+          fencing_token: number
+          finalized_at: string | null
+          gateway_key_generation: number
+          gateway_receipt: Json | null
+          gateway_receipt_hash: string | null
+          id: string
+          is_authoritative: boolean
+          issued_at: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          object_key: string
+          operation: string
+          organization_id: string
+          receipt_signing_key_generation: number
+          refresh_claim_token_hash: string | null
+          refresh_credential_generation: number | null
+          refresh_fencing_token: number | null
+          refresh_gateway_denial: Json | null
+          refresh_gateway_denial_hash: string | null
+          refresh_lease_generation: number | null
+          refresh_maintenance_principal_id: string | null
+          refresh_recovery_generation: number | null
+          replaces_verify_ticket_jti: string | null
+          root_hash: string
+          signature_hash: string
+          ticket_bytes: string
+          ticket_hash: string
+          ticket_jti: string
+          ticket_payload: Json
+          work_item_id: string
+        }
+        Insert: {
+          audit_root_id: string
+          audit_signing_key_generation: number
+          audit_signing_public_key_hash: string
+          claim_generation: number
+          credential_generation: number
+          expires_at: string
+          fencing_token: number
+          finalized_at?: string | null
+          gateway_key_generation: number
+          gateway_receipt?: Json | null
+          gateway_receipt_hash?: string | null
+          id?: string
+          is_authoritative?: boolean
+          issued_at: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          object_key: string
+          operation: string
+          organization_id: string
+          receipt_signing_key_generation: number
+          refresh_claim_token_hash?: string | null
+          refresh_credential_generation?: number | null
+          refresh_fencing_token?: number | null
+          refresh_gateway_denial?: Json | null
+          refresh_gateway_denial_hash?: string | null
+          refresh_lease_generation?: number | null
+          refresh_maintenance_principal_id?: string | null
+          refresh_recovery_generation?: number | null
+          replaces_verify_ticket_jti?: string | null
+          root_hash: string
+          signature_hash: string
+          ticket_bytes: string
+          ticket_hash: string
+          ticket_jti: string
+          ticket_payload: Json
+          work_item_id: string
+        }
+        Update: {
+          audit_root_id?: string
+          audit_signing_key_generation?: number
+          audit_signing_public_key_hash?: string
+          claim_generation?: number
+          credential_generation?: number
+          expires_at?: string
+          fencing_token?: number
+          finalized_at?: string | null
+          gateway_key_generation?: number
+          gateway_receipt?: Json | null
+          gateway_receipt_hash?: string | null
+          id?: string
+          is_authoritative?: boolean
+          issued_at?: string
+          maintenance_lease_generation?: number
+          maintenance_principal_id?: string
+          object_key?: string
+          operation?: string
+          organization_id?: string
+          receipt_signing_key_generation?: number
+          refresh_claim_token_hash?: string | null
+          refresh_credential_generation?: number | null
+          refresh_fencing_token?: number | null
+          refresh_gateway_denial?: Json | null
+          refresh_gateway_denial_hash?: string | null
+          refresh_lease_generation?: number | null
+          refresh_maintenance_principal_id?: string | null
+          refresh_recovery_generation?: number | null
+          replaces_verify_ticket_jti?: string | null
+          root_hash?: string
+          signature_hash?: string
+          ticket_bytes?: string
+          ticket_hash?: string
+          ticket_jti?: string
+          ticket_payload?: Json
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_audit_gateway_ticket_organization_id_audit_root_i_fkey"
+            columns: ["organization_id", "audit_root_id"]
+            referencedRelation: "openclaw_audit_roots"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_audit_gateway_ticket_organization_id_maintenance__fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "work_item_id",
+            ]
+            referencedRelation: "openclaw_maintenance_work_items"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "id",
+            ]
+          },
+        ]
+      }
+      openclaw_audit_roots: {
+        Row: {
+          anchored_at: string | null
+          created_at: string
+          event_count: number
+          first_sequence: number
+          gateway_receipt: Json | null
+          gateway_receipt_hash: string | null
+          id: string
+          last_sequence: number
+          merkle_root_hash: string
+          organization_id: string
+          previous_root_hash: string | null
+          r2_anchor_key: string
+          root_date: string
+          root_hash: string
+          signature_algorithm: string
+          signature_hash: string | null
+          signing_key_generation: number
+        }
+        Insert: {
+          anchored_at?: string | null
+          created_at?: string
+          event_count: number
+          first_sequence: number
+          gateway_receipt?: Json | null
+          gateway_receipt_hash?: string | null
+          id?: string
+          last_sequence: number
+          merkle_root_hash: string
+          organization_id: string
+          previous_root_hash?: string | null
+          r2_anchor_key: string
+          root_date: string
+          root_hash: string
+          signature_algorithm?: string
+          signature_hash?: string | null
+          signing_key_generation: number
+        }
+        Update: {
+          anchored_at?: string | null
+          created_at?: string
+          event_count?: number
+          first_sequence?: number
+          gateway_receipt?: Json | null
+          gateway_receipt_hash?: string | null
+          id?: string
+          last_sequence?: number
+          merkle_root_hash?: string
+          organization_id?: string
+          previous_root_hash?: string | null
+          r2_anchor_key?: string
+          root_date?: string
+          root_hash?: string
+          signature_algorithm?: string
+          signature_hash?: string | null
+          signing_key_generation?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_audit_roots_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_audit_signing_configs: {
+        Row: {
+          enabled_at: string | null
+          id: string
+          is_active: boolean
+          organization_id: string
+          public_key_hash: string
+          retired_at: string | null
+          signing_key_generation: number
+        }
+        Insert: {
+          enabled_at?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          public_key_hash: string
+          retired_at?: string | null
+          signing_key_generation: number
+        }
+        Update: {
+          enabled_at?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          public_key_hash?: string
+          retired_at?: string | null
+          signing_key_generation?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_audit_signing_configs_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_automation_versions: {
+        Row: {
+          account_id: string
+          allowed_crm_fields: string[]
+          archived_at: string | null
+          automation_id: string
+          configuration: Json
+          content_version_id: string
+          created_at: string
+          created_by: string | null
+          dry_run_hash: string | null
+          escaping_mode: string
+          id: string
+          knowledge_version_ids: string[]
+          lifecycle_state: string
+          maximum_rendered_codepoints: number
+          missing_value_policy: string
+          mode: string
+          organization_id: string
+          policy_version_id: string
+          published_at: string | null
+          template_body: string
+          version: number
+        }
+        Insert: {
+          account_id: string
+          allowed_crm_fields?: string[]
+          archived_at?: string | null
+          automation_id: string
+          configuration: Json
+          content_version_id?: string
+          created_at?: string
+          created_by?: string | null
+          dry_run_hash?: string | null
+          escaping_mode: string
+          id?: string
+          knowledge_version_ids?: string[]
+          lifecycle_state: string
+          maximum_rendered_codepoints: number
+          missing_value_policy: string
+          mode: string
+          organization_id: string
+          policy_version_id: string
+          published_at?: string | null
+          template_body: string
+          version: number
+        }
+        Update: {
+          account_id?: string
+          allowed_crm_fields?: string[]
+          archived_at?: string | null
+          automation_id?: string
+          configuration?: Json
+          content_version_id?: string
+          created_at?: string
+          created_by?: string | null
+          dry_run_hash?: string | null
+          escaping_mode?: string
+          id?: string
+          knowledge_version_ids?: string[]
+          lifecycle_state?: string
+          maximum_rendered_codepoints?: number
+          missing_value_policy?: string
+          mode?: string
+          organization_id?: string
+          policy_version_id?: string
+          published_at?: string | null
+          template_body?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_automation_versions_organization_id_account_id_au_fkey"
+            columns: ["organization_id", "account_id", "automation_id"]
+            referencedRelation: "openclaw_automations"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_automation_versions_organization_id_account_id_po_fkey"
+            columns: ["organization_id", "account_id", "policy_version_id"]
+            referencedRelation: "openclaw_policy_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_automations: {
+        Row: {
+          account_id: string
+          automation_kind: string
+          created_at: string
+          current_version: number
+          id: string
+          lifecycle_state: string
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          automation_kind: string
+          created_at?: string
+          current_version?: number
+          id?: string
+          lifecycle_state?: string
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          automation_kind?: string
+          created_at?: string
+          current_version?: number
+          id?: string
+          lifecycle_state?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_automations_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_campaign_runs: {
+        Row: {
+          account_id: string
+          automation_version_id: string
+          campaign_id: string
+          campaign_version: number
+          created_at: string
+          finished_at: string | null
+          id: string
+          organization_id: string
+          run_key: string
+          started_at: string | null
+          status: string
+          target_snapshot_hash: string
+        }
+        Insert: {
+          account_id: string
+          automation_version_id: string
+          campaign_id: string
+          campaign_version: number
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          organization_id: string
+          run_key: string
+          started_at?: string | null
+          status: string
+          target_snapshot_hash: string
+        }
+        Update: {
+          account_id?: string
+          automation_version_id?: string
+          campaign_id?: string
+          campaign_version?: number
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          organization_id?: string
+          run_key?: string
+          started_at?: string | null
+          status?: string
+          target_snapshot_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_campaign_runs_organization_id_account_id_automati_fkey"
+            columns: ["organization_id", "account_id", "automation_version_id"]
+            referencedRelation: "openclaw_automation_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_campaign_runs_organization_id_account_id_campaign_fkey"
+            columns: ["organization_id", "account_id", "campaign_id"]
+            referencedRelation: "openclaw_campaigns"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_campaigns: {
+        Row: {
+          account_id: string
+          automation_version_id: string
+          cancellation_version: number
+          cancelled_at: string | null
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          automation_version_id: string
+          cancellation_version?: number
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          automation_version_id?: string
+          cancellation_version?: number
+          cancelled_at?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_campaigns_organization_id_account_id_automation_v_fkey"
+            columns: ["organization_id", "account_id", "automation_version_id"]
+            referencedRelation: "openclaw_automation_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_cell_rebinds: {
+        Row: {
+          aborted_at: string | null
+          account_id: string
+          acknowledgement_hash: string | null
+          completed_at: string | null
+          expected_session_generation: number
+          id: string
+          new_cell_id: string
+          new_fencing_token: number
+          new_lease_generation: number
+          old_cell_id: string
+          old_fencing_token: number
+          old_lease_generation: number
+          organization_id: string
+          prepared_at: string
+          rebind_generation: number
+          revocation_id: string | null
+          runtime_command_id: string
+          status: string
+        }
+        Insert: {
+          aborted_at?: string | null
+          account_id: string
+          acknowledgement_hash?: string | null
+          completed_at?: string | null
+          expected_session_generation: number
+          id?: string
+          new_cell_id: string
+          new_fencing_token: number
+          new_lease_generation: number
+          old_cell_id: string
+          old_fencing_token: number
+          old_lease_generation: number
+          organization_id: string
+          prepared_at?: string
+          rebind_generation: number
+          revocation_id?: string | null
+          runtime_command_id: string
+          status?: string
+        }
+        Update: {
+          aborted_at?: string | null
+          account_id?: string
+          acknowledgement_hash?: string | null
+          completed_at?: string | null
+          expected_session_generation?: number
+          id?: string
+          new_cell_id?: string
+          new_fencing_token?: number
+          new_lease_generation?: number
+          old_cell_id?: string
+          old_fencing_token?: number
+          old_lease_generation?: number
+          organization_id?: string
+          prepared_at?: string
+          rebind_generation?: number
+          revocation_id?: string | null
+          runtime_command_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_cell_rebinds_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_cell_rebinds_organization_id_account_id_new_cell__fkey"
+            columns: ["organization_id", "account_id", "new_cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_cell_rebinds_organization_id_account_id_old_cell__fkey"
+            columns: ["organization_id", "account_id", "old_cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_cell_rebinds_organization_id_revocation_id_fkey"
+            columns: ["organization_id", "revocation_id"]
+            referencedRelation: "openclaw_generation_revocations"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_cell_rebinds_organization_id_runtime_command_id_fkey"
+            columns: ["organization_id", "runtime_command_id"]
+            referencedRelation: "openclaw_runtime_commands"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_client_operations: {
+        Row: {
+          actor_id: string
+          client_operation_id: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          operation_key: string
+          organization_id: string
+          replay_policy: string
+          request_hash: string
+          result_hash: string | null
+          safe_result: Json | null
+        }
+        Insert: {
+          actor_id: string
+          client_operation_id: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          operation_key: string
+          organization_id: string
+          replay_policy?: string
+          request_hash: string
+          result_hash?: string | null
+          safe_result?: Json | null
+        }
+        Update: {
+          actor_id?: string
+          client_operation_id?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          operation_key?: string
+          organization_id?: string
+          replay_policy?: string
+          request_hash?: string
+          result_hash?: string | null
+          safe_result?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_client_operations_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_consents: {
+        Row: {
+          account_id: string
+          consent_scope: string
+          consent_source: string
+          consent_status: string
+          consent_version: number
+          created_at: string
+          evidence_hash: string
+          expires_at: string | null
+          granted_at: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          target_id: string
+        }
+        Insert: {
+          account_id: string
+          consent_scope: string
+          consent_source: string
+          consent_status?: string
+          consent_version?: number
+          created_at?: string
+          evidence_hash: string
+          expires_at?: string | null
+          granted_at: string
+          id?: string
+          organization_id: string
+          revoked_at?: string | null
+          target_id: string
+        }
+        Update: {
+          account_id?: string
+          consent_scope?: string
+          consent_source?: string
+          consent_status?: string
+          consent_version?: number
+          created_at?: string
+          evidence_hash?: string
+          expires_at?: string | null
+          granted_at?: string
+          id?: string
+          organization_id?: string
+          revoked_at?: string | null
+          target_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_consents_organization_id_account_id_target_id_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_contacts: {
+        Row: {
+          account_id: string
+          avatar_object_key: string | null
+          created_at: string
+          directory_refreshed_at: string
+          directory_version: number
+          display_name: string | null
+          id: string
+          organization_id: string
+          provider_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          avatar_object_key?: string | null
+          created_at?: string
+          directory_refreshed_at: string
+          directory_version?: number
+          display_name?: string | null
+          id?: string
+          organization_id: string
+          provider_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          avatar_object_key?: string | null
+          created_at?: string
+          directory_refreshed_at?: string
+          directory_version?: number
+          display_name?: string | null
+          id?: string
+          organization_id?: string
+          provider_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_contacts_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_control_states: {
+        Row: {
+          control_key: string
+          control_version: number
+          disclosure_version: number
+          feature_enabled: boolean
+          first_contact_enabled: boolean
+          global_stop: boolean
+          id: string
+          limited_auto_reply_enabled: boolean
+          organization_id: string
+          proactive_enabled: boolean
+          reason: string | null
+          sales_groups_enabled: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          control_key?: string
+          control_version?: number
+          disclosure_version?: number
+          feature_enabled?: boolean
+          first_contact_enabled?: boolean
+          global_stop?: boolean
+          id?: string
+          limited_auto_reply_enabled?: boolean
+          organization_id: string
+          proactive_enabled?: boolean
+          reason?: string | null
+          sales_groups_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          control_key?: string
+          control_version?: number
+          disclosure_version?: number
+          feature_enabled?: boolean
+          first_contact_enabled?: boolean
+          global_stop?: boolean
+          id?: string
+          limited_auto_reply_enabled?: boolean
+          organization_id?: string
+          proactive_enabled?: boolean
+          reason?: string | null
+          sales_groups_enabled?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_control_states_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_conversation_members: {
+        Row: {
+          account_id: string
+          conversation_id: string
+          created_at: string
+          display_name: string | null
+          id: string
+          joined_at: string | null
+          left_at: string | null
+          member_role: string
+          organization_id: string
+          provider_member_id: string
+        }
+        Insert: {
+          account_id: string
+          conversation_id: string
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          joined_at?: string | null
+          left_at?: string | null
+          member_role?: string
+          organization_id: string
+          provider_member_id: string
+        }
+        Update: {
+          account_id?: string
+          conversation_id?: string
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          joined_at?: string | null
+          left_at?: string | null
+          member_role?: string
+          organization_id?: string
+          provider_member_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_conversation_members_organization_id_account_id_c_fkey"
+            columns: ["organization_id", "account_id", "conversation_id"]
+            referencedRelation: "openclaw_conversations"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_conversations: {
+        Row: {
+          account_id: string
+          assigned_membership_id: string | null
+          created_at: string
+          id: string
+          last_message_id: string | null
+          last_received_at: string | null
+          organization_id: string
+          provider_conversation_id: string
+          status: string
+          target_id: string
+          unread_count: number
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          account_id: string
+          assigned_membership_id?: string | null
+          created_at?: string
+          id?: string
+          last_message_id?: string | null
+          last_received_at?: string | null
+          organization_id: string
+          provider_conversation_id: string
+          status?: string
+          target_id: string
+          unread_count?: number
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          account_id?: string
+          assigned_membership_id?: string | null
+          created_at?: string
+          id?: string
+          last_message_id?: string | null
+          last_received_at?: string | null
+          organization_id?: string
+          provider_conversation_id?: string
+          status?: string
+          target_id?: string
+          unread_count?: number
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_conversations_last_message_fkey"
+            columns: ["organization_id", "account_id", "last_message_id"]
+            referencedRelation: "openclaw_messages"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_conversations_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_conversations_organization_id_account_id_target_i_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_conversations_organization_id_assigned_membership_fkey"
+            columns: ["organization_id", "assigned_membership_id"]
+            referencedRelation: "organization_memberships"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_crm_event_occurrences: {
+        Row: {
+          created_at: string
+          event_subtype: string
+          event_type: string
+          id: string
+          occurred_at: string
+          organization_id: string
+          snapshot_bytes: string
+          snapshot_hash: string
+          source_id: string
+          source_snapshot: Json
+          source_table: string
+          source_version: number
+        }
+        Insert: {
+          created_at?: string
+          event_subtype: string
+          event_type: string
+          id?: string
+          occurred_at: string
+          organization_id: string
+          snapshot_bytes: string
+          snapshot_hash: string
+          source_id: string
+          source_snapshot: Json
+          source_table: string
+          source_version: number
+        }
+        Update: {
+          created_at?: string
+          event_subtype?: string
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          snapshot_bytes?: string
+          snapshot_hash?: string
+          source_id?: string
+          source_snapshot?: Json
+          source_table?: string
+          source_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_crm_event_occurrences_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_crm_event_subscription_snapshots: {
+        Row: {
+          account_id: string
+          automation_version_id: string
+          created_at: string
+          created_by: string | null
+          destination_target_id: string
+          event_type: string
+          field_mapping: Json
+          field_mapping_hash: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          snapshot: Json
+          snapshot_bytes: string
+          snapshot_hash: string
+          subscription_id: string
+          subscription_version: number
+        }
+        Insert: {
+          account_id: string
+          automation_version_id: string
+          created_at?: string
+          created_by?: string | null
+          destination_target_id: string
+          event_type: string
+          field_mapping: Json
+          field_mapping_hash: string
+          id?: string
+          is_active: boolean
+          organization_id: string
+          snapshot: Json
+          snapshot_bytes: string
+          snapshot_hash: string
+          subscription_id: string
+          subscription_version: number
+        }
+        Update: {
+          account_id?: string
+          automation_version_id?: string
+          created_at?: string
+          created_by?: string | null
+          destination_target_id?: string
+          event_type?: string
+          field_mapping?: Json
+          field_mapping_hash?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          snapshot?: Json
+          snapshot_bytes?: string
+          snapshot_hash?: string
+          subscription_id?: string
+          subscription_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_crm_event_subscript_organization_id_account_id_a_fkey1"
+            columns: ["organization_id", "account_id", "automation_version_id"]
+            referencedRelation: "openclaw_automation_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_crm_event_subscript_organization_id_account_id_d_fkey1"
+            columns: ["organization_id", "account_id", "destination_target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_crm_event_subscripti_organization_id_account_id_s_fkey"
+            columns: ["organization_id", "account_id", "subscription_id"]
+            referencedRelation: "openclaw_crm_event_subscriptions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_crm_event_subscriptions: {
+        Row: {
+          account_id: string
+          automation_version_id: string
+          created_at: string
+          destination_target_id: string
+          event_type: string
+          field_mapping: Json
+          field_mapping_hash: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          subscription_version: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          automation_version_id: string
+          created_at?: string
+          destination_target_id: string
+          event_type: string
+          field_mapping: Json
+          field_mapping_hash: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          subscription_version: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          automation_version_id?: string
+          created_at?: string
+          destination_target_id?: string
+          event_type?: string
+          field_mapping?: Json
+          field_mapping_hash?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          subscription_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_crm_event_subscripti_organization_id_account_id_a_fkey"
+            columns: ["organization_id", "account_id", "automation_version_id"]
+            referencedRelation: "openclaw_automation_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_crm_event_subscripti_organization_id_account_id_d_fkey"
+            columns: ["organization_id", "account_id", "destination_target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_dead_letters: {
+        Row: {
+          account_id: string
+          created_at: string
+          evidence: Json
+          id: string
+          organization_id: string
+          outbox_id: string | null
+          payload_hash: string
+          reason_code: string
+          send_work_item_id: string | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          evidence: Json
+          id?: string
+          organization_id: string
+          outbox_id?: string | null
+          payload_hash: string
+          reason_code: string
+          send_work_item_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          evidence?: Json
+          id?: string
+          organization_id?: string
+          outbox_id?: string | null
+          payload_hash?: string
+          reason_code?: string
+          send_work_item_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_dead_letters_organization_id_account_id_outbox_id_fkey"
+            columns: ["organization_id", "account_id", "outbox_id"]
+            referencedRelation: "openclaw_outbox"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_dead_letters_send_work_fkey"
+            columns: ["organization_id", "account_id", "send_work_item_id"]
+            referencedRelation: "openclaw_send_work_items"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_delivery_attempts: {
+        Row: {
+          account_id: string
+          attempt_number: number
+          authorization_id: string | null
+          claim_generation: number
+          created_at: string
+          delivery_evidence: Json
+          delivery_evidence_hash: string
+          evidence_kind: string
+          finished_at: string
+          id: string
+          known_provider_message_ids: string[]
+          organization_id: string
+          outbox_id: string
+          outcome: string
+          possible_handoff_prefix_length: number
+          reason_code: string
+          started_at: string
+          total_part_count: number
+        }
+        Insert: {
+          account_id: string
+          attempt_number: number
+          authorization_id?: string | null
+          claim_generation: number
+          created_at?: string
+          delivery_evidence: Json
+          delivery_evidence_hash: string
+          evidence_kind: string
+          finished_at: string
+          id?: string
+          known_provider_message_ids?: string[]
+          organization_id: string
+          outbox_id: string
+          outcome: string
+          possible_handoff_prefix_length: number
+          reason_code: string
+          started_at: string
+          total_part_count: number
+        }
+        Update: {
+          account_id?: string
+          attempt_number?: number
+          authorization_id?: string | null
+          claim_generation?: number
+          created_at?: string
+          delivery_evidence?: Json
+          delivery_evidence_hash?: string
+          evidence_kind?: string
+          finished_at?: string
+          id?: string
+          known_provider_message_ids?: string[]
+          organization_id?: string
+          outbox_id?: string
+          outcome?: string
+          possible_handoff_prefix_length?: number
+          reason_code?: string
+          started_at?: string
+          total_part_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_delivery_attempts_organization_id_account_id_auth_fkey"
+            columns: ["organization_id", "account_id", "authorization_id"]
+            referencedRelation: "openclaw_outbound_authorizations"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_delivery_attempts_organization_id_account_id_outb_fkey"
+            columns: ["organization_id", "account_id", "outbox_id"]
+            referencedRelation: "openclaw_outbox"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_generation_revocations: {
+        Row: {
+          account_id: string | null
+          acknowledged_at: string | null
+          acknowledgement_hash: string | null
+          cell_id: string | null
+          command_id: string | null
+          created_at: string
+          id: string
+          maintenance_principal_id: string | null
+          minimum_valid_generation: number
+          organization_id: string
+          principal_kind: string
+          reason_code: string
+          revocation_kind: string
+          revoked_generation: number
+        }
+        Insert: {
+          account_id?: string | null
+          acknowledged_at?: string | null
+          acknowledgement_hash?: string | null
+          cell_id?: string | null
+          command_id?: string | null
+          created_at?: string
+          id?: string
+          maintenance_principal_id?: string | null
+          minimum_valid_generation: number
+          organization_id: string
+          principal_kind: string
+          reason_code: string
+          revocation_kind: string
+          revoked_generation: number
+        }
+        Update: {
+          account_id?: string | null
+          acknowledged_at?: string | null
+          acknowledgement_hash?: string | null
+          cell_id?: string | null
+          command_id?: string | null
+          created_at?: string
+          id?: string
+          maintenance_principal_id?: string | null
+          minimum_valid_generation?: number
+          organization_id?: string
+          principal_kind?: string
+          reason_code?: string
+          revocation_kind?: string
+          revoked_generation?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_generation_revocatio_organization_id_account_id_c_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_generation_revocatio_organization_id_maintenance__fkey"
+            columns: ["organization_id", "maintenance_principal_id"]
+            referencedRelation: "openclaw_maintenance_principals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_generation_revocations_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_generation_revocations_organization_id_command_id_fkey"
+            columns: ["organization_id", "command_id"]
+            referencedRelation: "openclaw_runtime_commands"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_generation_revocations_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_health_events: {
+        Row: {
+          account_id: string | null
+          cell_id: string | null
+          content_free_metrics: Json
+          created_at: string
+          fingerprint: string
+          health_kind: string
+          id: string
+          observed_at: string
+          organization_id: string
+          severity: string
+          status: string
+        }
+        Insert: {
+          account_id?: string | null
+          cell_id?: string | null
+          content_free_metrics?: Json
+          created_at?: string
+          fingerprint: string
+          health_kind: string
+          id?: string
+          observed_at: string
+          organization_id: string
+          severity: string
+          status: string
+        }
+        Update: {
+          account_id?: string | null
+          cell_id?: string | null
+          content_free_metrics?: Json
+          created_at?: string
+          fingerprint?: string
+          health_kind?: string
+          id?: string
+          observed_at?: string
+          organization_id?: string
+          severity?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_health_events_organization_id_account_id_cell_id_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_health_events_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_health_events_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_inbound_automation_decisions: {
+        Row: {
+          account_id: string
+          automation_version_id: string | null
+          created_at: string
+          decision_kind: string
+          decision_version: number
+          eligibility_reason: string | null
+          frozen_inputs: Json
+          frozen_inputs_hash: string
+          id: string
+          inbound_event_id: string
+          knowledge_version_ids: string[]
+          no_send_reason: string | null
+          organization_id: string
+          policy_version_id: string | null
+          recovery_code: string | null
+        }
+        Insert: {
+          account_id: string
+          automation_version_id?: string | null
+          created_at?: string
+          decision_kind: string
+          decision_version?: number
+          eligibility_reason?: string | null
+          frozen_inputs?: Json
+          frozen_inputs_hash: string
+          id?: string
+          inbound_event_id: string
+          knowledge_version_ids?: string[]
+          no_send_reason?: string | null
+          organization_id: string
+          policy_version_id?: string | null
+          recovery_code?: string | null
+        }
+        Update: {
+          account_id?: string
+          automation_version_id?: string | null
+          created_at?: string
+          decision_kind?: string
+          decision_version?: number
+          eligibility_reason?: string | null
+          frozen_inputs?: Json
+          frozen_inputs_hash?: string
+          id?: string
+          inbound_event_id?: string
+          knowledge_version_ids?: string[]
+          no_send_reason?: string | null
+          organization_id?: string
+          policy_version_id?: string | null
+          recovery_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_inbound_automation_d_organization_id_account_id_i_fkey"
+            columns: ["organization_id", "account_id", "inbound_event_id"]
+            referencedRelation: "openclaw_inbound_events"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_inbound_collisions: {
+        Row: {
+          account_id: string
+          batch_index: number
+          cell_id: string
+          collision_kind: string
+          created_at: string
+          event_kind: string
+          evidence_hash: string
+          existing_inbound_event_id: string | null
+          id: string
+          normalized_hash: string
+          organization_id: string
+          payload_hash: string
+          provider_event_id: string | null
+          provider_message_id: string | null
+          quarantined_envelope: Json
+          raw_envelope_hash: string
+          request_id: string
+        }
+        Insert: {
+          account_id: string
+          batch_index: number
+          cell_id: string
+          collision_kind: string
+          created_at?: string
+          event_kind: string
+          evidence_hash: string
+          existing_inbound_event_id?: string | null
+          id?: string
+          normalized_hash: string
+          organization_id: string
+          payload_hash: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          quarantined_envelope: Json
+          raw_envelope_hash: string
+          request_id: string
+        }
+        Update: {
+          account_id?: string
+          batch_index?: number
+          cell_id?: string
+          collision_kind?: string
+          created_at?: string
+          event_kind?: string
+          evidence_hash?: string
+          existing_inbound_event_id?: string | null
+          id?: string
+          normalized_hash?: string
+          organization_id?: string
+          payload_hash?: string
+          provider_event_id?: string | null
+          provider_message_id?: string | null
+          quarantined_envelope?: Json
+          raw_envelope_hash?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_inbound_collisions_organization_id_account_id_cel_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_inbound_collisions_organization_id_account_id_exi_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "existing_inbound_event_id",
+            ]
+            referencedRelation: "openclaw_inbound_events"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_inbound_events: {
+        Row: {
+          account_id: string
+          callback_received_at: string
+          cell_id: string
+          created_at: string
+          event_kind: string
+          fallback_fingerprint: string | null
+          id: string
+          ingest_state: string
+          normalized_envelope: Json
+          normalized_sha256: string
+          organization_id: string
+          payload_hash: string
+          provider_conversation_id: string
+          provider_event_id: string | null
+          provider_event_type: string
+          provider_message_id: string | null
+          provider_sender_id: string
+          quarantine_reason: string | null
+          raw_envelope: Json
+          raw_envelope_sha256: string
+          session_generation: number
+          source_timestamp: string
+          target_kind: string
+          target_provider_id: string
+        }
+        Insert: {
+          account_id: string
+          callback_received_at: string
+          cell_id: string
+          created_at?: string
+          event_kind: string
+          fallback_fingerprint?: string | null
+          id?: string
+          ingest_state?: string
+          normalized_envelope: Json
+          normalized_sha256: string
+          organization_id: string
+          payload_hash: string
+          provider_conversation_id: string
+          provider_event_id?: string | null
+          provider_event_type: string
+          provider_message_id?: string | null
+          provider_sender_id: string
+          quarantine_reason?: string | null
+          raw_envelope: Json
+          raw_envelope_sha256: string
+          session_generation: number
+          source_timestamp: string
+          target_kind: string
+          target_provider_id: string
+        }
+        Update: {
+          account_id?: string
+          callback_received_at?: string
+          cell_id?: string
+          created_at?: string
+          event_kind?: string
+          fallback_fingerprint?: string | null
+          id?: string
+          ingest_state?: string
+          normalized_envelope?: Json
+          normalized_sha256?: string
+          organization_id?: string
+          payload_hash?: string
+          provider_conversation_id?: string
+          provider_event_id?: string | null
+          provider_event_type?: string
+          provider_message_id?: string | null
+          provider_sender_id?: string
+          quarantine_reason?: string | null
+          raw_envelope?: Json
+          raw_envelope_sha256?: string
+          session_generation?: number
+          source_timestamp?: string
+          target_kind?: string
+          target_provider_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_inbound_events_organization_id_account_id_cell_id_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_inbound_events_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_inbound_provider_identities: {
+        Row: {
+          account_id: string
+          created_at: string
+          event_kind: string
+          id: string
+          inbound_event_id: string
+          organization_id: string
+          paired_stable_id_kind: string | null
+          paired_stable_id_value: string | null
+          payload_hash: string
+          stable_id_kind: string
+          stable_id_value: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          event_kind: string
+          id?: string
+          inbound_event_id: string
+          organization_id: string
+          paired_stable_id_kind?: string | null
+          paired_stable_id_value?: string | null
+          payload_hash: string
+          stable_id_kind: string
+          stable_id_value: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          event_kind?: string
+          id?: string
+          inbound_event_id?: string
+          organization_id?: string
+          paired_stable_id_kind?: string | null
+          paired_stable_id_value?: string | null
+          payload_hash?: string
+          stable_id_kind?: string
+          stable_id_value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_inbound_provider_ide_organization_id_account_id_i_fkey"
+            columns: ["organization_id", "account_id", "inbound_event_id"]
+            referencedRelation: "openclaw_inbound_events"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_knowledge_chunks: {
+        Row: {
+          account_id: string
+          chunk_hash: string
+          chunk_index: number
+          chunk_text: string
+          created_at: string
+          embedding: Json | null
+          id: string
+          knowledge_version_id: string
+          metadata: Json
+          organization_id: string
+          sensitivity: string
+          source_id: string
+        }
+        Insert: {
+          account_id: string
+          chunk_hash: string
+          chunk_index: number
+          chunk_text: string
+          created_at?: string
+          embedding?: Json | null
+          id?: string
+          knowledge_version_id: string
+          metadata?: Json
+          organization_id: string
+          sensitivity: string
+          source_id: string
+        }
+        Update: {
+          account_id?: string
+          chunk_hash?: string
+          chunk_index?: number
+          chunk_text?: string
+          created_at?: string
+          embedding?: Json | null
+          id?: string
+          knowledge_version_id?: string
+          metadata?: Json
+          organization_id?: string
+          sensitivity?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_knowledge_chunks_organization_id_account_id_sourc_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "source_id",
+              "knowledge_version_id",
+              "sensitivity",
+            ]
+            referencedRelation: "openclaw_knowledge_versions"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "source_id",
+              "id",
+              "sensitivity",
+            ]
+          },
+        ]
+      }
+      openclaw_knowledge_sources: {
+        Row: {
+          account_id: string
+          created_at: string
+          current_version: number
+          id: string
+          lifecycle_state: string
+          organization_id: string
+          sensitivity: string
+          source_kind: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          current_version?: number
+          id?: string
+          lifecycle_state?: string
+          organization_id: string
+          sensitivity: string
+          source_kind: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          current_version?: number
+          id?: string
+          lifecycle_state?: string
+          organization_id?: string
+          sensitivity?: string
+          source_kind?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_knowledge_sources_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_knowledge_versions: {
+        Row: {
+          account_id: string
+          archived_at: string | null
+          content: string
+          content_hash: string
+          created_at: string
+          created_by: string | null
+          id: string
+          lifecycle_state: string
+          metadata: Json
+          organization_id: string
+          published_at: string | null
+          sensitivity: string
+          source_id: string
+          validation_result: Json | null
+          version: number
+        }
+        Insert: {
+          account_id: string
+          archived_at?: string | null
+          content: string
+          content_hash: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lifecycle_state: string
+          metadata?: Json
+          organization_id: string
+          published_at?: string | null
+          sensitivity: string
+          source_id: string
+          validation_result?: Json | null
+          version: number
+        }
+        Update: {
+          account_id?: string
+          archived_at?: string | null
+          content?: string
+          content_hash?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lifecycle_state?: string
+          metadata?: Json
+          organization_id?: string
+          published_at?: string | null
+          sensitivity?: string
+          source_id?: string
+          validation_result?: Json | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_knowledge_versions_organization_id_account_id_sou_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "source_id",
+              "sensitivity",
+            ]
+            referencedRelation: "openclaw_knowledge_sources"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "id",
+              "sensitivity",
+            ]
+          },
+        ]
+      }
+      openclaw_maintenance_credentials: {
+        Row: {
+          allowed_scopes: string[]
+          credential_generation: number
+          credential_hash: string
+          enabled_at: string
+          id: string
+          maintenance_principal_id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_reason: string | null
+        }
+        Insert: {
+          allowed_scopes: string[]
+          credential_generation: number
+          credential_hash: string
+          enabled_at?: string
+          id?: string
+          maintenance_principal_id: string
+          organization_id: string
+          revoked_at?: string | null
+          revoked_reason?: string | null
+        }
+        Update: {
+          allowed_scopes?: string[]
+          credential_generation?: number
+          credential_hash?: string
+          enabled_at?: string
+          id?: string
+          maintenance_principal_id?: string
+          organization_id?: string
+          revoked_at?: string | null
+          revoked_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_maintenance_credenti_organization_id_maintenance__fkey"
+            columns: ["organization_id", "maintenance_principal_id"]
+            referencedRelation: "openclaw_maintenance_principals"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_maintenance_leases: {
+        Row: {
+          acquired_at: string
+          expires_at: string
+          fencing_token: number
+          id: string
+          lease_generation: number
+          maintenance_principal_id: string
+          organization_id: string
+          released_at: string | null
+          status: string
+        }
+        Insert: {
+          acquired_at?: string
+          expires_at: string
+          fencing_token: number
+          id?: string
+          lease_generation: number
+          maintenance_principal_id: string
+          organization_id: string
+          released_at?: string | null
+          status?: string
+        }
+        Update: {
+          acquired_at?: string
+          expires_at?: string
+          fencing_token?: number
+          id?: string
+          lease_generation?: number
+          maintenance_principal_id?: string
+          organization_id?: string
+          released_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_maintenance_leases_organization_id_maintenance_pr_fkey"
+            columns: ["organization_id", "maintenance_principal_id"]
+            referencedRelation: "openclaw_maintenance_principals"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_maintenance_principals: {
+        Row: {
+          enabled_at: string
+          id: string
+          is_current: boolean
+          organization_id: string
+          principal_generation: number
+          revoked_at: string | null
+        }
+        Insert: {
+          enabled_at?: string
+          id?: string
+          is_current?: boolean
+          organization_id: string
+          principal_generation: number
+          revoked_at?: string | null
+        }
+        Update: {
+          enabled_at?: string
+          id?: string
+          is_current?: boolean
+          organization_id?: string
+          principal_generation?: number
+          revoked_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_maintenance_principals_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_maintenance_work_attempts: {
+        Row: {
+          attempt_number: number
+          claim_generation: number
+          created_at: string
+          credential_generation: number
+          evidence: Json
+          evidence_hash: string
+          fencing_token: number
+          gateway_receipt: Json | null
+          id: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          organization_id: string
+          outcome: string
+          receipt_hash: string | null
+          work_item_id: string
+        }
+        Insert: {
+          attempt_number: number
+          claim_generation: number
+          created_at?: string
+          credential_generation: number
+          evidence: Json
+          evidence_hash: string
+          fencing_token: number
+          gateway_receipt?: Json | null
+          id?: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          organization_id: string
+          outcome: string
+          receipt_hash?: string | null
+          work_item_id: string
+        }
+        Update: {
+          attempt_number?: number
+          claim_generation?: number
+          created_at?: string
+          credential_generation?: number
+          evidence?: Json
+          evidence_hash?: string
+          fencing_token?: number
+          gateway_receipt?: Json | null
+          id?: string
+          maintenance_lease_generation?: number
+          maintenance_principal_id?: string
+          organization_id?: string
+          outcome?: string
+          receipt_hash?: string | null
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_maintenance_work_att_organization_id_maintenance__fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "work_item_id",
+            ]
+            referencedRelation: "openclaw_maintenance_work_items"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_maintenance_work_attempt_credential_binding_fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "credential_generation",
+            ]
+            referencedRelation: "openclaw_maintenance_credentials"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "credential_generation",
+            ]
+          },
+        ]
+      }
+      openclaw_maintenance_work_items: {
+        Row: {
+          attempt_count: number
+          binding_defer_reason: string | null
+          claim_generation: number
+          claim_token_hash: string | null
+          created_at: string
+          credential_generation: number
+          fencing_token: number
+          id: string
+          lease_expires_at: string | null
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          organization_id: string
+          payload: Json
+          payload_hash: string
+          recovery_credential_generation: number | null
+          recovery_fencing_token: number | null
+          recovery_generation: number
+          recovery_lease_expires_at: string | null
+          recovery_lease_generation: number | null
+          recovery_maintenance_principal_id: string | null
+          retry_not_before: string | null
+          smoke_run_id: string | null
+          source_hash: string
+          source_id: string
+          source_key: string
+          source_version: string
+          state: string
+          terminal_at: string | null
+          updated_at: string
+          work_kind: string
+          work_phase: string
+        }
+        Insert: {
+          attempt_count?: number
+          binding_defer_reason?: string | null
+          claim_generation?: number
+          claim_token_hash?: string | null
+          created_at?: string
+          credential_generation: number
+          fencing_token: number
+          id?: string
+          lease_expires_at?: string | null
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          organization_id: string
+          payload: Json
+          payload_hash: string
+          recovery_credential_generation?: number | null
+          recovery_fencing_token?: number | null
+          recovery_generation?: number
+          recovery_lease_expires_at?: string | null
+          recovery_lease_generation?: number | null
+          recovery_maintenance_principal_id?: string | null
+          retry_not_before?: string | null
+          smoke_run_id?: string | null
+          source_hash: string
+          source_id: string
+          source_key: string
+          source_version: string
+          state?: string
+          terminal_at?: string | null
+          updated_at?: string
+          work_kind: string
+          work_phase: string
+        }
+        Update: {
+          attempt_count?: number
+          binding_defer_reason?: string | null
+          claim_generation?: number
+          claim_token_hash?: string | null
+          created_at?: string
+          credential_generation?: number
+          fencing_token?: number
+          id?: string
+          lease_expires_at?: string | null
+          maintenance_lease_generation?: number
+          maintenance_principal_id?: string
+          organization_id?: string
+          payload?: Json
+          payload_hash?: string
+          recovery_credential_generation?: number | null
+          recovery_fencing_token?: number | null
+          recovery_generation?: number
+          recovery_lease_expires_at?: string | null
+          recovery_lease_generation?: number | null
+          recovery_maintenance_principal_id?: string | null
+          retry_not_before?: string | null
+          smoke_run_id?: string | null
+          source_hash?: string
+          source_id?: string
+          source_key?: string
+          source_version?: string
+          state?: string
+          terminal_at?: string | null
+          updated_at?: string
+          work_kind?: string
+          work_phase?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_maintenance_work_credential_binding_fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "credential_generation",
+            ]
+            referencedRelation: "openclaw_maintenance_credentials"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "credential_generation",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_maintenance_work_ite_organization_id_maintenance__fkey"
+            columns: ["organization_id", "maintenance_principal_id"]
+            referencedRelation: "openclaw_maintenance_principals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_maintenance_work_lease_binding_fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "maintenance_lease_generation",
+              "fencing_token",
+            ]
+            referencedRelation: "openclaw_maintenance_leases"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "lease_generation",
+              "fencing_token",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_maintenance_work_recovery_credential_fkey"
+            columns: [
+              "organization_id",
+              "recovery_maintenance_principal_id",
+              "recovery_credential_generation",
+            ]
+            referencedRelation: "openclaw_maintenance_credentials"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "credential_generation",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_maintenance_work_recovery_lease_fkey"
+            columns: [
+              "organization_id",
+              "recovery_maintenance_principal_id",
+              "recovery_lease_generation",
+              "recovery_fencing_token",
+            ]
+            referencedRelation: "openclaw_maintenance_leases"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "lease_generation",
+              "fencing_token",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_maintenance_work_smoke_run_fkey"
+            columns: ["organization_id", "smoke_run_id"]
+            referencedRelation: "openclaw_smoke_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_media_upload_tickets: {
+        Row: {
+          account_id: string
+          cell_id: string
+          content_length: number
+          content_type: string
+          credential_generation: number
+          expires_at: string
+          fencing_token: number
+          finalized_at: string | null
+          gateway_key_generation: number
+          issued_at: string
+          lease_generation: number
+          media_id: string
+          object_key: string
+          organization_id: string
+          receipt_signing_key_generation: number
+          session_generation: number
+          sha256: string
+          ticket_jti: string
+        }
+        Insert: {
+          account_id: string
+          cell_id: string
+          content_length: number
+          content_type: string
+          credential_generation: number
+          expires_at: string
+          fencing_token: number
+          finalized_at?: string | null
+          gateway_key_generation: number
+          issued_at: string
+          lease_generation: number
+          media_id: string
+          object_key: string
+          organization_id: string
+          receipt_signing_key_generation: number
+          session_generation: number
+          sha256: string
+          ticket_jti: string
+        }
+        Update: {
+          account_id?: string
+          cell_id?: string
+          content_length?: number
+          content_type?: string
+          credential_generation?: number
+          expires_at?: string
+          fencing_token?: number
+          finalized_at?: string | null
+          gateway_key_generation?: number
+          issued_at?: string
+          lease_generation?: number
+          media_id?: string
+          object_key?: string
+          organization_id?: string
+          receipt_signing_key_generation?: number
+          session_generation?: number
+          sha256?: string
+          ticket_jti?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_media_upload_tickets_organization_id_account_id_m_fkey"
+            columns: ["organization_id", "account_id", "media_id"]
+            referencedRelation: "openclaw_message_media"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_message_media: {
+        Row: {
+          account_id: string
+          byte_length: number | null
+          byte_state: string
+          conversation_id: string
+          created_at: string
+          id: string
+          media_index: number
+          media_kind: string
+          media_upload_finalized_at: string | null
+          media_upload_object_version_or_etag: string | null
+          media_upload_receipt: Json | null
+          media_upload_receipt_hash: string | null
+          media_upload_receipt_id: string | null
+          media_upload_ticket_jti: string | null
+          message_id: string
+          mime: string | null
+          object_key: string | null
+          organization_id: string
+          provider_media_id: string | null
+          retention_delete_not_before: string | null
+          sha256: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          byte_length?: number | null
+          byte_state?: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          media_index: number
+          media_kind: string
+          media_upload_finalized_at?: string | null
+          media_upload_object_version_or_etag?: string | null
+          media_upload_receipt?: Json | null
+          media_upload_receipt_hash?: string | null
+          media_upload_receipt_id?: string | null
+          media_upload_ticket_jti?: string | null
+          message_id: string
+          mime?: string | null
+          object_key?: string | null
+          organization_id: string
+          provider_media_id?: string | null
+          retention_delete_not_before?: string | null
+          sha256?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          byte_length?: number | null
+          byte_state?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          media_index?: number
+          media_kind?: string
+          media_upload_finalized_at?: string | null
+          media_upload_object_version_or_etag?: string | null
+          media_upload_receipt?: Json | null
+          media_upload_receipt_hash?: string | null
+          media_upload_receipt_id?: string | null
+          media_upload_ticket_jti?: string | null
+          message_id?: string
+          mime?: string | null
+          object_key?: string | null
+          organization_id?: string
+          provider_media_id?: string | null
+          retention_delete_not_before?: string | null
+          sha256?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_message_media_organization_id_account_id_conversa_fkey"
+            columns: ["organization_id", "account_id", "conversation_id"]
+            referencedRelation: "openclaw_conversations"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_message_media_organization_id_account_id_message__fkey"
+            columns: ["organization_id", "account_id", "message_id"]
+            referencedRelation: "openclaw_messages"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_messages: {
+        Row: {
+          account_id: string
+          conversation_id: string
+          created_at: string
+          direction: string
+          event_kind: string
+          id: string
+          organization_id: string
+          payload_hash: string
+          provider_message_id: string | null
+          provider_sender_id: string | null
+          provider_timestamp: string | null
+          received_at: string
+          reply_to_provider_message_id: string | null
+          source_inbound_event_id: string | null
+          text_content: string | null
+        }
+        Insert: {
+          account_id: string
+          conversation_id: string
+          created_at?: string
+          direction: string
+          event_kind?: string
+          id?: string
+          organization_id: string
+          payload_hash: string
+          provider_message_id?: string | null
+          provider_sender_id?: string | null
+          provider_timestamp?: string | null
+          received_at?: string
+          reply_to_provider_message_id?: string | null
+          source_inbound_event_id?: string | null
+          text_content?: string | null
+        }
+        Update: {
+          account_id?: string
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          event_kind?: string
+          id?: string
+          organization_id?: string
+          payload_hash?: string
+          provider_message_id?: string | null
+          provider_sender_id?: string | null
+          provider_timestamp?: string | null
+          received_at?: string
+          reply_to_provider_message_id?: string | null
+          source_inbound_event_id?: string | null
+          text_content?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_messages_organization_id_account_id_conversation__fkey"
+            columns: ["organization_id", "account_id", "conversation_id"]
+            referencedRelation: "openclaw_conversations"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_messages_organization_id_account_id_source_inboun_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "source_inbound_event_id",
+            ]
+            referencedRelation: "openclaw_inbound_events"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_outbound_authorizations: {
+        Row: {
+          account_id: string
+          authorized_handoff_at: string | null
+          claim_generation: number
+          consumed_at: string | null
+          control_version: number
+          expires_at: string
+          fencing_token: number
+          id: string
+          issued_at: string
+          lease_expires_at: string
+          marker_nonce_hash: string
+          organization_id: string
+          outbox_id: string
+          payload_hash: string
+          session_generation: number
+          takeover_version: number
+        }
+        Insert: {
+          account_id: string
+          authorized_handoff_at?: string | null
+          claim_generation: number
+          consumed_at?: string | null
+          control_version: number
+          expires_at: string
+          fencing_token: number
+          id?: string
+          issued_at?: string
+          lease_expires_at: string
+          marker_nonce_hash: string
+          organization_id: string
+          outbox_id: string
+          payload_hash: string
+          session_generation: number
+          takeover_version: number
+        }
+        Update: {
+          account_id?: string
+          authorized_handoff_at?: string | null
+          claim_generation?: number
+          consumed_at?: string | null
+          control_version?: number
+          expires_at?: string
+          fencing_token?: number
+          id?: string
+          issued_at?: string
+          lease_expires_at?: string
+          marker_nonce_hash?: string
+          organization_id?: string
+          outbox_id?: string
+          payload_hash?: string
+          session_generation?: number
+          takeover_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_outbound_authorizati_organization_id_account_id_o_fkey"
+            columns: ["organization_id", "account_id", "outbox_id"]
+            referencedRelation: "openclaw_outbox"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_outbox: {
+        Row: {
+          account_id: string
+          actor_id: string | null
+          attempt_count: number
+          automation_version_id: string | null
+          campaign_id: string | null
+          campaign_version: number | null
+          campaign_version_id: string | null
+          canonical_payload: Json
+          canonical_payload_bytes: string
+          claim_generation: number
+          claim_token_hash: string | null
+          claimed_cell_id: string | null
+          client_operation_id: string | null
+          control_version: number
+          created_at: string
+          credential_generation: number | null
+          dispatching_at: string | null
+          fencing_token: number
+          id: string
+          idempotency_key: string
+          inbound_event_id: string | null
+          lease_expires_at: string | null
+          occurrence_id: string | null
+          organization_id: string
+          payload_hash: string
+          resolution_version: number
+          retry_not_before: string | null
+          runtime_lease_generation: number | null
+          schedule_id: string | null
+          schedule_version: number | null
+          session_generation: number
+          smoke_run_id: string | null
+          source_kind: string
+          state: string
+          subscription_id: string | null
+          subscription_version: number | null
+          takeover_version: number
+          target_id: string
+          terminal_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          actor_id?: string | null
+          attempt_count?: number
+          automation_version_id?: string | null
+          campaign_id?: string | null
+          campaign_version?: number | null
+          campaign_version_id?: string | null
+          canonical_payload: Json
+          canonical_payload_bytes: string
+          claim_generation?: number
+          claim_token_hash?: string | null
+          claimed_cell_id?: string | null
+          client_operation_id?: string | null
+          control_version?: number
+          created_at?: string
+          credential_generation?: number | null
+          dispatching_at?: string | null
+          fencing_token?: number
+          id?: string
+          idempotency_key: string
+          inbound_event_id?: string | null
+          lease_expires_at?: string | null
+          occurrence_id?: string | null
+          organization_id: string
+          payload_hash: string
+          resolution_version?: number
+          retry_not_before?: string | null
+          runtime_lease_generation?: number | null
+          schedule_id?: string | null
+          schedule_version?: number | null
+          session_generation?: number
+          smoke_run_id?: string | null
+          source_kind: string
+          state?: string
+          subscription_id?: string | null
+          subscription_version?: number | null
+          takeover_version?: number
+          target_id: string
+          terminal_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          actor_id?: string | null
+          attempt_count?: number
+          automation_version_id?: string | null
+          campaign_id?: string | null
+          campaign_version?: number | null
+          campaign_version_id?: string | null
+          canonical_payload?: Json
+          canonical_payload_bytes?: string
+          claim_generation?: number
+          claim_token_hash?: string | null
+          claimed_cell_id?: string | null
+          client_operation_id?: string | null
+          control_version?: number
+          created_at?: string
+          credential_generation?: number | null
+          dispatching_at?: string | null
+          fencing_token?: number
+          id?: string
+          idempotency_key?: string
+          inbound_event_id?: string | null
+          lease_expires_at?: string | null
+          occurrence_id?: string | null
+          organization_id?: string
+          payload_hash?: string
+          resolution_version?: number
+          retry_not_before?: string | null
+          runtime_lease_generation?: number | null
+          schedule_id?: string | null
+          schedule_version?: number | null
+          session_generation?: number
+          smoke_run_id?: string | null
+          source_kind?: string
+          state?: string
+          subscription_id?: string | null
+          subscription_version?: number | null
+          takeover_version?: number
+          target_id?: string
+          terminal_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_outbox_campaign_version_fkey"
+            columns: ["organization_id", "account_id", "campaign_version_id"]
+            referencedRelation: "openclaw_campaign_runs"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_claim_credential_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "claimed_cell_id",
+              "credential_generation",
+            ]
+            referencedRelation: "openclaw_runtime_credentials"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "credential_generation",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_claim_lease_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "claimed_cell_id",
+              "runtime_lease_generation",
+              "fencing_token",
+            ]
+            referencedRelation: "openclaw_runtime_leases"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "lease_generation",
+              "fencing_token",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_crm_subscription_snapshot_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "subscription_id",
+              "subscription_version",
+            ]
+            referencedRelation: "openclaw_crm_event_subscription_snapshots"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "subscription_id",
+              "subscription_version",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_automation_vers_fkey"
+            columns: ["organization_id", "account_id", "automation_version_id"]
+            referencedRelation: "openclaw_automation_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_campaign_id_fkey"
+            columns: ["organization_id", "account_id", "campaign_id"]
+            referencedRelation: "openclaw_campaigns"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_claimed_cell_id_fkey"
+            columns: ["organization_id", "account_id", "claimed_cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_inbound_event_i_fkey"
+            columns: ["organization_id", "account_id", "inbound_event_id"]
+            referencedRelation: "openclaw_inbound_events"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_schedule_id_fkey"
+            columns: ["organization_id", "account_id", "schedule_id"]
+            referencedRelation: "openclaw_schedules"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_subscription_id_fkey"
+            columns: ["organization_id", "account_id", "subscription_id"]
+            referencedRelation: "openclaw_crm_event_subscriptions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_organization_id_account_id_target_id_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_schedule_snapshot_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "schedule_id",
+              "schedule_version",
+            ]
+            referencedRelation: "openclaw_schedule_snapshots"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "schedule_id",
+              "schedule_version",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_outbox_smoke_run_fkey"
+            columns: ["organization_id", "smoke_run_id"]
+            referencedRelation: "openclaw_smoke_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_policies: {
+        Row: {
+          account_id: string
+          created_at: string
+          current_version: number
+          id: string
+          lifecycle_state: string
+          name: string
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          current_version?: number
+          id?: string
+          lifecycle_state?: string
+          name: string
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          current_version?: number
+          id?: string
+          lifecycle_state?: string
+          name?: string
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_policies_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_policy_versions: {
+        Row: {
+          account_id: string
+          archived_at: string | null
+          consent_required: boolean
+          created_at: string
+          created_by: string | null
+          disclosure_version: number
+          id: string
+          lifecycle_state: string
+          organization_id: string
+          payload_hash: string
+          policy_id: string
+          policy_payload: Json
+          published_at: string | null
+          quiet_hours_end: string
+          quiet_hours_start: string
+          rate_limits: Json
+          timezone: string
+          version: number
+        }
+        Insert: {
+          account_id: string
+          archived_at?: string | null
+          consent_required?: boolean
+          created_at?: string
+          created_by?: string | null
+          disclosure_version: number
+          id?: string
+          lifecycle_state: string
+          organization_id: string
+          payload_hash: string
+          policy_id: string
+          policy_payload: Json
+          published_at?: string | null
+          quiet_hours_end?: string
+          quiet_hours_start?: string
+          rate_limits: Json
+          timezone: string
+          version: number
+        }
+        Update: {
+          account_id?: string
+          archived_at?: string | null
+          consent_required?: boolean
+          created_at?: string
+          created_by?: string | null
+          disclosure_version?: number
+          id?: string
+          lifecycle_state?: string
+          organization_id?: string
+          payload_hash?: string
+          policy_id?: string
+          policy_payload?: Json
+          published_at?: string | null
+          quiet_hours_end?: string
+          quiet_hours_start?: string
+          rate_limits?: Json
+          timezone?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_policy_versions_organization_id_account_id_policy_fkey"
+            columns: ["organization_id", "account_id", "policy_id"]
+            referencedRelation: "openclaw_policies"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_qr_challenges: {
+        Row: {
+          account_id: string
+          active_slot: boolean
+          actor_id: string
+          auth_session_hash: string
+          auth_tag: string | null
+          browser_nonce_hash: string
+          cell_id: string
+          challenge_status: string
+          challenge_version: number
+          cipher_iv: string | null
+          ciphertext: string | null
+          consumed_at: string | null
+          expires_at: string
+          id: string
+          issued_at: string
+          material_published_at: string | null
+          material_version: number
+          organization_id: string
+          poll_count: number
+          poll_window_started_at: string | null
+          revoked_at: string | null
+          runtime_command_id: string | null
+        }
+        Insert: {
+          account_id: string
+          active_slot?: boolean
+          actor_id: string
+          auth_session_hash: string
+          auth_tag?: string | null
+          browser_nonce_hash: string
+          cell_id: string
+          challenge_status?: string
+          challenge_version?: number
+          cipher_iv?: string | null
+          ciphertext?: string | null
+          consumed_at?: string | null
+          expires_at: string
+          id?: string
+          issued_at?: string
+          material_published_at?: string | null
+          material_version?: number
+          organization_id: string
+          poll_count?: number
+          poll_window_started_at?: string | null
+          revoked_at?: string | null
+          runtime_command_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          active_slot?: boolean
+          actor_id?: string
+          auth_session_hash?: string
+          auth_tag?: string | null
+          browser_nonce_hash?: string
+          cell_id?: string
+          challenge_status?: string
+          challenge_version?: number
+          cipher_iv?: string | null
+          ciphertext?: string | null
+          consumed_at?: string | null
+          expires_at?: string
+          id?: string
+          issued_at?: string
+          material_published_at?: string | null
+          material_version?: number
+          organization_id?: string
+          poll_count?: number
+          poll_window_started_at?: string | null
+          revoked_at?: string | null
+          runtime_command_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_qr_challenges_organization_id_account_id_cell_id_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_qr_challenges_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_qr_runtime_command_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "runtime_command_id",
+            ]
+            referencedRelation: "openclaw_runtime_commands"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "id",
+            ]
+          },
+        ]
+      }
+      openclaw_retention_delete_authorizations: {
+        Row: {
+          authorization_bytes: string
+          authorization_hash: string
+          authorization_payload: Json
+          claim_generation: number
+          delete_authorization_jti: string
+          delete_ticket_jti: string
+          expires_at: string
+          fencing_token: number
+          finalized_at: string | null
+          gateway_signing_key_generation: number
+          hold_version: number
+          id: string
+          issued_at: string
+          maintenance_principal_id: string
+          object_key: string
+          organization_id: string
+          quarantine_version: number
+          receipt: Json | null
+          receipt_hash: string | null
+          revoked_at: string | null
+          revoked_reason: string | null
+          tombstone_id: string
+          work_item_id: string
+          work_lease_expires_at: string
+        }
+        Insert: {
+          authorization_bytes: string
+          authorization_hash: string
+          authorization_payload: Json
+          claim_generation: number
+          delete_authorization_jti: string
+          delete_ticket_jti: string
+          expires_at: string
+          fencing_token: number
+          finalized_at?: string | null
+          gateway_signing_key_generation: number
+          hold_version: number
+          id?: string
+          issued_at?: string
+          maintenance_principal_id: string
+          object_key: string
+          organization_id: string
+          quarantine_version: number
+          receipt?: Json | null
+          receipt_hash?: string | null
+          revoked_at?: string | null
+          revoked_reason?: string | null
+          tombstone_id: string
+          work_item_id: string
+          work_lease_expires_at: string
+        }
+        Update: {
+          authorization_bytes?: string
+          authorization_hash?: string
+          authorization_payload?: Json
+          claim_generation?: number
+          delete_authorization_jti?: string
+          delete_ticket_jti?: string
+          expires_at?: string
+          fencing_token?: number
+          finalized_at?: string | null
+          gateway_signing_key_generation?: number
+          hold_version?: number
+          id?: string
+          issued_at?: string
+          maintenance_principal_id?: string
+          object_key?: string
+          organization_id?: string
+          quarantine_version?: number
+          receipt?: Json | null
+          receipt_hash?: string | null
+          revoked_at?: string | null
+          revoked_reason?: string | null
+          tombstone_id?: string
+          work_item_id?: string
+          work_lease_expires_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_delete_aut_organization_id_maintenance__fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "work_item_id",
+            ]
+            referencedRelation: "openclaw_maintenance_work_items"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_retention_delete_aut_organization_id_tombstone_id_fkey"
+            columns: ["organization_id", "tombstone_id"]
+            referencedRelation: "openclaw_retention_tombstones"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_retention_delete_ticket_lineage: {
+        Row: {
+          authorization_bytes: string
+          authorization_claim_token_hash: string
+          authorization_credential_generation: number
+          authorization_expires_at: string
+          authorization_fencing_token: number
+          authorization_hash: string
+          authorization_lease_generation: number
+          authorization_maintenance_principal_id: string
+          authorization_payload: Json
+          authorized_at: string
+          claim_generation: number
+          content_length: number
+          content_type: string
+          credential_generation: number
+          delete_authorization_jti: string
+          domain_hash: string
+          expected_receipt_claims: Json
+          expires_at: string
+          fencing_token: number
+          finalized_at: string | null
+          gateway_outcome: string | null
+          gateway_public_key_hash: string
+          hold_version: number
+          id: string
+          issued_at: string
+          logical_ticket_id: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          object_key: string
+          organization_id: string
+          quarantine_version: number
+          receipt: Json | null
+          receipt_hash: string | null
+          receipt_signing_key_generation: number
+          recovery_generation: number
+          refresh_gateway_denial: Json | null
+          refresh_gateway_denial_hash: string | null
+          replaces_delete_authorization_jti: string | null
+          replaces_ticket_jti: string | null
+          sha256: string
+          subject_id: string
+          ticket_bytes: string
+          ticket_hash: string
+          ticket_jti: string
+          ticket_payload: Json
+          ticket_signing_key_generation: number
+          tombstone_id: string
+          work_item_id: string
+        }
+        Insert: {
+          authorization_bytes: string
+          authorization_claim_token_hash: string
+          authorization_credential_generation: number
+          authorization_expires_at: string
+          authorization_fencing_token: number
+          authorization_hash: string
+          authorization_lease_generation: number
+          authorization_maintenance_principal_id: string
+          authorization_payload: Json
+          authorized_at: string
+          claim_generation: number
+          content_length: number
+          content_type: string
+          credential_generation: number
+          delete_authorization_jti: string
+          domain_hash: string
+          expected_receipt_claims: Json
+          expires_at: string
+          fencing_token: number
+          finalized_at?: string | null
+          gateway_outcome?: string | null
+          gateway_public_key_hash: string
+          hold_version: number
+          id?: string
+          issued_at: string
+          logical_ticket_id: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          object_key: string
+          organization_id: string
+          quarantine_version: number
+          receipt?: Json | null
+          receipt_hash?: string | null
+          receipt_signing_key_generation: number
+          recovery_generation: number
+          refresh_gateway_denial?: Json | null
+          refresh_gateway_denial_hash?: string | null
+          replaces_delete_authorization_jti?: string | null
+          replaces_ticket_jti?: string | null
+          sha256: string
+          subject_id: string
+          ticket_bytes: string
+          ticket_hash: string
+          ticket_jti: string
+          ticket_payload: Json
+          ticket_signing_key_generation: number
+          tombstone_id: string
+          work_item_id: string
+        }
+        Update: {
+          authorization_bytes?: string
+          authorization_claim_token_hash?: string
+          authorization_credential_generation?: number
+          authorization_expires_at?: string
+          authorization_fencing_token?: number
+          authorization_hash?: string
+          authorization_lease_generation?: number
+          authorization_maintenance_principal_id?: string
+          authorization_payload?: Json
+          authorized_at?: string
+          claim_generation?: number
+          content_length?: number
+          content_type?: string
+          credential_generation?: number
+          delete_authorization_jti?: string
+          domain_hash?: string
+          expected_receipt_claims?: Json
+          expires_at?: string
+          fencing_token?: number
+          finalized_at?: string | null
+          gateway_outcome?: string | null
+          gateway_public_key_hash?: string
+          hold_version?: number
+          id?: string
+          issued_at?: string
+          logical_ticket_id?: string
+          maintenance_lease_generation?: number
+          maintenance_principal_id?: string
+          object_key?: string
+          organization_id?: string
+          quarantine_version?: number
+          receipt?: Json | null
+          receipt_hash?: string | null
+          receipt_signing_key_generation?: number
+          recovery_generation?: number
+          refresh_gateway_denial?: Json | null
+          refresh_gateway_denial_hash?: string | null
+          replaces_delete_authorization_jti?: string | null
+          replaces_ticket_jti?: string | null
+          sha256?: string
+          subject_id?: string
+          ticket_bytes?: string
+          ticket_hash?: string
+          ticket_jti?: string
+          ticket_payload?: Json
+          ticket_signing_key_generation?: number
+          tombstone_id?: string
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_delete_ti_organization_id_maintenance__fkey1"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "work_item_id",
+            ]
+            referencedRelation: "openclaw_maintenance_work_items"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_retention_delete_ti_organization_id_tombstone_id_fkey1"
+            columns: ["organization_id", "tombstone_id"]
+            referencedRelation: "openclaw_retention_tombstones"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_retention_delete_tic_organization_id_logical_tick_fkey"
+            columns: ["organization_id", "logical_ticket_id"]
+            referencedRelation: "openclaw_retention_delete_tickets"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_retention_delete_tickets: {
+        Row: {
+          authorization_bytes: string | null
+          authorization_expires_at: string | null
+          authorization_hash: string | null
+          authorization_payload: Json | null
+          authorized_at: string | null
+          claim_generation: number
+          claim_token_hash: string
+          credential_generation: number
+          delete_authorization_jti: string
+          domain_hash: string
+          expected_receipt_claims: Json
+          expires_at: string
+          fencing_token: number
+          finalized_at: string | null
+          gateway_outcome: string | null
+          hold_version: number
+          id: string
+          issued_at: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          object_key: string
+          organization_id: string
+          quarantine_version: number
+          receipt: Json | null
+          receipt_hash: string | null
+          receipt_signing_key_generation: number
+          signing_key_generation: number
+          state: string
+          subject_id: string
+          ticket_bytes: string
+          ticket_hash: string
+          ticket_jti: string
+          ticket_payload: Json
+          tombstone_id: string
+          work_item_id: string
+        }
+        Insert: {
+          authorization_bytes?: string | null
+          authorization_expires_at?: string | null
+          authorization_hash?: string | null
+          authorization_payload?: Json | null
+          authorized_at?: string | null
+          claim_generation: number
+          claim_token_hash: string
+          credential_generation: number
+          delete_authorization_jti?: string
+          domain_hash: string
+          expected_receipt_claims: Json
+          expires_at: string
+          fencing_token: number
+          finalized_at?: string | null
+          gateway_outcome?: string | null
+          hold_version: number
+          id?: string
+          issued_at?: string
+          maintenance_lease_generation: number
+          maintenance_principal_id: string
+          object_key: string
+          organization_id: string
+          quarantine_version: number
+          receipt?: Json | null
+          receipt_hash?: string | null
+          receipt_signing_key_generation: number
+          signing_key_generation: number
+          state?: string
+          subject_id: string
+          ticket_bytes: string
+          ticket_hash: string
+          ticket_jti?: string
+          ticket_payload: Json
+          tombstone_id: string
+          work_item_id: string
+        }
+        Update: {
+          authorization_bytes?: string | null
+          authorization_expires_at?: string | null
+          authorization_hash?: string | null
+          authorization_payload?: Json | null
+          authorized_at?: string | null
+          claim_generation?: number
+          claim_token_hash?: string
+          credential_generation?: number
+          delete_authorization_jti?: string
+          domain_hash?: string
+          expected_receipt_claims?: Json
+          expires_at?: string
+          fencing_token?: number
+          finalized_at?: string | null
+          gateway_outcome?: string | null
+          hold_version?: number
+          id?: string
+          issued_at?: string
+          maintenance_lease_generation?: number
+          maintenance_principal_id?: string
+          object_key?: string
+          organization_id?: string
+          quarantine_version?: number
+          receipt?: Json | null
+          receipt_hash?: string | null
+          receipt_signing_key_generation?: number
+          signing_key_generation?: number
+          state?: string
+          subject_id?: string
+          ticket_bytes?: string
+          ticket_hash?: string
+          ticket_jti?: string
+          ticket_payload?: Json
+          tombstone_id?: string
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_delete_tic_organization_id_maintenance__fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "work_item_id",
+            ]
+            referencedRelation: "openclaw_maintenance_work_items"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_retention_delete_tic_organization_id_tombstone_id_fkey"
+            columns: ["organization_id", "tombstone_id"]
+            referencedRelation: "openclaw_retention_tombstones"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_retention_evidence_seals: {
+        Row: {
+          due_at: string
+          hold_version: number
+          id: string
+          organization_id: string
+          retention_action: string
+          retention_version: number
+          sealed_at: string
+          source_evidence_hash: string
+          source_table: string
+          subject_id: string
+          subject_kind: string
+        }
+        Insert: {
+          due_at: string
+          hold_version: number
+          id?: string
+          organization_id: string
+          retention_action: string
+          retention_version: number
+          sealed_at?: string
+          source_evidence_hash: string
+          source_table: string
+          subject_id: string
+          subject_kind: string
+        }
+        Update: {
+          due_at?: string
+          hold_version?: number
+          id?: string
+          organization_id?: string
+          retention_action?: string
+          retention_version?: number
+          sealed_at?: string
+          source_evidence_hash?: string
+          source_table?: string
+          subject_id?: string
+          subject_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_evidence_seals_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_retention_gateway_configs: {
+        Row: {
+          enabled_at: string | null
+          id: string
+          is_active: boolean
+          organization_id: string
+          public_key_hash: string
+          retired_at: string | null
+          signing_key_generation: number
+          ticket_key_generation: number
+        }
+        Insert: {
+          enabled_at?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          public_key_hash: string
+          retired_at?: string | null
+          signing_key_generation: number
+          ticket_key_generation?: number
+        }
+        Update: {
+          enabled_at?: string | null
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          public_key_hash?: string
+          retired_at?: string | null
+          signing_key_generation?: number
+          ticket_key_generation?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_gateway_configs_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_retention_hold_clocks: {
+        Row: {
+          hold_version: number
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          hold_version: number
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          hold_version?: number
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_hold_clocks_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_retention_hold_scopes: {
+        Row: {
+          created_at: string
+          hold_id: string
+          hold_version: number
+          id: string
+          is_active: boolean
+          organization_id: string
+          scope_id: string | null
+          scope_kind: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          hold_id: string
+          hold_version: number
+          id?: string
+          is_active: boolean
+          organization_id: string
+          scope_id?: string | null
+          scope_kind: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          hold_id?: string
+          hold_version?: number
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          scope_id?: string | null
+          scope_kind?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_hold_scopes_organization_id_hold_id_fkey"
+            columns: ["organization_id", "hold_id"]
+            referencedRelation: "openclaw_retention_holds"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_retention_holds: {
+        Row: {
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          hold_version: number
+          id: string
+          organization_id: string
+          reason: string
+          release_reason: string | null
+          released_at: string | null
+          released_by: string | null
+          scope_version: number
+          target_id: string
+          target_kind: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          expires_at?: string | null
+          hold_version?: number
+          id?: string
+          organization_id: string
+          reason: string
+          release_reason?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          scope_version?: number
+          target_id: string
+          target_kind: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          hold_version?: number
+          id?: string
+          organization_id?: string
+          reason?: string
+          release_reason?: string | null
+          released_at?: string | null
+          released_by?: string | null
+          scope_version?: number
+          target_id?: string
+          target_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_holds_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_retention_policies: {
+        Row: {
+          activated_at: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          organization_id: string
+          policy_version: number
+          retain_for_seconds: number
+          retired_at: string | null
+          subject_kind: string
+        }
+        Insert: {
+          activated_at?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          organization_id: string
+          policy_version: number
+          retain_for_seconds: number
+          retired_at?: string | null
+          subject_kind: string
+        }
+        Update: {
+          activated_at?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          organization_id?: string
+          policy_version?: number
+          retain_for_seconds?: number
+          retired_at?: string | null
+          subject_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_policies_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_retention_tombstones: {
+        Row: {
+          final_delete_not_before: string | null
+          hold_version: number
+          id: string
+          maintenance_principal_id: string
+          object_key: string | null
+          organization_id: string
+          quarantine_version: number
+          quarantined_at: string
+          redaction_evidence_hash: string
+          retention_version: number
+          subject_id: string
+          subject_kind: string
+          work_item_id: string
+        }
+        Insert: {
+          final_delete_not_before?: string | null
+          hold_version: number
+          id?: string
+          maintenance_principal_id: string
+          object_key?: string | null
+          organization_id: string
+          quarantine_version: number
+          quarantined_at?: string
+          redaction_evidence_hash: string
+          retention_version: number
+          subject_id: string
+          subject_kind: string
+          work_item_id: string
+        }
+        Update: {
+          final_delete_not_before?: string | null
+          hold_version?: number
+          id?: string
+          maintenance_principal_id?: string
+          object_key?: string | null
+          organization_id?: string
+          quarantine_version?: number
+          quarantined_at?: string
+          redaction_evidence_hash?: string
+          retention_version?: number
+          subject_id?: string
+          subject_kind?: string
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_retention_tombstones_organization_id_maintenance__fkey"
+            columns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "work_item_id",
+            ]
+            referencedRelation: "openclaw_maintenance_work_items"
+            referencedColumns: [
+              "organization_id",
+              "maintenance_principal_id",
+              "id",
+            ]
+          },
+        ]
+      }
+      openclaw_rollout_checkpoints: {
+        Row: {
+          checkpoint_name: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          organization_id: string
+          rollout_run_id: string
+          stage: string
+          status: string
+          trusted_evidence_hash: string | null
+          trusted_evidence_id: string | null
+        }
+        Insert: {
+          checkpoint_name: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          rollout_run_id: string
+          stage: string
+          status: string
+          trusted_evidence_hash?: string | null
+          trusted_evidence_id?: string | null
+        }
+        Update: {
+          checkpoint_name?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          rollout_run_id?: string
+          stage?: string
+          status?: string
+          trusted_evidence_hash?: string | null
+          trusted_evidence_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_rollout_checkpoints_organization_id_rollout_run_i_fkey"
+            columns: ["organization_id", "rollout_run_id"]
+            referencedRelation: "openclaw_rollout_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_rollout_observations: {
+        Row: {
+          content_free_metrics: Json
+          created_at: string
+          id: string
+          observation_hash: string
+          organization_id: string
+          passed: boolean
+          rollout_run_id: string
+          stage: string
+          window_ended_at: string
+          window_started_at: string
+        }
+        Insert: {
+          content_free_metrics: Json
+          created_at?: string
+          id?: string
+          observation_hash: string
+          organization_id: string
+          passed: boolean
+          rollout_run_id: string
+          stage: string
+          window_ended_at: string
+          window_started_at: string
+        }
+        Update: {
+          content_free_metrics?: Json
+          created_at?: string
+          id?: string
+          observation_hash?: string
+          organization_id?: string
+          passed?: boolean
+          rollout_run_id?: string
+          stage?: string
+          window_ended_at?: string
+          window_started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_rollout_observations_organization_id_rollout_run__fkey"
+            columns: ["organization_id", "rollout_run_id"]
+            referencedRelation: "openclaw_rollout_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_rollout_runs: {
+        Row: {
+          artifact_digests: Json
+          built_tgz_sha256: string
+          completed_at: string | null
+          continuous_green_started_at: string | null
+          id: string
+          migration_manifest_sha256: string
+          organization_id: string
+          patch_series_sha256: string
+          project_ref: string
+          reviewed_commit_sha: string
+          shadow_started_at: string | null
+          stage: string
+          stage_entered_at: string
+          stage_version: number
+          started_at: string
+          status: string
+          upstream_git_head: string
+          upstream_sri: string
+        }
+        Insert: {
+          artifact_digests: Json
+          built_tgz_sha256: string
+          completed_at?: string | null
+          continuous_green_started_at?: string | null
+          id?: string
+          migration_manifest_sha256: string
+          organization_id: string
+          patch_series_sha256: string
+          project_ref?: string
+          reviewed_commit_sha: string
+          shadow_started_at?: string | null
+          stage?: string
+          stage_entered_at?: string
+          stage_version?: number
+          started_at?: string
+          status?: string
+          upstream_git_head: string
+          upstream_sri: string
+        }
+        Update: {
+          artifact_digests?: Json
+          built_tgz_sha256?: string
+          completed_at?: string | null
+          continuous_green_started_at?: string | null
+          id?: string
+          migration_manifest_sha256?: string
+          organization_id?: string
+          patch_series_sha256?: string
+          project_ref?: string
+          reviewed_commit_sha?: string
+          shadow_started_at?: string | null
+          stage?: string
+          stage_entered_at?: string
+          stage_version?: number
+          started_at?: string
+          status?: string
+          upstream_git_head?: string
+          upstream_sri?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_rollout_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_runtime_cells: {
+        Row: {
+          account_id: string
+          cell_generation: number
+          config_digest: string
+          created_at: string
+          id: string
+          image_digest: string
+          is_current: boolean
+          last_heartbeat_at: string | null
+          organization_id: string
+          retired_at: string | null
+          reviewed_commit_sha: string
+          state: string
+        }
+        Insert: {
+          account_id: string
+          cell_generation: number
+          config_digest: string
+          created_at?: string
+          id?: string
+          image_digest: string
+          is_current?: boolean
+          last_heartbeat_at?: string | null
+          organization_id: string
+          retired_at?: string | null
+          reviewed_commit_sha: string
+          state?: string
+        }
+        Update: {
+          account_id?: string
+          cell_generation?: number
+          config_digest?: string
+          created_at?: string
+          id?: string
+          image_digest?: string
+          is_current?: boolean
+          last_heartbeat_at?: string | null
+          organization_id?: string
+          retired_at?: string | null
+          reviewed_commit_sha?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_runtime_cells_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_runtime_commands: {
+        Row: {
+          account_id: string
+          acknowledged_at: string | null
+          cell_id: string
+          claim_generation: number
+          claim_token_hash: string | null
+          command_key: string
+          command_kind: string
+          command_version: number
+          completion_claim_generation: number | null
+          completion_claim_token_hash: string | null
+          created_at: string
+          created_by: string | null
+          effect_deadline_at: string | null
+          effect_disposition: string
+          expected_connection_generation: number
+          expected_fencing_token: number
+          expected_session_generation: number
+          id: string
+          lease_expires_at: string | null
+          organization_id: string
+          payload: Json
+          payload_bytes: string
+          payload_hash: string
+          result: Json | null
+          result_hash: string | null
+          seal_reason: string | null
+          sealed_at: string | null
+          source_connection_generation: number
+          source_session_generation: number
+          started_at: string | null
+          state: string
+          target_connection_generation: number
+          target_session_generation: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          acknowledged_at?: string | null
+          cell_id: string
+          claim_generation?: number
+          claim_token_hash?: string | null
+          command_key: string
+          command_kind: string
+          command_version?: number
+          completion_claim_generation?: number | null
+          completion_claim_token_hash?: string | null
+          created_at?: string
+          created_by?: string | null
+          effect_deadline_at?: string | null
+          effect_disposition?: string
+          expected_connection_generation: number
+          expected_fencing_token: number
+          expected_session_generation: number
+          id?: string
+          lease_expires_at?: string | null
+          organization_id: string
+          payload: Json
+          payload_bytes: string
+          payload_hash: string
+          result?: Json | null
+          result_hash?: string | null
+          seal_reason?: string | null
+          sealed_at?: string | null
+          source_connection_generation: number
+          source_session_generation: number
+          started_at?: string | null
+          state?: string
+          target_connection_generation: number
+          target_session_generation: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          acknowledged_at?: string | null
+          cell_id?: string
+          claim_generation?: number
+          claim_token_hash?: string | null
+          command_key?: string
+          command_kind?: string
+          command_version?: number
+          completion_claim_generation?: number | null
+          completion_claim_token_hash?: string | null
+          created_at?: string
+          created_by?: string | null
+          effect_deadline_at?: string | null
+          effect_disposition?: string
+          expected_connection_generation?: number
+          expected_fencing_token?: number
+          expected_session_generation?: number
+          id?: string
+          lease_expires_at?: string | null
+          organization_id?: string
+          payload?: Json
+          payload_bytes?: string
+          payload_hash?: string
+          result?: Json | null
+          result_hash?: string | null
+          seal_reason?: string | null
+          sealed_at?: string | null
+          source_connection_generation?: number
+          source_session_generation?: number
+          started_at?: string | null
+          state?: string
+          target_connection_generation?: number
+          target_session_generation?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_runtime_commands_organization_id_account_id_cell__fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_runtime_commands_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_runtime_credentials: {
+        Row: {
+          account_id: string
+          allowed_scopes: string[]
+          cell_id: string
+          credential_generation: number
+          credential_hash: string
+          enabled_at: string
+          id: string
+          organization_id: string
+          revoked_at: string | null
+          revoked_reason: string | null
+        }
+        Insert: {
+          account_id: string
+          allowed_scopes: string[]
+          cell_id: string
+          credential_generation: number
+          credential_hash: string
+          enabled_at?: string
+          id?: string
+          organization_id: string
+          revoked_at?: string | null
+          revoked_reason?: string | null
+        }
+        Update: {
+          account_id?: string
+          allowed_scopes?: string[]
+          cell_id?: string
+          credential_generation?: number
+          credential_hash?: string
+          enabled_at?: string
+          id?: string
+          organization_id?: string
+          revoked_at?: string | null
+          revoked_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_runtime_credentials_organization_id_account_id_ce_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_runtime_credentials_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_runtime_leases: {
+        Row: {
+          account_id: string
+          acquired_at: string
+          cell_id: string
+          expires_at: string
+          fencing_token: number
+          id: string
+          lease_generation: number
+          organization_id: string
+          released_at: string | null
+          status: string
+        }
+        Insert: {
+          account_id: string
+          acquired_at?: string
+          cell_id: string
+          expires_at: string
+          fencing_token: number
+          id?: string
+          lease_generation: number
+          organization_id: string
+          released_at?: string | null
+          status?: string
+        }
+        Update: {
+          account_id?: string
+          acquired_at?: string
+          cell_id?: string
+          expires_at?: string
+          fencing_token?: number
+          id?: string
+          lease_generation?: number
+          organization_id?: string
+          released_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_runtime_leases_organization_id_account_id_cell_id_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_runtime_leases_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_sales_group_allowlists: {
+        Row: {
+          account_id: string
+          allowlist_version: number
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          directory_expires_at: string
+          directory_refreshed_at: string
+          evidence_hash: string
+          id: string
+          is_allowed: boolean
+          organization_id: string
+          sales_group_target_id: string
+          sales_group_target_kind: string
+        }
+        Insert: {
+          account_id: string
+          allowlist_version: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          directory_expires_at: string
+          directory_refreshed_at: string
+          evidence_hash: string
+          id?: string
+          is_allowed?: boolean
+          organization_id: string
+          sales_group_target_id: string
+          sales_group_target_kind?: string
+        }
+        Update: {
+          account_id?: string
+          allowlist_version?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          directory_expires_at?: string
+          directory_refreshed_at?: string
+          evidence_hash?: string
+          id?: string
+          is_allowed?: boolean
+          organization_id?: string
+          sales_group_target_id?: string
+          sales_group_target_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_sales_group_allowlis_organization_id_account_id_s_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "sales_group_target_id",
+              "sales_group_target_kind",
+            ]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id", "kind"]
+          },
+        ]
+      }
+      openclaw_sales_groups: {
+        Row: {
+          account_id: string
+          created_at: string
+          directory_refreshed_at: string
+          directory_version: number
+          display_name: string
+          id: string
+          member_count: number | null
+          organization_id: string
+          provider_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          directory_refreshed_at: string
+          directory_version?: number
+          display_name: string
+          id?: string
+          member_count?: number | null
+          organization_id: string
+          provider_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          directory_refreshed_at?: string
+          directory_version?: number
+          display_name?: string
+          id?: string
+          member_count?: number | null
+          organization_id?: string
+          provider_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_sales_groups_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_schedule_occurrences: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          occurrence_evidence: Json
+          occurrence_evidence_bytes: string
+          occurrence_evidence_hash: string
+          occurrence_status: string
+          organization_id: string
+          planned_for: string
+          planned_local: string
+          resolution: string
+          resolved_local: string
+          schedule_id: string
+          schedule_version: number
+          target_id: string
+          utc_offset_seconds: number
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          occurrence_evidence: Json
+          occurrence_evidence_bytes: string
+          occurrence_evidence_hash: string
+          occurrence_status: string
+          organization_id: string
+          planned_for: string
+          planned_local: string
+          resolution: string
+          resolved_local: string
+          schedule_id: string
+          schedule_version: number
+          target_id: string
+          utc_offset_seconds: number
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          occurrence_evidence?: Json
+          occurrence_evidence_bytes?: string
+          occurrence_evidence_hash?: string
+          occurrence_status?: string
+          organization_id?: string
+          planned_for?: string
+          planned_local?: string
+          resolution?: string
+          resolved_local?: string
+          schedule_id?: string
+          schedule_version?: number
+          target_id?: string
+          utc_offset_seconds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_schedule_occurrences_organization_id_account_id_s_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "schedule_id",
+              "schedule_version",
+            ]
+            referencedRelation: "openclaw_schedule_snapshots"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "schedule_id",
+              "schedule_version",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_schedule_occurrences_organization_id_account_id_t_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_schedule_snapshots: {
+        Row: {
+          account_id: string
+          automation_version_id: string
+          campaign_id: string | null
+          campaign_version_id: string | null
+          created_at: string
+          created_by: string | null
+          dst_fold_policy: string
+          id: string
+          local_recurrence_rule: string
+          missed_occurrence_policy: string
+          occurrence_grace_seconds: number
+          organization_id: string
+          schedule_id: string
+          schedule_version: number
+          snapshot: Json
+          snapshot_bytes: string
+          snapshot_hash: string
+          status: string
+          target_id: string | null
+          timezone: string
+        }
+        Insert: {
+          account_id: string
+          automation_version_id: string
+          campaign_id?: string | null
+          campaign_version_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          dst_fold_policy?: string
+          id?: string
+          local_recurrence_rule: string
+          missed_occurrence_policy: string
+          occurrence_grace_seconds?: number
+          organization_id: string
+          schedule_id: string
+          schedule_version: number
+          snapshot: Json
+          snapshot_bytes: string
+          snapshot_hash: string
+          status: string
+          target_id?: string | null
+          timezone: string
+        }
+        Update: {
+          account_id?: string
+          automation_version_id?: string
+          campaign_id?: string | null
+          campaign_version_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          dst_fold_policy?: string
+          id?: string
+          local_recurrence_rule?: string
+          missed_occurrence_policy?: string
+          occurrence_grace_seconds?: number
+          organization_id?: string
+          schedule_id?: string
+          schedule_version?: number
+          snapshot?: Json
+          snapshot_bytes?: string
+          snapshot_hash?: string
+          status?: string
+          target_id?: string | null
+          timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_schedule_snapshots_campaign_version_fkey"
+            columns: ["organization_id", "account_id", "campaign_version_id"]
+            referencedRelation: "openclaw_campaign_runs"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_aut_fkey"
+            columns: ["organization_id", "account_id", "automation_version_id"]
+            referencedRelation: "openclaw_automation_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_cam_fkey"
+            columns: ["organization_id", "account_id", "campaign_id"]
+            referencedRelation: "openclaw_campaigns"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_sch_fkey"
+            columns: ["organization_id", "account_id", "schedule_id"]
+            referencedRelation: "openclaw_schedules"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_schedule_snapshots_organization_id_account_id_tar_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_schedules: {
+        Row: {
+          account_id: string
+          automation_version_id: string
+          binding_defer_reason: string | null
+          campaign_id: string | null
+          campaign_version_id: string | null
+          created_at: string
+          cursor_version: number
+          dst_fold_policy: string
+          id: string
+          local_recurrence_rule: string
+          missed_occurrence_policy: string
+          next_nominal_local: string | null
+          next_resolution: string | null
+          next_resolved_local: string | null
+          next_run_at: string | null
+          next_utc_offset_seconds: number | null
+          occurrence_grace_seconds: number
+          organization_id: string
+          schedule_version: number
+          status: string
+          target_id: string | null
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          automation_version_id: string
+          binding_defer_reason?: string | null
+          campaign_id?: string | null
+          campaign_version_id?: string | null
+          created_at?: string
+          cursor_version?: number
+          dst_fold_policy?: string
+          id?: string
+          local_recurrence_rule: string
+          missed_occurrence_policy?: string
+          next_nominal_local?: string | null
+          next_resolution?: string | null
+          next_resolved_local?: string | null
+          next_run_at?: string | null
+          next_utc_offset_seconds?: number | null
+          occurrence_grace_seconds?: number
+          organization_id: string
+          schedule_version: number
+          status?: string
+          target_id?: string | null
+          timezone: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          automation_version_id?: string
+          binding_defer_reason?: string | null
+          campaign_id?: string | null
+          campaign_version_id?: string | null
+          created_at?: string
+          cursor_version?: number
+          dst_fold_policy?: string
+          id?: string
+          local_recurrence_rule?: string
+          missed_occurrence_policy?: string
+          next_nominal_local?: string | null
+          next_resolution?: string | null
+          next_resolved_local?: string | null
+          next_run_at?: string | null
+          next_utc_offset_seconds?: number | null
+          occurrence_grace_seconds?: number
+          organization_id?: string
+          schedule_version?: number
+          status?: string
+          target_id?: string | null
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_schedules_campaign_version_fkey"
+            columns: ["organization_id", "account_id", "campaign_version_id"]
+            referencedRelation: "openclaw_campaign_runs"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_schedules_organization_id_account_id_automation_v_fkey"
+            columns: ["organization_id", "account_id", "automation_version_id"]
+            referencedRelation: "openclaw_automation_versions"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_schedules_organization_id_account_id_campaign_id_fkey"
+            columns: ["organization_id", "account_id", "campaign_id"]
+            referencedRelation: "openclaw_campaigns"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_schedules_organization_id_account_id_target_id_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_send_work_attempts: {
+        Row: {
+          account_id: string
+          attempt_number: number
+          cell_id: string
+          claim_generation: number
+          created_at: string
+          credential_generation: number
+          evidence: Json
+          evidence_hash: string
+          fencing_token: number
+          id: string
+          organization_id: string
+          outcome: string
+          runtime_lease_generation: number
+          session_generation: number
+          work_item_id: string
+        }
+        Insert: {
+          account_id: string
+          attempt_number: number
+          cell_id: string
+          claim_generation: number
+          created_at?: string
+          credential_generation: number
+          evidence: Json
+          evidence_hash: string
+          fencing_token: number
+          id?: string
+          organization_id: string
+          outcome: string
+          runtime_lease_generation: number
+          session_generation: number
+          work_item_id: string
+        }
+        Update: {
+          account_id?: string
+          attempt_number?: number
+          cell_id?: string
+          claim_generation?: number
+          created_at?: string
+          credential_generation?: number
+          evidence?: Json
+          evidence_hash?: string
+          fencing_token?: number
+          id?: string
+          organization_id?: string
+          outcome?: string
+          runtime_lease_generation?: number
+          session_generation?: number
+          work_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_send_work_attempt_credential_binding_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "credential_generation",
+            ]
+            referencedRelation: "openclaw_runtime_credentials"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "credential_generation",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_attempt_lease_binding_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "runtime_lease_generation",
+              "fencing_token",
+            ]
+            referencedRelation: "openclaw_runtime_leases"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "lease_generation",
+              "fencing_token",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_attempts_organization_id_account_id_cel_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_attempts_organization_id_account_id_wor_fkey"
+            columns: ["organization_id", "account_id", "work_item_id"]
+            referencedRelation: "openclaw_send_work_items"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_send_work_items: {
+        Row: {
+          account_id: string
+          attempt_count: number
+          binding_defer_reason: string | null
+          campaign_version_id: string | null
+          cell_id: string
+          claim_generation: number
+          claim_token_hash: string | null
+          created_at: string
+          credential_generation: number
+          crm_occurrence_id: string | null
+          fencing_token: number
+          id: string
+          lease_expires_at: string | null
+          organization_id: string
+          payload: Json
+          payload_hash: string
+          retry_not_before: string | null
+          runtime_lease_generation: number
+          schedule_id: string | null
+          schedule_occurrence_id: string | null
+          schedule_version: number | null
+          session_generation: number
+          smoke_run_id: string | null
+          source_hash: string
+          source_id: string
+          source_key: string
+          source_version: string
+          state: string
+          subscription_id: string | null
+          subscription_version: number | null
+          target_id: string
+          terminal_at: string | null
+          updated_at: string
+          work_kind: string
+        }
+        Insert: {
+          account_id: string
+          attempt_count?: number
+          binding_defer_reason?: string | null
+          campaign_version_id?: string | null
+          cell_id: string
+          claim_generation?: number
+          claim_token_hash?: string | null
+          created_at?: string
+          credential_generation: number
+          crm_occurrence_id?: string | null
+          fencing_token: number
+          id?: string
+          lease_expires_at?: string | null
+          organization_id: string
+          payload: Json
+          payload_hash: string
+          retry_not_before?: string | null
+          runtime_lease_generation: number
+          schedule_id?: string | null
+          schedule_occurrence_id?: string | null
+          schedule_version?: number | null
+          session_generation: number
+          smoke_run_id?: string | null
+          source_hash: string
+          source_id: string
+          source_key: string
+          source_version: string
+          state?: string
+          subscription_id?: string | null
+          subscription_version?: number | null
+          target_id: string
+          terminal_at?: string | null
+          updated_at?: string
+          work_kind: string
+        }
+        Update: {
+          account_id?: string
+          attempt_count?: number
+          binding_defer_reason?: string | null
+          campaign_version_id?: string | null
+          cell_id?: string
+          claim_generation?: number
+          claim_token_hash?: string | null
+          created_at?: string
+          credential_generation?: number
+          crm_occurrence_id?: string | null
+          fencing_token?: number
+          id?: string
+          lease_expires_at?: string | null
+          organization_id?: string
+          payload?: Json
+          payload_hash?: string
+          retry_not_before?: string | null
+          runtime_lease_generation?: number
+          schedule_id?: string | null
+          schedule_occurrence_id?: string | null
+          schedule_version?: number | null
+          session_generation?: number
+          smoke_run_id?: string | null
+          source_hash?: string
+          source_id?: string
+          source_key?: string
+          source_version?: string
+          state?: string
+          subscription_id?: string | null
+          subscription_version?: number | null
+          target_id?: string
+          terminal_at?: string | null
+          updated_at?: string
+          work_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_send_work_campaign_version_fkey"
+            columns: ["organization_id", "account_id", "campaign_version_id"]
+            referencedRelation: "openclaw_campaign_runs"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_credential_binding_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "credential_generation",
+            ]
+            referencedRelation: "openclaw_runtime_credentials"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "credential_generation",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_crm_occurrence_fkey"
+            columns: ["organization_id", "crm_occurrence_id"]
+            referencedRelation: "openclaw_crm_event_occurrences"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_items_organization_id_account_id_cell_i_fkey"
+            columns: ["organization_id", "account_id", "cell_id"]
+            referencedRelation: "openclaw_runtime_cells"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_items_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_lease_binding_fkey"
+            columns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "runtime_lease_generation",
+              "fencing_token",
+            ]
+            referencedRelation: "openclaw_runtime_leases"
+            referencedColumns: [
+              "organization_id",
+              "account_id",
+              "cell_id",
+              "lease_generation",
+              "fencing_token",
+            ]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_schedule_occurrence_fkey"
+            columns: ["organization_id", "account_id", "schedule_occurrence_id"]
+            referencedRelation: "openclaw_schedule_occurrences"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_smoke_run_fkey"
+            columns: ["organization_id", "smoke_run_id"]
+            referencedRelation: "openclaw_smoke_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_send_work_target_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_service_nonces: {
+        Row: {
+          account_id: string | null
+          cell_id: string | null
+          consumed_at: string | null
+          credential_generation: number
+          envelope_hash: string
+          expires_at: string
+          fencing_token: number
+          id: string
+          issued_at: string
+          lease_generation: number
+          maintenance_principal_id: string | null
+          nonce_hash: string
+          nonce_namespace: string
+          operation: string
+          organization_id: string
+          principal_kind: string
+          request_hash: string
+          result_hash: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          cell_id?: string | null
+          consumed_at?: string | null
+          credential_generation: number
+          envelope_hash: string
+          expires_at: string
+          fencing_token: number
+          id?: string
+          issued_at: string
+          lease_generation: number
+          maintenance_principal_id?: string | null
+          nonce_hash: string
+          nonce_namespace: string
+          operation: string
+          organization_id: string
+          principal_kind: string
+          request_hash: string
+          result_hash?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          cell_id?: string | null
+          consumed_at?: string | null
+          credential_generation?: number
+          envelope_hash?: string
+          expires_at?: string
+          fencing_token?: number
+          id?: string
+          issued_at?: string
+          lease_generation?: number
+          maintenance_principal_id?: string | null
+          nonce_hash?: string
+          nonce_namespace?: string
+          operation?: string
+          organization_id?: string
+          principal_kind?: string
+          request_hash?: string
+          result_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_service_nonces_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      openclaw_smoke_cleanup_proofs: {
+        Row: {
+          cleanup_generation: number
+          dispatching_residual: number
+          id: string
+          leased_residual: number
+          organization_id: string
+          proof_hash: string
+          queued_residual: number
+          smoke_run_id: string
+          verified_at: string
+        }
+        Insert: {
+          cleanup_generation: number
+          dispatching_residual: number
+          id?: string
+          leased_residual: number
+          organization_id: string
+          proof_hash: string
+          queued_residual: number
+          smoke_run_id: string
+          verified_at?: string
+        }
+        Update: {
+          cleanup_generation?: number
+          dispatching_residual?: number
+          id?: string
+          leased_residual?: number
+          organization_id?: string
+          proof_hash?: string
+          queued_residual?: number
+          smoke_run_id?: string
+          verified_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_smoke_cleanup_proofs_organization_id_smoke_run_id_fkey"
+            columns: ["organization_id", "smoke_run_id"]
+            referencedRelation: "openclaw_smoke_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_smoke_observations: {
+        Row: {
+          content_free_metrics: Json
+          id: string
+          lineage_hash: string
+          observation_kind: string
+          observed_at: string
+          organization_id: string
+          rollout_run_id: string
+          rollout_stage: string
+          rollout_stage_version: number
+          smoke_run_id: string
+          trusted_row_ids: string[]
+          trusted_rows_hash: string
+        }
+        Insert: {
+          content_free_metrics: Json
+          id?: string
+          lineage_hash: string
+          observation_kind: string
+          observed_at?: string
+          organization_id: string
+          rollout_run_id: string
+          rollout_stage: string
+          rollout_stage_version: number
+          smoke_run_id: string
+          trusted_row_ids: string[]
+          trusted_rows_hash: string
+        }
+        Update: {
+          content_free_metrics?: Json
+          id?: string
+          lineage_hash?: string
+          observation_kind?: string
+          observed_at?: string
+          organization_id?: string
+          rollout_run_id?: string
+          rollout_stage?: string
+          rollout_stage_version?: number
+          smoke_run_id?: string
+          trusted_row_ids?: string[]
+          trusted_rows_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_smoke_observations_organization_id_rollout_run_id_fkey"
+            columns: ["organization_id", "rollout_run_id"]
+            referencedRelation: "openclaw_rollout_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_smoke_observations_organization_id_smoke_run_id_fkey"
+            columns: ["organization_id", "smoke_run_id"]
+            referencedRelation: "openclaw_smoke_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_smoke_runs: {
+        Row: {
+          cleanup_generation: number
+          command_scope: Json
+          command_scope_hash: string
+          finished_at: string | null
+          id: string
+          lineage_hash: string | null
+          organization_id: string
+          project_ref: string | null
+          reviewed_commit_sha: string | null
+          rollout_run_id: string
+          rollout_stage: string | null
+          rollout_stage_version: number | null
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          cleanup_generation?: number
+          command_scope: Json
+          command_scope_hash: string
+          finished_at?: string | null
+          id?: string
+          lineage_hash?: string | null
+          organization_id: string
+          project_ref?: string | null
+          reviewed_commit_sha?: string | null
+          rollout_run_id: string
+          rollout_stage?: string | null
+          rollout_stage_version?: number | null
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          cleanup_generation?: number
+          command_scope?: Json
+          command_scope_hash?: string
+          finished_at?: string | null
+          id?: string
+          lineage_hash?: string | null
+          organization_id?: string
+          project_ref?: string | null
+          reviewed_commit_sha?: string | null
+          rollout_run_id?: string
+          rollout_stage?: string | null
+          rollout_stage_version?: number | null
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_smoke_runs_organization_id_fkey"
+            columns: ["organization_id"]
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "openclaw_smoke_runs_organization_id_rollout_run_id_fkey"
+            columns: ["organization_id", "rollout_run_id"]
+            referencedRelation: "openclaw_rollout_runs"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_suppressions: {
+        Row: {
+          account_id: string
+          active_from: string
+          created_at: string
+          evidence_hash: string
+          expires_at: string | null
+          id: string
+          organization_id: string
+          released_at: string | null
+          suppression_reason: string
+          suppression_scope: string
+          suppression_version: number
+          target_id: string | null
+        }
+        Insert: {
+          account_id: string
+          active_from?: string
+          created_at?: string
+          evidence_hash: string
+          expires_at?: string | null
+          id?: string
+          organization_id: string
+          released_at?: string | null
+          suppression_reason: string
+          suppression_scope: string
+          suppression_version?: number
+          target_id?: string | null
+        }
+        Update: {
+          account_id?: string
+          active_from?: string
+          created_at?: string
+          evidence_hash?: string
+          expires_at?: string | null
+          id?: string
+          organization_id?: string
+          released_at?: string | null
+          suppression_reason?: string
+          suppression_scope?: string
+          suppression_version?: number
+          target_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_suppressions_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_suppressions_organization_id_account_id_target_id_fkey"
+            columns: ["organization_id", "account_id", "target_id"]
+            referencedRelation: "openclaw_targets"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_takeovers: {
+        Row: {
+          account_id: string
+          conversation_id: string
+          expires_at: string
+          id: string
+          organization_id: string
+          owner_membership_id: string
+          release_reason: string | null
+          released_at: string | null
+          started_at: string
+          takeover_version: number
+        }
+        Insert: {
+          account_id: string
+          conversation_id: string
+          expires_at: string
+          id?: string
+          organization_id: string
+          owner_membership_id: string
+          release_reason?: string | null
+          released_at?: string | null
+          started_at?: string
+          takeover_version: number
+        }
+        Update: {
+          account_id?: string
+          conversation_id?: string
+          expires_at?: string
+          id?: string
+          organization_id?: string
+          owner_membership_id?: string
+          release_reason?: string | null
+          released_at?: string | null
+          started_at?: string
+          takeover_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_takeovers_organization_id_account_id_conversation_fkey"
+            columns: ["organization_id", "account_id", "conversation_id"]
+            referencedRelation: "openclaw_conversations"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_takeovers_organization_id_owner_membership_id_fkey"
+            columns: ["organization_id", "owner_membership_id"]
+            referencedRelation: "organization_memberships"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      openclaw_targets: {
+        Row: {
+          account_id: string
+          contact_id: string | null
+          created_at: string
+          directory_refreshed_at: string
+          id: string
+          is_active: boolean
+          kind: string
+          organization_id: string
+          provider_id: string
+          sales_group_id: string | null
+          target_version: number
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          contact_id?: string | null
+          created_at?: string
+          directory_refreshed_at: string
+          id?: string
+          is_active?: boolean
+          kind: string
+          organization_id: string
+          provider_id: string
+          sales_group_id?: string | null
+          target_version?: number
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          contact_id?: string | null
+          created_at?: string
+          directory_refreshed_at?: string
+          id?: string
+          is_active?: boolean
+          kind?: string
+          organization_id?: string
+          provider_id?: string
+          sales_group_id?: string | null
+          target_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_targets_organization_id_account_id_contact_id_fkey"
+            columns: ["organization_id", "account_id", "contact_id"]
+            referencedRelation: "openclaw_contacts"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_targets_organization_id_account_id_fkey"
+            columns: ["organization_id", "account_id"]
+            referencedRelation: "openclaw_accounts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_targets_organization_id_account_id_sales_group_id_fkey"
+            columns: ["organization_id", "account_id", "sales_group_id"]
+            referencedRelation: "openclaw_sales_groups"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+        ]
+      }
+      openclaw_unknown_resolutions: {
+        Row: {
+          account_id: string
+          authoritative_evidence_domain: string
+          authoritative_evidence_hash: string
+          client_operation_id: string
+          id: string
+          new_outbox_id: string | null
+          operator_evidence_hash: string
+          organization_id: string
+          outbox_id: string
+          outcome: string
+          reason_code: string
+          request_hash: string
+          resolution_version: number
+          resolved_at: string
+          resolved_by: string
+        }
+        Insert: {
+          account_id: string
+          authoritative_evidence_domain?: string
+          authoritative_evidence_hash: string
+          client_operation_id: string
+          id?: string
+          new_outbox_id?: string | null
+          operator_evidence_hash: string
+          organization_id: string
+          outbox_id: string
+          outcome: string
+          reason_code: string
+          request_hash: string
+          resolution_version?: number
+          resolved_at?: string
+          resolved_by: string
+        }
+        Update: {
+          account_id?: string
+          authoritative_evidence_domain?: string
+          authoritative_evidence_hash?: string
+          client_operation_id?: string
+          id?: string
+          new_outbox_id?: string | null
+          operator_evidence_hash?: string
+          organization_id?: string
+          outbox_id?: string
+          outcome?: string
+          reason_code?: string
+          request_hash?: string
+          resolution_version?: number
+          resolved_at?: string
+          resolved_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "openclaw_unknown_resolutions_organization_id_account_id_ne_fkey"
+            columns: ["organization_id", "account_id", "new_outbox_id"]
+            referencedRelation: "openclaw_outbox"
+            referencedColumns: ["organization_id", "account_id", "id"]
+          },
+          {
+            foreignKeyName: "openclaw_unknown_resolutions_organization_id_account_id_ou_fkey"
+            columns: ["organization_id", "account_id", "outbox_id"]
+            referencedRelation: "openclaw_outbox"
+            referencedColumns: ["organization_id", "account_id", "id"]
           },
         ]
       }
@@ -21684,298 +22246,6 @@ export type Database = {
           room_name: string
         }[]
       }
-      openclaw_acknowledge_risk_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_archive_knowledge_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_assign_conversation_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_begin_qr_login_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_cancel_schedule_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_consume_qr_challenge_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_create_automation_draft_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_create_knowledge_draft_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_create_legal_hold_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_create_send_intent_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_disconnect_account_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_dry_run_automation_v1: {
-        Args: { p_request: Json }
-        Returns: Json
-      }
-      openclaw_get_automation_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_get_bootstrap_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_get_knowledge_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_get_overview_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_list_audit_events_v1: {
-        Args: { p_request: Json }
-        Returns: Json
-      }
-      openclaw_list_automations_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_list_conversations_v1: {
-        Args: { p_request: Json }
-        Returns: Json
-      }
-      openclaw_list_dead_letters_v1: {
-        Args: { p_request: Json }
-        Returns: Json
-      }
-      openclaw_list_health_events_v1: {
-        Args: { p_request: Json }
-        Returns: Json
-      }
-      openclaw_list_knowledge_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_list_legal_holds_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_list_messages_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_list_my_organizations_v1: { Args: never; Returns: Json }
-      openclaw_list_sales_groups_v1: {
-        Args: { p_request: Json }
-        Returns: Json
-      }
-      openclaw_list_schedules_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_list_unknown_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_mark_conversation_read_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_pause_automation_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_pause_schedule_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_poll_qr_login_v1: { Args: { p_request: Json }; Returns: Json }
-      openclaw_preview_knowledge_retrieval_v1: {
-        Args: { p_request: Json }
-        Returns: Json
-      }
-      openclaw_publish_automation_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_publish_knowledge_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_release_legal_hold_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_release_takeover_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_replay_dead_letter_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_request_directory_sync_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_resolve_unknown_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_save_automation_step_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_ack_audit_anchor_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_ack_generation_revocation_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_acquire_cell_lease_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_advance_rollout_stage_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_authorize_outbox_send_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_authorize_retention_delete_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_begin_cell_rebind_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_begin_rollout_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_begin_smoke_run_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_claim_inbound_automation_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_claim_outbox_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_claim_work_item_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_cleanup_smoke_run_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_complete_cell_rebind_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_complete_inbound_automation_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_complete_outbox_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_complete_retention_quarantine_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_complete_work_item_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_create_outbox_from_work_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_exchange_maintenance_credential_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_exchange_runtime_credential_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_finalize_retention_delete_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_ingest_inbound_batch_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_issue_media_ticket_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_preflight_outbox_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_record_rollout_checkpoint_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_record_rollout_observation_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_record_smoke_observation_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_record_watchdog_health_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_requeue_pre_handoff_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_resume_rollout_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_runtime_heartbeat_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_submit_qr_result_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_sweep_runtime_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_service_verify_smoke_cleanup_v1: {
-        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
-        Returns: Json
-      }
-      openclaw_set_control_state_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_takeover_conversation_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_update_knowledge_draft_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_upsert_group_allowlist_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_upsert_schedule_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
-      openclaw_validate_knowledge_v1: {
-        Args: { p_client_operation_id: string; p_request: Json }
-        Returns: Json
-      }
       pass_listing_form_rooms: {
         Args: never
         Returns: {
@@ -23526,6 +23796,326 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      openclaw_acknowledge_disclosure_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_acknowledge_risk_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_archive_knowledge_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_assign_conversation_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_begin_qr_login_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_cancel_schedule_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_consume_qr_challenge_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_create_automation_draft_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_create_knowledge_draft_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_create_legal_hold_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_create_send_intent_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_disconnect_account_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_dry_run_automation_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_get_automation_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_get_bootstrap_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_get_knowledge_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_get_overview_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_list_audit_events_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_list_automations_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_list_conversations_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_list_dead_letters_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_list_health_events_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_list_knowledge_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_list_legal_holds_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_list_messages_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_list_my_organizations_v1: { Args: never; Returns: Json }
+      openclaw_list_sales_groups_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_list_schedules_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_list_unknown_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_mark_conversation_read_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_pause_automation_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_pause_schedule_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_poll_qr_login_v1: { Args: { p_request: Json }; Returns: Json }
+      openclaw_preview_knowledge_retrieval_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_publish_automation_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_publish_knowledge_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_release_legal_hold_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_release_takeover_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_replay_dead_letter_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_request_directory_sync_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_resolve_media_object_v1: {
+        Args: { p_request: Json }
+        Returns: Json
+      }
+      openclaw_resolve_unknown_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_save_automation_step_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_ack_disconnect_revocation_v1: {
+        Args: { p_actor_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_ack_generation_revocation_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_acquire_cell_lease_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_advance_rollout_stage_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_authorize_outbox_send_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_authorize_retention_delete_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_begin_cell_rebind_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_begin_rollout_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_begin_smoke_run_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_claim_outbox_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_claim_work_item_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_cleanup_smoke_run_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_complete_cell_rebind_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_complete_maintenance_work_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_complete_outbox_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_complete_work_item_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_consume_qr_challenge_v1: {
+        Args: {
+          p_actor_id: string
+          p_client_operation_id: string
+          p_request: Json
+        }
+        Returns: Json
+      }
+      openclaw_service_create_outbox_from_work_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_exchange_maintenance_credential_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_exchange_runtime_credential_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_finalize_account_connection_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_finalize_media_upload_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_get_work_context_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_ingest_inbound_batch_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_issue_media_ticket_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_issue_retention_delete_ticket_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_preflight_outbox_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_record_rollout_checkpoint_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_record_rollout_observation_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_record_smoke_observation_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_record_watchdog_health_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_requeue_pre_handoff_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_resume_disconnect_revocation_v1: {
+        Args: {
+          p_actor_id: string
+          p_client_operation_id: string
+          p_organization_id: string
+        }
+        Returns: Json
+      }
+      openclaw_service_resume_rollout_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_runtime_heartbeat_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_submit_qr_result_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_sweep_runtime_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_service_verify_smoke_cleanup_v1: {
+        Args: { p_envelope: Json; p_principal: Json; p_request: Json }
+        Returns: Json
+      }
+      openclaw_set_control_state_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_takeover_conversation_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_update_knowledge_draft_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_upsert_group_allowlist_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_upsert_schedule_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
+      }
+      openclaw_validate_knowledge_v1: {
+        Args: { p_client_operation_id: string; p_request: Json }
+        Returns: Json
       }
     }
     Enums: {

@@ -5,7 +5,7 @@
  * readiness, which is why retention and audit keep running after a disconnect.
  */
 
-export const HEARTBEAT_INTERVAL_MS = 30_000;
+export const HEARTBEAT_INTERVAL_MS = 10_000;
 export const HEARTBEAT_STALE_MS = 90_000;
 
 export interface ReadinessInput {

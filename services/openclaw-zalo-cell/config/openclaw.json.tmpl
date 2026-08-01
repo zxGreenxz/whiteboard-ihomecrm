@@ -10,5 +10,68 @@
     "zalouser": {
       "enabled": true
     }
+  },
+  "models": {
+    "providers": {
+      "ihome-customer-ai": {
+        "baseUrl": "${OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL}",
+        "api": "openai-completions",
+        "apiKey": {
+          "source": "env",
+          "provider": "default",
+          "id": "OPENCLAW_ZALO_CUSTOMER_AI_API_KEY"
+        },
+        "models": [
+          {
+            "id": "${OPENCLAW_ZALO_CUSTOMER_AI_MODEL}",
+            "name": "Zalo Customer Drafting",
+            "reasoning": false,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 32768,
+            "maxTokens": 4096,
+            "compat": {
+              "supportsTools": false
+            }
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "list": [
+      {
+        "id": "main",
+        "default": true
+      },
+      {
+        "id": "zalo-customer-drafting",
+        "model": {
+          "primary": "ihome-customer-ai/${OPENCLAW_ZALO_CUSTOMER_AI_MODEL}",
+          "fallbacks": []
+        },
+        "tools": {
+          "allow": [],
+          "deny": [
+            "*"
+          ],
+          "elevated": {
+            "enabled": false
+          },
+          "exec": {
+            "mode": "deny",
+            "security": "deny",
+            "ask": "off"
+          }
+        }
+      }
+    ]
   }
 }

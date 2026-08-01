@@ -74,17 +74,9 @@ export function mayRetryAutomatically(state: OutboxState): boolean {
   return state === "QUEUED" || state === "LEASED";
 }
 
-export interface MarkerFields {
-  outboxId: string;
-  claimGeneration: number;
-  payloadSha256: string;
-  fencingToken: number;
-  sessionGeneration: number;
-  controlVersion: number;
-  takeoverVersion: number;
-  markerNonce: string;
-  expiresAtEpochMs: number;
-}
+import type { OutboundAuthorizationMarker } from "../runtime-api/schemas.js";
+
+export type MarkerFields = OutboundAuthorizationMarker;
 
 export const MARKER_MAX_TTL_MS = 15_000;
 
@@ -112,6 +104,8 @@ export function evaluateMarker({
   currentControlVersion,
   currentTakeoverVersion,
   nonceAlreadyConsumed,
+  expectedOutboxId,
+  expectedClaimGeneration,
 }: {
   marker: Partial<MarkerFields>;
   nowEpochMs: number;
@@ -122,17 +116,20 @@ export function evaluateMarker({
   currentControlVersion: number;
   currentTakeoverVersion: number;
   nonceAlreadyConsumed: boolean;
+  expectedOutboxId?: string;
+  expectedClaimGeneration?: number;
 }): { ok: boolean; failure?: MarkerFailure } {
   const required: Array<keyof MarkerFields> = [
     "outboxId",
     "claimGeneration",
-    "payloadSha256",
+    "version",
+    "payloadHash",
     "fencingToken",
     "sessionGeneration",
     "controlVersion",
     "takeoverVersion",
     "markerNonce",
-    "expiresAtEpochMs",
+    "expiresAt",
   ];
   for (const field of required) {
     if (marker[field] === undefined || marker[field] === null) {
@@ -141,18 +138,28 @@ export function evaluateMarker({
   }
   const complete = marker as MarkerFields;
 
+  const expiresAtEpochMs = Date.parse(complete.expiresAt);
+  if (
+    complete.version !== 1 || !Number.isFinite(expiresAtEpochMs) ||
+    new Date(expiresAtEpochMs).toISOString() !== complete.expiresAt
+  ) {
+    return { ok: false, failure: "MARKER_INCOMPLETE" };
+  }
+
   if (nonceAlreadyConsumed) return { ok: false, failure: "MARKER_REPLAYED" };
-  if (complete.expiresAtEpochMs <= nowEpochMs) return { ok: false, failure: "MARKER_EXPIRED" };
-  if (complete.expiresAtEpochMs - nowEpochMs > MARKER_MAX_TTL_MS) {
+  if (expiresAtEpochMs <= nowEpochMs) return { ok: false, failure: "MARKER_EXPIRED" };
+  if (expiresAtEpochMs - nowEpochMs > MARKER_MAX_TTL_MS) {
     return { ok: false, failure: "MARKER_TTL_TOO_LONG" };
   }
-  if (complete.expiresAtEpochMs > leaseExpiresAtEpochMs) {
+  if (expiresAtEpochMs > leaseExpiresAtEpochMs) {
     return { ok: false, failure: "MARKER_BEYOND_LEASE" };
   }
-  if (complete.payloadSha256 !== expectedPayloadSha256) {
+  if (complete.payloadHash !== expectedPayloadSha256) {
     return { ok: false, failure: "MARKER_PAYLOAD_MISMATCH" };
   }
   if (
+    (expectedOutboxId !== undefined && complete.outboxId !== expectedOutboxId) ||
+    (expectedClaimGeneration !== undefined && complete.claimGeneration !== expectedClaimGeneration) ||
     complete.fencingToken !== currentFencingToken ||
     complete.sessionGeneration !== currentSessionGeneration ||
     complete.controlVersion !== currentControlVersion ||

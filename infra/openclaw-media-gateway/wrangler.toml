@@ -6,6 +6,7 @@ compatibility_date = "2026-07-01"
 # and no public R2 endpoint. Browser reads arrive only through the exact zone
 # route below.
 workers_dev = false
+preview_urls = false
 
 routes = [
   { pattern = "openclaw-media.chillhome.io.vn/*", zone_name = "chillhome.io.vn" }

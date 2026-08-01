@@ -1,4 +1,4 @@
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 
 /**
  * Connect-time IP policy for inbound media fetches.
@@ -27,7 +27,22 @@ export interface IpVerdict {
 }
 
 /** Addresses that belong to the 9Router / cli-proxy-api host and must never be reached. */
-export const FORBIDDEN_HOST_ADDRESSES = Object.freeze(new Set<string>());
+const IPV6_LINK_LOCAL = new BlockList();
+IPV6_LINK_LOCAL.addSubnet("fe80::", 10, "ipv6");
+const IPV6_UNIQUE_LOCAL = new BlockList();
+IPV6_UNIQUE_LOCAL.addSubnet("fc00::", 7, "ipv6");
+const IPV6_MULTICAST = new BlockList();
+IPV6_MULTICAST.addSubnet("ff00::", 8, "ipv6");
+const IPV6_RESERVED = new BlockList();
+for (const [network, prefix] of [
+  ["::ffff:0:0", 96],
+  ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
+  ["100::", 64],
+  ["2001::", 23],
+  ["2002::", 16],
+  ["3fff::", 20],
+] as const) IPV6_RESERVED.addSubnet(network, prefix, "ipv6");
 
 function ipv4Octets(address: string): number[] | null {
   const parts = address.split(".");
@@ -68,20 +83,23 @@ function evaluateIpv6(address: string): IpVerdict {
   const normalized = address.toLowerCase();
   if (normalized === "::" ) return { allowed: false, reason: "UNSPECIFIED" };
   if (normalized === "::1") return { allowed: false, reason: "LOOPBACK" };
-  if (normalized.startsWith("fe80")) return { allowed: false, reason: "LINK_LOCAL" };
-  if (/^f[cd]/.test(normalized)) return { allowed: false, reason: "UNIQUE_LOCAL" };
-  if (normalized.startsWith("ff")) return { allowed: false, reason: "MULTICAST" };
   if (normalized.startsWith("::ffff:")) {
     // IPv4-mapped addresses must be judged by the IPv4 rules.
-    return evaluateIpv4(normalized.slice("::ffff:".length));
+    const embedded = normalized.slice("::ffff:".length);
+    if (embedded.includes(".")) return evaluateIpv4(embedded);
   }
-  if (normalized.startsWith("2001:db8")) return { allowed: false, reason: "RESERVED" };
-  if (normalized.startsWith("64:ff9b")) return { allowed: false, reason: "RESERVED" };
+  if (IPV6_LINK_LOCAL.check(address, "ipv6")) return { allowed: false, reason: "LINK_LOCAL" };
+  if (IPV6_UNIQUE_LOCAL.check(address, "ipv6")) return { allowed: false, reason: "UNIQUE_LOCAL" };
+  if (IPV6_MULTICAST.check(address, "ipv6")) return { allowed: false, reason: "MULTICAST" };
+  if (IPV6_RESERVED.check(address, "ipv6")) return { allowed: false, reason: "RESERVED" };
   return { allowed: true };
 }
 
-export function evaluateResolvedAddress(address: string): IpVerdict {
-  if (FORBIDDEN_HOST_ADDRESSES.has(address)) {
+export function evaluateResolvedAddress(
+  address: string,
+  forbiddenHostAddresses: readonly string[] = [],
+): IpVerdict {
+  if (forbiddenHostAddresses.includes(address)) {
     return { allowed: false, reason: "FORBIDDEN_HOST" };
   }
   const family = isIP(address);
@@ -90,10 +108,13 @@ export function evaluateResolvedAddress(address: string): IpVerdict {
   return { allowed: false, reason: "INVALID_ADDRESS" };
 }
 
-export function allResolvedAddressesAllowed(addresses: readonly string[]): IpVerdict {
+export function allResolvedAddressesAllowed(
+  addresses: readonly string[],
+  forbiddenHostAddresses: readonly string[] = [],
+): IpVerdict {
   if (addresses.length === 0) return { allowed: false, reason: "INVALID_ADDRESS" };
   for (const address of addresses) {
-    const verdict = evaluateResolvedAddress(address);
+    const verdict = evaluateResolvedAddress(address, forbiddenHostAddresses);
     if (!verdict.allowed) return verdict;
   }
   return { allowed: true };

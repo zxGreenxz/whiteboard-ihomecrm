@@ -8,6 +8,11 @@ import {
   HEARTBEAT_STALE_MS,
   liveness,
 } from "../src/health/snapshot.js";
+import {
+  AiCircuitBreaker,
+  CircuitOpenError,
+} from "../src/health/circuit-breaker.js";
+import { HeartbeatLoop, HeartbeatSendError } from "../src/health/heartbeat.js";
 import { FakeZaloAdapter } from "../src/testing/fake-zalo-adapter.js";
 import { SqliteSpool } from "../src/spool/sqlite-spool.js";
 
@@ -66,6 +71,139 @@ describe("Bridge health separation", () => {
   });
 });
 
+describe("Runtime heartbeat loop", () => {
+  it("uses the fixed ten-second cadence and can be stopped idempotently", () => {
+    let scheduled: (() => void) | undefined;
+    let intervalMs = 0;
+    const cleared: unknown[] = [];
+    const handle = { kind: "heartbeat" };
+    const loop = new HeartbeatLoop({
+      send: async () => undefined,
+      now: () => NOW,
+      setInterval: (callback, milliseconds) => {
+        scheduled = callback;
+        intervalMs = milliseconds;
+        return handle;
+      },
+      clearInterval: (candidate) => cleared.push(candidate),
+    });
+
+    loop.start();
+    loop.start();
+
+    expect(intervalMs).toBe(10_000);
+    expect(scheduled).toBeTypeOf("function");
+    loop.stop();
+    loop.stop();
+    expect(cleared).toEqual([handle]);
+  });
+
+  it("records only successful heartbeats and never overlaps sends", async () => {
+    let calls = 0;
+    let release: (() => void) | undefined;
+    let now = NOW;
+    const loop = new HeartbeatLoop({
+      send: async () => {
+        calls += 1;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+      now: () => now,
+    });
+
+    const first = loop.pulse();
+    const second = loop.pulse();
+    expect(calls).toBe(1);
+    expect(loop.snapshot()).toMatchObject({ inFlight: true, lastSuccessAtMs: null });
+    release?.();
+    await Promise.all([first, second]);
+    expect(calls).toBe(1);
+    expect(loop.snapshot()).toMatchObject({
+      inFlight: false,
+      lastAttemptAtMs: NOW,
+      lastSuccessAtMs: NOW,
+      consecutiveFailures: 0,
+    });
+
+    now += 30_000;
+    const third = loop.pulse();
+    expect(calls).toBe(2);
+    release?.();
+    await expect(third).resolves.toBeUndefined();
+  });
+
+  it("contains sender failures and exposes content-free failure state", async () => {
+    const loop = new HeartbeatLoop({
+      send: async () => {
+        throw new Error("credential-that-must-not-be-stored");
+      },
+      now: () => NOW,
+    });
+
+    const error = await loop.pulse().catch((caught) => caught);
+    expect(error).toBeInstanceOf(HeartbeatSendError);
+    expect(String(error)).not.toContain("credential-that-must-not-be-stored");
+    expect(loop.snapshot()).toEqual({
+      running: false,
+      inFlight: false,
+      lastAttemptAtMs: NOW,
+      lastSuccessAtMs: null,
+      consecutiveFailures: 1,
+    });
+  });
+});
+
+describe("AI circuit breaker", () => {
+  it("opens at the configured threshold without disabling manual non-AI sends", () => {
+    const breaker = new AiCircuitBreaker({ failureThreshold: 2, resetAfterMs: 30_000 });
+    breaker.recordFailure(NOW);
+    expect(breaker.snapshot(NOW)).toMatchObject({ state: "CLOSED", failureCount: 1 });
+    breaker.recordFailure(NOW + 1);
+
+    expect(breaker.snapshot(NOW + 1)).toEqual({
+      state: "OPEN",
+      failureCount: 2,
+      openedAtMs: NOW + 1,
+      nextProbeAtMs: NOW + 30_001,
+      aiAutomaticSendAllowed: false,
+      manualNonAiSendAllowed: true,
+    });
+    expect(() => breaker.assertCanAttempt(NOW + 2)).toThrow(CircuitOpenError);
+  });
+
+  it("permits one half-open probe and closes only after that probe succeeds", () => {
+    const breaker = new AiCircuitBreaker({ failureThreshold: 1, resetAfterMs: 30_000 });
+    breaker.recordFailure(NOW);
+
+    expect(breaker.canAttempt(NOW + 29_999)).toBe(false);
+    expect(breaker.canAttempt(NOW + 30_000)).toBe(true);
+    expect(breaker.canAttempt(NOW + 30_000)).toBe(false);
+    expect(breaker.snapshot(NOW + 30_000).state).toBe("HALF_OPEN");
+
+    breaker.recordSuccess();
+    expect(breaker.snapshot(NOW + 30_001)).toMatchObject({
+      state: "CLOSED",
+      failureCount: 0,
+      aiAutomaticSendAllowed: true,
+      manualNonAiSendAllowed: true,
+    });
+  });
+
+  it("reopens for a full reset window when the half-open probe fails", () => {
+    const breaker = new AiCircuitBreaker({ failureThreshold: 1, resetAfterMs: 30_000 });
+    breaker.recordFailure(NOW);
+    expect(breaker.canAttempt(NOW + 30_000)).toBe(true);
+    breaker.recordFailure(NOW + 30_001);
+
+    expect(breaker.snapshot(NOW + 30_001)).toMatchObject({
+      state: "OPEN",
+      openedAtMs: NOW + 30_001,
+      nextProbeAtMs: NOW + 60_001,
+    });
+  });
+});
+
 describe("Fake Zalo adapter determinism", () => {
   it("returns the configured QR and directory without any network", async () => {
     const adapter = new FakeZaloAdapter({
@@ -89,11 +227,11 @@ describe("Fake Zalo adapter determinism", () => {
       sendOutcomes: ["SUCCESS", "PROVIDER_REJECT", "AMBIGUOUS_TIMEOUT"],
     });
 
-    expect((await adapter.send({ text: "a" })).outcome).toBe("SUCCESS");
-    const rejected = await adapter.send({ text: "b" });
+    expect((await adapter.emitFakeOutcome({ text: "a" })).outcome).toBe("SUCCESS");
+    const rejected = await adapter.emitFakeOutcome({ text: "b" });
     expect(rejected.outcome).toBe("PROVIDER_REJECT");
     expect(rejected.providerMessageId).toBeNull();
-    const ambiguous = await adapter.send({ text: "c" });
+    const ambiguous = await adapter.emitFakeOutcome({ text: "c" });
     expect(ambiguous.outcome).toBe("AMBIGUOUS_TIMEOUT");
     expect(ambiguous.providerMessageId).toBeNull();
   });

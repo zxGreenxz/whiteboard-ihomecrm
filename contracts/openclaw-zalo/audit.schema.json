@@ -66,9 +66,9 @@
         "version": { "const": 1 },
         "organizationId": { "$ref": "#/$defs/uuid" },
         "rootDate": { "type": "string", "format": "date" },
-        "firstSequence": { "type": "integer", "minimum": 1 },
-        "lastSequence": { "type": "integer", "minimum": 1 },
-        "eventCount": { "type": "integer", "minimum": 1 },
+        "firstSequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "lastSequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "eventCount": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
         "previousRootHash": {
           "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
         },

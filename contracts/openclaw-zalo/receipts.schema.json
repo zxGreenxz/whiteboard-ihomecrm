@@ -19,6 +19,24 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]{86}$"
     },
+    "frozenMaintenanceClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maintenancePrincipalId",
+        "credentialGeneration",
+        "leaseGeneration",
+        "fencingToken",
+        "claimGeneration"
+      ],
+      "properties": {
+        "maintenancePrincipalId": { "$ref": "#/$defs/uuid" },
+        "credentialGeneration": { "type": "integer", "minimum": 1 },
+        "leaseGeneration": { "type": "integer", "minimum": 1 },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "claimGeneration": { "type": "integer", "minimum": 1 }
+      }
+    },
     "retentionAuthorization": {
       "type": "object",
       "additionalProperties": false,
@@ -65,9 +83,64 @@
         "signature": { "$ref": "#/$defs/signature" }
       }
     },
+    "retentionRecoveryAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "authorizationKind",
+        "organizationId",
+        "maintenancePrincipalId",
+        "workItemId",
+        "credentialGeneration",
+        "leaseGeneration",
+        "fencingToken",
+        "recoveryKind",
+        "recoveryGeneration",
+        "replacesTicketJti",
+        "replacesDeleteAuthorizationJti",
+        "frozenClaim",
+        "objectKey",
+        "deletePhase",
+        "holdVersion",
+        "quarantineVersion",
+        "deleteTicketJti",
+        "authorizationJti",
+        "iat",
+        "exp",
+        "gatewaySigningKeyGeneration",
+        "signature"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "authorizationKind": { "const": "RETENTION_FINAL_DELETE" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "maintenancePrincipalId": { "$ref": "#/$defs/uuid" },
+        "workItemId": { "$ref": "#/$defs/uuid" },
+        "credentialGeneration": { "type": "integer", "minimum": 1 },
+        "leaseGeneration": { "type": "integer", "minimum": 1 },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "recoveryKind": { "const": "RETENTION_DELETE_AUTHORIZED" },
+        "recoveryGeneration": { "type": "integer", "minimum": 1 },
+        "replacesTicketJti": { "$ref": "#/$defs/uuid" },
+        "replacesDeleteAuthorizationJti": { "$ref": "#/$defs/uuid" },
+        "frozenClaim": { "$ref": "#/$defs/frozenMaintenanceClaim" },
+        "objectKey": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "deletePhase": { "const": "FINAL_DELETE" },
+        "holdVersion": { "type": "integer", "minimum": 0 },
+        "quarantineVersion": { "type": "integer", "minimum": 1 },
+        "deleteTicketJti": { "$ref": "#/$defs/uuid" },
+        "authorizationJti": { "$ref": "#/$defs/uuid" },
+        "iat": { "type": "string", "format": "date-time" },
+        "exp": { "type": "string", "format": "date-time" },
+        "gatewaySigningKeyGeneration": { "type": "integer", "minimum": 1 },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
     "retentionReceipt": {
       "type": "object",
       "additionalProperties": false,
+      "$comment": "deleteAuthorizationJti MUST equal proofJti; receiptId identifies the receipt and is not the retention ticketId.",
       "required": [
         "version",
         "receiptKind",
@@ -179,6 +252,38 @@
         "signature": { "$ref": "#/$defs/signature" }
       }
     },
+    "mediaUploadReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "receiptKind", "receiptId", "organizationId", "accountId", "cellId", "mediaId", "objectKey", "sha256", "contentType", "contentLength", "uploadTicketJti", "credentialGeneration", "leaseGeneration", "fencingToken", "sessionGeneration", "objectVersionOrEtag", "storedAt", "gatewaySigningKeyGeneration", "signature"],
+      "properties": {
+        "version": { "const": 1 },
+        "receiptKind": { "const": "MEDIA_UPLOAD" },
+        "receiptId": { "$ref": "#/$defs/uuid" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "accountId": { "$ref": "#/$defs/uuid" },
+        "cellId": { "$ref": "#/$defs/uuid" },
+        "mediaId": { "$ref": "#/$defs/uuid" },
+        "objectKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^v1/org/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/account/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/conversation/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/message/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/media/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/original$"
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "contentType": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "contentLength": { "type": "integer", "minimum": 1, "maximum": 52428800 },
+        "uploadTicketJti": { "$ref": "#/$defs/uuid" },
+        "credentialGeneration": { "type": "integer", "minimum": 1 },
+        "leaseGeneration": { "type": "integer", "minimum": 1 },
+        "fencingToken": { "type": "integer", "minimum": 1 },
+        "sessionGeneration": { "type": "integer", "minimum": 1 },
+        "objectVersionOrEtag": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "storedAt": { "type": "string", "format": "date-time" },
+        "gatewaySigningKeyGeneration": { "type": "integer", "minimum": 1 },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
     "verifiedReceipt": {
       "type": "object",
       "additionalProperties": false,
@@ -189,15 +294,18 @@
           "enum": [
             "ihome-openclaw-retention-authorization-v1\u0000",
             "ihome-openclaw-retention-receipt-v1\u0000",
-            "ihome-openclaw-audit-receipt-v1\u0000"
+            "ihome-openclaw-audit-receipt-v1\u0000",
+            "ihome-openclaw-media-upload-receipt-v1\u0000"
           ]
         },
         "canonicalReceiptHash": { "$ref": "#/$defs/sha256" },
         "receipt": {
           "oneOf": [
             { "$ref": "#/$defs/retentionAuthorization" },
+            { "$ref": "#/$defs/retentionRecoveryAuthorization" },
             { "$ref": "#/$defs/retentionReceipt" },
-            { "$ref": "#/$defs/auditAnchorReceipt" }
+            { "$ref": "#/$defs/auditAnchorReceipt" },
+            { "$ref": "#/$defs/mediaUploadReceipt" }
           ]
         }
       },
@@ -207,7 +315,12 @@
             "signingDomain": {
               "const": "ihome-openclaw-retention-authorization-v1\u0000"
             },
-            "receipt": { "$ref": "#/$defs/retentionAuthorization" }
+            "receipt": {
+              "oneOf": [
+                { "$ref": "#/$defs/retentionAuthorization" },
+                { "$ref": "#/$defs/retentionRecoveryAuthorization" }
+              ]
+            }
           }
         },
         {
@@ -225,14 +338,22 @@
             },
             "receipt": { "$ref": "#/$defs/auditAnchorReceipt" }
           }
+        },
+        {
+          "properties": {
+            "signingDomain": { "const": "ihome-openclaw-media-upload-receipt-v1\u0000" },
+            "receipt": { "$ref": "#/$defs/mediaUploadReceipt" }
+          }
         }
       ]
     }
   },
   "oneOf": [
     { "$ref": "#/$defs/retentionAuthorization" },
+    { "$ref": "#/$defs/retentionRecoveryAuthorization" },
     { "$ref": "#/$defs/retentionReceipt" },
     { "$ref": "#/$defs/auditAnchorReceipt" },
+    { "$ref": "#/$defs/mediaUploadReceipt" },
     { "$ref": "#/$defs/verifiedReceipt" }
   ],
   "unevaluatedProperties": false

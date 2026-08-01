@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.15.0 <25"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit false --outDir dist",
@@ -16,6 +16,11 @@
     "@cloudflare/workers-types": "5.20260801.1",
     "@types/node": "22.16.5",
     "typescript": "5.8.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "wrangler": "4.118.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260730.1": true
   }
 }

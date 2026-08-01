@@ -83,6 +83,18 @@ describe("Template rendering", () => {
     expect(result.field).toBe("secretSalary");
   });
 
+  it.each([
+    "customer.name",
+    "customer-name",
+    "unknown field",
+  ])("rejects a closed placeholder with invalid field syntax: %s", (field) => {
+    const result = renderTemplate({
+      template: `Hello {{ ${field} }}`,
+      values: {},
+    });
+    expect(result).toEqual({ ok: false, failure: "UNKNOWN_FIELD", field });
+  });
+
   it("rejects a missing required value", () => {
     const result = renderTemplate({
       template: "Hóa đơn {{invoiceCode}}",

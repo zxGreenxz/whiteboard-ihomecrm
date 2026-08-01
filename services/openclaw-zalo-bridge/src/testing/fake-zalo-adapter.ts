@@ -60,7 +60,7 @@ export class FakeZaloAdapter {
     }
   }
 
-  async send(payload: Record<string, unknown>): Promise<FakeSendResult> {
+  async emitFakeOutcome(payload: Record<string, unknown>): Promise<FakeSendResult> {
     const outcome = this.state.sendOutcomes[this.sendIndex] ?? "SUCCESS";
     this.sendIndex += 1;
     this.sent.push(payload);

@@ -8,16 +8,25 @@ CREATE TABLE IF NOT EXISTS inbound_events (
   organization_id  TEXT NOT NULL,
   account_id       TEXT NOT NULL,
   cell_id          TEXT NOT NULL,
+  session_generation INTEGER NOT NULL,
   event_kind       TEXT NOT NULL,
 
   -- Stable identity. At least one of the two provider identifiers is used when
   -- present; the fingerprint exists only when both are NULL.
   provider_event_id    TEXT,
   provider_message_id  TEXT,
+  provider_conversation_id TEXT NOT NULL,
+  provider_sender_id       TEXT NOT NULL,
+  provider_target          TEXT NOT NULL,
+  provider_event_type      TEXT NOT NULL,
+  source_timestamp         TEXT NOT NULL,
+  callback_received_at     TEXT NOT NULL,
   fallback_fingerprint TEXT,
   dedupe_key           TEXT NOT NULL,
 
   raw_payload       TEXT NOT NULL,
+  source_raw_payload_sha256 TEXT NOT NULL,
+  raw_payload_sha256 TEXT NOT NULL,
   normalized_payload TEXT NOT NULL,
   payload_sha256    TEXT NOT NULL,
   media_manifest    TEXT NOT NULL DEFAULT '[]',
@@ -26,6 +35,8 @@ CREATE TABLE IF NOT EXISTS inbound_events (
 
   ack_state         TEXT NOT NULL DEFAULT 'SPOOLED'
     CHECK (ack_state IN ('SPOOLED','SENDING','ACKNOWLEDGED','QUARANTINED')),
+  claim_owner_token TEXT,
+  claim_expires_at_ms INTEGER,
   retry_count       INTEGER NOT NULL DEFAULT 0,
   quarantine_reason TEXT,
 
@@ -39,6 +50,10 @@ CREATE TABLE IF NOT EXISTS inbound_events (
   CHECK (
     (fallback_fingerprint IS NULL)
       OR (provider_event_id IS NULL AND provider_message_id IS NULL)
+  ),
+  CHECK (
+    (ack_state = 'SENDING') =
+      (claim_owner_token IS NOT NULL AND claim_expires_at_ms IS NOT NULL)
   )
 );
 
@@ -56,20 +71,24 @@ CREATE INDEX IF NOT EXISTS inbound_events_age_idx
 -- Immutable mapping between the two provider identifiers. Once a pair is seen,
 -- a later event may not remap either side.
 CREATE TABLE IF NOT EXISTS stable_id_mappings (
+  mapping_id              INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id     TEXT NOT NULL,
   account_id          TEXT NOT NULL,
-  provider_event_id   TEXT NOT NULL,
-  provider_message_id TEXT NOT NULL,
+  provider_event_id   TEXT,
+  provider_message_id TEXT,
   event_kind          TEXT NOT NULL,
   payload_sha256      TEXT NOT NULL,
+  raw_payload_sha256  TEXT NOT NULL,
   created_at_ms       INTEGER NOT NULL,
-  PRIMARY KEY (organization_id, account_id, provider_event_id, provider_message_id)
+  CHECK (provider_event_id IS NOT NULL OR provider_message_id IS NOT NULL)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS stable_id_event_uidx
-  ON stable_id_mappings (organization_id, account_id, provider_event_id);
+  ON stable_id_mappings (organization_id, account_id, provider_event_id)
+  WHERE provider_event_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS stable_id_message_uidx
-  ON stable_id_mappings (organization_id, account_id, provider_message_id);
+  ON stable_id_mappings (organization_id, account_id, provider_message_id)
+  WHERE provider_message_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS spool_telemetry (
   name        TEXT PRIMARY KEY,
