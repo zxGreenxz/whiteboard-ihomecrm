@@ -338,6 +338,164 @@ jobs:
             infra/openclaw-zalo/test/script-contract.test.ts \
             infra/openclaw-zalo/test/compose-contract.test.ts
 
+      - name: Capture Linux vendor FORK reproducibility diagnostic
+        run: |
+          set -euo pipefail
+          source_root=/opt/openclaw-qualification/repository
+          node_root=/opt/openclaw-tools/node-v24.15.0-linux-x64
+          node_path="$node_root/bin/node"
+          npm_cli="$node_root/lib/node_modules/npm/bin/npm-cli.js"
+          diagnostic_root=/tmp/openclaw-fork-diagnostic
+          diagnostic_source="$diagnostic_root/source"
+          diagnostic_output="$diagnostic_root/output"
+          diagnostic_home="$diagnostic_root/home"
+          diagnostic_cache="$diagnostic_root/npm-cache"
+          vendor_relative=services/openclaw-zalo-cell/vendor/zalouser-bridge
+          vendor_root="$diagnostic_source/$vendor_relative"
+
+          test ! -e "$diagnostic_root"
+          install -d -o openclaw-runner -g openclaw-runner -m 0700 \
+            "$diagnostic_source" "$diagnostic_output" "$diagnostic_home" "$diagnostic_cache"
+          trap 'status=$?; printf "diagnostic_exit=%s\n" "$status" > "$diagnostic_output/diagnostic-status.txt"; chown openclaw-runner:openclaw-runner "$diagnostic_output/diagnostic-status.txt"' EXIT
+
+          /usr/bin/git -C "$source_root" archive --format=tar "$REVIEWED_R" | \
+            tar --extract --directory "$diagnostic_source"
+          cp "$vendor_root/FORK.json" "$diagnostic_output/reviewed-FORK.json"
+          cp "$vendor_root/artifacts/openclaw-zalouser-2026.7.1.tgz" \
+            "$diagnostic_output/reviewed-openclaw-zalouser-2026.7.1.tgz"
+          chown -R openclaw-runner:openclaw-runner "$diagnostic_root"
+
+          diagnostic_env=(
+            HOME="$diagnostic_home"
+            LANG=C
+            LC_ALL=C
+            TZ=UTC
+            PATH="$node_root/bin:/usr/bin:/bin"
+            npm_config_audit=false
+            npm_config_cache="$diagnostic_cache"
+            npm_config_fund=false
+            npm_config_globalconfig=/dev/null
+            npm_config_ignore_scripts=true
+            npm_config_update_notifier=false
+            npm_config_userconfig=/dev/null
+            "npm_config_user_agent=npm/11.12.1 node/v24.15.0 linux x64"
+            npm_execpath="$npm_cli"
+            npm_node_execpath="$node_path"
+            DIAGNOSTIC_OUTPUT="$diagnostic_output"
+          )
+          run_as_diagnostic() {
+            runuser -u openclaw-runner -- /usr/bin/env -i "${diagnostic_env[@]}" "$@"
+          }
+
+          run_as_diagnostic "$node_path" "$npm_cli" ci --ignore-scripts --no-audit --no-fund \
+            --prefix "$vendor_root"
+          run_as_diagnostic "$node_path" "$vendor_root/scripts/preflight.mjs"
+          run_as_diagnostic "$node_path" "$vendor_root/scripts/verify-upstream.mjs" --online
+          run_as_diagnostic "$node_path" "$vendor_root/scripts/prepare.mjs" \
+            --tarball "$vendor_root/.work/verified-upstream.tgz"
+          run_as_diagnostic "$node_path" "$vendor_root/scripts/build.mjs"
+          run_as_diagnostic "$node_path" "$vendor_root/scripts/pack.mjs"
+
+          cp "$vendor_root/FORK.json" "$diagnostic_output/generated-FORK.json"
+          cp "$vendor_root/artifacts/openclaw-zalouser-2026.7.1.tgz" \
+            "$diagnostic_output/generated-openclaw-zalouser-2026.7.1.tgz"
+          chown openclaw-runner:openclaw-runner "$diagnostic_output"/*
+
+          run_as_diagnostic "$node_path" --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+
+          const root = process.env.DIAGNOSTIC_OUTPUT;
+          const reviewedForkBytes = readFileSync(join(root, "reviewed-FORK.json"));
+          const generatedForkBytes = readFileSync(join(root, "generated-FORK.json"));
+          const reviewedArtifact = readFileSync(join(root, "reviewed-openclaw-zalouser-2026.7.1.tgz"));
+          const generatedArtifact = readFileSync(join(root, "generated-openclaw-zalouser-2026.7.1.tgz"));
+          const reviewedFork = JSON.parse(reviewedForkBytes);
+          const generatedFork = JSON.parse(generatedForkBytes);
+          const changes = [];
+          const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+          const type = (value) => value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+          const walk = (reviewed, generated, path = []) => {
+            if (Object.is(reviewed, generated)) return;
+            const reviewedType = type(reviewed);
+            const generatedType = type(generated);
+            if (reviewedType !== generatedType) {
+              changes.push({ path, kind: "type", reviewed, generated });
+              return;
+            }
+            if (reviewedType === "array") {
+              const length = Math.max(reviewed.length, generated.length);
+              for (let index = 0; index < length; index += 1) {
+                if (index >= reviewed.length) changes.push({ path: [...path, index], kind: "added", generated: generated[index] });
+                else if (index >= generated.length) changes.push({ path: [...path, index], kind: "removed", reviewed: reviewed[index] });
+                else walk(reviewed[index], generated[index], [...path, index]);
+              }
+              return;
+            }
+            if (reviewedType === "object") {
+              const keys = [...new Set([...Object.keys(reviewed), ...Object.keys(generated)])]
+                .sort((left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")));
+              for (const key of keys) {
+                if (!(key in reviewed)) changes.push({ path: [...path, key], kind: "added", generated: generated[key] });
+                else if (!(key in generated)) changes.push({ path: [...path, key], kind: "removed", reviewed: reviewed[key] });
+                else walk(reviewed[key], generated[key], [...path, key]);
+              }
+              return;
+            }
+            changes.push({ path, kind: "value", reviewed, generated });
+          };
+          walk(reviewedFork, generatedFork);
+          const topLevelFields = [...new Set(changes.map((change) => String(change.path[0] ?? "")))].sort();
+          const report = {
+            schema: 1,
+            reviewedFork: { size: reviewedForkBytes.length, sha256: sha256(reviewedForkBytes) },
+            generatedFork: { size: generatedForkBytes.length, sha256: sha256(generatedForkBytes) },
+            reviewedArtifact: {
+              size: reviewedArtifact.length,
+              sha256: sha256(reviewedArtifact),
+              gzipHeader: [...reviewedArtifact.subarray(0, 10)],
+            },
+            generatedArtifact: {
+              size: generatedArtifact.length,
+              sha256: sha256(generatedArtifact),
+              gzipHeader: [...generatedArtifact.subarray(0, 10)],
+            },
+            topLevelFields,
+            changeCount: changes.length,
+            changes,
+          };
+          writeFileSync(join(root, "fork-diff.json"), `${JSON.stringify(report, null, 2)}\n`);
+          writeFileSync(join(root, "fork-diff-summary.txt"), [
+            `reviewed_fork_sha256=${report.reviewedFork.sha256}`,
+            `generated_fork_sha256=${report.generatedFork.sha256}`,
+            `reviewed_artifact_sha256=${report.reviewedArtifact.sha256}`,
+            `generated_artifact_sha256=${report.generatedArtifact.sha256}`,
+            `reviewed_gzip_header=${report.reviewedArtifact.gzipHeader.join(",")}`,
+            `generated_gzip_header=${report.generatedArtifact.gzipHeader.join(",")}`,
+            `top_level_fields=${topLevelFields.join(",")}`,
+            `change_count=${changes.length}`,
+            "",
+          ].join("\n"));
+          NODE
+
+      - name: Upload Linux FORK reproducibility diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: openclaw-fork-diagnostic-${{ github.run_id }}
+          if-no-files-found: error
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 7
+          path: /tmp/openclaw-fork-diagnostic/output
+
+      - name: Stop after diagnostic capture
+        if: always()
+        run: |
+          echo "Diagnostic-only run complete; qualification and E push are intentionally disabled."
+          exit 1
+
       - name: Start and pin the UID 1001 rootless Docker daemon
         run: |
           set -euo pipefail
