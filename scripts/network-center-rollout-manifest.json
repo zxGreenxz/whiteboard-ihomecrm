@@ -1,0 +1,342 @@
+{
+  "schemaVersion": 1,
+  "projectRef": "tryymsxyyckgbrmmvozx",
+  "reviewedGitSha": "e01474383339395f3ea736f6600534a91a845645",
+  "lockName": "ihomecrm:network-center-rollout:v1",
+  "preflight": {
+    "required": [
+      "table:public.organizations",
+      "table:public.buildings"
+    ],
+    "absent": [
+      "table:public.network_devices"
+    ]
+  },
+  "migrations": [
+    {
+      "ordinal": 1,
+      "path": "supabase/migrations/20260729010000_network_center_permissions_inventory.sql",
+      "sha256": "2ebdbc5496768a5856e71155683ae2fac1271d72bb442cbfd10c8aa974fce715",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings"
+        ]
+      }
+    },
+    {
+      "ordinal": 2,
+      "path": "supabase/migrations/20260729020000_network_center_current_telemetry.sql",
+      "sha256": "49e3c505ad737ddbf59301eecc680b640165eb53c413a9fa9253aeb819db0367",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current"
+        ]
+      }
+    },
+    {
+      "ordinal": 3,
+      "path": "supabase/migrations/20260729030000_network_center_operations.sql",
+      "sha256": "322a5f4d161011b3a4ab3cb4edaf6c2f2cb36956c37603bbd527486b99143ed4",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events"
+        ]
+      }
+    },
+    {
+      "ordinal": 4,
+      "path": "supabase/migrations/20260729040000_network_center_rls_rpcs_realtime.sql",
+      "sha256": "453eb33d956b2f4a0376574bd860058886bfc78607b80ba511a5dfa04671dd6a",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events",
+          "function:public.network_center_list_fleet_v1()",
+          "function:public.network_center_get_building_v1(uuid)",
+          "function:public.network_center_worker_heartbeat_v1(text,text,text[],text,integer,jsonb,timestamptz)",
+          "rls:public.network_devices",
+          "realtime:public:network_device_current"
+        ]
+      }
+    },
+    {
+      "ordinal": 5,
+      "path": "supabase/migrations/20260729130000_network_center_worker_identity.sql",
+      "sha256": "1ca3387bd6e5b961461c7fee55b2146f0d61978fa00619e1affef3bf973f0efc",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events",
+          "function:public.network_center_list_fleet_v1()",
+          "function:public.network_center_get_building_v1(uuid)",
+          "function:public.network_center_worker_heartbeat_v1(text,text,text[],text,integer,jsonb,timestamptz)",
+          "rls:public.network_devices",
+          "realtime:public:network_device_current",
+          "table:public.network_workers",
+          "table:public.network_worker_credentials",
+          "table:public.network_worker_assignments",
+          "function:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "rls:public.network_workers",
+          "function_service_only:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)"
+        ]
+      }
+    },
+    {
+      "ordinal": 6,
+      "path": "supabase/migrations/20260729131000_network_center_resource_lifecycle.sql",
+      "sha256": "a57a206fe54fe4d5e289ac9f8fe8183699dc75a8c3795e5ad98ec93912c8bd31",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events",
+          "function:public.network_center_list_fleet_v1()",
+          "function:public.network_center_worker_heartbeat_v1(text,text,text[],text,integer,jsonb,timestamptz)",
+          "rls:public.network_devices",
+          "realtime:public:network_device_current",
+          "table:public.network_workers",
+          "table:public.network_worker_credentials",
+          "table:public.network_worker_assignments",
+          "function:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "rls:public.network_workers",
+          "function_service_only:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "function:public.network_center_get_building_v1(uuid)",
+          "table:app_private.network_aruba_router_state",
+          "column:public.network_site_settings:rollout_state",
+          "rows_rollout_off:public.network_site_settings"
+        ]
+      }
+    },
+    {
+      "ordinal": 7,
+      "path": "supabase/migrations/20260729132000_network_center_managed_commands.sql",
+      "sha256": "2b9d69410e8c5724f8e3d7f956f231339c1494977441567e421dd19de6bd14e8",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events",
+          "function:public.network_center_list_fleet_v1()",
+          "function:public.network_center_worker_heartbeat_v1(text,text,text[],text,integer,jsonb,timestamptz)",
+          "rls:public.network_devices",
+          "realtime:public:network_device_current",
+          "table:public.network_workers",
+          "table:public.network_worker_credentials",
+          "table:public.network_worker_assignments",
+          "function:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "rls:public.network_workers",
+          "function_service_only:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "function:public.network_center_get_building_v1(uuid)",
+          "table:app_private.network_aruba_router_state",
+          "column:public.network_site_settings:rollout_state",
+          "rows_rollout_off:public.network_site_settings",
+          "table:public.network_managed_resources",
+          "table:public.network_command_observations"
+        ]
+      }
+    },
+    {
+      "ordinal": 8,
+      "path": "supabase/migrations/20260729133000_network_center_hardening_rpcs.sql",
+      "sha256": "dae57b7b7b675efbb5ad6eeb9da7045d4343525bce95b6de5a5433683cd26e3d",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events",
+          "function:public.network_center_list_fleet_v1()",
+          "function:public.network_center_worker_heartbeat_v1(text,text,text[],text,integer,jsonb,timestamptz)",
+          "rls:public.network_devices",
+          "realtime:public:network_device_current",
+          "table:public.network_workers",
+          "table:public.network_worker_credentials",
+          "table:public.network_worker_assignments",
+          "function:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "rls:public.network_workers",
+          "function_service_only:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "function:public.network_center_get_building_v1(uuid)",
+          "table:app_private.network_aruba_router_state",
+          "column:public.network_site_settings:rollout_state",
+          "rows_rollout_off:public.network_site_settings",
+          "table:public.network_managed_resources",
+          "table:public.network_command_observations",
+          "table:public.network_worker_building_status",
+          "function:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)",
+          "function:public.network_center_admin_finalize_worker_compatibility_v1()",
+          "function_service_only:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)"
+        ]
+      }
+    },
+    {
+      "ordinal": 9,
+      "path": "supabase/migrations/20260729134000_network_center_admin_control_plane.sql",
+      "sha256": "3864f117c5c009e122855ea11c34cebe8cf4ef1b28d8ada486d01db99a832c33",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events",
+          "function:public.network_center_list_fleet_v1()",
+          "function:public.network_center_worker_heartbeat_v1(text,text,text[],text,integer,jsonb,timestamptz)",
+          "rls:public.network_devices",
+          "realtime:public:network_device_current",
+          "table:public.network_workers",
+          "table:public.network_worker_credentials",
+          "table:public.network_worker_assignments",
+          "function:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "rls:public.network_workers",
+          "function_service_only:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "function:public.network_center_get_building_v1(uuid)",
+          "table:app_private.network_aruba_router_state",
+          "column:public.network_site_settings:rollout_state",
+          "rows_rollout_off:public.network_site_settings",
+          "table:public.network_managed_resources",
+          "table:public.network_command_observations",
+          "table:public.network_worker_building_status",
+          "function:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)",
+          "function:public.network_center_admin_finalize_worker_compatibility_v1()",
+          "function_service_only:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)",
+          "function:public.network_center_admin_provision_connection_v1(uuid,text,inet,integer,text,text,integer,integer,uuid)",
+          "function:public.network_center_admin_set_rollout_v1(uuid,text,bigint,text,uuid)",
+          "function:public.network_center_admin_status_v1(uuid,integer)",
+          "index:public:network_device_connections_one_enabled_per_device_idx",
+          "function_service_only:public.network_center_admin_provision_connection_v1(uuid,text,inet,integer,text,text,integer,integer,uuid)",
+          "function_service_only:public.network_center_admin_set_rollout_v1(uuid,text,bigint,text,uuid)",
+          "function_service_only:public.network_center_admin_status_v1(uuid,integer)"
+        ]
+      }
+    },
+    {
+      "ordinal": 10,
+      "path": "supabase/migrations/20260729135000_network_center_transition_forward_fix.sql",
+      "sha256": "e529e1735bdcddeca853bfcde953d55ca8b998fecf074ab88d508de3451c1f57",
+      "postApply": {
+        "required": [
+          "table:public.network_devices",
+          "table:public.network_device_connections",
+          "table:public.network_site_settings",
+          "table:public.network_device_current",
+          "table:public.network_interface_current",
+          "table:public.network_commands",
+          "table:public.network_audit_events",
+          "function:public.network_center_list_fleet_v1()",
+          "function:public.network_center_get_building_v1(uuid)",
+          "function:public.network_center_worker_heartbeat_v1(text,text,text[],text,integer,jsonb,timestamptz)",
+          "rls:public.network_devices",
+          "realtime:public:network_device_current",
+          "table:public.network_workers",
+          "table:public.network_worker_credentials",
+          "table:public.network_worker_assignments",
+          "function:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "rls:public.network_workers",
+          "function_service_only:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+          "table:app_private.network_aruba_router_state",
+          "column:public.network_site_settings:rollout_state",
+          "rows_rollout_off:public.network_site_settings",
+          "table:public.network_managed_resources",
+          "table:public.network_command_observations",
+          "table:public.network_worker_building_status",
+          "function:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)",
+          "function:public.network_center_admin_finalize_worker_compatibility_v1()",
+          "function_service_only:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)",
+          "function:public.network_center_admin_provision_connection_v1(uuid,text,inet,integer,text,text,integer,integer,uuid)",
+          "function:public.network_center_admin_set_rollout_v1(uuid,text,bigint,text,uuid)",
+          "function:public.network_center_admin_status_v1(uuid,integer)",
+          "index:public:network_device_connections_one_enabled_per_device_idx",
+          "function_service_only:public.network_center_admin_provision_connection_v1(uuid,text,inet,integer,text,text,integer,integer,uuid)",
+          "function_service_only:public.network_center_admin_set_rollout_v1(uuid,text,bigint,text,uuid)",
+          "function_service_only:public.network_center_admin_status_v1(uuid,integer)",
+          "function:app_private.network_center_complete_command_internal_v2(text,uuid,uuid,text,jsonb,jsonb,integer)"
+        ]
+      }
+    }
+  ],
+  "postApply": {
+    "required": [
+      "table:public.network_devices",
+      "table:public.network_workers",
+      "table:public.network_worker_assignments",
+      "table:public.network_managed_resources",
+      "table:public.network_worker_building_status",
+      "function:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)",
+      "function:public.network_center_admin_provision_connection_v1(uuid,text,inet,integer,text,text,integer,integer,uuid)",
+      "function:public.network_center_admin_set_rollout_v1(uuid,text,bigint,text,uuid)",
+      "function:public.network_center_admin_status_v1(uuid,integer)",
+      "function:app_private.network_center_complete_command_internal_v2(text,uuid,uuid,text,jsonb,jsonb,integer)",
+      "rls:public.network_devices",
+      "rls:public.network_workers",
+      "realtime:public:network_device_current",
+      "column:public.network_site_settings:rollout_state",
+      "rows_rollout_off:public.network_site_settings",
+      "index:public:network_device_connections_one_enabled_per_device_idx",
+      "function_service_only:public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)",
+      "function_service_only:public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamptz)",
+      "function_service_only:public.network_center_admin_provision_connection_v1(uuid,text,inet,integer,text,text,integer,integer,uuid)",
+      "function_service_only:public.network_center_admin_set_rollout_v1(uuid,text,bigint,text,uuid)",
+      "function_service_only:public.network_center_admin_status_v1(uuid,integer)"
+    ]
+  },
+  "edgeFunction": {
+    "slug": "network-center-worker",
+    "path": "supabase/functions/network-center-worker",
+    "entrypoint": "index.ts",
+    "verifyJwt": false,
+    "files": [
+      {
+        "path": "deno.json",
+        "sha256": "f30a85f08811e8b246fecdaae5e56a025729dcdd45b53e3c0ab0b5d6a9bcbce2"
+      },
+      {
+        "path": "deno.lock",
+        "sha256": "9659851f65daae9145ada5bd36c6a17d49ed14ed7e399801b06da6c473a3b935"
+      },
+      {
+        "path": "index.ts",
+        "sha256": "c19896dc2b3c5fb71054448f89522bcc737fa97914047da7ed0d4b01806f5023"
+      },
+      {
+        "path": "workerAuth.ts",
+        "sha256": "8f6d89f3961aea9040e46904fbeb5eb9fb2049b86ba13b859bc41e9b09c617c8"
+      }
+    ],
+    "sha256": "65482ad91b32892cbe967720490b7811e23e7d2d468201bef6e226f61528a2bd"
+  }
+}

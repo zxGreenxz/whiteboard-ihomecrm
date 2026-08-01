@@ -97,6 +97,44 @@ describe('gen-supabase-types wrapper', () => {
     });
   });
 
+  test('local mode never resolves or exports a production credential', async () => {
+    const { GENERATED_TYPES_HEADER, generateSupabaseTypes } = await loadWrapper();
+    const repoRoot = await makeTemporaryDirectory();
+    const targetDirectory = join(repoRoot, 'src', 'integrations', 'supabase');
+    await mkdir(targetDirectory, { recursive: true });
+
+    let childEnvironment: NodeJS.ProcessEnv | undefined;
+    await generateSupabaseTypes({
+      repoRoot,
+      environment: {
+        PATH: process.env.PATH,
+        SUPABASE_TYPES_SOURCE: 'local',
+        SUPABASE_ACCESS_TOKEN: 'sbp_must_not_reach_local_cli',
+        SUPABASE_PAT: 'sbp_must_not_reach_local_cli_either',
+      },
+      platform: 'linux',
+      runCli: async ({ args, env, shell }) => {
+        childEnvironment = env;
+        expect(args).toContain('--local');
+        expect(args).not.toContain('--project-id');
+        expect(shell).toBe(false);
+        expect(env.SUPABASE_ACCESS_TOKEN).toBeUndefined();
+        expect(env.SUPABASE_PAT).toBeUndefined();
+        return {
+          exitCode: 0,
+          stdout: 'export type Json = string\nexport type Database = {}\n',
+          stderr: '',
+        };
+      },
+    });
+
+    expect(childEnvironment?.SUPABASE_ACCESS_TOKEN).toBeUndefined();
+    expect(childEnvironment?.SUPABASE_PAT).toBeUndefined();
+    expect(await readFile(join(targetDirectory, 'types.ts'), 'utf8')).toBe(
+      `${GENERATED_TYPES_HEADER}\nexport type Json = string\nexport type Database = {}\n`,
+    );
+  });
+
   test('writes generated types atomically and clears the child PAT environment', async () => {
     const { GENERATED_TYPES_HEADER, generateSupabaseTypes } = await loadWrapper();
     const repoRoot = await makeTemporaryDirectory();

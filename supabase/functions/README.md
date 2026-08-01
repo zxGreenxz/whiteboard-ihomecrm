@@ -29,7 +29,7 @@ vậy phải deploy với gateway JWT tắt và giữ xác thực fail-closed b�
 function:
 
 ```powershell
-node scripts/deploy-edge-fn.mjs network-center-worker --no-verify-jwt
+node scripts/deploy-edge-fn.mjs network-center-worker --no-verify-jwt --revision <40-char-release-sha>
 ```
 
 ## Chạy local
@@ -43,9 +43,11 @@ supabase functions serve <function-name> --env-file supabase/.env.local
 ## Secrets
 
 - Provider/API key, `CRON_SECRET`, service-role và cấu hình push thuộc môi trường deploy.
-- `network-center-worker` cần `NETWORK_WORKER_SECRET` riêng, ngẫu nhiên tối thiểu
-  32 ký tự. Không dùng lại service-role key, mật khẩu MikroTik, secret 9Router
-  hoặc Zalo; không ghi header này vào log.
+- `network-center-worker` không dùng một `NETWORK_WORKER_SECRET` dùng chung. Mỗi
+  worker có secret CSPRNG riêng; Edge function chỉ hash header rồi để PostgreSQL
+  xác thực digest trong registry, thời hạn, revoke và building assignment. Không
+  dùng lại service-role key, mật khẩu MikroTik, secret 9Router hoặc Zalo; không
+  ghi header/digest này vào log.
 - Tên secret phải lấy từ code function tương ứng; không suy từ tài liệu AI/RAG cũ.
 - Thay đổi secret cần có kế hoạch rotation và kiểm tra fail-closed khi thiếu/sai.
 

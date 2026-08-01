@@ -59,6 +59,9 @@ draft/
 supabase/.temp/
 test-results/
 
+# Network Center rollout receipts (bounded operational evidence; never source)
+.network-center-rollout/
+
 # Bản sao repo do hạm đội subagent tạo (harness tự sinh) — KHÔNG bao giờ commit
 .claude/worktrees/
 

@@ -80,14 +80,17 @@ export function buildGeneratedTypesFile(generatedOutput) {
 export function buildSupabaseCliInvocation(
   projectRef,
   platform = process.platform,
-  { execPath = process.execPath, npmExecPath = process.env.npm_execpath } = {},
+  {
+    execPath = process.execPath,
+    npmExecPath = process.env.npm_execpath,
+    source = 'remote',
+  } = {},
 ) {
   const generatorArgs = [
     'gen',
     'types',
     'typescript',
-    '--project-id',
-    projectRef,
+    ...(source === 'local' ? ['--local'] : ['--project-id', projectRef]),
     '--schema',
     'public',
   ];
@@ -183,26 +186,38 @@ export async function generateSupabaseTypes({
   platform = process.platform,
   runCli = captureCliOutput,
 } = {}) {
-  const configPath = join(repoRoot, 'supabase', 'config.toml');
-  const linkedRefPath = join(repoRoot, 'supabase', '.temp', 'project-ref');
-  const packagePath = join(repoRoot, 'package.json');
-  const localConfigPath = join(repoRoot, 'CLAUDE.local.md');
   const outputPath = join(repoRoot, 'src', 'integrations', 'supabase', 'types.ts');
-  const [configToml, linkedProjectRef, packageJson, localConfig] = await Promise.all([
-    readOptional(configPath),
-    readOptional(linkedRefPath),
-    readOptional(packagePath),
-    readOptional(localConfigPath),
-  ]);
-  const projectRef = resolveProjectRef({ configToml, linkedProjectRef, packageJson });
-  const accessToken = extractSupabaseAccessToken({ environment, localConfig });
+  const source = environment.SUPABASE_TYPES_SOURCE?.trim().toLowerCase() || 'remote';
+  if (!['local', 'remote'].includes(source)) {
+    throw new Error('SUPABASE_TYPES_SOURCE must be either local or remote.');
+  }
+  let projectRef = '';
+  let accessToken = '';
+  if (source === 'remote') {
+    const configPath = join(repoRoot, 'supabase', 'config.toml');
+    const linkedRefPath = join(repoRoot, 'supabase', '.temp', 'project-ref');
+    const packagePath = join(repoRoot, 'package.json');
+    const localConfigPath = join(repoRoot, 'CLAUDE.local.md');
+    let localConfig = await readOptional(localConfigPath);
+    if (!localConfig && resolve(repoRoot).replaceAll('\\', '/').includes('/.claude/worktrees/')) {
+      localConfig = await readOptional(resolve(repoRoot, '..', '..', '..', 'CLAUDE.local.md'));
+    }
+    const [configToml, linkedProjectRef, packageJson] = await Promise.all([
+      readOptional(configPath),
+      readOptional(linkedRefPath),
+      readOptional(packagePath),
+    ]);
+    projectRef = resolveProjectRef({ configToml, linkedProjectRef, packageJson });
+    accessToken = extractSupabaseAccessToken({ environment, localConfig });
+  }
   const invocation = buildSupabaseCliInvocation(projectRef, platform, {
     npmExecPath: environment.npm_execpath,
+    source,
   });
   const childEnvironment = { ...environment };
   delete childEnvironment.SUPABASE_PAT;
   delete childEnvironment.SUPABASE_ACCESS_TOKEN;
-  childEnvironment.SUPABASE_ACCESS_TOKEN = accessToken;
+  if (source === 'remote') childEnvironment.SUPABASE_ACCESS_TOKEN = accessToken;
 
   let result;
   try {
