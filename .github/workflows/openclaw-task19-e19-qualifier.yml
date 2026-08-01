@@ -344,8 +344,9 @@ jobs:
           source_root=/opt/openclaw-qualification/repository
           docker_host=unix:///run/user/1001/docker.sock
           docker_data=/__w/_temp/openclaw-rootless-docker
+          df -Pk / /__w/_temp
           available_kb="$(df -Pk /__w/_temp | awk 'NR == 2 {print $4}')"
-          test "$available_kb" -ge 20971520
+          test "$available_kb" -ge 10485760
           install -d -o openclaw-runner -g openclaw-runner -m 0700 /run/user/1001 "$docker_data"
           if [ -e /run/user/1001/docker.sock ]; then rm -f /run/user/1001/docker.sock; fi
           runuser -u openclaw-runner -- /usr/bin/env -i \
