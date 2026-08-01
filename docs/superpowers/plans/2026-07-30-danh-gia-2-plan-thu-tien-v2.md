@@ -1859,3 +1859,33 @@ truy ra — việc mở cho đợt sau.
   §2.2 RETARGET yêu cầu ĐÃ TỒN TẠI (mục Chi thanh lý). Khoá đường thanh lý cũ
   vẫn CHƯA làm — điều kiện ở §17.6 giữ nguyên.
 - Bảng số đề xuất + trang trình chủ duyệt: không đổi, vẫn chờ chủ điền.
+
+### 18.5 HOTFIX 01/08 chiều — nút "Tạo phiếu chi hoa hồng" vỡ vì sai tên biến
+
+Chủ báo kèm ảnh console: mọi cú bấm "Tạo phiếu chi" ở modal hoa hồng đều
+`400 — column "v_voucher_id" does not exist`, cả nhánh môi giới lẫn thưởng Sale.
+
+**Gốc rễ — lỗi của chính bản vá §16 (`20260801030000`):** hàm gốc
+`create_commission_voucher` khai biến phiếu là **`v_id`**, còn khối chèn
+`COMMISSION_AUTOPAY_V1` tham chiếu **`v_voucher_id`** (3 chỗ). PL/pgSQL không
+phân giải tên biến lúc CREATE, chỉ nổ lúc CHẠY ⇒ migration áp xanh mà nút thật
+vỡ. Nhánh 'sale' vỡ theo vì planner phân giải TOÀN BỘ biểu thức
+`IF p_kind = 'broker' AND v_voucher_id IS NOT NULL` cho mọi lời gọi — không có
+short-circuit ở tầng phân giải tên.
+
+**Vì sao test hôm 31/07 không bắt được:** test chỉ gọi
+`commission_autopay_check_v1` + adapter, KHÔNG gọi trọn
+`create_commission_voucher`.
+
+**Vá:** `20260801110000_fix_commission_autopay_varname.sql` — preflight chốt
+đúng 3 lần `v_voucher_id` + biến `v_id` tồn tại (lệch là DỪNG),
+`replace(v_def, 'v_voucher_id', 'v_id')`, verify các chốt cũ còn nguyên
+(SALE_BONUS_SEES_DEPOSIT_CLAIM, advisory lock). Test lần này GỌI TRỌN hàm
+trong transaction rollback: tái hiện đúng 42703 trước vá; sau vá broker tạo
+phiếu UNAPPROVED + 0 bút toán (bảng bậc rỗng ⇒ không tự duyệt), sale tạo được,
+gọi lại bị P0001 chống trùng. 17/17 chỉ số tiền không đổi.
+
+**BÀI HỌC (án lệ):** vá hàm bằng `replace` trên `pg_get_functiondef` thì test
+rollback **phải GỌI TRỌN hàm bị vá** — assert chuỗi trên prosrc chỉ chứng minh
+văn bản đã đổi, không chứng minh hàm còn chạy; lỗi tên biến PL/pgSQL chỉ hiện
+ra lúc thực thi.
