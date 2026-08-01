@@ -373,6 +373,20 @@ jobs:
             DOCKER_HOST="$docker_host" /usr/bin/docker version --format '{{.Client.Version}}|{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}')"
           test "$server_client" = '29.1.3|29.1.3|linux|amd64'
 
+      - name: Pre-pull and verify the pinned BuildKit image
+        run: |
+          set -euo pipefail
+          docker_host=unix:///run/user/1001/docker.sock
+          buildkit='moby/buildkit:v0.13.2@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6'
+          run_docker() {
+            runuser -u openclaw-runner -- /usr/bin/env -i \
+              HOME=/home/openclaw-runner XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin \
+              DOCKER_HOST="$docker_host" /usr/bin/docker "$@"
+          }
+          run_docker pull "$buildkit"
+          test "$(run_docker image inspect --format '{{index .RepoDigests 0}}' "$buildkit")" = \
+            'moby/buildkit@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6'
+
       - name: Run the reviewed Task 2 qualification phase as openclaw-runner
         run: |
           set -euo pipefail
