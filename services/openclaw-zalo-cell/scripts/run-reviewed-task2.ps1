@@ -569,7 +569,7 @@ if ($Phase -eq 'Qualification') {
       npm_config_ignore_scripts = 'true'
       npm_config_user_agent = 'npm/11.12.1 node/v24.15.0 linux x64'
       npm_config_update_notifier = 'false'
-      npm_config_userconfig = '/dev/null'
+      npm_config_userconfig = '/nonexistent/.npmrc'
       npm_execpath = $npmCliPath
       npm_node_execpath = $nodePath
     }

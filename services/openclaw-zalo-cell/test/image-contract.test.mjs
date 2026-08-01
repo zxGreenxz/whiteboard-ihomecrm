@@ -2154,6 +2154,13 @@ test("Task 2 native byte capture suppresses async completion objects", async () 
   }
 });
 
+test("Task 2 npm scopes use distinct fail-closed config paths", async () => {
+  const source = await readCell("scripts/run-reviewed-task2.ps1");
+  assert.match(source, /npm_config_globalconfig\s*=\s*['"]\/dev\/null['"]/);
+  assert.match(source, /npm_config_userconfig\s*=\s*['"]\/nonexistent\/\.npmrc['"]/);
+  assert.doesNotMatch(source, /npm_config_globalconfig\s*=\s*['"]\/dev\/null['"][\s\S]{0,300}npm_config_userconfig\s*=\s*['"]\/dev\/null['"]/);
+});
+
 test("reviewed source gate rejects executable local Git configuration without running filters", async () => {
   const { verifyReviewedSourceGate } = await loadScript("scripts/verify-reviewed-source-gate.mjs");
   const gitPath = localGitPath();
