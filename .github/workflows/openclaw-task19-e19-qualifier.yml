@@ -347,7 +347,7 @@ jobs:
           if [ -e /run/user/1001/docker.sock ]; then rm -f /run/user/1001/docker.sock; fi
           runuser -u openclaw-runner -- /usr/bin/env -i \
             HOME=/home/openclaw-runner USER=openclaw-runner LOGNAME=openclaw-runner \
-            XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin \
+            XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin:/usr/sbin:/sbin \
             DOCKER_HOST="$docker_host" DOCKERD_ROOTLESS_ROOTLESSKIT_NET=slirp4netns \
             DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=slirp4netns \
             /usr/bin/nohup /usr/bin/dockerd-rootless.sh \
