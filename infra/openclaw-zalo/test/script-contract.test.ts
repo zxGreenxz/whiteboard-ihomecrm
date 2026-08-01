@@ -88,6 +88,8 @@ describe("Task 19 host and lifecycle scripts", () => {
     expect(source).toContain("cleanup_previous_snapshot");
     expect(source).toContain("active_secret_snapshot");
     expect(source).toContain("--force-recreate");
+    expect(source).toContain("/usr/bin/env -i");
+    expect(source).toContain('DOCKER_HOST="$docker_host"');
     expect(source).toContain('deployment_state_root="$runtime_root/operations/$cell_id/deployments"');
     expect(source).toContain('secret_snapshots_root="$runtime_root/secrets/$cell_id/.deployments"');
     expect(source).toContain("had_active_stack");
@@ -153,6 +155,7 @@ describe("Task 19 host and lifecycle scripts", () => {
           "OPENCLAW_BRIDGE_IMAGE_SHA256=" + digests.bridge,
           "OPENCLAW_MAINTENANCE_IMAGE_SHA256=" + digests.maintenance,
           "OPENCLAW_EGRESS_BROKER_IMAGE_SHA256=" + digests["egress-broker"],
+          "OPENCLAW_FENCING_TOKEN=fence-" + digests.cell.slice(0, 8),
           "",
         ].join("\n");
 
@@ -163,7 +166,9 @@ describe("Task 19 host and lifecycle scripts", () => {
         const runtimeRoot = join(work, "runtime");
         const runtimeEnv = join(work, "candidate.env");
         const dockerLog = join(work, "docker.log");
+        const upEnvLog = join(work, "up-env.log");
         const upCount = join(work, "up-count");
+        const runnerUid = typeof process.getuid === "function" ? process.getuid() : 1001;
         const snapshotName = "snapshot-old";
         const deploymentRoot = join(runtimeRoot, "operations", cellId, "deployments");
         const snapshotRoot = join(deploymentRoot, "snapshots", snapshotName);
@@ -240,6 +245,7 @@ describe("Task 19 host and lifecycle scripts", () => {
           ]),
           "  *\"{{.State.Running}} \"*) printf '%s\\n' true; exit 0 ;;",
           "  *\" up -d \"*)",
+          "    printf '%s\\n' \"${OPENCLAW_FENCING_TOKEN-unset}\" >> \"$OPENCLAW_UP_ENV_LOG\"",
           "    count=0",
           "    [ ! -f \"$OPENCLAW_UP_COUNT\" ] || count=$(cat \"$OPENCLAW_UP_COUNT\")",
           "    count=$((count + 1))",
@@ -261,6 +267,7 @@ describe("Task 19 host and lifecycle scripts", () => {
             env: {
               ...process.env,
               OPENCLAW_DOCKER_LOG: dockerLog,
+              OPENCLAW_UP_ENV_LOG: upEnvLog,
               OPENCLAW_RUNTIME_ROOT: runtimeRoot,
               OPENCLAW_TRANSFER_QUOTA_RECORD: join(
                 runtimeRoot,
@@ -268,6 +275,8 @@ describe("Task 19 host and lifecycle scripts", () => {
                 "transfer-quota.json",
               ),
               OPENCLAW_UP_COUNT: upCount,
+              OPENCLAW_FENCING_TOKEN: "candidate-ambient",
+              DOCKER_HOST: "unix:///run/user/" + runnerUid + "/docker.sock",
               PATH: [fakeBin, process.env.PATH ?? ""].join(":"),
             },
           },
@@ -293,6 +302,10 @@ describe("Task 19 host and lifecycle scripts", () => {
           "-f " + join(snapshotRoot, "compose.cell.yaml"),
         );
         expect(upCommands[1]).toContain("--force-recreate");
+        expect((await readFile(upEnvLog, "utf8")).trim().split("\n")).toEqual([
+          "unset",
+          "unset",
+        ]);
       } finally {
         await chmod(work, 0o700).catch(() => undefined);
         await rm(work, { recursive: true, force: true });

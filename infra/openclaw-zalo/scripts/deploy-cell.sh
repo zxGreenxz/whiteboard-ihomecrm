@@ -35,10 +35,32 @@ done
   echo "--runtime-env must be an existing absolute trusted metadata file" >&2
   exit 64
 }
+docker_host=${DOCKER_HOST:-}
+case "$docker_host" in
+  unix:///run/user/*/docker.sock) ;;
+  *) echo "DOCKER_HOST must use the dedicated rootless Unix socket" >&2; exit 64 ;;
+esac
+docker_host_uid=${docker_host#unix:///run/user/}
+docker_host_uid=${docker_host_uid%/docker.sock}
+case "$docker_host_uid" in
+  ''|*[!0-9]*) echo "DOCKER_HOST rootless UID is invalid" >&2; exit 64 ;;
+esac
+[ "$docker_host_uid" = "$(id -u)" ] || {
+  echo "DOCKER_HOST must belong to the current rootless runner" >&2
+  exit 64
+}
+
+compose_with() {
+  compose_env=$1
+  compose_file=$2
+  shift 2
+  /usr/bin/env -i PATH="$PATH" DOCKER_HOST="$docker_host" \
+    docker compose --project-name "$project" --env-file "$compose_env" \
+      -f "$compose_file" "$@"
+}
 
 compose() {
-  docker compose --project-name "$project" --env-file "$runtime_env" \
-    -f "$infra_dir/compose.cell.yaml" "$@"
+  compose_with "$runtime_env" "$infra_dir/compose.cell.yaml" "$@"
 }
 
 validate_candidate() {
@@ -228,12 +250,8 @@ restore_active_stack() {
     "$active_snapshot/egress-allowlist.yaml" \
     "$runtime_root/config/$cell_id/egress-allowlist.yaml" \
     0444
-  OPENCLAW_CELL_IMAGE_SHA256=$old_cell_digest \
-  OPENCLAW_BRIDGE_IMAGE_SHA256=$old_bridge_digest \
-  OPENCLAW_MAINTENANCE_IMAGE_SHA256=$old_maintenance_digest \
-  OPENCLAW_EGRESS_BROKER_IMAGE_SHA256=$old_egress_digest \
-    docker compose --project-name "$project" --env-file "$active_snapshot/runtime.env" \
-      -f "$active_snapshot/compose.cell.yaml" up -d --no-build --force-recreate --remove-orphans --wait
+  compose_with "$active_snapshot/runtime.env" "$active_snapshot/compose.cell.yaml" \
+    up -d --no-build --force-recreate --remove-orphans --wait
 }
 
 persist_active_snapshot() {
