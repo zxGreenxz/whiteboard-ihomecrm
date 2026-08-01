@@ -254,6 +254,13 @@
 .tt-page .pf-line { display: flex; align-items: center; gap: 8px; }
 .tt-page .pf-method { flex: 0 0 76px; font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 8px; outline: none; cursor: pointer; }
 .tt-page .pf-method:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+/* Sổ quỹ nhận của dòng TK — chen giữa phương thức và số tiền để đổi tại chỗ.
+   Dòng nào có ô sổ thì bóp mã phương thức (2 ký tự) và cố định bề rộng ô tiền,
+   nhường phần còn lại cho tên sổ — màn 390px vẫn đọc được "DEMO Ngân Hàng". */
+.tt-page .pf-book { flex: 1 1 auto; min-width: 0; font-family: var(--font); font-size: 12.5px; font-weight: 700; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 6px; outline: none; cursor: pointer; }
+.tt-page .pf-book:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
+.tt-page .pf-line.has-book .pf-method { flex: 0 0 56px; padding: 9px 4px; }
+.tt-page .pf-line.has-book .pf-amt { flex: 0 0 122px; font-size: 16px; }
 .tt-page .pf-amt { flex: 1; min-width: 0; font-family: var(--mono); font-size: 18px; font-weight: 700; letter-spacing: -.4px; text-align: right; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 9px 11px; outline: none; }
 .tt-page .pf-amt:focus { border-color: var(--brand-100); box-shadow: 0 0 0 3px var(--brand-50); }
 .tt-page .pf-rm { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-3); display: grid; place-items: center; cursor: pointer; }

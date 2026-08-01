@@ -58,9 +58,8 @@ export function CollectDrawer({
   onNavigate,
 }: Props) {
   // Sổ quỹ chỉ tải khi sheet thực sự mở (drawer luôn mounted để chạy animation).
-  const { collect, accountIdFor, changeAccountNameFor, isCollecting } = useQuickCollect({
-    enabled: !!invoice,
-  });
+  const { collect, accountIdFor, accountOptionsFor, changeAccountNameFor, isCollecting } =
+    useQuickCollect({ enabled: !!invoice });
   const deletePayment = useDeletePayment();
   const updateNote = useUpdateInvoiceNote();
 
@@ -198,6 +197,12 @@ export function CollectDrawer({
         notes: noteDraft,
         receiptImageUrl: url,
         paymentDate,
+        // Sổ quỹ người thu chọn tay ở dòng TK (mỗi phương thức tối đa 1 dòng).
+        accountOverrides: Object.fromEntries(
+          lines
+            .filter((line) => line.accountId)
+            .map((line) => [line.method, line.accountId as string]),
+        ),
       });
       // Thu xong → invoice cập nhật (remaining 0) → form tự ẩn, hiện "Đã thu đủ".
     } catch (e) {
@@ -276,6 +281,8 @@ export function CollectDrawer({
                 methodAvailable={methodAvailable}
                 changeAccountName={changeAccountName}
                 canCredit={!!invoice.contract_id}
+                bookOptions={accountOptionsFor(invoice)}
+                defaultTkBookId={accountIdFor(invoice, 'TK')}
                 onChange={setPayState}
               />
             </>
