@@ -85,7 +85,9 @@ describe("Task 19 host and lifecycle scripts", () => {
     expect(source).toContain("load_active_snapshot");
     expect(source).toContain("persist_active_snapshot");
     expect(source).toContain("cleanup_failed_snapshot");
-    expect(source).toContain("cleanup_previous_snapshot");
+    expect(source).toContain("cleanup_superseded_snapshots");
+    expect(source).toContain('"$snapshots_root"/snapshot-*');
+    expect(source).toContain('"$secret_snapshots_root"/snapshot-*');
     expect(source).toContain("active_secret_snapshot");
     expect(source).toContain("--force-recreate");
     expect(source).toContain("/usr/bin/env -i");
@@ -174,12 +176,24 @@ describe("Task 19 host and lifecycle scripts", () => {
         const snapshotRoot = join(deploymentRoot, "snapshots", snapshotName);
         const liveSecretRoot = join(runtimeRoot, "secrets", cellId);
         const oldSecretRoot = join(liveSecretRoot, ".deployments", snapshotName);
+        const orphanSnapshotRoot = join(
+          deploymentRoot,
+          "snapshots",
+          "snapshot-orphan",
+        );
+        const orphanSecretRoot = join(
+          liveSecretRoot,
+          ".deployments",
+          "snapshot-orphan",
+        );
         const liveConfig = join(runtimeRoot, "config", cellId, "egress-allowlist.yaml");
 
         await mkdir(fakeScripts, { recursive: true });
         await mkdir(fakeBin, { recursive: true });
         await mkdir(snapshotRoot, { recursive: true });
         await mkdir(oldSecretRoot, { recursive: true });
+        await mkdir(orphanSnapshotRoot, { recursive: true });
+        await mkdir(orphanSecretRoot, { recursive: true });
         await mkdir(dirname(liveConfig), { recursive: true });
         await mkdir(join(runtimeRoot, "operations"), { recursive: true });
         await writeFile(join(runtimeRoot, "operations", "transfer-quota.json"), "{}\n");
@@ -195,6 +209,13 @@ describe("Task 19 host and lifecycle scripts", () => {
         await chmod(join(snapshotRoot, "runtime.env"), 0o600);
         await writeFile(join(snapshotRoot, "compose.cell.yaml"), "name: active\n");
         await writeFile(join(snapshotRoot, "egress-allowlist.yaml"), "active-allowlist\n");
+        await writeFile(join(orphanSnapshotRoot, "runtime.env"), envText(oldDigests));
+        await chmod(join(orphanSnapshotRoot, "runtime.env"), 0o600);
+        await writeFile(join(orphanSnapshotRoot, "compose.cell.yaml"), "name: orphan\n");
+        await writeFile(
+          join(orphanSnapshotRoot, "egress-allowlist.yaml"),
+          "orphan-allowlist\n",
+        );
         await writeFile(join(deploymentRoot, "current"), snapshotName + "\n");
         await chmod(join(deploymentRoot, "current"), 0o600);
         await writeFile(liveConfig, "candidate-allowlist\n");
@@ -203,6 +224,8 @@ describe("Task 19 host and lifecycle scripts", () => {
           await chmod(join(liveSecretRoot, secret), 0o400);
           await writeFile(join(oldSecretRoot, secret), "active-" + secret + "\n");
           await chmod(join(oldSecretRoot, secret), 0o400);
+          await writeFile(join(orphanSecretRoot, secret), "orphan-" + secret + "\n");
+          await chmod(join(orphanSecretRoot, secret), 0o400);
         }
 
         for (const helper of [
@@ -303,6 +326,50 @@ describe("Task 19 host and lifecycle scripts", () => {
         );
         expect(upCommands[1]).toContain("--force-recreate");
         expect((await readFile(upEnvLog, "utf8")).trim().split("\n")).toEqual([
+          "unset",
+          "unset",
+        ]);
+
+        await writeFile(liveConfig, "candidate-allowlist\n");
+        for (const secret of secretNames) {
+          await chmod(join(liveSecretRoot, secret), 0o600);
+          await writeFile(join(liveSecretRoot, secret), "candidate-" + secret + "\n");
+          await chmod(join(liveSecretRoot, secret), 0o400);
+        }
+        const successResult = spawnSync(
+          "sh",
+          [join(fakeScripts, "deploy-cell.sh"), "--runtime-env", runtimeEnv],
+          {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              OPENCLAW_DOCKER_LOG: dockerLog,
+              OPENCLAW_UP_ENV_LOG: upEnvLog,
+              OPENCLAW_RUNTIME_ROOT: runtimeRoot,
+              OPENCLAW_TRANSFER_QUOTA_RECORD: join(
+                runtimeRoot,
+                "operations",
+                "transfer-quota.json",
+              ),
+              OPENCLAW_UP_COUNT: upCount,
+              OPENCLAW_FENCING_TOKEN: "candidate-ambient",
+              DOCKER_HOST: "unix:///run/user/" + runnerUid + "/docker.sock",
+              PATH: [fakeBin, process.env.PATH ?? ""].join(":"),
+            },
+          },
+        );
+        expect(successResult.status, successResult.stderr).toBe(0);
+        const currentSnapshot = (await readFile(join(deploymentRoot, "current"), "utf8")).trim();
+        expect(currentSnapshot).not.toBe(snapshotName);
+        expect(currentSnapshot).not.toBe("snapshot-orphan");
+        expect(existsSync(snapshotRoot)).toBe(false);
+        expect(existsSync(oldSecretRoot)).toBe(false);
+        expect(existsSync(orphanSnapshotRoot)).toBe(false);
+        expect(existsSync(orphanSecretRoot)).toBe(false);
+        expect(existsSync(join(deploymentRoot, "snapshots", currentSnapshot))).toBe(true);
+        expect(existsSync(join(liveSecretRoot, ".deployments", currentSnapshot))).toBe(true);
+        expect((await readFile(upEnvLog, "utf8")).trim().split("\n")).toEqual([
+          "unset",
           "unset",
           "unset",
         ]);

@@ -15,7 +15,6 @@ deployment_state_root=
 active_snapshot=
 active_secret_snapshot=
 snapshot_name=
-previous_snapshot_name=
 snapshot_candidate=
 secret_snapshot_candidate=
 snapshot_final=
@@ -289,7 +288,6 @@ persist_active_snapshot() {
   sync -f "$secret_snapshot_candidate"
   sync -f "$snapshot_candidate"
 
-  previous_snapshot_name=$snapshot_name
   snapshot_name="snapshot-$(date +%s)-$$"
   snapshot_final="$snapshots_root/$snapshot_name"
   secret_snapshot_final="$secret_snapshots_root/$snapshot_name"
@@ -368,39 +366,64 @@ cleanup_failed_snapshot() {
   fi
 }
 
-cleanup_previous_snapshot() {
-  [ -n "$previous_snapshot_name" ] || return 0
-  [ "$previous_snapshot_name" != "$snapshot_name" ] || return 0
-  case "$previous_snapshot_name" in
-    snapshot-*) ;;
-    *) echo "previous deployment snapshot name is invalid" >&2; return 1 ;;
-  esac
-  case "$previous_snapshot_name" in
-    *[!0-9A-Za-z._-]*) echo "previous deployment snapshot name is invalid" >&2; return 1 ;;
-  esac
-  previous_snapshot="$deployment_state_root/snapshots/$previous_snapshot_name"
-  previous_secret_snapshot="$runtime_root/secrets/$cell_id/.deployments/$previous_snapshot_name"
-  rm -f \
-    "$previous_snapshot/runtime.env" \
-    "$previous_snapshot/compose.cell.yaml" \
-    "$previous_snapshot/egress-allowlist.yaml"
-  rmdir "$previous_snapshot"
-  for secret in \
-    openclaw_session_key \
-    openclaw_zalo_bridge_hmac \
-    openclaw_customer_ai_key \
-    openclaw_runtime_credential \
-    openclaw_gateway_device_token \
-    openclaw_gateway_device_identity \
-    openclaw_qr_encryption_key \
-    openclaw_maintenance_credential \
-    openclaw_audit_private_key
-  do
-    rm -f "$previous_secret_snapshot/$secret"
+cleanup_superseded_snapshots() {
+  for stale_snapshot in "$snapshots_root"/snapshot-* "$snapshots_root"/.candidate.*; do
+    if [ ! -e "$stale_snapshot" ] && [ ! -L "$stale_snapshot" ]; then continue; fi
+    [ -d "$stale_snapshot" ] && [ ! -L "$stale_snapshot" ] || {
+      echo "superseded deployment snapshot path is unsafe" >&2
+      return 1
+    }
+    stale_name=${stale_snapshot##*/}
+    [ "$stale_name" != "$snapshot_name" ] || continue
+    case "$stale_name" in
+      snapshot-*|.candidate.*) ;;
+      *) echo "superseded deployment snapshot name is invalid" >&2; return 1 ;;
+    esac
+    case "$stale_name" in
+      *[!0-9A-Za-z._-]*) echo "superseded deployment snapshot name is invalid" >&2; return 1 ;;
+    esac
+    rm -f \
+      "$stale_snapshot/runtime.env" \
+      "$stale_snapshot/compose.cell.yaml" \
+      "$stale_snapshot/egress-allowlist.yaml"
+    rmdir "$stale_snapshot"
   done
-  rmdir "$previous_secret_snapshot"
-  sync -f "$deployment_state_root/snapshots"
-  sync -f "$runtime_root/secrets/$cell_id/.deployments"
+
+  for stale_secret_snapshot in \
+    "$secret_snapshots_root"/snapshot-* \
+    "$secret_snapshots_root"/.candidate.*
+  do
+    if [ ! -e "$stale_secret_snapshot" ] && [ ! -L "$stale_secret_snapshot" ]; then continue; fi
+    [ -d "$stale_secret_snapshot" ] && [ ! -L "$stale_secret_snapshot" ] || {
+      echo "superseded secret snapshot path is unsafe" >&2
+      return 1
+    }
+    stale_name=${stale_secret_snapshot##*/}
+    [ "$stale_name" != "$snapshot_name" ] || continue
+    case "$stale_name" in
+      snapshot-*|.candidate.*) ;;
+      *) echo "superseded secret snapshot name is invalid" >&2; return 1 ;;
+    esac
+    case "$stale_name" in
+      *[!0-9A-Za-z._-]*) echo "superseded secret snapshot name is invalid" >&2; return 1 ;;
+    esac
+    for secret in \
+      openclaw_session_key \
+      openclaw_zalo_bridge_hmac \
+      openclaw_customer_ai_key \
+      openclaw_runtime_credential \
+      openclaw_gateway_device_token \
+      openclaw_gateway_device_identity \
+      openclaw_qr_encryption_key \
+      openclaw_maintenance_credential \
+      openclaw_audit_private_key
+    do
+      rm -f "$stale_secret_snapshot/$secret"
+    done
+    rmdir "$stale_secret_snapshot"
+  done
+  sync -f "$snapshots_root"
+  sync -f "$secret_snapshots_root"
 }
 
 rollback_on_failure() {
@@ -447,6 +470,6 @@ compose up -d --no-build --remove-orphans --wait
 persist_active_snapshot
 mutation_started=0
 trap - EXIT
-cleanup_previous_snapshot
+cleanup_superseded_snapshots
 
 echo "deployed $project"
