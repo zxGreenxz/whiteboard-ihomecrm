@@ -99,6 +99,17 @@ const serviceRoutines = [
   "openclaw_sweep_runtime_v1",
 ] as const;
 
+const credentialExchangeRoutines = [
+  "openclaw_exchange_runtime_credential_v1",
+  "openclaw_exchange_maintenance_credential_v1",
+] as const;
+
+const authenticatedServiceRoutines = serviceRoutines.filter(
+  (name) => !credentialExchangeRoutines.includes(
+    name as (typeof credentialExchangeRoutines)[number],
+  ),
+);
+
 const supportTables = [
   "openclaw_client_operations",
   "openclaw_runtime_commands",
@@ -673,7 +684,7 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     expect(source).toContain("lease generation mismatch");
     expect(source).toContain("fencing token mismatch");
 
-    for (const name of serviceRoutines) {
+    for (const name of authenticatedServiceRoutines) {
       const privateFn = functionBody(source, "app_private", name).definitionSql;
       const facadeName = `openclaw_service_${name.slice("openclaw_".length)}`;
       const facade = functionBody(source, "public", facadeName).definitionSql;
@@ -689,6 +700,67 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
       expect(privateAt, facadeName).toBeGreaterThan(consumeAt);
       expect(facade, facadeName).toContain(`'${name}'`);
       expect(privateFn, name).toContain("version");
+    }
+
+    for (const name of credentialExchangeRoutines) {
+      const privateFn = functionBody(source, "app_private", name).definitionSql;
+      const facadeName = `openclaw_service_${name.slice("openclaw_".length)}`;
+      const facade = functionBody(source, "public", facadeName).definitionSql;
+      expect(privateFn, name).toContain("credentialProofSha256");
+      expect(privateFn, name).toContain("requestedOperation");
+      expect(privateFn, name).toContain("runtimeMethod");
+      expect(privateFn, name).toContain("runtimePath");
+      expect(privateFn, name).toContain("runtimeTimestamp");
+      expect(privateFn, name).toContain("runtimeNonce");
+      expect(privateFn, name).toContain("runtimeBodySha256");
+      expect(privateFn, name).toContain("exchangeRequestHash");
+      expect(privateFn, name).toContain("authenticatedAt");
+      expect(privateFn, name).not.toContain("'allowedScopes'");
+      expect(privateFn, name).toContain("app_private.openclaw_secure_digest_equal_v1");
+      expect(privateFn, name).toContain("credential exchange denied");
+      expect(facade, facadeName).not.toContain(
+        "app_private.openclaw_validate_service_context_v1",
+      );
+      const authenticateAt = facade.indexOf(`app_private.${name}`);
+      const consumeAt = facade.indexOf("app_private.openclaw_consume_service_nonce_v1");
+      expect(authenticateAt, facadeName).toBeGreaterThanOrEqual(0);
+      expect(consumeAt, facadeName).toBeGreaterThan(authenticateAt);
+      expect(facade, facadeName).not.toMatch(/execute\s+|format\s*\(/i);
+    }
+  });
+
+  it("separates exchange nonces from runtime nonces in their own namespace", () => {
+    const source = sql();
+    expect(source).toMatch(
+      /nonce_namespace\s+text\s+not\s+null[\s\S]{0,120}check\s*\(\s*nonce_namespace\s+in\s*\(\s*'RUNTIME'\s*,\s*'EXCHANGE'\s*\)\s*\)/i,
+    );
+    expect(source).toMatch(
+      /openclaw_service_nonces_channel_uidx[\s\S]{0,200}nonce_namespace/i,
+    );
+    expect(source).toMatch(
+      /openclaw_service_nonces_maintenance_uidx[\s\S]{0,200}nonce_namespace/i,
+    );
+
+    const consume = functionBody(
+      source,
+      "app_private",
+      "openclaw_consume_service_nonce_v1",
+    ).definitionSql;
+    expect(consume).toContain("p_namespace");
+    expect(consume).toContain("nonce_namespace");
+    expect(consume).toMatch(/'RUNTIME'/);
+    expect(consume).toMatch(/'EXCHANGE'/);
+
+    for (const name of credentialExchangeRoutines) {
+      const facadeName = `openclaw_service_${name.slice("openclaw_".length)}`;
+      const facade = functionBody(source, "public", facadeName).definitionSql;
+      expect(facade, facadeName).toMatch(/openclaw_consume_service_nonce_v1\([\s\S]{0,160}'EXCHANGE'/);
+    }
+
+    for (const name of authenticatedServiceRoutines) {
+      const facadeName = `openclaw_service_${name.slice("openclaw_".length)}`;
+      const facade = functionBody(source, "public", facadeName).definitionSql;
+      expect(facade, facadeName).toMatch(/openclaw_consume_service_nonce_v1\([\s\S]{0,160}'RUNTIME'/);
     }
   });
 });

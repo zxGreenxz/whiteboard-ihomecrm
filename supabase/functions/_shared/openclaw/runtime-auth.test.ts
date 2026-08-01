@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -8,6 +10,8 @@ import { OpenClawHttpError } from "./errors";
 import { errorResponse, readStrictJson } from "./http";
 import {
   deriveRuntimeRequirement,
+  deriveCredentialProofSha256,
+  deriveCredentialExchangeRequestHash,
   exchangeRuntimeCredential,
   issueRuntimeToken,
   RuntimeClockDriftCircuit,
@@ -21,6 +25,112 @@ const MAINTENANCE_ID = "dddd3000-0000-4000-8000-000000000001";
 const SIGNING_KEY = new TextEncoder().encode(
   "task13-runtime-signing-key-32-bytes-minimum",
 );
+const CHANNEL_CREDENTIAL = "root-owned-cell-credential-value";
+const MAINTENANCE_CREDENTIAL = "root-owned-maintenance-credential-value";
+const EXCHANGE_NONCE = "00000000-0000-4000-8000-000000000099";
+
+interface TestCredentialExchangeRpcInput {
+  principal: Record<string, unknown>;
+  envelope: {
+    version: 1;
+    operation: string;
+    nonce: string;
+    iat: string;
+    exp: string;
+    requestHash: string;
+  };
+  request: {
+    version: 1;
+    credentialProofSha256: string;
+    requestedOperation: string;
+    runtimeMethod: string;
+    runtimePath: string;
+    runtimeTimestamp: number;
+    runtimeNonce: string;
+    runtimeBodySha256: string;
+  };
+}
+
+function independentCredentialProof(
+  domain: string,
+  credential: string,
+): string {
+  return createHash("sha256")
+    .update(domain, "utf8")
+    .update(Buffer.from([0]))
+    .update(credential, "utf8")
+    .digest("hex");
+}
+
+function independentCredentialExchangeRequestHash(
+  operation: string,
+  request: TestCredentialExchangeRpcInput["request"],
+): string {
+  const canonicalRequest = JSON.stringify(Object.fromEntries(
+    Object.entries(request).sort(([left], [right]) => left.localeCompare(right)),
+  ));
+  return createHash("sha256")
+    .update("ihome-openclaw-service-request-v1", "utf8")
+    .update(Buffer.from([0]))
+    .update(operation, "utf8")
+    .update(Buffer.from([0]))
+    .update(canonicalRequest, "utf8")
+    .digest("hex");
+}
+
+function channelExchangeReceipt(
+  input: TestCredentialExchangeRpcInput,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    version: 1,
+    principalKind: "CHANNEL",
+    organizationId: ORGANIZATION_ID,
+    accountId: ACCOUNT_ID,
+    cellId: CELL_ID,
+    credentialGeneration: "1",
+    leaseGeneration: "2",
+    fencingToken: "3",
+    sessionGeneration: "4",
+    requestedOperation: input.request.requestedOperation,
+    runtimeMethod: input.request.runtimeMethod,
+    runtimePath: input.request.runtimePath,
+    runtimeTimestamp: input.request.runtimeTimestamp,
+    runtimeNonce: input.request.runtimeNonce,
+    runtimeBodySha256: input.request.runtimeBodySha256,
+    exchangeNonce: input.envelope.nonce,
+    exchangeRequestHash: input.envelope.requestHash,
+    authenticatedAt: new Date(1_785_062_400_000).toISOString(),
+    leaseExpiresAt: new Date(1_785_063_000_000).toISOString(),
+    ...overrides,
+  };
+}
+
+function maintenanceExchangeReceipt(
+  input: TestCredentialExchangeRpcInput,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    version: 1,
+    principalKind: "MAINTENANCE",
+    organizationId: ORGANIZATION_ID,
+    maintenancePrincipalId: MAINTENANCE_ID,
+    credentialGeneration: "5",
+    leaseGeneration: "6",
+    fencingToken: "7",
+    requestedOperation: input.request.requestedOperation,
+    runtimeMethod: input.request.runtimeMethod,
+    runtimePath: input.request.runtimePath,
+    runtimeTimestamp: input.request.runtimeTimestamp,
+    runtimeNonce: input.request.runtimeNonce,
+    runtimeBodySha256: input.request.runtimeBodySha256,
+    exchangeNonce: input.envelope.nonce,
+    exchangeRequestHash: input.envelope.requestHash,
+    authenticatedAt: new Date(1_785_062_400_000).toISOString(),
+    leaseExpiresAt: new Date(1_785_063_000_000).toISOString(),
+    ...overrides,
+  };
+}
 
 const channelPrincipal = {
   version: 1 as const,
@@ -45,6 +155,48 @@ const maintenancePrincipal = {
 };
 
 describe("OpenClaw shared runtime authentication", () => {
+  it("derives domain-separated channel and maintenance credential proofs", async () => {
+    const channelProof = await deriveCredentialProofSha256(
+      "CHANNEL",
+      CHANNEL_CREDENTIAL,
+    );
+    const maintenanceProof = await deriveCredentialProofSha256(
+      "MAINTENANCE",
+      MAINTENANCE_CREDENTIAL,
+    );
+
+    expect(channelProof).toBe(independentCredentialProof(
+      "ihome-openclaw-channel-credential-v1",
+      CHANNEL_CREDENTIAL,
+    ));
+    expect(maintenanceProof).toBe(independentCredentialProof(
+      "ihome-openclaw-maintenance-credential-v1",
+      MAINTENANCE_CREDENTIAL,
+    ));
+    expect(await deriveCredentialProofSha256("CHANNEL", MAINTENANCE_CREDENTIAL))
+      .not.toBe(maintenanceProof);
+  });
+
+  it("derives the SQL credential exchange request hash over the full runtime binding", async () => {
+    const request: TestCredentialExchangeRpcInput["request"] = {
+      version: 1,
+      credentialProofSha256: independentCredentialProof(
+        "ihome-openclaw-channel-credential-v1",
+        CHANNEL_CREDENTIAL,
+      ),
+      requestedOperation: "outbox.claim",
+      runtimeMethod: "POST",
+      runtimePath: "/v1/outbox/claim",
+      runtimeTimestamp: 1_785_062_400,
+      runtimeNonce: "00000000-0000-4000-8000-000000000001",
+      runtimeBodySha256: createHash("sha256").update('{"limit":10}').digest("hex"),
+    };
+    const operation = "openclaw_exchange_runtime_credential_v1";
+    expect(await deriveCredentialExchangeRequestHash(operation, request)).toBe(
+      independentCredentialExchangeRequestHash(operation, request),
+    );
+  });
+
   it("derives channel and maintenance scope from exact routes", () => {
     expect(deriveRuntimeRequirement({
       method: "POST",
@@ -90,14 +242,16 @@ describe("OpenClaw shared runtime authentication", () => {
 
   it("exchanges a credential for a single request-bound five-minute token", async () => {
     const body = new TextEncoder().encode('{"limit":10}');
-    const authenticateCredential = vi.fn(() => Promise.resolve(channelPrincipal));
+    const authenticateCredential = vi.fn((input: TestCredentialExchangeRpcInput) =>
+      Promise.resolve(channelExchangeReceipt(input)));
     const token = await exchangeRuntimeCredential({
-      credential: "root-owned-cell-credential-value",
+      credential: CHANNEL_CREDENTIAL,
       method: "POST",
       path: "/v1/outbox/claim",
       body,
       timestamp: 1_785_062_400,
       nonce: "00000000-0000-4000-8000-000000000001",
+      exchangeNonce: EXCHANGE_NONCE,
       principalSelector: {
         organizationId: ORGANIZATION_ID,
         accountId: ACCOUNT_ID,
@@ -132,27 +286,150 @@ describe("OpenClaw shared runtime authentication", () => {
 
     expect(verified.operation).toBe("outbox.claim");
     expect(verified.principal).toEqual(channelPrincipal);
-    expect(authenticateCredential).toHaveBeenCalledWith(
-      "root-owned-cell-credential-value",
-      {
+    const credentialProofSha256 = independentCredentialProof(
+      "ihome-openclaw-channel-credential-v1",
+      CHANNEL_CREDENTIAL,
+    );
+    const runtimeBodySha256 = createHash("sha256").update(body).digest("hex");
+    const exchangeRequest = {
+      version: 1 as const,
+      credentialProofSha256,
+      requestedOperation: "outbox.claim",
+      runtimeMethod: "POST",
+      runtimePath: "/v1/outbox/claim",
+      runtimeTimestamp: 1_785_062_400,
+      runtimeNonce: "00000000-0000-4000-8000-000000000001",
+      runtimeBodySha256,
+    };
+    const exchangeOperation = "openclaw_exchange_runtime_credential_v1";
+    const exchangeRequestHash = independentCredentialExchangeRequestHash(
+      exchangeOperation,
+      exchangeRequest,
+    );
+    expect(authenticateCredential).toHaveBeenCalledWith({
+      principal: {
+        version: 1,
+        principalKind: "CHANNEL",
         organizationId: ORGANIZATION_ID,
         accountId: ACCOUNT_ID,
         cellId: CELL_ID,
       },
-      "outbox.claim",
-    );
+      envelope: {
+        version: 1,
+        operation: exchangeOperation,
+        nonce: EXCHANGE_NONCE,
+        iat: new Date(1_785_062_400_000).toISOString(),
+        exp: new Date(1_785_062_700_000).toISOString(),
+        requestHash: exchangeRequestHash,
+      },
+      request: exchangeRequest,
+    });
     expect(order).toEqual(["revalidate", "consume"]);
   });
 
-  it("rejects invalid credential exchanges before credential lookup", async () => {
-    const authenticateCredential = vi.fn(() => Promise.resolve(channelPrincipal));
+  it("exchanges an independent maintenance credential and receipt", async () => {
+    const body = new TextEncoder().encode('{"requestedKinds":["RETENTION_DELETE"]}');
+    const routeBody = { requestedKinds: ["RETENTION_DELETE"] };
+    const authenticateCredential = vi.fn((input: TestCredentialExchangeRpcInput) =>
+      Promise.resolve(maintenanceExchangeReceipt(input)));
+    const token = await exchangeRuntimeCredential({
+      credential: MAINTENANCE_CREDENTIAL,
+      method: "POST",
+      path: "/v1/maintenance/work/claim",
+      body,
+      routeBody,
+      timestamp: 1_785_062_400,
+      nonce: "00000000-0000-4000-8000-000000000010",
+      exchangeNonce: "00000000-0000-4000-8000-000000000011",
+      principalSelector: {
+        organizationId: ORGANIZATION_ID,
+        maintenancePrincipalId: MAINTENANCE_ID,
+      },
+      signingKey: SIGNING_KEY,
+      nowEpochSeconds: 1_785_062_400,
+      authenticateCredential,
+    });
+
+    const verification = await verifyRuntimeRequest({
+      token,
+      method: "POST",
+      path: "/v1/maintenance/work/claim",
+      body,
+      routeBody,
+      timestamp: 1_785_062_400,
+      nonce: "00000000-0000-4000-8000-000000000010",
+      signingKey: SIGNING_KEY,
+      nowEpochSeconds: 1_785_062_401,
+      revalidatePrincipal: () => Promise.resolve(maintenancePrincipal),
+      consumeNonce: () => Promise.resolve(),
+    });
+
+    expect(verification.principal).toEqual(maintenancePrincipal);
+    const rpcInput = authenticateCredential.mock.calls[0][0];
+    expect(rpcInput.request.credentialProofSha256).toBe(
+      independentCredentialProof(
+        "ihome-openclaw-maintenance-credential-v1",
+        MAINTENANCE_CREDENTIAL,
+      ),
+    );
+    expect(rpcInput.principal).toEqual({
+      version: 1,
+      principalKind: "MAINTENANCE",
+      organizationId: ORGANIZATION_ID,
+      maintenancePrincipalId: MAINTENANCE_ID,
+    });
+  });
+
+  it("rejects any DB receipt provenance or safe-integer mismatch", async () => {
     const base = {
-      credential: "root-owned-cell-credential-value",
+      credential: CHANNEL_CREDENTIAL,
+      method: "POST",
+      path: "/v1/outbox/claim",
+      body: new TextEncoder().encode("{}"),
+      timestamp: 1_785_062_400,
+      nonce: "00000000-0000-4000-8000-000000000020",
+      exchangeNonce: "00000000-0000-4000-8000-000000000021",
+      principalSelector: {
+        organizationId: ORGANIZATION_ID,
+        accountId: ACCOUNT_ID,
+        cellId: CELL_ID,
+      },
+      signingKey: SIGNING_KEY,
+      nowEpochSeconds: 1_785_062_400,
+    };
+    const mutations: Record<string, unknown>[] = [
+      { organizationId: "dddd0000-0000-4000-8000-000000000002" },
+      { requestedOperation: "outbox.complete" },
+      { runtimePath: "/v1/outbox/complete" },
+      { runtimeNonce: "00000000-0000-4000-8000-000000000022" },
+      { exchangeNonce: "00000000-0000-4000-8000-000000000023" },
+      { exchangeRequestHash: "0".repeat(64) },
+      { authenticatedAt: "2000-01-01T00:00:00.000Z" },
+      { leaseExpiresAt: new Date(1_785_062_400_000).toISOString() },
+      { credentialGeneration: "9007199254740992" },
+      { extra: "forbidden" },
+    ];
+
+    for (const mutation of mutations) {
+      const authenticateCredential = vi.fn((input: TestCredentialExchangeRpcInput) =>
+        Promise.resolve(channelExchangeReceipt(input, mutation)));
+      await expect(exchangeRuntimeCredential({ ...base, authenticateCredential }))
+        .rejects.toBeInstanceOf(OpenClawHttpError);
+      expect(authenticateCredential).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("rejects invalid credential exchanges before credential lookup", async () => {
+    const authenticateCredential = vi.fn((input: TestCredentialExchangeRpcInput) =>
+      Promise.resolve(channelExchangeReceipt(input)));
+    const base = {
+      credential: CHANNEL_CREDENTIAL,
       method: "POST",
       path: "/v1/outbox/claim",
       body: new TextEncoder().encode("{}"),
       timestamp: 1_785_062_400,
       nonce: "00000000-0000-4000-8000-000000000001",
+      exchangeNonce: EXCHANGE_NONCE,
       principalSelector: {
         organizationId: ORGANIZATION_ID,
         accountId: ACCOUNT_ID,
@@ -173,6 +450,8 @@ describe("OpenClaw shared runtime authentication", () => {
       },
       { timestamp: 1_785_062_461 },
       { nonce: "not-a-uuid" },
+      { exchangeNonce: "not-a-uuid" },
+      { exchangeNonce: base.nonce },
       { nowEpochSeconds: Number.NaN },
       { principalSelector: { ...base.principalSelector, extra: "forbidden" } },
     ]) {

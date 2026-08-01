@@ -169,8 +169,10 @@ create table public.openclaw_runtime_credentials (
     references public.openclaw_accounts(organization_id, id) on delete restrict,
   foreign key (organization_id, account_id, cell_id)
     references public.openclaw_runtime_cells(organization_id, account_id, id) on delete restrict,
-  check (cardinality(allowed_scopes) > 0),
-  check (allowed_scopes <@ ARRAY['heartbeat','qr.publish','qr.result','inbound.commit','outbox.claim','outbox.preflight','outbox.authorize-send','outbox.requeue','outbox.complete','work.claim','work.complete','media.issue']::text[])
+  constraint openclaw_runtime_credentials_allowed_scopes_nonempty_check
+    check (cardinality(allowed_scopes) > 0),
+  constraint openclaw_runtime_credentials_allowed_scopes_check
+    check (allowed_scopes <@ ARRAY['heartbeat','qr.publish','qr.result','inbound.commit','outbox.claim','outbox.preflight','outbox.authorize-send','outbox.requeue','outbox.complete','work.claim','work.complete','media.issue']::text[])
 );
 
 create unique index openclaw_runtime_credentials_one_current_uidx
@@ -237,8 +239,10 @@ create table public.openclaw_maintenance_credentials (
   unique (organization_id, maintenance_principal_id, credential_generation),
   foreign key (organization_id, maintenance_principal_id)
     references public.openclaw_maintenance_principals(organization_id, id) on delete restrict,
-  check (cardinality(allowed_scopes) > 0),
-  check (allowed_scopes <@ ARRAY['maintenance.claim','maintenance.complete']::text[])
+  constraint openclaw_maintenance_credentials_allowed_scopes_nonempty_check
+    check (cardinality(allowed_scopes) > 0),
+  constraint openclaw_maintenance_credentials_allowed_scopes_check
+    check (allowed_scopes <@ ARRAY['maintenance.claim','maintenance.complete']::text[])
 );
 
 create unique index openclaw_maintenance_credentials_one_current_uidx

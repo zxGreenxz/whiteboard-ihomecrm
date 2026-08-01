@@ -395,6 +395,7 @@ create table public.openclaw_service_nonces (
   lease_generation bigint not null check (lease_generation > 0),
   fencing_token bigint not null check (fencing_token > 0),
   operation text not null,
+  nonce_namespace text not null check (nonce_namespace in ('RUNTIME','EXCHANGE')),
   nonce_hash text not null check (nonce_hash ~ '^[0-9a-f]{64}$'),
   envelope_hash text not null check (envelope_hash ~ '^[0-9a-f]{64}$'),
   request_hash text not null check (request_hash ~ '^[0-9a-f]{64}$'),
@@ -414,10 +415,14 @@ create table public.openclaw_service_nonces (
 );
 
 create unique index openclaw_service_nonces_channel_uidx
-  on public.openclaw_service_nonces (organization_id, account_id, cell_id, nonce_hash)
+  on public.openclaw_service_nonces (
+    organization_id, account_id, cell_id, nonce_namespace, nonce_hash
+  )
   where principal_kind = 'CHANNEL';
 create unique index openclaw_service_nonces_maintenance_uidx
-  on public.openclaw_service_nonces (organization_id, maintenance_principal_id, nonce_hash)
+  on public.openclaw_service_nonces (
+    organization_id, maintenance_principal_id, nonce_namespace, nonce_hash
+  )
   where principal_kind = 'MAINTENANCE';
 create index openclaw_service_nonces_unconsumed_idx
   on public.openclaw_service_nonces (expires_at, organization_id)
@@ -1008,6 +1013,45 @@ as $function$
   select convert_to(app_private.openclaw_jcs_text_v1(p_value), 'UTF8')
 $function$;
 
+create or replace function app_private.openclaw_secure_digest_equal_v1(
+  p_expected text,
+  p_actual text
+)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $function$
+declare
+  v_expected bytea;
+  v_actual bytea;
+  v_difference integer := 0;
+  v_index integer;
+begin
+  if p_expected is null or p_actual is null
+     or p_expected !~ '^[0-9a-f]{64}$'
+     or p_actual !~ '^[0-9a-f]{64}$'
+  then
+    return false;
+  end if;
+
+  v_expected := decode(p_expected, 'hex');
+  v_actual := decode(p_actual, 'hex');
+  if octet_length(v_expected) <> 32 or octet_length(v_actual) <> 32 then
+    return false;
+  end if;
+
+  for v_index in 0..31 loop
+    v_difference := v_difference
+      | (get_byte(v_expected, v_index) # get_byte(v_actual, v_index));
+  end loop;
+  return v_difference = 0;
+exception
+  when others then
+    return false;
+end;
+$function$;
+
 create or replace function app_private.openclaw_canonical_send_payload_bytes_v1(
   p_payload jsonb
 )
@@ -1451,8 +1495,6 @@ begin
     when 'openclaw_begin_cell_rebind_v1' then 'cell.rebind'
     when 'openclaw_complete_cell_rebind_v1' then 'cell.rebind'
     when 'openclaw_ack_generation_revocation_v1' then 'generation.ack'
-    when 'openclaw_exchange_runtime_credential_v1' then 'credential.exchange'
-    when 'openclaw_exchange_maintenance_credential_v1' then 'maintenance.exchange'
     when 'openclaw_complete_retention_quarantine_v1' then 'maintenance.complete'
     when 'openclaw_authorize_retention_delete_v1' then 'retention.authorize'
     when 'openclaw_finalize_retention_delete_v1' then 'maintenance.complete'
@@ -1553,7 +1595,8 @@ $function$;
 create or replace function app_private.openclaw_consume_service_nonce_v1(
   p_context jsonb,
   p_envelope jsonb,
-  p_request jsonb
+  p_request jsonb,
+  p_namespace text
 )
 returns jsonb
 language plpgsql
@@ -1564,15 +1607,19 @@ declare
   v_nonce_hash text;
   v_inserted uuid;
 begin
+  if p_namespace is null or p_namespace not in ('RUNTIME', 'EXCHANGE') then
+    raise exception 'service nonce namespace is invalid' using errcode = '42501';
+  end if;
   v_nonce_hash := encode(extensions.digest(
     convert_to('ihome-openclaw-service-nonce-v1', 'UTF8')
+      || decode('00', 'hex') || convert_to(p_namespace, 'UTF8')
       || decode('00', 'hex') || convert_to(p_envelope ->> 'nonce', 'UTF8'),
     'sha256'
   ), 'hex');
   insert into public.openclaw_service_nonces (
     organization_id, principal_kind, account_id, cell_id, maintenance_principal_id,
     credential_generation, lease_generation, fencing_token, operation,
-    nonce_hash, envelope_hash, request_hash, issued_at, expires_at,
+    nonce_namespace, nonce_hash, envelope_hash, request_hash, issued_at, expires_at,
     consumed_at, result_hash
   ) values (
     (p_context ->> 'organizationId')::uuid,
@@ -1584,6 +1631,7 @@ begin
     (p_context ->> 'leaseGeneration')::bigint,
     (p_context ->> 'fencingToken')::bigint,
     p_context ->> 'operation',
+    p_namespace,
     v_nonce_hash,
     encode(extensions.digest(app_private.openclaw_jcs_bytes_v1(p_envelope), 'sha256'), 'hex'),
     p_context ->> 'requestHash',
@@ -4040,26 +4088,165 @@ create or replace function app_private.openclaw_exchange_runtime_credential_v1(
 returns jsonb
 language plpgsql security definer set search_path = ''
 as $function$
-declare v_org uuid:=(p_principal->>'organizationId')::uuid;
-  v_account uuid:=(p_principal->>'accountId')::uuid;
-  v_cell uuid:=(p_principal->>'cellId')::uuid; v_result jsonb;
+declare
+  v_now timestamptz := statement_timestamp();
+  v_org uuid;
+  v_account uuid;
+  v_cell uuid;
+  v_iat timestamptz;
+  v_exp timestamptz;
+  v_request_hash text;
+  v_requested_operation text;
+  v_expected_requested_operation text;
+  v_runtime_timestamp bigint;
+  v_result jsonb;
 begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_principal,
+    array['version','principalKind','organizationId','accountId','cellId'],
+    array['version','principalKind','organizationId','accountId','cellId']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_envelope,
+    array['version','operation','nonce','iat','exp','requestHash'],
+    array['version','operation','nonce','iat','exp','requestHash']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','credentialProofSha256','requestedOperation','runtimeMethod',
+      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256'],
+    array['version','credentialProofSha256','requestedOperation','runtimeMethod',
+      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256']
+  );
+
+  if p_principal -> 'version' is distinct from '1'::jsonb
+     or p_principal ->> 'principalKind' is distinct from 'CHANNEL'
+     or jsonb_typeof(p_principal -> 'organizationId') <> 'string'
+     or jsonb_typeof(p_principal -> 'accountId') <> 'string'
+     or jsonb_typeof(p_principal -> 'cellId') <> 'string'
+     or p_principal ->> 'organizationId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_principal ->> 'accountId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_principal ->> 'cellId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_envelope -> 'version' is distinct from '1'::jsonb
+     or p_envelope ->> 'operation' is distinct from 'openclaw_exchange_runtime_credential_v1'
+     or jsonb_typeof(p_envelope -> 'nonce') <> 'string'
+     or p_envelope ->> 'nonce' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or jsonb_typeof(p_envelope -> 'iat') <> 'string'
+     or jsonb_typeof(p_envelope -> 'exp') <> 'string'
+     or jsonb_typeof(p_envelope -> 'requestHash') <> 'string'
+     or p_envelope ->> 'requestHash' !~ '^[0-9a-f]{64}$'
+     or p_request -> 'version' is distinct from '1'::jsonb
+     or jsonb_typeof(p_request -> 'credentialProofSha256') <> 'string'
+     or p_request ->> 'credentialProofSha256' !~ '^[0-9a-f]{64}$'
+     or jsonb_typeof(p_request -> 'requestedOperation') <> 'string'
+     or p_request ->> 'runtimeMethod' is distinct from 'POST'
+     or jsonb_typeof(p_request -> 'runtimePath') <> 'string'
+     or p_request ->> 'runtimePath' ~ '[?#]'
+     or jsonb_typeof(p_request -> 'runtimeTimestamp') <> 'number'
+     or p_request ->> 'runtimeTimestamp' !~ '^(0|[1-9][0-9]*)$'
+     or jsonb_typeof(p_request -> 'runtimeNonce') <> 'string'
+     or p_request ->> 'runtimeNonce' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_request ->> 'runtimeNonce' = p_envelope ->> 'nonce'
+     or jsonb_typeof(p_request -> 'runtimeBodySha256') <> 'string'
+     or p_request ->> 'runtimeBodySha256' !~ '^[0-9a-f]{64}$'
+  then
+    raise exception 'credential exchange request invalid' using errcode = '22023';
+  end if;
+
+  v_requested_operation := p_request ->> 'requestedOperation';
+  v_expected_requested_operation := case p_request ->> 'runtimePath'
+    when '/v1/heartbeat' then 'heartbeat'
+    when '/v1/qr/publish' then 'qr.publish'
+    when '/v1/qr/result' then 'qr.result'
+    when '/v1/inbound/batch' then 'inbound.commit'
+    when '/v1/outbox/claim' then 'outbox.claim'
+    when '/v1/outbox/preflight' then 'outbox.preflight'
+    when '/v1/outbox/authorize-send' then 'outbox.authorize-send'
+    when '/v1/outbox/requeue' then 'outbox.requeue'
+    when '/v1/outbox/complete' then 'outbox.complete'
+    when '/v1/work/claim' then 'work.claim'
+    when '/v1/work/complete' then 'work.complete'
+    when '/v1/work/create-outbox' then 'work.complete'
+    when '/v1/media/upload-ticket' then 'media.issue'
+    else null
+  end;
+  if v_requested_operation is distinct from v_expected_requested_operation then
+    raise exception 'credential exchange request invalid' using errcode = '22023';
+  end if;
+
+  begin
+    v_org := (p_principal ->> 'organizationId')::uuid;
+    v_account := (p_principal ->> 'accountId')::uuid;
+    v_cell := (p_principal ->> 'cellId')::uuid;
+    v_iat := (p_envelope ->> 'iat')::timestamptz;
+    v_exp := (p_envelope ->> 'exp')::timestamptz;
+    v_runtime_timestamp := (p_request ->> 'runtimeTimestamp')::bigint;
+  exception when others then
+    raise exception 'credential exchange request invalid' using errcode = '22023';
+  end;
+
+  v_request_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-service-request-v1', 'UTF8')
+      || decode('00', 'hex')
+      || convert_to('openclaw_exchange_runtime_credential_v1', 'UTF8')
+      || decode('00', 'hex')
+      || app_private.openclaw_jcs_bytes_v1(p_request),
+    'sha256'
+  ), 'hex');
+  if p_envelope ->> 'requestHash' is distinct from v_request_hash
+     or v_exp <= v_iat
+     or v_exp > v_iat + interval '5 minutes'
+     or v_now >= v_exp
+     or abs(extract(epoch from (v_now - v_iat))) > 60
+     or v_runtime_timestamp > 9007199254740991
+     or abs(extract(epoch from v_now)::numeric - v_runtime_timestamp::numeric) > 60
+  then
+    raise exception 'credential exchange denied' using errcode = '42501';
+  end if;
+
   select jsonb_build_object('version',1,'principalKind','CHANNEL',
     'organizationId',credential.organization_id,'accountId',credential.account_id,
-    'cellId',credential.cell_id,'credentialGeneration',credential.credential_generation,
-    'allowedScopes',credential.allowed_scopes,'leaseGeneration',lease.lease_generation,
-    'fencingToken',lease.fencing_token,'leaseExpiresAt',lease.expires_at,
-    'sessionGeneration',account.session_generation)
-  into strict v_result
+    'cellId',credential.cell_id,
+    'credentialGeneration',credential.credential_generation::text,
+    'leaseGeneration',lease.lease_generation::text,
+    'fencingToken',lease.fencing_token::text,
+    'sessionGeneration',account.session_generation::text,
+    'requestedOperation',v_requested_operation,
+    'runtimeMethod',p_request->>'runtimeMethod',
+    'runtimePath',p_request->>'runtimePath',
+    'runtimeTimestamp',v_runtime_timestamp,
+    'runtimeNonce',p_request->>'runtimeNonce',
+    'runtimeBodySha256',p_request->>'runtimeBodySha256',
+    'exchangeNonce',p_envelope->>'nonce',
+    'exchangeRequestHash',v_request_hash,
+    'authenticatedAt',v_now,'leaseExpiresAt',lease.expires_at,
+    'operation','openclaw_exchange_runtime_credential_v1','scope','credential.exchange',
+    'requestHash',v_request_hash,'iat',v_iat,'exp',v_exp,
+    'nonce',p_envelope ->> 'nonce')
+  into v_result
   from public.openclaw_runtime_credentials credential
+  join public.openclaw_runtime_cells cell
+    on cell.organization_id=credential.organization_id
+   and cell.account_id=credential.account_id and cell.id=credential.cell_id
   join public.openclaw_runtime_leases lease
     on lease.organization_id=credential.organization_id and lease.account_id=credential.account_id
    and lease.cell_id=credential.cell_id and lease.status='ACTIVE'
   join public.openclaw_accounts account
     on account.organization_id=credential.organization_id and account.id=credential.account_id
   where credential.organization_id=v_org and credential.account_id=v_account
-    and credential.cell_id=v_cell and credential.revoked_at is null
-    and lease.expires_at>statement_timestamp();
+    and credential.cell_id=v_cell
+    and credential.enabled_at<=v_now and credential.revoked_at is null
+    and 'credential.exchange'=any(credential.allowed_scopes)
+    and v_requested_operation=any(credential.allowed_scopes)
+    and app_private.openclaw_secure_digest_equal_v1(
+      credential.credential_hash,p_request->>'credentialProofSha256')
+    and cell.is_current and cell.state='READY'
+    and lease.expires_at>v_now
+    and account.is_active
+  for share of credential,cell,lease,account;
+  if v_result is null then
+    raise exception 'credential exchange denied' using errcode = '42501';
+  end if;
   return v_result;
 end;
 $function$;
@@ -4070,23 +4257,150 @@ create or replace function app_private.openclaw_exchange_maintenance_credential_
 returns jsonb
 language plpgsql security definer set search_path = ''
 as $function$
-declare v_org uuid:=(p_principal->>'organizationId')::uuid;
-  v_maintenance uuid:=(p_principal->>'maintenancePrincipalId')::uuid; v_result jsonb;
+declare
+  v_now timestamptz := statement_timestamp();
+  v_org uuid;
+  v_maintenance uuid;
+  v_iat timestamptz;
+  v_exp timestamptz;
+  v_request_hash text;
+  v_requested_operation text;
+  v_expected_requested_operation text;
+  v_runtime_timestamp bigint;
+  v_result jsonb;
 begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_principal,
+    array['version','principalKind','organizationId','maintenancePrincipalId'],
+    array['version','principalKind','organizationId','maintenancePrincipalId']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_envelope,
+    array['version','operation','nonce','iat','exp','requestHash'],
+    array['version','operation','nonce','iat','exp','requestHash']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','credentialProofSha256','requestedOperation','runtimeMethod',
+      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256'],
+    array['version','credentialProofSha256','requestedOperation','runtimeMethod',
+      'runtimePath','runtimeTimestamp','runtimeNonce','runtimeBodySha256']
+  );
+
+  if p_principal -> 'version' is distinct from '1'::jsonb
+     or p_principal ->> 'principalKind' is distinct from 'MAINTENANCE'
+     or jsonb_typeof(p_principal -> 'organizationId') <> 'string'
+     or jsonb_typeof(p_principal -> 'maintenancePrincipalId') <> 'string'
+     or p_principal ->> 'organizationId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_principal ->> 'maintenancePrincipalId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_envelope -> 'version' is distinct from '1'::jsonb
+     or p_envelope ->> 'operation' is distinct from 'openclaw_exchange_maintenance_credential_v1'
+     or jsonb_typeof(p_envelope -> 'nonce') <> 'string'
+     or p_envelope ->> 'nonce' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or jsonb_typeof(p_envelope -> 'iat') <> 'string'
+     or jsonb_typeof(p_envelope -> 'exp') <> 'string'
+     or jsonb_typeof(p_envelope -> 'requestHash') <> 'string'
+     or p_envelope ->> 'requestHash' !~ '^[0-9a-f]{64}$'
+     or p_request -> 'version' is distinct from '1'::jsonb
+     or jsonb_typeof(p_request -> 'credentialProofSha256') <> 'string'
+     or p_request ->> 'credentialProofSha256' !~ '^[0-9a-f]{64}$'
+     or jsonb_typeof(p_request -> 'requestedOperation') <> 'string'
+     or p_request ->> 'runtimeMethod' is distinct from 'POST'
+     or jsonb_typeof(p_request -> 'runtimePath') <> 'string'
+     or p_request ->> 'runtimePath' ~ '[?#]'
+     or jsonb_typeof(p_request -> 'runtimeTimestamp') <> 'number'
+     or p_request ->> 'runtimeTimestamp' !~ '^(0|[1-9][0-9]*)$'
+     or jsonb_typeof(p_request -> 'runtimeNonce') <> 'string'
+     or p_request ->> 'runtimeNonce' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_request ->> 'runtimeNonce' = p_envelope ->> 'nonce'
+     or jsonb_typeof(p_request -> 'runtimeBodySha256') <> 'string'
+     or p_request ->> 'runtimeBodySha256' !~ '^[0-9a-f]{64}$'
+  then
+    raise exception 'credential exchange request invalid' using errcode = '22023';
+  end if;
+
+  v_requested_operation := p_request ->> 'requestedOperation';
+  v_expected_requested_operation := case p_request ->> 'runtimePath'
+    when '/v1/maintenance/work/claim' then 'maintenance.claim'
+    when '/v1/maintenance/work/complete' then 'maintenance.complete'
+    when '/v1/maintenance/media/upload-ticket' then 'maintenance.complete'
+    when '/v1/maintenance/media/verify-ticket' then 'maintenance.complete'
+    when '/v1/maintenance/retention/delete-ticket' then 'maintenance.complete'
+    when '/v1/maintenance/retention/authorize-delete' then 'maintenance.complete'
+    else null
+  end;
+  if v_requested_operation is distinct from v_expected_requested_operation then
+    raise exception 'credential exchange request invalid' using errcode = '22023';
+  end if;
+
+  begin
+    v_org := (p_principal ->> 'organizationId')::uuid;
+    v_maintenance := (p_principal ->> 'maintenancePrincipalId')::uuid;
+    v_iat := (p_envelope ->> 'iat')::timestamptz;
+    v_exp := (p_envelope ->> 'exp')::timestamptz;
+    v_runtime_timestamp := (p_request ->> 'runtimeTimestamp')::bigint;
+  exception when others then
+    raise exception 'credential exchange request invalid' using errcode = '22023';
+  end;
+
+  v_request_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-service-request-v1', 'UTF8')
+      || decode('00', 'hex')
+      || convert_to('openclaw_exchange_maintenance_credential_v1', 'UTF8')
+      || decode('00', 'hex')
+      || app_private.openclaw_jcs_bytes_v1(p_request),
+    'sha256'
+  ), 'hex');
+  if p_envelope ->> 'requestHash' is distinct from v_request_hash
+     or v_exp <= v_iat
+     or v_exp > v_iat + interval '5 minutes'
+     or v_now >= v_exp
+     or abs(extract(epoch from (v_now - v_iat))) > 60
+     or v_runtime_timestamp > 9007199254740991
+     or abs(extract(epoch from v_now)::numeric - v_runtime_timestamp::numeric) > 60
+  then
+    raise exception 'credential exchange denied' using errcode = '42501';
+  end if;
+
   select jsonb_build_object('version',1,'principalKind','MAINTENANCE',
     'organizationId',credential.organization_id,
     'maintenancePrincipalId',credential.maintenance_principal_id,
-    'credentialGeneration',credential.credential_generation,
-    'allowedScopes',credential.allowed_scopes,'leaseGeneration',lease.lease_generation,
-    'fencingToken',lease.fencing_token,'leaseExpiresAt',lease.expires_at)
-  into strict v_result
+    'credentialGeneration',credential.credential_generation::text,
+    'leaseGeneration',lease.lease_generation::text,
+    'fencingToken',lease.fencing_token::text,
+    'requestedOperation',v_requested_operation,
+    'runtimeMethod',p_request->>'runtimeMethod',
+    'runtimePath',p_request->>'runtimePath',
+    'runtimeTimestamp',v_runtime_timestamp,
+    'runtimeNonce',p_request->>'runtimeNonce',
+    'runtimeBodySha256',p_request->>'runtimeBodySha256',
+    'exchangeNonce',p_envelope->>'nonce',
+    'exchangeRequestHash',v_request_hash,
+    'authenticatedAt',v_now,'leaseExpiresAt',lease.expires_at,
+    'operation','openclaw_exchange_maintenance_credential_v1',
+    'scope','maintenance.exchange','requestHash',v_request_hash,
+    'iat',v_iat,'exp',v_exp,'nonce',p_envelope ->> 'nonce')
+  into v_result
   from public.openclaw_maintenance_credentials credential
+  join public.openclaw_maintenance_principals principal
+    on principal.organization_id=credential.organization_id
+   and principal.id=credential.maintenance_principal_id
   join public.openclaw_maintenance_leases lease
     on lease.organization_id=credential.organization_id
    and lease.maintenance_principal_id=credential.maintenance_principal_id
    and lease.status='ACTIVE'
   where credential.organization_id=v_org and credential.maintenance_principal_id=v_maintenance
-    and credential.revoked_at is null and lease.expires_at>statement_timestamp();
+    and credential.enabled_at<=v_now and credential.revoked_at is null
+    and 'maintenance.exchange'=any(credential.allowed_scopes)
+    and v_requested_operation=any(credential.allowed_scopes)
+    and app_private.openclaw_secure_digest_equal_v1(
+      credential.credential_hash,p_request->>'credentialProofSha256')
+    and principal.is_current and principal.revoked_at is null
+    and lease.expires_at>v_now
+  for share of credential,principal,lease;
+  if v_result is null then
+    raise exception 'credential exchange denied' using errcode = '42501';
+  end if;
   return v_result;
 end;
 $function$;
@@ -6231,6 +6545,8 @@ alter function app_private.openclaw_jcs_text_v1(jsonb) owner to openclaw_functio
 revoke all on function app_private.openclaw_jcs_text_v1(jsonb) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_jcs_bytes_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_jcs_bytes_v1(jsonb) from public, anon, authenticated, service_role;
+alter function app_private.openclaw_secure_digest_equal_v1(text,text) owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_secure_digest_equal_v1(text,text) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_canonical_send_payload_bytes_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_canonical_send_payload_bytes_v1(jsonb) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_send_payload_hash_v1(jsonb) owner to openclaw_function_owner;
@@ -6247,8 +6563,8 @@ alter function app_private.openclaw_finish_browser_write_v1(uuid,uuid,text,uuid,
 revoke all on function app_private.openclaw_finish_browser_write_v1(uuid,uuid,text,uuid,text,text,jsonb) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_validate_service_context_v1(jsonb,jsonb,jsonb,text) owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_validate_service_context_v1(jsonb,jsonb,jsonb,text) from public, anon, authenticated, service_role;
-alter function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb) owner to openclaw_function_owner;
-revoke all on function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb) from public, anon, authenticated, service_role;
+alter function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb,text) owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb,text) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_browser_context_v1(jsonb,text,text) owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_browser_context_v1(jsonb,text,text) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_apply_knowledge_write_v1(text,uuid,uuid,jsonb) owner to openclaw_function_owner;
@@ -6260,11 +6576,12 @@ revoke all on function app_private.openclaw_apply_schedule_write_v1(text,uuid,uu
 grant execute on function app_private.openclaw_assert_strict_object_v1(jsonb,text[],text[]) to openclaw_runtime_writer, openclaw_maintenance_writer;
 grant execute on function app_private.openclaw_jcs_text_v1(jsonb) to openclaw_runtime_writer, openclaw_maintenance_writer;
 grant execute on function app_private.openclaw_jcs_bytes_v1(jsonb) to openclaw_runtime_writer, openclaw_maintenance_writer;
+grant execute on function app_private.openclaw_secure_digest_equal_v1(text,text) to openclaw_runtime_writer, openclaw_maintenance_writer;
 grant execute on function app_private.openclaw_canonical_send_payload_bytes_v1(jsonb) to openclaw_runtime_writer;
 grant execute on function app_private.openclaw_send_payload_hash_v1(jsonb) to openclaw_runtime_writer;
 grant execute on function app_private.openclaw_text_chunks_v1(text) to openclaw_runtime_writer;
 grant execute on function app_private.openclaw_validate_service_context_v1(jsonb,jsonb,jsonb,text) to openclaw_service_dispatcher;
-grant execute on function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb) to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb,text) to openclaw_service_dispatcher;
 
 alter function public.openclaw_get_bootstrap_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_get_bootstrap_v1(jsonb) from public, anon, authenticated, service_role;
@@ -6531,7 +6848,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_runtime_heartbeat_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_runtime_heartbeat_v1(v_context, p_envelope, p_request);
 end;
@@ -6547,13 +6864,17 @@ set search_path = ''
 as $function$
 declare v_context jsonb;
 begin
-  v_context := app_private.openclaw_validate_service_context_v1(
-    p_principal, p_envelope, p_request, 'openclaw_exchange_runtime_credential_v1'
+  v_context := app_private.openclaw_exchange_runtime_credential_v1(
+    p_principal, p_envelope, p_request
   );
-  v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
-  );
-  return app_private.openclaw_exchange_runtime_credential_v1(v_context, p_envelope, p_request);
+  begin
+    perform app_private.openclaw_consume_service_nonce_v1(
+      v_context, p_envelope, p_request, 'EXCHANGE'
+    );
+  exception when sqlstate '42501' then
+    raise exception 'credential exchange denied' using errcode = '42501';
+  end;
+  return v_context - array['operation','scope','requestHash','iat','exp','nonce'];
 end;
 $function$;
 
@@ -6567,13 +6888,17 @@ set search_path = ''
 as $function$
 declare v_context jsonb;
 begin
-  v_context := app_private.openclaw_validate_service_context_v1(
-    p_principal, p_envelope, p_request, 'openclaw_exchange_maintenance_credential_v1'
+  v_context := app_private.openclaw_exchange_maintenance_credential_v1(
+    p_principal, p_envelope, p_request
   );
-  v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
-  );
-  return app_private.openclaw_exchange_maintenance_credential_v1(v_context, p_envelope, p_request);
+  begin
+    perform app_private.openclaw_consume_service_nonce_v1(
+      v_context, p_envelope, p_request, 'EXCHANGE'
+    );
+  exception when sqlstate '42501' then
+    raise exception 'credential exchange denied' using errcode = '42501';
+  end;
+  return v_context - array['operation','scope','requestHash','iat','exp','nonce'];
 end;
 $function$;
 
@@ -6591,7 +6916,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_submit_qr_result_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_submit_qr_result_v1(v_context, p_envelope, p_request);
 end;
@@ -6611,7 +6936,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_ingest_inbound_batch_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_ingest_inbound_batch_v1(v_context, p_envelope, p_request);
 end;
@@ -6631,7 +6956,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_claim_inbound_automation_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_claim_inbound_automation_v1(v_context, p_envelope, p_request);
 end;
@@ -6651,7 +6976,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_complete_inbound_automation_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_complete_inbound_automation_v1(v_context, p_envelope, p_request);
 end;
@@ -6671,7 +6996,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_claim_outbox_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_claim_outbox_v1(v_context, p_envelope, p_request);
 end;
@@ -6691,7 +7016,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_preflight_outbox_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_preflight_outbox_v1(v_context, p_envelope, p_request);
 end;
@@ -6711,7 +7036,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_authorize_outbox_send_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_authorize_outbox_send_v1(v_context, p_envelope, p_request);
 end;
@@ -6731,7 +7056,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_requeue_pre_handoff_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_requeue_pre_handoff_v1(v_context, p_envelope, p_request);
 end;
@@ -6751,7 +7076,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_complete_outbox_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_complete_outbox_v1(v_context, p_envelope, p_request);
 end;
@@ -6771,7 +7096,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_claim_work_item_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_claim_work_item_v1(v_context, p_envelope, p_request);
 end;
@@ -6791,7 +7116,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_complete_work_item_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_complete_work_item_v1(v_context, p_envelope, p_request);
 end;
@@ -6811,7 +7136,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_create_outbox_from_work_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_create_outbox_from_work_v1(v_context, p_envelope, p_request);
 end;
@@ -6831,7 +7156,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_issue_media_ticket_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_issue_media_ticket_v1(v_context, p_envelope, p_request);
 end;
@@ -6851,7 +7176,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_complete_retention_quarantine_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_complete_retention_quarantine_v1(v_context, p_envelope, p_request);
 end;
@@ -6871,7 +7196,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_authorize_retention_delete_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_authorize_retention_delete_v1(v_context, p_envelope, p_request);
 end;
@@ -6891,7 +7216,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_finalize_retention_delete_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_finalize_retention_delete_v1(v_context, p_envelope, p_request);
 end;
@@ -6911,7 +7236,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_ack_audit_anchor_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_ack_audit_anchor_v1(v_context, p_envelope, p_request);
 end;
@@ -6931,7 +7256,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_acquire_cell_lease_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_acquire_cell_lease_v1(v_context, p_envelope, p_request);
 end;
@@ -6951,7 +7276,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_begin_cell_rebind_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_begin_cell_rebind_v1(v_context, p_envelope, p_request);
 end;
@@ -6971,7 +7296,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_complete_cell_rebind_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_complete_cell_rebind_v1(v_context, p_envelope, p_request);
 end;
@@ -6991,7 +7316,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_ack_generation_revocation_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_ack_generation_revocation_v1(v_context, p_envelope, p_request);
 end;
@@ -7011,7 +7336,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_record_watchdog_health_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_record_watchdog_health_v1(v_context, p_envelope, p_request);
 end;
@@ -7031,7 +7356,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_begin_rollout_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_begin_rollout_v1(v_context, p_envelope, p_request);
 end;
@@ -7051,7 +7376,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_record_rollout_checkpoint_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_record_rollout_checkpoint_v1(v_context, p_envelope, p_request);
 end;
@@ -7071,7 +7396,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_record_rollout_observation_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_record_rollout_observation_v1(v_context, p_envelope, p_request);
 end;
@@ -7091,7 +7416,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_resume_rollout_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_resume_rollout_v1(v_context, p_envelope, p_request);
 end;
@@ -7111,7 +7436,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_advance_rollout_stage_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_advance_rollout_stage_v1(v_context, p_envelope, p_request);
 end;
@@ -7131,7 +7456,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_begin_smoke_run_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_begin_smoke_run_v1(v_context, p_envelope, p_request);
 end;
@@ -7151,7 +7476,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_record_smoke_observation_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_record_smoke_observation_v1(v_context, p_envelope, p_request);
 end;
@@ -7171,7 +7496,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_cleanup_smoke_run_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_cleanup_smoke_run_v1(v_context, p_envelope, p_request);
 end;
@@ -7191,7 +7516,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_verify_smoke_cleanup_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_verify_smoke_cleanup_v1(v_context, p_envelope, p_request);
 end;
@@ -7211,7 +7536,7 @@ begin
     p_principal, p_envelope, p_request, 'openclaw_sweep_runtime_v1'
   );
   v_context := app_private.openclaw_consume_service_nonce_v1(
-    v_context, p_envelope, p_request
+    v_context, p_envelope, p_request, 'RUNTIME'
   );
   return app_private.openclaw_sweep_runtime_v1(v_context, p_envelope, p_request);
 end;

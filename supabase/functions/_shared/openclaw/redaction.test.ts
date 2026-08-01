@@ -80,6 +80,8 @@ describe("OpenClaw structured redaction", () => {
     const redacted = redactLogValue({
       credential: "credential-secret",
       workloadCredential: "workload-secret",
+      credentialHash: "credential-hash-secret",
+      credentialProofSha256: "credential-proof-secret",
       runtimeToken: "runtime-token-secret",
       runtimeTokenSigningKey: "runtime-key-secret",
       ticket: "ticket-secret",
@@ -93,6 +95,8 @@ describe("OpenClaw structured redaction", () => {
     for (const secret of [
       "credential-secret",
       "workload-secret",
+      "credential-hash-secret",
+      "credential-proof-secret",
       "runtime-token-secret",
       "runtime-key-secret",
       "ticket-secret",
@@ -107,6 +111,11 @@ describe("OpenClaw structured redaction", () => {
 
     expect(redactText('{"authorization":"Bearer json-authorization-secret"}'))
       .not.toContain("json-authorization-secret");
+    expect(redactText([
+      "credentialHash=free-text-credential-hash-secret",
+      "credentialProofSha256=free-text-credential-proof-secret",
+    ].join("\n")))
+      .not.toMatch(/free-text-credential-(?:hash|proof)-secret/);
   });
 
   it("handles Error objects and circular values without throwing", () => {

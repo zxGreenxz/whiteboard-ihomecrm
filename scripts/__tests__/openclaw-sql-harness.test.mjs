@@ -34,6 +34,20 @@ const REQUIRED_SQL_AUTHORIZATION_PROOFS = Object.freeze([
   "tenant.cross-org-stale-credential",
 ]);
 
+const REQUIRED_CREDENTIAL_EXCHANGE_PROOFS = Object.freeze([
+  "credential.channel-success",
+  "credential.maintenance-success",
+  "credential.wrong-proof-domain-separated",
+  "credential.cross-binding-denied",
+  "credential.scope-revocation-denied",
+  "credential.stale-principal-lease-denied",
+  "credential.expired-envelope-denied",
+  "credential.malformed-input-denied",
+  "credential.auth-failure-does-not-consume-nonce",
+  "credential.nonce-replay-denied",
+  "credential.exchange-nonce-namespace-separated",
+]);
+
 describe("OpenClaw SQL harness safety boundary", () => {
   it("freezes the project and organization identities", () => {
     expect(EXPECTED_PROJECT_REF).toBe("tryymsxyyckgbrmmvozx");
@@ -120,6 +134,11 @@ describe("OpenClaw SQL harness safety boundary", () => {
       ],
       ["claimToken=private-claim-value", ["private-claim-value"]],
       ["markerNonce: private-marker-value", ["private-marker-value"]],
+      ["credentialHash=private-credential-hash", ["private-credential-hash"]],
+      [
+        "credentialProofSha256=private-credential-proof",
+        ["private-credential-proof"],
+      ],
       ["SUPABASE_PAT=opaque-personal-access-token", ["opaque-personal-access-token"]],
       [
         "Authorization: Bearer opaque.bearer.token-value-1234567890",
@@ -165,6 +184,19 @@ describe("OpenClaw SQL harness safety boundary", () => {
     expect(SQL_AUTHORIZATION_PROOFS).toEqual(REQUIRED_SQL_AUTHORIZATION_PROOFS);
     const result = await runDisposableSqlAuthorizationMatrix();
     expect(result.proofs).toEqual(REQUIRED_SQL_AUTHORIZATION_PROOFS);
+  }, 30_000);
+
+  it("authenticates root credentials before consuming exchange nonces", async () => {
+    const {
+      CREDENTIAL_EXCHANGE_AUTHORIZATION_PROOFS,
+      runDisposableCredentialExchangeAuthorizationMatrix,
+    } = await import("../test-openclaw-migrations.mjs");
+
+    expect(CREDENTIAL_EXCHANGE_AUTHORIZATION_PROOFS).toEqual(
+      REQUIRED_CREDENTIAL_EXCHANGE_PROOFS,
+    );
+    const result = await runDisposableCredentialExchangeAuthorizationMatrix();
+    expect(result.proofs).toEqual(REQUIRED_CREDENTIAL_EXCHANGE_PROOFS);
   }, 30_000);
 
   it("leaves no OpenClaw or CRM trigger helper executable by PUBLIC", async () => {

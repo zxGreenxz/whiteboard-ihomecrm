@@ -18,6 +18,8 @@ const SECRET_KEY_NAMES = new Set([
   "runtimecredential",
   "cellcredential",
   "maintenancecredential",
+  "credentialhash",
+  "credentialproofsha256",
   "workloadtoken",
   "runtimetoken",
   "runtimetokensigningkey",
@@ -78,7 +80,7 @@ export function redactText(input: unknown, knownSecrets: string[] = []): string 
       "$1 [REDACTED_TOKEN]",
     ],
     [
-      /["']?(authorization|proxyAuthorization|claimToken|markerNonce|credential|workloadCredential|runtimeToken|runtimeTokenSigningKey|ticket|signature|session|sessionId|access_token|refresh_token|service_role_key|password|cookie|set-cookie|imei|qrPayload|qrData|qrCode|qrToken)["']?\s*([:=])\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]\r\n]+)/gi,
+      /["']?(authorization|proxyAuthorization|claimToken|markerNonce|credential|workloadCredential|credentialHash|credentialProofSha256|runtimeToken|runtimeTokenSigningKey|ticket|signature|session|sessionId|access_token|refresh_token|service_role_key|password|cookie|set-cookie|imei|qrPayload|qrData|qrCode|qrToken)["']?\s*([:=])\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]\r\n]+)/gi,
       "$1$2[REDACTED_SECRET]",
     ],
     [

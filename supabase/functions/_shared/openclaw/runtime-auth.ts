@@ -15,6 +15,7 @@ import {
 } from "./constants.ts";
 import { OpenClawHttpError } from "./errors.ts";
 import type {
+  PrincipalKind,
   RuntimePrincipal,
   RuntimeRequirement,
   RuntimeVerification,
@@ -23,6 +24,16 @@ import type {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const CREDENTIAL_PROOF_DOMAINS: Record<PrincipalKind, string> = {
+  CHANNEL: "ihome-openclaw-channel-credential-v1",
+  MAINTENANCE: "ihome-openclaw-maintenance-credential-v1",
+};
+const CREDENTIAL_EXCHANGE_OPERATIONS: Record<PrincipalKind, string> = {
+  CHANNEL: "openclaw_exchange_runtime_credential_v1",
+  MAINTENANCE: "openclaw_exchange_maintenance_credential_v1",
+};
+const ISO_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const ROUTES = new Map<string, RuntimeRequirement>([
   ["POST /v1/heartbeat", { operation: "heartbeat", principalKind: "CHANNEL" }],
@@ -112,6 +123,30 @@ interface IssueRuntimeTokenInput {
   ttlSeconds?: number;
 }
 
+export interface CredentialExchangeRequest {
+  version: 1;
+  credentialProofSha256: string;
+  requestedOperation: string;
+  runtimeMethod: string;
+  runtimePath: string;
+  runtimeTimestamp: number;
+  runtimeNonce: string;
+  runtimeBodySha256: string;
+}
+
+export interface CredentialExchangeRpcInput {
+  principal: Record<string, unknown>;
+  envelope: {
+    version: 1;
+    operation: string;
+    nonce: string;
+    iat: string;
+    exp: string;
+    requestHash: string;
+  };
+  request: CredentialExchangeRequest;
+}
+
 type RuntimeEnvelopeInput = Pick<
   IssueRuntimeTokenInput,
   "method" | "path" | "routeBody" | "timestamp" | "nonce" | "nowEpochSeconds" | "ttlSeconds"
@@ -119,6 +154,52 @@ type RuntimeEnvelopeInput = Pick<
 
 function authError(code: string, message: string, status = 403): OpenClawHttpError {
   return new OpenClawHttpError(status, code, message);
+}
+
+function concatenateBytes(parts: readonly Uint8Array[]): Uint8Array {
+  const output = new Uint8Array(
+    parts.reduce((length, part) => length + part.byteLength, 0),
+  );
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.byteLength;
+  }
+  return output;
+}
+
+export async function deriveCredentialProofSha256(
+  principalKind: PrincipalKind,
+  credential: string,
+): Promise<string> {
+  const domain = CREDENTIAL_PROOF_DOMAINS[principalKind];
+  if (!domain || typeof credential !== "string") {
+    throw authError("CREDENTIAL_INVALID", "Runtime credential is invalid.");
+  }
+  const domainBytes = utf8(domain);
+  const credentialBytes = utf8(credential);
+  const preimage = concatenateBytes([
+    domainBytes,
+    new Uint8Array([0]),
+    credentialBytes,
+  ]);
+  return sha256Hex(preimage);
+}
+
+export async function deriveCredentialExchangeRequestHash(
+  operation: string,
+  request: CredentialExchangeRequest,
+): Promise<string> {
+  if (!Object.values(CREDENTIAL_EXCHANGE_OPERATIONS).includes(operation)) {
+    throw authError("CREDENTIAL_EXCHANGE_INVALID", "Credential exchange is invalid.");
+  }
+  return sha256Hex(concatenateBytes([
+    utf8("ihome-openclaw-service-request-v1"),
+    new Uint8Array([0]),
+    utf8(operation),
+    new Uint8Array([0]),
+    utf8(canonicalJson(request)),
+  ]));
 }
 
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
@@ -277,6 +358,170 @@ function assertPrincipalSelector(
   ) {
     throw authError("CREDENTIAL_SELECTOR_INVALID", "Credential selector is invalid.");
   }
+}
+
+function exchangePrincipal(
+  principalKind: RuntimeRequirement["principalKind"],
+  selector: Record<string, string>,
+): Record<string, unknown> {
+  return principalKind === "CHANNEL"
+    ? {
+        version: 1,
+        principalKind,
+        organizationId: selector.organizationId,
+        accountId: selector.accountId,
+        cellId: selector.cellId,
+      }
+    : {
+        version: 1,
+        principalKind,
+        organizationId: selector.organizationId,
+        maintenancePrincipalId: selector.maintenancePrincipalId,
+      };
+}
+
+function epochSecondsToIso(epochSeconds: number): string {
+  const milliseconds = epochSeconds * 1_000;
+  const date = new Date(milliseconds);
+  if (!Number.isFinite(milliseconds) || Number.isNaN(date.getTime())) {
+    throw authError("CLOCK_INVALID", "Runtime request clock is invalid.");
+  }
+  return date.toISOString();
+}
+
+function parseReceiptGeneration(value: unknown, allowZero = false): number {
+  if (typeof value !== "string" || !/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+  }
+  const parsed = BigInt(value);
+  if (
+    parsed > BigInt(Number.MAX_SAFE_INTEGER) ||
+    (allowZero ? parsed < 0n : parsed <= 0n)
+  ) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+  }
+  return Number(parsed);
+}
+
+function parseReceiptTimestamp(value: unknown): number {
+  if (typeof value !== "string" || !ISO_TIMESTAMP_PATTERN.test(value)) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+  }
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds)) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+  }
+  return milliseconds / 1_000;
+}
+
+function validateCredentialExchangeReceipt({
+  value,
+  rpcInput,
+  requirement,
+  principalSelector,
+  nowEpochSeconds,
+}: {
+  value: unknown;
+  rpcInput: CredentialExchangeRpcInput;
+  requirement: RuntimeRequirement;
+  principalSelector: Record<string, string>;
+  nowEpochSeconds: number;
+}): { principal: RuntimePrincipal; databaseEpochSeconds: number; leaseExpiresAt: number } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+  }
+  const receipt = value as Record<string, unknown>;
+  const commonKeys = [
+    "version",
+    "principalKind",
+    "organizationId",
+    "credentialGeneration",
+    "leaseGeneration",
+    "fencingToken",
+    "requestedOperation",
+    "runtimeMethod",
+    "runtimePath",
+    "runtimeTimestamp",
+    "runtimeNonce",
+    "runtimeBodySha256",
+    "exchangeNonce",
+    "exchangeRequestHash",
+    "authenticatedAt",
+    "leaseExpiresAt",
+  ];
+  const keys = requirement.principalKind === "CHANNEL"
+    ? [...commonKeys, "accountId", "cellId", "sessionGeneration"]
+    : [...commonKeys, "maintenancePrincipalId"];
+  if (
+    !exactKeys(receipt, keys) ||
+    receipt.version !== 1 ||
+    receipt.principalKind !== requirement.principalKind ||
+    receipt.organizationId !== principalSelector.organizationId ||
+    receipt.requestedOperation !== requirement.operation ||
+    receipt.runtimeMethod !== rpcInput.request.runtimeMethod ||
+    receipt.runtimePath !== rpcInput.request.runtimePath ||
+    receipt.runtimeTimestamp !== rpcInput.request.runtimeTimestamp ||
+    receipt.runtimeNonce !== rpcInput.request.runtimeNonce ||
+    receipt.runtimeBodySha256 !== rpcInput.request.runtimeBodySha256 ||
+    receipt.exchangeNonce !== rpcInput.envelope.nonce ||
+    receipt.exchangeRequestHash !== rpcInput.envelope.requestHash ||
+    typeof receipt.runtimeBodySha256 !== "string" ||
+    !SHA256_PATTERN.test(receipt.runtimeBodySha256) ||
+    typeof receipt.exchangeRequestHash !== "string" ||
+    !SHA256_PATTERN.test(receipt.exchangeRequestHash)
+  ) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+  }
+
+  const credentialGeneration = parseReceiptGeneration(receipt.credentialGeneration);
+  const leaseGeneration = parseReceiptGeneration(receipt.leaseGeneration);
+  const fencingToken = parseReceiptGeneration(receipt.fencingToken);
+  const databaseEpochSeconds = parseReceiptTimestamp(receipt.authenticatedAt);
+  const leaseExpiresAt = parseReceiptTimestamp(receipt.leaseExpiresAt);
+  if (
+    Math.abs(databaseEpochSeconds - nowEpochSeconds) > OPENCLAW_REQUEST_CLOCK_SKEW_SECONDS ||
+    Math.abs(databaseEpochSeconds - rpcInput.request.runtimeTimestamp) >
+      OPENCLAW_REQUEST_CLOCK_SKEW_SECONDS ||
+    leaseExpiresAt <= databaseEpochSeconds
+  ) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+  }
+
+  let principal: RuntimePrincipal;
+  if (requirement.principalKind === "CHANNEL") {
+    if (
+      receipt.accountId !== principalSelector.accountId ||
+      receipt.cellId !== principalSelector.cellId
+    ) {
+      throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+    }
+    principal = {
+      version: 1,
+      principalKind: "CHANNEL",
+      organizationId: principalSelector.organizationId,
+      accountId: principalSelector.accountId,
+      cellId: principalSelector.cellId,
+      credentialGeneration,
+      leaseGeneration,
+      fencingToken,
+      sessionGeneration: parseReceiptGeneration(receipt.sessionGeneration, true),
+    };
+  } else {
+    if (receipt.maintenancePrincipalId !== principalSelector.maintenancePrincipalId) {
+      throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
+    }
+    principal = {
+      version: 1,
+      principalKind: "MAINTENANCE",
+      organizationId: principalSelector.organizationId,
+      maintenancePrincipalId: principalSelector.maintenancePrincipalId,
+      credentialGeneration,
+      leaseGeneration,
+      fencingToken,
+    };
+  }
+  assertPrincipal(principal);
+  return { principal, databaseEpochSeconds, leaseExpiresAt };
 }
 
 export async function issueRuntimeToken(input: IssueRuntimeTokenInput): Promise<string> {
@@ -458,6 +703,7 @@ export async function exchangeRuntimeCredential({
   routeBody = {},
   timestamp,
   nonce,
+  exchangeNonce,
   principalSelector,
   signingKey,
   nowEpochSeconds,
@@ -471,15 +717,12 @@ export async function exchangeRuntimeCredential({
   routeBody?: unknown;
   timestamp: number;
   nonce: string;
+  exchangeNonce: string;
   principalSelector: Record<string, string>;
   signingKey: Uint8Array;
   nowEpochSeconds: number;
   origin?: string | null;
-  authenticateCredential: (
-    credential: string,
-    selector: Record<string, string>,
-    operation: string,
-  ) => Promise<RuntimePrincipal>;
+  authenticateCredential: (input: CredentialExchangeRpcInput) => Promise<unknown>;
 }): Promise<string> {
   if (origin !== null) {
     throw authError("BROWSER_ORIGIN_FORBIDDEN", "Runtime endpoints reject browser origins.");
@@ -496,30 +739,61 @@ export async function exchangeRuntimeCredential({
     nowEpochSeconds,
   });
   assertPrincipalSelector(principalSelector, requirement.principalKind);
-  const principal = await authenticateCredential(
+  if (
+    typeof exchangeNonce !== "string" ||
+    !UUID_PATTERN.test(exchangeNonce) ||
+    exchangeNonce === nonce
+  ) {
+    throw authError("EXCHANGE_NONCE_INVALID", "Credential exchange nonce is invalid.");
+  }
+  const credentialProofSha256 = await deriveCredentialProofSha256(
+    requirement.principalKind,
     credential,
-    principalSelector,
-    requirement.operation,
   );
-  assertPrincipal(principal);
-  if (principal.organizationId !== principalSelector.organizationId) {
-    throw authError("CREDENTIAL_SELECTOR_MISMATCH", "Credential selector does not match.");
-  }
-  if (
-    principal.principalKind === "CHANNEL" &&
-    (principal.accountId !== principalSelector.accountId ||
-      principal.cellId !== principalSelector.cellId)
-  ) {
-    throw authError("CREDENTIAL_SELECTOR_MISMATCH", "Credential selector does not match.");
-  }
-  if (
-    principal.principalKind === "MAINTENANCE" &&
-    principal.maintenancePrincipalId !== principalSelector.maintenancePrincipalId
-  ) {
-    throw authError("CREDENTIAL_SELECTOR_MISMATCH", "Credential selector does not match.");
+  const runtimeBodySha256 = await sha256Hex(body);
+  const exchangeOperation = CREDENTIAL_EXCHANGE_OPERATIONS[requirement.principalKind];
+  const request: CredentialExchangeRequest = {
+    version: 1,
+    credentialProofSha256,
+    requestedOperation: requirement.operation,
+    runtimeMethod: method,
+    runtimePath: path,
+    runtimeTimestamp: timestamp,
+    runtimeNonce: nonce,
+    runtimeBodySha256,
+  };
+  const exchangeRequestHash = await deriveCredentialExchangeRequestHash(
+    exchangeOperation,
+    request,
+  );
+  const rpcInput: CredentialExchangeRpcInput = {
+    principal: exchangePrincipal(requirement.principalKind, principalSelector),
+    envelope: {
+      version: 1,
+      operation: exchangeOperation,
+      nonce: exchangeNonce,
+      iat: epochSecondsToIso(nowEpochSeconds),
+      exp: epochSecondsToIso(nowEpochSeconds + OPENCLAW_RUNTIME_TOKEN_TTL_SECONDS),
+      requestHash: exchangeRequestHash,
+    },
+    request,
+  };
+  const receipt = validateCredentialExchangeReceipt({
+    value: await authenticateCredential(rpcInput),
+    rpcInput,
+    requirement,
+    principalSelector,
+    nowEpochSeconds,
+  });
+  const ttlSeconds = Math.min(
+    OPENCLAW_RUNTIME_TOKEN_TTL_SECONDS,
+    Math.floor(receipt.leaseExpiresAt - receipt.databaseEpochSeconds),
+  );
+  if (ttlSeconds < 1) {
+    throw authError("CREDENTIAL_RECEIPT_INVALID", "Credential exchange receipt is invalid.");
   }
   return issueRuntimeToken({
-    principal,
+    principal: receipt.principal,
     method,
     path,
     body,
@@ -527,6 +801,7 @@ export async function exchangeRuntimeCredential({
     timestamp,
     nonce,
     signingKey,
-    nowEpochSeconds,
+    nowEpochSeconds: Math.floor(receipt.databaseEpochSeconds),
+    ttlSeconds,
   });
 }

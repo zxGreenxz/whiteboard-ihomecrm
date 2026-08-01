@@ -59,6 +59,19 @@ export const SQL_AUTHORIZATION_PROOFS = Object.freeze([
   "maintenance.channel-paused",
   "tenant.cross-org-stale-credential",
 ]);
+export const CREDENTIAL_EXCHANGE_AUTHORIZATION_PROOFS = Object.freeze([
+  "credential.channel-success",
+  "credential.maintenance-success",
+  "credential.wrong-proof-domain-separated",
+  "credential.cross-binding-denied",
+  "credential.scope-revocation-denied",
+  "credential.stale-principal-lease-denied",
+  "credential.expired-envelope-denied",
+  "credential.malformed-input-denied",
+  "credential.auth-failure-does-not-consume-nonce",
+  "credential.nonce-replay-denied",
+  "credential.exchange-nonce-namespace-separated",
+]);
 export const BROWSER_DML_PRIVILEGE_MATRIX = Object.freeze([
   Object.freeze({ role: "anon", privilege: "INSERT" }),
   Object.freeze({ role: "anon", privilege: "UPDATE" }),
@@ -67,6 +80,15 @@ export const BROWSER_DML_PRIVILEGE_MATRIX = Object.freeze([
   Object.freeze({ role: "authenticated", privilege: "UPDATE" }),
   Object.freeze({ role: "authenticated", privilege: "DELETE" }),
 ]);
+
+const DISPOSABLE_CHANNEL_ROOT_CREDENTIAL =
+  "openclaw-disposable-channel-root-credential-v1";
+const DISPOSABLE_MAINTENANCE_ROOT_CREDENTIAL =
+  "openclaw-disposable-maintenance-root-credential-v1";
+const CREDENTIAL_PROOF_DOMAINS = Object.freeze({
+  CHANNEL: "ihome-openclaw-channel-credential-v1",
+  MAINTENANCE: "ihome-openclaw-maintenance-credential-v1",
+});
 
 const repositoryRoot = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
 
@@ -539,6 +561,7 @@ async function expectSqlHarnessRejection(database, label, operation, pattern) {
   if (pattern && !pattern.test(String(rejection?.message ?? rejection))) {
     throw new Error(`${label} failed for the wrong reason: ${rejection.message}`);
   }
+  return rejection;
 }
 
 function assertProof(condition, message) {
@@ -1305,6 +1328,540 @@ export async function runDisposableSqlAuthorizationMatrix() {
   }
 }
 
+function disposableCredentialProof(principalKind, credential) {
+  const domain = CREDENTIAL_PROOF_DOMAINS[principalKind];
+  if (!domain) throw new Error("Disposable credential kind is invalid.");
+  return createHash("sha256")
+    .update(domain, "utf8")
+    .update(Buffer.from([0]))
+    .update(credential, "utf8")
+    .digest("hex");
+}
+
+let credentialExchangeNonce = 0;
+
+function nextCredentialExchangeNonce() {
+  credentialExchangeNonce += 1;
+  return `00000000-0000-4000-8000-${String(credentialExchangeNonce).padStart(12, "0")}`;
+}
+
+async function buildCredentialExchangeInvocation(database, {
+  principalKind,
+  principal,
+  credentialProofSha256,
+  requestedOperation,
+  nonce = nextCredentialExchangeNonce(),
+  runtimeMethod = "POST",
+  runtimePath,
+  runtimeTimestamp,
+  runtimeNonce = nextCredentialExchangeNonce(),
+  runtimeBodySha256 = createHash("sha256").update("{}").digest("hex"),
+  requestMutation,
+  envelopeMutation,
+} = {}) {
+  const operation = principalKind === "CHANNEL"
+    ? "openclaw_exchange_runtime_credential_v1"
+    : "openclaw_exchange_maintenance_credential_v1";
+  const facade = principalKind === "CHANNEL"
+    ? "public.openclaw_service_exchange_runtime_credential_v1"
+    : "public.openclaw_service_exchange_maintenance_credential_v1";
+  const defaultRuntimePath = principalKind === "CHANNEL"
+    ? {
+        heartbeat: "/v1/heartbeat",
+        "qr.publish": "/v1/qr/publish",
+        "qr.result": "/v1/qr/result",
+        "inbound.commit": "/v1/inbound/batch",
+        "outbox.claim": "/v1/outbox/claim",
+        "outbox.preflight": "/v1/outbox/preflight",
+        "outbox.authorize-send": "/v1/outbox/authorize-send",
+        "outbox.requeue": "/v1/outbox/requeue",
+        "outbox.complete": "/v1/outbox/complete",
+        "work.claim": "/v1/work/claim",
+        "work.complete": "/v1/work/complete",
+        "media.issue": "/v1/media/upload-ticket",
+      }[requestedOperation]
+    : {
+        "maintenance.claim": "/v1/maintenance/work/claim",
+        "maintenance.complete": "/v1/maintenance/work/complete",
+      }[requestedOperation];
+  const times = await database.query(`
+    select statement_timestamp()::text as iat,
+      (statement_timestamp()+interval '4 minutes')::text as exp,
+      floor(extract(epoch from statement_timestamp()))::bigint as runtime_timestamp
+  `);
+  const request = {
+    version: 1,
+    credentialProofSha256,
+    requestedOperation,
+    runtimeMethod,
+    runtimePath: runtimePath ?? defaultRuntimePath,
+    runtimeTimestamp: runtimeTimestamp ?? times.rows[0].runtime_timestamp,
+    runtimeNonce,
+    runtimeBodySha256,
+    ...requestMutation,
+  };
+  const requestHash = await database.query(
+    `select encode(extensions.digest(
+      convert_to('ihome-openclaw-service-request-v1','UTF8')
+        || decode('00','hex') || convert_to($1::text,'UTF8')
+        || decode('00','hex') || app_private.openclaw_jcs_bytes_v1($2::jsonb),
+      'sha256'),'hex') as hash`,
+    [operation, JSON.stringify(request)],
+  );
+  const envelope = {
+    version: 1,
+    operation,
+    nonce,
+    iat: times.rows[0].iat,
+    exp: times.rows[0].exp,
+    requestHash: requestHash.rows[0].hash,
+    ...envelopeMutation,
+  };
+  return { facade, principal, envelope, request };
+}
+
+async function executeCredentialExchange(database, invocation) {
+  return database.query(
+    `select ${invocation.facade}($1::jsonb,$2::jsonb,$3::jsonb) as result`,
+    [
+      JSON.stringify(invocation.principal),
+      JSON.stringify(invocation.envelope),
+      JSON.stringify(invocation.request),
+    ],
+  );
+}
+
+async function executeAuthenticatedServiceCall(database, {
+  operation,
+  facade,
+  nonce,
+  request,
+  principalOverrides = {},
+}) {
+  const times = await database.query(`
+    select statement_timestamp()::text as iat,
+      (statement_timestamp()+interval '4 minutes')::text as exp
+  `);
+  const requestHash = await database.query(
+    `select encode(extensions.digest(
+      convert_to('ihome-openclaw-service-request-v1','UTF8')
+        || decode('00','hex') || convert_to($1::text,'UTF8')
+        || decode('00','hex') || app_private.openclaw_jcs_bytes_v1($2::jsonb),
+      'sha256'),'hex') as hash`,
+    [operation, JSON.stringify(request)],
+  );
+  const principal = {
+    version: 1,
+    principalKind: "CHANNEL",
+    organizationId: DEMO_ORG_ID,
+    accountId: "11111111-1111-4111-8111-111111111111",
+    cellId: "22222222-2222-4222-8222-222222222222",
+    maintenancePrincipalId: null,
+    credentialGeneration: "1",
+    leaseGeneration: "1",
+    fencingToken: "1",
+    sessionGeneration: "1",
+    allowedOperations: [operation],
+    ...principalOverrides,
+  };
+  const envelope = {
+    version: 1,
+    operation,
+    nonce,
+    iat: times.rows[0].iat,
+    exp: times.rows[0].exp,
+    requestHash: requestHash.rows[0].hash,
+  };
+  try {
+    const result = await withSqlHarnessSavepoint(
+      database,
+      () => database.query(
+        `select ${facade}($1::jsonb,$2::jsonb,$3::jsonb) as result`,
+        [
+          JSON.stringify(principal),
+          JSON.stringify(envelope),
+          JSON.stringify(request),
+        ],
+      ),
+      { rollback: false },
+    );
+    return { ok: true, result: result.rows[0].result };
+  } catch (error) {
+    return { ok: false, error: error.message, code: error.code };
+  }
+}
+
+async function queryServiceNonceNamespaces(database) {
+  try {
+    const result = await withSqlHarnessSavepoint(
+      database,
+      () => database.query(`
+        select nonce_namespace, count(*)::integer as count
+        from public.openclaw_service_nonces
+        group by nonce_namespace
+        order by nonce_namespace
+      `),
+      { rollback: false },
+    );
+    return { ok: true, rows: result.rows };
+  } catch (error) {
+    return { ok: false, error: error.message, rows: [] };
+  }
+}
+
+async function credentialNonceCount(database) {
+  const result = await database.query(`
+    select count(*)::integer as count from public.openclaw_service_nonces
+  `);
+  return result.rows[0].count;
+}
+
+export async function runDisposableCredentialExchangeAuthorizationMatrix() {
+  const database = await createDisposableOpenClawDatabase();
+  const proofs = [];
+  const prove = (proof) => {
+    if (CREDENTIAL_EXCHANGE_AUTHORIZATION_PROOFS[proofs.length] !== proof) {
+      throw new Error(`Credential exchange proof order mismatch at ${proof}.`);
+    }
+    proofs.push(proof);
+  };
+  const channelPrincipal = {
+    version: 1,
+    principalKind: "CHANNEL",
+    organizationId: DEMO_ORG_ID,
+    accountId: "11111111-1111-4111-8111-111111111111",
+    cellId: "22222222-2222-4222-8222-222222222222",
+  };
+  const maintenancePrincipal = {
+    version: 1,
+    principalKind: "MAINTENANCE",
+    organizationId: DEMO_ORG_ID,
+    maintenancePrincipalId: "44444444-4444-4444-8444-444444444444",
+  };
+  const channelProof = disposableCredentialProof(
+    "CHANNEL",
+    DISPOSABLE_CHANNEL_ROOT_CREDENTIAL,
+  );
+  const maintenanceProof = disposableCredentialProof(
+    "MAINTENANCE",
+    DISPOSABLE_MAINTENANCE_ROOT_CREDENTIAL,
+  );
+  const channelSecretWithMaintenanceDomain = disposableCredentialProof(
+    "MAINTENANCE",
+    DISPOSABLE_CHANNEL_ROOT_CREDENTIAL,
+  );
+  const maintenanceSecretWithChannelDomain = disposableCredentialProof(
+    "CHANNEL",
+    DISPOSABLE_MAINTENANCE_ROOT_CREDENTIAL,
+  );
+  const reject = (label, invocation, pattern = /credential exchange denied/i) =>
+    expectSqlHarnessRejection(
+      database,
+      label,
+      () => executeCredentialExchange(database, invocation),
+      pattern,
+    );
+
+  try {
+    await database.exec("begin");
+    await prepareDisposableConcurrencyFixtures(database);
+
+    const channelSuccess = await buildCredentialExchangeInvocation(database, {
+      principalKind: "CHANNEL",
+      principal: channelPrincipal,
+      credentialProofSha256: channelProof,
+      requestedOperation: "outbox.claim",
+    });
+    const channelResult = await executeCredentialExchange(database, channelSuccess);
+    const channelReceipt = channelResult.rows[0].result;
+    assertProof(
+      channelReceipt?.principalKind === "CHANNEL" &&
+        channelReceipt?.organizationId === DEMO_ORG_ID &&
+        channelReceipt?.accountId === channelPrincipal.accountId &&
+        channelReceipt?.cellId === channelPrincipal.cellId &&
+        channelReceipt?.credentialGeneration === "1" &&
+        channelReceipt?.leaseGeneration === "1" &&
+        channelReceipt?.fencingToken === "1" &&
+        channelReceipt?.sessionGeneration === "1" &&
+        channelReceipt?.requestedOperation === "outbox.claim" &&
+        channelReceipt?.runtimeMethod === "POST" &&
+        channelReceipt?.runtimePath === "/v1/outbox/claim" &&
+        channelReceipt?.runtimeNonce === channelSuccess.request.runtimeNonce &&
+        channelReceipt?.runtimeBodySha256 === channelSuccess.request.runtimeBodySha256 &&
+        channelReceipt?.exchangeNonce === channelSuccess.envelope.nonce &&
+        channelReceipt?.exchangeRequestHash === channelSuccess.envelope.requestHash &&
+        typeof channelReceipt?.authenticatedAt === "string" &&
+        typeof channelReceipt?.leaseExpiresAt === "string" &&
+        !("credentialProofSha256" in channelReceipt) &&
+        !("requestHash" in channelReceipt) &&
+        !("allowedScopes" in channelReceipt),
+      "Authenticated channel exchange did not return its DB-derived binding.",
+    );
+    prove("credential.channel-success");
+
+    const maintenanceSuccess = await buildCredentialExchangeInvocation(database, {
+      principalKind: "MAINTENANCE",
+      principal: maintenancePrincipal,
+      credentialProofSha256: maintenanceProof,
+      requestedOperation: "maintenance.claim",
+    });
+    const maintenanceResult = await executeCredentialExchange(database, maintenanceSuccess);
+    const maintenanceReceipt = maintenanceResult.rows[0].result;
+    assertProof(
+      maintenanceReceipt?.principalKind === "MAINTENANCE" &&
+        maintenanceReceipt?.organizationId === DEMO_ORG_ID &&
+        maintenanceReceipt?.maintenancePrincipalId ===
+          maintenancePrincipal.maintenancePrincipalId &&
+        maintenanceReceipt?.credentialGeneration === "1" &&
+        maintenanceReceipt?.leaseGeneration === "1" &&
+        maintenanceReceipt?.fencingToken === "1" &&
+        maintenanceReceipt?.requestedOperation === "maintenance.claim" &&
+        maintenanceReceipt?.runtimePath === "/v1/maintenance/work/claim" &&
+        maintenanceReceipt?.runtimeNonce === maintenanceSuccess.request.runtimeNonce &&
+        maintenanceReceipt?.exchangeNonce === maintenanceSuccess.envelope.nonce &&
+        maintenanceReceipt?.exchangeRequestHash === maintenanceSuccess.envelope.requestHash &&
+        !("credentialProofSha256" in maintenanceReceipt) &&
+        !("allowedScopes" in maintenanceReceipt),
+      "Authenticated maintenance exchange did not return its DB-derived binding.",
+    );
+    prove("credential.maintenance-success");
+
+    const nonceCountAfterSuccess = await credentialNonceCount(database);
+    for (const [label, principalKind, principal, proof, operation] of [
+      ["Wrong channel proof", "CHANNEL", channelPrincipal, "f".repeat(64), "outbox.claim"],
+      ["Channel secret with maintenance domain", "CHANNEL", channelPrincipal, channelSecretWithMaintenanceDomain, "outbox.claim"],
+      ["Maintenance proof on channel", "CHANNEL", channelPrincipal, maintenanceProof, "outbox.claim"],
+      ["Maintenance secret with channel domain", "MAINTENANCE", maintenancePrincipal, maintenanceSecretWithChannelDomain, "maintenance.claim"],
+      ["Channel proof on maintenance", "MAINTENANCE", maintenancePrincipal, channelProof, "maintenance.claim"],
+    ]) {
+      await reject(label, await buildCredentialExchangeInvocation(database, {
+        principalKind,
+        principal,
+        credentialProofSha256: proof,
+        requestedOperation: operation,
+      }));
+    }
+    assertProof(
+      await credentialNonceCount(database) === nonceCountAfterSuccess,
+      "Wrong or cross-domain credential proof consumed a nonce.",
+    );
+    prove("credential.wrong-proof-domain-separated");
+
+    for (const [label, principalKind, principal, proof, operation] of [
+      ["Wrong organization", "CHANNEL", { ...channelPrincipal, organizationId: PROD_ORG_ID }, channelProof, "outbox.claim"],
+      ["Wrong account", "CHANNEL", { ...channelPrincipal, accountId: "11111111-1111-4111-8111-111111111112" }, channelProof, "outbox.claim"],
+      ["Wrong cell", "CHANNEL", { ...channelPrincipal, cellId: "22222222-2222-4222-8222-222222222223" }, channelProof, "outbox.claim"],
+      ["Wrong maintenance principal", "MAINTENANCE", { ...maintenancePrincipal, maintenancePrincipalId: "44444444-4444-4444-8444-444444444445" }, maintenanceProof, "maintenance.claim"],
+    ]) {
+      await reject(label, await buildCredentialExchangeInvocation(database, {
+        principalKind,
+        principal,
+        credentialProofSha256: proof,
+        requestedOperation: operation,
+      }));
+    }
+    prove("credential.cross-binding-denied");
+
+    for (const mutation of [
+      `update public.openclaw_runtime_credentials
+       set allowed_scopes=array_remove(allowed_scopes,'credential.exchange')`,
+      `update public.openclaw_runtime_credentials
+       set allowed_scopes=array_remove(allowed_scopes,'outbox.claim')`,
+      `update public.openclaw_runtime_credentials set revoked_at=statement_timestamp()`,
+      `update public.openclaw_runtime_credentials
+       set enabled_at=statement_timestamp()+interval '1 hour'`,
+      `update public.openclaw_maintenance_credentials
+       set allowed_scopes=array_remove(allowed_scopes,'maintenance.exchange')`,
+      `update public.openclaw_maintenance_credentials set revoked_at=statement_timestamp()`,
+      `update public.openclaw_maintenance_credentials
+       set enabled_at=statement_timestamp()+interval '1 hour'`,
+    ]) {
+      await withSqlHarnessSavepoint(database, async () => {
+        await database.exec(`
+          set session_replication_role='replica';
+          ${mutation};
+          set session_replication_role='origin';
+        `);
+        const isMaintenance = mutation.includes("maintenance_credentials");
+        await reject("Scope or revoked credential", await buildCredentialExchangeInvocation(database, {
+          principalKind: isMaintenance ? "MAINTENANCE" : "CHANNEL",
+          principal: isMaintenance ? maintenancePrincipal : channelPrincipal,
+          credentialProofSha256: isMaintenance ? maintenanceProof : channelProof,
+          requestedOperation: isMaintenance ? "maintenance.claim" : "outbox.claim",
+        }));
+      });
+    }
+    prove("credential.scope-revocation-denied");
+
+    for (const [mutation, principalKind, principal, proof, operation] of [
+      ["update public.openclaw_runtime_cells set state='STALE'", "CHANNEL", channelPrincipal, channelProof, "outbox.claim"],
+      ["update public.openclaw_runtime_cells set is_current=false", "CHANNEL", channelPrincipal, channelProof, "outbox.claim"],
+      ["update public.openclaw_accounts set is_active=false", "CHANNEL", channelPrincipal, channelProof, "outbox.claim"],
+      ["update public.openclaw_runtime_leases set status='EXPIRED'", "CHANNEL", channelPrincipal, channelProof, "outbox.claim"],
+      ["update public.openclaw_runtime_leases set acquired_at=statement_timestamp()-interval '2 hours',expires_at=statement_timestamp()-interval '1 hour'", "CHANNEL", channelPrincipal, channelProof, "outbox.claim"],
+      ["update public.openclaw_maintenance_principals set is_current=false", "MAINTENANCE", maintenancePrincipal, maintenanceProof, "maintenance.claim"],
+      ["update public.openclaw_maintenance_leases set status='EXPIRED'", "MAINTENANCE", maintenancePrincipal, maintenanceProof, "maintenance.claim"],
+      ["update public.openclaw_maintenance_leases set acquired_at=statement_timestamp()-interval '2 hours',expires_at=statement_timestamp()-interval '1 hour'", "MAINTENANCE", maintenancePrincipal, maintenanceProof, "maintenance.claim"],
+    ]) {
+      await withSqlHarnessSavepoint(database, async () => {
+        await database.exec(mutation);
+        await reject("Stale principal or lease", await buildCredentialExchangeInvocation(database, {
+          principalKind,
+          principal,
+          credentialProofSha256: proof,
+          requestedOperation: operation,
+        }));
+      });
+    }
+    prove("credential.stale-principal-lease-denied");
+
+    await reject("Expired exchange envelope", await buildCredentialExchangeInvocation(database, {
+      principalKind: "CHANNEL",
+      principal: channelPrincipal,
+      credentialProofSha256: channelProof,
+      requestedOperation: "outbox.claim",
+      envelopeMutation: {
+        iat: "2000-01-01T00:00:00.000Z",
+        exp: "2000-01-01T00:04:00.000Z",
+      },
+    }));
+    prove("credential.expired-envelope-denied");
+
+    for (const invocation of [
+      await buildCredentialExchangeInvocation(database, {
+        principalKind: "CHANNEL",
+        principal: { ...channelPrincipal, extra: "forbidden" },
+        credentialProofSha256: channelProof,
+        requestedOperation: "outbox.claim",
+      }),
+      await buildCredentialExchangeInvocation(database, {
+        principalKind: "CHANNEL",
+        principal: channelPrincipal,
+        credentialProofSha256: "not-a-proof",
+        requestedOperation: "outbox.claim",
+      }),
+      await buildCredentialExchangeInvocation(database, {
+        principalKind: "CHANNEL",
+        principal: channelPrincipal,
+        credentialProofSha256: channelProof,
+        requestedOperation: "credential.exchange",
+      }),
+    ]) {
+      await reject(
+        "Malformed exchange input",
+        invocation,
+        /invalid|unknown JSON key|required JSON key/i,
+      );
+    }
+    prove("credential.malformed-input-denied");
+
+    const nonceCountBeforeAuthFailure = await credentialNonceCount(database);
+    const authenticationFailureInvocation = await buildCredentialExchangeInvocation(database, {
+      principalKind: "CHANNEL",
+      principal: channelPrincipal,
+      credentialProofSha256: "0".repeat(64),
+      requestedOperation: "outbox.claim",
+    });
+    const authenticationFailure = await reject(
+      "Authentication before nonce",
+      authenticationFailureInvocation,
+    );
+    assertProof(
+      await credentialNonceCount(database) === nonceCountBeforeAuthFailure,
+      "Credential authentication failure created a service nonce row.",
+    );
+    const correctRetry = await buildCredentialExchangeInvocation(database, {
+      principalKind: "CHANNEL",
+      principal: channelPrincipal,
+      credentialProofSha256: channelProof,
+      requestedOperation: "outbox.claim",
+      nonce: authenticationFailureInvocation.envelope.nonce,
+      runtimeMethod: authenticationFailureInvocation.request.runtimeMethod,
+      runtimePath: authenticationFailureInvocation.request.runtimePath,
+      runtimeTimestamp: authenticationFailureInvocation.request.runtimeTimestamp,
+      runtimeNonce: authenticationFailureInvocation.request.runtimeNonce,
+      runtimeBodySha256: authenticationFailureInvocation.request.runtimeBodySha256,
+    });
+    await executeCredentialExchange(database, correctRetry);
+    assertProof(
+      await credentialNonceCount(database) === nonceCountBeforeAuthFailure + 1,
+      "A failed credential proof burned its nonce before authentication.",
+    );
+    prove("credential.auth-failure-does-not-consume-nonce");
+
+    const replayInvocation = await buildCredentialExchangeInvocation(database, {
+      principalKind: "CHANNEL",
+      principal: channelPrincipal,
+      credentialProofSha256: channelProof,
+      requestedOperation: "outbox.claim",
+    });
+    await executeCredentialExchange(database, replayInvocation);
+    const nonceCountBeforeReplay = await credentialNonceCount(database);
+    const replayFailure = await reject(
+      "Credential exchange replay",
+      replayInvocation,
+      /credential exchange denied/i,
+    );
+    assertProof(
+      await credentialNonceCount(database) === nonceCountBeforeReplay &&
+        authenticationFailure.code === "42501" &&
+        replayFailure.code === "42501" &&
+        authenticationFailure.message === replayFailure.message,
+      "Credential replay created a nonce row or exposed a proof-validation oracle.",
+    );
+    prove("credential.nonce-replay-denied");
+
+    const sharedNonce = nextCredentialExchangeNonce();
+    const namespaceExchange = await buildCredentialExchangeInvocation(database, {
+      principalKind: "CHANNEL",
+      principal: channelPrincipal,
+      credentialProofSha256: channelProof,
+      requestedOperation: "outbox.claim",
+      nonce: sharedNonce,
+    });
+    await executeCredentialExchange(database, namespaceExchange);
+    const runtimeAfterExchange = await executeAuthenticatedServiceCall(database, {
+      operation: "openclaw_claim_outbox_v1",
+      facade: "public.openclaw_service_claim_outbox_v1",
+      nonce: sharedNonce,
+      request: {
+        version: 1,
+        claimToken: "openclaw-namespace-probe-claim-token",
+        limit: 1,
+        leaseSeconds: 30,
+      },
+    });
+    assertProof(
+      runtimeAfterExchange.ok,
+      "A credential exchange burned the identical runtime nonce: " +
+        `${runtimeAfterExchange.error ?? "unknown error"}`,
+    );
+    const namespaces = await queryServiceNonceNamespaces(database);
+    assertProof(
+      namespaces.ok &&
+        namespaces.rows.length === 2 &&
+        namespaces.rows.some((row) => row.nonce_namespace === "EXCHANGE") &&
+        namespaces.rows.some((row) => row.nonce_namespace === "RUNTIME"),
+      "Service nonces are not partitioned into EXCHANGE and RUNTIME namespaces: " +
+        `${namespaces.error ?? JSON.stringify(namespaces.rows)}`,
+    );
+    await reject(
+      "Exchange nonce replay inside its own namespace",
+      namespaceExchange,
+      /credential exchange denied/i,
+    );
+    prove("credential.exchange-nonce-namespace-separated");
+
+    return {
+      summary: "PASS OpenClaw credential exchange authorization matrix",
+      proofs,
+    };
+  } finally {
+    await database.exec("rollback").catch(() => {});
+    await database.close();
+  }
+}
+
 export async function prepareDisposableConcurrencyFixtures(database) {
   await database.exec(`
     set session_replication_role='replica';
@@ -1366,9 +1923,14 @@ export async function prepareDisposableConcurrencyFixtures(database) {
       credential_hash,allowed_scopes
     ) values (
       '${DEMO_ORG_ID}','11111111-1111-4111-8111-111111111111',
-      '22222222-2222-4222-8222-222222222222',1,repeat('d',64),
+      '22222222-2222-4222-8222-222222222222',1,
+      encode(extensions.digest(
+        convert_to('ihome-openclaw-channel-credential-v1','UTF8')
+          || decode('00','hex')
+          || convert_to('${DISPOSABLE_CHANNEL_ROOT_CREDENTIAL}','UTF8'),
+        'sha256'),'hex'),
       array['outbox.claim','outbox.preflight','outbox.authorize-send',
-        'outbox.requeue','outbox.complete']
+        'outbox.requeue','outbox.complete','credential.exchange']
     ) on conflict (organization_id,account_id,cell_id,credential_generation) do nothing;
     insert into public.openclaw_runtime_leases(
       id,organization_id,account_id,cell_id,lease_generation,fencing_token,
@@ -1389,7 +1951,12 @@ export async function prepareDisposableConcurrencyFixtures(database) {
       credential_hash,allowed_scopes
     ) values (
       '${DEMO_ORG_ID}','44444444-4444-4444-8444-444444444444',1,
-      repeat('4',64),array['maintenance.claim','maintenance.complete']
+      encode(extensions.digest(
+        convert_to('ihome-openclaw-maintenance-credential-v1','UTF8')
+          || decode('00','hex')
+          || convert_to('${DISPOSABLE_MAINTENANCE_ROOT_CREDENTIAL}','UTF8'),
+        'sha256'),'hex'),
+      array['maintenance.claim','maintenance.complete','maintenance.exchange']
     ) on conflict (
       organization_id,maintenance_principal_id,credential_generation
     ) do nothing;

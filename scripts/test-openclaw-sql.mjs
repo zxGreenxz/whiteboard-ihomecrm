@@ -20,7 +20,7 @@ const SECRET_REPLACEMENTS = Object.freeze([
   },
   {
     pattern:
-      /["']?(claimToken|markerNonce|SUPABASE_ACCESS_TOKEN|SUPABASE_PAT|SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENCLAW_MODEL_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY|API_KEY|access_token|refresh_token|service_role_key|password|set-cookie|cookie|imei|qrPayload|qrData|qrCode|qrToken)["']?\s*([:=])\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]\r\n]+)/gi,
+      /["']?(claimToken|markerNonce|credentialHash|credentialProofSha256|SUPABASE_ACCESS_TOKEN|SUPABASE_PAT|SUPABASE_SERVICE_ROLE_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENCLAW_MODEL_API_KEY|GOOGLE_API_KEY|GEMINI_API_KEY|API_KEY|access_token|refresh_token|service_role_key|password|set-cookie|cookie|imei|qrPayload|qrData|qrCode|qrToken)["']?\s*([:=])\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]\r\n]+)/gi,
     replacement: "$1$2[REDACTED_SECRET]",
   },
   {
