@@ -414,6 +414,49 @@ jobs:
             test -s "$source_root/services/openclaw-zalo-cell/.release/$artifact"
           done
 
+      - name: Diagnose OCI indexes after qualification failure
+        if: failure()
+        run: |
+          set -uo pipefail
+          release_root=/opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release
+          found=0
+          while IFS= read -r -d '' archive; do
+            found=1
+            echo "OCI archive: $archive"
+            stat --printf='size=%s bytes\n' "$archive" || true
+            sha256sum "$archive" || true
+            if ! index_json="$(tar -xOf "$archive" index.json 2>/dev/null)"; then
+              echo "index.json: unavailable"
+              continue
+            fi
+            echo 'index.json:'
+            printf '%s\n' "$index_json" | jq . || printf '%s\n' "$index_json"
+            printf '%s\n' "$index_json" | jq '{
+              manifestCount: (.manifests | length),
+              descriptors: [.manifests[] | {
+                digest,
+                mediaType,
+                platform,
+                annotations
+              }]
+            }' || true
+            while IFS= read -r digest; do
+              blob="blobs/sha256/${digest#sha256:}"
+              echo "Referenced manifest: $digest"
+              if ! tar -xOf "$archive" "$blob" 2>/dev/null | jq --arg digest "$digest" '{
+                digest: $digest,
+                mediaType,
+                config,
+                layerCount: (.layers | length)
+              }'; then
+                echo "Referenced manifest blob unavailable: $blob"
+              fi
+            done < <(printf '%s\n' "$index_json" | jq -r '.manifests[]?.digest // empty')
+          done < <(find "$release_root" -maxdepth 1 -type f -name '*.oci.tar' -print0 | sort -z)
+          if [ "$found" -eq 0 ]; then
+            echo "No OCI archives found under $release_root"
+          fi
+
       - name: Create the evidence-only child checkpoint E
         run: |
           set -euo pipefail
