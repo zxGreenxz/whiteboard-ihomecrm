@@ -227,6 +227,18 @@ describe("Task 19 host and lifecycle scripts", () => {
           await writeFile(join(orphanSecretRoot, secret), "orphan-" + secret + "\n");
           await chmod(join(orphanSecretRoot, secret), 0o400);
         }
+        for (const suffix of ["backup.101", "update.102", "restore.103"]) {
+          await writeFile(
+            join(oldSecretRoot, `openclaw_session_key.${suffix}`),
+            "active-crash-leftover\n",
+          );
+          await chmod(join(oldSecretRoot, `openclaw_session_key.${suffix}`), 0o400);
+          await writeFile(
+            join(orphanSecretRoot, `openclaw_session_key.${suffix}`),
+            "orphan-crash-leftover\n",
+          );
+          await chmod(join(orphanSecretRoot, `openclaw_session_key.${suffix}`), 0o400);
+        }
 
         for (const helper of [
           "preflight-host.sh",

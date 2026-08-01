@@ -418,7 +418,11 @@ cleanup_superseded_snapshots() {
       openclaw_maintenance_credential \
       openclaw_audit_private_key
     do
-      rm -f "$stale_secret_snapshot/$secret"
+      rm -f \
+        "$stale_secret_snapshot/$secret" \
+        "$stale_secret_snapshot/$secret.backup."* \
+        "$stale_secret_snapshot/$secret.update."* \
+        "$stale_secret_snapshot/$secret.restore."*
     done
     rmdir "$stale_secret_snapshot"
   done
