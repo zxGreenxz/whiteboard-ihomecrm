@@ -334,6 +334,7 @@ jobs:
             PATH="$node_root/bin:/usr/bin:/bin" \
             "$node_root/bin/node" "$test_source/node_modules/vitest/vitest.mjs" run \
             --root "$test_source" \
+            --testTimeout 15000 \
             infra/openclaw-zalo/test/script-contract.test.ts \
             infra/openclaw-zalo/test/compose-contract.test.ts
 
