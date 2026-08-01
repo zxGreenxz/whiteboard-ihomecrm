@@ -175,7 +175,7 @@ function Invoke-NativeCheckedBytes {
       $process.StandardInput.BaseStream.Close()
     }
     $process.WaitForExit()
-    $stdoutTask.GetAwaiter().GetResult()
+    $null = $stdoutTask.GetAwaiter().GetResult()
     $stderr = $stderrTask.GetAwaiter().GetResult()
     $script:LASTEXITCODE = $process.ExitCode
     if ($process.ExitCode -ne 0) {

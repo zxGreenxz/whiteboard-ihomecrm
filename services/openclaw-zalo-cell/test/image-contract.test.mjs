@@ -2147,9 +2147,11 @@ test("every Task 2 PowerShell stage requires the exact pinned 7.6.2 runtime", as
 });
 
 test("Task 2 native byte capture suppresses async completion objects", async () => {
-  const source = await readCell("scripts/run-reviewed-task2.ps1");
-  assert.match(source, /\$null\s*=\s*\$stdoutTask\.GetAwaiter\(\)\.GetResult\(\)/);
-  assert.doesNotMatch(source, /^\s*\$stdoutTask\.GetAwaiter\(\)\.GetResult\(\)\s*$/m);
+  for (const path of ["scripts/run-reviewed-task2.ps1", "scripts/create-evidence-child.ps1"]) {
+    const source = await readCell(path);
+    assert.match(source, /\$null\s*=\s*\$stdoutTask\.GetAwaiter\(\)\.GetResult\(\)/);
+    assert.doesNotMatch(source, /^\s*\$stdoutTask\.GetAwaiter\(\)\.GetResult\(\)\s*$/m);
+  }
 });
 
 test("reviewed source gate rejects executable local Git configuration without running filters", async () => {
