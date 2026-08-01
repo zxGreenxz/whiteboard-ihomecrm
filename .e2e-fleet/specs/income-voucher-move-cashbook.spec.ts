@@ -121,43 +121,58 @@ test('doi-so-quy-phieu-thu-da-ghi-so-tien-roi-han-so-cu', async ({ page }) => {
     distinct.length,
     `cần ≥2 sổ quỹ chunha đang GIỮ có tên phân biệt, có ${distinct.length} (access=${access.length}, custodian=${custodianIds.length})`,
   ).toBeGreaterThanOrEqual(2);
-  const from = distinct[0];
-  const to = distinct[1];
+
+
 
   const [ieType] = await sbGet(
     auth,
     `income_expense_types?select=id&organization_id=eq.${b.organization_id}&type=eq.income&limit=1`,
   );
   const today = new Date().toISOString().slice(0, 10);
-  const made = await sbRpc(auth, 'create_income_expense_v1', {
-    p_type: 'INCOME',
-    p_name: name,
-    p_building_id: b.id,
-    p_room_id: null,
-    p_tenant_id: null,
-    p_contract_id: null,
-    p_payer_name: null,
-    p_receive_bank_account: null,
-    p_receive_bank_name: null,
-    p_account_id: from.id,
-    p_attachments: [],
-    p_business_result_accounting: null,
-    p_notes: null,
-    p_voucher_date: today,
-    p_items: [
-      {
-        income_expense_type_id: ieType.id,
-        description: 'e2e doi so quy',
-        quantity: 1,
-        unit_price: 320_000,
-        start_date: today,
-        end_date: today,
-      },
-    ],
-    p_idempotency_key: `e2e-movebook-${stamp}`,
-  });
-  expect(made.status, `tạo phiếu: ${made.body}`).toBe(200);
-  const voucherId = (JSON.parse(made.body) as { id: string }).id;
+
+  // GOTCHA THỨ HAI (đo prod 01/08/2026): writer TẠO phiếu (create_income_expense_v1)
+  // còn dùng mô hình sổ quỹ LEGACY (accounts.user_id + account_shared_users),
+  // KHÁC mô hình possession mà đường đổi sổ dùng. Giữ CUSTODIAN chưa chắc tạo
+  // được phiếu vào sổ đó. Nên thử lần lượt tới khi có sổ tạo được, thay vì ghim
+  // cứng — bám đúng thực tế thay vì giả định hai mô hình đã thống nhất.
+  let voucherId = '';
+  let from = distinct[0];
+  for (const candidate of distinct) {
+    const made = await sbRpc(auth, 'create_income_expense_v1', {
+      p_type: 'INCOME',
+      p_name: name,
+      p_building_id: b.id,
+      p_room_id: null,
+      p_tenant_id: null,
+      p_contract_id: null,
+      p_payer_name: null,
+      p_receive_bank_account: null,
+      p_receive_bank_name: null,
+      p_account_id: candidate.id,
+      p_attachments: [],
+      p_business_result_accounting: null,
+      p_notes: null,
+      p_voucher_date: today,
+      p_items: [
+        {
+          income_expense_type_id: ieType.id,
+          description: 'e2e doi so quy',
+          quantity: 1,
+          unit_price: 320_000,
+          start_date: today,
+          end_date: today,
+        },
+      ],
+      p_idempotency_key: `e2e-movebook-${stamp}-${candidate.id.slice(0, 8)}`,
+    });
+    if (made.status === 200) {
+      voucherId = (JSON.parse(made.body) as { id: string }).id;
+      from = candidate;
+      break;
+    }
+  }
+  expect(voucherId, 'không tạo được phiếu thu ở bất kỳ sổ nào chunha đang giữ').toBeTruthy();
+  const to = distinct.find((d) => d.id !== from.id)!;
 
   try {
     expect(await bookNet(auth, voucherId, from.id), 'tiền phải nằm ở sổ ban đầu').toBe(320_000);
