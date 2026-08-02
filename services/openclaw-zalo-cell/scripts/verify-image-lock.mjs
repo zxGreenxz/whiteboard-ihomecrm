@@ -2927,10 +2927,11 @@ async function inspectOciArchive(path) {
     const index = JSON.parse(indexEntry.bytes.toString("utf8"));
     if (
       index.schemaVersion !== 2 ||
-      index.mediaType !== "application/vnd.oci.image.index.v1+json" ||
+      (index.mediaType !== undefined &&
+        index.mediaType !== "application/vnd.oci.image.index.v1+json") ||
       !Array.isArray(index.manifests) || index.manifests.length !== 1
     ) {
-      throw new Error("OCI index must contain exactly one manifest");
+      throw new Error("OCI index must contain exactly one manifest and a valid optional media type");
     }
     const manifestDescriptor = index.manifests[0];
     if (

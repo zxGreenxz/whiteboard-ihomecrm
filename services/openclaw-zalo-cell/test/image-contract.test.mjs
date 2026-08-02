@@ -123,7 +123,7 @@ function tarBytes(entries) {
   return Buffer.concat(blocks);
 }
 
-function scratchOciBytes() {
+function scratchOciBytes({ indexMediaType } = {}) {
   const layerTar = tarBytes([
     { path: "payload", bytes: Buffer.from("definitely-not-openclaw\n"), mtime: 0 },
   ]);
@@ -157,20 +157,19 @@ function scratchOciBytes() {
     }),
   );
   const manifestDigest = sha256(manifest);
-  const index = Buffer.from(
-    JSON.stringify({
-      schemaVersion: 2,
-      mediaType: "application/vnd.oci.image.index.v1+json",
-      manifests: [
-        {
-          mediaType: "application/vnd.oci.image.manifest.v1+json",
-          digest: `sha256:${manifestDigest}`,
-          size: manifest.length,
-          platform: { architecture: "amd64", os: "linux" },
-        },
-      ],
-    }),
-  );
+  const indexDocument = {
+    schemaVersion: 2,
+    manifests: [
+      {
+        mediaType: "application/vnd.oci.image.manifest.v1+json",
+        digest: `sha256:${manifestDigest}`,
+        size: manifest.length,
+        platform: { architecture: "amd64", os: "linux" },
+      },
+    ],
+  };
+  if (indexMediaType !== undefined) indexDocument.mediaType = indexMediaType;
+  const index = Buffer.from(JSON.stringify(indexDocument));
   return tarBytes([
     { path: "blobs/sha256/" + configDigest, bytes: config },
     { path: "blobs/sha256/" + layerDigest, bytes: layer },
@@ -3249,23 +3248,53 @@ test("verifier rejects a context mutation without Docker or network", async (t) 
   );
 });
 
-test("verifier rejects an OCI that omits the pinned base, fork, and session files", async (t) => {
+test("verifier accepts omitted or exact OCI root index mediaType before rejecting an unsafe image", async (t) => {
   const { verifyOciRuntimeImage } = await loadScript(
     "scripts/verify-image-lock.mjs",
   );
   const fixture = await mkdtemp(join(tmpdir(), "openclaw-oci-bypass-"));
   t.after(() => rm(fixture, { recursive: true, force: true }));
-  const archivePath = join(fixture, "scratch.oci.tar");
-  await writeFile(archivePath, scratchOciBytes());
   const lock = JSON.parse(await readCell("image-lock.json"));
   const fork = JSON.parse(
     await readCell("vendor/zalouser-bridge/FORK.json"),
   );
 
-  await assert.rejects(
-    () => verifyOciRuntimeImage({ archivePath, fork, lock }),
-    /pinned base|base layer|installed fork|session|runtime user|runtime config/i,
+  for (const [label, indexMediaType] of [
+    ["omitted", undefined],
+    ["exact", "application/vnd.oci.image.index.v1+json"],
+  ]) {
+    const archivePath = join(fixture, `${label}.oci.tar`);
+    await writeFile(archivePath, scratchOciBytes({ indexMediaType }));
+    await assert.rejects(
+      () => verifyOciRuntimeImage({ archivePath, fork, lock }),
+      /pinned base|base layer|installed fork|session|runtime user|runtime config/i,
+    );
+  }
+});
+
+test("verifier rejects null, empty, and non-OCI root index mediaType values", async (t) => {
+  const { verifyOciRuntimeImage } = await loadScript(
+    "scripts/verify-image-lock.mjs",
   );
+  const fixture = await mkdtemp(join(tmpdir(), "openclaw-oci-media-type-"));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const lock = JSON.parse(await readCell("image-lock.json"));
+  const fork = JSON.parse(
+    await readCell("vendor/zalouser-bridge/FORK.json"),
+  );
+
+  for (const [label, indexMediaType] of [
+    ["null", null],
+    ["empty", ""],
+    ["docker-list", "application/vnd.docker.distribution.manifest.list.v2+json"],
+  ]) {
+    const archivePath = join(fixture, `${label}.oci.tar`);
+    await writeFile(archivePath, scratchOciBytes({ indexMediaType }));
+    await assert.rejects(
+      () => verifyOciRuntimeImage({ archivePath, fork, lock }),
+      /valid optional media type/i,
+    );
+  }
 });
 
 test("plugin probe requires authentic stock and fork list/inspect discovery", async () => {
