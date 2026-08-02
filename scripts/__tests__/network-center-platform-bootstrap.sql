@@ -382,6 +382,53 @@ AS $fn$
   )
 $fn$;
 
+-- ---------------------------------------------------------------------------
+-- Super-admin tier (20260506000003_super_admin_tier.sql) and the sandbox org
+-- registry (20260801020000_sandbox_org_hide_from_super_admin.sql).
+--
+-- These are platform surface, not Network Center surface, but
+-- 20260729142000_network_center_hide_sandbox_policies.sql builds its policy
+-- predicate out of both functions, so the disposable database has to declare
+-- them or that migration cannot even be parsed. Both are copied from the live
+-- production definitions, which were read back from pg_get_functiondef.
+-- ---------------------------------------------------------------------------
+CREATE TABLE public.super_admins (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+ALTER TABLE public.super_admins ENABLE ROW LEVEL SECURITY;
+
+CREATE FUNCTION public.is_super_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $fn$
+  SELECT EXISTS (
+    SELECT 1 FROM public.super_admins WHERE user_id = (SELECT auth.uid())
+  )
+$fn$;
+
+CREATE FUNCTION public.sandbox_org_ids()
+RETURNS uuid[]
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $fn$
+  SELECT ARRAY['cccc0000-0000-4000-8000-000000000001'::uuid]
+$fn$;
+
+-- The `is_super_admin()` short-circuit is production's, verbatim in effect:
+--   select not app_private.is_actor_offboarded_v1()
+--      and (public.is_super_admin() or app_private.can_v3(...))
+-- It is reproduced here because it is precisely WHY
+-- network_worker_building_status leaks org TEST rows to the real company's
+-- owner: unlike public.can_access_building(), this decision path never consults
+-- public.sandbox_org_ids(). A bootstrap without it would make the leak
+-- unreproducible and the fix untestable.
 CREATE FUNCTION public.can_do_on_building(
   _table text, _action text, _building_id uuid
 )
@@ -391,7 +438,7 @@ STABLE
 SECURITY DEFINER
 SET search_path TO 'pg_catalog', 'public', 'app_private'
 AS $fn$
-  SELECT EXISTS (
+  SELECT public.is_super_admin() OR EXISTS (
     SELECT 1
     FROM app_private.granted_scopes_v1(_table || '.' || _action) grant_row
     JOIN public.buildings building
@@ -416,4 +463,10 @@ $fn$;
 GRANT EXECUTE ON FUNCTION public.can_do_on_building(text, text, uuid)
   TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION app_private.has_any_scope_v3(text)
+  TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.is_super_admin() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.sandbox_org_ids() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_super_admin()
+  TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.sandbox_org_ids()
   TO authenticated, service_role;
