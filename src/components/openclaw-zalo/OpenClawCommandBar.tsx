@@ -115,7 +115,9 @@ export default function OpenClawCommandBar({
                 aria-label="Tổ chức OpenClaw Zalo"
                 value={selectedOrganizationId}
                 onChange={event => onOrganizationChange(event.target.value)}
-                className="min-h-7 w-full min-w-0 bg-transparent text-xs font-semibold text-[#17324d] outline-none"
+                // 44px minimum touch target: only the select is hit-testable, so a
+                // 28px control inside a 44px wrapper still fails the requirement.
+                className="min-h-11 w-full min-w-0 bg-transparent text-xs font-semibold text-[#17324d] outline-none"
               >
                 {organizations.map(organization => (
                   <option key={organization.organizationId} value={organization.organizationId}>

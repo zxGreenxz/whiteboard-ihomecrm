@@ -6,6 +6,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOpenClawBootstrap } from "@/hooks/openclaw-zalo/useOpenClawBootstrap";
 import { useOpenClawOrganization } from "@/hooks/openclaw-zalo/useOpenClawOrganization";
 import { openClawQueryKeys } from "@/hooks/openclaw-zalo/queryKeys";
+// Single source of truth for the action list; a local copy drifts from the hook
+// the rest of the product reads, and the two already disagreed on key shape.
+import { OPENCLAW_PERMISSION_ACTIONS } from "@/hooks/openclaw-zalo/useOpenClawPermissions";
 import type {
   OpenClawBootstrap,
   OpenClawOrganization,
@@ -14,22 +17,15 @@ import type {
 } from "@/lib/openclaw-zalo/types";
 import OpenClawBoundaryState from "./OpenClawBoundaryState";
 
+// Strict, not passthrough: an unexpected key from the authorization RPC is a
+// contract change, and silently accepting it is how a renamed or removed field
+// stops being noticed.
 const authorizationSchema = z.object({
   organizationId: z.string().uuid().nullable(),
   permissions: z.record(z.string(), z.boolean()),
-}).passthrough();
+}).strict();
 
 const OPENCLAW_VIEW_PERMISSION = "openclaw_zalo.view";
-const OPENCLAW_PERMISSION_ACTIONS = [
-  "view",
-  "send",
-  "manage_connections",
-  "manage_automation",
-  "manage_knowledge",
-  "manage_handoff",
-  "manage_operations",
-  "audit",
-] as const satisfies readonly OpenClawPermissionAction[];
 
 function isPermissionDenied(error: unknown) {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "42501");
