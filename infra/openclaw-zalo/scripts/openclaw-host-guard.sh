@@ -188,17 +188,36 @@ post_guard() {
     # Preimage có byte NUL nên KHÔNG dùng command substitution (nuốt NUL), và Ed25519
     # là thuật toán one-shot nên `openssl pkeyutl -rawin` đòi đầu vào SEEK được —
     # đọc từ pipe sẽ chết "unable to determine file size for oneshot operation".
-    # Vì vậy ghi preimage ra file tạm rồi ký bằng -in.
+    # Vì vậy ghi preimage ra file tạm rồi ký bằng -in. `trap` dọn file kể cả khi
+    # unit bị kill giữa chừng.
     preimage_file="$operations_dir/host-guard.preimage.$$"
-    { printf '%s' "$ENVELOPE_DOMAIN"; printf '\000'; printf '%s' "$envelope"; } > "$preimage_file"
-    signature=$(openssl pkeyutl -sign -rawin -inkey "$signing_key_file" -in "$preimage_file" | base64url)
-    rm -f "$preimage_file"
-    envelope_header=$(printf '%s' "$envelope" | base64url)
-    if curl --fail --silent --show-error --max-time 10 \
-      --header 'Content-Type: application/json' \
-      --header "X-OpenClaw-Watchdog-Envelope: $envelope_header" \
-      --header "X-OpenClaw-Watchdog-Signature: $signature" \
-      --data-binary "$payload" "$watchdog_url" >/dev/null
+    trap 'rm -f "$preimage_file"' EXIT HUP INT TERM
+    (umask 077; { printf '%s' "$ENVELOPE_DOMAIN"; printf '\000'; printf '%s' "$envelope"; } > "$preimage_file")
+    # `sh` không có pipefail và `set -e` đã bị vô hiệu trong hàm này (call site dùng
+    # `|| post_failed=1`), nên openssl hỏng sẽ ÂM THẦM cho ra chữ ký rỗng. Ký ở bước
+    # riêng, kiểm mã thoát, rồi mới encode — hỏng khoá phải nói rõ là hỏng khoá.
+    if ! openssl pkeyutl -sign -rawin -inkey "$signing_key_file" -in "$preimage_file" \
+      > "$preimage_file.sig"
+    then
+      rm -f "$preimage_file" "$preimage_file.sig"
+      trap - EXIT HUP INT TERM
+      echo "watchdog envelope signing failed; check $signing_key_file" >&2
+      return 2
+    fi
+    signature=$(base64url < "$preimage_file.sig")
+    rm -f "$preimage_file" "$preimage_file.sig"
+    trap - EXIT HUP INT TERM
+    # base64url của chữ ký Ed25519 64 byte luôn dài đúng 86 ký tự, chỉ gồm [A-Za-z0-9_-].
+    if [ "${#signature}" -ne 86 ] || printf '%s' "$signature" | grep -q '[^A-Za-z0-9_-]'; then
+      echo "watchdog envelope signature is malformed" >&2
+      return 2
+    fi
+    # Header đi qua stdin (`--config -`), KHÔNG qua argv: /proc/<pid>/cmdline đọc
+    # được bởi mọi user cục bộ, và envelope+chữ ký còn dùng lại được trong 60 giây.
+    if printf 'header = "Content-Type: application/json"\nheader = "X-OpenClaw-Watchdog-Envelope: %s"\nheader = "X-OpenClaw-Watchdog-Signature: %s"\n' \
+      "$(printf '%s' "$envelope" | base64url)" "$signature" | \
+      curl --config - --fail --silent --show-error --max-time 10 \
+        --data-binary "$payload" "$watchdog_url" >/dev/null
     then
       return 0
     fi

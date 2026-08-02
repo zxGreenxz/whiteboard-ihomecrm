@@ -7075,4 +7075,599 @@ grant execute on function app_private.enforce_openclaw_evidence_retention_v1(int
 revoke all on function app_private.run_openclaw_maintenance_jobs_v1()
   from public, anon, authenticated, service_role;
 
+-- OpenClaw Zalo - watchdog egress surface
+--
+-- The external watchdog used to be wired to two INBOUND URLs on the OpenClaw VPS
+-- (`/openclaw-health/v1/snapshot` and `/openclaw-health/v1/controls`). Those
+-- endpoints never existed, and they cannot exist: the frozen design spec states
+-- that OpenClaw "chi them rule egress/namespace rieng va khong expose inbound
+-- port" on that host. Opening 443 into the machine that holds the Zalo session is
+-- exactly the surface the architecture spends its effort avoiding.
+--
+-- Everything the watchdog needs already travels OUTWARD on an existing path: the
+-- cell calls POST /v1/heartbeat every minute, which refreshes
+-- openclaw_runtime_cells.last_heartbeat_at and appends content-free metrics to
+-- openclaw_health_events. This migration turns that existing flow into the
+-- watchdog's data source, and gives capacity controls a durable home that the
+-- cell picks up in the response of the same heartbeat call.
+--
+-- It also gives the Ed25519 watchdog envelope a DURABLE one-time nonce store.
+-- An in-process store cannot be a replay guard on Supabase Edge Functions, which
+-- run many isolates: a captured envelope replayed against a cold isolate inside
+-- its 60-second window would otherwise be accepted, and the notification-only
+-- RECORD path (empty events) spends no other nonce.
+
+-- ---------------------------------------------------------------------------
+-- 1. Durable one-time nonce store for the watchdog envelope
+-- ---------------------------------------------------------------------------
+
+create table public.openclaw_watchdog_envelope_nonces (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete restrict,
+  key_generation bigint not null check (key_generation > 0),
+  operation text not null
+    check (operation in ('health.probe', 'health.record', 'host.guard')),
+  nonce_hash text not null check (nonce_hash ~ '^[0-9a-f]{64}$'),
+  body_sha256 text not null check (body_sha256 ~ '^[0-9a-f]{64}$'),
+  signed_at timestamptz not null,
+  expires_at timestamptz not null,
+  consumed_at timestamptz not null default clock_timestamp(),
+  unique (organization_id, id),
+  -- One row per nonce per organization: the second insert is the replay.
+  unique (organization_id, nonce_hash),
+  check (expires_at > signed_at and expires_at <= signed_at + interval '2 minutes')
+);
+
+create index openclaw_watchdog_envelope_nonces_expiry_idx
+  on public.openclaw_watchdog_envelope_nonces (expires_at);
+
+alter table public.openclaw_watchdog_envelope_nonces enable row level security;
+alter table public.openclaw_watchdog_envelope_nonces force row level security;
+
+-- ---------------------------------------------------------------------------
+-- 2. Capacity controls
+-- ---------------------------------------------------------------------------
+
+create table public.openclaw_capacity_controls (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete restrict,
+  control text not null check (control in (
+    'DISABLE_AUTOMATIC_VIDEO_FILE_CACHE',
+    'PAUSE_NONCRITICAL_PROACTIVE_GROUP_MEDIA',
+    'PAUSE_ALL_OUTBOUND_MEDIA',
+    'PAUSE_OUTBOUND_AI_MEDIA'
+  )),
+  applied_operation_id uuid not null,
+  reason_fingerprint text not null check (
+    length(reason_fingerprint) between 1 and 128
+      and reason_fingerprint !~ '[[:cntrl:]]'
+  ),
+  -- Health-generated pauses never auto-resume. Only a user holding
+  -- openclaw_zalo.manage_operations releases them after reviewing the incident.
+  requires_manual_resume boolean not null default true,
+  applied_at timestamptz not null default clock_timestamp(),
+  released_at timestamptz,
+  released_by uuid references auth.users(id) on delete restrict,
+  unique (organization_id, id),
+  check ((released_at is null) = (released_by is null))
+);
+
+-- At most one ACTIVE row per control per organization; re-applying the same
+-- control is a no-op instead of a duplicate.
+create unique index openclaw_capacity_controls_active_uidx
+  on public.openclaw_capacity_controls (organization_id, control)
+  where released_at is null;
+create index openclaw_capacity_controls_operation_idx
+  on public.openclaw_capacity_controls (organization_id, applied_operation_id);
+
+alter table public.openclaw_capacity_controls enable row level security;
+alter table public.openclaw_capacity_controls force row level security;
+
+create policy openclaw_capacity_controls_authenticated_audit_select
+  on public.openclaw_capacity_controls for select to authenticated
+  using (organization_id in (
+    select app_private.openclaw_authorized_org_ids_v1('openclaw_zalo.audit')
+  ));
+
+create policy openclaw_capacity_controls_maintenance_writer_all
+  on public.openclaw_capacity_controls for all to openclaw_maintenance_writer
+  using (true) with check (true);
+
+create policy openclaw_watchdog_envelope_nonces_maintenance_writer_all
+  on public.openclaw_watchdog_envelope_nonces for all to openclaw_maintenance_writer
+  using (true) with check (true);
+
+-- Closed ACL first: every OpenClaw table starts denied to every browser-facing
+-- role, and only the exact privileges below are handed back.
+revoke all on public.openclaw_capacity_controls,
+  public.openclaw_watchdog_envelope_nonces
+  from public, anon, authenticated, service_role;
+
+-- The heartbeat wrapper is owned by openclaw_service_dispatcher, so that role
+-- needs its own policy AND grant: NOBYPASSRLS means a grant alone reads nothing.
+create policy openclaw_capacity_controls_service_dispatcher_select
+  on public.openclaw_capacity_controls for select to openclaw_service_dispatcher
+  using (true);
+
+-- The snapshot reads heartbeat freshness from openclaw_runtime_cells. The
+-- retention loop above already gave openclaw_maintenance_writer select on
+-- openclaw_health_events, but never on the cells table.
+create policy openclaw_runtime_cells_watchdog_writer_select
+  on public.openclaw_runtime_cells for select to openclaw_maintenance_writer
+  using (true);
+
+grant select on public.openclaw_capacity_controls to authenticated;
+grant select on public.openclaw_capacity_controls to openclaw_service_dispatcher;
+grant select on public.openclaw_runtime_cells to openclaw_maintenance_writer;
+grant select, insert, update on public.openclaw_capacity_controls
+  to openclaw_maintenance_writer;
+grant select, insert, delete on public.openclaw_watchdog_envelope_nonces
+  to openclaw_maintenance_writer;
+
+-- ---------------------------------------------------------------------------
+-- 3. Narrow service context for the watchdog egress operations
+-- ---------------------------------------------------------------------------
+-- Deliberately NOT a copy of openclaw_validate_service_context_v1: that function
+-- is ~270 lines covering every channel operation, and copying it to add two rows
+-- to a CASE would be the kind of silent drift this codebase cannot afford. This
+-- validator enforces the same properties for exactly the maintenance principal
+-- and the exactly-one scope these two operations need.
+
+create or replace function app_private.openclaw_watchdog_service_context_v1(
+  p_principal jsonb,
+  p_envelope jsonb,
+  p_request jsonb,
+  p_expected_operation text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid;
+  v_maintenance uuid;
+  v_credential_generation bigint;
+  v_lease_generation bigint;
+  v_fencing_token bigint;
+  v_request_hash text;
+  v_iat timestamptz;
+  v_exp timestamptz;
+  v_operations constant text[] := array[
+    'openclaw_watchdog_snapshot_v1', 'openclaw_apply_capacity_controls_v1'
+  ];
+begin
+  if not (p_expected_operation = any(v_operations)) then
+    raise exception 'watchdog service operation matrix mismatch' using errcode = '42501';
+  end if;
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_envelope,
+    array['version','operation','nonce','iat','exp','requestHash'],
+    array['version','operation','nonce','iat','exp','requestHash']
+  );
+  if p_principal ->> 'version' <> '1' or p_envelope ->> 'version' <> '1' then
+    raise exception 'service context version mismatch' using errcode = '42501';
+  end if;
+  if p_envelope ->> 'operation' is distinct from p_expected_operation then
+    raise exception 'envelope operation mismatch' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_principal -> 'allowedOperations') <> 'array'
+     or not ((p_principal -> 'allowedOperations') ? p_expected_operation)
+  then
+    raise exception 'service operation is not allowed' using errcode = '42501';
+  end if;
+
+  v_request_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-service-request-v1', 'UTF8')
+      || decode('00', 'hex') || convert_to(p_expected_operation, 'UTF8')
+      || decode('00', 'hex') || app_private.openclaw_jcs_bytes_v1(p_request),
+    'sha256'
+  ), 'hex');
+  if p_envelope ->> 'requestHash' is distinct from v_request_hash then
+    raise exception 'service request hash mismatch' using errcode = '42501';
+  end if;
+
+  v_iat := (p_envelope ->> 'iat')::timestamptz;
+  v_exp := (p_envelope ->> 'exp')::timestamptz;
+  if statement_timestamp() < v_iat - interval '30 seconds'
+     or statement_timestamp() >= v_exp
+     or v_exp > v_iat + interval '5 minutes'
+  then
+    raise exception 'service envelope expired or outside DB time window' using errcode = '42501';
+  end if;
+
+  if p_principal ->> 'principalKind' is distinct from 'MAINTENANCE' then
+    raise exception 'watchdog principal kind mismatch' using errcode = '42501';
+  end if;
+  v_org := (p_principal ->> 'organizationId')::uuid;
+  v_maintenance := nullif(p_principal ->> 'maintenancePrincipalId', '')::uuid;
+  v_credential_generation := (p_principal ->> 'credentialGeneration')::bigint;
+  v_lease_generation := (p_principal ->> 'leaseGeneration')::bigint;
+  v_fencing_token := (p_principal ->> 'fencingToken')::bigint;
+
+  if v_org is null or v_maintenance is null
+     or nullif(p_principal ->> 'accountId', '') is not null
+     or nullif(p_principal ->> 'cellId', '') is not null
+     or not exists (
+       select 1
+       from public.openclaw_maintenance_credentials credential
+       join public.openclaw_maintenance_principals principal
+         on principal.organization_id = credential.organization_id
+        and principal.id = credential.maintenance_principal_id
+       join public.openclaw_maintenance_leases lease
+         on lease.organization_id = credential.organization_id
+        and lease.maintenance_principal_id = credential.maintenance_principal_id
+       where credential.organization_id = v_org
+         and credential.maintenance_principal_id = v_maintenance
+         and credential.credential_generation = v_credential_generation
+         and credential.revoked_at is null
+         and 'watchdog.health' = any(credential.allowed_scopes)
+         and lease.lease_generation = v_lease_generation
+         and lease.fencing_token = v_fencing_token
+         and lease.status = 'ACTIVE'
+         and lease.expires_at > statement_timestamp()
+         and principal.is_current and principal.revoked_at is null
+     )
+  then
+    raise exception 'credential generation mismatch, lease generation mismatch, fencing token mismatch, or maintenance principal is stale'
+      using errcode = '42501';
+  end if;
+
+  return jsonb_build_object(
+    'version', 1, 'principalKind', 'MAINTENANCE', 'organizationId', v_org,
+    'accountId', null, 'cellId', null,
+    'maintenancePrincipalId', v_maintenance,
+    'credentialGeneration', v_credential_generation,
+    'leaseGeneration', v_lease_generation, 'fencingToken', v_fencing_token,
+    'operation', p_expected_operation, 'scope', 'watchdog.health',
+    'requestHash', v_request_hash, 'iat', v_iat, 'exp', v_exp,
+    'nonce', p_envelope ->> 'nonce'
+  );
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 4. Snapshot: what the watchdog used to fetch from an inbound port
+-- ---------------------------------------------------------------------------
+
+create or replace function app_private.openclaw_watchdog_snapshot_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_principal ->> 'organizationId')::uuid;
+  v_now timestamptz := statement_timestamp();
+  v_heartbeat timestamptz;
+  v_metrics jsonb := '{}'::jsonb;
+  v_cells integer := 0;
+  v_ready integer := 0;
+begin
+  if p_request ->> 'version' <> '1' then
+    raise exception 'watchdog snapshot version mismatch' using errcode = '22023';
+  end if;
+
+  -- Freshest heartbeat across the organization's current cells. This measures the
+  -- END-TO-END path that actually matters (can the cell still reach Supabase),
+  -- which an inbound probe of the cell's own HTTP port cannot observe: a cell can
+  -- answer a probe cheerfully while its link to Supabase has been down for hours.
+  select count(*), count(*) filter (where cell.state = 'READY'), max(cell.last_heartbeat_at)
+    into v_cells, v_ready, v_heartbeat
+  from public.openclaw_runtime_cells cell
+  where cell.organization_id = v_org and cell.is_current;
+
+  -- Newest content-free metric bundle the cell pushed with its heartbeat.
+  select event.content_free_metrics into v_metrics
+  from public.openclaw_health_events event
+  where event.organization_id = v_org
+    and event.health_kind = 'RUNTIME_HEARTBEAT'
+  order by event.observed_at desc, event.created_at desc
+  limit 1;
+
+  return jsonb_build_object(
+    'version', 1,
+    'organizationId', v_org,
+    'observedAt', v_now,
+    -- probeOk is false when no current cell is READY or nothing has reported yet;
+    -- the Worker's own 90-second staleness rule then decides severity.
+    'probeOk', v_cells > 0 and v_ready > 0 and v_heartbeat is not null,
+    'heartbeatAt', v_heartbeat,
+    'currentCells', v_cells,
+    'readyCells', v_ready,
+    'metrics', coalesce(v_metrics, '{}'::jsonb)
+  );
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 5. Capacity controls: what the watchdog used to POST to an inbound port
+-- ---------------------------------------------------------------------------
+
+create or replace function app_private.openclaw_apply_capacity_controls_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_principal ->> 'organizationId')::uuid;
+  v_operation uuid;
+  v_control text;
+  v_reason text;
+  v_applied integer := 0;
+  v_already integer := 0;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','operationId','controls','reasonFingerprint','requiresManualResume'],
+    array['version','operationId','controls','reasonFingerprint','requiresManualResume']
+  );
+  if p_request ->> 'version' <> '1'
+     or jsonb_typeof(p_request -> 'controls') <> 'array'
+     or jsonb_array_length(p_request -> 'controls') < 1
+     or jsonb_array_length(p_request -> 'controls') > 4
+     or jsonb_typeof(p_request -> 'requiresManualResume') <> 'boolean'
+  then
+    raise exception 'bounded capacity controls required' using errcode = '22023';
+  end if;
+  v_operation := (p_request ->> 'operationId')::uuid;
+  v_reason := p_request ->> 'reasonFingerprint';
+
+  for v_control in select value from jsonb_array_elements_text(p_request -> 'controls') loop
+    -- Idempotent by construction: the partial unique index collapses a repeat of
+    -- an already-active control, so a retried watchdog tick cannot double-apply.
+    insert into public.openclaw_capacity_controls(
+      organization_id, control, applied_operation_id, reason_fingerprint,
+      requires_manual_resume
+    ) values (
+      v_org, v_control, v_operation, v_reason,
+      (p_request ->> 'requiresManualResume')::boolean
+    )
+    on conflict (organization_id, control) where released_at is null do nothing;
+    if found then v_applied := v_applied + 1; else v_already := v_already + 1; end if;
+  end loop;
+
+  return jsonb_build_object(
+    'version', 1, 'applied', v_applied, 'alreadyActive', v_already,
+    'databaseTime', statement_timestamp()
+  );
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 6. Watchdog envelope nonce consumption
+-- ---------------------------------------------------------------------------
+-- No principal is required: the Edge has already proven the Ed25519 signature
+-- over the envelope before calling this. The database's only job here is to make
+-- "one-time" durable across isolates, which no in-process map can do.
+
+create or replace function app_private.openclaw_consume_watchdog_envelope_nonce_v1(
+  p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_nonce_hash text;
+  v_signed_at timestamptz;
+  v_inserted uuid;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','keyGeneration','operation','nonce','bodySha256','signedAtEpochSeconds'],
+    array['version','organizationId','keyGeneration','operation','nonce','bodySha256','signedAtEpochSeconds']
+  );
+  if p_request ->> 'version' <> '1'
+     or p_request ->> 'nonce' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_request ->> 'bodySha256' !~ '^[0-9a-f]{64}$'
+     or p_request ->> 'signedAtEpochSeconds' !~ '^[1-9][0-9]{0,14}$'
+  then
+    raise exception 'watchdog envelope nonce request invalid' using errcode = '22023';
+  end if;
+
+  v_signed_at := to_timestamp((p_request ->> 'signedAtEpochSeconds')::bigint);
+  -- The Edge already enforces a 60-second skew window; this bound is the
+  -- database refusing to store anything it could not have just authenticated.
+  if abs(extract(epoch from (statement_timestamp() - v_signed_at))) > 90 then
+    raise exception 'watchdog envelope is outside the database clock window'
+      using errcode = '42501';
+  end if;
+
+  v_nonce_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-watchdog-envelope-nonce-v1', 'UTF8')
+      || decode('00', 'hex') || convert_to(p_request ->> 'operation', 'UTF8')
+      || decode('00', 'hex') || convert_to(p_request ->> 'nonce', 'UTF8'),
+    'sha256'
+  ), 'hex');
+
+  insert into public.openclaw_watchdog_envelope_nonces(
+    organization_id, key_generation, operation, nonce_hash, body_sha256,
+    signed_at, expires_at
+  ) values (
+    (p_request ->> 'organizationId')::uuid,
+    (p_request ->> 'keyGeneration')::bigint,
+    p_request ->> 'operation',
+    v_nonce_hash,
+    p_request ->> 'bodySha256',
+    v_signed_at,
+    v_signed_at + interval '90 seconds'
+  )
+  on conflict (organization_id, nonce_hash) do nothing
+  returning id into v_inserted;
+
+  if v_inserted is null then
+    raise exception 'watchdog envelope nonce replay rejected' using errcode = '42501';
+  end if;
+
+  -- Opportunistic prune keeps the table bounded without a scheduled job; the
+  -- watchdog runs once a minute, so this stays small.
+  delete from public.openclaw_watchdog_envelope_nonces
+  where expires_at < statement_timestamp() - interval '10 minutes';
+
+  return jsonb_build_object('version', 1, 'consumed', true);
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 7. Public service wrappers
+-- ---------------------------------------------------------------------------
+
+create or replace function public.openclaw_service_watchdog_snapshot_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_context jsonb;
+begin
+  v_context := app_private.openclaw_watchdog_service_context_v1(
+    p_principal, p_envelope, p_request, 'openclaw_watchdog_snapshot_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context, p_envelope, p_request, 'RUNTIME'
+  );
+  return app_private.openclaw_watchdog_snapshot_v1(v_context, p_envelope, p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_apply_capacity_controls_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_context jsonb;
+begin
+  v_context := app_private.openclaw_watchdog_service_context_v1(
+    p_principal, p_envelope, p_request, 'openclaw_apply_capacity_controls_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context, p_envelope, p_request, 'RUNTIME'
+  );
+  return app_private.openclaw_apply_capacity_controls_v1(v_context, p_envelope, p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_consume_watchdog_envelope_nonce_v1(
+  p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_consume_watchdog_envelope_nonce_v1(p_request);
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 8. Capacity controls reach the cell in the heartbeat it already makes
+-- ---------------------------------------------------------------------------
+-- Only the thin public wrapper changes; app_private.openclaw_runtime_heartbeat_v1
+-- keeps its exact reviewed body. The cell learns about active controls in the
+-- response of the call it already makes every minute, so no inbound port, no new
+-- command kind, and no change to the runtime command state machine are needed.
+
+create or replace function public.openclaw_service_runtime_heartbeat_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_result jsonb;
+  v_controls jsonb;
+begin
+  v_context := app_private.openclaw_validate_service_context_v1(
+    p_principal, p_envelope, p_request, 'openclaw_runtime_heartbeat_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context, p_envelope, p_request, 'RUNTIME'
+  );
+  v_result := app_private.openclaw_runtime_heartbeat_v1(v_context, p_envelope, p_request);
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'control', control.control,
+    'appliedAt', control.applied_at,
+    'reasonFingerprint', control.reason_fingerprint,
+    'requiresManualResume', control.requires_manual_resume
+  ) order by control.control), '[]'::jsonb) into v_controls
+  from public.openclaw_capacity_controls control
+  where control.organization_id = (v_context ->> 'organizationId')::uuid
+    and control.released_at is null;
+
+  return v_result || jsonb_build_object('capacityControls', v_controls);
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 9. Ownership and grants
+-- ---------------------------------------------------------------------------
+
+alter table public.openclaw_capacity_controls owner to openclaw_maintenance_writer;
+alter table public.openclaw_watchdog_envelope_nonces owner to openclaw_maintenance_writer;
+
+alter function app_private.openclaw_watchdog_service_context_v1(jsonb,jsonb,jsonb,text)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_consume_watchdog_envelope_nonce_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+
+revoke all on function app_private.openclaw_watchdog_service_context_v1(jsonb,jsonb,jsonb,text)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_consume_watchdog_envelope_nonce_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function app_private.openclaw_watchdog_service_context_v1(jsonb,jsonb,jsonb,text)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_consume_watchdog_envelope_nonce_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+alter function public.openclaw_service_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_consume_watchdog_envelope_nonce_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+
+revoke all on function public.openclaw_service_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_consume_watchdog_envelope_nonce_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function public.openclaw_service_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_consume_watchdog_envelope_nonce_v1(jsonb)
+  to service_role;
+
 commit;

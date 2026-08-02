@@ -23,16 +23,26 @@ Configure secret references, never values, for:
   health records. There is no shared bearer secret: a bearer replays forever and proves
   nothing about operation, body, organization, or key generation.
 - `OPENCLAW_WATCHDOG_PRINCIPAL_JSON` (current maintenance principal/fence metadata)
-- `OPENCLAW_WATCHDOG_PROBE_URL` ending `/openclaw-health/v1/snapshot`
-- `OPENCLAW_WATCHDOG_PROBE_TOKEN`
-- `OPENCLAW_WATCHDOG_CONTROL_URL` ending `/openclaw-health/v1/controls`
-- `OPENCLAW_WATCHDOG_CONTROL_TOKEN`
 - `OPENCLAW_WATCHDOG_OWNER_ADMIN_USER_IDS` and `OPENCLAW_WATCHDOG_OWNER_ADMIN_EMAILS`
 - `RESEND_API_KEY` and `OPENCLAW_WATCHDOG_EMAIL_FROM`
 
-The health snapshot/control collector is content-free and narrowly authenticated. It
-cannot proxy Gateway methods or return message, QR, cookie, token, session, prompt, or
-provider payload data.
+There is deliberately NO probe URL and NO control URL. Both would have required an
+INBOUND port on the VPS that holds the Zalo session, which the design spec forbids
+("chi them rule egress/namespace rieng va khong expose inbound port"). The watchdog
+instead reads health from the database through
+`openclaw_service_watchdog_snapshot_v1` and writes capacity controls through
+`openclaw_service_apply_capacity_controls_v1`.
+
+That data is already there without any new transport: the cell pushes heartbeat and
+content-free metrics outward every minute through `POST /v1/heartbeat`, and reads the
+active controls back in the response of that same call. This also measures the property
+that actually matters - whether the cell can still reach Supabase - which an inbound
+probe of the cell's own HTTP port cannot see: a cell can answer a probe cheerfully while
+its link to Supabase has been down for hours.
+
+The snapshot is content-free: heartbeat freshness, cell counts, and the nineteen
+capacity metrics. It cannot proxy Gateway methods or return message, QR, cookie, token,
+session, prompt, or provider payload data.
 
 ## Cloudflare Worker
 

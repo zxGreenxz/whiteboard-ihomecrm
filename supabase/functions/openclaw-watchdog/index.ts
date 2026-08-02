@@ -1,7 +1,10 @@
 import { canonicalJson, sha256Hex, utf8 } from "../_shared/openclaw/crypto.ts";
 import {
   handleWatchdogRequest,
+  WATCHDOG_APPLY_CONTROLS_RPC,
   WATCHDOG_HEALTH_RPC,
+  WATCHDOG_NONCE_RPC,
+  WATCHDOG_SNAPSHOT_RPC,
   type ConsumeEnvelopeNonceInput,
   type WatchdogSnapshot,
 } from "./handler.ts";
@@ -13,14 +16,6 @@ function required(name: string): string {
   const value = env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
-}
-
-function httpsUrl(name: string, path: RegExp): string {
-  const value = new URL(required(name));
-  if (value.protocol !== "https:" || value.username || value.password || value.search || value.hash ||
-    !path.test(value.pathname) || /gateway/iu.test(value.hostname + value.pathname) ||
-    ["18789", "3000", "8080"].includes(value.port)) throw new Error(`${name} is invalid`);
-  return value.toString();
 }
 
 function csv(name: string): string[] {
@@ -46,103 +41,103 @@ function envelopeKeys(name: string): ReturnType<typeof parseWatchdogKeyRegistry>
 const watchdogEnvelopeKeys = envelopeKeys("OPENCLAW_WATCHDOG_ENVELOPE_KEYS_JSON");
 const supabaseUrl = new URL(required("SUPABASE_URL")).origin;
 const serviceRoleKey = required("SUPABASE_SERVICE_ROLE_KEY");
-const probeUrl = httpsUrl("OPENCLAW_WATCHDOG_PROBE_URL", /\/openclaw-health\/v1\/snapshot\/?$/u);
-const controlUrl = httpsUrl("OPENCLAW_WATCHDOG_CONTROL_URL", /\/openclaw-health\/v1\/controls\/?$/u);
-const probeToken = required("OPENCLAW_WATCHDOG_PROBE_TOKEN");
-const controlToken = required("OPENCLAW_WATCHDOG_CONTROL_TOKEN");
 const pushUserIds = csv("OPENCLAW_WATCHDOG_OWNER_ADMIN_USER_IDS");
 const emailRecipients = csv("OPENCLAW_WATCHDOG_OWNER_ADMIN_EMAILS");
 const resendApiKey = required("RESEND_API_KEY");
 const resendFrom = required("OPENCLAW_WATCHDOG_EMAIL_FROM");
 const principal = JSON.parse(required("OPENCLAW_WATCHDOG_PRINCIPAL_JSON")) as Record<string, unknown>;
 
-function timeoutSignal(parent: AbortSignal, milliseconds: number): AbortSignal {
-  const controller = new AbortController();
-  const abort = () => controller.abort(parent.reason);
-  if (parent.aborted) abort();
-  else parent.addEventListener("abort", abort, { once: true });
-  setTimeout(() => controller.abort(), milliseconds);
-  return controller.signal;
-}
-
-async function postJson(url: string, token: string, body: unknown, signal?: AbortSignal): Promise<Response> {
-  return await fetch(url, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-}
+/**
+ * There is no probe URL and no control URL any more.
+ *
+ * Both used to point at `/openclaw-health/v1/*` on the OpenClaw VPS, which would
+ * require an INBOUND port on the host that holds the Zalo session - forbidden by
+ * the design spec, and never implemented. Everything the watchdog needs already
+ * travels outward: the cell pushes heartbeat + content-free metrics through
+ * POST /v1/heartbeat, and reads capacity controls back from that same response.
+ * So the Edge reads health from the database and writes controls to it.
+ */
+const CAPACITY_METRIC_KEYS = Object.freeze([
+  "queueLagP95Seconds", "unknownCount10m", "unknownRate10m", "attempts10m",
+  "adapterErrorRate5m", "reconnectCount10m", "cpuPercentOfCap", "ramPercentOfCap",
+  "rootDiskUsedPercent", "spoolUsedPercent", "spoolOldestAgeSeconds", "spoolBytes",
+  "mediaBacklog", "r2FailureCount5m", "supabaseEgressPercent", "r2StoragePercent",
+  "r2RequestPercent", "vpsOutboundPercent", "transferQuotaPercent",
+] as const);
 
 /**
- * Envelope nonces are spent in-process and bounded by the same 60-second window
- * the envelope itself enforces, so a replay can never outlive its own clock
- * window inside an isolate. The durable backstop for the two operations that
- * mutate state is the database: their deterministic operation id is the service
- * envelope nonce, and `openclaw_service_nonces` rejects the second insert. PROBE
- * mutates nothing, so an isolate-local store is the whole requirement there.
+ * The Worker's parser demands exactly these nineteen numeric metrics. A cell that
+ * reports a partial bundle must not crash the watchdog, and an unknown key must
+ * not travel onward, so the set is rebuilt here rather than passed through.
  */
-const NONCE_STORE_LIMIT = 4_096;
-const spentNonces = new Map<string, number>();
-
-function consumeEnvelopeNonce(input: ConsumeEnvelopeNonceInput): Promise<boolean> {
-  const nowEpochSeconds = Math.floor(Date.now() / 1_000);
-  for (const [nonce, expiresAt] of spentNonces) {
-    if (expiresAt <= nowEpochSeconds) spentNonces.delete(nonce);
-  }
-  const key = `${input.organizationId}\u0000${input.keyGeneration}\u0000${input.nonce}`;
-  if (spentNonces.has(key)) return Promise.resolve(false);
-  // A full store must deny rather than forget: forgetting is a replay window.
-  if (spentNonces.size >= NONCE_STORE_LIMIT) return Promise.resolve(false);
-  spentNonces.set(key, input.expiresAtEpochSeconds);
-  return Promise.resolve(true);
+function normalizeMetrics(value: unknown): Record<string, number> {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return Object.fromEntries(CAPACITY_METRIC_KEYS.map((key) => {
+    const metric = source[key];
+    return [key, typeof metric === "number" && Number.isFinite(metric) && metric >= 0 ? metric : 0];
+  }));
 }
 
-async function serviceRequestHash(request: unknown): Promise<string> {
+async function serviceRequestHash(operation: string, request: unknown): Promise<string> {
   return await sha256Hex(utf8(
-    `ihome-openclaw-service-request-v1\0openclaw_record_watchdog_health_v1\0${canonicalJson(request)}`,
+    `ihome-openclaw-service-request-v1\u0000${operation}\u0000${canonicalJson(request)}`,
   ));
+}
+
+/** Calls one narrow service facade with the canonical machine envelope. */
+async function serviceRpc(input: {
+  facade: string;
+  operation: string;
+  organizationId: string;
+  nonce: string;
+  observedAt: string;
+  request: Record<string, unknown>;
+  signal?: AbortSignal;
+}): Promise<Record<string, unknown>> {
+  const issuedAt = new Date(input.observedAt);
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${input.facade}`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      p_principal: {
+        ...principal,
+        organizationId: input.organizationId,
+        allowedOperations: [input.operation],
+      },
+      p_envelope: {
+        version: 1,
+        operation: input.operation,
+        nonce: input.nonce,
+        iat: issuedAt.toISOString(),
+        exp: new Date(issuedAt.getTime() + 60_000).toISOString(),
+        requestHash: await serviceRequestHash(input.operation, input.request),
+      },
+      p_request: input.request,
+    }),
+    signal: input.signal,
+  });
+  if (!response.ok) throw new Error(`${input.facade} failed`);
+  const result = await response.json();
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new Error(`${input.facade} returned an invalid result`);
+  }
+  return result as Record<string, unknown>;
 }
 
 Deno.serve((request: Request) =>
   handleWatchdogRequest(request, {
     envelopeKeys: watchdogEnvelopeKeys,
-    consumeEnvelopeNonce,
-    probe: async (organizationId, signal): Promise<WatchdogSnapshot> => {
-      const response = await postJson(probeUrl, probeToken, {
-        version: 1,
-        organizationId,
-        requestedFields: [
-          "heartbeatAt", "queueLagP95Seconds", "unknownCount10m", "unknownRate10m", "attempts10m",
-          "adapterErrorRate5m", "reconnectCount10m", "cpuPercentOfCap", "ramPercentOfCap",
-          "rootDiskUsedPercent", "spoolUsedPercent", "spoolOldestAgeSeconds", "spoolBytes",
-          "mediaBacklog", "r2FailureCount5m", "supabaseEgressPercent", "r2StoragePercent",
-          "r2RequestPercent", "vpsOutboundPercent", "transferQuotaPercent",
-        ],
-      }, timeoutSignal(signal, 8_000));
-      if (!response.ok) {
-        return {
-          version: 1,
-          organizationId,
-          observedAt: new Date().toISOString(),
-          probeOk: false,
-          heartbeatAt: null,
-          metrics: Object.fromEntries([
-            "queueLagP95Seconds", "unknownCount10m", "unknownRate10m", "attempts10m",
-            "adapterErrorRate5m", "reconnectCount10m", "cpuPercentOfCap", "ramPercentOfCap",
-            "rootDiskUsedPercent", "spoolUsedPercent", "spoolOldestAgeSeconds", "spoolBytes",
-            "mediaBacklog", "r2FailureCount5m", "supabaseEgressPercent", "r2StoragePercent",
-            "r2RequestPercent", "vpsOutboundPercent", "transferQuotaPercent",
-          ].map((key) => [key, 0])),
-        };
-      }
-      const snapshot = await response.json() as WatchdogSnapshot;
-      return { ...snapshot, organizationId };
-    },
-    recordHealth: async ({ organizationId, operationId, observedAt, events }) => {
-      const rpcRequest = { version: 1, events };
-      const issuedAt = new Date(observedAt);
-      const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${WATCHDOG_HEALTH_RPC}`, {
+    // Durable across isolates: an in-process map cannot be a replay guard when
+    // Supabase runs many isolates, and the notification-only RECORD path spends
+    // no other nonce.
+    consumeEnvelopeNonce: async (input: ConsumeEnvelopeNonceInput): Promise<boolean> => {
+      const response = await fetch(`${supabaseUrl}/rest/v1/rpc/${WATCHDOG_NONCE_RPC}`, {
         method: "POST",
         headers: {
           apikey: serviceRoleKey,
@@ -150,40 +145,71 @@ Deno.serve((request: Request) =>
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          p_principal: {
-            ...principal,
-            organizationId,
-            allowedOperations: ["openclaw_record_watchdog_health_v1"],
-          },
-          p_envelope: {
+          p_request: {
             version: 1,
-            operation: "openclaw_record_watchdog_health_v1",
-            nonce: operationId,
-            iat: issuedAt.toISOString(),
-            exp: new Date(issuedAt.getTime() + 60_000).toISOString(),
-            requestHash: await serviceRequestHash(rpcRequest),
+            organizationId: input.organizationId,
+            keyGeneration: input.keyGeneration,
+            operation: input.operation,
+            nonce: input.nonce,
+            bodySha256: input.bodySha256,
+            signedAtEpochSeconds: input.signedAtEpochSeconds,
           },
-          p_request: rpcRequest,
         }),
       });
-      if (!response.ok) throw new Error("watchdog health facade failed");
-      const result = await response.json() as { recorded?: unknown };
+      // A replay is a deliberate 42501 from the database, not a transport error.
+      return response.ok;
+    },
+    probe: async (organizationId, probeId, observedAt, signal): Promise<WatchdogSnapshot> => {
+      const result = await serviceRpc({
+        facade: WATCHDOG_SNAPSHOT_RPC,
+        operation: "openclaw_watchdog_snapshot_v1",
+        organizationId,
+        nonce: probeId,
+        observedAt,
+        request: { version: 1 },
+        signal,
+      });
+      return {
+        version: 1,
+        organizationId,
+        observedAt: typeof result.observedAt === "string" ? result.observedAt : observedAt,
+        probeOk: result.probeOk === true,
+        heartbeatAt: typeof result.heartbeatAt === "string" ? result.heartbeatAt : null,
+        metrics: normalizeMetrics(result.metrics),
+      };
+    },
+    recordHealth: async ({ organizationId, operationId, observedAt, events }) => {
+      const result = await serviceRpc({
+        facade: WATCHDOG_HEALTH_RPC,
+        operation: "openclaw_record_watchdog_health_v1",
+        organizationId,
+        nonce: operationId,
+        observedAt,
+        request: { version: 1, events },
+      });
       if (!Number.isSafeInteger(result.recorded) || Number(result.recorded) !== events.length) {
         throw new Error("watchdog health facade returned an invalid result");
       }
       return { recorded: Number(result.recorded) };
     },
-    applyCapacityControls: async ({ organizationId, operationId, controls, reasonFingerprint }) => {
-      const response = await postJson(controlUrl, controlToken, {
-        version: 1,
+    applyCapacityControls: async ({ organizationId, operationId, observedAt, controls, reasonFingerprint }) => {
+      await serviceRpc({
+        facade: WATCHDOG_APPLY_CONTROLS_RPC,
+        operation: "openclaw_apply_capacity_controls_v1",
         organizationId,
-        operationId,
-        controls,
-        reasonFingerprint,
-        automaticResume: false,
-        requiredResumePermission: "openclaw_zalo.manage_operations",
+        // Deterministic operation id doubles as the nonce, so a retried tick after
+        // a lost response cannot apply the same control twice.
+        nonce: operationId,
+        observedAt,
+        request: {
+          version: 1,
+          operationId,
+          controls,
+          reasonFingerprint,
+          // Health-generated pauses never auto-resume; only manage_operations releases them.
+          requiresManualResume: true,
+        },
       });
-      if (!response.ok) throw new Error("watchdog control dependency failed");
     },
     notifyOwnerAdmins: async ({ organizationId, operationId, fingerprints, repeatWindow }) => {
       const safeBody = {
@@ -193,14 +219,28 @@ Deno.serve((request: Request) =>
         tag: `openclaw-watchdog-${organizationId}-${repeatWindow}`,
       };
       const pushResults = await Promise.all(pushUserIds.map((userId) =>
-        postJson(`${supabaseUrl}/functions/v1/send-push`, serviceRoleKey, { userId, ...safeBody })
+        fetch(`${supabaseUrl}/functions/v1/send-push`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${serviceRoleKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ userId, ...safeBody }),
+        })
       ));
       if (pushResults.some((response) => !response.ok)) throw new Error("watchdog push notification failed");
-      const emailResponse = await postJson("https://api.resend.com/emails", resendApiKey, {
-        from: resendFrom,
-        to: emailRecipients,
-        subject: "[iHome CRM] OpenClaw cần kiểm tra",
-        text: `Organization ${organizationId}; incident ${fingerprints.join(", ")}; operation ${operationId}. Mở CRM Operations để xử lý.`,
+      const emailResponse = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${resendApiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: resendFrom,
+          to: emailRecipients,
+          subject: "[iHome CRM] OpenClaw cần kiểm tra",
+          text: `Organization ${organizationId}; incident ${fingerprints.join(", ")}; operation ${operationId}. Mở CRM Operations để xử lý.`,
+        }),
       });
       if (!emailResponse.ok) throw new Error("watchdog email notification failed");
       return { push: pushResults.length, email: emailRecipients.length };

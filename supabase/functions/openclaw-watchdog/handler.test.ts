@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { canonicalJson, sha256Hex, utf8 } from "../_shared/openclaw/crypto";
 import {
   handleWatchdogRequest,
+  WATCHDOG_APPLY_CONTROLS_RPC,
   WATCHDOG_HEALTH_RPC,
+  WATCHDOG_NONCE_RPC,
+  WATCHDOG_SNAPSHOT_RPC,
   type WatchdogDependencies,
 } from "./handler";
 import {
@@ -70,7 +73,7 @@ function dependencies(
       return true;
     }),
     now: () => new Date(NOW),
-    probe: vi.fn(async (organizationId: string) => ({
+    probe: vi.fn(async (organizationId: string, _probeId: string, _observedAt: string) => ({
       version: 1 as const,
       organizationId,
       observedAt: "2026-08-02T00:00:00.000Z",
@@ -422,6 +425,98 @@ describe("openclaw-watchdog Edge handler", () => {
       deps,
     );
     expect(foreignEnvelope.status).toBe(403);
+    noDependencyRan(deps);
+  });
+
+  it("reads health from the database instead of an inbound port on the cell host", async () => {
+    // The two /openclaw-health/v1/* URLs cannot exist: the design spec forbids
+    // exposing an inbound port on the VPS that holds the Zalo session.
+    expect(WATCHDOG_SNAPSHOT_RPC).toBe("openclaw_service_watchdog_snapshot_v1");
+    expect(WATCHDOG_APPLY_CONTROLS_RPC).toBe("openclaw_service_apply_capacity_controls_v1");
+    expect(WATCHDOG_NONCE_RPC).toBe("openclaw_service_consume_watchdog_envelope_nonce_v1");
+
+    const key = await signingKey();
+    const deps = dependencies([key]);
+    await handleWatchdogRequest(await signedRequest(key, probeBody), deps);
+    // The probe is bound to the caller's own probe id and clock, so the snapshot
+    // RPC gets a per-tick nonce rather than a server-invented one.
+    expect(deps.probe).toHaveBeenCalledWith(
+      ORG,
+      probeBody.probeId,
+      probeBody.observedAt,
+      expect.anything(),
+    );
+
+    const controls = await handleWatchdogRequest(
+      await signedRequest(key, hostGuardBody, { operation: "host.guard" }),
+      deps,
+    );
+    expect(controls.status).toBe(200);
+    expect(deps.applyCapacityControls).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: hostGuardBody.operationId,
+      observedAt: hostGuardBody.observedAt,
+    }));
+  });
+
+  it("spends the envelope nonce durably with the digest and signing instant", async () => {
+    const key = await signingKey();
+    const deps = dependencies([key]);
+    await handleWatchdogRequest(await signedRequest(key, probeBody), deps);
+    expect(deps.consumeEnvelopeNonce).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: ORG,
+      operation: "health.probe",
+      keyGeneration: key.generation,
+      bodySha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      signedAtEpochSeconds: Math.floor(NOW / 1_000),
+    }));
+  });
+
+  it("authenticates before parsing so an unsigned caller learns no schema outcome", async () => {
+    const key = await signingKey();
+    const deps = dependencies([key]);
+    // Malformed JSON and wrong content type must collapse to the same 401 while
+    // the caller is unauthenticated: neither may become a schema oracle.
+    for (const init of [
+      { headers: { "content-type": "application/json" }, body: "{not json" },
+      { headers: { "content-type": "text/plain" }, body: "{}" },
+    ]) {
+      const response = await handleWatchdogRequest(
+        new Request(EDGE_URL, { method: "POST", ...init }),
+        deps,
+      );
+      expect(response.status).toBe(401);
+    }
+    // The size bound is the one check that MUST precede authentication: the body
+    // has to be bounded before it is read at all, so 413 here is correct and is
+    // not a schema signal.
+    const oversized = await handleWatchdogRequest(
+      new Request(EDGE_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", "content-length": "999999999" },
+        body: "{}",
+      }),
+      deps,
+    );
+    expect(oversized.status).toBe(413);
+    // A signed caller still gets the precise schema error.
+    const signed = await handleWatchdogRequest(
+      await signedRequest(key, probeBody, {}, { body: { ...probeBody, extra: 1 } }),
+      deps,
+    );
+    expect(signed.status).toBe(403);
+    noDependencyRan(deps);
+  });
+
+  it("treats an extended-year activation window as inactive, not active", async () => {
+    // `Date#toISOString` round-trips "+010000-01-01T00:00:00.000Z", which sorts
+    // BEFORE "2026…" as a string. A lexicographic compare would call this key active.
+    const future = await signingKey({ generation: 9, activatesAt: "+010000-01-01T00:00:00.000Z" });
+    const deps = dependencies([future]);
+    const response = await handleWatchdogRequest(
+      await signedRequest(future, probeBody, { keyGeneration: 9 }),
+      deps,
+    );
+    expect(response.status).toBe(403);
     noDependencyRan(deps);
   });
 

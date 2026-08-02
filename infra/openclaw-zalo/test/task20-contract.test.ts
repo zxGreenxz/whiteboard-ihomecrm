@@ -51,6 +51,15 @@ describe("Task 20 watchdog and recovery contracts", () => {
     expect(guard).toContain("openssl pkeyutl -sign -rawin -inkey");
     expect(guard).toContain("X-OpenClaw-Watchdog-Envelope");
     expect(guard).toContain("X-OpenClaw-Watchdog-Signature");
+    // Header phải đi qua stdin: /proc/<pid>/cmdline đọc được bởi mọi user cục bộ
+    // và envelope+chữ ký còn replay được trong cửa sổ 60 giây.
+    expect(guard).toContain("curl --config -");
+    expect(guard).not.toMatch(/--header "X-OpenClaw-Watchdog/u);
+    // openssl hỏng không được biến thành chữ ký rỗng gửi đi.
+    expect(guard).toMatch(/if ! openssl pkeyutl -sign -rawin/u);
+    expect(guard).toContain("watchdog envelope signing failed");
+    expect(guard).toContain("watchdog envelope signature is malformed");
+    expect(guard).toMatch(/trap 'rm -f "\$preimage_file"' EXIT HUP INT TERM/u);
     expect(guard).toContain("ihome-openclaw-watchdog-envelope-v1");
     expect(guard).toContain("ENVELOPE_AUDIENCE='openclaw-watchdog-edge'");
     expect(guard).toContain('"operation":"host.guard"');
@@ -122,12 +131,14 @@ describe("Task 20 watchdog and recovery contracts", () => {
       const binDir = resolve(workspace, "bin");
       await mkdir(binDir);
       const captureFile = resolve(workspace, "capture.txt");
+      // Script gửi header qua `curl --config -` (stdin), không qua argv, nên stub
+      // phải đọc cả hai: dòng cấu hình `header = "..."` ở stdin và --data-binary ở argv.
       await writeFile(
         resolve(binDir, "curl"),
         `#!/bin/sh\n: > "${posix(captureFile)}"\nwhile [ "$#" -gt 0 ]; do\n` +
-          `  case "$1" in\n    --header) printf 'HEADER\\t%s\\n' "$2" >> "${posix(captureFile)}"; shift 2 ;;\n` +
-          `    --data-binary) printf 'BODY\\t%s\\n' "$2" >> "${posix(captureFile)}"; shift 2 ;;\n` +
-          `    *) shift ;;\n  esac\ndone\nexit 0\n`,
+          `  case "$1" in\n    --data-binary) printf 'BODY\\t%s\\n' "$2" >> "${posix(captureFile)}"; shift 2 ;;\n` +
+          `    *) shift ;;\n  esac\ndone\n` +
+          `sed -n 's/^header = "\\(.*\\)"$/HEADER\\t\\1/p' >> "${posix(captureFile)}"\nexit 0\n`,
         { mode: 0o755 },
       );
 
