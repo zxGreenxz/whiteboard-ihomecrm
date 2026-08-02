@@ -467,13 +467,29 @@ EOF
 
 compose_for_pointer() {
   local pointer="$1" action="$2"
-  local image_id generation release_dir env_file project container
+  local image_id generation release_dir env_file project container compose_log
   image_id="$(pointer_value "$pointer" '.imageId')"
   generation="$(pointer_value "$pointer" '.secretGeneration')"
   release_dir="$(pointer_value "$pointer" '.releaseDirectory')"
   env_file="$(pointer_value "$pointer" '.envFile')"
   project="$(pointer_value "$pointer" '.projectName')"
   container="$(pointer_value "$pointer" '.containerName')"
+  # Same RPC-channel rule as the image build: `docker compose` writes its whole
+  # progress log to stderr (measured: 0 bytes to stdout, 6 lines to stderr for a
+  # single `up -d`), and the deploy client concatenates this command's stdout AND
+  # stderr before requiring exactly ONE bounded JSON receipt. stage-candidate
+  # therefore returned an unparseable receipt for a canary that had actually
+  # started healthy. Nothing here produces receipt data -- every caller consumes
+  # only the exit status, and the real verification is done by wait_healthy and
+  # pointer_exact_healthy through `docker inspect` -- so the output belongs in a
+  # root-only host log, not on stdout or stderr.
+  compose_log="$STATE_DIR/last-compose.log"
+  if [[ -f "$compose_log" ]] && (( $(stat -c '%s' "$compose_log" 2>/dev/null || echo 0) > 1048576 )); then
+    : > "$compose_log"
+  fi
+  touch "$compose_log"
+  chmod 0600 "$compose_log"
+  printf '=== %s %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$action" "$project" >> "$compose_log"
   (
     export NETWORK_CENTER_IMAGE_REF="$image_id"
     export NETWORK_CENTER_CONTAINER_NAME="$container"
@@ -486,7 +502,7 @@ compose_for_pointer() {
     else
       docker compose --project-name "$project" --file "$release_dir/docker-compose.yml" down --timeout 300
     fi
-  )
+  ) >> "$compose_log" 2>&1
 }
 
 wait_healthy() {
