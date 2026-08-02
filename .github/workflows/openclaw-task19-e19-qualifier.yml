@@ -16,12 +16,12 @@ env:
   # The workflow branch is only the runner vehicle. The source branch is the
   # reviewed product branch that the evidence helper advances from R to E.
   EXPECTED_M: 0650187981ad9728d295fae34eff92b508e36bc8
-  REVIEWED_R: 607ef69aa48dca99d5ea86dcc95c7f433b6f9fd3
+  REVIEWED_R: f9ab100eb73a59f913b493bf29e872aeebf893db
   SOURCE_BRANCH: codex/openclaw-zalo-20260726
   M_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiTSIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiMDY1MDE4Nzk4MWFkOTcyOGQyOTVmYWUzNGVmZjkyYjUwOGUzNmJjOCIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC9yZXZpZXdfY2hlY2twb2ludF9tX3NwZWNfMDYyZGRmNCIsInJldmlld2VyUm9sZSI6InJldmlld2VyIiwicmV2aWV3ZXJSdW5JZCI6Ik0wNjUwMTg3LTIwMjYwNzI3VDEyMzczNFotcmV2aWV3Iiwic2NoZW1hIjoxfQo=
-  R_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiUiIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiNjA3ZWY2OWFhNDhkY2E5OWQ1ZWE4NmRjYzk1YzdmNDMzYjZmOWZkMyIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC90MTlfZXhhY3RfcmV2aWV3MyIsInJldmlld2VyUm9sZSI6InJldmlld2VyIiwicmV2aWV3ZXJSdW5JZCI6IjIwMjYwODAyVDA2NDIwNiswNzowMCIsInNjaGVtYSI6MX0K
+  R_REVIEW_REPORT_B64: eyJjaGVja3BvaW50IjoiUiIsImRlY2lzaW9uIjoiQVBQUk9WRUQiLCJmaW5kaW5ncyI6W10sInJldmlld2VkU2hhIjoiZjlhYjEwMGViNzNhNTlmOTEzYjQ5M2JmMjllODcyYWVlYmY4OTNkYiIsInJldmlld2VySWRlbnRpdHkiOiIvcm9vdC90MTlfZXhhY3RfcmV2aWV3MyIsInJldmlld2VyUm9sZSI6InJldmlld2VyIiwicmV2aWV3ZXJSdW5JZCI6IjIwMjYwODAyVDA3MjEwMSswNzowMCIsInNjaGVtYSI6MX0K
   R_REVIEW_REPORT_SIZE: 234
-  R_REVIEW_REPORT_SHA256: 0a77cd52f74782c2e665eaeb5a1744d94533515ff6c12a487b7cfdff77f5ee63
+  R_REVIEW_REPORT_SHA256: d49e7495d611cf96d13839bca14b01b0fb942df0d2c82f8f64005022944b4ce7
 
 jobs:
   qualify:
@@ -413,49 +413,6 @@ jobs:
             zalouser-2026.7.1-verified.tgz; do
             test -s "$source_root/services/openclaw-zalo-cell/.release/$artifact"
           done
-
-      - name: Diagnose OCI indexes after qualification failure
-        if: failure()
-        run: |
-          set -uo pipefail
-          release_root=/opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release
-          found=0
-          while IFS= read -r -d '' archive; do
-            found=1
-            echo "OCI archive: $archive"
-            stat --printf='size=%s bytes\n' "$archive" || true
-            sha256sum "$archive" || true
-            if ! index_json="$(tar -xOf "$archive" index.json 2>/dev/null)"; then
-              echo "index.json: unavailable"
-              continue
-            fi
-            echo 'index.json:'
-            printf '%s\n' "$index_json" | jq . || printf '%s\n' "$index_json"
-            printf '%s\n' "$index_json" | jq '{
-              manifestCount: (.manifests | length),
-              descriptors: [.manifests[] | {
-                digest,
-                mediaType,
-                platform,
-                annotations
-              }]
-            }' || true
-            while IFS= read -r digest; do
-              blob="blobs/sha256/${digest#sha256:}"
-              echo "Referenced manifest: $digest"
-              if ! tar -xOf "$archive" "$blob" 2>/dev/null | jq --arg digest "$digest" '{
-                digest: $digest,
-                mediaType,
-                config,
-                layerCount: (.layers | length)
-              }'; then
-                echo "Referenced manifest blob unavailable: $blob"
-              fi
-            done < <(printf '%s\n' "$index_json" | jq -r '.manifests[]?.digest // empty')
-          done < <(find "$release_root" -maxdepth 1 -type f -name '*.oci.tar' -print0 | sort -z)
-          if [ "$found" -eq 0 ]; then
-            echo "No OCI archives found under $release_root"
-          fi
 
       - name: Create the evidence-only child checkpoint E
         run: |
