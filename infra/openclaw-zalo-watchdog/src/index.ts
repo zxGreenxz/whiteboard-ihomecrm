@@ -300,6 +300,37 @@ function operationId(): string {
   return crypto.randomUUID();
 }
 
+// Operation ID cho RECORD phải TẤT ĐỊNH theo nội dung tác động, không phải UUID mới
+// mỗi tick. Trước đây mỗi lần thử lại sau khi mất phản hồi sinh ID mới, trong khi Edge
+// ghi DB -> áp control -> gửi notify tuần tự; hỏng ở khâu sau khiến tick kế lặp lại
+// những khâu đã thành công dưới ID khác, nhân bản incident/control/push/email trong
+// cùng một repeat window. Dẫn xuất SHA-256 rồi định dạng theo khuôn UUID v5 cho khớp
+// UUID_PATTERN mà Edge kiểm ([1-5]).
+const RECORD_OPERATION_DOMAIN = "ihome-openclaw-watchdog-record-v1";
+export async function deriveRecordOperationId(input: {
+  organizationId: string;
+  events: readonly WatchdogEvent[];
+  controls: readonly string[];
+  notificationFingerprints: readonly string[];
+  repeatWindow: number;
+}): Promise<string> {
+  const material = [
+    RECORD_OPERATION_DOMAIN,
+    input.organizationId,
+    String(input.repeatWindow),
+    [...input.events].map((item) => `${item.healthKind}|${item.status}|${item.fingerprint}`).sort().join(","),
+    [...input.controls].sort().join(","),
+    [...input.notificationFingerprints].sort().join(","),
+  ].join(" ");
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material)),
+  );
+  const hex = [...digest.subarray(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const version = `5${hex.slice(13, 16)}`;
+  const variant = `${"89ab"[parseInt(hex[16]!, 16) % 4]}${hex.slice(17, 20)}`;
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${version}-${variant}-${hex.slice(20, 32)}`;
+}
+
 export class WatchdogState implements DurableObject {
   readonly #state: DurableObjectState;
   readonly #env: WatchdogEnv;
@@ -375,7 +406,13 @@ export class WatchdogState implements DurableObject {
         version: 1,
         operation: "RECORD",
         organizationId: config.organizationId,
-        operationId: operationId(),
+        operationId: await deriveRecordOperationId({
+          organizationId: config.organizationId,
+          events: transitions,
+          controls: evaluated.controls,
+          notificationFingerprints,
+          repeatWindow,
+        }),
         observedAt: now,
         events: transitions,
         controls: evaluated.controls,
