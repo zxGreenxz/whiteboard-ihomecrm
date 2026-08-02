@@ -40,6 +40,12 @@ interface OpenClawCommandBarProps {
   organizationName: string;
   accountName: string | null;
   connectionHealth: CommandHealth;
+  /**
+   * Optional and UNSET by default. The bootstrap payload carries no heartbeat
+   * timestamp, so the previous hardcoded "Chưa có heartbeat" rendered a permanent
+   * false signal on a HEALTHY account. Until a real field exists the tile shows the
+   * session risk state, which is real data.
+   */
   lastHeartbeatLabel?: string;
   configuredMode: OpenClawMode | null;
   effectiveMode: OpenClawMode | null;
@@ -83,7 +89,7 @@ export default function OpenClawCommandBar({
   organizationName,
   accountName,
   connectionHealth,
-  lastHeartbeatLabel = "Chưa có heartbeat",
+  lastHeartbeatLabel,
   configuredMode,
   effectiveMode,
   paused,
@@ -132,7 +138,12 @@ export default function OpenClawCommandBar({
           value={HEALTH_LABELS[connectionHealth]}
           tone={healthTone}
         />
-        <StatusItem icon={Radio} label="Heartbeat" value={lastHeartbeatLabel} tone={connectionHealth === "HEALTHY" ? "healthy" : "warning"} />
+        <StatusItem
+          icon={Radio}
+          label={lastHeartbeatLabel ? "Heartbeat" : "Rủi ro phiên"}
+          value={lastHeartbeatLabel ?? connectionHealth}
+          tone={connectionHealth === "HEALTHY" ? "healthy" : "warning"}
+        />
         <StatusItem
           icon={CirclePause}
           label="Chế độ"
@@ -161,17 +172,41 @@ export default function OpenClawCommandBar({
             GLOBAL_STOP: {globalStop ? "ĐANG BẬT — toàn bộ outbound của tổ chức đã dừng" : "đang tắt"}
           </p>
         </div>
+        {/*
+          This button NAVIGATES to the operations section; it does not stop anything.
+          The GLOBAL_STOP mutation itself belongs to the operations task. Labelling a
+          navigation control "DỪNG TOÀN BỘ GỬI" was actively dangerous: an operator in
+          an incident would press it, watch the tab change, and believe outbound had
+          stopped. The label now states exactly what happens.
+        */}
         <button
           type="button"
-          aria-label="Dừng toàn bộ gửi"
+          aria-label="Mở kiểm soát GLOBAL_STOP"
           onClick={onGlobalStop}
           disabled={!canManageOperations}
-          title={canManageOperations ? "Mở kiểm soát GLOBAL_STOP" : "Cần quyền manage_operations"}
+          title={canManageOperations
+            ? "Mở mục Vận hành để bật GLOBAL_STOP"
+            : "Cần quyền manage_operations"}
           className="min-h-11 shrink-0 border border-[#b42318] bg-[#b42318] px-3 text-xs font-extrabold text-white hover:bg-[#8f201a] disabled:cursor-not-allowed disabled:border-[#c8a6a2] disabled:bg-[#ead4d1] disabled:text-[#795e5b]"
         >
-          DỪNG TOÀN BỘ GỬI
+          MỞ KIỂM SOÁT GLOBAL_STOP
         </button>
       </div>
+
+      {/*
+        Residual risk disclosure required by the design spec. It must stay VISIBLE,
+        not folded behind a dismiss button or a collapsed panel: an operator has to
+        know at all times that this channel is unofficial and that recovery means
+        re-scanning a QR, never restoring a saved cookie or session snapshot.
+      */}
+      <p
+        data-openclaw-residual-risk="true"
+        className="border-t border-[#d8c9a8] bg-[#fdf7ea] px-3 py-1.5 text-[11px] leading-snug text-[#6b5b3e]"
+      >
+        Zalo Personal là kênh <strong>không chính thức</strong>: Zalo có thể đổi giao thức
+        hoặc khoá tài khoản bất kỳ lúc nào. Khi mất phiên, khôi phục <strong>chỉ</strong> bằng
+        cách quét lại QR — hệ thống không lưu và không phục hồi cookie hay ảnh chụp phiên.
+      </p>
     </header>
   );
 }

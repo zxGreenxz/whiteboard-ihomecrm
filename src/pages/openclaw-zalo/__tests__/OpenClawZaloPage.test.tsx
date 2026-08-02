@@ -210,8 +210,18 @@ describe("OpenClawZaloPage", () => {
     }));
 
     expect(viewer).toContain("GLOBAL_STOP");
-    const viewerButton = viewer.match(/<button[^>]*aria-label="Dừng toàn bộ gửi"[^>]*>/)?.[0];
-    const managerButton = manager.match(/<button[^>]*aria-label="Dừng toàn bộ gửi"[^>]*>/)?.[0];
+    // The control only navigates, so it must not promise to stop anything.
+    expect(viewer).not.toContain("DỪNG TOÀN BỘ GỬI");
+    expect(manager).not.toContain("DỪNG TOÀN BỘ GỬI");
+    // Residual risk disclosure is mandatory and must stay visible, not collapsed.
+    for (const markup of [viewer, manager]) {
+      expect(markup).toContain('data-openclaw-residual-risk="true"');
+      expect(markup).toContain("không chính thức");
+      expect(markup).toMatch(/quét lại QR/u);
+      expect(markup).not.toMatch(/hidden[^>]*data-openclaw-residual-risk/u);
+    }
+    const viewerButton = viewer.match(/<button[^>]*aria-label="Mở kiểm soát GLOBAL_STOP"[^>]*>/)?.[0];
+    const managerButton = manager.match(/<button[^>]*aria-label="Mở kiểm soát GLOBAL_STOP"[^>]*>/)?.[0];
     expect(viewerButton).toContain(' disabled=""');
     expect(manager).toContain("GLOBAL_STOP");
     expect(managerButton).not.toContain(' disabled=""');
