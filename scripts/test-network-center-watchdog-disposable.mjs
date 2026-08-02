@@ -22,6 +22,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { runDisposableLocalClusterMatrix } from "./network-center-disposable-db.mjs";
+
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const WATCHDOG_MIGRATION_PATH = join(
   REPO_ROOT,
@@ -998,6 +1000,740 @@ SELECT pg_sleep(20);
 COMMIT;
 `;
 
+// ===========================================================================
+// STAGE 2 - the maintenance callees, for real.
+//
+// Stage 1 above proves the watchdog CALLS fleet maintenance. It cannot prove
+// maintenance WORKS, because it replaces every callee with a stub that records
+// its arguments. On 2026-08-02 that gap cost three consecutive production cron
+// runs: app_private.network_center_rollup_sla_daily_v1 built a dynamic EXECUTE
+// that aliased public.network_maintenance_windows as `window`, a reserved
+// keyword, so the statement died with 42601 the first time it was executed --
+// months after the migration applied cleanly and every catalog-descriptor and
+// function-body-digest audit passed. plpgsql resolves a dynamic statement when
+// it runs, never when the function is created, so "the migration applied" and
+// "the body is the reviewed text" were both true the whole time.
+//
+// The general defence against that class is not another assertion about the
+// word `window`. It is EXECUTION: this stage builds a real PostgreSQL cluster
+// from the real unmodified Network Center migrations, seeds representative
+// telemetry, and runs public.network_center_watchdog_maintenance_v1 and every
+// maintenance callee against it. Any late-bound failure -- a reserved keyword,
+// a renamed column, a changed type, a dropped relation -- surfaces here as a
+// failed assertion instead of as a silently rolled-back cron job.
+//
+// Each assertion demands an OBSERVABLE EFFECT, not merely the absence of an
+// error, because a conditional branch that is never entered also raises no
+// error. The SLA cases in particular are differential: one building has an
+// active maintenance window and one has a cancelled window over the same hours
+// with identical samples, so a rollup that ignored windows entirely would
+// produce identical rows and fail.
+// ===========================================================================
+
+/** Raise together with the SQL whenever an invariant is added. */
+export const MAINTENANCE_RUNTIME_INVARIANTS = 28;
+
+const DEMO_ORGANIZATION_ID = "dddd0000-0000-4000-8000-000000000001";
+const DEMO_OWNER_ID = "de6f33f3-349f-4bec-bd3d-106192f6715e";
+
+export function buildMaintenanceRuntimeSql({ localProof } = {}) {
+  const nonce = String(localProof?.proofNonce ?? "");
+  if (!/^[a-f0-9]{32}$/.test(nonce)) {
+    throw new Error("Maintenance runtime proof requires the disposable cluster proof nonce");
+  }
+  return String.raw`
+SET TIME ZONE 'UTC';
+BEGIN;
+
+-- Bind the run to the cluster it was built for. Without this the proof could be
+-- pointed at any database and would still report PASS.
+DO $bind$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM app_private.network_center_disposable_proof
+    WHERE proof_nonce = '${nonce}'
+  ) THEN
+    RAISE EXCEPTION
+      'Maintenance runtime proof is not running on its own disposable cluster';
+  END IF;
+END;
+$bind$;
+
+CREATE TEMP TABLE ncm_results (
+  name text PRIMARY KEY,
+  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()
+) ON COMMIT DROP;
+
+CREATE FUNCTION pg_temp.ncm_assert(
+  p_name text, p_condition boolean, p_detail text DEFAULT ''
+) RETURNS void LANGUAGE plpgsql AS $assert$
+BEGIN
+  IF p_condition IS NOT TRUE THEN
+    RAISE EXCEPTION 'MAINTENANCE RUNTIME PROOF FAILED [%]: %', p_name, p_detail;
+  END IF;
+  INSERT INTO pg_temp.ncm_results (name) VALUES (p_name);
+END;
+$assert$;
+
+CREATE TEMP TABLE ncm_clock ON COMMIT DROP AS
+SELECT
+  ((clock_timestamp() AT TIME ZONE 'UTC')::date) AS today,
+  ((clock_timestamp() AT TIME ZONE 'UTC')::date - 1) AS sla_day;
+
+CREATE TEMP TABLE ncm_fixture ON COMMIT DROP AS
+SELECT
+  device.organization_id,
+  device.building_id,
+  device.id AS device_id,
+  (row_number() OVER (ORDER BY device.building_id))::integer AS ordinal
+FROM public.network_devices device
+WHERE device.organization_id = '${DEMO_ORGANIZATION_ID}'
+  AND device.device_kind = 'MIKROTIK'
+  AND device.is_active;
+
+-- ---------------------------------------------------------------------------
+-- Representative telemetry. Two DEMO buildings, 24 hourly device samples each
+-- on the SLA day, with the four samples inside 02:00-06:00 UTC unreachable.
+-- Building A has an ACTIVE maintenance window over exactly those hours;
+-- building B has a CANCELLED one. Same samples, opposite expected SLA.
+-- ---------------------------------------------------------------------------
+DO $seed$
+DECLARE
+  v_day date;
+  v_a ncm_fixture%ROWTYPE;
+  v_b ncm_fixture%ROWTYPE;
+  v_hour integer;
+  v_observed timestamptz;
+  v_wan uuid;
+  v_lan uuid;
+BEGIN
+  SELECT sla_day INTO v_day FROM ncm_clock;
+  SELECT * INTO v_a FROM ncm_fixture WHERE ordinal = 1;
+  SELECT * INTO v_b FROM ncm_fixture WHERE ordinal = 2;
+  IF v_a.device_id IS NULL OR v_b.device_id IS NULL THEN
+    RAISE EXCEPTION
+      'The disposable fleet seed no longer provides two DEMO MikroTik routers';
+  END IF;
+
+  FOR v_hour IN 0..23 LOOP
+    v_observed :=
+      (v_day::timestamp + make_interval(hours => v_hour, mins => 30))
+      AT TIME ZONE 'UTC';
+    INSERT INTO public.network_device_samples (
+      organization_id, building_id, device_id, observed_at, reachable,
+      latency_ms, packet_loss_pct, cpu_pct, memory_used_pct, connection_count
+    ) VALUES
+      (v_a.organization_id, v_a.building_id, v_a.device_id, v_observed,
+       v_hour NOT BETWEEN 2 AND 5, 12.5, 0, 30, 41, 7),
+      (v_b.organization_id, v_b.building_id, v_b.device_id, v_observed,
+       v_hour NOT BETWEEN 2 AND 5, 20.0, 0, 40, 51, 9);
+  END LOOP;
+
+  INSERT INTO public.network_maintenance_windows (
+    organization_id, building_id, status, starts_at, ends_at, reason,
+    created_by, request_hash, idempotency_key
+  ) VALUES (
+    v_a.organization_id, v_a.building_id, 'SCHEDULED',
+    (v_day::timestamp + interval '2 hours') AT TIME ZONE 'UTC',
+    (v_day::timestamp + interval '6 hours') AT TIME ZONE 'UTC',
+    'planned firmware upgrade window',
+    '${DEMO_OWNER_ID}'::uuid, repeat('a', 64), 'ncm-window-active-a'
+  );
+
+  INSERT INTO public.network_maintenance_windows (
+    organization_id, building_id, status, starts_at, ends_at, reason,
+    created_by, request_hash, idempotency_key,
+    cancelled_at, cancelled_by, cancellation_reason
+  ) VALUES (
+    v_b.organization_id, v_b.building_id, 'CANCELLED',
+    (v_day::timestamp + interval '2 hours') AT TIME ZONE 'UTC',
+    (v_day::timestamp + interval '6 hours') AT TIME ZONE 'UTC',
+    'planned firmware upgrade window',
+    '${DEMO_OWNER_ID}'::uuid, repeat('b', 64), 'ncm-window-cancelled-b',
+    (v_day::timestamp + interval '1 hour') AT TIME ZONE 'UTC',
+    '${DEMO_OWNER_ID}'::uuid, 'operator cancelled the window'
+  );
+
+  INSERT INTO public.network_incidents (
+    organization_id, building_id, device_id, fingerprint, incident_type,
+    severity, status, title, summary, availability_impact,
+    opened_at, last_observed_at, resolved_at
+  ) VALUES (
+    v_a.organization_id, v_a.building_id, v_a.device_id,
+    'ncm-availability-a-0001', 'ROUTER_UNREACHABLE', 'CRITICAL', 'RESOLVED',
+    'Router unreachable', 'Router stopped answering on the SLA day', true,
+    (v_day::timestamp + interval '1 hour') AT TIME ZONE 'UTC',
+    (v_day::timestamp + interval '90 minutes') AT TIME ZONE 'UTC',
+    (v_day::timestamp + interval '90 minutes') AT TIME ZONE 'UTC'
+  ), (
+    v_a.organization_id, v_a.building_id, v_a.device_id,
+    'ncm-informational-a-0001', 'CONFIG_DRIFT', 'WARNING', 'RESOLVED',
+    'Configuration drift', 'Drift detected and reconciled', false,
+    (v_day::timestamp + interval '3 hours') AT TIME ZONE 'UTC',
+    (v_day::timestamp + interval '4 hours') AT TIME ZONE 'UTC',
+    (v_day::timestamp + interval '4 hours') AT TIME ZONE 'UTC'
+  );
+
+  INSERT INTO public.network_interfaces (
+    organization_id, building_id, device_id, interface_key, display_name,
+    interface_kind, interface_role, is_protected
+  ) VALUES (
+    v_a.organization_id, v_a.building_id, v_a.device_id, 'ether1',
+    'WAN uplink', 'ETHERNET', 'WAN', true
+  ) RETURNING id INTO v_wan;
+
+  INSERT INTO public.network_interfaces (
+    organization_id, building_id, device_id, interface_key, display_name,
+    interface_kind, interface_role, is_protected
+  ) VALUES (
+    v_a.organization_id, v_a.building_id, v_a.device_id, 'ether5',
+    'Tenant access port', 'ETHERNET', 'ACCESS', false
+  ) RETURNING id INTO v_lan;
+
+  v_observed := (v_day::timestamp + interval '10 hours 30 minutes')
+    AT TIME ZONE 'UTC';
+  INSERT INTO public.network_interface_samples (
+    organization_id, building_id, device_id, interface_id, observed_at,
+    link_up, rx_bps, tx_bps, utilization_pct, error_delta
+  ) VALUES
+    (v_a.organization_id, v_a.building_id, v_a.device_id, v_wan, v_observed,
+     true, 1000000, 2000000, 12.5, 0),
+    (v_a.organization_id, v_a.building_id, v_a.device_id, v_lan, v_observed,
+     true, 3000000, 4000000, 25.0, 0);
+
+  INSERT INTO public.network_client_current (
+    organization_id, building_id, device_id, session_key, client_fingerprint,
+    first_seen_at, last_seen_at, observed_at, expires_at
+  ) VALUES
+    (v_a.organization_id, v_a.building_id, v_a.device_id,
+     'ncm-expired-lease-0001', 'ncm-expired-fingerprint-0001',
+     clock_timestamp() - interval '4 hours',
+     clock_timestamp() - interval '3 hours',
+     clock_timestamp() - interval '3 hours',
+     clock_timestamp() - interval '1 hour'),
+    (v_a.organization_id, v_a.building_id, v_a.device_id,
+     'ncm-live-lease-000001', 'ncm-live-fingerprint-000001',
+     clock_timestamp() - interval '1 hour',
+     clock_timestamp() - interval '10 minutes',
+     clock_timestamp() - interval '10 minutes',
+     clock_timestamp() + interval '1 hour');
+END;
+$seed$;
+
+-- ==== partition pre-creation (dynamic format() DDL) =========================
+DO $partitions$
+DECLARE
+  v_today date;
+  v_before integer;
+  v_after integer;
+BEGIN
+  SELECT today INTO v_today FROM ncm_clock;
+  PERFORM app_private.network_center_ensure_raw_partitions_v1(
+    v_today - 1, v_today + 31
+  );
+  SELECT count(*)::integer INTO v_before
+  FROM pg_class child
+  JOIN pg_namespace child_ns ON child_ns.oid = child.relnamespace
+  WHERE child_ns.nspname = 'public'
+    AND child.relname ~ '^network_(device|interface)_samples_[0-9]{8}$';
+
+  PERFORM pg_temp.ncm_assert(
+    'partition-precreation-covers-the-31-day-horizon',
+    to_regclass(
+      'public.network_device_samples_' || to_char(v_today + 31, 'YYYYMMDD')
+    ) IS NOT NULL
+    AND to_regclass(
+      'public.network_interface_samples_' || to_char(v_today + 31, 'YYYYMMDD')
+    ) IS NOT NULL
+    AND v_before >= 66,
+    'partition horizon is ' || v_before || ' partitions'
+  );
+
+  PERFORM app_private.network_center_ensure_raw_partitions_v1(
+    v_today - 1, v_today + 31
+  );
+  SELECT count(*)::integer INTO v_after
+  FROM pg_class child
+  JOIN pg_namespace child_ns ON child_ns.oid = child.relnamespace
+  WHERE child_ns.nspname = 'public'
+    AND child.relname ~ '^network_(device|interface)_samples_[0-9]{8}$';
+  PERFORM pg_temp.ncm_assert(
+    'partition-precreation-is-repeat-safe',
+    v_after = v_before,
+    v_before || ' -> ' || v_after
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'raw-partitions-are-rls-enabled-and-api-unreachable',
+    (SELECT bool_and(child.relrowsecurity)
+     FROM pg_class child
+     JOIN pg_namespace child_ns ON child_ns.oid = child.relnamespace
+     WHERE child_ns.nspname = 'public'
+       AND child.relname ~ '^network_device_samples_[0-9]{8}$')
+    AND NOT has_table_privilege(
+      'authenticated',
+      'public.network_device_samples_' || to_char(v_today, 'YYYYMMDD'),
+      'SELECT'
+    ),
+    'a pre-created partition is readable or has RLS off'
+  );
+END;
+$partitions$;
+
+DO $partition_range$
+DECLARE
+  v_today date;
+BEGIN
+  SELECT today INTO v_today FROM ncm_clock;
+  PERFORM app_private.network_center_ensure_raw_partitions_v1(
+    v_today, v_today + 63
+  );
+  RAISE EXCEPTION
+    'MAINTENANCE RUNTIME PROOF FAILED [partition-precreation-refuses-an-unbounded-range]: accepted 63 days';
+EXCEPTION WHEN invalid_parameter_value THEN
+  PERFORM pg_temp.ncm_assert(
+    'partition-precreation-refuses-an-unbounded-range', true, ''
+  );
+END;
+$partition_range$;
+
+-- ==== hourly rollup =========================================================
+DO $hourly$
+DECLARE
+  v_day date;
+  v_bucket timestamptz;
+  v_a ncm_fixture%ROWTYPE;
+  v_rows integer;
+  v_again integer;
+BEGIN
+  SELECT sla_day INTO v_day FROM ncm_clock;
+  SELECT * INTO v_a FROM ncm_fixture WHERE ordinal = 1;
+  v_bucket := (v_day::timestamp + interval '10 hours') AT TIME ZONE 'UTC';
+
+  v_rows := app_private.network_center_rollup_hourly_v1(v_bucket);
+
+  PERFORM pg_temp.ncm_assert(
+    'hourly-rollup-aggregates-real-device-samples',
+    v_rows > 0
+    AND EXISTS (
+      SELECT 1
+      FROM public.network_metric_hourly metric
+      WHERE metric.organization_id = v_a.organization_id
+        AND metric.building_id = v_a.building_id
+        AND metric.series_kind = 'DEVICE'
+        AND metric.series_id = v_a.device_id
+        AND metric.bucket_hour = v_bucket
+        AND metric.metric_name = 'latency_ms'
+        AND metric.sample_count = 1
+        AND metric.avg_value = 12.5
+        AND metric.unit = 'ms'
+    )
+    AND EXISTS (
+      SELECT 1
+      FROM public.network_metric_hourly metric
+      WHERE metric.series_id = v_a.device_id
+        AND metric.bucket_hour = v_bucket
+        AND metric.metric_name = 'reachable_pct'
+        AND metric.avg_value = 100
+    ),
+    'device metrics for ' || v_bucket || ' are missing or wrong'
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'hourly-rollup-covers-only-wan-and-uplink-interfaces',
+    EXISTS (
+      SELECT 1
+      FROM public.network_metric_hourly metric
+      JOIN public.network_interfaces interface
+        ON interface.id = metric.series_id
+      WHERE metric.series_kind = 'INTERFACE'
+        AND metric.bucket_hour = v_bucket
+        AND interface.interface_role = 'WAN'
+        AND metric.metric_name = 'rx_bps'
+        AND metric.avg_value = 1000000
+    )
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.network_metric_hourly metric
+      JOIN public.network_interfaces interface
+        ON interface.id = metric.series_id
+      WHERE metric.series_kind = 'INTERFACE'
+        AND interface.interface_role = 'ACCESS'
+    ),
+    'the interface rollup admitted a non-uplink interface or lost the WAN one'
+  );
+
+  SELECT count(*)::integer INTO v_rows
+  FROM public.network_metric_hourly metric
+  WHERE metric.bucket_hour = v_bucket;
+  PERFORM app_private.network_center_rollup_hourly_v1(v_bucket);
+  SELECT count(*)::integer INTO v_again
+  FROM public.network_metric_hourly metric
+  WHERE metric.bucket_hour = v_bucket;
+  PERFORM pg_temp.ncm_assert(
+    'hourly-rollup-is-repeat-safe',
+    v_again = v_rows AND v_rows > 0,
+    v_rows || ' -> ' || v_again
+  );
+END;
+$hourly$;
+
+DO $hourly_null$
+BEGIN
+  PERFORM app_private.network_center_rollup_hourly_v1(NULL);
+  RAISE EXCEPTION
+    'MAINTENANCE RUNTIME PROOF FAILED [hourly-rollup-rejects-a-null-hour]: accepted NULL';
+EXCEPTION WHEN invalid_parameter_value THEN
+  PERFORM pg_temp.ncm_assert('hourly-rollup-rejects-a-null-hour', true, '');
+END;
+$hourly_null$;
+
+-- ==== daily SLA rollup - the regression surface =============================
+-- Both conditional EXECUTE blocks in network_center_rollup_sla_daily_v1 run
+-- here against real rows, so a late-bound failure in either one fails this
+-- proof. Every assertion below is differential: it distinguishes "the branch
+-- ran and did its job" from "the branch was skipped", which is the only way an
+-- error inside dynamic SQL can be told apart from silence.
+DO $sla$
+DECLARE
+  v_day date;
+  v_a ncm_fixture%ROWTYPE;
+  v_b ncm_fixture%ROWTYPE;
+  v_rows integer;
+  v_row public.network_sla_daily%ROWTYPE;
+  v_other public.network_sla_daily%ROWTYPE;
+BEGIN
+  SELECT sla_day INTO v_day FROM ncm_clock;
+  SELECT * INTO v_a FROM ncm_fixture WHERE ordinal = 1;
+  SELECT * INTO v_b FROM ncm_fixture WHERE ordinal = 2;
+
+  v_rows := app_private.network_center_rollup_sla_daily_v1(v_day);
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-writes-one-row-per-building-from-raw-samples',
+    v_rows = 2,
+    'rollup reported ' || v_rows || ' rows'
+  );
+
+  SELECT * INTO v_row
+  FROM public.network_sla_daily daily
+  WHERE daily.building_id = v_a.building_id AND daily.sla_day = v_day;
+  SELECT * INTO v_other
+  FROM public.network_sla_daily daily
+  WHERE daily.building_id = v_b.building_id AND daily.sla_day = v_day;
+
+  -- The maintenance CTE aggregated 02:00-06:00 into excluded seconds.
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-subtracts-maintenance-window-seconds',
+    v_row.excluded_maintenance_seconds = 14400
+    AND v_row.eligible_seconds = 72000
+    AND v_row.total_seconds = 86400,
+    'excluded=' || v_row.excluded_maintenance_seconds
+      || ' eligible=' || v_row.eligible_seconds
+  );
+
+  -- This is the exact clause that carried the reserved alias: the NOT EXISTS
+  -- probe that drops samples observed INSIDE a maintenance window. All four
+  -- unreachable samples sit inside the window, so with the probe working the
+  -- building scores 100% over 20 samples. Without it, it scores 20/24.
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-ignores-samples-observed-inside-a-maintenance-window',
+    v_row.sample_count = 20
+    AND v_row.uptime_pct = 100
+    AND v_row.uptime_seconds = 72000
+    AND v_row.outage_seconds = 0,
+    'samples=' || v_row.sample_count || ' uptime_pct=' || v_row.uptime_pct
+  );
+
+  -- Same samples, same hours, but the window is CANCELLED: nothing is excluded
+  -- and every sample counts. A rollup that ignored maintenance entirely would
+  -- make this row identical to the one above.
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-does-not-exclude-a-cancelled-maintenance-window',
+    v_other.excluded_maintenance_seconds = 0
+    AND v_other.eligible_seconds = 86400
+    AND v_other.sample_count = 24
+    AND v_other.uptime_pct = 83.3333,
+    'excluded=' || v_other.excluded_maintenance_seconds
+      || ' samples=' || v_other.sample_count
+      || ' uptime_pct=' || v_other.uptime_pct
+  );
+
+  -- Second conditional EXECUTE block: the incident projection.
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-counts-availability-incidents-and-computes-mttr',
+    v_row.incident_count = 1
+    AND v_row.mttr_seconds = 1800,
+    'incidents=' || v_row.incident_count
+      || ' mttr=' || coalesce(v_row.mttr_seconds::text, '<null>')
+  );
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-ignores-incidents-without-availability-impact',
+    v_other.incident_count = 0 AND v_other.mttr_seconds IS NULL,
+    'the building with no availability incident was given ' || v_other.incident_count
+  );
+
+  -- Repeat safety across the whole three-statement pipeline, including both
+  -- dynamic blocks: the second run must land on exactly the same numbers.
+  PERFORM app_private.network_center_rollup_sla_daily_v1(v_day);
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-is-repeat-safe-across-both-dynamic-blocks',
+    EXISTS (
+      SELECT 1
+      FROM public.network_sla_daily daily
+      WHERE daily.building_id = v_a.building_id
+        AND daily.sla_day = v_day
+        AND daily.excluded_maintenance_seconds = v_row.excluded_maintenance_seconds
+        AND daily.eligible_seconds = v_row.eligible_seconds
+        AND daily.sample_count = v_row.sample_count
+        AND daily.uptime_pct = v_row.uptime_pct
+        AND daily.incident_count = v_row.incident_count
+        AND daily.mttr_seconds = v_row.mttr_seconds
+    )
+    AND (
+      SELECT count(*) FROM public.network_sla_daily daily
+      WHERE daily.sla_day = v_day
+    ) = 2,
+    'a repeat rollup changed the day'
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'sla-rollup-never-writes-outside-the-demo-organization',
+    NOT EXISTS (
+      SELECT 1
+      FROM public.network_sla_daily daily
+      WHERE daily.organization_id <> '${DEMO_ORGANIZATION_ID}'::uuid
+    ),
+    'the rollup wrote a row for another tenant'
+  );
+END;
+$sla$;
+
+DO $sla_null$
+BEGIN
+  PERFORM app_private.network_center_rollup_sla_daily_v1(NULL);
+  RAISE EXCEPTION
+    'MAINTENANCE RUNTIME PROOF FAILED [sla-rollup-rejects-a-null-day]: accepted NULL';
+EXCEPTION WHEN invalid_parameter_value THEN
+  PERFORM pg_temp.ncm_assert('sla-rollup-rejects-a-null-day', true, '');
+END;
+$sla_null$;
+
+-- ==== retention (dynamic DROP TABLE branch) =================================
+DO $retention$
+DECLARE
+  v_today date;
+  v_day date;
+  v_ancient date;
+  v_report jsonb;
+  v_dropped integer;
+BEGIN
+  SELECT today, sla_day INTO v_today, v_day FROM ncm_clock;
+  v_ancient := v_today - 40;
+
+  PERFORM app_private.network_center_ensure_raw_partitions_v1(
+    v_ancient, v_ancient + 1
+  );
+  PERFORM pg_temp.ncm_assert(
+    'retention-fixture-created-an-out-of-horizon-partition',
+    to_regclass(
+      'public.network_device_samples_' || to_char(v_ancient, 'YYYYMMDD')
+    ) IS NOT NULL,
+    'the ageing fixture did not create a partition to drop'
+  );
+
+  v_report := app_private.network_center_retention_v1(clock_timestamp());
+  v_dropped := (v_report ->> 'raw_partitions_dropped')::integer;
+
+  PERFORM pg_temp.ncm_assert(
+    'retention-drops-raw-partitions-past-the-14-day-horizon',
+    v_dropped >= 4
+    AND to_regclass(
+      'public.network_device_samples_' || to_char(v_ancient, 'YYYYMMDD')
+    ) IS NULL
+    AND to_regclass(
+      'public.network_interface_samples_' || to_char(v_ancient, 'YYYYMMDD')
+    ) IS NULL,
+    'raw_partitions_dropped=' || coalesce(v_dropped::text, '<null>')
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'retention-keeps-partitions-inside-the-horizon-and-their-rows',
+    to_regclass(
+      'public.network_device_samples_' || to_char(v_day, 'YYYYMMDD')
+    ) IS NOT NULL
+    AND (
+      SELECT count(*) FROM public.network_device_samples sample
+      WHERE sample.observed_at >= v_day::timestamp AT TIME ZONE 'UTC'
+        AND sample.observed_at < (v_day + 1)::timestamp AT TIME ZONE 'UTC'
+    ) = 48,
+    'retention removed telemetry it was supposed to keep'
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'retention-restores-the-forward-partition-horizon',
+    to_regclass(
+      'public.network_device_samples_' || to_char(v_today + 31, 'YYYYMMDD')
+    ) IS NOT NULL,
+    'retention left the ingest horizon short'
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'retention-reports-every-documented-budget',
+    v_report ? 'hourly_rows_deleted'
+    AND v_report ? 'daily_rows_deleted'
+    AND v_report ? 'client_sessions_deleted'
+    AND v_report ? 'terminal_commands_deleted'
+    AND v_report ? 'command_observations_deleted'
+    AND (v_report ->> 'raw_retention_days')::integer = 14,
+    v_report::text
+  );
+END;
+$retention$;
+
+-- ==== the whole watchdog, end to end ========================================
+DO $watchdog$
+DECLARE
+  v_today date;
+  v_day date;
+  v_a ncm_fixture%ROWTYPE;
+  v_report jsonb;
+  v_second jsonb;
+BEGIN
+  SELECT today, sla_day INTO v_today, v_day FROM ncm_clock;
+  SELECT * INTO v_a FROM ncm_fixture WHERE ordinal = 1;
+
+  v_report := public.network_center_watchdog_maintenance_v1(clock_timestamp());
+
+  PERFORM pg_temp.ncm_assert(
+    'watchdog-maintenance-runs-every-callee-for-real',
+    (v_report ->> 'skipped')::boolean IS FALSE
+    AND (v_report ->> 'dailyMaintenanceRan')::boolean
+    AND (v_report ->> 'partitionHorizonThrough')::date = v_today + 31
+    AND v_report -> 'retention' IS NOT NULL
+    AND jsonb_typeof(v_report -> 'retention') = 'object',
+    v_report::text
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'watchdog-maintenance-purges-only-expired-client-leases',
+    (v_report ->> 'expiredClients')::bigint = 1
+    AND EXISTS (
+      SELECT 1 FROM public.network_client_current client
+      WHERE client.session_key = 'ncm-live-lease-000001'
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.network_client_current client
+      WHERE client.session_key = 'ncm-expired-lease-0001'
+    ),
+    v_report ->> 'expiredClients'
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'watchdog-maintenance-transitions-maintenance-window-status',
+    (v_report ->> 'maintenanceWindowsUpdated')::bigint = 1
+    AND EXISTS (
+      SELECT 1 FROM public.network_maintenance_windows window_row
+      WHERE window_row.idempotency_key = 'ncm-window-active-a'
+        AND window_row.status = 'COMPLETED'
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.network_maintenance_windows window_row
+      WHERE window_row.idempotency_key = 'ncm-window-cancelled-b'
+        AND window_row.status = 'CANCELLED'
+    ),
+    v_report ->> 'maintenanceWindowsUpdated'
+  );
+
+  -- The daily branch ran inside the watchdog, over the same fixture, and
+  -- reproduced the same SLA numbers the direct call produced.
+  PERFORM pg_temp.ncm_assert(
+    'watchdog-daily-branch-reproduces-the-sla-day',
+    EXISTS (
+      SELECT 1 FROM public.network_sla_daily daily
+      WHERE daily.building_id = v_a.building_id
+        AND daily.sla_day = v_day
+        AND daily.excluded_maintenance_seconds = 14400
+        AND daily.sample_count = 20
+        AND daily.uptime_pct = 100
+        AND daily.incident_count = 1
+    ),
+    'the watchdog daily branch did not reproduce the SLA row'
+  );
+
+  v_second := public.network_center_watchdog_maintenance_v1(clock_timestamp());
+  PERFORM pg_temp.ncm_assert(
+    'watchdog-daily-branch-runs-once-per-utc-day',
+    (v_second ->> 'skipped')::boolean IS FALSE
+    AND (v_second ->> 'dailyMaintenanceRan')::boolean IS FALSE
+    AND v_second -> 'retention' = 'null'::jsonb,
+    v_second::text
+  );
+
+  PERFORM pg_temp.ncm_assert(
+    'watchdog-maintenance-writes-its-own-run-log',
+    (SELECT count(*) FROM app_private.network_center_watchdog_runs
+     WHERE job = 'MAINTENANCE') = 2
+    AND (SELECT maintenance_ran_at IS NOT NULL
+           AND daily_maintenance_day = v_today
+         FROM app_private.network_center_watchdog_state
+         WHERE singleton),
+    'the maintenance run log or watchdog state is wrong'
+  );
+END;
+$watchdog$;
+
+SELECT jsonb_build_object(
+  'status', 'PASS',
+  'invariants', (SELECT count(*)::integer FROM pg_temp.ncm_results),
+  'proofNonce', (
+    SELECT proof_nonce FROM app_private.network_center_disposable_proof
+    WHERE proof_nonce = '${nonce}'
+  ),
+  'names', (SELECT jsonb_agg(name ORDER BY name) FROM pg_temp.ncm_results)
+) AS disposable_maintenance_runtime_proof;
+
+ROLLBACK;
+`;
+}
+
+export function parseMaintenanceRuntimeVerdict(output, { expectedLocalProof } = {}) {
+  const verdict = parseProofVerdict(output);
+  if (
+    verdict?.status !== "PASS"
+    || verdict?.invariants !== MAINTENANCE_RUNTIME_INVARIANTS
+    || verdict?.proofNonce !== expectedLocalProof?.proofNonce
+  ) {
+    throw new Error(
+      "Disposable maintenance runtime proof did not return the expected PASS verdict: "
+        + JSON.stringify(verdict),
+    );
+  }
+  if (
+    !Array.isArray(verdict.names)
+    || new Set(verdict.names).size !== MAINTENANCE_RUNTIME_INVARIANTS
+  ) {
+    throw new Error(
+      "Disposable maintenance runtime proof returned a malformed assertion ledger: "
+        + JSON.stringify(verdict?.names),
+    );
+  }
+  return verdict;
+}
+
+/**
+ * Stage 2: run the real maintenance functions on a real cluster built from the
+ * real migrations, so a late-binding defect in dynamic SQL fails a test instead
+ * of failing silently in production.
+ */
+export async function runRealMaintenanceProof({ environment = process.env } = {}) {
+  return runDisposableLocalClusterMatrix({
+    buildSql: buildMaintenanceRuntimeSql,
+    parseVerdict: parseMaintenanceRuntimeVerdict,
+    environment,
+  });
+}
+
 function executableName(name) {
   return process.platform === "win32" ? `${name}.exe` : name;
 }
@@ -1252,6 +1988,7 @@ async function main() {
   }
   if (args[0] === "--dry-run") {
     await readFile(WATCHDOG_MIGRATION_PATH, "utf8");
+    buildMaintenanceRuntimeSql({ localProof: { proofNonce: "0".repeat(32) } });
     process.stdout.write(
       "Disposable watchdog proof dry-run passed; no PostgreSQL process was started.\n",
     );
@@ -1261,6 +1998,16 @@ async function main() {
   process.stdout.write(
     `Disposable PostgreSQL watchdog migration proof PASS: `
       + `${verdict.invariants}/${WATCHDOG_PROOF_INVARIANTS} invariants.\n`,
+  );
+  const maintenance = await runRealMaintenanceProof();
+  process.stdout.write(
+    `Disposable PostgreSQL maintenance runtime proof PASS: `
+      + `${maintenance.invariants}/${MAINTENANCE_RUNTIME_INVARIANTS} invariants.\n`,
+  );
+  process.stdout.write(
+    `Disposable PostgreSQL watchdog proof total: `
+      + `${verdict.invariants + maintenance.invariants}/`
+      + `${WATCHDOG_PROOF_INVARIANTS + MAINTENANCE_RUNTIME_INVARIANTS} invariants.\n`,
   );
 }
 
