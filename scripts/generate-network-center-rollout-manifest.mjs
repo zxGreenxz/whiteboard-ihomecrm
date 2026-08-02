@@ -73,7 +73,10 @@ import {
   candidateLocalPostgresBins,
 } from "./network-center-disposable-db.mjs";
 import { collectDeploymentFiles, computeSourceDigest } from "./deploy-edge-fn.mjs";
-import { catalogDescriptorSql } from "./apply-network-center-rollout.mjs";
+import {
+  catalogDescriptorSql,
+  normalizedPolicyExpressionSql,
+} from "./apply-network-center-rollout.mjs";
 
 const CLUSTER_PREFIX = "network-center-pg-";
 const TAMPER_PREFIX = "network-center-manifest-tamper-";
@@ -204,6 +207,50 @@ SELECT descriptor FROM (
     FROM pg_publication_tables t
    WHERE t.pubname = 'supabase_realtime' AND t.schemaname IN (${MEASURED_SCHEMAS})
   UNION ALL
+  -- The SHAPE is rendered here independently of catalogDescriptorSql's policy
+  -- branch, on purpose, exactly like every other kind in this query: two
+  -- readings of the same catalog that agree by inspection are two readings that
+  -- can silently diverge, and the cross-check at the end of measureCatalogStages
+  -- makes them prove it instead.
+  --
+  -- The predicate NORMALIZATION is deliberately the shared helper rather than a
+  -- second copy of the regex. Copying it would only test whether the copy was
+  -- faithful; sharing it makes the cross-check test the property that actually
+  -- matters, because this query runs under SET search_path = pg_catalog and
+  -- the descriptor SQL runs under the psql default. If the normalization failed
+  -- to make pg_get_expr search_path-independent, generation would fail here
+  -- rather than ship a manifest production could never satisfy.
+  SELECT 'policy:' || n.nspname || '.' || c.relname || ':' || pol.polname
+      || ':' || CASE WHEN pol.polpermissive THEN 'permissive' ELSE 'restrictive' END
+      || ':' || CASE pol.polcmd
+                  WHEN '*' THEN 'all'
+                  WHEN 'r' THEN 'select'
+                  WHEN 'a' THEN 'insert'
+                  WHEN 'w' THEN 'update'
+                  WHEN 'd' THEN 'delete'
+                  ELSE 'unknown'
+                END
+      || ':' || coalesce(
+                  CASE
+                    WHEN pol.polroles = '{0}'::oid[] THEN 'public'
+                    ELSE (
+                      SELECT string_agg(policy_role.rolname, ',' ORDER BY policy_role.rolname)
+                        FROM pg_roles policy_role
+                       WHERE policy_role.oid = ANY (pol.polroles)
+                    )
+                  END, '')
+      || ':' || encode(
+                  sha256(convert_to(
+                    ${normalizedPolicyExpressionSql("pg_get_expr(pol.polqual, pol.polrelid)")}
+                    || chr(10) ||
+                    ${normalizedPolicyExpressionSql("pg_get_expr(pol.polwithcheck, pol.polrelid)")},
+                    'UTF8')),
+                  'hex')
+    FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname IN (${MEASURED_SCHEMAS}) AND NOT c.relispartition
+  UNION ALL
   SELECT 'function_service_only:' || p.oid::regprocedure::text
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname IN (${MEASURED_SCHEMAS})
@@ -221,6 +268,33 @@ SELECT descriptor FROM (
          AND (acl.grantee = 0 OR grantee.rolname NOT IN ('postgres', 'service_role'))
      )
 ) catalog ORDER BY 1;`;
+
+// ---------------------------------------------------------------------------
+// Platform history that runs BETWEEN two Network Center stages
+// ---------------------------------------------------------------------------
+//
+// The disposable cluster replays the platform bootstrap and then the Network
+// Center migrations, which models a database whose only history is this rollout.
+// Production's history is not that. The four base migrations
+// (20260729010000..040000) were applied before 2026-08-01; the platform's
+// sandbox-hide sweep ran ON 2026-08-01 and gave every `public` relation that had
+// RLS and an `organization_id` a `<table>_hide_sandbox_admin` policy - which by
+// then included 24 Network Center tables; the hardening wave
+// (20260729130000..141000) landed afterwards and created five more tables the
+// sweep never saw. That is precisely why 20260729142000 exists.
+//
+// Replay those two platform migrations at the point production ran them and the
+// measured diff tells the truth: stage 17 introduces exactly the five policies
+// it is for. Skip them and the disposable replay attributes all 29 to stage 17,
+// the manifest asserts 24 objects production already had before this rollout
+// reached them, classifyCatalog reports `divergent`, and the rollout that this
+// work exists to unblock becomes unappliable. They are read from the repository
+// rather than transcribed, so they cannot drift from what production ran.
+export const PLATFORM_HISTORY_AFTER_MIGRATION = FLEET_SEED_AFTER_MIGRATION;
+export const PLATFORM_HISTORY_MIGRATIONS = [
+  "supabase/migrations/20260801020000_sandbox_org_hide_from_super_admin.sql",
+  "supabase/migrations/20260801040000_fix_sandbox_hide_null_org.sql",
+];
 
 // Data-state descriptor: it cannot be measured by the structural query above
 // because its predicate reads the table itself, which does not parse before the
@@ -288,6 +362,12 @@ export async function measureCatalogStages({
       `Fleet seed anchor ${FLEET_SEED_AFTER_MIGRATION} is missing; the measured seed order is no longer valid`,
     );
   }
+  const platformHistory = await Promise.all(
+    PLATFORM_HISTORY_MIGRATIONS.map(async (path) => ({
+      path,
+      body: await readFile(join(repoRoot, path), "utf8"),
+    })),
+  );
 
   const port = await availableLoopbackPort();
   await mkdir(resolve(tempRoot), { recursive: true });
@@ -357,6 +437,7 @@ export async function measureCatalogStages({
     psql(bootstrap);
     const baseline = snapshot();
     const stages = [];
+    const platform = new Set();
     for (const migration of migrations) {
       log(`cluster: ${migration.name}`);
       try {
@@ -372,6 +453,27 @@ export async function measureCatalogStages({
       // MikroTik devices exist when it runs.
       if (migration.name === FLEET_SEED_AFTER_MIGRATION) {
         psql(buildLocalClusterSeedSql({ includeFleetFixtures: true }));
+      }
+      // Platform history is measured as its own delta and then EXCLUDED from
+      // every stage's assertions. Attributing it to the surrounding stage would
+      // be worse than ignoring it: stage 4 would demand 24 policies its own SQL
+      // never creates, so a from-scratch rollout would fail its own postcondition.
+      if (migration.name === PLATFORM_HISTORY_AFTER_MIGRATION) {
+        const beforePlatform = snapshot();
+        for (const entry of platformHistory) {
+          log(`cluster: platform history ${basename(entry.path)}`);
+          try {
+            psql(entry.body);
+          } catch (error) {
+            throw new Error(
+              `Platform history ${entry.path} failed on the disposable cluster: ${error.message}`,
+              { cause: error },
+            );
+          }
+        }
+        for (const descriptor of snapshot()) {
+          if (!beforePlatform.has(descriptor)) platform.add(descriptor);
+        }
       }
       stages.push({ path: migration.path, name: migration.name, present: snapshot() });
     }
@@ -398,7 +500,7 @@ export async function measureCatalogStages({
       );
     }
     log(`cluster: descriptor SQL agreed with the catalog on all ${universe.length} descriptors`);
-    return { baseline, stages };
+    return { baseline, stages, platform };
   } catch (error) {
     primaryError = error;
     throw error;
@@ -458,7 +560,7 @@ function descriptorTable(descriptor) {
  * discarded: a cap or a filter that does not say what it removed is how a
  * contract quietly stops covering the thing it exists to cover.
  */
-export function deriveAssignments({ baseline, stages }) {
+export function deriveAssignments({ baseline, stages, platform = new Set() }) {
   const dropped = [];
   const lastIndex = stages.length - 1;
   const firstSeen = new Map();
@@ -475,6 +577,19 @@ export function deriveAssignments({ baseline, stages }) {
     if (baseline.has(descriptor)) {
       // Created by the platform, not by this rollout. Asserting it would make
       // the manifest claim credit for objects production already has.
+      continue;
+    }
+    if (platform.has(descriptor)) {
+      // Same rule, one stage later: created by platform history that runs
+      // BETWEEN two Network Center stages. Reported rather than skipped in
+      // silence, because "the manifest quietly stopped covering this" is the
+      // failure mode this whole generator exists to prevent.
+      dropped.push({
+        descriptor,
+        reason:
+          "created by platform history replayed after " +
+          `${PLATFORM_HISTORY_AFTER_MIGRATION}, not by this rollout`,
+      });
       continue;
     }
     let monotonic = true;

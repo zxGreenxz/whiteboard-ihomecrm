@@ -56,6 +56,26 @@ function describeBodyMismatches(mismatches, limit = 3) {
 }
 
 /**
+ * Name the descriptors that are not there.
+ *
+ * "post-apply catalog is prefix" tells an operator that something is wrong and
+ * nothing about what. That is tolerable while every descriptor is a table or a
+ * function, because the missing object is usually obvious from the stage that
+ * failed. It is not tolerable for `policy:` descriptors: a policy that exists
+ * under the reviewed name but has been weakened to PERMISSIVE, retargeted to
+ * another role or neutered to `USING (true)` reports exactly the same way as one
+ * that was never created, and an audit that cannot say which is which cannot be
+ * used to investigate a suspected tenant-boundary regression. So the audit says
+ * it, bounded, and returns the full list to the caller.
+ */
+function describeMissingDescriptors(missing, limit = 5) {
+  if (!missing.length) return "";
+  const shown = missing.slice(0, limit).join(", ");
+  const rest = missing.length - Math.min(limit, missing.length);
+  return `; missing ${missing.length} descriptor(s): ${shown}${rest > 0 ? `, +${rest} more` : ""}`;
+}
+
+/**
  * Classify the live database against the reviewed release.
  *
  * `evidence` carries function-body digests. Without it this answers only "do the
@@ -154,20 +174,26 @@ export async function auditRollout({
   const names = expectedFunctionNames(expectations);
   const live = liveFunctionBodiesFromResult(await query(buildFunctionBodyProbeSql(names)));
   const classification = classifyCatalog(manifest, presentNames, { expectations, live });
+  const present = new Set(presentNames);
+  const missing = uniqueDescriptors.filter((descriptor) => !present.has(descriptor));
   const bodyReason = classification.bodyMismatches.length
     ? `; function bodies differ from the reviewed release: ${describeBodyMismatches(classification.bodyMismatches)}`
     : "";
+  const missingReason = describeMissingDescriptors(missing);
   if (mode === "preflight" && !["not_started", "prefix"].includes(classification.state)) {
     throw new Error(`Network Center preflight catalog is ${classification.state}${bodyReason}`);
   }
   if (mode === "post-apply" && classification.state !== "complete") {
-    throw new Error(`Network Center post-apply catalog is ${classification.state}${bodyReason}`);
+    throw new Error(
+      `Network Center post-apply catalog is ${classification.state}${bodyReason}${missingReason}`,
+    );
   }
   return {
     ...classification,
     catalogFingerprint: sha256(JSON.stringify([...presentNames].sort())),
     functionBodyFingerprint: functionBodyFingerprint(expectations, live),
     functionsVerified: names.length,
+    missing,
     present: presentNames,
   };
 }

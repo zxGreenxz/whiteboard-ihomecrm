@@ -233,6 +233,120 @@ test("catalog descriptors verify ACL, RLS, columns, indexes, realtime and inert 
   assert.match(sql, /rollout_state[\s\S]*OFF/i);
 });
 
+// A policy descriptor that only asserted existence would be a decoy: the whole
+// point of 20260729142000 is a RESTRICTIVE / FOR SELECT / TO authenticated
+// tenant boundary, and a same-named PERMISSIVE FOR ALL TO public policy - or one
+// whose predicate has been reduced to `true` - satisfies "the policy exists"
+// while removing the boundary entirely.
+test("policy descriptors pin name, permissiveness, command, roles and predicate", () => {
+  assert.ok(applyModule, "apply module missing");
+  if (!applyModule) return;
+  const reviewed =
+    "policy:public.network_worker_building_status:network_worker_building_status_hide_sandbox_admin" +
+    `:restrictive:select:authenticated:${"4532c1be".repeat(8)}`;
+  const sql = applyModule.catalogDescriptorSql(reviewed);
+  assert.match(sql, /FROM pg_policy policy_row/);
+  assert.match(sql, /polrelid = to_regclass\('public\.network_worker_building_status'\)/);
+  assert.match(sql, /polname = 'network_worker_building_status_hide_sandbox_admin'/);
+  assert.match(sql, /polpermissive = false/, "RESTRICTIVE must be pinned, not assumed");
+  assert.match(sql, /polcmd = 'r'/, "FOR SELECT must be pinned, not assumed");
+  assert.match(sql, /END, ''\) = 'authenticated'/, "the role list must be pinned exactly");
+  assert.match(sql, /pg_get_expr\(policy_row\.polqual/, "the USING predicate must be digested");
+  assert.match(sql, /pg_get_expr\(policy_row\.polwithcheck/, "WITH CHECK must be digested too");
+  assert.match(sql, new RegExp(`'${"4532c1be".repeat(8)}'`));
+  // A weaker policy of the same name on the same table must NOT satisfy the
+  // reviewed descriptor: every downgrade produces different descriptor SQL.
+  const weakened = [
+    reviewed.replace(":restrictive:", ":permissive:"),
+    reviewed.replace(":select:", ":all:"),
+    reviewed.replace(":authenticated:", ":public:"),
+    reviewed.replace(`${"4532c1be".repeat(8)}`, "f".repeat(64)),
+  ];
+  for (const descriptor of weakened) {
+    assert.notEqual(applyModule.catalogDescriptorSql(descriptor), sql, descriptor);
+  }
+  // Every component is checked, and an unspellable one is refused rather than
+  // approximated - a descriptor the rollout cannot express exactly must fail the
+  // manifest, not be pinned as something slightly different.
+  const rejected = [
+    "policy:public.network_devices:p:restrictive:select:authenticated",
+    `policy:network_devices:p:restrictive:select:authenticated:${"a".repeat(64)}`,
+    `policy:public.network_devices:p:sometimes:select:authenticated:${"a".repeat(64)}`,
+    `policy:public.network_devices:p:restrictive:truncate:authenticated:${"a".repeat(64)}`,
+    `policy:public.network_devices:p:restrictive:select:role with space:${"a".repeat(64)}`,
+    "policy:public.network_devices:p:restrictive:select:authenticated:not-a-digest",
+  ];
+  for (const descriptor of rejected) {
+    assert.throws(() => applyModule.catalogDescriptorSql(descriptor), /Unsupported catalog descriptor/, descriptor);
+  }
+  // Absence has to be expressible too: the rollout asserts NOT(descriptor) for
+  // everything a stage has not yet introduced, and a descriptor that ERRORED on
+  // a missing table would abort a healthy stage instead of returning false.
+  assert.match(applyModule.catalogDescriptorSql(reviewed), /^EXISTS \(/);
+});
+
+test("the reviewed release is observable at stage 17 because of policy descriptors", async () => {
+  const manifest = JSON.parse(
+    readFileSync(new URL("scripts/network-center-rollout-manifest.json", root), "utf8"),
+  );
+  const last = manifest.migrations[manifest.migrations.length - 1];
+  assert.match(last.path, /20260729142000_network_center_hide_sandbox_policies\.sql$/);
+  const previous = new Set(manifest.migrations[manifest.migrations.length - 2].postApply.required);
+  const added = last.postApply.required.filter((descriptor) => !previous.has(descriptor));
+  // Green for the right reason: the stage is observable because the rollout can
+  // now SEE the five policies it creates, not because the guard was loosened.
+  assert.deepEqual(
+    added.map((descriptor) => descriptor.split(":")[1]).sort(),
+    [
+      "public.network_command_observations",
+      "public.network_managed_resources",
+      "public.network_org_mutation_gates",
+      "public.network_worker_assignments",
+      "public.network_worker_building_status",
+    ],
+  );
+  for (const descriptor of added) {
+    assert.match(
+      descriptor,
+      /^policy:[a-z_.]+:[a-z_]+_hide_sandbox_admin:restrictive:select:authenticated:[a-f0-9]{64}$/,
+    );
+  }
+});
+
+test("the audit names the descriptors that are missing instead of only a state", async () => {
+  assert.ok(auditModule, "audit module missing");
+  if (!auditModule) return;
+  const policy =
+    `policy:public.network_worker_building_status:network_worker_building_status_hide_sandbox_admin` +
+    `:restrictive:select:authenticated:${"a".repeat(64)}`;
+  const manifest = {
+    preflight: { required: ["table:public.organizations"] },
+    postApply: { required: ["table:public.network_devices", policy] },
+    migrations: [
+      { path: "one.sql", postApply: { required: ["table:public.network_devices"] } },
+      { path: "two.sql", postApply: { required: ["table:public.network_devices", policy] } },
+    ],
+  };
+  const sources = new Map([
+    ["one.sql", "CREATE TABLE public.network_devices (id uuid);"],
+    ["two.sql", "-- policy only\nSELECT 1;"],
+  ]);
+  const present = ["table:public.organizations", "table:public.network_devices"];
+  const query = async (sql) =>
+    /prosrc/i.test(sql) ? [] : [{ result: present.map((name) => ({ name, present: true })) }];
+  await assert.rejects(
+    auditModule.auditRollout({ manifest, sources, mode: "post-apply", query }),
+    (error) => {
+      assert.match(error.message, /post-apply catalog is prefix/);
+      assert.match(error.message, /missing 1 descriptor\(s\)/);
+      assert.match(error.message, /network_worker_building_status_hide_sandbox_admin/);
+      return true;
+    },
+  );
+  const preflight = await auditModule.auditRollout({ manifest, sources, mode: "preflight", query });
+  assert.deepEqual(preflight.missing, [policy]);
+});
+
 test("explicit resume reconciles one bounded receipt for every existing prefix stage", async () => {
   assert.ok(applyModule, "apply module missing");
   if (!applyModule) return;

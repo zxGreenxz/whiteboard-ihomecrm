@@ -51,6 +51,65 @@ export function stripMigrationTransactionControl(source, path = "migration.sql")
   return body.join("\n").trim();
 }
 
+// ---------------------------------------------------------------------------
+// policy: descriptors
+// ---------------------------------------------------------------------------
+//
+// WHY THIS KIND EXISTS
+// `rls:` says row level security is switched ON for a table. It says nothing
+// about which policies gate it, so a stage whose entire effect is CREATE POLICY
+// was invisible to the rollout: it added no catalog descriptor, owned no
+// function body, and assertStagesObservable refused the manifest rather than let
+// it be skipped in silence forever. pg_policy makes policies perfectly
+// observable, so the vocabulary - not the guard - was the thing that was wrong.
+//
+// WHAT THE DESCRIPTOR PINS
+//   policy:<schema>.<table>:<name>:<permissive|restrictive>:<cmd>:<roles>:<digest>
+// Existence alone is not enough to be worth asserting. A policy that still
+// exists under the reviewed name but has become `PERMISSIVE FOR ALL TO public`
+// is not the policy anybody reviewed - it is a tenant boundary that has been
+// deleted and replaced with a decoy. So the descriptor pins, in one atomic
+// claim:
+//   - the exact relation and the exact policy name (a different policy on the
+//     same table cannot satisfy it, and a rename makes it MISSING);
+//   - PERMISSIVE vs RESTRICTIVE, because a RESTRICTIVE hide-the-sandbox policy
+//     downgraded to PERMISSIVE stops ANDing and the rows come back;
+//   - the command, because FOR SELECT widened to FOR ALL changes what it gates;
+//   - the exact role set, because a policy with a role list is not evaluated at
+//     all for roles outside it - retargeting it is equivalent to dropping it;
+//   - a digest of the USING and WITH CHECK expressions, because
+//     `USING (true)` under the reviewed name is the cheapest possible neuter.
+const POLICY_COMMAND_CODES = new Map([
+  ["all", "*"],
+  ["select", "r"],
+  ["insert", "a"],
+  ["update", "w"],
+  ["delete", "d"],
+]);
+
+const POLICY_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const POLICY_RELATION = /^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$/;
+const POLICY_ROLE_LIST = /^[A-Za-z_][A-Za-z0-9_]*(?:,[A-Za-z_][A-Za-z0-9_]*)*$/;
+
+// pg_get_expr deparses a policy predicate through the CURRENT search_path: with
+// `public` on the path a call comes back as `is_super_admin()`, without it as
+// `public.is_super_admin()`. Both name the same function - a policy expression
+// is stored as a parse tree of OIDs and is never re-resolved at read time - so
+// the difference is cosmetic, but an unnormalized digest would depend on WHO
+// read the catalog rather than on what the policy says. The manifest generator
+// measures under `SET search_path = pg_catalog` and the rollout probes under the
+// connection default, so the two would disagree on every predicate that calls a
+// function. Stripping the schema qualifier in front of a function call makes the
+// digest a property of the predicate. Verified on PostgreSQL 17: the same 34
+// policies digest identically under `pg_catalog`, under `public, pg_catalog` and
+// under the connection default, and identically again on production.
+export function normalizedPolicyExpressionSql(expression) {
+  return (
+    `regexp_replace(coalesce(${expression}, ''), ` +
+    `'(?<![A-Za-z0-9_."])[a-z_][a-z0-9_]*\\.(?=[a-z_][a-z0-9_]*\\()', '', 'g')`
+  );
+}
+
 export function catalogDescriptorSql(descriptor) {
   const parts = String(descriptor).split(":");
   const [kind, ...rest] = parts.length === 1 ? ["table", ...parts] : parts;
@@ -127,6 +186,62 @@ export function catalogDescriptorSql(descriptor) {
       WHERE publication_table.pubname = 'supabase_realtime'
         AND publication_table.schemaname = '${schema}'
         AND publication_table.tablename = '${table}'
+    )`;
+  }
+  if (kind === "policy" && rest.length === 6) {
+    const [relation, name, permissive, command, roles, qualDigest] = rest;
+    // Everything here is spelled with `:` separators, so a component that could
+    // contain one has no unambiguous spelling and is refused rather than
+    // approximated. The same goes for a role list, which is `,`-joined. This is
+    // deliberately fail-closed: the manifest generator aborts on a policy it
+    // cannot name exactly, instead of pinning a descriptor that means something
+    // slightly different from the object it was measured from.
+    if (!POLICY_RELATION.test(relation)) {
+      throw new Error(`Unsupported catalog descriptor (policy relation): ${descriptor}`);
+    }
+    if (!POLICY_IDENTIFIER.test(name)) {
+      throw new Error(`Unsupported catalog descriptor (policy name): ${descriptor}`);
+    }
+    if (permissive !== "permissive" && permissive !== "restrictive") {
+      throw new Error(`Unsupported catalog descriptor (policy permissiveness): ${descriptor}`);
+    }
+    if (!POLICY_COMMAND_CODES.has(command)) {
+      throw new Error(`Unsupported catalog descriptor (policy command): ${descriptor}`);
+    }
+    if (!POLICY_ROLE_LIST.test(roles)) {
+      throw new Error(`Unsupported catalog descriptor (policy roles): ${descriptor}`);
+    }
+    if (!/^[a-f0-9]{64}$/.test(qualDigest)) {
+      throw new Error(`Unsupported catalog descriptor (policy predicate digest): ${descriptor}`);
+    }
+    // to_regclass returns NULL for a table that does not exist yet, so the whole
+    // EXISTS is simply false. That matters as much as the presence half: every
+    // descriptor a stage has not yet introduced is asserted ABSENT inside the
+    // rollout transaction, and a descriptor that ERRORED instead of returning
+    // false would abort the stage on a healthy database.
+    return `EXISTS (
+      SELECT 1
+      FROM pg_policy policy_row
+      WHERE policy_row.polrelid = to_regclass('${relation}')
+        AND policy_row.polname = '${name}'
+        AND policy_row.polpermissive = ${permissive === "permissive"}
+        AND policy_row.polcmd = '${POLICY_COMMAND_CODES.get(command)}'
+        AND coalesce(
+              CASE
+                WHEN policy_row.polroles = '{0}'::oid[] THEN 'public'
+                ELSE (
+                  SELECT string_agg(policy_role.rolname, ',' ORDER BY policy_role.rolname)
+                  FROM pg_roles policy_role
+                  WHERE policy_role.oid = ANY (policy_row.polroles)
+                )
+              END, '') = '${roles}'
+        AND encode(
+              sha256(convert_to(
+                ${normalizedPolicyExpressionSql("pg_get_expr(policy_row.polqual, policy_row.polrelid)")}
+                || chr(10) ||
+                ${normalizedPolicyExpressionSql("pg_get_expr(policy_row.polwithcheck, policy_row.polrelid)")},
+                'UTF8')),
+              'hex') = '${qualDigest}'
     )`;
   }
   if (kind === "rows_rollout_off" && identity === "public.network_site_settings") {
