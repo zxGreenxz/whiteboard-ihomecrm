@@ -72,10 +72,6 @@ describe("Task 20 recovery and migration adapters", () => {
   const PENDING_FACADES = new Set([
     "openclaw_service_begin_restore_drill_v1",
     "openclaw_service_verify_restore_drill_v1",
-    "openclaw_service_require_fresh_qr_login_v1",
-    "openclaw_service_rotate_migration_credentials_v1",
-    "openclaw_service_acquire_migration_lease_v1",
-    "openclaw_service_revoke_migration_lease_v1",
     "openclaw_service_sync_migration_history_v1",
     "openclaw_service_run_migration_smoke_v1",
     "openclaw_service_verify_canonical_stores_v1",
