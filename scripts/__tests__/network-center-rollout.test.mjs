@@ -289,9 +289,14 @@ test("the reviewed release is observable at stage 17 because of policy descripto
   const manifest = JSON.parse(
     readFileSync(new URL("scripts/network-center-rollout-manifest.json", root), "utf8"),
   );
-  const last = manifest.migrations[manifest.migrations.length - 1];
-  assert.match(last.path, /20260729142000_network_center_hide_sandbox_policies\.sql$/);
-  const previous = new Set(manifest.migrations[manifest.migrations.length - 2].postApply.required);
+  // Locate the stage by PATH, never by position. Three tests in this suite have
+  // already gone red purely because a later migration was appended.
+  const index = manifest.migrations.findIndex((migration) =>
+    /20260729142000_network_center_hide_sandbox_policies\.sql$/.test(migration.path),
+  );
+  assert.ok(index > 0, "the hide-sandbox stage must be in the reviewed release");
+  const last = manifest.migrations[index];
+  const previous = new Set(manifest.migrations[index - 1].postApply.required);
   const added = last.postApply.required.filter((descriptor) => !previous.has(descriptor));
   // Green for the right reason: the stage is observable because the rollout can
   // now SEE the five policies it creates, not because the guard was loosened.
