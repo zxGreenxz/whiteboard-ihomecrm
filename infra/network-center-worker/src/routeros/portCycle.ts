@@ -6,16 +6,41 @@
  * kill, a WireGuard reset or a host reboot during the wait would otherwise leave the
  * port disabled with no code path anywhere able to restore it.
  *
- * The router therefore arms its own dead-man's switch first — a one-shot
- * `/system/scheduler` entry that re-enables the port and then removes itself. Only
- * after the guard is verifiably armed does the worker disable anything. On the happy
- * path the worker enables the port explicitly and removes the guard, leaving no
- * residue.
+ * The router therefore arms its own dead-man's switch first — a background job
+ * started with `:execute` that sleeps out the cycle window and then re-enables the
+ * port. Only after the guard is verifiably running does the worker disable anything.
+ * On the happy path the worker enables the port explicitly and cancels the job,
+ * leaving no residue.
  *
- * The guard carries the repository's ownership-marker convention
- * (`ihomecrm-network-center:v1:<deploymentId>:<scope>`, see
- * `templates/router-bootstrap.rsc.tmpl` and `scripts/generate-router-bootstrap.mjs`)
- * so it can never be confused with, or clobber, an operator's own scheduler entry.
+ * ## Why `:execute` and not `/system/scheduler`
+ *
+ * The fleet's routers run RouterOS device-mode `home` (`/system/device-mode/print`
+ * reports `scheduler: no`). There, `/system/scheduler/add` is answered with
+ * `failure: not allowed by device-mode (/system/scheduler/add; line 1)` — printed on
+ * **stdout, with exit status 0** — for every user including `admin` in group `full`.
+ * Leaving that mode needs physical access to each router (power cycle plus the reset
+ * button inside a confirmation window), so a scheduler-based guard simply does not
+ * exist in production. `:execute` is a console primitive, is not gated by
+ * device-mode, runs under the managed user's own restricted policy set, and its job
+ * outlives the console job that started it.
+ *
+ * ## Ownership, with no name to collide over
+ *
+ * A scheduler entry is a persistent, *named* resource, so the previous design had to
+ * prove that the entry holding the managed name was its own. A `:execute` job has no
+ * name: the router mints its id and hands it back to the caller, so the worker only
+ * ever addresses a job it created itself, in this process, moments earlier. Ownership
+ * of the *router* is still proven out of band — the arm command refuses unless the
+ * router still carries this deployment's `…:lan-recovery` firewall rule at the moment
+ * it arms, which also closes the gap between reading that rule and using it.
+ *
+ * ## Overlapping guards
+ *
+ * A guard can only ever *enable*, and it self-terminates. Two overlapping guards
+ * therefore cannot strand a port; the worst they can do is end a later cycle's
+ * disable window early. The worker still refuses to arm while its own previous guard
+ * is running, so a retry storm can neither stack jobs on the router nor blur the
+ * disable window — and the pending guard is itself what restores the port.
  */
 
 export const MIN_ACCESS_PORT_CYCLE_SECONDS = 5;
@@ -35,18 +60,12 @@ export const MINIMUM_COMMAND_TIMEOUT_MS =
   MAX_ACCESS_PORT_CYCLE_SECONDS * 1_000 + ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS;
 
 /**
- * Namespaced managed name. Bare-word safe on purpose: the guard's own `on-event`
- * script refers to it, and keeping it free of quotes avoids nested string escaping.
+ * Scope suffix of the bootstrap firewall rule that carries the deployment's
+ * ownership marker (see `templates/router-bootstrap.rsc.tmpl`).
  */
-export const ACCESS_PORT_CYCLE_GUARD_NAME = "ihomecrm-network-center-v1-port-cycle";
+export const ROUTER_RECOVERY_RULE_SCOPE = "lan-recovery";
 
-/** Ownership-marker scope appended to the router's deployment marker. */
-export const ACCESS_PORT_CYCLE_GUARD_SCOPE = "port-cycle";
-
-/** Strict subset of the managed group's policy (ssh,ftp,reboot,read,write,test,sensitive). */
-export const ACCESS_PORT_CYCLE_GUARD_POLICY = "read,write";
-
-const ROUTEROS_RESOURCE_ID = /^\*[0-9A-Fa-f]+$/;
+const ROUTEROS_RESOURCE_ID = /^\*[0-9A-Fa-f]{1,16}$/;
 const PHYSICAL_ACCESS_PORT = /^ether(?:[2-9]|[1-9][0-9])$/i;
 
 export function quoteRouterOsValue(value: string): string {
@@ -65,21 +84,22 @@ export function quoteRouterOsValue(value: string): string {
 }
 
 /**
- * Quotes a script that will be *stored* as a RouterOS string literal and executed
- * later (a scheduler `on-event`). RouterOS interpolates `$` inside string literals and
- * only understands a small set of escapes, so both `$` and `\` are rejected outright
- * rather than escaped; the generated body never needs either.
+ * Validates a script that will be handed to `:execute` inside a `{ … }` block. The
+ * block is parsed by the console, not stored as a string literal, so the hazard is
+ * not escaping but *closing the block early*: a stray `}` would turn the remainder of
+ * the guard into statements of the outer command. Quotes, `$` and `\` are rejected
+ * too — the generated body never needs any of them, so anything that does is a bug.
  */
-export function quoteRouterOsScript(value: string): string {
+export function assertRouterOsScriptBlock(value: string): string {
   if (
     value.length < 1
     || value.length > 512
     || /[^\x20-\x7e]/.test(value)
-    || /["\\$]/.test(value)
+    || /["\\${}]/.test(value)
   ) {
-    throw new TypeError("RouterOS script contains unsafe characters");
+    throw new TypeError("RouterOS script block contains unsafe characters");
   }
-  return `"${value}"`;
+  return value;
 }
 
 function assertResourceId(value: string): string {
@@ -96,12 +116,12 @@ function assertImmutableKey(value: string): string {
   return value;
 }
 
-export function accessPortCycleGuardComment(ownershipMarker: string): string {
-  return `${ownershipMarker}:${ACCESS_PORT_CYCLE_GUARD_SCOPE}`;
+export function accessPortCycleGuardDelaySeconds(durationSeconds: number): number {
+  return durationSeconds + ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS;
 }
 
-export function accessPortCycleGuardIntervalSeconds(durationSeconds: number): number {
-  return durationSeconds + ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS;
+export function routerRecoveryRuleComment(ownershipMarker: string): string {
+  return `${ownershipMarker}:${ROUTER_RECOVERY_RULE_SCOPE}`;
 }
 
 export interface AccessPortCycleTarget {
@@ -121,96 +141,106 @@ function portSelector(target: AccessPortCycleTarget): string {
     + ` and default-name=${quoteRouterOsValue(assertImmutableKey(target.immutableKey))}]`;
 }
 
-function guardSelector(comment: string): string {
-  return `[/system/scheduler find where name=${ACCESS_PORT_CYCLE_GUARD_NAME}`
-    + ` and comment=${quoteRouterOsValue(comment)}]`;
+function guardJobSelector(guardJobId: string): string {
+  return `[/system/script/job/find where .id=${assertResourceId(guardJobId)}]`;
+}
+
+function ownershipRuleSelector(ownershipMarker: string): string {
+  return "[/ip/firewall/filter/find where chain=input and action=accept"
+    + ` and comment=${quoteRouterOsValue(routerRecoveryRuleComment(ownershipMarker))}]`;
 }
 
 /**
- * Read-only probe. Reports how many entries already hold the managed name and whether
- * the single one is ours, without ever dumping an operator's scheduler scripts.
+ * Read-only probe for a guard this worker armed earlier and never cancelled. It
+ * reports nothing about anybody else's jobs, so it can neither leak nor depend on an
+ * operator's background work.
  */
-export function buildAccessPortCycleGuardProbeCommand(comment: string): string {
-  return [
-    `:local ncGuard [/system/scheduler find where name=${ACCESS_PORT_CYCLE_GUARD_NAME}]`,
-    ":put (\"NC_CYCLE_GUARD_COUNT:\" . [:len $ncGuard])",
-    ":if ([:len $ncGuard] = 1) do={"
-      + `:if ([/system/scheduler get $ncGuard comment] = ${quoteRouterOsValue(comment)})`
-      + " do={:put \"NC_CYCLE_GUARD_OWNED:true\"}"
-      + " else={:put \"NC_CYCLE_GUARD_OWNED:false\"}}",
-  ].join("; ");
+export function buildAccessPortCycleGuardProbeCommand(guardJobId: string): string {
+  return `:put ("NC_CYCLE_GUARD_PENDING:" . [:len ${guardJobSelector(guardJobId)}])`;
 }
 
-export interface AccessPortCycleGuardProbe {
-  count: number;
-  owned: boolean;
-}
-
-export function parseAccessPortCycleGuardProbe(output: string): AccessPortCycleGuardProbe | null {
-  const lines = output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
-  const count = lines
-    .flatMap((line) => /^NC_CYCLE_GUARD_COUNT:(\d{1,4})$/.exec(line)?.[1] ?? [])
+export function parseAccessPortCycleGuardProbe(output: string): { pending: number } | null {
+  const pending = output.split(/\r?\n/u)
+    .map((line) => line.trim())
+    .flatMap((line) => /^NC_CYCLE_GUARD_PENDING:(\d{1,4})$/.exec(line)?.[1] ?? [])
     .map(Number);
-  if (count.length !== 1 || count[0] === undefined) return null;
-  const owned = lines.includes("NC_CYCLE_GUARD_OWNED:true");
-  if (count[0] === 1 && !owned && !lines.includes("NC_CYCLE_GUARD_OWNED:false")) return null;
-  return { count: count[0], owned };
+  return pending.length === 1 && pending[0] !== undefined ? { pending: pending[0] } : null;
 }
 
 /**
  * The script the router runs on its own if the worker never comes back. Deliberately
- * tiny, bare-word only, and bound to the immutable `default-name` so an operator
- * rename during the window cannot redirect it at another interface.
+ * tiny, bare-word only, enable-only, and bound to the immutable `default-name` so an
+ * operator rename during the window cannot redirect it at another interface.
+ *
+ * The leading `:delay` is also what makes arming verifiable: the job is guaranteed to
+ * still be in `/system/script/job` when the arm command checks for it.
  */
-export function buildAccessPortCycleGuardEvent(target: AccessPortCycleTarget): string {
-  return `/interface/enable [/interface/find where .id=${assertResourceId(target.resourceId)}`
-    + ` and default-name=${assertImmutableKey(target.immutableKey)}];`
-    + ` /system/scheduler remove [/system/scheduler find where name=${ACCESS_PORT_CYCLE_GUARD_NAME}]`;
+export function buildAccessPortCycleGuardScript(
+  target: AccessPortCycleTarget,
+  durationSeconds: number,
+): string {
+  return assertRouterOsScriptBlock(
+    `:delay ${accessPortCycleGuardDelaySeconds(durationSeconds)}s;`
+    + ` /interface/enable [/interface/find where .id=${assertResourceId(target.resourceId)}`
+    + ` and default-name=${assertImmutableKey(target.immutableKey)}]`,
+  );
 }
 
 /**
  * Arms the dead-man's switch. Mutates nothing on the access port, so a failure here is
  * always a clean, non-disruptive failure.
+ *
+ * `NC_CYCLE_OWNER` is emitted before the guard is started on purpose: any refusal of
+ * `:execute` then lands *after* a marker line, which is exactly the shape of failure
+ * (`failure: …` on stdout, exit status 0) that a start-anchored output check misses.
  */
 export function buildAccessPortCycleArmCommand(
   target: AccessPortCycleTarget,
   durationSeconds: number,
 ): string {
-  const comment = accessPortCycleGuardComment(target.ownershipMarker);
-  const quotedComment = quoteRouterOsValue(comment);
   return [
     `:local ncPort ${portSelector(target)}`,
     ":if ([:len $ncPort] != 1) do={:error \"managed access port identity changed\"}",
-    `:local ncGuard [/system/scheduler find where name=${ACCESS_PORT_CYCLE_GUARD_NAME}]`,
-    ":if ([:len $ncGuard] > 1) do={:error \"managed port cycle guard is ambiguous\"}",
-    ":if ([:len $ncGuard] = 1) do={"
-      + `:if ([/system/scheduler get $ncGuard comment] != ${quotedComment})`
-      + " do={:error \"managed port cycle guard is not owned\"}"
-      + " else={/system/scheduler remove $ncGuard}}",
-    `/system/scheduler add name=${ACCESS_PORT_CYCLE_GUARD_NAME} comment=${quotedComment}`
-      + ` interval=${accessPortCycleGuardIntervalSeconds(durationSeconds)}s`
-      + ` policy=${ACCESS_PORT_CYCLE_GUARD_POLICY}`
-      + ` on-event=${quoteRouterOsScript(buildAccessPortCycleGuardEvent(target))}`,
-    `:if ([:len ${guardSelector(comment)}] != 1)`
+    `:if ([:len ${ownershipRuleSelector(target.ownershipMarker)}] < 1)`
+      + " do={:error \"managed router ownership marker is missing\"}",
+    ":put (\"NC_CYCLE_OWNER:\" . [/interface/get $ncPort default-name])",
+    ":local ncGuard [:execute script="
+      + `{${buildAccessPortCycleGuardScript(target, durationSeconds)}}]`,
+    ":if ([:len [/system/script/job/find where .id=$ncGuard]] != 1)"
       + " do={:error \"managed port cycle guard was not armed\"}",
-    ":put (\"NC_CYCLE_ARMED:\" . [/interface/get $ncPort default-name])",
+    ":put (\"NC_CYCLE_ARMED:\" . [:tostr $ncGuard] . \":\""
+      + " . [/interface/get $ncPort default-name])",
   ].join("; ");
 }
 
+/** Returns the router-minted id of the guard job, or null if it was not armed. */
+export function parseAccessPortCycleArmedGuard(
+  output: string,
+  immutableKey: string,
+): string | null {
+  const armed = output.split(/\r?\n/u)
+    .map((line) => line.trim())
+    .flatMap((line) => {
+      const match = /^NC_CYCLE_ARMED:(\*[0-9A-Fa-f]{1,16}):(.+)$/.exec(line);
+      return match?.[1] && match[2] === immutableKey ? [match[1]] : [];
+    });
+  return armed.length === 1 && armed[0] !== undefined ? armed[0] : null;
+}
+
 /**
- * Disables, waits, enables and disarms. Every statement after `:delay` is expendable:
- * if the session dies here the router still restores the port on its own.
+ * Disables, waits and enables. Every statement after `:delay` is expendable: if the
+ * session dies here the router still restores the port on its own.
  */
 export function buildAccessPortCycleCommand(
   target: AccessPortCycleTarget,
   durationSeconds: number,
+  guardJobId: string,
 ): string {
-  const comment = accessPortCycleGuardComment(target.ownershipMarker);
-  const selector = guardSelector(comment);
   return [
     `:local ncPort ${portSelector(target)}`,
     ":if ([:len $ncPort] != 1) do={:error \"managed access port identity changed\"}",
-    `:if ([:len ${selector}] != 1) do={:error \"managed port cycle guard is missing\"}`,
+    `:if ([:len ${guardJobSelector(guardJobId)}] != 1)`
+      + " do={:error \"managed port cycle guard is missing\"}",
     "/interface/disable $ncPort",
     ":if ([/interface/get $ncPort disabled] != true)"
       + " do={:error \"access port disable readback failed\"}",
@@ -220,11 +250,27 @@ export function buildAccessPortCycleCommand(
     ":if ([/interface/get $ncPort disabled] = true)"
       + " do={:error \"access port enable readback failed\"}",
     ":put (\"NC_CYCLE_ENABLED:\" . [/interface/get $ncPort default-name])",
-    // Best effort by construction: `remove` on an empty selector is a no-op, so a
-    // guard that already fired and removed itself is not an error. Anything that does
-    // survive is picked up and replaced by the next cycle's ownership probe, so a
-    // stuck guard must never escalate this command into an UNCERTAIN device lockout.
-    `/system/scheduler remove ${selector}`,
-    ":put (\"NC_CYCLE_DISARMED:\" . [/interface/get $ncPort default-name])",
   ].join("; ");
+}
+
+/**
+ * Cancels the guard once the worker has restored the port itself.
+ *
+ * Deliberately its own exec, and deliberately expressed against a `find` selector.
+ * A guard that already fired has left the job table, so removing it must be a no-op
+ * rather than a `failure: no such item` — and a refusal to remove must not be able to
+ * turn a cycle whose port is provably back up into a failed or UNCERTAIN command.
+ */
+export function buildAccessPortCycleDisarmCommand(guardJobId: string): string {
+  return [
+    `/system/script/job/remove ${guardJobSelector(guardJobId)}`,
+    `:put ("NC_CYCLE_DISARMED:" . [:len ${guardJobSelector(guardJobId)}])`,
+  ].join("; ");
+}
+
+/** True only when the router confirmed the guard job is gone. */
+export function parseAccessPortCycleDisarmed(output: string): boolean {
+  return output.split(/\r?\n/u)
+    .map((line) => line.trim())
+    .includes("NC_CYCLE_DISARMED:0");
 }

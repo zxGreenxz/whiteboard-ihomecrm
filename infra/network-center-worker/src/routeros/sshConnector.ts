@@ -30,10 +30,12 @@ import {
   ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS,
   MAX_ACCESS_PORT_CYCLE_SECONDS,
   MIN_ACCESS_PORT_CYCLE_SECONDS,
-  accessPortCycleGuardComment,
   buildAccessPortCycleArmCommand,
   buildAccessPortCycleCommand,
+  buildAccessPortCycleDisarmCommand,
   buildAccessPortCycleGuardProbeCommand,
+  parseAccessPortCycleArmedGuard,
+  parseAccessPortCycleDisarmed,
   parseAccessPortCycleGuardProbe,
   quoteRouterOsValue,
 } from "./portCycle.js";
@@ -160,9 +162,19 @@ export function parseRouterOsRecords(output: string): Array<Record<string, strin
   return records;
 }
 
+const ROUTEROS_FAILURE_LINE =
+  /^(?:expected end of command|syntax error|bad command name|failure:|script error:)/i;
+
+/**
+ * RouterOS reports a refused command by printing it on **stdout** and still exiting 0
+ * — `failure: not allowed by device-mode (/system/scheduler/add; line 1)` is the case
+ * that motivated this check. The refusal is not necessarily the first thing on the
+ * channel: a multi-statement command prints everything its earlier statements already
+ * produced, so anchoring the check at the start of the output turns a refused command
+ * into a silent success. Every line is checked instead.
+ */
 export function routerOsCommandFailed(output: string): boolean {
-  return /^(?:expected end of command|syntax error|bad command name|failure:|script error:)/i
-    .test(output.trimStart());
+  return output.split(/\r?\n/u).some((line) => ROUTEROS_FAILURE_LINE.test(line.trimStart()));
 }
 
 interface SshConnectorOptions {
@@ -501,6 +513,8 @@ export class SshRouterConnector implements RouterConnector {
   #client: Client | null = null;
   #connecting: Promise<Client> | null = null;
   #dnsCommandAck = false;
+  /** Guard job this connector armed and has not seen the router reap or cancel. */
+  #pendingCycleGuardJobId: string | null = null;
   #lastAccessCycle: {
     managedResourceId: string;
     immutableKey: string;
@@ -1008,47 +1022,55 @@ export class SshRouterConnector implements RouterConnector {
       ownershipMarker,
     };
 
-    // 1. Decide deterministically what to do with any entry already holding the
-    //    managed name. A stale entry of ours is replaced, never reused; anything
-    //    else is left untouched and the cycle is refused.
-    const probe = parseAccessPortCycleGuardProbe(await this.#execute(
-      buildAccessPortCycleGuardProbeCommand(accessPortCycleGuardComment(ownershipMarker)),
-    ));
-    if (!probe) {
-      throw new RouterOperationError("PORT_CYCLE_GUARD_STATE_UNREADABLE", {
-        retryable: true,
-        mayHaveExecuted: false,
-      });
-    }
-    if (probe.count > 1 || (probe.count === 1 && !probe.owned)) {
-      throw new RouterOperationError("PORT_CYCLE_GUARD_NOT_OWNED", {
-        retryable: false,
-        mayHaveExecuted: false,
-      });
+    // 1. Never stack guards. A previous cycle that died mid-window left a job that is
+    //    still counting down to re-enable this port; arming a second one would blur
+    //    the disable window and let a retry storm fill the router's job table. The
+    //    pending guard is itself the thing that restores the port, so waiting for it
+    //    is both the safe and the fast answer.
+    if (this.#pendingCycleGuardJobId) {
+      const probe = parseAccessPortCycleGuardProbe(await this.#execute(
+        buildAccessPortCycleGuardProbeCommand(this.#pendingCycleGuardJobId),
+      ));
+      if (!probe) {
+        throw new RouterOperationError("PORT_CYCLE_GUARD_STATE_UNREADABLE", {
+          retryable: true,
+          mayHaveExecuted: false,
+        });
+      }
+      if (probe.pending > 0) {
+        throw new RouterOperationError("PORT_CYCLE_GUARD_STILL_PENDING", {
+          retryable: true,
+          mayHaveExecuted: false,
+        });
+      }
+      this.#pendingCycleGuardJobId = null;
     }
 
     // 2. Arm the router-side dead-man's switch. Nothing on the access port has been
-    //    mutated yet, so any failure here stays a clean, non-disruptive failure.
-    const armMarkers = routerOsMarkers(await this.#execute(
-      buildAccessPortCycleArmCommand(cycleTarget, durationSeconds),
-    ));
-    if (!armMarkers.includes(`NC_CYCLE_ARMED:${resolved.immutableKey}`)) {
+    //    mutated yet, so any failure here stays a clean, non-disruptive failure. The
+    //    guard's id is minted by the router, so the worker can only ever cancel a job
+    //    it started itself.
+    const guardJobId = parseAccessPortCycleArmedGuard(
+      await this.#execute(buildAccessPortCycleArmCommand(cycleTarget, durationSeconds)),
+      resolved.immutableKey,
+    );
+    if (!guardJobId) {
       throw new RouterOperationError("PORT_CYCLE_GUARD_NOT_ARMED", {
         retryable: true,
         mayHaveExecuted: false,
       });
     }
+    this.#pendingCycleGuardJobId = guardJobId;
 
     // 3. Only now disable. Every statement from here on is expendable: if this exec
-    //    dies the router still re-enables the port and removes the guard itself.
+    //    dies the router still re-enables the port on its own, and the guard stays
+    //    recorded so the next attempt waits for it instead of racing it.
     this.#lastAccessCycle = null;
     const markers = routerOsMarkers(await this.#execute(
-      buildAccessPortCycleCommand(cycleTarget, durationSeconds),
+      buildAccessPortCycleCommand(cycleTarget, durationSeconds, guardJobId),
       true,
     ));
-    // Success still turns on the ordered disable/enable readback only. A guard the
-    // router has not finished cleaning up re-enables an already-enabled port and then
-    // removes itself, so it must never turn a restored port into an UNCERTAIN command.
+    // Success still turns on the ordered disable/enable readback only.
     const disabledIndex = markers.indexOf(`NC_CYCLE_DISABLED:${resolved.immutableKey}`);
     const enabledIndex = markers.indexOf(`NC_CYCLE_ENABLED:${resolved.immutableKey}`);
     if (disabledIndex < 0 || enabledIndex <= disabledIndex) {
@@ -1057,6 +1079,19 @@ export class SshRouterConnector implements RouterConnector {
         mayHaveExecuted: true,
       });
     }
+
+    // 4. The port is provably back up, so cancelling the guard is pure hygiene and is
+    //    kept in its own exec: a refused or racing `remove` must never demote a cycle
+    //    that succeeded. A guard that survives only re-enables an already-enabled port
+    //    and then exits by itself, and it stays recorded so the next cycle waits it out.
+    try {
+      if (parseAccessPortCycleDisarmed(
+        await this.#execute(buildAccessPortCycleDisarmCommand(guardJobId)),
+      )) this.#pendingCycleGuardJobId = null;
+    } catch {
+      // Intentionally non-fatal, and intentionally leaves the guard recorded.
+    }
+
     this.#lastAccessCycle = {
       managedResourceId: target.managedResourceId,
       immutableKey: resolved.immutableKey,

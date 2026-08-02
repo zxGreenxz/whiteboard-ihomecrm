@@ -6,17 +6,34 @@
  *
  *  - `:delay` suspends the running script. If the session dies inside it, every
  *    statement after the delay never runs (this is the whole point of Finding 1).
+ *  - `:execute` starts a *background job*. The job outlives the console job that
+ *    started it, keeps its own cursor into the stored script text, and its
+ *    `:delay` really consumes router time — `advanceSeconds` resumes it from
+ *    where it suspended and re-runs the remaining statements for real.
+ *  - `device-mode` gates whole feature families. The demo hEX runs `mode: home`,
+ *    where `/system/scheduler/add` is answered with
+ *    `failure: not allowed by device-mode (...)` printed on **stdout** while the
+ *    exit status stays 0 and the rest of the line keeps running.
  *  - `/system/scheduler` entries live on the router, survive the SSH session and
- *    fire their stored `on-event` script after `interval` seconds.
+ *    fire their stored `on-event` script after `interval` seconds — but only on a
+ *    router whose device-mode allows the scheduler at all.
  *  - `on-event` is stored as a RouterOS *string literal*, so it is unescaped with
  *    RouterOS escape rules. Unknown escapes (`\;`) and unescaped `$` are rejected
  *    exactly as the real console would, which keeps the generated script honest.
  */
 
 export class RouterOsScriptError extends Error {
-  constructor(message: string) {
+  /**
+   * Whatever the script already printed before it failed. A router cannot un-send
+   * bytes that are already on the wire, so a refusal or a `:error` arrives *after*
+   * the marker lines the same command produced.
+   */
+  readonly partialOutput: string;
+
+  constructor(message: string, partialOutput = "") {
     super(message);
     this.name = "RouterOsScriptError";
+    this.partialOutput = partialOutput;
   }
 }
 
@@ -28,6 +45,11 @@ export class RouterOsSessionInterrupted extends Error {
     this.name = "RouterOsSessionInterrupted";
     this.partialOutput = partialOutput;
   }
+}
+
+/** Thrown by a background job's `:delay`; the job resumes on the next tick. */
+class JobSuspended {
+  constructor(readonly seconds: number) {}
 }
 
 export interface FakeInterface {
@@ -47,6 +69,28 @@ export interface FakeSchedulerEntry {
   armedAtSeconds: number;
 }
 
+export interface FakeJob {
+  /** RouterOS internal id, minted by the router when the job is created. */
+  id: string;
+  /** The script text exactly as it was handed to `:execute`. */
+  script: string;
+  /** Index of the next statement to run. */
+  cursor: number;
+  /** Router time at which the job may run again. */
+  wakeAtSeconds: number;
+  startedAtSeconds: number;
+}
+
+/**
+ * `/system/device-mode`. The demo hEX ships `mode: home`, i.e. `scheduler: no`.
+ * `:execute` is a console primitive and is not gated, which is exactly why the
+ * guard uses it — but the flag exists so a router that denied it can be tested.
+ */
+export interface FakeDeviceMode {
+  scheduler: boolean;
+  execute: boolean;
+}
+
 type Value =
   | { kind: "string"; value: string }
   | { kind: "number"; value: number }
@@ -58,6 +102,8 @@ interface ExecutionState {
   output: string[];
   allowDelay: boolean;
   interruptAtDelay: boolean;
+  /** A background job suspends on `:delay`; a console job blocks on it. */
+  mode: "console" | "job";
 }
 
 function splitTopLevel(text: string, separators: string): string[] {
@@ -160,18 +206,34 @@ export class FakeRouterOs {
   readonly interfaces: FakeInterface[];
   readonly firewall: Array<Record<string, string>>;
   readonly scheduler: FakeSchedulerEntry[] = [];
+  readonly jobs: FakeJob[] = [];
+  readonly deviceMode: FakeDeviceMode;
   readonly trace: string[] = [];
   identity = "demo-router";
   clockSeconds = 0;
+
+  // Job ids live in their own table on a real router. They are minted well clear
+  // of the fixture interface ids so a test can never pass by matching the wrong one.
+  #nextJobId = 0x100;
+  #jobVariables = new Map<string, Map<string, Value>>();
+  #runningJobs = false;
 
   constructor(options: {
     interfaces: FakeInterface[];
     firewall?: Array<Record<string, string>>;
     scheduler?: FakeSchedulerEntry[];
+    jobs?: Array<{ script: string }>;
+    deviceMode?: Partial<FakeDeviceMode>;
   }) {
     this.interfaces = options.interfaces.map((entry) => ({ ...entry }));
     this.firewall = (options.firewall ?? []).map((entry) => ({ ...entry }));
     for (const entry of options.scheduler ?? []) this.scheduler.push({ ...entry });
+    this.deviceMode = {
+      // Matches the demo hEX (RouterOS 7.20.8, `mode: home`, `scheduler: no`).
+      scheduler: options.deviceMode?.scheduler ?? false,
+      execute: options.deviceMode?.execute ?? true,
+    };
+    for (const entry of options.jobs ?? []) this.#startJob(entry.script);
   }
 
   interfaceByDefaultName(defaultName: string): FakeInterface {
@@ -205,6 +267,7 @@ export class FakeRouterOs {
       output: [],
       allowDelay: true,
       interruptAtDelay: options.interruptAtDelay ?? false,
+      mode: "console",
     };
     try {
       this.#runBlock(script, state);
@@ -212,14 +275,21 @@ export class FakeRouterOs {
       if (error instanceof RouterOsSessionInterrupted) {
         throw new RouterOsSessionInterrupted(state.output.join(""));
       }
+      if (error instanceof RouterOsScriptError) {
+        throw new RouterOsScriptError(error.message, state.output.join(""));
+      }
       throw error;
     }
     return state.output.join("");
   }
 
-  /** Moves router time forward and fires every scheduler entry that became due. */
+  /**
+   * Moves router time forward, resumes every background job whose `:delay`
+   * elapsed and fires every scheduler entry that became due.
+   */
   advanceSeconds(seconds: number): void {
     this.clockSeconds += seconds;
+    this.#runDueJobs();
     for (const entry of [...this.scheduler]) {
       if (!this.scheduler.includes(entry)) continue;
       if (this.clockSeconds - entry.armedAtSeconds < entry.intervalSeconds) continue;
@@ -229,9 +299,84 @@ export class FakeRouterOs {
         output: [],
         allowDelay: false,
         interruptAtDelay: false,
+        mode: "console",
       };
       this.#runBlock(entry.onEvent, state);
     }
+  }
+
+  #startJob(script: string): FakeJob {
+    const job: FakeJob = {
+      id: `*${(this.#nextJobId += 1).toString(16).toUpperCase()}`,
+      script,
+      cursor: 0,
+      wakeAtSeconds: this.clockSeconds,
+      startedAtSeconds: this.clockSeconds,
+    };
+    this.jobs.push(job);
+    this.#jobVariables.set(job.id, new Map());
+    this.trace.push(`job-start:${job.id}`);
+    // `:execute` returns as soon as the job has been created, but the job itself
+    // starts running immediately — so its leading `:delay` is measured from here.
+    this.#stepJob(job);
+    return job;
+  }
+
+  #removeJob(job: FakeJob): void {
+    const index = this.jobs.indexOf(job);
+    if (index >= 0) this.jobs.splice(index, 1);
+    this.#jobVariables.delete(job.id);
+  }
+
+  #runDueJobs(): void {
+    if (this.#runningJobs) return;
+    this.#runningJobs = true;
+    try {
+      let progressed = true;
+      while (progressed) {
+        progressed = false;
+        for (const job of [...this.jobs]) {
+          if (!this.jobs.includes(job)) continue;
+          if (job.wakeAtSeconds > this.clockSeconds) continue;
+          this.#stepJob(job);
+          progressed = true;
+        }
+      }
+    } finally {
+      this.#runningJobs = false;
+    }
+  }
+
+  /** Runs a job from its cursor until it suspends, fails or finishes. */
+  #stepJob(job: FakeJob): void {
+    const state: ExecutionState = {
+      variables: this.#jobVariables.get(job.id) ?? new Map(),
+      output: [],
+      allowDelay: true,
+      interruptAtDelay: false,
+      mode: "job",
+    };
+    const list = statements(job.script);
+    while (job.cursor < list.length) {
+      const statement = list[job.cursor] ?? "";
+      try {
+        this.#runStatement(statement, state);
+      } catch (error) {
+        if (error instanceof JobSuspended) {
+          job.cursor += 1;
+          job.wakeAtSeconds = this.clockSeconds + error.seconds;
+          this.trace.push(`job-delay:${job.id}:${error.seconds}`);
+          return;
+        }
+        // A background job that errors simply dies, taking nothing else with it.
+        this.trace.push(`job-error:${job.id}`);
+        this.#removeJob(job);
+        return;
+      }
+      job.cursor += 1;
+    }
+    this.trace.push(`job-end:${job.id}`);
+    this.#removeJob(job);
   }
 
   #runBlock(script: string, state: ExecutionState): void {
@@ -263,10 +408,12 @@ export class FakeRouterOs {
       const raw = statement.slice(":delay ".length).trim();
       const match = /^(\d+)s$/.exec(raw);
       if (!match?.[1]) throw new RouterOsScriptError(`unsupported delay ${raw}`);
+      const seconds = Number(match[1]);
+      if (state.mode === "job") throw new JobSuspended(seconds);
       if (!state.allowDelay) throw new RouterOsScriptError(":delay is not allowed here");
       this.trace.push(`delay:${match[1]}`);
       if (state.interruptAtDelay) throw new RouterOsSessionInterrupted(state.output.join(""));
-      this.advanceSeconds(Number(match[1]));
+      this.advanceSeconds(seconds);
       return;
     }
     for (const [prefix, enabled] of [
@@ -284,8 +431,22 @@ export class FakeRouterOs {
       }
       return;
     }
+    if (statement.startsWith("/system/script/job/remove ")) {
+      const target = this.#evaluate(
+        statement.slice("/system/script/job/remove ".length).trim(),
+        state,
+      );
+      if (target.kind !== "ids") throw new RouterOsScriptError("expected a job selector");
+      for (const id of target.ids) {
+        const job = this.jobs.find((entry) => entry.id === id);
+        if (!job) throw new RouterOsScriptError("failure: no such item");
+        this.#removeJob(job);
+        this.trace.push(`job-remove:${id}`);
+      }
+      return;
+    }
     if (statement.startsWith("/system/scheduler add ")) {
-      this.#addScheduler(statement.slice("/system/scheduler add ".length));
+      this.#addScheduler(statement.slice("/system/scheduler add ".length), state);
       return;
     }
     if (statement.startsWith("/system/scheduler remove ")) {
@@ -365,7 +526,15 @@ export class FakeRouterOs {
     return operator === ">" ? leftNumber > rightNumber : leftNumber < rightNumber;
   }
 
-  #addScheduler(argumentText: string): void {
+  #addScheduler(argumentText: string, state: ExecutionState): void {
+    if (!this.deviceMode.scheduler) {
+      // The hard fact this whole redesign turns on: RouterOS answers a
+      // device-mode refusal on stdout, keeps the exit status at 0 and carries on
+      // with the rest of the line.
+      state.output.push("failure: not allowed by device-mode (/system/scheduler/add; line 1)\n");
+      this.trace.push("scheduler-denied");
+      return;
+    }
     const values = new Map<string, string>();
     for (const token of tokens(argumentText)) {
       const separator = token.indexOf("=");
@@ -443,11 +612,34 @@ export class FakeRouterOs {
         value: value.kind === "ids" ? value.ids.length : primitive(value).length,
       };
     }
+    if (head === ":tostr") {
+      return { kind: "string", value: primitive(this.#evaluate(parts.slice(1).join(" "), state)) };
+    }
+    if (head === ":execute") {
+      return this.#executeJob(parts.slice(1), state);
+    }
     if (head === "/interface/find") {
       return {
         kind: "ids",
         path: "/interface",
         ids: this.#findInterfaces(parts.slice(1), state).map((entry) => entry.id),
+      };
+    }
+    if (head === "/system/script/job/find") {
+      return {
+        kind: "ids",
+        path: "/system/script/job",
+        ids: this.#findJobs(parts.slice(1), state).map((entry) => entry.id),
+      };
+    }
+    if (head === "/ip/firewall/filter/find") {
+      const criteria = this.#criteria(parts.slice(1), state);
+      return {
+        kind: "ids",
+        path: "/ip/firewall/filter",
+        ids: this.firewall
+          .filter((record) => criteria.every(([key, value]) => (record[key] ?? "") === value))
+          .map((_record, index) => `*F${index}`),
       };
     }
     if (head === "/system/scheduler") {
@@ -490,6 +682,22 @@ export class FakeRouterOs {
     throw new RouterOsScriptError(`bad command name (${head})`);
   }
 
+  #executeJob(parts: string[], state: ExecutionState): Value {
+    const argument = parts.join(" ");
+    if (!argument.startsWith("script={") || !argument.endsWith("}")) {
+      throw new RouterOsScriptError(":execute expects script={...}");
+    }
+    if (!this.deviceMode.execute) {
+      state.output.push("failure: not allowed by device-mode (:execute; line 1)\n");
+      this.trace.push("execute-denied");
+      return { kind: "string", value: "" };
+    }
+    const script = argument.slice("script={".length, -1);
+    // The stored text must itself be a script the console can parse later.
+    statements(script);
+    return { kind: "string", value: this.#startJob(script).id };
+  }
+
   #criteria(parts: string[], state: ExecutionState): Array<[string, string]> {
     if ((parts[0] ?? "") !== "where") throw new RouterOsScriptError("expected where");
     const criteria: Array<[string, string]> = [];
@@ -514,6 +722,14 @@ export class FakeRouterOs {
       if (key === "type") return entry.type === value;
       if (key === "disabled") return String(entry.disabled) === value;
       throw new RouterOsScriptError(`unsupported interface criterion ${key}`);
+    }));
+  }
+
+  #findJobs(parts: string[], state: ExecutionState): FakeJob[] {
+    const criteria = this.#criteria(parts, state);
+    return this.jobs.filter((entry) => criteria.every(([key, value]) => {
+      if (key === ".id") return entry.id === value;
+      throw new RouterOsScriptError(`unsupported job criterion ${key}`);
     }));
   }
 

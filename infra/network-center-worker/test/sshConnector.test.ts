@@ -768,9 +768,9 @@ describe("RouterOS SSH boundary", () => {
     });
 
     // The guard must be armed by an earlier exec than the one that disables the port.
-    const armCommand = commands.findIndex((command) => command.includes("/system/scheduler add"));
+    const armCommand = commands.findIndex((command) => command.includes(":execute"));
     expect(armCommand).toBeGreaterThanOrEqual(0);
     expect(commands.indexOf(cycleCommand ?? "")).toBeGreaterThan(armCommand);
-    expect(cycleCommand).not.toContain("/system/scheduler add");
+    expect(cycleCommand).not.toContain(":execute");
   });
 });

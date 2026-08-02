@@ -21,6 +21,12 @@ export type ChannelEnding =
 export interface FakeRouterClientOptions {
   /** Return an ending to force the channel to die instead of completing. */
   interrupt?: (command: string) => ChannelEnding | null;
+  /**
+   * Runs before the router sees the command. Lets a test move router state
+   * *between* two execs, which is the only way to reproduce a time-of-check /
+   * time-of-use race against a read the worker already did.
+   */
+  beforeCommand?: (command: string) => void;
 }
 
 export interface FakeRouterSession {
@@ -61,6 +67,7 @@ export function createFakeRouterSession(
 
     exec(command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
       commands.push(command);
+      options.beforeCommand?.(command);
       const channel = new EventEmitter() as EventEmitter & {
         stderr: EventEmitter;
         close: () => void;
@@ -98,8 +105,12 @@ export function createFakeRouterSession(
           return;
         }
         if (error instanceof RouterOsScriptError) {
-          // RouterOS reports script failures on stdout with a zero exit status.
-          settle(`script error: ${error.message}\n`, { kind: "exit", code: 0 });
+          // RouterOS reports script failures on stdout with a zero exit status, after
+          // everything the same command already printed.
+          settle(`${error.partialOutput}script error: ${error.message}\n`, {
+            kind: "exit",
+            code: 0,
+          });
           return;
         }
         throw error;
