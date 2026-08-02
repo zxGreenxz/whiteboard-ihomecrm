@@ -49,6 +49,8 @@ const CopilotLauncher = lazy(() => import("./copilot/CopilotLauncher"));
 const AiCopilotAdminPage = lazy(() => import("./copilot/admin/AiCopilotAdminPage"));
 const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
 const ChatZaloPage = lazy(() => import("./pages/chat-zalo/ChatZaloPage"));
+const OpenClawZaloPage = lazy(() => import("./pages/openclaw-zalo/OpenClawZaloPage"));
+const OpenClawRouteGuard = lazy(() => import("./components/openclaw-zalo/OpenClawRouteGuard"));
 
 // Danh mục dữ liệu
 const BuildingsPage = lazy(() => import("./pages/buildings/BuildingsPage"));
@@ -313,6 +315,16 @@ const App = () => (
 
           {/* === KÊNH CHAT === */}
           <Route path="/chat-zalo" element={<ProtectedRoute><RequirePermission module="chat_zalo" action="view"><ChatZaloPage /></RequirePermission></ProtectedRoute>} />
+          <Route
+            path="/openclaw-zalo"
+            element={
+              <ProtectedRoute>
+                <OpenClawRouteGuard>
+                  <OpenClawZaloPage />
+                </OpenClawRouteGuard>
+              </ProtectedRoute>
+            }
+          />
 
           {/* === DANH MỤC DỮ LIỆU === */}
           {/* /areas đã gỡ: khu vực = nhãn nhóm toà, quản lý bằng dialog trong /buildings */}

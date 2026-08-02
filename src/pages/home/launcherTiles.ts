@@ -30,6 +30,7 @@ import {
   Car,
   Wallet,
   Coins,
+  Bot,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
 
@@ -69,6 +70,7 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },
       { id: 'tasks', title: 'Công việc', href: '/tasks', icon: ClipboardList, accent: '#0ea5e9', module: 'tasks' },
       { id: 'sale-phong', title: 'Phòng trống', href: '/sale-phong', icon: DoorOpen, accent: '#16a34a', module: 'sale_phong', action: 'view' },
+      { id: 'openclaw-zalo', title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, accent: '#0f766e', module: 'openclaw_zalo', action: 'view' },
     ],
   },
   {
