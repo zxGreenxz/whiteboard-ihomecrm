@@ -36,3 +36,26 @@ infra/openclaw-zalo/scripts/migrate-cell.sh \
 
 On interruption, do not resume automatically. Preserve `GLOBAL_STOP`, current fencing,
 and all UNKNOWN/audit evidence; diagnose from the last successful adapter checkpoint.
+
+## Migration adapter
+
+`openclaw-migration-adapter` is committed at
+`infra/openclaw-zalo/scripts/openclaw-migration-adapter.mjs`; install it as
+`/opt/ihome-openclaw/bin/openclaw-migration-adapter`.
+
+Every one of the seventeen steps fails closed. If a step cannot reach Supabase or the
+rootless Docker socket it exits non-zero, which leaves `GLOBAL_STOP` active and the old
+credentials revoked rather than resuming the organization on an unverified migration.
+
+- `OPENCLAW_MIGRATION_SUPABASE_URL`, `OPENCLAW_MIGRATION_SUPABASE_SERVICE_KEY`
+- `DOCKER_HOST` must be the runner's own `unix:///run/user/<uid>/docker.sock`; a
+  rootful socket is rejected outright.
+- `OPENCLAW_MIGRATION_COMPOSE_FILE` for provisioning the new cell.
+- `OPENCLAW_MIGRATION_COTENANT_DIGEST` - the digest printed by
+  `snapshot-old-cotenants`, which `compare-cotenants` must reproduce exactly.
+
+Co-tenant handling is read-only by construction: the adapter only ever runs
+`docker ps` and `docker inspect`, and holds no stop/restart/kill/exec verb, so it
+cannot disturb the external 9Router or cli-proxy-api containers. `--copy-session` must
+be `never` and both `--supabase-copy`/`--r2-copy` must be `false`; anything else is a
+usage error.

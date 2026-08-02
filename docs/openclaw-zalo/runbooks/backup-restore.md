@@ -37,3 +37,24 @@ or `--session-strategy relogin`, which invalidates old material and requires a f
 Evidence contains actual RPO/RTO, IDs, booleans, strategy, and timestamps only. It must
 prove no plaintext session snapshot exists and must contain no key, token, email, QR,
 cookie, object key, message, prompt, or provider error.
+
+## Recovery adapter
+
+The drill delegates every state-changing step to `openclaw-recovery-adapter`. It is
+committed at `infra/openclaw-zalo/scripts/openclaw-recovery-adapter.mjs`; install it
+as `/opt/ihome-openclaw/bin/openclaw-recovery-adapter` (a copy or a wrapper that
+execs it with the pinned Node 24.15.0).
+
+It FAILS CLOSED. Any step whose infrastructure is unreachable exits non-zero, so the
+drill cannot produce PASS evidence for work that never ran:
+
+- `OPENCLAW_RECOVERY_SUPABASE_URL`, `OPENCLAW_RECOVERY_SUPABASE_SERVICE_KEY` -
+  canonical restore/verify steps.
+- `OPENCLAW_RECOVERY_R2_ENDPOINT`, `OPENCLAW_RECOVERY_R2_TOKEN` - tombstone
+  delete/restore/verify inside the seven-day grace.
+- `OPENCLAW_RECOVERY_SESSION_CRYPTO_BIN` - the committed session-crypto binary used
+  for atomic decrypt/re-encrypt; the adapter never reimplements that crypto.
+
+It refuses any organization other than DEMO `dddd0000-...-0001`. RPO comes from the
+canonical store's own measurement, never from a caller-declared timestamp. Plaintext
+session findings are reported as opaque digests, never as paths.
