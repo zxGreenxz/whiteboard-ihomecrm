@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useMemo } from 'react';
 import MainLayout from "@/components/layout/MainLayout";
 import { usePhoneViewport } from '@/hooks/use-mobile';
 import { Bell, CheckCheck, Trash2, Filter, X } from 'lucide-react';
@@ -20,9 +20,89 @@ import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { resolveNotificationUrl } from '@/lib/notificationRoutes';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
 
 // Bản tin mobile: web-app full-screen riêng (scope CSS .cm-app) — lazy.
 const NotificationsMobilePage = lazy(() => import('./NotificationsMobilePage'));
+
+// =============================================
+// Bảng tra theo LOẠI thông báo — một nguồn sự thật cho icon / nhãn / màu / chip.
+// Thứ tự khai báo cũng là thứ tự chip hiển thị: việc-cần-làm trước, thông tin sau.
+// =============================================
+
+const TYPE_META: Record<NotificationType, { icon: string; label: string; chip: string; color: string }> = {
+  ACTION_REQUIRED: {
+    icon: '🛎️',
+    label: 'Chờ tôi xử lý',
+    chip: 'Chờ tôi xử lý',
+    // Khớp badge "Chờ duyệt" của phiếu thu chi (VoucherDetailPage: bg-amber-100 text-amber-700).
+    color: 'bg-amber-100 text-amber-700 border-amber-200',
+  },
+  APPROVAL_RESULT: {
+    icon: '✅',
+    label: 'Kết quả duyệt',
+    chip: 'Kết quả duyệt',
+    color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  },
+  PAYMENT_REMINDER: {
+    icon: '⏰',
+    label: 'Nhắc thanh toán',
+    chip: 'Nhắc thanh toán',
+    color: 'bg-orange-100 text-orange-700 border-orange-200',
+  },
+  OVERDUE_INVOICE: {
+    icon: '⚠️',
+    label: 'Quá hạn',
+    chip: 'Quá hạn',
+    color: 'bg-red-100 text-red-700 border-red-200',
+  },
+  CONTRACT_EXPIRING: {
+    icon: '📅',
+    label: 'Hợp đồng hết hạn',
+    chip: 'HĐ hết hạn',
+    color: 'bg-purple-100 text-purple-700 border-purple-200',
+  },
+  DEPOSIT_SHORTFALL: {
+    icon: '⚠️',
+    label: 'Thiếu cọc',
+    chip: 'Thiếu cọc',
+    color: 'bg-amber-100 text-amber-800 border-amber-200',
+  },
+  SALARY_BONUS: {
+    icon: '🎉',
+    label: 'Thưởng/Lương',
+    chip: 'Thưởng/Lương',
+    color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  },
+  NEW_INVOICE: {
+    icon: '📄',
+    label: 'Hóa đơn mới',
+    chip: 'Hóa đơn mới',
+    color: 'bg-blue-100 text-blue-700 border-blue-200',
+  },
+  ISSUE_RESOLVED: {
+    icon: '✅',
+    label: 'Công việc',
+    chip: 'Công việc',
+    color: 'bg-green-100 text-green-700 border-green-200',
+  },
+  GENERAL_ANNOUNCEMENT: {
+    icon: '📢',
+    label: 'Thông báo chung',
+    chip: 'Thông báo chung',
+    color: 'bg-gray-100 text-gray-700 border-gray-200',
+  },
+  CUSTOM: {
+    icon: '🔔',
+    label: 'Thông báo',
+    chip: 'Thông báo',
+    color: 'bg-gray-100 text-gray-700 border-gray-200',
+  },
+};
+
+const KNOWN_TYPES = Object.keys(TYPE_META) as NotificationType[];
+const KNOWN_FILTER_VALUES = new Set<string>(['all', ...KNOWN_TYPES]);
 
 const NotificationsDesktopPage = () => {
   const navigate = useNavigate();
@@ -34,6 +114,9 @@ const NotificationsDesktopPage = () => {
 
   // Queries
   const { data: allNotifications = [], isLoading } = useNotifications();
+  // Allow-list URL cần quyền của người bấm: route bị chặn sẽ được hạ về /my-day
+  // thay vì ném thẳng vào một trang họ không mở được.
+  const { data: perms } = useMyPermissions();
 
   // Mutations
   const markAsReadMutation = useMarkAsRead();
@@ -64,83 +147,65 @@ const NotificationsDesktopPage = () => {
       markAsReadMutation.mutate(notification.id);
     }
 
-    // Navigate to related entity
+    // ĐI THEO metadata.url TRƯỚC MỌI NHÁNH id — đó là đích do chính nơi phát sự kiện
+    // chỉ định (đã có 223 dòng cũ mang metadata.url = '/my-day').
+    const url = resolveNotificationUrl(notification.metadata?.url, perms);
+    if (url) {
+      navigate(url);
+      return;
+    }
+
+    // Fallback cho các dòng cũ không có metadata.url.
+    // (Nhánh issue_id đã bị XOÁ: route /issues/:id KHÔNG tồn tại trong App.tsx.)
     if (notification.invoice_id) {
       navigate(`/invoices/${notification.invoice_id}`);
     } else if (notification.contract_id) {
       navigate(`/contracts/${notification.contract_id}`);
-    } else if (notification.issue_id) {
-      navigate(`/issues/${notification.issue_id}`);
     }
   };
 
-  const getNotificationIcon = (type: NotificationType) => {
-    switch (type) {
-      case 'NEW_INVOICE':
-        return '📄';
-      case 'PAYMENT_REMINDER':
-        return '⏰';
-      case 'OVERDUE_INVOICE':
-        return '⚠️';
-      case 'CONTRACT_EXPIRING':
-        return '📅';
-      case 'ISSUE_RESOLVED':
-        return '✅';
-      case 'GENERAL_ANNOUNCEMENT':
-        return '📢';
-      default:
-        return '🔔';
-    }
-  };
+  const getNotificationIcon = (type: NotificationType) => TYPE_META[type]?.icon ?? '🔔';
 
-  const getNotificationTypeLabel = (type: NotificationType) => {
-    switch (type) {
-      case 'NEW_INVOICE':
-        return 'Hóa đơn mới';
-      case 'PAYMENT_REMINDER':
-        return 'Nhắc thanh toán';
-      case 'OVERDUE_INVOICE':
-        return 'Quá hạn';
-      case 'CONTRACT_EXPIRING':
-        return 'Hợp đồng hết hạn';
-      case 'ISSUE_RESOLVED':
-        return 'Công việc';
-      case 'GENERAL_ANNOUNCEMENT':
-        return 'Thông báo chung';
-      default:
-        return 'Khác';
-    }
-  };
+  const getNotificationTypeLabel = (type: NotificationType) => TYPE_META[type]?.label ?? 'Khác';
 
-  const getNotificationColor = (type: NotificationType) => {
-    switch (type) {
-      case 'NEW_INVOICE':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'PAYMENT_REMINDER':
-        return 'bg-orange-100 text-orange-700 border-orange-200';
-      case 'OVERDUE_INVOICE':
-        return 'bg-red-100 text-red-700 border-red-200';
-      case 'CONTRACT_EXPIRING':
-        return 'bg-purple-100 text-purple-700 border-purple-200';
-      case 'ISSUE_RESOLVED':
-        return 'bg-green-100 text-green-700 border-green-200';
-      case 'GENERAL_ANNOUNCEMENT':
-        return 'bg-gray-100 text-gray-700 border-gray-200';
-      default:
-        return 'bg-gray-100 text-gray-700 border-gray-200';
-    }
-  };
+  const getNotificationColor = (type: NotificationType) =>
+    TYPE_META[type]?.color ?? 'bg-gray-100 text-gray-700 border-gray-200';
 
-  const notificationTypes: { value: NotificationType | 'all'; label: string }[] =
-    [
+  // Đếm theo loại để ẩn chip rỗng — NEW_INVOICE / ISSUE_RESOLVED / GENERAL_ANNOUNCEMENT
+  // hiện có 0 dòng trên prod; ẩn (chứ không xoá hẳn) để chip tự hiện lại khi có dữ liệu.
+  const typeCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of allNotifications) m.set(n.type, (m.get(n.type) ?? 0) + 1);
+    return m;
+  }, [allNotifications]);
+
+  const notificationTypes = useMemo<{ value: NotificationType | 'all'; label: string }[]>(
+    () => [
       { value: 'all', label: 'Tất cả' },
-      { value: 'NEW_INVOICE', label: 'Hóa đơn mới' },
-      { value: 'PAYMENT_REMINDER', label: 'Nhắc thanh toán' },
-      { value: 'OVERDUE_INVOICE', label: 'Quá hạn' },
-      { value: 'CONTRACT_EXPIRING', label: 'HĐ hết hạn' },
-      { value: 'ISSUE_RESOLVED', label: 'Công việc' },
-      { value: 'GENERAL_ANNOUNCEMENT', label: 'Thông báo chung' },
-    ];
+      ...KNOWN_TYPES.filter(
+        (t) => (typeCounts.get(t) ?? 0) > 0 || selectedType === t,
+      ).map((t) => ({ value: t, label: TYPE_META[t].chip })),
+    ],
+    [typeCounts, selectedType],
+  );
+
+  // 🔴 Bẫy "trang rỗng vĩnh viễn": giá trị chip đã lưu trong sessionStorage có thể
+  // KHÔNG còn nằm trong danh sách đang render (loại bị bỏ, hoặc chip bị ẩn vì count=0).
+  // Không có nhánh hạ về 'all' thì người từng chọn chip đó mở trang chỉ thấy khoảng trắng
+  // mà không hiểu vì sao — nút để bấm về đã biến mất cùng chip.
+  useEffect(() => {
+    if (selectedType === 'all') return;
+    // (1) Giá trị lạ/đã bị gỡ khỏi union — hạ ngay, không cần chờ dữ liệu.
+    if (!KNOWN_FILTER_VALUES.has(selectedType)) {
+      setSelectedType('all');
+      return;
+    }
+    // (2) Chip bị ẩn vì 0 dòng — chỉ kết luận khi đã tải xong VÀ có dữ liệu,
+    // nếu không lần render đầu (list rỗng) sẽ xoá oan lựa chọn hợp lệ.
+    if (!isLoading && allNotifications.length > 0 && (typeCounts.get(selectedType) ?? 0) === 0) {
+      setSelectedType('all');
+    }
+  }, [selectedType, setSelectedType, isLoading, allNotifications.length, typeCounts]);
 
   return (
     <MainLayout>

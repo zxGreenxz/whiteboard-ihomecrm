@@ -37,7 +37,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useFirstInvoiceDetails, useContractDepositVouchers } from '@/hooks/useInvoices';
 import { useUpdatePaymentMethod } from '@/hooks/useUpdatePaymentMethod';
 import { useUploadPaymentReceipt } from '@/hooks/useUploadPaymentReceipt';
-import { useDeletePayment } from '@/hooks/useDeletePayment';
+import {
+  useDeletePayment,
+  useCollectionReversalEligibility,
+  COLLECTION_BLOCK_TEXT,
+} from '@/hooks/useDeletePayment';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { getInvoiceTitle } from '@/lib/invoiceUtils';
@@ -234,6 +238,18 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
     (sum, payment) => sum + (Number(payment.collected_amount) || 0),
     0,
   );
+
+  // Đợt 5: hỏi server TRƯỚC để hộp xác nhận nói đúng chuyện sắp xảy ra — huỷ
+  // tại chỗ (không sinh phiếu) hay sinh phiếu đối ứng — và để chặn ngay tại
+  // giao diện khi kỳ đã đóng, thay vì bấm rồi mới ăn lỗi.
+  const { data: reversalEligibility } = useCollectionReversalEligibility(
+    (payments ?? []).map((p) => p.collection_id).filter(Boolean) as string[],
+  );
+  const confirmEligibility = confirmTarget?.collection_id
+    ? reversalEligibility?.[confirmTarget.collection_id]
+    : undefined;
+  const confirmBlocked = confirmEligibility?.mode === 'BLOCKED';
+  const confirmInPlace = confirmEligibility?.mode === 'IN_PLACE_CANCEL';
 
   if (!invoice) return null;
 
@@ -626,11 +642,15 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hoàn tác lần thu tiền?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {confirmBlocked ? 'Không hoàn tác được khoản thu này' : 'Hoàn tác lần thu tiền?'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmTarget ? (
+              {confirmBlocked ? (
+                COLLECTION_BLOCK_TEXT[confirmEligibility?.reason_code ?? 'UNKNOWN']
+              ) : confirmTarget ? (
                 <>
-                  Bạn sắp hoàn tác {confirmTarget.collection_id ? 'toàn bộ collection chứa phiếu' : 'phiếu thanh toán cũ'}
+                  Bạn sắp hoàn tác {confirmTarget.collection_id ? 'toàn bộ lần thu chứa phiếu' : 'phiếu thanh toán cũ'}
                   {confirmIdx >= 0 ? ` #${confirmIdx + 1}` : ''}{' '}
                   <span className="font-semibold text-emerald-700">
                     {fmtVND(confirmAmount)}
@@ -638,35 +658,38 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
                   {confirmTarget.collection_id
                     ? `tiền đã thu giữ (${confirmCollectionPayments.length} dòng TM/TK/TT). `
                     : `(${confirmTarget.payment_method}). `}
-                  Hệ thống sẽ tạo bút toán đối ứng,
-                  giữ nguyên lịch sử gốc và tính lại số đã thu của hóa đơn.
+                  {confirmInPlace
+                    ? 'Phiếu thu sẽ chuyển sang ĐÃ HUỶ và tiền trừ thẳng khỏi sổ quỹ — không sinh thêm phiếu đối ứng nào trong danh sách thu chi.'
+                    : 'Hệ thống sẽ tạo phiếu chi đối ứng, giữ nguyên lịch sử gốc và tính lại số đã thu của hóa đơn.'}
                 </>
               ) : (
-                'Hệ thống sẽ tạo bút toán đối ứng và giữ nguyên lịch sử gốc.'
+                'Hệ thống sẽ hoàn tác khoản thu và tính lại số đã thu của hóa đơn.'
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletePayment.isPending}>
-              Huỷ
+              {confirmBlocked ? 'Đóng' : 'Huỷ'}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                handleConfirmDelete();
-              }}
-              disabled={deletePayment.isPending}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {deletePayment.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Đang hoàn tác...
-                </>
-              ) : (
-                'Hoàn tác'
-              )}
-            </AlertDialogAction>
+            {!confirmBlocked && (
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleConfirmDelete();
+                }}
+                disabled={deletePayment.isPending}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              >
+                {deletePayment.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Đang hoàn tác...
+                  </>
+                ) : (
+                  'Hoàn tác'
+                )}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

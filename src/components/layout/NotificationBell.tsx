@@ -24,10 +24,14 @@ import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { resolveNotificationUrl } from '@/lib/notificationRoutes';
+import { useMyPermissions } from '@/hooks/useMyPermissions';
 
 const NotificationBell = () => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  // Allow-list URL cần quyền của người bấm (route bị chặn → hạ về /my-day).
+  const { data: perms } = useMyPermissions();
 
   // Queries
   const { data: notifications = [], isLoading } = useRecentNotifications(10);
@@ -45,17 +49,26 @@ const NotificationBell = () => {
       markAsReadMutation.mutate(notification.id);
     }
 
-    // Navigate to related entity
+    // ĐI THEO metadata.url TRƯỚC MỌI NHÁNH id — nơi phát sự kiện mới biết đích đúng
+    // (danh sách đã lọc sẵn, phiếu cụ thể, tab bàn giao…), không suy ra được từ id.
+    const url = resolveNotificationUrl(notification.metadata?.url, perms);
+    if (url) {
+      navigate(url);
+      setOpen(false);
+      return;
+    }
+
+    // Fallback cho dòng cũ không có metadata.url.
+    // (Nhánh issue_id đã bị XOÁ: route /issues/:id KHÔNG tồn tại — bấm vào chỉ đóng
+    // dropdown và không đi đâu cả, khiến người dùng tưởng app đơ.)
     if (notification.invoice_id) {
       navigate(`/invoices/${notification.invoice_id}`);
       setOpen(false);
     } else if (notification.contract_id) {
       navigate(`/contracts/${notification.contract_id}`);
       setOpen(false);
-    } else if (notification.issue_id) {
-      // TODO: Công việc đang xây dựng lại
-      setOpen(false);
     } else if (notification.type === 'SALARY_BONUS') {
+      // Giữ lại: 52 dòng SALARY_BONUS cũ không có metadata.url.
       navigate('/finance/salary');
       setOpen(false);
     }
@@ -79,6 +92,10 @@ const NotificationBell = () => {
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
+      case 'ACTION_REQUIRED':
+        return '🛎️';
+      case 'APPROVAL_RESULT':
+        return '✅';
       case 'NEW_INVOICE':
         return '📄';
       case 'PAYMENT_REMINDER':
@@ -91,6 +108,8 @@ const NotificationBell = () => {
         return '✅';
       case 'GENERAL_ANNOUNCEMENT':
         return '📢';
+      case 'DEPOSIT_SHORTFALL':
+        return '⚠️';
       case 'SALARY_BONUS':
         return '🎉';
       default:
@@ -100,6 +119,11 @@ const NotificationBell = () => {
 
   const getNotificationColor = (type: Notification['type']) => {
     switch (type) {
+      // Amber = "còn việc phải làm", khớp badge Chờ duyệt của phiếu thu chi.
+      case 'ACTION_REQUIRED':
+        return 'text-amber-600';
+      case 'APPROVAL_RESULT':
+        return 'text-emerald-600';
       case 'NEW_INVOICE':
         return 'text-blue-600';
       case 'PAYMENT_REMINDER':
@@ -112,6 +136,8 @@ const NotificationBell = () => {
         return 'text-green-600';
       case 'GENERAL_ANNOUNCEMENT':
         return 'text-gray-600';
+      case 'DEPOSIT_SHORTFALL':
+        return 'text-amber-700';
       case 'SALARY_BONUS':
         return 'text-emerald-600';
       default:

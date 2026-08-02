@@ -166,11 +166,15 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          npm run gen:types > /tmp/types.generated.ts
-          # Dòng đầu file committed là comment header thêm tay (xem CLAUDE.md) — bỏ qua khi so.
-          diff -u <(tail -n +2 src/integrations/supabase/types.ts) <(tail -n +2 /tmp/types.generated.ts) \
+          # scripts/gen-supabase-types.mjs GHI THẲNG vào src/integrations/supabase/types.ts
+          # (outputPath hardcode ở :192) và TỰ chèn header (:9/:79). stdout chỉ có banner npm.
+          # Bản cũ `npm run gen:types > /tmp/x.ts` hỏng cả hai vế: vế phải là banner, vế trái
+          # đã bị script ghi đè trước khi diff chạy ⇒ job luôn exit 1. Phải sao lưu trước.
+          cp src/integrations/supabase/types.ts /tmp/types.committed.ts
+          npm run gen:types
+          diff -u /tmp/types.committed.ts src/integrations/supabase/types.ts \
             && echo "✅ types.ts khớp schema DB — không trôi." \
-            || { echo "❌ types.ts TRÔI so với schema thật — chạy: npm run gen:types > src/integrations/supabase/types.ts (rồi thêm lại header)"; exit 1; }
+            || { echo "❌ types.ts TRÔI so với schema thật — chạy: npm run gen:types (script tự ghi + tự thêm header, KHÔNG redirect)"; exit 1; }
 
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: đối chiếu tiền 3 nguồn độc lập (bug class cap-1000 PostgREST).

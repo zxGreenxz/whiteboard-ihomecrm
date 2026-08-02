@@ -113,6 +113,8 @@ export type ActionKey =
   | "emergency_override"          // approvals — cửa thoát của chủ sở hữu
   | "manage_custody"              // cashbooks — giao/nhận giữ sổ
   | "post"                        // cashbooks — ghi sổ (hạch toán)
+  | "close"                       // cashbooks — đề nghị chốt & bàn giao quỹ
+  | "close_confirm"               // cashbooks — xác nhận nhận bàn giao (khoá vĩnh viễn)
   | "reverse"                     // income_expenses — đảo bút toán
   | "self_approve_within_limit"   // income_expenses — tự duyệt dưới ngưỡng
   | "pay_manager"                 // shareholder_profit — chi lương quản lý
@@ -195,7 +197,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "finance",
     label: "Tài chính",
     modules: [
-      { key: "cashbooks",       label: "Sổ quỹ", extra: ["share", "manage_custody", "post"] },
+      { key: "cashbooks",       label: "Sổ quỹ", extra: ["share", "manage_custody", "post", "close", "close_confirm"] },
       { key: "meter_readings",  label: "Ghi chỉ số", extra: ["export"] },
       { key: "invoices",        label: "Hoá đơn",    extra: ["approve", "cancel", "record_payment", "print", "export"] },
       { key: "thu_tien",        label: "Thu tiền (mobile)", core: ["view"], extra: ["collect", "undo", "report"] },
@@ -358,6 +360,8 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   collection_cycle: "BC Chu kỳ Thu — Bàn giao",
   emergency_override: "Duyệt khẩn cấp (cửa thoát chủ sở hữu)",
   manage_custody: "Giao / nhận giữ sổ quỹ",
+  close:          "Đề nghị chốt & bàn giao quỹ",
+  close_confirm:  "Xác nhận nhận bàn giao (khoá vĩnh viễn)",
   post:           "Ghi sổ (hạch toán)",
   reverse:        "Đảo bút toán",
   self_approve_within_limit: "Tự duyệt phiếu dưới ngưỡng",

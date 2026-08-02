@@ -136,8 +136,33 @@ body {
 }
 .brand-name { font-weight: 700; font-size: 15.5px; letter-spacing: -.2px; line-height: 1.1; }
 .brand-sub  { font-size: 11.5px; color: var(--ink-3); font-weight: 500; margin-top: 1px; }
+/* Khối chữ thương hiệu co lại được để nhường chỗ cho nút Tải ảnh + ô Live */
+.brand-txt { min-width: 0; }
+.brand-txt .brand-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Nút "Tải ảnh" — nằm ngay bên trái ô Live, đẩy cả cụm sang phải */
+.hdr-dl {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font); font-size: 11px; font-weight: 700; color: var(--brand);
+  background: var(--surface); border: 1px solid var(--brand-line, #cfe6da);
+  padding: 5px 10px; border-radius: 999px; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.hdr-dl svg { width: 13px; height: 13px; }
+.hdr-dl:hover:not(:disabled) { background: var(--st-free-bg); }
+.hdr-dl:disabled { opacity: .55; cursor: default; }
+/* Đã có .hdr-dl đẩy lề trái thì ô Live bám sát ngay sau nó */
+.hdr-dl + .live { margin-left: 0; }
+/* Máy hẹp: bỏ chữ, giữ icon để cả hàng vẫn nằm trên 1 dòng */
+@media (max-width: 430px) {
+  .hdr-top { gap: 8px; }
+  .hdr-dl { padding: 6px; }
+  .hdr-dl > span { display: none; }
+}
+
 .live {
   margin-left: auto; display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; flex-shrink: 0;
   font-size: 11px; font-weight: 600; color: var(--ink-2);
   background: var(--surface-2); border: 1px solid var(--line);
   padding: 5px 9px 5px 8px; border-radius: 999px;

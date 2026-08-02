@@ -21,6 +21,16 @@ export interface FinanceV2OrgRoutes {
   workflow: FinanceRoute;
   posting: FinanceRoute;
   access: FinanceRoute;
+  /**
+   * Công tắc "Chuẩn kế toán" của org (Đợt 1). true = cơ chế CHẶT như hiện tại,
+   * false = cơ chế THU CHI LINH HOẠT.
+   *
+   * Fail-safe theo đúng doctrine ở đầu file: org lạ / cột NULL / RPC lỗi đều
+   * cho ra `true` (CHẶT). Không bao giờ đoán "linh hoạt" — đoán sai theo hướng
+   * đó là mời người dùng bấm một nút mà server sẽ từ chối, hoặc tệ hơn là bày
+   * ra hành vi nới lỏng ở một org chưa bật.
+   */
+  accountingStandardStrict: boolean;
 }
 
 export const LEGACY_ROUTES: FinanceV2OrgRoutes = Object.freeze({
@@ -28,6 +38,7 @@ export const LEGACY_ROUTES: FinanceV2OrgRoutes = Object.freeze({
   workflow: "LEGACY",
   posting: "LEGACY",
   access: "LEGACY",
+  accountingStandardStrict: true,
 });
 
 interface ClientFlagsRow {
@@ -36,6 +47,7 @@ interface ClientFlagsRow {
   workflow_route: string;
   posting_route: string;
   access_route: string;
+  accounting_standard_strict: boolean | null;
 }
 
 function asRoute(value: string | null | undefined): FinanceRoute {
@@ -66,6 +78,9 @@ export async function fetchFinanceV2ClientFlags(): Promise<Map<string, FinanceV2
       workflow: asRoute(row.workflow_route),
       posting: asRoute(row.posting_route),
       access: asRoute(row.access_route),
+      // Chỉ `false` tường minh mới là linh hoạt; null/undefined (RPC cũ chưa
+      // có cột) ⇒ CHẶT.
+      accountingStandardStrict: row.accounting_standard_strict !== false,
     });
   }
   return map;
@@ -103,3 +118,14 @@ export const canWritePosting = (r: FinanceV2OrgRoutes): boolean =>
 
 export const isCanonicalAccess = (r: FinanceV2OrgRoutes): boolean =>
   r.access === "CANONICAL";
+
+/**
+ * Org đang ở chế độ THU CHI LINH HOẠT? (Đợt 1 — chưa màn nào đọc.)
+ *
+ * Đây chỉ là cờ để ẨN/HIỆN nút. Server mới là nguồn sự thật: mọi RPC linh hoạt
+ * tự gọi app_private.ie_flex_mode_enabled_v1 và raise 55000 kèm dấu
+ * `[STRICT_MODE]`. Nếu FE cầm cờ cũ thì cùng lắm là bấm vào một nút bị từ chối
+ * kèm thông báo rõ, chứ không bao giờ lách được chế độ.
+ */
+export const isFlexibleMode = (r: FinanceV2OrgRoutes): boolean =>
+  r.accountingStandardStrict === false;

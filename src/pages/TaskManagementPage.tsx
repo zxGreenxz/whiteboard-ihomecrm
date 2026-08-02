@@ -1,4 +1,6 @@
-import { useMemo, useState, lazy, Suspense } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import MainLayout from "@/components/layout/MainLayout";
 import { ClipboardList, Plus, SlidersHorizontal, Search, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,6 +54,7 @@ export default function TaskManagementPage() {
 function TaskManagementDesktopPage() {
   const { data: authUser } = useAuth();
   const isMobile = useIsMobile();
+  const [searchParams, setSearchParams] = useSearchParams();
   // State management
   const [searchQuery, setSearchQuery] = usePersistedState("flt:tasks:search", "");
   const [showFilters, setShowFilters] = useState(false);
@@ -73,6 +76,38 @@ function TaskManagementDesktopPage() {
   // Data hooks
   const { data: allJobs = [], isLoading, isError, error, refetch } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
+
+  // ── Deep-link `/tasks?job=<uuid>` (thông báo "Việc mới được giao cho bạn") ──
+  // useJobs kéo HẾT dòng trong cửa sổ (fetchAllRows), phân trang 20 là
+  // client-side ⇒ chỉ cần tìm trong allJobs rồi mở dialog chi tiết; không cần
+  // hook mới. Việc nằm ngoài cửa sổ 90 ngày (hoặc bị bộ lọc đã lưu cắt) thì
+  // báo nhẹ chứ không để người dùng bấm vào một trang im lặng.
+  const handledJobParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const jobId = searchParams.get("job");
+    if (!jobId) {
+      handledJobParamRef.current = null;
+      return;
+    }
+    // Chưa tải xong / lỗi mạng: giữ nguyên param, effect chạy lại khi có dữ liệu.
+    if (isLoading || isError) return;
+    if (handledJobParamRef.current === jobId) return;
+    handledJobParamRef.current = jobId;
+
+    const job = (allJobs as JobWithRelations[]).find((j) => j.id === jobId) ?? null;
+    if (job) {
+      setSelectedJob(job);
+      setIsDetailOpen(true);
+    } else {
+      toast.info("Không tìm thấy công việc trong danh sách đang xem", {
+        description: "Việc có thể đã quá 90 ngày hoặc bị bộ lọc hiện tại loại ra.",
+      });
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("job");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, allJobs, isLoading, isError]);
 
   const myUserId = authUser?.id ?? null;
   const q = searchQuery.trim().toLowerCase();

@@ -25,7 +25,21 @@ import { supabase } from '@/integrations/supabase/client';
 /** 1 phiếu trong ô (từ vouchers jsonb của status RPC). */
 export interface PeriodFeeVoucher {
   id: string;
+  /**
+   * Phần thuộc HẠNG MỤC ĐANG XEM (Σ item khớp kind) — Slice −1 A2 đổi nghĩa khoá
+   * `amount` từ `ie.total_amount` sang `SUM(it.amount)`, vì phiếu đa hạng mục
+   * trước đây bị cộng nguyên tổng vào TỪNG hạng mục (đếm hai lần). Với phiếu một
+   * hạng mục thì `amount === voucherTotal`.
+   */
   amount: number;
+  /**
+   * TỔNG CẢ PHIẾU (`ie.total_amount`). Dùng cho mọi chỗ nói "số tiền phiếu" —
+   * nhất là hộp thoại thanh toán phiếu nháp (nó duyệt & ghi sổ CẢ phiếu) và ô
+   * sửa số tiền. Ca thật trên prod: PC2606019 tổng 6.384.000 = 5.758.000 (điện)
+   * + 626.000 (nước); nếu hộp thoại nhãn 5.758.000 thì nó đang mời người dùng
+   * duyệt 6.384.000 dưới một con số khác.
+   */
+  voucherTotal: number;
   status: 'APPROVED' | 'UNAPPROVED';
   date: string;                 // voucher_date 'YYYY-MM-DD'
   source: string | null;        // system_source
@@ -46,7 +60,13 @@ export interface PeriodFeeStatus {
   buildingId: string;
   categoryKey: string;
   paidAmount: number;           // Σ phiếu APPROVED
-  draftAmount: number;          // Σ phiếu NHÁP (UNAPPROVED)
+  /**
+   * Σ phiếu CHỜ DUYỆT (UNAPPROVED) — hiện ra UI là "đã tạo, chờ duyệt", KHÔNG
+   * phải "chưa đóng", và ô đó KHÔNG còn nút đóng tiền (§−1.1/§−1.2).
+   * `draftAmount > 0` là điều kiện DUY NHẤT mà UI dùng để khoá ô, nên nếu reader
+   * SQL đổi tên cột sang `pending_amount` thì mapping dưới nhận cả hai tên.
+   */
+  draftAmount: number;
   coveredStart: string | null;
   coveredEnd: string | null;
   voucherIds: string[];
@@ -89,6 +109,8 @@ export interface PeriodCommissionRow {
   status: CommissionStatus;
 }
 
+export type MaintenanceState = 'PENDING_APPROVAL' | 'APPROVED_UNPOSTED' | 'POSTED';
+
 export interface MaintenanceRow {
   batchId: string | null;
   payerName: string | null;
@@ -101,19 +123,43 @@ export interface MaintenanceRow {
   hasReceipt: boolean;
   voucherDate: string | null;
   isStandalone: boolean;
+  /**
+   * Slice −1 A3a: reader nay trả CẢ phiếu UNAPPROVED (trước đây phiếu bảo trì
+   * vừa tạo là VÔ HÌNH ⇒ tab mời tạo lại). Ba trường dưới đây BẮT BUỘC phải
+   * được đọc: `ie_compat_insert_v2` cưỡng chế `approval_status='UNAPPROVED'` nên
+   * MỌI phiếu tổng tạo từ UI này đều ra đời ở trạng thái chờ duyệt — coi chúng
+   * như đã chi là đổi lỗi "ghi vô hình" thành lỗi "đếm tiền chưa duyệt như đã
+   * tiêu", đúng cái mà useUtilityBills đã cẩn thận tách ra (paidMap/pendingMap).
+   */
+  approvalStatus: string | null;
+  postingStatus: string | null;
+  state: MaintenanceState;
+  /** Tắt gọn của `state === 'PENDING_APPROVAL'`. */
+  pending: boolean;
 }
 
 export interface MaintenanceGroup {
   batchId: string | null;
   payerName: string | null;
+  /** Σ dòng ĐÃ DUYỆT (tiền đã/đang thực chi). */
   total: number;
+  /** Σ dòng CHỜ DUYỆT — hiện riêng, KHÔNG cộng vào `total`. */
+  pendingTotal: number;
   lines: MaintenanceRow[];
   hasReceipt: boolean;
 }
 
-/** Kết quả pay: hoặc phiếu đã tạo, hoặc cảnh báo trùng (chưa ghi gì). */
+/**
+ * Kết quả pay: hoặc phiếu đã tạo, hoặc cảnh báo trùng (chưa ghi gì).
+ *
+ * `can_force` do CHÍNH SERVER trả lời "người này có được bấm Đóng thêm không?"
+ * (`is_super_admin() OR is_org_owner_v1(org toà, uid)` — cùng một dòng mã với cổng
+ * chặn thật). Optional vì thân hàm trước Slice −1 chưa có khoá này: khi undefined
+ * thì FE lùi về cờ `canForce` cũ, KHÔNG được coi là `false` (coi là false sẽ khoá
+ * cả super admin trong khoảng thời gian FE đã deploy mà migration chưa apply).
+ */
 export type PayPeriodFeeResult =
-  | { warning: 'duplicate'; existing_count: number; existing_amount: number }
+  | { warning: 'duplicate'; existing_count: number; existing_amount: number; can_force?: boolean }
   | { voucher_id: string; code: string; total_amount: number; account_id: string };
 
 // ── Invalidate helper ──────────────────────────────────────────────────────
@@ -131,6 +177,9 @@ const invalidateFees = (qc: ReturnType<typeof useQueryClient>) => {
 const mapVoucher = (v: any): PeriodFeeVoucher => ({
   id: v.id,
   amount: Number(v.amount) || 0,
+  // `voucher_total` là khoá MỚI của A2; reader cũ chưa có ⇒ lùi về `amount`
+  // (đúng với phiếu một hạng mục, tức toàn bộ dữ liệu hiện tại).
+  voucherTotal: Number(v.voucher_total) || Number(v.amount) || 0,
   status: v.status === 'UNAPPROVED' ? 'UNAPPROVED' : 'APPROVED',
   date: (v.date ?? '').slice(0, 10),
   source: v.source ?? null,
@@ -171,7 +220,10 @@ export const usePeriodFeeStatus = (
         buildingId: r.building_id,
         categoryKey: r.category_key,
         paidAmount: Number(r.paid_amount) || 0,
-        draftAmount: Number(r.draft_amount) || 0,
+        // `pending_amount` = tên cột mới nếu reader SQL đổi cách gọi trạng thái
+        // chờ duyệt; `draft_amount` = tên đang chạy trên prod. Nhận cả hai để lần
+        // đổi tên bên SQL không làm ô quay về "chưa đóng" trong im lặng.
+        draftAmount: Number(r.pending_amount ?? r.draft_amount) || 0,
         coveredStart: r.covered_start ?? null,
         coveredEnd: r.covered_end ?? null,
         voucherIds: Array.isArray(r.voucher_ids) ? r.voucher_ids : [],
@@ -312,24 +364,59 @@ export const useUpdatePeriodFee = () => {
 };
 
 // ── Cấu hình tòa×hạng mục ───────────────────────────────────────────────────
+/**
+ * GOTCHA đã cắn: cờ "Không áp dụng" KHÔNG nằm ở `building_fee_accounts.not_applicable`.
+ * `upsert_building_fee_account` ghi nó vào `buildings.hidden_fixed_expenses` và tự
+ * gọi đó là "nguồn DUY NHẤT" (BC Lợi nhuận + trang Đóng tiền cùng đọc chỗ đó).
+ * Cột `not_applicable` thì KHÔNG AI GHI — đo trên prod 30/07: 0/109 dòng true,
+ * trong khi `hidden_fixed_expenses` có 6 mục thật ở 4 toà (403PVB nuoc+ve_sinh,
+ * 65NTG cong_an+ve_sinh, 405PVB nuoc, 1392QT nuoc). Đọc sai cột ⇒ giao diện hiện
+ * "đang áp dụng" cho đúng những ô chủ đã tắt. Nên phải JOIN sang buildings.
+ */
 export const useFeeAccounts = () => {
   const query = useQuery({
     queryKey: ['fee-accounts'],
     queryFn: async (): Promise<FeeAccount[]> => {
-      const { data, error } = await (supabase as any)
-        .from('building_fee_accounts')
-        .select('building_id, fee_category, provider_code, account_holder, default_amount, default_account_id, not_applicable')
-        .is('deleted_at', null);
-      if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
+      const [cfgRes, bldRes] = await Promise.all([
+        (supabase as any)
+          .from('building_fee_accounts')
+          .select('building_id, fee_category, provider_code, account_holder, default_amount, default_account_id')
+          .is('deleted_at', null),
+        (supabase as any)
+          .from('buildings')
+          .select('id, hidden_fixed_expenses')
+          .is('deleted_at', null),
+      ]);
+      if (cfgRes.error) throw new Error(cfgRes.error.message);
+      if (bldRes.error) throw new Error(bldRes.error.message);
+
+      const hidden = new Set<string>();
+      for (const b of (bldRes.data ?? []) as any[]) {
+        for (const k of (b.hidden_fixed_expenses ?? []) as string[]) hidden.add(`${b.id}:${k}`);
+      }
+
+      const rows: FeeAccount[] = ((cfgRes.data ?? []) as any[]).map((r) => ({
         buildingId: r.building_id,
         feeCategory: r.fee_category,
         providerCode: r.provider_code ?? '',
         accountHolder: r.account_holder ?? '',
         defaultAmount: r.default_amount == null ? null : Number(r.default_amount),
         defaultAccountId: r.default_account_id ?? null,
-        notApplicable: !!r.not_applicable,
+        notApplicable: hidden.has(`${r.building_id}:${r.fee_category}`),
       }));
+
+      // Ô bị tắt mà CHƯA có dòng cấu hình vẫn phải xuất hiện, kẻo trang Cài đặt
+      // hiện nó là "đang áp dụng" — đúng lỗi vừa vá, chỉ đổi chỗ biểu hiện.
+      const seen = new Set(rows.map((r) => `${r.buildingId}:${r.feeCategory}`));
+      for (const key of hidden) {
+        if (seen.has(key)) continue;
+        const [buildingId, feeCategory] = [key.slice(0, 36), key.slice(37)];
+        rows.push({
+          buildingId, feeCategory, providerCode: '', accountHolder: '',
+          defaultAmount: null, defaultAccountId: null, notApplicable: true,
+        });
+      }
+      return rows;
     },
   });
   const byKey = useMemo(() => {
@@ -424,19 +511,33 @@ export const usePeriodMaintenance = (
         p_building_ids: buildingIds,
       });
       if (error) throw new Error(error.message);
-      return ((data ?? []) as any[]).map((r) => ({
-        batchId: r.batch_id ?? null,
-        payerName: r.payer_name ?? null,
-        voucherId: r.voucher_id,
-        buildingId: r.building_id,
-        buildingName: r.building_name ?? '',
-        subtype: (r.subtype === 'mg' ? 'mg' : 'ml') as 'ml' | 'mg',
-        amount: Number(r.amount) || 0,
-        accountName: r.account_name ?? null,
-        hasReceipt: !!r.has_receipt,
-        voucherDate: r.voucher_date ?? null,
-        isStandalone: !!r.is_standalone,
-      }));
+      return ((data ?? []) as any[]).map((r) => {
+        // `state` là cột MỚI của A3a; reader cũ không có ⇒ suy từ approval_status,
+        // và nếu cả hai vắng thì coi là đã duyệt (đúng hành vi trước slice này).
+        const state: MaintenanceState =
+          r.state === 'PENDING_APPROVAL' || r.approval_status === 'UNAPPROVED'
+            ? 'PENDING_APPROVAL'
+            : r.state === 'POSTED' || r.posting_status === 'POSTED'
+              ? 'POSTED'
+              : 'APPROVED_UNPOSTED';
+        return {
+          batchId: r.batch_id ?? null,
+          payerName: r.payer_name ?? null,
+          voucherId: r.voucher_id,
+          buildingId: r.building_id,
+          buildingName: r.building_name ?? '',
+          subtype: (r.subtype === 'mg' ? 'mg' : 'ml') as 'ml' | 'mg',
+          amount: Number(r.amount) || 0,
+          accountName: r.account_name ?? null,
+          hasReceipt: !!r.has_receipt,
+          voucherDate: r.voucher_date ?? null,
+          isStandalone: !!r.is_standalone,
+          approvalStatus: r.approval_status ?? null,
+          postingStatus: r.posting_status ?? null,
+          state,
+          pending: state === 'PENDING_APPROVAL',
+        };
+      });
     },
   });
 
@@ -447,9 +548,11 @@ export const usePeriodMaintenance = (
     for (const r of rows) {
       if (r.batchId) {
         let g = bmap.get(r.batchId);
-        if (!g) { g = { batchId: r.batchId, payerName: r.payerName, total: 0, lines: [], hasReceipt: false }; bmap.set(r.batchId, g); }
+        if (!g) { g = { batchId: r.batchId, payerName: r.payerName, total: 0, pendingTotal: 0, lines: [], hasReceipt: false }; bmap.set(r.batchId, g); }
         g.lines.push(r);
-        g.total += r.amount;
+        // Phiếu CHỜ DUYỆT không phải tiền đã chi — cộng riêng (cùng nguyên tắc
+        // DayGroup.sum vs pendingSum của useUtilityBills).
+        if (r.pending) g.pendingTotal += r.amount; else g.total += r.amount;
         g.hasReceipt = g.hasReceipt || r.hasReceipt;
       } else {
         solo.push(r);

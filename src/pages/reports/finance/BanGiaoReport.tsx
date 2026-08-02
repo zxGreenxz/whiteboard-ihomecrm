@@ -28,7 +28,7 @@ import { DateRangePicker } from '@/components/reports/DateRangePicker';
 import { format, startOfMonth } from 'date-fns';
 import { useSettlementReport, type SettlementAccount } from '@/hooks/useSettlementReport';
 import { usePersistedDateRange } from '@/hooks/usePersistedState';
-import { useProposeReconciliation, useCreateOpeningAdjustment } from '@/hooks/useReconciliations';
+import { useProposeReconciliation } from '@/hooks/useReconciliations';
 import { fmtDateTime } from '@/lib/handover';
 import { useStaffUsers } from '@/hooks/useStaffUsers';
 import { useAuth } from '@/hooks/useAuth';
@@ -230,13 +230,10 @@ function ReconcileDialog({
   const { data: currentUser } = useAuth();
   const { data: staff = [] } = useStaffUsers();
   const proposeMut = useProposeReconciliation();
-  const adjustMut = useCreateOpeningAdjustment();
 
   const [counted, setCounted] = useState<string>(String(Math.round(account.current_balance)));
   const [note, setNote] = useState('');
   const [counterparty, setCounterparty] = useState('');
-  // B6 cut-over: khoá sổ tới ngày D + phiếu điều chỉnh chênh (ngoài-KQKD).
-  const [lockAfter, setLockAfter] = useState(false);
 
   const countedNum = Number(counted.replace(/[^\d-]/g, '')) || 0;
   const diff = countedNum - account.current_balance;
@@ -255,18 +252,6 @@ function ReconcileDialog({
           ? `Đã chốt số sổ ${account.name} — lệch ${fmt(res.diff)}`
           : `Đã gửi đối soát sổ ${account.name} — chờ xác nhận`,
       );
-      if (lockAfter) {
-        const adj = await adjustMut.mutateAsync({
-          accountId: account.account_id,
-          countedBalance: countedNum,
-          asOf: asOf || format(new Date(), 'yyyy-MM-dd'),
-        });
-        toast.success(
-          adj.voucher_id
-            ? `Đã khoá sổ tới ${fmtDay(adj.locked_to)} + phiếu điều chỉnh ${fmt(adj.diff)} (ngoài KQKD)`
-            : `Đã khoá sổ tới ${fmtDay(adj.locked_to)} — số dư khớp, không cần phiếu điều chỉnh`,
-        );
-      }
       onClose();
     } catch (e) {
       toast.error((e as Error).message);
@@ -306,22 +291,20 @@ function ReconcileDialog({
             </div>
           </div>
 
-          <label className="flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={lockAfter}
-              onChange={(e) => setLockAfter(e.target.checked)}
-            />
-            <span>
-              <b>Chốt số &amp; KHOÁ SỔ</b> tới hôm nay
-              <span className="block text-xs text-muted-foreground">
-                Số hệ thống lệch với số đếm sẽ được ghi 1 phiếu "Điều chỉnh số dư
-                đầu kỳ" (ngoài KQKD — không ảnh hưởng lợi nhuận); phiếu trước ngày
-                này bị chặn sửa. Không đổi số quá khứ.
-              </span>
-            </span>
-          </label>
+          {/* ĐỢT 6 — ĐÃ GỠ ô "Chốt số & KHOÁ SỔ".
+              Nó gọi create_opening_adjustment, mà Đợt 3 đã REVOKE khỏi
+              `authenticated` (ACL còn mỗi postgres). Hệ quả runtime: bấm xong
+              thì propose_reconciliation ĐÃ ghi một dòng cashbook_reconciliations,
+              rồi RPC thứ hai trả 42501 → toast đỏ, dialog không đóng, bấm lại là
+              ghi thêm một dòng rác nữa. Sổ thì KHÔNG hề bị khoá.
+              Tệ hơn: nó khoá TRƯỚC khi bên kia đồng ý, ngược hẳn quyết định #6.
+              Khoá sổ giờ là kết quả của nghi thức hai bên ở /finance/cashbooks
+              (propose_cashbook_closing_v1 → confirm_cashbook_closing_v1). */}
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Đây chỉ là <b>ghi nhận con số đã đối chiếu</b> — không khoá sổ và không
+            dịch chuyển tiền. Muốn <b>chốt sổ &amp; bàn giao quỹ</b> (khoá kỳ vĩnh
+            viễn, cần cả hai bên ký), làm ở màn <b>Sổ quỹ</b>.
+          </p>
 
           <div>
             <Label className="text-xs">Người xác nhận cùng (không bắt buộc)</Label>

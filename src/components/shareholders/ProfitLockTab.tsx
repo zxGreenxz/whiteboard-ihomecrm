@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Lock, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  AlertCircle,
+  CalendarClock,
+  Lock,
+  LockOpen,
+  RefreshCw,
+  RotateCcw,
+  ShieldAlert,
+  Wallet,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -37,6 +47,7 @@ import {
   useProfitClosePreview,
   useProfitCloseState,
   useResetProfitPeriod,
+  useUnlockProfitMonth,
   type ProfitCloseOrganizationScope,
   type ProfitClosePreviewRow,
 } from "@/hooks/useShareholderProfit";
@@ -50,6 +61,7 @@ import {
   type ProfitCloseDraftMap,
   type ProfitUnallocatedDisposition,
 } from "@/lib/profitClose";
+import { useCashbookMonthlyClosingStatus } from "@/hooks/useCashbookClosing";
 import { formatCurrency } from "@/lib/utils";
 import { currentYear, periodOf, periodToLabel } from "./shareholderUtils";
 
@@ -155,6 +167,47 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   );
   const canLock = selectedOrganization?.can_lock ?? false;
   const canUnlock = selectedOrganization?.can_unlock ?? false;
+
+  // ── PA4: hai lưới an toàn trước khi chốt lợi nhuận ──────────────────
+  //
+  // (1) Sổ quỹ chưa chốt. Chốt LN mà sổ quỹ chưa ai đếm thì con số lợi nhuận
+  //     chưa có ai đứng ra bảo đảm — và sau khi chia cho cổ đông thì phiếu của
+  //     tháng đó bị TRIGGER khoá, muốn sửa phải mở khoá (xoá phân bổ, chốt lại).
+  //     CẢNH BÁO MỀM theo quyết định của chủ: không bao giờ chặn tay chủ.
+  const closingStatusQuery = useCashbookMonthlyClosingStatus(organizationId, period);
+  //     Bốn nhóm, cố ý tách theo VIỆC CỦA AI. Đo trên trình duyệt: chủ mở hộp
+  //     thoại chốt "Hiệp Thu" thì ăn blocker NO_CONFIRMER — sổ đó chốt được
+  //     nhưng phải NATHAN đề nghị, chủ chỉ ký. Bày một nút "Chốt sổ" cho chủ ở
+  //     đây là dẫn người ta vào cửa đóng.
+  const cashbookGaps = useMemo(() => {
+    const rows = closingStatusQuery.data ?? [];
+    const open = rows.filter((r) => !r.covered && r.needs_closing);
+    const waiting = open.filter((r) => r.has_pending_request);
+    const rest = open.filter((r) => !r.has_pending_request);
+    return {
+      // đề nghị chờ ký — tách riêng phần chờ CHÍNH TÔI ký
+      waiting,
+      waitingMine: waiting.filter((r) => r.i_can_confirm),
+      // tôi giữ sổ + tôi đề nghị được + có người khác ký được
+      mine: rest.filter((r) => r.i_can_propose),
+      // hệ đủ hai bên nhưng người phải bấm là NGƯỜI KHÁC
+      others: rest.filter((r) => !r.i_can_propose && r.can_be_closed),
+      // không chốt được vì chỉ MỘT người dính líu tới sổ — nhắc là vô nghĩa,
+      // phải gán ai đó vào vai trò "Kế toán" trước
+      noSigner: rest.filter((r) => !r.can_be_closed),
+      total: open.length,
+    };
+  }, [closingStatusQuery.data]);
+
+  // (2) Tháng chưa kết thúc. Thói quen hiện tại là chốt từ giữa tháng (07/2026
+  //     chốt đủ 17/17 nhà từ 20/07) — kéo theo tháng bị khoá khi còn đang ghi
+  //     phiếu, rồi phải bấm "Mở khoá tháng" liên tục.
+  const monthNotEnded = useMemo(
+    () => period >= periodOf(now.getFullYear(), now.getMonth() + 1),
+    // `now` tạo mới mỗi lần render nhưng chỉ dùng để lấy tháng hiện tại.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [period],
+  );
 
   useEffect(() => {
     setOrganizationId((current) =>
@@ -287,6 +340,7 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
   const displayedHash = canLock ? preview?.source_hash : state?.state_hash;
   const closeMutation = useCloseProfitPeriod();
   const resetMutation = useResetProfitPeriod();
+  const unlockMutation = useUnlockProfitMonth();
 
   useEffect(() => {
     if (!preview) return;
@@ -672,6 +726,37 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             </Button>
           )}
 
+          {/* MỞ KHOÁ — nhẹ hơn "Đặt lại tháng" ở chỗ KHÔNG cần lý do + CAS
+              hash, nhưng KHÔNG hề nhẹ về hậu quả: thân `unlock_profit_month_v1`
+              đang chạy trên prod XOÁ `profit_allocations` +
+              `profit_manager_allocations`, đặt `management_salary = 0` rồi lật
+              snapshot về DRAFT. (Comment cũ ở đây ghi "snapshot giữ nguyên" —
+              SAI, đã đối chiếu thân hàm thật.) Từ 30/07/2026 phiếu của tháng đã
+              chốt bị TRIGGER chặn, nên không có nút này thì chủ phải nhờ kỹ
+              thuật chạy SQL mỗi lần cần sửa một phiếu. */}
+          {hasSnapshots && canUnlock && (
+            <Button
+              className="ph-control"
+              onClick={() => {
+                const locked = (state?.rows ?? [])
+                  .filter((r) => r.locked_at)
+                  .map((r) => r.building_id);
+                if (locked.length === 0) return;
+                unlockMutation.mutate({ periodMonth: period, buildingIds: locked });
+              }}
+              disabled={
+                unlockMutation.isPending ||
+                resetMutation.isPending ||
+                closeMutation.isPending ||
+                (state?.rows ?? []).every((r) => !r.locked_at)
+              }
+              title="Gỡ khoá để sửa phiếu của tháng này. LƯU Ý: phần đã phân bổ cho cổ đông và quản lý sẽ bị XOÁ, snapshot về Nháp — phải chốt lại sau khi sửa xong."
+            >
+              <LockOpen className="mr-1.5 h-3.5 w-3.5" />
+              Mở khoá tháng
+            </Button>
+          )}
+
           {hasSnapshots && canUnlock && (
             <Button
               className="ph-control ph-control--danger"
@@ -755,6 +840,92 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
             {mixedState
               ? " Cần đặt lại toàn tháng trước khi chốt mới."
               : " Chọn “Chốt lại” để xem điều chỉnh theo số mới; hệ thống sẽ kiểm tra source hash lần nữa khi ghi."}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* PA4 lưới 1 — sổ quỹ chưa chốt. Mềm: liệt kê + dẫn đường, không chặn. */}
+      {cashbookGaps.total > 0 && (
+        <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
+          <Wallet className="h-4 w-4" />
+          <AlertTitle>
+            Còn {cashbookGaps.total} sổ quỹ chưa chốt hết {periodToLabel(period)}
+          </AlertTitle>
+          <AlertDescription>
+            <div className="space-y-2">
+              <p>
+                Chốt lợi nhuận trước khi đếm quỹ nghĩa là con số đem chia chưa có ai
+                ký nhận. Chốt từng sổ trước rồi hãy chốt tháng.
+              </p>
+              {cashbookGaps.mine.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-medium">Bạn chốt được ngay:</span>
+                  {cashbookGaps.mine.map((r) => (
+                    <Link
+                      key={r.cashbook_id}
+                      to={`/finance/cashbooks?close=${r.cashbook_id}`}
+                      className="rounded border border-amber-400 bg-white/70 px-1.5 py-0.5 text-xs font-medium underline-offset-2 hover:underline"
+                      title={
+                        r.closed_through
+                          ? `Đã chốt tới ${r.closed_through}`
+                          : "Chưa chốt lần nào"
+                      }
+                    >
+                      {r.cashbook_name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+              {cashbookGaps.waitingMine.length > 0 && (
+                <p>
+                  <span className="font-medium">Chờ BẠN ký:</span>{" "}
+                  {cashbookGaps.waitingMine.map((r) => r.cashbook_name).join(" · ")} —
+                  mở <Link to="/finance/cashbooks" className="underline">Sổ quỹ</Link> để
+                  đếm lại và ký nhận.
+                </p>
+              )}
+              {cashbookGaps.waiting.length > cashbookGaps.waitingMine.length && (
+                <p>
+                  <span className="font-medium">Chờ người khác ký:</span>{" "}
+                  {cashbookGaps.waiting
+                    .filter((r) => !r.i_can_confirm)
+                    .map((r) => r.cashbook_name)
+                    .join(" · ")}{" "}
+                  — đã có đề nghị, nhắc người nhận vào ký.
+                </p>
+              )}
+              {cashbookGaps.others.length > 0 && (
+                <p>
+                  <span className="font-medium">Chờ người giữ sổ đề nghị:</span>{" "}
+                  {cashbookGaps.others.map((r) => r.cashbook_name).join(" · ")} — nghi
+                  thức đòi người ký <em>khác</em> người đề nghị, nên bạn không tự chốt
+                  các sổ này; người đang giữ sổ phải đề nghị rồi bạn ký.
+                </p>
+              )}
+              {cashbookGaps.noSigner.length > 0 && (
+                <p>
+                  <span className="font-medium">Chưa có người ký:</span>{" "}
+                  {cashbookGaps.noSigner.map((r) => r.cashbook_name).join(" · ")} — các
+                  sổ này chỉ một người dính tới nên không ai ký nhận được. Gán một người
+                  vào vai trò <strong>Kế toán</strong> (Cài đặt → Thành viên, phạm vi{" "}
+                  <em>toàn tổ chức</em>) là chốt được ngay.
+                </p>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* PA4 lưới 2 — đừng chốt tháng còn đang chạy. */}
+      {monthNotEnded && (canInitialClose || canReclose) && (
+        <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
+          <CalendarClock className="h-4 w-4" />
+          <AlertTitle>{periodToLabel(period)} chưa kết thúc</AlertTitle>
+          <AlertDescription>
+            Chốt bây giờ là chốt trên số liệu còn thiếu những ngày chưa tới, và mọi
+            phiếu ghi sau đó sẽ bị khoá — muốn ghi tiếp phải “Mở khoá tháng”, mà mở
+            khoá thì <strong>xoá phần đã phân bổ</strong> và phải chốt lại. Nên đợi qua
+            ngày cuối tháng rồi chốt một lần.
           </AlertDescription>
         </Alert>
       )}
@@ -1156,6 +1327,19 @@ export default function ProfitLockTab({ organizations }: ProfitLockTabProps) {
                   Source hash dự kiến: <span className="font-mono">{shortHash(preview?.source_hash)}</span>.
                   Nếu dữ liệu nguồn đổi trước lúc ghi, server sẽ từ chối để bạn tải preview mới.
                 </p>
+                {monthNotEnded && (
+                  <p className="font-medium text-amber-700">
+                    {periodToLabel(period)} CHƯA KẾT THÚC. Phiếu ghi sau lúc chốt sẽ bị
+                    khoá; mở khoá thì mất phần đã phân bổ và phải chốt lại. Nên đợi hết
+                    tháng.
+                  </p>
+                )}
+                {cashbookGaps.total > 0 && (
+                  <p className="font-medium text-amber-700">
+                    Còn {cashbookGaps.total} sổ quỹ chưa chốt hết tháng này — số lợi
+                    nhuận đem chia chưa có ai đếm quỹ và ký nhận.
+                  </p>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>

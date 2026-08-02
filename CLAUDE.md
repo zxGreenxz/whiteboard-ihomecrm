@@ -11,13 +11,26 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
   Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
   `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).
-- **Regen Supabase types**: sau khi apply migration đổi schema, chạy
-  `npm run gen:types > src/integrations/supabase/types.ts` rồi thêm lại dòng
-  comment header đầu file. ĐỪNG để types.ts trôi sau migration (gây `as any` lan
-  rộng). PAT đọc từ `CLAUDE.local.md`.
+- **Regen Supabase types**: sau khi apply migration đổi schema, chạy **`npm run gen:types`**
+  — KHÔNG redirect, KHÔNG thêm header tay. `scripts/gen-supabase-types.mjs` GHI THẲNG vào
+  `src/integrations/supabase/types.ts` (outputPath hardcode ở `:192`) và TỰ chèn header
+  (`:9`/`:79`); stdout chỉ có banner npm. Muốn xem drift mà không đụng repo:
+  `cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts`.
+  ĐỪNG để types.ts trôi sau migration (gây `as any` lan rộng). PAT đọc từ `CLAUDE.local.md`.
+  ⚠ Hiện có **drift sẵn ~92 quan hệ** (`network_*`, gồm 65 phân mảnh ngày tự sinh mỗi ngày)
+  — regen sẽ kéo chúng vào diff. Xử riêng, đừng gộp vào PR tính năng.
 - **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
   GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
   chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.
+- **Sau MỌI migration TẠO/SỬA HÀM**: chạy `node scripts/check-stable-fn-locks.mjs`.
+  GOTCHA án lệ (đã cắn 5 lần): PostgREST chạy hàm `STABLE`/`IMMUTABLE` trong
+  transaction **READ ONLY**, nên bất kỳ `SELECT … FOR SHARE` nào trong thân hàm —
+  hoặc trong hàm nó gọi (`authorize_tenant_action_v3`, `lock_org_for_decision_v1`,
+  `_profit_assert_authorized_v2`…) — ném `25006`. Gọi bằng SQL thì **XANH**, gọi từ
+  trình duyệt thì **HỎNG**, nên loại này sống rất lâu mà không ai thấy
+  (`profit_close_state_v2` hỏng 10 ngày, kéo sập cả tab "Chốt LN tháng").
+  **Hàm nào lấy khoá dòng thì phải khai `VOLATILE`** — an toàn vì `supabase.rpc()`
+  mặc định POST; chỉ hàm cần gọi qua GET mới buộc non-volatile. Script exit 1 nếu hở.
 - **Đối chiếu tiền**: `node scripts/reconcile-money.mjs [YYYY-MM]` so SUM SQL thật
   vs tổng-1000-dòng-đầu — chạy ở mọi thay đổi đụng số tiền để bắt bug cap-1000.
 
@@ -97,6 +110,33 @@ Xem `git log --oneline` để theo style. Tóm tắt:
 
 - **KHÔNG bao giờ commit** `CLAUDE.local.md`, `.env.local`, hay bất kỳ token/password/PAT nào vào repo. Cả hai đã có trong `.gitignore`.
 - Khi cần Supabase admin access, đọc PAT từ `CLAUDE.local.md` trong runtime — không in ra console/log/commit message.
+
+## Ba công ty (org) trong cùng một DB — đọc trước khi động vào RLS/báo cáo
+
+| Org | ID | Là gì |
+|---|---|---|
+| THẬT | `aaaa0000-0000-4000-8000-000000000001` | sổ sách thật, **chỉ đọc** khi test |
+| DEMO | `dddd0000-0000-4000-8000-000000000001` | seed tay 2 toà (`scripts/docs-demo/`), có nút reset |
+| **TEST** | `cccc0000-0000-4000-8000-000000000001` | **bản sao dữ liệu công ty thật** — chỗ để thử tính năng mới của mọi plan |
+
+**Muốn thử tính năng mới trên dữ liệu thật thì dùng org TEST**, đăng nhập bằng
+`test.nguyentamca165` / `test.nathan` / `test.joey` / `test.bosshuy` (mật khẩu ở
+`CLAUDE.local.md`). Đồng bộ lại dữ liệu: *Cài đặt → Tổ chức → Đồng bộ dữ liệu mới nhất*,
+hoặc `node scripts/clone-org/clone.mjs`. Chi tiết + các bẫy đã cắn: `scripts/clone-org/README.md`.
+
+Hai điều PHẢI nhớ khi viết migration/RPC mới:
+
+1. **Bảng mới có `organization_id` + bật RLS ⇒ phải thêm policy `<bảng>_hide_sandbox_admin`**
+   (khuôn ở `supabase/migrations/20260801040000_fix_sandbox_hide_null_org.sql`), nếu không
+   dữ liệu org TEST sẽ lọt vào màn hình của chủ nhà và nhân đôi mọi con số.
+   Nhớ bọc `COALESCE(... , false)` — `NULL = ANY(...)` ra NULL sẽ giấu nhầm cả dòng
+   `organization_id IS NULL` của công ty thật.
+2. **Hàm SECURITY DEFINER không bị RLS chặn.** Báo cáo mới lọc toà thì lọc qua
+   `public.can_access_building()` / `accessible_building_ids()` (đã chặn sandbox sẵn),
+   đừng tự viết `is_super_admin() OR ...` — đó chính là lỗ đã làm `fa_occupancy_monthly`
+   trả thừa 12 toà của org TEST.
+
+Cửa chặn: `node scripts/clone-org/snapshot.mjs after` — phải ra "0/158 bảng rò rỉ".
 
 ## Cấu trúc nhanh
 

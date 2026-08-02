@@ -8291,6 +8291,137 @@ export type Database = {
           },
         ]
       }
+      lucky_event_teams: {
+        Row: {
+          checked_in_at: string | null
+          code: string
+          created_at: string
+          deals: number
+          event_id: string
+          id: string
+          in_wheel: boolean
+          name: string
+          payout_account: string | null
+          payout_bank: string | null
+          payout_holder: string | null
+          proof_name: string | null
+          proof_path: string | null
+          proof_uploaded_at: string | null
+          proofs: Json
+          top_prize_amount: number | null
+          top_rank: number | null
+        }
+        Insert: {
+          checked_in_at?: string | null
+          code?: string
+          created_at?: string
+          deals?: number
+          event_id: string
+          id?: string
+          in_wheel?: boolean
+          name: string
+          payout_account?: string | null
+          payout_bank?: string | null
+          payout_holder?: string | null
+          proof_name?: string | null
+          proof_path?: string | null
+          proof_uploaded_at?: string | null
+          proofs?: Json
+          top_prize_amount?: number | null
+          top_rank?: number | null
+        }
+        Update: {
+          checked_in_at?: string | null
+          code?: string
+          created_at?: string
+          deals?: number
+          event_id?: string
+          id?: string
+          in_wheel?: boolean
+          name?: string
+          payout_account?: string | null
+          payout_bank?: string | null
+          payout_holder?: string | null
+          proof_name?: string | null
+          proof_path?: string | null
+          proof_uploaded_at?: string | null
+          proofs?: Json
+          top_prize_amount?: number | null
+          top_rank?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lucky_event_teams_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "lucky_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lucky_events: {
+        Row: {
+          created_at: string
+          created_by: string
+          draw_at: string | null
+          drawn_at: string | null
+          id: string
+          organization_id: string
+          prize_amount: number
+          prize_label: string
+          slug: string
+          status: string
+          title: string
+          updated_at: string
+          winner_team_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          draw_at?: string | null
+          drawn_at?: string | null
+          id?: string
+          organization_id: string
+          prize_amount?: number
+          prize_label?: string
+          slug: string
+          status?: string
+          title?: string
+          updated_at?: string
+          winner_team_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          draw_at?: string | null
+          drawn_at?: string | null
+          id?: string
+          organization_id?: string
+          prize_amount?: number
+          prize_label?: string
+          slug?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          winner_team_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lucky_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lucky_events_winner_fk"
+            columns: ["winner_team_id"]
+            isOneToOne: false
+            referencedRelation: "lucky_event_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manager_salary_config: {
         Row: {
           alias: string | null
@@ -14267,6 +14398,44 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          cadence: string
+          event_key: string
+          in_app: boolean
+          organization_id: string
+          push: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cadence?: string
+          event_key: string
+          in_app?: boolean
+          organization_id: string
+          push?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cadence?: string
+          event_key?: string
+          in_app?: boolean
+          organization_id?: string
+          push?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_templates: {
         Row: {
           created_at: string
@@ -14336,6 +14505,10 @@ export type Database = {
           job_id: string | null
           metadata: Json
           organization_id: string | null
+          push_attempts: number
+          push_idem_key: string | null
+          push_leased_at: string | null
+          push_state: string | null
           recipient_emails: string[] | null
           recipient_phones: string[] | null
           recipient_tenant_ids: string[] | null
@@ -14358,6 +14531,10 @@ export type Database = {
           job_id?: string | null
           metadata?: Json
           organization_id?: string | null
+          push_attempts?: number
+          push_idem_key?: string | null
+          push_leased_at?: string | null
+          push_state?: string | null
           recipient_emails?: string[] | null
           recipient_phones?: string[] | null
           recipient_tenant_ids?: string[] | null
@@ -14380,6 +14557,10 @@ export type Database = {
           job_id?: string | null
           metadata?: Json
           organization_id?: string | null
+          push_attempts?: number
+          push_idem_key?: string | null
+          push_leased_at?: string | null
+          push_state?: string | null
           recipient_emails?: string[] | null
           recipient_phones?: string[] | null
           recipient_tenant_ids?: string[] | null
@@ -14605,6 +14786,35 @@ export type Database = {
             foreignKeyName: "organization_roles_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_timezones: {
+        Row: {
+          created_at: string
+          organization_id: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          organization_id: string
+          timezone: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          organization_id?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_timezones_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -15938,6 +16148,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      push_send_log: {
+        Row: {
+          created_at: string
+          idempotency_key: string
+          outcome: string | null
+          sent: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          idempotency_key: string
+          outcome?: string | null
+          sent?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          idempotency_key?: string
+          outcome?: string | null
+          sent?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       push_subscriptions: {
         Row: {
@@ -17608,6 +17842,100 @@ export type Database = {
           },
         ]
       }
+      special_fee_claims: {
+        Row: {
+          amount: number
+          batch_key: string
+          building_id: string
+          cancel_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          created_at: string
+          fee_category: string
+          generated_by: string
+          id: string
+          organization_id: string
+          period_month: string
+          status: string
+          voucher_id: string | null
+        }
+        Insert: {
+          amount: number
+          batch_key: string
+          building_id: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          fee_category: string
+          generated_by: string
+          id?: string
+          organization_id: string
+          period_month: string
+          status?: string
+          voucher_id?: string | null
+        }
+        Update: {
+          amount?: number
+          batch_key?: string
+          building_id?: string
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          created_at?: string
+          fee_category?: string
+          generated_by?: string
+          id?: string
+          organization_id?: string
+          period_month?: string
+          status?: string
+          voucher_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "special_fee_claims_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "building_coverage"
+            referencedColumns: ["building_id"]
+          },
+          {
+            foreignKeyName: "special_fee_claims_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "special_fee_claims_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "special_fee_claims_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "special_fee_claims_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "special_fee_claims_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
+          },
+        ]
+      }
       staff_assignments: {
         Row: {
           area_id: string | null
@@ -18280,6 +18608,113 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "termination_move_out_authorizations"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      termination_refund_obligations: {
+        Row: {
+          basis_fingerprint: string
+          basis_status: string
+          contract_id: string
+          created_at: string
+          created_by: string
+          id: string
+          obligation_status: string
+          organization_id: string
+          real_held: number
+          recognized_only: number
+          requested_amount: number
+          snapshot: Json
+          termination_id: string
+          version: number
+          voucher_id: string | null
+          warning: string | null
+        }
+        Insert: {
+          basis_fingerprint: string
+          basis_status: string
+          contract_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          obligation_status: string
+          organization_id: string
+          real_held: number
+          recognized_only: number
+          requested_amount: number
+          snapshot: Json
+          termination_id: string
+          version?: number
+          voucher_id?: string | null
+          warning?: string | null
+        }
+        Update: {
+          basis_fingerprint?: string
+          basis_status?: string
+          contract_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          obligation_status?: string
+          organization_id?: string
+          real_held?: number
+          recognized_only?: number
+          requested_amount?: number
+          snapshot?: Json
+          termination_id?: string
+          version?: number
+          voucher_id?: string | null
+          warning?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "termination_refund_obligations_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_refund_obligations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_refund_obligations_termination_id_fkey"
+            columns: ["termination_id"]
+            isOneToOne: false
+            referencedRelation: "contract_terminations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_refund_obligations_termination_id_fkey"
+            columns: ["termination_id"]
+            isOneToOne: false
+            referencedRelation: "v_termination_calculation"
+            referencedColumns: ["termination_id"]
+          },
+          {
+            foreignKeyName: "termination_refund_obligations_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "income_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_refund_obligations_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_pnl_cash_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "termination_refund_obligations_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "legacy_payment_receipt_semantics"
+            referencedColumns: ["voucher_id"]
           },
         ]
       }
@@ -19843,6 +20278,17 @@ export type Database = {
         Returns: Json
       }
       ai_copilot_perms_for: { Args: { p_user: string }; Returns: Json }
+      annotate_income_expense_v1: {
+        Args: {
+          p_add_attachments?: Json
+          p_idempotency_key?: string
+          p_note_mode?: string
+          p_notes?: string
+          p_remove_attachments?: Json
+          p_voucher: string
+        }
+        Returns: Json
+      }
       append_fee_attachment: {
         Args: { p_url: string; p_voucher_id: string }
         Returns: Json
@@ -20330,10 +20776,28 @@ export type Database = {
         Args: { _action: string; _resource: string }
         Returns: boolean
       }
+      can_cancel_income_voucher_v1: {
+        Args: { p_ids: string[] }
+        Returns: {
+          blocking_voucher_code: string
+          eligible: boolean
+          id: string
+          mode: string
+          reason_code: string
+        }[]
+      }
       can_create_restricted_ie: { Args: never; Returns: boolean }
       can_do_on_building: {
         Args: { _action: string; _building_id: string; _table: string }
         Returns: boolean
+      }
+      can_flex_cancel_v1: {
+        Args: { p_ids: string[] }
+        Returns: {
+          eligible: boolean
+          id: string
+          reason_code: string
+        }[]
       }
       can_ie_all_buildings: {
         Args: { _action: string; _building_id: string }
@@ -20343,10 +20807,35 @@ export type Database = {
         Args: { _building_id: string; _owner: string }
         Returns: boolean
       }
+      can_reverse_collection_v1: {
+        Args: { p_collection_ids: string[] }
+        Returns: {
+          collection_id: string
+          mode: string
+          reason_code: string
+        }[]
+      }
       can_view_restricted_ie: { Args: never; Returns: boolean }
+      cancel_cashbook_closing_v1: {
+        Args: { p_reason: string; p_request: string }
+        Returns: Json
+      }
+      cancel_income_expense_flex_v1: {
+        Args: {
+          p_expected_approval_version?: number
+          p_expected_posting_version?: number
+          p_reason: string
+          p_voucher: string
+        }
+        Returns: Json
+      }
       cancel_income_expense_v1: {
         Args: { p_reason?: string; p_voucher_id: string }
         Returns: undefined
+      }
+      cancel_income_voucher_v1: {
+        Args: { p_reason: string; p_voucher: string }
+        Returns: Json
       }
       cancel_invoice_v1: {
         Args: { p_invoice_id: string }
@@ -20396,6 +20885,10 @@ export type Database = {
       }
       cancel_period_fee: { Args: { p_voucher_id: string }; Returns: Json }
       cancel_reconciliation: { Args: { p_id: string }; Returns: Json }
+      cancel_special_fee_claim_v1: {
+        Args: { p_claim_id: string; p_reason: string }
+        Returns: Json
+      }
       cancel_unposted_income_expense_v2: {
         Args: {
           p_expected_approval_version: number
@@ -20407,6 +20900,45 @@ export type Database = {
         Returns: Json
       }
       cancel_utility_bill: { Args: { p_voucher_id: string }; Returns: Json }
+      cashbook_balance_as_of_v1: {
+        Args: { p_as_of?: string; p_cashbook: string }
+        Returns: number
+      }
+      cashbook_close_confirmers_v1: {
+        Args: { p_cashbook: string }
+        Returns: {
+          full_name: string
+          user_id: string
+        }[]
+      }
+      cashbook_closing_blockers_v1: {
+        Args: { p_cashbook: string }
+        Returns: {
+          blocking: boolean
+          code: string
+          count_n: number
+          detail: string
+        }[]
+      }
+      cashbook_closing_monthly_status_v1: {
+        Args: { p_month: string; p_organization_id: string }
+        Returns: {
+          activity_count: number
+          balance_at_month_end: number
+          bank_name: string
+          can_be_closed: boolean
+          cashbook_id: string
+          cashbook_name: string
+          closed_through: string
+          confirmer_count: number
+          covered: boolean
+          has_pending_request: boolean
+          i_can_confirm: boolean
+          i_can_propose: boolean
+          is_bank: boolean
+          needs_closing: boolean
+        }[]
+      }
       cashbook_opening_balance: {
         Args: {
           p_account_id?: string
@@ -20471,6 +21003,16 @@ export type Database = {
           income: number
         }[]
       }
+      check_voucher_period_open_v1: {
+        Args: { p_ids: string[] }
+        Returns: {
+          id: string
+          is_open: boolean
+          reason_code: string
+        }[]
+      }
+      clone_org_request_sync_v1: { Args: never; Returns: Json }
+      clone_org_sync_status_v1: { Args: never; Returns: Json }
       complete_inspection: {
         Args: { p_condition_note?: string; p_session: string }
         Returns: Json
@@ -20487,7 +21029,15 @@ export type Database = {
         Args: { p_handover_id: string; p_to_account_id?: string }
         Returns: Json
       }
+      confirm_cashbook_closing_v1: {
+        Args: { p_counted_balance: number; p_request: string }
+        Returns: Json
+      }
       confirm_reconciliation: { Args: { p_id: string }; Returns: Json }
+      contract_deposit_paid_derived: {
+        Args: { p_contract_id: string }
+        Returns: number
+      }
       create_cash_handover: {
         Args: {
           p_note?: string
@@ -20506,6 +21056,7 @@ export type Database = {
           p_initial_date: string
           p_is_default?: boolean
           p_name: string
+          p_organization_id?: string
           p_owner_user_id?: string
           p_quick_default_building_id: string
         }
@@ -20820,6 +21371,17 @@ export type Database = {
         Args: { p_amount: number; p_idempotency_key: string; p_room_id: string }
         Returns: Json
       }
+      create_sale_bonus_from_deposit_v1: {
+        Args: {
+          p_account_number?: string
+          p_amount: number
+          p_bank?: string
+          p_deposit_voucher_id: string
+          p_recipient?: string
+          p_voucher_date?: string
+        }
+        Returns: Json
+      }
       create_simple_extension: {
         Args: {
           p_contract_id: string
@@ -20828,6 +21390,15 @@ export type Database = {
           p_notes?: string
         }
         Returns: string
+      }
+      create_termination_refund_voucher_v1: {
+        Args: {
+          p_account_id?: string
+          p_force?: boolean
+          p_force_reason?: string
+          p_obligation_id: string
+        }
+        Returns: Json
       }
       current_profit_manager_id: { Args: never; Returns: string }
       current_shareholder_id: { Args: never; Returns: string }
@@ -21151,6 +21722,15 @@ export type Database = {
           voucher_date: string
         }[]
       }
+      generate_special_fees_v1: {
+        Args: {
+          p_account_id?: string
+          p_building_ids: string[]
+          p_idempotency_key: string
+          p_period: string
+        }
+        Returns: Json
+      }
       get_acceptance_geofence_config: { Args: never; Returns: Json }
       get_approval_request_detail_compat_v2: {
         Args: { p_request_id: string }
@@ -21185,6 +21765,20 @@ export type Database = {
           payer_name: string
           room_name: string
           voucher_date: string
+        }[]
+      }
+      get_commission_tiers_v1: {
+        Args: { p_building_id?: string }
+        Returns: {
+          building_id: string
+          building_name: string
+          can_edit: boolean
+          effective_from: string
+          id: string
+          max_months: number
+          min_months: number
+          note: string
+          rate_percent: number
         }[]
       }
       get_contract_extension_count: {
@@ -21244,10 +21838,28 @@ export type Database = {
         Args: { p_building_ids?: string[]; p_status?: string }
         Returns: Json
       }
+      get_fee_config_matrix_v1: {
+        Args: { p_building_ids?: string[] }
+        Returns: {
+          account_holder: string
+          building_id: string
+          building_name: string
+          default_account_id: string
+          default_account_name: string
+          default_amount: number
+          fee_category: string
+          is_declared: boolean
+          last_voucher_date: string
+          not_applicable: boolean
+          provider_code: string
+          voucher_count: number
+        }[]
+      }
       get_finance_v2_client_flags_v1: {
         Args: never
         Returns: {
           access_route: string
+          accounting_standard_strict: boolean
           organization_id: string
           posting_route: string
           read_semantics_route: string
@@ -21391,6 +22003,10 @@ export type Database = {
       get_my_available_rooms: { Args: never; Returns: Json }
       get_my_context: { Args: never; Returns: Json }
       get_my_day_summary: { Args: never; Returns: Json }
+      get_my_notification_preferences_v1: {
+        Args: { p_organization_id: string }
+        Returns: Json
+      }
       get_my_permissions: { Args: never; Returns: Json }
       get_my_share_buildings: {
         Args: never
@@ -21399,6 +22015,7 @@ export type Database = {
           name: string
         }[]
       }
+      get_notification_org_config_v1: { Args: never; Returns: Json }
       get_or_create_deposit_account: { Args: never; Returns: string }
       get_organization_profile_v1: { Args: never; Returns: Json }
       get_overpayment_summary: {
@@ -21454,12 +22071,15 @@ export type Database = {
         Returns: {
           account_name: string
           amount: number
+          approval_status: string
           batch_id: string
           building_id: string
           building_name: string
           has_receipt: boolean
           is_standalone: boolean
           payer_name: string
+          posting_status: string
+          state: string
           subtype: string
           voucher_date: string
           voucher_id: string
@@ -21482,8 +22102,77 @@ export type Database = {
         Args: { p_building_ids?: string[] }
         Returns: Json
       }
+      get_room_residence_conflicts_v1: {
+        Args: { p_contract_ids?: string[] }
+        Returns: {
+          contract_id: string
+          contract_number: string
+          diagnostic: string
+          seg_count: number
+        }[]
+      }
+      get_room_residence_segments_v1: {
+        Args: { p_contract_ids?: string[] }
+        Returns: {
+          contract_id: string
+          contract_number: string
+          diagnostic: string
+          from_date: string
+          room_id: string
+          room_name: string
+          seg_index: number
+          source_path: string
+          to_date: string
+          transfer_id: string
+          trusted: boolean
+        }[]
+      }
       get_salary_progress_v5: { Args: { p_month?: string }; Returns: Json }
       get_salary_v5_config: { Args: never; Returns: Json }
+      get_special_fee_prices_v1: {
+        Args: { p_building_ids?: string[]; p_month?: string }
+        Returns: {
+          amount: number
+          building_id: string
+          building_name: string
+          can_edit: boolean
+          effective_from: string
+          fee_category: string
+          source: string
+        }[]
+      }
+      get_voucher_cancellation_v1: {
+        Args: { p_voucher: string }
+        Returns: Json
+      }
+      get_voucher_change_log_v1: { Args: { p_voucher: string }; Returns: Json }
+      get_voucher_slot_warning_v1: {
+        Args: {
+          p_building_id: string
+          p_end: string
+          p_exclude_id?: string
+          p_start: string
+          p_type?: string
+          p_type_ids: string[]
+        }
+        Returns: {
+          approval_status: string
+          code: string
+          created_at: string
+          creator_name: string
+          matched_amount: number
+          same_amount: boolean
+          total_amount: number
+          type_names: string
+          voucher_date: string
+          voucher_id: string
+          voucher_name: string
+        }[]
+      }
+      has_contract_termination_write_v1: {
+        Args: { p_termination: string }
+        Returns: boolean
+      }
       has_full_building_scope: { Args: never; Returns: boolean }
       has_perm_full_scope: {
         Args: { _action: string; _table: string }
@@ -21629,6 +22318,7 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      is_org_owner_self_v1: { Args: never; Returns: boolean }
       is_staff_of: { Args: { owner_id: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: { _owner: string }; Returns: boolean }
@@ -21638,6 +22328,10 @@ export type Database = {
         Returns: boolean
       }
       list_authorization_catalog_v1: { Args: never; Returns: Json }
+      list_cashbook_closings_v1: {
+        Args: { p_cashbook?: string }
+        Returns: Json
+      }
       list_cashbook_visibility_v2: {
         Args: never
         Returns: {
@@ -21682,6 +22376,15 @@ export type Database = {
           revision: number
           scope_id: string
           state: string
+        }[]
+      }
+      list_ie_accounting_standard_v1: {
+        Args: never
+        Returns: {
+          can_manage: boolean
+          organization_id: string
+          organization_name: string
+          strict_mode: boolean
         }[]
       }
       list_income_expenses_v2: {
@@ -21773,6 +22476,45 @@ export type Database = {
         Args: { p_events: Json; p_token: string }
         Returns: number
       }
+      lucky_admin_add_team_v1: {
+        Args: {
+          p_deals?: number
+          p_event: string
+          p_in_wheel?: boolean
+          p_name: string
+          p_top_prize?: number
+          p_top_rank?: number
+        }
+        Returns: Json
+      }
+      lucky_admin_assert_event_v1: {
+        Args: { p_event: string }
+        Returns: string
+      }
+      lucky_admin_delete_team_v1: { Args: { p_team: string }; Returns: Json }
+      lucky_admin_force_draw_v1: { Args: { p_event: string }; Returns: Json }
+      lucky_admin_get_v1: { Args: never; Returns: Json }
+      lucky_admin_org_v1: { Args: never; Returns: string }
+      lucky_admin_reset_draw_v1: { Args: { p_event: string }; Returns: Json }
+      lucky_admin_update_team_v1: {
+        Args: { p: Json; p_team: string }
+        Returns: Json
+      }
+      lucky_admin_upsert_event_v1: { Args: { p: Json }; Returns: Json }
+      lucky_checkin_v1: { Args: { p_code: string }; Returns: Json }
+      lucky_draw_v1: { Args: { p_event: string }; Returns: Json }
+      lucky_event_open_v1: { Args: { p_folder: string }; Returns: boolean }
+      lucky_event_payload_v1: {
+        Args: { p_event: string; p_viewer_team?: string }
+        Returns: Json
+      }
+      lucky_gen_code: { Args: never; Returns: string }
+      lucky_gen_slug: { Args: never; Returns: string }
+      lucky_public_state_v1: {
+        Args: { p_code?: string; p_event?: string; p_slug?: string }
+        Returns: Json
+      }
+      lucky_save_payout_v1: { Args: { p: Json; p_code: string }; Returns: Json }
       manager_collection_cycle_report: {
         Args: { p_from?: string; p_manager_id?: string; p_to?: string }
         Returns: Json
@@ -21809,6 +22551,10 @@ export type Database = {
           total_expense: number
           total_income: number
         }[]
+      }
+      move_income_voucher_cashbook_v1: {
+        Args: { p_new_account: string; p_reason: string; p_voucher: string }
+        Returns: Json
       }
       my_org_ids: { Args: never; Returns: string[] }
       natural_sort_key: { Args: { p_name: string }; Returns: string }
@@ -21985,6 +22731,22 @@ export type Database = {
         Args: { p_name: string }
         Returns: string
       }
+      notify_claim_push_batch_v1: {
+        Args: { p_limit?: number }
+        Returns: {
+          body: string
+          idem_key: string
+          notification_ids: string[]
+          tag: string
+          title: string
+          url: string
+          user_id: string
+        }[]
+      }
+      notify_settle_push_batch_v1: {
+        Args: { p_results: Json }
+        Returns: number
+      }
       nrm_vn: { Args: { s: string }; Returns: string }
       occupancy_snapshot_v2: {
         Args: { p_as_of_date?: string; p_building_ids?: string[] }
@@ -22022,6 +22784,7 @@ export type Database = {
           room_name: string
         }[]
       }
+      org_today_v1: { Args: { p_organization_id?: string }; Returns: string }
       pass_listing_form_rooms: {
         Args: never
         Returns: {
@@ -22201,6 +22964,32 @@ export type Database = {
           total_dwell_ms: number
         }[]
       }
+      preview_maintenance_rule_v1: {
+        Args: {
+          p_amount: number
+          p_building_id: string
+          p_room_id: string
+          p_service_kind: string
+        }
+        Returns: Json
+      }
+      preview_special_fees_v1: {
+        Args: { p_building_ids?: string[]; p_period: string }
+        Returns: {
+          amount: number
+          building_id: string
+          building_name: string
+          existing_code: string
+          fee_category: string
+          provider_code: string
+          reason: string
+          status: string
+        }[]
+      }
+      preview_termination_refund_v1: {
+        Args: { p_termination_id: string }
+        Returns: Json
+      }
       profit_close_preview_v2: {
         Args: {
           p_adjustments?: Json
@@ -22269,6 +23058,15 @@ export type Database = {
           p_organization_id: string
           p_period_month: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      propose_cashbook_closing_v1: {
+        Args: {
+          p_cashbook: string
+          p_confirmer: string
+          p_counted_balance: number
+          p_note?: string
         }
         Returns: Json
       }
@@ -22367,6 +23165,10 @@ export type Database = {
       }
       record_payment_gps: {
         Args: { p_income_expense_id: string; p_lat: number; p_lng: number }
+        Returns: Json
+      }
+      record_termination_refund_obligation_v1: {
+        Args: { p_termination_id: string }
         Returns: Json
       }
       reject_cancel_handover: { Args: { p_handover_id: string }; Returns: Json }
@@ -22595,7 +23397,9 @@ export type Database = {
           weekend_amount: number
         }[]
       }
+      sale_bonus_status_v1: { Args: { p_contract_id: string }; Returns: Json }
       same_team: { Args: { _target: string }; Returns: boolean }
+      sandbox_org_ids: { Args: never; Returns: string[] }
       save_utility_account: {
         Args: {
           p_account_holder?: string
@@ -22625,16 +23429,59 @@ export type Database = {
         Args: { p_cashbook_id: string; p_user_ids: string[] }
         Returns: Json
       }
+      set_commission_tier_v1: {
+        Args: {
+          p_building_id?: string
+          p_effective_from_month?: string
+          p_max_months: number
+          p_min_months: number
+          p_note?: string
+          p_organization_id?: string
+          p_rate_percent: number
+        }
+        Returns: Json
+      }
+      set_ie_accounting_standard_v1: {
+        Args: {
+          p_organization_id: string
+          p_reason?: string
+          p_strict: boolean
+        }
+        Returns: Json
+      }
       set_ie_auto_approve_threshold_v1: {
         Args: { p_threshold: number }
+        Returns: Json
+      }
+      set_maintenance_rule_v1: {
+        Args: {
+          p_building_id?: string
+          p_ceiling_amount?: number
+          p_counts_history?: boolean
+          p_effective_from_month?: string
+          p_enforcement?: string
+          p_min_months_between?: number
+          p_note?: string
+          p_organization_id?: string
+          p_service_kind: string
+          p_standard_amount?: number
+        }
         Returns: Json
       }
       set_membership_status_v1: {
         Args: { p_reason?: string; p_status: string; p_user_id: string }
         Returns: Json
       }
+      set_my_notification_preferences_v1: {
+        Args: { p_organization_id: string; p_prefs: Json }
+        Returns: Json
+      }
       set_my_ui_preference: {
         Args: { p_key: string; p_value: Json }
+        Returns: Json
+      }
+      set_notification_org_config_v1: {
+        Args: { p_events?: Json; p_quiet_end?: number; p_quiet_start?: number }
         Returns: Json
       }
       set_room_pass_listing_active: {
@@ -22664,9 +23511,41 @@ export type Database = {
         }
       }
       set_salary_v5_config: { Args: { p_patch: Json }; Returns: Json }
+      set_sale_bonus_cap_v1: {
+        Args: {
+          p_building_id?: string
+          p_cap_amount: number
+          p_effective_from_month?: string
+          p_note?: string
+          p_organization_id?: string
+        }
+        Returns: Json
+      }
+      set_special_fee_price_v1: {
+        Args: {
+          p_amount: number
+          p_building_id: string
+          p_effective_from_month?: string
+          p_fee_category: string
+          p_note?: string
+        }
+        Returns: Json
+      }
       set_termination_forfeit_status_v1: {
         Args: { p_status: string; p_voucher_id: string }
         Returns: undefined
+      }
+      set_utility_ceiling_v1: {
+        Args: {
+          p_building_id?: string
+          p_ceiling_amount?: number
+          p_effective_from_month?: string
+          p_max_ratio_to_billed?: number
+          p_note?: string
+          p_organization_id?: string
+          p_utility_type: string
+        }
+        Returns: Json
       }
       shared_account_ids: { Args: never; Returns: string[] }
       show_limit: { Args: never; Returns: number }
@@ -23194,6 +24073,9 @@ export type Database = {
         Args: {
           p_account_holder?: string
           p_building_id: string
+          p_clear_account?: boolean
+          p_clear_amount?: boolean
+          p_clear_provider?: boolean
           p_default_account_id?: string
           p_default_amount?: number
           p_fee_category: string
@@ -23659,6 +24541,8 @@ export type Database = {
         | "CUSTOM"
         | "DEPOSIT_SHORTFALL"
         | "SALARY_BONUS"
+        | "ACTION_REQUIRED"
+        | "APPROVAL_RESULT"
       payment_cycle: "MONTHLY" | "QUARTERLY" | "SEMI_ANNUAL" | "ANNUAL"
       payment_method: "TM" | "TK" | "TT" | "CT"
       pricing_type:
@@ -23909,6 +24793,8 @@ export const Constants = {
         "CUSTOM",
         "DEPOSIT_SHORTFALL",
         "SALARY_BONUS",
+        "ACTION_REQUIRED",
+        "APPROVAL_RESULT",
       ],
       payment_cycle: ["MONTHLY", "QUARTERLY", "SEMI_ANNUAL", "ANNUAL"],
       payment_method: ["TM", "TK", "TT", "CT"],

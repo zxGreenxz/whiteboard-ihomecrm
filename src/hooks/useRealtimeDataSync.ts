@@ -33,7 +33,19 @@ type SyncTable =
   | "rooms"
   | "buildings"
   | "jobs"
-  | "customers";
+  | "customers"
+  // Rủi ro #5 của plan thu chi: ba bảng tiền dưới đây trước KHÔNG có mặt ở đây.
+  // Hồi đó vô hại vì phiếu bất biến; từ Đợt 4/5/6 phiếu sửa/huỷ/chốt được nên
+  // hai người đối chiếu quỹ sẽ đọc ra hai số khác nhau nếu không đồng bộ.
+  | "payments"
+  | "income_expense_items"
+  | "accounts"
+  | "cash_handovers"
+  // Đợt 1: hai bảng VÒNG ĐỜI. Trước đây chúng không nằm trong publication
+  // `supabase_realtime` lẫn danh sách này, nên mọi thay đổi thanh lý / chuyển
+  // phòng là im lặng hoàn toàn.
+  | "contract_terminations"
+  | "contract_transfers";
 
 type BusinessPerformanceSubtype =
   | "organizations"
@@ -138,6 +150,17 @@ const SYNC_TABLES: SyncEntry[] = [
       ["change-breakdown"], // sổ thối
       ["commission-prefill"],
       ["business-performance"],
+      // --- Đợt 2→6: màn đọc phiếu bằng key riêng, trước đây bỏ sót ---
+      ["settlement-report"],
+      ["financial-analysis"],
+      ["monthly-building-profit"],
+      ["income-expense-batches"],
+      ["voucher-detail"],
+      ["voucher-cancellation"],
+      ["voucher-change-log"],
+      ["ie-history"],
+      ["flex-cancel-eligibility"],
+      ["can-reverse-collection"],
     ],
     domain: "income-expenses",
   },
@@ -155,6 +178,7 @@ const SYNC_TABLES: SyncEntry[] = [
       ["recent-activities"],
       ["dashboard-summary"],
       ["business-performance"],
+      ["occupancy-dashboard"],
     ],
     domain: "contracts",
   },
@@ -165,6 +189,86 @@ const SYNC_TABLES: SyncEntry[] = [
   },
   { table: "jobs", keys: [["jobs"]], domain: "jobs" },
   { table: "customers", keys: [["customers"], ["customer-stats"]] },
+
+  // ── Ba bảng TIỀN mà plan (Rủi ro #5) nêu là thiếu hẳn ─────────────
+  // payments: hoàn tác thu tiền đổi payments.reversed_at, và
+  // recompute_invoice_for_id tính paid_amount TỪ bảng này chứ không từ phiếu.
+  {
+    table: "payments",
+    keys: [
+      ["invoice-payments-summary"],
+      ["invoices"],
+      ["payments"],
+      ["invoice-statistics"],
+      ["invoice-collectors"],
+      ["can-reverse-collection"],
+      ["settlement-report"],
+    ],
+  },
+  // income_expense_items: sửa hạng mục đổi total_amount của phiếu qua trigger,
+  // tức đổi luôn tồn quỹ — mà trước đây không phát tín hiệu nào.
+  {
+    table: "income_expense_items",
+    keys: [
+      ["income-expenses"],
+      ["voucher-with-batch"],
+      ["voucher-detail"],
+      ["accounts-with-balance"],
+      ["cash-book-summary"],
+      ["financial-analysis"],
+    ],
+  },
+  // accounts: chốt sổ đặt lock_date, đổi số dư đầu, đổi người phụ trách.
+  {
+    table: "accounts",
+    keys: [
+      ["accounts"],
+      ["accounts-with-balance"],
+      ["cashbook-closings"],
+      ["cashbook-closing-blockers"],
+      ["cashbook-balance-as-of"],
+      ["cash-book-summary"],
+    ],
+  },
+  // cash_handovers: phiên bàn giao đổi trạng thái là hai bên phải thấy ngay.
+  {
+    table: "cash_handovers",
+    keys: [
+      ["cash-handovers"],
+      ["handover-vouchers"],
+      ["settlement-report"],
+      ["cashbook-closing-blockers"],
+    ],
+  },
+  // contract_terminations: hồ sơ thanh lý đổi status (DRAFT → PENDING_APPROVAL →
+  // APPROVED/COMPLETED) và đổi số quyết toán. Từ Đợt −1 có trigger đông cứng đầu
+  // vào quyết toán sau APPROVED/COMPLETED, nên trạng thái này có hệ quả CỨNG:
+  // người thứ hai bấm duyệt trên hồ sơ đã bị bác sẽ ăn lỗi thay vì thấy trước.
+  // Lưu ý: ["deposit-dashboard"] đang gắn ở entry `contracts` vì bảng cọc đọc cả
+  // hai — nhưng thay đổi CHỈ ở contract_terminations thì trước đây không phát gì.
+  {
+    table: "contract_terminations",
+    keys: [
+      ["deposit-dashboard"],
+      ["refund-forfeit-summary"],
+      ["contract-terminations"],
+      ["contracts"],
+    ],
+    domain: "contracts",
+  },
+  // contract_transfers: Đợt 2 biến bảng này thành SỔ AUDIT thật (audit ghi trước,
+  // không nuốt lỗi) và dựng projection đoạn cư trú đọc từ nó. Chuỗi cư trú đổi mà
+  // màn không đổi thì người rà tay đối chiếu số cũ.
+  {
+    table: "contract_transfers",
+    keys: [
+      ["room-residence-segments"],
+      ["contract-transfers"],
+      ["contracts"],
+      ["rooms"],
+    ],
+    domain: "contracts",
+  },
 ];
 
 const DEBOUNCE_MS = 800;

@@ -67,6 +67,7 @@ export async function checkContractExpiryReminders(userId: string, config?: any)
   const { data: sentToday } = await supabase
     .from('notifications')
     .select('contract_id')
+    .eq('user_id', userId)
     .in('contract_id', due.map((c) => c.id))
     .eq('type', 'CONTRACT_EXPIRING')
     .gte('created_at', format(today, 'yyyy-MM-dd'));
@@ -127,6 +128,7 @@ export async function checkInvoicePaymentReminders(userId: string, config?: any)
   const { data: sentToday } = await supabase
     .from('notifications')
     .select('invoice_id')
+    .eq('user_id', userId)
     .in('invoice_id', due.map((inv) => inv.id))
     .eq('type', 'PAYMENT_REMINDER')
     .gte('created_at', format(today, 'yyyy-MM-dd'));
@@ -185,6 +187,7 @@ export async function checkOverdueInvoices(userId: string, config?: any): Promis
   const { data: lastNotifs } = await supabase
     .from('notifications')
     .select('invoice_id, created_at')
+    .eq('user_id', userId)
     .in('invoice_id', invoiceIds)
     .eq('type', 'OVERDUE_INVOICE')
     .order('created_at', { ascending: false });
@@ -267,6 +270,7 @@ export async function checkDepositTopupReminders(userId: string): Promise<void> 
   const { data: lastNotifs } = await supabase
     .from('notifications')
     .select('contract_id, created_at')
+    .eq('user_id', userId)
     .in('contract_id', (contracts as any[]).map((c) => c.id))
     .eq('type', 'DEPOSIT_SHORTFALL')
     .order('created_at', { ascending: false });

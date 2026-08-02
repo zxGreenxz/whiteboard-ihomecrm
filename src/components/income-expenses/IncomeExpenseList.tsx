@@ -26,6 +26,7 @@ import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
+import { canShowAnnotateAction } from '@/lib/voucherAnnotate';
 import { useFinanceV2Routes, isCanonicalRead } from '@/lib/financeV2Route';
 import {
   Eye,
@@ -41,7 +42,23 @@ import {
   Banknote,
   RotateCcw,
   CopyPlus,
+  History,
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight,
 } from 'lucide-react';
+import {
+  flexCancelGate,
+  type FlexCancelEligibility,
+} from '@/hooks/income-expenses/flexMutations';
+import {
+  voucherCancelDecision,
+  type IncomeCancelEligibility,
+} from '@/hooks/income-expenses/incomeVoucherCancel';
+import {
+  groupReversalVouchers,
+  groupNetAmount,
+} from '@/lib/voucherReversalGrouping';
 import {
   HoverCard,
   HoverCardContent,
@@ -54,7 +71,8 @@ interface IncomeExpenseListProps {
   vouchers: IncomeExpenseWithRelations[];
   isLoading: boolean;
   onView: (voucher: IncomeExpenseWithRelations) => void;
-  onCancel: (id: string) => void;
+  /** Kèm `type` để trang cha biết đi cửa THU hay đường CHI mà không phải tra ngược. */
+  onCancel: (id: string, type?: string | null) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
   /** Dừng lặp lại cho 1 phiếu gốc (repeat_cycle != NONE, không phải phiếu con). */
@@ -75,6 +93,13 @@ interface IncomeExpenseListProps {
   onVerify?: (voucher: IncomeExpenseWithRelations) => void;
   /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
   onCopy?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Đợt 4: mở màn lịch sử (mốc lập/duyệt/huỷ + nhật ký trước/sau). */
+  onHistory?: (voucher: IncomeExpenseWithRelations) => void;
+  /** Đợt 4: kết quả can_flex_cancel_v1 theo id — mờ nút Huỷ kèm lý do thay vì
+   *  bày nút rồi mới bắn toast lỗi. Thiếu (undefined) = chưa biết, giữ nút bật. */
+  cancelEligibility?: Record<string, FlexCancelEligibility>;
+  /** ĐỢT A: kết quả can_cancel_income_voucher_v1 — chỉ dùng cho phiếu THU. */
+  incomeCancelEligibility?: Record<string, IncomeCancelEligibility>;
   pagination: PaginationState;
   totalCount: number;
 }
@@ -181,6 +206,9 @@ const IncomeExpenseList = ({
   onUnapprove,
   onVerify,
   onCopy,
+  onHistory,
+  cancelEligibility,
+  incomeCancelEligibility,
   pagination,
   totalCount,
 }: IncomeExpenseListProps) => {
@@ -200,6 +228,44 @@ const IncomeExpenseList = ({
   // cancel rơi về edit).
   const canApproveVoucher = canUse(perms, 'income_expenses', 'approve');
   const canCancelVoucher = canUse(perms, 'income_expenses', 'cancel');
+  const canEditVoucher = canUse(perms, 'income_expenses', 'edit');
+
+  // --- Gộp ẩn phiếu đối ứng DI SẢN vào dòng phiếu gốc (plan Đợt 5) ---
+  // Trước Đợt 5 mỗi lần hoàn tác khoản thu là sinh thêm một phiếu chi riêng, nên
+  // lịch sử cũ có hai dòng rời rạc cho cùng một nghiệp vụ. Phiếu đã sinh thì
+  // KHÔNG xoá được (flow-owned, bất biến), nên chỉ gom được ở đây.
+  const [openReversals, setOpenReversals] = useState<Record<string, boolean>>({});
+  const displayRows = useMemo(() => {
+    const rows: Array<{
+      voucher: IncomeExpenseWithRelations;
+      /** Số phiếu đối ứng đang gộp ẩn dưới dòng này (0 = dòng thường). */
+      reversalCount: number;
+      /** Tiền ròng của cả cụm sau bù trừ — chỉ tính khi có gộp. */
+      netAmount: number;
+      /** Dòng con: chính là phiếu đối ứng đang được mở ra xem. */
+      nested: boolean;
+    }> = [];
+    for (const group of groupReversalVouchers(vouchers)) {
+      const reversalCount = group.reversals.length;
+      rows.push({
+        voucher: group.anchor,
+        reversalCount,
+        netAmount: reversalCount > 0 ? groupNetAmount(group) : 0,
+        nested: false,
+      });
+      if (reversalCount > 0 && openReversals[group.anchor.id]) {
+        for (const reversal of group.reversals) {
+          rows.push({
+            voucher: reversal,
+            reversalCount: 0,
+            netAmount: 0,
+            nested: true,
+          });
+        }
+      }
+    }
+    return rows;
+  }, [vouchers, openReversals]);
 
   if (isLoading) {
     return (
@@ -237,12 +303,19 @@ const IncomeExpenseList = ({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {vouchers.map((voucher) => {
+          {displayRows.map(({ voucher, reversalCount, netAmount, nested }) => {
             const isCancelled = voucher.approval_status === 'CANCELLED';
             const isUnapproved = voucher.approval_status === 'UNAPPROVED';
             const isCreator =
               !!currentUserId && voucher.user_id === currentUserId;
             const isVerified = !!voucher.verified_at;
+            // Đợt 4 / ĐỢT A: server đã nói trước phiếu này huỷ được hay không.
+            // Phiếu THU hỏi reader riêng (biết LIFO + tiền thừa đã cấn đi đâu).
+            const cancelGate = voucherCancelDecision({
+              type: voucher.type,
+              income: incomeCancelEligibility?.[voucher.id],
+              flexGate: flexCancelGate(cancelEligibility?.[voucher.id]),
+            });
             // B4: lớp phiếu — Nội bộ (bút toán) hiển thị trung tính.
             const layer = voucherLayer({
               approval_status: voucher.approval_status,
@@ -255,13 +328,22 @@ const IncomeExpenseList = ({
             // Đã ghi nhận/đã huỷ: super admin vẫn mở full form; creator
             // (không phải admin) mở dialog sửa nhanh 3 field.
             const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
-            const showQuickEdit =
-              !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
+            // Đợt 2: không còn giới hạn ở NGƯỜI TẠO — kế toán/quản lý có quyền
+            // sửa thu chi cũng đính hộ được chứng từ (server là nơi chốt).
+            const showQuickEdit = canShowAnnotateAction({
+              hasHandler: !!onQuickEdit,
+              isUnapproved,
+              isAdmin,
+              isCreator,
+              canEdit: canEditVoucher,
+            });
 
             const rowClass = [
               isCancelled ? 'opacity-60' : '',
               isInternal && !isCancelled ? 'bg-muted/40' : '',
               isVerified && !isCancelled && !isInternal ? 'bg-emerald-50/70 hover:bg-emerald-50' : '',
+              // Dòng con (phiếu đối ứng đang mở ra xem) — lùi vào, nền xám nhạt.
+              nested ? 'bg-zinc-50/80' : '',
             ]
               .filter(Boolean)
               .join(' ');
@@ -323,7 +405,13 @@ const IncomeExpenseList = ({
                         size="icon"
                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                         onClick={() => onQuickEdit!(voucher)}
-                        title="Sửa sổ quỹ / hình ảnh / ghi chú"
+                        // ĐỢT C: sổ quỹ chỉ sửa được ở phiếu THU; câu cũ ghi
+                        // "Sửa sổ quỹ" cho cả phiếu chi là hứa hão.
+                        title={
+                          voucher.type === 'INCOME'
+                            ? 'Sửa sổ quỹ / hình ảnh / ghi chú'
+                            : 'Sửa hình ảnh / ghi chú'
+                        }
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -382,9 +470,19 @@ const IncomeExpenseList = ({
                           className="h-8 w-8 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
                           onClick={() => onReversePosting(voucher)}
                           title={
+                            // Đợt 4: đây CHÍNH LÀ nút "Mở lại" của chủ. Nó gọi
+                            // reverse_posted_income_expense_v2 sẵn có: tiền quay
+                            // về sổ, phiếu ở trạng thái Đã duyệt - chưa chi nên
+                            // sửa được và chi lại được.
+                            //
+                            // CỐ Ý KHÔNG đưa phiếu về "Chờ duyệt":
+                            // unapprove_voucher không reset review_state, mà cả
+                            // hai writer duyệt đều đòi review_state PENDING/
+                            // CHANGES_REQUESTED ⇒ tiền ra khỏi sổ rồi kẹt ở đó
+                            // vĩnh viễn, không ai duyệt lại được.
                             voucher.type === 'INCOME'
-                              ? 'Hoàn tác khoản thu (tiền rời sổ, phiếu chờ thu lại/huỷ)'
-                              : 'Hoàn tác khoản chi (tiền về sổ, phiếu chờ chi lại/huỷ)'
+                              ? 'Mở lại (tiền rời sổ, sửa được rồi thu lại)'
+                              : 'Mở lại (tiền về sổ, sửa được rồi chi lại)'
                           }
                         >
                           <RotateCcw className="h-4 w-4" />
@@ -404,16 +502,42 @@ const IncomeExpenseList = ({
                       </Button>
                     )}
 
-                    {/* Huỷ phiếu (chỉ khi chưa huỷ) */}
+                    {/* Huỷ phiếu (chỉ khi chưa huỷ). Đợt 4: can_flex_cancel_v1
+                        đã trả lời trước — không bấm được thì mờ nút và NÓI RÕ
+                        vì sao, thay vì để người dùng bấm rồi ăn toast lỗi. */}
                     {canCancelVoucher && !isCancelled && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => onCancel(voucher.id)}
-                        title="Huỷ phiếu"
+                        disabled={!cancelGate.canCancel}
+                        className={
+                          cancelGate.canCancel
+                            ? 'h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50'
+                            : 'h-8 w-8 text-zinc-300'
+                        }
+                        onClick={() => onCancel(voucher.id, voucher.type)}
+                        title={
+                          cancelGate.reason
+                            ? `Huỷ phiếu — ${cancelGate.reason}`
+                            : 'Huỷ phiếu'
+                        }
                       >
                         <Ban className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Lịch sử phiếu: mốc lập/duyệt/huỷ + lý do + nhật ký
+                        trước/sau. Với phiếu đã huỷ đây là chỗ đối soát duy nhất
+                        (Đợt 4 không sinh phiếu đối ứng để mà nhìn). */}
+                    {onHistory && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                        onClick={() => onHistory(voucher)}
+                        title="Xem lịch sử phiếu (mốc lập/duyệt/huỷ + thay đổi)"
+                      >
+                        <History className="h-4 w-4" />
                       </Button>
                     )}
 
@@ -486,11 +610,55 @@ const IncomeExpenseList = ({
                 {/* Tên + Badge trạng thái */}
                 <TableCell className="max-w-[260px]">
                   <div className="flex items-center gap-2 min-w-0">
+                    {/* Dòng con: mũi tên lùi vào cho thấy nó thuộc dòng trên */}
+                    {nested && (
+                      <CornerDownRight
+                        className="h-3.5 w-3.5 shrink-0 ml-3 text-zinc-400"
+                        aria-hidden
+                      />
+                    )}
                     <span
                       className={`truncate ${isCancelled ? 'line-through' : ''}`}
                     >
                       {voucher.name}
                     </span>
+                    {/* Nhãn cho chính phiếu đối ứng khi mở ra xem */}
+                    {nested && (
+                      <Badge
+                        variant="secondary"
+                        className="shrink-0 bg-zinc-200 text-zinc-700 hover:bg-zinc-200"
+                      >
+                        Phiếu đối ứng
+                      </Badge>
+                    )}
+                    {/* Gộp ẩn: nút thu gọn/mở phiếu đối ứng di sản của dòng này */}
+                    {reversalCount > 0 && (
+                      <button
+                        type="button"
+                        className="shrink-0 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                        aria-expanded={!!openReversals[voucher.id]}
+                        title={
+                          openReversals[voucher.id]
+                            ? 'Thu gọn phiếu đối ứng'
+                            : `Xem ${reversalCount} phiếu đối ứng đã hoàn tác phiếu này`
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenReversals((prev) => ({
+                            ...prev,
+                            [voucher.id]: !prev[voucher.id],
+                          }));
+                        }}
+                      >
+                        {openReversals[voucher.id] ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                        Đã hoàn tác
+                        {reversalCount > 1 ? ` (${reversalCount})` : ''}
+                      </button>
+                    )}
                     {/* B4: badge trạng thái DÙNG CHUNG desktop=mobile */}
                     <span className="shrink-0">
                       <VoucherStatusBadge
@@ -553,6 +721,18 @@ const IncomeExpenseList = ({
                       {voucher.type === 'INCOME' ? '+' : '-'}
                       {formatVND(voucher.total_amount)}
                     </span>
+                  )}
+                  {/* Có gộp phiếu đối ứng: nói rõ còn lại BAO NHIÊU sau bù trừ.
+                      Số gốc ở trên KHÔNG bị sửa — ba thẻ tổng của trang lấy từ
+                      RPC server nên vẫn cộng đủ cả hai phiếu như trước. */}
+                  {reversalCount > 0 && (
+                    <div
+                      className="text-[11px] text-muted-foreground"
+                      title="Số tiền còn lại sau khi trừ phiếu đối ứng"
+                    >
+                      ròng {netAmount >= 0 ? '+' : '-'}
+                      {formatVND(Math.abs(netAmount))}
+                    </div>
                   )}
                 </TableCell>
 

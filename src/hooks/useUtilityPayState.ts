@@ -5,14 +5,33 @@
 //
 // Gói: sửa mã/chủ hộ inline (autosave theo đồng hồ), nhập tiền, chọn sổ quỹ,
 // đính ảnh, đóng tiền, hủy phiếu, thêm/xoá đồng hồ, xem ảnh (lightbox).
+//
+// 30/07/2026 (Slice −1):
+//   • §−1.5 KHÔNG GỬI ĐỒNG HỒ NULL. Dòng "synthetic" (toà chưa khai đồng hồ,
+//     `accountId=null`) trước đây bấm check là gửi `p_utility_account_id=null`,
+//     nhánh ELSE của `pay_utility_bill` TỰ TẠO một dòng
+//     `building_utility_accounts` mới; vì `paidThisKy` khoá theo meter id nên
+//     dòng đó KHÔNG BAO GIỜ hiện "đã đóng" ⇒ mời đóng lại. Nay client chặn từ
+//     gốc và đổi thành hành động tường minh "Tạo công tơ".
+//   • §−1.1/§−1.6 chốt in-flight cấp MODULE: hai bề mặt Điện & Nước cùng sống
+//     trên /thanh-toan (bảng desktop trong PeriodFeePanel → UtilityEnContent, và
+//     khối EN của PeriodFeeSheet). Hai instance hook = hai `amounts` riêng, nên
+//     chống trùng phải nằm ngoài React: một Set khoá theo (kỳ × đồng hồ) chặn cú
+//     bấm thứ hai NGAY, và một map "vừa tạo phiếu" bịt khe giữa lúc RPC trả về
+//     và lúc reader refetch xong.
+//     Ghi chú: state nhập liệu của EN CỐ TÌNH không dùng chung như GRID —
+//     `.e2e-fleet/specs/utility-paste-receipt.spec.ts:169` assert dòng desktop
+//     KHÔNG sáng đèn ảnh khi dán vào thẻ mobile, mà hai bề mặt EN dùng CÙNG khoá
+//     (meter id) nên gộp `attach` là làm đỏ spec đó.
 // =============================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { fmtFull } from '@/lib/collect';
 import { getSessionUser } from '@/lib/authSession';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
 import { useAccounts } from '@/hooks/useAccounts';
+import { useReceiptPasteTarget } from '@/hooks/useReceiptPasteTarget';
 import {
   useUtilityAccounts,
   useUtilityPayments,
@@ -41,13 +60,27 @@ export interface MeterRow {
   canDelete: boolean;
 }
 
+// ── Chốt chống trùng dùng chung giữa MỌI instance (module-level) ─────────────
+/** `${kỳ}::${khoá dòng}` đang có RPC bay — chặn re-entry trước cả re-render. */
+const utilityInflight = new Set<string>();
+/** `${kỳ}::${meter id}` → số tiền vừa gửi, sống đến khi reader thấy phiếu. */
+const utilityJustPaid = new Map<string, number>();
+let utilityVersion = 0;
+const utilitySubs = new Set<() => void>();
+const bumpUtility = () => { utilityVersion += 1; utilitySubs.forEach((fn) => fn()); };
+const subscribeUtility = (fn: () => void) => { utilitySubs.add(fn); return () => { utilitySubs.delete(fn); }; };
+const getUtilityVersion = () => utilityVersion;
+
 export function useUtilityPayState(
   billingMonth: string,
   buildings: { id: string; name: string }[],
 ) {
   const { byBuilding, isLoading: loadingAccts } = useUtilityAccounts();
   const payments = useUtilityPayments(billingMonth);
-  const { paidThisKy, byDay, isLoading: loadingPay } = payments;
+  const { paidThisKy, pendingThisKy, noMeterThisKy, byDay, isLoading: loadingPay } = payments;
+  // Đăng ký nhận thay đổi của kho chống trùng (bề mặt kia đóng thì bên này cũng
+  // đổi trạng thái ngay, không chờ refetch).
+  useSyncExternalStore(subscribeUtility, getUtilityVersion, getUtilityVersion);
   const { data: accounts = [] } = useAccounts();
   const payMut = usePayUtilityBill();
   const cancelMut = useCancelUtilityBill(billingMonth);
@@ -91,7 +124,9 @@ export function useUtilityPayState(
           rows.push({
             key: m.id, accountId: m.id, buildingId, buildingName: buildingName(buildingId),
             type, persistedCode: m.code, persistedHolder: m.holder, isSynthetic: false,
-            canDelete: ms.length > 1 && !paidThisKy(m.id),
+            // Đồng hồ đã có phiếu CHỜ DUYỆT cũng không được xoá (server chặn,
+            // nhưng đừng hiện nút mời bấm).
+            canDelete: ms.length > 1 && !paidThisKy(m.id) && !pendingThisKy(m.id),
           }),
         );
       }
@@ -136,6 +171,25 @@ export function useUtilityPayState(
       onError: (e) => toast.error((e as Error).message),
     });
   };
+
+  const typeText = (t: UtilType) => (t === 'electric' ? 'điện' : 'nước');
+
+  /**
+   * Khai công tơ cho dòng tổng hợp (synthetic) — thay cho nhánh "server tự tạo
+   * công tơ trong im lặng" (§−1.5). Có gõ mã/chủ hộ thì tạo kèm luôn.
+   */
+  const createMeter = async (row: MeterRow) => {
+    if (!row.isSynthetic) return;
+    try {
+      await saveMeterMut.mutateAsync({
+        id: null, buildingId: row.buildingId, type: row.type,
+        code: codeOf(row).trim(), holder: holderOf(row).trim(),
+      });
+      toast.success(`Đã tạo công tơ ${typeText(row.type)} — ${row.buildingName}. Giờ mới đóng tiền được.`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
   const deleteMeter = async (accountId: string) => {
     try {
       await deleteMeterMut.mutateAsync(accountId);
@@ -145,11 +199,6 @@ export function useUtilityPayState(
     }
   };
 
-  const onAttachClick = (key: string) => {
-    if (uploadingKey) return;
-    attachKeyRef.current = key;
-    fileRef.current?.click();
-  };
   /** Upload 1 file cho khoản `k` — dùng chung cho chọn file lẫn Ctrl+V. */
   const attachFile = useCallback(async (k: string, file: File) => {
     const err = validateReceiptFile(file);
@@ -172,40 +221,59 @@ export function useUtilityPayState(
     if (!file || !k) return;
     await attachFile(k, file);
   };
-  /** Đánh dấu khoản đang thao tác (focus ô Số tiền) — đích của Ctrl+V ảnh. */
-  const setActiveKey = useCallback((key: string) => {
+
+  // Ctrl+V ảnh chứng từ: đích là dòng đang RÊ CHUỘT, hoặc dòng vừa bấm ô Số
+  // tiền. Đích nằm ở biến module (xem useReceiptPasteTarget) vì panel desktop
+  // và sheet mobile cùng mount hook này → 2 instance tranh event 'paste'.
+  const uploadingRef = useRef<string | null>(null);
+  uploadingRef.current = uploadingKey;
+  const { setActiveKey, pasteProps } = useReceiptPasteTarget((k, file) => {
+    if (uploadingRef.current) return;
+    void attachFile(k, file);
+  });
+
+  const onAttachClick = (key: string) => {
+    if (uploadingKey) return;
     attachKeyRef.current = key;
-  }, []);
-  // Ctrl+V ảnh chứng từ: dán vào khoản đang thao tác (owner yêu cầu 24/07).
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      // Desktop panel + mobile sheet cùng mount hook → 2 listener; đánh dấu
-      // event để chỉ MỘT bên xử lý (tránh double toast/double upload).
-      const marked = e as ClipboardEvent & { __utilityPasteHandled?: boolean };
-      if (marked.__utilityPasteHandled) return;
-      marked.__utilityPasteHandled = true;
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      const img = Array.from(items).find((it) => it.type.startsWith('image/'));
-      if (!img) return; // dán text bình thường — không can thiệp
-      const file = img.getAsFile();
-      if (!file) return;
-      e.preventDefault();
-      const k = attachKeyRef.current;
-      if (!k) {
-        toast.info('Chạm vào ô Số tiền (hoặc nút ảnh) của khoản cần đính rồi dán lại');
-        return;
-      }
-      if (uploadingKey) return;
-      void attachFile(k, file);
-    };
-    document.addEventListener('paste', onPaste);
-    return () => document.removeEventListener('paste', onPaste);
-  }, [attachFile, uploadingKey]);
+    setActiveKey(key);
+    fileRef.current?.click();
+  };
+
+  /**
+   * Ô vừa gửi phiếu xong nhưng reader chưa refetch kịp — trả số tiền vừa gửi.
+   * Tự tan khi reader đã thấy phiếu (đã duyệt HOẶC chờ duyệt).
+   */
+  const justPaidThisKy = (accountId: string | null | undefined): number | undefined => {
+    if (!accountId) return undefined;
+    const k = `${billingMonth}::${accountId}`;
+    const amt = utilityJustPaid.get(k);
+    if (amt == null) return undefined;
+    if (paidThisKy(accountId) || pendingThisKy(accountId)) { utilityJustPaid.delete(k); return undefined; }
+    return amt;
+  };
 
   const submitPay = async (row: MeterRow, name: string) => {
+    // §−1.5: KHÔNG BAO GIỜ gửi p_utility_account_id = null. Server (WS-B) cũng
+    // từ chối, nhưng chặn ở đây mới nói được câu tiếng Việt tử tế.
+    if (!row.accountId) {
+      toast.error(
+        `${row.buildingName} chưa khai công tơ ${typeText(row.type)}. Bấm "Tạo công tơ" trên dòng này rồi mới đóng tiền được.`,
+        { duration: 8_000 },
+      );
+      return;
+    }
     const amount = amountOf(row.key);
     if (amount <= 0) { toast.error('Nhập số tiền cần đóng'); return; }
+    const lock = `${billingMonth}::${row.key}`;
+    if (utilityInflight.has(lock)) {
+      toast.error('Đang gửi phiếu cho đồng hồ này — chờ kết quả rồi hãy bấm lại.');
+      return;
+    }
+    if (justPaidThisKy(row.accountId) != null) {
+      toast.error(`Vừa tạo phiếu ${typeText(row.type)} cho đồng hồ này ở kỳ ${billingMonth} — chờ danh sách cập nhật.`);
+      return;
+    }
+    utilityInflight.add(lock);
     setPayingKey(row.key);
     try {
       await payMut.mutateAsync({
@@ -215,34 +283,43 @@ export function useUtilityPayState(
         utilityAccountId: row.accountId,
         attachments: attach[row.key] ? [attach[row.key]] : undefined,
       });
+      utilityJustPaid.set(`${billingMonth}::${row.accountId}`, amount);
       setAmounts((a) => { const n = { ...a }; delete n[row.key]; return n; });
       setAttach((a) => { const n = { ...a }; delete n[row.key]; return n; });
-      toast.success(`Đã chi ${fmtFull(amount)} tiền ${row.type === 'electric' ? 'điện' : 'nước'} · ${name}`);
+      toast.success(`Đã chi ${fmtFull(amount)} tiền ${typeText(row.type)} · ${name}`);
     } catch (ex) {
       toast.error((ex as Error).message);
     } finally {
+      utilityInflight.delete(lock);
       setPayingKey(null);
+      bumpUtility();
     }
   };
 
+  // Huỷ được cả phiếu ĐÃ DUYỆT và phiếu CHỜ DUYỆT: phiếu chờ duyệt chiếm slot
+  // (toà × loại × kỳ) nên không có lối huỷ là ô kẹt cho tới khi ai đó đi duyệt.
   const requestCancel = (row: MeterRow) => {
-    const paid = paidThisKy(row.accountId);
-    if (!paid) return;
+    const v = paidThisKy(row.accountId) ?? pendingThisKy(row.accountId);
+    if (!v) return;
     setCancelTarget({
-      voucherId: paid.voucherId,
+      voucherId: v.voucherId,
       bld: row.buildingName,
-      typeText: row.type === 'electric' ? 'điện' : 'nước',
-      amount: paid.amount,
-      dateText: fmtDate(paid.date),
-      timeText: paid.time,
-      by: paid.by,
-      book: paid.book,
+      typeText: typeText(row.type),
+      amount: v.amount,
+      dateText: fmtDate(v.date),
+      timeText: v.time,
+      by: v.by,
+      book: v.book,
     });
   };
   const confirmCancel = async () => {
     if (!cancelTarget) return;
     try {
       await cancelMut.mutateAsync(cancelTarget.voucherId);
+      // Bỏ cờ "vừa tạo phiếu" của mọi đồng hồ — phiếu vừa huỷ phải cho đóng lại
+      // ngay, không bị cờ cũ chặn (cờ khoá theo meter, huỷ thì reader trả rỗng).
+      for (const k of [...utilityJustPaid.keys()]) if (k.startsWith(billingMonth + '::')) utilityJustPaid.delete(k);
+      bumpUtility();
       toast.success('Đã hủy phiếu thanh toán');
       setCancelTarget(null);
     } catch (ex) {
@@ -252,7 +329,7 @@ export function useUtilityPayState(
 
   return {
     // data
-    metersOf, paidThisKy, byDay, loadingPay, loadingAccts,
+    metersOf, paidThisKy, pendingThisKy, noMeterThisKy, justPaidThisKy, byDay, loadingPay, loadingAccts,
     myBooks, defaultBookId,
     // per-row getters/setters
     codeOf, holderOf, amountOf, setField, setAmount,
@@ -260,8 +337,9 @@ export function useUtilityPayState(
     payingKey, submitPay,
     // meters
     addMeter, adding: addMeterMut.isPending, deleteMeter, deleting: deleteMeterMut.isPending,
-    // attach input
-    fileRef, onFileChange, onAttachClick, setActiveKey,
+    createMeter, creatingMeter: saveMeterMut.isPending,
+    // attach input (pasteProps: spread vào dòng để rê chuột + Ctrl+V dán ảnh)
+    fileRef, onFileChange, onAttachClick, setActiveKey, pasteProps,
     // cancel
     cancelTarget, requestCancel, confirmCancel, cancelling: cancelMut.isPending,
     closeCancel: () => setCancelTarget(null),

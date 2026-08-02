@@ -36,6 +36,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { tryPlaceRoomHold } from "@/lib/reservationHold";
 import { useCreateIncomeExpense } from "@/hooks/useIncomeExpenses";
+import { useCreateSaleBonusFromDeposit } from "@/hooks/useSaleBonus";
 import { useCreateTenant, useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -65,6 +66,9 @@ const depositSchema = z.object({
   hold_until: z.string().optional(),
   ctv_name: z.string().optional(),
   notes: z.string().optional(),
+  // Thưởng nóng Sale — tuỳ chọn, tạo ngay cùng lúc với phiếu cọc.
+  sale_bonus_amount: z.coerce.number().min(0).optional(),
+  sale_bonus_recipient: z.string().optional(),
 });
 
 type DepositFormValues = z.infer<typeof depositSchema>;
@@ -81,6 +85,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
   const [myUserId, setMyUserId] = useState<string | null>(null);
 
   const createIE = useCreateIncomeExpense();
+  const createSaleBonus = useCreateSaleBonusFromDeposit();
   const createTenant = useCreateTenant();
   const { data: tenants = [] } = useTenantsLegacy();
   const { data: rooms = [] } = useRooms();
@@ -115,6 +120,8 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       hold_until: "",
       ctv_name: "",
       notes: "",
+      sale_bonus_amount: 0,
+      sale_bonus_recipient: "",
     },
   });
 
@@ -185,7 +192,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       if (data.notes) extras.push(data.notes);
       const itemDesc = extras.length ? extras.join(" · ") : null;
 
-      await createIE.mutateAsync({
+      const createdDeposit: any = await createIE.mutateAsync({
         type: "INCOME",
         name,
         building_id: buildingId,
@@ -211,6 +218,28 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
           },
         ],
       });
+
+      // Thưởng nóng Sale ngay tại đây (tuỳ chọn). Cố ý tạo SAU khi phiếu cọc đã
+      // có id: phiếu thưởng neo vào phiếu cọc, và chính cái neo đó là thứ giúp
+      // màn hình ký hợp đồng sau này biết là "đã thưởng rồi" mà tô xám ô nhập.
+      // Thưởng hỏng thì KHÔNG kéo đổ phiếu cọc — cọc là việc chính.
+      const bonusAmt = Number(data.sale_bonus_amount) || 0;
+      const depositId = createdDeposit?.id ?? createdDeposit?.voucher_id ?? null;
+      if (bonusAmt > 0 && depositId) {
+        try {
+          const r = await createSaleBonus.mutateAsync({
+            depositVoucherId: depositId,
+            amount: bonusAmt,
+            recipient: data.sale_bonus_recipient || undefined,
+          });
+          toast.success(`Đã tạo phiếu thưởng Sale ${r?.code ?? ""} — đang chờ duyệt.`);
+        } catch (e) {
+          toast.error(
+            "Phiếu cọc đã tạo, nhưng chưa tạo được phiếu thưởng Sale: " +
+              ((e as Error)?.message ?? "lỗi không rõ")
+          );
+        }
+      }
 
       // Phòng vừa bị khoá (RESERVED) → refetch các nguồn liên quan.
       queryClient.invalidateQueries({ queryKey: ["reservation-deposits"] });
@@ -428,6 +457,57 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
                   </FormItem>
                 )}
               />
+
+              {/* Thưởng nóng Sale — tạo ngay cùng phiếu cọc.
+                  Để trống thì không tạo gì. Phiếu thưởng ra ở trạng thái CHỜ DUYỆT,
+                  và khi hợp đồng của phiếu cọc này được ký thì màn hình ký sẽ tự
+                  biết là đã thưởng rồi. */}
+              <div className="rounded-md border p-3 space-y-3">
+                <div className="text-sm font-medium">
+                  Thưởng nóng Sale{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (tuỳ chọn — để trống nếu chưa thưởng)
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="sale_bonus_amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Số tiền thưởng</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            placeholder="0"
+                            {...field}
+                            value={field.value ?? 0}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="sale_bonus_recipient"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Người nhận</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Phiếu thưởng tạo ra ở trạng thái <strong>chờ duyệt</strong>. Mỗi phiếu cọc
+                  chỉ thưởng một lần — khi ký hợp đồng, ô thưởng bên đó sẽ tự tô xám.
+                </p>
+              </div>
 
               <div className="flex justify-end gap-3 pt-4">
                 <Button

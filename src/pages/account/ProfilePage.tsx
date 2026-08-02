@@ -12,6 +12,7 @@ import { useProfile, useUpdateProfile, useUploadAvatar, useChangePassword } from
 import { toast } from "sonner";
 import { useClipboardImagePaste } from "@/hooks/useClipboardImagePaste";
 import PushNotificationSettings from "@/components/notifications/PushNotificationSettings";
+import NotificationPreferencesCard from "@/components/notifications/NotificationPreferencesCard";
 
 function ProfileDesktop() {
   const { data: profile, isLoading } = useProfile();
@@ -230,6 +231,11 @@ function ProfileDesktop() {
 
         {/* Push Notification Section */}
         <PushNotificationSettings />
+
+        {/* Sở thích thông báo cá nhân — ĐẶT Ở ĐÂY chứ không ở /settings/general:
+            8/10 người nhận thông báo không có `settings.view` nên không mở nổi trang
+            cài đặt để tự tắt. /account/profile chỉ bọc ProtectedRoute. */}
+        <NotificationPreferencesCard />
       </div>
     </MainLayout>
   );

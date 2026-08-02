@@ -28,15 +28,16 @@ export function Summary({ rooms }: { rooms: Room[] }) {
 }
 
 /* ===== Filter bar ===== */
-export const PRICE_BANDS = [
-  { id: "all",   label: "Mọi giá",  test: () => true },
-  { id: "lt10",  label: "≤ 10tr",   test: (p: number) => p <= 10 },
-  { id: "10-15", label: "10–15tr",  test: (p: number) => p > 10 && p <= 15 },
-  { id: "gt15",  label: "15tr +",   test: (p: number) => p > 15 },
+/** Dải giá (đơn vị: triệu/tháng — Room.price). Biên: đúng 4tr và 5tr thuộc dải giữa. */
+export const PRICE_BANDS: { id: string; label: string; test: (p: number) => boolean }[] = [
+  { id: "all", label: "Mọi giá", test: () => true },
+  { id: "lt4", label: "< 4tr",   test: (p: number) => p < 4 },
+  { id: "4-5", label: "4–5tr",   test: (p: number) => p >= 4 && p <= 5 },
+  { id: "gt5", label: "> 5tr",   test: (p: number) => p > 5 },
 ];
 
 export function FilterBar({ showRented, setShowRented, band, setBand }: {
-  showRented: boolean; setShowRented: (v: boolean) => void;
+  showRented?: boolean; setShowRented?: (v: boolean) => void;
   band: string; setBand: (v: string) => void;
 }) {
   return (
@@ -46,9 +47,11 @@ export function FilterBar({ showRented, setShowRented, band, setBand }: {
           {band === b.id && b.id !== "all" ? <Icon.Money /> : null}{b.label}
         </button>
       ))}
-      <button className={"fchip" + (showRented ? " on" : "")} onClick={() => setShowRented(!showRented)}>
-        {showRented ? <Icon.Check /> : <Icon.Dot />} Hiện phòng đã thuê
-      </button>
+      {setShowRented && (
+        <button className={"fchip" + (showRented ? " on" : "")} onClick={() => setShowRented(!showRented)}>
+          {showRented ? <Icon.Check /> : <Icon.Dot />} Hiện phòng đã thuê
+        </button>
+      )}
     </div>
   );
 }

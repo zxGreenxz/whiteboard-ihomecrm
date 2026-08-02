@@ -17,7 +17,7 @@ import {
   type PaginationState,
 } from "@/hooks/usePagination";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
-import { Lock, LockOpen, Pencil, Trash2, Wallet, Eye } from "lucide-react";
+import { Lock, Pencil, Trash2, Wallet, Eye } from "lucide-react";
 import {
   useMyCashbookAccessV2,
   useCashbookVisibilityV2,
@@ -31,8 +31,8 @@ interface CashbookListProps {
   onView: (acc: AccountWithBalance) => void;
   onEdit: (acc: AccountWithBalance) => void;
   onDelete: (id: string) => void;
-  onLock: (acc: AccountWithBalance) => void;
-  onUnlock: (acc: AccountWithBalance) => void;
+  /** Đợt 6: mở nghi thức chốt & bàn giao (thay cho khoá/mở khoá tay). */
+  onClose: (acc: AccountWithBalance) => void;
 }
 
 const formatVND = (n: number) =>
@@ -46,8 +46,7 @@ const CashbookList = ({
   onView,
   onEdit,
   onDelete,
-  onLock,
-  onUnlock,
+  onClose,
 }: CashbookListProps) => {
   const info = useMemo(
     () =>
@@ -161,28 +160,22 @@ const CashbookList = ({
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    {canManage &&
-                      (isLocked ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-orange-500 hover:text-orange-600 hover:bg-orange-50"
-                          onClick={() => onUnlock(acc)}
-                          title="Mở khoá sổ"
-                        >
-                          <LockOpen className="h-4 w-4" />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
-                          onClick={() => onLock(acc)}
-                          title="Khoá sổ"
-                        >
-                          <Lock className="h-4 w-4" />
-                        </Button>
-                      ))}
+                    {/* Đợt 6: khoá sổ không còn là một nút bấm một mình. Nó là
+                        kết quả của nghi thức chốt & bàn giao hai bên. Nút "Mở
+                        khoá" đã bị gỡ hẳn: từ Đợt 3, lock_cashbook_period_v1
+                        (p_unlock) LUÔN ném [CASHBOOK_CLOSED], nên để nút đó lại
+                        là hứa một đường thoát không tồn tại. */}
+                    {canManage && !isLocked && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                        onClick={() => onClose(acc)}
+                        title="Chốt sổ & bàn giao quỹ"
+                      >
+                        <Lock className="h-4 w-4" />
+                      </Button>
+                    )}
                     {canManage && (
                       <Button
                         variant="ghost"

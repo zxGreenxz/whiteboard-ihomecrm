@@ -38,6 +38,7 @@ import {
   useHeldDepositSummary,
   useDepositRefundsForfeits,
   useRefundForfeitSummary,
+  summarizeRefundForfeit,
   type HeldDepositRow,
   type BuildingDepositSummary,
 } from "@/hooks/useDepositDashboard";
@@ -122,8 +123,10 @@ const DepositsPage = () => {
   // danh sách (hụt tổng khi HĐ/phiếu > 1000). Danh sách chi tiết vẫn dùng row
   // hooks (đã phân trang) cho bảng.
   const { data: heldAgg = [] } = useHeldDepositSummary(buildingIds);
-  const { data: rfSummary } = useRefundForfeitSummary(buildingIds);
   const { data: resvSummary } = useReservationDepositSummary(buildingIds);
+  // KPI "Đã hoàn cọc" = TIỀN THẬT ĐÃ RA KHỎI KÉT (quyết định của chủ 30/07,
+  // §1ter.1) ⇒ phải lấy từ server, xem khối chú thích ở `refundKpi` bên dưới.
+  const { data: rfSummary } = useRefundForfeitSummary(buildingIds);
 
   // Lọc theo toà nhà (client-side) cho dashboard.
   const heldFiltered = useMemo(
@@ -156,7 +159,36 @@ const DepositsPage = () => {
     [heldAgg],
   );
 
-  // KPI tổng — từ RPC aggregate (không client-reduce trên danh sách bị cap-1000).
+  // Tổng cột của BẢNG tab "Hoàn / Bỏ cọc" — KHÔNG phải ô KPI "Đã hoàn cọc".
+  //
+  // Bảng liệt kê theo `contract_terminations`, nên nó chỉ cộng được phần phiếu
+  // hoàn NỐI ĐƯỢC hồ sơ thanh lý: org thật 4.302.000đ / 2 dòng. Nhưng tiền THẬT
+  // đã rời két là 28.039.100đ / 10 phiếu — 8 phiếu (23.737.100đ) không có dòng
+  // thanh lý nào để mà hiện. QUYẾT ĐỊNH CỦA CHỦ 30/07 (§1ter.1): ô KPI phải nói
+  // TIỀN ĐÃ RA KÉT, tức 28.039.100đ, còn phần mồ côi hiện thành DÒNG CẢNH BÁO
+  // ngay dưới ô. Lấy 4.302.000đ làm KPI là khai THIẾU 23,7 triệu — đúng phương
+  // án chủ đã bác. Vì vậy `refundKpi` chỉ còn dùng để đối chiếu với
+  // `rfSummary.linkedTotal` (hai đường tính khác nhau phải ra cùng số) và cho
+  // KPI "Đã bỏ cọc" (= tổng cột "Cọc gốc" của các dòng bỏ cọc).
+  const refundKpi = useMemo(
+    () => summarizeRefundForfeit(refundsFiltered),
+    [refundsFiltered],
+  );
+
+  // CHỈ tin ô KPI của server khi nó ĐỐI CHIẾU ĐƯỢC: linked + orphan = total.
+  // Thân hàm `get_refund_forfeit_summary` bản Slice −1 bảo đảm đẳng thức này theo
+  // cấu trúc (đã kiểm trên prod: 4.302.000 + 23.737.100 = 28.039.100). Thân hàm
+  // CŨ chỉ trả 4 khoá và cộng cột GENERATED (8.290.000đ / 3 lần) nên linked =
+  // orphan = 0 nên đẳng thức vỡ. Nhờ vậy nếu migration chưa được apply mà bản FE
+  // này đã lên, ô KPI KHÔNG nhảy sang con số thổi phồng 8.290.000đ: nó lùi về
+  // tổng cột của bảng như trước. Không có dữ liệu thì cả ba đều 0 — hai đường
+  // cho cùng một số, vô hại.
+  const rfReconciles =
+    !!rfSummary &&
+    Math.round(rfSummary.linkedTotal + rfSummary.orphanTotal) ===
+      Math.round(rfSummary.refundTotal);
+
+  // KPI cọc đang giữ — từ RPC aggregate (không client-reduce trên danh sách bị cap-1000).
   const kpi = useMemo(() => {
     const held_ = heldAgg.reduce((s, r) => s + r.held, 0);
     const expected = heldAgg.reduce((s, r) => s + r.expected, 0);
@@ -167,12 +199,13 @@ const DepositsPage = () => {
       expected,
       shortfall,
       shortCount,
-      refundTotal: rfSummary?.refundTotal ?? 0,
-      refundCount: rfSummary?.refundCount ?? 0,
-      forfeitTotal: rfSummary?.forfeitTotal ?? 0,
-      forfeitCount: rfSummary?.forfeitCount ?? 0,
+      // Tiền hoàn ĐÃ RA KÉT — gồm CẢ phiếu không nối được hồ sơ thanh lý (D2).
+      refundTotal: rfReconciles ? rfSummary!.refundTotal : refundKpi.refundTotal,
+      refundCount: rfReconciles ? rfSummary!.refundCount : refundKpi.refundCount,
+      forfeitTotal: refundKpi.forfeitTotal,
+      forfeitCount: refundKpi.forfeitCount,
     };
-  }, [heldAgg, rfSummary]);
+  }, [heldAgg, refundKpi, rfSummary, rfReconciles]);
 
   // Giữ chỗ đang giữ (phiếu thu cọc mồ côi đã duyệt) — RPC aggregate.
   const holdingAmount = resvSummary?.holdingAmount ?? 0;
@@ -270,9 +303,9 @@ const DepositsPage = () => {
                 tone="blue"
               />
               <KpiCard
-                label="Đã hoàn cọc"
+                label="Đã hoàn cọc (tiền đã ra khỏi két)"
                 value={formatCurrency(kpi.refundTotal)}
-                sub={`${kpi.refundCount} lần`}
+                sub={`${kpi.refundCount} phiếu hoàn đã duyệt & vào sổ`}
                 icon={RotateCcw}
               />
               <KpiCard
@@ -283,6 +316,30 @@ const DepositsPage = () => {
                 tone="red"
               />
             </div>
+
+            {/* Dòng cảnh báo BẮT BUỘC của §1ter.1: ô KPI đếm tiền ĐÃ RA KÉT, còn
+                bảng "Hoàn / Bỏ cọc" chỉ liệt kê được phiếu nối được hồ sơ thanh
+                lý. Không hiện phần chênh ra đây thì ô KPI lại nói khác cái bảng
+                ngay bên dưới nó. GHI NHẬN, KHÔNG tự sửa dữ liệu. */}
+            {rfReconciles && (rfSummary?.orphanCount ?? 0) > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+                <span className="inline-flex items-start gap-1.5">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    Trong đó <strong>{formatCurrency(rfSummary!.orphanTotal)}</strong>{" "}
+                    ({rfSummary!.orphanCount} phiếu) đã ra khỏi két nhưng{" "}
+                    <strong>KHÔNG có hồ sơ thanh lý</strong> — bảng "Hoàn / Bỏ cọc"
+                    bên dưới chỉ liệt kê được{" "}
+                    {formatCurrency(rfSummary!.linkedTotal)} (
+                    {rfSummary!.linkedVoucherCount > 0
+                      ? `${rfSummary!.linkedVoucherCount} phiếu · `
+                      : ""}
+                    {rfSummary!.linkedCount} hồ sơ). Ghi nhận để rà tay, hệ thống
+                    KHÔNG tự sửa.
+                  </span>
+                </span>
+              </div>
+            )}
 
             <Card>
               <Table>
@@ -415,7 +472,11 @@ const DepositsPage = () => {
               Bỏ cọc = khách mất cọc, cọc thành doanh thu. "Tổng nợ tất toán" là
               tổng nợ khách khi thanh lý (tiền phòng + phí),{" "}
               <strong>không trừ vào cọc</strong>; nếu nợ &gt; cọc thì khách còn
-              nợ thêm.
+              nợ thêm.{" "}
+              <strong>"Đã hoàn"</strong> chỉ hiện khi tiền đã thực sự ra khỏi két
+              — tức có phiếu chi hoàn cọc <strong>đã duyệt và đã vào sổ</strong>.
+              Hồ sơ thanh lý ghi số phải hoàn mà chưa có phiếu vào sổ thì hiện{" "}
+              <strong>"Chưa có phiếu hoàn"</strong>, không phải tick xanh.
             </p>
             <Card>
               <Table>
@@ -428,24 +489,30 @@ const DepositsPage = () => {
                     <TableHead>Loại</TableHead>
                     <TableHead className="text-right">Cọc gốc</TableHead>
                     <TableHead className="text-right">Tổng nợ tất toán</TableHead>
-                    <TableHead>Còn nợ / Hoàn lại</TableHead>
+                    <TableHead className="text-right">
+                      Net quyết toán (lịch sử)
+                    </TableHead>
+                    <TableHead>Tiền đã ra khỏi két</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {refundsLoading ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Đang tải...</TableCell>
                     </TableRow>
                   ) : refundsFiltered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         Chưa có hợp đồng thanh lý nào
                       </TableCell>
                     </TableRow>
                   ) : (
                     refundsFiltered.map((r) => {
-                      // Số tiền khách CÒN NỢ sau khi mất cọc (nợ > cọc).
-                      const stillOwed = Math.max(0, -r.refund_amount);
+                      // Số tiền khách CÒN NỢ sau khi quyết toán (nợ > cọc) — nay
+                      // dùng cho CẢ hai loại: trước đây chỉ nhánh FORFEIT hiện
+                      // "còn nợ", nên hồ sơ trả phòng có net âm (vd −2.241.000)
+                      // bị clamp thành "Đã hoàn 0đ" (Slice −1 · §−1.7).
+                      const stillOwed = Math.max(0, -r.settlement_net);
                       return (
                         <TableRow key={r.id}>
                           <TableCell>{formatDate(r.termination_date)}</TableCell>
@@ -470,6 +537,12 @@ const DepositsPage = () => {
                           >
                             {formatCurrency(r.total_deductions)}
                           </TableCell>
+                          <TableCell
+                            className="text-right text-muted-foreground"
+                            title="contract_terminations.refund_amount (cột GENERATED) — net quyết toán theo HỒ SƠ, KHÔNG phải số phải trả khách. Âm = khách còn nợ thêm."
+                          >
+                            {formatCurrency(r.settlement_net)}
+                          </TableCell>
                           <TableCell>
                             {r.kind === "FORFEIT" ? (
                               stillOwed > 0 ? (
@@ -483,13 +556,43 @@ const DepositsPage = () => {
                                 </span>
                               )
                             ) : r.refund_done ? (
-                              <span className="inline-flex items-center gap-1 text-xs text-green-700">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Đã hoàn{" "}
-                                {formatCurrency(Math.max(0, r.refund_amount))}
+                              <div className="space-y-0.5">
+                                <span
+                                  className="inline-flex items-center gap-1 text-xs text-green-700"
+                                  title={
+                                    r.posted_refund_codes.length
+                                      ? `Phiếu đã vào sổ: ${r.posted_refund_codes.join(", ")}`
+                                      : undefined
+                                  }
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" /> Đã hoàn{" "}
+                                  {formatCurrency(r.posted_refund)}
+                                </span>
+                                {r.refund_drift !== 0 && (
+                                  <p
+                                    className="text-[11px] text-amber-700"
+                                    title="Hồ sơ thanh lý và phiếu đã vào sổ nói hai số khác nhau — cần rà tay, KHÔNG tự sửa."
+                                  >
+                                    Lệch hồ sơ {formatCurrency(r.refund_drift)}
+                                  </p>
+                                )}
+                              </div>
+                            ) : stillOwed > 0 ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                Khách còn nợ {formatCurrency(stillOwed)}
+                              </span>
+                            ) : r.settlement_net > 0 ? (
+                              <span
+                                className="text-xs text-orange-600"
+                                title="Hồ sơ thanh lý ghi phải hoàn, nhưng chưa có phiếu chi nào được duyệt và vào sổ."
+                              >
+                                Chưa có phiếu hoàn ·{" "}
+                                {formatCurrency(r.settlement_net)} theo hồ sơ
                               </span>
                             ) : (
-                              <span className="text-xs text-orange-600">
-                                Chờ hoàn {formatCurrency(Math.max(0, r.refund_amount))}
+                              <span className="text-xs text-muted-foreground">
+                                Không phát sinh hoàn
                               </span>
                             )}
                           </TableCell>

@@ -38,6 +38,7 @@ import { useBuildings } from '@/hooks/useBuildings';
 import { useFloors } from '@/hooks/useFloors';
 import { useCreateRoom, useUpdateRoom } from '@/hooks/useRooms';
 import { useDocumentTemplatesByType } from '@/hooks/useDocumentTemplates';
+import { RoomPriceHistorySection } from './RoomPriceHistorySection';
 import QuickCreateBuildingDialog from './QuickCreateBuildingDialog';
 import QuickCreateFloorDialog from './QuickCreateFloorDialog';
 import type { RoomWithRelations } from '@/types/room';
@@ -359,6 +360,12 @@ export default function RoomFormDialog({
                     )}
                   />
                 </div>
+
+                {/* Dấu vết mọi lần đổi giá — kể cả giá ký lệch trên hợp đồng.
+                    Chỉ có khi sửa phòng đã tồn tại. */}
+                {room?.id && (
+                  <RoomPriceHistorySection roomId={room.id} enabled={open} />
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   {/* Diện tích */}

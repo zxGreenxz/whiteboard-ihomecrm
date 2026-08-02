@@ -1,6 +1,7 @@
 // Map registry icon-key → lucide component (giữ feeCategories.ts pure, không import React).
 import {
   LayoutGrid, Plug, Home, Wifi, Briefcase, Sparkles, Shield, Trash2, Percent, Wrench,
+  Wallet, HandCoins, PiggyBank,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -27,6 +28,9 @@ const MAP: Record<string, LucideIcon | typeof ElevatorIcon> = {
   elevator: ElevatorIcon,
   percent: Percent,
   wrench: Wrench,
+  wallet: Wallet,
+  handcoins: HandCoins,
+  piggybank: PiggyBank,
 };
 
 export function FeeIcon({ name, ...props }: { name: string } & React.SVGProps<SVGSVGElement>) {

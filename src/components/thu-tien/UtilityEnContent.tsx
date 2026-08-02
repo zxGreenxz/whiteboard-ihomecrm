@@ -2,10 +2,18 @@
 // UtilityEnContent — nội dung họ "Điện & Nước" (KHÔNG header) để nhúng vào
 // PeriodFeePanel / PeriodFeeSheet. Giữ NGUYÊN luồng đồng hồ hiện có
 // (useUtilityPayState + pay_utility_bill). Tách từ UtilityDesktopPanel body.
+//
+// 30/07/2026 (Slice −1) — ba trạng thái ô thay vì hai:
+//   đã đóng (phiếu đã duyệt) · ĐÃ TẠO CHỜ DUYỆT (§−1.1: `pay_utility_bill` sinh
+//   phiếu UNAPPROVED khi tiền ≥ ngưỡng org; trước đây reader lọc cứng APPROVED
+//   nên ô vẫn nói "chưa đóng" và mời bấm lại) · chưa đóng.
+//   Dòng tổng hợp của toà CHƯA KHAI ĐỒNG HỒ không còn nút đóng tiền — đổi thành
+//   "Tạo công tơ" (§−1.5: bấm đóng ở dòng đó gửi meter id NULL, server tự tạo
+//   công tơ trong im lặng và ô không bao giờ hiện đã đóng).
 // =============================================================================
 
 import { useMemo, useState } from 'react';
-import { Zap, Droplet, Check, Camera, BarChart3, User, Plus, Trash2, X } from 'lucide-react';
+import { Zap, Droplet, Check, Camera, BarChart3, User, Plus, Trash2, X, Gauge } from 'lucide-react';
 import { fmtFull, fmtBillingMonth } from '@/lib/collect';
 import { useUtilityChart, type UtilType } from '@/hooks/useUtilityBills';
 import { useUtilityPayState, type MeterRow } from '@/hooks/useUtilityPayState';
@@ -46,15 +54,41 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
     typeFilter === 'all' || (typeFilter === 'electric' && t === 'electric') || (typeFilter === 'water' && t === 'water');
 
   const statOf = (t: UtilType) => {
-    let sum = 0; const paidList: string[] = []; const dueList: string[] = [];
+    let sum = 0; let pendingSum = 0;
+    let noMeterSum = 0; let noMeterCount = 0;
+    const paidList: string[] = []; const dueList: string[] = []; const pendingList: string[] = [];
+    const noMeterList: string[] = [];
     for (const b of buildings) {
       const ms = S.metersOf(b.id).filter((m) => m.type === t);
-      let bSum = 0; let allPaid = ms.length > 0;
-      for (const m of ms) { const p = S.paidThisKy(m.accountId); if (p) bSum += p.amount; else allPaid = false; }
-      sum += bSum;
-      if (allPaid) paidList.push(b.name); else dueList.push(b.name);
+      let bSum = 0; let bPending = 0; let allPaid = ms.length > 0; let anyPending = false; let anyDue = false;
+      for (const m of ms) {
+        const p = S.paidThisKy(m.accountId);
+        const q = S.pendingThisKy(m.accountId);
+        if (p) bSum += p.amount; else allPaid = false;
+        if (q) { bPending += q.amount; anyPending = true; }
+        if (!p && !q) anyDue = true;
+      }
+      // Phiếu KHÔNG gắn đồng hồ: không thuộc ô nào nên trước đây bị bỏ khỏi mọi
+      // tổng tính-từ-ô (org thật 9 phiếu / 7.956.000đ). Tiền đã ra két thì phải
+      // vào "Đã thanh toán kỳ này", và toà đó phải được nêu tên để rà tay.
+      const nm = S.noMeterThisKy(b.id, t);
+      if (nm) {
+        bSum += nm.amount; bPending += nm.pendingAmount;
+        noMeterSum += nm.amount + nm.pendingAmount;
+        noMeterCount += nm.count;
+        noMeterList.push(b.name);
+        if (nm.pendingAmount > 0) anyPending = true;
+      }
+      sum += bSum; pendingSum += bPending;
+      // Toà có phiếu chờ duyệt KHÔNG bị gọi là "chưa đóng" (tiền chưa ra két
+      // nhưng phiếu đã có) — nó có dòng riêng để chủ đi duyệt.
+      if (allPaid) paidList.push(b.name);
+      else {
+        if (anyDue) dueList.push(b.name);
+        if (anyPending) pendingList.push(b.name);
+      }
     }
-    return { sum, paidList, dueList };
+    return { sum, pendingSum, paidList, dueList, pendingList, noMeterSum, noMeterCount, noMeterList };
   };
   const statElec = statOf('electric');
   const statWater = statOf('water');
@@ -62,7 +96,10 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
   const fBuildings = bldFilter === 'all' ? buildings : buildings.filter((b) => b.id === bldFilter);
   const tblRows: { row: MeterRow; first: boolean }[] = [];
   for (const b of fBuildings) {
-    const rows = S.metersOf(b.id).filter((r) => typeMatch(r.type) && !(onlyDue && S.paidThisKy(r.accountId)));
+    // "Chỉ tòa chưa đóng": ô đã có phiếu (duyệt HOẶC chờ duyệt) đều không còn là
+    // việc phải làm → ẩn cả hai, đừng để phiếu chờ duyệt nằm trong danh sách nhắc.
+    const rows = S.metersOf(b.id).filter((r) => typeMatch(r.type)
+      && !(onlyDue && (S.paidThisKy(r.accountId) || S.pendingThisKy(r.accountId))));
     rows.forEach((row, i) => tblRows.push({ row, first: i === 0 }));
   }
 
@@ -71,7 +108,15 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
   const reportDays = reportBld === 'all'
     ? S.byDay
     : S.byDay
-        .map((d) => { const rows = d.rows.filter((r) => r.building_id === reportBld); return rows.length ? { ...d, rows, sum: rows.reduce((s, r) => s + r.amount, 0) } : null; })
+        .map((d) => {
+          const rows = d.rows.filter((r) => r.building_id === reportBld);
+          // Tổng ngày CHỈ cộng phiếu đã duyệt — phiếu chờ duyệt tách riêng.
+          return rows.length ? {
+            ...d, rows,
+            sum: rows.filter((r) => !r.pending).reduce((s, r) => s + r.amount, 0),
+            pendingSum: rows.filter((r) => r.pending).reduce((s, r) => s + r.amount, 0),
+          } : null;
+        })
         .filter((d): d is typeof S.byDay[number] => d !== null);
 
   const StatCard = ({ t, stat }: { t: UtilType; stat: ReturnType<typeof statOf> }) => {
@@ -99,6 +144,27 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
               {stat.dueList.length === 0 ? <span className="ud-stat-done">Đã đóng đủ</span> : stat.dueList.map((n) => <span className="ud-chip due" key={n}>{n}</span>)}
             </div>
           </div>
+          {stat.pendingList.length > 0 && (
+            <div className="ud-stat-line">
+              <span className="ud-stat-lbl due">{stat.pendingList.length} tòa chờ duyệt · {fmtFull(stat.pendingSum)}</span>
+              <div className="ud-stat-chips">
+                {stat.pendingList.map((n) => <span className="ud-chip due" key={n}>{n}</span>)}
+              </div>
+            </div>
+          )}
+          {/* GHI NHẬN, KHÔNG tự sửa: phiếu tay không gắn công tơ nào. Tiền đã tính
+              vào tổng ở trên, nhưng không ô nào của bảng bên dưới nhận nó — nêu ra
+              đây để đi rà, xem chi tiết ở tab Báo cáo. */}
+          {stat.noMeterCount > 0 && (
+            <div className="ud-stat-line">
+              <span className="ud-stat-lbl due" title="Phiếu điện/nước không gắn đồng hồ nào — không hiện được trên dòng công tơ">
+                {stat.noMeterCount} phiếu chưa gắn công tơ · {fmtFull(stat.noMeterSum)}
+              </span>
+              <div className="ud-stat-chips">
+                {stat.noMeterList.map((n) => <span className="ud-chip due" key={n}>{n}</span>)}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -164,11 +230,17 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                     {tblRows.map(({ row, first }) => {
                       const k = row.key; const t = row.type;
                       const paid = S.paidThisKy(row.accountId);
+                      const pending = paid ? undefined : S.pendingThisKy(row.accountId);
+                      // Vừa gửi RPC, reader chưa refetch — ô phải khoá lại ngay.
+                      const justPaid = paid || pending ? undefined : S.justPaidThisKy(row.accountId);
+                      const locked = !!paid || !!pending || justPaid != null;
                       const amount = S.amountOf(k);
                       const paying = S.payingKey === k;
                       const Icon = t === 'electric' ? Zap : Droplet;
+                      // Dòng synthetic không có đồng hồ để đính ảnh vào (ảnh sẽ
+                      // mất khi dòng đổi khoá sau khi tạo công tơ) → không nhận dán.
                       return (
-                        <tr key={k} className={first ? 'ud-first' : ''}>
+                        <tr key={k} className={first ? 'ud-first' : ''} {...(locked || row.isSynthetic ? {} : S.pasteProps(k))}>
                           <td className="ud-td-bld">
                             {first ? (
                               <div className="ud-bldcell">
@@ -193,6 +265,10 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                           <td>
                             {paid ? (
                               <span className="ud-bookchip"><BookIcon size={14} />{paid.book}</span>
+                            ) : pending ? (
+                              <span className={'ud-bookchip' + (pending.book ? '' : ' empty')}><BookIcon size={14} />{pending.book || 'chưa có sổ'}</span>
+                            ) : row.isSynthetic ? (
+                              <span className="ud-stat-none">—</span>
                             ) : (
                               <UtilityBookMenu accounts={S.myBooks} valueId={S.bookSel[k] ?? null} defaultId={S.defaultBookId} onPick={(id) => S.setBook(k, id)} disabled={!canRecordPayment} />
                             )}
@@ -200,6 +276,18 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                           <td className="num">
                             {paid ? (
                               <div className="ud-paidamt"><span className="ud-paidamt-a">{fmtFull(paid.amount)}</span><span className="ud-paidamt-m">{fmtDate(paid.date)} · {paid.by}</span></div>
+                            ) : pending ? (
+                              <div className="ud-paidamt">
+                                <span className="ud-paidamt-a draft">{fmtFull(pending.amount)}</span>
+                                <span className="ud-paidamt-m">đã tạo, chờ duyệt · {fmtDate(pending.date)} · {pending.by}</span>
+                              </div>
+                            ) : justPaid != null ? (
+                              <div className="ud-paidamt">
+                                <span className="ud-paidamt-a draft">{fmtFull(justPaid)}</span>
+                                <span className="ud-paidamt-m">đã tạo phiếu — đang cập nhật danh sách</span>
+                              </div>
+                            ) : row.isSynthetic ? (
+                              <span className="ud-stat-none">chưa khai công tơ</span>
                             ) : (
                               <input className="ud-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => S.setActiveKey(k)} onChange={(e) => S.setAmount(k, parseVN(e.target.value))} />
                             )}
@@ -210,6 +298,23 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                                 <span className="ud-check"><Check /></span>
                                 <UtilityReceiptThumb attachments={paid.attachments} onView={S.viewReceipt} size="md" />
                                 <button type="button" className="ud-cancel" title="Hủy phiếu thanh toán" disabled={!canRecordPayment} onClick={() => S.requestCancel(row)}><X /></button>
+                              </span>
+                            ) : pending ? (
+                              <span className="ud-acts">
+                                <span className="ptt-badge-draft">CHỜ DUYỆT</span>
+                                <UtilityReceiptThumb attachments={pending.attachments} onView={S.viewReceipt} size="md" />
+                                <button type="button" className="ud-cancel" title="Hủy phiếu chờ duyệt" disabled={!canRecordPayment} onClick={() => S.requestCancel(row)}><X /></button>
+                              </span>
+                            ) : justPaid != null ? (
+                              <span className="ud-acts"><span className="ptt-badge-draft">ĐÃ TẠO</span></span>
+                            ) : row.isSynthetic ? (
+                              // §−1.5: KHÔNG cho bấm đóng ở dòng chưa có đồng hồ —
+                              // phải khai công tơ trước, tường minh.
+                              <span className="ud-acts">
+                                <button type="button" className="ptt-btn ghost sm" title={`Khai công tơ ${t === 'electric' ? 'điện' : 'nước'} cho ${row.buildingName} rồi mới đóng tiền được`}
+                                  disabled={!canRecordPayment || S.creatingMeter} onClick={() => S.createMeter(row)}>
+                                  {S.creatingMeter ? <span className="ub-spin dark" /> : <Gauge />}Tạo công tơ
+                                </button>
                               </span>
                             ) : (
                               <span className="ud-acts">
@@ -254,7 +359,7 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                     <div className="ud-rday-head">
                       <span className="ud-rday-d">{fmtDate(d.date)}</span>
                       <span className="ud-rday-c">{d.rows.length} phiếu</span>
-                      <span className="ud-rday-lbl">Tổng chi trong ngày</span>
+                      <span className="ud-rday-lbl">Tổng chi trong ngày{d.pendingSum > 0 ? ` · chờ duyệt ${fmtFull(d.pendingSum)}` : ''}</span>
                       <span className="ud-rday-s">{fmtFull(d.sum)}</span>
                     </div>
                     <table className="ud-rtable">
@@ -263,7 +368,10 @@ export function UtilityEnContent({ billingMonth, buildings, canRecordPayment, lo
                         {d.rows.map((r) => (
                           <tr key={r.voucher_id}>
                             <td className="ud-mono2">{r.time}</td>
-                            <td><span className="ud-khoan"><span className={'ud-khoan-ic ' + r.type}>{r.type === 'electric' ? <Zap /> : <Droplet />}</span>{r.type === 'electric' ? 'Điện' : 'Nước'}</span></td>
+                            <td>
+                              <span className="ud-khoan"><span className={'ud-khoan-ic ' + r.type}>{r.type === 'electric' ? <Zap /> : <Droplet />}</span>{r.type === 'electric' ? 'Điện' : 'Nước'}</span>
+                              {r.pending && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}
+                            </td>
                             <td className="ud-mono">{r.buildingName}</td>
                             <td className="ud-mono2">{r.code || '—'}</td>
                             <td><span className="ud-by"><span className="ud-by-ic"><User /></span>{r.by || '—'}</span></td>

@@ -21,6 +21,9 @@ import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
 import { formatPeriod } from "@/lib/monthPeriod";
 import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
 import PayViaBankAppSheet from "@/components/income-expenses/PayViaBankAppSheet";
 // Finance V2 (§12.2 mobile parity): nút Thu/Chi phiếu đã duyệt + Hoàn tác phiếu
@@ -37,7 +40,7 @@ interface Props {
   onEdit?: (v: IncomeExpenseWithRelations) => void;
   onQuickEdit?: (v: IncomeExpenseWithRelations) => void;
   onApprove?: (voucher: IncomeExpenseWithRelations) => void;
-  onCancel?: (id: string) => void;
+  onCancel?: (id: string, type?: string | null) => void;
   /** Khôi phục phiếu đã huỷ (chỉ super admin). */
   onRestore?: (id: string) => void;
   /** Tạo bản sao từ phiếu đã HUỶ: mở form tạo mới prefill toàn bộ (kể cả ảnh). */
@@ -85,6 +88,7 @@ export function IncomeExpenseDetailMobile({
   // Xem ảnh đính kèm ngay trên trang (overlay), KHÔNG mở tab mới.
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: perms } = useMyPermissions();
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
@@ -120,7 +124,13 @@ export function IncomeExpenseDetailMobile({
   const accent = v.type === "INCOME" ? "#1f9d57" : "#d6453f";
   const isCreator = !!currentUserId && v.user_id === currentUserId;
   const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
-  const showQuickEdit = !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
+  const showQuickEdit = canShowAnnotateAction({
+    hasHandler: !!onQuickEdit,
+    isUnapproved,
+    isAdmin,
+    isCreator,
+    canEdit: canUse(perms, "income_expenses", "edit"),
+  });
 
   const Row = ({
     label,
@@ -241,7 +251,7 @@ export function IncomeExpenseDetailMobile({
                 style={{ background: "#f97316" }}
                 aria-label="Huỷ"
                 onClick={() => {
-                  onCancel(v.id);
+                  onCancel(v.id, v.type);
                   onClose();
                 }}
               >

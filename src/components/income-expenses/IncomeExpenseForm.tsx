@@ -33,7 +33,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown, AlertTriangle } from 'lucide-react';
+import { useVoucherSlotWarning } from '@/hooks/useVoucherSlotWarning';
 import {
   incomeExpenseFormSchema,
   type IncomeExpenseFormValues,
@@ -226,6 +227,33 @@ const IncomeExpenseForm = ({
   });
 
   const voucherType = form.watch('type');
+
+  // ── Cảnh báo trùng ô ────────────────────────────────────────────────
+  // Ô = (toà, loại phiếu, kỳ chồng lấn). Bấm đôi đã bị chặn từ trước (RPC bắt
+  // buộc idempotency key + REVOKE INSERT thẳng bảng); phần CÒN HỞ là HAI NGƯỜI
+  // cùng trả một tháng cách nhau nhiều ngày — ca thật 405PVB: PC2607077
+  // 52.500.000đ do "NG TÂM" tạo 02/07, rồi PC2607063 cùng số tiền do "NATHAN"
+  // tạo 11/07. Không khoá nào bắt được, chỉ có cách cho người ta THẤY.
+  // Chỉ CẢNH BÁO, không chặn: 20/24 ô trùng trên prod có số tiền KHÁC nhau và
+  // đều hợp lệ.
+  // Lấy khoảng kỳ RỘNG NHẤT trong các dòng hạng mục để phiếu nhiều kỳ vẫn soi
+  // được; chưa khai kỳ thì hook tự tắt (không có gì để so).
+  const slotPeriod = useMemo(() => {
+    const starts = itemRows.map((r) => r.start_date).filter(Boolean).sort();
+    const ends = itemRows.map((r) => r.end_date).filter(Boolean).sort();
+    if (!starts.length || !ends.length) return { start: null, end: null };
+    return { start: starts[0], end: ends[ends.length - 1] };
+  }, [itemRows]);
+
+  const slotWarning = useVoucherSlotWarning({
+    buildingId: selectedBuildingId,
+    typeIds: itemRows.map((r) => r.income_expense_type_id),
+    start: slotPeriod.start,
+    end: slotPeriod.end,
+    type: voucherType === 'INCOME' ? 'INCOME' : 'EXPENSE',
+    excludeId: voucher?.id ?? null,
+  });
+  const slotHits = slotWarning.data ?? [];
   // §12.6 (V2): chọn sổ theo VAI TRÒ — Phiếu chi: chỉ sổ mình GIỮ (CUSTODIAN);
   // Phiếu thu: sổ GIỮ + sổ BIẾT (KNOWER). RPC lỗi → fail-open giữ list cũ;
   // user chưa có binding nào → legacy list (ngoài ma trận, server vẫn chặn §9.2).
@@ -970,6 +998,51 @@ const IncomeExpenseForm = ({
                     );
                   }}
                 />
+
+                {/* Cảnh báo trùng ô — CHỈ thông báo, không chặn nút Lưu. Đặt ngay
+                    trên bảng hạng mục để đọc được trước khi gõ số tiền. */}
+                {slotHits.length > 0 && (
+                  <div className="rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm"
+                       data-testid="voucher-slot-warning">
+                    <div className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      Toà này đã có {slotHits.length} phiếu cùng hạng mục cho kỳ đang chọn
+                    </div>
+                    <ul className="mt-2 space-y-1">
+                      {slotHits.slice(0, 5).map((h) => (
+                        <li key={h.voucherId} className="text-muted-foreground">
+                          <span className="font-medium text-foreground">{h.code}</span>
+                          {' · '}
+                          <span className="tabular-nums">
+                            {Math.round(h.matchedAmount).toLocaleString('vi-VN')}đ
+                          </span>
+                          {h.matchedAmount !== h.totalAmount && (
+                            <> {'(cả phiếu '}
+                              <span className="tabular-nums">
+                                {Math.round(h.totalAmount).toLocaleString('vi-VN')}đ
+                              </span>)
+                            </>
+                          )}
+                          {' · '}{h.typeNames}
+                          {' · '}{h.creatorName}
+                          {h.voucherDate ? ` · ${h.voucherDate}` : ''}
+                          {h.approvalStatus === 'UNAPPROVED' && (
+                            <span className="ml-1 text-amber-700 dark:text-amber-400">
+                              (đang chờ duyệt)
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                      {slotHits.length > 5 && (
+                        <li className="text-muted-foreground">…và {slotHits.length - 5} phiếu nữa</li>
+                      )}
+                    </ul>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Kiểm tra xem khoản này đã được trả chưa. Nếu đây là khoản khác thì cứ tạo
+                      bình thường — hệ thống không chặn.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <FormLabel>Hạng mục</FormLabel>

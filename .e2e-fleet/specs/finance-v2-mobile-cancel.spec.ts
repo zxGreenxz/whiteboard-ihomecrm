@@ -105,7 +105,16 @@ async function getCanaryCashbookId(a: SbAuth): Promise<string> {
   return book.id;
 }
 
-/** Seed phiếu thu UNAPPROVED qua compat RPC — server ép Chờ duyệt + khai sinh. */
+/**
+ * Seed phiếu thu qua compat RPC.
+ *
+ * ⚠ ĐỢT B (01/08/2026): tên hàm này nay chỉ còn đúng với phiếu CHI. Theo quyết
+ * định của chủ ("sau khi tạo thì đã tự duyệt và chi luôn"), phiếu THU đi đường
+ * compat ra thẳng APPROVED và cầu a85b ghi sổ ngay trong cùng transaction.
+ * Dùng `ensurePosted()` bên dưới thay vì gọi thẳng approve+post, nếu không sẽ
+ * ăn 55000 "assert_committed_birth_boundary_v2 … has no birth provenance" —
+ * đúng lỗi bài này từng đỏ.
+ */
 async function seedPendingVoucher(a: SbAuth, name: string, accountId: string) {
   const [b] = await sbGet(a, 'buildings?select=id,organization_id&name=eq.T%C3%B2a%20DEMO%20A&limit=1');
   const acc = { id: accountId };
@@ -161,6 +170,18 @@ async function getVoucher(a: SbAuth, name: string) {
     approval_version: number | null;
     posting_version: number | null;
   };
+}
+
+/**
+ * Đưa phiếu vừa seed về trạng thái ĐÃ GHI SỔ, bất kể writer sinh ra nó ở trạng
+ * thái nào. Phiếu THU nay tự duyệt + tự ghi sổ (Đợt B) nên hai bước cũ trở
+ * thành thừa — và gọi thừa thì hỏng, vì approve_income_expense_v2 assert ranh
+ * giới khai sinh trên một phiếu đã APPROVED sẵn.
+ */
+async function ensurePosted(a: SbAuth, name: string, voucherId: string) {
+  const cur = await getVoucher(a, name);
+  if (cur.approval_status !== 'APPROVED') await approveVoucherRest(a, voucherId);
+  if (cur.posting_status !== 'POSTED') await postApprovedRest(a, name);
 }
 
 /** Duyệt-only V2 qua REST → APPROVED-UNPOSTED. */
@@ -305,8 +326,7 @@ test('finance-v2 mobile huỷ phiếu ĐÃ CHI (posted-aware)', async ({ browser
     await seedPendingVoucher(auth, name, cashbookId);
     const seeded = await getVoucher(auth, name);
     voucherId = seeded.id;
-    await approveVoucherRest(auth, voucherId);
-    await postApprovedRest(auth, name);
+    await ensurePosted(auth, name, voucherId);
     await expect
       .poll(
         async () => (await getVoucher(auth!, name)).posting_status,
@@ -318,16 +338,19 @@ test('finance-v2 mobile huỷ phiếu ĐÃ CHI (posted-aware)', async ({ browser
     await openMobileDetail(pc, name);
     await pc.getByRole('button', { name: 'Huỷ', exact: true }).click();
 
-    // Dialog POSTED-AWARE: cảnh báo "HOÀN TÁC" + ô lý do (Textarea).
+    // Dialog POSTED-AWARE + ô lý do (Textarea).
+    // ⚠ Spec này từng chờ chữ "hoàn tác". Đợt 5 đổi sang HUỶ TẠI CHỖ: dialog nay
+    // nói "trừ thẳng khoản này khỏi tồn quỹ ngay, KHÔNG sinh thêm phiếu đối ứng".
+    // Chờ chữ cũ là bắt spec nói dối về hành vi đang chạy.
     const dialog = pc.getByRole('alertdialog');
     await expect(dialog).toBeVisible({ timeout: 15_000 });
-    await expect(dialog).toContainText(/hoàn tác/i);
+    await expect(dialog).toContainText(/trừ thẳng khoản này khỏi tồn quỹ/i);
     const reason = dialog.getByRole('textbox');
     await expect(reason).toBeVisible();
     await reason.fill('E2E mobile huỷ phiếu đã chi');
 
-    // Nút posted-aware "Hoàn tác & Huỷ phiếu" (khác dialog thường "Huỷ phiếu").
-    await dialog.getByRole('button', { name: 'Hoàn tác & Huỷ phiếu' }).click();
+    // Nút posted-aware nay là "Huỷ phiếu & trừ khỏi sổ quỹ" (Đợt 5 huỷ tại chỗ).
+    await dialog.getByRole('button', { name: 'Huỷ phiếu & trừ khỏi sổ quỹ' }).click();
 
     // Assert DB thật: reverse (REVERSED) + cancel (CANCELLED). Poll ≤15s.
     await expect
@@ -378,8 +401,7 @@ test('finance-v2 mobile huỷ phiếu REVERSED (dialog thường)', async ({ bro
     await seedPendingVoucher(auth, name, cashbookId);
     const seeded = await getVoucher(auth, name);
     voucherId = seeded.id;
-    await approveVoucherRest(auth, voucherId);
-    await postApprovedRest(auth, name);
+    await ensurePosted(auth, name, voucherId);
     await expect
       .poll(async () => (await getVoucher(auth!, name)).posting_status, { timeout: 15_000 })
       .toBe('POSTED');
@@ -396,6 +418,12 @@ test('finance-v2 mobile huỷ phiếu REVERSED (dialog thường)', async ({ bro
     const dialog = pc.getByRole('alertdialog');
     await expect(dialog).toBeVisible({ timeout: 15_000 });
     await expect(dialog.getByRole('button', { name: 'Hoàn tác & Huỷ phiếu' })).toHaveCount(0);
+    // Lý do huỷ là BẮT BUỘC ở MỌI trạng thái (Đợt 4) — kể cả phiếu đã REVERSED,
+    // dialog "thường" vẫn khoá nút cho tới khi có ≥8 ký tự. Bài này trước đây
+    // bấm thẳng nên đỏ vì nút disabled, không phải vì luồng huỷ hỏng.
+    const reasonReversed = dialog.getByRole('textbox');
+    await expect(reasonReversed).toBeVisible();
+    await reasonReversed.fill('E2E mobile huỷ phiếu đã hoàn tác');
     await dialog.getByRole('button', { name: 'Huỷ phiếu' }).click();
 
     // Assert DB thật: approval_status=CANCELLED (poll ≤15s).

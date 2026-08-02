@@ -47,6 +47,11 @@ export interface QuickCollectArgs {
   receiptImageUrl?: string | null;
   /** Ngày thanh toán (DATE) — mặc định hôm nay. */
   paymentDate?: string;
+  /**
+   * Sổ quỹ người thu chọn tay cho từng phương thức (ô "Sổ quỹ" cạnh TK trong
+   * form thu). Thắng sổ mặc định của toà; server vẫn kiểm quyền trên sổ này.
+   */
+  accountOverrides?: Partial<Record<CollectMethod, string>>;
 }
 
 export const useQuickCollect = (opts?: { enabled?: boolean }) => {
@@ -93,6 +98,13 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
     );
   };
 
+  /** Sổ thật chọn được cho 1 HĐ (ô "Sổ quỹ" cạnh phương thức trong form thu). */
+  const accountOptionsFor = (invoice: InvoiceWithRelations) =>
+    realAccounts.filter(
+      (account) =>
+        !invoice.organization_id || account.organization_id === invoice.organization_id,
+    );
+
   /** Sổ ảo (thối / làm tròn) thuộc ĐÚNG org của hoá đơn. */
   const virtualAccountsFor = (invoice: InvoiceWithRelations) =>
     virtualAccounts.filter(
@@ -119,6 +131,7 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
     notes,
     receiptImageUrl,
     paymentDate,
+    accountOverrides,
   }: QuickCollectArgs) => {
     const remaining = remainingOf(invoice);
     const isMulti = !!(lines && lines.length);
@@ -144,7 +157,12 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
       ['TT', amountTt],
     ] as [CollectMethod, number][]) {
       if (amt > 0) {
-        const acc = accountIdFor(invoice, m);
+        const picked = accountOverrides?.[m]?.trim();
+        // Chỉ nhận sổ người thu chọn nếu nó là sổ thật thuộc đúng org của HĐ.
+        const acc =
+          picked && accountOptionsFor(invoice).some((account) => account.id === picked)
+            ? picked
+            : accountIdFor(invoice, m);
         if (!acc) {
           throw new Error(
             m === 'TM'
@@ -206,6 +224,7 @@ export const useQuickCollect = (opts?: { enabled?: boolean }) => {
   return {
     collect,
     accountIdFor,
+    accountOptionsFor,
     /** Tên sổ thối của user cho 1 HĐ (org-scoped, hiển thị trong form); '' nếu chưa có. */
     changeAccountNameFor: (invoice: InvoiceWithRelations): string =>
       findOwnChangeAccount(virtualAccountsFor(invoice), currentUser?.id)?.name ?? '',

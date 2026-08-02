@@ -2,20 +2,6 @@
 
 File này áp dụng cho mọi session Codex làm việc trên repo này.
 
-## Codex Subagent Routing
-
-Use the project custom agents for substantial work:
-
-- `architect`: plan complex, risky, cross-cutting, migration, authorization, or data-model changes before implementation.
-- `scout_mini`: perform focused repository exploration and trace relevant files, symbols, flows, and tests.
-- `mini`: handle small read-only research or diagnostic tasks; it is the lightweight alias for the scout tier.
-- `implementer`: make scoped code changes and run relevant tests after the approach is clear.
-- `reviewer`: independently review non-trivial changes after implementation, with findings ordered by severity.
-
-The main agent owns task decomposition, integrates all results, resolves conflicts, and delivers the final answer. Delegate only concrete bounded tasks, avoid delegation for trivial work, and do not run multiple write-capable agents against overlapping files.
-
-When spawning a custom agent, select it with the exact registered `agent_type`; `task_name` is only the task label. Do not combine a different `agent_type` with a full-history fork. Always pass `fork_turns = "none"` explicitly so the selected agent can load its own model and instructions; omitting this field currently defaults to a full-history fork. For substantial implementation, prefer the flow `architect` or `scout_mini` -> `implementer` -> `reviewer`.
-
 ## Stack ngắn gọn
 
 - React + TypeScript + Vite (deploy Vercel — production: <https://ptcrm.vercel.app>)

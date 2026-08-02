@@ -11,6 +11,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-
 import ErrorBoundary from "./components/errors/ErrorBoundary";
 import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
+import { NotificationsRealtime } from "@/hooks/useNotifications";
 import { hideAppSplash } from "@/lib/appSplash";
 import { syncAuthQueryCache } from "@/lib/authQueryCache";
 import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
@@ -98,6 +99,7 @@ const TerminationsReport = lazy(() => import("./pages/reports/real-estate/Termin
 const ExpenseRatioReport = lazy(() => import("./pages/reports/real-estate/ExpenseRatioReport"));
 const DailyCashbookReport = lazy(() => import("./pages/reports/finance/DailyCashbookReport"));
 const CashFlowReport = lazy(() => import("./pages/reports/finance/CashFlowReport"));
+const CashbookClosureRecord = lazy(() => import("./pages/reports/finance/CashbookClosureRecord"));
 const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/PaymentScheduleReport"));
 const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
 const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
@@ -124,6 +126,7 @@ const MetersPage = lazy(() => import("./pages/settings/MetersPage"));
 const IncomeExpenseTypesNewPage = lazy(() => import("./pages/settings/IncomeExpenseTypesPage"));
 const IncomeExpenseTemplatesPage = lazy(() => import("./pages/settings/IncomeExpenseTemplatesPage"));
 const CashbooksPage = lazy(() => import("./pages/settings/finance/CashbooksPage"));
+const FixedFeesPage = lazy(() => import("./pages/settings/finance/FixedFeesPage"));
 const PersonalWalletPage = lazy(() => import("./pages/finance/PersonalWalletPage"));
 const ManagerSalaryPage = lazy(() => import("./pages/finance/ManagerSalaryPage"));
 const MySalaryPage = lazy(() => import("./pages/finance/MySalaryPage"));
@@ -153,10 +156,21 @@ const AppGuidePage = lazy(() => import("./pages/AppGuidePage"));
 // không rò font/nền sang phần còn lại của CRM.
 const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
 
+// Sự kiện trao thưởng + vòng xoay may mắn. Trang công khai /quayso có bộ style
+// riêng (quayso.css scope dưới .qs-page) nên lazy để không rò sang CRM; trang
+// quản trị /quayso/admin nằm trong app đã đăng nhập.
+const QuaySoPage = lazy(() => import("./pages/quayso/QuaySoPage"));
+const QuaySoScreenPage = lazy(() => import("./pages/quayso/QuaySoScreenPage"));
+const LuckyDrawAdminPage = lazy(() => import("./pages/quayso/LuckyDrawAdminPage"));
+
 // Trang "Thu tiền" (mobile, đi thu tiền mặt) — page phụ độc lập có bộ style
 // riêng (thu-tien.css scope dưới .tt-page). Lazy để CSS + font Be Vietnam Pro /
 // Space Mono chỉ nạp khi mở /thu-tien, không kế thừa/đụng theme site.
 const ThuTien = lazy(() => import("./pages/ThuTien"));
+
+// Trang "Thanh toán" (Đóng tiền Tập trung theo Kỳ) — tách khỏi overlay của
+// /thu-tien. Dùng CHUNG thu-tien.css nên cũng cần Suspense cục bộ như trên.
+const ThanhToan = lazy(() => import("./pages/ThanhToan"));
 
 // Fallback khi đang tải chunk của route lazy
 const RouteFallback = () => (
@@ -228,6 +242,9 @@ const App = () => (
         {/* Hub realtime nghiệp vụ: invalidate + hâm cache prefetch khi
             invoices/income_expenses/contracts/jobs/customers đổi. */}
         <RealtimeDataSync />
+        {/* Kênh realtime RIÊNG cho hộp thư: hub trên không khai được filter nên mỗi thông báo
+            của một người sẽ đánh thức tất cả. Kênh này lọc user_id=eq.<uid> ngay ở server. */}
+        <NotificationsRealtime />
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>
           <Routes>
@@ -292,9 +309,55 @@ const App = () => (
             }
           />
 
+          {/* Sự kiện quay số may mắn — trang CÔNG KHAI cho sale (không đăng
+              nhập). Định danh bằng mã 6 số web cấp cho từng đội.
+              Link đẹp: /quayso/<slug> (vd /quayso/deal). Link cũ /quayso?e=<uuid>
+              giữ nguyên cho ai đã lỡ phát ra. */}
+          <Route
+            path="/quayso"
+            element={
+              <Suspense fallback={null}>
+                <QuaySoPage />
+              </Suspense>
+            }
+          />
+          {/* Đặt SAU /quayso/admin trong bảng route cũng được — React Router xếp
+              hạng đoạn tĩnh cao hơn đoạn động, nên "admin" không rơi vào đây.
+              Slug 'admin' cũng đã bị CHECK constraint chặn ở DB. */}
+          <Route
+            path="/quayso/:slug"
+            element={
+              <Suspense fallback={null}>
+                <QuaySoPage />
+              </Suspense>
+            }
+          />
+          {/* Màn quay riêng để chủ sự kiện ghi hình gửi group: chỉ bánh xe +
+              nút quay, vừa khít một màn hình điện thoại dọc. Cũng KHÔNG cần
+              đăng nhập. */}
+          <Route
+            path="/quayso/:slug/quay"
+            element={
+              <Suspense fallback={null}>
+                <QuaySoScreenPage />
+              </Suspense>
+            }
+          />
+
           {/* ========================================
               PROTECTED ROUTES - Require authentication
               ======================================== */}
+
+          {/* Quản trị sự kiện quay số: server tự guard OWNER/STAFF qua RPC
+              (42501), route chỉ cần đăng nhập. */}
+          <Route
+            path="/quayso/admin"
+            element={
+              <ProtectedRoute>
+                <LuckyDrawAdminPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* === THEO DÕI NHANH === */}
           {/* "/" tách nhánh: mobile → Home launcher (web-app), desktop → Dashboard. */}
@@ -355,6 +418,10 @@ const App = () => (
           {/* === TÀI CHÍNH === */}
           <Route path="/meter-readings" element={<ProtectedRoute><RequirePermission module="meter_readings"><MeterReadingsPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/thu-tien" element={<ProtectedRoute><RequirePermission module="thu_tien"><Suspense fallback={null}><ThuTien /></Suspense></RequirePermission></ProtectedRoute>} />
+          {/* Gate `thu_tien.collect` (không phải `view`) — giữ NGUYÊN tầm với cũ:
+              trước đây panel này chỉ mở được qua nút Plug vốn đã ẩn với người
+              không có quyền thu. Dùng `view` sẽ mở rộng ai thấy được số liệu chi. */}
+          <Route path="/thanh-toan" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><Suspense fallback={null}><ThanhToan /></Suspense></RequirePermission></ProtectedRoute>} />
           <Route path="/invoices" element={<ProtectedRoute><RequirePermission module="invoices"><InvoicesPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/invoices/print/:id" element={<ProtectedRoute><RequirePermission module="invoices" action="print"><InvoicePrintPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/invoices/:id" element={<ProtectedRoute><RequirePermission module="invoices"><InvoiceDetailPage /></RequirePermission></ProtectedRoute>} />
@@ -456,6 +523,13 @@ const App = () => (
           {/* Cashbooks (Tài khoản): canonical URL is /finance/cashbooks under
               VẬN HÀNH → Tài chính (cùng nhóm với Thu chi). Legacy URLs aliased. */}
           <Route path="/finance/cashbooks" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbooksPage /></RequirePermission></ProtectedRoute>} />
+          {/* Cấu hình giá phí cố định theo toà. Gate trùng /thanh-toan
+              (thu_tien/collect) để ai đóng được phí thì cấu hình được — server
+              vẫn kiểm lại từng toà trong upsert_building_fee_account. */}
+          <Route path="/settings/finance/fixed-fees" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><FixedFeesPage /></RequirePermission></ProtectedRoute>} />
+          {/* Biên bản chốt & bàn giao quỹ — in được, ký tay. Gác bằng chính
+              quyền xem sổ quỹ; nội dung biên bản đã khoá vĩnh viễn. */}
+          <Route path="/finance/cashbooks/closure/:closureId" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbookClosureRecord /></RequirePermission></ProtectedRoute>} />
           <Route path="/setting/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           <Route path="/settings/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
           <Route path="/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
