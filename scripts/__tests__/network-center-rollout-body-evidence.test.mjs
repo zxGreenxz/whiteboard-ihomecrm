@@ -236,7 +236,7 @@ test("the 2026-08-02 silent skip replays as an explicit refusal", async () => {
   assert.ok(expectedPrefix);
   assert.equal(
     resolveResumeIndex(manifest, classification, { resumeFrom: FORWARD_FIX, expectedPrefix }),
-    manifest.migrations.length - 1,
+    manifest.migrations.findIndex((migration) => migration.path === FORWARD_FIX),
   );
 
   // And the post-apply gate, which passed green while the function was broken,
