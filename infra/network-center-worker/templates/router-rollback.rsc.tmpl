@@ -1,4 +1,8 @@
 # iHomeCRM Network Center - emergency rollback from the original recovery session
+# Imported with verbose=no, so the :error identity and the NC_STEP breadcrumbs are
+# the whole diagnostic surface. Steps 01..08 are generated with the management
+# service commands (SERVICE_ROLLBACK_COMMANDS); 09..16 continue from there and the
+# generator refuses this file if the two halves ever fall out of step.
 :local ncUser @@ROUTER_USER@@
 :local ncMarker @@OWNERSHIP_MARKER@@
 :local ncWgName "wg-ihome-mgmt"
@@ -13,21 +17,29 @@
 
 :if ([:len $ncUsers] > 0 && ([:len $ncUsers] != 1 || [/user get $ncUsers comment] != $ncMarker)) do={
   :put "NETWORK_CENTER_USER_NOT_OWNED"
-  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/rollback-user-not-owned"
 }
 :if ([:len $ncWgs] > 0 && ([:len $ncWgs] != 1 || [/interface/wireguard get $ncWgs comment] != $ncWgMarker)) do={
-  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/rollback-wireguard-not-owned"
 }
 
 # Restore the exact management-service snapshot captured before bootstrap.
 @@SERVICE_ROLLBACK_COMMANDS@@
+:put "NC_STEP:09:rollback-strong-crypto"
 /ip/ssh set strong-crypto=@@SSH_STRONG_CRYPTO_ROLLBACK@@
 
+:put "NC_STEP:10:rollback-firewall-lan-recovery"
 /ip/firewall/filter remove [find where comment=$ncRecoveryMarker and !dynamic]
+:put "NC_STEP:11:rollback-firewall-wg-management"
 /ip/firewall/filter remove [find where comment=$ncManagementMarker and !dynamic]
+:put "NC_STEP:12:rollback-firewall-wg-handshake"
 /ip/firewall/filter remove [find where comment=$ncHandshakeMarker and !dynamic]
+:put "NC_STEP:13:rollback-wireguard-peer"
 /interface/wireguard/peers remove [find where interface=$ncWgName and comment=$ncPeerMarker]
+:put "NC_STEP:14:rollback-management-address"
 /ip/address remove [find where interface=$ncWgName and comment=$ncAddressMarker and !dynamic]
+:put "NC_STEP:15:rollback-wireguard-interface"
 :if ([:len $ncWgs] = 1) do={ /interface/wireguard remove $ncWgs }
+:put "NC_STEP:16:rollback-worker-user"
 :if ([:len $ncUsers] = 1) do={ /user/ssh-keys remove [find where user=$ncUser]; /user remove $ncUsers }
 :put "NETWORK_CENTER_ROLLBACK_APPLIED"

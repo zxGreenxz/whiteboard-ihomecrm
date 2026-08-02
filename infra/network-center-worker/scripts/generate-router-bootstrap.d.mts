@@ -59,6 +59,52 @@ export interface RouterOsDiagnostic {
 
 export function routerOsScriptDiagnostics(script: string): RouterOsDiagnostic[];
 
+export interface RouterOsStatement {
+  /** The statement as written, with its string literals intact. */
+  text: string;
+  /** The same statement with string-literal contents blanked out. */
+  code: string;
+  /** 1-based, as `/import` reports it. */
+  line: number;
+}
+
+/** Top-level statements, split the way `/import` executes them. */
+export function routerOsStatements(script: string): RouterOsStatement[];
+
+export interface RouterOsDiagnosabilityDefect {
+  rule:
+    | "error-identity-missing"
+    | "mutation-without-breadcrumb"
+    | "breadcrumb-without-mutation"
+    | "step-out-of-sequence";
+  line: number;
+  message: string;
+}
+
+/**
+ * What would make a failure on the router undiagnosable under `verbose=no`: an
+ * `:error` with no unique identity, or a mutation with no `NC_STEP` breadcrumb
+ * to place it in the run.
+ */
+export function routerOsDiagnosabilityDefects(script: string): RouterOsDiagnosabilityDefect[];
+
+export interface RouterOsScriptIdentity {
+  kind: "error" | "step";
+  slug: string;
+  line: number;
+}
+
+/** Every diagnostic identity a script declares, in source order. */
+export function routerOsScriptIdentities(script: string): RouterOsScriptIdentity[];
+
+/**
+ * Throws for the first defect, or for the first identity used twice. Returns the
+ * identity index (slug -> "<file> line <n>") when the bundle is clean.
+ */
+export function assertRouterOsBundleDiagnosable(
+  scripts: Record<string, string>,
+): Map<string, string>;
+
 /** A RouterOS string literal, escaped. */
 export function routerOsQuote(value: string): string;
 

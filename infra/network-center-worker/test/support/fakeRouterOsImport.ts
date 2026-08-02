@@ -36,9 +36,18 @@
  * now runs `routerOsScriptDiagnostics` first, so nothing this simulator accepts
  * can be a file the router would reject. The interpreter below is deliberately
  * kept in step with those rules: it evaluates `!(x ~ "…")`, which the hardware
- * accepts, and has no `!~`, which the hardware does not.
+ * accepts, and has no `!~`, which the hardware does not. Statement splitting is
+ * the generator's own `routerOsStatements`, so the text the enforcement checks
+ * read and the text this interpreter executes cannot drift apart.
+ *
+ * ## `verbose=yes`, measured on the demo hEX (RouterOS 7.20.8, 2026-08-03)
+ *
+ * See `RouterOsImportOptions.verbose`.
  */
-import { routerOsScriptDiagnostics } from "../../scripts/generate-router-bootstrap.mjs";
+import {
+  routerOsScriptDiagnostics,
+  routerOsStatements as splitRouterOsStatements,
+} from "../../scripts/generate-router-bootstrap.mjs";
 
 export class RouterOsSyntaxError extends Error {
   readonly diagnostics: ReturnType<typeof routerOsScriptDiagnostics>;
@@ -58,6 +67,12 @@ export class RouterOsImportError extends Error {
   readonly line: number;
 
   readonly statement: string;
+
+  /**
+   * Everything the script `:put` before it died. `/import` prints it, and with
+   * `verbose=no` in the runbook it is the only progress trace an operator has.
+   */
+  output: string[] = [];
 
   constructor(message: string, line: number, statement: string) {
     super(message);
@@ -192,27 +207,14 @@ function tokens(text: string): string[] {
 /**
  * Statements with the 1-based source line `/import` would name in an error.
  * Comment lines are dropped; a statement may span lines inside `(`, `[` or `{`.
+ *
+ * This is the generator's splitter, not a second one: the diagnosability rules
+ * the generator enforces ("every mutation has its own breadcrumb") are only
+ * meaningful if the statements it counts are the statements `/import` runs, and
+ * two independent implementations of that would eventually disagree.
  */
 export function routerOsStatements(script: string): RouterOsStatement[] {
-  const result: RouterOsStatement[] = [];
-  // A RouterOS comment runs to the end of its line, so a `;` inside one is not a
-  // statement separator. Blanking the lines keeps every line number accurate.
-  const source = script.split("\n")
-    .map((line) => (line.trimStart().startsWith("#") ? "" : line))
-    .join("\n");
-  let start = 0;
-  let offset = 0;
-  for (const part of splitTopLevel(source, ";\n")) {
-    const text = part.trim();
-    if (text) {
-      const leading = part.length - part.trimStart().length;
-      const before = source.slice(0, start + leading);
-      result.push({ text, line: (before.match(/\n/gu)?.length ?? 0) + 1 });
-    }
-    offset += part.length + 1;
-    start = offset;
-  }
-  return result;
+  return splitRouterOsStatements(script);
 }
 
 /**
@@ -299,12 +301,19 @@ class Interpreter {
 
   readonly #variables = new Map<string, Value>();
 
+  /** `/import … verbose=yes`. See `RouterOsImportOptions.verbose`. */
+  readonly #verbose: boolean;
+
+  /** Depth of `:if` / `:while` CONDITION evaluation. Bodies are at depth 0. */
+  #conditionDepth = 0;
+
   readonly output: string[] = [];
 
   #statement: RouterOsStatement = { text: "", line: 0 };
 
-  constructor(device: FakeRouterOsDevice) {
+  constructor(device: FakeRouterOsDevice, verbose = false) {
     this.#device = device;
+    this.#verbose = verbose;
   }
 
   run(script: string): void {
@@ -355,7 +364,14 @@ class Interpreter {
       cursor = remainder.trim();
     }
     if (cursor.length > 0) this.#fail(`expected end of command (${cursor})`);
-    const chosen = this.#condition(condition) ? branches.get("do") : branches.get("else");
+    this.#conditionDepth += 1;
+    let taken: boolean;
+    try {
+      taken = this.#condition(condition);
+    } finally {
+      this.#conditionDepth -= 1;
+    }
+    const chosen = taken ? branches.get("do") : branches.get("else");
     if (chosen === undefined) return;
     for (const inner of routerOsStatements(chosen)) this.#runStatement(inner.text);
   }
@@ -470,6 +486,12 @@ class Interpreter {
     if (trimmed.startsWith("$")) {
       const value = this.#variables.get(trimmed.slice(1));
       if (!value) this.#fail(`undefined variable ${trimmed}`);
+      // MEASURED, not theorised: under `verbose=yes` a `:local` reads as EMPTY
+      // inside an `:if` CONDITION while the same variable prints correctly with
+      // `:put`. Only that difference is modelled — see the class comment on
+      // `RouterOsImportOptions.verbose` for exactly what was and was not
+      // measured, and why no mechanism is assumed.
+      if (this.#verbose && this.#conditionDepth > 0) return { kind: "text", value: "" };
       return value;
     }
     if (trimmed.startsWith("\"")) {
@@ -639,6 +661,49 @@ export interface RouterOsImportResult {
   mutations: string[];
 }
 
+export interface RouterOsImportOptions {
+  /**
+   * `/import … verbose=yes`.
+   *
+   * ## What was measured (demo hEX, RouterOS 7.20.8, 2026-08-03)
+   *
+   * Same file, same router, same config; the flag is the only difference:
+   *
+   * ```
+   * :local a [/interface find where name="bridge"]
+   * :local b [/interface find where name="ether1"]
+   * :put ("LEN_A=" . [:len $a] . " LEN_B=" . [:len $b])
+   * :if ([:len $a] != 1 || [:len $b] != 1) do={ :put "FIRED_UNEXPECTEDLY" }
+   * :if ([:len $a] != 1) do={ :put "FIRED_SINGLELINE" }
+   * ```
+   *
+   * | flag          | output                                                    |
+   * |---------------|-----------------------------------------------------------|
+   * | `verbose=no`  | `LEN_A=1 LEN_B=1` … `END` — neither `:if` fires (correct) |
+   * | `verbose=yes` | `LEN_A=1 LEN_B=1` … `FIRED_UNEXPECTEDLY` `FIRED_SINGLELINE` |
+   *
+   * And on the real `router-bootstrap.rsc`, with the same state and the same
+   * bytes: `verbose=no` runs the whole preflight through, `verbose=yes` stops at
+   * `NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/…` — a condition that is false on
+   * that hardware (`R_LEN=1 W_LEN=1 R_VAL=*7 W_VAL=*2`).
+   *
+   * ## What the model therefore says, and only that
+   *
+   * A variable read inside an `:if` CONDITION yields the empty value. Nothing
+   * else changes: `:put` still prints the variable, `:local` still persists, a
+   * one-element `find` is still `typeof=array len=1`.
+   *
+   * ## What is deliberately NOT modelled
+   *
+   * *Why* RouterOS does this — unknown, and a mechanism guessed here would put
+   * behaviour in the simulator that nothing observed. Variable reads inside a
+   * `do={ … }` BODY were never measured either, so they are left alone; the
+   * consequence that matters (a guard evaluating against empty variables) is
+   * already fully expressed by the condition rule.
+   */
+  verbose?: boolean;
+}
+
 /**
  * Runs a generated `.rsc` the way `/import` does: it PARSES first and refuses
  * the whole file if RouterOS would, then executes statement by statement,
@@ -647,10 +712,19 @@ export interface RouterOsImportResult {
 export function importRouterOsScript(
   device: FakeRouterOsDevice,
   script: string,
+  options: RouterOsImportOptions = {},
 ): RouterOsImportResult {
   const diagnostics = routerOsScriptDiagnostics(script);
   if (diagnostics.length > 0) throw new RouterOsSyntaxError(diagnostics);
-  const interpreter = new Interpreter(device);
-  interpreter.run(script);
+  const interpreter = new Interpreter(device, options.verbose ?? false);
+  try {
+    interpreter.run(script);
+  } catch (error) {
+    // A failed `/import` still leaves everything the script printed on the
+    // console. Losing it here would hide the breadcrumb trail in exactly the
+    // case it exists for.
+    if (error instanceof RouterOsImportError) error.output = [...interpreter.output];
+    throw error;
+  }
   return { output: interpreter.output, mutations: [...device.mutations] };
 }

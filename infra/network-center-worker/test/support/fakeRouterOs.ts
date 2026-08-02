@@ -189,6 +189,16 @@ export function unquoteRouterOsString(token: string): string {
   return output;
 }
 
+/** The words RouterOS reads as true when a `!key` term negates a property. */
+const ROUTER_OS_TRUE = new Set(["true", "yes"]);
+
+interface RouterOsCriterion {
+  key: string;
+  /** `!key`, i.e. "this property is not true". */
+  negated: boolean;
+  value: string;
+}
+
 function primitive(value: Value): string {
   switch (value.kind) {
     case "string":
@@ -638,7 +648,9 @@ export class FakeRouterOs {
         kind: "ids",
         path: "/ip/firewall/filter",
         ids: this.firewall
-          .filter((record) => criteria.every(([key, value]) => (record[key] ?? "") === value))
+          .filter((record) => criteria.every(({ key, negated, value }) => (negated
+            ? !ROUTER_OS_TRUE.has(record[key] ?? "")
+            : (record[key] ?? "") === value)))
           .map((_record, index) => `*F${index}`),
       };
     }
@@ -698,24 +710,35 @@ export class FakeRouterOs {
     return { kind: "string", value: this.#startJob(script).id };
   }
 
-  #criteria(parts: string[], state: ExecutionState): Array<[string, string]> {
+  /**
+   * `key=value` terms and the negated `!key` form. RouterOS reads `!dynamic` as
+   * "the `dynamic` property is not true", which is why an absent property
+   * satisfies it — a static row does not carry `dynamic=true`.
+   */
+  #criteria(parts: string[], state: ExecutionState): RouterOsCriterion[] {
     if ((parts[0] ?? "") !== "where") throw new RouterOsScriptError("expected where");
-    const criteria: Array<[string, string]> = [];
+    const criteria: RouterOsCriterion[] = [];
     for (const token of parts.slice(1)) {
       if (token === "and") continue;
+      if (token.startsWith("!")) {
+        criteria.push({ key: token.slice(1), negated: true, value: "" });
+        continue;
+      }
       const separator = token.indexOf("=");
       if (separator <= 0) throw new RouterOsScriptError(`unsupported criterion ${token}`);
-      criteria.push([
-        token.slice(0, separator),
-        primitive(this.#evaluate(token.slice(separator + 1), state)),
-      ]);
+      criteria.push({
+        key: token.slice(0, separator),
+        negated: false,
+        value: primitive(this.#evaluate(token.slice(separator + 1), state)),
+      });
     }
     return criteria;
   }
 
   #findInterfaces(parts: string[], state: ExecutionState): FakeInterface[] {
     const criteria = this.#criteria(parts, state);
-    return this.interfaces.filter((entry) => criteria.every(([key, value]) => {
+    return this.interfaces.filter((entry) => criteria.every(({ key, negated, value }) => {
+      if (negated) throw new RouterOsScriptError(`unsupported interface criterion !${key}`);
       if (key === ".id") return entry.id === value;
       if (key === "name") return entry.name === value;
       if (key === "default-name") return entry.defaultName === value;
@@ -727,15 +750,16 @@ export class FakeRouterOs {
 
   #findJobs(parts: string[], state: ExecutionState): FakeJob[] {
     const criteria = this.#criteria(parts, state);
-    return this.jobs.filter((entry) => criteria.every(([key, value]) => {
-      if (key === ".id") return entry.id === value;
-      throw new RouterOsScriptError(`unsupported job criterion ${key}`);
+    return this.jobs.filter((entry) => criteria.every(({ key, negated, value }) => {
+      if (!negated && key === ".id") return entry.id === value;
+      throw new RouterOsScriptError(`unsupported job criterion ${negated ? "!" : ""}${key}`);
     }));
   }
 
   #findScheduler(parts: string[], state: ExecutionState): FakeSchedulerEntry[] {
     const criteria = this.#criteria(parts, state);
-    return this.scheduler.filter((entry) => criteria.every(([key, value]) => {
+    return this.scheduler.filter((entry) => criteria.every(({ key, negated, value }) => {
+      if (negated) throw new RouterOsScriptError(`unsupported scheduler criterion !${key}`);
       if (key === "name") return entry.name === value;
       if (key === "comment") return entry.comment === value;
       throw new RouterOsScriptError(`unsupported scheduler criterion ${key}`);

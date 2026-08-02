@@ -336,6 +336,67 @@ describe("access port cycle dead-man's switch", () => {
     expect(router.jobs).toHaveLength(0);
   });
 
+  it("does not accept a dynamic firewall row as proof it still owns the router", async () => {
+    // This selector's caller reads `< 1` as the failure, so a matched row
+    // SATISFIES the check: it is fail-OPEN by construction, and everything it
+    // can reach is something the cycle then proceeds on. A dynamic row is one
+    // the bootstrap neither wrote nor can write.
+    //
+    // Both halves are driven from one fixture: `printFirewall` feeds the
+    // worker's read, and `/ip/firewall/filter/find` answers the router-side
+    // guard, so the same row has to be rejected twice for this to pass.
+    const router = makeRouter({
+      firewall: [{
+        chain: "input",
+        action: "accept",
+        "in-interface": "ether2",
+        dynamic: "true",
+        comment: `${OWNERSHIP_MARKER}:lan-recovery`,
+      }],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    await expect(connector.cycleAccessPort(target, 5)).rejects.toMatchObject({
+      name: "RouterOperationError",
+      code: "ROUTER_OWNERSHIP_MARKER_UNAVAILABLE",
+      mayHaveExecuted: false,
+    });
+
+    expect(router.trace).not.toContain("disable:ether4");
+    expect(router.jobs).toHaveLength(0);
+  });
+
+  it("still refuses when the row only turns dynamic after the worker read it", async () => {
+    // The worker's read is satisfied — a static owned rule was there when it
+    // looked — so the only thing standing between the cycle and a port that
+    // nothing owns is the `and !dynamic` term in the selector the ROUTER
+    // evaluates. This is the same read-then-use gap the marker-disappears test
+    // covers, with the rule replaced rather than removed.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      beforeCommand: (command) => {
+        if (command.includes(":execute")) Object.assign(router.firewall[0] ?? {}, {
+          dynamic: "true",
+        });
+      },
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    await expect(connector.cycleAccessPort(target, 5)).rejects.toMatchObject({
+      name: "RouterOperationError",
+      mayHaveExecuted: false,
+    });
+
+    expect(router.trace).not.toContain("disable:ether4");
+    expect(router.interfaceByDefaultName("ether4").disabled).toBe(false);
+    expect(router.jobs).toHaveLength(0);
+    expect(session.commands.some((command) => command.includes(
+      "/ip/firewall/filter/find where chain=input and action=accept and comment="
+      + `"${OWNERSHIP_MARKER}:lan-recovery" and !dynamic`,
+    ))).toBe(true);
+  });
+
   it("refuses to cycle a router that carries no owned ownership marker", async () => {
     const router = makeRouter({ firewall: [] });
     const session = createFakeRouterSession(router);

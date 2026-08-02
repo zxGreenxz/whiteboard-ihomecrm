@@ -285,6 +285,24 @@ const ROUTEROS_RESOURCE_ID = /^\*[0-9A-Fa-f]+$/;
 const RECOVERY_RULE_MARKER =
   /^(ihomecrm-network-center:v1:[A-Za-z0-9][A-Za-z0-9._-]{7,63}):lan-recovery$/;
 
+/**
+ * RouterOS reports a dynamic row with the `D` flag in `print detail terse`, and
+ * with `dynamic=yes` where the menu exposes it as a property. Both are checked.
+ */
+function isDynamicRecord(record: Record<string, string>): boolean {
+  return hasFlag(record, "D") || boolean(record.dynamic);
+}
+
+/**
+ * The bootstrap's own `…:lan-recovery` rules, and only those.
+ *
+ * Dynamic rows are excluded because everything downstream reads this list in the
+ * fail-OPEN direction: a matched rule is what SUPPLIES the deployment ownership
+ * marker and what marks an interface protected, so a row that got in here is a
+ * row the worker then trusts. The bootstrap writes this rule statically and its
+ * preflight, its rollback and the router-side cycle guard all select it with
+ * `and !dynamic`; this is the same scope, applied to the read side.
+ */
 function ownedRecoveryRules(
   records: Record<string, string>[],
 ): Array<{ interfaceName: string; ownershipMarker: string }> {
@@ -293,6 +311,7 @@ function ownedRecoveryRules(
     const ownershipMarker = RECOVERY_RULE_MARKER.exec(record.comment ?? "")?.[1];
     return record.chain === "input"
       && record.action === "accept"
+      && !isDynamicRecord(record)
       && interfaceName
       && ownershipMarker
       ? [{ interfaceName, ownershipMarker }]

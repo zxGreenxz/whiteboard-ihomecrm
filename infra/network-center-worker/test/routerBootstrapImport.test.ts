@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { generateBootstrap } from "../scripts/generate-router-bootstrap.mjs";
@@ -60,14 +63,39 @@ function selectors(script: string): Array<{ menu: string; selector: string; line
   return found;
 }
 
-function importFailure(device: FakeRouterOsDevice, script: string): RouterOsImportError {
+function importFailure(
+  device: FakeRouterOsDevice,
+  script: string,
+  options: { verbose?: boolean } = {},
+): RouterOsImportError {
   try {
-    importRouterOsScript(device, script);
+    importRouterOsScript(device, script, options);
   } catch (error) {
     if (error instanceof RouterOsImportError) return error;
     throw error;
   }
   throw new Error("expected the import to fail");
+}
+
+const RUNBOOK = resolve(import.meta.dirname, "../docs/DEMO-ROUTER-RUNBOOK.md");
+
+/**
+ * The `verbose=` flag the runbook prescribes for the REAL import of a file, i.e.
+ * the one occurrence that is not a `dry-run`. Throws rather than defaulting: a
+ * runbook that stopped naming the flag would otherwise silently pass.
+ */
+function runbookImportFlag(file: string): boolean {
+  const pattern = new RegExp(
+    `/import file-name=${file.replace(/\./gu, "\\.")} verbose=(yes|no)( dry-run)?`,
+    "gu",
+  );
+  const applies = [...readFileSync(RUNBOOK, "utf8").matchAll(pattern)]
+    .filter((match) => !match[2])
+    .map((match) => match[1]);
+  if (applies.length !== 1) {
+    throw new Error(`runbook names ${applies.length} real imports of ${file}, expected exactly 1`);
+  }
+  return applies[0] === "yes";
 }
 
 function serviceRow(device: FakeRouterOsDevice, name: string, dynamic: boolean) {
@@ -195,16 +223,23 @@ describe("generated RouterOS scripts against the measured hardware topology", ()
       dynamic: "false",
       comment: `${OWNERSHIP_MARKER}:lan-recovery`,
     };
-    const overrides: RouterOsRow[] = [
-      { chain: "forward" },
-      { action: "drop" },
-      { protocol: "udp" },
-      { "dst-port": "2200" },
-      { "src-address": "192.168.88.0/24" },
-      { "in-interface": "ether5" },
-      { disabled: "true" },
+    // Each override names the identity it must produce. Before the identities
+    // existed all seven raised the same string, so this loop could not tell the
+    // guard that fired from any other one — it only proved that *something*
+    // rejected the rule.
+    const overrides: Array<[RouterOsRow, string]> = [
+      [{ chain: "forward" }, "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-chain"],
+      [{ action: "drop" }, "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-action"],
+      [{ protocol: "udp" }, "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-protocol"],
+      [{ "dst-port": "2200" }, "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-dst-port"],
+      [
+        { "src-address": "192.168.88.0/24" },
+        "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-src-address",
+      ],
+      [{ "in-interface": "ether5" }, "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-in-interface"],
+      [{ disabled: "true" }, "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-disabled"],
     ];
-    for (const override of overrides) {
+    for (const [override, identity] of overrides) {
       const device = stockHexDevice({ extraFirewallRows: [{ ...correct, ...override }] });
 
       const failure = importFailure(
@@ -212,8 +247,7 @@ describe("generated RouterOS scripts against the measured hardware topology", ()
         generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
       );
 
-      expect({ override, message: failure.message })
-        .toEqual({ override, message: "NETWORK_CENTER_FIREWALL_CONFLICT" });
+      expect({ override, message: failure.message }).toEqual({ override, message: identity });
       expect(device.mutations).toHaveLength(0);
     }
 
@@ -247,12 +281,19 @@ describe("generated RouterOS scripts against the measured hardware topology", ()
       dynamic: "false",
       comment: `${OWNERSHIP_MARKER}:wg-management`,
     };
-    for (const row of [{ ...handshake, "dst-port": "51821" }, { ...management, action: "drop" }]) {
+    const cases: Array<[RouterOsRow, string]> = [
+      [
+        { ...handshake, "dst-port": "51821" },
+        "NETWORK_CENTER_FIREWALL_CONFLICT/handshake-rule-dst-port",
+      ],
+      [{ ...management, action: "drop" }, "NETWORK_CENTER_FIREWALL_CONFLICT/management-rule-action"],
+    ];
+    for (const [row, identity] of cases) {
       const device = stockHexDevice({ extraFirewallRows: [row] });
       expect(importFailure(
         device,
         generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
-      ).message).toBe("NETWORK_CENTER_FIREWALL_CONFLICT");
+      ).message).toBe(identity);
       expect(device.mutations).toHaveLength(0);
     }
 
@@ -275,6 +316,207 @@ describe("generated RouterOS scripts against the measured hardware topology", ()
       .toContain('/ip/service set [find where name="ssh" and !dynamic]');
     expect(files["router-bootstrap.rsc"])
       .toContain('/ip/service set [find where name="ssh" and !dynamic]');
+  });
+});
+
+/**
+ * `/import … verbose=yes` makes a `:local` read as EMPTY inside an `:if`
+ * CONDITION on RouterOS 7.20.8. Measured on the demo hEX 2026-08-03; the model
+ * lives on `RouterOsImportOptions.verbose` together with the raw measurement.
+ *
+ * This is modelled because EVERY guard in these files, including the ones that
+ * stand between the preflight and a mutation, is `:if ([:len $ncX] …)`. Under
+ * that flag they all evaluate against empty variables, and the file stops being
+ * a guarded bootstrap.
+ */
+describe("verbose=yes empties :local inside :if conditions", () => {
+  const MINIMAL_REPRO = [
+    ':local a [/interface find where name="bridge"]',
+    ':local b [/interface find where name="ether1"]',
+    ':put ("LEN_A=" . [:len $a] . " LEN_B=" . [:len $b])',
+    ':if ([:len $a] != 1 || [:len $b] != 1) do={ :put "FIRED_UNEXPECTEDLY" }',
+    ':if ([:len $a] != 1) do={ :put "FIRED_SINGLELINE" }',
+    ':put "END"',
+    "",
+  ].join("\n");
+
+  it("reproduces the measured minimal repro under both flags", () => {
+    // verbose=no: `LEN_A=1 LEN_B=1` … `END`, neither :if fires.
+    expect(importRouterOsScript(stockHexDevice(), MINIMAL_REPRO).output)
+      .toEqual(["LEN_A=1 LEN_B=1", "END"]);
+
+    // verbose=yes: the SAME `:put` still prints 1 and 1 — which is what rules
+    // out a scoping explanation — yet BOTH conditions fire, the single-line one
+    // included, which is what rules out the multi-line parse defect.
+    expect(importRouterOsScript(stockHexDevice(), MINIMAL_REPRO, { verbose: true }).output)
+      .toEqual(["LEN_A=1 LEN_B=1", "FIRED_UNEXPECTEDLY", "FIRED_SINGLELINE", "END"]);
+  });
+
+  it("stops the real bootstrap where the hardware stopped it, before any mutation", () => {
+    const device = stockHexDevice();
+    const bootstrap = generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"];
+
+    const failure = importFailure(device, bootstrap, { verbose: true });
+
+    // The hardware reported exactly this check (`#line 43..45`) for a condition
+    // that is FALSE on that router — `R_LEN=1 W_LEN=1 R_VAL=*7 W_VAL=*2`.
+    expect(failure.message)
+      .toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-or-wan-not-unique");
+    // Fail-closed is the only reason the demo gateway survived the attempt.
+    expect(device.mutations).toEqual([]);
+    // …and it is the guard the hardware named, not merely one of the same
+    // class: the reported statement is the `ncRecovery`/`ncWan` length test,
+    // which is FALSE on a stock hEX.
+    expect(bootstrap.split("\n")[failure.line - 1])
+      .toBe(":if ([:len $ncRecovery] != 1 || [:len $ncWan] != 1) do={");
+
+    // The control: the same bytes, the same device, the other flag.
+    const healthy = stockHexDevice();
+    expect(importRouterOsScript(healthy, bootstrap).output)
+      .toContain("NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF");
+    expect(healthy.mutations.length).toBeGreaterThan(0);
+  });
+
+  it("would let a mutation guard through if the preflight ever stopped catching it", () => {
+    // Why the flag is dangerous rather than merely wrong, stated as a test: the
+    // add/set guards have the same shape as the preflight guards, so under
+    // verbose=yes an EXISTING interface is re-added instead of updated. Run
+    // against a device that already carries this deployment's WireGuard.
+    const owned = {
+      name: "wg-ihome-mgmt",
+      comment: `${OWNERSHIP_MARKER}:wireguard`,
+      "listen-port": "51820",
+      disabled: "false",
+      dynamic: "false",
+    };
+    const script = ':local ncWgs [/interface/wireguard find where name="wg-ihome-mgmt"]\n'
+      + ':if ([:len $ncWgs] = 0) do={\n'
+      + '  /interface/wireguard add name="wg-ihome-mgmt" listen-port=51820\n'
+      + '} else={\n'
+      + '  /interface/wireguard set $ncWgs listen-port=51820 disabled=no\n'
+      + '}\n';
+
+    const device = stockHexDevice();
+    device.rows("/interface/wireguard").push({ ".id": device.mintId(), ...owned });
+    importRouterOsScript(device, script, { verbose: true });
+
+    expect(device.rows("/interface/wireguard")).toHaveLength(2);
+    expect(device.mutations).toEqual(["add /interface/wireguard"]);
+
+    const correct = stockHexDevice();
+    correct.rows("/interface/wireguard").push({ ".id": correct.mintId(), ...owned });
+    importRouterOsScript(correct, script);
+    expect(correct.rows("/interface/wireguard")).toHaveLength(1);
+    expect(correct.mutations).toEqual(["set /interface/wireguard x1"]);
+  });
+
+  it("runs every artifact under exactly the flag its runbook step prescribes", () => {
+    // This is what stops the runbook drifting back: the flag is READ from the
+    // runbook and used to drive the simulator, so restoring `verbose=yes` to a
+    // real-import step turns this green test red instead of turning a gateway
+    // into a half-bootstrapped one.
+    const files = generateBootstrap(bootstrapFixture);
+    const device = stockHexDevice();
+
+    expect(runbookImportFlag("router-bootstrap.rsc")).toBe(false);
+    expect(importRouterOsScript(device, files["router-bootstrap.rsc"], {
+      verbose: runbookImportFlag("router-bootstrap.rsc"),
+    }).output).toContain("NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF");
+
+    expect(importRouterOsScript(device, files["router-lockdown.rsc"], {
+      verbose: runbookImportFlag("router-lockdown.rsc"),
+    }).output).toContain("NETWORK_CENTER_LOCKDOWN_APPLIED");
+
+    expect(importRouterOsScript(device, files["router-rollback.rsc"], {
+      verbose: runbookImportFlag("router-rollback.rsc"),
+    }).output).toContain("NETWORK_CENTER_ROLLBACK_APPLIED");
+  });
+
+  it("keeps dry-run on verbose=yes, where it is parse-only and safe", () => {
+    // All three artifacts parsed clean under `verbose=yes dry-run` on the
+    // hardware, and dry-run never evaluates a condition, so the quirk cannot
+    // reach it. Losing that flag would lose the per-line echo that made the 22
+    // syntax errors readable in the first place.
+    const runbook = readFileSync(RUNBOOK, "utf8");
+    for (const name of ["router-bootstrap.rsc", "router-lockdown.rsc", "router-rollback.rsc"]) {
+      expect(runbook).toContain(`/import file-name=${name} verbose=yes dry-run`);
+    }
+  });
+});
+
+describe("a partial run says how far it got", () => {
+  /**
+   * Breaks step 09 the way the hardware breaks it: a `/ip/service` selector that
+   * also matches the DYNAMIC `ssh` row RouterOS lists beside the static one is
+   * refused outright. That is a real, measured mid-mutation failure, not an
+   * invented one — it is the defect the `and !dynamic` exclusion exists for.
+   */
+  function bootstrapFailingAtStep09(): string {
+    return generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"]
+      .replace('/ip/service set [find where name="ssh" and !dynamic]',
+        '/ip/service set [find where name="ssh"]');
+  }
+
+  it("leaves an ordered trace whose last breadcrumb is the mutation that failed", () => {
+    const device = stockHexDevice();
+
+    const failure = importFailure(device, bootstrapFailingAtStep09());
+
+    expect(failure.message).toContain("matched 2");
+    expect(failure.output).toEqual([
+      "NC_STEP:01:wireguard-interface",
+      "NC_STEP:02:management-address",
+      "NC_STEP:03:wireguard-peer",
+      "NC_STEP:04:worker-group",
+      "NC_STEP:05:worker-user",
+      "NC_STEP:06:worker-ssh-key-clear",
+      "NC_STEP:07:worker-ssh-key-import",
+      "NC_STEP:08:ssh-strong-crypto",
+      "NC_STEP:09:ssh-service-allowlist",
+    ]);
+    // Eight mutations completed and the ninth did not: the trace's claim is
+    // checked against what the device actually holds, so a breadcrumb printed
+    // before a block cannot overstate progress by more than that one block.
+    expect(device.mutations).toEqual([
+      "add /interface/wireguard",
+      "add /ip/address",
+      "add /interface/wireguard/peers",
+      "add /user/group",
+      "add /user",
+      "remove /user/ssh-keys x0",
+      "import /user/ssh-keys",
+      "set /ip/ssh",
+    ]);
+    expect(device.rows("/ip/firewall/filter")
+      .filter((row) => (row.comment ?? "").startsWith(OWNERSHIP_MARKER))).toHaveLength(0);
+  });
+
+  it("says the run finished, with the same trace, when nothing failed", () => {
+    const result = importRouterOsScript(
+      stockHexDevice(),
+      generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+    );
+
+    expect(result.output).toHaveLength(13);
+    expect(result.output.at(-1)).toBe("NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF");
+    expect(result.output.slice(0, 12).map((line) => line.split(":")[1]))
+      .toEqual(["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]);
+  });
+
+  it("traces the rollback too, including the half generated with its commands", () => {
+    const device = stockHexDevice();
+    const files = generateBootstrap(bootstrapFixture);
+    importRouterOsScript(device, files["router-bootstrap.rsc"]);
+
+    const result = importRouterOsScript(device, files["router-rollback.rsc"]);
+
+    expect(result.output.slice(0, 3)).toEqual([
+      "NC_STEP:01:rollback-service-ssh",
+      "NC_STEP:02:rollback-service-winbox",
+      "NC_STEP:03:rollback-service-telnet",
+    ]);
+    expect(result.output.at(-2)).toBe("NC_STEP:16:rollback-worker-user");
+    expect(result.output.at(-1)).toBe("NETWORK_CENTER_ROLLBACK_APPLIED");
   });
 });
 
@@ -318,7 +560,8 @@ describe("recovery-interface contract", () => {
 
     const failure = importFailure(device, files["router-bootstrap.rsc"]);
 
-    expect(failure.message).toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID");
+    expect(failure.message)
+      .toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-address-not-static");
     expect(device.mutations).toHaveLength(0);
   });
 
@@ -330,7 +573,12 @@ describe("recovery-interface contract", () => {
       generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
     );
 
-    expect(failure.message).toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID");
+    // Same class as the test above, DIFFERENT identity — which is the point of
+    // giving each check one: `…/recovery-address-not-static` covers both "no
+    // such address" and "the address is a lease", and the two are told apart by
+    // the state, not the string. The two below are told apart by the string.
+    expect(failure.message)
+      .toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-address-not-static");
     expect(device.mutations).toHaveLength(0);
   });
 
@@ -338,13 +586,13 @@ describe("recovery-interface contract", () => {
     expect(importFailure(
       stockHexDevice({ disabledInterface: "bridge" }),
       generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
-    ).message).toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID");
+    ).message).toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-interface-disabled");
 
     // ether5 keeps its bridge membership, so it has no L3 edge of its own.
     expect(importFailure(
       stockHexDevice({}),
       generateBootstrap(dedicatedPortFixture)["router-bootstrap.rsc"],
-    ).message).toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID");
+    ).message).toBe("NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-is-bridge-port");
   });
 
   it("leaves the marker meaning something the worker can act on", () => {

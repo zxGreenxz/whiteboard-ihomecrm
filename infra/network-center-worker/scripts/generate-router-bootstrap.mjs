@@ -491,6 +491,215 @@ export function routerOsScriptDiagnostics(script) {
   return diagnostics.sort((left, right) => left.line - right.line || left.column - right.column);
 }
 
+// ---------------------------------------------------------------------------
+// RouterOS diagnosability
+//
+// The real import runs with `verbose=no` (see docs/DEMO-ROUTER-RUNBOOK.md §3.1
+// and the measurement it quotes), so the echo of each executed line is NOT
+// available. The only two things a failing run prints are the `:error` string
+// and whatever the script itself `:put` before it died. Those two channels are
+// therefore the entire diagnostic surface of a half-bootstrapped gateway, and
+// they are enforced here rather than left to review:
+//
+//  - every `:error` carries a unique, greppable identity
+//    `NETWORK_CENTER_<CLASS>/<slug>`. Before this, 34 `:error` sites in
+//    router-bootstrap.rsc raised 4 distinct strings, 18 of them the same one,
+//    so "which check fired" could only be answered by re-instrumenting the
+//    script against the live router;
+//  - every mutating statement is immediately preceded by its own
+//    `:put "NC_STEP:<nn>:<slug>"` breadcrumb, numbered from 01 with no gaps.
+//    `/import` stops at the first failing statement and does NOT undo what
+//    already ran, so the last breadcrumb printed names the mutation that
+//    failed and every earlier one completed.
+//
+// Identities are unique across the whole bundle, so `grep -rn <slug>` from the
+// worker directory lands on exactly one line of one template.
+// ---------------------------------------------------------------------------
+
+/** `NETWORK_CENTER_<CLASS>/<slug>` — the class stays machine-readable, the slug is the site. */
+const ROUTER_OS_ERROR_IDENTITY = /^NETWORK_CENTER_[A-Z][A-Z0-9_]*\/([a-z][a-z0-9-]{2,47})$/u;
+/** `:put "NC_STEP:<nn>:<slug>"` — the ordinal answers "how far did it get". */
+const ROUTER_OS_STEP_BREADCRUMB = /^:put\s+"NC_STEP:(\d{2}):([a-z][a-z0-9-]{2,47})"$/u;
+/** `:error` as a command word, not as part of a longer token. */
+const ROUTER_OS_ERROR_WORD = /:error(?![A-Za-z0-9_-])/gu;
+/** `:error "…"`, capturing the literal with its escapes intact. */
+const ROUTER_OS_ERROR_LITERAL = /:error\s+"((?:\\.|[^"\\])*)"/gu;
+/**
+ * A statement that writes to the router. `find` and `get` are deliberately not
+ * in the verb set: they are what the preflight is made of.
+ */
+const ROUTER_OS_MUTATION =
+  /(?:^|[\s;{[(])(\/[a-z0-9/-]+?)(?:\/(?:add|set|remove|import)|[ \t]+(?:add|set|remove|import))(?=$|[\s;}\])])/u;
+
+/**
+ * Top-level statements, each with the 1-based line `/import` would name in an
+ * error and a `code` copy whose string-literal contents are blanked out. The
+ * blanked copy is what the mutation scan reads, so a `/` inside a message — and
+ * every error identity now contains one — cannot be mistaken for a command path.
+ */
+export function routerOsStatements(script) {
+  const source = String(script).replace(/\r/gu, "");
+  const statements = [];
+  let text = "";
+  let code = "";
+  let line = 0;
+  let depth = 0;
+  const flush = () => {
+    if (text.trim()) statements.push({ text: text.trim(), code: code.trim(), line });
+    text = "";
+    code = "";
+    line = 0;
+  };
+  for (const entry of routerOsCharacters(source)) {
+    // A RouterOS comment runs to the end of its line, so nothing in one is a
+    // statement, a separator or a command.
+    if (entry.comment) continue;
+    if (!entry.string) {
+      if ("[({".includes(entry.character)) depth += 1;
+      else if ("])}".includes(entry.character)) depth -= 1;
+      if (depth <= 0 && (entry.character === ";" || entry.character === "\n")) {
+        depth = 0;
+        flush();
+        continue;
+      }
+    }
+    if (text === "" && /\s/u.test(entry.character)) continue;
+    if (line === 0) line = entry.line;
+    text += entry.character;
+    code += entry.string ? " " : entry.character;
+  }
+  flush();
+  return statements;
+}
+
+function routerOsErrorIdentities(statement) {
+  const declared = statement.text.matchAll(ROUTER_OS_ERROR_LITERAL);
+  return { sites: (statement.code.match(ROUTER_OS_ERROR_WORD) ?? []).length, declared: [...declared] };
+}
+
+/**
+ * Everything the two diagnostic channels can be checked for, per script. A
+ * defect here means a failure on the router would be undiagnosable, which on a
+ * gateway mid-bootstrap is its own kind of outage.
+ */
+export function routerOsDiagnosabilityDefects(script) {
+  const defects = [];
+  let expected = 1;
+  let pending = null;
+  for (const statement of routerOsStatements(script)) {
+    const { sites, declared } = routerOsErrorIdentities(statement);
+    if (declared.length !== sites) {
+      defects.push({
+        rule: "error-identity-missing",
+        line: statement.line,
+        message: `${sites} \`:error\` site(s) but ${declared.length} quoted message(s):`
+          + " every :error must raise a literal identity",
+      });
+    }
+    for (const match of declared) {
+      if (!ROUTER_OS_ERROR_IDENTITY.test(match[1] ?? "")) {
+        defects.push({
+          rule: "error-identity-missing",
+          line: statement.line,
+          message: `\`${match[1] ?? ""}\` is not a NETWORK_CENTER_<CLASS>/<slug> error identity`,
+        });
+      }
+    }
+
+    const breadcrumb = ROUTER_OS_STEP_BREADCRUMB.exec(statement.text);
+    if (breadcrumb) {
+      if (pending) {
+        defects.push({
+          rule: "breadcrumb-without-mutation",
+          line: pending.line,
+          message: `NC_STEP:${pending.ordinal}:${pending.slug} is followed by no mutation,`
+            + " so the trace would claim progress that never happened",
+        });
+      }
+      const ordinal = Number(breadcrumb[1]);
+      if (ordinal !== expected) {
+        defects.push({
+          rule: "step-out-of-sequence",
+          line: statement.line,
+          message: `expected NC_STEP:${String(expected).padStart(2, "0")},`
+            + ` found NC_STEP:${breadcrumb[1] ?? ""}`,
+        });
+      }
+      expected = ordinal + 1;
+      pending = { ordinal: breadcrumb[1] ?? "", slug: breadcrumb[2] ?? "", line: statement.line };
+      continue;
+    }
+
+    if (ROUTER_OS_MUTATION.test(statement.code)) {
+      if (!pending) {
+        defects.push({
+          rule: "mutation-without-breadcrumb",
+          line: statement.line,
+          message: "a mutation with no NC_STEP breadcrumb of its own: a partial run"
+            + " could not say whether this statement had already been applied",
+        });
+      }
+      pending = null;
+    }
+  }
+  if (pending) {
+    defects.push({
+      rule: "breadcrumb-without-mutation",
+      line: pending.line,
+      message: `NC_STEP:${pending.ordinal}:${pending.slug} is followed by no mutation,`
+        + " so the trace would claim progress that never happened",
+    });
+  }
+  return defects.sort((left, right) => left.line - right.line);
+}
+
+/**
+ * Refuses a bundle whose failures could not be read off a `verbose=no` console.
+ * `generateBootstrap` runs this over everything it is about to return, in the
+ * same place and for the same reason it runs `routerOsScriptDiagnostics`.
+ */
+export function assertRouterOsBundleDiagnosable(scripts) {
+  const identities = new Map();
+  for (const [name, content] of Object.entries(scripts)) {
+    const defects = routerOsDiagnosabilityDefects(content);
+    const [first] = defects;
+    if (first) {
+      throw new Error(
+        `${name} is not diagnosable: ${first.rule} at line ${first.line} —`
+        + ` ${first.message} (${defects.length} defect(s))`,
+      );
+    }
+    for (const identity of routerOsScriptIdentities(content)) {
+      const previous = identities.get(identity.slug);
+      if (previous) {
+        throw new Error(
+          `RouterOS diagnostic identity \`${identity.slug}\` is declared by ${previous} and by`
+          + ` ${name} line ${identity.line}; an identity must name exactly one site`,
+        );
+      }
+      identities.set(identity.slug, `${name} line ${identity.line}`);
+    }
+  }
+  return identities;
+}
+
+/** Every diagnostic identity a script declares: one namespace, so one grep resolves it. */
+export function routerOsScriptIdentities(script) {
+  const identities = [];
+  for (const statement of routerOsStatements(script)) {
+    const breadcrumb = ROUTER_OS_STEP_BREADCRUMB.exec(statement.text);
+    if (breadcrumb) {
+      identities.push({ kind: "step", slug: breadcrumb[2] ?? "", line: statement.line });
+      continue;
+    }
+    for (const match of statement.text.matchAll(ROUTER_OS_ERROR_LITERAL)) {
+      const slug = ROUTER_OS_ERROR_IDENTITY.exec(match[1] ?? "")?.[1];
+      if (slug) identities.push({ kind: "error", slug, line: statement.line });
+    }
+  }
+  return identities;
+}
+
 /**
  * A value that carries its own quoting, so a template author cannot interpolate
  * an unquoted one into a selector by forgetting a call. This is the structural
@@ -678,16 +887,22 @@ function normalizeInput(input) {
 export function generateBootstrap(input) {
   const value = normalizeInput(input);
   const ownershipMarker = `ihomecrm-network-center:v1:${value.deploymentId}`;
-  const serviceRollbackCommands = MANAGEMENT_SERVICE_NAMES.map((name) => {
+  const serviceRollbackCommands = MANAGEMENT_SERVICE_NAMES.map((name, index) => {
     const state = value.managementServices[name];
     // `and !dynamic` is load-bearing, not tidiness: RouterOS lists a dynamic
     // connection entry beside the static service while a session is live, so
     // `find where name="ssh"` alone resolves to two rows, the `set` is refused,
     // and `/import` stops there. That is the FIRST mutating line of this file, so
     // without the exclusion the rollback undoes nothing at all.
-    return `/ip/service set [find where name=${routerOsQuote(name)} and !dynamic] disabled=${
-      state.disabled ? "yes" : "no"
-    } port=${state.port} address=${routerOsQuote(state.address)}`;
+    //
+    // The breadcrumb is generated with the command, so a rollback that dies
+    // part-way names the exact service it had reached. Ordinals 01..08 here are
+    // what the rest of router-rollback.rsc.tmpl continues from, and the sequence
+    // check in `routerOsDiagnosabilityDefects` is what keeps the two in step.
+    return `:put "NC_STEP:${String(index + 1).padStart(2, "0")}:rollback-service-${name}"\n`
+      + `/ip/service set [find where name=${routerOsQuote(name)} and !dynamic] disabled=${
+        state.disabled ? "yes" : "no"
+      } port=${state.port} address=${routerOsQuote(state.address)}`;
   }).join("\n");
   const placeholders = {
     ROUTER_USER: routerOsQuotedValue(value.routerUser),
@@ -736,6 +951,10 @@ export function generateBootstrap(input) {
       );
     }
   }
+  // …and nothing leaves it that a router could fail undiagnosably. The real
+  // import runs `verbose=no`, so a failure prints only the `:error` identity and
+  // the breadcrumbs the script had already emitted.
+  assertRouterOsBundleDiagnosable(scripts);
   return {
     ...scripts,
     "worker-ssh-key.pub": `${value.workerSshPublicKey}\n`,

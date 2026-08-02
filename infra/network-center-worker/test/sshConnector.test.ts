@@ -19,6 +19,7 @@ import {
   parseRouterOsRecords,
   quoteRouterOsValue,
   resolveManagedAccessPort,
+  routerOsOwnershipMarker,
   routerOsRecoveryInterfaceNames,
   routerOsCommandFailed,
   routerOsInterfaceState,
@@ -606,6 +607,44 @@ describe("RouterOS SSH boundary", () => {
       "in-interface": "ether3",
       comment: "unowned recovery rule",
     }])).toEqual(new Set(["ether2"]));
+  });
+
+  it("never takes an ownership claim from a dynamic firewall row", () => {
+    // Both readers of this list run FAIL-OPEN: a matching rule is what SUPPLIES
+    // the deployment marker and what marks an interface protected, so anything
+    // that reaches them is something the worker then trusts. The bootstrap
+    // writes this rule statically and selects it with `and !dynamic` in the
+    // preflight, the rollback and the router-side cycle guard; the read side
+    // has to agree, or the two disagree about which rows are ours.
+    const marker = "ihomecrm-network-center:v1:demo-router-20260730:lan-recovery";
+    const flagged = {
+      ".flags": "D",
+      chain: "input",
+      action: "accept",
+      "in-interface": "ether2",
+      comment: marker,
+    };
+    const property = {
+      chain: "input",
+      action: "accept",
+      dynamic: "yes",
+      "in-interface": "ether3",
+      comment: marker,
+    };
+
+    // `print detail terse` reports it as a flag letter; some menus expose it as
+    // a property. Neither may be believed.
+    expect(routerOsRecoveryInterfaceNames([flagged, property])).toEqual(new Set());
+    expect(() => routerOsOwnershipMarker([flagged, property]))
+      .toThrowError(expect.objectContaining({ code: "ROUTER_OWNERSHIP_MARKER_UNAVAILABLE" }));
+
+    // The control: the same rows, static, are accepted — so the exclusion is
+    // what rejected them and not some unrelated field.
+    const { ".flags": _flags, ...staticFlagged } = flagged;
+    expect(routerOsOwnershipMarker([staticFlagged]))
+      .toBe("ihomecrm-network-center:v1:demo-router-20260730");
+    expect(routerOsRecoveryInterfaceNames([staticFlagged, { ...property, dynamic: "no" }]))
+      .toEqual(new Set(["ether2", "ether3"]));
   });
 
   it("targets only one live enrolled access port with matching current and immutable names", () => {

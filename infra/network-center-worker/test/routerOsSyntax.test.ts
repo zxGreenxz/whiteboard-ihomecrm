@@ -4,12 +4,16 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  assertRouterOsBundleDiagnosable,
   generateBootstrap,
   renderRouterOsTemplate,
   routerOsBareValue,
+  routerOsDiagnosabilityDefects,
   routerOsQuotedValue,
   routerOsScriptBlock,
   routerOsScriptDiagnostics,
+  routerOsScriptIdentities,
+  routerOsStatements,
   routerOsTemplatePlaceholders,
 } from "../scripts/generate-router-bootstrap.mjs";
 import { bootstrapFixture } from "./support/routerBootstrapFixture.js";
@@ -249,6 +253,163 @@ describe("generated artifacts", () => {
   });
 });
 
+/**
+ * The real import runs `verbose=no` (runbook §3.0.1), so `/import` echoes
+ * nothing. The `:error` string and whatever the script `:put` before it died are
+ * the ENTIRE diagnostic surface of a half-bootstrapped gateway. Both are
+ * therefore generator-enforced rather than review-enforced — the same treatment
+ * unquoted selector values got after they reached the hardware.
+ */
+describe("diagnosability is enforced, not remembered", () => {
+  const ARTIFACTS = [
+    "router-bootstrap.rsc",
+    "router-lockdown.rsc",
+    "router-rollback.rsc",
+  ] as const;
+
+  it("gives every :error site in every artifact its own identity", () => {
+    const files = generateBootstrap(bootstrapFixture);
+    const census: Record<string, number> = {};
+    for (const name of ARTIFACTS) {
+      expect({ name, defects: routerOsDiagnosabilityDefects(files[name]) })
+        .toEqual({ name, defects: [] });
+      census[name] = routerOsScriptIdentities(files[name])
+        .filter((entry) => entry.kind === "error").length;
+    }
+
+    // The census is what stops a guard being deleted quietly: the generator only
+    // checks the shape of what is there, not that anything is.
+    expect(census).toEqual({
+      "router-bootstrap.rsc": 34,
+      "router-lockdown.rsc": 5,
+      "router-rollback.rsc": 2,
+    });
+  });
+
+  it("gives every mutation its own breadcrumb, numbered from 01 with no gaps", () => {
+    const files = generateBootstrap(bootstrapFixture);
+    const steps = Object.fromEntries(ARTIFACTS.map((name) => [
+      name,
+      routerOsScriptIdentities(files[name])
+        .filter((entry) => entry.kind === "step")
+        .map((entry) => entry.slug),
+    ]));
+
+    expect(steps["router-bootstrap.rsc"]).toEqual([
+      "wireguard-interface",
+      "management-address",
+      "wireguard-peer",
+      "worker-group",
+      "worker-user",
+      "worker-ssh-key-clear",
+      "worker-ssh-key-import",
+      "ssh-strong-crypto",
+      "ssh-service-allowlist",
+      "firewall-lan-recovery",
+      "firewall-wg-handshake",
+      "firewall-wg-management",
+    ]);
+    // Generated with the service commands, so the two halves of the rollback are
+    // numbered by one mechanism.
+    expect(steps["router-rollback.rsc"]?.slice(0, 8)).toEqual([
+      "rollback-service-ssh",
+      "rollback-service-winbox",
+      "rollback-service-telnet",
+      "rollback-service-ftp",
+      "rollback-service-www",
+      "rollback-service-www-ssl",
+      "rollback-service-api",
+      "rollback-service-api-ssl",
+    ]);
+    expect(steps["router-lockdown.rsc"]).toHaveLength(9);
+    expect(steps["router-rollback.rsc"]).toHaveLength(16);
+
+    // Every mutating statement has exactly one breadcrumb, so counting the
+    // mutations independently must reproduce the same totals.
+    for (const name of ARTIFACTS) {
+      const mutations = routerOsStatements(files[name])
+        .filter((statement) => /(?:^|[\s;{[(])\/[a-z0-9/-]+?(?:\/|[ \t]+)(?:add|set|remove|import)(?=$|[\s;}\])])/u
+          .test(statement.code));
+      expect({ name, count: mutations.length })
+        .toEqual({ name, count: steps[name]?.length });
+    }
+  });
+
+  it("keeps identities unique across the whole bundle, so one grep resolves one site", () => {
+    const files = generateBootstrap(bootstrapFixture);
+    const index = assertRouterOsBundleDiagnosable(Object.fromEntries(
+      ARTIFACTS.map((name) => [name, files[name]]),
+    ));
+
+    expect(index.size).toBe(34 + 5 + 2 + 12 + 9 + 16);
+    expect(index.get("recovery-rule-dst-port")).toMatch(/^router-bootstrap\.rsc line \d+$/u);
+  });
+
+  it("refuses an :error that cannot be told from any other :error", () => {
+    // The pre-fix state of the whole preflight: one string, 18 sites.
+    expect(() => assertRouterOsBundleDiagnosable({
+      "a.rsc": ':if ([:len $x] = 0) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }\n',
+    })).toThrow(/error-identity-missing/u);
+
+    // A `:error` with no literal at all is worse and is caught by the same rule.
+    expect(() => assertRouterOsBundleDiagnosable({
+      "a.rsc": ':if ([:len $x] = 0) do={ :error $ncMarker }\n',
+    })).toThrow(/error-identity-missing/u);
+
+    expect(() => assertRouterOsBundleDiagnosable({
+      "a.rsc": ':if ([:len $x] = 0) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/rule-chain" }\n',
+    })).not.toThrow();
+  });
+
+  it("refuses the same identity in two places, in either file", () => {
+    const site = ':if ([:len $x] = 0) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/rule-chain" }\n';
+
+    expect(() => assertRouterOsBundleDiagnosable({ "a.rsc": site + site }))
+      .toThrow(/identity `rule-chain` is declared by a\.rsc line 1 and by a\.rsc line 2/u);
+    expect(() => assertRouterOsBundleDiagnosable({ "a.rsc": site, "b.rsc": site }))
+      .toThrow(/declared by a\.rsc line 1 and by b\.rsc line 1/u);
+    // A step slug and an error slug share one namespace, so neither can shadow
+    // the other in a grep.
+    expect(() => assertRouterOsBundleDiagnosable({
+      "a.rsc": ':put "NC_STEP:01:rule-chain"\n/ip/service set [find where name="ssh"] port=22\n'
+        + site,
+    })).toThrow(/identity `rule-chain`/u);
+  });
+
+  it("refuses a mutation no breadcrumb accounts for, and a breadcrumb no mutation follows", () => {
+    const mutation = '/ip/service set [find where name="ssh" and !dynamic] port=22\n';
+
+    expect(routerOsDiagnosabilityDefects(mutation).map((entry) => entry.rule))
+      .toEqual(["mutation-without-breadcrumb"]);
+    // One breadcrumb may not cover two mutations: a partial run has to be able
+    // to say which of the two it had reached.
+    expect(routerOsDiagnosabilityDefects(`:put "NC_STEP:01:a-step"\n${mutation}${mutation}`)
+      .map((entry) => entry.rule)).toEqual(["mutation-without-breadcrumb"]);
+    expect(routerOsDiagnosabilityDefects(':put "NC_STEP:01:a-step"\n:put "done"\n')
+      .map((entry) => entry.rule)).toEqual(["breadcrumb-without-mutation"]);
+    expect(routerOsDiagnosabilityDefects(
+      `:put "NC_STEP:01:a-step"\n${mutation}:put "NC_STEP:02:b-step"\n${mutation}`,
+    )).toEqual([]);
+
+    // The ordinal is the "how far did it get" half, so a gap is a defect too.
+    expect(routerOsDiagnosabilityDefects(
+      `:put "NC_STEP:01:a-step"\n${mutation}:put "NC_STEP:03:b-step"\n${mutation}`,
+    ).map((entry) => entry.message)).toEqual(["expected NC_STEP:02, found NC_STEP:03"]);
+  });
+
+  it("reads the mutation through blanked string literals, not through raw text", () => {
+    // Every error identity now contains a `/`, and a naive scan for `/<path>
+    // <verb>` over raw text would read one as a command. The statement's `code`
+    // projection is what makes the rule safe to state at all.
+    const statements = routerOsStatements(
+      ':if ([:len $x] = 1) do={ :error "NETWORK_CENTER_GROUP_CONFLICT/user-set-mismatch" }\n',
+    );
+    expect(statements).toHaveLength(1);
+    expect(statements[0]?.code).not.toContain("user-set-mismatch");
+    expect(routerOsDiagnosabilityDefects(statements[0]?.text ?? "")).toEqual([]);
+  });
+});
+
 describe("selector interpolation is structurally quoted", () => {
   const SELECTOR = "/ip/address remove [find where interface=$i and address=@@VALUE@@]\n";
 
@@ -304,7 +465,7 @@ describe("selector interpolation is structurally quoted", () => {
         {
           name: "router-bootstrap.rsc.tmpl",
           placeholder: "RECOVERY_GATEWAY_ADDRESS",
-          line: 79,
+          line: 90,
         },
       ]);
     expect(occurrences.filter((entry) => entry.context === "string").length)

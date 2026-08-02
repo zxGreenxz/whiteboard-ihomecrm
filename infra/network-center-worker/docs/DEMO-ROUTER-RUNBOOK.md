@@ -253,6 +253,62 @@ khớp 0 dòng, `address="192.168.88.1/24"` khớp 1. Đọc state qua exec **b�
 bọc `:put [...]`**; `/ip/address get [find ...]` trần trả về rỗng và sẽ "chứng
 minh" sai.
 
+### 3.0.1 `verbose=yes` CHỈ dùng cho dry-run. Import thật PHẢI `verbose=no`
+
+Đây là kết quả **đo trên chính router demo** (hEX, RouterOS 7.20.8, 2026-08-03),
+không phải suy đoán. Dưới `/import … verbose=yes`, một biến `:local` đọc ra
+**RỖNG khi nằm trong ĐIỀU KIỆN của `:if`**, trong khi chính biến đó vẫn `:put` ra
+đúng giá trị. Repro nhỏ nhất, cùng file cùng state, chỉ khác mỗi cờ:
+
+```routeros
+:local a [/interface find where name="bridge"]
+:local b [/interface find where name="ether1"]
+:put ("LEN_A=" . [:len $a] . " LEN_B=" . [:len $b])
+:if ([:len $a] != 1 || [:len $b] != 1) do={ :put "FIRED_UNEXPECTEDLY" }
+:if ([:len $a] != 1) do={ :put "FIRED_SINGLELINE" }
+:put "END"
+```
+
+| cờ | output đo được |
+|---|---|
+| `verbose=no` | `LEN_A=1 LEN_B=1` … `END` — không `:if` nào nổ (ĐÚNG) |
+| `verbose=yes` | `LEN_A=1 LEN_B=1` … **`FIRED_UNEXPECTEDLY`** … **`FIRED_SINGLELINE`** … `END` |
+
+Và trên chính `router-bootstrap.rsc`, cùng bytes cùng state:
+
+```text
+--- verbose=no  ---  preflight chạy hết, không guard nào nổ
+--- verbose=yes ---  Script Error: NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/...
+```
+
+trong khi điều kiện đó **là false** trên máy này (đo bằng cách tự soi 42 dòng đầu
+của script: `R_LEN=1 W_LEN=1 R_VAL=*7 W_VAL=*2`). Thay toàn bộ 34 `:error` bằng
+marker riêng thì script chạy tới `PREFLIGHT_REACHED_END`, không marker nào in ra.
+
+Hai điều bị loại trừ, và nó quan trọng: **không phải lỗi xuống dòng** (bản `:if`
+một dòng cũng nổ) và **không phải lỗi scope** (`:put` cùng script vẫn in đúng).
+
+**Vì sao đây là chuyện chết người chứ không phải phiền toái:** MỌI guard trong
+`router-bootstrap.rsc` đều có hình dạng `:if ([:len $ncX] …)`, kể cả các guard
+đứng trước mutation:
+
+```routeros
+:if ([:len $ncWgs] = 0) do={ /interface/wireguard add name=$ncWgName … }
+```
+
+Dưới `verbose=yes`, `[:len $ncWgs]` đọc thành 0 nên nhánh `add` chạy dù interface
+đã tồn tại. Lần chạy 2026-08-03 chỉ không hỏng gì vì preflight fail-closed **trước
+mutation đầu tiên** (`/export` 132 dòng trước và sau, `strong-crypto=false`).
+
+`verbose=yes` **an toàn cho `dry-run`**: dry-run chỉ parse, không đánh giá điều
+kiện, và cả ba artifact đều parse sạch dưới cờ đó. Nên mục 3.0 giữ `verbose=yes`,
+còn mục 3.1 bước 4 dùng `verbose=no`.
+
+> Nếu sau này có ai "sửa lại cho nhất quán" thành `verbose=yes` ở bước import
+> thật: test `routerBootstrapImport.test.ts` đọc chính dòng lệnh trong runbook
+> này, chạy simulator với đúng cờ đó, và đỏ ngay — vì simulator có mô hình hóa
+> hành vi đo được ở trên.
+
 ### 3.1 Import
 
 1. Giữ nguyên phiên Winbox/SSH LAN đang hoạt động.
@@ -260,12 +316,30 @@ minh" sai.
    làm ở 3.0 nếu chạy cổng 2 ở đó).
 3. Cổng 1 và cổng 2 ở mục 3.0 phải xanh hết. Không import khi còn một cổng đỏ.
 4. Chỉ khi dry-run báo 0 lỗi mới import thật và đọc toàn bộ output trước khi đóng
-   phiên. Output phải là
-   `NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF`; marker này cố ý không phải
-   `READY` vì đường phục hồi thực tế chưa được chứng minh:
+   phiên. **Bắt buộc `verbose=no`** — lý do đo được ở mục 3.0.1. Output phải kết
+   thúc bằng `NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF`; marker này cố ý
+   không phải `READY` vì đường phục hồi thực tế chưa được chứng minh:
 
    ```routeros
-   /import file-name=router-bootstrap.rsc verbose=yes
+   /import file-name=router-bootstrap.rsc verbose=no
+   ```
+
+   Vì không còn echo từng dòng, script tự in dấu vết. Output thành công đầy đủ:
+
+   ```text
+   NC_STEP:01:wireguard-interface
+   NC_STEP:02:management-address
+   NC_STEP:03:wireguard-peer
+   NC_STEP:04:worker-group
+   NC_STEP:05:worker-user
+   NC_STEP:06:worker-ssh-key-clear
+   NC_STEP:07:worker-ssh-key-import
+   NC_STEP:08:ssh-strong-crypto
+   NC_STEP:09:ssh-service-allowlist
+   NC_STEP:10:firewall-lan-recovery
+   NC_STEP:11:firewall-wg-handshake
+   NC_STEP:12:firewall-wg-management
+   NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF
    ```
 
 5. Dù import thành công hay thất bại, xóa ngay script chứa WireGuard private key
@@ -285,8 +359,61 @@ minh" sai.
    firewall có marker ownership. Không disable admin cũ, không thay default
    route/NAT/DHCP và chưa import lockdown.
 
-Nếu import lỗi giữa chừng, chạy rollback từ phiên LAN còn mở rồi so sánh trạng
-thái với evidence bước 1.
+### 3.2 Đọc một lần chạy hỏng giữa chừng
+
+`/import` **dừng ở statement lỗi đầu tiên và KHÔNG undo** những gì đã chạy. Với
+`verbose=no`, output chỉ có hai thứ, và cả hai đều đủ để định vị:
+
+**a) `Script Error: NETWORK_CENTER_<CLASS>/<slug>` — preflight từ chối, CHƯA có
+mutation nào.** `<slug>` là duy nhất trong toàn bộ ba script, nên:
+
+```bash
+grep -rn "<slug>" infra/network-center-worker/templates/
+```
+
+ra đúng MỘT dòng — chính cái so sánh đã từ chối router. Không cần re-instrument.
+Ví dụ `…/recovery-rule-dst-port` = "đã có rule `:lan-recovery` mang marker của
+deployment này nhưng `dst-port` không phải 22". Router chưa bị đụng gì:
+`/export` phải giống hệt evidence bước 1.
+
+**b) Có ít nhất một dòng `NC_STEP:` — đã vào phần mutation.** Dòng `NC_STEP` CUỐI
+CÙNG in ra là block đã **thất bại**; mọi step trước đó đã **hoàn tất**. Sau nó là
+thông báo lỗi của chính RouterOS (`failure: …`), không phải `:error` của script.
+
+| step | ghi gì lên router | `router-rollback.rsc` dọn được? |
+|---|---|---|
+| 01 `wireguard-interface` | interface `wg-ihome-mgmt` (marker `:wireguard`) | có (step 15) |
+| 02 `management-address` | `/ip/address` trên wg (marker `:address`) | có (step 14) |
+| 03 `wireguard-peer` | peer VPS (marker `:peer`) | có (step 13) |
+| 04 `worker-group` | `/user/group network-center-worker` | **KHÔNG** — group không mang marker nên rollback bỏ qua; gỡ tay: `/user/group remove [find where name="network-center-worker"]` |
+| 05 `worker-user` | user `ihome-nc-worker` (comment = marker) | có (step 16) |
+| 06 `worker-ssh-key-clear` | xóa ssh-key cũ của user đó | không cần |
+| 07 `worker-ssh-key-import` | nạp `worker-ssh-key.pub` | có (step 16, xóa cùng user) |
+| 08 `ssh-strong-crypto` | `/ip/ssh strong-crypto=yes` | có (step 09, trả về giá trị đã capture) |
+| 09 `ssh-service-allowlist` | `/ip/service ssh` thu về `recoveryCidr` + VPS peer | có (step 01, trả về `managementServices.ssh` đã capture) |
+| 10 `firewall-lan-recovery` | rule accept 22/tcp từ `recoveryCidr` | có (step 10) |
+| 11 `firewall-wg-handshake` | rule accept UDP WG trên WAN | có (step 12) |
+| 12 `firewall-wg-management` | rule accept từ VPS peer qua wg | có (step 11) |
+
+**Trạng thái dở dang NGUY HIỂM NHẤT là dừng ngay sau `NC_STEP:09`**: allowlist của
+`/ip/service ssh` đã thu hẹp về `recoveryCidr` nhưng rule firewall `:lan-recovery`
+(step 10) chưa được tạo. Nếu địa chỉ máy vận hành **không nằm trong
+`recoveryCidr`** thì phiên SSH mới sẽ bị từ chối. Đây chính là lý do mục 2.1 bắt
+chọn `recoveryCidr` phủ được địa chỉ thật của máy vận hành. **Đừng đóng phiên LAN
+đang mở** — chạy rollback ngay từ phiên đó.
+
+**Việc phải làm khi lỡ dở dang:**
+
+1. từ phiên LAN CÒN MỞ, import `router-rollback.rsc` (cũng `verbose=no`); nó in
+   `NC_STEP:01..16` rồi `NETWORK_CENTER_ROLLBACK_APPLIED`;
+2. nếu đã tới step 04 trở lên, gỡ tay `/user/group network-center-worker` theo
+   bảng trên;
+3. so `/export` với evidence bước 1 — phải trở về giống hệt;
+4. sửa nguyên nhân (slug ở mục a chỉ thẳng vào nó), sinh lại artifact, chạy lại
+   cả hai cổng ở mục 3.0 rồi import lại.
+
+Rollback chạy được trên trạng thái dở dang vì mọi lệnh remove của nó đều chọn
+theo marker và selector rỗng là no-op; các `/ip/service set` thì idempotent.
 
 ## 4. Bring up WireGuard trên VPS
 
@@ -334,7 +461,16 @@ container Network Center.
 
 ## 7. Apply lockdown riêng biệt
 
-Import `router-lockdown.rsc` qua phiên WireGuard đã xác minh. Ngay sau import:
+Import `router-lockdown.rsc` qua phiên WireGuard đã xác minh — **cũng `verbose=no`**,
+cùng lý do ở mục 3.0.1 (file này cũng toàn `:if ([:len $ncX] …)`):
+
+```routeros
+/import file-name=router-lockdown.rsc verbose=no
+```
+
+Output đúng là `NC_STEP:01..09` rồi `NETWORK_CENTER_LOCKDOWN_APPLIED`. Step 09 —
+gỡ rule `:lan-recovery` — cố ý đứng CUỐI, nên mọi lỗi sớm hơn vẫn để nguyên đường
+phục hồi LAN. Ngay sau import:
 
 - mở phiên SSH mới qua WireGuard trước khi đóng phiên cũ;
 - xác minh SSH chỉ nhận từ VPS peer `/32`;
@@ -365,7 +501,15 @@ không có approval workflow.
 Nếu WireGuard/SSH worker không ổn định:
 
 1. dùng phiên LAN recovery còn mở;
-2. import `router-rollback.rsc`;
+2. import `router-rollback.rsc` — **`verbose=no`**, cùng lý do mục 3.0.1:
+
+   ```routeros
+   /import file-name=router-rollback.rsc verbose=no
+   ```
+
+   Output đúng là `NC_STEP:01..16` rồi `NETWORK_CENTER_ROLLBACK_APPLIED`. Nếu
+   dừng giữa chừng, `NC_STEP` cuối cùng là bước chưa hoàn tất — đọc theo bảng ở
+   mục 3.2;
 3. xác minh cả tám management service và `strong-crypto` trở về đúng pre-state;
 4. giữ binary backup/export để điều tra nhưng không commit;
 5. xóa/rotate key và worker secret bị nghi lộ;

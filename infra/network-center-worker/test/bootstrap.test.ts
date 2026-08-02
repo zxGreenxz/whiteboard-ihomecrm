@@ -156,16 +156,41 @@ describe("demo router bootstrap generator", () => {
     const dryRun = runbook.indexOf(
       "/import file-name=router-bootstrap.rsc verbose=yes dry-run",
     );
-    const apply = runbook.indexOf(
-      "/import file-name=router-bootstrap.rsc verbose=yes",
-      dryRun + 1,
-    );
+    // The real import is `verbose=no`, and the ORDER still has to hold: dry-run
+    // first. `verbose=yes` on the apply step would make every `:if` guard in the
+    // file evaluate against empty variables (measured, see §3.0.1), so there is
+    // no `verbose=yes` apply left to look for.
+    const apply = runbook.indexOf("/import file-name=router-bootstrap.rsc verbose=no", dryRun + 1);
 
     expect(dryRun).toBeGreaterThan(-1);
     expect(apply).toBeGreaterThan(dryRun);
+    expect(runbook).not.toMatch(/\/import file-name=[a-z-]+\.rsc verbose=yes(?! dry-run)/u);
     expect(runbook).toContain('/file/remove [find where name="router-bootstrap.rsc"]');
     expect(runbook).toContain("NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF");
     expect(runbook).toContain("mở một phiên SSH LAN recovery mới");
+  });
+
+  it("shows the operator what a partial run looks like and what to do about it", () => {
+    // With `verbose=no` there is no per-line echo, so the runbook has to teach
+    // the two channels that remain: the unique `:error` identity and the
+    // ordered NC_STEP trace. A table of steps is not decoration here — the
+    // rollback removes by ownership marker and `/user/group` carries none, so
+    // "run the rollback" is NOT the complete answer past step 04.
+    const runbook = readFileSync(
+      resolve(import.meta.dirname, "../docs/DEMO-ROUTER-RUNBOOK.md"),
+      "utf8",
+    );
+    const files = generateBootstrap(fixture);
+
+    expect(runbook).toContain("NC_STEP:09:ssh-service-allowlist");
+    expect(runbook).toContain("grep -rn \"<slug>\" infra/network-center-worker/templates/");
+    expect(runbook).toContain('/user/group remove [find where name="network-center-worker"]');
+    // Every step the runbook's table names must be a step the script emits, or
+    // the table is telling the operator about a run that cannot happen.
+    for (const match of runbook.matchAll(/NC_STEP:\d{2}:[a-z][a-z0-9-]*/gu)) {
+      expect({ step: match[0], present: Object.values(files).some((file) => file.includes(match[0])) })
+        .toEqual({ step: match[0], present: true });
+    }
   });
 
   it("gates all three artifacts on hardware, and probes what dry-run cannot evaluate", () => {

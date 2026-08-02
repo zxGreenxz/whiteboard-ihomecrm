@@ -170,9 +170,18 @@ function guardJobSelector(guardJobId: string): string {
   return `[/system/script/job/find where .id=${assertResourceId(guardJobId)}]`;
 }
 
+/**
+ * `and !dynamic` because this selector's caller reads `< 1` as the failure: a
+ * matched row SATISFIES the ownership check, so anything the selector can reach
+ * is something the check will trust. Dynamic rows are rows the bootstrap did not
+ * write and cannot write, and no ownership claim should ever rest on one. The
+ * exclusion also keeps this selector identical in scope to the ones the
+ * bootstrap preflight and rollback use for the same rule.
+ */
 function ownershipRuleSelector(ownershipMarker: string): string {
   return "[/ip/firewall/filter/find where chain=input and action=accept"
-    + ` and comment=${quoteRouterOsValue(routerRecoveryRuleComment(ownershipMarker))}]`;
+    + ` and comment=${quoteRouterOsValue(routerRecoveryRuleComment(ownershipMarker))}`
+    + " and !dynamic]";
 }
 
 /**
