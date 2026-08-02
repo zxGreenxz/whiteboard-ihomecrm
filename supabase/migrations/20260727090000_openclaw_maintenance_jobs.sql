@@ -8507,4 +8507,117 @@ create policy openclaw_runtime_credentials_migration_writer_all
   on public.openclaw_runtime_credentials for all to openclaw_maintenance_writer
   using (true) with check (true);
 
+
+-- ---------------------------------------------------------------------------
+-- 13. A dedicated role for the migration surface
+-- ---------------------------------------------------------------------------
+-- The migration helpers were owned by openclaw_maintenance_writer, the role the
+-- retention/audit CRON runs as. Every policy they needed therefore widened that
+-- role: the cron job ended up with cross-organization write authority over
+-- GLOBAL_STOP, the outbox, leases, credentials and account session state - none of
+-- which it has any business touching.
+--
+-- Ownership moves to a role that exists only for the VPS migration surface, so the
+-- blast radius of these policies is exactly the migration facades.
+
+do $migration_role$
+begin
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'openclaw_migration_writer') then
+    create role openclaw_migration_writer with NOLOGIN NOINHERIT NOBYPASSRLS;
+  else
+    alter role openclaw_migration_writer with NOLOGIN NOINHERIT NOBYPASSRLS;
+  end if;
+end;
+$migration_role$;
+
+grant usage on schema public, app_private, extensions to openclaw_migration_writer;
+
+-- Re-own the migration helpers.
+alter function app_private.openclaw_migration_scope_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_migration_cells_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_drain_outbox_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_freeze_outbox_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_expire_dispatching_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_handover_leases_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_retire_old_cell_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  owner to openclaw_migration_writer;
+
+-- Re-grant execute: changing the owner does not carry the previous grants.
+grant execute on function app_private.openclaw_migration_scope_v1(jsonb),
+  app_private.openclaw_migration_cells_v1(jsonb),
+  app_private.openclaw_set_global_stop_v1(jsonb, boolean),
+  app_private.openclaw_drain_outbox_v1(jsonb),
+  app_private.openclaw_freeze_outbox_v1(jsonb),
+  app_private.openclaw_expire_dispatching_v1(jsonb),
+  app_private.openclaw_reconcile_migration_gaps_v1(jsonb),
+  app_private.openclaw_handover_leases_v1(jsonb),
+  app_private.openclaw_retire_old_cell_v1(jsonb),
+  app_private.openclaw_require_fresh_qr_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+-- Retire the policies that widened the retention role.
+drop policy if exists openclaw_control_states_migration_writer_all
+  on public.openclaw_control_states;
+drop policy if exists openclaw_outbox_migration_writer_all
+  on public.openclaw_outbox;
+drop policy if exists openclaw_runtime_leases_migration_writer_all
+  on public.openclaw_runtime_leases;
+drop policy if exists openclaw_accounts_migration_writer_all
+  on public.openclaw_accounts;
+drop policy if exists openclaw_runtime_credentials_migration_writer_all
+  on public.openclaw_runtime_credentials;
+
+revoke all on public.openclaw_control_states,
+  public.openclaw_outbox,
+  public.openclaw_runtime_leases,
+  public.openclaw_accounts,
+  public.openclaw_runtime_credentials
+  from openclaw_maintenance_writer;
+
+-- Grant the migration role exactly the verbs its facades use, no more.
+grant select, insert, update on public.openclaw_control_states
+  to openclaw_migration_writer;
+grant select, update on public.openclaw_outbox to openclaw_migration_writer;
+grant select, insert, update on public.openclaw_runtime_leases
+  to openclaw_migration_writer;
+grant select, update on public.openclaw_accounts to openclaw_migration_writer;
+grant select, update on public.openclaw_runtime_credentials
+  to openclaw_migration_writer;
+grant select on public.openclaw_runtime_cells to openclaw_migration_writer;
+grant update on public.openclaw_qr_challenges to openclaw_migration_writer;
+
+create policy openclaw_control_states_migration_writer_all
+  on public.openclaw_control_states for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_outbox_migration_writer_all
+  on public.openclaw_outbox for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_runtime_leases_migration_writer_all
+  on public.openclaw_runtime_leases for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_accounts_migration_writer_all
+  on public.openclaw_accounts for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_runtime_credentials_migration_writer_all
+  on public.openclaw_runtime_credentials for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_runtime_cells_migration_writer_select
+  on public.openclaw_runtime_cells for select to openclaw_migration_writer
+  using (true);
+create policy openclaw_qr_challenges_migration_writer_update
+  on public.openclaw_qr_challenges for update to openclaw_migration_writer
+  using (true) with check (true);
+
 commit;

@@ -229,6 +229,44 @@ describe("migration facades under the calling role", () => {
     });
   });
 
+  it("keeps the retention cron role out of the migration surface", async () => {
+    await withDatabase(async (database) => {
+      // These helpers used to be owned by openclaw_maintenance_writer - the role the
+      // retention/audit cron runs as - so every policy they needed handed that cron
+      // cross-organization write authority over GLOBAL_STOP, the outbox, leases,
+      // credentials and account session state.
+      const widened = await database.query(
+        `select tablename, policyname from pg_policies
+         where schemaname = 'public'
+           and 'openclaw_maintenance_writer' = any(roles)
+           and tablename in (
+             'openclaw_control_states', 'openclaw_outbox', 'openclaw_runtime_leases',
+             'openclaw_accounts', 'openclaw_runtime_credentials'
+           )
+           and cmd = 'ALL'`,
+      );
+      expect(widened.rows).toEqual([]);
+
+      const privileges = await database.query(
+        `select table_name, privilege_type from information_schema.table_privileges
+         where grantee = 'openclaw_maintenance_writer'
+           and table_name in ('openclaw_control_states', 'openclaw_runtime_leases')`,
+      );
+      expect(privileges.rows).toEqual([]);
+
+      // And the surface really is owned by the dedicated role now.
+      const owners = await database.query(
+        `select proname, pg_get_userbyid(proowner) as owner
+         from pg_proc where proname in (
+           'openclaw_set_global_stop_v1', 'openclaw_handover_leases_v1',
+           'openclaw_require_fresh_qr_v1'
+         )`,
+      );
+      expect(owners.rows.length).toBeGreaterThan(0);
+      for (const row of owners.rows) expect(row.owner).toBe("openclaw_migration_writer");
+    });
+  });
+
   it("denies the same facades to anon and authenticated", async () => {
     await withDatabase(async (database) => {
       for (const role of ["anon", "authenticated"]) {
