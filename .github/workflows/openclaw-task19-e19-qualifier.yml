@@ -349,6 +349,13 @@ jobs:
           test "$available_kb" -ge 10485760
           install -d -o openclaw-runner -g openclaw-runner -m 0700 /run/user/1001 "$docker_data"
           if [ -e /run/user/1001/docker.sock ]; then rm -f /run/user/1001/docker.sock; fi
+          # Reviewed probe (R) load OCI-layout tar roi tag theo manifest digest —
+          # chi containerd image store ho tro; graphdriver cu doi manifest.json
+          # kieu docker-save ("invalid archive: does not contain a manifest.json").
+          install -d -o openclaw-runner -g openclaw-runner -m 0755 /home/openclaw-runner/.config/docker
+          printf '%s\n' '{"features":{"containerd-snapshotter":true}}' > /home/openclaw-runner/.config/docker/daemon.json
+          chown openclaw-runner:openclaw-runner /home/openclaw-runner/.config/docker/daemon.json
+          chmod 0644 /home/openclaw-runner/.config/docker/daemon.json
           runuser -u openclaw-runner -- /usr/bin/env -i \
             HOME=/home/openclaw-runner USER=openclaw-runner LOGNAME=openclaw-runner \
             XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin:/usr/sbin:/sbin \
@@ -356,7 +363,6 @@ jobs:
             DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=slirp4netns \
             /usr/bin/nohup /usr/bin/dockerd-rootless.sh \
               --host="$docker_host" \
-              --storage-driver=fuse-overlayfs \
               --data-root="$docker_data" --exec-root=/run/user/1001/docker \
               --pidfile=/run/user/1001/docker.pid \
             >/tmp/openclaw-rootless-dockerd.log 2>&1 &
@@ -379,7 +385,17 @@ jobs:
           storage_driver="$(runuser -u openclaw-runner -- /usr/bin/env -i \
             HOME=/home/openclaw-runner XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin \
             DOCKER_HOST="$docker_host" /usr/bin/docker info --format '{{.Driver}}')"
-          test "$storage_driver" = 'fuse-overlayfs'
+          driver_status="$(runuser -u openclaw-runner -- /usr/bin/env -i \
+            HOME=/home/openclaw-runner XDG_RUNTIME_DIR=/run/user/1001 PATH=/usr/bin:/bin \
+            DOCKER_HOST="$docker_host" /usr/bin/docker info --format '{{range .DriverStatus}}{{index . 0}}={{index . 1}}|{{end}}')"
+          printf 'storage_driver=%s driver_status=%s\n' "$storage_driver" "$driver_status"
+          # containerd image store bat buoc (probe tag theo OCI manifest digest);
+          # snapshotter rootless hop le: overlayfs (kernel userns) hoac fuse-overlayfs.
+          case "$storage_driver" in
+            overlayfs|fuse-overlayfs) ;;
+            *) echo "unexpected containerd snapshotter: $storage_driver"; exit 1 ;;
+          esac
+          printf '%s' "$driver_status" | grep -q 'driver-type=io.containerd.snapshotter.v1'
 
       - name: Pre-pull and verify the pinned BuildKit image
         run: |
@@ -394,6 +410,26 @@ jobs:
           run_docker pull "$buildkit"
           test "$(run_docker image inspect --format '{{index .RepoDigests 0}}' "$buildkit")" = \
             'moby/buildkit@sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6'
+          # Self-check containerd store TRUOC khi build 20 phut: repack archive
+          # thanh OCI-layout-only (khong manifest.json — dung hinh dang buildx
+          # type=oci ma reviewed probe se load) roi load + tag theo manifest
+          # digest. Graphdriver cu se fail ngay tai day voi thong diep ro rang.
+          probe_tar=/tmp/openclaw-oci-store-probe.tar
+          probe_dir=/tmp/openclaw-oci-store-probe
+          run_docker save "$buildkit" -o "$probe_tar"
+          tar -tf "$probe_tar" | grep -qx 'index.json'
+          mkdir "$probe_dir"
+          tar -xf "$probe_tar" -C "$probe_dir"
+          rm -f "$probe_dir/manifest.json" "$probe_dir/repositories"
+          test -f "$probe_dir/oci-layout" && test -d "$probe_dir/blobs"
+          tar -cf "$probe_tar" -C "$probe_dir" oci-layout index.json blobs
+          chown openclaw-runner:openclaw-runner "$probe_tar"
+          run_docker load --input "$probe_tar"
+          run_docker tag sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6 \
+            localhost/openclaw-store-selfcheck:probe
+          run_docker image inspect localhost/openclaw-store-selfcheck:probe >/dev/null
+          run_docker rmi localhost/openclaw-store-selfcheck:probe
+          rm -rf "$probe_tar" "$probe_dir"
 
       - name: Run the reviewed Task 2 qualification phase as openclaw-runner
         run: |
