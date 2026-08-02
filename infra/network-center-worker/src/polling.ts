@@ -44,6 +44,53 @@ interface PollState {
   lastInventoryDegraded: boolean | null;
 }
 
+/** The four heartbeat states `20260729136000` accepts for a worker release. */
+export type WorkerHeartbeatStatus = "ONLINE" | "DEGRADED" | "PAUSED" | "STOPPING";
+
+/**
+ * What a configured connection did during one cycle. Exactly one applies, and
+ * the four buckets partition the configured set - that is what keeps
+ * `successfulPolls + failedPolls = connections`, the CHECK constraint the
+ * control plane enforces on every poll heartbeat.
+ */
+type PollDisposition =
+  /** Attempted this cycle. */
+  | "DUE"
+  /**
+   * Not attempted: retry backoff has deferred it. It is NOT healthy - it is
+   * deferred precisely BECAUSE its last attempt failed. Before this was
+   * modelled the connection simply vanished from the cycle, and once the
+   * backoff delay grew past the poll interval a permanently unreachable fleet
+   * reported `connections=0`, which is the signature of a fleet with nothing
+   * provisioned at all.
+   */
+  | "DEFERRED"
+  /**
+   * Not attempted: its last poll SUCCEEDED and its own poll interval has not
+   * elapsed yet. A five-minute per-connection interval against a one-minute
+   * cycle puts a perfectly healthy connection here four cycles out of five, so
+   * this bucket must count as healthy or a correct fleet would report failures
+   * forever and never satisfy the deploy gate.
+   */
+  | "FRESH";
+
+/** Poll evidence for one completed cycle, over the CONFIGURED connection set. */
+export interface FleetPollEvidence {
+  /** Configured pollable connections. Never shrinks because of backoff. */
+  connections: number;
+  /** Proven reachable this cycle: polled successfully, or still fresh. */
+  successfulPolls: number;
+  /** Known unreachable: failed this cycle, or deferred by backoff. */
+  failedPolls: number;
+  /** Actually dialled this cycle. Distinguishes deferral from having nothing to do. */
+  attemptedPolls: number;
+  /** Skipped by backoff. Counted inside `failedPolls`. */
+  deferredPolls: number;
+  /** Skipped with a fresh success. Counted inside `successfulPolls`. */
+  freshPolls: number;
+  degradedInventories: number;
+}
+
 interface InventoryIds {
   interfaceIds: Map<string, string>;
   arubaIds: Map<string, string>;
@@ -189,6 +236,7 @@ export class PollingCoordinator {
   readonly #routerOperationSemaphore: AsyncSemaphore;
   readonly #states = new Map<string, PollState>();
   readonly #inventoryCache = new Map<string, InventoryCacheEntry>();
+  #lastEvidence: FleetPollEvidence | null = null;
 
   constructor(options: PollingCoordinatorOptions) {
     this.#api = options.api;
@@ -207,13 +255,34 @@ export class PollingCoordinator {
     this.#routerOperationSemaphore = options.routerOperationSemaphore ?? new AsyncSemaphore(3);
   }
 
-  #shouldPoll(connection: NetworkConnection, now: number): boolean {
-    if (!this.#enforceScheduling) return true;
+  #disposition(connection: NetworkConnection, now: number): PollDisposition {
+    if (!this.#enforceScheduling) return "DUE";
     const state = this.#states.get(connection.deviceId);
-    if (!state) return true;
-    if (state.retryAt > now) return false;
-    if (state.lastSuccessAt === null) return true;
-    return now - state.lastSuccessAt >= connection.pollIntervalSeconds * 1_000;
+    if (!state) return "DUE";
+    // Outstanding failures are classified FIRST. Reading the poll interval
+    // first would let a connection that succeeded a moment before it started
+    // failing be reported as FRESH - i.e. as healthy - while it is in fact
+    // down, which is the same lie in a narrower window.
+    if (state.consecutiveFailures > 0) return state.retryAt > now ? "DEFERRED" : "DUE";
+    if (state.lastSuccessAt === null) return "DUE";
+    return now - state.lastSuccessAt >= connection.pollIntervalSeconds * 1_000
+      ? "DUE"
+      : "FRESH";
+  }
+
+  /**
+   * Health the LAST COMPLETED cycle proved, for heartbeats that carry no poll
+   * evidence of their own. `DEGRADED` is the floor, not `ONLINE`: before the
+   * first cycle, and after any cycle that failed outright, the worker has no
+   * evidence it is healthy, and the schema has no state for "unknown".
+   */
+  fleetStatus(): Exclude<WorkerHeartbeatStatus, "STOPPING"> {
+    if (this.#paused()) return "PAUSED";
+    const evidence = this.#lastEvidence;
+    if (!evidence) return "DEGRADED";
+    return evidence.failedPolls > 0 || evidence.degradedInventories > 0
+      ? "DEGRADED"
+      : "ONLINE";
   }
 
   async #syncInventory(
@@ -542,44 +611,79 @@ export class PollingCoordinator {
   }
 
   async runCycle(): Promise<void> {
-    const now = this.#now();
-    const connections = (await this.#api.listConnections(500)).filter((connection) =>
-      connection.deviceKind === "MIKROTIK" &&
-      connection.transport === "ROUTEROS_SSH" &&
-      connection.monitoringEnabled &&
-      this.#shouldPoll(connection, now.getTime())
-    );
-    let successes = 0;
-    let failures = 0;
-    let degradedInventories = 0;
-    const telemetry: TelemetryBatch[] = [];
-    await concurrentMap(connections, this.#maxConcurrency, async (connection) => {
-      const batch = await this.#routerOperationSemaphore.use(
-        () => this.#pollConnection(connection),
+    try {
+      const now = this.#now();
+      // The CONFIGURED set: every connection this worker is responsible for
+      // polling. It is deliberately computed BEFORE scheduling is applied and
+      // mirrors the predicate behind `expectedConnectionCount`
+      // (20260729143000), so the number reported here is the number the deploy
+      // gate measures it against. Backoff may change WHICH of these are dialled
+      // in a given cycle; it must never change HOW MANY exist.
+      const configured = (await this.#api.listConnections(500)).filter((connection) =>
+        connection.deviceKind === "MIKROTIK" &&
+        connection.transport === "ROUTEROS_SSH" &&
+        connection.monitoringEnabled
       );
-      if (batch) {
-        successes += 1;
-        if (batch.inventoryDegraded) degradedInventories += 1;
-        telemetry.push(batch);
-      } else failures += 1;
-    });
-    await this.#ingestTelemetry(telemetry);
-    await this.#api.heartbeat({
-      status: this.#paused()
-        ? "PAUSED"
-        : failures > 0 || degradedInventories > 0
-          ? "DEGRADED"
-          : "ONLINE",
-      workerVersion: this.#workerVersion,
-      capabilities: ["routeros-ssh", "polling", "commands", "snapshots"],
-      queueAgeSeconds: 0,
-      safeMetadata: {
-        connections: connections.length,
-        successfulPolls: successes,
-        failedPolls: failures,
+      const due: NetworkConnection[] = [];
+      let deferredPolls = 0;
+      let freshPolls = 0;
+      for (const connection of configured) {
+        switch (this.#disposition(connection, now.getTime())) {
+          case "DUE":
+            due.push(connection);
+            break;
+          case "DEFERRED":
+            deferredPolls += 1;
+            break;
+          case "FRESH":
+            freshPolls += 1;
+            break;
+        }
+      }
+      let successes = 0;
+      let failures = 0;
+      let degradedInventories = 0;
+      const telemetry: TelemetryBatch[] = [];
+      await concurrentMap(due, this.#maxConcurrency, async (connection) => {
+        const batch = await this.#routerOperationSemaphore.use(
+          () => this.#pollConnection(connection),
+        );
+        if (batch) {
+          successes += 1;
+          if (batch.inventoryDegraded) degradedInventories += 1;
+          telemetry.push(batch);
+        } else failures += 1;
+      });
+      await this.#ingestTelemetry(telemetry);
+      const evidence: FleetPollEvidence = {
+        connections: configured.length,
+        // A fresh connection carries a recent SUCCESS, so it belongs on the
+        // healthy side; a deferred one carries a recent FAILURE, so it belongs
+        // on the failing side. Splitting them this way is what makes the two
+        // "not attempted this cycle" cases opposite instead of identical, and
+        // it keeps the buckets summing to the configured count.
+        successfulPolls: successes + freshPolls,
+        failedPolls: failures + deferredPolls,
+        attemptedPolls: due.length,
+        deferredPolls,
+        freshPolls,
         degradedInventories,
-      },
-      startedAt: this.#startedAt.toISOString(),
-    });
+      };
+      this.#lastEvidence = evidence;
+      await this.#api.heartbeat({
+        status: this.fleetStatus(),
+        workerVersion: this.#workerVersion,
+        capabilities: ["routeros-ssh", "polling", "commands", "snapshots"],
+        queueAgeSeconds: 0,
+        safeMetadata: { ...evidence },
+        startedAt: this.#startedAt.toISOString(),
+      });
+    } catch (error) {
+      // A cycle that did not finish proves nothing. Leaving the previous
+      // evidence in place would let the periodic heartbeat keep reporting
+      // ONLINE from a cycle that has since stopped happening at all.
+      this.#lastEvidence = null;
+      throw error;
+    }
   }
 }

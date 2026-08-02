@@ -29,12 +29,22 @@ const EXPECTED_CONNECTIONS_MIGRATION_PATH = join(
   "migrations",
   "20260729143000_network_center_worker_release_expected_connections.sql",
 );
+// Redefines network_center_worker_heartbeat_v2 so an ONLINE claim can never be
+// stored over failure evidence. It has to be applied here or this proof would
+// keep certifying the superseded 20260729136000 body.
+const STATUS_HONESTY_MIGRATION_PATH = join(
+  REPO_ROOT,
+  "supabase",
+  "migrations",
+  "20260729144000_network_center_worker_heartbeat_status_honesty.sql",
+);
 export const MIGRATION_PATHS = [
   MIGRATION_PATH,
   OPERATIONAL_SAFETY_MIGRATION_PATH,
   EXPECTED_CONNECTIONS_MIGRATION_PATH,
+  STATUS_HONESTY_MIGRATION_PATH,
 ];
-export const RELEASE_READBACK_INVARIANTS = 30;
+export const RELEASE_READBACK_INVARIANTS = 37;
 export const OPERATIONAL_SAFETY_INVARIANTS = 25;
 export const TOTAL_DISPOSABLE_INVARIANTS =
   RELEASE_READBACK_INVARIANTS + OPERATIONAL_SAFETY_INVARIANTS;
@@ -2058,9 +2068,203 @@ BEGIN
   END IF;
 END
 $expected_connection_fixture_reverted$;
+-- =============================================================================
+-- 20260729144000: a worker may not CLAIM health over evidence of failure.
+--
+-- Measured on the live production worker: rows read status=ONLINE next to
+-- failed_poll_count=1, because the 60 s periodic heartbeat sent a hardcoded
+-- ONLINE and 20260729136000 writes status = EXCLUDED.status outright while it
+-- COALESCEs the four poll columns. The worker-side fix derives that status from
+-- the last completed cycle; this half is the one a ROLLBACK cannot undo, since
+-- every previously built image still contains the literal.
+--
+-- The whole fixture runs inside an explicit transaction that is ROLLED BACK, so
+-- the operational-safety assertions that follow observe the untouched fixture.
+-- =============================================================================
+BEGIN;
+DO $status_honesty$
+DECLARE
+  c_digest constant text := 'digest-worker-02';
+  c_worker constant text := 'disposable-worker-02';
+  c_release constant text := repeat('e', 40);
+  c_greenfield_release constant text := repeat('c', 40);
+  c_started constant timestamptz := clock_timestamp() - interval '5 minutes';
+  v_result jsonb;
+  v_row app_private.network_worker_release_heartbeats%ROWTYPE;
+  v_poll_observed_at timestamptz;
+  v_dead jsonb;
+  v_greenfield jsonb;
+BEGIN
+  -- 1. A heartbeat carrying its OWN failure evidence cannot label itself
+  --    ONLINE, and the downgraded status is what reaches the core - i.e. what
+  --    public.network_worker_building_status shows the operator, not just what
+  --    the release readback stores.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_digest, c_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 2, 'successfulPolls', 0, 'failedPolls', 2
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'an ONLINE claim with failing polls reached the building status as %',
+      coalesce(v_result->>'status', '<null>');
+  END IF;
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_version = c_release;
+  IF v_row.status <> 'DEGRADED' OR v_row.failed_poll_count <> 2 THEN
+    RAISE EXCEPTION
+      'release readback stored status % next to failed_poll_count %',
+      v_row.status, coalesce(v_row.failed_poll_count::text, '<null>');
+  END IF;
+
+  -- 2. The periodic heartbeat carries NO poll evidence, so it inherits the
+  --    retained verdict instead of overwriting it. This is F2 exactly.
+  v_poll_observed_at := v_row.poll_observed_at;
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_digest, c_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object('source', 'periodic'), c_started
+  );
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_version = c_release;
+  IF v_row.status <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'a periodic ONLINE heartbeat overwrote the degraded verdict with %',
+      v_row.status;
+  END IF;
+
+  -- 3. ... and it still must not restamp poll freshness, because the deploy
+  --    gate reads pollObservedAt as proof a cycle actually ran.
+  IF v_row.poll_observed_at IS DISTINCT FROM v_poll_observed_at THEN
+    RAISE EXCEPTION 'a periodic heartbeat restamped poll freshness';
+  END IF;
+  IF v_row.failed_poll_count <> 2 OR v_row.connection_count <> 2 THEN
+    RAISE EXCEPTION 'a periodic heartbeat disturbed the retained poll counts';
+  END IF;
+
+  -- 4. Recovery is immediate: fresh evidence supersedes the retained verdict,
+  --    so a router coming back reports ONLINE on the very next cycle.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_digest, c_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 2, 'successfulPolls', 2, 'failedPolls', 0
+    ),
+    c_started
+  );
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_version = c_release;
+  IF v_row.status <> 'ONLINE' THEN
+    RAISE EXCEPTION 'a recovered release stayed % after a clean cycle',
+      v_row.status;
+  END IF;
+
+  -- 5. The guard downgrades; it does not PIN. Once the retained evidence is
+  --    clean a periodic ONLINE stays ONLINE, or the fix would trade one lie for
+  --    another.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_digest, c_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object('source', 'periodic'), c_started
+  );
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_version = c_release;
+  IF v_row.status <> 'ONLINE' THEN
+    RAISE EXCEPTION 'the downgrade guard pinned a healthy release to %',
+      v_row.status;
+  END IF;
+
+  -- 6. PAUSED and STOPPING are operator/lifecycle states, not health claims,
+  --    and the server never relabels them. The canary is deliberately PAUSED
+  --    during a deploy and is gated on its poll counts instead.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_digest, c_release, ARRAY['polling'], 'PAUSED', 0,
+    jsonb_build_object(
+      'connections', 2, 'successfulPolls', 0, 'failedPolls', 2
+    ),
+    c_started
+  );
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_version = c_release;
+  IF v_row.status <> 'PAUSED' THEN
+    RAISE EXCEPTION 'a paused worker with failing polls was relabelled %',
+      v_row.status;
+  END IF;
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_digest, c_release, ARRAY['polling'], 'STOPPING', 0,
+    jsonb_build_object('source', 'periodic'), c_started
+  );
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_version = c_release;
+  IF v_row.status <> 'STOPPING' THEN
+    RAISE EXCEPTION 'a stopping worker was relabelled %', v_row.status;
+  END IF;
+
+  -- 7. THE EQUIVALENCE ITSELF. A fleet with N configured connections and zero
+  --    reachable ones must never read back the same four fields as a fleet with
+  --    zero configured connections. That collision - ONLINE/0/0/0 either way -
+  --    is the whole defect, so it is asserted directly rather than inferred
+  --    from the pieces above.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_digest, c_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 2, 'successfulPolls', 0, 'failedPolls', 2
+    ),
+    c_started
+  );
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_digest, c_greenfield_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 0, 'successfulPolls', 0, 'failedPolls', 0
+    ),
+    c_started
+  );
+  v_dead := public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  );
+  v_greenfield := public.network_center_admin_worker_release_status_v1(
+    c_worker, c_greenfield_release
+  );
+  IF v_dead IS NULL OR v_greenfield IS NULL THEN
+    RAISE EXCEPTION 'the equivalence proof lost one of its two release rows';
+  END IF;
+  IF (
+    v_dead->>'status',
+    v_dead->>'connectionCount',
+    v_dead->>'successfulPollCount',
+    v_dead->>'failedPollCount'
+  ) IS NOT DISTINCT FROM (
+    v_greenfield->>'status',
+    v_greenfield->>'connectionCount',
+    v_greenfield->>'successfulPollCount',
+    v_greenfield->>'failedPollCount'
+  ) THEN
+    RAISE EXCEPTION
+      'an all-unreachable fleet reads back exactly like an unprovisioned one: %',
+      v_dead->>'status' || '/' || v_dead->>'connectionCount' || '/'
+        || v_dead->>'successfulPollCount' || '/' || v_dead->>'failedPollCount';
+  END IF;
+END
+$status_honesty$;
+ROLLBACK;
+DO $status_honesty_fixture_reverted$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_version IN (repeat('e', 40), repeat('c', 40))
+  ) THEN
+    RAISE EXCEPTION 'status-honesty fixture leaked into the shared proof state';
+  END IF;
+END
+$status_honesty_fixture_reverted$;
 SELECT jsonb_build_object(
   'status', 'PASS',
-  'invariants', 30
+  'invariants', 37
 ) AS disposable_release_proof;
 `;
 
@@ -3008,7 +3212,7 @@ $item5_fleet_kill_switch$;
 
 SELECT jsonb_build_object(
   'status', 'PASS',
-  'invariants', 55
+  'invariants', 62
 ) AS disposable_operational_safety_proof;
 `;
 

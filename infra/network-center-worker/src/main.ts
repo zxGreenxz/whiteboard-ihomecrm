@@ -13,12 +13,71 @@ import {
   createConsoleLogger,
   redactForLog,
   systemClock,
+  type JsonObject,
   type NetworkConnection,
   type WorkerLogger,
 } from "./domain.js";
 import { FilePortCycleEvidenceStore } from "./portCycleEvidence.js";
-import { PollingCoordinator } from "./polling.js";
+import { PollingCoordinator, type WorkerHeartbeatStatus } from "./polling.js";
 import { SshRouterConnector } from "./routeros/sshConnector.js";
+
+const HEARTBEAT_CAPABILITIES = ["routeros-ssh", "polling", "commands", "snapshots"];
+
+interface WorkerHeartbeatInput {
+  status: WorkerHeartbeatStatus;
+  workerVersion: string;
+  capabilities: string[];
+  queueAgeSeconds: number;
+  safeMetadata: JsonObject;
+  startedAt: string;
+}
+
+/**
+ * The periodic (non-poll) heartbeat.
+ *
+ * Its `status` is DERIVED, never asserted. It used to be
+ * `emergencyStop ? "PAUSED" : "ONLINE"`, and because `20260729136000` writes
+ * `status = EXCLUDED.status` unconditionally while COALESCEing the four poll
+ * columns, that literal ONLINE overwrote the DEGRADED the poll cycle had just
+ * proved - 60 seconds later, every time. Rows read `status=ONLINE` next to
+ * `failedPollCount=1`.
+ *
+ * It also still carries NO poll keys. That asymmetry is the point: the same
+ * migration stamps `poll_observed_at = now()` whenever any of `connections`,
+ * `successfulPolls` or `failedPolls` is present, so echoing the last cycle's
+ * counts here would manufacture fresh poll evidence from stale numbers and the
+ * deploy gate's freshness check would be reading this heartbeat's clock instead
+ * of a real observation.
+ */
+export function periodicHeartbeatInput(options: {
+  health: Pick<PollingCoordinator, "fleetStatus">;
+  workerVersion: string;
+  startedAt: Date;
+}): WorkerHeartbeatInput {
+  return {
+    status: options.health.fleetStatus(),
+    workerVersion: options.workerVersion,
+    capabilities: [...HEARTBEAT_CAPABILITIES],
+    queueAgeSeconds: 0,
+    safeMetadata: { source: "periodic" },
+    startedAt: options.startedAt.toISOString(),
+  };
+}
+
+/** The final heartbeat on a clean shutdown. */
+export function stoppingHeartbeatInput(options: {
+  workerVersion: string;
+  startedAt: Date;
+}): WorkerHeartbeatInput {
+  return {
+    status: "STOPPING",
+    workerVersion: options.workerVersion,
+    capabilities: [...HEARTBEAT_CAPABILITIES],
+    queueAgeSeconds: 0,
+    safeMetadata: {},
+    startedAt: options.startedAt.toISOString(),
+  };
+}
 
 interface WorkerRuntimeOptions {
   poll(): Promise<void>;
@@ -131,6 +190,15 @@ async function run(): Promise<void> {
     workerVersion: config.releaseSha,
     logger,
     enforceScheduling: true,
+    // NETWORK_CENTER_EMERGENCY_STOP is a WRITE freeze, not a full stop, and
+    // here it is a LABEL only - the read-only poll loop keeps running. That is
+    // the intended contract, not an oversight: the deploy gate starts the
+    // canary with EMERGENCY_STOP=true and can only promote it once it has
+    // produced real poll evidence (scripts/deploy-vultr.ps1
+    // Test-ExactPollEvidence), so gating polling here would deadlock every
+    // deploy. The write path is gated for real in CommandCoordinator (claim)
+    // and re-checked in CommandProcessor immediately before SSH and again
+    // after backup. See README "Kill switch và vận hành".
     paused: () => config.emergencyStop,
     routerOperationSemaphore,
   });
@@ -173,22 +241,15 @@ async function run(): Promise<void> {
       await writeFile("/tmp/network-center-worker-health", new Date().toISOString(), { mode: 0o600 });
     },
     commands: () => commands.runCycle(),
-    heartbeat: () => api.heartbeat({
-      status: config.emergencyStop ? "PAUSED" : "ONLINE",
+    heartbeat: () => api.heartbeat(periodicHeartbeatInput({
+      health: polling,
       workerVersion: config.releaseSha,
-      capabilities: ["routeros-ssh", "polling", "commands", "snapshots"],
-      queueAgeSeconds: 0,
-      safeMetadata: { source: "periodic" },
-      startedAt: startedAt.toISOString(),
-    }).then(() => undefined),
-    heartbeatStopped: () => api.heartbeat({
-      status: "STOPPING",
+      startedAt,
+    })).then(() => undefined),
+    heartbeatStopped: () => api.heartbeat(stoppingHeartbeatInput({
       workerVersion: config.releaseSha,
-      capabilities: ["routeros-ssh", "polling", "commands", "snapshots"],
-      queueAgeSeconds: 0,
-      safeMetadata: {},
-      startedAt: startedAt.toISOString(),
-    }).then(() => undefined),
+      startedAt,
+    })).then(() => undefined),
     pollIntervalMs: Math.min(config.pollIntervalMs, config.connectionRefreshIntervalMs),
     commandIntervalMs: config.commandPollIntervalMs,
     heartbeatIntervalMs: config.heartbeatIntervalMs,

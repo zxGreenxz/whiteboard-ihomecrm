@@ -214,7 +214,7 @@ test("published integration timeout covers every legitimate native-command budge
 // the proof gains coverage) -- it only guards against the count silently
 // SHRINKING, which would mean invariants were dropped without anyone
 // noticing.
-const MINIMUM_DISPOSABLE_PROOF_INVARIANT_COUNT = 55;
+const MINIMUM_DISPOSABLE_PROOF_INVARIANT_COUNT = 62;
 
 test("disposable PostgreSQL runner cannot retain pg_ctl pipes and cleans its TEMP cluster", {
   timeout: Number.isSafeInteger(disposableRunner.DISPOSABLE_PROOF_PROCESS_TIMEOUT_MS)

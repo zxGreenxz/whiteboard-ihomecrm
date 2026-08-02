@@ -446,7 +446,17 @@ Sau khi khớp:
 
 ## 6. Polling read-only trước
 
-Deploy worker với `NETWORK_CENTER_EMERGENCY_STOP=true`. Gate read-only:
+Deploy worker với `NETWORK_CENTER_EMERGENCY_STOP=true`.
+
+> **`EMERGENCY_STOP` = đóng băng GHI, KHÔNG phải dừng hẳn.** Nó chặn command
+> claim và mọi thao tác ghi lên router; **poll loop read-only vẫn chạy và vẫn
+> SSH vào router**. Đó chính là lý do bước gate này hoạt động được — không có
+> polling thì không có bằng chứng poll để promote. Trong sự cố mà thủ phạm là
+> chính con worker, `EMERGENCY_STOP` **không đủ**: phải
+> `systemctl stop network-center-worker` (hoặc `docker compose stop`). Bảng hợp
+> đồng đầy đủ nằm ở README mục "Kill switch và vận hành".
+
+Gate read-only:
 
 - heartbeat `PAUSED`/fresh;
 - router current state, interfaces, clients và Aruba discovery cập nhật;

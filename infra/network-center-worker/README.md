@@ -248,6 +248,34 @@ không đổi bằng exact worker+revision readback:
 
 ## Kill switch và vận hành
 
+> **ĐỌC TRƯỚC KHI DÙNG TRONG SỰ CỐ — `EMERGENCY_STOP` là ĐÓNG BĂNG GHI, không
+> phải DỪNG HẲN.** Tên gọi "emergency stop" dễ gây hiểu nhầm; đây là hợp đồng
+> chính xác:
+>
+> | Thành phần | `NETWORK_CENTER_EMERGENCY_STOP=true` |
+> | --- | --- |
+> | Command claim (`CommandCoordinator.runCycle`) | **DỪNG** — không gọi claim RPC |
+> | Thực thi command (`CommandProcessor`) | **DỪNG** — recheck trước SSH và ngay sau backup, trả `CANCELLED_BY_KILL_SWITCH` |
+> | Poll loop read-only (`PollingCoordinator.runCycle`) | **VẪN CHẠY** — vẫn SSH vào router để đọc trạng thái |
+> | Heartbeat | vẫn gửi, nhãn `PAUSED` |
+> | Maintenance RPC + telemetry ingest | **VẪN CHẠY** |
+>
+> Đây là **chủ ý**, không phải sót: deploy gate khởi động canary với
+> `EMERGENCY_STOP=true` rồi chỉ promote khi nó đã sinh ra bằng chứng poll thật
+> (`scripts/deploy-vultr.ps1` → `Test-ExactPollEvidence`). Chặn polling ở đây sẽ
+> khoá cứng mọi lần deploy đúng theo kiểu bế tắc mà cờ `-AllowNoConnections` đã
+> bị từ chối vì nó. Giữ polling cũng có nghĩa operator **không bị mù** trong lúc
+> xử lý sự cố.
+>
+> Hệ quả phải biết: một canary "paused" **vẫn nói chuyện với router production**.
+> Nếu sự cố là *worker đang làm hại router* (ví dụ SSH dồn dập làm CPU router
+> quá tải) thì `EMERGENCY_STOP` **không** cứu được — phải `docker compose stop`
+> hoặc `systemctl stop network-center-worker`. Đó mới là "dừng hẳn".
+>
+> Hợp đồng này được ghim bằng test (`test/fleetHealthHonesty.test.ts` →
+> `EMERGENCY_STOP contract`), nên không đổi được một cách âm thầm theo cả hai
+> chiều.
+
 - Giữ `NETWORK_CENTER_EMERGENCY_STOP=true` trong lần deploy đầu. Polling vẫn đọc
   trạng thái nhưng command loop không gọi claim RPC; canary không thể lấy lease
   của worker active. Processor vẫn recheck kill switch trước SSH và ngay sau
@@ -303,3 +331,50 @@ không đổi bằng exact worker+revision readback:
   đã thực sự xảy ra.
 - SIGTERM/SIGINT abort hai loop, đợi công việc đang chạy, gửi heartbeat `STOPPING`
   rồi thoát trong `stop_grace_period`.
+
+## Heartbeat nói thật về sức khỏe fleet
+
+Hai loop cùng gửi heartbeat và chúng **không** giống nhau:
+
+| | Poll heartbeat (cuối mỗi `runCycle`) | Periodic heartbeat (60 s, `main.ts`) |
+| --- | --- | --- |
+| `status` | suy ra từ chính vòng vừa chạy | suy ra từ **vòng poll gần nhất đã hoàn tất** (`PollingCoordinator.fleetStatus()`) |
+| `safeMetadata` | có `connections` / `successfulPolls` / `failedPolls` | **không có** ba key đó |
+
+Vì sao periodic heartbeat **không** được mang ba key poll: migration
+`20260729136000` đóng dấu `poll_observed_at = now()` ngay khi có **bất kỳ** key
+nào trong ba key đó. Lặp lại số cũ ở đây sẽ chế ra "bằng chứng poll tươi" từ số
+liệu cũ, và freshness gate của deploy sẽ đọc đồng hồ của heartbeat này thay vì
+của một lần quan sát thật.
+
+`status` được suy ra chứ **không** được khẳng định:
+
+- `PAUSED` — `EMERGENCY_STOP` bật (trạng thái operator, không phải tuyên bố sức khỏe).
+- `ONLINE` — vòng poll gần nhất hoàn tất và **không** có connection nào đang lỗi.
+- `DEGRADED` — có connection lỗi, hoặc inventory degraded, **hoặc chưa có bằng
+  chứng nào**: trước vòng poll đầu tiên, và sau bất kỳ vòng nào chết giữa chừng.
+  Schema không có trạng thái "chưa biết", nên `DEGRADED` là sàn trung thực.
+
+Đếm poll tính trên **tập connection đã cấu hình**, không phải tập được thử trong
+vòng này:
+
+- `connections` = số connection MIKROTIK/ROUTEROS_SSH còn bật monitoring — khớp
+  đúng predicate của `expectedConnectionCount` (`20260729143000`). Backoff
+  **không bao giờ** làm con số này nhỏ đi.
+- `successfulPolls` = poll thành công trong vòng này **+** connection bị bỏ qua
+  vì lần poll trước đã thành công và chưa hết `pollIntervalSeconds` (`freshPolls`).
+- `failedPolls` = poll lỗi trong vòng này **+** connection bị backoff hoãn
+  (`deferredPolls`).
+- `attemptedPolls` / `deferredPolls` / `freshPolls` được gửi kèm để phân biệt
+  "không thử vì đang backoff" với "không có gì để thử" — hai trạng thái ngược
+  nhau nhưng trước đây hiện ra y hệt.
+
+Sự cố có thật đã dẫn tới thiết kế này: backoff (`5s · 2^n`, trần 300 s) đẩy một
+connection lỗi ra khỏi vòng poll khi delay vượt chu kỳ 60 s, còn periodic
+heartbeat thì ghi đè `ONLINE` cứng. Một fleet mà **mọi** router đều mất kết nối
+lắng xuống thành `ONLINE / connections=0 / successful=0 / failed=0` — trùng khít
+chữ ký của một fleet khỏe mạnh chưa provision gì. Server chốt thêm lần nữa:
+`20260729144000` hạ `ONLINE` xuống `DEGRADED` khi bằng chứng poll (của chính
+heartbeat đó, hoặc bằng chứng đang lưu của cùng release) có `failedPolls > 0` —
+chỉ hạ, không bao giờ nâng — nên một bản rollback về image cũ vẫn không nói dối
+được.

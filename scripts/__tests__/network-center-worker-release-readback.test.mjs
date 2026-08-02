@@ -27,6 +27,10 @@ const expectedConnectionsMigrationPath = new URL(
   "supabase/migrations/20260729143000_network_center_worker_release_expected_connections.sql",
   root,
 );
+const statusHonestyMigrationPath = new URL(
+  "supabase/migrations/20260729144000_network_center_worker_heartbeat_status_honesty.sql",
+  root,
+);
 
 test("release heartbeat readback is additive, version-keyed and service-role-only", () => {
   assert.equal(existsSync(migrationPath), true, "release heartbeat migration missing");
@@ -572,11 +576,11 @@ test("runtime proof covers rollback-target retention and null poll evidence", ()
 
 test("disposable proof exercises both retention reachability and null poll evidence", () => {
   const source = readFileSync(disposableRunnerPath, "utf8");
-  assert.match(source, /'invariants',\s*30/);
+  assert.match(source, /'invariants',\s*37/);
   // The runner now applies a second migration and prints a second verdict, so
   // the release-readback count is pinned by name. Its enforcement must stay
   // exact: a shrunk or missing release verdict has to fail the proof.
-  assert.match(source, /RELEASE_READBACK_INVARIANTS\s*=\s*30/);
+  assert.match(source, /RELEASE_READBACK_INVARIANTS\s*=\s*37/);
   assert.match(
     source,
     /verdicts\[0\]\?\.invariants !== RELEASE_READBACK_INVARIANTS/,
@@ -608,6 +612,67 @@ test("disposable proof exercises both retention reachability and null poll evide
     /age-based collection deleted another worker/,
     "the global age purge must be proven not to touch other workers",
   );
+});
+
+test("the heartbeat status guard is additive, downgrade-only and reaches the building status", () => {
+  // The client half of this fix lives in a container image. rollback-vultr.ps1
+  // restarts a PREVIOUS image, and every image built before it still sends the
+  // hardcoded ONLINE, so the server half is the only one a rollback cannot
+  // undo. These assertions pin the shape that makes it work.
+  assert.equal(existsSync(statusHonestyMigrationPath), true, "status honesty migration missing");
+  if (!existsSync(statusHonestyMigrationPath)) return;
+  const sql = readFileSync(statusHonestyMigrationPath, "utf8");
+
+  // Additive forward fix: same signature, no schema surgery on an applied
+  // migration's objects.
+  assert.match(
+    sql,
+    /CREATE OR REPLACE FUNCTION public\.network_center_worker_heartbeat_v2\(\s*p_credential_digest text,\s*p_worker_version text,\s*p_capabilities text\[\],\s*p_status text,\s*p_queue_age_seconds integer,\s*p_safe_metadata jsonb,\s*p_started_at timestamptz\s*\)/i,
+  );
+  assert.doesNotMatch(sql, /DROP FUNCTION|ALTER TABLE|CREATE TABLE|DROP TABLE/i);
+  assert.match(sql, /SECURITY DEFINER/i);
+  assert.match(sql, /SET search_path TO 'pg_catalog'/i);
+
+  // The rule itself: downgrade only, fresh evidence first, stored evidence as
+  // the fallback for a heartbeat that brought none.
+  const guard = sql.match(
+    /IF v_status = 'ONLINE'[\s\S]{0,300}?END IF;/i,
+  )?.[0];
+  assert.ok(guard, "the downgrade guard could not be located; this check has rotted");
+  assert.match(guard, /coalesce\(\s*v_failed_poll_count,\s*v_retained_failed_poll_count,\s*0\s*\)\s*>\s*0/i);
+  assert.match(guard, /v_status := 'DEGRADED';/);
+  // Never upgrades: the only assignment inside the guard is to DEGRADED.
+  assert.doesNotMatch(guard, /v_status := '(?:ONLINE|PAUSED|STOPPING)'/i);
+
+  // The retained verdict is read for THIS release only, never fleet-wide.
+  const retained = sql.match(
+    /SELECT retained\.failed_poll_count[\s\S]{0,400}?;/i,
+  )?.[0];
+  assert.ok(retained, "the retained-evidence lookup could not be located; this check has rotted");
+  assert.match(retained, /retained\.worker_id = v_worker_id/i);
+  assert.match(retained, /retained\.worker_version = v_worker_version/i);
+
+  // The core is what writes public.network_worker_building_status - the row the
+  // UI and Realtime read. It must receive the EFFECTIVE status, or the release
+  // readback would be honest while the operator's screen still said ONLINE.
+  const coreCall = sql.match(
+    /v_result := app_private\.network_center_worker_heartbeat_core_v2\([\s\S]{0,400}?\);/i,
+  )?.[0];
+  assert.ok(coreCall, "the core call could not be located; this check has rotted");
+  assert.match(coreCall, /\n\s*v_status,\n/);
+  assert.doesNotMatch(coreCall, /\n\s*p_status,\n/);
+
+  // The core call has to come AFTER the guard, otherwise the building status is
+  // written before the downgrade is known.
+  assert.ok(
+    sql.indexOf("v_status := 'DEGRADED';") < sql.indexOf("v_result := app_private.network_center_worker_heartbeat_core_v2("),
+    "the downgrade must be computed before the building-status core runs",
+  );
+
+  // Poll evidence stays fail-closed exactly as 20260729136000 left it.
+  assert.match(sql, /Incomplete worker poll evidence/);
+  assert.match(sql, /Invalid worker poll evidence/);
+  assert.match(sql, /v_poll_observed_at := v_now;/);
 });
 
 test("disposable release proof runner has no production path and supports dry-run", () => {
