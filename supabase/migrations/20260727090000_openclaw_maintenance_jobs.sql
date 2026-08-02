@@ -8254,4 +8254,257 @@ grant execute on function app_private.openclaw_reconcile_migration_gaps_v1(jsonb
 grant execute on function app_private.openclaw_migration_cells_v1(jsonb)
   to openclaw_service_dispatcher;
 
+
+-- ---------------------------------------------------------------------------
+-- 12. Lease handover, corrected
+-- ---------------------------------------------------------------------------
+-- The first version was unrunnable and unsafe in two ways.
+--
+-- `openclaw_runtime_leases_one_effective_uidx` is a partial UNIQUE INDEX on
+-- (organization_id, account_id) where status='ACTIVE'. Indexes are checked per
+-- statement, so "insert the new ACTIVE lease, then in a LATER step revoke the old
+-- one" can never work: the insert always collides. And the revoke step refused to
+-- run until the new lease existed, so neither step could go first - the migration
+-- deadlocked at step 8 every time.
+--
+-- The second flaw: the old version picked ONE account by `max(fencing_token)`,
+-- while the revoke step retired the old cell's leases for EVERY account. An
+-- organization with N accounts lost N-1 leases with nothing to replace them.
+--
+-- Acquire is therefore the atomic HANDOVER, per account, in one statement pair
+-- inside one function. Revoke then only retires credentials and verifies.
+
+create or replace function app_private.openclaw_handover_leases_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_account uuid;
+  v_old_token bigint;
+  v_old_generation bigint;
+  v_moved integer := 0;
+  v_already integer := 0;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  -- The account is derived FROM THE NEW CELL, not guessed from fencing tokens:
+  -- openclaw_runtime_cells rows are per (organization, account), so a --new-cell id
+  -- belongs to exactly one account, and the lease FK is (org, account, cell).
+  -- Guessing by max(fencing_token) could pick an account the new cell is not for,
+  -- which the foreign key then rejects.
+  for v_account in
+    select cell.account_id
+    from public.openclaw_runtime_cells cell
+    where cell.organization_id = v_scope.organization_id
+      and cell.id = v_scope.new_cell
+  loop
+    -- Idempotent: a retried step finds this account already handed over.
+    if exists (
+      select 1 from public.openclaw_runtime_leases lease
+      where lease.organization_id = v_scope.organization_id
+        and lease.account_id = v_account
+        and lease.cell_id = v_scope.new_cell
+        and lease.status = 'ACTIVE' and lease.released_at is null
+    ) then
+      v_already := v_already + 1;
+      continue;
+    end if;
+
+    -- Fence strictly above every lease this account has EVER held, not merely above
+    -- the old cell's: a lease left behind by an aborted migration would otherwise
+    -- still out-rank the new one.
+    select max(lease.fencing_token), max(lease.lease_generation)
+      into v_old_token, v_old_generation
+    from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.account_id = v_account;
+
+    update public.openclaw_runtime_leases
+      set status = 'REVOKED', released_at = clock_timestamp()
+      where organization_id = v_scope.organization_id
+        and account_id = v_account
+        and status = 'ACTIVE' and released_at is null;
+
+    insert into public.openclaw_runtime_leases(
+      organization_id, account_id, cell_id, lease_generation, fencing_token,
+      status, expires_at
+    ) values (
+      v_scope.organization_id, v_account, v_scope.new_cell,
+      coalesce(v_old_generation, 0) + 1, coalesce(v_old_token, 0) + 1, 'ACTIVE',
+      clock_timestamp() + interval '1 hour'
+    );
+    v_moved := v_moved + 1;
+  end loop;
+
+  if v_moved = 0 and v_already = 0 then
+    raise exception 'no lease exists to hand over' using errcode = 'P0002';
+  end if;
+  return jsonb_build_object(
+    'version', 1, 'movedAccounts', v_moved, 'alreadyOnNewCell', v_already
+  );
+end;
+$function$;
+
+create or replace function app_private.openclaw_retire_old_cell_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_pending integer;
+  v_credentials integer;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  -- Refuse while ANY account still lacks an active lease on the new cell. The old
+  -- version checked only that SOME lease existed, which a stale lower-token lease
+  -- from an aborted migration would satisfy while the organization still had
+  -- accounts pointing nowhere.
+  select count(*) into v_pending
+  from (
+    select distinct lease.account_id
+    from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+  ) account
+  where not exists (
+    select 1 from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.account_id = account.account_id
+      and lease.cell_id = v_scope.new_cell
+      and lease.status = 'ACTIVE' and lease.released_at is null
+  );
+  if v_pending > 0 then
+    raise exception '% account(s) still hold no active lease on the new cell', v_pending
+      using errcode = '42501';
+  end if;
+
+  with retired as (
+    update public.openclaw_runtime_credentials
+      set revoked_at = clock_timestamp(), revoked_reason = 'vps-migration'
+      where organization_id = v_scope.organization_id
+        and cell_id = v_scope.old_cell and revoked_at is null
+      returning 1
+  )
+  select count(*) into v_credentials from retired;
+
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_credentials);
+end;
+$function$;
+
+create or replace function public.openclaw_service_acquire_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_handover_leases_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_revoke_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_retire_old_cell_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_rotate_migration_credentials_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  -- Rotation retires the OLD cell's credentials. The new credential is minted out of
+  -- band and never travels through this facade: a credential value in a request body
+  -- would land in logs and evidence.
+  return app_private.openclaw_retire_old_cell_v1(p_request);
+end;
+$function$;
+
+create or replace function app_private.openclaw_require_fresh_qr_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_accounts integer;
+begin
+  -- A session is never copied or restored: advancing session_generation invalidates
+  -- every credential, ticket and challenge bound to the old one, so the only way back
+  -- is a fresh QR scan by a human.
+  with invalidated as (
+    update public.openclaw_accounts
+      set session_generation = session_generation + 1,
+          connection_state = 'RECONNECT_REQUIRED',
+          session_risk_state = 'INVALID',
+          updated_at = clock_timestamp()
+      where organization_id = v_org and is_active
+        -- Idempotent: a retried step after the human already re-scanned must not
+        -- kill the fresh session.
+        and connection_state <> 'RECONNECT_REQUIRED'
+      returning 1
+  )
+  select count(*) into v_accounts from invalidated;
+
+  update public.openclaw_qr_challenges
+    set revoked_at = clock_timestamp()
+    where organization_id = v_org and revoked_at is null and consumed_at is null;
+
+  return jsonb_build_object(
+    'version', 1, 'sessionInvalidated', true, 'affected', v_accounts
+  );
+end;
+$function$;
+
+create or replace function public.openclaw_service_require_fresh_qr_login_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_require_fresh_qr_v1(p_request);
+end;
+$function$;
+
+alter function app_private.openclaw_handover_leases_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_retire_old_cell_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+
+revoke all on function app_private.openclaw_handover_leases_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_retire_old_cell_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function app_private.openclaw_handover_leases_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_retire_old_cell_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+grant select, insert, update on public.openclaw_runtime_credentials
+  to openclaw_maintenance_writer;
+create policy openclaw_runtime_credentials_migration_writer_all
+  on public.openclaw_runtime_credentials for all to openclaw_maintenance_writer
+  using (true) with check (true);
+
 commit;

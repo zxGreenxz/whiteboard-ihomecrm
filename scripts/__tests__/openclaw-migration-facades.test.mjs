@@ -34,6 +34,64 @@ async function seed(database) {
   );
 }
 
+/** Cell rows are per (organization, account), so ids carry both slot and account. */
+const cellId = (slot, accountIndex) =>
+  `dddd2000-0000-4000-8000-0000000000${slot}${accountIndex}`;
+const OLD_CELL = cellId(1, 0);
+const NEW_CELL = cellId(2, 0);
+const SHA = "a".repeat(40);
+const DIGEST = `sha256:${"b".repeat(64)}`;
+const CONFIG = "c".repeat(64);
+
+/**
+ * ONE active account plus one retired account holding a historical lease.
+ *
+ * A review finding claimed an organization with N accounts would lose N-1 leases.
+ * The schema forbids that premise: `openclaw_accounts_one_active_per_org_uidx`
+ * allows a single active account per organization. The per-account handover is
+ * still the right shape - a retired account can still own historical leases whose
+ * fencing tokens must not out-rank the new cell - so this seeds exactly that.
+ */
+async function seedTwoAccountCells(database) {
+  // Seeding a READY cell and an ACTIVE lease trips the canonical activation guard,
+  // which is correct product behaviour and not what these assertions are about.
+  // Superuser-only bypass, scoped to the seed and restored immediately after.
+  await database.query("set session_replication_role = replica");
+  const accounts = [
+    "dddd1000-0000-4000-8000-00000000000a",
+    "dddd1000-0000-4000-8000-00000000000b",
+  ];
+  for (const [index, account] of accounts.entries()) {
+    await database.query(
+      `insert into public.openclaw_accounts(id, organization_id, account_profile, is_active)
+       values ($1, $2, $3, $4) on conflict (id) do nothing`,
+      [account, ORG, `profile-${index}`, index === 0],
+    );
+    for (const [slot, current] of [[1, true], [2, false]]) {
+      await database.query(
+        `insert into public.openclaw_runtime_cells(
+           id, organization_id, account_id, cell_generation, state, is_current,
+           reviewed_commit_sha, image_digest, config_digest)
+         values ($1, $2, $3, $4, 'READY', $5, $6, $7, $8)
+         on conflict (id) do nothing`,
+        [
+          cellId(slot, index),
+          ORG, account, index + 1, current, SHA, DIGEST, CONFIG,
+        ],
+      );
+    }
+    await database.query(
+      `insert into public.openclaw_runtime_leases(
+         organization_id, account_id, cell_id, lease_generation, fencing_token,
+         status, expires_at)
+       values ($1, $2, $3, 1, $4, 'ACTIVE', clock_timestamp() + interval '1 hour')`,
+      [ORG, account, cellId(1, index), index + 1],
+    );
+  }
+  await database.query("set session_replication_role = origin");
+  return accounts;
+}
+
 async function withDatabase(operation) {
   const database = await createDisposableOpenClawDatabase({ verifyCli: false });
   try {
@@ -120,6 +178,54 @@ describe("migration facades under the calling role", () => {
         await database.query("rollback");
       }
       expect(message).toMatch(/rollout stage does not permit activation/u);
+    });
+  });
+
+  it("refuses to hand over a lease while the rollout stage forbids activation", async () => {
+    await withDatabase(async (database) => {
+      await seedTwoAccountCells(database);
+      // Handing a lease to a new cell IS an activation. The canonical activation
+      // guard owns that decision and a migration script must not route around it,
+      // so the successful path needs a permitting rollout run - fixture owned by the
+      // rollout tooling, not by this harness.
+      let message = "";
+      await database.query("begin");
+      try {
+        await database.query("set local role service_role");
+        await database.query(
+          `select public.openclaw_service_acquire_migration_lease_v1($1::jsonb)`,
+          [JSON.stringify({
+            version: 1, organizationId: ORG, oldCellId: OLD_CELL, newCellId: NEW_CELL,
+          })],
+        );
+      } catch (error) {
+        message = String(error.message);
+      } finally {
+        await database.query("rollback");
+      }
+      expect(message).toMatch(/rollout stage does not permit activation/u);
+    });
+  });
+
+  it("refuses to retire the old cell while any account still has no new lease", async () => {
+    await withDatabase(async (database) => {
+      await seedTwoAccountCells(database);
+      let message = "";
+      await database.query("begin");
+      try {
+        await database.query("set local role service_role");
+        await database.query(
+          `select public.openclaw_service_revoke_migration_lease_v1($1::jsonb)`,
+          [JSON.stringify({
+            version: 1, organizationId: ORG, oldCellId: OLD_CELL, newCellId: NEW_CELL,
+          })],
+        );
+      } catch (error) {
+        message = String(error.message);
+      } finally {
+        await database.query("rollback");
+      }
+      expect(message).toMatch(/hold no active lease on the new cell/u);
     });
   });
 
