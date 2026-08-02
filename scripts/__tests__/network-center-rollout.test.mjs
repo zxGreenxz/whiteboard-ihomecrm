@@ -29,6 +29,7 @@ const validateModule = await load("scripts/validate-network-center-rollout.mjs")
 const auditModule = await load("scripts/audit-network-center-rollout.mjs");
 const adminModule = await load("scripts/network-center-admin.mjs");
 const edgeModule = await loadCliSafely("scripts/deploy-edge-fn.mjs");
+const commonModule = await load("scripts/network-center-rollout-common.mjs");
 
 test("ships the complete Network Center rollout toolchain", () => {
   for (const path of requiredFiles) {
@@ -36,16 +37,37 @@ test("ships the complete Network Center rollout toolchain", () => {
   }
 });
 
-test("manifest pins nineteen ordered migration and Edge source digests", () => {
+// The count used to be hardcoded ("ten", then "fourteen", ... then "nineteen")
+// and went red on every single forward-fix migration, which trains people to
+// bump a number rather than to look. Worse, a hardcoded count is weaker than it
+// looks: it cannot tell a manifest that lost one migration and gained another
+// from a correct one. Pinning the manifest to the DISCOVERED set is both
+// stronger and rot-free - it is the same completeness rule the validator
+// enforces, so this test now fails for the reason the rollout would fail.
+test("manifest pins every ordered migration and Edge source digest", async () => {
   const path = new URL("scripts/network-center-rollout-manifest.json", root);
   assert.equal(existsSync(path), true, "manifest missing");
   if (!existsSync(path)) return;
   const manifest = JSON.parse(readFileSync(path, "utf8"));
   assert.match(manifest.reviewedGitSha, /^[a-f0-9]{40}$/);
-  assert.equal(manifest.migrations.length, 19);
+  assert.ok(commonModule, "rollout common module missing");
+  const discovered = await commonModule.discoverNetworkCenterMigrations();
+  assert.deepEqual(
+    manifest.migrations.map((item) => item.path),
+    discovered,
+    "manifest must cover every Network Center migration on disk, in apply order",
+  );
+  assert.ok(
+    manifest.migrations.length >= commonModule.MINIMUM_NETWORK_CENTER_ROLLOUT_MIGRATIONS,
+    `manifest shrank below the floor of ${commonModule.MINIMUM_NETWORK_CENTER_ROLLOUT_MIGRATIONS}`,
+  );
   assert.deepEqual(
     manifest.migrations.map((item) => item.path),
     [...manifest.migrations.map((item) => item.path)].sort(),
+  );
+  assert.deepEqual(
+    manifest.migrations.map((item) => item.ordinal),
+    manifest.migrations.map((_, index) => index + 1),
   );
   for (const item of manifest.migrations) assert.match(item.sha256, /^[a-f0-9]{64}$/);
   assert.match(manifest.edgeFunction.sha256, /^[a-f0-9]{64}$/);
