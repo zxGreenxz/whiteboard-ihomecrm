@@ -1823,7 +1823,12 @@ begin
   ) order by organization.name, organization.id), '[]'::jsonb)
   into v_items
   from public.organizations organization
-  where organization.id = any(public.my_org_ids());
+  -- Only organizations where the caller actually holds openclaw_zalo.view.
+  -- my_org_ids() is every membership, so the selector used to offer organizations
+  -- the route guard then bounced out of, with no explanation to the user.
+  where organization.id in (
+    select app_private.openclaw_authorized_org_ids_v1('openclaw_zalo.view')
+  );
   return jsonb_build_object('version', 1, 'organizations', v_items);
 end;
 $function$;
