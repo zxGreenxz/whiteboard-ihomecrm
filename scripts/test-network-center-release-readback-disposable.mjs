@@ -20,11 +20,21 @@ const OPERATIONAL_SAFETY_MIGRATION_PATH = join(
   "migrations",
   "20260729138000_network_center_operational_safety.sql",
 );
+// Redefines network_center_admin_worker_release_status_v1 to also return the
+// server-derived expected pollable connection count. It has to be applied here
+// or this proof would keep certifying the superseded 20260729136000 body.
+const EXPECTED_CONNECTIONS_MIGRATION_PATH = join(
+  REPO_ROOT,
+  "supabase",
+  "migrations",
+  "20260729143000_network_center_worker_release_expected_connections.sql",
+);
 export const MIGRATION_PATHS = [
   MIGRATION_PATH,
   OPERATIONAL_SAFETY_MIGRATION_PATH,
+  EXPECTED_CONNECTIONS_MIGRATION_PATH,
 ];
-export const RELEASE_READBACK_INVARIANTS = 22;
+export const RELEASE_READBACK_INVARIANTS = 30;
 export const OPERATIONAL_SAFETY_INVARIANTS = 25;
 export const TOTAL_DISPOSABLE_INVARIANTS =
   RELEASE_READBACK_INVARIANTS + OPERATIONAL_SAFETY_INVARIANTS;
@@ -265,6 +275,34 @@ CREATE TABLE public.network_devices (
     REFERENCES public.buildings(organization_id, id),
   UNIQUE (organization_id, building_id, id)
 );
+
+-- Faithful subset of 20260729010000's connection registry plus 20260729134000's
+-- one-enabled-connection-per-device unique index, so the expected pollable
+-- connection count is measured against the same constraint surface production
+-- has. Only the columns the readback predicate reads are modelled.
+CREATE TABLE public.network_device_connections (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL,
+  building_id uuid NOT NULL,
+  device_id uuid NOT NULL,
+  transport text NOT NULL
+    CHECK (transport IN ('ROUTEROS_SSH', 'ROUTEROS_API', 'SNMP', 'HTTPS', 'DISPLAY_ONLY')),
+  management_ip inet NOT NULL,
+  management_port integer NOT NULL CHECK (management_port BETWEEN 1 AND 65535),
+  credential_ref text NOT NULL,
+  is_enabled boolean NOT NULL DEFAULT false,
+  CONSTRAINT network_device_connections_org_building_fk
+    FOREIGN KEY (organization_id, building_id)
+    REFERENCES public.buildings(organization_id, id),
+  CONSTRAINT network_device_connections_device_fk
+    FOREIGN KEY (organization_id, building_id, device_id)
+    REFERENCES public.network_devices(organization_id, building_id, id),
+  UNIQUE (device_id, transport, management_ip, management_port)
+);
+
+CREATE UNIQUE INDEX network_device_connections_one_enabled_per_device_idx
+  ON public.network_device_connections (device_id)
+  WHERE is_enabled;
 
 CREATE TABLE public.network_managed_resources (
   id uuid PRIMARY KEY,
@@ -1764,9 +1802,265 @@ BEGIN
   END IF;
 END
 $fresh_release_growth_bounded$;
+-- =============================================================================
+-- 20260729143000: the poll EXPECTATION is server state, not an operator switch.
+--
+-- deploy-vultr.ps1 used to demand connectionCount >= 1, which no green-field
+-- fleet can satisfy - zero connection rows means a healthy worker reports zero
+-- polls, so a router was needed to promote a worker and a worker was needed to
+-- onboard a router. These invariants prove the replacement expectation is
+-- computed by PostgreSQL from the worker's OWN assignments under the same
+-- predicate network_center_worker_list_connections_v2 serves, so a fleet whose
+-- connections are all failing still cannot present itself as green.
+--
+-- The whole fixture runs inside an explicit transaction that is ROLLED BACK, so
+-- the operational-safety assertions that follow observe the untouched fixture.
+-- =============================================================================
+RESET ROLE;
+BEGIN;
+INSERT INTO public.network_workers VALUES (
+  '10000000-0000-4000-8000-000000000003',
+  'disposable-worker-03',
+  'Disposable worker three',
+  'ACTIVE',
+  ARRAY['HEARTBEAT', 'POLL']::text[]
+);
+INSERT INTO public.network_worker_assignments (
+  id, worker_id, organization_id, building_id, device_id, device_kind,
+  assignment_version, can_poll, can_inventory, can_execute, active_from, active_until
+) VALUES
+  ('30000000-0000-4000-8000-0000000000c1',
+   '10000000-0000-4000-8000-000000000003',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d1', 'MIKROTIK', 1,
+   true, true, false, statement_timestamp() - interval '1 day', NULL),
+  ('30000000-0000-4000-8000-0000000000c2',
+   '10000000-0000-4000-8000-000000000003',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d2', 'MIKROTIK', 1,
+   true, false, false, statement_timestamp() - interval '1 day', NULL),
+  ('30000000-0000-4000-8000-0000000000c5',
+   '10000000-0000-4000-8000-000000000003',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d5', 'MIKROTIK', 1,
+   true, false, false, statement_timestamp() - interval '1 day', NULL),
+  ('30000000-0000-4000-8000-0000000000c7',
+   '10000000-0000-4000-8000-000000000003',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a2',
+   '50000000-0000-4000-8000-0000000000d7', 'MIKROTIK', 1,
+   true, false, false, statement_timestamp() - interval '1 day', NULL);
+INSERT INTO public.network_device_connections (
+  id, organization_id, building_id, device_id, transport, management_ip,
+  management_port, credential_ref, is_enabled
+) VALUES
+  -- pollable: assigned, enabled, MikroTik over RouterOS SSH
+  ('b0000000-0000-4000-8000-000000000001',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d1',
+   'ROUTEROS_SSH', '10.77.0.11', 22, 'router/disposable-d1', true),
+  -- provisioned but disabled: the worker is never handed it
+  ('b0000000-0000-4000-8000-000000000002',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d2',
+   'ROUTEROS_SSH', '10.77.0.12', 22, 'router/disposable-d2', false),
+  -- enabled but not a transport the polling cycle attempts
+  ('b0000000-0000-4000-8000-000000000005',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d5',
+   'SNMP', '10.77.0.15', 161, 'router/disposable-d5', true),
+  -- pollable, in a second building of the same tenant
+  ('b0000000-0000-4000-8000-000000000007',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a2',
+   '50000000-0000-4000-8000-0000000000d7',
+   'ROUTEROS_SSH', '10.77.0.17', 22, 'router/disposable-d7', true),
+  -- same tenant, NOT assigned to this worker
+  ('b0000000-0000-4000-8000-000000000003',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d3',
+   'ROUTEROS_SSH', '10.77.0.13', 22, 'router/disposable-d3', true),
+  -- another tenant entirely
+  ('b0000000-0000-4000-8000-00000000000b',
+   '40000000-0000-4000-8000-0000000000bb',
+   '20000000-0000-4000-8000-0000000000b1',
+   '50000000-0000-4000-8000-0000000000db',
+   'ROUTEROS_SSH', '10.77.0.21', 22, 'router/disposable-db', true);
+INSERT INTO app_private.network_worker_release_heartbeats (
+  worker_id, worker_version, status, heartbeat_at, started_at,
+  assigned_building_count, connection_count, successful_poll_count,
+  failed_poll_count, poll_observed_at, updated_at
+) VALUES (
+  '10000000-0000-4000-8000-000000000003', repeat('c', 40), 'PAUSED',
+  statement_timestamp(), statement_timestamp() - interval '5 minutes',
+  2, 2, 2, 0, statement_timestamp() - interval '1 second', statement_timestamp()
+);
+DO $expected_connection_evidence$
+DECLARE
+  c_worker constant text := 'disposable-worker-03';
+  c_release constant text := repeat('c', 40);
+  v_status jsonb;
+  v_expected integer;
+BEGIN
+  v_status := public.network_center_admin_worker_release_status_v1(c_worker, c_release);
+  IF v_status IS NULL
+     OR NOT (v_status ? 'expectedConnectionCount')
+     OR jsonb_typeof(v_status->'expectedConnectionCount') <> 'number'
+     OR (v_status->>'expectedConnectionCount')::integer <> 2 THEN
+    RAISE EXCEPTION
+      'expected pollable connection count is not the two enabled RouterOS SSH connections (got %)',
+      coalesce(v_status->>'expectedConnectionCount', '<missing>');
+  END IF;
+
+  -- A device may carry several overlapping assignment rows; the served
+  -- connection list de-duplicates on connection id and so must the expectation.
+  INSERT INTO public.network_worker_assignments (
+    id, worker_id, organization_id, building_id, device_id, device_kind,
+    assignment_version, can_poll, can_inventory, can_execute, active_from, active_until
+  ) VALUES (
+    '30000000-0000-4000-8000-0000000000cf',
+    '10000000-0000-4000-8000-000000000003',
+    '40000000-0000-4000-8000-0000000000aa',
+    '20000000-0000-4000-8000-0000000000a1',
+    '50000000-0000-4000-8000-0000000000d1', 'MIKROTIK', 2,
+    true, false, false, statement_timestamp() - interval '2 hours', NULL
+  );
+  v_expected := (public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  )->>'expectedConnectionCount')::integer;
+  IF v_expected <> 2 THEN
+    RAISE EXCEPTION 'overlapping assignment rows multiplied the expectation (got %)', v_expected;
+  END IF;
+  DELETE FROM public.network_worker_assignments
+  WHERE id = '30000000-0000-4000-8000-0000000000cf';
+
+  -- A provisioned but disabled connection is not served, so it is not expected.
+  UPDATE public.network_device_connections
+  SET is_enabled = true
+  WHERE id = 'b0000000-0000-4000-8000-000000000002';
+  v_expected := (public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  )->>'expectedConnectionCount')::integer;
+  IF v_expected <> 3 THEN
+    RAISE EXCEPTION 'enabling a provisioned connection did not raise the expectation (got %)', v_expected;
+  END IF;
+  UPDATE public.network_device_connections
+  SET is_enabled = false
+  WHERE id = 'b0000000-0000-4000-8000-000000000002';
+
+  -- Only the MikroTik/RouterOS-SSH subset the polling cycle attempts counts.
+  UPDATE public.network_device_connections
+  SET transport = 'ROUTEROS_SSH', management_port = 22
+  WHERE id = 'b0000000-0000-4000-8000-000000000005';
+  v_expected := (public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  )->>'expectedConnectionCount')::integer;
+  IF v_expected <> 3 THEN
+    RAISE EXCEPTION 'transport is not part of the expectation predicate (got %)', v_expected;
+  END IF;
+  UPDATE public.network_device_connections
+  SET transport = 'SNMP', management_port = 161
+  WHERE id = 'b0000000-0000-4000-8000-000000000005';
+
+  -- A retired device is not served either.
+  UPDATE public.network_devices SET is_active = false
+  WHERE id = '50000000-0000-4000-8000-0000000000d1';
+  v_expected := (public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  )->>'expectedConnectionCount')::integer;
+  IF v_expected <> 1 THEN
+    RAISE EXCEPTION 'an inactive device stayed in the expectation (got %)', v_expected;
+  END IF;
+  UPDATE public.network_devices SET is_active = true
+  WHERE id = '50000000-0000-4000-8000-0000000000d1';
+
+  -- Monitoring disabled for a building removes its connections from the cycle.
+  UPDATE public.network_site_settings SET monitoring_enabled = false
+  WHERE organization_id = '40000000-0000-4000-8000-0000000000aa'
+    AND building_id = '20000000-0000-4000-8000-0000000000a1';
+  v_expected := (public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  )->>'expectedConnectionCount')::integer;
+  IF v_expected <> 1 THEN
+    RAISE EXCEPTION 'a monitoring-disabled building stayed in the expectation (got %)', v_expected;
+  END IF;
+  UPDATE public.network_site_settings SET monitoring_enabled = true
+  WHERE organization_id = '40000000-0000-4000-8000-0000000000aa'
+    AND building_id = '20000000-0000-4000-8000-0000000000a1';
+
+  -- can_poll and the assignment window both gate what is served.
+  UPDATE public.network_worker_assignments SET can_poll = false
+  WHERE id = '30000000-0000-4000-8000-0000000000c7';
+  v_expected := (public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  )->>'expectedConnectionCount')::integer;
+  IF v_expected <> 1 THEN
+    RAISE EXCEPTION 'a non-polling assignment stayed in the expectation (got %)', v_expected;
+  END IF;
+  UPDATE public.network_worker_assignments SET can_poll = true
+  WHERE id = '30000000-0000-4000-8000-0000000000c7';
+  UPDATE public.network_worker_assignments
+  SET active_until = statement_timestamp() - interval '1 minute'
+  WHERE id = '30000000-0000-4000-8000-0000000000c1';
+  v_expected := (public.network_center_admin_worker_release_status_v1(
+    c_worker, c_release
+  )->>'expectedConnectionCount')::integer;
+  IF v_expected <> 1 THEN
+    RAISE EXCEPTION 'a closed assignment window stayed in the expectation (got %)', v_expected;
+  END IF;
+  UPDATE public.network_worker_assignments SET active_until = NULL
+  WHERE id = '30000000-0000-4000-8000-0000000000c1';
+
+  -- The green-field state itself: a zero expectation is a real, non-NULL answer
+  -- the deploy gate can act on, both when the registry withholds POLL and when
+  -- the tenant simply has no connections yet.
+  UPDATE public.network_workers SET capabilities = ARRAY['HEARTBEAT']::text[]
+  WHERE id = '10000000-0000-4000-8000-000000000003';
+  v_status := public.network_center_admin_worker_release_status_v1(c_worker, c_release);
+  IF jsonb_typeof(v_status->'expectedConnectionCount') <> 'number'
+     OR (v_status->>'expectedConnectionCount')::integer <> 0 THEN
+    RAISE EXCEPTION 'a worker without POLL did not read back a zero expectation (got %)',
+      coalesce(v_status->>'expectedConnectionCount', '<null>');
+  END IF;
+  UPDATE public.network_workers
+  SET capabilities = ARRAY['HEARTBEAT', 'POLL']::text[]
+  WHERE id = '10000000-0000-4000-8000-000000000003';
+  UPDATE public.network_workers
+  SET capabilities = ARRAY['HEARTBEAT', 'POLL']::text[]
+  WHERE id = '10000000-0000-4000-8000-000000000001';
+  v_status := public.network_center_admin_worker_release_status_v1(
+    'disposable-worker-01', repeat('a', 40)
+  );
+  IF jsonb_typeof(v_status->'expectedConnectionCount') <> 'number'
+     OR (v_status->>'expectedConnectionCount')::integer <> 0 THEN
+    RAISE EXCEPTION 'a connectionless fleet did not read back a zero expectation (got %)',
+      coalesce(v_status->>'expectedConnectionCount', '<null>');
+  END IF;
+END
+$expected_connection_evidence$;
+ROLLBACK;
+DO $expected_connection_fixture_reverted$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.network_workers worker
+    WHERE worker.id = '10000000-0000-4000-8000-000000000003'
+  ) OR EXISTS (
+    SELECT 1 FROM public.network_device_connections
+  ) THEN
+    RAISE EXCEPTION 'expected-connection fixture leaked into the shared proof state';
+  END IF;
+END
+$expected_connection_fixture_reverted$;
 SELECT jsonb_build_object(
   'status', 'PASS',
-  'invariants', 22
+  'invariants', 30
 ) AS disposable_release_proof;
 `;
 
@@ -2714,7 +3008,7 @@ $item5_fleet_kill_switch$;
 
 SELECT jsonb_build_object(
   'status', 'PASS',
-  'invariants', 47
+  'invariants', 55
 ) AS disposable_operational_safety_proof;
 `;
 

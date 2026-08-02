@@ -16,7 +16,46 @@ const imageB = `sha256:${"2".repeat(64)}`;
 const generationA = "3".repeat(64);
 const generationB = "4".repeat(64);
 
-function run(script: string, body: string) {
+// These scripts have to survive BOTH PowerShell editions. Two defects found on
+// the live rollout each broke exactly one of them: Windows PowerShell 5.1
+// promotes native stderr to a terminating error (so a successful remote step
+// killed the run), and PowerShell 7's ConvertFrom-Json yields Int64 where 5.1
+// yields Int32 (so `-isnot [int]` rejected every valid receipt). Together they
+// meant the deploy path ran on NEITHER edition, and neither was caught because
+// the .ps1 files were only ever AST-parsed. Every case below actually executes.
+//
+// Windows PowerShell 5.1 is always present on win32. PowerShell 7 is used when
+// `pwsh` is on PATH, or when NETWORK_CENTER_PWSH points at one. Tests that
+// depend on PS7-only semantics must therefore ALSO carry an
+// edition-independent arm (an explicitly typed [long] reproduces exactly what
+// PS7's parser produces), so a missing pwsh degrades coverage instead of
+// silently passing.
+interface PowerShellEdition {
+  readonly label: string;
+  readonly executable: string;
+}
+
+function resolvePowerShellEditions(): PowerShellEdition[] {
+  const editions: PowerShellEdition[] = [{ label: "windows-powershell-5.1", executable: "powershell.exe" }];
+  const candidates = [process.env.NETWORK_CENTER_PWSH?.trim(), "pwsh.exe", "pwsh"].filter(
+    (candidate): candidate is string => Boolean(candidate),
+  );
+  for (const executable of candidates) {
+    const probe = spawnSync(executable, ["-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"], {
+      encoding: "utf8", windowsHide: true,
+    });
+    const version = probe.status === 0 ? probe.stdout.trim() : "";
+    if (/^([7-9]|\d{2,})\./.test(version)) {
+      editions.push({ label: `powershell-${version}`, executable });
+      break;
+    }
+  }
+  return editions;
+}
+
+const editions = resolvePowerShellEditions();
+
+function run(script: string, body: string, executable = "powershell.exe") {
   const root = mkdtempSync(join(tmpdir(), "network-center-pwsh-reconcile-"));
   roots.push(root);
   const harness = join(root, "harness.ps1");
@@ -24,9 +63,55 @@ function run(script: string, body: string) {
     ? `-ReleaseSha '${shaB}' -HostName 'test.invalid' -KnownHostsFile 'ignored' -PlanOnly`
     : `-HostName 'test.invalid' -KnownHostsFile 'ignored' -PlanOnly`;
   writeFileSync(harness, `. '${script.replaceAll("'", "''")}' ${parameters}\n${body}\n`, "utf8");
-  return spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", harness], {
+  return spawnSync(executable, ["-NoProfile", "-NonInteractive", "-File", harness], {
     encoding: "utf8", windowsHide: true,
   });
+}
+
+// A complete worker-release-status payload as the admin CLI prints it. Overrides
+// are applied verbatim so a case can drop a key, null a field, or change a
+// count without the helper silently repairing it.
+function releaseStatusJson(overrides: Record<string, unknown> = {}) {
+  const status: Record<string, unknown> = {
+    schemaVersion: 1,
+    workerKey: "vultr-network-center-01",
+    workerVersion: shaB,
+    displayName: "Vultr Network Center",
+    status: "PAUSED",
+    startedAt: "2026-08-01T00:00:00Z",
+    heartbeatAt: "2026-08-01T00:05:00Z",
+    assignedBuildingCount: 2,
+    activeAssignmentCount: 2,
+    activeAssignedBuildingCount: 2,
+    activeAssignmentHash: "9".repeat(64),
+    expectedConnectionCount: 0,
+    connectionCount: 0,
+    successfulPollCount: 0,
+    failedPollCount: 0,
+    pollObservedAt: "2026-08-01T00:04:59Z",
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) delete status[key];
+    else status[key] = value;
+  }
+  return JSON.stringify(status);
+}
+
+// Drives the real Wait-WorkerRevision against one fixed status payload. Sleeping
+// is stubbed out so the 24-attempt rejection path returns immediately instead of
+// taking two minutes; the loop itself, the poll gate and the freshness checks
+// are the production ones.
+function waitWorkerRevisionBody(script: string, status: string) {
+  const call = script === deploy
+    ? `Wait-WorkerRevision -RepositoryRoot 'repo' -ExpectedReleaseSha '${shaB}' -MinimumHeartbeatAt $null -MinimumPollObservedAt $null`
+    : `Wait-WorkerRevision -RepositoryRoot 'repo' -ReleaseSha '${shaB}' -MinimumHeartbeatAt $null -MinimumPollObservedAt $null`;
+  return `
+function Start-Sleep { param([int]$Seconds) }
+$script:statusCalls = 0
+function Invoke-NativeChecked { $script:statusCalls++; return '${status.replaceAll("'", "''")}' }
+$observed = ${call}
+[ordered]@{ statusCalls = $script:statusCalls; expectedConnectionCount = $observed.expectedConnectionCount;
+  successfulPollCount = $observed.successfulPollCount } | ConvertTo-Json -Compress`;
 }
 
 const stateFactory = `
@@ -349,4 +434,185 @@ Get-PostSwitchHeartbeatFloor -RepositoryRoot 'repo' -ExpectedReleaseSha '${shaB}
       PollObservedAt: "2026-08-01T03:00:01+00:00",
     });
   });
+
+  it("offers no operator switch that waives the poll evidence", () => {
+    // The green-field deadlock had an obvious "fix": a -AllowNoConnections flag.
+    // It would get left on, and then a fleet where every router is unreachable
+    // promotes green. The expectation is derived from the database precisely so
+    // nobody has to choose, and that must stay true.
+    for (const script of [deploy, rollback]) {
+      const source = readFileSync(script, "utf8");
+      const parameters = source.match(/^param\(([\s\S]*?)^\)/m)?.[1];
+      expect(parameters).toBeTruthy();
+      const switches = [...(parameters ?? "").matchAll(/\[switch\]\$(\w+)/g)].map((match) => match[1]);
+      expect(switches).toEqual(["PlanOnly"]);
+      // Comments deliberately DISCUSS the rejected flag, so only executable
+      // lines are searched for one.
+      const code = source.split(/\r?\n/u).filter((line) => !line.trimStart().startsWith("#")).join("\n");
+      expect(code).not.toMatch(/AllowNoConnection|SkipPoll|IgnorePoll|WaivePoll|NoConnections/i);
+      // The count the gate compares against must come from the server payload,
+      // never from a literal in the script.
+      expect(source).toMatch(/\$expected = \[int\]\$Status\.expectedConnectionCount/);
+      expect(source).not.toMatch(/connectionCount -ge 1/);
+    }
+  });
+});
+
+describe.each(editions)("PowerShell deployment gate on $label", (edition) => {
+  const scripts = [["deploy", deploy], ["rollback", rollback]] as const;
+
+  for (const [label, script] of scripts) {
+    it(`${label}: promotes a fleet the server says has nothing to poll`, () => {
+      // The deadlock: production has zero rows in network_device_connections, so
+      // a healthy worker reports connections=0. The old gate demanded
+      // connectionCount >= 1, which needs a reachable router, which needs a
+      // promoted worker. With the expectation derived from the database this is
+      // a provable healthy state - and it is proved, not waived: the poll
+      // evidence still has to be present, PAUSED, and exactly zero/zero.
+      const result = run(script, waitWorkerRevisionBody(script, releaseStatusJson()), edition.executable);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        statusCalls: 1, expectedConnectionCount: 0, successfulPollCount: 0,
+      });
+    });
+
+    it(`${label}: refuses a zero expectation that reports polls it was never given`, () => {
+      const result = run(script, waitWorkerRevisionBody(script, releaseStatusJson({
+        connectionCount: 1, successfulPollCount: 1, failedPollCount: 0,
+      })), edition.executable);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/did not read back/i);
+    });
+
+    it(`${label}: refuses a zero expectation with no poll evidence at all`, () => {
+      // [int]$null is 0 in PowerShell, so a release that never ran a cycle would
+      // otherwise satisfy "0 expected, 0 polled" without polling anything.
+      const result = run(script, waitWorkerRevisionBody(script, releaseStatusJson({
+        connectionCount: null, successfulPollCount: null, failedPollCount: null, pollObservedAt: null,
+      })), edition.executable);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/did not read back/i);
+    });
+
+    it(`${label}: promotes only when every provisioned connection polled cleanly`, () => {
+      const result = run(script, waitWorkerRevisionBody(script, releaseStatusJson({
+        expectedConnectionCount: 3, connectionCount: 3, successfulPollCount: 3, failedPollCount: 0,
+      })), edition.executable);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ expectedConnectionCount: 3, successfulPollCount: 3 });
+    });
+
+    it(`${label}: still fails when the provisioned connections are failing`, () => {
+      // The hole an -AllowNoConnections switch would have opened stays shut.
+      const result = run(script, waitWorkerRevisionBody(script, releaseStatusJson({
+        expectedConnectionCount: 3, connectionCount: 3, successfulPollCount: 0, failedPollCount: 3,
+      })), edition.executable);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/did not read back/i);
+    });
+
+    it(`${label}: still fails when the worker polled fewer than it was provisioned`, () => {
+      const result = run(script, waitWorkerRevisionBody(script, releaseStatusJson({
+        expectedConnectionCount: 3, connectionCount: 1, successfulPollCount: 1, failedPollCount: 0,
+      })), edition.executable);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/did not read back/i);
+    });
+
+    it(`${label}: still requires the paused canary state`, () => {
+      const result = run(script, waitWorkerRevisionBody(script, releaseStatusJson({ status: "ONLINE" })), edition.executable);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/did not read back/i);
+    });
+
+    it(`${label}: rejects a status payload with no server expectation in it`, () => {
+      // Without the server's number there is nothing to compare the claim
+      // against, and the client must not invent one.
+      const result = run(script, `
+function Invoke-NativeChecked { return '${releaseStatusJson({ expectedConnectionCount: undefined }).replaceAll("'", "''")}' }
+Get-ReleaseStatus -RepositoryRoot 'repo' -ExpectedReleaseSha '${shaB}'`, edition.executable);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/unknown, missing, or secret-like/i);
+    });
+
+    it(`${label}: parses a real remote status receipt end to end on this edition`, () => {
+      // D3 lives here: ConvertFrom-Json yields Int32 on 5.1 and Int64 on 7, so
+      // the schemaVersion guard has to accept both widths. This case exercises
+      // whichever the running edition actually produces.
+      const result = run(script, `
+function Invoke-NativeChecked { return '${releaseStatusJson({
+        expectedConnectionCount: 2, connectionCount: 2, successfulPollCount: 2, failedPollCount: 0,
+      }).replaceAll("'", "''")}' }
+$status = Get-ReleaseStatus -RepositoryRoot 'repo' -ExpectedReleaseSha '${shaB}'
+"$($status.schemaVersion.GetType().Name)|$($status.expectedConnectionCount)"`, edition.executable);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stdout.trim()).toMatch(/^Int(32|64)\|2$/);
+    });
+
+    it(`${label}: normalises PowerShell 7 style DateTime receipt fields back to wire text`, () => {
+      // Third edition split, found only by executing these scripts on 7:
+      // ConvertFrom-Json there returns [datetime] for ISO-8601 strings, so the
+      // guards that contract on text rejected every valid status, and
+      // [string]$dateTime renders "08/01/2026 00:00:00" - which Convert-StatusTime
+      // reads as a LOCAL instant, silently shifting the freshness floors by the
+      // host's UTC offset. Shadowing ConvertFrom-Json reproduces exactly that
+      // parser on any edition, so this case is non-vacuous on 5.1 too.
+      const result = run(script, `
+function ConvertFrom-Json {
+  param([Parameter(ValueFromPipeline = $true)][string]$InputObject)
+  [pscustomobject]@{ schemaVersion = 1; workerKey = 'vultr-network-center-01'; workerVersion = '${shaB}';
+    displayName = 'Vultr Network Center'; status = 'PAUSED';
+    startedAt = [datetime]::new(2026, 8, 1, 0, 0, 0, [DateTimeKind]::Utc);
+    heartbeatAt = [datetime]::new(2026, 8, 1, 0, 5, 0, [DateTimeKind]::Utc);
+    assignedBuildingCount = 2; activeAssignmentCount = 2; activeAssignedBuildingCount = 2;
+    activeAssignmentHash = '${"9".repeat(64)}'; expectedConnectionCount = 0; connectionCount = 0;
+    successfulPollCount = 0; failedPollCount = 0;
+    pollObservedAt = [datetime]::new(2026, 8, 1, 0, 4, 59, [DateTimeKind]::Utc) }
+}
+function Invoke-NativeChecked { return '{"receipt":"ignored"}' }
+$status = Get-ReleaseStatus -RepositoryRoot 'repo' -ExpectedReleaseSha '${shaB}'
+$heartbeatAt = Convert-StatusTime $status.heartbeatAt
+"$($status.startedAt.GetType().Name)|$($status.startedAt)|$($heartbeatAt.ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture))"`, edition.executable);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      // Convert-StatusTime yields a DateTimeOffset, whose round-trip form spells
+      // UTC as +00:00 rather than Z; the instant is what matters here.
+      expect(result.stdout.trim()).toBe("String|2026-08-01T00:00:00.0000000Z|2026-08-01T00:05:00.0000000+00:00");
+    });
+
+    it(`${label}: accepts an Int64 schemaVersion exactly as PowerShell 7 parses one`, () => {
+      // Edition-independent arm of D3: an explicit [long] is byte-for-byte what
+      // PowerShell 7's ConvertFrom-Json hands these guards, so this case fails
+      // against the unfixed script even on Windows PowerShell 5.1. Without it,
+      // a machine with no pwsh would have "passed" while testing nothing.
+      const result = run(script, `${stateFactory}
+$state = New-State (New-Release '${shaA}' '${imageA}' '${generationA}') $null $null
+$state.schemaVersion = [long]2
+$state.current.schemaVersion = [long]2
+if ($state.schemaVersion -isnot [long]) { throw 'harness failed to produce an Int64 schema version.' }
+$null = Assert-StateSchema $state
+'accepted'`, edition.executable);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stdout.trim()).toBe("accepted");
+    });
+
+    it(`${label}: treats a successful native command that writes to stderr as success`, () => {
+      // D2: Windows PowerShell 5.1 promotes ANY native stderr write to a
+      // terminating error under $ErrorActionPreference = "Stop", even at exit 0.
+      // ssh relays the remote command's stderr, so a healthy remote step killed
+      // the run. Exit status stays the authority.
+      const result = run(script, `
+$out = Invoke-NativeChecked -FilePath 'powershell.exe' -Arguments @('-NoProfile','-NonInteractive','-Command','[Console]::Error.WriteLine(''benign progress''); [Console]::Out.Write(''receipt-ok''); exit 0') -Capture
+if ([string]$out -notmatch 'receipt-ok') { throw "captured output lost the receipt: $out" }
+'tolerated'`, edition.executable);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stdout.trim()).toBe("tolerated");
+    });
+
+    it(`${label}: still fails a native command that exits non-zero while writing stderr`, () => {
+      const result = run(script, `
+Invoke-NativeChecked -FilePath 'powershell.exe' -Arguments @('-NoProfile','-NonInteractive','-Command','[Console]::Error.WriteLine(''real failure''); exit 7') -Capture`, edition.executable);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/exit code 7/i);
+    });
+  }
 });

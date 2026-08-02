@@ -71,12 +71,41 @@ function Invoke-NativeChecked {
   }
 }
 
+# PowerShell 7's ConvertFrom-Json silently deserialises any ISO-8601-looking
+# string into [datetime]; Windows PowerShell 5.1 leaves it a [string]. Every
+# guard in these scripts contracts on the wire TEXT, so on 7 a valid
+# {"startedAt":"2026-08-01T00:00:00Z"} was rejected outright with "startedAt
+# string is invalid" - and worse, `[string]$value` on such a DateTime renders
+# "08/01/2026 00:00:00", which Convert-StatusTime then parses as a LOCAL instant
+# with no offset. The heartbeat and poll freshness floors would have been silently
+# wrong by the host's UTC offset instead of failing loudly.
+#
+# Normalising back to the round-trip ("o") form makes the receipt contract
+# byte-identical on both editions: a UTC value keeps its Z, an offset value keeps
+# its offset, and the instant is preserved in both cases. Applied to every
+# receipt rather than only to the release status, so a timestamp added to any
+# future receipt cannot reintroduce the split.
+function ConvertTo-InvariantReceiptText {
+  param($Value, [int]$Depth = 0)
+  if ($Depth -gt 8) { throw "Receipt nesting exceeds the supported depth." }
+  if ($Value -is [datetime]) { return $Value.ToString("o", [Globalization.CultureInfo]::InvariantCulture) }
+  if ($Value -is [datetimeoffset]) { return $Value.ToString("o", [Globalization.CultureInfo]::InvariantCulture) }
+  if ($Value -is [psobject]) {
+    foreach ($property in @($Value.PSObject.Properties)) {
+      if ($property.MemberType -ne "NoteProperty") { continue }
+      $property.Value = ConvertTo-InvariantReceiptText -Value $property.Value -Depth ($Depth + 1)
+    }
+  }
+  return $Value
+}
+
 function ConvertFrom-BoundedJson {
   param([AllowEmptyString()][string]$Output, [string]$Description)
   if ([Text.Encoding]::UTF8.GetByteCount($Output) -gt $MaximumCapturedOutputBytes) { throw "$Description exceeds the JSON byte bound." }
   $lines = @($Output -split "`n")
   if ($lines.Count -ne 1 -or $lines[0] -notmatch '^\{.*\}$') { throw "$Description must return exactly one bounded JSON receipt." }
-  try { return $lines[0] | ConvertFrom-Json } catch { throw "$Description returned invalid JSON." }
+  try { $parsed = $lines[0] | ConvertFrom-Json } catch { throw "$Description returned invalid JSON." }
+  return ConvertTo-InvariantReceiptText -Value $parsed
 }
 
 function Assert-ExactPropertyNames {
@@ -286,8 +315,8 @@ function Get-ReleaseStatus {
     throw "Exact worker release status is missing."
   }
   Assert-ExactPropertyNames $status @("schemaVersion", "workerKey", "workerVersion", "displayName", "status", "startedAt", "heartbeatAt",
-    "assignedBuildingCount", "activeAssignmentCount", "activeAssignedBuildingCount", "activeAssignmentHash", "connectionCount",
-    "successfulPollCount", "failedPollCount", "pollObservedAt") "Exact worker release status"
+    "assignedBuildingCount", "activeAssignmentCount", "activeAssignedBuildingCount", "activeAssignmentHash", "expectedConnectionCount",
+    "connectionCount", "successfulPollCount", "failedPollCount", "pollObservedAt") "Exact worker release status"
   Assert-BoundedString $status.workerKey "Exact worker release status worker key" 64 '^[a-z0-9][a-z0-9._-]{2,63}$'
   Assert-BoundedString $status.workerVersion "Exact worker release status version" 40 '^[a-f0-9]{40}$'
   Assert-BoundedString $status.displayName "Exact worker release status display name" 128 '^.{1,128}$'
@@ -298,6 +327,7 @@ function Get-ReleaseStatus {
   Assert-IntegerValue $status.assignedBuildingCount "Exact worker release status assigned building count" 0 10000
   Assert-IntegerValue $status.activeAssignmentCount "Exact worker release status active assignment count" 0 10000
   Assert-IntegerValue $status.activeAssignedBuildingCount "Exact worker release status active building count" 0 10000
+  Assert-IntegerValue $status.expectedConnectionCount "Exact worker release status expected connection count" 0 10000
   $pollValues = @($status.connectionCount, $status.successfulPollCount, $status.failedPollCount, $status.pollObservedAt)
   $nullPollValues = 0; foreach ($value in $pollValues) { if ($null -eq $value) { $nullPollValues += 1 } }
   if ($nullPollValues -notin @(0, 4)) { throw "Exact worker release status poll fields are mixed." }
@@ -325,15 +355,64 @@ function Convert-StatusTime {
   return $parsed
 }
 
+# The poll expectation is DERIVED FROM THE DATABASE, never chosen by whoever
+# runs the deploy.
+#
+# The previous rule was `connectionCount >= 1 AND successfulPollCount =
+# connectionCount AND failedPollCount = 0`. On a green-field fleet there are no
+# rows in network_device_connections at all, so a perfectly healthy worker
+# reports connections=0 and that rule can never be met: promoting a worker would
+# require a reachable router, and onboarding a router requires a promoted
+# worker. An operator switch such as -AllowNoConnections would have dissolved
+# the deadlock and opened a far worse hole - it gets left on, and then a fleet
+# whose routers are ALL unreachable promotes green.
+#
+# `expectedConnectionCount` comes from
+# network_center_admin_worker_release_status_v1 (20260729143000). PostgreSQL
+# counts the connections it would actually serve THIS worker under the same
+# predicate as network_center_worker_list_connections_v2. The only inputs this
+# script gives that function are the worker key and the release SHA, both
+# already pinned, so the deploying client cannot widen, narrow or invent the
+# number it is measured against.
+#
+#   expected = 0 -> exactly zero successful and zero failed polls. "Nothing to
+#                   poll" becomes a PROVABLE healthy state instead of a waived
+#                   one; every other liveness signal (PAUSED, exact release SHA,
+#                   assignment count/hash, heartbeat and poll freshness) still
+#                   has to hold.
+#   expected > 0 -> successfulPollCount must equal the expectation and there
+#                   must be no failures, so a fleet whose connections all fail
+#                   still fails the gate.
+function Test-ExactPollEvidence {
+  param($Status)
+  if ($null -eq $Status) { return $false }
+  # Poll evidence has to be PRESENT. Get-ReleaseStatus already refuses a mixed
+  # set, so one null here means the release has never reported a cycle at all.
+  # PowerShell coerces `[int]$null` to 0, so an unguarded numeric comparison
+  # would read "never polled" as "polled nothing successfully" and promote a
+  # worker that never ran a cycle - the exact hole the flag would have opened.
+  if ($null -eq $Status.connectionCount -or $null -eq $Status.successfulPollCount -or
+      $null -eq $Status.failedPollCount -or $null -eq $Status.pollObservedAt) { return $false }
+  if ([int]$Status.failedPollCount -ne 0) { return $false }
+  $expected = [int]$Status.expectedConnectionCount
+  if ($expected -eq 0) {
+    return ([int]$Status.connectionCount -eq 0 -and [int]$Status.successfulPollCount -eq 0)
+  }
+  return ([int]$Status.connectionCount -eq $expected -and [int]$Status.successfulPollCount -eq $expected)
+}
+
 function Wait-WorkerRevision {
   param([string]$RepositoryRoot, [string]$ExpectedReleaseSha, [Nullable[DateTimeOffset]]$MinimumHeartbeatAt,
     [Nullable[DateTimeOffset]]$MinimumPollObservedAt)
+  # A null floor is not a waived freshness check: it only happens when this
+  # release has never written a heartbeat row before, and the row is keyed by
+  # (worker, release sha), so any row observed here was necessarily produced by
+  # the process this deployment just started.
   for ($attempt = 0; $attempt -lt 24; $attempt += 1) {
     $status = Get-ReleaseStatus -RepositoryRoot $RepositoryRoot -ExpectedReleaseSha $ExpectedReleaseSha
     $heartbeatAt = Convert-StatusTime $status.heartbeatAt
     $pollAt = Convert-StatusTime $status.pollObservedAt
-    if ([string]$status.status -ceq "PAUSED" -and [int]$status.connectionCount -ge 1 -and
-        [int]$status.successfulPollCount -eq [int]$status.connectionCount -and [int]$status.failedPollCount -eq 0 -and
+    if ([string]$status.status -ceq "PAUSED" -and (Test-ExactPollEvidence -Status $status) -and
         ($null -eq $MinimumHeartbeatAt -or $heartbeatAt -gt $MinimumHeartbeatAt) -and
         ($null -eq $MinimumPollObservedAt -or $pollAt -gt $MinimumPollObservedAt)) { return $status }
     Start-Sleep -Seconds 5
@@ -645,7 +724,8 @@ function Invoke-DeploymentMain {
     [ordered]@{ schemaVersion = 2; releaseSha = $ReleaseSha; archiveSha256 = $archiveSha; imageId = $exact.imageId;
       secretGeneration = $exact.secretGeneration; workerKey = $WorkerKey; assignmentCount = $assignmentCount;
       assignedBuildingCount = [int]$status.assignedBuildingCount; activeAssignmentCount = [int]$status.activeAssignmentCount;
-      assignmentHash = [string]$status.activeAssignmentHash; unitState = $unitState; state = "PAUSED"; result = "activated" } | ConvertTo-Json -Depth 4 -Compress
+      assignmentHash = [string]$status.activeAssignmentHash; expectedConnectionCount = [int]$status.expectedConnectionCount;
+      successfulPollCount = [int]$status.successfulPollCount; unitState = $unitState; state = "PAUSED"; result = "activated" } | ConvertTo-Json -Depth 4 -Compress
   } catch {
     $cause = $_.Exception.Message
     if (-not $mutationStarted) { throw "Deployment failed before remote mutation. Cause: $cause" }

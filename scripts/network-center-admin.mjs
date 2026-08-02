@@ -437,6 +437,7 @@ const WORKER_RELEASE_STATUS_KEYS = [
   "assignedBuildingCount",
   "connectionCount",
   "displayName",
+  "expectedConnectionCount",
   "failedPollCount",
   "heartbeatAt",
   "pollObservedAt",
@@ -489,6 +490,12 @@ function isExactWorkerReleaseStatus(status, workerKey, workerVersion) {
     !isBoundedCount(status.activeAssignedBuildingCount, 0, 10_000) ||
     !isBoundedCount(status.activeAssignmentCount, 0, 10_000) ||
     status.activeAssignmentCount < status.activeAssignedBuildingCount ||
+    // The deployment gate compares the reported poll evidence against this
+    // number instead of against a hard-coded ">= 1", so it has to be a real
+    // server-side integer. A missing or malformed value must reject the whole
+    // payload rather than degrade to a count of zero, which would read as
+    // "nothing to poll" and let an unproven release through.
+    !isBoundedCount(status.expectedConnectionCount, 0, 10_000) ||
     typeof status.activeAssignmentHash !== "string" ||
     !ASSIGNMENT_HASH_PATTERN.test(status.activeAssignmentHash)
   ) {
@@ -553,6 +560,7 @@ export async function getWorkerReleaseStatus({ workerKey, workerVersion, rpc } =
     activeAssignedBuildingCount: status.activeAssignedBuildingCount,
     activeAssignmentCount: status.activeAssignmentCount,
     activeAssignmentHash: status.activeAssignmentHash,
+    expectedConnectionCount: status.expectedConnectionCount,
     connectionCount: status.connectionCount,
     successfulPollCount: status.successfulPollCount,
     failedPollCount: status.failedPollCount,

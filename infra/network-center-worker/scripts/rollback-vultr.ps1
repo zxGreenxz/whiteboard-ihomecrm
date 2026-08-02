@@ -17,6 +17,18 @@ $Stages = @("capture-redacted-status-and-assignment-hash", "validate-previous-ex
 function Invoke-NativeChecked {
   param([string]$FilePath, [string[]]$Arguments, [switch]$Capture,
     [ValidateRange(1, 1048576)][int]$MaximumOutputBytes = $MaximumCapturedOutputBytes)
+  # D2, ported from deploy-vultr.ps1 where it was found on the live rollout:
+  # Windows PowerShell 5.1 promotes ANY native-command stderr write to a
+  # terminating NativeCommandError while $ErrorActionPreference is Stop, even
+  # when the command exits 0. ssh relays the remote command's stderr and the
+  # host tooling writes benign progress there, so a SUCCESSFUL remote step
+  # aborted the whole run with the first diagnostic line as the error. Exit
+  # codes stay the authority and are still checked explicitly below; this only
+  # stops a benign diagnostic line from being read as a failure. An untested
+  # rollback path is worse than none, so this must not stay deploy-only.
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
   $stdoutPath = [IO.Path]::GetTempFileName()
   $stderrPath = [IO.Path]::GetTempFileName()
   try {
@@ -30,6 +42,44 @@ function Invoke-NativeChecked {
   } finally {
     Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
   }
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
+# D3, ported from deploy-vultr.ps1: ConvertFrom-Json materialises a JSON integer
+# as Int32 on Windows PowerShell 5.1 but as Int64 on PowerShell 7, so a guard
+# written as `-isnot [int]` rejects every structurally valid receipt on 7.x. The
+# host returns a correct {"schemaVersion":2,...} and the rollback still dies with
+# "schema is invalid". D2 broke 5.1 and D3 broke 7, which together means this
+# script could not complete on EITHER edition.
+function Test-SchemaVersion {
+  param($Value, [int]$Expected)
+  if ($Value -isnot [int] -and $Value -isnot [long]) { return $false }
+  return ([long]$Value -eq [long]$Expected)
+}
+
+# Third edition split in this path, found by finally EXECUTING these scripts on
+# PowerShell 7: its ConvertFrom-Json turns any ISO-8601-looking string into
+# [datetime] while 5.1 leaves it a [string]. Every guard here contracts on the
+# wire text, so a valid {"startedAt":"2026-08-01T00:00:00Z"} was rejected with
+# "startedAt string is invalid" - and `[string]$value` on that DateTime renders
+# "08/01/2026 00:00:00", which Convert-StatusTime parses as a LOCAL instant, so
+# the rollback's freshness floors would have been silently wrong by the host's
+# UTC offset rather than failing loudly. Round-trip ("o") normalisation makes the
+# receipt contract identical on both editions and preserves the instant.
+function ConvertTo-InvariantReceiptText {
+  param($Value, [int]$Depth = 0)
+  if ($Depth -gt 8) { throw "Receipt nesting exceeds the supported depth." }
+  if ($Value -is [datetime]) { return $Value.ToString("o", [Globalization.CultureInfo]::InvariantCulture) }
+  if ($Value -is [datetimeoffset]) { return $Value.ToString("o", [Globalization.CultureInfo]::InvariantCulture) }
+  if ($Value -is [psobject]) {
+    foreach ($property in @($Value.PSObject.Properties)) {
+      if ($property.MemberType -ne "NoteProperty") { continue }
+      $property.Value = ConvertTo-InvariantReceiptText -Value $property.Value -Depth ($Depth + 1)
+    }
+  }
+  return $Value
 }
 
 function ConvertFrom-BoundedJson {
@@ -37,7 +87,8 @@ function ConvertFrom-BoundedJson {
   if ([Text.Encoding]::UTF8.GetByteCount($Output) -gt $MaximumCapturedOutputBytes) { throw "$Description exceeds the JSON byte bound." }
   $lines = @($Output -split "`n")
   if ($lines.Count -ne 1 -or $lines[0] -notmatch '^\{.*\}$') { throw "$Description must return exactly one bounded JSON receipt." }
-  try { return $lines[0] | ConvertFrom-Json } catch { throw "$Description returned invalid JSON." }
+  try { $parsed = $lines[0] | ConvertFrom-Json } catch { throw "$Description returned invalid JSON." }
+  return ConvertTo-InvariantReceiptText -Value $parsed
 }
 
 function Assert-ExactPropertyNames {
@@ -66,7 +117,7 @@ function Assert-ReleaseSchema {
   param($Release, [string]$Description)
   Assert-ExactPropertyNames $Release @("schemaVersion", "releaseSha", "imageTag", "imageId", "archiveSha256", "secretGeneration",
     "releaseDirectory", "envFile", "projectName", "containerName", "container", "secrets", "security") $Description
-  if ($Release.schemaVersion -isnot [int] -or [int]$Release.schemaVersion -ne 2) { throw "$Description schema version is invalid." }
+  if (-not (Test-SchemaVersion $Release.schemaVersion 2)) { throw "$Description schema version is invalid." }
   Assert-BoundedString $Release.releaseSha "$Description release SHA" 40 '^[a-f0-9]{40}$'
   Assert-BoundedString $Release.imageTag "$Description image tag" 128 '^ihome-network-center-worker:[a-f0-9]{40}$'
   Assert-BoundedString $Release.imageId "$Description image ID" 71 '^sha256:[a-f0-9]{64}$'
@@ -122,7 +173,7 @@ function Assert-ReleaseSchema {
 function Assert-StateSchema {
   param($State)
   Assert-ExactPropertyNames $State @("schemaVersion", "transition", "lastTransition", "current", "previous", "pending") "Remote state"
-  if ($State.schemaVersion -isnot [int] -or [int]$State.schemaVersion -ne 2) { throw "Remote state schema is invalid." }
+  if (-not (Test-SchemaVersion $State.schemaVersion 2)) { throw "Remote state schema is invalid." }
   if ($null -ne $State.transition) {
     Assert-ExactPropertyNames $State.transition @("operation", "phase") "Remote transition"
     Assert-BoundedString $State.transition.operation "Remote transition operation" 16 '^(promote|rollback)$'
@@ -130,7 +181,7 @@ function Assert-StateSchema {
   }
   if ($null -ne $State.lastTransition) {
     Assert-ExactPropertyNames $State.lastTransition @("schemaVersion", "operation", "phase", "targetReleaseSha") "Remote last transition"
-    if ($State.lastTransition.schemaVersion -isnot [int] -or [int]$State.lastTransition.schemaVersion -ne 1) { throw "Remote last transition schema is invalid." }
+    if (-not (Test-SchemaVersion $State.lastTransition.schemaVersion 1)) { throw "Remote last transition schema is invalid." }
     Assert-BoundedString $State.lastTransition.operation "Remote last transition operation" 16 '^(promote|rollback)$'
     Assert-BoundedString $State.lastTransition.phase "Remote last transition phase" 16 '^(committed|compensated|finalized)$'
     Assert-BoundedString $State.lastTransition.targetReleaseSha "Remote last transition release" 40 '^[a-f0-9]{40}$'
@@ -217,7 +268,7 @@ function Invoke-RollbackMutationReconciled {
     $receipt = ConvertFrom-BoundedJson (Invoke-NativeChecked ssh ($SshOptions + @($SshTarget,
       "sudo -- /opt/ihome-network-center/bin/rollback-release.sh"))) "Rollback"
     Assert-ExactPropertyNames $receipt @("schemaVersion", "releaseSha", "imageId", "secretGeneration", "rollback", "finalization") "Rollback receipt"
-    if ($receipt.schemaVersion -isnot [int] -or [int]$receipt.schemaVersion -ne 2 -or [string]$receipt.rollback -cne "healthy" -or
+    if (-not (Test-SchemaVersion $receipt.schemaVersion 2) -or [string]$receipt.rollback -cne "healthy" -or
         [string]$receipt.finalization -cne "required") { throw "Rollback receipt schema is invalid." }
     Assert-BoundedString $receipt.releaseSha "Rollback receipt release SHA" 40 '^[a-f0-9]{40}$'
     Assert-BoundedString $receipt.imageId "Rollback receipt image ID" 71 '^sha256:[a-f0-9]{64}$'
@@ -241,7 +292,7 @@ function Invoke-FinalizeTransition {
     $receipt = ConvertFrom-BoundedJson (Invoke-NativeChecked ssh ($SshOptions + @($SshTarget,
       "sudo -- /opt/ihome-network-center/bin/activate-release.sh finalize-last-transition $ReleaseSha"))) "Rollback finalization"
     Assert-ExactPropertyNames $receipt @("schemaVersion", "releaseSha", "result", "cleanup") "Rollback finalization receipt"
-    if ($receipt.schemaVersion -isnot [int] -or [int]$receipt.schemaVersion -ne 2 -or [string]$receipt.releaseSha -cne $ReleaseSha -or
+    if (-not (Test-SchemaVersion $receipt.schemaVersion 2) -or [string]$receipt.releaseSha -cne $ReleaseSha -or
         [string]$receipt.result -cne "finalized" -or [string]$receipt.cleanup -notin @("complete", "deferred")) {
       throw "Rollback finalization receipt is invalid."
     }
@@ -261,7 +312,7 @@ function Invoke-FinalizeTransition {
 function Assert-UnitState {
   param($State)
   Assert-ExactPropertyNames $State @("schemaVersion", "unit", "activeState", "subState", "result") "Systemd unit state"
-  if ($State.schemaVersion -isnot [int] -or [int]$State.schemaVersion -ne 1 -or
+  if (-not (Test-SchemaVersion $State.schemaVersion 1) -or
       [string]$State.unit -cne "network-center-worker.service") { throw "Systemd unit state schema is invalid." }
   Assert-BoundedString $State.activeState "Systemd active state" 32 '^[a-z-]+$'
   Assert-BoundedString $State.subState "Systemd sub-state" 32 '^[a-z-]+$'
@@ -293,8 +344,8 @@ function Get-ReleaseStatus {
   $status = ConvertFrom-BoundedJson (Invoke-NativeChecked node @((Join-Path $RepositoryRoot "scripts/network-center-admin.mjs"),
     "worker-release-status", "--worker-key", $WorkerKey, "--worker-version", $ExpectedReleaseSha)) "Exact worker release status"
   Assert-ExactPropertyNames $status @("schemaVersion", "workerKey", "workerVersion", "displayName", "status", "startedAt", "heartbeatAt",
-    "assignedBuildingCount", "activeAssignmentCount", "activeAssignedBuildingCount", "activeAssignmentHash", "connectionCount",
-    "successfulPollCount", "failedPollCount", "pollObservedAt") "Exact worker release status"
+    "assignedBuildingCount", "activeAssignmentCount", "activeAssignedBuildingCount", "activeAssignmentHash", "expectedConnectionCount",
+    "connectionCount", "successfulPollCount", "failedPollCount", "pollObservedAt") "Exact worker release status"
   Assert-BoundedString $status.workerKey "Exact worker release status worker key" 64 '^[a-z0-9][a-z0-9._-]{2,63}$'
   Assert-BoundedString $status.workerVersion "Exact worker release status version" 40 '^[a-f0-9]{40}$'
   Assert-BoundedString $status.displayName "Exact worker release status display name" 128 '^.{1,128}$'
@@ -305,6 +356,7 @@ function Get-ReleaseStatus {
   Assert-IntegerValue $status.assignedBuildingCount "Exact worker release status assigned building count" 0 10000
   Assert-IntegerValue $status.activeAssignmentCount "Exact worker release status active assignment count" 0 10000
   Assert-IntegerValue $status.activeAssignedBuildingCount "Exact worker release status active building count" 0 10000
+  Assert-IntegerValue $status.expectedConnectionCount "Exact worker release status expected connection count" 0 10000
   $pollValues = @($status.connectionCount, $status.successfulPollCount, $status.failedPollCount, $status.pollObservedAt)
   $nullPollValues = 0; foreach ($value in $pollValues) { if ($null -eq $value) { $nullPollValues += 1 } }
   if ($nullPollValues -notin @(0, 4)) { throw "Exact worker release status poll fields are mixed." }
@@ -314,13 +366,34 @@ function Get-ReleaseStatus {
     Assert-IntegerValue $status.failedPollCount "Exact worker release status failed poll count" 0 500
     Assert-BoundedString $status.pollObservedAt "Exact worker release status pollObservedAt" 64 '^\d{4}-'
   }
-  if ($status.schemaVersion -isnot [int] -or [int]$status.schemaVersion -ne 1 -or [string]$status.workerKey -cne $WorkerKey -or
+  if (-not (Test-SchemaVersion $status.schemaVersion 1) -or [string]$status.workerKey -cne $WorkerKey -or
       [string]$status.workerVersion -cne $ExpectedReleaseSha -or
       [int]$status.assignedBuildingCount -ne [int]$status.activeAssignedBuildingCount -or
       ($null -ne $status.connectionCount -and [int]$status.successfulPollCount + [int]$status.failedPollCount -ne [int]$status.connectionCount)) {
     throw "Exact worker release status identity/hash is invalid."
   }
   return $status
+}
+
+# Identical rule to deploy-vultr.ps1's Test-ExactPollEvidence, and identical
+# reason: the rolled-back release has to prove it polled exactly what PostgreSQL
+# says it was given. `connectionCount >= 1` made the rollback path unusable on a
+# fleet with no connections - the state in which a first deploy is most likely to
+# need rolling back - and an operator override would have let a rollback onto a
+# release that reaches nothing report success.
+function Test-ExactPollEvidence {
+  param($Status)
+  if ($null -eq $Status) { return $false }
+  # `[int]$null` is 0 in PowerShell, so absent poll evidence would otherwise
+  # satisfy a zero expectation without a single cycle having run.
+  if ($null -eq $Status.connectionCount -or $null -eq $Status.successfulPollCount -or
+      $null -eq $Status.failedPollCount -or $null -eq $Status.pollObservedAt) { return $false }
+  if ([int]$Status.failedPollCount -ne 0) { return $false }
+  $expected = [int]$Status.expectedConnectionCount
+  if ($expected -eq 0) {
+    return ([int]$Status.connectionCount -eq 0 -and [int]$Status.successfulPollCount -eq 0)
+  }
+  return ([int]$Status.connectionCount -eq $expected -and [int]$Status.successfulPollCount -eq $expected)
 }
 
 function Wait-WorkerRevision {
@@ -334,8 +407,7 @@ function Wait-WorkerRevision {
       [Globalization.DateTimeStyles]::RoundtripKind, [ref]$heartbeatAt) -and
       [DateTimeOffset]::TryParse([string]$status.pollObservedAt, [Globalization.CultureInfo]::InvariantCulture,
       [Globalization.DateTimeStyles]::RoundtripKind, [ref]$pollAt)
-    if ($validTimes -and [string]$status.status -ceq "PAUSED" -and [int]$status.connectionCount -ge 1 -and
-        [int]$status.successfulPollCount -eq [int]$status.connectionCount -and [int]$status.failedPollCount -eq 0 -and
+    if ($validTimes -and [string]$status.status -ceq "PAUSED" -and (Test-ExactPollEvidence -Status $status) -and
         ($null -eq $MinimumHeartbeatAt -or $heartbeatAt -gt $MinimumHeartbeatAt) -and
         ($null -eq $MinimumPollObservedAt -or $pollAt -gt $MinimumPollObservedAt)) { return $status }
     Start-Sleep -Seconds 5
@@ -410,6 +482,7 @@ function Invoke-RollbackMain {
   [ordered]@{ schemaVersion = 2; releaseSha = $resolved.Release.releaseSha; imageId = $resolved.Release.imageId;
     secretGeneration = $resolved.Release.secretGeneration; assignmentHash = $afterHash; assignmentCount = $afterCount;
     assignedBuildingCount = [int]$observed.assignedBuildingCount; activeAssignmentCount = [int]$observed.activeAssignmentCount;
+    expectedConnectionCount = [int]$observed.expectedConnectionCount; successfulPollCount = [int]$observed.successfulPollCount;
     unitState = $unitState; state = "PAUSED"; result = "rolled-back" } | ConvertTo-Json -Depth 4 -Compress
 }
 

@@ -23,6 +23,10 @@ const disposableRunnerPath = new URL(
   "scripts/test-network-center-release-readback-disposable.mjs",
   root,
 );
+const expectedConnectionsMigrationPath = new URL(
+  "supabase/migrations/20260729143000_network_center_worker_release_expected_connections.sql",
+  root,
+);
 
 test("release heartbeat readback is additive, version-keyed and service-role-only", () => {
   assert.equal(existsSync(migrationPath), true, "release heartbeat migration missing");
@@ -286,6 +290,7 @@ test("admin exact release readback uses only the keyed RPC and validates authori
     activeAssignedBuildingCount: 2,
     activeAssignmentCount: 2,
     activeAssignmentHash: "b".repeat(64),
+    expectedConnectionCount: 2,
     connectionCount: 2,
     successfulPollCount: 2,
     failedPollCount: 0,
@@ -330,6 +335,7 @@ test("admin exact release readback preserves SQL NULL and rejects malformed evid
     activeAssignedBuildingCount: 1,
     activeAssignmentCount: 2,
     activeAssignmentHash: "b".repeat(64),
+    expectedConnectionCount: 1,
     connectionCount: 1,
     successfulPollCount: 1,
     failedPollCount: 0,
@@ -358,6 +364,17 @@ test("admin exact release readback preserves SQL NULL and rejects malformed evid
     { ...valid, activeAssignmentCount: 0 },
     { ...valid, activeAssignmentCount: undefined },
     { ...valid, activeAssignmentHash: ["b".repeat(64)] },
+    // The deployment gate compares the reported poll evidence against this
+    // number. Without it there is nothing to compare against, and a client that
+    // defaulted it to 0 would read "nothing to poll" on a fleet that has
+    // routers - so a missing or malformed value must sink the whole payload
+    // rather than degrade.
+    { ...valid, expectedConnectionCount: undefined },
+    { ...valid, expectedConnectionCount: null },
+    { ...valid, expectedConnectionCount: -1 },
+    { ...valid, expectedConnectionCount: 10_001 },
+    { ...valid, expectedConnectionCount: "1" },
+    { ...valid, expectedConnectionCount: 1.5 },
     { ...valid, activeAssignmentHash: "B".repeat(64) },
     { ...valid, failedPollCount: 1 },
     { ...valid, secretDigest: "forbidden" },
@@ -442,6 +459,12 @@ test("Vultr deployment accepts only the exact version-keyed paused heartbeat", (
     assert.match(source, /\.activeAssignedBuildingCount/i);
     assert.match(source, /\.activeAssignmentCount/i);
     assert.match(source, /\.activeAssignmentHash/i);
+    assert.match(source, /\.expectedConnectionCount/i);
+    assert.doesNotMatch(
+      source,
+      /connectionCount -ge 1/,
+      "the green-field deadlock returns the moment a literal poll floor comes back",
+    );
     assert.doesNotMatch(source, /releaseHeartbeats|\.assignments|"status"\s*,\s*"--limit"/i);
   }
 });
@@ -549,11 +572,11 @@ test("runtime proof covers rollback-target retention and null poll evidence", ()
 
 test("disposable proof exercises both retention reachability and null poll evidence", () => {
   const source = readFileSync(disposableRunnerPath, "utf8");
-  assert.match(source, /'invariants',\s*22/);
+  assert.match(source, /'invariants',\s*30/);
   // The runner now applies a second migration and prints a second verdict, so
   // the release-readback count is pinned by name. Its enforcement must stay
   // exact: a shrunk or missing release verdict has to fail the proof.
-  assert.match(source, /RELEASE_READBACK_INVARIANTS\s*=\s*22/);
+  assert.match(source, /RELEASE_READBACK_INVARIANTS\s*=\s*30/);
   assert.match(
     source,
     /verdicts\[0\]\?\.invariants !== RELEASE_READBACK_INVARIANTS/,
@@ -601,4 +624,83 @@ test("disposable release proof runner has no production path and supports dry-ru
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /no PostgreSQL process was started/i);
+});
+
+test("the deploy expectation is server-derived and mirrors what the worker is served", () => {
+  // The green-field deadlock had two candidate fixes. The rejected one was an
+  // operator switch that waives the poll evidence; the shipped one makes the
+  // EXPECTATION server state, so the gate is right in every fleet state without
+  // anyone choosing. That only holds if the count is computed from the same
+  // predicate that decides which connections the worker is actually handed, and
+  // if the deploying client cannot influence it.
+  assert.equal(existsSync(expectedConnectionsMigrationPath), true, "expected-connection migration missing");
+  const sql = readFileSync(expectedConnectionsMigrationPath, "utf8");
+
+  // Additive: same signature, so grants and callers are untouched.
+  assert.match(
+    sql,
+    /CREATE OR REPLACE FUNCTION public\.network_center_admin_worker_release_status_v1\(\s*p_worker_key text,\s*p_worker_version text\s*\)/i,
+  );
+  assert.doesNotMatch(sql, /DROP FUNCTION|ALTER TABLE|CREATE TABLE/i);
+  assert.match(sql, /'expectedConnectionCount',/);
+
+  const lateral = sql.match(
+    /SELECT count\(\*\)::integer AS expected_connection_count[\s\S]*?\) connection_evidence/i,
+  )?.[0];
+  assert.ok(lateral, "the expectation must be computed in its own lateral");
+
+  // Only server-side facts. The two parameters this function accepts are the
+  // worker key and the release SHA, and neither may reach the count.
+  assert.doesNotMatch(lateral, /p_worker_key|p_worker_version/, "the count must not read a caller parameter");
+  assert.match(lateral, /assignment\.worker_id = worker\.id/i);
+
+  // Predicate parity with network_center_worker_list_connections_v2: anything
+  // the worker is not served must not be expected of it, or a healthy cycle
+  // looks short forever.
+  for (const predicate of [
+    /connection\.is_enabled/i,
+    /device\.is_active/i,
+    /assignment\.can_poll/i,
+    /assignment\.active_from <= v_now/i,
+    /assignment\.active_until IS NULL/i,
+    /worker\.status IN \('ACTIVE', 'DRAINING'\)/i,
+    /'POLL' = ANY\(worker\.capabilities\)/i,
+    /coalesce\(settings\.monitoring_enabled, true\)/i,
+    /device\.device_kind = 'MIKROTIK'/i,
+    /connection\.transport = 'ROUTEROS_SSH'/i,
+    /SELECT DISTINCT connection\.id/i,
+  ]) {
+    assert.match(lateral, predicate, `expectation predicate missing: ${predicate}`);
+  }
+
+  // The service-role-only ACL must be re-asserted by the migration that owns the
+  // final body, not inherited by accident.
+  assert.match(
+    sql,
+    /REVOKE ALL ON FUNCTION public\.network_center_admin_worker_release_status_v1\(\s*text, text\s*\)[\s\S]*?FROM PUBLIC, anon, authenticated, service_role/i,
+  );
+  assert.match(
+    sql,
+    /GRANT EXECUTE ON FUNCTION public\.network_center_admin_worker_release_status_v1\(\s*text, text\s*\)[\s\S]*?TO service_role/i,
+  );
+
+  // The disposable PostgreSQL proof has to apply it, or it would keep
+  // certifying the superseded 20260729136000 body.
+  const runner = readFileSync(disposableRunnerPath, "utf8");
+  assert.match(runner, /20260729143000_network_center_worker_release_expected_connections\.sql/);
+  assert.match(runner, /EXPECTED_CONNECTIONS_MIGRATION_PATH,/);
+  for (const message of [
+    "expected pollable connection count is not the two enabled RouterOS SSH connections",
+    "overlapping assignment rows multiplied the expectation",
+    "enabling a provisioned connection did not raise the expectation",
+    "transport is not part of the expectation predicate",
+    "an inactive device stayed in the expectation",
+    "a monitoring-disabled building stayed in the expectation",
+    "a non-polling assignment stayed in the expectation",
+    "a closed assignment window stayed in the expectation",
+    "a worker without POLL did not read back a zero expectation",
+    "a connectionless fleet did not read back a zero expectation",
+  ]) {
+    assert.ok(runner.includes(message), `disposable proof is missing the assertion: ${message}`);
+  }
 });
