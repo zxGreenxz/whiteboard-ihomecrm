@@ -16,6 +16,7 @@ import {
   type WorkerLogger,
 } from "./domain.js";
 import { AsyncSemaphore, mapWithConcurrency } from "./concurrency.js";
+import type { PortCycleEvidenceStore } from "./portCycleEvidence.js";
 import type { RouterConnector } from "./routeros/connector.js";
 import {
   reconcileAction,
@@ -27,6 +28,10 @@ import {
   ROUTER_BACKUP_MAX_BYTES,
   type StagedSftpFile,
 } from "./routeros/boundedSftpRead.js";
+import {
+  MAX_ACCESS_PORT_CYCLE_SECONDS,
+  MIN_ACCESS_PORT_CYCLE_SECONDS,
+} from "./routeros/portCycle.js";
 
 type CommandApi = Pick<
   NetworkCenterWorkerApi,
@@ -43,6 +48,7 @@ interface CommandProcessorOptions {
   leaseSeconds: number;
   logger: WorkerLogger;
   routerOperationSemaphore?: AsyncSemaphore;
+  portCycleEvidence?: PortCycleEvidenceStore;
 }
 
 interface CommandLeaseMonitor {
@@ -67,6 +73,49 @@ const ALLOWED_ACTIONS = new Set([
 ]);
 
 const DISRUPTIVE_ACTIONS = new Set(["CYCLE_ACCESS_PORT", "REBOOT_ROUTER"]);
+
+/**
+ * `observation_deadline` is absolute: the server stamps it at command creation and
+ * `network_center_record_command_observation_v1` rejects (SQLSTATE 22023) any
+ * observation whose `observedAt` is past it. Nothing in the claim predicate keeps a
+ * doomed command out of the queue, so the worker has to refuse it itself — and it
+ * has to refuse *before* touching the router, because an action that really runs and
+ * can never be recorded is strictly worse than one that never ran.
+ *
+ * Headroom the worker keeps for reading the post-action state off the router. Only
+ * the observation timestamp has to beat the deadline, not the report of it, so this
+ * covers the RouterOS read and nothing else.
+ */
+export const OBSERVATION_READ_HEADROOM_MS = 5_000;
+
+/** Settle time the worker itself waits after a reboot before observing. */
+const REBOOT_SETTLE_MS = 5_000;
+
+/**
+ * Wall-clock the action itself consumes before its result can be observed. Only
+ * durations the worker can prove up front are counted; an out-of-range cycle
+ * duration is left at zero so it still fails with the precise INVALID_CYCLE_DURATION.
+ */
+function actionExecutionCostMs(
+  action: CommandIntentAction,
+  parameters: Record<string, unknown>,
+): number {
+  if (action === "CYCLE_ACCESS_PORT") {
+    const duration = Number(parameters.durationSeconds);
+    return Number.isInteger(duration)
+      && duration >= MIN_ACCESS_PORT_CYCLE_SECONDS
+      && duration <= MAX_ACCESS_PORT_CYCLE_SECONDS
+      ? duration * 1_000
+      : 0;
+  }
+  if (action === "REBOOT_ROUTER") return REBOOT_SETTLE_MS;
+  return 0;
+}
+
+function sameManagedKey(left: string | undefined, right: string | undefined): boolean {
+  return typeof left === "string" && typeof right === "string"
+    && left.trim().toLowerCase() === right.trim().toLowerCase();
+}
 const REDACTED_ASSIGNMENT = /(password|passphrase|private-key|preshared-key|secret|community|source|script|on-event|http-header-field|http-data)(\s*=\s*|=)("(?:[^"\\]|\\.)*"|[^\s;]+)/gi;
 
 export function sanitizeRouterExport(value: string): string {
@@ -125,6 +174,7 @@ export class CommandProcessor {
   readonly #leaseSeconds: number;
   readonly #logger: WorkerLogger;
   readonly #routerOperationSemaphore: AsyncSemaphore;
+  readonly #portCycleEvidence: PortCycleEvidenceStore | null;
   readonly #processed = new Set<string>();
   readonly #deviceQueues = new Map<string, Promise<void>>();
 
@@ -138,6 +188,85 @@ export class CommandProcessor {
     this.#leaseSeconds = options.leaseSeconds;
     this.#logger = options.logger;
     this.#routerOperationSemaphore = options.routerOperationSemaphore ?? new AsyncSemaphore(3);
+    this.#portCycleEvidence = options.portCycleEvidence ?? null;
+  }
+
+  /**
+   * Refuses work whose result provably cannot be observed inside the server's
+   * absolute deadline. `requiredLeadMs` is the wall-clock still owed to the router
+   * before the observation can be taken.
+   */
+  #assertObservable(claim: CommandClaim, requiredLeadMs: number, code: string): void {
+    const deadline = Date.parse(claim.observationDeadline);
+    if (!Number.isFinite(deadline)) {
+      throw new RouterOperationError("OBSERVATION_DEADLINE_INVALID", {
+        retryable: false,
+        mayHaveExecuted: false,
+      });
+    }
+    if (this.#clock.now().getTime() + requiredLeadMs > deadline) {
+      throw new RouterOperationError(code, {
+        retryable: false,
+        mayHaveExecuted: false,
+      });
+    }
+  }
+
+  /**
+   * Persists the fact that this attempt saw the managed port go down and come back.
+   * Best effort by construction: the port is already restored by the time this runs,
+   * so a storage failure must never turn a healthy cycle into a failed command.
+   */
+  async #recordPortCycleEvidence(claim: CommandClaim, action: CommandIntentAction): Promise<void> {
+    if (action !== "CYCLE_ACCESS_PORT" || !this.#portCycleEvidence) return;
+    const managedResourceId = String(claim.managedTarget.managedResourceId ?? "").trim();
+    const immutableKey = String(claim.managedTarget.immutableKey ?? "").trim();
+    if (!managedResourceId || !immutableKey) return;
+    try {
+      await this.#portCycleEvidence.record({
+        commandId: claim.commandId,
+        managedResourceId,
+        immutableKey,
+        observedAt: this.#clock.now().toISOString(),
+      });
+    } catch (error) {
+      this.#logger.warn("Unable to persist access-port cycle evidence", redactForLog({
+        commandId: claim.commandId,
+        error: error instanceof Error ? error.name : "unknown",
+      }));
+    }
+  }
+
+  /**
+   * A reconciliation runs on a fresh connector, so the disable half of a cycle is no
+   * longer in that connector's memory even when the cycle really happened. Restores
+   * it from the durable record — never inventing it: the record must belong to this
+   * command and to the same managed port, and the live read still decides whether
+   * the port is enabled now.
+   */
+  async #withDurableCycleEvidence(
+    claim: CommandClaim,
+    action: CommandIntentAction,
+    observation: ActionObservation,
+  ): Promise<ActionObservation> {
+    if (action !== "CYCLE_ACCESS_PORT" || !this.#portCycleEvidence) return observation;
+    const port = observation.accessInterface;
+    if (!port || port.disabledObserved === true) return observation;
+    try {
+      const evidence = await this.#portCycleEvidence.read(claim.commandId);
+      if (
+        !evidence
+        || !sameManagedKey(evidence.managedResourceId, port.managedResourceId)
+        || !sameManagedKey(evidence.immutableKey, port.immutableKey)
+      ) return observation;
+      return { ...observation, accessInterface: { ...port, disabledObserved: true } };
+    } catch (error) {
+      this.#logger.warn("Unable to read access-port cycle evidence", redactForLog({
+        commandId: claim.commandId,
+        error: error instanceof Error ? error.name : "unknown",
+      }));
+      return observation;
+    }
   }
 
   async #stage(claim: CommandClaim, eventKind: string, payload: Record<string, unknown> = {}): Promise<void> {
@@ -263,7 +392,11 @@ export class CommandProcessor {
           });
         }
         const duration = Number(claim.parameters.durationSeconds);
-        if (!Number.isInteger(duration) || duration < 5 || duration > 30) {
+        if (
+          !Number.isInteger(duration)
+          || duration < MIN_ACCESS_PORT_CYCLE_SECONDS
+          || duration > MAX_ACCESS_PORT_CYCLE_SECONDS
+        ) {
           throw new RouterOperationError("INVALID_CYCLE_DURATION", { retryable: false, mayHaveExecuted: false });
         }
         await connector.cycleAccessPort(target, duration);
@@ -322,6 +455,7 @@ export class CommandProcessor {
     let actionStarted = false;
 
     try {
+      this.#assertObservable(claim, 0, "OBSERVATION_DEADLINE_EXCEEDED");
       await lease.renew();
       lease.assert(actionStarted);
       const action = safeAction(claim.actionType);
@@ -343,7 +477,16 @@ export class CommandProcessor {
           }, transitionVersion);
           return;
         }
-        const afterObservation = await connector.observeAction(intent);
+        this.#assertObservable(
+          claim,
+          OBSERVATION_READ_HEADROOM_MS,
+          "OBSERVATION_DEADLINE_UNREACHABLE",
+        );
+        const afterObservation = await this.#withDurableCycleEvidence(
+          claim,
+          action,
+          await connector.observeAction(intent),
+        );
         transitionVersion = await this.#observe(
           claim,
           "RECONCILIATION",
@@ -416,12 +559,19 @@ export class CommandProcessor {
         );
       }
 
+      this.#assertObservable(
+        claim,
+        actionExecutionCostMs(action, claim.parameters) + OBSERVATION_READ_HEADROOM_MS,
+        "OBSERVATION_DEADLINE_UNREACHABLE",
+      );
+
       if (action !== "CAPTURE_SNAPSHOT") {
         await this.#stage(claim, "EXECUTION_STARTED", { actionType: action });
         actionStarted = true;
         actionResult = await this.#performAction(action, claim, connector);
+        await this.#recordPortCycleEvidence(claim, action);
         await this.#stage(claim, "EXECUTION_COMPLETED", { actionType: action, actionResult });
-        if (action === "REBOOT_ROUTER") await this.#clock.sleep(5_000);
+        if (action === "REBOOT_ROUTER") await this.#clock.sleep(REBOOT_SETTLE_MS);
       }
       lease.assert(actionStarted);
 
@@ -435,7 +585,11 @@ export class CommandProcessor {
             encryptedArtifactHash: backupReceipt.sha256,
           },
         }
-        : await connector.observeAction(intent);
+        : await this.#withDurableCycleEvidence(
+          claim,
+          action,
+          await connector.observeAction(intent),
+        );
       const decision = reconcileAction(intent, beforeObservation, afterObservation);
       transitionVersion = await this.#observe(
         claim,
@@ -463,7 +617,7 @@ export class CommandProcessor {
         error: error instanceof RouterOperationError ? error.code : "unexpected",
       }));
       const disruptive = DISRUPTIVE_ACTIONS.has(claim.actionType.toUpperCase());
-      const classified = classifyWorkerError(error, disruptive);
+      const classified = classifyWorkerError(error, disruptive, actionStarted);
       await finish({
         outcome: classified.outcome,
         result: classified.result,

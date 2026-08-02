@@ -23,6 +23,8 @@ import {
   routerOsCommandFailed,
   routerOsInterfaceState,
 } from "../src/routeros/sshConnector.js";
+import { createFakeRouterSession, createTestConnector } from "./support/fakeRouterClient.js";
+import { FakeRouterOs } from "./support/fakeRouterOs.js";
 
 describe("RouterOS SSH boundary", () => {
   it("parses singleton and terse output without exposing a raw command API", async () => {
@@ -696,7 +698,7 @@ describe("RouterOS SSH boundary", () => {
         privateKey: "fake-private-key",
         backupPassword: "fake-backup-password",
       },
-      commandTimeoutMs: 1_000,
+      commandTimeoutMs: 60_000,
       backupStagingDirectory: ".",
       clientFactory: () => new FakeClient() as unknown as Client,
     });
@@ -718,71 +720,22 @@ describe("RouterOS SSH boundary", () => {
   });
 
   it("accepts a port cycle only after ordered RouterOS disable/enable readback markers", async () => {
-    const commands: string[] = [];
-    class FakeClient extends EventEmitter {
-      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
-        options.hostVerifier?.(Buffer.from("fake-host-key"));
-        queueMicrotask(() => this.emit("ready"));
-      }
-
-      exec(command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
-        commands.push(command);
-        const channel = new EventEmitter() as EventEmitter & {
-          stderr: EventEmitter;
-          close: () => void;
-        };
-        channel.stderr = new EventEmitter();
-        channel.close = () => undefined;
-        callback(undefined, channel);
-        const output = command === ROUTER_OS_READ_COMMANDS.interfaces
-          ? ".id=*B name=room-401 default-name=ether4 type=ether disabled=false running=true\n"
-          : command === ROUTER_OS_READ_COMMANDS.firewallFilters
-            ? ""
-            : command === ROUTER_OS_READ_COMMANDS.identity
-              ? "name=demo-router\n"
-              : command.startsWith(":put [/interface/find")
-                ? "*B\n"
-                : command.includes("NC_CYCLE_DISABLED")
-                  ? "NC_CYCLE_DISABLED:ether4\nNC_CYCLE_ENABLED:ether4\n"
-                  : "";
-        queueMicrotask(() => {
-          channel.emit("data", Buffer.from(output));
-          channel.emit("close", 0);
-        });
-      }
-
-      destroy(): void {}
-      end(): void {}
-    }
-
-    const connector = new SshRouterConnector({
-      connection: {
-        connectionId: "connection-id",
-        organizationId: "organization-id",
-        buildingId: "building-id",
-        deviceId: "device-id",
-        deviceKind: "MIKROTIK",
-        externalKey: "router-id",
-        displayName: "Router",
-        transport: "ROUTEROS_SSH",
-        managementIp: "192.0.2.1",
-        managementPort: 22,
-        credentialRef: "router/demo",
-        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-        pollIntervalSeconds: 30,
-        connectTimeoutMs: 1_000,
-        monitoringEnabled: true,
-        changesPaused: false,
-      },
-      credential: {
-        username: "ihome-nc-worker",
-        privateKey: "fake-private-key",
-        backupPassword: "fake-backup-password",
-      },
-      commandTimeoutMs: 1_000,
-      backupStagingDirectory: ".",
-      clientFactory: () => new FakeClient() as unknown as Client,
+    // Driven by a RouterOS console simulator rather than a canned reply table, so the
+    // generated script has to actually run against router state to be accepted.
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*B", name: "room-401", defaultName: "ether4", type: "ether", disabled: false },
+      ],
+      firewall: [{
+        chain: "input",
+        action: "accept",
+        "in-interface": "ether9",
+        comment: "ihomecrm-network-center:v1:demo-router-20260730:lan-recovery",
+      }],
     });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+    const commands = session.commands;
     const target = {
       managedResourceId: "managed-resource-uuid",
       interfaceId: "interface-uuid",
@@ -813,5 +766,11 @@ describe("RouterOS SSH boundary", () => {
       enabledObserved: true,
       enabled: true,
     });
+
+    // The guard must be armed by an earlier exec than the one that disables the port.
+    const armCommand = commands.findIndex((command) => command.includes("/system/scheduler add"));
+    expect(armCommand).toBeGreaterThanOrEqual(0);
+    expect(commands.indexOf(cycleCommand ?? "")).toBeGreaterThan(armCommand);
+    expect(cycleCommand).not.toContain("/system/scheduler add");
   });
 });

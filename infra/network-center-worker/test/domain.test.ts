@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ApiClientError } from "../src/apiClient.js";
 import {
   InterfaceRegistry,
   RouterOperationError,
@@ -100,5 +101,45 @@ describe("worker domain safeguards", () => {
       retryable: true,
       mayHaveExecuted: true,
     }), true)).toMatchObject({ outcome: "UNCERTAIN" });
+  });
+
+  it("classifies control-plane transport failures by their own retryable semantics", () => {
+    expect(classifyWorkerError(
+      new ApiClientError({ code: "HTTP_503", retryable: true, status: 503 }),
+      false,
+    )).toMatchObject({ outcome: "RETRYABLE_FAILURE", result: { code: "HTTP_503" } });
+
+    expect(classifyWorkerError(
+      new ApiClientError({ code: "NETWORK_ERROR", retryable: true }),
+      true,
+      false,
+    )).toMatchObject({ outcome: "RETRYABLE_FAILURE", result: { code: "NETWORK_ERROR" } });
+
+    expect(classifyWorkerError(
+      new ApiClientError({ code: "HTTP_400", retryable: false, status: 400 }),
+      true,
+      false,
+    )).toMatchObject({ outcome: "FAILED", result: { code: "HTTP_400" } });
+  });
+
+  it("never turns a control-plane failure after a disruptive action into a clean retry", () => {
+    expect(classifyWorkerError(
+      new ApiClientError({ code: "NETWORK_ERROR", retryable: true }),
+      true,
+      true,
+    )).toMatchObject({ outcome: "UNCERTAIN", result: { code: "NETWORK_ERROR" } });
+
+    expect(classifyWorkerError(
+      new ApiClientError({ code: "HTTP_502", retryable: true, status: 502 }),
+      false,
+      true,
+    )).toMatchObject({ outcome: "RETRYABLE_FAILURE" });
+  });
+
+  it("still fails closed on an error that carries no retryable semantics", () => {
+    expect(classifyWorkerError(new Error("boom"), true, true)).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "UNEXPECTED_WORKER_ERROR" },
+    });
   });
 });

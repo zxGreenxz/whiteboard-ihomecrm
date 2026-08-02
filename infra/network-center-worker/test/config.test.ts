@@ -82,6 +82,31 @@ describe("worker configuration", () => {
     })).toThrow(/MAX_CONCURRENCY.*removed|removed.*MAX_CONCURRENCY/i);
   });
 
+  it("refuses a command timeout that cannot outlive the longest access-port cycle", () => {
+    for (const timeout of ["5000", "30000", "44999"]) {
+      expect(() => loadWorkerConfig({
+        env: { ...validEnvironment, NETWORK_CENTER_COMMAND_TIMEOUT_MS: timeout },
+        argv: ["node", "dist/main.js"],
+        files: secureFiles,
+        platform: "linux",
+      })).toThrow(/COMMAND_TIMEOUT_MS/i);
+    }
+
+    expect(loadWorkerConfig({
+      env: { ...validEnvironment, NETWORK_CENTER_COMMAND_TIMEOUT_MS: "45000" },
+      argv: ["node", "dist/main.js"],
+      files: secureFiles,
+      platform: "linux",
+    }).commandTimeoutMs).toBe(45_000);
+
+    expect(loadWorkerConfig({
+      env: validEnvironment,
+      argv: ["node", "dist/main.js"],
+      files: secureFiles,
+      platform: "linux",
+    }).commandTimeoutMs).toBe(60_000);
+  });
+
   it("keeps the worker key as local labeling only and matches the database key format", () => {
     expect(() => loadWorkerConfig({
       env: { ...validEnvironment, NETWORK_CENTER_WORKER_KEY: "UPPER:scope" },

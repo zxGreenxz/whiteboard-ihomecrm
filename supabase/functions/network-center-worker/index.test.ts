@@ -29,6 +29,10 @@ type WorkerModule = {
     getEnv?: (name: string) => string | undefined;
     rpc?: (name: string, args: Record<string, unknown>) => Promise<RpcResult>;
   }) => (request: Request) => Promise<Response>;
+  readJsonBody?: (
+    request: Request,
+    maximumBytes: number,
+  ) => Promise<Record<string, unknown>>;
 };
 
 type RpcCall = {
@@ -698,4 +702,151 @@ Deno.test("invalid stage kinds, UUIDs, timestamps, and RPC failures are sanitize
   assertEquals(failedResponse.status, 502);
   assertEquals(failedBody.error, "worker_backend_error");
   assertEquals(JSON.stringify(failedBody).includes("secret internal"), false);
+});
+
+// ROUTES must be immune to prototype-chain lookups: `ROUTES[key]` on a plain
+// frozen object literal still resolves inherited Object.prototype members
+// as truthy values, which bypasses the `if (!route) return 404` guard
+// entirely. NOTE: on this Deno/V8 build, `["__proto__"]` bracket access
+// itself happens to evaluate to `undefined` (unlike Node, where the legacy
+// accessor returns the real prototype) -- so `/__proto__` alone would 404
+// even on unpatched code and prove nothing. `constructor`, `toString`,
+// `valueOf`, and `hasOwnProperty` are ordinary inherited data/function
+// properties (not the special __proto__ accessor) and are confirmed truthy
+// via `ROUTES[key]` on every engine, including this one. We assert the
+// full set together (not via sequential asserts that abort at the first
+// mismatch) specifically so an accidentally-already-404 case like
+// `__proto__` can never mask a real failure on the others.
+Deno.test("prototype-chain route names are rejected as unknown routes, not resolved via Object.prototype", async () => {
+  const { handler, calls } = await createHarness();
+  const maliciousPaths = [
+    "/__proto__",
+    "/constructor",
+    "/hasOwnProperty",
+    "/toString",
+    "/valueOf",
+  ];
+  const statuses: Record<string, number> = {};
+  const bodies: Record<string, Record<string, unknown>> = {};
+  for (const path of maliciousPaths) {
+    const response = await handler(post(path, {}));
+    statuses[path] = response.status;
+    bodies[path] = await responseJson(response);
+  }
+  assertEquals(
+    statuses,
+    Object.fromEntries(maliciousPaths.map((path) => [path, 404])),
+    "every prototype-chain route name must be treated as unknown",
+  );
+  assertEquals(
+    bodies,
+    Object.fromEntries(
+      maliciousPaths.map((path) => [path, { error: "route_not_found" }]),
+    ),
+  );
+  assertEquals(calls.length, 0);
+});
+
+// Route resolution must happen strictly before any body I/O. We prove this
+// by sending bodies that would trip a *different* error path (415 for wrong
+// content-type, 400 for invalid JSON) if the request ever reached
+// readJsonBody. A 404 proves the malicious route name was rejected before
+// the body was touched at all. Uses "constructor" (confirmed truthy via
+// ROUTES[...] on this runtime) rather than "__proto__", which does not
+// reproduce the bug on this Deno/V8 build -- see note above.
+Deno.test("prototype-chain route dispatch happens before any body parsing", async () => {
+  const { handler, calls } = await createHarness();
+
+  const wrongContentType = await handler(
+    new Request("http://localhost/network-center-worker/constructor", {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain",
+        "x-network-worker-secret": SECRET,
+      },
+      body: "not json at all",
+    }),
+  );
+  const invalidJson = await handler(
+    post("/toString", {}, { raw: "{not valid json" }),
+  );
+
+  assertEquals(
+    wrongContentType.status,
+    404,
+    "route lookup must precede content-type validation",
+  );
+  assertEquals(
+    invalidJson.status,
+    404,
+    "route lookup must precede JSON parsing",
+  );
+  assertEquals(calls.length, 0);
+});
+
+// The per-route maxBodyBytes cap only exists to bound memory before
+// authentication/parsing. If a prototype-chain key resolves to a route-like
+// value, `route.maxBodyBytes` is undefined, and `size > undefined` is always
+// false in JS -- so a multi-megabyte body sails through uncapped. Sending a
+// body larger than the largest legitimate cap (2_200_000 bytes, /snapshots)
+// to "constructor" (confirmed truthy via ROUTES[...] on this runtime, unlike
+// "__proto__") and still getting 404 proves both that the route was
+// rejected and that no size-based short-circuit silently accepted it as
+// "unlimited".
+Deno.test("prototype-chain route rejects dispatch regardless of body size, proving no cap silently became unlimited", async () => {
+  const { handler, calls } = await createHarness();
+  const oversizedBody = JSON.stringify({ padding: "x".repeat(3_000_000) });
+
+  const response = await handler(
+    post("/constructor", {}, { raw: oversizedBody }),
+  );
+
+  assertEquals(response.status, 404);
+  assertEquals(calls.length, 0);
+});
+
+// Defense in depth: even in isolation, readJsonBody must fail closed when
+// handed a byte cap that isn't a valid positive integer, instead of letting
+// `declaredLength > maximumBytes` and `bytes.byteLength > maximumBytes`
+// silently evaluate to false (which is what happens for undefined, NaN, and
+// other non-numeric values in JS). This is what stops the routing bug class
+// from silently recurring even if a future route is misconfigured.
+Deno.test("readJsonBody rejects a missing or invalid byte cap instead of treating it as unlimited", async () => {
+  const loaded = await loadWorkerModule();
+  const readBody = loaded.readJsonBody;
+  assert(
+    typeof readBody === "function",
+    "index.ts must export readJsonBody so its byte-cap contract is testable",
+  );
+
+  const invalidCaps: unknown[] = [
+    undefined,
+    null,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    -1,
+    0,
+    1.5,
+    "8192",
+  ];
+  for (const cap of invalidCaps) {
+    const request = new Request(
+      "http://localhost/network-center-worker/heartbeat",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ok: true }),
+      },
+    );
+    let threw = false;
+    try {
+      await readBody(request, cap as number);
+    } catch {
+      threw = true;
+    }
+    assert(
+      threw,
+      `readJsonBody must reject a byte cap of ${JSON.stringify(cap)} instead of treating it as unlimited`,
+    );
+  }
 });

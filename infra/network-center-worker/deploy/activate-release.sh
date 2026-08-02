@@ -16,11 +16,23 @@ readonly PREVIOUS_POINTER="$STATE_DIR/previous.release"
 readonly PENDING_POINTER="$STATE_DIR/pending.release"
 readonly TRANSITION_FILE="$STATE_DIR/transition.json"
 readonly LAST_TRANSITION_FILE="$STATE_DIR/last-transition.json"
+# Runtime (non-pointer) mutations - today only the emergency-stop switch - stop
+# and restart the live worker without touching any pointer, so the transition
+# journal has nothing to say about them. This records the requested runtime state
+# durably before the container is stopped, so a dropped ssh session cannot leave
+# the worker stopped with nothing on disk asking for it back.
+readonly RUNTIME_INTENT_FILE="$STATE_DIR/runtime-intent.json"
 readonly WORKER_UID=10001
 readonly WORKER_GID=10001
 readonly EXPECTED_NODE_OPTIONS="--max-old-space-size=320"
 readonly MINIMUM_FREE_BYTES=$((20 * 1024 * 1024 * 1024))
 readonly STAGE_HEADROOM_BYTES=$((4 * 1024 * 1024 * 1024))
+
+activation_mutation_in_flight=false
+# The staging directory this invocation owns, so the residue sweep below never
+# deletes a tree the caller is still filling. main() holds an exclusive flock for
+# the whole command, so no other invocation can own one at the same time.
+staging_temporary=""
 
 die() {
   printf 'network-center activation: %s\n' "$1" >&2
@@ -33,6 +45,53 @@ failpoint() {
 
 validate_sha() {
   [[ "${1:-}" =~ ^[a-f0-9]{40}$ ]] || die "release SHA must be 40 lowercase hex characters"
+}
+
+# mktemp + `mv -fT` is atomic but not durable. state/transition.json does not
+# exist before begin_transition, so ext4's auto_da_alloc replace-via-rename
+# heuristic (which only covers renaming onto an existing file) never applies: a
+# hard reset can journal the rename while the data blocks are still delayed
+# allocated and return a zero-length journal - exactly in the window the journal
+# exists to survive. Both the file and its directory entry are flushed here.
+sync_path() {
+  sync -- "$1" || die "durable write could not be flushed: $1"
+}
+
+# A directory needs more care than a file: fsyncing a directory flushes its own
+# entries and nothing inside it, so a secret generation renamed the way a pointer
+# is can come back with every name present and every file empty. That is worse
+# than losing the rename outright - the manifest stops matching, so
+# verify_persistent_secret_generation fails and validate_pointer then refuses
+# current.release at every boot. Flush the contents, then the directory, then the
+# parent entry the rename lands in.
+durable_replace() {
+  local temporary="$1" destination="$2" path
+  if [[ -d "$temporary" && ! -L "$temporary" ]]; then
+    while IFS= read -r -d '' path; do
+      sync_path "$path"
+    done < <(find "$temporary" -mindepth 1 -depth -print0)
+  fi
+  sync_path "$temporary"
+  mv -fT "$temporary" "$destination"
+  sync_path "$(dirname "$destination")"
+}
+
+durable_remove() {
+  local target="$1"
+  [[ -e "$target" ]] || return 0
+  rm -f -- "$target"
+  sync_path "$(dirname "$target")"
+}
+
+# A corrupt state file must not become a permanent stop: boot runs start-current,
+# which recovers first, so dying here wedges every command including boot. The
+# bytes are kept for inspection and the loss is reported loudly instead.
+quarantine_state_file() {
+  local path="$1" label="$2" destination
+  destination="$STATE_DIR/$label.corrupt.$(date -u +%Y%m%dT%H%M%SZ).$$"
+  mv -fT "$path" "$destination" || rm -f -- "$path"
+  sync_path "$STATE_DIR"
+  printf 'network-center activation: %s was unreadable and is quarantined at %s\n' "$label" "$destination" >&2
 }
 
 validate_digest() {
@@ -127,7 +186,7 @@ snapshot_secret_generation() {
     rm -rf -- "$temporary"
     verify_persistent_secret_generation "$generation"
   else
-    mv -fT "$temporary" "$destination"
+    durable_replace "$temporary" "$destination"
     verify_persistent_secret_generation "$generation"
   fi
   printf '%s\n' "$generation"
@@ -156,7 +215,7 @@ materialize_runtime_secret_generation() {
   expected="$(sed '/  manifest\.sha256$/d' "$source/manifest.sha256")"
   actual="$(canonical_secret_manifest "$temporary")"
   [[ "$expected" == "$actual" ]] || die "runtime secret generation copy mismatch"
-  mv -fT "$temporary" "$destination"
+  durable_replace "$temporary" "$destination"
   verify_runtime_secret_generation "$generation"
   printf '%s\n' "$destination"
 }
@@ -243,19 +302,19 @@ write_pointer() {
       releaseDirectory:$releaseDirectory, envFile:$envFile,
       projectName:$projectName, containerName:$containerName}' > "$temporary"
   chmod 0600 "$temporary"
-  mv -fT "$temporary" "$destination"
+  durable_replace "$temporary" "$destination"
 }
 
 write_pointer_json() {
   local destination="$1" value="$2" temporary
   if [[ "$value" == "null" ]]; then
-    rm -f -- "$destination"
+    durable_remove "$destination"
     return
   fi
   temporary="$(mktemp "$STATE_DIR/.pointer-json.XXXXXX")"
   printf '%s\n' "$value" | jq -e 'select(.schemaVersion == 2)' > "$temporary"
   chmod 0600 "$temporary"
-  mv -fT "$temporary" "$destination"
+  durable_replace "$temporary" "$destination"
   validate_pointer "$destination"
 }
 
@@ -278,7 +337,7 @@ write_transition() {
     '{schemaVersion:1,operation:$operation,phase:$phase,before:$before,after:$after,target:$target}' \
     > "$temporary"
   chmod 0600 "$temporary"
-  mv -fT "$temporary" "$TRANSITION_FILE"
+  durable_replace "$temporary" "$TRANSITION_FILE"
 }
 
 validate_transition_journal() {
@@ -324,7 +383,7 @@ write_last_transition() {
     > "$temporary"
   chmod 0600 "$temporary"
   validate_transition_journal "$temporary"
-  mv -fT "$temporary" "$LAST_TRANSITION_FILE"
+  durable_replace "$temporary" "$LAST_TRANSITION_FILE"
 }
 
 begin_transition() {
@@ -333,7 +392,7 @@ begin_transition() {
     validate_transition_journal "$LAST_TRANSITION_FILE"
     [[ "$(jq -er '.phase' "$LAST_TRANSITION_FILE")" == finalized ]] ||
       die "the prior deployment transition requires explicit finalization"
-    rm -f -- "$LAST_TRANSITION_FILE"
+    durable_remove "$LAST_TRANSITION_FILE"
   fi
   write_transition "$1" prepared "$2" "$3" "$4"
   failpoint after-transition-prepared
@@ -345,7 +404,7 @@ mark_transition_commit_intent() {
   temporary="$(mktemp "$STATE_DIR/.transition.XXXXXX")"
   jq '.phase = "commit-intent"' "$TRANSITION_FILE" > "$temporary"
   chmod 0600 "$temporary"
-  mv -fT "$temporary" "$TRANSITION_FILE"
+  durable_replace "$temporary" "$TRANSITION_FILE"
   failpoint after-transition-commit-intent
 }
 
@@ -379,7 +438,7 @@ commit_transition() {
       "$(jq -c '.before' "$TRANSITION_FILE")" "$(jq -c '.after' "$TRANSITION_FILE")" \
       "$(jq -c '.target' "$TRANSITION_FILE")"
   fi
-  rm -f -- "$TRANSITION_FILE"
+  durable_remove "$TRANSITION_FILE"
 }
 
 make_release_env() {
@@ -526,9 +585,87 @@ converge_pointer_set() {
   done
 }
 
+pointer_container_running() {
+  local pointer="$1" container status
+  container="$(pointer_value "$pointer" '.containerName')"
+  status="$(docker inspect "$container" --format '{{.State.Status}}' 2>/dev/null || true)"
+  [[ "$status" == running ]]
+}
+
+validate_runtime_intent() {
+  local intent="$1"
+  [[ -f "$intent" && ! -L "$intent" ]] || die "runtime intent is unavailable"
+  [[ "$(stat -c '%s' "$intent")" -le 4096 ]] || die "runtime intent exceeds its byte bound"
+  jq -e '
+    type == "object" and
+    ((keys | sort) == ["emergencyStop","operation","releaseSha","schemaVersion"]) and
+    .schemaVersion == 1 and .operation == "emergency-stop" and
+    (.emergencyStop | type == "boolean") and
+    (.releaseSha | type == "string" and test("^[a-f0-9]{40}$"))
+  ' "$intent" >/dev/null || die "runtime intent schema is invalid"
+}
+
+write_runtime_intent() {
+  local release_sha="$1" emergency_stop="$2" temporary
+  validate_sha "$release_sha"
+  [[ "$emergency_stop" == true || "$emergency_stop" == false ]] || die "runtime intent value is invalid"
+  temporary="$(mktemp "$STATE_DIR/.runtime-intent.XXXXXX")"
+  jq -n --arg releaseSha "$release_sha" --argjson emergencyStop "$emergency_stop" \
+    '{schemaVersion:1,operation:"emergency-stop",releaseSha:$releaseSha,emergencyStop:$emergencyStop}' \
+    > "$temporary"
+  chmod 0600 "$temporary"
+  durable_replace "$temporary" "$RUNTIME_INTENT_FILE"
+}
+
+begin_runtime_mutation() {
+  write_runtime_intent "$1" "$2"
+  activation_mutation_in_flight=true
+}
+
+end_runtime_mutation() {
+  activation_mutation_in_flight=false
+  durable_remove "$RUNTIME_INTENT_FILE"
+}
+
+# Converges the live worker onto the runtime state the operator last asked for.
+# Reached from every command (and therefore from `start-current` at boot), so an
+# emergency stop that lost its ssh session mid-change is completed, not dropped.
+recover_runtime_intent() {
+  [[ -e "$RUNTIME_INTENT_FILE" ]] || return 0
+  if ! (validate_runtime_intent "$RUNTIME_INTENT_FILE"); then
+    quarantine_state_file "$RUNTIME_INTENT_FILE" runtime-intent
+    return 0
+  fi
+  local release_sha emergency_stop env_file
+  release_sha="$(jq -er '.releaseSha' "$RUNTIME_INTENT_FILE")"
+  emergency_stop="$(jq -er '.emergencyStop' "$RUNTIME_INTENT_FILE")"
+  if [[ ! -f "$CURRENT_POINTER" || -L "$CURRENT_POINTER" ]]; then
+    quarantine_state_file "$RUNTIME_INTENT_FILE" runtime-intent
+    return 0
+  fi
+  validate_pointer "$CURRENT_POINTER"
+  [[ "$(pointer_value "$CURRENT_POINTER" '.releaseSha')" == "$release_sha" ]] ||
+    die "recorded runtime intent does not match the current release"
+  env_file="$(pointer_value "$CURRENT_POINTER" '.envFile')"
+  make_release_env "$env_file" "$release_sha" "$emergency_stop"
+  if ! (start_pointer "$CURRENT_POINTER"); then
+    # A paused worker cannot complete the poll cycle its health gate needs; that
+    # is expected, and it must never be a reason to un-pause it.
+    if [[ "$emergency_stop" != true ]] || ! pointer_container_running "$CURRENT_POINTER"; then
+      die "interrupted runtime change could not be completed"
+    fi
+    printf 'network-center activation: emergency stop reapplied without a health readback\n' >&2
+  fi
+  end_runtime_mutation
+}
+
 recover_transition() {
+  recover_runtime_intent
   [[ -e "$TRANSITION_FILE" ]] || return 0
-  validate_transition_journal "$TRANSITION_FILE"
+  if ! (validate_transition_journal "$TRANSITION_FILE"); then
+    quarantine_state_file "$TRANSITION_FILE" transition-journal
+    return 0
+  fi
   local phase target target_pointer before after
   phase="$(jq -er '.phase' "$TRANSITION_FILE")"
   before="$(jq -c '.before' "$TRANSITION_FILE")"
@@ -557,7 +694,13 @@ recover_transition() {
       fi
       rm -f -- "$target_pointer"
       ;;
-    *) die "transition journal phase is invalid" ;;
+    *)
+      # Schema-valid but unreachable here: no writer leaves a committed,
+      # compensated or finalized phase in transition.json. Report and step aside
+      # rather than wedging boot; the pointer set stays authoritative.
+      quarantine_state_file "$TRANSITION_FILE" transition-journal
+      return 0
+      ;;
   esac
   [[ ! -e "$TRANSITION_FILE" ]] || rm -f -- "$TRANSITION_FILE"
 }
@@ -600,6 +743,18 @@ cleanup_unreferenced_secret_generations() {
     [[ "$name" =~ ^[a-f0-9]{64}$ ]] || continue
     value_is_kept "$name" "${kept[@]}" || rm -rf -- "$path"
   done
+  # An interrupted snapshot/materialize leaves `.generation.XXXXXX` behind, and
+  # the loop above cannot see it: the name is not a digest, and the glob skips
+  # dotted entries entirely. Only the exact mktemp shape is swept, and only
+  # inside the two generation roots this project owns.
+  local staging
+  for staging in "$SECRET_GENERATIONS_DIR" "$RUNTIME_SECRET_GENERATIONS_DIR"; do
+    [[ -d "$staging" && ! -L "$staging" ]] || continue
+    while IFS= read -r -d '' path; do
+      [[ "$(basename "$path")" =~ ^\.generation\.[A-Za-z0-9]{6}$ ]] || continue
+      rm -rf -- "$path"
+    done < <(find "$staging" -mindepth 1 -maxdepth 1 -type d -print0)
+  done
 }
 
 cleanup_unreferenced_releases() {
@@ -609,6 +764,17 @@ cleanup_unreferenced_releases() {
   while IFS= read -r value; do [[ -n "$value" ]] && kept_image+=("$value"); done < <(referenced_values imageId)
   while IFS= read -r -d '' path; do
     name="$(basename "$path")"
+    # `.release-<sha>.XXXXXX` is an interrupted stage: a SIGKILL or a power cut
+    # runs no trap, so cleanup has to be able to see the residue by itself. It
+    # can never be referenced - validate_pointer pins releaseDirectory to
+    # $RELEASES_DIR/<sha>, so a staging name is never a pointer target - but the
+    # tree this invocation still owns is skipped by exact path. Anything that is
+    # neither a bare SHA nor this exact mktemp shape is left alone: the release
+    # root is ours, but the disk is shared with another production service.
+    if [[ "$name" =~ ^\.release-[a-f0-9]{40}\.[A-Za-z0-9]{6}$ ]]; then
+      [[ "$path" == "$staging_temporary" ]] || rm -rf -- "$path"
+      continue
+    fi
     [[ "$name" =~ ^[a-f0-9]{40}$ ]] || continue
     value_is_kept "$name" "${kept_sha[@]}" || rm -rf -- "$path"
   done < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d -print0)
@@ -635,7 +801,9 @@ cleanup_after_commit() {
 
 stage_candidate_failed() {
   local release_sha="$1" temporary="$2"
+  trap - ERR HUP INT TERM
   set +e
+  staging_temporary=""
   if [[ -f "$PENDING_POINTER" ]] && [[ "$(jq -er '.releaseSha' "$PENDING_POINTER" 2>/dev/null)" == "$release_sha" ]]; then
     stop_pointer "$PENDING_POINTER" >/dev/null 2>&1 || true
     rm -f -- "$PENDING_POINTER"
@@ -661,15 +829,25 @@ stage_candidate() {
   [[ "$archive_owner" == "0:0" && "$archive_mode" == "600" ]] || die "release archive must be root:root 0600"
   [[ "$(sha256sum "$archive" | awk '{print $1}')" == "$archive_sha" ]] || die "release archive digest mismatch"
   [[ ! -e "$PENDING_POINTER" ]] || die "a pending release already exists"
-  [[ ! -e "$release_dir" ]] || die "release directory already exists"
+  # Reclaim BEFORE refusing the SHA. A session dropped between the `mv` below and
+  # write_pointer leaves $RELEASES_DIR/<sha> with nothing referencing it; refusing
+  # first made the obvious retry of the same SHA fail forever. Cleanup only ever
+  # removes unreferenced entries, so a directory a pointer or a live journal still
+  # references survives it and is refused by the check that follows.
   cleanup_unreferenced_releases
+  [[ ! -e "$release_dir" ]] || die "release directory already exists"
   ensure_disk_reserve "$((MINIMUM_FREE_BYTES + STAGE_HEADROOM_BYTES))"
   if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then die "release archive contains an unsafe path"; fi
   if tar -tvzf "$archive" | awk '$1 ~ /^[lh]/ { found = 1 } END { exit !found }'; then
     die "release archive symlinks and hard links are forbidden"
   fi
-  trap 'stage_candidate_failed "$release_sha" "$temporary"' ERR
+  # The ERR trap never sees a signal, and `ssh sudo --` SIGHUPs this script the
+  # moment the session drops - which is exactly when an unpacked, half-built
+  # staging tree is on disk. Compensate on the signal too instead of leaving it
+  # for the next stage to find.
+  trap 'stage_candidate_failed "$release_sha" "$temporary"' ERR HUP INT TERM
   temporary="$(mktemp -d "$RELEASES_DIR/.release-$release_sha.XXXXXX")"
+  staging_temporary="$temporary"
   tar -xzf "$archive" -C "$temporary"
   candidate_dir="$temporary/infra/network-center-worker"
   [[ -d "$candidate_dir" && ! -L "$candidate_dir" ]] || die "worker archive root is missing"
@@ -689,6 +867,7 @@ stage_candidate() {
   mv "$candidate_dir" "$release_dir"
   rmdir "$temporary/infra" "$temporary"
   temporary=""
+  staging_temporary=""
   install -o root -g root -m 0600 "$archive" "$stored_archive"
   generation="$(snapshot_secret_generation)"
   materialize_runtime_secret_generation "$generation" >/dev/null
@@ -704,7 +883,10 @@ stage_candidate() {
     cleanup_unreferenced_releases
     die "emergency-stop canary failed"
   fi
-  trap - ERR
+  # Hand the signals back to the top-level handlers rather than to their default
+  # disposition: everything after this point is a runtime mutation again.
+  trap - ERR HUP INT TERM
+  install_activation_signal_handlers
   jq -cn --arg releaseSha "$release_sha" --arg imageId "$image_id" --arg secretGeneration "$generation" \
     '{schemaVersion:2,releaseSha:$releaseSha,imageId:$imageId,secretGeneration:$secretGeneration,
       canary:"healthy",emergencyStop:true}'
@@ -741,7 +923,7 @@ set_last_transition_phase() {
   jq --arg phase "$phase" '.phase = $phase' "$LAST_TRANSITION_FILE" > "$temporary"
   chmod 0600 "$temporary"
   validate_transition_journal "$temporary"
-  mv -fT "$temporary" "$LAST_TRANSITION_FILE"
+  durable_replace "$temporary" "$LAST_TRANSITION_FILE"
 }
 
 compensate_last_transition() {
@@ -943,7 +1125,7 @@ promote_pending() {
 }
 
 set_emergency_stop() {
-  local requested="$1" release_sha env_file previous_env
+  local requested="$1" release_sha env_file previous_env health=healthy
   recover_transition
   [[ "$requested" == true || "$requested" == false ]] || die "emergency stop must be true or false"
   validate_pointer "$CURRENT_POINTER"
@@ -951,19 +1133,76 @@ set_emergency_stop() {
   env_file="$(pointer_value "$CURRENT_POINTER" '.envFile')"
   previous_env="$(mktemp "$STATE_DIR/.worker-env-rollback.XXXXXX")"
   cp --preserve=mode "$env_file" "$previous_env"
+  # Durable intent first: this runs under `ssh sudo --`, and a dropped session
+  # SIGHUPs the script. Without a record on disk the worker would stay stopped
+  # while current.release still pointed at the release and the oneshot unit still
+  # reported active - 15 buildings silently unpolled.
+  begin_runtime_mutation "$release_sha" "$requested"
   stop_pointer "$CURRENT_POINTER"
   make_release_env "$env_file" "$release_sha" "$requested"
   if ! (start_pointer "$CURRENT_POINTER"); then
-    mv -fT "$previous_env" "$env_file"
-    (start_pointer "$CURRENT_POINTER") || die "emergency-stop change failed and prior environment could not be restored"
-    die "emergency-stop change failed; prior environment restored"
+    if [[ "$requested" == true ]]; then
+      # An emergency stop must never revert itself. The health gate only passes
+      # after a full polling cycle plus a Supabase round trip, which is exactly
+      # what the fleet an operator is pausing cannot deliver; restoring the prior
+      # environment here re-armed the worker they were trying to stop.
+      if ! pointer_container_running "$CURRENT_POINTER"; then
+        end_runtime_mutation
+        rm -f -- "$previous_env"
+        die "emergency stop is applied but the worker container is not running"
+      fi
+      health=unverified
+      printf 'network-center activation: emergency stop applied without a health readback\n' >&2
+    else
+      mv -fT "$previous_env" "$env_file"
+      if ! (start_pointer "$CURRENT_POINTER"); then
+        end_runtime_mutation
+        die "emergency-stop change failed and prior environment could not be restored"
+      fi
+      end_runtime_mutation
+      die "emergency-stop change failed; prior environment restored"
+    fi
   fi
-  rm -f "$previous_env"
-  jq -cn --arg releaseSha "$release_sha" --argjson emergencyStop "$requested" \
-    '{schemaVersion:2,releaseSha:$releaseSha,emergencyStop:$emergencyStop,health:"healthy"}'
+  end_runtime_mutation
+  rm -f -- "$previous_env"
+  jq -cn --arg releaseSha "$release_sha" --argjson emergencyStop "$requested" --arg health "$health" \
+    '{schemaVersion:2,releaseSha:$releaseSha,emergencyStop:$emergencyStop,health:$health}'
+}
+
+# The README documents driving these commands over ssh. Non-interactive bash with
+# no HUP trap dies the instant the session drops, so without these the window
+# between stopping and restarting the worker has no compensation at all.
+handle_activation_signal() {
+  local signal="$1"
+  trap - HUP INT TERM EXIT
+  if [[ "$activation_mutation_in_flight" != true ]]; then
+    die "interrupted by SIG$signal before any runtime mutation"
+  fi
+  activation_mutation_in_flight=false
+  set +e
+  recover_runtime_intent
+  die "interrupted by SIG$signal during a runtime mutation; the recorded intent was reapplied"
+}
+
+handle_activation_exit() {
+  local status=$?
+  trap - HUP INT TERM EXIT
+  [[ "$activation_mutation_in_flight" == true ]] || return "$status"
+  activation_mutation_in_flight=false
+  set +e
+  recover_runtime_intent
+  die "exited during a runtime mutation; the recorded intent was reapplied"
+}
+
+install_activation_signal_handlers() {
+  trap 'handle_activation_signal HUP' HUP
+  trap 'handle_activation_signal INT' INT
+  trap 'handle_activation_signal TERM' TERM
+  trap 'handle_activation_exit' EXIT
 }
 
 main() {
+  install_activation_signal_handlers
   [[ "$(id -u)" == "0" ]] || die "must run as root"
   install -d -o root -g root -m 0700 "$RELEASES_DIR" "$INCOMING_DIR" "$STATE_DIR" "$SECRET_GENERATIONS_DIR"
   install -d -o root -g "$WORKER_GID" -m 0750 "$RUNTIME_SECRET_GENERATIONS_DIR"

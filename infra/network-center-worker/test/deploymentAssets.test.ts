@@ -86,8 +86,9 @@ describe("immutable Network Center host deployment", () => {
     expect(install).toMatch(/After=ihome-network-center-firewall\.service/);
     const activation = install.slice(
       install.indexOf("apply_network_prerequisites()"),
-      install.indexOf("activate_network_prerequisites()"),
+      install.indexOf("rollback_failed_network_activation()"),
     );
+    expect(activation.length).toBeGreaterThan(0);
     const forwardingOff = activation.indexOf("sysctl -w net.ipv4.ip_forward=0");
     const wireGuardStop = activation.indexOf("systemctl stop wg-quick@wg0.service");
     const firewallStart = activation.indexOf("systemctl restart ihome-network-center-firewall.service");
@@ -100,6 +101,53 @@ describe("immutable Network Center host deployment", () => {
     expect(firewallReadback).toBeGreaterThan(firewallStart);
     expect(forwarding).toBeGreaterThan(firewallReadback);
     expect(wireGuard).toBeGreaterThan(forwarding);
+  });
+
+  it("fails the firewall unit closed when its policy file is missing", () => {
+    const unit = text("deploy/ihome-network-center-firewall.service");
+    // systemd.unit(5): an unmet Condition* SKIPS the unit and the job still counts
+    // as SUCCESSFUL, which satisfies the Requires= that wg-quick@wg0 gets from the
+    // install-host drop-in — wg0 would come up forwarding with no policy loaded.
+    // Assert* is the documented variant that makes the unit, and its dependents, fail.
+    expect(unit).not.toMatch(/^ConditionPathExists=/m);
+    expect(unit).toMatch(/^AssertPathExists=\/etc\/nftables\.d\/ihome-network-center\.nft$/m);
+  });
+
+  it("scopes the managed nftables lifecycle to its own table on start and stop", () => {
+    const unit = text("deploy/ihome-network-center-firewall.service");
+    const install = text("deploy/install-host.sh");
+    expect(unit).toMatch(/^ExecStop=-?\/usr\/sbin\/nft delete table inet ihome_network_center$/m);
+    expect(unit).not.toMatch(/flush\s+ruleset/i);
+    expect(unit).not.toMatch(/delete\s+table\s+(?!inet ihome_network_center)/);
+    // install-host.sh must never reach past its own table either.
+    expect(install).toMatch(/nft delete table "\$MANAGED_FIREWALL_TABLE_FAMILY" "\$MANAGED_FIREWALL_TABLE_NAME"/);
+    expect(install).not.toMatch(/nft\s+flush\s+ruleset/);
+    expect(install).toMatch(/^readonly MANAGED_FIREWALL_TABLE_NAME="ihome_network_center"$/m);
+  });
+
+  it("installs a top-level signal and exit guard around the host mutation", () => {
+    const install = text("deploy/install-host.sh");
+    expect(install).toMatch(/trap 'handle_install_signal HUP' HUP/);
+    expect(install).toMatch(/trap 'handle_install_signal INT' INT/);
+    expect(install).toMatch(/trap 'handle_install_signal TERM' TERM/);
+    expect(install).toMatch(/trap 'handle_install_exit' EXIT/);
+    expect(install).toMatch(/trap 'exit 129' HUP/);
+    const main = install.slice(install.indexOf("\nmain() {"));
+    expect(main.indexOf("install_signal_handlers")).toBeGreaterThanOrEqual(0);
+    expect(main.indexOf("install_signal_handlers")).toBeLessThan(main.indexOf("run_install_transaction"));
+  });
+
+  it("leaves no unreachable network activation helper for tests to aim at", () => {
+    const install = text("deploy/install-host.sh");
+    for (const name of install.match(/^[a-z_]+\(\) \{$/gm) ?? []) {
+      const fn = name.slice(0, name.indexOf("("));
+      if (fn === "main") continue;
+      const callers = install.split("\n").filter((line) => {
+        const trimmed = line.trim();
+        return trimmed.includes(fn) && !trimmed.startsWith(`${fn}()`);
+      });
+      expect(callers.length, `${fn} has no caller`).toBeGreaterThan(0);
+    }
   });
 
   it("keeps host bootstrap preflight mutation-free", () => {
@@ -276,6 +324,29 @@ describe("immutable Network Center host deployment", () => {
     expect(rollback).not.toMatch(/docker (?:pull|build)|image prune|assign|unassign|provision/i);
   });
 
+  it("guards runtime activation mutations with signal, exit and durability wiring", () => {
+    const activate = text("deploy/activate-release.sh");
+    // Same shape as install-host.sh: the script is driven over `ssh sudo --`, so a
+    // dropped session SIGHUPs it mid-mutation.
+    expect(activate).toMatch(/trap 'handle_activation_signal HUP' HUP/);
+    expect(activate).toMatch(/trap 'handle_activation_signal INT' INT/);
+    expect(activate).toMatch(/trap 'handle_activation_signal TERM' TERM/);
+    expect(activate).toMatch(/trap 'handle_activation_exit' EXIT/);
+    const main = activate.slice(activate.indexOf("\nmain() {"));
+    expect(main.indexOf("install_activation_signal_handlers")).toBeGreaterThanOrEqual(0);
+    expect(main.indexOf("install_activation_signal_handlers")).toBeLessThan(main.indexOf('case "${1:-}"'));
+    // Every journal/pointer write must go through the fsync+rename+fsync helper.
+    for (const destination of ["$TRANSITION_FILE", "$LAST_TRANSITION_FILE", "$RUNTIME_INTENT_FILE"]) {
+      expect(activate, `${destination} is renamed without an fsync`)
+        .not.toContain(`mv -fT "$temporary" "${destination}"`);
+      expect(activate).toContain(`durable_replace "$temporary" "${destination}"`);
+    }
+    const pointerWriters = activate.slice(activate.indexOf("write_pointer() {"), activate.indexOf("pointer_json_or_null()"));
+    expect(pointerWriters.length).toBeGreaterThan(0);
+    expect(pointerWriters, "a pointer is renamed into place without an fsync").not.toContain("mv -fT");
+    expect(pointerWriters.match(/durable_replace "\$temporary" "\$destination"/g)).toHaveLength(2);
+  });
+
   it("installs immutable persistent and runtime secret generation roots", () => {
     const install = text("deploy/install-host.sh");
     expect(install).toMatch(/secret-generations/);
@@ -289,6 +360,27 @@ describe("immutable Network Center host deployment", () => {
     expect(readme).toMatch(/wg0\.conf[\s\S]*ihome-network-center\.nft[\s\S]*ihomecrm-network-center-managed:v1/i);
     expect(readme).toMatch(/regular file|file th(?:\u01b0\u1eddng)/i);
     expect(readme).toMatch(/root:root[\s\S]*0600/);
+  });
+
+  it("documents the scoped firewall table, the additive peer merge and the one-way kill switch", () => {
+    // Each of these was wrong in a way an operator acts on: flushing the ruleset
+    // takes out the co-tenant's firewall, a whole-file wg0 replace silently drops
+    // every previously onboarded building, and an operator who expects a revert
+    // reads `health:"unverified"` as a failed stop and retries it.
+    const readme = text("README.md");
+    const install = text("deploy/install-host.sh");
+    expect(readme).toMatch(/table inet ihome_network_center/);
+    expect(readme).toMatch(/delete table inet ihome_network_center/);
+    expect(readme).toMatch(/flush ruleset/);
+    expect(readme, "the fragment requirement must stay a single managed table")
+      .toMatch(/(duy\s*\n?\s*nh\u1ea5t|only)[\s\S]{0,120}table inet ihome_network_center/i);
+    for (const flag of ["--remove-peer", "--allow-interface-change"]) {
+      expect(install, `${flag} is documented but not implemented`).toContain(flag);
+      expect(readme, `${flag} is implemented but not documented`).toContain(flag);
+    }
+    expect(readme).toMatch(/PublicKey/);
+    expect(readme).toMatch(/set-emergency-stop true/);
+    expect(readme).toMatch(/health:"unverified"/);
   });
 
   it("returns exact versioned inspection and recovery receipts", () => {

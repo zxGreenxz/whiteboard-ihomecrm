@@ -492,6 +492,52 @@ function Invoke-CompensatingTransition {
   return [pscustomobject]@{ State = $state; Receipt = $receipt }
 }
 
+function Remove-RejectedCandidate {
+  param([string]$CandidateReleaseSha, $PreStageState, [string]$SshTarget, [string[]]$SshOptions)
+  $state = Get-ReconciledRemoteState $SshTarget $SshOptions
+  if ($null -ne $state.pending -and [string]$state.pending.releaseSha -ceq $CandidateReleaseSha) {
+    try {
+      $null = Invoke-NativeChecked ssh ($SshOptions + @($SshTarget,
+        "sudo -- /opt/ihome-network-center/bin/activate-release.sh abort-pending $CandidateReleaseSha")) -Capture
+    } catch {
+      # Commit-then-disconnect is resolved by the exact state readback below.
+      if ($_.Exception.Message -notmatch 'exit code 255') { throw }
+    }
+    $state = Get-ReconciledRemoteState $SshTarget $SshOptions
+  }
+  if ($null -ne $state.pending) {
+    throw "Rejected candidate canary is still running against production routers."
+  }
+  if ((Get-PointerIdentityJson $state) -cne (Get-PointerIdentityJson $PreStageState)) {
+    throw "Rejected candidate removal did not restore the exact pre-deployment pointer set."
+  }
+  return $state
+}
+
+function Restore-RejectedPromotion {
+  param([string]$CandidateReleaseSha, $PreStageState, $PromoteBeforeState, $BaselineAssignmentStatus,
+    [string]$RepositoryRoot, [string]$SshTarget, [string[]]$SshOptions)
+  # The host journals the pointer set it observes AT PROMOTE TIME as `.before`,
+  # and staging has already put the canary in .pending by then. Verifying
+  # compensation against the pre-stage snapshot instead would differ in that one
+  # slot on every single post-promote failure, reporting a false mixed state and
+  # skipping finalization.
+  $compensated = Invoke-CompensatingTransition -BeforeState $PromoteBeforeState -CandidateReleaseSha $CandidateReleaseSha `
+    -SshTarget $SshTarget -SshOptions $SshOptions
+  $null = Assert-ExactReleaseState -State $compensated.State -Slot current -ExpectedReleaseSha $PreStageState.current.releaseSha `
+    -ExpectedImageId $PreStageState.current.imageId -ExpectedSecretGeneration $PreStageState.current.secretGeneration
+  if ($null -eq $BaselineAssignmentStatus) { throw "Pre-deploy assignment baseline is unavailable after compensation." }
+  $null = Confirm-CompensatedReleaseReadback -RepositoryRoot $RepositoryRoot `
+    -ExpectedReleaseSha $PreStageState.current.releaseSha -BaselineStatus $BaselineAssignmentStatus
+  $null = Invoke-FinalizeTransition $CandidateReleaseSha $SshTarget $SshOptions $compensated.State
+  # Restoring `.before` restarts the rejected release's canary, which polls the
+  # same production routers as the active worker. Finalization has to land first:
+  # aborting earlier would leave the pointer set unequal to `.before` and the host
+  # would refuse to finalize.
+  return Remove-RejectedCandidate -CandidateReleaseSha $CandidateReleaseSha -PreStageState $PreStageState `
+    -SshTarget $SshTarget -SshOptions $SshOptions
+}
+
 function Invoke-FinalizeTransition {
   param([string]$ReleaseSha, [string]$SshTarget, [string[]]$SshOptions, $ExpectedState)
   try {
@@ -527,6 +573,7 @@ function Invoke-DeploymentMain {
   $remoteArchive = $null
   $mutationStarted = $false
   $beforeState = $null
+  $promoteBeforeState = $null
   $beforeStatus = $null
   $beforeAssignmentStatus = $null
   try {
@@ -549,6 +596,9 @@ function Invoke-DeploymentMain {
     $stage = Invoke-RemoteMutationReconciled -Command "sudo -- /opt/ihome-network-center/bin/activate-release.sh stage-candidate $ReleaseSha $remoteArchive $archiveSha" `
       -Description "Candidate staging" -ExpectedSlot pending -ExpectedReleaseSha $ReleaseSha -SshTarget $sshTarget -SshOptions $sshOptions `
       -BeforeState $beforeState -ReceiptKind stage
+    # What the host will journal as the promotion's `.before`: the pre-stage set
+    # plus the staged canary in .pending.
+    $promoteBeforeState = $stage.State
     $null = Wait-WorkerRevision $repositoryRoot $ReleaseSha $priorHeartbeat $priorPoll
     $promote = Invoke-RemoteMutationReconciled -Command "sudo -- /opt/ihome-network-center/bin/activate-release.sh promote-pending $ReleaseSha" `
       -Description "Candidate promotion" -ExpectedSlot current -ExpectedReleaseSha $ReleaseSha `
@@ -576,14 +626,11 @@ function Invoke-DeploymentMain {
     if (-not $mutationStarted) { throw "Deployment failed before remote mutation. Cause: $cause" }
     try {
       $state = Get-ReconciledRemoteState $sshTarget $sshOptions
-      if ($null -ne $beforeState.current -and $null -ne $state.current -and [string]$state.current.releaseSha -ceq $ReleaseSha) {
-        $restored = Invoke-CompensatingTransition -BeforeState $beforeState -CandidateReleaseSha $ReleaseSha -SshTarget $sshTarget -SshOptions $sshOptions
-        $null = Assert-ExactReleaseState -State $restored.State -Slot current -ExpectedReleaseSha $beforeState.current.releaseSha `
-          -ExpectedImageId $beforeState.current.imageId -ExpectedSecretGeneration $beforeState.current.secretGeneration
-        if ($null -eq $beforeAssignmentStatus) { throw "Pre-deploy assignment baseline is unavailable after compensation." }
-        $null = Confirm-CompensatedReleaseReadback -RepositoryRoot $repositoryRoot `
-          -ExpectedReleaseSha $beforeState.current.releaseSha -BaselineStatus $beforeAssignmentStatus
-        $null = Invoke-FinalizeTransition $ReleaseSha $sshTarget $sshOptions $restored.State
+      if ($null -ne $promoteBeforeState -and $null -ne $beforeState.current -and $null -ne $state.current -and
+          [string]$state.current.releaseSha -ceq $ReleaseSha) {
+        $null = Restore-RejectedPromotion -CandidateReleaseSha $ReleaseSha -PreStageState $beforeState `
+          -PromoteBeforeState $promoteBeforeState -BaselineAssignmentStatus $beforeAssignmentStatus `
+          -RepositoryRoot $repositoryRoot -SshTarget $sshTarget -SshOptions $sshOptions
         throw "Deployment failed after promotion; exact previous state was restored. Cause: $cause"
       }
       if ($null -ne $state.pending -and [string]$state.pending.releaseSha -ceq $ReleaseSha) {

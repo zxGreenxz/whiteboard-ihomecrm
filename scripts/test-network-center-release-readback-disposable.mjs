@@ -461,9 +461,223 @@ BEGIN
   END;
 END
 $assertions$;
+DO $null_poll_evidence$
+DECLARE
+  v_worker_id uuid := '10000000-0000-4000-8000-000000000001';
+  v_before_poll_observed_at timestamptz;
+  v_after_poll_observed_at timestamptz;
+  v_rejected boolean;
+BEGIN
+  SELECT heartbeat.poll_observed_at
+  INTO v_before_poll_observed_at
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_id = v_worker_id
+    AND heartbeat.worker_version = repeat('a', 40);
+  IF v_before_poll_observed_at IS NULL THEN
+    RAISE EXCEPTION 'null poll evidence proof needs a genuine poll baseline';
+  END IF;
+
+  -- JSON null satisfies both ?| and ?&, casts to SQL NULL without raising, and
+  -- makes the range guard evaluate to NULL instead of TRUE, so poll_observed_at
+  -- is stamped as if fresh evidence had been supplied. Unguarded, only the
+  -- all-or-nothing storage CHECK stops the write, and it raises an opaque 23514
+  -- from inside the INSERT instead of the documented 22023. Require the guard
+  -- itself to fail closed.
+  v_rejected := false;
+  BEGIN
+    PERFORM public.network_center_worker_heartbeat_v2(
+      'digest-worker-01', repeat('a', 40), ARRAY['polling'], 'PAUSED', 0,
+      jsonb_build_object(
+        'connections', NULL, 'successfulPolls', NULL, 'failedPolls', NULL
+      ),
+      clock_timestamp() - interval '1 minute'
+    );
+  EXCEPTION WHEN invalid_parameter_value THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'JSON null poll evidence was accepted on an existing release';
+  END IF;
+
+  SELECT heartbeat.poll_observed_at
+  INTO v_after_poll_observed_at
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_id = v_worker_id
+    AND heartbeat.worker_version = repeat('a', 40)
+    AND heartbeat.connection_count = 2
+    AND heartbeat.successful_poll_count = 2
+    AND heartbeat.failed_poll_count = 0;
+  IF v_after_poll_observed_at IS DISTINCT FROM v_before_poll_observed_at THEN
+    RAISE EXCEPTION 'rejected null poll heartbeat refreshed poll freshness';
+  END IF;
+
+  -- On a first-seen release the all-or-nothing table CHECK would raise 23514,
+  -- which is neither the documented error nor a guarantee once any column
+  -- default changes. Require the explicit fail-closed 22023 and no row.
+  v_rejected := false;
+  BEGIN
+    PERFORM public.network_center_worker_heartbeat_v2(
+      'digest-worker-01', repeat('d', 40), ARRAY['polling'], 'PAUSED', 0,
+      jsonb_build_object(
+        'connections', NULL, 'successfulPolls', NULL, 'failedPolls', NULL
+      ),
+      clock_timestamp() - interval '1 minute'
+    );
+  EXCEPTION WHEN invalid_parameter_value THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'JSON null poll evidence was accepted on a fresh release';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = v_worker_id
+      AND heartbeat.worker_version = repeat('d', 40)
+  ) THEN
+    RAISE EXCEPTION 'a rejected null poll heartbeat still wrote a release row';
+  END IF;
+
+  v_rejected := false;
+  BEGIN
+    PERFORM public.network_center_worker_heartbeat_v2(
+      'digest-worker-01', repeat('a', 40), ARRAY['polling'], 'PAUSED', 0,
+      jsonb_build_object(
+        'connections', 2, 'successfulPolls', NULL, 'failedPolls', 0
+      ),
+      clock_timestamp() - interval '1 minute'
+    );
+  EXCEPTION WHEN invalid_parameter_value THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'a single JSON null poll count was accepted';
+  END IF;
+END
+$null_poll_evidence$;
+-- Release 'b' was superseded by 'a', so its heartbeat_at froze at the promotion
+-- instant. The host still holds its image and still names it as previous;
+-- rollback-vultr.ps1 reads it back by sha (Get-ReleaseStatus, no missing-row
+-- tolerance) and refuses the rollback when the row is gone.
+UPDATE app_private.network_worker_release_heartbeats heartbeat
+SET started_at = statement_timestamp() - interval '46 days',
+    heartbeat_at = statement_timestamp() - interval '45 days',
+    poll_observed_at = statement_timestamp() - interval '45 days',
+    updated_at = statement_timestamp() - interval '45 days'
+WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000001'
+  AND heartbeat.worker_version = repeat('b', 40);
+SELECT public.network_center_worker_heartbeat_v2(
+  'digest-worker-01', repeat('a', 40), ARRAY['polling'], 'PAUSED', 0,
+  jsonb_build_object('connections', 2, 'successfulPolls', 2, 'failedPolls', 0),
+  clock_timestamp() - interval '1 minute'
+);
+DO $reachable_rollback_target_retained$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000001'
+      AND heartbeat.worker_version = repeat('b', 40)
+  ) THEN
+    RAISE EXCEPTION 'retention expired a still-reachable rollback target';
+  END IF;
+END
+$reachable_rollback_target_retained$;
+-- Displace 'b' beyond the reachable rollback depth with five newer-but-also-
+-- expired releases so age-based collection still has something to reclaim.
+INSERT INTO app_private.network_worker_release_heartbeats (
+  worker_id, worker_version, status, heartbeat_at, started_at,
+  assigned_building_count, updated_at
+)
+SELECT '10000000-0000-4000-8000-000000000001',
+  repeat(filler.version_digit, 40),
+  'PAUSED',
+  clock_timestamp() - interval '31 days'
+    - (filler.ordinal * interval '1 minute'),
+  clock_timestamp() - interval '40 days',
+  1,
+  clock_timestamp() - interval '31 days'
+FROM (VALUES ('0', 0), ('1', 1), ('2', 2), ('3', 3), ('4', 4))
+  AS filler(version_digit, ordinal);
+SELECT public.network_center_worker_heartbeat_v2(
+  'digest-worker-01', repeat('a', 40), ARRAY['polling'], 'PAUSED', 0,
+  jsonb_build_object('connections', 2, 'successfulPolls', 2, 'failedPolls', 0),
+  clock_timestamp() - interval '1 minute'
+);
+DO $displaced_release_collected$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000001'
+      AND heartbeat.worker_version IN (repeat('b', 40), repeat('4', 40))
+  ) THEN
+    RAISE EXCEPTION 'expired releases beyond the reachable depth were not collected';
+  END IF;
+  IF (
+    SELECT count(*)
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000001'
+  ) <> 5 THEN
+    RAISE EXCEPTION 'reachable rollback window is not exactly bounded';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000002'
+      AND heartbeat.worker_version = repeat('a', 40)
+  ) THEN
+    RAISE EXCEPTION 'age-based collection deleted another worker''s release row';
+  END IF;
+END
+$displaced_release_collected$;
+-- Fresh releases never age out, so the per-worker hard cap is their only bound.
+INSERT INTO app_private.network_worker_release_heartbeats (
+  worker_id, worker_version, status, heartbeat_at, started_at,
+  assigned_building_count, updated_at
+)
+SELECT '10000000-0000-4000-8000-000000000002',
+  lpad(to_hex(4096 + series.ordinal), 40, '0'),
+  'PAUSED',
+  clock_timestamp() - (series.ordinal * interval '1 minute'),
+  clock_timestamp() - interval '2 hours',
+  1,
+  clock_timestamp()
+FROM generate_series(1, 24) AS series(ordinal);
+SELECT public.network_center_worker_heartbeat_v2(
+  'digest-worker-02', repeat('a', 40), ARRAY['polling'], 'ONLINE', 0,
+  jsonb_build_object('connections', 1, 'successfulPolls', 1, 'failedPolls', 0),
+  clock_timestamp() - interval '1 minute'
+);
+DO $fresh_release_growth_bounded$
+BEGIN
+  IF (
+    SELECT count(*)
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000002'
+  ) <> 20 THEN
+    RAISE EXCEPTION 'fresh release growth is not bounded by the per-worker cap';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000002'
+      AND heartbeat.worker_version = repeat('a', 40)
+  ) THEN
+    RAISE EXCEPTION 'the live release was evicted by the per-worker cap';
+  END IF;
+  IF (
+    SELECT count(*)
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    WHERE heartbeat.worker_id = '10000000-0000-4000-8000-000000000001'
+  ) <> 5 THEN
+    RAISE EXCEPTION 'another worker''s cap eviction changed the reachable window';
+  END IF;
+END
+$fresh_release_growth_bounded$;
 SELECT jsonb_build_object(
   'status', 'PASS',
-  'invariants', 14
+  'invariants', 22
 ) AS disposable_release_proof;
 `;
 
@@ -627,7 +841,7 @@ export async function runDisposableReleaseProof({ environment = process.env } = 
       .map((line) => line.trim())
       .findLast((line) => line.startsWith('{') && line.includes('"status"'));
     const verdict = verdictLine ? JSON.parse(verdictLine) : null;
-    if (verdict?.status !== "PASS" || verdict?.invariants !== 14) {
+    if (verdict?.status !== "PASS" || verdict?.invariants !== 22) {
       throw new Error("Disposable release proof did not return the expected PASS verdict");
     }
     return verdict;
@@ -684,7 +898,7 @@ async function main() {
   }
   const verdict = await runDisposableReleaseProof();
   process.stdout.write(
-    `Disposable PostgreSQL release migration proof PASS: ${verdict.invariants}/14 invariants.\n`,
+    `Disposable PostgreSQL release migration proof PASS: ${verdict.invariants}/22 invariants.\n`,
   );
 }
 

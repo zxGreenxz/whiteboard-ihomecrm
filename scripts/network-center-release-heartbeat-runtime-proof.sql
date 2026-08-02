@@ -816,10 +816,13 @@ BEGIN
     'an old release replay must not overwrite the candidate release row'
   );
 
+  -- poll_observed_at must age with the row: the all-or-nothing poll metrics
+  -- CHECK requires it to stay inside [started_at, heartbeat_at].
   UPDATE app_private.network_worker_release_heartbeats heartbeat
-  SET started_at = clock_timestamp() - INTERVAL '32 days',
-      heartbeat_at = clock_timestamp() - INTERVAL '31 days',
-      updated_at = clock_timestamp() - INTERVAL '31 days'
+  SET started_at = statement_timestamp() - INTERVAL '32 days',
+      heartbeat_at = statement_timestamp() - INTERVAL '31 days',
+      poll_observed_at = statement_timestamp() - INTERVAL '31 days',
+      updated_at = statement_timestamp() - INTERVAL '31 days'
   WHERE heartbeat.worker_id = v_worker_id
     AND heartbeat.worker_version = repeat('1', 40);
 END;
@@ -844,16 +847,158 @@ SELECT public.network_center_worker_heartbeat_v2(
 
 RESET ROLE;
 
+-- Release '1' is 31 days stale but is still the immediately preceding release,
+-- i.e. exactly what rollback-vultr.ps1 reads back as the rollback target. An
+-- age-only purge would have deleted it here and silently disarmed rollback.
 SELECT pg_temp.ncrr_assert(
   (
-    SELECT count(*) = 1
-      AND bool_and(heartbeat.worker_version = repeat('2', 40))
+    SELECT count(*) = 2
+      AND bool_or(heartbeat.worker_version = repeat('1', 40))
+      AND bool_or(heartbeat.worker_version = repeat('2', 40))
     FROM app_private.network_worker_release_heartbeats heartbeat
     JOIN public.network_workers worker ON worker.id = heartbeat.worker_id
     JOIN pg_temp._ncrr_fixture fixture
       ON fixture.worker_key = worker.worker_key
   ),
-  'successful heartbeat must prune release proof older than 30 days'
+  'retention must not expire a release that is still a reachable rollback target'
+);
+
+-- Displace the stale release beyond the reachable rollback depth with five
+-- newer-but-also-expired releases, so age-based cleanup still has something to
+-- collect and unbounded growth stays impossible.
+DO $displace_reachable_window$
+DECLARE
+  v_worker_id uuid;
+BEGIN
+  SELECT worker.id INTO v_worker_id
+  FROM public.network_workers worker
+  JOIN pg_temp._ncrr_fixture fixture
+    ON fixture.worker_key = worker.worker_key;
+
+  INSERT INTO app_private.network_worker_release_heartbeats (
+    worker_id, worker_version, status, heartbeat_at, started_at,
+    assigned_building_count, updated_at
+  )
+  SELECT v_worker_id,
+    repeat(filler.version_digit, 40),
+    'PAUSED',
+    clock_timestamp() - INTERVAL '30 days 1 hour'
+      - (filler.ordinal * INTERVAL '1 minute'),
+    clock_timestamp() - INTERVAL '31 days',
+    1,
+    clock_timestamp() - INTERVAL '30 days 1 hour'
+  FROM (VALUES ('3', 0), ('4', 1), ('5', 2), ('6', 3), ('7', 4))
+    AS filler(version_digit, ordinal);
+END;
+$displace_reachable_window$;
+
+SET LOCAL ROLE service_role;
+
+SELECT public.network_center_worker_heartbeat_v2(
+  (SELECT secret_digest FROM pg_temp._ncrr_fixture),
+  repeat('2', 40),
+  ARRAY['routeros-ssh', 'polling'],
+  'PAUSED',
+  0,
+  jsonb_build_object(
+    'source', 'release-proof-retention-displaced',
+    'connections', 1,
+    'successfulPolls', 1,
+    'failedPolls', 0
+  ),
+  clock_timestamp() - INTERVAL '1 minute'
+);
+
+RESET ROLE;
+
+-- Rank 1 is the live release '2'; ranks 2-5 are the four newest fillers and
+-- stay reachable; the fifth filler and release '1' are displaced past the
+-- reachable depth and are older than 30 days, so both are collected.
+SELECT pg_temp.ncrr_assert(
+  (
+    SELECT count(*) = 5
+      AND bool_and(heartbeat.worker_version <> repeat('1', 40))
+      AND bool_and(heartbeat.worker_version <> repeat('7', 40))
+      AND bool_or(heartbeat.worker_version = repeat('2', 40))
+      AND bool_or(heartbeat.worker_version = repeat('3', 40))
+      AND bool_or(heartbeat.worker_version = repeat('6', 40))
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    JOIN public.network_workers worker ON worker.id = heartbeat.worker_id
+    JOIN pg_temp._ncrr_fixture fixture
+      ON fixture.worker_key = worker.worker_key
+  ),
+  'successful heartbeat must prune release proof older than 30 days once it is no longer a reachable rollback target'
+);
+
+-- A heartbeat carrying JSON null poll counts must fail closed exactly like one
+-- carrying no poll keys, and must not refresh the freshness stamp the canary
+-- gate trusts. `?|`/`?&` only test key existence, so nulls slip past unless the
+-- values themselves are rejected.
+CREATE TEMP TABLE _ncrr_poll_freshness (
+  worker_version text PRIMARY KEY,
+  poll_observed_at timestamptz NOT NULL
+) ON COMMIT DROP;
+
+INSERT INTO _ncrr_poll_freshness (worker_version, poll_observed_at)
+SELECT heartbeat.worker_version, heartbeat.poll_observed_at
+FROM app_private.network_worker_release_heartbeats heartbeat
+JOIN public.network_workers worker ON worker.id = heartbeat.worker_id
+JOIN pg_temp._ncrr_fixture fixture ON fixture.worker_key = worker.worker_key
+WHERE heartbeat.worker_version = repeat('2', 40)
+  AND heartbeat.poll_observed_at IS NOT NULL;
+
+SELECT pg_temp.ncrr_assert(
+  (SELECT count(*) = 1 FROM pg_temp._ncrr_poll_freshness),
+  'null-poll-evidence proof requires a baseline of genuine poll freshness'
+);
+
+SET LOCAL ROLE service_role;
+
+DO $null_poll_evidence$
+DECLARE
+  v_rejected boolean := false;
+BEGIN
+  BEGIN
+    PERFORM public.network_center_worker_heartbeat_v2(
+      (SELECT secret_digest FROM pg_temp._ncrr_fixture),
+      repeat('2', 40),
+      ARRAY['routeros-ssh', 'polling'],
+      'PAUSED',
+      0,
+      jsonb_build_object(
+        'source', 'release-proof-null-poll-evidence',
+        'connections', NULL,
+        'successfulPolls', NULL,
+        'failedPolls', NULL
+      ),
+      clock_timestamp() - INTERVAL '1 minute'
+    );
+  EXCEPTION WHEN invalid_parameter_value THEN
+    v_rejected := true;
+  END;
+  IF NOT v_rejected THEN
+    RAISE EXCEPTION 'NETWORK_CENTER_RELEASE_READBACK_ASSERTION: %',
+      'JSON null poll counts must be rejected exactly like missing poll keys';
+  END IF;
+END;
+$null_poll_evidence$;
+
+RESET ROLE;
+
+SELECT pg_temp.ncrr_assert(
+  (
+    SELECT count(*) = 1
+    FROM app_private.network_worker_release_heartbeats heartbeat
+    JOIN public.network_workers worker ON worker.id = heartbeat.worker_id
+    JOIN pg_temp._ncrr_fixture fixture ON fixture.worker_key = worker.worker_key
+    JOIN pg_temp._ncrr_poll_freshness baseline
+      ON baseline.worker_version = heartbeat.worker_version
+    WHERE heartbeat.poll_observed_at = baseline.poll_observed_at
+      AND heartbeat.connection_count = 1
+      AND heartbeat.successful_poll_count = 1
+      AND heartbeat.failed_poll_count = 0
+  ),
+  'a rejected null-poll heartbeat must not refresh poll freshness or poll counts'
 );
 
 SELECT jsonb_build_object(
@@ -869,7 +1014,9 @@ SELECT jsonb_build_object(
     'service_role_only_status_rpc',
     'wrapper_core_catalog_acl_denial',
     'direct_table_read_denied',
-    'bounded_30_day_cleanup'
+    'reachable_rollback_target_never_expired',
+    'bounded_30_day_cleanup',
+    'null_poll_evidence_fails_closed'
   )
 ) AS network_center_release_heartbeat_runtime_proof;
 

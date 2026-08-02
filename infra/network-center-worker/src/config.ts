@@ -4,6 +4,11 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 
 import type { RouterCredential } from "./domain.js";
+import {
+  ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS,
+  MAX_ACCESS_PORT_CYCLE_SECONDS,
+  MINIMUM_COMMAND_TIMEOUT_MS,
+} from "./routeros/portCycle.js";
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -208,6 +213,22 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
   const credentialsFile = required(env, "NETWORK_CENTER_CREDENTIALS_FILE");
   const credentials = loadCredentials(credentialsFile, files, platform);
 
+  const commandTimeoutMs = integerSetting(env, "NETWORK_CENTER_COMMAND_TIMEOUT_MS", {
+    minimum: 1_000,
+    maximum: 300_000,
+    fallback: 60_000,
+  });
+  // A CYCLE_ACCESS_PORT command holds one SSH exec open across a router-side delay of
+  // up to MAX_ACCESS_PORT_CYCLE_SECONDS. If the watchdog can fire inside that window
+  // the worker aborts its own cycle, so refuse the deployment now instead of at 3am.
+  if (commandTimeoutMs < MINIMUM_COMMAND_TIMEOUT_MS) {
+    throw new ConfigError(
+      `NETWORK_CENTER_COMMAND_TIMEOUT_MS must be at least ${MINIMUM_COMMAND_TIMEOUT_MS}ms: `
+      + `an access-port cycle may hold one command open for ${MAX_ACCESS_PORT_CYCLE_SECONDS}s `
+      + `plus a ${ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS}ms safety margin`,
+    );
+  }
+
   return Object.freeze({
     edgeUrl,
     workerKey,
@@ -239,11 +260,7 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
       maximum: 60_000,
       fallback: 10_000,
     }),
-    commandTimeoutMs: integerSetting(env, "NETWORK_CENTER_COMMAND_TIMEOUT_MS", {
-      minimum: 5_000,
-      maximum: 300_000,
-      fallback: 60_000,
-    }),
+    commandTimeoutMs,
     leaseSeconds: integerSetting(env, "NETWORK_CENTER_LEASE_SECONDS", {
       minimum: 15,
       maximum: 300,

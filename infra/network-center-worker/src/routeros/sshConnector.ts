@@ -26,6 +26,19 @@ import {
   readSftpRemoteFileBounded,
   stageSftpRemoteFileBounded,
 } from "./boundedSftpRead.js";
+import {
+  ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS,
+  MAX_ACCESS_PORT_CYCLE_SECONDS,
+  MIN_ACCESS_PORT_CYCLE_SECONDS,
+  accessPortCycleGuardComment,
+  buildAccessPortCycleArmCommand,
+  buildAccessPortCycleCommand,
+  buildAccessPortCycleGuardProbeCommand,
+  parseAccessPortCycleGuardProbe,
+  quoteRouterOsValue,
+} from "./portCycle.js";
+
+export { quoteRouterOsValue } from "./portCycle.js";
 
 export const ROUTER_OS_COMMANDS = Object.freeze({
   flushDnsCache: "/ip/dns/cache/flush",
@@ -51,21 +64,6 @@ export function normalizeHostFingerprint(value: string): string {
   const match = /^SHA256:([A-Za-z0-9+/]{20,}={0,2})$/.exec(value.trim());
   if (!match?.[1]) throw new TypeError("A pinned SHA256 host-key fingerprint is required");
   return match[1].replace(/=+$/, "");
-}
-
-export function quoteRouterOsValue(value: string): string {
-  const containsControlCharacter = [...value].some((character) => {
-    const code = character.charCodeAt(0);
-    return code < 32 || code === 127;
-  });
-  if (value.length < 1 || value.length > 512 || containsControlCharacter) {
-    throw new TypeError("RouterOS value contains unsafe characters");
-  }
-  return `"${value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, "\\\"")
-    .replace(/;/g, "\\;")
-    .replace(/\$/g, "\\$")}"`;
 }
 
 function splitEscaped(value: string, delimiter: string): string[] {
@@ -259,20 +257,50 @@ function interfaceRole(
 
 const PHYSICAL_ACCESS_PORT = /^ether(?:[2-9]|[1-9][0-9])$/i;
 const ROUTEROS_RESOURCE_ID = /^\*[0-9A-Fa-f]+$/;
-const RECOVERY_RULE_MARKER = /^ihomecrm-network-center:v1:[A-Za-z0-9][A-Za-z0-9._-]{7,63}:lan-recovery$/;
+const RECOVERY_RULE_MARKER =
+  /^(ihomecrm-network-center:v1:[A-Za-z0-9][A-Za-z0-9._-]{7,63}):lan-recovery$/;
+
+function ownedRecoveryRules(
+  records: Record<string, string>[],
+): Array<{ interfaceName: string; ownershipMarker: string }> {
+  return records.flatMap((record) => {
+    const interfaceName = record["in-interface"]?.trim();
+    const ownershipMarker = RECOVERY_RULE_MARKER.exec(record.comment ?? "")?.[1];
+    return record.chain === "input"
+      && record.action === "accept"
+      && interfaceName
+      && ownershipMarker
+      ? [{ interfaceName, ownershipMarker }]
+      : [];
+  });
+}
 
 export function routerOsRecoveryInterfaceNames(
   records: Record<string, string>[],
 ): Set<string> {
-  return new Set(records.flatMap((record) => {
-    const interfaceName = record["in-interface"]?.trim();
-    return record.chain === "input"
-      && record.action === "accept"
-      && interfaceName
-      && RECOVERY_RULE_MARKER.test(record.comment ?? "")
-      ? [interfaceName]
-      : [];
-  }));
+  return new Set(ownedRecoveryRules(records).map((rule) => rule.interfaceName));
+}
+
+/**
+ * Reads the router's own deployment ownership marker back out of the bootstrap
+ * recovery rule it carries. This is the only in-band source of the marker, and
+ * requiring it also fails a disruptive port cycle closed when the firewall read did
+ * not deliver the rules that back the recovery-interface guard.
+ */
+export function routerOsOwnershipMarker(records: Record<string, string>[]): string {
+  const markers = new Set(ownedRecoveryRules(records).map((rule) => rule.ownershipMarker));
+  const marker = [...markers][0];
+  if (markers.size !== 1 || !marker) {
+    throw new RouterOperationError("ROUTER_OWNERSHIP_MARKER_UNAVAILABLE", {
+      retryable: false,
+      mayHaveExecuted: false,
+    });
+  }
+  return marker;
+}
+
+function routerOsMarkers(output: string): string[] {
+  return output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
 }
 
 export function parseRouterOsResourceId(output: string): string | null {
@@ -593,10 +621,30 @@ export class SshRouterConnector implements RouterConnector {
             mayHaveExecuted,
           })));
         }, this.#commandTimeoutMs);
+        // ssh2 reports the remote exit status on `exit`, and repeats it as the first
+        // `close` argument for session channels. When the session is torn down before
+        // the remote sends `exit-status` (transport reset, SIGKILL, host reboot) that
+        // argument is `undefined`; an `exit-signal` makes it `null`. Neither means the
+        // command completed, and neither may be reported as success with whatever
+        // output happened to arrive first.
+        let exitStatus: unknown;
+        let exitObserved = false;
+        channel.once("exit", (code: number | null) => {
+          exitStatus = code;
+          exitObserved = true;
+        });
         channel.on("data", collect(stdout));
         channel.stderr.on("data", collect(stderr));
-        channel.once("close", (code: number | null) => finish(() => {
-          if (code && code !== 0) {
+        channel.once("close", (code?: number | null) => finish(() => {
+          const status = exitObserved ? exitStatus : code;
+          if (typeof status !== "number" || !Number.isFinite(status)) {
+            reject(new RouterOperationError("SSH_EXEC_NO_EXIT_STATUS", {
+              retryable: true,
+              mayHaveExecuted,
+            }));
+            return;
+          }
+          if (status !== 0) {
             reject(new RouterOperationError("ROUTEROS_COMMAND_FAILED", {
               retryable: false,
               mayHaveExecuted,
@@ -914,18 +962,34 @@ export class SshRouterConnector implements RouterConnector {
   }
 
   async cycleAccessPort(target: ManagedInterfaceTarget, durationSeconds: number): Promise<void> {
-    if (!Number.isInteger(durationSeconds) || durationSeconds < 5 || durationSeconds > 30) {
+    if (
+      !Number.isInteger(durationSeconds)
+      || durationSeconds < MIN_ACCESS_PORT_CYCLE_SECONDS
+      || durationSeconds > MAX_ACCESS_PORT_CYCLE_SECONDS
+    ) {
       throw new RouterOperationError("INVALID_CYCLE_DURATION", { retryable: false, mayHaveExecuted: false });
+    }
+    // Fail before touching the router when the watchdog would fire inside the delay.
+    if (
+      this.#commandTimeoutMs
+      < durationSeconds * 1_000 + ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS
+    ) {
+      throw new RouterOperationError("COMMAND_TIMEOUT_TOO_SHORT_FOR_CYCLE", {
+        retryable: false,
+        mayHaveExecuted: false,
+      });
     }
     const [interfaceOutput, firewallOutput] = await Promise.all([
       this.#execute(ROUTER_OS_READ_COMMANDS.interfaces),
       this.#execute(ROUTER_OS_READ_COMMANDS.firewallFilters),
     ]);
+    const firewallRecords = parseRouterOsRecords(firewallOutput);
     const resolved = resolveManagedAccessPort(
       target,
       parseRouterOsRecords(interfaceOutput),
-      routerOsRecoveryInterfaceNames(parseRouterOsRecords(firewallOutput)),
+      routerOsRecoveryInterfaceNames(firewallRecords),
     );
+    const ownershipMarker = routerOsOwnershipMarker(firewallRecords);
     const currentName = quoteRouterOsValue(resolved.currentName);
     const immutableKey = quoteRouterOsValue(resolved.immutableKey);
     const resourceId = parseRouterOsResourceId(await this.#execute(
@@ -937,10 +1001,54 @@ export class SshRouterConnector implements RouterConnector {
         mayHaveExecuted: false,
       });
     }
-    const command = `:local ncPort [/interface/find where .id=${resourceId} and name=${currentName} and default-name=${immutableKey}]; :if ([:len $ncPort] != 1) do={:error "managed access port identity changed"}; /interface/disable $ncPort; :if ([/interface/get $ncPort disabled] != true) do={:error "access port disable readback failed"}; :put ("NC_CYCLE_DISABLED:" . [/interface/get $ncPort default-name]); :delay ${durationSeconds}s; /interface/enable $ncPort; :if ([/interface/get $ncPort disabled] = true) do={:error "access port enable readback failed"}; :put ("NC_CYCLE_ENABLED:" . [/interface/get $ncPort default-name])`;
+    const cycleTarget = {
+      resourceId,
+      currentName: resolved.currentName,
+      immutableKey: resolved.immutableKey,
+      ownershipMarker,
+    };
+
+    // 1. Decide deterministically what to do with any entry already holding the
+    //    managed name. A stale entry of ours is replaced, never reused; anything
+    //    else is left untouched and the cycle is refused.
+    const probe = parseAccessPortCycleGuardProbe(await this.#execute(
+      buildAccessPortCycleGuardProbeCommand(accessPortCycleGuardComment(ownershipMarker)),
+    ));
+    if (!probe) {
+      throw new RouterOperationError("PORT_CYCLE_GUARD_STATE_UNREADABLE", {
+        retryable: true,
+        mayHaveExecuted: false,
+      });
+    }
+    if (probe.count > 1 || (probe.count === 1 && !probe.owned)) {
+      throw new RouterOperationError("PORT_CYCLE_GUARD_NOT_OWNED", {
+        retryable: false,
+        mayHaveExecuted: false,
+      });
+    }
+
+    // 2. Arm the router-side dead-man's switch. Nothing on the access port has been
+    //    mutated yet, so any failure here stays a clean, non-disruptive failure.
+    const armMarkers = routerOsMarkers(await this.#execute(
+      buildAccessPortCycleArmCommand(cycleTarget, durationSeconds),
+    ));
+    if (!armMarkers.includes(`NC_CYCLE_ARMED:${resolved.immutableKey}`)) {
+      throw new RouterOperationError("PORT_CYCLE_GUARD_NOT_ARMED", {
+        retryable: true,
+        mayHaveExecuted: false,
+      });
+    }
+
+    // 3. Only now disable. Every statement from here on is expendable: if this exec
+    //    dies the router still re-enables the port and removes the guard itself.
     this.#lastAccessCycle = null;
-    const output = await this.#execute(command, true);
-    const markers = output.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+    const markers = routerOsMarkers(await this.#execute(
+      buildAccessPortCycleCommand(cycleTarget, durationSeconds),
+      true,
+    ));
+    // Success still turns on the ordered disable/enable readback only. A guard the
+    // router has not finished cleaning up re-enables an already-enabled port and then
+    // removes itself, so it must never turn a restored port into an UNCERTAIN command.
     const disabledIndex = markers.indexOf(`NC_CYCLE_DISABLED:${resolved.immutableKey}`);
     const enabledIndex = markers.indexOf(`NC_CYCLE_ENABLED:${resolved.immutableKey}`);
     if (disabledIndex < 0 || enabledIndex <= disabledIndex) {
@@ -956,7 +1064,19 @@ export class SshRouterConnector implements RouterConnector {
   }
 
   async reboot(): Promise<void> {
-    await this.#execute(ROUTER_OS_COMMANDS.reboot, true);
+    try {
+      await this.#execute(ROUTER_OS_COMMANDS.reboot, true);
+    } catch (error) {
+      // A reboot tears the console down before RouterOS can send an exit status, so
+      // this is the one command for which a missing exit status is the normal case.
+      // Whether it actually rebooted is decided by the postcondition (new boot id and
+      // a lower uptime), never by the exec. Every other command stays strict.
+      if (
+        error instanceof RouterOperationError
+        && error.code === "SSH_EXEC_NO_EXIT_STATUS"
+      ) return;
+      throw error;
+    }
   }
 
   async close(): Promise<void> {

@@ -186,10 +186,10 @@ Invoke-SystemdRestartReconciled -SshTarget 'root@test' -SshOptions @()`);
     const result = run(deploy, `${stateFactory}
 $previous=New-Release '${"c".repeat(40)}' 'sha256:${"7".repeat(64)}' '${"8".repeat(64)}'
 $before=New-State (New-Release '${shaA}' '${imageA}' '${generationA}') $previous $null
-$restored=New-State $before.current $before.previous $null
-$restored.lastTransition=[pscustomobject]@{ schemaVersion=1; operation='promote'; phase='compensated'; targetReleaseSha='${shaB}' }
+$hostAfterCompensate=New-State $before.current $before.previous $null
+$hostAfterCompensate.lastTransition=[pscustomobject]@{ schemaVersion=1; operation='promote'; phase='compensated'; targetReleaseSha='${shaB}' }
 function Invoke-NativeChecked { return '{"schemaVersion":2,"releaseSha":"${shaB}","result":"compensated","finalization":"required"}' }
-function Get-ReconciledRemoteState { return $restored }
+function Get-ReconciledRemoteState { return $hostAfterCompensate }
 $resolved=Invoke-CompensatingTransition -BeforeState $before -CandidateReleaseSha '${shaB}' -SshTarget 'root@test' -SshOptions @()
 $resolved | ConvertTo-Json -Depth 10 -Compress`);
     expect(result.status, result.stderr).toBe(0);
@@ -198,6 +198,74 @@ $resolved | ConvertTo-Json -Depth 10 -Compress`);
     expect(parsed.State.previous.releaseSha).toBe("c".repeat(40));
     expect(parsed.State.pending).toBeNull();
     expect(readFileSync(deploy, "utf8")).toMatch(/finalize-last-transition/);
+  });
+
+  it("compensates against the promote-time baseline and stops the rejected candidate canary", () => {
+    // stage-candidate leaves the canary in .pending, so the pointer set the host
+    // journals as `.before` when it promotes still carries it. Comparing the
+    // compensated state against the PRE-STAGE snapshot reported a false mixed
+    // state on every post-promote failure; the canary also has to be aborted, or
+    // the rejected release keeps polling the 15 production routers.
+    const result = run(deploy, `${stateFactory}
+$currentA=New-Release '${shaA}' '${imageA}' '${generationA}'
+$previousC=New-Release '${"c".repeat(40)}' 'sha256:${"7".repeat(64)}' '${"8".repeat(64)}'
+$canary=New-Release '${shaB}' '${imageB}' '${generationB}'
+$preStage=New-State $currentA $previousC $null
+$promoteBefore=New-State $currentA $previousC $canary
+$hostAfterCompensate=New-State $currentA $previousC $canary
+$hostAfterCompensate.lastTransition=[pscustomobject]@{ schemaVersion=1; operation='promote'; phase='compensated'; targetReleaseSha='${shaB}' }
+$hostAfterAbort=New-State $currentA $previousC $null
+$hostAfterAbort.lastTransition=[pscustomobject]@{ schemaVersion=1; operation='promote'; phase='finalized'; targetReleaseSha='${shaB}' }
+$script:commands=@()
+$script:aborted=$false
+function Invoke-NativeChecked {
+  param([string]$FilePath,[string[]]$Arguments,[switch]$Capture,[int]$MaximumOutputBytes)
+  $command=$Arguments[$Arguments.Count-1]
+  $script:commands+=$command
+  if ($command -match 'compensate-last-transition') { return '{"schemaVersion":2,"releaseSha":"${shaB}","result":"compensated","finalization":"required"}' }
+  if ($command -match 'finalize-last-transition') { return '{"schemaVersion":2,"releaseSha":"${shaB}","result":"finalized","cleanup":"complete"}' }
+  if ($command -match 'abort-pending') { $script:aborted=$true; return '' }
+  throw "Unexpected remote command: $command"
+}
+function Get-ReconciledRemoteState { if ($script:aborted) { return $hostAfterAbort } return $hostAfterCompensate }
+function Confirm-CompensatedReleaseReadback { return [pscustomobject]@{ activeAssignedBuildingCount=3 } }
+$baseline=[pscustomobject]@{ activeAssignmentHash=('5' * 64) }
+$final=Restore-RejectedPromotion -CandidateReleaseSha '${shaB}' -PreStageState $preStage -PromoteBeforeState $promoteBefore -BaselineAssignmentStatus $baseline -RepositoryRoot 'repo' -SshTarget 'root@test' -SshOptions @()
+[ordered]@{ pending=$final.pending; commands=$script:commands } | ConvertTo-Json -Depth 5 -Compress`);
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    const parsed = JSON.parse(result.stdout) as { pending: unknown; commands: string[] };
+    expect(parsed.pending).toBeNull();
+    const compensate = parsed.commands.findIndex((command) => command.includes("compensate-last-transition"));
+    const finalize = parsed.commands.findIndex((command) => command.includes("finalize-last-transition"));
+    const abort = parsed.commands.findIndex((command) => command.includes(`abort-pending ${shaB}`));
+    expect(compensate).toBeGreaterThanOrEqual(0);
+    expect(finalize).toBeGreaterThan(compensate);
+    // Aborting before finalization would leave the pointer set unequal to the
+    // journalled `.before` and the host would refuse to finalize.
+    expect(abort).toBeGreaterThan(finalize);
+  });
+
+  it("refuses to report a restored deployment while the rejected canary is still pending", () => {
+    const result = run(deploy, `${stateFactory}
+$currentA=New-Release '${shaA}' '${imageA}' '${generationA}'
+$canary=New-Release '${shaB}' '${imageB}' '${generationB}'
+$preStage=New-State $currentA $null $null
+$promoteBefore=New-State $currentA $null $canary
+$hostAfterCompensate=New-State $currentA $null $canary
+$hostAfterCompensate.lastTransition=[pscustomobject]@{ schemaVersion=1; operation='promote'; phase='compensated'; targetReleaseSha='${shaB}' }
+function Invoke-NativeChecked {
+  param([string]$FilePath,[string[]]$Arguments,[switch]$Capture,[int]$MaximumOutputBytes)
+  $command=$Arguments[$Arguments.Count-1]
+  if ($command -match 'compensate-last-transition') { return '{"schemaVersion":2,"releaseSha":"${shaB}","result":"compensated","finalization":"required"}' }
+  if ($command -match 'finalize-last-transition') { return '{"schemaVersion":2,"releaseSha":"${shaB}","result":"finalized","cleanup":"complete"}' }
+  return ''
+}
+function Get-ReconciledRemoteState { return $hostAfterCompensate }
+function Confirm-CompensatedReleaseReadback { return [pscustomobject]@{ activeAssignedBuildingCount=3 } }
+$baseline=[pscustomobject]@{ activeAssignmentHash=('5' * 64) }
+Restore-RejectedPromotion -CandidateReleaseSha '${shaB}' -PreStageState $preStage -PromoteBeforeState $promoteBefore -BaselineAssignmentStatus $baseline -RepositoryRoot 'repo' -SshTarget 'root@test' -SshOptions @()`);
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toMatch(/canary is still running|still pending/i);
   });
 
   it("reconciles a lost finalization receipt only from exact pointers and a finalized durable journal", () => {

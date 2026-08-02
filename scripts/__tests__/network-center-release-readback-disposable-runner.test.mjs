@@ -206,6 +206,16 @@ test("published integration timeout covers every legitimate native-command budge
   );
 });
 
+// Floor for the disposable release proof's invariant count, reported by the
+// runner as "PASS: N/M invariants." Raise this constant whenever a
+// legitimate new invariant is added to ASSERTION_SQL in
+// scripts/test-network-center-release-readback-disposable.mjs. This test
+// does not care about the exact count (that number is expected to grow as
+// the proof gains coverage) -- it only guards against the count silently
+// SHRINKING, which would mean invariants were dropped without anyone
+// noticing.
+const MINIMUM_DISPOSABLE_PROOF_INVARIANT_COUNT = 22;
+
 test("disposable PostgreSQL runner cannot retain pg_ctl pipes and cleans its TEMP cluster", {
   timeout: Number.isSafeInteger(disposableRunner.DISPOSABLE_PROOF_PROCESS_TIMEOUT_MS)
     ? disposableRunner.DISPOSABLE_PROOF_PROCESS_TIMEOUT_MS + 10_000
@@ -241,7 +251,22 @@ test("disposable PostgreSQL runner cannot retain pg_ctl pipes and cleans its TEM
       "runner timed out because the background postmaster retained a captured pg_ctl pipe",
     );
     assert.equal(result.status, 0, result.stderr || result.error?.message);
-    assert.match(result.stdout, /PASS:\s*14\/14 invariants/i);
+    const invariantMatch = result.stdout.match(/PASS:\s*(\d+)\/(\d+)\s*invariants/i);
+    assert.ok(
+      invariantMatch,
+      `runner stdout did not report a "PASS: N/M invariants" line: ${result.stdout}`,
+    );
+    const [, reportedCount, reportedTotal] = invariantMatch;
+    assert.equal(
+      reportedCount,
+      reportedTotal,
+      `runner reported a partial proof (${reportedCount}/${reportedTotal}) instead of a full pass`,
+    );
+    assert.ok(
+      Number(reportedCount) >= MINIMUM_DISPOSABLE_PROOF_INVARIANT_COUNT,
+      `runner's invariant count dropped to ${reportedCount}; expected at least ` +
+        `${MINIMUM_DISPOSABLE_PROOF_INVARIANT_COUNT} (see MINIMUM_DISPOSABLE_PROOF_INVARIANT_COUNT)`,
+    );
     assert.deepEqual(created, [], `runner leaked disposable clusters: ${created.join(", ")}`);
   } finally {
     cleanupOwnedClusters(created, bin, ownedTempRoot);

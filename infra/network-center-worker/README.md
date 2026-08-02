@@ -83,23 +83,70 @@ Worker này độc lập, không đọc hoặc restart 9Router/Zalo.
 
 `install-host.sh` chạy root, tạo UID/GID 10001, cấu trúc
 `/opt/ihome-network-center/{releases,incoming,state,config,secrets,secret-generations,backups,bin}`
-và systemd unit. Script chỉ thay `wg0.conf`/firewall fragment khi cả source lẫn
+và systemd unit. Script chỉ ghi `wg0.conf`/firewall fragment khi cả source lẫn
 destination có marker `# ihomecrm-network-center-managed:v1`; bản cấu hình cũ
-được hash và backup trước atomic replace. Nó không flush firewall và không
-restart workload khác.
+được hash và backup trước atomic replace. `wg0.conf` **không** còn bị thay nguyên
+file: nó được merge additive theo `PublicKey` (xem phần onboarding bên dưới). Nó
+không flush firewall và không restart workload khác.
 
 Trước khi chạy trên host mới, đặt hai source ở thư mục chỉ root truy cập. Cả
 `wg0.conf` và `ihome-network-center.nft` phải là regular file (không phải symlink),
 owner `root:root`, mode `0600`, và chứa nguyên một dòng marker
-`# ihomecrm-network-center-managed:v1`. Firewall fragment không được chứa
-`flush ruleset`. Chạy từ thư mục `infra/network-center-worker` đã checkout đầy đủ
-các asset trong `deploy/`:
+`# ihomecrm-network-center-managed:v1`. Firewall fragment phải định nghĩa **duy
+nhất** `table inet ihome_network_center`: không `flush ruleset`, không include, và
+không một statement nào nằm ngoài bảng đó — VPS này còn chạy một production
+service không liên quan, `flush ruleset` sẽ xóa sạch firewall của nó. Installer tự
+render preamble scoped (`table inet ihome_network_center` rồi
+`delete table inet ihome_network_center`) lên trước nội dung fragment, nên chạy
+lại `install-host.sh` là atomic replace đúng một bảng đó thay vì cộng dồn rule;
+`ExecStop` của unit cũng chỉ `delete table inet ihome_network_center`. Chạy từ thư
+mục `infra/network-center-worker` đã checkout đầy đủ các asset trong `deploy/`:
 
 ```bash
 sudo ./deploy/install-host.sh \
   --asset-dir "$(pwd)/deploy" \
   --wg0-source /root/ihome-network-center-bootstrap/wg0.conf \
   --firewall-source /root/ihome-network-center-bootstrap/ihome-network-center.nft
+```
+
+### Onboard tòa 2..15 vào WireGuard
+
+`wg0.conf` là một file dùng chung cho cả 15 tòa. Hành vi cũ — replace nguyên file —
+im lặng xóa sạch peer của những tòa đã onboard trước đó, nên bootstrap giờ merge
+theo `PublicKey`:
+
+- Peer trong source được add mới hoặc update tại chỗ theo đúng `PublicKey`.
+- Peer đã có trên host mà source không nhắc tới thì được **giữ**, và script in
+  `retaining existing wg0 peer <key>`.
+- Peer chỉ rời `wg0.conf` khi operator gọi đích danh public key của nó bằng
+  `--remove-peer <PUBLIC_KEY>`. Preflight từ chối `--remove-peer` cho key host
+  không có, cho key mà source vẫn còn định nghĩa, và cho cùng một key lặp lại.
+- Ghi xong, script readback lại `wg0.conf` và **fail install** nếu một peer trước
+  đó biến mất mà không có `--remove-peer` tương ứng
+  (`refusing an install that would drop wg0 peer ...`).
+- Hai peer không được claim trùng `AllowedIPs`; merge bị từ chối trước khi ghi.
+- Đổi block `[Interface]` (PrivateKey/ListenPort/Address) làm vỡ cả 15 tòa cùng
+  lúc vì router nào cũng pin key + port của VPS, nên nó cần opt-in tường minh
+  `--allow-interface-change`. Không có cờ đó, install dừng ngay ở preflight.
+
+Onboard tòa thứ N: source chỉ cần `[Interface]` y hệt bản đang chạy cộng thêm
+`[Peer]` mới, không cần liệt kê lại peer của các tòa cũ.
+
+```bash
+sudo ./deploy/install-host.sh \
+  --asset-dir "$(pwd)/deploy" \
+  --wg0-source /root/ihome-network-center-bootstrap/wg0-building-07.conf \
+  --firewall-source /root/ihome-network-center-bootstrap/ihome-network-center.nft
+```
+
+Gỡ một tòa (trả router, rotate key) — key phải khớp chính xác 44 ký tự base64:
+
+```bash
+sudo ./deploy/install-host.sh \
+  --asset-dir "$(pwd)/deploy" \
+  --wg0-source /root/ihome-network-center-bootstrap/wg0-building-07.conf \
+  --firewall-source /root/ihome-network-center-bootstrap/ihome-network-center.nft \
+  --remove-peer <PUBLIC_KEY-cua-toa-do>
 ```
 
 Script preflight toàn bộ argument, source và asset trước khi tạo identity, cài
@@ -141,11 +188,20 @@ emergency stop. Chỉ sau Docker health + heartbeat `PAUSED`/revision readback m
 drain active worker, switch và commit ba pointer JSON atomic:
 `state/{current,previous,pending}.release`.
 
-Promotion/rollback ghi journal durable `state/transition.json` ở phase `prepared`
-rồi `commit-intent`. `inspect-state` trả receipt v2 gồm image, container security,
-health và generation; `reconcile-state` hội tụ về exact before/after sau mất SSH,
-reboot hoặc pointer move dở dang. Cleanup chỉ xóa release/generation không còn
-pointer, journal hoặc container đang chạy tham chiếu.
+Promotion/rollback ghi journal durable `state/transition.json` qua phase
+`prepared` rồi `commit-intent`, chốt sang `state/last-transition.json`
+(`committed`/`compensated`), và chỉ dọn dẹp khi transition được finalize tường
+minh. Mọi journal lẫn pointer đều ghi theo fsync file → rename → fsync directory;
+snapshot secret generation cũng fsync từng file bên trong rồi mới fsync và rename
+cả directory, nên một hard reset không thể để lại generation rỗng — thứ sẽ làm
+`validate_pointer` từ chối `current.release` ở mọi lần boot. `inspect-state` trả
+receipt v2 gồm image, container security, health và generation; `reconcile-state`
+hội tụ về exact before/after sau mất SSH, reboot hoặc pointer move dở dang.
+Cleanup xóa release/generation không còn pointer, journal hoặc container đang chạy
+tham chiếu, cộng thêm residue của stage bị ngắt giữa chừng
+(`releases/.release-<sha>.XXXXXX`, `secret-generations/.generation.XXXXXX`) — đúng
+shape mktemp của chính project và chỉ trong thư mục của chính project, nên nó
+không bao giờ đụng dữ liệu của workload khác trên cùng ổ đĩa.
 
 Rollback không pull/build/retag. Nó chỉ khởi động `previous.imageId` đã có
 local, đọc lại health/revision/generation và chứng minh assignment hash/count
@@ -163,12 +219,22 @@ không đổi bằng exact worker+revision readback:
   của worker active. Processor vẫn recheck kill switch trước SSH và ngay sau
   backup để chặn race.
 - Sau khi heartbeat, WireGuard, host-key pin và read-only polling đều xanh, đổi
-  bằng lệnh host fail-closed sau; script giữ exact image, backup env, restart và
-  tự phục hồi env cũ nếu health readback thất bại:
+  bằng lệnh host fail-closed sau; script giữ exact image, backup env rồi restart:
 
   ```bash
   sudo /opt/ihome-network-center/bin/activate-release.sh set-emergency-stop false
   ```
+
+  Việc "tự phục hồi env cũ nếu health readback thất bại" **chỉ đúng cho
+  `set-emergency-stop false`** (gỡ pause). Chiều ngược lại,
+  `set-emergency-stop true`, **không bao giờ tự revert**: health gate chỉ xanh sau
+  một vòng poll hoàn chỉnh cộng round trip Supabase, mà đó đúng là thứ con worker
+  vừa bị pause không thể làm được — revert ở đó sẽ tự bật lại chính con worker
+  operator đang muốn dừng. Lệnh chỉ verify container còn `running` rồi trả
+  `health:"unverified"` kèm cảnh báo trên stderr; nếu container không chạy thì nó
+  die và **vẫn để nguyên env đã pause**. Thấy `health:"unverified"` nghĩa là stop
+  đã áp dụng nhưng chưa được health readback xác nhận — **không phải** stop thất
+  bại. Muốn xác nhận thì đọc heartbeat `PAUSED` hoặc `inspect-state`.
 - `changesPaused` theo từng tòa là kill switch thứ hai và được kiểm tra lại trước
   khi kết nối router.
 - Healthcheck đọc timestamp tại `/tmp/network-center-worker-health`; log JSON được
@@ -183,5 +249,15 @@ không đổi bằng exact worker+revision readback:
 - Cycle port hoặc reboot bị mất kết nối sau khi đã gửi lệnh: `UNCERTAIN`, không
   tự chạy lại. Queue sẽ phát reconciliation claim; worker chỉ post-check, không
   lặp thao tác disruptive.
+- Lỗi control-plane (Edge API) cũng theo cùng luật đó: chỉ là retry sạch khi nó
+  xảy ra **trước** khi thao tác router được bắt đầu; nổ **sau** một thao tác
+  disruptive thì thành `UNCERTAIN` để reconciliation lo, không phải `FAILED`.
+- `UNCERTAIN` của cycle port **không** có nghĩa là port nằm disable vĩnh viễn:
+  worker arm một one-shot `/system/scheduler` guard trên chính router trước khi
+  disable bất cứ thứ gì, nên container bị SIGKILL, WireGuard đứt hay host reboot
+  giữa cửa sổ cycle thì router vẫn tự enable lại port rồi tự xóa guard. Bằng chứng
+  disable→enable được ghi durable dưới `backups/router/.port-cycle-evidence`, để
+  một pass reconciliation chạy trên connector/process mới vẫn chứng minh được cycle
+  đã thực sự xảy ra.
 - SIGTERM/SIGINT abort hai loop, đợi công việc đang chạy, gửi heartbeat `STOPPING`
   rồi thoát trong `stop_grace_period`.

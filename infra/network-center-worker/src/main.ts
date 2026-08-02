@@ -16,6 +16,7 @@ import {
   type NetworkConnection,
   type WorkerLogger,
 } from "./domain.js";
+import { FilePortCycleEvidenceStore } from "./portCycleEvidence.js";
 import { PollingCoordinator } from "./polling.js";
 import { SshRouterConnector } from "./routeros/sshConnector.js";
 
@@ -143,6 +144,14 @@ async function run(): Promise<void> {
     leaseSeconds: config.leaseSeconds,
     logger,
     routerOperationSemaphore,
+    // Survives both the per-claim connector and a worker restart, so a port cycle
+    // that really happened can still be proven during reconciliation.
+    // Shares the command clock: the retention window is measured against the same
+    // timestamps the processor stamps on the evidence it records.
+    portCycleEvidence: new FilePortCycleEvidenceStore(
+      resolve(config.backupDirectory, ".port-cycle-evidence"),
+      { now: () => systemClock.now() },
+    ),
   });
   const commands = new CommandCoordinator({
     api,

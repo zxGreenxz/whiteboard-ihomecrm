@@ -1,10 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { afterAll, describe, expect, it } from "vitest";
+
+import { ApiClientError } from "../src/apiClient.js";
 import { CommandCoordinator, CommandProcessor, sanitizeRouterExport } from "../src/commands.js";
 import type { BackupStore } from "../src/backupStore.js";
 import { AsyncSemaphore } from "../src/concurrency.js";
 import { InterfaceRegistry, RouterOperationError, type WorkerClock } from "../src/domain.js";
+import { FilePortCycleEvidenceStore, type PortCycleEvidenceStore } from "../src/portCycleEvidence.js";
 import type { RouterConnector } from "../src/routeros/connector.js";
+
+const temporaryDirectories: string[] = [];
+
+async function evidenceDirectory(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "network-center-cycle-"));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+afterAll(async () => {
+  for (const directory of temporaryDirectories) {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 const connection = {
   connectionId: "10000000-0000-4000-8000-000000000001",
@@ -57,6 +77,9 @@ function harness(
     clock?: WorkerClock;
     renewLease?: () => Promise<void>;
     routerOperationSemaphore?: AsyncSemaphore;
+    stage?: (input: { eventKind: string }) => Promise<void>;
+    observe?: (input: Record<string, unknown>) => Promise<void>;
+    portCycleEvidence?: PortCycleEvidenceStore;
   } = {},
 ) {
   const calls: string[] = [];
@@ -142,10 +165,14 @@ function harness(
   const processor = new CommandProcessor({
     api: {
       renewLease: processorOverrides.renewLease ?? (async () => { calls.push("renew-lease"); }),
-      stage: async (input: { eventKind: string }) => { calls.push(input.eventKind); },
+      stage: async (input: { eventKind: string }) => {
+        calls.push(input.eventKind);
+        await processorOverrides.stage?.(input);
+      },
       observe: async (input: Record<string, unknown>) => {
         calls.push(`observe-${String(input.observationKind)}`);
         observations.push(input);
+        await processorOverrides.observe?.(input);
         return {
           accepted: true,
           transitionVersion: Number(input.transitionVersion) + 1,
@@ -190,6 +217,9 @@ function harness(
     logger: { info() {}, warn() {}, error() {} },
     ...(processorOverrides.routerOperationSemaphore
       ? { routerOperationSemaphore: processorOverrides.routerOperationSemaphore }
+      : {}),
+    ...(processorOverrides.portCycleEvidence
+      ? { portCycleEvidence: processorOverrides.portCycleEvidence }
       : {}),
   });
   return {
@@ -545,6 +575,222 @@ describe("command processor", () => {
     });
     await test.processor.processClaim(claim("REBOOT_ROUTER"), connection);
     expect(test.completions[0]).toMatchObject({ outcome: "UNCERTAIN" });
+  });
+
+  it("retries a command when the control plane fails before the router action", async () => {
+    const test = harness({}, false, {}, {
+      stage: async (input) => {
+        if (input.eventKind === "BACKUP_STARTED") {
+          throw new ApiClientError({ code: "HTTP_503", retryable: true, status: 503 });
+        }
+      },
+    });
+
+    await test.processor.processClaim(claim(), connection);
+
+    expect(test.calls).not.toContain("flush");
+    expect(test.completions[0]).toMatchObject({
+      outcome: "RETRYABLE_FAILURE",
+      result: { code: "HTTP_503" },
+    });
+  });
+
+  it("keeps a disruptive command uncertain when the control plane fails after execution", async () => {
+    const test = harness({}, false, {}, {
+      stage: async (input) => {
+        if (input.eventKind === "EXECUTION_COMPLETED") {
+          throw new ApiClientError({ code: "NETWORK_ERROR", retryable: true });
+        }
+      },
+    });
+
+    await test.processor.processClaim(claim("REBOOT_ROUTER"), connection);
+
+    expect(test.calls).toContain("reboot");
+    expect(test.completions[0]).toMatchObject({
+      outcome: "UNCERTAIN",
+      result: { code: "NETWORK_ERROR" },
+    });
+  });
+
+  it("abandons a command whose observation deadline has already passed", async () => {
+    const test = harness();
+
+    await test.processor.processClaim({
+      ...claim(),
+      observationDeadline: "2026-07-27T23:59:00.000Z",
+    }, connection);
+
+    expect(test.calls).not.toContain("backup");
+    expect(test.calls).not.toContain("flush");
+    expect(test.completions[0]).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "OBSERVATION_DEADLINE_EXCEEDED" },
+    });
+  });
+
+  it("refuses a port cycle it could never observe before the deadline", async () => {
+    const test = harness();
+    test.interfaceRegistry.update(connection.deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    await test.processor.processClaim({
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 30 },
+      observationDeadline: "2026-07-28T00:00:20.000Z",
+    }, connection);
+
+    expect(test.calls).toContain("backup");
+    expect(test.calls).not.toContain("cycle-port");
+    expect(test.completions[0]).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "OBSERVATION_DEADLINE_UNREACHABLE" },
+    });
+  });
+
+  it("abandons a reconciliation that can no longer be observed in time", async () => {
+    const test = harness({
+      observeAction: async () => ({
+        observedAt: "2026-07-28T00:00:15.000Z",
+        reachable: true,
+        boot: { bootId: "boot-2", uptimeSeconds: 15 },
+      }),
+    });
+
+    await test.processor.processClaim({
+      ...claim("REBOOT_ROUTER"),
+      reconciliation: true,
+      preObservation: {
+        observedAt: "2026-07-27T23:58:00.000Z",
+        reachable: true,
+        boot: { bootId: "boot-1", uptimeSeconds: 86_400 },
+      },
+      observationDeadline: "2026-07-27T23:59:00.000Z",
+    }, connection);
+
+    expect(test.calls).not.toContain("observe-action");
+    expect(test.observations).toHaveLength(0);
+    expect(test.completions[0]).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "OBSERVATION_DEADLINE_EXCEEDED" },
+    });
+  });
+
+  it("reconciles a port cycle from evidence a previous connector left behind", async () => {
+    const directory = await evidenceDirectory();
+    const managedTarget = {
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      immutableKey: "ether4",
+    };
+    const cycleClaim = {
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      managedTarget,
+    };
+    const mapping = [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS" as const,
+      protected: false,
+      enrollmentState: "ENROLLED" as const,
+    }];
+
+    const first = harness({}, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+    first.interfaceRegistry.update(connection.deviceId, mapping);
+    await first.processor.processClaim(cycleClaim, connection);
+    expect(first.calls).toContain("cycle-port");
+
+    const second = harness({}, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+    second.interfaceRegistry.update(connection.deviceId, mapping);
+    await second.processor.processClaim({
+      ...cycleClaim,
+      reconciliation: true,
+      leaseToken: "60000000-0000-4000-8000-000000000002",
+      fencingGeneration: cycleClaim.fencingGeneration + 1,
+      transitionVersion: cycleClaim.transitionVersion + 2,
+      preObservation: {
+        observedAt: "2026-07-27T23:59:50.000Z",
+        reachable: true,
+        accessInterface: { ...managedTarget, enabled: true },
+      },
+    }, connection);
+
+    expect(second.calls).not.toContain("cycle-port");
+    expect(second.observations[0]).toMatchObject({
+      observationKind: "RECONCILIATION",
+      evidence: {
+        accessInterface: {
+          managedResourceId: "50000000-0000-4000-8000-000000000001",
+          immutableKey: "ether4",
+          enabled: true,
+          disabledObserved: true,
+          enabledObserved: true,
+        },
+      },
+    });
+  });
+
+  it("never invents port-cycle evidence for another command", async () => {
+    const directory = await evidenceDirectory();
+    const managedTarget = {
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      immutableKey: "ether4",
+    };
+    const test = harness({}, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+    test.interfaceRegistry.update(connection.deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    await test.processor.processClaim({
+      ...claim("CYCLE_ACCESS_PORT"),
+      commandId: "50000000-0000-4000-8000-0000000000ff",
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      managedTarget,
+      reconciliation: true,
+      preObservation: {
+        observedAt: "2026-07-27T23:59:50.000Z",
+        reachable: true,
+        accessInterface: { ...managedTarget, enabled: true },
+      },
+    }, connection);
+
+    expect(test.observations[0]).toMatchObject({
+      observationKind: "RECONCILIATION",
+      evidence: { accessInterface: { disabledObserved: false } },
+    });
   });
 
   it("reports DHCP renew as not applicable without failing PPPoE sites", async () => {

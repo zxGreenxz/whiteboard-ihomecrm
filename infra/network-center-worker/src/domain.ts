@@ -1,3 +1,4 @@
+import { ApiClientError } from "./apiClient.js";
 import type {
   ActionObservation,
 } from "./reconciliation.js";
@@ -323,9 +324,36 @@ export interface ClassifiedWorkerError {
   retryDelaySeconds: number;
 }
 
-export function classifyWorkerError(error: unknown, disruptive: boolean): ClassifiedWorkerError {
+/**
+ * Turns a worker-side failure into the outcome the command plane should record.
+ *
+ * `mayHaveExecuted` is what separates a clean retry from an UNCERTAIN command, and
+ * it is never inferred from the error's class:
+ * - a `RouterOperationError` carries its own `mayHaveExecuted`, decided at the
+ *   exact statement that failed;
+ * - an `ApiClientError` is a control-plane failure with no view of the router, so
+ *   the caller supplies `actionStarted` — true only once the router action has
+ *   been attempted. A control-plane blip *before* the action is a clean retry; the
+ *   same blip *after* a disruptive action must stay UNCERTAIN and be reconciled.
+ * Anything else still fails closed as a permanent failure.
+ */
+export function classifyWorkerError(
+  error: unknown,
+  disruptive: boolean,
+  actionStarted = false,
+): ClassifiedWorkerError {
   if (error instanceof RouterOperationError) {
     const outcome: CommandOutcome = disruptive && error.mayHaveExecuted
+      ? "UNCERTAIN"
+      : error.retryable ? "RETRYABLE_FAILURE" : "FAILED";
+    return {
+      outcome,
+      result: { code: error.code, message: error.message.slice(0, 500) },
+      retryDelaySeconds: 30,
+    };
+  }
+  if (error instanceof ApiClientError) {
+    const outcome: CommandOutcome = disruptive && actionStarted
       ? "UNCERTAIN"
       : error.retryable ? "RETRYABLE_FAILURE" : "FAILED";
     return {

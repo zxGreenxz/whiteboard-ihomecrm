@@ -84,6 +84,100 @@ test("release heartbeat accepts only an exact lowercase 40-character commit SHA"
     "worker_version must be rejected before the mutation-capable heartbeat core runs");
 });
 
+test("retention never expires a release that is still a reachable rollback target", () => {
+  const sql = readFileSync(migrationPath, "utf8");
+  const heartbeatFunction = sql.match(
+    /CREATE OR REPLACE FUNCTION public\.network_center_worker_heartbeat_v2\([\s\S]*?\n\$fn\$;/i,
+  )?.[0];
+  assert.ok(heartbeatFunction, "release heartbeat wrapper missing");
+
+  // An age-only purge deletes the previous release 30 days after it was
+  // superseded, even though the host still names it as the rollback target and
+  // rollback-vultr.ps1 refuses to roll back without that row.
+  assert.doesNotMatch(
+    heartbeatFunction,
+    /DELETE FROM app_private\.network_worker_release_heartbeats\s+heartbeat\s+WHERE heartbeat\.heartbeat_at\s*<\s*v_now\s*-\s*INTERVAL/i,
+    "age-based retention must not delete rows without checking rollback reachability",
+  );
+  assert.match(
+    heartbeatFunction,
+    /c_rollback_reachable_releases\s+constant\s+integer\s*:=\s*(\d+)/i,
+    "retention must declare an explicit rollback-reachable release depth",
+  );
+  assert.match(
+    heartbeatFunction,
+    /row_number\(\)\s*OVER\s*\(\s*PARTITION BY\s+ranked\.worker_id\s+ORDER BY\s+ranked\.heartbeat_at DESC/i,
+    "reachability must be ranked per worker by promotion recency",
+  );
+  assert.match(
+    heartbeatFunction,
+    /release_rank\s*>\s*c_rollback_reachable_releases[\s\S]{0,200}heartbeat_at\s*<\s*v_now\s*-\s*c_release_retention_max_age/i,
+    "age expiry must apply only beyond the rollback-reachable depth",
+  );
+
+  // Unbounded growth must still be impossible: fresh releases never age out, so
+  // the per-worker hard cap is their only bound.
+  assert.match(
+    heartbeatFunction,
+    /c_release_retention_limit\s+constant\s+integer\s*:=\s*(\d+)/i,
+  );
+  assert.match(heartbeatFunction, /OFFSET c_release_retention_limit/i);
+  const reachable = Number.parseInt(
+    heartbeatFunction.match(/c_rollback_reachable_releases\s+constant\s+integer\s*:=\s*(\d+)/i)[1],
+    10,
+  );
+  const cap = Number.parseInt(
+    heartbeatFunction.match(/c_release_retention_limit\s+constant\s+integer\s*:=\s*(\d+)/i)[1],
+    10,
+  );
+  assert.ok(reachable >= 2, "rollback needs at least the current and previous release");
+  assert.ok(cap > reachable, "the hard cap must never be able to evict a reachable target");
+  assert.match(
+    sql,
+    /CREATE INDEX network_worker_release_heartbeats_worker_recent_idx[\s\S]*?worker_id,\s*heartbeat_at DESC/i,
+    "per-worker promotion-recency ranking needs a supporting index",
+  );
+});
+
+test("poll evidence fails closed on JSON null, not just on a missing key", () => {
+  const sql = readFileSync(migrationPath, "utf8");
+  const heartbeatFunction = sql.match(
+    /CREATE OR REPLACE FUNCTION public\.network_center_worker_heartbeat_v2\([\s\S]*?\n\$fn\$;/i,
+  )?.[0];
+  assert.ok(heartbeatFunction, "release heartbeat wrapper missing");
+
+  // `?|` and `?&` test key existence and ignore the value, so a JSON null
+  // reaches the integer casts, produces SQL NULL without raising, and makes the
+  // range guard evaluate to NULL rather than TRUE.
+  for (const key of ["connections", "successfulPolls", "failedPolls"]) {
+    assert.match(
+      heartbeatFunction,
+      new RegExp(`p_safe_metadata->>'${key}'\\s+IS NULL`, "i"),
+      `JSON null ${key} must be rejected explicitly`,
+    );
+  }
+  const incompleteGuard = heartbeatFunction.match(
+    /IF NOT \(p_safe_metadata \?&[\s\S]*?RAISE EXCEPTION 'Incomplete worker poll evidence'/i,
+  )?.[0];
+  assert.ok(
+    incompleteGuard,
+    "JSON null values must fail closed with the same error as missing keys",
+  );
+  for (const key of ["connections", "successfulPolls", "failedPolls"]) {
+    assert.match(incompleteGuard, new RegExp(`>>'${key}'\\s+IS NULL`, "i"));
+  }
+  assert.match(
+    heartbeatFunction,
+    /v_connection_count IS NULL\s+OR v_successful_poll_count IS NULL\s+OR v_failed_poll_count IS NULL\s+OR v_connection_count NOT BETWEEN/i,
+    "a three-way NULL comparison must never be read as a passed range check",
+  );
+  assert.match(
+    heartbeatFunction,
+    /IF v_worker_id IS NULL/i,
+    "the server-derived worker principal must be re-checked before the release write",
+  );
+});
+
 test("ships an exact keyed release readback outside the bounded status list", () => {
   const sql = readFileSync(migrationPath, "utf8");
   const keyedFunction = sql.match(
@@ -415,6 +509,68 @@ test("runtime proof creates isolated DEMO identities and scopes broad readback a
     sql,
     /jsonb_array_length\(v_release_status->'releaseHeartbeats'\)\s*=\s*2/i,
     "proof must tolerate pre-existing release rows from other workers",
+  );
+});
+
+test("runtime proof covers rollback-target retention and null poll evidence", () => {
+  const sql = readFileSync(runtimeProofPath, "utf8");
+  assert.match(
+    sql,
+    /retention must not expire a release that is still a reachable rollback target/i,
+  );
+  assert.match(
+    sql,
+    /reachable_rollback_target_never_expired/,
+    "the proof verdict must name the rollback-reachability invariant",
+  );
+  assert.match(sql, /bounded_30_day_cleanup/, "age-based collection must stay proven");
+  assert.match(
+    sql,
+    /no longer a reachable rollback target/i,
+    "the proof must still show expired displaced releases being collected",
+  );
+  assert.match(sql, /null_poll_evidence_fails_closed/);
+  assert.match(
+    sql,
+    /'connections',\s*NULL,\s*'successfulPolls',\s*NULL,\s*'failedPolls',\s*NULL/i,
+    "the proof must post JSON null poll counts",
+  );
+  assert.match(
+    sql,
+    /must not refresh poll freshness or poll counts/i,
+    "a rejected null-poll heartbeat must be shown not to renew canary freshness",
+  );
+  assert.match(
+    sql,
+    /SET started_at[\s\S]{0,200}poll_observed_at\s*=\s*statement_timestamp\(\)\s*-\s*INTERVAL '31 days'/i,
+    "ageing a row must keep poll_observed_at inside the all-or-nothing CHECK",
+  );
+});
+
+test("disposable proof exercises both retention reachability and null poll evidence", () => {
+  const source = readFileSync(disposableRunnerPath, "utf8");
+  assert.match(source, /'invariants',\s*22/);
+  assert.match(source, /verdict\?\.invariants !== 22/);
+  assert.match(
+    source,
+    /'connections',\s*NULL,\s*'successfulPolls',\s*NULL,\s*'failedPolls',\s*NULL/,
+    "must post an all-null poll payload against a release with real poll evidence",
+  );
+  assert.match(source, /JSON null poll evidence was accepted on an existing release/);
+  assert.match(source, /JSON null poll evidence was accepted on a fresh release/);
+  assert.match(source, /a single JSON null poll count was accepted/);
+  assert.match(source, /rejected null poll heartbeat refreshed poll freshness/);
+  assert.match(source, /retention expired a still-reachable rollback target/);
+  assert.match(
+    source,
+    /expired releases beyond the reachable depth were not collected/,
+    "age-based collection must still be proven once a release is unreachable",
+  );
+  assert.match(source, /fresh release growth is not bounded by the per-worker cap/);
+  assert.match(
+    source,
+    /age-based collection deleted another worker/,
+    "the global age purge must be proven not to touch other workers",
   );
 });
 

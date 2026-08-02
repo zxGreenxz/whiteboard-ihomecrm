@@ -67,6 +67,14 @@ const COMMAND_OUTCOMES = new Set([
 
 class RequestValidationError extends Error {}
 
+// Thrown when a caller of readJsonBody supplies a byte cap that is not a
+// valid positive integer. This must never happen for a real, allow-listed
+// route (every RouteDefinition.maxBodyBytes is a literal positive number),
+// so surfacing it distinctly (rather than silently treating the cap as
+// unlimited) turns a future misconfiguration into a loud 500 instead of a
+// silent unbounded-body-read regression.
+class InvalidBodyCapError extends Error {}
+
 function jsonResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status,
@@ -432,8 +440,19 @@ function maintenanceArgs(body: JsonObject): Record<string, unknown> {
   };
 }
 
-const ROUTES: Readonly<Record<string, RouteDefinition>> = Object.freeze({
-  heartbeat: {
+// A Map is used instead of a plain object so route lookup can never resolve
+// an inherited Object.prototype member (constructor, toString, valueOf,
+// hasOwnProperty, __proto__, ...). Map#get only ever returns a value for a
+// key that was explicitly set via the constructor/`.set`, with no prototype
+// chain to fall through to -- unlike `ROUTES[key]` on an object literal
+// (even a frozen one), where any request path that happens to name a
+// standard Object.prototype member resolves to a truthy value and silently
+// bypasses the `if (!route) return 404` guard below.
+const ROUTES: ReadonlyMap<string, RouteDefinition> = new Map<
+  string,
+  RouteDefinition
+>([
+  ["heartbeat", {
     maxBodyBytes: 32_768,
     rpcName: "network_center_worker_heartbeat_v2",
     bodySchema: strictBodySchema([
@@ -441,48 +460,48 @@ const ROUTES: Readonly<Record<string, RouteDefinition>> = Object.freeze({
       "safeMetadata", "startedAt",
     ]),
     toRpcArgs: heartbeatArgs,
-  },
-  connections: {
+  }],
+  ["connections", {
     maxBodyBytes: 8_192,
     rpcName: "network_center_worker_list_connections_v2",
     bodySchema: strictBodySchema(["limit"]),
     toRpcArgs: connectionsArgs,
-  },
-  claim: {
+  }],
+  ["claim", {
     maxBodyBytes: 8_192,
     rpcName: "network_center_worker_claim_v2",
     bodySchema: strictBodySchema(["limit", "leaseSeconds"]),
     toRpcArgs: claimArgs,
-  },
-  renew: {
+  }],
+  ["renew", {
     maxBodyBytes: 8_192,
     rpcName: "network_center_worker_renew_v2",
     bodySchema: strictBodySchema([
       "commandId", "leaseToken", "fencingGeneration", "leaseSeconds",
     ]),
     toRpcArgs: renewArgs,
-  },
-  ingest: {
+  }],
+  ["ingest", {
     maxBodyBytes: 600_000,
     rpcName: "network_center_worker_ingest_v2",
     bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: ingestArgs,
-  },
-  inventory: {
+  }],
+  ["inventory", {
     maxBodyBytes: 600_000,
     rpcName: "network_center_worker_inventory_v2",
     bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: inventoryArgs,
-  },
-  stage: {
+  }],
+  ["stage", {
     maxBodyBytes: 100_000,
     rpcName: "network_center_worker_command_event_v2",
     bodySchema: strictBodySchema([
       "commandId", "leaseToken", "fencingGeneration", "eventKind", "payload",
     ]),
     toRpcArgs: stageArgs,
-  },
-  observe: {
+  }],
+  ["observe", {
     maxBodyBytes: 100_000,
     rpcName: "network_center_worker_observe_v2",
     bodySchema: strictBodySchema([
@@ -490,8 +509,8 @@ const ROUTES: Readonly<Record<string, RouteDefinition>> = Object.freeze({
       "observationId", "observationKind", "observedAt", "evidence",
     ]),
     toRpcArgs: observeArgs,
-  },
-  complete: {
+  }],
+  ["complete", {
     maxBodyBytes: 150_000,
     rpcName: "network_center_worker_complete_v2",
     bodySchema: strictBodySchema([
@@ -499,26 +518,26 @@ const ROUTES: Readonly<Record<string, RouteDefinition>> = Object.freeze({
       "outcome", "result", "rollback", "retryDelaySeconds",
     ]),
     toRpcArgs: completeArgs,
-  },
-  incidents: {
+  }],
+  ["incidents", {
     maxBodyBytes: 100_000,
     rpcName: "network_center_worker_upsert_incident_v2",
     bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: incidentArgs,
-  },
-  snapshots: {
+  }],
+  ["snapshots", {
     maxBodyBytes: 2_200_000,
     rpcName: "network_center_worker_snapshot_v2",
     bodySchema: strictBodySchema(["payload"]),
     toRpcArgs: snapshotArgs,
-  },
-  maintenance: {
+  }],
+  ["maintenance", {
     maxBodyBytes: 8_192,
     rpcName: "network_center_worker_maintenance_v2",
     bodySchema: strictBodySchema(["now"]),
     toRpcArgs: maintenanceArgs,
-  },
-});
+  }],
+]);
 
 function routeFromUrl(url: string): string {
   const parts = new URL(url).pathname.split("/").filter(Boolean);
@@ -526,10 +545,22 @@ function routeFromUrl(url: string): string {
   return (marker >= 0 ? parts.slice(marker + 1) : parts).join("/");
 }
 
-async function readJsonBody(
+export async function readJsonBody(
   request: Request,
   maximumBytes: number,
 ): Promise<JsonObject> {
+  // Fail closed: a byte cap that is not a finite positive integer must
+  // never be treated as "no limit". Without this guard, `declaredLength >
+  // maximumBytes` and `bytes.byteLength > maximumBytes` both silently
+  // evaluate to false whenever maximumBytes is undefined/NaN/non-numeric
+  // (any comparison against a non-number coerces to NaN, and every
+  // NaN comparison is false), which would let an arbitrarily large body be
+  // buffered into memory in full before any other validation runs.
+  if (!Number.isInteger(maximumBytes) || maximumBytes <= 0) {
+    throw new InvalidBodyCapError(
+      "readJsonBody requires a positive integer byte cap",
+    );
+  }
   const contentType = request.headers.get("content-type")?.split(";", 1)[0]
     .trim().toLowerCase();
   if (contentType !== "application/json") {
@@ -633,7 +664,7 @@ export function createWorkerHandler(
       });
     }
 
-    const route = ROUTES[routeFromUrl(request.url)];
+    const route = ROUTES.get(routeFromUrl(request.url));
     if (!route) {
       return jsonResponse(404, { error: "route_not_found" });
     }
@@ -642,6 +673,9 @@ export function createWorkerHandler(
     try {
       body = await readJsonBody(request, route.maxBodyBytes);
     } catch (error) {
+      if (error instanceof InvalidBodyCapError) {
+        return jsonResponse(500, { error: "worker_config_error" });
+      }
       if (error instanceof RangeError) {
         return jsonResponse(413, { error: "body_too_large" });
       }

@@ -102,14 +102,39 @@ test("exports the exact public worker v2 route and signature manifest", () => {
   const migrationRpcNames = [...hardeningMigration.matchAll(
     /CREATE OR REPLACE FUNCTION public\.(network_center_worker_[a-z_]+_v2)\s*\(/g,
   )].map((match) => match[1]);
+  // A regex that matches zero times because the source shape changed (not
+  // because the RPC list shrank to zero) would make the deepEqual below pass
+  // vacuously only if EXPECTED_RPC_MANIFEST were also empty -- it never is,
+  // so today this assert.ok is redundant with the deepEqual. It stays as an
+  // explicit trip-wire: it names the failure mode (parser rot, not migration
+  // regression) instead of leaving the next person to puzzle out a diff
+  // between an empty array and a 12-entry manifest.
+  assert.ok(
+    migrationRpcNames.length > 0,
+    "extracted zero RPC names from the hardening migration; the " +
+      "`CREATE OR REPLACE FUNCTION public.<name>(` parse no longer matches " +
+      "the migration's source shape and needs updating",
+  );
   assert.deepEqual(
     [...new Set(migrationRpcNames)].sort(),
     EXPECTED_RPC_MANIFEST.map(([, rpcName]) => rpcName).sort(),
   );
 
   const edgeRoutes = [...edgeWorker.matchAll(
-    /^\s{2}([a-z]+):\s*\{[\s\S]*?rpcName:\s*"(network_center_worker_[a-z_]+_v2)"/gm,
+    /^\s{2}\[\s*"([a-z]+)"\s*,\s*\{[\s\S]*?rpcName:\s*"(network_center_worker_[a-z_]+_v2)"/gm,
   )].map((match) => [match[1], match[2]]);
+  // Same trip-wire as above: ROUTES is a `new Map([["route", { ... }], ...])`
+  // tuple list (converted from a frozen object literal to close a
+  // prototype-chain route-lookup hole), so a zero-length extraction here
+  // means the ROUTES declaration shape moved again, not that every route
+  // was deleted.
+  assert.ok(
+    edgeRoutes.length > 0,
+    "extracted zero routes from supabase/functions/network-center-worker/" +
+      "index.ts; the ROUTES map tuple parse " +
+      '(`["route", { ... rpcName: "..." }]`) no longer matches the Edge ' +
+      "source shape and needs updating",
+  );
   assert.deepEqual(
     edgeRoutes,
     EXPECTED_RPC_MANIFEST.map(([route, rpcName]) => [route, rpcName]),
