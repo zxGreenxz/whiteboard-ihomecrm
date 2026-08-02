@@ -4711,3 +4711,43 @@ test("qualifying verifier authenticates the adjacent upstream module before eval
     await rm(reviewedRoot, { recursive: true, force: true });
   }
 });
+
+test("schema const compares arrays and objects structurally, not by reference", async () => {
+  const { validateJsonSchema } = await loadScript("scripts/verify-image-lock.mjs");
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  const runtimeConfig = {
+    ...schema.$defs.ociRuntimeConfig,
+    $defs: schema.$defs,
+  };
+  // Giá trị đúng như verifyOciRuntimeConfig phát ra: phải QUA (trước đây luôn trượt
+  // vì `const` mảng so sánh bằng tham chiếu).
+  const accepted = {
+    platform: { architecture: "amd64", os: "linux" },
+    user: "node",
+    entrypoint: ["tini", "-s", "--"],
+    cmd: ["node", "openclaw.mjs", "gateway"],
+    env: [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "NODE_VERSION=24.16.0",
+      "YARN_VERSION=1.22.22",
+      "COREPACK_HOME=/usr/local/share/corepack",
+      "PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright",
+      "NODE_ENV=production",
+    ],
+    working_dir: "/app",
+  };
+  assert.doesNotThrow(() => validateJsonSchema(accepted, runtimeConfig));
+
+  // Và vẫn phải BÁC mọi sai lệch: thứ tự, thừa/thiếu phần tử, đổi giá trị.
+  for (const mutated of [
+    { ...accepted, entrypoint: ["tini", "--", "-s"] },
+    { ...accepted, entrypoint: ["tini", "-s"] },
+    { ...accepted, entrypoint: ["tini", "-s", "--", "extra"] },
+    { ...accepted, entrypoint: ["tini", "-s", "-"] },
+    { ...accepted, cmd: ["node", "openclaw.mjs", "worker"] },
+    { ...accepted, env: [...accepted.env.slice(0, 5), "NODE_ENV=development"] },
+    { ...accepted, platform: { architecture: "arm64", os: "linux" } },
+  ]) {
+    assert.throws(() => validateJsonSchema(mutated, runtimeConfig), /const/i);
+  }
+});

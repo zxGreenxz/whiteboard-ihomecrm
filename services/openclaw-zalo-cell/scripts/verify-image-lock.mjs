@@ -3723,6 +3723,27 @@ export async function verifyRetainedQualificationInputs(recorded, suppliedPaths 
   return actual;
 }
 
+// So sánh `const` phải theo CẤU TRÚC. Trước đây dùng `!==` nên mọi `const` kiểu
+// mảng/đối tượng (entrypoint, cmd, env trong ociRuntimeConfig) LUÔN fail vì khác
+// tham chiếu — schema coi như bất khả thoả ở các trường đó. Đây là sửa lỗi để
+// ràng buộc thực sự có hiệu lực, không phải nới lỏng.
+function equalJsonValue(left, right) {
+  if (left === right) return true;
+  if (Array.isArray(right)) {
+    return Array.isArray(left) && left.length === right.length &&
+      right.every((item, index) => equalJsonValue(left[index], item));
+  }
+  if (right && typeof right === "object") {
+    if (!left || typeof left !== "object" || Array.isArray(left)) return false;
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return leftKeys.length === rightKeys.length &&
+      leftKeys.every((key, index) => key === rightKeys[index]) &&
+      rightKeys.every((key) => equalJsonValue(left[key], right[key]));
+  }
+  return false;
+}
+
 function validateSchemaValue(value, schema, path = "$", rootSchema = schema) {
   if (schema.$ref) {
     if (!schema.$ref.startsWith("#/$defs/")) throw new Error(`${path} has unsupported schema ref`);
@@ -3731,7 +3752,7 @@ function validateSchemaValue(value, schema, path = "$", rootSchema = schema) {
     validateSchemaValue(value, definition, path, rootSchema);
     return;
   }
-  if (schema.const !== undefined && value !== schema.const) {
+  if (schema.const !== undefined && !equalJsonValue(value, schema.const)) {
     throw new Error(`${path} does not match const`);
   }
   if (schema.enum && !schema.enum.includes(value)) throw new Error(`${path} is outside enum`);
@@ -3762,8 +3783,12 @@ function validateSchemaValue(value, schema, path = "$", rootSchema = schema) {
     if (schema.maxItems !== undefined && value.length > schema.maxItems) {
       throw new Error(`${path} must contain at most ${schema.maxItems} items`);
     }
-    for (const [index, item] of value.entries()) {
-      validateSchemaValue(item, schema.items, `${path}[${index}]`, rootSchema);
+    // Mảng chỉ ràng buộc bằng `const` (entrypoint/cmd/env) không khai `items`;
+    // trước đây vòng lặp này crash khi `schema.items` undefined.
+    if (schema.items !== undefined) {
+      for (const [index, item] of value.entries()) {
+        validateSchemaValue(item, schema.items, `${path}[${index}]`, rootSchema);
+      }
     }
   } else if (schema.type === "string") {
     if (typeof value !== "string") throw new Error(`${path} must be a string`);
