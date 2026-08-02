@@ -229,7 +229,7 @@ function passingBehaviorTranscript(variant) {
     totalPartCount: total,
   });
   const base = {
-    schema: 3,
+    schema: 4,
     contract: "ihome.zalouser.business.v1",
     implementation: variant,
     package: { name: "@openclaw/zalouser", version: "2026.7.1" },
@@ -237,6 +237,7 @@ function passingBehaviorTranscript(variant) {
   if (variant === "stock") {
     return {
       ...base,
+      unconfigured_startup_error: null,
       registered_methods: [],
       cases: [{
         id: "outbound-text-authorized",
@@ -247,7 +248,8 @@ function passingBehaviorTranscript(variant) {
   }
   return {
     ...base,
-    registered_methods: ["zalouser.bridge.send"],
+    unconfigured_startup_error: "BRIDGE_CONFIGURATION_INVALID",
+    registered_methods: [],
     cases: [
       {
         id: "inbound-committed",
@@ -1199,16 +1201,29 @@ test("behavioral installed-image probe runs the reviewed contract without rewrit
     "scripts/verify-image-lock.mjs",
   );
   const fork = {
-    schema: 3,
+    schema: 4,
     contract: "ihome.zalouser.business.v1",
     implementation: "fork",
     package: { name: "@openclaw/zalouser", version: "2026.7.1" },
-    registered_methods: ["zalouser.bridge.send"],
+    unconfigured_startup_error: "BRIDGE_CONFIGURATION_INVALID",
+    registered_methods: [],
     cases: [],
   };
   assert.throws(
-    () => validateBehaviorTranscript({ ...fork, registered_methods: [] }, "fork"),
+    () => validateBehaviorTranscript(
+      { ...fork, registered_methods: ["zalouser.bridge.send"] },
+      "fork",
+    ),
     /registered|behavior/i,
+  );
+  // Fork phai fail-closed khi thieu cau hinh bridge; stock thi khong duoc nem.
+  assert.throws(
+    () => validateBehaviorTranscript({ ...fork, unconfigured_startup_error: null }, "fork"),
+    /unconfigured startup|behavior/i,
+  );
+  assert.throws(
+    () => validateBehaviorTranscript({ ...fork, unconfigured_startup_error: "ERROR" }, "fork"),
+    /unconfigured startup|behavior/i,
   );
   const args = dockerBehaviorProbeArguments({
     image: "ihome/openclaw-behavior:0123456789abcdef0123456789abcdef",
@@ -3601,12 +3616,14 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
             exitCode: 0,
             stdout: Buffer.from(
               `${JSON.stringify({
-                schema: 1,
+                schema: 2,
                 method: "zalouser.bridge.send",
                 scope: "operator.write",
                 registeredMethodCount: 1,
-                deniedWithoutRuntime: true,
-                errorCode: "PRIVATE_RPC_REQUIRED",
+                unconfiguredStartupDenied: true,
+                unconfiguredErrorCode: "BRIDGE_CONFIGURATION_INVALID",
+                deniedWithoutAuthenticatedClient: true,
+                errorCode: "PRIVATE_BRIDGE_CLIENT_DENIED",
                 providerFrameCount: 0,
               })}\n`,
             ),
@@ -3665,7 +3682,12 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
   assert.equal("differential" in result, false);
   assert.equal(
     JSON.parse(Buffer.from(result.behavior.fork.transcript_base64, "base64").toString("utf8")).schema,
-    3,
+    4,
+  );
+  assert.equal(
+    JSON.parse(Buffer.from(result.behavior.fork.transcript_base64, "base64").toString("utf8"))
+      .unconfigured_startup_error,
+    "BRIDGE_CONFIGURATION_INVALID",
   );
   assert.equal(
     JSON.parse(Buffer.from(result.behavior.stock.transcript_base64, "base64").toString("utf8")).implementation,
@@ -3679,8 +3701,10 @@ test("runtime Docker probe validates outputs and removes only its unique tags", 
     method: "zalouser.bridge.send",
     scope: "operator.write",
     registered_method_count: 1,
-    denied_without_runtime: true,
-    error_code: "PRIVATE_RPC_REQUIRED",
+    unconfigured_startup_denied: true,
+    unconfigured_error_code: "BRIDGE_CONFIGURATION_INVALID",
+    denied_without_authenticated_client: true,
+    error_code: "PRIVATE_BRIDGE_CLIENT_DENIED",
     provider_frame_count: 0,
     stdout_size: result.private_rpc.stdout_size,
     stdout_sha256: result.private_rpc.stdout_sha256,

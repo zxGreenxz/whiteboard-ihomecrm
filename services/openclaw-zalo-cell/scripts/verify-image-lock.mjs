@@ -1304,7 +1304,15 @@ process.stdout.write(JSON.stringify({
 }) + "\n");
 `;
 
+// Probe hai pha trong CÙNG một container ephemeral:
+//  1. Không cấu hình bridge -> register phải ném BRIDGE_CONFIGURATION_INVALID và
+//     KHÔNG đăng ký method nào (cell không thể khởi động khi thiếu cấu hình).
+//  2. Cấu hình đầy đủ (giá trị giả, mạng none) -> đăng ký ĐÚNG một gateway method
+//     `zalouser.bridge.send` scope `operator.write`, và gọi nó bằng client không phải
+//     thiết bị bridge đã xác thực phải bị từ chối PRIVATE_BRIDGE_CLIENT_DENIED.
+// Pha 1 ném trước khi cài bất kỳ runtime nào nên không làm bẩn state của pha 2.
 const PRIVATE_RPC_PROBE_EVAL = String.raw`
+import { mkdirSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
 const root = "/home/node/.openclaw/npm/projects/zalouser/node_modules/@openclaw/zalouser";
@@ -1320,31 +1328,70 @@ registerHooks({
 const loaded = await import(pathToFileURL(root + "/dist/index.js").href);
 const entry = loaded.default;
 if (!entry || typeof entry.register !== "function") throw new Error("installed plugin register export is missing");
-const gatewayMethods = [];
-let providerFrameCount = 0;
 const noop = () => undefined;
-const apiTarget = {
-  registrationMode: "full",
-  runtime: {},
-  config: {},
-  logger: { debug: noop, info: noop, warn: noop, error: noop },
-  registerChannel: noop,
-  registerTool: noop,
-  registerGatewayMethod(method, handler, options) {
-    gatewayMethods.push({ method, handler, options });
-  },
+const createApi = () => {
+  const gatewayMethods = [];
+  const apiTarget = {
+    registrationMode: "full",
+    runtime: {},
+    config: {},
+    logger: { debug: noop, info: noop, warn: noop, error: noop },
+    registerChannel: noop,
+    registerTool: noop,
+    registerGatewayMethod(method, handler, options) {
+      gatewayMethods.push({ method, handler, options });
+    },
+  };
+  return {
+    gatewayMethods,
+    api: new Proxy(apiTarget, {
+      get(target, property) {
+        if (property in target) return target[property];
+        return noop;
+      },
+    }),
+  };
 };
-const api = new Proxy(apiTarget, {
-  get(target, property) {
-    if (property in target) return target[property];
-    return noop;
-  },
-});
-await entry.register(api);
-const privateMethods = gatewayMethods.filter(({ method }) => method === "zalouser.bridge.send");
-if (privateMethods.length !== 1) throw new Error("private bridge RPC registration count mismatch");
+const BRIDGE_ENVIRONMENT = {
+  OPENCLAW_ZALO_BRIDGE_URL: "http://bridge.invalid",
+  OPENCLAW_ZALO_ORGANIZATION_ID: "probe-organization",
+  OPENCLAW_ZALO_ACCOUNT_ID: "probe-account",
+  OPENCLAW_ZALO_CELL_ID: "probe-cell",
+  OPENCLAW_ZALO_SESSION_GENERATION: "1",
+  OPENCLAW_ZALO_FENCING_TOKEN: "1",
+  OPENCLAW_ZALO_CONTROL_VERSION: "0",
+  OPENCLAW_ZALO_TAKEOVER_VERSION: "0",
+  OPENCLAW_ZALO_GATEWAY_DEVICE_ID: "probe-gateway-device",
+  OPENCLAW_ZALO_CUSTOMER_AI_BASE_URL: "https://customer-ai.invalid/v1",
+  OPENCLAW_ZALO_CUSTOMER_AI_API_KEY: "probe-placeholder",
+  OPENCLAW_ZALO_CUSTOMER_AI_MODEL: "probe-model",
+  OPENCLAW_ZALO_BRIDGE_SECRET_FILE: "/run/secrets/openclaw_zalo_bridge_hmac",
+};
+for (const name of Object.keys(BRIDGE_ENVIRONMENT)) delete process.env[name];
+const unconfigured = createApi();
+let unconfiguredErrorCode = "";
+try {
+  await entry.register(unconfigured.api);
+} catch (error) {
+  unconfiguredErrorCode = error && typeof error === "object" && typeof error.code === "string"
+    ? error.code
+    : "ERROR";
+}
+if (unconfiguredErrorCode !== "BRIDGE_CONFIGURATION_INVALID" || unconfigured.gatewayMethods.length !== 0) {
+  throw new Error("installed plugin did not fail closed without bridge configuration");
+}
+mkdirSync("/run/secrets", { recursive: true });
+writeFileSync("/run/secrets/openclaw_zalo_bridge_hmac", "ab".repeat(32), { mode: 0o400 });
+Object.assign(process.env, BRIDGE_ENVIRONMENT);
+const configured = createApi();
+await entry.register(configured.api);
+const privateMethods = configured.gatewayMethods.filter(({ method }) => method === "zalouser.bridge.send");
+if (privateMethods.length !== 1 || configured.gatewayMethods.length !== 1) {
+  throw new Error("private bridge RPC registration count mismatch");
+}
 const registration = privateMethods[0];
 let response;
+let providerFrameCount = 0;
 await registration.handler({
   client: {},
   params: {
@@ -1355,15 +1402,17 @@ await registration.handler({
     response = { ok, payload, error };
   },
 });
-if (response?.ok !== false || response?.error?.code !== "PRIVATE_RPC_REQUIRED") {
-  throw new Error("private bridge RPC did not fail closed without its runtime");
+if (response?.ok !== false || response?.error?.code !== "PRIVATE_BRIDGE_CLIENT_DENIED") {
+  throw new Error("private bridge RPC did not deny an unauthenticated gateway client");
 }
 process.stdout.write(JSON.stringify({
-  schema: 1,
+  schema: 2,
   method: registration.method,
   scope: registration.options?.scope,
   registeredMethodCount: privateMethods.length,
-  deniedWithoutRuntime: true,
+  unconfiguredStartupDenied: true,
+  unconfiguredErrorCode,
+  deniedWithoutAuthenticatedClient: true,
   errorCode: response.error.code,
   providerFrameCount,
 }) + "\n");
@@ -1444,12 +1493,20 @@ function assertGatewayDelivery(caseRecord, expected) {
 export function validateBehaviorTranscript(parsed, expectedVariant) {
   exactKeys(
     parsed,
-    ["schema", "contract", "implementation", "package", "registered_methods", "cases"],
+    [
+      "schema",
+      "contract",
+      "implementation",
+      "package",
+      "unconfigured_startup_error",
+      "registered_methods",
+      "cases",
+    ],
     `${expectedVariant} installed behavior transcript`,
   );
   if (
     !["fork", "stock"].includes(expectedVariant) ||
-    parsed.schema !== 3 ||
+    parsed.schema !== 4 ||
     parsed.contract !== "ihome.zalouser.business.v1" ||
     parsed.implementation !== expectedVariant
   ) {
@@ -1459,8 +1516,13 @@ export function validateBehaviorTranscript(parsed, expectedVariant) {
   if (parsed.package.name !== "@openclaw/zalouser" || parsed.package.version !== "2026.7.1") {
     throw new Error("installed behavior package identity mismatch");
   }
-  const expectedMethods = expectedVariant === "fork" ? ["zalouser.bridge.send"] : [];
-  if (JSON.stringify(parsed.registered_methods) !== JSON.stringify(expectedMethods)) {
+  // Probe chạy KHÔNG cấu hình bridge: fork phải fail-closed ngay khi khởi động
+  // (không đăng ký gì cả), còn stock vốn không có RPC riêng nên khởi động bình thường.
+  const expectedStartupError = expectedVariant === "fork" ? "BRIDGE_CONFIGURATION_INVALID" : null;
+  if (parsed.unconfigured_startup_error !== expectedStartupError) {
+    throw new Error("installed behavior unconfigured startup behavior mismatch");
+  }
+  if (JSON.stringify(parsed.registered_methods) !== JSON.stringify([])) {
     throw new Error("installed behavior registered method mismatch");
   }
   const expectedCases = expectedVariant === "fork"
@@ -1716,6 +1778,10 @@ export function dockerPrivateRpcProbeArguments({ image }) {
     "/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000,mode=0700",
     "--tmpfs",
     "/home/node/.openclaw/state:rw,noexec,nosuid,size=16m,uid=1000,gid=1000,mode=0700",
+    // Fork ghim CỨNG /run/secrets/openclaw_zalo_bridge_hmac; pha 2 của probe ghi một
+    // secret giả vào tmpfs ephemeral này để chứng minh đường đăng ký khi đã cấu hình.
+    "--tmpfs",
+    "/run/secrets:rw,noexec,nosuid,size=1m,uid=1000,gid=1000,mode=0700",
     "--entrypoint",
     "node",
     image,
@@ -1736,19 +1802,23 @@ export function validatePrivateRpcProbeResult(processResult) {
       "method",
       "scope",
       "registeredMethodCount",
-      "deniedWithoutRuntime",
+      "unconfiguredStartupDenied",
+      "unconfiguredErrorCode",
+      "deniedWithoutAuthenticatedClient",
       "errorCode",
       "providerFrameCount",
     ],
     "private bridge RPC probe",
   );
   if (
-    parsed.schema !== 1 ||
+    parsed.schema !== 2 ||
     parsed.method !== "zalouser.bridge.send" ||
     parsed.scope !== "operator.write" ||
     parsed.registeredMethodCount !== 1 ||
-    parsed.deniedWithoutRuntime !== true ||
-    parsed.errorCode !== "PRIVATE_RPC_REQUIRED" ||
+    parsed.unconfiguredStartupDenied !== true ||
+    parsed.unconfiguredErrorCode !== "BRIDGE_CONFIGURATION_INVALID" ||
+    parsed.deniedWithoutAuthenticatedClient !== true ||
+    parsed.errorCode !== "PRIVATE_BRIDGE_CLIENT_DENIED" ||
     parsed.providerFrameCount !== 0
   ) {
     throw new Error("private bridge RPC probe result mismatch");
@@ -1757,7 +1827,9 @@ export function validatePrivateRpcProbeResult(processResult) {
     method: parsed.method,
     scope: parsed.scope,
     registered_method_count: parsed.registeredMethodCount,
-    denied_without_runtime: parsed.deniedWithoutRuntime,
+    unconfigured_startup_denied: parsed.unconfiguredStartupDenied,
+    unconfigured_error_code: parsed.unconfiguredErrorCode,
+    denied_without_authenticated_client: parsed.deniedWithoutAuthenticatedClient,
     error_code: parsed.errorCode,
     provider_frame_count: parsed.providerFrameCount,
     stdout_size: processResult.stdout.length,
@@ -4797,8 +4869,10 @@ export async function verifyEvidenceFile({
     evidence.plugin_probe.private_rpc.method !== "zalouser.bridge.send" ||
     evidence.plugin_probe.private_rpc.scope !== "operator.write" ||
     evidence.plugin_probe.private_rpc.registered_method_count !== 1 ||
-    evidence.plugin_probe.private_rpc.denied_without_runtime !== true ||
-    evidence.plugin_probe.private_rpc.error_code !== "PRIVATE_RPC_REQUIRED" ||
+    evidence.plugin_probe.private_rpc.unconfigured_startup_denied !== true ||
+    evidence.plugin_probe.private_rpc.unconfigured_error_code !== "BRIDGE_CONFIGURATION_INVALID" ||
+    evidence.plugin_probe.private_rpc.denied_without_authenticated_client !== true ||
+    evidence.plugin_probe.private_rpc.error_code !== "PRIVATE_BRIDGE_CLIENT_DENIED" ||
     evidence.plugin_probe.private_rpc.provider_frame_count !== 0
   ) {
     throw new Error("build evidence plugin discovery/private RPC proof mismatch");

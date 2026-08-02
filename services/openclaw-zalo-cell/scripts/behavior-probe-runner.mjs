@@ -38,11 +38,23 @@ const apiTarget = {
 };
 const entry = (await import(pathToFileURL(`${packageRoot}/dist/index.js`).href)).default;
 if (!entry || typeof entry.register !== "function") throw new Error("installed plugin register export is missing");
-await entry.register(new Proxy(apiTarget, {
-  get(target, property) {
-    return property in target ? target[property] : noop;
-  },
-}));
+// Fork ĐÃ siết: khởi động không có cấu hình bridge thì ném BRIDGE_CONFIGURATION_INVALID
+// trước khi đăng ký bất cứ thứ gì. Probe này chạy KHÔNG cấu hình một cách chủ đích để
+// (a) chứng minh cell không thể khởi động khi thiếu cấu hình, và (b) giữ slot runtime
+// trống cho behavior-contract runtime dưới đây (installPrivateOutboundRuntime chỉ nhận
+// một chủ sở hữu). Việc đăng ký RPC khi ĐÃ cấu hình do private RPC probe chứng minh.
+let unconfiguredStartupError = null;
+try {
+  await entry.register(new Proxy(apiTarget, {
+    get(target, property) {
+      return property in target ? target[property] : noop;
+    },
+  }));
+} catch (error) {
+  unconfiguredStartupError = error && typeof error === "object" && typeof error.code === "string"
+    ? error.code
+    : "ERROR";
+}
 
 const registeredMethods = gatewayMethods.map(({ method }) => method).sort();
 const cases = [];
@@ -343,10 +355,11 @@ if (variant === "stock") {
 }
 
 process.stdout.write(`${JSON.stringify({
-  schema: 3,
+  schema: 4,
   contract: "ihome.zalouser.business.v1",
   implementation: variant,
   package: { name: manifest.name, version: manifest.version },
+  unconfigured_startup_error: unconfiguredStartupError,
   registered_methods: registeredMethods,
   cases,
 })}\n`);
