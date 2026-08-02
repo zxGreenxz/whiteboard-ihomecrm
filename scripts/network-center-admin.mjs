@@ -54,6 +54,28 @@ const RFC3339_INSTANT_MAX_LENGTH = 35;
 const HOST_KEY_PATTERN = /^SHA256:[A-Za-z0-9+/]{20,}={0,2}$/;
 const OPAQUE_CREDENTIAL_REF_PATTERN = /^router\/[A-Za-z0-9][A-Za-z0-9._/-]{1,127}$/;
 
+// Every Network Center admin function is created in `public`. This project's
+// PostgREST is exposed as `db_schema = "api, public, graphql_public"` and the
+// FIRST entry is the default profile, so an admin RPC posted without an
+// explicit profile resolves against `api` and PostgREST answers
+// PGRST202 ("no matches were found in the schema cache") — the function is
+// never reached. For a POST RPC the schema selector is the `Content-Profile`
+// request header (`Accept-Profile` only applies to GET/HEAD).
+//
+// This constant is the single declaration of where the admin RPCs live; the
+// header is derived from it in `adminRpcHeaders`, which every admin RPC goes
+// through. Do not inline a schema string at a call site.
+export const ADMIN_RPC_SCHEMA = "public";
+
+export function adminRpcHeaders(serviceRoleKey) {
+  return {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+    "Content-Type": "application/json",
+    "Content-Profile": ADMIN_RPC_SCHEMA,
+  };
+}
+
 function digestSecret(secret) {
   return createHash("sha256").update(secret).digest("hex");
 }
@@ -702,11 +724,7 @@ export function createRpcTransport(config, fetchImpl = fetch) {
         `https://${config.projectRef}.supabase.co/rest/v1/rpc/${encodeURIComponent(name)}`,
         {
           method: "POST",
-          headers: {
-            apikey: config.serviceRoleKey,
-            Authorization: `Bearer ${config.serviceRoleKey}`,
-            "Content-Type": "application/json",
-          },
+          headers: adminRpcHeaders(config.serviceRoleKey),
           body: JSON.stringify(args),
         },
       );
