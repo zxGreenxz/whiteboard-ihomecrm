@@ -93,9 +93,14 @@ Trước khi chạy trên host mới, đặt hai source ở thư mục chỉ roo
 `wg0.conf` và `ihome-network-center.nft` phải là regular file (không phải symlink),
 owner `root:root`, mode `0600`, và chứa nguyên một dòng marker
 `# ihomecrm-network-center-managed:v1`. Firewall fragment phải định nghĩa **duy
-nhất** `table inet ihome_network_center`: không `flush ruleset`, không include, và
-không một statement nào nằm ngoài bảng đó — VPS này còn chạy một production
-service không liên quan, `flush ruleset` sẽ xóa sạch firewall của nó. Installer tự
+nhất một** `table inet ihome_network_center` và không gì khác: không `flush ruleset`,
+không include, và không một statement nào nằm ngoài bảng đó — VPS này còn chạy một
+production service không liên quan, `flush ruleset` sẽ xóa sạch firewall của nó.
+Checker quét theo **từng ký tự** (nft không phải cú pháp theo dòng), nên một dòng
+vừa đóng bảng managed vừa mở `table inet openclaw_zalo {`, hay bất kỳ statement nào
+đi sau dấu `}` trên cùng dòng, đều bị từ chối; chuỗi trong nháy kép và comment `#`
+được hiểu đúng, và mọi thứ checker không phân loại được chắc chắn (brace lệch, nháy
+kép không đóng, bảng thứ hai) đều fail-closed. Installer tự
 render preamble scoped (`table inet ihome_network_center` rồi
 `delete table inet ihome_network_center`) lên trước nội dung fragment, nên chạy
 lại `install-host.sh` là atomic replace đúng một bảng đó thay vì cộng dồn rule;
@@ -124,7 +129,14 @@ theo `PublicKey`:
 - Ghi xong, script readback lại `wg0.conf` và **fail install** nếu một peer trước
   đó biến mất mà không có `--remove-peer` tương ứng
   (`refusing an install that would drop wg0 peer ...`).
-- Hai peer không được claim trùng `AllowedIPs`; merge bị từ chối trước khi ghi.
+- Hai peer không được claim trùng `AllowedIPs`, và cũng **không được claim dải
+  chồng nhau** (`10.77.0.0/24` với `10.77.0.5/32` là hai chuỗi khác nhau nhưng
+  cùng một route trên một interface — tòa nào wg0 match sau sẽ nuốt traffic của
+  tòa kia). Script so sánh theo subnet thật (IPv4 lẫn IPv6, thiếu prefix hiểu là
+  `/32`, `/128`), từ chối trước khi ghi, và **từ chối luôn** entry không đọc được
+  thành IP network thay vì so sánh nó như chuỗi. Overlap cố ý thì phải khai báo
+  tường minh `--allow-peer-overlap`; cờ đó **không** nới lỏng luật trùng khít —
+  hai peer claim y hệt một địa chỉ luôn bị chặn.
 - Đổi block `[Interface]` (PrivateKey/ListenPort/Address) làm vỡ cả 15 tòa cùng
   lúc vì router nào cũng pin key + port của VPS, nên nó cần opt-in tường minh
   `--allow-interface-change`. Không có cờ đó, install dừng ngay ở preflight.
@@ -149,6 +161,17 @@ sudo ./deploy/install-host.sh \
   --remove-peer <PUBLIC_KEY-cua-toa-do>
 ```
 
+Chấp nhận một overlap `AllowedIPs` cố ý (hiếm — chỉ khi thật sự muốn một peer ôm
+supernet của peer khác):
+
+```bash
+sudo ./deploy/install-host.sh \
+  --asset-dir "$(pwd)/deploy" \
+  --wg0-source /root/ihome-network-center-bootstrap/wg0-building-07.conf \
+  --firewall-source /root/ihome-network-center-bootstrap/ihome-network-center.nft \
+  --allow-peer-overlap
+```
+
 Script preflight toàn bộ argument, source và asset trước khi tạo identity, cài
 package hay ghi bất kỳ cấu hình host nào. `90-ihome-network-center.conf` phải
 đúng chính xác managed marker và `net.ipv4.ip_forward=1`; mọi destination sẽ ghi
@@ -168,11 +191,22 @@ là disabled theo từng lệnh; rc `2` hay lỗi DBus/query là fatal, không b
 thành `false`.
 
 Nếu không thể khôi phục chính xác (kể cả edge WG active nhưng firewall inactive),
-script atomically ghi và verify fallback persistent gồm đúng managed marker với
-`net.ipv4.ip_forward=0`, ép live forwarding off, rồi stop/disable và strict-readback
-cả firewall lẫn WireGuard. Nó chỉ báo fail-closed đã được thiết lập khi mọi command
-và readback đều thành công; lỗi command vẫn được propagate dù trạng thái cuối nhìn
-có vẻ an toàn.
+script fail-closed: **gỡ bỏ** file sysctl.d managed của chính nó (chỉ khi file đó
+mang managed marker — file không marker ở đúng đường dẫn đó là của người khác, script
+báo lỗi chứ **không** xóa), đưa live `net.ipv4.ip_forward` về **đúng giá trị đã
+capture trước khi chạy**, rồi stop/disable và strict-readback cả firewall lẫn
+WireGuard. `ip_forward` là công tắc host-global và VPS này còn chạy một production
+service không liên quan, nên script **không bao giờ persist một giá trị nó không sở
+hữu** và **không bao giờ để cờ đó lệch khỏi giá trị ban đầu** — fail-closed cho tài
+nguyên của mình là wg0 down + bảng nft managed được gỡ, không phải tắt forwarding
+của co-tenant. Đường rollback cũng chỉ hạ forwarding xuống 0 khi giá trị capture
+được vốn đã là 0. Nó chỉ báo fail-closed đã được thiết lập khi mọi command và
+readback đều thành công; lỗi command vẫn được propagate dù trạng thái cuối nhìn có
+vẻ an toàn.
+
+Mọi file scratch trong lúc cài (đáng kể nhất là bản wg0.conf đã merge — chứa
+`[Interface] PrivateKey` dùng chung cho cả fleet) được tạo mode `0600`/`0700` và bị
+xóa trên **mọi** đường thoát: thành công, `die`, hay SIGHUP do rớt session SSH.
 
 Từ Windows, xem plan không chạm host:
 
@@ -235,6 +269,14 @@ không đổi bằng exact worker+revision readback:
   die và **vẫn để nguyên env đã pause**. Thấy `health:"unverified"` nghĩa là stop
   đã áp dụng nhưng chưa được health readback xác nhận — **không phải** stop thất
   bại. Muốn xác nhận thì đọc heartbeat `PAUSED` hoặc `inspect-state`.
+- Khi boot (`start-current`) đọc lại `state/runtime-intent.json` mà **không** áp
+  dụng lại được (intent trỏ tới release không còn là current, hoặc worker không
+  trở lại đúng runtime state đã ghi), script **quarantine** file đó sang
+  `state/runtime-intent.corrupt.<timestamp>.<pid>` kèm cảnh báo stderr rồi đi tiếp,
+  giống hệt cách transition journal hỏng được xử lý — `die` ở đây sẽ kẹt boot và
+  mọi command khác cho tới khi có người SSH vào xóa file bằng tay. Với intent của
+  release **đang** current, giá trị emergency stop đã được ghi vào env của release
+  trước khi quarantine, nên quarantine không bao giờ tự gỡ pause.
 - `changesPaused` theo từng tòa là kill switch thứ hai và được kiểm tra lại trước
   khi kết nối router.
 - Healthcheck đọc timestamp tại `/tmp/network-center-worker-health`; log JSON được

@@ -247,30 +247,69 @@ setInterval(() => {}, 1000);
   ].some((code) => failureCodes(result).has(code)));
 });
 
-test("canonical CLI executes regressions and reports the four DB wrappers plus heartbeat control gap", () => {
+test("canonical CLI executes every regression and verifies all 14 findings at runtime", () => {
   const run = spawnSync(process.execPath, [verifierPath], {
     encoding: "utf8",
     maxBuffer: MAX_EVIDENCE_BYTES * 2,
-    timeout: 180_000,
+    timeout: 900_000,
   });
 
   assert.equal(CANONICAL_FINDING_SLUGS.length, 14);
   assert.equal(HARDENING_REGISTRY.findings.length, 14);
-  assert.notEqual(run.status, 0);
   assert.equal(run.stderr, "");
   const evidence = JSON.parse(run.stdout);
-  assert.equal(evidence.status, "FAIL");
-  assert.equal(evidence.summary.commandsExecuted, 10);
-  assert.deepEqual(
-    evidence.failures.map((failure) => `${failure.slug}:${failure.code}`).sort(),
-    [
-      "aruba-inventory-unbounded-retention:RUNTIME_WRAPPER_MISSING",
-      "client-session-history-unbounded-retention:RUNTIME_WRAPPER_MISSING",
-      "execute-queue-unbounded-admission:RUNTIME_WRAPPER_MISSING",
-      "worker-heartbeat-global-view:CONTROL_CASE_NOT_INDEPENDENT",
-      "worker-heartbeat-global-view:RUNTIME_WRAPPER_MISSING",
-    ],
-  );
+  assert.deepEqual(evidence.failures, []);
+  assert.equal(evidence.status, "PASS");
+  assert.equal(run.status, 0);
+  assert.equal(evidence.summary.canonicalFindings, 14);
+  assert.equal(evidence.summary.findingsVerified, 14);
+});
+
+// Every canonical finding must own an executable runtime regression, not just a
+// source-text assertion. This is the property that was red until the four
+// database-backed wrappers existed, so it is pinned separately from the CLI run
+// above: a future edit that quietly downgrades one back to "source-text" would
+// otherwise still leave the CLI green through some other slug's wrapper.
+test("every canonical slug owns at least one runtime regression", () => {
+  const missing = CANONICAL_FINDING_SLUGS.filter((slug) => {
+    const finding = HARDENING_REGISTRY.findings.find(
+      (candidate) => candidate.slug === slug,
+    );
+    return !finding?.regressions.some(
+      (entry) => entry.evidenceKind === "runtime",
+    );
+  });
+  assert.deepEqual(missing, []);
+});
+
+// The four wrappers added for the previously source-text-only findings must
+// keep executing against a database rather than inspecting migration text.
+test("the four database-backed wrappers point at the disposable PostgreSQL proof", () => {
+  const databaseBackedSlugs = [
+    "worker-heartbeat-global-view",
+    "execute-queue-unbounded-admission",
+    "client-session-history-unbounded-retention",
+    "aruba-inventory-unbounded-retention",
+  ];
+  for (const slug of databaseBackedSlugs) {
+    const finding = HARDENING_REGISTRY.findings.find(
+      (candidate) => candidate.slug === slug,
+    );
+    const runtimeEntries = finding.regressions.filter(
+      (entry) => entry.evidenceKind === "runtime",
+    );
+    assert.equal(runtimeEntries.length, 1, slug);
+    assert.equal(
+      runtimeEntries[0].path,
+      "scripts/__tests__/network-center-hardening-runtime.test.mjs",
+      slug,
+    );
+    assert.notEqual(
+      runtimeEntries[0].exploitCaseId,
+      runtimeEntries[0].legitimateControlCaseId,
+      slug,
+    );
+  }
 });
 
 test("formats bounded JSON evidence and redacts secret-shaped fields", () => {

@@ -374,7 +374,7 @@ describe("immutable Network Center host deployment", () => {
     expect(readme).toMatch(/flush ruleset/);
     expect(readme, "the fragment requirement must stay a single managed table")
       .toMatch(/(duy\s*\n?\s*nh\u1ea5t|only)[\s\S]{0,120}table inet ihome_network_center/i);
-    for (const flag of ["--remove-peer", "--allow-interface-change"]) {
+    for (const flag of ["--remove-peer", "--allow-interface-change", "--allow-peer-overlap"]) {
       expect(install, `${flag} is documented but not implemented`).toContain(flag);
       expect(readme, `${flag} is implemented but not documented`).toContain(flag);
     }

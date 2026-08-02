@@ -767,10 +767,11 @@ describe("RouterOS SSH boundary", () => {
       enabled: true,
     });
 
-    // The guard must be armed by an earlier exec than the one that disables the port.
-    const armCommand = commands.findIndex((command) => command.includes(":execute"));
-    expect(armCommand).toBeGreaterThanOrEqual(0);
-    expect(commands.indexOf(cycleCommand ?? "")).toBeGreaterThan(armCommand);
-    expect(cycleCommand).not.toContain(":execute");
+    // The guard must be armed by the same console job that disables the port, and
+    // before it: anything between the two anchors is recovery window already spent.
+    expect(cycleCommand).toContain(":execute");
+    expect(cycleCommand?.indexOf(":execute"))
+      .toBeLessThan(cycleCommand?.indexOf("/interface/disable") ?? -1);
+    expect(commands.filter((command) => command.includes(":execute"))).toHaveLength(1);
   });
 });

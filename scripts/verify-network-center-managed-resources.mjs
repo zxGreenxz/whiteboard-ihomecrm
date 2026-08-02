@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runDisposableSupabaseMatrix } from "./network-center-disposable-db.mjs";
+import {
+  runDisposableLocalClusterMatrix,
+  runDisposableSupabaseMatrix,
+} from "./network-center-disposable-db.mjs";
 
 export const DEMO_ORG_ID = "dddd0000-0000-4000-8000-000000000001";
 export const MAX_EVIDENCE_BYTES = 16 * 1024;
@@ -260,6 +263,39 @@ FROM evaluated;
 ROLLBACK;`;
 }
 
+// psql prints a single jsonb column as a bare object per line; the Supabase CLI
+// wraps rows in a JSON array. Normalise the cluster output into the CLI shape so
+// exactly one validator governs both execution paths.
+export function parseManagedResourcesClusterVerdict(output) {
+  if (typeof output !== "string" || output.length === 0) {
+    throw new Error("Disposable cluster returned no managed-resource verdict");
+  }
+  const candidates = output
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("{"))
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(
+      (entry) => entry !== null
+        && typeof entry === "object"
+        && Array.isArray(entry.assertions),
+    );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Disposable cluster returned ${candidates.length} managed-resource verdicts; expected exactly one`,
+    );
+  }
+  return parseNetworkCenterManagedResourcesVerdict(
+    JSON.stringify([{ verdict: candidates[0] }]),
+  );
+}
+
 export function parseNetworkCenterManagedResourcesVerdict(body) {
   if (
     typeof body !== "string"
@@ -383,12 +419,14 @@ export function formatEvidenceJson(value) {
 }
 
 function parseMode(argv) {
-  const allowed = new Set(["--dry-run", "--local-disposable"]);
+  const allowed = new Set(["--dry-run", "--local-cluster", "--local-disposable"]);
   const unknown = argv.find((argument) => !allowed.has(argument));
   if (unknown) throw new Error(`Unknown argument: ${unknown}`);
   const modes = argv.filter((argument) => allowed.has(argument));
   if (modes.length !== 1) {
-    throw new Error("Choose exactly one mode: --dry-run or --local-disposable");
+    throw new Error(
+      "Choose exactly one mode: --dry-run, --local-cluster or --local-disposable",
+    );
   }
   return modes[0];
 }
@@ -411,6 +449,7 @@ export async function main(
   {
     log = console.log,
     runLocalDisposable = runDisposableSupabaseMatrix,
+    runLocalCluster = runDisposableLocalClusterMatrix,
     disposableOptions = {},
   } = {},
 ) {
@@ -443,11 +482,19 @@ export async function main(
         failures: [],
       };
     } else {
-      const verdict = await runLocalDisposable({
+      const runMatrix = mode === "--local-cluster"
+        ? runLocalCluster
+        : runLocalDisposable;
+      const verdict = await runMatrix({
         ...disposableOptions,
         repoRoot: disposableOptions.repoRoot ?? repositoryRoot,
+        // The lifecycle fixture builds its own 32-building fleet, and
+        // network_devices allows one active MikroTik per building.
+        ...(mode === "--local-cluster" ? { includeFleetFixtures: false } : {}),
         buildSql: buildNetworkCenterManagedResourcesSql,
-        parseVerdict: parseNetworkCenterManagedResourcesVerdict,
+        parseVerdict: mode === "--local-cluster"
+          ? parseManagedResourcesClusterVerdict
+          : parseNetworkCenterManagedResourcesVerdict,
       });
       const failedAssertions = verdict.assertions.filter(
         (assertion) => !assertion.passed,
@@ -456,7 +503,7 @@ export async function main(
         status: failedAssertions.length === 0 ? "PASS" : "FAIL",
         ok: failedAssertions.length === 0,
         exitCode: failedAssertions.length === 0 ? 0 : 1,
-        mode: "local-disposable",
+        mode: mode === "--local-cluster" ? "local-cluster" : "local-disposable",
         summary: {
           assertions: verdict.assertion_count,
           failed: verdict.failed_count,

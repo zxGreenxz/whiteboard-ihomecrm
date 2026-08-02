@@ -8,9 +8,10 @@
  *
  * The router therefore arms its own dead-man's switch first — a background job
  * started with `:execute` that sleeps out the cycle window and then re-enables the
- * port. Only after the guard is verifiably running does the worker disable anything.
- * On the happy path the worker enables the port explicitly and cancels the job,
- * leaving no residue.
+ * port. Only after the guard is verifiably running is anything disabled, and the two
+ * happen in the same console job so the guard's countdown and the disable share one
+ * anchor (see `buildAccessPortCycleCommand`). On the happy path the worker enables
+ * the port explicitly and cancels the job, leaving no residue.
  *
  * ## Why `:execute` and not `/system/scheduler`
  *
@@ -30,7 +31,7 @@
  * prove that the entry holding the managed name was its own. A `:execute` job has no
  * name: the router mints its id and hands it back to the caller, so the worker only
  * ever addresses a job it created itself, in this process, moments earlier. Ownership
- * of the *router* is still proven out of band — the arm command refuses unless the
+ * of the *router* is still proven out of band — the cycle command refuses unless the
  * router still carries this deployment's `…:lan-recovery` firewall rule at the moment
  * it arms, which also closes the gap between reading that rule and using it.
  *
@@ -116,8 +117,32 @@ function assertImmutableKey(value: string): string {
   return value;
 }
 
+/**
+ * The duration is the only value in this file that reaches the router as a bare
+ * number rather than through a quoter or a pattern, so nothing else can catch a
+ * bad one: `assertRouterOsScriptBlock` sees `NaN` and `undefined` as ordinary
+ * printable ASCII and passes them straight through. Observed on the demo hEX —
+ * a call that left `durationSeconds` undefined shipped a script containing
+ * `:delay NaNs`, which the router parsed and rejected at runtime, mid-cycle.
+ * `commands.ts` bounds the value upstream, so this is defence in depth for every
+ * other caller, and it keeps the file consistent with `assertResourceId` and
+ * `assertImmutableKey`.
+ */
+function assertCycleDurationSeconds(value: number): number {
+  if (
+    typeof value !== "number"
+    || !Number.isInteger(value)
+    || value < MIN_ACCESS_PORT_CYCLE_SECONDS
+    || value > MAX_ACCESS_PORT_CYCLE_SECONDS
+  ) {
+    throw new TypeError("Managed access port cycle duration is invalid");
+  }
+  return value;
+}
+
 export function accessPortCycleGuardDelaySeconds(durationSeconds: number): number {
-  return durationSeconds + ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS;
+  return assertCycleDurationSeconds(durationSeconds)
+    + ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS;
 }
 
 export function routerRecoveryRuleComment(ownershipMarker: string): string {
@@ -186,33 +211,6 @@ export function buildAccessPortCycleGuardScript(
   );
 }
 
-/**
- * Arms the dead-man's switch. Mutates nothing on the access port, so a failure here is
- * always a clean, non-disruptive failure.
- *
- * `NC_CYCLE_OWNER` is emitted before the guard is started on purpose: any refusal of
- * `:execute` then lands *after* a marker line, which is exactly the shape of failure
- * (`failure: …` on stdout, exit status 0) that a start-anchored output check misses.
- */
-export function buildAccessPortCycleArmCommand(
-  target: AccessPortCycleTarget,
-  durationSeconds: number,
-): string {
-  return [
-    `:local ncPort ${portSelector(target)}`,
-    ":if ([:len $ncPort] != 1) do={:error \"managed access port identity changed\"}",
-    `:if ([:len ${ownershipRuleSelector(target.ownershipMarker)}] < 1)`
-      + " do={:error \"managed router ownership marker is missing\"}",
-    ":put (\"NC_CYCLE_OWNER:\" . [/interface/get $ncPort default-name])",
-    ":local ncGuard [:execute script="
-      + `{${buildAccessPortCycleGuardScript(target, durationSeconds)}}]`,
-    ":if ([:len [/system/script/job/find where .id=$ncGuard]] != 1)"
-      + " do={:error \"managed port cycle guard was not armed\"}",
-    ":put (\"NC_CYCLE_ARMED:\" . [:tostr $ncGuard] . \":\""
-      + " . [/interface/get $ncPort default-name])",
-  ].join("; ");
-}
-
 /** Returns the router-minted id of the guard job, or null if it was not armed. */
 export function parseAccessPortCycleArmedGuard(
   output: string,
@@ -228,19 +226,58 @@ export function parseAccessPortCycleArmedGuard(
 }
 
 /**
- * Disables, waits and enables. Every statement after `:delay` is expendable: if the
- * session dies here the router still restores the port on its own.
+ * Arms the dead-man's switch and then disables, waits and enables — in one console
+ * job, in that order.
+ *
+ * ## Why arming cannot be its own SSH exec
+ *
+ * The guard's `:delay` starts the instant the router creates the job, so the recovery
+ * window is anchored wherever the `:execute` runs. Arming from a separate exec put an
+ * entire SSH round trip between that anchor and the disable, and the round trip is
+ * subtracted from the window at both ends:
+ *
+ *  - a trip longer than `ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS` let the guard fire
+ *    *inside* the disable window, re-enabling the port early. The worker's own enable
+ *    then found the port already up, the readback passed, and a cycle the tenant never
+ *    saw was reported as healthy;
+ *  - a trip longer than the whole window left the guard already reaped, so the cycle
+ *    aborted on "guard is missing" — with `mayHaveExecuted` set, i.e. UNCERTAIN, for a
+ *    command that had not touched the port at all.
+ *
+ * Inside one console job the gap between `:execute` and `/interface/disable` is a
+ * handful of router-local statements, so no network latency can enter it and neither
+ * race has anywhere to happen.
+ *
+ * Everything that can refuse the cycle still runs *before* the disable, so a refusal
+ * remains a clean, non-disruptive failure; `NC_CYCLE_ARMED` is the marker that tells
+ * the worker which side of the disable a failure landed on. Every statement from
+ * `:delay` onwards is expendable: if the session dies there the router restores the
+ * port on its own.
+ *
+ * `NC_CYCLE_OWNER` is emitted before the guard is started on purpose: any refusal of
+ * `:execute` then lands *after* a marker line, which is exactly the shape of failure
+ * (`failure: …` on stdout, exit status 0) that a start-anchored output check misses.
  */
 export function buildAccessPortCycleCommand(
   target: AccessPortCycleTarget,
   durationSeconds: number,
-  guardJobId: string,
 ): string {
+  // Asserted here as well as inside the guard script: the two `:delay` values are
+  // separate interpolations, and this one must not depend on the order in which
+  // the array literal below happens to be evaluated.
+  assertCycleDurationSeconds(durationSeconds);
   return [
     `:local ncPort ${portSelector(target)}`,
     ":if ([:len $ncPort] != 1) do={:error \"managed access port identity changed\"}",
-    `:if ([:len ${guardJobSelector(guardJobId)}] != 1)`
-      + " do={:error \"managed port cycle guard is missing\"}",
+    `:if ([:len ${ownershipRuleSelector(target.ownershipMarker)}] < 1)`
+      + " do={:error \"managed router ownership marker is missing\"}",
+    ":put (\"NC_CYCLE_OWNER:\" . [/interface/get $ncPort default-name])",
+    ":local ncGuard [:execute script="
+      + `{${buildAccessPortCycleGuardScript(target, durationSeconds)}}]`,
+    ":if ([:len [/system/script/job/find where .id=$ncGuard]] != 1)"
+      + " do={:error \"managed port cycle guard was not armed\"}",
+    ":put (\"NC_CYCLE_ARMED:\" . [:tostr $ncGuard] . \":\""
+      + " . [/interface/get $ncPort default-name])",
     "/interface/disable $ncPort",
     ":if ([/interface/get $ncPort disabled] != true)"
       + " do={:error \"access port disable readback failed\"}",

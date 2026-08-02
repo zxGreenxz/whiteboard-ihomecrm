@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 export const MAX_EVIDENCE_BYTES = 16 * 1024;
-const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
+// Runtime wrappers boot a disposable PostgreSQL cluster and apply every
+// Network Center migration before asserting; CI runners are slower than a
+// developer workstation, so the cap is generous while still bounded.
+const DEFAULT_COMMAND_TIMEOUT_MS = 300_000;
 const DEFAULT_MAX_COMMAND_OUTPUT_BYTES = 256 * 1024;
 
 export const CANONICAL_FINDING_SLUGS = Object.freeze([
@@ -101,14 +104,20 @@ export const HARDENING_REGISTRY = Object.freeze({
         "credential digest reaches v2 RPC and Edge never supplies worker identity",
       ),
     ]),
+    // The source-text regression that used to stand in for this finding named
+    // the same migration-text assertion as both its exploit and its legitimate
+    // control, so it could not distinguish "the exposure is gone" from "the
+    // replacement still works". It is replaced by a runtime proof that drives
+    // the shipped heartbeat RPC on a real database and reads the projection
+    // back through PostgreSQL's own RLS as three different principals.
     finding("worker-heartbeat-global-view", [
       regression(
-        "tenant-heartbeat-projection-contract",
-        "source-text",
-        "src/lib/__tests__/networkCenterRealtimeExposureSafety.test.ts",
-        ["npx", "vitest", "run", "src/lib/__tests__/networkCenterRealtimeExposureSafety.test.ts", "--reporter=verbose"],
-        "replaces fleet-global heartbeat exposure with an RLS-scoped building projection",
-        "replaces fleet-global heartbeat exposure with an RLS-scoped building projection",
+        "tenant-heartbeat-projection-runtime",
+        "runtime",
+        "scripts/__tests__/network-center-hardening-runtime.test.mjs",
+        ["node", "--test", "scripts/__tests__/network-center-hardening-runtime.test.mjs"],
+        "revokes fleet-wide heartbeat exposure and hides other tenants' worker status",
+        "still serves the building-scoped worker status projection to an entitled member",
       ),
     ]),
     finding("sftp-backup-unbounded-read", [
@@ -140,6 +149,14 @@ export const HARDENING_REGISTRY = Object.freeze({
         "serializes idempotency, semantic suppression, and all queue budgets before insert",
         "replays a committed request before mutable router eligibility is re-evaluated",
       ),
+      regression(
+        "atomic-queue-budget-runtime",
+        "runtime",
+        "scripts/__tests__/network-center-hardening-runtime.test.mjs",
+        ["node", "--test", "scripts/__tests__/network-center-hardening-runtime.test.mjs"],
+        "rejects queue admission at every server-side budget without orphan rows or events",
+        "admits a legitimate queued command once and replays it idempotently",
+      ),
     ]),
     finding("duplicate-action-idempotency", [
       regression(
@@ -160,6 +177,14 @@ export const HARDENING_REGISTRY = Object.freeze({
         "bounds client history to 16 values and expires sessions in indexed tenant batches",
         "purges only terminal 180-day commands after an append-only sanitized summary",
       ),
+      regression(
+        "client-history-retention-runtime",
+        "runtime",
+        "scripts/__tests__/network-center-hardening-runtime.test.mjs",
+        ["node", "--test", "scripts/__tests__/network-center-hardening-runtime.test.mjs"],
+        "bounds client session history and expires stale sessions in tenant batches",
+        "preserves a live session and its most recent bounded address history",
+      ),
     ]),
     finding("aruba-inventory-unbounded-retention", [
       regression(
@@ -169,6 +194,14 @@ export const HARDENING_REGISTRY = Object.freeze({
         ["npx", "vitest", "run", "src/lib/__tests__/networkCenterResourceLifecycleMigration.test.ts", "--reporter=verbose"],
         "ages only discovery lifecycle state in bounded retention windows",
         "keeps Aruba unlimited while binding observations to stable router-scoped identity",
+      ),
+      regression(
+        "aruba-lifecycle-runtime",
+        "runtime",
+        "scripts/__tests__/network-center-hardening-runtime.test.mjs",
+        ["node", "--test", "scripts/__tests__/network-center-hardening-runtime.test.mjs"],
+        "ages only Aruba discovery lifecycle state inside bounded retention windows",
+        "keeps Aruba inventory uncapped with router-scoped identity across keyset pages",
       ),
     ]),
     finding("aruba-malformed-poll-poisoning", [

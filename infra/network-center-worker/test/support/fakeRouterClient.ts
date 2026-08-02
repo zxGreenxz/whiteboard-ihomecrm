@@ -9,13 +9,33 @@ import {
 } from "../../src/routeros/sshConnector.js";
 import { FakeRouterOs, RouterOsScriptError, RouterOsSessionInterrupted } from "./fakeRouterOs.js";
 
-/** How the exec channel terminates. Mirrors ssh2's `close` argument contract. */
+/**
+ * How the exec channel terminates, reproducing ssh2 1.17's own event contract
+ * (`lib/client.js` CHANNEL_REQUEST → `exit`, `lib/utils.js` onCHANNEL_CLOSE → `close`):
+ *
+ *  - `exit-status` makes ssh2 emit `exit(code)`, and `close` then repeats the same
+ *    arguments for session channels: `close(code)`.
+ *  - `exit-signal` makes ssh2 emit `exit(null, signal, dump, desc)` and, because
+ *    `_exit.code` is `null`, `close(null, signal, dump, desc)`.
+ *  - a session torn down before either request never emits `exit` at all, and
+ *    `close` is called with the still-`undefined` `_exit.code`.
+ */
 export type ChannelEnding =
-  /** Remote sent `exit-status`. `close` carries the numeric code. */
-  | { kind: "exit"; code: number }
-  /** Session torn down before `exit-status`. ssh2 emits `close` with `undefined`. */
+  /** Remote sent `exit-status`. `exit(code)` then `close(code)`. */
+  | {
+    kind: "exit";
+    code: number;
+    /**
+     * ssh2 only repeats the exit arguments on `close` for session channels; the
+     * `direct-tcpip` / `direct-streamlocal` branch emits a bare `close()`. Forces
+     * that shape so the exit status is *only* reachable through the `exit` event.
+     */
+    closeWithoutArguments?: boolean;
+    truncateOutputTo?: number;
+  }
+  /** Session torn down before `exit-status`. No `exit`; `close(undefined)`. */
   | { kind: "no-exit-status"; truncateOutputTo?: number }
-  /** Remote sent `exit-signal`. ssh2 emits `close(null, signal, dump, desc)`. */
+  /** Remote sent `exit-signal`. `exit(null, …)` then `close(null, signal, dump, desc)`. */
   | { kind: "signal"; signal: string; truncateOutputTo?: number };
 
 export interface FakeRouterClientOptions {
@@ -79,13 +99,24 @@ export function createFakeRouterSession(
       const ending = options.interrupt?.(command) ?? null;
       const settle = (output: string, close: ChannelEnding) => queueMicrotask(() => {
         // A dying channel delivers whatever already reached the wire, then closes.
-        const delivered = close.kind === "exit" || close.truncateOutputTo === undefined
+        const delivered = close.truncateOutputTo === undefined
           ? output
           : output.slice(0, close.truncateOutputTo);
         if (delivered) channel.emit("data", Buffer.from(delivered));
-        if (close.kind === "exit") channel.emit("close", close.code);
-        else if (close.kind === "signal") channel.emit("close", null, close.signal, false, "");
-        else channel.emit("close");
+        if (close.kind === "exit") {
+          channel.emit("exit", close.code);
+          if (close.closeWithoutArguments) channel.emit("close");
+          else channel.emit("close", close.code);
+          return;
+        }
+        if (close.kind === "signal") {
+          channel.emit("exit", null, close.signal, false, "");
+          channel.emit("close", null, close.signal, false, "");
+          return;
+        }
+        // No `exit-status` request ever arrived, so ssh2 closes with `_exit.code`
+        // still `undefined` and never emits `exit`.
+        channel.emit("close", undefined);
       });
 
       const readOutput = readCommandOutput(router, command);

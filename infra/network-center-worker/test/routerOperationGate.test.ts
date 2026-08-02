@@ -111,6 +111,7 @@ describe("shared RouterOS operation gate", () => {
         flushDnsCache: async () => undefined,
         renewDhcpLease: async () => true,
         cycleAccessPort: async () => undefined,
+        observedPortDisable: () => null,
         reboot: async () => undefined,
         close: async () => {
           active -= 1;
@@ -258,6 +259,7 @@ describe("shared RouterOS operation gate", () => {
         flushDnsCache: async () => undefined,
         renewDhcpLease: async () => true,
         cycleAccessPort: async () => undefined,
+        observedPortDisable: () => null,
         reboot: async () => undefined,
         close: async () => {
           closeStarts.push(label);

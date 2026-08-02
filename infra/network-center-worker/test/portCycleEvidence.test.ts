@@ -72,7 +72,7 @@ describe("durable access-port cycle evidence", () => {
     expect(await store.read(identity.commandId)).toBeNull();
   });
 
-  it("ignores unreadable or tampered evidence instead of trusting it", async () => {
+  it("ignores evidence it cannot parse instead of trusting it", async () => {
     const directory = await temporaryDirectory();
     const store = new FilePortCycleEvidenceStore(directory);
     const evidence = fresh();
@@ -97,6 +97,30 @@ describe("durable access-port cycle evidence", () => {
     );
 
     expect(await store.read(evidence.commandId)).toBeNull();
+  });
+
+  it("hands the managed identity back unauthenticated, for its reader to bind", async () => {
+    // The store authenticates exactly one thing: the stored `commandId` against the
+    // filename it was found under. The managed identity is *not* authenticated here —
+    // it is returned as stored and cross-checked against the live port by
+    // `CommandProcessor`, which is where the only trustworthy copy of it exists. This
+    // test pins that division so no future reader assumes a guarantee it never had.
+    const directory = await temporaryDirectory();
+    const store = new FilePortCycleEvidenceStore(directory);
+    const evidence = fresh();
+    await store.record(evidence);
+    const [name] = await readdir(directory);
+    await writeFile(
+      join(directory, name ?? "missing.json"),
+      JSON.stringify({ ...evidence, managedResourceId: "swapped", immutableKey: "ether9" }),
+      "utf8",
+    );
+
+    expect(await store.read(evidence.commandId)).toMatchObject({
+      commandId: evidence.commandId,
+      managedResourceId: "swapped",
+      immutableKey: "ether9",
+    });
   });
 
   it("prunes stale evidence files so the directory cannot grow without bound", async () => {

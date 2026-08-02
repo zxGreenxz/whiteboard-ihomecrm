@@ -5,7 +5,10 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { runDisposableSupabaseMatrix } from "./network-center-disposable-db.mjs";
+import {
+  runDisposableLocalClusterMatrix,
+  runDisposableSupabaseMatrix,
+} from "./network-center-disposable-db.mjs";
 
 export const DEMO_ORG_ID = "dddd0000-0000-4000-8000-000000000001";
 export const PROD_ORG_ID = "aaaa0000-0000-4000-8000-000000000001";
@@ -701,6 +704,42 @@ export function parseNetworkCenterVerdict(body, { expectedLocalProof } = {}) {
   return verdict;
 }
 
+// psql prints a single jsonb column as a bare object per line, while the
+// Supabase CLI wraps rows in a JSON array. Normalise the cluster output into the
+// CLI shape so exactly one validator governs both paths - a second hand-written
+// validator is how two paths quietly drift apart.
+export function parseNetworkCenterClusterVerdict(output, options = {}) {
+  if (typeof output !== "string" || output.length === 0) {
+    throw new Error("Disposable cluster returned no Network Center verdict");
+  }
+  const candidates = output
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("{"))
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        Array.isArray(entry.assertions),
+    );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Disposable cluster returned ${candidates.length} Network Center verdicts; expected exactly one`,
+    );
+  }
+  return parseNetworkCenterVerdict(
+    JSON.stringify([{ verdict: candidates[0] }]),
+    options,
+  );
+}
+
 async function migrationApplied(config, fetchImpl, executeQuery) {
   const body = await executeQuery(
     "SELECT to_regprocedure('public.network_center_list_fleet_v1()') IS NOT NULL AS applied;",
@@ -727,20 +766,50 @@ export async function main(
     loadConfig: injectedLoadConfig,
     executeQuery: injectedExecuteQuery,
     runLocalDisposable = runDisposableSupabaseMatrix,
+    runLocalCluster = runDisposableLocalClusterMatrix,
     disposableOptions = {},
   } = {},
 ) {
+  const modes = ["--dry-run", "--local-disposable", "--local-cluster"];
   const unknown = argv.filter(
-    (argument) => !["--dry-run", "--local-disposable", "--help", "-h"].includes(argument),
+    (argument) => ![...modes, "--help", "-h"].includes(argument),
   );
   if (unknown.length > 0) throw new Error(`Unknown argument: ${unknown[0]}`);
-  if (argv.includes("--dry-run") && argv.includes("--local-disposable")) {
-    throw new Error("Choose either --dry-run or --local-disposable, not both");
+  if (argv.filter((argument) => modes.includes(argument)).length > 1) {
+    throw new Error(
+      "Choose exactly one of --dry-run, --local-disposable or --local-cluster",
+    );
   }
   if (argv.includes("--help") || argv.includes("-h")) {
-    log("Usage: node scripts/test-cross-tenant.mjs [--dry-run | --local-disposable]");
+    log("Usage: node scripts/test-cross-tenant.mjs [--dry-run | --local-cluster | --local-disposable]");
     log("  --dry-run  Build the rollback-only matrix without calling Supabase.");
-    log("  --local-disposable  Apply all migrations to an isolated local DB, run the matrix, then remove it.");
+    log("  --local-cluster  Build a disposable local PostgreSQL database from the declared platform");
+    log("                   bootstrap plus the real Network Center migrations, run the matrix, then");
+    log("                   destroy the cluster and verify the port is closed. Needs no Docker.");
+    log("  --local-disposable  Apply all migrations to an isolated local Supabase stack (Docker), run");
+    log("                      the matrix, then remove it. See network-center-disposable-db.mjs for why");
+    log("                      the full historical replay this uses cannot succeed from a blank database.");
+    return;
+  }
+
+  if (argv.includes("--local-cluster")) {
+    const verdict = await runLocalCluster({
+      ...disposableOptions,
+      buildSql: buildNetworkCenterMatrixSql,
+      parseVerdict: parseNetworkCenterClusterVerdict,
+    });
+    if (!verdict.passed) {
+      const failures = verdict.assertions
+        .filter((assertion) => !assertion.passed)
+        .map((assertion) => assertion.case_id)
+        .join(", ");
+      throw new Error(
+        `Network Center tenant matrix failed ${verdict.failed_count}/${verdict.assertion_count}: ${failures}`,
+      );
+    }
+    log(
+      `Network Center local cluster matrix passed (${verdict.assertion_count} assertions, transaction rolled back and cluster destroyed).`,
+    );
     return;
   }
 

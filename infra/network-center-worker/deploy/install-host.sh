@@ -38,7 +38,9 @@ prior_wg_enabled=unknown
 install_transaction_dir=""
 wg0_removed_peers=""
 wg0_allow_interface_change=false
+wg0_allow_peer_overlap=false
 mutation_in_flight=false
+install_scratch_paths=""
 
 die() {
   printf 'network-center install: %s\n' "$1" >&2
@@ -74,6 +76,24 @@ require_safe_directory_destination() {
   if [[ -L "$1" || ( -e "$1" && ! -d "$1" ) ]]; then
     die "unsafe directory destination: $1"
   fi
+}
+
+track_install_scratch() {
+  install_scratch_paths="${install_scratch_paths:+$install_scratch_paths
+}$1"
+}
+
+# The merged wg0 scratch holds the fleet-wide [Interface] PrivateKey, so every
+# scratch path this script creates is removed on EVERY exit — success, die, or a
+# dropped SSH session — never only on the path where nothing went wrong.
+remove_install_scratch() {
+  local path
+  [[ -n "$install_scratch_paths" ]] || return 0
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    rm -rf -- "$path"
+  done <<< "$install_scratch_paths"
+  install_scratch_paths=""
 }
 
 backup_managed_file() {
@@ -149,18 +169,114 @@ wg_peer_index() {
   ' "$1"
 }
 
-# Reads a peer index on stdin and refuses any address claimed by two peers.
+# Reads a peer index on stdin and refuses any address claimed by two peers, or
+# any two peers whose networks OVERLAP. A string compare only ever caught the
+# exact repeat: 10.77.0.0/24 and 10.77.0.5/32 are different strings but the same
+# route on one interface, so whichever peer wg0 matches last silently takes the
+# other building's traffic. Anything that cannot be read as an IP network is
+# refused rather than compared as an opaque string.
 assert_unique_peer_addresses() {
-  awk -F'\t' '
+  awk -F'\t' -v allow_overlap="${wg0_allow_peer_overlap:-false}" '
+    function hex_bits(digit,   position) {
+      position = index("0123456789abcdef", tolower(digit))
+      if (position == 0) return ""
+      return substr("0000000100100011010001010110011110001001101010111100110111101111", (position - 1) * 4 + 1, 4)
+    }
+    function group_bits(group,   padded, cursor, bits, piece) {
+      if (group !~ /^[0-9A-Fa-f]{1,4}$/) return ""
+      padded = substr("0000", 1, 4 - length(group)) group
+      bits = ""
+      for (cursor = 1; cursor <= 4; cursor++) {
+        piece = hex_bits(substr(padded, cursor, 1))
+        if (piece == "") return ""
+        bits = bits piece
+      }
+      return bits
+    }
+    function ipv4_bits(address,   parts, count, cursor, value, bits) {
+      count = split(address, parts, /\./)
+      if (count != 4) return ""
+      bits = ""
+      for (cursor = 1; cursor <= 4; cursor++) {
+        if (parts[cursor] !~ /^[0-9]{1,3}$/) return ""
+        value = parts[cursor] + 0
+        if (value > 255) return ""
+        bits = bits hex_bits(sprintf("%x", int(value / 16))) hex_bits(sprintf("%x", value % 16))
+      }
+      return bits
+    }
+    function ipv6_bits(address,   halves, sides, head, tail, heads, tails, cursor, group, bits, missing) {
+      if (address ~ /:::/) return ""
+      sides = split(address, halves, /::/)
+      if (sides > 2) return ""
+      heads = (halves[1] == "") ? 0 : split(halves[1], head, /:/)
+      tails = (sides == 2 && halves[2] != "") ? split(halves[2], tail, /:/) : 0
+      if (sides == 1) {
+        if (heads != 8) return ""
+        missing = 0
+      } else {
+        if (heads + tails > 7) return ""
+        missing = 8 - heads - tails
+      }
+      bits = ""
+      for (cursor = 1; cursor <= heads; cursor++) {
+        group = group_bits(head[cursor])
+        if (group == "") return ""
+        bits = bits group
+      }
+      for (cursor = 1; cursor <= missing; cursor++) bits = bits "0000000000000000"
+      for (cursor = 1; cursor <= tails; cursor++) {
+        group = group_bits(tail[cursor])
+        if (group == "") return ""
+        bits = bits group
+      }
+      if (length(bits) != 128) return ""
+      return bits
+    }
+    # "<width>:<network bits>". One network contains the other exactly when one
+    # key is a string prefix of the other, and the width tag keeps the families
+    # apart, so a v4 and a v6 range can never be read as overlapping.
+    function network_key(entry,   slash, address, prefix, bits, width) {
+      slash = index(entry, "/")
+      if (slash > 0) {
+        address = substr(entry, 1, slash - 1)
+        prefix = substr(entry, slash + 1)
+      } else {
+        address = entry
+        prefix = ""
+      }
+      if (address ~ /^[0-9.]+$/) { bits = ipv4_bits(address); width = 32 }
+      else if (address ~ /^[0-9A-Fa-f:]+$/) { bits = ipv6_bits(address); width = 128 }
+      else return ""
+      if (bits == "") return ""
+      if (prefix == "") prefix = width
+      if (prefix !~ /^[0-9]+$/) return ""
+      if (prefix + 0 > width) return ""
+      return width ":" substr(bits, 1, prefix + 0)
+    }
     {
       total = split($2, list, /[ ,]+/)
       for (i = 1; i <= total; i++) {
         if (list[i] == "") continue
-        if (list[i] in owner && owner[list[i]] != $1) {
+        key = network_key(list[i])
+        if (key == "") {
+          print "wg0 configuration rejected: AllowedIPs " list[i] " is not a usable IP network" > "/dev/stderr"
+          exit 1
+        }
+        if (key in owner && owner[key] != $1) {
           print "wg0 configuration rejected: AllowedIPs " list[i] " is claimed by two peers" > "/dev/stderr"
           exit 1
         }
-        owner[list[i]] = $1
+        if (allow_overlap != "true") {
+          for (existing in owner) {
+            if (owner[existing] == $1 || existing == key) continue
+            if (substr(existing, 1, length(key)) == key || substr(key, 1, length(existing)) == existing) {
+              print "wg0 configuration rejected: AllowedIPs " list[i] " overlaps " claimed[existing] " which another peer claims" > "/dev/stderr"
+              exit 1
+            }
+          }
+        }
+        if (!(key in owner)) { owner[key] = $1; claimed[key] = list[i] }
       }
     }
   '
@@ -278,12 +394,15 @@ assert_wg0_merge_is_safe() {
     done < <(printf '%s\n' "$destination_index")
     printf '%s\n' "$incoming_index"
   } | assert_unique_peer_addresses ||
-    die "refusing a wg0 merge in which two peers claim the same address"
+    die "refusing a wg0 merge in which two peers claim the same or overlapping addresses; pass --allow-peer-overlap only if that overlap is deliberate"
 }
 
 merge_wg0_configuration() {
   local output="$3" work status=0
   work="$(mktemp -d "$(dirname "$output")/.wg0-merge.XXXXXX")" || return 1
+  # The split peer/interface files under here include the PrivateKey too.
+  track_install_scratch "$work"
+  chmod 0700 "$work" || return 1
   merge_wg0_configuration_into "$1" "$2" "$output" "$work" || status=1
   rm -rf -- "$work"
   return "$status"
@@ -336,39 +455,83 @@ merge_wg0_configuration_into() {
 
 # The fragment must define the managed table and nothing else: no `flush ruleset`,
 # no include, no statement that touches a table belonging to the co-tenant.
+#
+# nft is not line oriented, so this scans CHARACTER by character rather than
+# judging a line by the brace depth it started at: a line that closes the managed
+# table and then opens `table inet openclaw_zalo {` walked straight past the old
+# start-of-line rule and `nft -f` would have replaced a table we do not own.
+# Every top-level statement must be exactly the managed table block; anything the
+# scanner cannot classify with confidence (stray brace, unterminated string,
+# a second table, a trailing statement after the closing brace) is refused.
 assert_scoped_firewall_fragment() {
   awk -v family="$MANAGED_FIREWALL_TABLE_FAMILY" -v name="$MANAGED_FIREWALL_TABLE_NAME" '
-    BEGIN { depth = 0; tables = 0; failure = "" }
+    BEGIN { depth = 0; tables = 0; statement = ""; failure = ""; expected = "table " family " " name }
     function bail(message) { if (failure == "") failure = message; exit 1 }
+    function normalized(text) {
+      gsub(/\t/, " ", text)
+      while (sub(/  /, " ", text)) { }
+      sub(/^ +/, "", text)
+      sub(/ +$/, "", text)
+      return text
+    }
+    # Ends a top-level statement: at depth 0 the only legal statement is the
+    # managed table header, and that one is consumed by the "{" branch below.
+    function close_statement(   pending) {
+      pending = normalized(statement)
+      statement = ""
+      if (pending != "") bail("statement outside the managed table: " pending)
+    }
     {
       line = $0
       sub(/\r$/, "", line)
-      sub(/#.*$/, "", line)
-      gsub(/\t/, " ", line)
-      while (sub(/  /, " ", line)) { }
-      sub(/^ +/, "", line)
-      sub(/ +$/, "", line)
-      if (depth == 0 && line != "") {
-        header = line
-        sub(/\{$/, "", header)
-        sub(/ +$/, "", header)
-        split(header, parts, " ")
-        if (parts[1] != "table" || parts[2] != family || parts[3] != name || parts[4] != "") {
-          bail("statement outside the managed table: " line)
-        }
-        tables++
-      }
+      quoted = 0
       total = length(line)
       for (i = 1; i <= total; i++) {
         character = substr(line, i, 1)
-        if (character == "{") depth++
-        else if (character == "}") { depth--; if (depth < 0) bail("unbalanced braces") }
+        if (quoted) {
+          if (character == "\\") { i++; continue }
+          if (character == "\"") quoted = 0
+          else if (depth == 0) statement = statement character
+          continue
+        }
+        if (character == "\"") {
+          quoted = 1
+          # A quoted string can never be part of the managed table header, so
+          # keeping the quote makes close_statement() refuse it.
+          if (depth == 0) statement = statement character
+          continue
+        }
+        if (character == "#") break
+        if (character == "{") {
+          if (depth == 0) {
+            if (normalized(statement) != expected) {
+              bail("only " expected " may open a block: " normalized(statement))
+            }
+            tables++
+            statement = ""
+          }
+          depth++
+          continue
+        }
+        if (character == "}") {
+          if (depth == 0) bail("unbalanced braces")
+          depth--
+          if (depth == 0) close_statement()
+          continue
+        }
+        if (character == ";") {
+          if (depth == 0) close_statement()
+          continue
+        }
+        if (depth == 0) statement = statement character
       }
+      if (quoted) bail("unterminated quoted string")
+      if (depth == 0) close_statement()
     }
     END {
       if (failure != "") { print "managed firewall fragment rejected: " failure > "/dev/stderr"; exit 1 }
       if (depth != 0) { print "managed firewall fragment rejected: unbalanced braces" > "/dev/stderr"; exit 1 }
-      if (tables < 1) { print "managed firewall fragment rejected: it must define table " family " " name > "/dev/stderr"; exit 1 }
+      if (tables != 1) { print "managed firewall fragment rejected: it must define exactly one table " family " " name > "/dev/stderr"; exit 1 }
     }
   ' "$1" || die "managed firewall fragment must define only table $MANAGED_FIREWALL_TABLE_FAMILY $MANAGED_FIREWALL_TABLE_NAME"
 }
@@ -462,6 +625,8 @@ install_managed_file() {
   grep -Fqx "$MANAGED_MARKER" "$source" || die "managed marker missing: $source"
   backup_managed_file "$destination"
   temporary="$(mktemp "$(dirname "$destination")/.network-center.XXXXXX")"
+  track_install_scratch "$temporary"
+  chmod 0600 "$temporary"
   install -o root -g root -m "$mode" "$source" "$temporary"
   mv -fT "$temporary" "$destination"
 }
@@ -624,30 +789,33 @@ service_enabled_state() {
   esac
 }
 
-persist_forwarding_disabled() {
-  local temporary
-  if [[ -L "$SYSCTL_DESTINATION" || ( -e "$SYSCTL_DESTINATION" && ! -f "$SYSCTL_DESTINATION" ) ]]; then
-    return 1
-  fi
-  if [[ -L "$SYSCTL_DIR" || ( -e "$SYSCTL_DIR" && ! -d "$SYSCTL_DIR" ) ]]; then
-    return 1
-  fi
-  mkdir -p "$SYSCTL_DIR" || return 1
-  temporary="$(mktemp "$SYSCTL_DIR/.network-center-fail-closed.XXXXXX")" || return 1
-  if ! printf '%s\nnet.ipv4.ip_forward=0\n' "$MANAGED_MARKER" > "$temporary" ||
-     ! chmod 0644 "$temporary" ||
-     ! mv -fT -- "$temporary" "$SYSCTL_DESTINATION"; then
-    rm -f -- "$temporary"
-    return 1
-  fi
-  cmp -s "$SYSCTL_DESTINATION" \
-    <(printf '%s\nnet.ipv4.ip_forward=0\n' "$MANAGED_MARKER")
+# net.ipv4.ip_forward is a single HOST-GLOBAL knob and this VPS also runs an
+# unrelated production service that may depend on it. So the fail-closed path
+# never persists a value it does not own: it RETRACTS our managed sysctl.d
+# assertion (leaving the host with whatever it asserted before we arrived) and
+# refuses to touch a file at that path that is not ours.
+retract_managed_forwarding_assertion() {
+  [[ -L "$SYSCTL_DESTINATION" ]] && return 1
+  [[ ! -e "$SYSCTL_DESTINATION" ]] && return 0
+  [[ -f "$SYSCTL_DESTINATION" ]] || return 1
+  grep -Fqx "$MANAGED_MARKER" "$SYSCTL_DESTINATION" || return 1
+  rm -f -- "$SYSCTL_DESTINATION" || return 1
+  [[ ! -e "$SYSCTL_DESTINATION" ]]
+}
+
+# Puts the live flag back to exactly what capture_network_prerequisite_state
+# saw. Fail-closed for OUR resources is wg0 down plus the managed table gone;
+# forcing a co-tenant's 1 to 0 is not fail-closed, it is collateral damage.
+restore_captured_forwarding() {
+  [[ "$prior_ip_forward" == 0 || "$prior_ip_forward" == 1 ]] || return 1
+  sysctl -w "net.ipv4.ip_forward=$prior_ip_forward" >/dev/null || return 1
+  [[ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null || true)" == "$prior_ip_forward" ]]
 }
 
 force_network_fail_closed() {
   local failed=0 actual_firewall_active actual_firewall_enabled actual_wg_active actual_wg_enabled
-  persist_forwarding_disabled || failed=1
-  sysctl -w net.ipv4.ip_forward=0 >/dev/null || failed=1
+  retract_managed_forwarding_assertion || failed=1
+  restore_captured_forwarding || failed=1
   systemctl stop wg-quick@wg0.service >/dev/null 2>&1 || failed=1
   systemctl stop ihome-network-center-firewall.service >/dev/null 2>&1 || failed=1
   systemctl disable wg-quick@wg0.service >/dev/null 2>&1 || failed=1
@@ -660,17 +828,24 @@ force_network_fail_closed() {
   actual_wg_active="$(service_active_state wg-quick@wg0.service)" || failed=1
   actual_firewall_enabled="$(service_enabled_state ihome-network-center-firewall.service)" || failed=1
   actual_wg_enabled="$(service_enabled_state wg-quick@wg0.service)" || failed=1
-  [[ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null || true)" == 0 ]] || failed=1
+  [[ "$(sysctl -n net.ipv4.ip_forward 2>/dev/null || true)" == "$prior_ip_forward" ]] || failed=1
   [[ "$actual_firewall_active" == false && "$actual_wg_active" == false ]] || failed=1
   [[ "$actual_firewall_enabled" == false && "$actual_wg_enabled" == false ]] || failed=1
-  cmp -s "$SYSCTL_DESTINATION" \
-    <(printf '%s\nnet.ipv4.ip_forward=0\n' "$MANAGED_MARKER") || failed=1
+  [[ ! -e "$SYSCTL_DESTINATION" && ! -L "$SYSCTL_DESTINATION" ]] || failed=1
   return "$failed"
 }
 
 restore_network_prerequisite_state() {
   local failed=0 actual_firewall_active actual_firewall_enabled actual_wg_active actual_wg_enabled
-  sysctl -w net.ipv4.ip_forward=0 >/dev/null || failed=1
+  # Only ever LOWER forwarding here, and only when the captured prior value was
+  # already 0. The co-tenant's production service may be the reason ip_forward
+  # is 1; dropping it — even for the seconds this rollback takes — is us taking
+  # their service down from our own failure path.
+  if [[ "$prior_ip_forward" == 0 ]]; then
+    sysctl -w net.ipv4.ip_forward=0 >/dev/null || failed=1
+  elif [[ "$prior_ip_forward" != 1 ]]; then
+    failed=1
+  fi
   systemctl stop wg-quick@wg0.service >/dev/null 2>&1 || failed=1
   systemctl stop ihome-network-center-firewall.service >/dev/null 2>&1 || failed=1
   # Stopping the unit does not necessarily unload the table: by this point the
@@ -787,6 +962,8 @@ install_assets() {
     "$FIREWALL_UNIT_DESTINATION" 0644 prepend
   install -d -o root -g root -m 0755 "$WG_FIREWALL_DROPIN_DIR"
   dropin_source="$(mktemp "$NETWORK_CENTER_ROOT/.wg-firewall-dropin.XXXXXX")"
+  track_install_scratch "$dropin_source"
+  chmod 0600 "$dropin_source"
   cat > "$dropin_source" <<EOF
 $MANAGED_MARKER
 [Unit]
@@ -833,6 +1010,9 @@ perform_install_mutations() {
 
   install -d -o root -g root -m 0700 "$WG0_DIR"
   wg0_merged="$(mktemp "$NETWORK_CENTER_ROOT/state/.wg0-merged.XXXXXX")"
+  # Carries the fleet [Interface] PrivateKey from here until the rm below.
+  track_install_scratch "$wg0_merged"
+  chmod 0600 "$wg0_merged"
   merge_wg0_configuration "$wg0_source" "$WG0_DESTINATION" "$wg0_merged" ||
     die "refusing to install wg0.conf: the peer merge failed"
   install_managed_file "$wg0_merged" "$WG0_DESTINATION" 0600
@@ -841,6 +1021,8 @@ perform_install_mutations() {
   install -d -o root -g root -m 0755 "$FIREWALL_DIR"
   assert_scoped_firewall_fragment "$firewall_source"
   firewall_rendered="$(mktemp "$NETWORK_CENTER_ROOT/state/.firewall-fragment.XXXXXX")"
+  track_install_scratch "$firewall_rendered"
+  chmod 0600 "$firewall_rendered"
   render_managed_firewall_fragment "$firewall_source" "$firewall_rendered" ||
     die "could not render the scoped managed firewall fragment"
   install_managed_file "$firewall_rendered" "$FIREWALL_DESTINATION" 0600
@@ -937,6 +1119,9 @@ run_install_transaction() {
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
+    # Runs on every way out of this subshell, so a die() or a dropped session
+    # cannot leave the merged wg0 scratch (fleet PrivateKey) on disk.
+    trap 'remove_install_scratch' EXIT
     perform_install_mutations "$asset_installer"
   )
   mutation_status=$?
@@ -964,6 +1149,7 @@ main() {
       --firewall-source) firewall_source="${2:-}"; shift 2 ;;
       --remove-peer) add_wg0_peer_removal "${2:-}"; shift 2 ;;
       --allow-interface-change) wg0_allow_interface_change=true; shift ;;
+      --allow-peer-overlap) wg0_allow_peer_overlap=true; shift ;;
       *) die "unknown argument: $1" ;;
     esac
   done

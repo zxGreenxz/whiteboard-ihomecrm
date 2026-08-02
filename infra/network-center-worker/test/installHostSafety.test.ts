@@ -1,13 +1,59 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-const workerRoot = resolve(new URL("../", import.meta.url).pathname.slice(1));
+const workerRoot = fileURLToPath(new URL("../", import.meta.url));
 const installHost = join(workerRoot, "deploy", "install-host.sh");
-const bash = "C:\\Program Files\\Git\\bin\\bash.exe";
+
+export const BASH_OVERRIDE = "NETWORK_CENTER_TEST_BASH";
+
+/**
+ * This suite is the host-hardening proof that has to run in CI *before* a
+ * production host is touched, so the interpreter is discovered instead of
+ * hard-coded to one Windows install path, and a missing interpreter throws
+ * here rather than turning the whole suite into a silent, green skip.
+ */
+export function discoverBash(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  exists: (candidate: string) => boolean,
+): string {
+  const candidates: string[] = [];
+  const override = env[BASH_OVERRIDE]?.trim();
+  if (override) {
+    // An explicit override that is not there is an operator mistake, never a
+    // reason to quietly fall back to some other interpreter.
+    if (!exists(override)) throw new Error(`${BASH_OVERRIDE} points at a missing interpreter: ${override}`);
+    return override;
+  }
+  if (platform === "win32") {
+    // Git Bash is tried before PATH because %SystemRoot%\System32\bash.exe is
+    // the WSL launcher: it runs, but it cannot see the Windows temp fixtures
+    // these harnesses write, so it would fail every test for the wrong reason.
+    for (const base of [env.ProgramW6432, env.ProgramFiles, env["ProgramFiles(x86)"], "C:\\Program Files"]) {
+      if (base) candidates.push(join(base, "Git", "bin", "bash.exe"));
+    }
+  }
+  const system32 = join(env.SystemRoot ?? "C:\\Windows", "System32").toLowerCase();
+  for (const entry of (env.PATH ?? env.Path ?? "").split(delimiter)) {
+    if (entry === "") continue;
+    if (platform === "win32" && entry.toLowerCase().replace(/[\\/]+$/, "") === system32) continue;
+    candidates.push(join(entry, platform === "win32" ? "bash.exe" : "bash"));
+  }
+  if (platform !== "win32") candidates.push("/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash");
+  const found = candidates.find((candidate) => exists(candidate));
+  if (found !== undefined) return found;
+  throw new Error(
+    `no bash interpreter found for the install-host safety suite; set ${BASH_OVERRIDE} to one. ` +
+      "These tests must run before a production host is touched, so an absent interpreter fails loudly instead of skipping.",
+  );
+}
+
+const bash = discoverBash(process.env, process.platform, existsSync);
 const roots: string[] = [];
 
 function posix(path: string): string {
@@ -155,7 +201,32 @@ afterEach(() => {
   }
 });
 
-describe.skipIf(!existsSync(bash))("install-host transactional safety", () => {
+describe("install-host transactional safety", () => {
+  it("discovers bash portably and fails loudly when no interpreter exists", () => {
+    // A hard-coded Windows path made every test below skip on Linux CI, which is
+    // where the host-hardening proof most needs to run.
+    expect(() => discoverBash({ PATH: ["/usr/bin", "/bin"].join(delimiter) }, "linux", () => false))
+      .toThrow(new RegExp(BASH_OVERRIDE));
+    expect(discoverBash({ PATH: ["/opt/tools", "/usr/bin"].join(delimiter) }, "linux", (candidate) => candidate === join("/usr/bin", "bash")))
+      .toBe(join("/usr/bin", "bash"));
+    expect(discoverBash({ PATH: "" }, "linux", (candidate) => candidate === "/bin/bash")).toBe("/bin/bash");
+    expect(discoverBash({ [BASH_OVERRIDE]: "/custom/bash", PATH: "" }, "linux", (candidate) => candidate === "/custom/bash"))
+      .toBe("/custom/bash");
+    expect(() => discoverBash({ [BASH_OVERRIDE]: "/gone/bash", PATH: "" }, "linux", (candidate) => candidate === "/bin/bash"))
+      .toThrow(/\/gone\/bash/);
+    const gitBash = join("C:\\Program Files", "Git", "bin", "bash.exe");
+    const wslLauncher = join("C:\\Windows", "System32", "bash.exe");
+    expect(
+      discoverBash(
+        { SystemRoot: "C:\\Windows", ProgramFiles: "C:\\Program Files", PATH: [join("C:\\Windows", "System32")].join(delimiter) },
+        "win32",
+        (candidate) => candidate === gitBash || candidate === wslLauncher,
+      ),
+    ).toBe(gitBash);
+    // The interpreter this run actually used has to be a real file.
+    expect(existsSync(bash), `discovered interpreter is missing: ${bash}`).toBe(true);
+  });
+
   it("rejects any non-exact managed sysctl asset during mutation-free preflight", () => {
     const { result } = runHarness(`${bootstrapSources("unexpected=1\\n")}
 preflight_install
@@ -282,8 +353,10 @@ run_install_transaction
   });
 
   it("fails closed when restoring prior WG-active firewall-inactive state is not exact", () => {
-    const { result } = runHarness(`
+    const { root, result } = runHarness(`
 source "$INSTALL_HOST"
+mkdir -p "$(dirname "$SYSCTL_DESTINATION")"
+printf '%s\\nnet.ipv4.ip_forward=1\\n' "$MANAGED_MARKER" > "$SYSCTL_DESTINATION"
 prior_ip_forward=1
 prior_firewall_active=false
 prior_firewall_enabled=false
@@ -340,17 +413,70 @@ printf '%s|%s|%s|%s|%s|%s|%s\\n' "$status" "$forwarding" "$firewall_active" "$wg
     // establish fail-closed state" per run_install_transaction's die() mapping)
     // — a strictly worse outcome that `not.toBe("0")` would have silently accepted.
     expect(status).toBe("1");
-    expect([forwarding, firewall, wg]).toEqual(["0", "false", "false"]);
+    // ip_forward is host-global and the prior value was 1, so the fail-closed
+    // path must hand it back exactly as found; our own sysctl.d assertion is
+    // retracted instead of being rewritten to a value we never owned.
+    expect([forwarding, firewall, wg]).toEqual(["1", "false", "false"]);
     expect([firewallEnabled, wgEnabled]).toEqual(["false", "false"]);
     expect(readbacks).toContain("ihome-network-center-firewall.service");
     expect(readbacks).toContain("wg-quick@wg0.service");
+    expect(existsSync(join(root, "host", "etc", "sysctl.d", "90-ihome-network-center.conf"))).toBe(false);
   });
 
-  it("propagates fail-closed command errors while persisting forwarding off for reboot", () => {
+  it("retracts only its own sysctl assertion and never deletes an unmanaged one", () => {
+    for (const [label, prior, content, expectedFile] of [
+      ["managed-prior-off", "0", `${MARKER}\\nnet.ipv4.ip_forward=1\\n`, null],
+      ["managed-prior-on", "1", `${MARKER}\\nnet.ipv4.ip_forward=1\\n`, null],
+      // A file at our path without our marker belongs to somebody else; the
+      // fail-closed path reports rather than deletes it.
+      ["unmanaged", "1", "net.ipv4.ip_forward=1\\n", "net.ipv4.ip_forward=1\n"],
+    ] as const) {
+      const { root, result } = runHarness(`
+source "$INSTALL_HOST"
+mkdir -p "$(dirname "$SYSCTL_DESTINATION")"
+printf '${content}' > "$SYSCTL_DESTINATION"
+prior_ip_forward=${prior}
+prior_firewall_active=false
+forwarding=${prior === "1" ? "1" : "0"}
+systemctl() {
+  case "$1" in
+    is-active) return 3;;
+    is-enabled) return 1;;
+  esac
+  return 0
+}
+sysctl() {
+  case "$1" in
+    -n) printf '%s\\n' "$forwarding";;
+    -w) forwarding="\${2##*=}";;
+  esac
+}
+set +e
+force_network_fail_closed
+status=$?
+set -e
+printf '%s|%s\\n' "$status" "$forwarding"
+`);
+      expect(result.status, result.stderr).toBe(0);
+      const [status, forwarding] = result.stdout.trim().split("|");
+      expect(forwarding, `${label} flipped the host-global flag`).toBe(prior);
+      const sysctlFile = join(root, "host", "etc", "sysctl.d", "90-ihome-network-center.conf");
+      if (expectedFile === null) {
+        expect(status, label).toBe("0");
+        expect(existsSync(sysctlFile), `${label} left a persisted assertion behind`).toBe(false);
+      } else {
+        expect(status, label).not.toBe("0");
+        expect(readFileSync(sysctlFile, "utf8"), label).toBe(expectedFile);
+      }
+    }
+  });
+
+  it("propagates fail-closed command errors while retracting its own sysctl assertion", () => {
     const { root, result } = runHarness(`
 source "$INSTALL_HOST"
 mkdir -p "$(dirname "$SYSCTL_DESTINATION")"
-printf broken > "$SYSCTL_DESTINATION"
+printf '%s\\nnet.ipv4.ip_forward=1\\n' "$MANAGED_MARKER" > "$SYSCTL_DESTINATION"
+prior_ip_forward=1
 forwarding=1
 firewall_active=true
 firewall_enabled=true
@@ -388,9 +514,10 @@ set -e
 printf '%s|%s|%s|%s|%s|%s\\n' "$status" "$forwarding" "$firewall_active" "$wg_active" "$firewall_enabled" "$wg_enabled"
 `);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout.trim()).toBe("1|0|false|false|false|false");
-    expect(readFileSync(join(root, "host", "etc", "sysctl.d", "90-ihome-network-center.conf"), "utf8"))
-      .toBe("# ihomecrm-network-center-managed:v1\nnet.ipv4.ip_forward=0\n");
+    // The stop error still propagates even though the end state looks safe, and
+    // the co-tenant's forwarding flag is handed back exactly as captured.
+    expect(result.stdout.trim()).toBe("1|1|false|false|false|false");
+    expect(existsSync(join(root, "host", "etc", "sysctl.d", "90-ihome-network-center.conf"))).toBe(false);
   });
 
   it("rejects systemctl query errors instead of snapshotting them as inactive", () => {
@@ -521,6 +648,97 @@ assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
     expect(result.stderr).toMatch(/AllowedIPs|claimed by two peers/i);
   });
 
+  it("refuses peers whose AllowedIPs overlap, not merely peers that repeat a string", () => {
+    // Two peers claiming overlapping ranges on one interface silently break
+    // routing for one of the buildings; a string compare never sees it.
+    for (const [label, existing, incoming] of [
+      ["v4-supernet-first", "10.77.0.0/24", "10.77.0.5/32"],
+      ["v4-subnet-first", "10.77.0.5/32", "10.77.0.0/24"],
+      ["v4-partial", "10.77.0.0/23", "10.77.1.0/24"],
+      ["v4-default-route", "0.0.0.0/0", "10.77.0.5/32"],
+      ["v4-implicit-host", "10.77.0.0/24", "10.77.0.9"],
+      ["v6-supernet", "fd00:77::/64", "fd00:77::5/128"],
+      ["v6-compressed", "fd00:77:0:0::/63", "fd00:77::1:0:0:5/128"],
+      ["bare-address-duplicate", "10.77.0.2/32", "10.77.0.2"],
+    ] as const) {
+      const { result } = runHarness(`${wgFixtures(
+        wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: incoming }]),
+        wgConfig([{ identity: "building-01", key: PEER_ONE, allowed: existing }]),
+      )}
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+`);
+      expect(result.status, `${label} was accepted`).not.toBe(0);
+      expect(result.stderr, label).toMatch(/overlap|claimed by two peers/i);
+    }
+  });
+
+  it("refuses an AllowedIPs entry it cannot read as an IP network", () => {
+    for (const allowed of ["10.77.0.999/32", "10.77.0.2/33", "10.77.0.2/-1", "not-an-address", "fd00::/129", "fd00:::1/64", "10.77.0.2/x"]) {
+      const { result } = runHarness(`${wgFixtures(
+        wgConfig([{ identity: "building-02", key: PEER_TWO, allowed }]),
+        wgConfig([{ identity: "building-01", key: PEER_ONE, allowed: "10.77.0.2/32" }]),
+      )}
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+`);
+      expect(result.status, `${allowed} was accepted`).not.toBe(0);
+      expect(result.stderr, allowed).toMatch(/AllowedIPs/i);
+    }
+  });
+
+  it("keeps distinct building ranges and one peer's own overlapping list installable", () => {
+    const { result } = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.3/32, fd00:77::3/128" }]),
+      // building-01's own two entries overlap each other, which is fine; what
+      // must never overlap is one building's range with another building's.
+      wgConfig([{ identity: "building-01", key: PEER_ONE, allowed: "10.77.1.2/32, 10.77.1.0/24" }]),
+    )}
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+printf 'accepted\\n'
+`);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("accepted");
+  });
+
+  it("accepts an overlap only when the operator authorises it and never an identical claim", () => {
+    const source = readFileSync(installHost, "utf8");
+    expect(source).toMatch(/--allow-peer-overlap\)\s*wg0_allow_peer_overlap=true/);
+    const overlapping = wgFixtures(
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.5/32" }]),
+      wgConfig([{ identity: "building-01", key: PEER_ONE, allowed: "10.77.0.0/24" }]),
+    );
+    const authorised = runHarness(`${overlapping}
+wg0_allow_peer_overlap=true
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+merge_wg0_configuration "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION" "$NETWORK_CENTER_ROOT/merged.conf"
+wg_peer_index "$NETWORK_CENTER_ROOT/merged.conf"
+`);
+    expect(authorised.result.status, authorised.result.stderr).toBe(0);
+    expect(authorised.result.stdout).toContain(`${PEER_ONE}\t10.77.0.0/24`);
+    expect(authorised.result.stdout).toContain(`${PEER_TWO}\t10.77.0.5/32`);
+
+    // The flag authorises an overlap, never two peers claiming the same address.
+    const identical = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.2/32" }]),
+      wgConfig([{ identity: "building-01", key: PEER_ONE, allowed: "10.77.0.2/32" }]),
+    )}
+wg0_allow_peer_overlap=true
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+`);
+    expect(identical.result.status).not.toBe(0);
+    expect(identical.result.stderr).toMatch(/claimed by two peers/i);
+  });
+
+  it("refuses an overlap on the write path even if a preflight was skipped", () => {
+    const { result } = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.5/32" }]),
+      wgConfig([{ identity: "building-01", key: PEER_ONE, allowed: "10.77.0.0/24" }]),
+    )}
+merge_wg0_configuration "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION" "$NETWORK_CENTER_ROOT/merged.conf"
+`);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/overlap/i);
+  });
+
   it("reports every peer it retains so an omitted building is never a silent keep", () => {
     const { result } = runHarness(`${wgFixtures(
       wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.3/32" }]),
@@ -639,6 +857,57 @@ assert_scoped_firewall_fragment "$NETWORK_CENTER_ROOT/firewall.source"
     }
   });
 
+  it("refuses a co-tenant table smuggled onto a line that also closes the managed one", () => {
+    // A brace-depth rule evaluated only at the START of each line lets a single
+    // line close the managed table and open the co-tenant's, after which
+    // `nft -f` would replace or create a table this host bootstrap does not own.
+    for (const [label, body] of [
+      ["closes-and-opens", "table inet ihome_network_center {\n  chain c {\n  } } table inet openclaw_zalo { chain c { } }"],
+      ["trailing-include", 'table inet ihome_network_center {\n  chain c { }\n} include "/etc/nftables.d/other.nft"'],
+      // `^[[:space:]]*flush[[:space:]]+ruleset` in preflight cannot see this one either.
+      ["trailing-flush", "table inet ihome_network_center {\n  chain c { }\n} flush ruleset"],
+      ["trailing-delete", "table inet ihome_network_center {\n  chain c { }\n}; delete table inet openclaw_zalo"],
+      ["one-line-two-tables", "table inet ihome_network_center { chain c { } } table inet openclaw_zalo { chain c { } }"],
+      ["leading-statement", "add rule inet openclaw_zalo input drop; table inet ihome_network_center {\n  chain c { }\n}"],
+      ["duplicate-managed-table", "table inet ihome_network_center {\n  chain c { }\n}\ntable inet ihome_network_center {\n  chain d { }\n}"],
+      ["unterminated-quote", 'table inet ihome_network_center {\n  chain c { }\n} comment "openclaw'],
+    ] as const) {
+      const { result } = runHarness(`
+source "$INSTALL_HOST"
+cat > "$NETWORK_CENTER_ROOT/firewall.source" <<'NFT_EOF'
+${MARKER}
+${body}
+NFT_EOF
+assert_scoped_firewall_fragment "$NETWORK_CENTER_ROOT/firewall.source"
+`);
+      expect(result.status, `${label} was accepted`).not.toBe(0);
+      expect(result.stderr, label).toMatch(/managed table|firewall fragment/i);
+    }
+  });
+
+  it("still accepts a realistic managed fragment with comments, quotes and anonymous sets", () => {
+    // Fail-closed must not mean fail-always: the fragment the bootstrap actually
+    // ships has braces inside comments and inside quoted strings.
+    const { result } = runHarness(`
+source "$INSTALL_HOST"
+cat > "$NETWORK_CENTER_ROOT/firewall.source" <<'NFT_EOF'
+${MARKER}
+# managed { forward } policy for the wg0 fleet
+table inet ihome_network_center {
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    iifname "wg0" oifname "wg0" ip saddr { 10.77.0.0/24, 10.78.0.0/24 } accept comment "scoped { managed }"
+    ct state established,related accept
+  }
+}
+NFT_EOF
+assert_scoped_firewall_fragment "$NETWORK_CENTER_ROOT/firewall.source"
+printf 'accepted\\n'
+`);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe("accepted");
+  });
+
   it("prefixes the rendered fragment with the managed marker and a scoped delete", () => {
     const { root, result } = runHarness(`
 source "$INSTALL_HOST"
@@ -657,8 +926,15 @@ render_managed_firewall_fragment "$NETWORK_CENTER_ROOT/firewall.source" "$FIREWA
     expect(lines[0]).toBe(MARKER);
     expect(rendered).toMatch(/^table inet ihome_network_center$/m);
     expect(rendered).toMatch(/^delete table inet ihome_network_center$/m);
-    expect(rendered.indexOf("delete table inet ihome_network_center"))
-      .toBeLessThan(rendered.indexOf("table inet ihome_network_center {"));
+    // Order is load-bearing for `nft -f`: it cannot delete a table that was
+    // never declared, so the bare declaration has to come first, then the
+    // scoped delete, and only then the block that re-adds the rules.
+    const declaration = rendered.indexOf("\ntable inet ihome_network_center\n");
+    const scopedDelete = rendered.indexOf("\ndelete table inet ihome_network_center\n");
+    const block = rendered.indexOf("table inet ihome_network_center {");
+    expect(declaration, "bare table declaration is missing").toBeGreaterThanOrEqual(0);
+    expect(scopedDelete, "scoped delete is missing").toBeGreaterThan(declaration);
+    expect(block, "table block is missing").toBeGreaterThan(scopedDelete);
     expect(rendered).not.toMatch(/flush\s+ruleset/i);
     expect(rendered.match(new RegExp(`^${MARKER}$`, "gm"))).toHaveLength(1);
   });

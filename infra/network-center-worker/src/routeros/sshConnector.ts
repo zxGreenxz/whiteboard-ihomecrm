@@ -30,7 +30,6 @@ import {
   ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS,
   MAX_ACCESS_PORT_CYCLE_SECONDS,
   MIN_ACCESS_PORT_CYCLE_SECONDS,
-  buildAccessPortCycleArmCommand,
   buildAccessPortCycleCommand,
   buildAccessPortCycleDisarmCommand,
   buildAccessPortCycleGuardProbeCommand,
@@ -61,6 +60,20 @@ export const ROUTER_OS_READ_COMMANDS = Object.freeze({
 
 const MAX_COMMAND_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MAX_SSH_CLOSE_WAIT_MS = 5_000;
+
+interface RouterExecOutcome {
+  /** Everything the router delivered on stdout before the channel settled. */
+  output: string;
+  /**
+   * True only when the channel closed carrying a numeric exit status, i.e. the router
+   * itself answered. Only then does the *absence* of a marker in `output` prove the
+   * router never reached the statement that would have printed it — a dead channel
+   * proves nothing about what did or did not run.
+   */
+  completed: boolean;
+  /** Null when the command completed and the router reported no failure. */
+  failure: RouterOperationError | null;
+}
 
 export function normalizeHostFingerprint(value: string): string {
   const match = /^SHA256:([A-Za-z0-9+/]{20,}={0,2})$/.exec(value.trim());
@@ -515,7 +528,18 @@ export class SshRouterConnector implements RouterConnector {
   #dnsCommandAck = false;
   /** Guard job this connector armed and has not seen the router reap or cancel. */
   #pendingCycleGuardJobId: string | null = null;
-  #lastAccessCycle: {
+  /**
+   * Set when a cycle mutated the router but the worker never learned the guard's id,
+   * so this connector can no longer prove it is not stacking guards.
+   */
+  #cycleGuardIdUnknown = false;
+  /**
+   * The managed port this connector saw the *router itself* report as disabled, from
+   * the ordered `NC_CYCLE_DISABLED` readback. Set whether or not the rest of the cycle
+   * went on to succeed — the transition is what a postcondition needs, and it is the
+   * interrupted cycle that has nothing else to prove it with.
+   */
+  #observedPortDisable: {
     managedResourceId: string;
     immutableKey: string;
   } | null = null;
@@ -594,46 +618,69 @@ export class SshRouterConnector implements RouterConnector {
     return this.#connecting;
   }
 
-  async #execute(command: string, mayHaveExecuted = false): Promise<string> {
+  /**
+   * Runs one command and reports how it ended *without* throwing, so a caller that
+   * mutated the router can still read the markers the router already printed.
+   *
+   * `#execute` throws away the output of a failed command, which is the right default
+   * for a read. It is the wrong default for the port cycle: the router prints
+   * `NC_CYCLE_DISABLED` before it starts sleeping, so the one path where durable
+   * evidence matters most — a session that dies inside the `:delay` — is exactly the
+   * path where that marker had already reached the worker.
+   */
+  async #executeDetailed(command: string, mayHaveExecuted = false): Promise<RouterExecOutcome> {
     const client = await this.#connect();
-    return new Promise<string>((resolve, reject) => {
+    return new Promise<RouterExecOutcome>((resolve) => {
       client.exec(command, (error: Error | undefined, channel: ClientChannel) => {
         if (error) {
-          reject(new RouterOperationError("SSH_EXEC_START_FAILED", {
-            retryable: true,
-            mayHaveExecuted,
-          }));
+          resolve({
+            output: "",
+            completed: false,
+            failure: new RouterOperationError("SSH_EXEC_START_FAILED", {
+              retryable: true,
+              mayHaveExecuted,
+            }),
+          });
           return;
         }
         const stdout: Buffer[] = [];
         const stderr: Buffer[] = [];
         let bytes = 0;
         let settled = false;
-        const finish = (callback: () => void) => {
+        const settle = (outcome: RouterExecOutcome) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          callback();
+          resolve(outcome);
         };
+        const delivered = () => Buffer.concat(stdout).toString("utf8");
         const collect = (target: Buffer[]) => (data: Buffer | string) => {
           const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
           bytes += buffer.byteLength;
           if (bytes > MAX_COMMAND_OUTPUT_BYTES) {
             channel.close();
-            finish(() => reject(new RouterOperationError("SSH_OUTPUT_LIMIT", {
-              retryable: false,
-              mayHaveExecuted,
-            })));
+            settle({
+              output: "",
+              completed: false,
+              failure: new RouterOperationError("SSH_OUTPUT_LIMIT", {
+                retryable: false,
+                mayHaveExecuted,
+              }),
+            });
             return;
           }
           target.push(buffer);
         };
         const timer = setTimeout(() => {
           channel.close();
-          finish(() => reject(new RouterOperationError("SSH_COMMAND_TIMEOUT", {
-            retryable: true,
-            mayHaveExecuted,
-          })));
+          settle({
+            output: delivered(),
+            completed: false,
+            failure: new RouterOperationError("SSH_COMMAND_TIMEOUT", {
+              retryable: true,
+              mayHaveExecuted,
+            }),
+          });
         }, this.#commandTimeoutMs);
         // ssh2 reports the remote exit status on `exit`, and repeats it as the first
         // `close` argument for session channels. When the session is torn down before
@@ -649,41 +696,47 @@ export class SshRouterConnector implements RouterConnector {
         });
         channel.on("data", collect(stdout));
         channel.stderr.on("data", collect(stderr));
-        channel.once("close", (code?: number | null) => finish(() => {
+        channel.once("close", (code?: number | null) => {
           const status = exitObserved ? exitStatus : code;
+          const output = delivered();
           if (typeof status !== "number" || !Number.isFinite(status)) {
-            reject(new RouterOperationError("SSH_EXEC_NO_EXIT_STATUS", {
-              retryable: true,
-              mayHaveExecuted,
-            }));
+            settle({
+              output,
+              completed: false,
+              failure: new RouterOperationError("SSH_EXEC_NO_EXIT_STATUS", {
+                retryable: true,
+                mayHaveExecuted,
+              }),
+            });
             return;
           }
+          const rejected = (code: string) => settle({
+            output,
+            completed: true,
+            failure: new RouterOperationError(code, { retryable: false, mayHaveExecuted }),
+          });
           if (status !== 0) {
-            reject(new RouterOperationError("ROUTEROS_COMMAND_FAILED", {
-              retryable: false,
-              mayHaveExecuted,
-            }));
+            rejected("ROUTEROS_COMMAND_FAILED");
             return;
           }
           if (stderr.length > 0 && Buffer.concat(stderr).toString("utf8").trim()) {
-            reject(new RouterOperationError("ROUTEROS_COMMAND_REJECTED", {
-              retryable: false,
-              mayHaveExecuted,
-            }));
+            rejected("ROUTEROS_COMMAND_REJECTED");
             return;
           }
-          const output = Buffer.concat(stdout).toString("utf8");
           if (routerOsCommandFailed(output)) {
-            reject(new RouterOperationError("ROUTEROS_COMMAND_REJECTED", {
-              retryable: false,
-              mayHaveExecuted,
-            }));
+            rejected("ROUTEROS_COMMAND_REJECTED");
             return;
           }
-          resolve(output);
-        }));
+          settle({ output, completed: true, failure: null });
+        });
       });
     });
+  }
+
+  async #execute(command: string, mayHaveExecuted = false): Promise<string> {
+    const outcome = await this.#executeDetailed(command, mayHaveExecuted);
+    if (outcome.failure) throw outcome.failure;
+    return outcome.output;
   }
 
   async #sftp(): Promise<SFTPWrapper> {
@@ -928,7 +981,7 @@ export class SshRouterConnector implements RouterConnector {
       const record = parseRouterOsRecords(interfaceOutput).find(
         (candidate) => candidate["default-name"] === immutableKey,
       );
-      const cycled = this.#lastAccessCycle;
+      const cycled = this.#observedPortDisable;
       return {
         observedAt,
         reachable: parseRouterOsRecords(identityOutput).length > 0,
@@ -1027,6 +1080,15 @@ export class SshRouterConnector implements RouterConnector {
     //    the disable window and let a retry storm fill the router's job table. The
     //    pending guard is itself the thing that restores the port, so waiting for it
     //    is both the safe and the fast answer.
+    if (this.#cycleGuardIdUnknown) {
+      // A previous cycle on this connector armed a guard whose router-minted id never
+      // came back. Its job is still out there and still owns this port's recovery, so
+      // there is nothing left to probe and nothing safe to arm.
+      throw new RouterOperationError("PORT_CYCLE_GUARD_STATE_UNREADABLE", {
+        retryable: true,
+        mayHaveExecuted: false,
+      });
+    }
     if (this.#pendingCycleGuardJobId) {
       const probe = parseAccessPortCycleGuardProbe(await this.#execute(
         buildAccessPortCycleGuardProbeCommand(this.#pendingCycleGuardJobId),
@@ -1046,32 +1108,44 @@ export class SshRouterConnector implements RouterConnector {
       this.#pendingCycleGuardJobId = null;
     }
 
-    // 2. Arm the router-side dead-man's switch. Nothing on the access port has been
-    //    mutated yet, so any failure here stays a clean, non-disruptive failure. The
-    //    guard's id is minted by the router, so the worker can only ever cancel a job
-    //    it started itself.
-    const guardJobId = parseAccessPortCycleArmedGuard(
-      await this.#execute(buildAccessPortCycleArmCommand(cycleTarget, durationSeconds)),
-      resolved.immutableKey,
+    // 2. Arm the dead-man's switch and cycle the port in one console job. Everything
+    //    that can refuse still runs before the disable, so a refusal stays a clean,
+    //    non-disruptive failure — but the guard's countdown and the disable now share
+    //    one anchor, so no SSH round trip can be subtracted from the recovery window.
+    //    The guard's id is minted by the router, so the worker can only ever cancel a
+    //    job it started itself.
+    this.#observedPortDisable = null;
+    const attempt = await this.#executeDetailed(
+      buildAccessPortCycleCommand(cycleTarget, durationSeconds),
+      true,
     );
-    if (!guardJobId) {
-      throw new RouterOperationError("PORT_CYCLE_GUARD_NOT_ARMED", {
-        retryable: true,
-        mayHaveExecuted: false,
+    const guardJobId = parseAccessPortCycleArmedGuard(attempt.output, resolved.immutableKey);
+    if (guardJobId) this.#pendingCycleGuardJobId = guardJobId;
+    const markers = routerOsMarkers(attempt.output);
+    const disabledIndex = markers.indexOf(`NC_CYCLE_DISABLED:${resolved.immutableKey}`);
+    if (disabledIndex >= 0) {
+      // The router printed its own disable readback, so the port demonstrably went
+      // down. Recorded here rather than after the cycle returns, because the session
+      // that dies inside the `:delay` never reaches "after".
+      this.#observedPortDisable = {
+        managedResourceId: target.managedResourceId,
+        immutableKey: resolved.immutableKey,
+      };
+    }
+
+    // 3. A failure is classified by where the router stopped, not by which exec it
+    //    was in. `NC_CYCLE_ARMED` is printed by the statement immediately before the
+    //    disable, so on a channel that closed with an exit status its absence proves
+    //    the port was never touched. A dead channel proves nothing and stays uncertain.
+    if (attempt.failure) {
+      if (!guardJobId && !attempt.completed) this.#cycleGuardIdUnknown = true;
+      throw new RouterOperationError(attempt.failure.code, {
+        retryable: attempt.failure.retryable,
+        mayHaveExecuted: !attempt.completed || guardJobId !== null,
       });
     }
-    this.#pendingCycleGuardJobId = guardJobId;
 
-    // 3. Only now disable. Every statement from here on is expendable: if this exec
-    //    dies the router still re-enables the port on its own, and the guard stays
-    //    recorded so the next attempt waits for it instead of racing it.
-    this.#lastAccessCycle = null;
-    const markers = routerOsMarkers(await this.#execute(
-      buildAccessPortCycleCommand(cycleTarget, durationSeconds, guardJobId),
-      true,
-    ));
     // Success still turns on the ordered disable/enable readback only.
-    const disabledIndex = markers.indexOf(`NC_CYCLE_DISABLED:${resolved.immutableKey}`);
     const enabledIndex = markers.indexOf(`NC_CYCLE_ENABLED:${resolved.immutableKey}`);
     if (disabledIndex < 0 || enabledIndex <= disabledIndex) {
       throw new RouterOperationError("PORT_CYCLE_EVIDENCE_MISSING", {
@@ -1084,6 +1158,12 @@ export class SshRouterConnector implements RouterConnector {
     //    kept in its own exec: a refused or racing `remove` must never demote a cycle
     //    that succeeded. A guard that survives only re-enables an already-enabled port
     //    and then exits by itself, and it stays recorded so the next cycle waits it out.
+    if (!guardJobId) {
+      // The cycle is proven, so it must not be failed — but without the guard's id the
+      // job can only be left to expire, and no further cycle may share this connector.
+      this.#cycleGuardIdUnknown = true;
+      return;
+    }
     try {
       if (parseAccessPortCycleDisarmed(
         await this.#execute(buildAccessPortCycleDisarmCommand(guardJobId)),
@@ -1091,11 +1171,17 @@ export class SshRouterConnector implements RouterConnector {
     } catch {
       // Intentionally non-fatal, and intentionally leaves the guard recorded.
     }
+  }
 
-    this.#lastAccessCycle = {
-      managedResourceId: target.managedResourceId,
-      immutableKey: resolved.immutableKey,
-    };
+  /**
+   * The managed access port this connector saw the router report as disabled, or null.
+   *
+   * Deliberately reports only the *disable* half of a cycle. Whether the port is up
+   * again is a live read every time (`observeAction`), never a remembered or stored
+   * fact, so nothing here can manufacture a completed cycle on its own.
+   */
+  observedPortDisable(): { managedResourceId: string; immutableKey: string } | null {
+    return this.#observedPortDisable;
   }
 
   async reboot(): Promise<void> {

@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { ApiClientError } from "../src/apiClient.js";
-import { CommandCoordinator, CommandProcessor, sanitizeRouterExport } from "../src/commands.js";
+import {
+  CommandCoordinator,
+  CommandProcessor,
+  OBSERVATION_READ_HEADROOM_MS,
+  sanitizeRouterExport,
+} from "../src/commands.js";
 import type { BackupStore } from "../src/backupStore.js";
 import { AsyncSemaphore } from "../src/concurrency.js";
 import { InterfaceRegistry, RouterOperationError, type WorkerClock } from "../src/domain.js";
@@ -86,10 +91,11 @@ function harness(
   const completions: Array<Record<string, unknown>> = [];
   const observations: Array<Record<string, unknown>> = [];
   const snapshots: Array<Record<string, unknown>> = [];
+  const stages: Array<{ eventKind: string; payload: Record<string, unknown> }> = [];
   const interfaceRegistry = new InterfaceRegistry();
   let dnsAck = false;
   let dhcpRenewed = false;
-  let portCycled = false;
+  let observedDisable: { managedResourceId: string; immutableKey: string } | null = null;
   let rebooted = false;
   let renewCallback: (() => void | Promise<void>) | undefined;
   const connector: RouterConnector = {
@@ -138,7 +144,7 @@ function harness(
             managedResourceId: "50000000-0000-4000-8000-000000000001",
             immutableKey: "ether4",
             enabled: true,
-            disabledObserved: portCycled,
+            disabledObserved: observedDisable !== null,
             enabledObserved: true,
           },
         };
@@ -157,7 +163,16 @@ function harness(
     },
     flushDnsCache: async () => { calls.push("flush"); dnsAck = true; },
     renewDhcpLease: async () => { calls.push("renew-dhcp"); dhcpRenewed = true; return true; },
-    cycleAccessPort: async () => { calls.push("cycle-port"); portCycled = true; },
+    // Mirrors the SSH connector: the disable is remembered from the identity the
+    // router itself confirmed, and it is the only thing that can seed evidence.
+    cycleAccessPort: async (target) => {
+      calls.push("cycle-port");
+      observedDisable = {
+        managedResourceId: target.managedResourceId,
+        immutableKey: target.immutableKey ?? "",
+      };
+    },
+    observedPortDisable: () => observedDisable,
     reboot: async () => { calls.push("reboot"); rebooted = true; },
     close: async () => { calls.push("close"); },
     ...overrides,
@@ -165,8 +180,9 @@ function harness(
   const processor = new CommandProcessor({
     api: {
       renewLease: processorOverrides.renewLease ?? (async () => { calls.push("renew-lease"); }),
-      stage: async (input: { eventKind: string }) => {
+      stage: async (input: { eventKind: string; payload?: Record<string, unknown> }) => {
         calls.push(input.eventKind);
+        stages.push({ eventKind: input.eventKind, payload: input.payload ?? {} });
         await processorOverrides.stage?.(input);
       },
       observe: async (input: Record<string, unknown>) => {
@@ -227,6 +243,7 @@ function harness(
     completions,
     observations,
     snapshots,
+    stages,
     interfaceRegistry,
     processor,
     triggerRenew: async () => renewCallback?.(),
@@ -649,7 +666,45 @@ describe("command processor", () => {
       observationDeadline: "2026-07-28T00:00:20.000Z",
     }, connection);
 
-    expect(test.calls).toContain("backup");
+    // Doomed on arrival, so it must be refused before the router backup, the SFTP
+    // staging and the snapshot upload — minutes of work whose only product would be
+    // a backup for a command that can never be recorded.
+    expect(test.calls).not.toContain("backup");
+    expect(test.calls).not.toContain("reserve");
+    expect(test.calls).not.toContain("snapshot");
+    expect(test.calls).not.toContain("cycle-port");
+    expect(test.completions[0]).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "OBSERVATION_DEADLINE_UNREACHABLE" },
+    });
+  });
+
+  it("counts the reports it still owes between the deadline gate and the observation", async () => {
+    const test = harness();
+    test.interfaceRegistry.update(connection.deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    await test.processor.processClaim({
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      // Room for the cycle itself plus the router read, and one second more. The
+      // worker still owes the control plane EXECUTION_STARTED, EXECUTION_COMPLETED
+      // and POST_CHECK_STARTED before `observedAt` is stamped, so a budget of just
+      // "action + read" lets a command execute that can never be recorded.
+      observationDeadline: new Date(
+        Date.parse("2026-07-28T00:00:00.000Z") + 5_000 + OBSERVATION_READ_HEADROOM_MS + 1_000,
+      ).toISOString(),
+    }, connection);
+
     expect(test.calls).not.toContain("cycle-port");
     expect(test.completions[0]).toMatchObject({
       outcome: "FAILED",
@@ -751,6 +806,194 @@ describe("command processor", () => {
     });
   });
 
+  it("records durable cycle evidence when the session dies after the router disabled the port", async () => {
+    // The scenario the evidence store exists for. A cycle whose SSH session dies
+    // inside the router-side `:delay` REJECTS, so evidence written only on the
+    // success path is never written at all — and the command that most needs to be
+    // reconcilable is the one left with nothing to reconcile from.
+    const directory = await evidenceDirectory();
+    const managedTarget = {
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      immutableKey: "ether4",
+    };
+    const cycleClaim = {
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      managedTarget,
+    };
+    const mapping = [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS" as const,
+      protected: false,
+      enrollmentState: "ENROLLED" as const,
+    }];
+
+    const interrupted = harness({
+      // The router printed NC_CYCLE_DISABLED and then the channel died in the delay.
+      observedPortDisable: () => managedTarget,
+      cycleAccessPort: async () => {
+        throw new RouterOperationError("SSH_COMMAND_TIMEOUT", {
+          retryable: true,
+          mayHaveExecuted: true,
+        });
+      },
+    }, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+    interrupted.interfaceRegistry.update(connection.deviceId, mapping);
+    await interrupted.processor.processClaim(cycleClaim, connection);
+
+    expect(interrupted.completions[0]).toMatchObject({
+      outcome: "UNCERTAIN",
+      result: { code: "SSH_COMMAND_TIMEOUT" },
+    });
+    expect(await new FilePortCycleEvidenceStore(directory, {
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+    }).read(cycleClaim.commandId)).toMatchObject(managedTarget);
+
+    // And the reconciliation that follows can now prove the transition happened.
+    const reconciling = harness({}, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+    reconciling.interfaceRegistry.update(connection.deviceId, mapping);
+    await reconciling.processor.processClaim({
+      ...cycleClaim,
+      reconciliation: true,
+      leaseToken: "60000000-0000-4000-8000-000000000002",
+      fencingGeneration: cycleClaim.fencingGeneration + 1,
+      transitionVersion: cycleClaim.transitionVersion + 2,
+      preObservation: {
+        observedAt: "2026-07-27T23:59:50.000Z",
+        reachable: true,
+        accessInterface: { ...managedTarget, enabled: true },
+      },
+    }, connection);
+
+    expect(reconciling.observations[0]).toMatchObject({
+      observationKind: "RECONCILIATION",
+      evidence: { accessInterface: { disabledObserved: true, enabled: true } },
+    });
+    expect(reconciling.stages.find((entry) => entry.eventKind === "RECONCILIATION_COMPLETED")
+      ?.payload.decision).toMatchObject({ outcome: "SUCCEEDED" });
+  });
+
+  it("records no evidence for a port the router never reported disabled", async () => {
+    const directory = await evidenceDirectory();
+    const managedTarget = {
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      immutableKey: "ether4",
+    };
+    const test = harness({
+      // A disable really happened, but on a different managed port than this command
+      // owns. Evidence stays bound to the command's own target or is not written.
+      observedPortDisable: () => ({
+        managedResourceId: "50000000-0000-4000-8000-0000000000cc",
+        immutableKey: "ether9",
+      }),
+      cycleAccessPort: async () => {
+        throw new RouterOperationError("SSH_COMMAND_TIMEOUT", {
+          retryable: true,
+          mayHaveExecuted: true,
+        });
+      },
+    }, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+    test.interfaceRegistry.update(connection.deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    const cycleClaim = {
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      managedTarget,
+    };
+    await test.processor.processClaim(cycleClaim, connection);
+
+    expect(await new FilePortCycleEvidenceStore(directory, {
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+    }).read(cycleClaim.commandId)).toBeNull();
+  });
+
+  it("never lets stored evidence outvote a live read of the port", async () => {
+    // A stored disable may only ever restore the *transition*. Whether the port is up
+    // again is read off the router every time, so a cycle that left the port down can
+    // never be turned into a SUCCEEDED verdict by anything on disk.
+    const directory = await evidenceDirectory();
+    const managedTarget = {
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      immutableKey: "ether4",
+    };
+    const cycleClaim = {
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      managedTarget,
+    };
+    await new FilePortCycleEvidenceStore(directory, {
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+    }).record({
+      commandId: cycleClaim.commandId,
+      ...managedTarget,
+      observedAt: "2026-07-28T00:00:00.000Z",
+    });
+
+    const test = harness({
+      observeAction: async () => ({
+        observedAt: "2026-07-28T00:00:00.000Z",
+        reachable: true,
+        // The guard has not fired yet: the tenant's port is still down.
+        accessInterface: {
+          ...managedTarget,
+          enabled: false,
+          disabledObserved: false,
+          enabledObserved: false,
+        },
+      }),
+    }, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+
+    await test.processor.processClaim({
+      ...cycleClaim,
+      reconciliation: true,
+      preObservation: {
+        observedAt: "2026-07-27T23:59:50.000Z",
+        reachable: true,
+        accessInterface: { ...managedTarget, enabled: true },
+      },
+    }, connection);
+
+    expect(test.observations[0]).toMatchObject({
+      evidence: {
+        accessInterface: { disabledObserved: true, enabled: false, enabledObserved: false },
+      },
+    });
+    expect(test.stages.find((entry) => entry.eventKind === "RECONCILIATION_COMPLETED")
+      ?.payload.decision).toMatchObject({ outcome: "UNCERTAIN" });
+  });
+
   it("never invents port-cycle evidence for another command", async () => {
     const directory = await evidenceDirectory();
     const managedTarget = {
@@ -789,6 +1032,51 @@ describe("command processor", () => {
 
     expect(test.observations[0]).toMatchObject({
       observationKind: "RECONCILIATION",
+      evidence: { accessInterface: { disabledObserved: false } },
+    });
+  });
+
+  it("ignores stored evidence that names a different managed port", async () => {
+    // The store returns the managed identity exactly as it found it on disk; the
+    // binding that makes it trustworthy is here, against the port the live read
+    // actually observed. Anything that reaches the file is therefore still unable to
+    // put a disable on a port this command does not own.
+    const directory = await evidenceDirectory();
+    const managedTarget = {
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      immutableKey: "ether4",
+    };
+    const cycleClaim = {
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      managedTarget,
+    };
+    await new FilePortCycleEvidenceStore(directory, {
+      now: () => new Date("2026-07-28T00:00:00.000Z"),
+    }).record({
+      commandId: cycleClaim.commandId,
+      managedResourceId: "50000000-0000-4000-8000-0000000000cc",
+      immutableKey: "ether9",
+      observedAt: "2026-07-28T00:00:00.000Z",
+    });
+
+    const test = harness({}, false, {}, {
+      portCycleEvidence: new FilePortCycleEvidenceStore(directory, {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+      }),
+    });
+    await test.processor.processClaim({
+      ...cycleClaim,
+      reconciliation: true,
+      preObservation: {
+        observedAt: "2026-07-27T23:59:50.000Z",
+        reachable: true,
+        accessInterface: { ...managedTarget, enabled: true },
+      },
+    }, connection);
+
+    expect(test.observations[0]).toMatchObject({
       evidence: { accessInterface: { disabledObserved: false } },
     });
   });

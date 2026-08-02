@@ -550,7 +550,20 @@ test("runtime proof covers rollback-target retention and null poll evidence", ()
 test("disposable proof exercises both retention reachability and null poll evidence", () => {
   const source = readFileSync(disposableRunnerPath, "utf8");
   assert.match(source, /'invariants',\s*22/);
-  assert.match(source, /verdict\?\.invariants !== 22/);
+  // The runner now applies a second migration and prints a second verdict, so
+  // the release-readback count is pinned by name. Its enforcement must stay
+  // exact: a shrunk or missing release verdict has to fail the proof.
+  assert.match(source, /RELEASE_READBACK_INVARIANTS\s*=\s*22/);
+  assert.match(
+    source,
+    /verdicts\[0\]\?\.invariants !== RELEASE_READBACK_INVARIANTS/,
+    "the release readback verdict must still be checked exactly",
+  );
+  assert.match(
+    source,
+    /verdicts\.length !== 2/,
+    "a missing operational-safety verdict must fail the proof",
+  );
   assert.match(
     source,
     /'connections',\s*NULL,\s*'successfulPolls',\s*NULL,\s*'failedPolls',\s*NULL/,

@@ -107,6 +107,20 @@ describe("worker configuration", () => {
     }).commandTimeoutMs).toBe(60_000);
   });
 
+  it("keeps the generic command-timeout floor at the shared minimum for every setting", () => {
+    // The cycle-aware 45s check shadows this floor today, so nothing else would
+    // notice it being loosened. It is the only thing standing between a typo and a
+    // sub-second SSH watchdog if the cycle check is ever narrowed or made optional.
+    for (const timeout of ["1000", "4999"]) {
+      expect(() => loadWorkerConfig({
+        env: { ...validEnvironment, NETWORK_CENTER_COMMAND_TIMEOUT_MS: timeout },
+        argv: ["node", "dist/main.js"],
+        files: secureFiles,
+        platform: "linux",
+      })).toThrow(/outside its safe range/i);
+    }
+  });
+
   it("keeps the worker key as local labeling only and matches the database key format", () => {
     expect(() => loadWorkerConfig({
       env: { ...validEnvironment, NETWORK_CENTER_WORKER_KEY: "UPPER:scope" },

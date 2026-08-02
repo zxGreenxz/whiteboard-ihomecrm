@@ -1,15 +1,59 @@
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-const workerRoot = resolve(new URL("../", import.meta.url).pathname.slice(1));
+const workerRoot = fileURLToPath(new URL("../", import.meta.url));
 const activate = join(workerRoot, "deploy", "activate-release.sh");
 const installHost = join(workerRoot, "deploy", "install-host.sh");
 const rollback = join(workerRoot, "deploy", "rollback-release.sh");
-const bash = "C:\\Program Files\\Git\\bin\\bash.exe";
+
+export const BASH_OVERRIDE = "NETWORK_CENTER_TEST_BASH";
+
+/**
+ * Same contract as the install-host safety suite: discover the interpreter
+ * instead of pinning one Windows path, and throw when there is none so this
+ * proof cannot silently skip on the CI that gates a production host change.
+ */
+export function discoverBash(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+  exists: (candidate: string) => boolean,
+): string {
+  const candidates: string[] = [];
+  const override = env[BASH_OVERRIDE]?.trim();
+  if (override) {
+    // An explicit override that is not there is an operator mistake, never a
+    // reason to quietly fall back to some other interpreter.
+    if (!exists(override)) throw new Error(`${BASH_OVERRIDE} points at a missing interpreter: ${override}`);
+    return override;
+  }
+  if (platform === "win32") {
+    // %SystemRoot%\System32\bash.exe is the WSL launcher and cannot read the
+    // Windows temp fixtures these harnesses write, so Git Bash is tried first.
+    for (const base of [env.ProgramW6432, env.ProgramFiles, env["ProgramFiles(x86)"], "C:\\Program Files"]) {
+      if (base) candidates.push(join(base, "Git", "bin", "bash.exe"));
+    }
+  }
+  const system32 = join(env.SystemRoot ?? "C:\\Windows", "System32").toLowerCase();
+  for (const entry of (env.PATH ?? env.Path ?? "").split(delimiter)) {
+    if (entry === "") continue;
+    if (platform === "win32" && entry.toLowerCase().replace(/[\\/]+$/, "") === system32) continue;
+    candidates.push(join(entry, platform === "win32" ? "bash.exe" : "bash"));
+  }
+  if (platform !== "win32") candidates.push("/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash");
+  const found = candidates.find((candidate) => exists(candidate));
+  if (found !== undefined) return found;
+  throw new Error(
+    `no bash interpreter found for the deployment host runtime suite; set ${BASH_OVERRIDE} to one. ` +
+      "These tests must run before a production host is touched, so an absent interpreter fails loudly instead of skipping.",
+  );
+}
+
+const bash = discoverBash(process.env, process.platform, existsSync);
 const roots: string[] = [];
 
 function posix(path: string): string {
@@ -300,7 +344,29 @@ afterEach(() => {
   }
 });
 
-describe.skipIf(!existsSync(bash))("deployment host runtime state machine", () => {
+describe("deployment host runtime state machine", () => {
+  it("discovers bash portably and fails loudly when no interpreter exists", () => {
+    expect(() => discoverBash({ PATH: ["/usr/bin", "/bin"].join(delimiter) }, "linux", () => false))
+      .toThrow(new RegExp(BASH_OVERRIDE));
+    expect(discoverBash({ PATH: ["/opt/tools", "/usr/bin"].join(delimiter) }, "linux", (candidate) => candidate === join("/usr/bin", "bash")))
+      .toBe(join("/usr/bin", "bash"));
+    expect(discoverBash({ PATH: "" }, "linux", (candidate) => candidate === "/bin/bash")).toBe("/bin/bash");
+    expect(discoverBash({ [BASH_OVERRIDE]: "/custom/bash", PATH: "" }, "linux", (candidate) => candidate === "/custom/bash"))
+      .toBe("/custom/bash");
+    expect(() => discoverBash({ [BASH_OVERRIDE]: "/gone/bash", PATH: "" }, "linux", (candidate) => candidate === "/bin/bash"))
+      .toThrow(/\/gone\/bash/);
+    const gitBash = join("C:\\Program Files", "Git", "bin", "bash.exe");
+    const wslLauncher = join("C:\\Windows", "System32", "bash.exe");
+    expect(
+      discoverBash(
+        { SystemRoot: "C:\\Windows", ProgramFiles: "C:\\Program Files", PATH: [join("C:\\Windows", "System32")].join(delimiter) },
+        "win32",
+        (candidate) => candidate === gitBash || candidate === wslLauncher,
+      ),
+    ).toBe(gitBash);
+    expect(existsSync(bash), `discovered interpreter is missing: ${bash}`).toBe(true);
+  });
+
   it("rejects an unmanaged directory instead of recording it as absent", () => {
     const { root, result } = runHarness(`
 source <(sed '/^while /,$d' "$INSTALL_HOST")
@@ -373,6 +439,28 @@ run_install_transaction stub_installer
     expect(existsSync(join(root, "host", "etc", "nftables.d", "ihome-network-center.nft"))).toBe(false);
   });
 
+  it("never flips the co-tenant's host-global forwarding flag while rolling back", () => {
+    // This VPS also runs an unrelated production service. ip_forward is a single
+    // host-global knob: if it was already 1 when we arrived, the rollback path
+    // must never drop it — not even transiently — and must never leave a
+    // persisted sysctl.d assertion of a value we did not own behind.
+    const { root, result } = runHarness(hostHarness(`
+set_host_state forwarding 1
+set_host_state firewall_restart_status 1
+run_install_transaction stub_installer
+`));
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/prior persistent and live state restored/i);
+    const state = (name: string) => readFileSync(join(root, "host-state", name), "utf8").trim();
+    expect(state("forwarding"), "co-tenant forwarding was left flipped").toBe("1");
+    const log = readFileSync(join(root, "order.log"), "utf8");
+    const drops = log.split("\n").filter((line) => line === "sysctl:-w net.ipv4.ip_forward=0");
+    // Exactly one: the forward-off that apply_network_prerequisites performs
+    // before the firewall is loaded. The rollback must not add a second.
+    expect(drops, `rollback dropped forwarding again:\n${log}`).toHaveLength(1);
+    expect(existsSync(join(root, "host", "etc", "sysctl.d", "90-ihome-network-center.conf"))).toBe(false);
+  });
+
   it("unloads the injected nftables table before claiming the host was restored", () => {
     const { root, result } = runHarness(hostHarness(`
 set_host_state wg_show_status 1
@@ -387,6 +475,33 @@ run_install_transaction stub_installer
     expect(readFileSync(join(root, "host-state", "managed_table"), "utf8").trim()).toBe("absent");
     expect(result.stderr).toMatch(/prior persistent and live state restored/i);
   });
+
+  it("leaves no scratch copy of the fleet WireGuard private key on a failed run", () => {
+    // The merged wg0 scratch contains the fleet-wide [Interface] PrivateKey.
+    // Removing it only on the success path leaves that key sitting on disk after
+    // exactly the runs an operator then hands to somebody else to debug.
+    for (const [label, failure] of [
+      ["error", "install_managed_file() { return 1; }"],
+      ["dropped-session", "install_managed_file() { kill -HUP $BASHPID; }"],
+    ] as const) {
+      const { root, result } = runHarness(hostHarness(`
+${failure}
+run_install_transaction stub_installer
+`));
+      expect(result.status, label).not.toBe(0);
+      const entries = readdirSync(root, { recursive: true, encoding: "utf8" });
+      const scratch = entries.filter((entry) => /(^|[\\/])\.(wg0-merged|firewall-fragment|wg0-merge|wg-firewall-dropin|network-center)\./.test(entry));
+      expect(scratch, `${label} left scratch behind: ${scratch.join(", ")}`).toHaveLength(0);
+      const leaked = entries.filter((entry) => {
+        const full = join(root, entry);
+        if (!statSync(full).isFile()) return false;
+        return readFileSync(full, "utf8").includes(VPS_KEY);
+      });
+      // Only the operator's own source file may still hold the key (harness.sh
+      // is this test's own script, which embeds that source verbatim).
+      expect(leaked.map((entry) => entry.replaceAll("\\", "/")).sort(), label).toEqual(["harness.sh", "wg0.source"]);
+    }
+  }, 20_000);
 
   it("keeps the first building's peer when the second building is onboarded", () => {
     const { root, result } = runHarness(hostHarness(`
@@ -910,6 +1025,48 @@ printf 'boot-continued\\n'
       const quarantined = readdirSync(join(root, "state")).filter((name) => name.includes("corrupt"));
       expect(quarantined, "the corrupt journal must be kept for inspection").toHaveLength(1);
       expect(readFileSync(join(root, "state", quarantined[0]!), "utf8")).toBe(corrupt);
+    }
+  });
+
+  it("quarantines a runtime intent it cannot re-apply instead of wedging boot", () => {
+    // recover_transition runs from start-current, so dying inside the runtime
+    // intent recovery is the same permanent stop the transition-journal
+    // quarantine was introduced to prevent: every command, including boot,
+    // fails until somebody SSHes in and deletes the file by hand.
+    const otherSha = "e".repeat(40);
+    // seed is the release environment before recovery, so "env stays seed" and
+    // "env became stop" are distinguishable rather than trivially equal.
+    for (const [label, sha, stop, seed, containerStatus, expectedEnv] of [
+      ["stale-release", otherSha, "true", "false", "running", "false"],
+      ["resume-failed", FIXTURE_SHA, "false", "true", "running", "false"],
+      ["stop-not-in-force", FIXTURE_SHA, "true", "false", "exited", "true"],
+    ] as const) {
+      const intent = `{"schemaVersion":1,"operation":"emergency-stop","releaseSha":"${sha}","emergencyStop":${stop}}`;
+      const { root, result } = runHarness(`
+source "$ACTIVATE"
+${CURRENT_RELEASE_FIXTURE}
+${RUNTIME_INTENT_JQ}
+make_release_env "$fixture_env" '${FIXTURE_SHA}' "$SEED"
+printf '%s\\n' "$INTENT" > "$RUNTIME_INTENT_FILE"
+start_pointer() { return 1; }
+docker() { case "$*" in *".State.Status"*) printf '%s\\n' "$STATUS";; *) return 1;; esac; }
+converge_pointer_set() { printf 'converge\\n'; }
+recover_transition
+printf 'boot-continued\\n'
+`, { INTENT: intent, SEED: seed, STATUS: containerStatus });
+      expect(result.status, `${label}: ${result.stderr}`).toBe(0);
+      expect(result.stdout, label).toContain("boot-continued");
+      expect(result.stderr, label).toMatch(/quarantin/i);
+      expect(existsSync(join(root, "state", "runtime-intent.json")), label).toBe(false);
+      const quarantined = readdirSync(join(root, "state")).filter((name) => name.includes("corrupt"));
+      expect(quarantined, `${label} kept no copy for inspection`).toHaveLength(1);
+      expect(readFileSync(join(root, "state", quarantined[0]!), "utf8").trim(), label).toBe(intent);
+      // Quarantine must not un-pause a worker: an intent for the CURRENT release
+      // is written into the release environment before it is abandoned, while an
+      // intent naming another release must not touch that environment at all.
+      const env = readFileSync(join(root, "releases", FIXTURE_SHA, ".env.active"), "utf8");
+      expect(env, label).toContain(`NETWORK_CENTER_EMERGENCY_STOP=${expectedEnv}`);
+      expect(env, label).not.toContain(`NETWORK_CENTER_EMERGENCY_STOP=${expectedEnv === "true" ? "false" : "true"}`);
     }
   });
 

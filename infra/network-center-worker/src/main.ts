@@ -144,6 +144,10 @@ async function run(): Promise<void> {
     leaseSeconds: config.leaseSeconds,
     logger,
     routerOperationSemaphore,
+    // The observation budget has to cover the staged events the worker still owes the
+    // control plane before it can stamp `observedAt`, so it is sized on the real
+    // outbound timeout rather than on a guess.
+    apiRequestTimeoutMs: config.requestTimeoutMs,
     // Survives both the per-claim connector and a worker restart, so a port cycle
     // that really happened can still be proven during reconciliation.
     // Shares the command clock: the retention window is measured against the same

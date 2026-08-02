@@ -644,19 +644,36 @@ recover_runtime_intent() {
     return 0
   fi
   validate_pointer "$CURRENT_POINTER"
-  [[ "$(pointer_value "$CURRENT_POINTER" '.releaseSha')" == "$release_sha" ]] ||
-    die "recorded runtime intent does not match the current release"
+  if [[ "$(pointer_value "$CURRENT_POINTER" '.releaseSha')" != "$release_sha" ]]; then
+    # Naming a release that is no longer current makes this intent unappliable;
+    # the environment of the release that IS current must not be rewritten.
+    abandon_runtime_intent "it names a release that is no longer current"
+    return 0
+  fi
   env_file="$(pointer_value "$CURRENT_POINTER" '.envFile')"
+  # The operator's runtime state lands in the release environment BEFORE the
+  # restart is attempted, so abandoning the journal below still leaves an
+  # emergency stop applied to whatever starts the worker next.
   make_release_env "$env_file" "$release_sha" "$emergency_stop"
   if ! (start_pointer "$CURRENT_POINTER"); then
     # A paused worker cannot complete the poll cycle its health gate needs; that
     # is expected, and it must never be a reason to un-pause it.
     if [[ "$emergency_stop" != true ]] || ! pointer_container_running "$CURRENT_POINTER"; then
-      die "interrupted runtime change could not be completed"
+      abandon_runtime_intent "the worker did not come back under the recorded runtime state"
+      return 0
     fi
     printf 'network-center activation: emergency stop reapplied without a health readback\n' >&2
   fi
   end_runtime_mutation
+}
+
+# recover_transition runs from start-current, so dying inside runtime-intent
+# recovery wedges boot and every other command - exactly the permanent stop the
+# transition-journal quarantine exists to prevent. Report loudly, keep the bytes
+# for inspection, and let the pointer set stay authoritative.
+abandon_runtime_intent() {
+  printf 'network-center activation: recorded runtime intent could not be re-applied (%s)\n' "$1" >&2
+  quarantine_state_file "$RUNTIME_INTENT_FILE" runtime-intent
 }
 
 recover_transition() {

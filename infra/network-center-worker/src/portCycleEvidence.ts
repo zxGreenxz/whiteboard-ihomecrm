@@ -12,9 +12,20 @@
  * A reconciliation pass runs on a brand-new connector — frequently in a brand-new
  * process — so that in-memory assertion is gone exactly when it is needed. This
  * store keeps the same evidence on disk, keyed by command, so a cycle that really
- * happened can still be proven on the next pass. It never manufactures evidence:
- * an entry is written only after the router itself reported the ordered
- * disable/enable readback, and it is scoped to one command and one managed port.
+ * happened can still be proven on the next pass. It never manufactures evidence: an
+ * entry is written only after the router itself printed the `NC_CYCLE_DISABLED`
+ * readback for that port, whether or not the rest of the cycle then survived.
+ *
+ * ## What this store does and does not authenticate
+ *
+ * It authenticates exactly one thing: the stored `commandId` against the hash the
+ * file is named for, so a record cannot be moved to another command's slot. The
+ * managed identity fields are returned as stored — a caller that writes to this
+ * directory can put any port name in them. They are made trustworthy by the reader:
+ * `CommandProcessor` accepts a record only when both fields match the port the *live*
+ * observation just read off the router, and even then only ever restores the disabled
+ * half. `enabled`/`enabledObserved` never come from here, so no file on disk can
+ * assemble a SUCCEEDED cycle by itself.
  */
 
 import { createHash } from "node:crypto";

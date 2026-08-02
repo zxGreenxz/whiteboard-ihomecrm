@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   lstat,
   mkdir,
@@ -10,7 +11,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -952,4 +953,497 @@ export async function runDisposableSupabaseMatrix({
     );
   }
   return verdict;
+}
+
+// ---------------------------------------------------------------------------
+// Docker-free disposable PostgreSQL cluster.
+//
+// WHY A SECOND MODE EXISTS
+// runDisposableSupabaseMatrix() above replays supabase/migrations/** in
+// lexicographic order through the Supabase CLI. That replay cannot succeed from
+// a blank database and never could: the pre-boundary history is not
+// self-consistent. Measured on PostgreSQL 17 by applying the 361 pre-boundary
+// files in the harness's own order, 25 of them fail, and the first four
+// failures are independent root causes rather than cascades:
+//   * 016_meter_readings_enhancements.sql reads `contracts.building_id`, a
+//     column NO migration in this repository ever creates (verified by scanning
+//     every `ALTER TABLE contracts` statement in all 499 files);
+//   * 017_meters_table.sql reads `meter_readings.meter_id`, added only by 018;
+//   * 025_create_contract_files_bucket.sql ends with `COMMENT ON CONSTRAINT
+//     "..." IS '...'` with no `ON <table>` clause - a hard SQL syntax error;
+//   * 029_missing_features.sql and 20250101000008_create_roles_and_staff_
+//     assignments.sql both create `roles`, and the second does it without
+//     IF NOT EXISTS, because numeric- and timestamp-prefixed names interleave
+//     badly under lexicographic ordering.
+// Production is unaffected - those files were applied incrementally, in real
+// time order, against a database carrying out-of-band changes - and rewriting
+// them now would desync the applied-migration ledger.
+//
+// So this mode stops replaying unusable history. It builds the disposable
+// database from a declared platform bootstrap plus the REAL, unmodified Network
+// Center migration files, which is exactly the surface every Network Center
+// proof asserts against. It needs no Docker, no Supabase CLI, no network access
+// and no developer database: only a local PostgreSQL 16+ binary directory.
+//
+// SAFETY (this project has already leaked a disposable Postgres to the public
+// internet once, for three days): the cluster listens on 127.0.0.1 only, on an
+// ephemeral port, in a TEMP directory whose name is pattern-checked before any
+// recursive removal, with no restart policy of any kind, and teardown is
+// verified by evidence - the port must refuse connections and the data
+// directory must be gone before this function returns success.
+// ---------------------------------------------------------------------------
+
+const NETWORK_CENTER_MIGRATION_PATTERN =
+  /^20260729\d{6}_network_center_[a-z0-9_]+\.sql$/;
+const LOCAL_CLUSTER_PREFIX = "network-center-pg-";
+const LOCAL_CLUSTER_NAME_PATTERN = /^network-center-pg-[A-Za-z0-9_-]+$/u;
+const LOCAL_NATIVE_TIMEOUT_MS = 120_000;
+const LOCAL_PG_CTL_TIMEOUT_MS = 60_000;
+const LOCAL_VERSION_PROBE_TIMEOUT_MS = 10_000;
+const LOCAL_PORT_CLOSED_TIMEOUT_MS = 3_000;
+export const MINIMUM_NETWORK_CENTER_MIGRATIONS = 13;
+export const FLEET_SEED_AFTER_MIGRATION =
+  "20260729040000_network_center_rls_rpcs_realtime.sql";
+
+export const PLATFORM_BOOTSTRAP_RELATIVE_PATH = join(
+  "scripts",
+  "__tests__",
+  "network-center-platform-bootstrap.sql",
+);
+
+function localExecutableName(name, platform = process.platform) {
+  return platform === "win32" ? `${name}.exe` : name;
+}
+
+export function candidateLocalPostgresBins(
+  environment = process.env,
+  platform = process.platform,
+) {
+  const configured = environment.POSTGRES_BIN?.trim();
+  return [
+    configured || null,
+    platform === "win32" ? "C:\\Program Files\\PostgreSQL\\17\\bin" : null,
+    platform === "win32" ? "C:\\Program Files\\PostgreSQL\\16\\bin" : null,
+    platform === "win32" ? null : "/usr/lib/postgresql/17/bin",
+    platform === "win32" ? null : "/usr/lib/postgresql/16/bin",
+    platform === "win32" ? null : "/usr/local/pgsql/bin",
+  ].filter(Boolean);
+}
+
+export function assertSupportedLocalPostgresVersion(name, versionOutput) {
+  const match = String(versionOutput).match(/\bPostgreSQL\)?\s+(\d+)(?:\.\d+)?/u);
+  if (!match) {
+    throw new Error(
+      `${name} did not report a valid PostgreSQL version; PostgreSQL 16+ is required`,
+    );
+  }
+  const major = Number.parseInt(match[1], 10);
+  if (major < 16) {
+    throw new Error(`${name} requires PostgreSQL 16+ (reported major ${major})`);
+  }
+  return major;
+}
+
+function probeLocalPostgresBinary(name, binary) {
+  const probe = spawnSync(binary, ["--version"], {
+    encoding: "utf8",
+    timeout: LOCAL_VERSION_PROBE_TIMEOUT_MS,
+    windowsHide: true,
+  });
+  if (probe.status !== 0) return false;
+  assertSupportedLocalPostgresVersion(name, probe.stdout || probe.stderr);
+  return true;
+}
+
+function resolveLocalBinary(name, environment = process.env) {
+  for (const directory of candidateLocalPostgresBins(environment)) {
+    const candidate = join(directory, localExecutableName(name));
+    if (existsSync(candidate) && probeLocalPostgresBinary(name, candidate)) {
+      return candidate;
+    }
+  }
+  const command = localExecutableName(name);
+  if (probeLocalPostgresBinary(name, command)) return command;
+  throw new Error(
+    `${name} is unavailable; set POSTGRES_BIN to a PostgreSQL 16+ bin directory`,
+  );
+}
+
+export function assertLocalClusterPath(cluster, tempDirectory = tmpdir()) {
+  const resolvedTempDirectory = resolve(tempDirectory);
+  const resolvedCluster = resolve(cluster);
+  if (
+    dirname(resolvedCluster) !== resolvedTempDirectory ||
+    !LOCAL_CLUSTER_NAME_PATTERN.test(basename(resolvedCluster))
+  ) {
+    throw new Error(
+      `Refusing destructive cleanup outside a disposable TEMP cluster: ${resolvedCluster}`,
+    );
+  }
+  return resolvedCluster;
+}
+
+function runLocalNative(file, args, { input, stdio, timeoutMs } = {}) {
+  const options = {
+    encoding: "utf8",
+    windowsHide: true,
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: timeoutMs ?? LOCAL_NATIVE_TIMEOUT_MS,
+  };
+  if (input !== undefined) options.input = input;
+  if (stdio !== undefined) options.stdio = stdio;
+  const result = spawnSync(file, args, options);
+  if (result.error || result.status !== 0) {
+    const detail = String(
+      result.stderr || result.stdout || "native command failed",
+    )
+      .trim()
+      .slice(-4_000);
+    const outcome =
+      result.error?.code === "ETIMEDOUT"
+        ? `timed out after ${options.timeout}ms`
+        : `failed (${result.status ?? result.error?.code ?? "unknown"})`;
+    throw new Error(`${basename(file)} ${outcome}: ${detail}`, {
+      cause: result.error,
+    });
+  }
+  return result.stdout ?? "";
+}
+
+export async function assertLoopbackPortClosed(port) {
+  await new Promise((resolvePromise, reject) => {
+    const socket = connect({ host: "127.0.0.1", port });
+    const settle = (error) => {
+      socket.removeAllListeners();
+      socket.destroy();
+      if (error) resolvePromise();
+      else {
+        reject(
+          new Error(
+            `Disposable PostgreSQL teardown unverified: 127.0.0.1:${port} still accepts connections`,
+          ),
+        );
+      }
+    };
+    socket.setTimeout(LOCAL_PORT_CLOSED_TIMEOUT_MS);
+    socket.once("connect", () => settle(null));
+    socket.once("timeout", () => settle(new Error("timeout")));
+    socket.once("error", (error) => settle(error));
+  });
+}
+
+export async function loadNetworkCenterMigrations(repoRoot) {
+  const migrationRoot = join(repoRoot, "supabase", "migrations");
+  const names = (await readdir(migrationRoot, { withFileTypes: true }))
+    .filter(
+      (entry) =>
+        entry.isFile() && NETWORK_CENTER_MIGRATION_PATTERN.test(entry.name),
+    )
+    .map((entry) => entry.name)
+    .sort();
+  if (names.length < MINIMUM_NETWORK_CENTER_MIGRATIONS) {
+    throw new Error(
+      `Network Center migration set shrank to ${names.length}; expected at least ${MINIMUM_NETWORK_CENTER_MIGRATIONS}`,
+    );
+  }
+  const bodies = await Promise.all(
+    names.map((name) => readFile(join(migrationRoot, name), "utf8")),
+  );
+  return names.map((name, index) => ({ name, body: bodies[index] }));
+}
+
+// Deterministic tenancy the Network Center proofs address by well-known id:
+// one canonical DEMO organization that owns every fixture write, and one
+// non-demo organization that exists only as a read-only negative target.
+export function buildLocalClusterSeedSql({
+  // Fleet fixtures (buildings, routers, site settings) exist for the
+  // cross-tenant authorization matrix. Runtime proofs that build their own
+  // fleet must opt out: public.network_devices carries a partial unique index
+  // of one active MikroTik per building, and a fixture inserting its own router
+  // into a pre-seeded building would collide on it.
+  includeFleetFixtures = true,
+}) {
+  const fleetFixtures = includeFleetFixtures
+    ? `INSERT INTO public.buildings (
+  id, user_id, organization_id, name, code, province, district, ward,
+  total_floors, total_rooms, is_virtual
+) VALUES
+  ('dddd1000-0000-4000-8000-000000000001', '${DEMO_OWNER_ID}', '${DEMO_ORG_ID}', 'DEMO-NC-BUILDING-A', 'DEMO-NC-A', 'Local', 'Local', 'Local', 1, 1, false),
+  ('dddd1000-0000-4000-8000-000000000002', '${DEMO_OWNER_ID}', '${DEMO_ORG_ID}', 'DEMO-NC-BUILDING-B', 'DEMO-NC-B', 'Local', 'Local', 'Local', 1, 1, false),
+  ('aaaa1000-0000-4000-8000-000000000001', '${PROD_OWNER_ID}', '${PROD_ORG_ID}', 'PROD-NC-READ-ONLY', 'PROD-NC-RO', 'Local', 'Local', 'Local', 1, 1, false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.authorization_scopes (organization_id, scope_type, building_id)
+VALUES
+  ('${DEMO_ORG_ID}', 'BUILDING', 'dddd1000-0000-4000-8000-000000000001'),
+  ('${DEMO_ORG_ID}', 'BUILDING', 'dddd1000-0000-4000-8000-000000000002'),
+  ('${PROD_ORG_ID}', 'BUILDING', 'aaaa1000-0000-4000-8000-000000000001')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.network_devices (
+  organization_id, building_id, device_kind, external_key, display_name,
+  vendor, lifecycle_status, write_capability, is_active
+) VALUES
+  ('${DEMO_ORG_ID}', 'dddd1000-0000-4000-8000-000000000001', 'MIKROTIK', 'slot:primary', 'DEMO Router A', 'MikroTik', 'UNPROVISIONED', true, true),
+  ('${DEMO_ORG_ID}', 'dddd1000-0000-4000-8000-000000000002', 'MIKROTIK', 'slot:primary', 'DEMO Router B', 'MikroTik', 'UNPROVISIONED', true, true)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.network_site_settings (organization_id, building_id)
+VALUES
+  ('${DEMO_ORG_ID}', 'dddd1000-0000-4000-8000-000000000001'),
+  ('${DEMO_ORG_ID}', 'dddd1000-0000-4000-8000-000000000002')
+ON CONFLICT DO NOTHING;
+`
+    : "";
+  return `INSERT INTO auth.users (id, aud, role, email) VALUES
+  ('${PROD_OWNER_ID}', 'authenticated', 'authenticated', 'local.prod.owner@example.invalid'),
+  ('${DEMO_OWNER_ID}', 'authenticated', 'authenticated', 'demo.chunha@username.ihomecrm.local'),
+  ('${DEMO_VIEW_ID}', 'authenticated', 'authenticated', 'demo.ketoan@username.ihomecrm.local'),
+  ('${DEMO_EXECUTE_ID}', 'authenticated', 'authenticated', 'demo.quanly@username.ihomecrm.local')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.organizations (id, slug, name, status, is_demo, created_by) VALUES
+  ('${DEMO_ORG_ID}', 'ihome-demo', 'iHome CRM (Demo)', 'ACTIVE', true, '${DEMO_OWNER_ID}'),
+  ('${PROD_ORG_ID}', 'ihome-prod', 'iHome CRM', 'ACTIVE', false, '${PROD_OWNER_ID}')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.organization_memberships (
+  id, organization_id, user_id, member_type, status, activated_at
+) VALUES
+  ('dddd5000-0000-4000-8000-000000000001', '${DEMO_ORG_ID}', '${DEMO_OWNER_ID}', 'OWNER', 'ACTIVE', clock_timestamp()),
+  ('dddd5000-0000-4000-8000-000000000002', '${DEMO_ORG_ID}', '${DEMO_VIEW_ID}', 'STAFF', 'ACTIVE', clock_timestamp()),
+  ('dddd5000-0000-4000-8000-000000000003', '${DEMO_ORG_ID}', '${DEMO_EXECUTE_ID}', 'STAFF', 'ACTIVE', clock_timestamp()),
+  ('dddd5000-0000-4000-8000-00000000000a', '${PROD_ORG_ID}', '${PROD_OWNER_ID}', 'OWNER', 'ACTIVE', clock_timestamp())
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.authorization_scopes (organization_id, scope_type)
+VALUES ('${DEMO_ORG_ID}', 'ORGANIZATION'), ('${PROD_ORG_ID}', 'ORGANIZATION')
+ON CONFLICT DO NOTHING;
+
+${fleetFixtures}`;
+}
+
+// The proof row is written after every migration, because it records the
+// manifest the run actually applied.
+export function buildLocalClusterProofSql({
+  proofNonce,
+  manifestSha256,
+  migrationCount,
+}) {
+  return `CREATE TABLE IF NOT EXISTS app_private.network_center_disposable_proof (
+  proof_nonce text PRIMARY KEY,
+  migration_manifest_sha256 text NOT NULL,
+  migration_count integer NOT NULL,
+  network_center_migration_count integer NOT NULL,
+  seeded_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+REVOKE ALL ON app_private.network_center_disposable_proof
+  FROM PUBLIC, anon, authenticated, service_role;
+INSERT INTO app_private.network_center_disposable_proof (
+  proof_nonce, migration_manifest_sha256, migration_count,
+  network_center_migration_count
+) VALUES (
+  ${sqlLiteral(proofNonce)}, ${sqlLiteral(manifestSha256)},
+  ${migrationCount}, ${migrationCount}
+);
+`;
+}
+
+/**
+ * Build a disposable PostgreSQL database from the declared platform bootstrap
+ * plus every real Network Center migration, run `buildSql()` against it, and
+ * tear the cluster down with verified evidence.
+ */
+export async function runDisposableLocalClusterMatrix({
+  buildSql,
+  parseVerdict,
+  repoRoot = DEFAULT_REPO_ROOT,
+  tempRoot = tmpdir(),
+  environment = process.env,
+  proofNonce = defaultProofNonce,
+  includeFleetFixtures = true,
+} = {}) {
+  if (typeof buildSql !== "function" || typeof parseVerdict !== "function") {
+    throw new Error(
+      "Disposable local cluster requires SQL builder and verdict parser",
+    );
+  }
+  const resolvedRepoRoot = resolve(repoRoot);
+  const binaries = Object.fromEntries(
+    ["initdb", "pg_ctl", "psql"].map((name) => [
+      name,
+      resolveLocalBinary(name, environment),
+    ]),
+  );
+  const bootstrap = await readFile(
+    join(resolvedRepoRoot, PLATFORM_BOOTSTRAP_RELATIVE_PATH),
+    "utf8",
+  );
+  const migrations = await loadNetworkCenterMigrations(resolvedRepoRoot);
+  const manifest = createHash("sha256");
+  manifest.update(bootstrap).update("\0");
+  for (const migration of migrations) {
+    manifest
+      .update(migration.name)
+      .update("\0")
+      .update(migration.body)
+      .update("\0");
+  }
+  const selectedProofNonce = String(proofNonce()).trim().toLowerCase();
+  if (!/^[a-f0-9]{32}$/.test(selectedProofNonce)) {
+    throw new Error("Disposable local cluster proof nonce is invalid");
+  }
+  const localProof = Object.freeze({
+    proofNonce: selectedProofNonce,
+    migrationManifestSha256: manifest.digest("hex"),
+    migrationCount: migrations.length,
+    networkCenterMigrationCount: migrations.length,
+  });
+
+  const port = await availableLoopbackPort();
+  await mkdir(resolve(tempRoot), { recursive: true });
+  const cluster = assertLocalClusterPath(
+    await mkdtemp(join(resolve(tempRoot), LOCAL_CLUSTER_PREFIX)),
+    tempRoot,
+  );
+  const connectionArgs = [
+    "-X",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "postgres",
+    "-d",
+    "postgres",
+  ];
+  let primaryError;
+  let startAttempted = false;
+
+  try {
+    runLocalNative(binaries.initdb, [
+      "-D",
+      cluster,
+      "--auth=trust",
+      "--username=postgres",
+      "--encoding=UTF8",
+      "--no-locale",
+    ]);
+    startAttempted = true;
+    // -h 127.0.0.1 is the whole safety story for network exposure: the
+    // postmaster never binds a routable address, so no firewall or NAT rule can
+    // be wrong about it. No restart policy exists to resurrect it either.
+    runLocalNative(
+      binaries.pg_ctl,
+      [
+        "-D",
+        cluster,
+        "-l",
+        join(cluster, "postgres.log"),
+        "-o",
+        `-p ${port} -h 127.0.0.1`,
+        "-w",
+        "start",
+      ],
+      {
+        stdio: ["ignore", "ignore", "ignore"],
+        timeoutMs: LOCAL_PG_CTL_TIMEOUT_MS,
+      },
+    );
+    runLocalNative(binaries.psql, connectionArgs, { input: bootstrap });
+    // The tenancy/fleet seed lands after the four base Network Center
+    // migrations and BEFORE the hardening wave, because 20260729133000 builds
+    // its legacy-compatibility snapshot from whatever MikroTik devices exist
+    // when it runs. Seeding afterwards produces an empty snapshot and every
+    // legacy v1 path then fails with "outside compatibility snapshot" - which
+    // is a fixture-ordering artefact, not the security property under test.
+    if (!migrations.some((entry) => entry.name === FLEET_SEED_AFTER_MIGRATION)) {
+      throw new Error(
+        `Fleet seed anchor ${FLEET_SEED_AFTER_MIGRATION} is missing; the disposable seed order is no longer valid`,
+      );
+    }
+    for (const migration of migrations) {
+      try {
+        runLocalNative(binaries.psql, connectionArgs, { input: migration.body });
+      } catch (error) {
+        throw new Error(
+          `Network Center migration ${migration.name} failed on the disposable cluster: ${error.message}`,
+          { cause: error },
+        );
+      }
+      if (migration.name === FLEET_SEED_AFTER_MIGRATION) {
+        runLocalNative(binaries.psql, connectionArgs, {
+          input: buildLocalClusterSeedSql({ includeFleetFixtures }),
+        });
+      }
+    }
+    runLocalNative(binaries.psql, connectionArgs, {
+      input: buildLocalClusterProofSql({
+        proofNonce: localProof.proofNonce,
+        manifestSha256: localProof.migrationManifestSha256,
+        migrationCount: localProof.migrationCount,
+      }),
+    });
+    const output = runLocalNative(
+      binaries.psql,
+      ["-q", "-t", "-A", ...connectionArgs],
+      { input: buildSql({ localProof }) },
+    );
+    return parseVerdict(output, { expectedLocalProof: localProof });
+  } catch (error) {
+    primaryError = error;
+    throw error;
+  } finally {
+    let cleanupError = null;
+    if (startAttempted) {
+      try {
+        assertLocalClusterPath(cluster, tempRoot);
+        runLocalNative(
+          binaries.pg_ctl,
+          ["-D", cluster, "-m", "fast", "-w", "stop"],
+          {
+            stdio: ["ignore", "ignore", "ignore"],
+            timeoutMs: LOCAL_PG_CTL_TIMEOUT_MS,
+          },
+        );
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
+    try {
+      await rm(assertLocalClusterPath(cluster, tempRoot), {
+        recursive: true,
+        force: true,
+      });
+    } catch (error) {
+      cleanupError ??= error;
+    }
+    // Teardown is only complete when the evidence says so: the port must refuse
+    // connections and the data directory must be gone. "We called stop" is
+    // exactly the claim that let a disposable Postgres survive for three days.
+    if (!cleanupError) {
+      try {
+        await assertLoopbackPortClosed(port);
+        if (existsSync(cluster)) {
+          throw new Error(
+            `Disposable PostgreSQL teardown unverified: ${cluster} still exists`,
+          );
+        }
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
+    if (cleanupError) {
+      const message = `Disposable PostgreSQL cleanup failed: ${cleanupError.message}`;
+      if (primaryError) {
+        throw new AggregateError(
+          [primaryError, cleanupError],
+          `${primaryError.message}; ${message}`,
+        );
+      }
+      throw new Error(message, { cause: cleanupError });
+    }
+  }
 }

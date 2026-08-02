@@ -213,8 +213,13 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
   const credentialsFile = required(env, "NETWORK_CENTER_CREDENTIALS_FILE");
   const credentials = loadCredentials(credentialsFile, files, platform);
 
+  // The generic floor is deliberately kept where it was before the cycle-aware check
+  // below existed. That check shadows it today, but it is the setting's own safe
+  // range: nothing in the worker can work with a sub-5s SSH watchdog, and a floor
+  // that only exists inside a CYCLE_ACCESS_PORT rationale is one narrowing away from
+  // letting a typo through.
   const commandTimeoutMs = integerSetting(env, "NETWORK_CENTER_COMMAND_TIMEOUT_MS", {
-    minimum: 1_000,
+    minimum: 5_000,
     maximum: 300_000,
     fallback: 60_000,
   });

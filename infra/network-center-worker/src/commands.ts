@@ -49,6 +49,8 @@ interface CommandProcessorOptions {
   logger: WorkerLogger;
   routerOperationSemaphore?: AsyncSemaphore;
   portCycleEvidence?: PortCycleEvidenceStore;
+  /** Outbound request timeout, used to budget the reports still owed before observing. */
+  apiRequestTimeoutMs?: number;
 }
 
 interface CommandLeaseMonitor {
@@ -80,13 +82,33 @@ const DISRUPTIVE_ACTIONS = new Set(["CYCLE_ACCESS_PORT", "REBOOT_ROUTER"]);
  * observation whose `observedAt` is past it. Nothing in the claim predicate keeps a
  * doomed command out of the queue, so the worker has to refuse it itself — and it
  * has to refuse *before* touching the router, because an action that really runs and
- * can never be recorded is strictly worse than one that never ran.
+ * can never be recorded is strictly worse than one that never ran. It also has to
+ * refuse before the backup pipeline: a router backup, an SFTP staging read and a
+ * snapshot upload are minutes of work whose only product would be an artifact for a
+ * command that was already unrecordable when it was claimed.
  *
- * Headroom the worker keeps for reading the post-action state off the router. Only
- * the observation timestamp has to beat the deadline, not the report of it, so this
- * covers the RouterOS read and nothing else.
+ * Headroom the worker keeps for getting the post-action state off the router. The
+ * connector stamps `observedAt` when the read starts, so this covers reaching that
+ * read and nothing else.
  */
 export const OBSERVATION_READ_HEADROOM_MS = 5_000;
+
+/**
+ * Wall-clock allowed for each control-plane report the worker still owes between the
+ * deadline gate and the observation. Defaults to the worker's own outbound request
+ * timeout: a staged event that takes longer than that has already failed, so this is
+ * the largest delay the budget can be asked to survive.
+ */
+const DEFAULT_STAGE_BUDGET_MS = 10_000;
+
+/**
+ * Events staged between the gate and `observedAt`. A mutating action reports
+ * EXECUTION_STARTED, EXECUTION_COMPLETED and POST_CHECK_STARTED; a snapshot skips the
+ * execution block and reports only POST_CHECK_STARTED.
+ */
+function stagedEventsBeforeObservation(action: CommandIntentAction): number {
+  return action === "CAPTURE_SNAPSHOT" ? 1 : 3;
+}
 
 /** Settle time the worker itself waits after a reboot before observing. */
 const REBOOT_SETTLE_MS = 5_000;
@@ -175,6 +197,7 @@ export class CommandProcessor {
   readonly #logger: WorkerLogger;
   readonly #routerOperationSemaphore: AsyncSemaphore;
   readonly #portCycleEvidence: PortCycleEvidenceStore | null;
+  readonly #stageBudgetMs: number;
   readonly #processed = new Set<string>();
   readonly #deviceQueues = new Map<string, Promise<void>>();
 
@@ -189,6 +212,18 @@ export class CommandProcessor {
     this.#logger = options.logger;
     this.#routerOperationSemaphore = options.routerOperationSemaphore ?? new AsyncSemaphore(3);
     this.#portCycleEvidence = options.portCycleEvidence ?? null;
+    this.#stageBudgetMs = options.apiRequestTimeoutMs ?? DEFAULT_STAGE_BUDGET_MS;
+  }
+
+  /**
+   * Wall-clock still owed to the router *and* to the control plane before the
+   * post-action observation can be stamped: the action itself, every staged event
+   * that has to be reported before it, and reaching the router read.
+   */
+  #observationLeadMs(action: CommandIntentAction, parameters: Record<string, unknown>): number {
+    return actionExecutionCostMs(action, parameters)
+      + stagedEventsBeforeObservation(action) * this.#stageBudgetMs
+      + OBSERVATION_READ_HEADROOM_MS;
   }
 
   /**
@@ -213,14 +248,35 @@ export class CommandProcessor {
   }
 
   /**
-   * Persists the fact that this attempt saw the managed port go down and come back.
-   * Best effort by construction: the port is already restored by the time this runs,
-   * so a storage failure must never turn a healthy cycle into a failed command.
+   * Persists the fact that the router reported this attempt's managed port disabled.
+   *
+   * Runs on both the completed and the interrupted path, because the interrupted one
+   * is the reason the store exists: a session that dies inside the router-side
+   * `:delay` rejects, and evidence written only after a clean return is never written
+   * in the one case that has nothing else left to reconcile from. What is recorded is
+   * still only ever the *disable* the router itself confirmed, bound to this command
+   * and to the managed port this command owns — the port being up again is a live read
+   * every time, so no stored fact can complete a cycle by itself.
+   *
+   * Best effort by construction: the guard has the port covered either way, so a
+   * storage failure must never turn a cycle into a failed command.
    */
-  async #recordPortCycleEvidence(claim: CommandClaim, action: CommandIntentAction): Promise<void> {
+  async #recordPortCycleEvidence(
+    claim: CommandClaim,
+    action: CommandIntentAction,
+    connector: RouterConnector,
+  ): Promise<void> {
     if (action !== "CYCLE_ACCESS_PORT" || !this.#portCycleEvidence) return;
-    const managedResourceId = String(claim.managedTarget.managedResourceId ?? "").trim();
-    const immutableKey = String(claim.managedTarget.immutableKey ?? "").trim();
+    const observed = connector.observedPortDisable();
+    if (!observed) return;
+    // Evidence is only ever as good as its binding: a disable the router reported for
+    // some other port is not this command's transition.
+    if (
+      !sameManagedKey(observed.managedResourceId, String(claim.managedTarget.managedResourceId ?? ""))
+      || !sameManagedKey(observed.immutableKey, String(claim.managedTarget.immutableKey ?? ""))
+    ) return;
+    const managedResourceId = observed.managedResourceId.trim();
+    const immutableKey = observed.immutableKey.trim();
     if (!managedResourceId || !immutableKey) return;
     try {
       await this.#portCycleEvidence.record({
@@ -459,6 +515,16 @@ export class CommandProcessor {
       await lease.renew();
       lease.assert(actionStarted);
       const action = safeAction(claim.actionType);
+      if (!claim.reconciliation) {
+        // Refuse a doomed command here, before the backup pipeline, not after it.
+        // Re-checked below once that pipeline has run, because the pipeline itself
+        // can spend more of the budget than was ever left.
+        this.#assertObservable(
+          claim,
+          this.#observationLeadMs(action, claim.parameters),
+          "OBSERVATION_DEADLINE_UNREACHABLE",
+        );
+      }
       const intent = this.#intent(action, claim);
       connector = await this.#connectorFactory(connection);
       await this.#stage(claim, "VALIDATED", { actionType: action });
@@ -561,7 +627,7 @@ export class CommandProcessor {
 
       this.#assertObservable(
         claim,
-        actionExecutionCostMs(action, claim.parameters) + OBSERVATION_READ_HEADROOM_MS,
+        this.#observationLeadMs(action, claim.parameters),
         "OBSERVATION_DEADLINE_UNREACHABLE",
       );
 
@@ -569,7 +635,7 @@ export class CommandProcessor {
         await this.#stage(claim, "EXECUTION_STARTED", { actionType: action });
         actionStarted = true;
         actionResult = await this.#performAction(action, claim, connector);
-        await this.#recordPortCycleEvidence(claim, action);
+        await this.#recordPortCycleEvidence(claim, action, connector);
         await this.#stage(claim, "EXECUTION_COMPLETED", { actionType: action, actionResult });
         if (action === "REBOOT_ROUTER") await this.#clock.sleep(REBOOT_SETTLE_MS);
       }
@@ -616,6 +682,12 @@ export class CommandProcessor {
         deviceId: claim.deviceId,
         error: error instanceof RouterOperationError ? error.code : "unexpected",
       }));
+      // A failed cycle is precisely the case reconciliation has to settle later, so
+      // whatever the router already proved about the disable is persisted here too.
+      const attempted = claim.actionType.trim().toUpperCase();
+      if (connector && attempted === "CYCLE_ACCESS_PORT") {
+        await this.#recordPortCycleEvidence(claim, "CYCLE_ACCESS_PORT", connector);
+      }
       const disruptive = DISRUPTIVE_ACTIONS.has(claim.actionType.toUpperCase());
       const classified = classifyWorkerError(error, disruptive, actionStarted);
       await finish({

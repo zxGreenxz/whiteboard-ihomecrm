@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS,
+  buildAccessPortCycleCommand,
+  buildAccessPortCycleGuardScript,
+  MAX_ACCESS_PORT_CYCLE_SECONDS,
+  MIN_ACCESS_PORT_CYCLE_SECONDS,
+} from "../src/routeros/portCycle.js";
+import {
   ROUTER_OS_COMMANDS,
   ROUTER_OS_READ_COMMANDS,
   routerOsCommandFailed,
@@ -44,6 +51,17 @@ function makeRouter(overrides: Partial<ConstructorParameters<typeof FakeRouterOs
 /** Kills the exec that disables the port — never the one that arms the guard. */
 const dieInsideTheCycle = (command: string) =>
   command.includes("/interface/disable") ? { kind: "no-exit-status" as const } : null;
+
+/**
+ * Burns router time immediately before the port is disabled, which is exactly what a
+ * slow SSH round trip does to any recovery window that is *not* anchored on the
+ * disable itself.
+ */
+function stallBeforeDisable(router: FakeRouterOs, seconds: number) {
+  return (command: string) => {
+    if (command.includes("/interface/disable")) router.advanceSeconds(seconds);
+  };
+}
 
 describe("access port cycle dead-man's switch", () => {
   it("cycles a port on a router whose device-mode forbids /system/scheduler", async () => {
@@ -97,19 +115,74 @@ describe("access port cycle dead-man's switch", () => {
 
     await expect(connector.cycleAccessPort(target, 5)).rejects.toBeTruthy();
 
+    // Nothing the console does may sit between arming and disabling: every statement
+    // in that gap is recovery window the guard has already started spending.
+    const console = router.trace.filter((entry) => !entry.startsWith("job-"));
     const armed = router.trace.findIndex((entry) => entry.startsWith("job-start:"));
-    const disabled = router.trace.indexOf("disable:ether4");
     expect(armed).toBeGreaterThanOrEqual(0);
-    expect(disabled).toBeGreaterThan(armed);
+    expect(router.trace.indexOf("disable:ether4")).toBeGreaterThan(armed);
+    expect(console[0]).toBe("disable:ether4");
+  });
 
-    // Arming is a separate exec, so the worker refuses to send the disabling one
-    // until the router has told it the guard exists.
-    const armCommand = session.commands.findIndex((command) => command.includes(":execute"));
-    const cycleCommand = session.commands.findIndex((command) =>
+  it("arms the guard from the same console job that disables the port", async () => {
+    // The guard's `:delay` starts when the router creates the job. If arming is its
+    // own SSH exec, the whole round trip to the *next* exec is subtracted from the
+    // recovery window before the port is even disabled.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    await connector.cycleAccessPort(target, 5);
+
+    const disabling = session.commands.filter((command) =>
       command.includes("/interface/disable"));
-    expect(armCommand).toBeGreaterThanOrEqual(0);
-    expect(cycleCommand).toBeGreaterThan(armCommand);
-    expect(session.commands[cycleCommand]).not.toContain(":execute");
+    expect(disabling).toHaveLength(1);
+    expect(disabling[0]).toContain(":execute");
+    expect(disabling[0]?.indexOf(":execute"))
+      .toBeLessThan(disabling[0]?.indexOf("/interface/disable") ?? -1);
+    // And no earlier exec may start a job of its own.
+    const armingCommands = session.commands.filter((command) => command.includes(":execute"));
+    expect(armingCommands).toEqual(disabling);
+  });
+
+  it("keeps the full disable window inside the guard when the round trip is slow", async () => {
+    // A round trip longer than the guard's grace used to let the router re-enable the
+    // port *inside* the cycle: the tenant's link never really went down for the
+    // requested window, yet the command still reported a healthy cycle.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      beforeCommand: stallBeforeDisable(router, ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS + 1),
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    await connector.cycleAccessPort(target, 5);
+
+    // The guard stayed a fallback: the worker enabled the port itself and cancelled
+    // a job that was still counting down.
+    expect(router.trace.filter((entry) => entry === "enable:ether4")).toHaveLength(1);
+    expect(router.trace.some((entry) => entry.startsWith("job-end:"))).toBe(false);
+    expect(router.trace.some((entry) => entry.startsWith("job-remove:"))).toBe(true);
+    expect(router.jobs).toHaveLength(0);
+    expect(router.interfaceByDefaultName("ether4").disabled).toBe(false);
+  });
+
+  it("still has a live guard when the round trip outlasts the whole guard window", async () => {
+    // The other end of the same race: with the window anchored on the arm, a round
+    // trip longer than duration + grace left the guard already reaped, and the cycle
+    // aborted as "guard is missing" — reported UNCERTAIN despite touching nothing.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      beforeCommand: stallBeforeDisable(router, GUARD_DELAY_SECONDS + 1),
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    await connector.cycleAccessPort(target, 5);
+
+    expect(router.trace.filter((entry) => entry === "disable:ether4")).toHaveLength(1);
+    expect(router.trace.filter((entry) => entry === "enable:ether4")).toHaveLength(1);
+    expect(router.trace.some((entry) => entry.startsWith("job-end:"))).toBe(false);
+    expect(router.interfaceByDefaultName("ether4").disabled).toBe(false);
+    expect(router.jobs).toHaveLength(0);
   });
 
   it("binds the guard to the resolved id, the immutable default name and the cycle window", async () => {
@@ -347,7 +420,10 @@ describe("SSH exec completion contract", () => {
     });
   });
 
-  it("keeps recovery-interface protection when the firewall read channel dies", async () => {
+  it("fails a cycle closed when the firewall read channel dies", async () => {
+    // Named for what it proves: the *read* is refused, so the empty recovery-rule set
+    // a truncated channel would otherwise produce never reaches the protection check
+    // at all. The protection itself is proved on a healthy read, below.
     const router = makeRouter();
     const session = createFakeRouterSession(router, {
       interrupt: (command) => command === ROUTER_OS_READ_COMMANDS.firewallFilters
@@ -362,10 +438,40 @@ describe("SSH exec completion contract", () => {
       interfaceKey: "ether2",
       currentName: "ether2",
       immutableKey: "ether2",
-    }, 5)).rejects.toMatchObject({ name: "RouterOperationError", mayHaveExecuted: false });
+    }, 5)).rejects.toMatchObject({
+      name: "RouterOperationError",
+      code: "SSH_EXEC_NO_EXIT_STATUS",
+      mayHaveExecuted: false,
+    });
 
     expect(router.trace).not.toContain("disable:ether2");
     expect(router.interfaceByDefaultName("ether2").disabled).toBe(false);
+    // Nothing was armed either: the refusal lands before any router-side state.
+    expect(session.commands.filter((command) => command.includes(":execute"))).toEqual([]);
+  });
+
+  it("refuses to cycle the interface its own recovery rule protects", async () => {
+    // The property the test above used to be named for, on a firewall read that
+    // really delivered the owned `…:lan-recovery` rule for ether2.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    await expect(connector.cycleAccessPort({
+      ...target,
+      interfaceKey: "ether2",
+      currentName: "ether2",
+      immutableKey: "ether2",
+    }, 5)).rejects.toMatchObject({
+      name: "RouterOperationError",
+      code: "PROTECTED_INTERFACE",
+      retryable: false,
+      mayHaveExecuted: false,
+    });
+
+    expect(router.trace).not.toContain("disable:ether2");
+    expect(router.interfaceByDefaultName("ether2").disabled).toBe(false);
+    expect(router.jobs).toHaveLength(0);
   });
 
   it("does not report a channel killed by a remote signal as success", async () => {
@@ -431,5 +537,118 @@ describe("SSH exec completion contract", () => {
 
     const health = await connector.healthCheck();
     expect(health.reachable).toBe(true);
+  });
+
+  it("reads the exit status from ssh2's exit event when close carries no arguments", async () => {
+    // ssh2 repeats the exit arguments on `close` only for session channels; the
+    // worker must not depend on that repetition to tell a completed command from a
+    // channel that died, or the whole exit-status contract rests on one code path.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      interrupt: () => ({ kind: "exit", code: 0, closeWithoutArguments: true }),
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    await expect(connector.healthCheck()).resolves.toMatchObject({ reachable: true });
+  });
+
+  it("fails a non-zero exit status that only reached the worker on the exit event", async () => {
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      interrupt: (command) => command === ROUTER_OS_COMMANDS.flushDnsCache
+        ? { kind: "exit", code: 1, closeWithoutArguments: true }
+        : null,
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    await expect(connector.flushDnsCache()).rejects.toMatchObject({
+      name: "RouterOperationError",
+      code: "ROUTEROS_COMMAND_FAILED",
+      retryable: false,
+    });
+  });
+
+  it("does not accept truncated output that ended with a clean zero exit status", async () => {
+    // The complement of the transport-death cases: a *complete* channel whose output
+    // was cut short is a router that really answered, so it must not be rejected by
+    // the exit-status guard. Keeps the guard from passing for the wrong reason.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      interrupt: (command) => command === ROUTER_OS_READ_COMMANDS.interfaces
+        ? { kind: "exit", code: 0, truncateOutputTo: 60 }
+        : null,
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+    expect(observation.interfaces).toHaveLength(1);
+  });
+});
+
+describe("access port cycle duration validation", () => {
+  const cycleTarget = {
+    resourceId: "*B",
+    currentName: "room-401",
+    immutableKey: "ether4",
+    ownershipMarker: OWNERSHIP_MARKER,
+  };
+
+  // Observed on the demo hEX during hardware validation: the builder takes two
+  // POSITIONAL arguments, so calling it with a single options object left
+  // `durationSeconds` undefined. `undefined + 15` is NaN, NaN survives
+  // assertRouterOsScriptBlock (its characters are ordinary printable ASCII), and
+  // the router was handed a script containing `:delay NaNs`, which it parsed and
+  // then rejected at runtime. The file already asserts `resourceId` and
+  // `immutableKey`; the duration was the only scripted value left unguarded.
+  const rejected: [string, unknown][] = [
+    ["undefined (the observed hardware defect)", undefined],
+    ["NaN", Number.NaN],
+    ["null", null],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["a numeric string", "10"],
+    ["a fractional second count", 5.5],
+    ["negative", -5],
+    ["zero", 0],
+    ["one below MIN_ACCESS_PORT_CYCLE_SECONDS", MIN_ACCESS_PORT_CYCLE_SECONDS - 1],
+    ["one above MAX_ACCESS_PORT_CYCLE_SECONDS", MAX_ACCESS_PORT_CYCLE_SECONDS + 1],
+  ];
+
+  it.each(rejected)("refuses to script a cycle whose duration is %s", (_label, duration) => {
+    expect(() => buildAccessPortCycleCommand(cycleTarget, duration as number)).toThrow(TypeError);
+    expect(() => buildAccessPortCycleCommand(cycleTarget, duration as number))
+      .toThrow(/cycle duration is invalid/i);
+  });
+
+  it.each(rejected)("refuses to script a guard whose duration is %s", (_label, duration) => {
+    expect(() => buildAccessPortCycleGuardScript(cycleTarget, duration as number))
+      .toThrow(/cycle duration is invalid/i);
+  });
+
+  it("never emits a delay the router cannot parse", () => {
+    for (const [, duration] of rejected) {
+      let script: string | null = null;
+      try {
+        script = buildAccessPortCycleCommand(cycleTarget, duration as number);
+      } catch {
+        script = null;
+      }
+      expect(script).toBeNull();
+    }
+  });
+
+  it("still scripts every second in the documented window", () => {
+    for (
+      let duration = MIN_ACCESS_PORT_CYCLE_SECONDS;
+      duration <= MAX_ACCESS_PORT_CYCLE_SECONDS;
+      duration += 1
+    ) {
+      const script = buildAccessPortCycleCommand(cycleTarget, duration);
+      expect(script).toContain(`:delay ${duration}s`);
+      expect(script).toContain(
+        `:delay ${duration + ACCESS_PORT_CYCLE_GUARD_GRACE_SECONDS}s;`,
+      );
+      expect(script).not.toContain("NaN");
+      expect(script).not.toContain("undefined");
+    }
   });
 });
