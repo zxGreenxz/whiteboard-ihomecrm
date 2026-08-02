@@ -3875,7 +3875,7 @@ test("evidence-only runtime validation rebinds derived, allowlisted, and traced 
 });
 
 test("runtime delta requires the exact installed fork, session closure, and config", async () => {
-  const { verifyRuntimeDeltaRecords } = await loadScript(
+  const { validateJsonSchema, verifyRuntimeDeltaRecords } = await loadScript(
     "scripts/verify-image-lock.mjs",
   );
   const lock = JSON.parse(await readCell("image-lock.json"));
@@ -3951,6 +3951,27 @@ test("runtime delta requires the exact installed fork, session closure, and conf
   const delta = verifyRuntimeDeltaRecords({ fork, lock, records });
   assert.equal(delta.records.length, records.length);
   assert.match(delta.records_sha256, /^[0-9a-f]{64}$/);
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  const layerEvidence = Array.from({ length: 6 }, (_, index) => ({
+    digest: `sha256:${String(index).repeat(64)}`,
+    diff_id: `sha256:${String(index + 1).repeat(64)}`,
+    record_count: 1,
+    records_sha256: String(index + 2).repeat(64),
+  }));
+  assert.doesNotThrow(() =>
+    validateJsonSchema(
+      {
+        architecture: "amd64",
+        os: "linux",
+        base_layer_count: 26,
+        delta_layer_count: layerEvidence.length,
+        diff_ids: layerEvidence.map(({ diff_id }) => diff_id),
+        layers: layerEvidence,
+        ...delta,
+      },
+      { ...schema.$defs.rootfsEvidence, $defs: schema.$defs },
+    ),
+  );
   assert.deepEqual(
     delta.session_records.map(({ path }) => path),
     SESSION_DIST.map((path) => `opt/openclaw-cell/${path}`),
