@@ -5,10 +5,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import {
-  executeManagementQuery,
-  loadAdminConfig,
-} from "./test-business-performance-authz.mjs";
+import { runDisposableSupabaseMatrix } from "./network-center-disposable-db.mjs";
 
 export const DEMO_ORG_ID = "dddd0000-0000-4000-8000-000000000001";
 export const PROD_ORG_ID = "aaaa0000-0000-4000-8000-000000000001";
@@ -49,7 +46,37 @@ function requiredCaseValues() {
   ).join(",\n  ");
 }
 
-export function buildNetworkCenterMatrixSql() {
+function buildLocalProofSql(localProof) {
+  if (!localProof) return "NULL::jsonb";
+  const {
+    proofNonce,
+    migrationManifestSha256,
+    migrationCount,
+    networkCenterMigrationCount,
+  } = localProof;
+  if (
+    !/^[a-f0-9]{32}$/.test(proofNonce) ||
+    !/^[a-f0-9]{64}$/.test(migrationManifestSha256) ||
+    !Number.isInteger(migrationCount) ||
+    !Number.isInteger(networkCenterMigrationCount)
+  ) {
+    throw new Error("Network Center local proof request is invalid");
+  }
+  return `(SELECT jsonb_build_object(
+    'proof_nonce', proof.proof_nonce,
+    'migration_manifest_sha256', proof.migration_manifest_sha256,
+    'migration_count', proof.migration_count,
+    'network_center_migration_count', proof.network_center_migration_count
+  )
+  FROM app_private.network_center_disposable_proof proof
+  WHERE proof.proof_nonce = ${sqlLiteral(proofNonce)}
+    AND proof.migration_manifest_sha256 = ${sqlLiteral(migrationManifestSha256)}
+    AND proof.migration_count = ${migrationCount}
+    AND proof.network_center_migration_count = ${networkCenterMigrationCount})`;
+}
+
+export function buildNetworkCenterMatrixSql({ localProof } = {}) {
+  const localProofSql = buildLocalProofSql(localProof);
   return `BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '10min';
@@ -604,6 +631,7 @@ SELECT jsonb_build_object(
   'passed', bool_and(evaluated.passed),
   'assertion_count', count(*),
   'failed_count', count(*) FILTER (WHERE NOT evaluated.passed),
+  'local_proof', ${localProofSql},
   'assertions', jsonb_agg(jsonb_build_object(
     'case_id', evaluated.case_id,
     'passed', evaluated.passed,
@@ -614,7 +642,7 @@ FROM evaluated;
 ROLLBACK;`;
 }
 
-export function parseNetworkCenterVerdict(body) {
+export function parseNetworkCenterVerdict(body, { expectedLocalProof } = {}) {
   let rows;
   try {
     rows = JSON.parse(body);
@@ -649,11 +677,32 @@ export function parseNetworkCenterVerdict(body) {
   if (failedCount !== observedFailures || verdict.passed !== (failedCount === 0)) {
     throw new Error("Network Center verdict counts are inconsistent");
   }
+  if (expectedLocalProof) {
+    const observedProof = verdict.local_proof;
+    const expectedProof = {
+      proof_nonce: expectedLocalProof.proofNonce,
+      migration_manifest_sha256: expectedLocalProof.migrationManifestSha256,
+      migration_count: expectedLocalProof.migrationCount,
+      network_center_migration_count: expectedLocalProof.networkCenterMigrationCount,
+    };
+    if (
+      !observedProof ||
+      observedProof.proof_nonce !== expectedProof.proof_nonce ||
+      observedProof.migration_manifest_sha256 !== expectedProof.migration_manifest_sha256 ||
+      Number(observedProof.migration_count) !== expectedProof.migration_count ||
+      Number(observedProof.network_center_migration_count) !==
+        expectedProof.network_center_migration_count
+    ) {
+      throw new Error(
+        "Network Center verdict has no authentic local proof; refusing a fabricated pass",
+      );
+    }
+  }
   return verdict;
 }
 
-async function migrationApplied(config, fetchImpl) {
-  const body = await executeManagementQuery(
+async function migrationApplied(config, fetchImpl, executeQuery) {
+  const body = await executeQuery(
     "SELECT to_regprocedure('public.network_center_list_fleet_v1()') IS NOT NULL AS applied;",
     config,
     fetchImpl,
@@ -672,15 +721,26 @@ async function migrationApplied(config, fetchImpl) {
 
 export async function main(
   argv = process.argv.slice(2),
-  { log = console.log, fetchImpl = fetch, loadConfig = loadAdminConfig } = {},
+  {
+    log = console.log,
+    fetchImpl: injectedFetch,
+    loadConfig: injectedLoadConfig,
+    executeQuery: injectedExecuteQuery,
+    runLocalDisposable = runDisposableSupabaseMatrix,
+    disposableOptions = {},
+  } = {},
 ) {
   const unknown = argv.filter(
-    (argument) => !["--dry-run", "--help", "-h"].includes(argument),
+    (argument) => !["--dry-run", "--local-disposable", "--help", "-h"].includes(argument),
   );
   if (unknown.length > 0) throw new Error(`Unknown argument: ${unknown[0]}`);
+  if (argv.includes("--dry-run") && argv.includes("--local-disposable")) {
+    throw new Error("Choose either --dry-run or --local-disposable, not both");
+  }
   if (argv.includes("--help") || argv.includes("-h")) {
-    log("Usage: node scripts/test-cross-tenant.mjs [--dry-run]");
+    log("Usage: node scripts/test-cross-tenant.mjs [--dry-run | --local-disposable]");
     log("  --dry-run  Build the rollback-only matrix without calling Supabase.");
+    log("  --local-disposable  Apply all migrations to an isolated local DB, run the matrix, then remove it.");
     return;
   }
 
@@ -694,15 +754,41 @@ export async function main(
     return;
   }
 
+  if (argv.includes("--local-disposable")) {
+    const verdict = await runLocalDisposable({
+      ...disposableOptions,
+      buildSql: buildNetworkCenterMatrixSql,
+      parseVerdict: parseNetworkCenterVerdict,
+    });
+    if (!verdict.passed) {
+      const failures = verdict.assertions
+        .filter((assertion) => !assertion.passed)
+        .map((assertion) => assertion.case_id)
+        .join(", ");
+      throw new Error(
+        `Network Center tenant matrix failed ${verdict.failed_count}/${verdict.assertion_count}: ${failures}`,
+      );
+    }
+    log(
+      `Network Center local disposable matrix passed (${verdict.assertion_count} assertions, transaction rolled back and stack removed).`,
+    );
+    return;
+  }
+
+  const productionHarness = await import("./test-business-performance-authz.mjs");
+  const fetchImpl = injectedFetch ?? fetch;
+  const loadConfig = injectedLoadConfig ?? productionHarness.loadAdminConfig;
+  const executeQuery =
+    injectedExecuteQuery ?? productionHarness.executeManagementQuery;
   const config = loadConfig();
-  const applied = await migrationApplied(config, fetchImpl);
+  const applied = await migrationApplied(config, fetchImpl, executeQuery);
   if (!applied) {
     throw new Error(
       "Network Center migration is not applied; refusing shadow DDL on the configured project",
     );
   }
   const sql = buildNetworkCenterMatrixSql();
-  const body = await executeManagementQuery(sql, config, fetchImpl);
+  const body = await executeQuery(sql, config, fetchImpl);
   const verdict = parseNetworkCenterVerdict(body);
   if (!verdict.passed) {
     const failures = verdict.assertions

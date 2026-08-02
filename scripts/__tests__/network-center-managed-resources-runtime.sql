@@ -9,7 +9,8 @@ SELECT
   router.id AS router_id,
   router.organization_id,
   router.building_id,
-  (SELECT id FROM auth.users ORDER BY id LIMIT 1) AS actor_id
+  (SELECT id FROM auth.users ORDER BY id LIMIT 1) AS actor_id,
+  (SELECT fixture.credential_digest FROM _ncmr_fixture fixture) AS credential_digest
 FROM public.network_devices router
 WHERE router.device_kind = 'MIKROTIK'
   AND router.is_active
@@ -21,12 +22,17 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM _t10_fixture
     WHERE router_id IS NOT NULL AND actor_id IS NOT NULL
+      AND credential_digest IS NOT NULL
   ) THEN
-    RAISE EXCEPTION 'Task 10 runtime proof requires a router and auth actor';
+    RAISE EXCEPTION
+      'Task 10 runtime proof requires a router, auth actor, and authoritative worker credential';
   END IF;
   IF to_regclass('public.network_managed_resources') IS NULL
      OR to_regprocedure(
-       'public.network_center_worker_inventory_v1(text,jsonb)'
+       'public.network_center_worker_inventory_v2(text,jsonb)'
+     ) IS NULL
+     OR to_regprocedure(
+       'public.network_center_admin_provision_worker_v1(text,text,text,text,timestamptz,jsonb)'
      ) IS NULL THEN
     RAISE EXCEPTION 'Task 10 migration is unavailable';
   END IF;
@@ -58,8 +64,8 @@ DECLARE
   v_result jsonb;
 BEGIN
   SELECT * INTO v_fixture FROM _t10_fixture;
-  SELECT public.network_center_worker_inventory_v1(
-    'task10-runtime',
+  SELECT public.network_center_worker_inventory_v2(
+    v_fixture.credential_digest,
     jsonb_build_object(
       'routerDeviceId', v_fixture.router_id,
       'discoveryRunId', gen_random_uuid(),

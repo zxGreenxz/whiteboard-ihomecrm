@@ -26,7 +26,7 @@ BEGIN
     RAISE EXCEPTION 'Task 9 runtime proof requires eight active MikroTik fixtures';
   END IF;
   IF to_regprocedure(
-    'public.network_center_worker_inventory_v1(text,jsonb)'
+    'public.network_center_worker_inventory_v2(text,jsonb)'
   ) IS NULL OR to_regprocedure(
     'public.network_center_list_aruba_v1(uuid,integer,uuid,integer)'
   ) IS NULL OR to_regprocedure(
@@ -149,8 +149,8 @@ BEGIN
   ) INTO v_payload
   FROM generate_series(1, 65) series;
 
-  SELECT public.network_center_worker_inventory_v1(
-    'task9-runtime', v_payload
+  SELECT public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture), v_payload
   ) INTO v_response;
   PERFORM pg_temp.t9_assert(
     (v_response->>'arubaCount')::integer = 64,
@@ -167,8 +167,8 @@ BEGIN
     'exactly 64 Task 9 devices must exist after the bounded run'
   );
 
-  SELECT public.network_center_worker_inventory_v1(
-    'task9-runtime', v_payload
+  SELECT public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture), v_payload
   ) INTO v_replay;
   PERFORM pg_temp.t9_assert(
     v_replay = v_response,
@@ -180,8 +180,8 @@ BEGIN
     'an exact replay must not duplicate quarantine rows'
   );
   BEGIN
-    PERFORM public.network_center_worker_inventory_v1(
-      'task9-runtime',
+    PERFORM public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture),
       jsonb_set(v_payload, '{aruba,0,displayName}', '"changed"'::jsonb)
     );
     RAISE EXCEPTION 'changed discovery replay was accepted';
@@ -200,8 +200,8 @@ BEGIN
         'T9REF' || lpad(series::text, 3, '0'), 1000 + series
       ) ORDER BY series) FROM generate_series(1, 64) series)
   ) INTO v_payload;
-  SELECT public.network_center_worker_inventory_v1(
-    'task9-runtime', v_payload
+  SELECT public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture), v_payload
   ) INTO v_response;
   PERFORM pg_temp.t9_assert(
     (v_response->>'arubaCount')::integer = 65
@@ -229,8 +229,8 @@ DECLARE
   v_response jsonb;
 BEGIN
   SELECT * INTO v_router FROM _t9_routers WHERE ordinal = 2;
-  SELECT public.network_center_worker_inventory_v1(
-    'task9-runtime',
+  SELECT public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture),
     pg_temp.t9_payload(
       v_router.id, gen_random_uuid(), clock_timestamp(), 0, 1,
       jsonb_build_array(pg_temp.t9_item('T9RUN001', 1))
@@ -286,8 +286,8 @@ BEGIN
     'SERIAL', 'DISCOVERED', clock_timestamp(), clock_timestamp()
   FROM generate_series(1, 511) series;
 
-  SELECT public.network_center_worker_inventory_v1(
-    'task9-runtime',
+  SELECT public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture),
     pg_temp.t9_payload(
       v_router.id, gen_random_uuid(), clock_timestamp(), 0, 1,
       jsonb_build_array(
@@ -357,8 +357,8 @@ BEGIN
     clock_timestamp() - INTERVAL '11 minutes',
     clock_timestamp() - INTERVAL '1 minute', 3, v_previous_run
   );
-  SELECT public.network_center_worker_inventory_v1(
-    'task9-runtime',
+  SELECT public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture),
     pg_temp.t9_payload(
       v_limited.id, gen_random_uuid(), clock_timestamp(), 0, 1,
       jsonb_build_array(pg_temp.t9_item('T9MATURE-LIMIT', 1000))
@@ -394,8 +394,8 @@ BEGIN
     clock_timestamp() - INTERVAL '11 minutes',
     clock_timestamp() - INTERVAL '1 minute', 2, gen_random_uuid()
   );
-  SELECT public.network_center_worker_inventory_v1(
-    'task9-runtime',
+  SELECT public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture),
     pg_temp.t9_payload(
       v_eligible.id, gen_random_uuid(), clock_timestamp(), 0, 1,
       jsonb_build_array(pg_temp.t9_item('T9MATURE-OK', 1))
@@ -443,8 +443,8 @@ BEGIN
     encode(extensions.digest(convert_to(series::text, 'UTF8'), 'sha256'), 'hex'),
     clock_timestamp() + series * INTERVAL '1 microsecond'
   FROM generate_series(1, 1005) series;
-  PERFORM public.network_center_worker_inventory_v1(
-    'task9-runtime',
+  PERFORM public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture),
     pg_temp.t9_payload(
       v_router.id, gen_random_uuid(), clock_timestamp(), 0, 1, '[]'::jsonb
     )
@@ -553,8 +553,8 @@ BEGIN
   FROM public.network_devices device
   WHERE device.parent_device_id = v_router.id
     AND device.aruba_stable_key = 'serial:T9PAGE001';
-  PERFORM public.network_center_worker_inventory_v1(
-    'task9-runtime',
+  PERFORM public.network_center_worker_inventory_v2(
+    (SELECT fixture.credential_digest FROM _ncmr_fixture fixture),
     pg_temp.t9_payload(
       v_router.id, gen_random_uuid(), clock_timestamp(), 0, 1,
       jsonb_build_array(pg_temp.t9_item('T9PAGE001', 999999))

@@ -60,6 +60,21 @@ test("accepts one unexpired per-run local Supabase identity", () => {
   );
 });
 
+test("rejects a marker that does not own the project reference", () => {
+  assert.throws(
+    () => assertDisposableTenantTestTarget({
+      projectRef: "local-run-other999",
+      host: "127.0.0.1",
+      marker: "network-center-disposable:v1:019f8c63",
+      expiresAt: FUTURE_EXPIRY,
+    }, {
+      productionRefs: new Set([PRODUCTION_REF]),
+      now: new Date("2026-07-29T00:00:00.000Z"),
+    }),
+    /marker.*project reference|project reference.*marker/i,
+  );
+});
+
 test("rejects an expired disposable sentinel", () => {
   assert.throws(
     () => assertDisposableTenantTestTarget({
