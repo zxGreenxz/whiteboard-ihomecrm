@@ -105,11 +105,15 @@ const unknownRawSchema = z.object({
   new_outbox_id: idSchema.nullable(),
   resolvedAt: timestampSchema.nullable(),
 }).strict().superRefine((item, context) => {
-  const hasResolution = item.resolutionId !== null;
-  const fieldsPresent = item.authoritative_evidence_hash !== null
-    && item.outcome !== null
-    && item.resolvedAt !== null;
-  if (hasResolution !== fieldsPresent || hasResolution !== (item.resolution_version === 1)) {
+  const requiredResolutionMetadata = [
+    item.resolutionId,
+    item.authoritative_evidence_hash,
+    item.outcome,
+    item.resolvedAt,
+  ];
+  const allNull = requiredResolutionMetadata.every(value => value === null);
+  const allPresent = requiredResolutionMetadata.every(value => value !== null);
+  if ((!allNull && !allPresent) || allPresent !== (item.resolution_version === 1)) {
     context.addIssue({ code: "custom", message: "incomplete UNKNOWN resolution projection" });
   }
   if (item.outcome === "NEW_INTENT_CREATED" && item.new_outbox_id === null) {

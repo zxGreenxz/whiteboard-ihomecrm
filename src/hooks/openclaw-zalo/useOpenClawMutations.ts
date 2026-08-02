@@ -14,9 +14,9 @@ import {
 } from "@/lib/openclaw-zalo/validation";
 import { assertOrganizationScope } from "@/lib/openclaw-zalo/query-contract";
 import { openClawQueryKeys } from "./queryKeys";
-import { fetchOpenClawUnknown } from "./useOpenClawOperations";
+import { fetchOpenClawUnknownResolution } from "./useOpenClawOperations";
 
-type BrowserWriteRpc =
+export type BrowserWriteRpc =
   | "openclaw_acknowledge_risk_v1"
   | "openclaw_begin_qr_login_v1"
   | "openclaw_consume_qr_challenge_v1"
@@ -215,7 +215,7 @@ export function useOpenClawSetControlState(organizationId: string, accountId: st
   });
 }
 
-export function useOpenClawResolveUnknown(organizationId: string, accountId: string, limit = 50) {
+export function useOpenClawResolveUnknown(organizationId: string, accountId: string) {
   const queryClient = useQueryClient();
   return useMutation<OpenClawUnknownResolution | OpenClawUnknownResolutionSummary, unknown, OpenClawMutationVariables<OpenClawUnknownResolutionRequest>>({
     retry: false,
@@ -229,13 +229,16 @@ export function useOpenClawResolveUnknown(organizationId: string, accountId: str
           unknownResolutionSchema as z.ZodType<OpenClawUnknownResolution>,
         ),
         async () => {
-          const canonical = await fetchOpenClawUnknown(organizationId, limit, accountId);
-          return canonical.find(item => item.outboxId === variables.request.outboxId)?.resolution ?? null;
+          return fetchOpenClawUnknownResolution(
+            organizationId,
+            accountId,
+            variables.request.outboxId,
+          );
         },
       );
     },
     onSettled: () => Promise.all([
-      queryClient.invalidateQueries({ queryKey: openClawQueryKeys.unknown(organizationId, accountId, limit) }),
+      queryClient.invalidateQueries({ queryKey: openClawQueryKeys.operationsRoot(organizationId, accountId) }),
       queryClient.invalidateQueries({ queryKey: openClawQueryKeys.overview(organizationId, accountId) }),
     ]),
   });

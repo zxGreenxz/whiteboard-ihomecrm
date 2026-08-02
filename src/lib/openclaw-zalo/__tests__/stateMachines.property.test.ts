@@ -12,7 +12,7 @@ describe("OpenClaw outbox state machine", () => {
     const states = fc.constantFrom(...OPENCLAW_OUTBOX_STATES);
     const expected: Record<OpenClawOutboxState, readonly OpenClawOutboxState[]> = {
       QUEUED: ["LEASED", "FAILED", "DEAD_LETTER"],
-      LEASED: ["QUEUED", "DISPATCHING", "FAILED", "DEAD_LETTER"],
+      LEASED: ["QUEUED", "DISPATCHING", "FAILED", "UNKNOWN", "DEAD_LETTER"],
       DISPATCHING: ["SENT", "FAILED", "UNKNOWN", "DEAD_LETTER"],
       SENT: [],
       FAILED: [],

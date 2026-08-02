@@ -15,29 +15,47 @@ export const OPENCLAW_PERMISSION_ACTIONS = [
   "audit",
 ] as const satisfies readonly OpenClawPermissionAction[];
 
-const permissionModuleSchema = z.object(Object.fromEntries(
-  OPENCLAW_PERMISSION_ACTIONS.map(action => [action, z.boolean().optional()]),
-) as Record<OpenClawPermissionAction, z.ZodOptional<z.ZodBoolean>>).strict();
+const permissionKeySchema = z.enum(OPENCLAW_PERMISSION_ACTIONS.map(
+  action => `openclaw_zalo.${action}`,
+) as [`openclaw_zalo.${OpenClawPermissionAction}`, ...`openclaw_zalo.${OpenClawPermissionAction}`[]]);
 
-const permissionProjectionSchema = z.object({
-  __superadmin: z.boolean().optional(),
-  openclaw_zalo: permissionModuleSchema.optional(),
+const authorizationContextSchema = z.object({
+  organizationId: z.string().uuid().nullable(),
+  membershipId: z.string().uuid().nullable(),
+  memberType: z.string().nullable(),
+  authorizationVersion: z.number().int().nonnegative().nullable(),
+  nearestDeadline: z.string().nullable().optional(),
+  isPlatformAdmin: z.boolean(),
+  isOffboarded: z.boolean(),
+  organizations: z.array(z.object({
+    id: z.string().uuid(),
+    name: z.string(),
+    isDemo: z.boolean(),
+    memberType: z.string(),
+  }).strict()),
+  permissions: z.record(z.string(), z.literal(true)),
+  scopeSets: z.array(z.object({
+    orgWide: z.boolean(),
+    buildingIds: z.array(z.string().uuid()),
+    cashbookIds: z.array(z.string().uuid()),
+  }).strict()),
+  scopes: z.record(z.string(), z.number().int().nonnegative()),
 }).strict();
 
-export function projectOpenClawPermissions(value: unknown, organizationId: string): OpenClawPermissionSnapshot {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Invalid permission response");
+export function projectOpenClawPermissions(
+  value: unknown,
+  requestedOrganizationId: string,
+): OpenClawPermissionSnapshot | null {
+  const parsed = authorizationContextSchema.parse(value);
+  if (parsed.organizationId === null) return null;
+  if (parsed.organizationId !== requestedOrganizationId) {
+    throw new Error("Authorization context organization mismatch");
   }
-  const source = value as Record<string, unknown>;
-  const parsed = permissionProjectionSchema.parse({
-    __superadmin: source.__superadmin,
-    openclaw_zalo: source.openclaw_zalo,
-  });
   const actions = Object.fromEntries(OPENCLAW_PERMISSION_ACTIONS.map(action => [
     action,
-    parsed.__superadmin === true || parsed.openclaw_zalo?.[action] === true,
+    parsed.permissions[permissionKeySchema.parse(`openclaw_zalo.${action}`)] === true,
   ])) as Record<OpenClawPermissionAction, boolean>;
-  return { organizationId, actions };
+  return { organizationId: parsed.organizationId, actions };
 }
 
 export function useOpenClawPermissions(organizationId: string | null, accountId?: string | null) {
@@ -46,7 +64,9 @@ export function useOpenClawPermissions(organizationId: string | null, accountId?
     enabled: Boolean(organizationId),
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_my_permissions");
+      const { data, error } = await supabase.rpc("get_authorization_context_v1", {
+        p_organization_id: organizationId!,
+      });
       if (error) throw error;
       return projectOpenClawPermissions(data, organizationId!);
     },
@@ -54,7 +74,7 @@ export function useOpenClawPermissions(organizationId: string | null, accountId?
 }
 
 export function canOpenClaw(
-  snapshot: OpenClawPermissionSnapshot | undefined,
+  snapshot: OpenClawPermissionSnapshot | null | undefined,
   action: OpenClawPermissionAction,
 ): boolean {
   return snapshot?.actions[action] === true;
