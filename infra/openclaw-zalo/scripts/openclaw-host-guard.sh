@@ -191,7 +191,9 @@ post_guard() {
     # Vì vậy ghi preimage ra file tạm rồi ký bằng -in. `trap` dọn file kể cả khi
     # unit bị kill giữa chừng.
     preimage_file="$operations_dir/host-guard.preimage.$$"
-    trap 'rm -f "$preimage_file"' EXIT HUP INT TERM
+    # Cover BOTH files: a kill between openssl and rm would otherwise leave a usable
+    # signature on disk for the whole 60-second replay window.
+    trap 'rm -f "$preimage_file" "$preimage_file.sig"' EXIT HUP INT TERM
     (umask 077; { printf '%s' "$ENVELOPE_DOMAIN"; printf '\000'; printf '%s' "$envelope"; } > "$preimage_file")
     # `sh` không có pipefail và `set -e` đã bị vô hiệu trong hàm này (call site dùng
     # `|| post_failed=1`), nên openssl hỏng sẽ ÂM THẦM cho ra chữ ký rỗng. Ký ở bước

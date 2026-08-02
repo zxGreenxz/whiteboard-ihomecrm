@@ -59,7 +59,9 @@ describe("Task 20 watchdog and recovery contracts", () => {
     expect(guard).toMatch(/if ! openssl pkeyutl -sign -rawin/u);
     expect(guard).toContain("watchdog envelope signing failed");
     expect(guard).toContain("watchdog envelope signature is malformed");
-    expect(guard).toMatch(/trap 'rm -f "\$preimage_file"' EXIT HUP INT TERM/u);
+    // The trap must cover the signature file too: a kill between openssl and rm
+    // would otherwise leave a usable signature on disk for its whole replay window.
+    expect(guard).toMatch(/trap 'rm -f "\$preimage_file" "\$preimage_file\.sig"' EXIT HUP INT TERM/u);
     expect(guard).toContain("ihome-openclaw-watchdog-envelope-v1");
     expect(guard).toContain("ENVELOPE_AUDIENCE='openclaw-watchdog-edge'");
     expect(guard).toContain('"operation":"host.guard"');

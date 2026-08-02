@@ -7241,12 +7241,29 @@ begin
     raise exception 'watchdog service operation matrix mismatch' using errcode = '42501';
   end if;
   perform app_private.openclaw_assert_strict_object_v1(
+    p_principal,
+    array['version','principalKind','organizationId','maintenancePrincipalId',
+      'credentialGeneration','leaseGeneration','fencingToken','allowedOperations'],
+    array['version','principalKind','organizationId','maintenancePrincipalId',
+      'credentialGeneration','leaseGeneration','fencingToken','allowedOperations',
+      'accountId','cellId','sessionGeneration','localSessionGeneration','authMode']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
     p_envelope,
     array['version','operation','nonce','iat','exp','requestHash'],
     array['version','operation','nonce','iat','exp','requestHash']
   );
   if p_principal ->> 'version' <> '1' or p_envelope ->> 'version' <> '1' then
     raise exception 'service context version mismatch' using errcode = '42501';
+  end if;
+  -- A maintenance principal carries no session at all. The canonical validator
+  -- asserts this too; leaving it out here would be exactly the silent drift the
+  -- header comment claims this narrow validator avoids.
+  if coalesce(nullif(p_principal ->> 'sessionGeneration', '')::bigint, 0) <> 0
+     or coalesce(nullif(p_principal ->> 'localSessionGeneration', '')::bigint, 0) <> 0
+     or coalesce(p_principal ->> 'authMode', 'NORMAL') <> 'NORMAL'
+  then
+    raise exception 'watchdog principal carries channel session state' using errcode = '42501';
   end if;
   if p_envelope ->> 'operation' is distinct from p_expected_operation then
     raise exception 'envelope operation mismatch' using errcode = '42501';

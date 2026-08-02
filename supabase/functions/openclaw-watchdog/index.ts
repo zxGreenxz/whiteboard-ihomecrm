@@ -86,6 +86,29 @@ async function serviceRequestHash(operation: string, request: unknown): Promise<
   ));
 }
 
+/**
+ * One tick calls two facades with the same deterministic operation id, but the
+ * service nonce preimage is `domain\u0000namespace\u0000nonce` - the OPERATION is not in
+ * it, and the uniqueness index is per (organization, principal, namespace, hash).
+ * Passing the operation id straight through therefore made the second facade of a
+ * tick collide with the first and fail 'nonce replay rejected': the health event
+ * was written and the pause never was, forever, because the id is deterministic.
+ *
+ * Deriving per operation keeps both properties: distinct within a tick, identical
+ * across a retry of the same tick, so a lost response still cannot double-apply.
+ * Shaped as a UUID v5 so it matches every nonce format check on the way down.
+ */
+async function deriveServiceNonce(operation: string, operationId: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    utf8(`ihome-openclaw-watchdog-service-nonce-v1\u0000${operation}\u0000${operationId}`),
+  ));
+  const hex = [...digest.subarray(0, 16)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const version = `5${hex.slice(13, 16)}`;
+  const variant = `${"89ab"[parseInt(hex[16]!, 16) % 4]}${hex.slice(17, 20)}`;
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${version}-${variant}-${hex.slice(20, 32)}`;
+}
+
 /** Calls one narrow service facade with the canonical machine envelope. */
 async function serviceRpc(input: {
   facade: string;
@@ -183,7 +206,7 @@ Deno.serve((request: Request) =>
         facade: WATCHDOG_HEALTH_RPC,
         operation: "openclaw_record_watchdog_health_v1",
         organizationId,
-        nonce: operationId,
+        nonce: await deriveServiceNonce("openclaw_record_watchdog_health_v1", operationId),
         observedAt,
         request: { version: 1, events },
       });
@@ -197,9 +220,10 @@ Deno.serve((request: Request) =>
         facade: WATCHDOG_APPLY_CONTROLS_RPC,
         operation: "openclaw_apply_capacity_controls_v1",
         organizationId,
-        // Deterministic operation id doubles as the nonce, so a retried tick after
-        // a lost response cannot apply the same control twice.
-        nonce: operationId,
+        // Derived from the deterministic operation id, so a retried tick after a lost
+        // response cannot apply the same control twice, while still not colliding
+        // with the health facade called in the same tick.
+        nonce: await deriveServiceNonce("openclaw_apply_capacity_controls_v1", operationId),
         observedAt,
         request: {
           version: 1,

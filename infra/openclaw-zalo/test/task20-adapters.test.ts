@@ -173,7 +173,37 @@ describe("Task 20 recovery and migration adapters", () => {
       "9router": { image: "decolua/9router", restartCount: 0 },
     });
     expect(first).toBe(second);
-    expect(snapshotDigest({ cell: { restartCount: 2 } })).not.toBe(first);
+  });
+
+  it("notices a change in ANY nested field, not just an added or removed container", () => {
+    // The previous assertion only ever varied the container-name set, so it passed
+    // while `compare-cotenants --fail-on-change` was blind to every nested field:
+    // a co-tenant could be restarted onto a new image with new ports and still
+    // digest identically. Each mutation below keeps the same container names.
+    const baseline = {
+      "9router": {
+        id: "aaa",
+        image: "decolua/9router@sha256:1111",
+        network: ["bridge"],
+        mounts: ["bind:/var/lib/9router:/data"],
+        restartCount: 0,
+        ports: ["20128/tcp"],
+      },
+      cell: { id: "bbb", image: "ihome/openclaw@sha256:2222", restartCount: 1 },
+    };
+    const digest = snapshotDigest(baseline);
+    const mutations = [
+      { ...baseline, "9router": { ...baseline["9router"], id: "zzz" } },
+      { ...baseline, "9router": { ...baseline["9router"], image: "decolua/9router@sha256:9999" } },
+      { ...baseline, "9router": { ...baseline["9router"], network: ["bridge", "host"] } },
+      { ...baseline, "9router": { ...baseline["9router"], mounts: ["bind:/etc:/etc"] } },
+      { ...baseline, "9router": { ...baseline["9router"], restartCount: 1 } },
+      { ...baseline, "9router": { ...baseline["9router"], ports: ["20128/tcp", "443/tcp"] } },
+      { ...baseline, cell: { ...baseline.cell, restartCount: 2 } },
+    ];
+    for (const mutated of mutations) {
+      expect(snapshotDigest(mutated), JSON.stringify(mutated)).not.toBe(digest);
+    }
   });
 
   it("holds no verb that could mutate an external co-tenant", async () => {
@@ -185,6 +215,14 @@ describe("Task 20 recovery and migration adapters", () => {
       /"(?:stop|restart|kill|rm|exec|update|pause)"|docker\s+(?:stop|restart|kill|rm|exec)/u,
     );
     expect(source).toMatch(/execFileSync\(\s*"docker",\s*\[\s*"inspect"/u);
+    // `docker compose up` is the only verb that CREATES containers, so it is the
+    // only path that could reach a co-tenant. It must be guarded by the forbidden
+    // name list, not merely accompanied by a comment about it.
+    expect(source).toMatch(/for \(const pattern of FORBIDDEN_CONTAINER_PATTERNS\)/u);
+    const guardIndex = source.indexOf("FORBIDDEN_CONTAINER_PATTERNS)");
+    const composeIndex = source.indexOf('"compose", "--project-name"');
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(composeIndex).toBeGreaterThan(guardIndex);
     // Rootless socket only: a rootful socket would put the external 9Router host
     // inside this adapter's reach. Matched loosely because the source writes the
     // path inside a regex literal, where every slash is escaped.

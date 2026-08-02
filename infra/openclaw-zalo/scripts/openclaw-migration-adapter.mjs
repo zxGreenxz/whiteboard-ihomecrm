@@ -14,7 +14,7 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -184,11 +184,29 @@ function inspectCoTenants(fields) {
   return snapshot;
 }
 
+/**
+ * Recursive canonical serialisation with sorted keys at EVERY depth.
+ *
+ * `JSON.stringify(value, Object.keys(value).sort())` looks like "stringify with
+ * sorted keys" and is not: the array form is a key ALLOW-LIST applied at every
+ * nesting level. With top-level container names as the allow-list, no nested field
+ * survives, so `{cell:{image,ports}}` and a version with a different image and
+ * different ports both serialised to `{"cell":{}}` - `compare-cotenants
+ * --fail-on-change` could only ever notice a container being added or removed.
+ */
+function canonicalize(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  return `{${Object.keys(value).sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`)
+    .join(",")}}`;
+}
+
 function snapshotDigest(snapshot) {
   return createHash("sha256")
     .update("ihome-openclaw-cotenant-snapshot-v1")
     .update(String.fromCharCode(0))
-    .update(JSON.stringify(snapshot, Object.keys(snapshot).sort()))
+    .update(canonicalize(snapshot))
     .digest("hex");
 }
 
@@ -277,6 +295,23 @@ async function run({ command, values, booleans }) {
         throw new FailClosed("provisioning requires the rootless DOCKER_HOST socket");
       }
       const compose = environment("OPENCLAW_MIGRATION_COMPOSE_FILE");
+      // `docker compose up` is the one verb here that CREATES containers, so it is
+      // the one path that could touch a co-tenant. Reading the file first turns the
+      // forbidden-name list into an enforced guard instead of a comment: a compose
+      // file that names 9Router or cli-proxy-api never reaches Docker.
+      let composeSource;
+      try {
+        composeSource = readFileSync(compose, "utf8");
+      } catch {
+        throw new FailClosed("compose file is not readable");
+      }
+      for (const pattern of FORBIDDEN_CONTAINER_PATTERNS) {
+        if (pattern.test(composeSource)) {
+          throw new FailClosed(
+            "compose file references an external co-tenant; provisioning refuses to touch it",
+          );
+        }
+      }
       try {
         execFileSync(
           "docker",

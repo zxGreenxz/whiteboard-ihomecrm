@@ -1070,11 +1070,41 @@ function validHeartbeatRequest(value: unknown): boolean {
   ) && (!("contentFreeMetrics" in value) || object(value.contentFreeMetrics));
 }
 
+const CAPACITY_CONTROLS = [
+  "DISABLE_AUTOMATIC_VIDEO_FILE_CACHE",
+  "PAUSE_NONCRITICAL_PROACTIVE_GROUP_MEDIA",
+  "PAUSE_ALL_OUTBOUND_MEDIA",
+  "PAUSE_OUTBOUND_AI_MEDIA",
+] as const;
+
+/**
+ * Capacity controls ride back to the cell in the heartbeat response, which is the
+ * only channel it already polls. The response contract is exact-keyed, so this
+ * validator must exist for the key to survive at all - without it every heartbeat
+ * fails RUNTIME_RESPONSE_INVALID and the whole runtime stops.
+ */
+function validCapacityControl(value: unknown): boolean {
+  return exact(value, ["control", "appliedAt", "reasonFingerprint", "requiresManualResume"]) &&
+    CAPACITY_CONTROLS.includes(String(value.control) as (typeof CAPACITY_CONTROLS)[number]) &&
+    isoTimestamp(value.appliedAt) && boundedString(value.reasonFingerprint, 1, 128) &&
+    typeof value.requiresManualResume === "boolean";
+}
+
 function validHeartbeatResult(value: unknown): boolean {
   return exact(value, [
     "version", "organizationId", "accountId", "cellId", "observedAt", "accepted", "authMode",
     "currentSessionGeneration", "currentConnectionGeneration", "commandResultAcks", "commands",
-  ]) && value.version === 1 && uuid(value.organizationId) && uuid(value.accountId) &&
+  ], ["capacityControls"]) &&
+    // OPTIONAL on purpose. The Edge function and the migration deploy separately, so
+    // a required key breaks heartbeats in BOTH orders: new Edge against old SQL sees
+    // it missing, old Edge against new SQL sees an unexpected key. Optional accepts
+    // either side being ahead, and still validates the payload whenever it is present.
+    (!("capacityControls" in value) || (
+      Array.isArray(value.capacityControls) &&
+      value.capacityControls.length <= CAPACITY_CONTROLS.length &&
+      value.capacityControls.every(validCapacityControl)
+    )) &&
+    value.version === 1 && uuid(value.organizationId) && uuid(value.accountId) &&
     uuid(value.cellId) && isoTimestamp(value.observedAt) && value.accepted === true &&
     ["NORMAL", "COMMAND_TRANSITION"].includes(String(value.authMode)) &&
     integer(value.currentSessionGeneration, 1) && integer(value.currentConnectionGeneration) &&
