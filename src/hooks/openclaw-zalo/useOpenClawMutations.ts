@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { openClawWriteRpc } from "./openClawRpc";
 import type {
   OpenClawUnknownResolution,
   OpenClawUnknownResolutionRequest,
@@ -59,14 +59,11 @@ export async function executeOpenClawMutation<TRequest, TResult>(
 ): Promise<TResult> {
   const request = requestSchema.parse(variables.request);
   const operationId = idSchema.parse(variables.clientOperationId);
-  const client = supabase as unknown as { rpc: (
-    name: BrowserWriteRpc,
-    args: { p_request: unknown; p_client_operation_id: string },
-  ) => Promise<{ data: unknown; error: { code?: string; message: string } | null }> };
-  const { data, error } = await client.rpc(rpcName, {
-    p_request: request,
-    p_client_operation_id: operationId,
-  });
+  const { data, error } = await openClawWriteRpc<BrowserWriteRpc>(
+    rpcName,
+    request as Record<string, unknown>,
+    operationId,
+  );
   if (error) throw error;
   return parseOpenClawWriteResult(rpcName, data, resultSchema);
 }

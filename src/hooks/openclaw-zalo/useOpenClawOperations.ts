@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { openClawReadRpc } from "./openClawRpc";
 import type { OpenClawUnknownResolution } from "@/lib/openclaw-zalo/types";
 import {
   deadLettersByAccountContract,
@@ -24,10 +24,9 @@ type AccountOperationsRpc =
   | typeof healthEventsByAccountContract.rpcName
   | typeof unknownResolutionGetContract.rpcName;
 
-const accountOperationsClient = supabase as unknown as { rpc: (
-  name: AccountOperationsRpc,
-  args: { p_request: Record<string, unknown> },
-) => Promise<{ data: unknown; error: Error | null }> };
+// One typed entry point instead of a per-file cast; see openClawRpc.ts.
+const accountOperationsRpc = (name: AccountOperationsRpc, request: Record<string, unknown>) =>
+  openClawReadRpc<AccountOperationsRpc>(name, request);
 
 export async function fetchOpenClawUnknown(
   organizationId: string,
@@ -42,9 +41,7 @@ export async function fetchOpenClawUnknown(
     ...(cursorTerminalAt ? { cursorTerminalAt } : {}),
     ...(cursorId ? { cursorId } : {}),
   });
-  const { data, error } = await accountOperationsClient.rpc(unknownByAccountContract.rpcName, {
-    p_request: request,
-  });
+  const { data, error } = await accountOperationsRpc(unknownByAccountContract.rpcName, request);
   if (error) throw error;
   return parseUnknownItems(data);
 }
@@ -57,9 +54,7 @@ export async function fetchOpenClawUnknownResolution(
   const request = unknownResolutionGetContract.requestSchema.parse({
     version: 1, organizationId, accountId, outboxId,
   });
-  const { data, error } = await accountOperationsClient.rpc(unknownResolutionGetContract.rpcName, {
-    p_request: request,
-  });
+  const { data, error } = await accountOperationsRpc(unknownResolutionGetContract.rpcName, request);
   if (error) throw error;
   return unknownResolutionGetContract.resultSchema.parse(data) as OpenClawUnknownResolution | null;
 }
@@ -87,11 +82,11 @@ async function fetchStrictPage<T>(
   parse: (value: unknown) => { version: 1; items: T[]; limit: number },
 ) {
   const safeLimit = boundedLimit(limit);
-  const client = supabase as unknown as { rpc: (
-    name: typeof rpcName,
-    args: { p_request: { version: 1; organizationId: string; limit: number } },
-  ) => Promise<{ data: unknown; error: Error | null }> };
-  const { data, error } = await client.rpc(rpcName, { p_request: { version: 1, organizationId, limit: safeLimit } });
+  const { data, error } = await openClawReadRpc(rpcName, {
+    version: 1,
+    organizationId,
+    limit: safeLimit,
+  });
   if (error) throw error;
   return parse(data);
 }
@@ -109,9 +104,7 @@ export async function fetchOpenClawDeadLetters(
     ...(cursorCreatedAt ? { cursorCreatedAt } : {}),
     ...(cursorId ? { cursorId } : {}),
   });
-  const { data, error } = await accountOperationsClient.rpc(deadLettersByAccountContract.rpcName, {
-    p_request: request,
-  });
+  const { data, error } = await accountOperationsRpc(deadLettersByAccountContract.rpcName, request);
   if (error) throw error;
   return parseDeadLetters(data);
 }
@@ -129,9 +122,7 @@ export async function fetchOpenClawHealthEvents(
     ...(cursorObservedAt ? { cursorObservedAt } : {}),
     ...(cursorId ? { cursorId } : {}),
   });
-  const { data, error } = await accountOperationsClient.rpc(healthEventsByAccountContract.rpcName, {
-    p_request: request,
-  });
+  const { data, error } = await accountOperationsRpc(healthEventsByAccountContract.rpcName, request);
   if (error) throw error;
   return parseHealthEvents(data);
 }

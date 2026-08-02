@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { openClawReadRpc } from "./openClawRpc";
 import {
   automationDetailContract,
   automationDryRunContract,
@@ -60,11 +60,7 @@ export async function executeOpenClawQuery<TContract extends ReadContract>(
   request: unknown,
 ): Promise<z.output<TContract["resultSchema"]>> {
   const parsedRequest = contract.requestSchema.parse(request);
-  const client = supabase as unknown as { rpc: (
-    name: BrowserReadRpc,
-    args: { p_request: unknown },
-  ) => Promise<{ data: unknown; error: Error | null }> };
-  const { data, error } = await client.rpc(contract.rpcName, { p_request: parsedRequest });
+  const { data, error } = await openClawReadRpc<BrowserReadRpc>(contract.rpcName, parsedRequest as Record<string, unknown>);
   if (error) throw error;
   return contract.resultSchema.parse(data);
 }
