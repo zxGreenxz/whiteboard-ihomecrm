@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   HEARTBEAT_STALE_MS,
   WatchdogState,
+  deriveRecordOperationId,
   evaluateSnapshot,
   type ProbeSnapshot,
   type WatchdogEnv,
@@ -126,5 +127,45 @@ describe("external OpenClaw watchdog", () => {
     await watchdog.tick(start + 120_000, fetcher);
     expect(new Set(urls)).toEqual(new Set([env.OPENCLAW_WATCHDOG_EDGE_URL]));
     expect(urls.join(" ")).not.toMatch(/gateway|18789|openclaw\.mjs/iu);
+  });
+});
+
+describe("record operation identity", () => {
+  const baseEvent = {
+    accountId: null,
+    cellId: null,
+    severity: "ERROR" as const,
+    healthKind: "QUEUE_LAG_HIGH",
+    status: "OPEN" as const,
+    fingerprint: "queue-lag:p95",
+    observedAt: "2026-07-29T10:00:00.000Z",
+    contentFreeMetrics: {},
+  };
+  const base = {
+    organizationId: ORG,
+    events: [baseEvent],
+    controls: ["PAUSE_ALL_OUTBOUND_MEDIA"],
+    notificationFingerprints: ["queue-lag:p95"],
+    repeatWindow: 900,
+  };
+
+  it("is deterministic for identical pending effects so a retry cannot duplicate them", async () => {
+    const first = await deriveRecordOperationId(base);
+    const second = await deriveRecordOperationId({ ...base, events: [{ ...baseEvent }] });
+    expect(first).toBe(second);
+    expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u);
+  });
+
+  it("changes whenever the effects change", async () => {
+    const first = await deriveRecordOperationId(base);
+    for (const mutated of [
+      { ...base, controls: [] },
+      { ...base, notificationFingerprints: [] },
+      { ...base, repeatWindow: 300 },
+      { ...base, organizationId: "bbbb0000-0000-4000-8000-000000000001" },
+      { ...base, events: [{ ...baseEvent, fingerprint: "queue-lag:other" }] },
+    ]) {
+      expect(await deriveRecordOperationId(mutated)).not.toBe(first);
+    }
   });
 });
