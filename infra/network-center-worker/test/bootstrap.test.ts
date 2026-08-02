@@ -5,40 +5,19 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-import { generateBootstrap } from "../scripts/generate-router-bootstrap.mjs";
-
-const fixture = {
-  routerIdentity: "MikroTik Demo",
-  deploymentId: "demo-router-20260730",
-  routerUser: "ihome-nc-worker",
-  routerPassword: "temporary-random-password-1234567890",
-  routerWireGuardPrivateKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-  routerWireGuardPublicKey: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
-  vpsWireGuardPrivateKey: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
-  vpsWireGuardPublicKey: "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
-  workerSshPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeWorkerPublicKeyOnly network-center",
-  vpsEndpointHost: "203.0.113.10",
-  wireGuardPort: 51820,
-  managementCidr: "10.77.0.0/24",
-  vpsAddress: "10.77.0.1/24",
-  vpsPeerAddress: "10.77.0.1/32",
-  routerAddress: "10.77.0.2/24",
-  routerPeerAddress: "10.77.0.2/32",
-  recoveryCidr: "192.168.88.10/32",
-  recoveryInterface: "ether2",
-  wanInterface: "ether1",
-  sshStrongCrypto: false,
-  managementServices: {
-    ssh: { disabled: false, address: "192.168.88.0/24", port: 22 },
-    winbox: { disabled: false, address: "192.168.88.0/24", port: 8291 },
-    telnet: { disabled: true, address: "", port: 23 },
-    ftp: { disabled: true, address: "", port: 21 },
-    www: { disabled: true, address: "", port: 80 },
-    "www-ssl": { disabled: true, address: "", port: 443 },
-    api: { disabled: true, address: "", port: 8728 },
-    "api-ssl": { disabled: true, address: "", port: 8729 },
-  },
-};
+import {
+  generateBootstrap,
+  generateWireGuardKeypair,
+  wireGuardPublicKeyFromPrivate,
+} from "../scripts/generate-router-bootstrap.mjs";
+import {
+  bootstrapFixture as fixture,
+  dedicatedPortFixture,
+  RFC7748_ALICE_PRIVATE,
+  RFC7748_ALICE_PUBLIC,
+  RFC7748_BOB_PRIVATE,
+  RFC7748_BOB_PUBLIC,
+} from "./support/routerBootstrapFixture.js";
 
 describe("demo router bootstrap generator", () => {
   it("generates deterministic staged, lockdown, rollback, and VPS configs", () => {
@@ -65,7 +44,9 @@ describe("demo router bootstrap generator", () => {
     expect(files["router-bootstrap.rsc"]).not.toContain("NETWORK_CENTER_STAGE1_READY");
     expect(files["router-bootstrap.rsc"]).toContain("192.168.88.10/32");
     expect(files["router-bootstrap.rsc"]).toContain("10.77.0.1/32");
-    expect(files["router-bootstrap.rsc"]).toContain('in-interface="ether2"');
+    expect(files["router-bootstrap.rsc"]).toContain('in-interface="bridge"');
+    expect(generateBootstrap(dedicatedPortFixture)["router-bootstrap.rsc"])
+      .toContain('in-interface="ether5"');
     expect(files["router-bootstrap.rsc"]).toContain("ihome-nc-worker");
     expect(files["router-bootstrap.rsc"]).toContain(
       "ihomecrm-network-center:v1:demo-router-20260730",
@@ -109,7 +90,10 @@ describe("demo router bootstrap generator", () => {
     expect(bootstrap).toContain("[/interface get $ncRecovery default-name]");
     expect(bootstrap).toContain("[/interface get $ncRecovery disabled]");
     expect(bootstrap).toContain("/interface/bridge/port find where interface=$ncRecoveryName");
-    expect(bootstrap).toContain("/ip/address find where interface=$ncRecoveryName and disabled=no");
+    expect(bootstrap).toContain(
+      "/ip/address find where interface=$ncRecoveryName and address=192.168.88.1/24"
+      + " and disabled=no and !dynamic",
+    );
     expect(bootstrap).toContain("/ip/firewall/filter get $ncRecoveryRules src-address");
     expect(bootstrap).toContain("/ip/firewall/filter get $ncHandshakeRules in-interface");
     expect(bootstrap).toContain("/ip/firewall/filter get $ncManagementRules src-address");
@@ -228,5 +212,121 @@ describe("demo router bootstrap generator", () => {
   it("accepts an explicit non-WAN ether10 recovery interface", () => {
     expect(() => generateBootstrap({ ...fixture, recoveryInterface: "ether10" }))
       .not.toThrow();
+  });
+
+  it("requires the recovery source range to be reachable through the router's own address", () => {
+    // Without this the `:lan-recovery` rule is decorative: it can accept a source
+    // address the router has no interface route to, on an interface that never
+    // sees it.
+    const withoutAddress: Partial<typeof fixture> = { ...fixture };
+    delete withoutAddress.recoveryInterfaceAddress;
+    expect(() => generateBootstrap(withoutAddress as typeof fixture))
+      .toThrow(/bootstrap input/i);
+    for (const recoveryInterfaceAddress of [
+      // operator on 192.168.88.10, router answering on a different subnet
+      "192.168.77.1/24",
+      // the network address and the broadcast address are not host addresses
+      "192.168.88.0/24",
+      "192.168.88.255/24",
+      // a /32 gateway cannot contain the recovery range
+      "192.168.88.1/32",
+      // public space is never a LAN recovery path
+      "203.0.113.1/24",
+      // overlapping the WireGuard management network defeats the independence the
+      // recovery path exists to provide
+      "10.77.0.9/24",
+    ]) {
+      expect(() => generateBootstrap({ ...fixture, recoveryInterfaceAddress }))
+        .toThrow(/bootstrap network/i);
+    }
+    expect(() => generateBootstrap({
+      ...fixture,
+      recoveryInterfaceAddress: "192.168.88.1/24",
+      recoveryCidr: "192.168.88.0/28",
+    })).not.toThrow();
+  });
+});
+
+describe("WireGuard key material", () => {
+  it("derives public keys the way `wg pubkey` does", () => {
+    // Pinned to the published RFC 7748 §6.1 vectors, not to this implementation.
+    expect(wireGuardPublicKeyFromPrivate(RFC7748_ALICE_PRIVATE)).toBe(RFC7748_ALICE_PUBLIC);
+    expect(wireGuardPublicKeyFromPrivate(RFC7748_BOB_PRIVATE)).toBe(RFC7748_BOB_PUBLIC);
+    const minted = generateWireGuardKeypair();
+    expect(minted.publicKey).toBe(wireGuardPublicKeyFromPrivate(minted.privateKey));
+    expect(minted.privateKey).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+    expect(minted.privateKey).not.toBe(generateWireGuardKeypair().privateKey);
+  });
+
+  it("closes the loop between the router's private key and the hub's peer entry", () => {
+    // The observed production state was a hub peer reserved with a router public
+    // key whose private half existed nowhere, so the tunnel could never come up.
+    // These two assertions make that state ungeneratable.
+    const files = generateBootstrap(fixture);
+    const routerPrivateKey = /private-key="([^"]+)"/u
+      .exec(files["router-bootstrap.rsc"])?.[1] ?? "";
+    const peerPublicKey = /^PublicKey = (.+)$/mu.exec(files["wg0.conf"])?.[1] ?? "";
+    const hubPrivateKey = /^PrivateKey = (.+)$/mu.exec(files["wg0.conf"])?.[1] ?? "";
+    const routerPeerPublicKey = /public-key="([^"]+)"/u
+      .exec(files["router-bootstrap.rsc"])?.[1] ?? "";
+
+    expect(routerPrivateKey).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+    expect(wireGuardPublicKeyFromPrivate(routerPrivateKey)).toBe(peerPublicKey);
+    expect(wireGuardPublicKeyFromPrivate(hubPrivateKey)).toBe(routerPeerPublicKey);
+  });
+
+  it("refuses a declared public key that is not the half of its private key", () => {
+    expect(() => generateBootstrap({
+      ...fixture,
+      routerWireGuardPublicKey: RFC7748_BOB_PUBLIC,
+    })).toThrow(/public key does not match/i);
+    expect(() => generateBootstrap({
+      ...fixture,
+      vpsWireGuardPublicKey: RFC7748_ALICE_PUBLIC,
+    })).toThrow(/public key does not match/i);
+    expect(() => generateBootstrap({
+      ...fixture,
+      vpsWireGuardPrivateKey: RFC7748_ALICE_PRIVATE,
+      vpsWireGuardPublicKey: RFC7748_ALICE_PUBLIC,
+    })).toThrow(/must not share a WireGuard key/i);
+  });
+
+  it("mints both keypairs into one owner-only file and never onto a stream", () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "network-bootstrap-keys-"));
+    const keypairPath = resolve(directory, "wireguard-keys.json");
+    const result = spawnSync(
+      process.execPath,
+      [resolve(import.meta.dirname, "../scripts/generate-router-bootstrap.mjs")],
+      {
+        env: { ...process.env, NETWORK_BOOTSTRAP_KEYPAIR_FILE: keypairPath },
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    const keys = JSON.parse(readFileSync(keypairPath, "utf8"));
+    expect(wireGuardPublicKeyFromPrivate(keys.routerWireGuardPrivateKey))
+      .toBe(keys.routerWireGuardPublicKey);
+    expect(wireGuardPublicKeyFromPrivate(keys.vpsWireGuardPrivateKey))
+      .toBe(keys.vpsWireGuardPublicKey);
+    expect(keys.routerWireGuardPrivateKey).not.toBe(keys.vpsWireGuardPrivateKey);
+    if (process.platform !== "win32") {
+      expect(statSync(keypairPath).mode & 0o777).toBe(0o600);
+    }
+    // The generated bundle accepts them, so the operator's only manual step is a
+    // copy, and a mistyped copy is caught by the keypair assertion above.
+    expect(() => generateBootstrap({ ...fixture, ...keys })).not.toThrow();
+    // Never overwrites an existing keypair file.
+    const second = spawnSync(
+      process.execPath,
+      [resolve(import.meta.dirname, "../scripts/generate-router-bootstrap.mjs")],
+      {
+        env: { ...process.env, NETWORK_BOOTSTRAP_KEYPAIR_FILE: keypairPath },
+        encoding: "utf8",
+      },
+    );
+    expect(second.status).toBe(1);
   });
 });

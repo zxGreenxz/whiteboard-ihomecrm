@@ -23,8 +23,12 @@ Giữ nguyên topology demo:
 
 ```text
 Internet/switch -> ether1 (WAN demo)
-Máy Codex       -> ether2 (LAN recovery; tuyệt đối không cycle port này)
+Máy vận hành    -> ether2 (bridge member; LAN recovery đi qua bridge 192.168.88.1/24)
 ```
+
+Đường phục hồi là **bridge** chứ không phải port vật lý: trên `defconf` các port
+ether2-ether5 là bridge member và không có IP riêng. Không cycle port đang cắm máy
+vận hành, và bridge thì worker tự đánh dấu `protected` nên không cycle được.
 
 Trong phiên LAN hiện tại, chỉ đọc và lưu evidence cục bộ ngoài repo:
 
@@ -47,9 +51,39 @@ artifact nằm ngoài repo.
 
 ## 2. Sinh key và input ngoài repo
 
-Trên VPS, đặt `umask 077`, sinh hai cặp WireGuard riêng cho VPS và router. Sinh
-một SSH key Ed25519 riêng cho worker; không tái sử dụng key của 9Router, Zalo,
-Supabase hoặc tài khoản quản trị cá nhân.
+Sinh **cả hai** cặp WireGuard (router + VPS) bằng chính generator. Trước đây bước
+này là "chạy `wg genkey` hai lần bằng tay" và thực tế đã hỏng: hub reserve peer
+bằng một public key mà nửa private của nó không tồn tại ở đâu cả, nên tunnel không
+bao giờ lên được. Lệnh dưới đây không in gì ra stdout, ghi file `0600`, và từ chối
+ghi đè file đã có:
+
+```bash
+umask 077
+export NETWORK_BOOTSTRAP_KEYPAIR_FILE=/secure/tmp/demo-wireguard-keys.json
+node scripts/generate-router-bootstrap.mjs
+```
+
+File này chứa bốn trường `routerWireGuardPrivateKey`, `routerWireGuardPublicKey`,
+`vpsWireGuardPrivateKey`, `vpsWireGuardPublicKey`. Chép nguyên vào input JSON.
+Generator tự kiểm tra từng public key đúng là nửa công khai của private key khai
+báo (X25519, cùng kết quả với `wg pubkey`) và từ chối nếu lệch, nên chép sai bị
+bắt ngay chứ không lộ ra ở lần handshake đầu tiên.
+
+Mỗi private key chỉ có đúng một đích đến:
+
+- `routerWireGuardPrivateKey` -> `router-bootstrap.rsc` -> import vào router rồi
+  xóa khỏi Files ở bước 3.5;
+- `vpsWireGuardPrivateKey` -> `wg0.conf` -> `install-host.sh` cài root-owned
+  `0600` trên VPS.
+
+Public key của router đi vào `[Peer]` của `wg0.conf` trong cùng một lần chạy, nên
+peer trên hub luôn khớp với private key đã nạp vào router. Với tòa 2..15 lặp lại
+đúng quy trình này cho từng tòa: `install-host.sh` merge peer theo `PublicKey`
+(additive), tòa mới không đụng tới tòa 1..N-1; chỉ gỡ peer bằng
+`--remove-peer <PublicKey>` khi thật sự muốn gỡ.
+
+Sinh một SSH key Ed25519 riêng cho worker; không tái sử dụng key của 9Router,
+Zalo, Supabase hoặc tài khoản quản trị cá nhân.
 
 Tạo input JSON owner-only ở thư mục tạm ngoài Git với các trường:
 
@@ -72,7 +106,8 @@ Tạo input JSON owner-only ở thư mục tạm ngoài Git với các trường
   "routerAddress": "<router /24>",
   "routerPeerAddress": "<router /32>",
   "recoveryCidr": "<one RFC1918 /28 to /32 recovery network; prefer laptop /32>",
-  "recoveryInterface": "<enabled, unbridged ether2-ether99 with a direct IP address>",
+  "recoveryInterface": "<L3 edge của LAN: thường là `bridge`; hoặc ether2-ether99 out-of-band>",
+  "recoveryInterfaceAddress": "<địa chỉ của chính router trên interface đó, vd 192.168.88.1/24>",
   "wanInterface": "<actual WAN interface>",
   "sshStrongCrypto": false,
   "managementServices": {
@@ -94,12 +129,32 @@ WireGuard cùng tên không mang marker đó. `managementServices` phải đư�
 pre-state vừa capture; không tự điền theo giá trị mong muốn vì rollback dùng đúng
 disabled/address/port này. `sshStrongCrypto` cũng phải phản ánh đúng giá trị
 `/ip/ssh strong-crypto` trước bootstrap để rollback phục hồi chính xác.
-Bootstrap sẽ dừng trước mutation nếu recovery port không tồn tại duy nhất, đang
-disabled, là bridge member, thiếu IP address trực tiếp, trùng WAN, hoặc không có
-`default-name` vật lý `ether2`-`ether99`.
 
-Xác minh public key khớp private key bằng `wg pubkey` trước khi tiếp tục. Chạy
-generator không dùng CLI arguments và chọn output ngoài repo:
+### Recovery interface: chọn cái thật sự phục hồi được
+
+Đường phục hồi phải là **L3 edge của router hướng về máy vận hành**. Trên RouterOS
+`defconf` (hEX và tương đương) ether2-ether5 đều là bridge port và **không có IP
+riêng** (`bridgeports=1 addrs=0`), còn LAN `192.168.88.1/24` nằm trên `bridge`.
+Vì vậy `bridge` chính là đường phục hồi thật, và bootstrap chấp nhận nó.
+
+Bootstrap dừng **trước mọi mutation** nếu recovery interface: không tồn tại duy
+nhất, trùng WAN, đang disabled, không phải `ether`/`bridge`, là `ether` nhưng
+`default-name` không thuộc `ether2`-`ether99`, là `ether` nhưng vẫn là bridge
+member, hoặc **không mang đúng `recoveryInterfaceAddress` ở dạng tĩnh và enabled**.
+Địa chỉ do DHCP cấp (dynamic) bị từ chối: đường phục hồi mà hết hạn theo lease thì
+không phải đường phục hồi. Generator còn bắt buộc `recoveryCidr` nằm trong subnet
+của `recoveryInterfaceAddress` và không đè lên `managementCidr`.
+
+Hệ quả có thật, không phải trang trí: worker đọc `in-interface` của rule
+`:lan-recovery` và đánh dấu interface đó `protected`, nên `CYCLE_ACCESS_PORT`
+không bao giờ cycle được đường phục hồi; và dead-man switch của port cycle **từ
+chối chạy** nếu không tìm thấy rule marker này trong chain `input`.
+
+Nếu tòa nhà có sẵn một port out-of-band chuyên dụng (đã tách khỏi bridge và có IP
+riêng) thì vẫn dùng được, chỉ cần khai đúng `recoveryInterface` +
+`recoveryInterfaceAddress`.
+
+Chạy generator không dùng CLI arguments và chọn output ngoài repo:
 
 ```bash
 export NETWORK_BOOTSTRAP_INPUT_FILE=/secure/tmp/demo-input.json

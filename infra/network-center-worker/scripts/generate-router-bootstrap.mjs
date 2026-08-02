@@ -1,4 +1,10 @@
 import {
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  timingSafeEqual,
+} from "node:crypto";
+import {
   chmodSync,
   existsSync,
   mkdirSync,
@@ -59,6 +65,61 @@ function wireGuardKey(input, key) {
   const value = requiredString(input, key, 44, 44);
   if (!WIREGUARD_KEY.test(value)) throw new TypeError("invalid WireGuard key");
   return value;
+}
+
+/**
+ * DER prefix of a PKCS#8 X25519 private key. WireGuard keys are the raw 32-byte
+ * scalar, so wrapping them is the whole conversion.
+ */
+const X25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b656e04220420", "hex");
+
+/**
+ * `wg pubkey`, in-process. Curve25519 clamps the scalar during the base-point
+ * multiplication, so this agrees with `wg pubkey` for any 32-byte input; the tests
+ * pin it to the published RFC 7748 §6.1 vectors rather than to itself.
+ */
+export function wireGuardPublicKeyFromPrivate(privateKey) {
+  if (typeof privateKey !== "string" || !WIREGUARD_KEY.test(privateKey)) {
+    throw new TypeError("invalid WireGuard key");
+  }
+  const raw = Buffer.from(privateKey, "base64");
+  if (raw.length !== 32) throw new TypeError("invalid WireGuard key");
+  const key = createPrivateKey({
+    key: Buffer.concat([X25519_PKCS8_PREFIX, raw]),
+    format: "der",
+    type: "pkcs8",
+  });
+  const spki = createPublicKey(key).export({ format: "der", type: "spki" });
+  return Buffer.from(spki.subarray(spki.length - 32)).toString("base64");
+}
+
+/**
+ * Mints one WireGuard keypair. Both halves are returned in memory only; every
+ * caller here writes them straight into an owner-only file and nothing prints them.
+ */
+export function generateWireGuardKeypair() {
+  const pair = generateKeyPairSync("x25519");
+  const pkcs8 = pair.privateKey.export({ format: "der", type: "pkcs8" });
+  const privateKey = Buffer.from(pkcs8.subarray(pkcs8.length - 32)).toString("base64");
+  return { privateKey, publicKey: wireGuardPublicKeyFromPrivate(privateKey) };
+}
+
+/**
+ * Refuses a declared public key that is not the public half of the declared
+ * private key.
+ *
+ * This is the assertion that closes the loop the demo router fell through: the hub
+ * peer had been reserved with a router public key whose private half existed
+ * nowhere, so the tunnel could never come up and nothing noticed until somebody ran
+ * `wg pubkey` by hand. With this check, a `wg0.conf` peer can only ever carry the
+ * public half of the private key that the matching `router-bootstrap.rsc` installs.
+ */
+function assertMatchedKeypair(privateKey, publicKey) {
+  const declared = Buffer.from(publicKey, "base64");
+  const derived = Buffer.from(wireGuardPublicKeyFromPrivate(privateKey), "base64");
+  if (declared.length !== derived.length || !timingSafeEqual(declared, derived)) {
+    throw new TypeError("WireGuard public key does not match its private key");
+  }
 }
 
 function ipv4Range(value) {
@@ -132,9 +193,26 @@ function validateNetworks(value) {
   const routerAddress = ipv4Range(value.routerAddress);
   const vpsPeer = ipv4Range(value.vpsPeerAddress);
   const routerPeer = ipv4Range(value.routerPeerAddress);
+  // The router's own address on the recovery interface. It is what turns the
+  // `:lan-recovery` rule from a decoration into a path: the operator's source
+  // address has to be on a subnet this router actually answers on, on that exact
+  // interface, or the accept rule can never match a packet.
+  const recoveryGateway = ipv4Range(value.recoveryInterfaceAddress);
   const managementOverlapsRecovery = management.first <= recovery.last
     && recovery.first <= management.last;
-  const invalid = management.number !== management.first
+  const managementOverlapsRecoveryGateway = management.first <= recoveryGateway.last
+    && recoveryGateway.first <= management.last;
+  const invalidRecoveryGateway = recoveryGateway.prefix > 30
+    || !isRfc1918(recoveryGateway)
+    // An interface address is a host address, never the network or broadcast one.
+    || recoveryGateway.number === recoveryGateway.first
+    || recoveryGateway.number === recoveryGateway.last
+    // The recovery source range must be reachable through that address.
+    || recovery.first < recoveryGateway.first
+    || recovery.last > recoveryGateway.last
+    || managementOverlapsRecoveryGateway;
+  const invalid = invalidRecoveryGateway
+    || management.number !== management.first
     || management.prefix > 30
     || recovery.number !== recovery.first
     || recovery.prefix < 28
@@ -218,6 +296,10 @@ function normalizeInput(input) {
   const routerAddress = cidr(requiredString(input, "routerAddress"), 4);
   const routerPeerAddress = cidr(requiredString(input, "routerPeerAddress"), 4);
   const recoveryCidr = cidr(requiredString(input, "recoveryCidr"), 4);
+  const recoveryInterfaceAddress = cidr(
+    requiredString(input, "recoveryInterfaceAddress"),
+    4,
+  );
   const normalized = {
     routerIdentity,
     deploymentId,
@@ -236,12 +318,21 @@ function normalizeInput(input) {
     routerAddress,
     routerPeerAddress,
     recoveryCidr,
+    recoveryInterfaceAddress,
     recoveryInterface,
     wanInterface,
     sshStrongCrypto: input.sshStrongCrypto,
     managementServices: managementServices(input),
   };
   validateNetworks(normalized);
+  assertMatchedKeypair(
+    normalized.routerWireGuardPrivateKey,
+    normalized.routerWireGuardPublicKey,
+  );
+  assertMatchedKeypair(normalized.vpsWireGuardPrivateKey, normalized.vpsWireGuardPublicKey);
+  if (normalized.routerWireGuardPrivateKey === normalized.vpsWireGuardPrivateKey) {
+    throw new TypeError("router and VPS must not share a WireGuard key");
+  }
   return normalized;
 }
 
@@ -250,7 +341,12 @@ export function generateBootstrap(input) {
   const ownershipMarker = `ihomecrm-network-center:v1:${value.deploymentId}`;
   const serviceRollbackCommands = MANAGEMENT_SERVICE_NAMES.map((name) => {
     const state = value.managementServices[name];
-    return `/ip/service set [find where name=${routerOsQuote(name)}] disabled=${
+    // `and !dynamic` is load-bearing, not tidiness: RouterOS lists a dynamic
+    // connection entry beside the static service while a session is live, so
+    // `find where name="ssh"` alone resolves to two rows, the `set` is refused,
+    // and `/import` stops there. That is the FIRST mutating line of this file, so
+    // without the exclusion the rollback undoes nothing at all.
+    return `/ip/service set [find where name=${routerOsQuote(name)} and !dynamic] disabled=${
       state.disabled ? "yes" : "no"
     } port=${state.port} address=${routerOsQuote(state.address)}`;
   }).join("\n");
@@ -265,6 +361,7 @@ export function generateBootstrap(input) {
     VPS_PEER_ADDRESS: value.vpsPeerAddress,
     ROUTER_ADDRESS: value.routerAddress,
     RECOVERY_CIDR: value.recoveryCidr,
+    RECOVERY_GATEWAY_ADDRESS: value.recoveryInterfaceAddress,
     RECOVERY_INTERFACE: routerOsQuote(value.recoveryInterface),
     WAN_INTERFACE: routerOsQuote(value.wanInterface),
     OWNERSHIP_MARKER: routerOsQuote(ownershipMarker),
@@ -305,8 +402,43 @@ function isInsideGitWorkspace(path) {
   }
 }
 
+/**
+ * Mints the two keypairs one building needs and writes them, and nothing else,
+ * into a single owner-only file that the operator merges into the bootstrap input.
+ *
+ * Both private halves have exactly one destination each and never a second one:
+ * the router's goes into `router-bootstrap.rsc`, which is uploaded, imported and
+ * then removed from the router's Files; the VPS's goes into `wg0.conf`, which
+ * `install-host.sh` installs root-owned 0600. Nothing here writes to stdout, and
+ * the output path is refused inside a Git workspace by the same guard the
+ * generated bundle uses.
+ */
+function runKeypairCli(keypairPath) {
+  if (!isAbsolute(keypairPath)) throw new Error("bootstrap keypair path must be absolute");
+  if (isInsideGitWorkspace(dirname(keypairPath))) {
+    throw new Error("bootstrap keypair file must stay outside a Git workspace");
+  }
+  const router = generateWireGuardKeypair();
+  const vps = generateWireGuardKeypair();
+  writeFileSync(
+    keypairPath,
+    `${JSON.stringify({
+      routerWireGuardPrivateKey: router.privateKey,
+      routerWireGuardPublicKey: router.publicKey,
+      vpsWireGuardPrivateKey: vps.privateKey,
+      vpsWireGuardPublicKey: vps.publicKey,
+    }, null, 2)}\n`,
+    { flag: "wx", mode: 0o600 },
+  );
+}
+
 function runCli() {
   if (process.argv.length > 2) throw new Error("command-line arguments are not accepted");
+  const keypairPath = process.env.NETWORK_BOOTSTRAP_KEYPAIR_FILE?.trim() ?? "";
+  if (keypairPath) {
+    runKeypairCli(keypairPath);
+    return;
+  }
   const inputPath = process.env.NETWORK_BOOTSTRAP_INPUT_FILE?.trim() ?? "";
   const outputDirectory = process.env.NETWORK_BOOTSTRAP_OUTPUT_DIR?.trim() ?? "";
   if (!inputPath || !outputDirectory || !isAbsolute(inputPath) || !isAbsolute(outputDirectory)) {

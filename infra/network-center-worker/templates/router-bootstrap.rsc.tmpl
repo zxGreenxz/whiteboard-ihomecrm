@@ -46,24 +46,42 @@
 :if ([:tostr $ncRecovery] = [:tostr $ncWan]) do={
   :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
 }
-:if ([:tostr [/interface get $ncRecovery type]] != "ether") do={
+# The recovery interface must be the router's own L3 edge onto the operator's LAN.
+# On stock RouterOS defconf that is the BRIDGE: ether2-etherN are bridge ports with
+# no address of their own, so demanding an unbridged ether port with a direct IP is
+# unsatisfiable on the hardware this fleet actually runs. A dedicated out-of-band
+# ether port is still accepted for sites that have one.
+:local ncRecoveryType [:tostr [/interface get $ncRecovery type]]
+:if ($ncRecoveryType != "ether" && $ncRecoveryType != "bridge") do={
   :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
 }
-:if ([:tostr [/interface get $ncRecovery default-name]] !~ "^ether([2-9]|[1-9][0-9])$") do={
-  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+# Read in a nested :if: a bridge carries no default-name at all, and reading an
+# absent property is a hard error rather than an empty string.
+:if ($ncRecoveryType = "ether") do={
+  :if ([:tostr [/interface get $ncRecovery default-name]] !~ "^ether([2-9]|[1-9][0-9])$") do={
+    :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
+  }
 }
 :if ([:tostr [/interface get $ncRecovery disabled]] != "false") do={
   :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
 }
+# An ether recovery port must own its L3 edge. A bridge IS the edge, and a bridge is
+# never listed among its own ports, so one test covers both shapes.
 :if ([:len [/interface/bridge/port find where interface=$ncRecoveryName]] > 0) do={
   :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
 }
-:if ([:len [/ip/address find where interface=$ncRecoveryName and disabled=no]] = 0) do={
+# The rule is only a path if the router answers on the address the operator routes
+# to, on this interface, and only a durable one if that address is configured
+# rather than leased - a recovery path that expires with a DHCP lease is not one.
+:if ([:len [/ip/address find where interface=$ncRecoveryName and address=@@RECOVERY_GATEWAY_ADDRESS@@ and disabled=no and !dynamic]] != 1) do={
   :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
 }
-:local ncRecoveryRules [/ip/firewall/filter find where comment=$ncRecoveryMarker]
-:local ncHandshakeRules [/ip/firewall/filter find where comment=$ncHandshakeMarker]
-:local ncManagementRules [/ip/firewall/filter find where comment=$ncManagementMarker]
+# Every selector below excludes dynamic rows so the preflight inspects exactly the
+# rows the mutations later write, and so no mutation can be handed an unwritable
+# dynamic sibling.
+:local ncRecoveryRules [/ip/firewall/filter find where comment=$ncRecoveryMarker and !dynamic]
+:local ncHandshakeRules [/ip/firewall/filter find where comment=$ncHandshakeMarker and !dynamic]
+:local ncManagementRules [/ip/firewall/filter find where comment=$ncManagementMarker and !dynamic]
 :if ([:len $ncRecoveryRules] > 1 || [:len $ncHandshakeRules] > 1 || [:len $ncManagementRules] > 1) do={
   :error "NETWORK_CENTER_FIREWALL_CONFLICT"
 }
@@ -98,10 +116,10 @@
   /interface/wireguard set $ncWgs listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ disabled=no
 }
 
-:if ([:len [/ip/address find where interface=$ncWgName and comment=$ncAddressMarker]] = 0) do={
+:if ([:len [/ip/address find where interface=$ncWgName and comment=$ncAddressMarker and !dynamic]] = 0) do={
   /ip/address add address=@@ROUTER_ADDRESS@@ interface=$ncWgName comment=$ncAddressMarker
 } else={
-  /ip/address set [find where interface=$ncWgName and comment=$ncAddressMarker] address=@@ROUTER_ADDRESS@@ disabled=no
+  /ip/address set [find where interface=$ncWgName and comment=$ncAddressMarker and !dynamic] address=@@ROUTER_ADDRESS@@ disabled=no
 }
 
 :if ([:len [/interface/wireguard/peers find where interface=$ncWgName and comment=$ncPeerMarker]] = 0) do={
@@ -125,15 +143,20 @@
 /ip/ssh set strong-crypto=yes
 
 # Stage 1 keeps one explicitly selected, RFC1918 /28-/32 recovery path.
-/ip/service set [find where name="ssh"] disabled=no port=22 address=@@RECOVERY_CIDR@@,@@VPS_PEER_ADDRESS@@
-:if ([:len [/ip/firewall/filter find where comment=$ncRecoveryMarker]] = 0) do={
+# `and !dynamic` is what makes this line executable: this script is delivered over
+# SSH, RouterOS lists a dynamic connection entry beside the static `ssh` service
+# whenever a session is live, and a `set` whose selector also matches that entry is
+# refused - which would abort /import here, after six mutations and before every
+# firewall rule, leaving the router half-bootstrapped with no recovery marker.
+/ip/service set [find where name="ssh" and !dynamic] disabled=no port=22 address=@@RECOVERY_CIDR@@,@@VPS_PEER_ADDRESS@@
+:if ([:len [/ip/firewall/filter find where comment=$ncRecoveryMarker and !dynamic]] = 0) do={
   /ip/firewall/filter add chain=input action=accept protocol=tcp dst-port=22 src-address=@@RECOVERY_CIDR@@ in-interface=@@RECOVERY_INTERFACE@@ place-before=0 comment=$ncRecoveryMarker
 }
 
-:if ([:len [/ip/firewall/filter find where comment=$ncHandshakeMarker]] = 0) do={
+:if ([:len [/ip/firewall/filter find where comment=$ncHandshakeMarker and !dynamic]] = 0) do={
   /ip/firewall/filter add chain=input action=accept protocol=udp in-interface=@@WAN_INTERFACE@@ dst-port=@@WG_PORT@@ place-before=0 comment=$ncHandshakeMarker
 }
-:if ([:len [/ip/firewall/filter find where comment=$ncManagementMarker]] = 0) do={
+:if ([:len [/ip/firewall/filter find where comment=$ncManagementMarker and !dynamic]] = 0) do={
   /ip/firewall/filter add chain=input action=accept in-interface=$ncWgName src-address=@@VPS_PEER_ADDRESS@@ place-before=0 comment=$ncManagementMarker
 }
 

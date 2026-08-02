@@ -23,11 +23,11 @@
 @@SERVICE_ROLLBACK_COMMANDS@@
 /ip/ssh set strong-crypto=@@SSH_STRONG_CRYPTO_ROLLBACK@@
 
-/ip/firewall/filter remove [find where comment=$ncRecoveryMarker]
-/ip/firewall/filter remove [find where comment=$ncManagementMarker]
-/ip/firewall/filter remove [find where comment=$ncHandshakeMarker]
+/ip/firewall/filter remove [find where comment=$ncRecoveryMarker and !dynamic]
+/ip/firewall/filter remove [find where comment=$ncManagementMarker and !dynamic]
+/ip/firewall/filter remove [find where comment=$ncHandshakeMarker and !dynamic]
 /interface/wireguard/peers remove [find where interface=$ncWgName and comment=$ncPeerMarker]
-/ip/address remove [find where interface=$ncWgName and comment=$ncAddressMarker]
+/ip/address remove [find where interface=$ncWgName and comment=$ncAddressMarker and !dynamic]
 :if ([:len $ncWgs] = 1) do={ /interface/wireguard remove $ncWgs }
 :if ([:len $ncUsers] = 1) do={ /user/ssh-keys remove [find where user=$ncUser]; /user remove $ncUsers }
 :put "NETWORK_CENTER_ROLLBACK_APPLIED"

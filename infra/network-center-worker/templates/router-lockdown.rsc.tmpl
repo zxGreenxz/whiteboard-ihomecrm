@@ -21,13 +21,16 @@
   :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
 }
 
-/ip/service set [find where name="ssh"] disabled=no port=22 address=@@VPS_PEER_ADDRESS@@
-/ip/service set [find where name="winbox"] disabled=yes address=@@VPS_PEER_ADDRESS@@
-/ip/service set [find where name="telnet"] disabled=yes
-/ip/service set [find where name="ftp"] disabled=yes
-/ip/service set [find where name="www"] disabled=yes
-/ip/service set [find where name="www-ssl"] disabled=yes
-/ip/service set [find where name="api"] disabled=yes
-/ip/service set [find where name="api-ssl"] disabled=yes
-/ip/firewall/filter remove [find where comment=$ncRecoveryMarker]
+# `and !dynamic` on every selector: this script is delivered over SSH and RouterOS
+# lists a dynamic connection entry beside the static service, so the bare selector
+# resolves to two rows and the `set` is refused.
+/ip/service set [find where name="ssh" and !dynamic] disabled=no port=22 address=@@VPS_PEER_ADDRESS@@
+/ip/service set [find where name="winbox" and !dynamic] disabled=yes address=@@VPS_PEER_ADDRESS@@
+/ip/service set [find where name="telnet" and !dynamic] disabled=yes
+/ip/service set [find where name="ftp" and !dynamic] disabled=yes
+/ip/service set [find where name="www" and !dynamic] disabled=yes
+/ip/service set [find where name="www-ssl" and !dynamic] disabled=yes
+/ip/service set [find where name="api" and !dynamic] disabled=yes
+/ip/service set [find where name="api-ssl" and !dynamic] disabled=yes
+/ip/firewall/filter remove [find where comment=$ncRecoveryMarker and !dynamic]
 :put "NETWORK_CENTER_LOCKDOWN_APPLIED"
