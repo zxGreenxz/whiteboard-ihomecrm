@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -249,22 +249,47 @@ if (variant === "stock") {
       return { status: 0 };
     },
   });
+  // Fork (763cf4c) yeu cau MOI phan hoi bridge la envelope da ky:
+  // {version, operation, requestNonce, binding, issuedAt, expiresAt, bodySha256, body, signature}
+  // voi signature = HMAC-SHA256(secret, RESPONSE_SIGNATURE_DOMAIN || canonical(unsigned)).
+  // Fixture phai ky y het, neu khong moi case cham bridge deu tra
+  // BRIDGE_RESPONSE_AUTHENTICATION_FAILED. createSignedBridgeResponse bi tree-shake
+  // khoi dist (plugin chi verify) nen tai hien dung thuat toan o day.
+  const bridgeSecret = Buffer.alloc(32, 0x46);
+  const fixedNow = Date.parse("2026-07-29T10:00:00.000Z");
+  const signedResponse = (operation, requestNonce, body) => {
+    const unsigned = {
+      version: 1,
+      operation,
+      requestNonce,
+      binding,
+      issuedAt: new Date(fixedNow).toISOString(),
+      expiresAt: new Date(fixedNow + 5000).toISOString(),
+      bodySha256: createHash("sha256").update(canonicalJson(body), "utf8").digest("hex"),
+      body,
+    };
+    const signature = createHmac("sha256", bridgeSecret)
+      .update("ihome-openclaw-cell-bridge-response-v1\0", "utf8")
+      .update(canonicalJson(unsigned), "utf8")
+      .digest("hex");
+    return new Response(JSON.stringify({ ...unsigned, signature }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
   const installation = installInstalledBehaviorContractRuntimeV1({
     binding,
     bridgeBaseUrl: "http://bridge.internal",
-    bridgeSecret: Buffer.alloc(32, 0x46),
+    bridgeSecret,
     gatewayDeviceId: "gateway-a",
-    now: () => Date.parse("2026-07-29T10:00:00.000Z"),
+    now: () => fixedNow,
     nonce: () => `behavior-${nonce += 1}`,
     providerFixture: { accountProfile: "profile-a", api: fixtureApi },
     bridgeFetch: async (_url, init) => {
       const envelope = JSON.parse(String(init.body));
       observe("bridge", envelope.operation);
       if (envelope.operation === "inbound.ready") {
-        return new Response(JSON.stringify({ version: 1, status: "READY" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return signedResponse(envelope.operation, envelope.nonce, { version: 1, status: "READY" });
       }
       if (envelope.operation === "inbound.commit") {
         const acknowledgement = activeCase === "inbound-duplicate"
@@ -272,34 +297,25 @@ if (variant === "stock") {
           : activeCase === "inbound-corrupt"
             ? { version: 1, status: "committed", durability: { journalMode: "DELETE", synchronous: "NORMAL" } }
             : { version: 1, status: "committed", durability: { journalMode: "WAL", synchronous: "FULL" } };
-        return new Response(JSON.stringify(acknowledgement), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return signedResponse(envelope.operation, envelope.nonce, acknowledgement);
       }
       if (envelope.operation === "media.materialize") {
-        return new Response(JSON.stringify({
+        return signedResponse(envelope.operation, envelope.nonce, {
           version: 1,
           objectKey: mediaPart.objectKey,
           sha256: mediaPart.sha256,
           mime: mediaPart.mime,
           bytes: mediaBytes.length,
           contentBase64: mediaBytes.toString("base64"),
-        }), { status: 200, headers: { "content-type": "application/json" } });
+        });
       }
       if (envelope.operation === "outbox.authorize-send") {
         const status = activeCase === "outbound-authorization-denied" ? "DENIED" : "AUTHORIZED";
-        return new Response(JSON.stringify({ version: 1, status }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return signedResponse(envelope.operation, envelope.nonce, { version: 1, status });
       }
       if (envelope.operation === "control.authorize") {
         const status = activeCase === "control-denied" ? "DENIED" : "AUTHORIZED";
-        return new Response(JSON.stringify({ version: 1, status }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return signedResponse(envelope.operation, envelope.nonce, { version: 1, status });
       }
       throw new Error(`unexpected bridge operation ${envelope.operation}`);
     },
