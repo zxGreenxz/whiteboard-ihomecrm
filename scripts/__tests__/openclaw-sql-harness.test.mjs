@@ -50,6 +50,7 @@ function domainTextSha256(domain, value) {
 const REQUIRED_SQL_AUTHORIZATION_PROOFS = Object.freeze([
   "membership.inactive-revoked",
   "permissions.mixed",
+  "operations.account-bounded-contracts",
   "tenant.wrong-account",
   "tenant.composite-fk",
   "qr.unique",
@@ -372,7 +373,7 @@ describe("OpenClaw SQL harness safety boundary", () => {
     expect(SQL_AUTHORIZATION_PROOFS).toEqual(REQUIRED_SQL_AUTHORIZATION_PROOFS);
     const result = await runDisposableSqlAuthorizationMatrix();
     expect(result.proofs).toEqual(REQUIRED_SQL_AUTHORIZATION_PROOFS);
-  }, 30_000);
+  }, 45_000);
 
   it("authenticates root credentials before consuming exchange nonces", async () => {
     const {
