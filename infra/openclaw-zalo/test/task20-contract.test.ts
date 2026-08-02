@@ -27,13 +27,15 @@ describe("Task 20 watchdog and recovery contracts", () => {
 
     // Fail-closed: mốc trip phải được ghi TRƯỚC khi gọi Edge, và lỗi gọi Edge
     // không được ngăn cưỡng chế cục bộ (pause ngay + dừng cell/bridge sau 10 phút).
-    const writeBeforePost = guard.indexOf("write_state\n  post_guard");
-    expect(writeBeforePost).toBeGreaterThan(-1);
     expect(guard).toContain('post_guard "$guard_state" "$fingerprint" || post_failed=1');
     expect(guard).toContain('post_guard CLEAR_PENDING "host-guard:clear-pending-manual-resume" || post_failed=1');
-    const postIndex = guard.indexOf("post_guard \"$guard_state\"");
+    const postIndex = guard.indexOf('post_guard "$guard_state"');
     const stopIndex = guard.indexOf("stop --timeout 30 cell bridge");
+    // `write_state` được GỌI (thụt lề trong nhánh trip) trước lần post đầu tiên.
+    const writeCallIndex = guard.search(/^\s+write_state\s*$/mu);
+    expect(writeCallIndex).toBeGreaterThan(-1);
     expect(postIndex).toBeGreaterThan(-1);
+    expect(writeCallIndex).toBeLessThan(postIndex);
     expect(stopIndex).toBeGreaterThan(postIndex);
     expect(guard).toMatch(/if \[ "\$post_failed" -ne 0 \]; then[\s\S]*exit 1/u);
 
@@ -70,6 +72,25 @@ describe("Task 20 watchdog and recovery contracts", () => {
     ]) expect(source).toContain(required);
     expect(source).toContain("dddd0000-0000-4000-8000-000000000001");
     expect(source).not.toContain("aaaa0000-0000-4000-8000-000000000001");
+
+    // RTO phải đo bằng đồng hồ diễn tập bao quanh chính lần restore, và chỉ
+    // enforce SAU khi restore xong — không lấy mốc thời gian do caller khai.
+    const measuredStart = source.indexOf("measured_restore_start=$(date +%s)");
+    const restoreCall = source.indexOf("run_adapter supabase-restore-test");
+    const measuredEnd = source.indexOf("measured_restore_end=$(date +%s)");
+    const rtoCompute = source.indexOf("rto_seconds=$((measured_restore_end - measured_restore_start))");
+    const rtoGate = source.indexOf('"$rto_seconds" -le 14400');
+    for (const index of [measuredStart, restoreCall, measuredEnd, rtoCompute, rtoGate]) {
+      expect(index).toBeGreaterThan(-1);
+    }
+    expect(measuredStart).toBeLessThan(restoreCall);
+    expect(restoreCall).toBeLessThan(measuredEnd);
+    expect(measuredEnd).toBeLessThan(rtoCompute);
+    expect(rtoCompute).toBeLessThan(rtoGate);
+    // Con số caller khai chỉ còn là metadata, không phải nguồn của actualRtoSeconds.
+    expect(source).toContain("declared_rto_seconds=$((restore_end_epoch - restore_start_epoch))");
+    expect(source).toContain('\\"rtoMeasurement\\":\\"drill-clock\\"');
+    expect(source).toContain('\\"actualRtoSeconds\\":$rto_seconds');
   });
 
   it("freezes migration in GLOBAL_STOP/drain/fence/revoke/relogin order", async () => {
