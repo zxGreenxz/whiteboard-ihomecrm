@@ -575,6 +575,7 @@
         "diff_ids",
         "layers",
         "config_path",
+        "entrypoint_path",
         "fork_root",
         "record_count",
         "session_paths",
@@ -582,7 +583,8 @@
         "records_sha256",
         "fork_records",
         "session_records",
-        "config_record"
+        "config_record",
+        "entrypoint_record"
       ],
       "properties": {
         "architecture": { "type": "string", "const": "amd64" },
@@ -601,6 +603,7 @@
           "items": { "$ref": "#/$defs/rootfsLayerEvidence" }
         },
         "config_path": { "type": "string", "const": "opt/openclaw-cell/openclaw.json.tmpl" },
+        "entrypoint_path": { "type": "string", "const": "opt/openclaw-cell/entrypoint.sh" },
         "fork_root": { "type": "string", "const": "home/node/.openclaw/npm/projects/zalouser" },
         "record_count": { "type": "integer" },
         "session_paths": {
@@ -626,7 +629,8 @@
           "maxItems": 3,
           "items": { "$ref": "#/$defs/runtimeRootfsRecord" }
         },
-        "config_record": { "$ref": "#/$defs/runtimeRootfsRecord" }
+        "config_record": { "$ref": "#/$defs/runtimeRootfsRecord" },
+        "entrypoint_record": { "$ref": "#/$defs/runtimeRootfsRecord" }
       }
     },
     "gitBlobRecord": {

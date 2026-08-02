@@ -462,6 +462,13 @@ test("runtime delta evidence count matches every final-image COPY layer", async 
   assert.equal(rootfsSchema.properties.delta_layer_count.const, runtimeCopyCount);
   assert.equal(rootfsSchema.properties.layers.minItems, runtimeCopyCount);
   assert.equal(rootfsSchema.properties.layers.maxItems, runtimeCopyCount);
+  assert.ok(rootfsSchema.required.includes("entrypoint_path"));
+  assert.ok(rootfsSchema.required.includes("entrypoint_record"));
+  assert.equal(
+    rootfsSchema.properties.entrypoint_path.const,
+    "opt/openclaw-cell/entrypoint.sh",
+  );
+  assert.equal(rootfsSchema.properties.entrypoint_record.$ref, "#/$defs/runtimeRootfsRecord");
   assert.match(
     verifier,
     new RegExp(`const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = ${runtimeCopyCount};`),
