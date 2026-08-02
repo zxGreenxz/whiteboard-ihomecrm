@@ -100,6 +100,45 @@ describe("Task 20 recovery and migration adapters", () => {
     expect([...PENDING_FACADES].filter((facade) => !missing.includes(facade))).toEqual([]);
   });
 
+  it("splits a postgres URI into discrete libpq variables", async () => {
+    const { connectionEnvironment } = await import(
+      "../scripts/openclaw-recovery-adapter.mjs"
+    );
+    // libpq only URI-expands `dbname` via PQconnectdbParams; an environment default
+    // is taken LITERALLY, so passing the whole URI as PGDATABASE asked for a database
+    // named "postgresql://…" on the local default host. Every step using it failed
+    // with a misleading "query failed".
+    const variables = connectionEnvironment(
+      "postgresql://drill%40user:p%40ss@db.example.com:6543/openclaw_restore?sslmode=require",
+    );
+    expect(variables).toEqual({
+      PGDATABASE: "openclaw_restore",
+      PGHOST: "db.example.com",
+      PGPORT: "6543",
+      PGUSER: "drill@user",
+      PGPASSWORD: "p@ss",
+      PGSSLMODE: "require",
+    });
+    // The database NAME is what pg_restore needs in argv; the password must not be.
+    expect(Object.values(variables)).toContain("p@ss");
+    expect(variables.PGDATABASE).not.toContain("p@ss");
+
+    for (const bad of ["", "mysql://host/db", "postgresql://host", "not a uri"]) {
+      expect(() => connectionEnvironment(bad), bad).toThrow();
+    }
+  });
+
+  it("passes --dbname to pg_restore, without which it restores nothing", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(recoveryAdapter, "utf8");
+    // pg_restore with no --dbname writes the SQL script to stdout and exits 0. The
+    // first version omitted it and still reported `restored: true`.
+    expect(source).toMatch(/"pg_restore",\s*\[\s*(?:\/\/[^\n]*\n\s*)*"--dbname"/u);
+    expect(source).toContain('"--exit-on-error"');
+    // And it must prove the restore produced this product's schema, not merely exit 0.
+    expect(source).toContain("restored target contains no OpenClaw tables");
+  });
+
   it("rejects unknown subcommands, unknown flags, and repeats as usage errors", () => {
     for (const argv of [
       ["not-a-step", "--organization", ORG, "--cell", OLD_CELL],

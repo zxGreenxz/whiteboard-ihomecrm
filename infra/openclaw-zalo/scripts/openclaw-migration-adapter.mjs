@@ -108,11 +108,31 @@ function environment(name) {
  * dressed a guess up as a check. The URI carries the password so it travels through
  * the environment, never argv, where /proc/<pid>/cmdline exposes it.
  */
+/** See the recovery adapter: libpq does not URI-expand PGDATABASE from the env. */
+export function connectionEnvironment(uri) {
+  let parsed;
+  try {
+    parsed = new URL(uri);
+  } catch {
+    throw new FailClosed("connection URI is malformed");
+  }
+  if (!/^postgres(ql)?:$/u.test(parsed.protocol)) {
+    throw new FailClosed("connection URI must use the postgres scheme");
+  }
+  const database = decodeURIComponent(parsed.pathname.replace(/^\//u, ""));
+  if (!database) throw new FailClosed("connection URI carries no database name");
+  const variables = { PGDATABASE: database };
+  if (parsed.hostname) variables.PGHOST = parsed.hostname;
+  if (parsed.port) variables.PGPORT = parsed.port;
+  if (parsed.username) variables.PGUSER = decodeURIComponent(parsed.username);
+  if (parsed.password) variables.PGPASSWORD = decodeURIComponent(parsed.password);
+  const sslmode = parsed.searchParams.get("sslmode");
+  if (sslmode) variables.PGSSLMODE = sslmode;
+  return variables;
+}
+
 function canonicalScalar(sql) {
   const connection = environment("OPENCLAW_MIGRATION_CANONICAL_URL");
-  if (!/^postgres(ql)?:\/\//u.test(connection)) {
-    throw new FailClosed("OPENCLAW_MIGRATION_CANONICAL_URL must be a postgres connection URI");
-  }
   let output;
   try {
     output = execFileSync(
@@ -121,7 +141,7 @@ function canonicalScalar(sql) {
       {
         encoding: "utf8",
         timeout: 120_000,
-        env: { ...process.env, PGDATABASE: connection },
+        env: { ...process.env, ...connectionEnvironment(connection) },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

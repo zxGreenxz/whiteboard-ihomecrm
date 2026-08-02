@@ -130,11 +130,42 @@ function environment(name) {
  * real-looking name. Credentials arrive through PGPASSFILE-style env only and are
  * never placed on a command line, where /proc/<pid>/cmdline would expose them.
  */
+/**
+ * Splits a postgres URI into the discrete libpq variables.
+ *
+ * Passing the whole URI as `PGDATABASE` does NOT work: libpq only URI-expands
+ * `dbname` when it arrives through `PQconnectdbParams(expand_dbname=true)`, while
+ * environment defaults are taken literally. The first version therefore asked for
+ * a database literally named "postgresql://…" on the local default host, and every
+ * step that used it failed with a misleading "query failed".
+ *
+ * Discrete variables also keep the password out of argv, unlike putting the URI on
+ * the command line where /proc/<pid>/cmdline exposes it.
+ */
+export function connectionEnvironment(uri) {
+  let parsed;
+  try {
+    parsed = new URL(uri);
+  } catch {
+    throw new FailClosed("connection URI is malformed");
+  }
+  if (!/^postgres(ql)?:$/u.test(parsed.protocol)) {
+    throw new FailClosed("connection URI must use the postgres scheme");
+  }
+  const database = decodeURIComponent(parsed.pathname.replace(/^\//u, ""));
+  if (!database) throw new FailClosed("connection URI carries no database name");
+  const variables = { PGDATABASE: database };
+  if (parsed.hostname) variables.PGHOST = parsed.hostname;
+  if (parsed.port) variables.PGPORT = parsed.port;
+  if (parsed.username) variables.PGUSER = decodeURIComponent(parsed.username);
+  if (parsed.password) variables.PGPASSWORD = decodeURIComponent(parsed.password);
+  const sslmode = parsed.searchParams.get("sslmode");
+  if (sslmode) variables.PGSSLMODE = sslmode;
+  return variables;
+}
+
 function psqlScalar(connectionEnv, sql) {
   const connection = environment(connectionEnv);
-  if (!/^postgres(ql)?:\/\//u.test(connection)) {
-    throw new FailClosed(`${connectionEnv} must be a postgres connection URI`);
-  }
   let output;
   try {
     output = execFileSync(
@@ -143,8 +174,7 @@ function psqlScalar(connectionEnv, sql) {
       {
         encoding: "utf8",
         timeout: 120_000,
-        // The URI carries the password, so it goes through the environment, not argv.
-        env: { ...process.env, PGURI: connection, PGDATABASE: connection },
+        env: { ...process.env, ...connectionEnvironment(connection) },
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -277,19 +307,24 @@ async function run({ command, values, booleans }) {
       // A REAL restore into a disposable target. restore-drill.sh brackets this call
       // with its own clock to measure the true RTO, so nothing here may shortcut.
       const restoreTarget = environment("OPENCLAW_RECOVERY_RESTORE_URL");
-      if (!/^postgres(ql)?:\/\//u.test(restoreTarget)) {
-        throw new FailClosed("OPENCLAW_RECOVERY_RESTORE_URL must be a postgres connection URI");
-      }
+      const restoreVariables = connectionEnvironment(restoreTarget);
       try {
         execFileSync(
           "pg_restore",
-          ["--no-owner", "--no-privileges", "--clean", "--if-exists", "--exit-on-error"],
+          [
+            // WITHOUT --dbname, pg_restore writes the SQL script to stdout and exits
+            // 0 - it restores nothing. The first version omitted it and still
+            // reported `restored: true`. The database NAME is safe in argv; the
+            // password travels in the environment.
+            "--dbname", restoreVariables.PGDATABASE,
+            "--no-owner", "--no-privileges", "--clean", "--if-exists", "--exit-on-error",
+          ],
           {
             encoding: "utf8",
             // Four hours is the RTO gate; a restore that outruns it must fail here
             // rather than let the drill report a passing time.
             timeout: 4 * 60 * 60 * 1000,
-            env: { ...process.env, PGDATABASE: restoreTarget },
+            env: { ...process.env, ...restoreVariables },
             input: readFileSync(backupFile),
             stdio: ["pipe", "pipe", "pipe"],
           },

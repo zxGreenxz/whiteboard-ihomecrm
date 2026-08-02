@@ -48,6 +48,11 @@ execs it with the pinned Node 24.15.0).
 It FAILS CLOSED. Any step whose infrastructure is unreachable exits non-zero, so the
 drill cannot produce PASS evidence for work that never ran:
 
+The two Postgres URIs are split into discrete libpq variables before psql or
+pg_restore runs. Passing a URI as `PGDATABASE` does NOT work: libpq only expands a
+URI supplied through `PQconnectdbParams`, while environment defaults are literal, so
+the client would look for a database named `postgresql://…` on the local host.
+
 - `OPENCLAW_RECOVERY_CANONICAL_URL` - read-only Postgres URI of the canonical
   store. RPO is MEASURED from it (`max(observed_at)` on health events), never taken
   from a caller-declared timestamp.
