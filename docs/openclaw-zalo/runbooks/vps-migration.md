@@ -51,6 +51,12 @@ credentials revoked rather than resuming the organization on an unverified migra
 - `DOCKER_HOST` must be the runner's own `unix:///run/user/<uid>/docker.sock`; a
   rootful socket is rejected outright.
 - `OPENCLAW_MIGRATION_COMPOSE_FILE` for provisioning the new cell.
+- `OPENCLAW_MIGRATION_CANONICAL_URL` - read-only Postgres URI of the canonical
+  store, used by three steps that verify facts living only in Postgres.
+- `OPENCLAW_MIGRATION_CANONICAL_SYSTEM_ID` - `select system_identifier from
+  pg_control_system()` taken BEFORE the migration. `verify-external-canonical-stores`
+  re-reads it: the identifier survives a restart but never a restore into a fresh
+  cluster, so a copied or forked Supabase fails the step.
 - `OPENCLAW_MIGRATION_COTENANT_DIGEST` - the digest printed by
   `snapshot-old-cotenants`, which `compare-cotenants` must reproduce exactly.
 
@@ -59,3 +65,12 @@ Co-tenant handling is read-only by construction: the adapter only ever runs
 cannot disturb the external 9Router or cli-proxy-api containers. `--copy-session` must
 be `never` and both `--supabase-copy`/`--r2-copy` must be `false`; anything else is a
 usage error.
+
+Two steps deliberately VERIFY rather than perform:
+
+- `sync-history` cannot re-fetch from the provider - only the cell can - so it refuses
+  to continue until history has actually landed in the canonical store.
+- `controlled-smoke` is an operator action driven through the dedicated smoke surface,
+  which needs a machine envelope this operator tool does not hold. The step gates on
+  the evidence instead: the organization does not resume unless a smoke run reached
+  `CLEANED` within the last two hours.

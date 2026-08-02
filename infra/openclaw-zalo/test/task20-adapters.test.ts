@@ -69,11 +69,7 @@ describe("Task 20 recovery and migration adapters", () => {
    * never pass. The list is allowed to SHRINK only: adding a new unimplemented
    * facade fails this test, so the gap can never grow silently again.
    */
-  const PENDING_FACADES = new Set([
-    "openclaw_service_sync_migration_history_v1",
-    "openclaw_service_run_migration_smoke_v1",
-    "openclaw_service_verify_canonical_stores_v1",
-  ]);
+  const PENDING_FACADES = new Set<string>([]);
 
   it("calls only facades that exist, or ones tracked as explicitly pending", async () => {
     const { readFile, readdir } = await import("node:fs/promises");
@@ -91,7 +87,8 @@ describe("Task 20 recovery and migration adapters", () => {
         called.add(match[1]!);
       }
     }
-    expect(called.size).toBeGreaterThan(10);
+    // Every remaining facade must exist; the count only proves the scan found calls.
+    expect(called.size).toBeGreaterThanOrEqual(8);
 
     const missing = [...called].filter(
       (facade) => !migrations.includes(`create or replace function public.${facade}(`),

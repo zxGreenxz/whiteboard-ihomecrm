@@ -102,6 +102,35 @@ function environment(name) {
   return value.trim();
 }
 
+/**
+ * Read-only query against the canonical store. Three migration steps verify facts
+ * that live in Postgres and nowhere else; inventing RPC facades for them would have
+ * dressed a guess up as a check. The URI carries the password so it travels through
+ * the environment, never argv, where /proc/<pid>/cmdline exposes it.
+ */
+function canonicalScalar(sql) {
+  const connection = environment("OPENCLAW_MIGRATION_CANONICAL_URL");
+  if (!/^postgres(ql)?:\/\//u.test(connection)) {
+    throw new FailClosed("OPENCLAW_MIGRATION_CANONICAL_URL must be a postgres connection URI");
+  }
+  let output;
+  try {
+    output = execFileSync(
+      "psql",
+      ["--no-psqlrc", "--tuples-only", "--no-align", "--quiet", "--command", sql],
+      {
+        encoding: "utf8",
+        timeout: 120_000,
+        env: { ...process.env, PGDATABASE: connection },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  } catch (error) {
+    throw new FailClosed(`canonical query failed with status ${error.status ?? "unknown"}`);
+  }
+  return output.trim();
+}
+
 async function supabaseRpc(operation, request) {
   const endpoint = new URL(environment("OPENCLAW_MIGRATION_SUPABASE_URL"));
   const key = environment("OPENCLAW_MIGRATION_SUPABASE_SERVICE_KEY");
@@ -376,27 +405,45 @@ async function run({ command, values, booleans }) {
         throw new UsageError("--automation must be disabled while syncing history");
       }
       if (values.get("dedupe") !== "true") throw new UsageError("--dedupe must be true");
-      const result = await supabaseRpc("openclaw_service_sync_migration_history_v1", {
-        ...identity,
-        hours,
-      });
-      if (result?.applied !== true) throw new FailClosed("history sync did not confirm completion");
-      emit({ ...scope, applied: true, hours, automationDisabled: true });
+      // The CELL re-fetches history from the provider; no adapter can do that. What
+      // this step can do is refuse to move on until the new cell has actually landed
+      // that history in the canonical store, which is the property the runbook needs.
+      const ingested = Number(canonicalScalar(
+        `select count(*) from public.openclaw_messages` +
+          ` where organization_id = '${organization}'` +
+          ` and created_at >= now() - interval '${hours} hours'`,
+      ));
+      if (!Number.isFinite(ingested)) {
+        throw new FailClosed("history verification returned no count");
+      }
+      if (ingested < 1) {
+        throw new FailClosed(
+          `no history landed in the last ${hours} hours; the new cell has not synced`,
+        );
+      }
+      emit({ ...scope, applied: true, hours, ingested, automationDisabled: true });
       return;
     }
 
     case "controlled-smoke": {
       const ceiling = Number(values.get("one-send-ceiling"));
       if (ceiling !== 1) throw new UsageError("--one-send-ceiling must be exactly 1");
-      const result = await supabaseRpc("openclaw_service_run_migration_smoke_v1", {
-        ...identity,
-        oneSendCeiling: ceiling,
-      });
-      if (result?.smokePassed !== true) throw new FailClosed("controlled smoke did not pass");
-      if (result?.fixturesCleaned !== true) {
-        throw new FailClosed("controlled smoke left fixtures behind");
+      // A controlled smoke is an OPERATOR action driven through the dedicated smoke
+      // surface (openclaw_service_begin_smoke_run_v1 and friends), which requires a
+      // full machine envelope this operator tool does not hold. So this step GATES on
+      // the evidence rather than pretending to perform the send: migrate-cell.sh will
+      // not resume the organization unless a smoke run really completed and cleaned up.
+      const smokeStatus = canonicalScalar(
+        `select coalesce(max(status), 'NONE') from public.openclaw_smoke_runs` +
+          ` where organization_id = '${organization}'` +
+          ` and finished_at >= now() - interval '2 hours'`,
+      );
+      if (smokeStatus !== "CLEANED") {
+        throw new FailClosed(
+          `controlled smoke evidence is '${smokeStatus}', expected CLEANED within the last 2 hours`,
+        );
       }
-      emit({ ...scope, smokePassed: true, fixturesCleaned: true });
+      emit({ ...scope, smokePassed: true, fixturesCleaned: true, oneSendCeiling: ceiling });
       return;
     }
 
@@ -406,9 +453,18 @@ async function run({ command, values, booleans }) {
       if (values.get("supabase-copy") !== "false" || values.get("r2-copy") !== "false") {
         throw new UsageError("Supabase and R2 are never copied during a cell migration");
       }
-      const result = await supabaseRpc("openclaw_service_verify_canonical_stores_v1", identity);
-      if (result?.canonicalIntact !== true) {
-        throw new FailClosed("canonical stores did not verify intact");
+      // "Not copied" is provable: the cluster the new cell talks to must be the SAME
+      // cluster, and Postgres publishes a system identifier that survives a restart
+      // but never a restore into a fresh cluster. A forked copy fails here.
+      const expected = environment("OPENCLAW_MIGRATION_CANONICAL_SYSTEM_ID");
+      const observed = canonicalScalar("select system_identifier from pg_control_system()");
+      if (!/^\d+$/u.test(observed)) {
+        throw new FailClosed("canonical cluster reported no system identifier");
+      }
+      if (observed !== expected) {
+        throw new FailClosed(
+          "canonical cluster identity changed; Supabase appears to have been copied or forked",
+        );
       }
       emit({ ...scope, canonicalIntact: true, supabaseCopied: false, r2Copied: false });
       return;
