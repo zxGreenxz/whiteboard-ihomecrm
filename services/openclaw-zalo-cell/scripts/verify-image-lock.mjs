@@ -102,6 +102,7 @@ const BASE_AMD64_LAYER_DIGESTS = [
   "sha256:2bb3393a0fd03b10971fc965d40276d6fe7e067679a5c86d1962bb1546347d88",
   "sha256:b597d7a31e9105eccc87e346b2823a4ffc8cb878229294368feaec452875414f",
 ];
+const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = 6;
 const BASE_AMD64_DIFF_IDS = [
   "sha256:b2008ac19409fa6fee4b52596271400498aebd0be04dffac5351bd1dcf230f2a",
   "sha256:1a49327bff76fa2fc2d3c6a0747073c7ccbf85c3215145b847493eae4665ca1c",
@@ -3224,8 +3225,10 @@ export async function verifyOciRuntimeImage({ archivePath, fork, lock }) {
     throw new Error("OCI image does not preserve the pinned base diff-ID prefix");
   }
   const deltaLayers = inspected.manifest.layers.slice(BASE_AMD64_LAYER_DIGESTS.length);
-  if (deltaLayers.length !== 5) {
-    throw new Error("OCI image must contain exactly five reviewed runtime delta layers");
+  if (deltaLayers.length !== REVIEWED_RUNTIME_DELTA_LAYER_COUNT) {
+    throw new Error(
+      `OCI image must contain exactly ${REVIEWED_RUNTIME_DELTA_LAYER_COUNT} reviewed runtime delta layers`,
+    );
   }
   const finalRecords = new Map();
   const layerEvidence = [];

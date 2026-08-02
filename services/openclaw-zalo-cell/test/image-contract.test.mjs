@@ -450,6 +450,28 @@ test("stock behavior control installs the authenticated upstream ZaloUser offlin
   assert.doesNotMatch(installer, /curl|wget|https:\/\//i);
 });
 
+test("runtime delta evidence count matches every final-image COPY layer", async () => {
+  const dockerfile = await readCell("Dockerfile");
+  const runtimeStage = dockerfile.slice(dockerfile.indexOf(`FROM ${BASE_IMAGE} AS runtime`));
+  const runtimeCopyCount = (runtimeStage.match(/^COPY\s+/gm) ?? []).length;
+  const schema = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  const verifier = await readCell("scripts/verify-image-lock.mjs");
+
+  assert.equal(runtimeCopyCount, 6);
+  const rootfsSchema = schema.$defs.rootfsEvidence;
+  assert.equal(rootfsSchema.properties.delta_layer_count.const, runtimeCopyCount);
+  assert.equal(rootfsSchema.properties.layers.minItems, runtimeCopyCount);
+  assert.equal(rootfsSchema.properties.layers.maxItems, runtimeCopyCount);
+  assert.match(
+    verifier,
+    new RegExp(`const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = ${runtimeCopyCount};`),
+  );
+  assert.match(
+    verifier,
+    /deltaLayers\.length !== REVIEWED_RUNTIME_DELTA_LAYER_COUNT/,
+  );
+});
+
 test("docker context is deny-by-default and admits only reviewed runtime inputs", async () => {
   const rules = (await readCell(".dockerignore"))
     .split(/\r?\n/)
