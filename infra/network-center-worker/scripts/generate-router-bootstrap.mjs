@@ -237,7 +237,7 @@ function validateNetworks(value) {
   if (invalid) throw new TypeError("invalid bootstrap network");
 }
 
-function routerOsQuote(value) {
+export function routerOsQuote(value) {
   return `"${value
     .replace(/\\/g, "\\\\")
     .replace(/"/g, "\\\"")
@@ -245,11 +245,350 @@ function routerOsQuote(value) {
     .replace(/\$/g, "\\$")}"`;
 }
 
+// ---------------------------------------------------------------------------
+// RouterOS checking
+//
+// These scripts had only ever been asserted as text and executed by a simulator
+// with no parser, so 22 syntax errors survived every gate and were first seen by
+// `/import ... dry-run` on the demo hEX (RouterOS 7.20.8, 2026-08-03). Every
+// rule below is derived from what that router actually reported, or from a
+// direct read-only probe of the live config; nothing here is invented grammar.
+// See test/routerOsSyntax.test.ts for the measurements each rule answers to.
+// ---------------------------------------------------------------------------
+
+const ROUTER_OS_BOOLEAN_WORDS = new Set(["yes", "no", "true", "false"]);
+const ROUTER_OS_CONDITION_KEYWORDS = [":if", ":while"];
+const PLACEHOLDER_PATTERN = /@@([A-Z0-9_]+)@@/gu;
+
+/**
+ * One entry per source character, carrying its 1-based line and column and
+ * whether it sits inside a string literal or a comment. Indices align with the
+ * source string for every index the source has, so a `matchAll` offset can be
+ * looked up directly.
+ */
+function routerOsCharacters(script) {
+  const characters = [];
+  const lines = script.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const text = lines[index] ?? "";
+    // A RouterOS comment runs to the end of its line.
+    const comment = text.trimStart().startsWith("#");
+    let inString = false;
+    let escaped = false;
+    for (let column = 0; column < text.length; column += 1) {
+      const character = text[column] ?? "";
+      const wasInString = inString;
+      const wasEscaped = escaped;
+      if (!comment) {
+        if (escaped) escaped = false;
+        else if (inString && character === "\\") escaped = true;
+        else if (character === "\"") inString = !inString;
+      }
+      characters.push({
+        character,
+        line: index + 1,
+        column: column + 1,
+        comment,
+        string: wasInString && !(character === "\"" && !inString),
+        escaped: wasEscaped,
+      });
+    }
+    characters.push({
+      character: "\n",
+      line: index + 1,
+      column: text.length + 1,
+      comment,
+      string: false,
+      escaped: false,
+    });
+  }
+  return characters;
+}
+
+function isRouterOsCode(entry) {
+  return Boolean(entry) && !entry.comment && !entry.string;
+}
+
+/** The `( ... )` group of every `:if` / `:while`, with the lines it spans. */
+function routerOsConditionGroups(characters, source) {
+  const groups = [];
+  for (let index = 0; index < characters.length; index += 1) {
+    if (!isRouterOsCode(characters[index])) continue;
+    const keyword = ROUTER_OS_CONDITION_KEYWORDS
+      .find((candidate) => source.startsWith(candidate, index));
+    if (!keyword) continue;
+    const previous = index === 0 ? "" : source[index - 1] ?? "";
+    if (previous && !/[\s{};]/u.test(previous)) continue;
+    const following = source[index + keyword.length] ?? "";
+    if (following && !/[\s(]/u.test(following)) continue;
+    let cursor = index + keyword.length;
+    while (/[ \t]/u.test(source[cursor] ?? "")) cursor += 1;
+    if ((source[cursor] ?? "") !== "(") continue;
+    let depth = 0;
+    for (let scan = cursor; scan < characters.length; scan += 1) {
+      const entry = characters[scan];
+      if (!isRouterOsCode(entry)) continue;
+      if (entry.character === "(") depth += 1;
+      else if (entry.character === ")") {
+        depth -= 1;
+        if (depth === 0) {
+          groups.push({ openLine: characters[cursor].line, closeLine: entry.line });
+          break;
+        }
+      }
+    }
+    index = cursor;
+  }
+  return groups;
+}
+
+/**
+ * The body of every `find where ...`, from just after `where` to the character
+ * before the `]` that closes the enclosing selector.
+ */
+function routerOsSelectorRanges(characters, source) {
+  const ranges = [];
+  for (let index = 0; index < characters.length; index += 1) {
+    if (!isRouterOsCode(characters[index])) continue;
+    if (!source.startsWith("where", index)) continue;
+    if (!source.slice(0, index).trimEnd().endsWith("find")) continue;
+    const following = source[index + "where".length] ?? "";
+    if (following && !/\s/u.test(following)) continue;
+    let depth = 0;
+    let end = characters.length - 1;
+    for (let scan = index + "where".length; scan < characters.length; scan += 1) {
+      const entry = characters[scan];
+      if (!isRouterOsCode(entry)) continue;
+      if (entry.character === "[") depth += 1;
+      else if (entry.character === "]") {
+        if (depth === 0) {
+          end = scan - 1;
+          break;
+        }
+        depth -= 1;
+      }
+    }
+    ranges.push({ start: index + "where".length, end });
+    index = end;
+  }
+  return ranges;
+}
+
+/** Whitespace-separated selector terms, at bracket depth zero. */
+function routerOsSelectorTerms(characters, range) {
+  const terms = [];
+  let current = null;
+  let depth = 0;
+  for (let index = range.start; index <= range.end && index < characters.length; index += 1) {
+    const entry = characters[index];
+    const code = isRouterOsCode(entry);
+    if (code) {
+      if ("[({".includes(entry.character)) depth += 1;
+      else if ("])}".includes(entry.character)) depth -= 1;
+    }
+    if (code && depth === 0 && /\s/u.test(entry.character)) {
+      if (current) terms.push(current);
+      current = null;
+      continue;
+    }
+    if (!current) current = { text: "", line: entry.line, column: entry.column };
+    current.text += entry.character;
+  }
+  if (current) terms.push(current);
+  return terms;
+}
+
+/**
+ * Diagnostics for one RouterOS script.
+ *
+ * `kind` separates what `/import ... dry-run` can see from what it cannot:
+ *  - `parse`    — an error dry-run reports and refuses the file for;
+ *  - `runtime`  — parses clean, fails when executed (`!~`);
+ *  - `selector` — parses clean, runs clean, and silently matches nothing.
+ */
+export function routerOsScriptDiagnostics(script) {
+  const source = String(script).replace(/\r/gu, "");
+  const lines = source.split("\n");
+  const characters = routerOsCharacters(source);
+  const diagnostics = [];
+
+  // A parenthesised condition may not span lines. `do={ ... }` bodies may.
+  for (const group of routerOsConditionGroups(characters, source)) {
+    if (group.closeLine <= group.openLine) continue;
+    diagnostics.push({
+      rule: "condition-spans-lines",
+      kind: "parse",
+      line: group.openLine,
+      column: (lines[group.openLine - 1] ?? "").length + 1,
+      message: "syntax error",
+    });
+    for (let line = group.openLine + 2; line <= group.closeLine; line += 1) {
+      const text = lines[line - 1] ?? "";
+      diagnostics.push({
+        rule: "condition-spans-lines",
+        kind: "parse",
+        line,
+        column: text.length - text.trimStart().length + 1,
+        message: "expected command name",
+      });
+    }
+  }
+
+  for (let index = 0; index < characters.length; index += 1) {
+    const entry = characters[index];
+    const next = characters[index + 1];
+    // `!~` parses as "invert a string" and dies at run time, exit 1.
+    if (isRouterOsCode(entry) && entry.character === "!"
+      && isRouterOsCode(next) && next?.character === "~") {
+      diagnostics.push({
+        rule: "invert-string-operator",
+        kind: "runtime",
+        line: entry.line,
+        column: entry.column,
+        message: "`!~` is not a RouterOS operator: Script Error: cannot invert string",
+      });
+    }
+    // A `$` inside a string literal opens a variable reference, so a `$` with
+    // no name after it — most often right before the closing quote — is a
+    // parse error. `\$` is the working form.
+    if (entry.string && entry.character === "$" && !entry.escaped
+      && !(next?.string && /[A-Za-z0-9_]/u.test(next.character))) {
+      diagnostics.push({
+        rule: "unescaped-dollar-in-string",
+        kind: "parse",
+        line: entry.line,
+        column: entry.column,
+        message: "syntax error",
+      });
+    }
+  }
+
+  for (const range of routerOsSelectorRanges(characters, source)) {
+    for (const term of routerOsSelectorTerms(characters, range)) {
+      if (!term.text || term.text === "and" || term.text === "or"
+        || term.text.startsWith("!")) continue;
+      const separator = term.text.indexOf("=");
+      if (separator <= 0) continue;
+      const key = term.text.slice(0, separator);
+      const value = term.text.slice(separator + 1);
+      if (
+        value.startsWith("\"")
+        || value.startsWith("$")
+        || value.startsWith("[")
+        || /^-?\d+$/u.test(value)
+        || ROUTER_OS_BOOLEAN_WORDS.has(value)
+      ) continue;
+      diagnostics.push({
+        rule: "unquoted-selector-value",
+        kind: "selector",
+        line: term.line,
+        column: term.column + separator + 1,
+        message: `unquoted value for \`${key}\` in a find-where selector`,
+      });
+    }
+  }
+
+  return diagnostics.sort((left, right) => left.line - right.line || left.column - right.column);
+}
+
+/**
+ * A value that carries its own quoting, so a template author cannot interpolate
+ * an unquoted one into a selector by forgetting a call. This is the structural
+ * half of the fix for `RECOVERY_GATEWAY_ADDRESS`, which was the only value in
+ * three scripts rendered bare and consequently matched zero rows on the real
+ * router while every other value was quoted.
+ */
+export function routerOsQuotedValue(value) {
+  return { form: "quoted", text: routerOsQuote(String(value)) };
+}
+
+/** A value that must NOT be quoted: an assignment operand, or one the template already quotes. */
+export function routerOsBareValue(value) {
+  return { form: "bare", text: String(value) };
+}
+
+/** Whole statements composed by the generator, substituted at statement position. */
+export function routerOsScriptBlock(value) {
+  return { form: "block", text: String(value) };
+}
+
+/**
+ * Every `@@NAME@@` occurrence with the syntactic context it lands in.
+ * `selector` means the value becomes part of a `find where`, where RouterOS
+ * compares against the property's own text and an unquoted operand silently
+ * matches nothing.
+ */
+export function routerOsTemplatePlaceholders(template) {
+  const source = String(template).replace(/\r/gu, "");
+  const characters = routerOsCharacters(source);
+  const ranges = routerOsSelectorRanges(characters, source);
+  const found = [];
+  for (const match of source.matchAll(PLACEHOLDER_PATTERN)) {
+    const index = match.index ?? 0;
+    const entry = characters[index];
+    const inSelector = ranges.some((range) => index >= range.start && index <= range.end);
+    let context = "statement";
+    if (entry?.string) context = "string";
+    else if (inSelector) context = "selector";
+    found.push({
+      placeholder: match[1] ?? "",
+      index,
+      line: entry?.line ?? 0,
+      column: entry?.column ?? 0,
+      context,
+    });
+  }
+  return found;
+}
+
+/**
+ * Substitutes tagged values into a RouterOS template and refuses every
+ * mismatch between a value's quoting and the context it lands in.
+ */
+export function renderRouterOsTemplate(template, values) {
+  const source = String(template).replace(/\r/gu, "");
+  for (const occurrence of routerOsTemplatePlaceholders(source)) {
+    const value = values[occurrence.placeholder];
+    if (!value || typeof value.text !== "string") {
+      throw new Error(`unresolved bootstrap placeholder ${occurrence.placeholder}`);
+    }
+    if (occurrence.context === "selector" && value.form !== "quoted") {
+      throw new Error(
+        `@@${occurrence.placeholder}@@ at line ${occurrence.line} is interpolated into a`
+        + " RouterOS find-where selector and must be a quoted value",
+      );
+    }
+    if (occurrence.context === "string" && value.form !== "bare") {
+      throw new Error(
+        `@@${occurrence.placeholder}@@ at line ${occurrence.line} sits inside a quoted string`
+        + " literal and must be a bare value",
+      );
+    }
+    if (value.form === "block" && occurrence.context !== "statement") {
+      throw new Error(
+        `@@${occurrence.placeholder}@@ at line ${occurrence.line} is a script block and may`
+        + " only stand at statement position",
+      );
+    }
+  }
+  let output = source;
+  for (const [name, value] of Object.entries(values)) {
+    output = output.replaceAll(`@@${name}@@`, value.text);
+  }
+  if (PLACEHOLDER_PATTERN.test(output)) {
+    PLACEHOLDER_PATTERN.lastIndex = 0;
+    throw new Error("unresolved bootstrap placeholder");
+  }
+  PLACEHOLDER_PATTERN.lastIndex = 0;
+  return output.endsWith("\n") ? output : `${output}\n`;
+}
+
 function readTemplate(name) {
   return readFileSync(join(templateDirectory, name), "utf8").replace(/\r/g, "");
 }
 
-function render(template, values) {
+/** `wg0.conf` is an INI file, not a RouterOS script, so no RouterOS rule applies. */
+function renderPlainTemplate(template, values) {
   let output = template;
   for (const [name, value] of Object.entries(values)) {
     output = output.replaceAll(`@@${name}@@`, value);
@@ -351,29 +690,56 @@ export function generateBootstrap(input) {
     } port=${state.port} address=${routerOsQuote(state.address)}`;
   }).join("\n");
   const placeholders = {
-    ROUTER_USER: routerOsQuote(value.routerUser),
-    ROUTER_PASSWORD: routerOsQuote(value.routerPassword),
-    ROUTER_WG_PRIVATE_KEY: routerOsQuote(value.routerWireGuardPrivateKey),
-    VPS_WG_PUBLIC_KEY: routerOsQuote(value.vpsWireGuardPublicKey),
-    VPS_ENDPOINT: routerOsQuote(value.vpsEndpointHost),
-    WG_PORT: String(value.wireGuardPort),
-    MANAGEMENT_CIDR: value.managementCidr,
-    VPS_PEER_ADDRESS: value.vpsPeerAddress,
-    ROUTER_ADDRESS: value.routerAddress,
-    RECOVERY_CIDR: value.recoveryCidr,
-    RECOVERY_GATEWAY_ADDRESS: value.recoveryInterfaceAddress,
-    RECOVERY_INTERFACE: routerOsQuote(value.recoveryInterface),
-    WAN_INTERFACE: routerOsQuote(value.wanInterface),
-    OWNERSHIP_MARKER: routerOsQuote(ownershipMarker),
-    SERVICE_ROLLBACK_COMMANDS: serviceRollbackCommands,
-    SSH_STRONG_CRYPTO_ROLLBACK: value.sshStrongCrypto ? "yes" : "no",
+    ROUTER_USER: routerOsQuotedValue(value.routerUser),
+    ROUTER_PASSWORD: routerOsQuotedValue(value.routerPassword),
+    ROUTER_WG_PRIVATE_KEY: routerOsQuotedValue(value.routerWireGuardPrivateKey),
+    VPS_WG_PUBLIC_KEY: routerOsQuotedValue(value.vpsWireGuardPublicKey),
+    VPS_ENDPOINT: routerOsQuotedValue(value.vpsEndpointHost),
+    WG_PORT: routerOsBareValue(value.wireGuardPort),
+    MANAGEMENT_CIDR: routerOsBareValue(value.managementCidr),
+    VPS_PEER_ADDRESS: routerOsBareValue(value.vpsPeerAddress),
+    ROUTER_ADDRESS: routerOsBareValue(value.routerAddress),
+    RECOVERY_CIDR: routerOsBareValue(value.recoveryCidr),
+    // Quoted because it lands inside a `find where`: RouterOS matched 0 rows for
+    // the bare form and 1 for the quoted one against the live demo config, so
+    // the bare form made the preflight take its own error branch every time.
+    RECOVERY_GATEWAY_ADDRESS: routerOsQuotedValue(value.recoveryInterfaceAddress),
+    RECOVERY_INTERFACE: routerOsQuotedValue(value.recoveryInterface),
+    WAN_INTERFACE: routerOsQuotedValue(value.wanInterface),
+    OWNERSHIP_MARKER: routerOsQuotedValue(ownershipMarker),
+    SERVICE_ROLLBACK_COMMANDS: routerOsScriptBlock(serviceRollbackCommands),
+    SSH_STRONG_CRYPTO_ROLLBACK: routerOsBareValue(value.sshStrongCrypto ? "yes" : "no"),
   };
+  const scripts = {
+    "router-bootstrap.rsc": renderRouterOsTemplate(
+      readTemplate("router-bootstrap.rsc.tmpl"),
+      placeholders,
+    ),
+    "router-lockdown.rsc": renderRouterOsTemplate(
+      readTemplate("router-lockdown.rsc.tmpl"),
+      placeholders,
+    ),
+    "router-rollback.rsc": renderRouterOsTemplate(
+      readTemplate("router-rollback.rsc.tmpl"),
+      placeholders,
+    ),
+  };
+  // Nothing leaves this function that a router would reject or silently
+  // mis-evaluate. Values are never echoed into the message.
+  for (const [name, content] of Object.entries(scripts)) {
+    const diagnostics = routerOsScriptDiagnostics(content);
+    const [first] = diagnostics;
+    if (first) {
+      throw new Error(
+        `${name} is not valid RouterOS: ${first.rule} at line ${first.line} column`
+        + ` ${first.column} (${diagnostics.length} diagnostic(s))`,
+      );
+    }
+  }
   return {
-    "router-bootstrap.rsc": render(readTemplate("router-bootstrap.rsc.tmpl"), placeholders),
-    "router-lockdown.rsc": render(readTemplate("router-lockdown.rsc.tmpl"), placeholders),
-    "router-rollback.rsc": render(readTemplate("router-rollback.rsc.tmpl"), placeholders),
+    ...scripts,
     "worker-ssh-key.pub": `${value.workerSshPublicKey}\n`,
-    "wg0.conf": render(readTemplate("wg0.conf.tmpl"), {
+    "wg0.conf": renderPlainTemplate(readTemplate("wg0.conf.tmpl"), {
       VPS_ADDRESS_RAW: value.vpsAddress,
       WG_PORT: String(value.wireGuardPort),
       VPS_WG_PRIVATE_KEY_RAW: value.vpsWireGuardPrivateKey,

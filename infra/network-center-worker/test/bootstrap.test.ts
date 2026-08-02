@@ -90,8 +90,13 @@ describe("demo router bootstrap generator", () => {
     expect(bootstrap).toContain("[/interface get $ncRecovery default-name]");
     expect(bootstrap).toContain("[/interface get $ncRecovery disabled]");
     expect(bootstrap).toContain("/interface/bridge/port find where interface=$ncRecoveryName");
+    // Quoted, and that is the whole point: measured on the demo hEX, the bare
+    // form `address=192.168.88.1/24` matched 0 rows and the quoted form matched
+    // 1, so the preflight could only ever take its own error branch. The old
+    // version of this assertion pinned the bare form and therefore pinned the
+    // defect. `routerOsSyntax.test.ts` is what keeps the next one from landing.
     expect(bootstrap).toContain(
-      "/ip/address find where interface=$ncRecoveryName and address=192.168.88.1/24"
+      "/ip/address find where interface=$ncRecoveryName and address=\"192.168.88.1/24\""
       + " and disabled=no and !dynamic",
     );
     expect(bootstrap).toContain("/ip/firewall/filter get $ncRecoveryRules src-address");
@@ -161,6 +166,43 @@ describe("demo router bootstrap generator", () => {
     expect(runbook).toContain('/file/remove [find where name="router-bootstrap.rsc"]');
     expect(runbook).toContain("NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF");
     expect(runbook).toContain("mở một phiên SSH LAN recovery mới");
+  });
+
+  it("gates all three artifacts on hardware, and probes what dry-run cannot evaluate", () => {
+    // Dry-run is a PARSE check. It reported "No syntax errors" for a selector
+    // that matched zero rows, and it had never been run against the lockdown or
+    // the rollback at all — the rollback being the one that has to work when
+    // everything else has failed.
+    const runbook = readFileSync(
+      resolve(import.meta.dirname, "../docs/DEMO-ROUTER-RUNBOOK.md"),
+      "utf8",
+    );
+    for (const name of ["router-bootstrap.rsc", "router-lockdown.rsc", "router-rollback.rsc"]) {
+      expect(runbook).toContain(`/import file-name=${name} verbose=yes dry-run`);
+    }
+    expect(runbook).toContain("No syntax errors found in the import file");
+    expect(runbook).toContain("npm --prefix infra/network-center-worker test");
+    // The live selector probe, and the reason it has to be wrapped in `:put`.
+    expect(runbook).toContain(
+      ':put [:len [/ip/address find where interface="bridge"'
+      + ' and address="192.168.88.1/24" and disabled=no and !dynamic]]',
+    );
+  });
+
+  it("tells the operator when a /32 recovery range is the wrong choice", () => {
+    // The demo workstation's 192.168.88.254 is a DHCP lease, so a /32 ties the
+    // only recovery path to an address that can move — and after stage 2 there
+    // is no other management channel.
+    const runbook = readFileSync(
+      resolve(import.meta.dirname, "../docs/DEMO-ROUTER-RUNBOOK.md"),
+      "utf8",
+    );
+    expect(runbook).not.toContain("prefer laptop /32");
+    expect(runbook).toContain("192.168.88.240/28");
+    expect(runbook).toContain("lease DHCP động");
+    // The /28 the runbook recommends has to be one the generator accepts.
+    expect(() => generateBootstrap({ ...fixture, recoveryCidr: "192.168.88.240/28" }))
+      .not.toThrow();
   });
 
   it("rejects unsafe controls and inconsistent WireGuard peer addressing", () => {

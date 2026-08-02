@@ -28,7 +28,30 @@
  * every menu the generated scripts never touch. It is a selector-and-mutation
  * model, not a router. Where a construct is not supported it throws rather than
  * guessing, so an unsupported construct can never be mistaken for a passing test.
+ *
+ * ## The gap this file used to have
+ *
+ * It had no PARSER, so 22 RouterOS syntax errors ran through it cleanly and were
+ * first seen by `/import ... dry-run` on the hardware. `importRouterOsScript`
+ * now runs `routerOsScriptDiagnostics` first, so nothing this simulator accepts
+ * can be a file the router would reject. The interpreter below is deliberately
+ * kept in step with those rules: it evaluates `!(x ~ "…")`, which the hardware
+ * accepts, and has no `!~`, which the hardware does not.
  */
+import { routerOsScriptDiagnostics } from "../../scripts/generate-router-bootstrap.mjs";
+
+export class RouterOsSyntaxError extends Error {
+  readonly diagnostics: ReturnType<typeof routerOsScriptDiagnostics>;
+
+  constructor(diagnostics: ReturnType<typeof routerOsScriptDiagnostics>) {
+    super(
+      `RouterOS would refuse this script: ${diagnostics.length} diagnostic(s), first `
+      + `${diagnostics[0]?.rule ?? "?"} at line ${diagnostics[0]?.line ?? 0}`,
+    );
+    this.name = "RouterOsSyntaxError";
+    this.diagnostics = diagnostics;
+  }
+}
 
 export class RouterOsImportError extends Error {
   /** 1-based line of the statement that failed, as `/import` reports it. */
@@ -383,7 +406,17 @@ class Interpreter {
     if (trimmed.startsWith("(") && this.#readGroup(trimmed, "(", ")")[1].trim() === "") {
       return this.#condition(this.#readGroup(trimmed, "(", ")")[0]);
     }
-    for (const operator of ["!~", "!=", "~", ">=", "<=", "=", ">", "<"]) {
+    // `!(x ~ "…")` — the measured working negation. `!~` is deliberately absent
+    // from the operator table below: RouterOS parses it as "invert a string" and
+    // dies with `Script Error: cannot invert string`.
+    if (trimmed.startsWith("!")) {
+      const rest = trimmed.slice(1).trim();
+      if (rest.startsWith("(")) {
+        const [inner, remainder] = this.#readGroup(rest, "(", ")");
+        if (remainder.trim() === "") return !this.#condition(inner);
+      }
+    }
+    for (const operator of ["!=", "~", ">=", "<=", "=", ">", "<"]) {
       const parts = splitTopLevelOperator(trimmed, operator);
       if (parts.length !== 2) continue;
       const leftText = (parts[0] ?? "").trim();
@@ -394,9 +427,8 @@ class Interpreter {
       if (leftText.endsWith("!") || leftText.endsWith("<") || leftText.endsWith(">")) continue;
       const left = this.#evaluate(leftText);
       const right = this.#evaluate(rightText);
-      if (operator === "~" || operator === "!~") {
-        const matched = new RegExp(this.#text(right), "u").test(this.#text(left));
-        return operator === "~" ? matched : !matched;
+      if (operator === "~") {
+        return new RegExp(this.#text(right), "u").test(this.#text(left));
       }
       if (operator === "=") return this.#text(left) === this.#text(right);
       if (operator === "!=") return this.#text(left) !== this.#text(right);
@@ -608,13 +640,16 @@ export interface RouterOsImportResult {
 }
 
 /**
- * Runs a generated `.rsc` the way `/import` does: statement by statement, stopping
- * at the first failure and keeping everything already written.
+ * Runs a generated `.rsc` the way `/import` does: it PARSES first and refuses
+ * the whole file if RouterOS would, then executes statement by statement,
+ * stopping at the first failure and keeping everything already written.
  */
 export function importRouterOsScript(
   device: FakeRouterOsDevice,
   script: string,
 ): RouterOsImportResult {
+  const diagnostics = routerOsScriptDiagnostics(script);
+  if (diagnostics.length > 0) throw new RouterOsSyntaxError(diagnostics);
   const interpreter = new Interpreter(device);
   interpreter.run(script);
   return { output: interpreter.output, mutations: [...device.mutations] };

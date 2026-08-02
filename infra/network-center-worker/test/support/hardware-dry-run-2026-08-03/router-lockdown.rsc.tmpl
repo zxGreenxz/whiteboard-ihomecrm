@@ -12,14 +12,11 @@
 :if ([:len $ncUsers] != 1 || [/user get $ncUsers comment] != $ncMarker) do={
   :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
 }
-# Three separate :if statements, not one `||` chain across lines: a parenthesised
-# condition may not span lines on RouterOS, and this one was both of the errors
-# /import reported for this file. Order matters and is preserved - `||` stopped
-# at the first true term, and /import stops at the first :error, so the group
-# lookup still never runs against a menu that holds no matching row.
-:if ([:len $ncGroups] != 1) do={ :error "NETWORK_CENTER_GROUP_CONFLICT" }
-:if ([/user get $ncUsers group] != $ncGroup) do={ :error "NETWORK_CENTER_GROUP_CONFLICT" }
-:if ([:tostr [/user/group get $ncGroups policy]] != $ncExpectedPolicy) do={ :error "NETWORK_CENTER_GROUP_CONFLICT" }
+:if ([:len $ncGroups] != 1
+     || [/user get $ncUsers group] != $ncGroup
+     || [:tostr [/user/group get $ncGroups policy]] != $ncExpectedPolicy) do={
+  :error "NETWORK_CENTER_GROUP_CONFLICT"
+}
 :if ([:len $ncWgs] != 1 || [/interface/wireguard get $ncWgs comment] != $ncWgMarker) do={
   :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
 }

@@ -1,0 +1,33 @@
+# iHomeCRM Network Center - emergency rollback from the original recovery session
+:local ncUser @@ROUTER_USER@@
+:local ncMarker @@OWNERSHIP_MARKER@@
+:local ncWgName "wg-ihome-mgmt"
+:local ncWgMarker ($ncMarker . ":wireguard")
+:local ncAddressMarker ($ncMarker . ":address")
+:local ncPeerMarker ($ncMarker . ":peer")
+:local ncHandshakeMarker ($ncMarker . ":wg-handshake")
+:local ncManagementMarker ($ncMarker . ":wg-management")
+:local ncRecoveryMarker ($ncMarker . ":lan-recovery")
+:local ncUsers [/user find where name=$ncUser]
+:local ncWgs [/interface/wireguard find where name=$ncWgName]
+
+:if ([:len $ncUsers] > 0 && ([:len $ncUsers] != 1 || [/user get $ncUsers comment] != $ncMarker)) do={
+  :put "NETWORK_CENTER_USER_NOT_OWNED"
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+:if ([:len $ncWgs] > 0 && ([:len $ncWgs] != 1 || [/interface/wireguard get $ncWgs comment] != $ncWgMarker)) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+
+# Restore the exact management-service snapshot captured before bootstrap.
+@@SERVICE_ROLLBACK_COMMANDS@@
+/ip/ssh set strong-crypto=@@SSH_STRONG_CRYPTO_ROLLBACK@@
+
+/ip/firewall/filter remove [find where comment=$ncRecoveryMarker and !dynamic]
+/ip/firewall/filter remove [find where comment=$ncManagementMarker and !dynamic]
+/ip/firewall/filter remove [find where comment=$ncHandshakeMarker and !dynamic]
+/interface/wireguard/peers remove [find where interface=$ncWgName and comment=$ncPeerMarker]
+/ip/address remove [find where interface=$ncWgName and comment=$ncAddressMarker and !dynamic]
+:if ([:len $ncWgs] = 1) do={ /interface/wireguard remove $ncWgs }
+:if ([:len $ncUsers] = 1) do={ /user/ssh-keys remove [find where user=$ncUser]; /user remove $ncUsers }
+:put "NETWORK_CENTER_ROLLBACK_APPLIED"

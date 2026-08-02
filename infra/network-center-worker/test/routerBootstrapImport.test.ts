@@ -9,7 +9,9 @@ import {
   FakeRouterOsDevice,
   importRouterOsScript,
   RouterOsImportError,
+  type RouterOsRow,
   routerOsStatements,
+  RouterOsSyntaxError,
 } from "./support/fakeRouterOsImport.js";
 import {
   bootstrapFixture,
@@ -163,6 +165,102 @@ describe("generated RouterOS scripts against the measured hardware topology", ()
       .flatMap((name) => selectors(files[name as keyof typeof files]))
       .filter((entry) => DYNAMIC_CAPABLE_MENUS.includes(entry.menu));
     expect(scanned.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it("refuses a script RouterOS itself would refuse, before executing anything", () => {
+    // The simulator used to have no parser, which is exactly how 22 syntax
+    // errors reached the hardware. A file that cannot be imported must not be
+    // able to pass through here either.
+    const device = stockHexDevice();
+    expect(() => importRouterOsScript(
+      device,
+      ':if ([:len $x] = 1\n    || [:len $y] = 2) do={ :put "no" }\n',
+    )).toThrow(RouterOsSyntaxError);
+    expect(device.mutations).toHaveLength(0);
+  });
+
+  it("runs the firewall ownership guards that the syntax defect had switched off", () => {
+    // These three blocks carried 21 of the 22 errors `/import` reported, so on
+    // real hardware they never ran at all: a conflicting rule would have been
+    // accepted. Each property now has its own reachable `:if`, and each one is
+    // driven here from a rule that differs in exactly that property.
+    const correct: RouterOsRow = {
+      chain: "input",
+      action: "accept",
+      protocol: "tcp",
+      "dst-port": "22",
+      "src-address": "192.168.88.10/32",
+      "in-interface": "bridge",
+      disabled: "false",
+      dynamic: "false",
+      comment: `${OWNERSHIP_MARKER}:lan-recovery`,
+    };
+    const overrides: RouterOsRow[] = [
+      { chain: "forward" },
+      { action: "drop" },
+      { protocol: "udp" },
+      { "dst-port": "2200" },
+      { "src-address": "192.168.88.0/24" },
+      { "in-interface": "ether5" },
+      { disabled: "true" },
+    ];
+    for (const override of overrides) {
+      const device = stockHexDevice({ extraFirewallRows: [{ ...correct, ...override }] });
+
+      const failure = importFailure(
+        device,
+        generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+      );
+
+      expect({ override, message: failure.message })
+        .toEqual({ override, message: "NETWORK_CENTER_FIREWALL_CONFLICT" });
+      expect(device.mutations).toHaveLength(0);
+    }
+
+    // The control: an identical rule is our own, so the bootstrap is a re-run
+    // and adds no second copy of it.
+    const device = stockHexDevice({ extraFirewallRows: [correct] });
+    importRouterOsScript(device, generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"]);
+    expect(
+      device.rows("/ip/firewall/filter")
+        .filter((row) => row.comment === `${OWNERSHIP_MARKER}:lan-recovery`),
+    ).toHaveLength(1);
+  });
+
+  it("guards the handshake and management rules the same way", () => {
+    const handshake: RouterOsRow = {
+      chain: "input",
+      action: "accept",
+      protocol: "udp",
+      "dst-port": "51820",
+      "in-interface": "ether1",
+      disabled: "false",
+      dynamic: "false",
+      comment: `${OWNERSHIP_MARKER}:wg-handshake`,
+    };
+    const management: RouterOsRow = {
+      chain: "input",
+      action: "accept",
+      "in-interface": "wg-ihome-mgmt",
+      "src-address": "10.77.0.1/32",
+      disabled: "false",
+      dynamic: "false",
+      comment: `${OWNERSHIP_MARKER}:wg-management`,
+    };
+    for (const row of [{ ...handshake, "dst-port": "51821" }, { ...management, action: "drop" }]) {
+      const device = stockHexDevice({ extraFirewallRows: [row] });
+      expect(importFailure(
+        device,
+        generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+      ).message).toBe("NETWORK_CENTER_FIREWALL_CONFLICT");
+      expect(device.mutations).toHaveLength(0);
+    }
+
+    const device = stockHexDevice({ extraFirewallRows: [handshake, management] });
+    expect(() => importRouterOsScript(
+      device,
+      generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+    )).not.toThrow();
   });
 
   it("keeps preflight and mutation on the same rows for every management service", () => {

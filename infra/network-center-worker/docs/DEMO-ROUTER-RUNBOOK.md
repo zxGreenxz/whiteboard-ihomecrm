@@ -105,7 +105,7 @@ Tạo input JSON owner-only ở thư mục tạm ngoài Git với các trường
   "vpsPeerAddress": "<VPS /32>",
   "routerAddress": "<router /24>",
   "routerPeerAddress": "<router /32>",
-  "recoveryCidr": "<one RFC1918 /28 to /32 recovery network; prefer laptop /32>",
+  "recoveryCidr": "<một dải RFC1918 /28..32; chọn /32 hay /28 theo mục 2.1>",
   "recoveryInterface": "<L3 edge của LAN: thường là `bridge`; hoặc ether2-ether99 out-of-band>",
   "recoveryInterfaceAddress": "<địa chỉ của chính router trên interface đó, vd 192.168.88.1/24>",
   "wanInterface": "<actual WAN interface>",
@@ -129,6 +129,33 @@ WireGuard cùng tên không mang marker đó. `managementServices` phải đư�
 pre-state vừa capture; không tự điền theo giá trị mong muốn vì rollback dùng đúng
 disabled/address/port này. `sshStrongCrypto` cũng phải phản ánh đúng giá trị
 `/ip/ssh strong-crypto` trước bootstrap để rollback phục hồi chính xác.
+
+### 2.1 `recoveryCidr`: `/32` chỉ khi địa chỉ máy vận hành là TĨNH
+
+Runbook trước đây mặc định khuyên lấy `/32` của máy vận hành. Điều đó chỉ đúng
+khi địa chỉ đó thật sự cố định. Trên router demo (đo 2026-08-03) thì không:
+`192.168.88.254` là **lease DHCP động** (`D ... status=bound expires-after=23m`).
+
+Hệ quả nếu dùng `/32` cho một lease: khi lease đổi (renew, reboot, đổi cổng, hết
+pool), cả rule firewall `:lan-recovery` **và** allowlist `address=` của
+`/ip/service ssh` đều ngừng khớp cùng lúc — và sau stage 2 lockdown thì LAN là
+đường quản trị khẩn cấp duy nhất còn lại. Đường phục hồi không được phép hết hạn
+theo lease; đó cũng đúng nguyên tắc mà preflight đã áp cho
+`recoveryInterfaceAddress` (từ chối địa chỉ `dynamic`).
+
+Vậy chọn như sau:
+
+- địa chỉ máy vận hành **đặt tĩnh trên chính máy đó** → dùng `/32`, hẹp nhất;
+- địa chỉ đến từ DHCP → dùng **`/28` nhỏ nhất chứa vùng máy vận hành rơi vào**
+  (demo: `192.168.88.240/28`, phủ đỉnh pool). Đánh đổi: stage 1 mở SSH cho 16 địa
+  chỉ LAN thay vì 1, chỉ trong thời gian stage 1;
+- đặt **static DHCP lease** trên router cũng khắc phục được, nhưng nó thêm một
+  object **không mang ownership marker**, nên `router-rollback.rsc` (chỉ gỡ theo
+  marker) sẽ không dọn — vi phạm tiêu chí "export diff chỉ chứa managed object".
+  Nếu vẫn làm thì phải gỡ tay trong bước rollback và ghi vào evidence.
+
+Generator ép sẵn: `/28`..`/32`, phải là địa chỉ mạng, RFC1918, nằm trong subnet
+của `recoveryInterfaceAddress`, và không đè `managementCidr`.
 
 ### Recovery interface: chọn cái thật sự phục hồi được
 
@@ -173,15 +200,65 @@ Generator không in nội dung ra stdout. Output gồm:
 
 ## 3. Apply stage 1 qua LAN
 
+### 3.0 Hai cổng bắt buộc trước khi import — không bỏ cổng nào
+
+Hai cổng bắt lỗi ở hai lớp khác nhau và **không cái nào thay được cái nào**. Đây
+là bài học trả bằng máu ngày 2026-08-03: simulator kiểm được ngữ nghĩa nhưng
+không có parser (22 lỗi cú pháp lọt qua), còn dry-run kiểm được cú pháp nhưng
+không bao giờ đánh giá `find where` (một selector chưa quote khớp 0 dòng vẫn báo
+"No syntax errors").
+
+**Cổng 1 — offline, nằm sẵn trong vòng lặp test:**
+
+```bash
+npm --prefix infra/network-center-worker test
+```
+
+`generateBootstrap` chạy `routerOsScriptDiagnostics` trên cả ba `.rsc` và **ném
+lỗi thay vì trả file** nếu còn bất kỳ chẩn đoán nào, nên một script hỏng không
+sinh ra được. Cổng này bắt: điều kiện `:if (...)` xuống dòng, `!~`, `$` chưa
+escape trước dấu nháy đóng, và giá trị chưa quote trong `find where`.
+
+**Cổng 2 — dry-run trên chính router.** `/import ... dry-run` chỉ **parse**,
+không thực thi, không đổi gì (đã đo: `/export` 132 dòng trước và sau, diff rỗng).
+Chi phí: 4 lần upload + 3 lệnh, khoảng 10 giây, chạy ngay trong phiên LAN đang mở.
+Upload cả bốn file rồi:
+
+```bash
+ROUTER=192.168.88.1
+scp "$NETWORK_BOOTSTRAP_OUTPUT_DIR"/{router-bootstrap.rsc,router-lockdown.rsc,router-rollback.rsc,worker-ssh-key.pub} "admin@$ROUTER:"
+ssh "admin@$ROUTER" "/import file-name=router-bootstrap.rsc verbose=yes dry-run"
+ssh "admin@$ROUTER" "/import file-name=router-lockdown.rsc verbose=yes dry-run"
+ssh "admin@$ROUTER" "/import file-name=router-rollback.rsc verbose=yes dry-run"
+```
+
+Cả ba phải in đúng `No syntax errors found in the import file`. Bất kỳ dòng
+`found N error(s)` nào ⇒ **dừng, không import**. Demo phải dùng RouterOS 7.16 trở
+lên; router không hỗ trợ `dry-run` thì dừng để nâng cấp/review, không import mù.
+
+GOTCHA đã đo: RouterOS in `failure: ...` ra **stdout với exit code 0**, nên không
+được kết luận theo exit status — phải đọc chữ.
+
+**Cổng 2 vẫn KHÔNG đủ để kết luận preflight sẽ qua**, vì dry-run không đánh giá
+`find where`. Chạy thêm probe read-only đúng selector mà preflight phụ thuộc, với
+chính giá trị đã khai trong input JSON:
+
+```bash
+ssh "admin@$ROUTER" ':put [:len [/ip/address find where interface="bridge" and address="192.168.88.1/24" and disabled=no and !dynamic]]'
+```
+
+Phải in `1`. In `0` nghĩa là selector không khớp dòng nào — đúng defect đã đo
+2026-08-03, khi giá trị được nội suy **không có nháy**: `address=192.168.88.1/24`
+khớp 0 dòng, `address="192.168.88.1/24"` khớp 1. Đọc state qua exec **bắt buộc
+bọc `:put [...]`**; `/ip/address get [find ...]` trần trả về rỗng và sẽ "chứng
+minh" sai.
+
+### 3.1 Import
+
 1. Giữ nguyên phiên Winbox/SSH LAN đang hoạt động.
-2. Upload `worker-ssh-key.pub`, `router-bootstrap.rsc` vào Files của router.
-3. Chạy dry-run trước. Demo phải dùng RouterOS 7.16 trở lên; nếu router không hỗ
-   trợ `dry-run` thì dừng để nâng cấp/review, không import mù:
-
-   ```routeros
-   /import file-name=router-bootstrap.rsc verbose=yes dry-run
-   ```
-
+2. Upload `worker-ssh-key.pub`, `router-bootstrap.rsc` vào Files của router (đã
+   làm ở 3.0 nếu chạy cổng 2 ở đó).
+3. Cổng 1 và cổng 2 ở mục 3.0 phải xanh hết. Không import khi còn một cổng đỏ.
 4. Chỉ khi dry-run báo 0 lỗi mới import thật và đọc toàn bộ output trước khi đóng
    phiên. Output phải là
    `NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF`; marker này cố ý không phải

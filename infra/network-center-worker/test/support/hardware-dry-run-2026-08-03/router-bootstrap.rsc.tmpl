@@ -57,11 +57,8 @@
 }
 # Read in a nested :if: a bridge carries no default-name at all, and reading an
 # absent property is a hard error rather than an empty string.
-# `!(x ~ "...")` and the escaped `\$`, both measured on RouterOS 7.20.8: `!~` is
-# not an operator (it inverts a string and dies at run time, exit 1), and a bare
-# `$` before a closing quote is a parse error that /import refuses the file for.
 :if ($ncRecoveryType = "ether") do={
-  :if (!([:tostr [/interface get $ncRecovery default-name]] ~ "^ether([2-9]|[1-9][0-9])\$")) do={
+  :if ([:tostr [/interface get $ncRecovery default-name]] !~ "^ether([2-9]|[1-9][0-9])$") do={
     :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID"
   }
 }
@@ -88,35 +85,30 @@
 :if ([:len $ncRecoveryRules] > 1 || [:len $ncHandshakeRules] > 1 || [:len $ncManagementRules] > 1) do={
   :error "NETWORK_CENTER_FIREWALL_CONFLICT"
 }
-# One :if per property, each condition complete on its own line. A parenthesised
-# condition that spans lines is a RouterOS parse error at the newline itself, and
-# every continuation line is then read as a new statement: these three blocks
-# were 21 of the 22 errors /import reported, so these guards had never run.
-# A multi-line do={ ... } body is fine, which is why the nesting is the fix.
-:if ([:len $ncRecoveryRules] = 1) do={
-  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules chain]] != "input") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules action]] != "accept") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules protocol]] != "tcp") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules dst-port]] != "22") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules src-address]] != "@@RECOVERY_CIDR@@") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules in-interface]] != $ncRecoveryName) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules disabled]] != "false") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-}
-:if ([:len $ncHandshakeRules] = 1) do={
-  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules chain]] != "input") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules action]] != "accept") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules protocol]] != "udp") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules dst-port]] != "@@WG_PORT@@") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules in-interface]] != $ncWanName) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules disabled]] != "false") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-}
-:if ([:len $ncManagementRules] = 1) do={
-  :if ([:tostr [/ip/firewall/filter get $ncManagementRules chain]] != "input") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncManagementRules action]] != "accept") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncManagementRules in-interface]] != $ncWgName) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncManagementRules src-address]] != "@@VPS_PEER_ADDRESS@@") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-  :if ([:tostr [/ip/firewall/filter get $ncManagementRules disabled]] != "false") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
-}
+:if ([:len $ncRecoveryRules] = 1 && (
+    [:tostr [/ip/firewall/filter get $ncRecoveryRules chain]] != "input"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules action]] != "accept"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules protocol]] != "tcp"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules dst-port]] != "22"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules src-address]] != "@@RECOVERY_CIDR@@"
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules in-interface]] != $ncRecoveryName
+    || [:tostr [/ip/firewall/filter get $ncRecoveryRules disabled]] != "false"
+  )) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
+:if ([:len $ncHandshakeRules] = 1 && (
+    [:tostr [/ip/firewall/filter get $ncHandshakeRules chain]] != "input"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules action]] != "accept"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules protocol]] != "udp"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules dst-port]] != "@@WG_PORT@@"
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules in-interface]] != $ncWanName
+    || [:tostr [/ip/firewall/filter get $ncHandshakeRules disabled]] != "false"
+  )) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
+:if ([:len $ncManagementRules] = 1 && (
+    [:tostr [/ip/firewall/filter get $ncManagementRules chain]] != "input"
+    || [:tostr [/ip/firewall/filter get $ncManagementRules action]] != "accept"
+    || [:tostr [/ip/firewall/filter get $ncManagementRules in-interface]] != $ncWgName
+    || [:tostr [/ip/firewall/filter get $ncManagementRules src-address]] != "@@VPS_PEER_ADDRESS@@"
+    || [:tostr [/ip/firewall/filter get $ncManagementRules disabled]] != "false"
+  )) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT" }
 
 :if ([:len $ncWgs] = 0) do={
   /interface/wireguard add name=$ncWgName listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ comment=$ncWgMarker
