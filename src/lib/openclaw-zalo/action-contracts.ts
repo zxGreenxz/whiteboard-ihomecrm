@@ -241,6 +241,10 @@ export const mediaResolveContract = {
   rpcName: "openclaw_resolve_media_object_v1",
   requestSchema: z.object({ ...versionSchema, organizationId: idSchema, mediaId: idSchema }).strict(),
   resultSchema: z.object({
+    // `version` is the first key openclaw_resolve_media_object_v1 builds. Omitting
+    // it from a .strict() schema made every real response throw
+    // "unrecognized_keys: version", so the hook could never return an image.
+    ...versionSchema,
     mediaId: idSchema,
     organizationId: idSchema,
     accountId: idSchema,

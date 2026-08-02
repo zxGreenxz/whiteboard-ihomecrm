@@ -129,7 +129,7 @@ describe("OpenClaw action contracts", () => {
       { contract: salesGroupListContract, result: { version: 1, limit: 1, items: [{ targetId: ID, groupId: ID_2, displayName: "Sales", memberCount: 3, directoryVersion: 1, directoryRefreshedAt: NOW, targetVersion: 1, isActive: true, isAllowed: null, allowlistVersion: null, directoryExpiresAt: null }] } },
       { contract: scheduleListContract, result: { version: 1, limit: 1, items: [{ scheduleId: ID, automationVersionId: ID_2, targetId: null, campaignId: null, scheduleVersion: 1, status: "PAUSED", timezone: "Asia/Bangkok", localRecurrenceRule: "FREQ=DAILY", nextRunAt: null, missedOccurrencePolicy: "SKIPPED_MISSED", updatedAt: NOW }] } },
       { contract: qrPollContract, result: { version: 1, challenge: null } },
-      { contract: mediaResolveContract, result: { mediaId: ID, organizationId: ORG, accountId: ACCOUNT, conversationId: ID_2, messageId: ID, mime: "image/png", byteLength: 10, sha256: HASH, objectKey: "media/key", byteState: "AVAILABLE", sessionGeneration: 1 } },
+      { contract: mediaResolveContract, result: { version: 1, mediaId: ID, organizationId: ORG, accountId: ACCOUNT, conversationId: ID_2, messageId: ID, mime: "image/png", byteLength: 10, sha256: HASH, objectKey: "media/key", byteState: "AVAILABLE", sessionGeneration: 1 } },
       { contract: unknownByAccountContract, result: { version: 1, limit: 1, items: [] } },
       { contract: deadLettersByAccountContract, result: { version: 1, limit: 1, items: [] } },
       { contract: healthEventsByAccountContract, result: { version: 1, limit: 1, items: [] } },
