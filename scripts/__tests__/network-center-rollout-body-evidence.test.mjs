@@ -209,7 +209,12 @@ test("the 2026-08-02 silent skip replays as an explicit refusal", async () => {
 
   const classification = classifyCatalog(manifest, present, { expectations, live });
   assert.equal(classification.state, "prefix");
-  assert.equal(classification.prefix, manifest.migrations.length - 1);
+  // The block lands on the stage that OWNS the repaired body, wherever it sits in
+  // the release — not on the last stage. Adding any later migration must not move it.
+  assert.equal(
+    classification.prefix,
+    manifest.migrations.findIndex((migration) => migration.path === FORWARD_FIX),
+  );
   assert.equal(classification.bodyBlockedAt, FORWARD_FIX);
   assert.deepEqual(
     classification.bodyMismatches.map((item) => item.qualifiedName),
