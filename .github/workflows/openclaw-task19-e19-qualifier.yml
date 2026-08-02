@@ -414,6 +414,58 @@ jobs:
             test -s "$source_root/services/openclaw-zalo-cell/.release/$artifact"
           done
 
+      - name: Capture failed OCI root descriptors
+        if: ${{ failure() }}
+        run: |
+          set -uo pipefail
+          release_root=/opt/openclaw-qualification/repository/services/openclaw-zalo-cell/.release
+          diagnostics=/tmp/openclaw-oci-failure
+          mkdir -p "$diagnostics"
+          found=0
+          for archive in "$release_root"/*.oci.tar; do
+            if [ ! -s "$archive" ]; then
+              continue
+            fi
+            found=1
+            name="$(basename "$archive" .oci.tar)"
+            index_entry="$(tar -tf "$archive" | awk '$0 == "index.json" || $0 == "./index.json" { print; exit }')"
+            if [ -z "$index_entry" ]; then
+              printf 'archive=%s error=missing-index\n' "$name" > "$diagnostics/$name.summary.txt"
+              continue
+            fi
+            tar -xOf "$archive" "$index_entry" > "$diagnostics/$name.index.json"
+            jq -e '{
+              schemaVersion,
+              mediaType,
+              manifestCount: (.manifests | length),
+              manifests: [.manifests[] | {mediaType, digest, size, platform, annotations}]
+            }' "$diagnostics/$name.index.json" > "$diagnostics/$name.summary.json"
+            descriptor=0
+            while IFS= read -r digest; do
+              descriptor=$((descriptor + 1))
+              hex="${digest#sha256:}"
+              blob_entry="$(tar -tf "$archive" | awk -v path="blobs/sha256/$hex" '$0 == path || $0 == "./" path { print; exit }')"
+              if [ -n "$blob_entry" ]; then
+                tar -xOf "$archive" "$blob_entry" > "$diagnostics/$name.descriptor-$descriptor.json"
+              fi
+            done < <(jq -r '.manifests[].digest' "$diagnostics/$name.index.json")
+            printf 'archive=%s size=%s sha256=%s\n' \
+              "$name" "$(stat -c '%s' "$archive")" "$(sha256sum "$archive" | cut -d' ' -f1)"
+            cat "$diagnostics/$name.summary.json"
+          done
+          if [ "$found" = 0 ]; then
+            printf 'No retained OCI archive was available after failure.\n' > "$diagnostics/no-archive.txt"
+          fi
+
+      - name: Upload failed OCI descriptor evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: openclaw-task19-oci-failure-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 30
+          path: /tmp/openclaw-oci-failure
+
       - name: Create the evidence-only child checkpoint E
         run: |
           set -euo pipefail
