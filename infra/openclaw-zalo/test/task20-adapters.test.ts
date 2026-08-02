@@ -63,6 +63,52 @@ describe("Task 20 recovery and migration adapters", () => {
     expect(new Set(Object.keys(MIGRATION_COMMANDS))).toEqual(migrateSteps);
   });
 
+  /**
+   * Facades the adapters call that are not implemented yet. An adapter step naming
+   * one of these fails closed at the RPC, which is safe but means that step can
+   * never pass. The list is allowed to SHRINK only: adding a new unimplemented
+   * facade fails this test, so the gap can never grow silently again.
+   */
+  const PENDING_FACADES = new Set([
+    "openclaw_service_begin_restore_drill_v1",
+    "openclaw_service_verify_restore_drill_v1",
+    "openclaw_service_require_fresh_qr_login_v1",
+    "openclaw_service_rotate_migration_credentials_v1",
+    "openclaw_service_acquire_migration_lease_v1",
+    "openclaw_service_revoke_migration_lease_v1",
+    "openclaw_service_sync_migration_history_v1",
+    "openclaw_service_run_migration_smoke_v1",
+    "openclaw_service_verify_canonical_stores_v1",
+  ]);
+
+  it("calls only facades that exist, or ones tracked as explicitly pending", async () => {
+    const { readFile, readdir } = await import("node:fs/promises");
+    const migrationDirectory = resolve(root, "supabase/migrations");
+    const migrations = (await Promise.all(
+      (await readdir(migrationDirectory))
+        .filter((name) => name.endsWith(".sql"))
+        .map((name) => readFile(resolve(migrationDirectory, name), "utf8")),
+    )).join("\n");
+
+    const called = new Set<string>();
+    for (const adapter of [recoveryAdapter, migrationAdapter]) {
+      const source = await readFile(adapter, "utf8");
+      for (const match of source.matchAll(/"(openclaw_service_[a-z0-9_]+)"/gu)) {
+        called.add(match[1]!);
+      }
+    }
+    expect(called.size).toBeGreaterThan(10);
+
+    const missing = [...called].filter(
+      (facade) => !migrations.includes(`create or replace function public.${facade}(`),
+    );
+    // Every gap must be a KNOWN gap.
+    expect(missing.filter((facade) => !PENDING_FACADES.has(facade))).toEqual([]);
+    // And the pending list must not outlive the gap: once a facade ships, drop it
+    // from PENDING_FACADES so this assertion keeps its teeth.
+    expect([...PENDING_FACADES].filter((facade) => !missing.includes(facade))).toEqual([]);
+  });
+
   it("rejects unknown subcommands, unknown flags, and repeats as usage errors", () => {
     for (const argv of [
       ["not-a-step", "--organization", ORG, "--cell", OLD_CELL],

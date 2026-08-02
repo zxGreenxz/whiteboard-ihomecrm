@@ -7687,4 +7687,329 @@ grant execute on function public.openclaw_service_apply_capacity_controls_v1(jso
 grant execute on function public.openclaw_service_consume_watchdog_envelope_nonce_v1(jsonb)
   to service_role;
 
+
+-- ---------------------------------------------------------------------------
+-- 10. Migration and recovery facades the two operator adapters call
+-- ---------------------------------------------------------------------------
+-- openclaw-migration-adapter.mjs and openclaw-recovery-adapter.mjs delegate their
+-- state changes here. Without these functions both scripts fail closed at step 1,
+-- which is safe but means neither the VPS migration nor the restore drill can ever
+-- complete.
+--
+-- These take p_request only and are granted to service_role alone: they are
+-- operator tools run from the host with the service key, not a runtime principal
+-- holding a lease. Every one is CAS- or state-guarded so a repeated call from a
+-- retried step cannot double-apply, and every one names its exact organization.
+
+create or replace function app_private.openclaw_migration_scope_v1(p_request jsonb)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid;
+begin
+  if p_request ->> 'version' <> '1' then
+    raise exception 'migration request version mismatch' using errcode = '22023';
+  end if;
+  v_org := nullif(p_request ->> 'organizationId', '')::uuid;
+  if v_org is null then
+    raise exception 'migration request organization is required' using errcode = '22023';
+  end if;
+  if not exists (select 1 from public.organizations org where org.id = v_org) then
+    raise exception 'migration organization does not exist' using errcode = '42501';
+  end if;
+  return v_org;
+end;
+$function$;
+
+create or replace function app_private.openclaw_set_global_stop_v1(
+  p_request jsonb, p_stop boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_version bigint;
+begin
+  -- Idempotent by design: a retried step finds the flag already in the target
+  -- state and reports success without inventing a second control version.
+  insert into public.openclaw_control_states(organization_id, control_key, global_stop, reason)
+  values (v_org, 'GLOBAL_STOP', p_stop, left(coalesce(p_request ->> 'reason', ''), 200))
+  on conflict (organization_id, control_key) do update
+    set global_stop = excluded.global_stop,
+        reason = excluded.reason,
+        control_version = public.openclaw_control_states.control_version
+          + case when public.openclaw_control_states.global_stop is distinct from excluded.global_stop
+              then 1 else 0 end,
+        updated_at = clock_timestamp()
+  returning control_version into v_version;
+  return jsonb_build_object(
+    'version', 1, 'globalStopActive', p_stop, 'controlVersion', v_version
+  );
+end;
+$function$;
+
+create or replace function app_private.openclaw_drain_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_returned integer;
+begin
+  -- Return leased-but-not-yet-dispatching work to the queue. DISPATCHING is left
+  -- alone on purpose: its outcome is unknown until the provider answers, and
+  -- requeueing it would risk a duplicate send.
+  with returned as (
+    update public.openclaw_outbox
+      set state = 'QUEUED', claim_token_hash = null, lease_expires_at = null
+      where organization_id = v_org and state = 'LEASED'
+      returning 1
+  )
+  select count(*) into v_returned from returned;
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_returned);
+end;
+$function$;
+
+create or replace function app_private.openclaw_freeze_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_states text[];
+  v_frozen integer;
+begin
+  if jsonb_typeof(p_request -> 'states') <> 'array'
+     or jsonb_array_length(p_request -> 'states') < 1 then
+    raise exception 'freeze states are required' using errcode = '22023';
+  end if;
+  select array_agg(value) into v_states from jsonb_array_elements_text(p_request -> 'states');
+  if not (v_states <@ array['QUEUED','LEASED']::text[]) then
+    raise exception 'freeze states must be a subset of QUEUED,LEASED' using errcode = '22023';
+  end if;
+  -- Freezing IS GLOBAL_STOP plus a drained queue; this step refuses to claim the
+  -- outbox is frozen while sends could still start.
+  if not exists (
+    select 1 from public.openclaw_control_states control
+    where control.organization_id = v_org and control.global_stop
+  ) then
+    raise exception 'outbox cannot be frozen while GLOBAL_STOP is inactive' using errcode = '42501';
+  end if;
+  select count(*) into v_frozen from public.openclaw_outbox
+  where organization_id = v_org and state = any(v_states);
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_frozen);
+end;
+$function$;
+
+create or replace function app_private.openclaw_expire_dispatching_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_moved integer;
+begin
+  -- Expired DISPATCHING becomes UNKNOWN and NEVER retries: the provider may have
+  -- delivered it already. An operator resolves each one explicitly.
+  with moved as (
+    update public.openclaw_outbox
+      set state = 'UNKNOWN', terminal_at = clock_timestamp(),
+          claim_token_hash = null, lease_expires_at = null
+      where organization_id = v_org and state = 'DISPATCHING'
+        and lease_expires_at is not null and lease_expires_at <= clock_timestamp()
+      returning 1
+  )
+  select count(*) into v_moved from moved;
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_moved);
+end;
+$function$;
+
+create or replace function app_private.openclaw_reconcile_migration_gaps_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_unresolved integer;
+begin
+  select count(*) into v_unresolved from public.openclaw_outbox
+  where organization_id = v_org and state = 'UNKNOWN' and resolution_version = 0;
+  -- Fail closed: an operator must resolve every UNKNOWN before the organization
+  -- resumes, otherwise a possibly-delivered message stays ambiguous forever.
+  if v_unresolved > 0 then
+    raise exception 'migration leaves % unresolved UNKNOWN rows; operator resolution is required',
+      v_unresolved using errcode = '42501';
+  end if;
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', 0);
+end;
+$function$;
+
+create or replace function public.openclaw_service_begin_global_stop_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_set_global_stop_v1(p_request, true);
+end;
+$function$;
+
+create or replace function public.openclaw_service_resume_after_migration_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_unresolved integer;
+  v_result jsonb;
+begin
+  -- Resume is the one irreversible step, so it re-checks the gate rather than
+  -- trusting that the reconcile step ran earlier in the same script.
+  select count(*) into v_unresolved from public.openclaw_outbox
+  where organization_id = v_org and state = 'UNKNOWN' and resolution_version = 0;
+  if v_unresolved > 0 then
+    raise exception 'cannot resume with % unresolved UNKNOWN rows', v_unresolved
+      using errcode = '42501';
+  end if;
+  v_result := app_private.openclaw_set_global_stop_v1(p_request, false);
+  return v_result || jsonb_build_object('resumed', true);
+end;
+$function$;
+
+create or replace function public.openclaw_service_drain_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_drain_outbox_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_freeze_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_freeze_outbox_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_expire_dispatching_to_unknown_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_expire_dispatching_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_reconcile_migration_gaps_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_reconcile_migration_gaps_v1(p_request);
+end;
+$function$;
+
+alter function app_private.openclaw_migration_scope_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_drain_outbox_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_freeze_outbox_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_expire_dispatching_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+
+revoke all on function app_private.openclaw_migration_scope_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_drain_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_freeze_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_expire_dispatching_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+alter function public.openclaw_service_begin_global_stop_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_resume_after_migration_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_drain_outbox_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_freeze_outbox_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_expire_dispatching_to_unknown_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_reconcile_migration_gaps_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+
+revoke all on function public.openclaw_service_begin_global_stop_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_resume_after_migration_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_drain_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_freeze_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_expire_dispatching_to_unknown_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_reconcile_migration_gaps_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function public.openclaw_service_begin_global_stop_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_resume_after_migration_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_drain_outbox_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_freeze_outbox_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_expire_dispatching_to_unknown_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_reconcile_migration_gaps_v1(jsonb)
+  to service_role;
+
+create policy openclaw_control_states_migration_writer_all
+  on public.openclaw_control_states for all to openclaw_maintenance_writer
+  using (true) with check (true);
+create policy openclaw_outbox_migration_writer_all
+  on public.openclaw_outbox for all to openclaw_maintenance_writer
+  using (true) with check (true);
+grant select, insert, update on public.openclaw_control_states
+  to openclaw_maintenance_writer;
+grant select, update on public.openclaw_outbox to openclaw_maintenance_writer;
+
 commit;
