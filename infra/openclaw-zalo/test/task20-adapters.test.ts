@@ -70,8 +70,6 @@ describe("Task 20 recovery and migration adapters", () => {
    * facade fails this test, so the gap can never grow silently again.
    */
   const PENDING_FACADES = new Set([
-    "openclaw_service_begin_restore_drill_v1",
-    "openclaw_service_verify_restore_drill_v1",
     "openclaw_service_sync_migration_history_v1",
     "openclaw_service_run_migration_smoke_v1",
     "openclaw_service_verify_canonical_stores_v1",
@@ -132,7 +130,7 @@ describe("Task 20 recovery and migration adapters", () => {
     ]);
     expect(result.status).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toMatch(/OPENCLAW_RECOVERY_SUPABASE_URL is required/u);
+    expect(result.stderr).toMatch(/OPENCLAW_RECOVERY_CANONICAL_URL is required/u);
     expect(result.stderr).toMatch(/never exercised/u);
 
     const migration = runAdapter(migrationAdapter, [

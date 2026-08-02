@@ -48,8 +48,15 @@ execs it with the pinned Node 24.15.0).
 It FAILS CLOSED. Any step whose infrastructure is unreachable exits non-zero, so the
 drill cannot produce PASS evidence for work that never ran:
 
+- `OPENCLAW_RECOVERY_CANONICAL_URL` - read-only Postgres URI of the canonical
+  store. RPO is MEASURED from it (`max(observed_at)` on health events), never taken
+  from a caller-declared timestamp.
+- `OPENCLAW_RECOVERY_RESTORE_URL` + `OPENCLAW_RECOVERY_BACKUP_FILE` - the disposable
+  restore target and the backup artifact. `pg_restore` runs for real against that
+  target; the step then proves the restored copy actually holds OpenClaw tables and
+  no more rows than the canonical store.
 - `OPENCLAW_RECOVERY_SUPABASE_URL`, `OPENCLAW_RECOVERY_SUPABASE_SERVICE_KEY` -
-  canonical restore/verify steps.
+  session invalidation step (PostgREST facade).
 - `OPENCLAW_RECOVERY_R2_ENDPOINT`, `OPENCLAW_RECOVERY_R2_TOKEN` - tombstone
   delete/restore/verify inside the seven-day grace.
 - `OPENCLAW_RECOVERY_SESSION_CRYPTO_BIN` - the committed session-crypto binary used

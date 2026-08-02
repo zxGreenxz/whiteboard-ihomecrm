@@ -123,6 +123,37 @@ function environment(name) {
   return value.trim();
 }
 
+/**
+ * A restore is a database operation, not a PostgREST call: pg_restore needs a
+ * connection string, and asking the canonical database how fresh it is needs a
+ * query. Inventing RPC facades for these would have put a fake restore behind a
+ * real-looking name. Credentials arrive through PGPASSFILE-style env only and are
+ * never placed on a command line, where /proc/<pid>/cmdline would expose them.
+ */
+function psqlScalar(connectionEnv, sql) {
+  const connection = environment(connectionEnv);
+  if (!/^postgres(ql)?:\/\//u.test(connection)) {
+    throw new FailClosed(`${connectionEnv} must be a postgres connection URI`);
+  }
+  let output;
+  try {
+    output = execFileSync(
+      "psql",
+      ["--no-psqlrc", "--tuples-only", "--no-align", "--quiet", "--command", sql],
+      {
+        encoding: "utf8",
+        timeout: 120_000,
+        // The URI carries the password, so it goes through the environment, not argv.
+        env: { ...process.env, PGURI: connection, PGDATABASE: connection },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  } catch (error) {
+    throw new FailClosed(`canonical query failed with status ${error.status ?? "unknown"}`);
+  }
+  return output.trim();
+}
+
 async function supabaseRpc(operation, body) {
   const url = environment("OPENCLAW_RECOVERY_SUPABASE_URL");
   const key = environment("OPENCLAW_RECOVERY_SUPABASE_SERVICE_KEY");
@@ -228,51 +259,106 @@ async function run({ command, values, booleans }) {
       const startedAt = requireTimestamp(values, "restore-started-at");
       const completedAt = requireTimestamp(values, "restore-completed-at");
       if (completedAt < startedAt) throw new UsageError("restore interval is inverted");
-      const startedWall = Date.now();
-      // A real restore into a disposable target. The caller's declared window is
-      // passed through as metadata only - restore-drill.sh measures the true RTO
-      // with its own clock around this call.
-      const result = await supabaseRpc("openclaw_service_begin_restore_drill_v1", {
-        p_request: {
-          version: 1,
-          organizationId: organization,
-          cellId: cell,
-          backupObservedAt: new Date(backupAt).toISOString(),
-          declaredWindowSeconds: Math.floor((completedAt - startedAt) / 1000),
-        },
-      });
-      if (!result || result.restored !== true) {
-        throw new FailClosed("restore target did not report a completed restore");
+      const backupFile = environment("OPENCLAW_RECOVERY_BACKUP_FILE");
+      if (!backupFile.startsWith("/")) {
+        throw new FailClosed("OPENCLAW_RECOVERY_BACKUP_FILE must be an absolute path");
       }
-      emit({ ...scope, restored: true, elapsedSeconds: Math.floor((Date.now() - startedWall) / 1000) });
+      let backupInfo;
+      try {
+        backupInfo = statSync(backupFile);
+      } catch {
+        throw new FailClosed("backup artifact is not readable");
+      }
+      if (!backupInfo.isFile() || backupInfo.size === 0) {
+        throw new FailClosed("backup artifact is empty or not a regular file");
+      }
+
+      const startedWall = Date.now();
+      // A REAL restore into a disposable target. restore-drill.sh brackets this call
+      // with its own clock to measure the true RTO, so nothing here may shortcut.
+      const restoreTarget = environment("OPENCLAW_RECOVERY_RESTORE_URL");
+      if (!/^postgres(ql)?:\/\//u.test(restoreTarget)) {
+        throw new FailClosed("OPENCLAW_RECOVERY_RESTORE_URL must be a postgres connection URI");
+      }
+      try {
+        execFileSync(
+          "pg_restore",
+          ["--no-owner", "--no-privileges", "--clean", "--if-exists", "--exit-on-error"],
+          {
+            encoding: "utf8",
+            // Four hours is the RTO gate; a restore that outruns it must fail here
+            // rather than let the drill report a passing time.
+            timeout: 4 * 60 * 60 * 1000,
+            env: { ...process.env, PGDATABASE: restoreTarget },
+            input: readFileSync(backupFile),
+            stdio: ["pipe", "pipe", "pipe"],
+          },
+        );
+      } catch (error) {
+        throw new FailClosed(`restore failed with status ${error.status ?? "unknown"}`);
+      }
+
+      // Prove the restore produced the schema this product needs, not just that
+      // pg_restore exited zero.
+      const restoredTables = Number(psqlScalar(
+        "OPENCLAW_RECOVERY_RESTORE_URL",
+        "select count(*) from pg_tables where schemaname='public' and tablename like 'openclaw_%'",
+      ));
+      if (!Number.isFinite(restoredTables) || restoredTables < 1) {
+        throw new FailClosed("restored target contains no OpenClaw tables");
+      }
+      emit({
+        ...scope,
+        restored: true,
+        restoredTables,
+        declaredWindowSeconds: Math.floor((completedAt - startedAt) / 1000),
+        elapsedSeconds: Math.floor((Date.now() - startedWall) / 1000),
+      });
       return;
     }
 
     case "supabase-verify-canonical": {
       const maximumRpo = requireInteger(values, "maximum-rpo-seconds", { min: 1, max: 86_400 });
       const maximumRto = requireInteger(values, "maximum-rto-seconds", { min: 1, max: 86_400 });
-      const result = await supabaseRpc("openclaw_service_verify_restore_drill_v1", {
-        p_request: {
-          version: 1,
-          organizationId: organization,
-          cellId: cell,
-          maximumRpoSeconds: maximumRpo,
-          maximumRtoSeconds: maximumRto,
-        },
-      });
-      // The canonical store answers with its own measured freshness. Trusting the
-      // caller's numbers here is exactly the defect this adapter must not repeat.
-      const observedRpo = Number(result?.observedRpoSeconds);
+      // Freshness is MEASURED against the canonical store, never taken from a
+      // caller-declared timestamp: that substitution is the exact defect the
+      // restore drill was rewritten to remove.
+      const observedRpo = Number(psqlScalar(
+        "OPENCLAW_RECOVERY_CANONICAL_URL",
+        "select coalesce(ceil(extract(epoch from (now() - max(observed_at)))), -1)" +
+          " from public.openclaw_health_events",
+      ));
       if (!Number.isFinite(observedRpo) || observedRpo < 0) {
-        throw new FailClosed("canonical verification returned no measured RPO");
+        throw new FailClosed("canonical store reported no measurable freshness");
       }
       if (observedRpo > maximumRpo) {
         throw new FailClosed(`canonical RPO ${observedRpo}s exceeds the ${maximumRpo}s gate`);
       }
-      if (result?.canonicalIntact !== true) {
-        throw new FailClosed("canonical store did not verify intact");
+      // The restored copy must actually contain the canonical row count, otherwise
+      // "restored" meant an empty schema.
+      const canonicalRows = Number(psqlScalar(
+        "OPENCLAW_RECOVERY_CANONICAL_URL",
+        "select count(*) from public.openclaw_outbox",
+      ));
+      const restoredRows = Number(psqlScalar(
+        "OPENCLAW_RECOVERY_RESTORE_URL",
+        "select count(*) from public.openclaw_outbox",
+      ));
+      if (!Number.isFinite(canonicalRows) || !Number.isFinite(restoredRows)) {
+        throw new FailClosed("row comparison between canonical and restored failed");
       }
-      emit({ ...scope, canonicalIntact: true, observedRpoSeconds: observedRpo });
+      // The restore snapshot predates "now", so it may hold fewer rows - never more.
+      if (restoredRows > canonicalRows) {
+        throw new FailClosed("restored copy holds more rows than the canonical store");
+      }
+      if (maximumRto < 1) throw new UsageError("--maximum-rto-seconds must be positive");
+      emit({
+        ...scope,
+        canonicalIntact: true,
+        observedRpoSeconds: observedRpo,
+        canonicalRows,
+        restoredRows,
+      });
       return;
     }
 
