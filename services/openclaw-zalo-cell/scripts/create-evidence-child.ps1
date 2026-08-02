@@ -786,11 +786,16 @@ function Invoke-ReviewedTreeExporterCommand {
       '--output-root', $OutputRoot,
       '--manifest', $ManifestPath
     ) | Out-Null
+    # Lần verify thứ hai phải soi ĐÚNG commit vừa export ($Commit), không phải
+    # $ReviewedTree cố định. Với export của R thì hai giá trị trùng nhau nên không
+    # mất tín hiệu; nhưng với export của E (evidence child) thì cây E có thêm
+    # build-evidence.json nên đối chiếu với R luôn sai — đúng lỗi đã chặn bước
+    # tạo E19 ở CI run 30743922760.
     Invoke-NodeChecked -Arguments @(
       $toolPath, 'verify',
       '--git-path', $GitPath,
       '--repository-root', $sourceRoot,
-      '--reviewed-tree', $ReviewedTree,
+      '--reviewed-tree', $Commit,
       '--output-root', $OutputRoot,
       '--manifest', $ManifestPath
     ) | Out-Null

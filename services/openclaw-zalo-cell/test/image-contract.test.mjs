@@ -4781,3 +4781,18 @@ test("reviewed PowerShell never lets an operator bind as a native helper paramet
     }
   }
 });
+
+test("reviewed tree exporter re-verifies the exact commit it exported, not a fixed one", async () => {
+  // Invoke-ReviewedTreeExporterCommand chạy lệnh với $Commit rồi verify lại. Lần
+  // verify thứ hai từng hardcode $ReviewedTree: với export của E (có thêm
+  // build-evidence.json) thì đối chiếu với R luôn sai — đã chặn bước tạo E19 ở
+  // CI run 30743922760. Cả hai lời gọi phải dùng cùng một commit.
+  const source = await readCell("scripts/create-evidence-child.ps1");
+  const start = source.indexOf("function Invoke-ReviewedTreeExporterCommand");
+  assert.ok(start > -1, "exporter command builder is missing");
+  const body = source.slice(start, source.indexOf("\nfunction ", start + 1));
+  const treeArguments = [...body.matchAll(/'--reviewed-tree',\s*(\$\w+)/gu)].map((m) => m[1]);
+  assert.equal(treeArguments.length, 2, "exporter must issue exactly two --reviewed-tree calls");
+  assert.deepEqual(treeArguments, ["$Commit", "$Commit"]);
+  assert.equal(body.includes("'--reviewed-tree', $ReviewedTree"), false);
+});
