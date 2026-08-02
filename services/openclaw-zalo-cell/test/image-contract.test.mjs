@@ -1498,6 +1498,11 @@ test("qualification helpers clear ambient native loaders and disable executable 
   assert.match(buildHelper, /\$dockerEnvironment\.HOME\s*=\s*\$nativeHome/);
   assert.match(buildHelper, /\$dockerEnvironment\.DOCKER_CONFIG\s*=\s*\$dockerConfigRoot/);
   assert.match(buildHelper, /\$dockerEnvironment\.XDG_CONFIG_HOME\s*=\s*\$nativeConfigRoot/);
+  assert.match(
+    buildHelper,
+    /\$dockerEnvironment\.BUILDX_NO_DEFAULT_ATTESTATIONS\s*=\s*['"]true['"]/,
+  );
+  assert.match(buildHelper, /['"]BUILDX_NO_DEFAULT_ATTESTATIONS['"]/);
   const controlledHome = buildHelper.indexOf("$dockerEnvironment.HOME = $nativeHome");
   const firstBuilderCreate = buildHelper.indexOf("'create', '--name', $builderA");
   assert.ok(controlledHome >= 0 && controlledHome < firstBuilderCreate, "controlled native home must be active before buildx persists builder state");

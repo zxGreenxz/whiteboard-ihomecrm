@@ -91,7 +91,8 @@ foreach ($environmentName in @(
     'GIT_ATTR_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM',
     'GIT_NO_LAZY_FETCH', 'GIT_NO_REPLACE_OBJECTS', 'GIT_OPTIONAL_LOCKS',
     'GIT_TERMINAL_PROMPT',
-    'DOCKER_HOST', 'DOCKER_CONFIG', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME'
+    'DOCKER_HOST', 'DOCKER_CONFIG', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME',
+    'BUILDX_NO_DEFAULT_ATTESTATIONS'
   )) {
   [void]$script:NativeEnvironmentAllowedKeys.Add($environmentName)
 }
@@ -379,6 +380,7 @@ foreach ($binding in $script:BaseNativeEnvironment.GetEnumerator()) {
   $dockerEnvironment[[string]$binding.Key] = [string]$binding.Value
 }
 $dockerEnvironment.DOCKER_HOST = $DockerHost
+$dockerEnvironment.BUILDX_NO_DEFAULT_ATTESTATIONS = 'true'
 if (-not [IO.Path]::IsPathFullyQualified($GitRepositoryRoot)) {
   throw 'GitRepositoryRoot must be absolute'
 }
