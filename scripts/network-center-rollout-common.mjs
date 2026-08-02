@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -8,6 +8,33 @@ export const MANIFEST_PATH = join(REPO_ROOT, "scripts", "network-center-rollout-
 export const RECEIPT_ROOT = join(REPO_ROOT, ".network-center-rollout");
 export const MANAGEMENT_API_ROOT = "https://api.supabase.com/v1";
 export const PAT_PATTERN = /\bsbp_[A-Za-z0-9_-]+\b/;
+
+// The rollout contract covers EVERY Network Center migration in the repository,
+// not a hand-kept list. The pattern is deliberately wider than the 20260729
+// batch that exists today: a fifteenth migration authored on a later date must
+// be caught by the manifest generator and by the validator's completeness
+// check, never silently omitted. An incomplete manifest applied to production
+// is the exact failure this contract exists to prevent.
+export const NETWORK_CENTER_MIGRATION_PATTERN = /^\d{14}_network_center_[a-z0-9_]+\.sql$/;
+
+// A floor, not an expectation: the set may grow, but a SHRINK means either a
+// deleted migration or a rotted discovery rule, and both must fail loudly.
+export const MINIMUM_NETWORK_CENTER_ROLLOUT_MIGRATIONS = 14;
+
+export async function discoverNetworkCenterMigrations(repoRoot = REPO_ROOT) {
+  const migrationRoot = join(repoRoot, "supabase", "migrations");
+  const names = (await readdir(migrationRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && NETWORK_CENTER_MIGRATION_PATTERN.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  if (names.length < MINIMUM_NETWORK_CENTER_ROLLOUT_MIGRATIONS) {
+    throw new Error(
+      `Network Center migration set shrank to ${names.length}; expected at least ` +
+        `${MINIMUM_NETWORK_CENTER_ROLLOUT_MIGRATIONS}. Raise the floor deliberately or restore the file.`,
+    );
+  }
+  return names.map((name) => `supabase/migrations/${name}`);
+}
 
 export function sha256(value) {
   return createHash("sha256").update(value).digest("hex");

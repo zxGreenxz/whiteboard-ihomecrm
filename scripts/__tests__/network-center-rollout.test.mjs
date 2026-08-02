@@ -36,13 +36,13 @@ test("ships the complete Network Center rollout toolchain", () => {
   }
 });
 
-test("manifest pins ten ordered migration and Edge source digests", () => {
+test("manifest pins fourteen ordered migration and Edge source digests", () => {
   const path = new URL("scripts/network-center-rollout-manifest.json", root);
   assert.equal(existsSync(path), true, "manifest missing");
   if (!existsSync(path)) return;
   const manifest = JSON.parse(readFileSync(path, "utf8"));
   assert.match(manifest.reviewedGitSha, /^[a-f0-9]{40}$/);
-  assert.equal(manifest.migrations.length, 10);
+  assert.equal(manifest.migrations.length, 14);
   assert.deepEqual(
     manifest.migrations.map((item) => item.path),
     [...manifest.migrations.map((item) => item.path)].sort(),
