@@ -229,6 +229,57 @@ describe("migration facades under the calling role", () => {
     });
   });
 
+  it("leaves a hash-chained audit entry for every step it performs", async () => {
+    await withDatabase(async (database) => {
+      await database.query("begin");
+      let entries;
+      try {
+        await database.query("set local role service_role");
+        for (const [facade, extra] of FACADES) {
+          await database.query(
+            `select public.${facade}($1::jsonb)`,
+            [JSON.stringify({ version: 1, organizationId: ORG, ...extra })],
+          );
+        }
+        // service_role has no read grant on the audit log, and should not: drop
+        // back to the owning role to inspect what the facades wrote.
+        await database.query("reset role");
+        entries = await database.query(
+          `select event_type, organization_sequence, previous_hash, event_hash,
+                  redacted_evidence
+           from public.openclaw_audit_events
+           where organization_id = $1 and event_type = 'OPENCLAW_MIGRATION_STEP'
+           order by organization_sequence`,
+          [ORG],
+        );
+      } finally {
+        // Read the rows BEFORE rolling back; the assertions run after.
+        await database.query("rollback");
+      }
+
+      // One entry per step: these facades stop an organization's outbound and force
+      // an org-wide QR re-login, so an untraceable invocation is unacceptable.
+      expect(entries.rows).toHaveLength(FACADES.length);
+      const steps = entries.rows.map((row) => row.redacted_evidence.step);
+      expect(steps).toEqual([
+        "global-stop", "drain-outbox", "freeze-outbox",
+        "move-expired-dispatching-to-unknown", "reconcile-gaps-and-unknown",
+      ]);
+
+      // The chain must actually link, and the sequence must not skip.
+      for (const [index, row] of entries.rows.entries()) {
+        expect(row.redacted_evidence.requestDigest).toMatch(/^[0-9a-f]{64}$/u);
+        // Content-free: the request itself never enters the evidence.
+        expect(Object.keys(row.redacted_evidence).sort())
+          .toEqual(["organizationId", "requestDigest", "step", "version"]);
+        if (index === 0) continue;
+        expect(row.previous_hash).toBe(entries.rows[index - 1].event_hash);
+        expect(Number(row.organization_sequence))
+          .toBe(Number(entries.rows[index - 1].organization_sequence) + 1);
+      }
+    });
+  });
+
   it("keeps the retention cron role out of the migration surface", async () => {
     await withDatabase(async (database) => {
       // These helpers used to be owned by openclaw_maintenance_writer - the role the

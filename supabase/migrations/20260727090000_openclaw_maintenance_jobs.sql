@@ -8620,4 +8620,243 @@ create policy openclaw_qr_challenges_migration_writer_update
   on public.openclaw_qr_challenges for update to openclaw_migration_writer
   using (true) with check (true);
 
+
+-- ---------------------------------------------------------------------------
+-- 14. Every migration facade leaves a trace
+-- ---------------------------------------------------------------------------
+-- These facades stop an entire organization's outbound and force an org-wide QR
+-- re-login. Anyone holding the service key could run them, against any
+-- organization, and leave nothing behind: no actor, no evidence, no way to tell a
+-- planned migration from an abuse of the key.
+--
+-- They now append to the SAME hash-chained audit log the rest of the product uses,
+-- so a missing or altered entry breaks the chain rather than passing unnoticed.
+
+create or replace function app_private.openclaw_audit_migration_step_v1(
+  p_organization_id uuid,
+  p_step text,
+  p_request jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_evidence jsonb;
+begin
+  -- Content-free by construction: the step, the organization, and a digest of the
+  -- request. Never the request itself, which can carry cell ids and operator text.
+  v_evidence := jsonb_build_object(
+    'version', 1,
+    'step', p_step,
+    'organizationId', p_organization_id,
+    'requestDigest', encode(
+      extensions.digest(app_private.openclaw_jcs_bytes_v1(p_request), 'sha256'), 'hex'
+    )
+  );
+  perform app_private.append_openclaw_audit_v1(
+    p_organization_id,
+    'OPENCLAW_MIGRATION_STEP',
+    null,
+    'openclaw-migration-adapter',
+    null,
+    null,
+    v_evidence,
+    convert_to(v_evidence::text, 'UTF8')
+  );
+end;
+$function$;
+
+alter function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
+  owner to openclaw_migration_writer;
+revoke all on function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
+  to openclaw_service_dispatcher, openclaw_migration_writer;
+
+grant select, insert on public.openclaw_audit_events to openclaw_migration_writer;
+create policy openclaw_audit_events_migration_writer_append
+  on public.openclaw_audit_events for insert to openclaw_migration_writer
+  with check (true);
+create policy openclaw_audit_events_migration_writer_select
+  on public.openclaw_audit_events for select to openclaw_migration_writer
+  using (true);
+
+-- The audit call sits at the END of each facade: a step that raised has not
+-- happened, and must not leave a record claiming it did.
+create or replace function public.openclaw_service_begin_global_stop_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_set_global_stop_v1(p_request, true);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'global-stop', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_drain_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_drain_outbox_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'drain-outbox', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_freeze_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_freeze_outbox_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'freeze-outbox', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_expire_dispatching_to_unknown_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_expire_dispatching_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'move-expired-dispatching-to-unknown', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_reconcile_migration_gaps_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_reconcile_migration_gaps_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'reconcile-gaps-and-unknown', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_acquire_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_handover_leases_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'acquire-higher-fencing-lease', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_revoke_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_retire_old_cell_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'revoke-old-credential-and-lease', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_rotate_migration_credentials_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_retire_old_cell_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'rotate-workload-credentials', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_require_fresh_qr_login_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_require_fresh_qr_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'require-fresh-qr-login', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_resume_after_migration_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  perform app_private.openclaw_reconcile_migration_gaps_v1(p_request);
+  v_result := app_private.openclaw_set_global_stop_v1(p_request, false);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'resume-organization', p_request
+  );
+  return v_result || jsonb_build_object('resumed', true);
+end;
+$function$;
+
+
+-- The audit helper leans on two shared functions; changing the owner of the
+-- migration surface means it needs its own execute grant on both.
+grant execute on function app_private.openclaw_jcs_bytes_v1(jsonb)
+  to openclaw_migration_writer;
+grant execute on function app_private.append_openclaw_audit_v1(
+  uuid, text, uuid, text, uuid, uuid, jsonb, bytea)
+  to openclaw_migration_writer;
+
+
+grant execute on function app_private.openclaw_jcs_text_v1(jsonb)
+  to openclaw_migration_writer;
+
 commit;
