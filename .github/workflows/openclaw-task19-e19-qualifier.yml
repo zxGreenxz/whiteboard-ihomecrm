@@ -416,20 +416,24 @@ jobs:
           # digest. Graphdriver cu se fail ngay tai day voi thong diep ro rang.
           probe_tar=/tmp/openclaw-oci-store-probe.tar
           probe_dir=/tmp/openclaw-oci-store-probe
+          # fs.protected_regular=2: root KHONG duoc O_CREAT len file cua user
+          # khac trong /tmp sticky — repack phai ra path MOI root-own.
+          repacked_tar=/tmp/openclaw-oci-store-probe-oci-only.tar
           run_docker save "$buildkit" -o "$probe_tar"
           tar -tf "$probe_tar" | grep -qx 'index.json'
           mkdir "$probe_dir"
           tar -xf "$probe_tar" -C "$probe_dir"
           rm -f "$probe_dir/manifest.json" "$probe_dir/repositories"
           test -f "$probe_dir/oci-layout" && test -d "$probe_dir/blobs"
-          tar -cf "$probe_tar" -C "$probe_dir" oci-layout index.json blobs
-          chown openclaw-runner:openclaw-runner "$probe_tar"
-          run_docker load --input "$probe_tar"
+          test ! -e "$repacked_tar"
+          tar -cf "$repacked_tar" -C "$probe_dir" oci-layout index.json blobs
+          chmod 0644 "$repacked_tar"
+          run_docker load --input "$repacked_tar"
           run_docker tag sha256:9194b5ec1be368f41c516df7f93f7f540630ea06136056b2ffebb62226ed4ad6 \
             localhost/openclaw-store-selfcheck:probe
           run_docker image inspect localhost/openclaw-store-selfcheck:probe >/dev/null
           run_docker rmi localhost/openclaw-store-selfcheck:probe
-          rm -rf "$probe_tar" "$probe_dir"
+          rm -rf "$probe_tar" "$repacked_tar" "$probe_dir"
 
       - name: Run the reviewed Task 2 qualification phase as openclaw-runner
         run: |
