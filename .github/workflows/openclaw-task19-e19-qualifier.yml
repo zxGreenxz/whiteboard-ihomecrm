@@ -458,11 +458,9 @@ jobs:
                 if [ -z "$blob_entry" ]; then
                   continue
                 fi
-                tar -xOf "$archive" "$blob_entry" |
-                  tar --numeric-owner --full-time -tvzf - |
-                  grep -E ' (\./)?(home|home/node|home/node/\.openclaw|home/node/\.openclaw/npm|home/node/\.openclaw/npm/projects|home/node/\.openclaw/npm/projects/zalouser|opt|opt/openclaw-cell|opt/openclaw-cell/session-crypto|opt/openclaw-cell/session-crypto/dist)/?$' \
-                    > "$diagnostics/$name.runtime-layer-$layer-ancestors.txt" || true
-              done < <(jq -r '.layers[26:].digest' "$diagnostics/$name.descriptor-1.json")
+                tar -xOf "$archive" "$blob_entry" \
+                  > "$diagnostics/$name.runtime-layer-$layer.tar.gz"
+              done < <(jq -r '.layers[26:][] | .digest' "$diagnostics/$name.descriptor-1.json")
             fi
             printf 'archive=%s size=%s sha256=%s\n' \
               "$name" "$(stat -c '%s' "$archive")" "$(sha256sum "$archive" | cut -d' ' -f1)"
