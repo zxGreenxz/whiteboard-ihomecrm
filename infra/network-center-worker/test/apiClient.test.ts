@@ -2,6 +2,28 @@ import { describe, expect, it } from "vitest";
 
 import { ApiClientError, NetworkCenterApiClient } from "../src/apiClient.js";
 
+const baseClaim = {
+  commandId: "50000000-0000-4000-8000-000000000001",
+  organizationId: "20000000-0000-4000-8000-000000000001",
+  buildingId: "30000000-0000-4000-8000-000000000001",
+  deviceId: "40000000-0000-4000-8000-000000000001",
+  interfaceId: null,
+  actionType: "FLUSH_DNS_CACHE",
+  reason: "Kiểm tra DNS",
+  parameters: {},
+  attemptNo: 1,
+  leaseToken: "60000000-0000-4000-8000-000000000001",
+  leaseExpiresAt: "2026-07-30T00:02:00.000Z",
+  reconciliation: false,
+  intentType: "FLUSH_DNS_CACHE",
+  managedTarget: { deviceId: "40000000-0000-4000-8000-000000000001" },
+  preObservation: null,
+  expectedPostcondition: { kind: "DNS_COMMAND_ACK" },
+  observationDeadline: "2026-07-30T00:05:00.000Z",
+  transitionVersion: 7,
+  fencingGeneration: 11,
+};
+
 describe("worker Edge API client", () => {
   it("authenticates through the dedicated header and unwraps safe data", async () => {
     const requests: Request[] = [];
@@ -35,7 +57,7 @@ describe("worker Edge API client", () => {
       fetch: async () => new Response(`password=router ${secret}`, { status: 503 }),
     });
 
-    const error = await client.claimCommands(5, 90).catch((cause: unknown) => cause);
+    const error = await client.claimCommands(3, 90).catch((cause: unknown) => cause);
     expect(error).toBeInstanceOf(ApiClientError);
     expect(error).toMatchObject({ retryable: true, status: 503 });
     expect(String((error as Error).message)).not.toContain("router");
@@ -44,27 +66,7 @@ describe("worker Edge API client", () => {
 
   it("accepts typed claim metadata and sends fenced observations without worker-authored success", async () => {
     const requests: Request[] = [];
-    const claim = {
-      commandId: "50000000-0000-4000-8000-000000000001",
-      organizationId: "20000000-0000-4000-8000-000000000001",
-      buildingId: "30000000-0000-4000-8000-000000000001",
-      deviceId: "40000000-0000-4000-8000-000000000001",
-      interfaceId: null,
-      actionType: "FLUSH_DNS_CACHE",
-      reason: "Kiểm tra DNS",
-      parameters: {},
-      attemptNo: 1,
-      leaseToken: "60000000-0000-4000-8000-000000000001",
-      leaseExpiresAt: "2026-07-30T00:02:00.000Z",
-      reconciliation: false,
-      intentType: "FLUSH_DNS_CACHE",
-      managedTarget: { deviceId: "40000000-0000-4000-8000-000000000001" },
-      preObservation: null,
-      expectedPostcondition: { kind: "DNS_COMMAND_ACK" },
-      observationDeadline: "2026-07-30T00:05:00.000Z",
-      transitionVersion: 7,
-      fencingGeneration: 11,
-    };
+    const claim = baseClaim;
     const client = new NetworkCenterApiClient({
       baseUrl: new URL("https://example.test/worker"),
       secret: "s".repeat(48),
@@ -118,6 +120,46 @@ describe("worker Edge API client", () => {
     expect(completeBody).not.toHaveProperty("observations");
     expect(JSON.stringify(completeBody)).not.toContain("reconciliationDecision");
     expect(completeBody.outcome).not.toBe("SUCCEEDED");
+  });
+
+  it("defaults claim requests to three and accepts exactly the requested limit", async () => {
+    const requests: Request[] = [];
+    const claims = Array.from({ length: 3 }, (_, index) => ({
+      ...baseClaim,
+      commandId: `50000000-0000-4000-8000-00000000000${index + 1}`,
+      leaseToken: `60000000-0000-4000-8000-00000000000${index + 1}`,
+    }));
+    const client = new NetworkCenterApiClient({
+      baseUrl: new URL("https://example.test/worker"),
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      fetch: async (input, init) => {
+        requests.push(new Request(input, init));
+        return Response.json({ ok: true, data: { items: claims } });
+      },
+    });
+
+    await expect(client.claimCommands()).resolves.toEqual(claims);
+    await expect(requests[0]!.json()).resolves.toEqual({ limit: 3, leaseSeconds: 90 });
+  });
+
+  it("rejects a claim response that exceeds the requested limit", async () => {
+    const claims = Array.from({ length: 3 }, (_, index) => ({
+      ...baseClaim,
+      commandId: `50000000-0000-4000-8000-00000000000${index + 1}`,
+      leaseToken: `60000000-0000-4000-8000-00000000000${index + 1}`,
+    }));
+    const client = new NetworkCenterApiClient({
+      baseUrl: new URL("https://example.test/worker"),
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      fetch: async () => Response.json({ ok: true, data: { items: claims } }),
+    });
+
+    await expect(client.claimCommands(2, 90)).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+      retryable: false,
+    });
   });
 
   it("validates inventory degradation metadata returned by the database boundary", async () => {

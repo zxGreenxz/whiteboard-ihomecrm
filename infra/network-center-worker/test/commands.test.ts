@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { CommandCoordinator, CommandProcessor, sanitizeRouterExport } from "../src/commands.js";
 import type { BackupStore } from "../src/backupStore.js";
-import { InterfaceRegistry, RouterOperationError } from "../src/domain.js";
+import { AsyncSemaphore } from "../src/concurrency.js";
+import { InterfaceRegistry, RouterOperationError, type WorkerClock } from "../src/domain.js";
 import type { RouterConnector } from "../src/routeros/connector.js";
 
 const connection = {
@@ -52,6 +53,11 @@ function harness(
   overrides: Partial<RouterConnector> = {},
   emergencyStop: boolean | (() => boolean) = false,
   backupStoreOverrides: Partial<BackupStore> = {},
+  processorOverrides: {
+    clock?: WorkerClock;
+    renewLease?: () => Promise<void>;
+    routerOperationSemaphore?: AsyncSemaphore;
+  } = {},
 ) {
   const calls: string[] = [];
   const completions: Array<Record<string, unknown>> = [];
@@ -135,7 +141,7 @@ function harness(
   };
   const processor = new CommandProcessor({
     api: {
-      renewLease: async () => { calls.push("renew-lease"); },
+      renewLease: processorOverrides.renewLease ?? (async () => { calls.push("renew-lease"); }),
       stage: async (input: { eventKind: string }) => { calls.push(input.eventKind); },
       observe: async (input: Record<string, unknown>) => {
         calls.push(`observe-${String(input.observationKind)}`);
@@ -174,7 +180,7 @@ function harness(
     },
     interfaceRegistry,
     emergencyStop: typeof emergencyStop === "function" ? emergencyStop : () => emergencyStop,
-    clock: {
+    clock: processorOverrides.clock ?? {
       now: () => new Date("2026-07-28T00:00:00.000Z"),
       setInterval: (callback) => { renewCallback = callback; return 1; },
       clearInterval: () => undefined,
@@ -182,6 +188,9 @@ function harness(
     },
     leaseSeconds: 90,
     logger: { info() {}, warn() {}, error() {} },
+    ...(processorOverrides.routerOperationSemaphore
+      ? { routerOperationSemaphore: processorOverrides.routerOperationSemaphore }
+      : {}),
   });
   return {
     calls,
@@ -220,6 +229,115 @@ describe("command processor", () => {
     });
     await coordinator.runCycle();
     expect(calls).toEqual(["claim"]);
+  });
+
+  it("does not claim commands while the global emergency stop is active", async () => {
+    const calls: string[] = [];
+    const coordinator = new CommandCoordinator({
+      api: {
+        claimCommands: async () => { calls.push("claim"); return []; },
+        listConnections: async () => { calls.push("connections"); return []; },
+        complete: async () => undefined,
+      },
+      processor: {} as CommandProcessor,
+      leaseSeconds: 90,
+      claimLimit: 3,
+      maxConcurrency: 3,
+      paused: () => true,
+      logger: { info() {}, warn() {}, error() {} },
+    });
+    await coordinator.runCycle();
+    expect(calls).toEqual([]);
+  });
+
+  it("rejects an over-returned claim batch before any downstream work", async () => {
+    const calls: string[] = [];
+    let requestedLimit = 0;
+    const claims = Array.from({ length: 4 }, (_, index) => ({
+      ...claim(),
+      commandId: `command-${index}`,
+      deviceId: `device-${index}`,
+    }));
+    const coordinator = new CommandCoordinator({
+      api: {
+        claimCommands: async (limit) => {
+          calls.push("claim");
+          requestedLimit = limit ?? 0;
+          return claims;
+        },
+        listConnections: async () => {
+          calls.push("connections");
+          return [];
+        },
+        complete: async () => {
+          calls.push("complete");
+        },
+      },
+      processor: {
+        processClaim: async () => {
+          calls.push("process");
+        },
+      },
+      leaseSeconds: 90,
+      claimLimit: 3,
+      maxConcurrency: 2,
+      paused: () => false,
+      logger: { info() {}, warn() {}, error() {} },
+    });
+    await expect(coordinator.runCycle()).rejects.toThrow(/more claims than requested/i);
+    expect(requestedLimit).toBe(3);
+    expect(calls).toEqual(["claim"]);
+  });
+
+  it("settles every claimed command before reporting a completion failure", async () => {
+    const first = {
+      ...claim(),
+      commandId: "50000000-0000-4000-8000-000000000001",
+      deviceId: "40000000-0000-4000-8000-000000000099",
+    };
+    const second = {
+      ...claim(),
+      commandId: "50000000-0000-4000-8000-000000000002",
+      leaseToken: "60000000-0000-4000-8000-000000000002",
+      deviceId: connection.deviceId,
+    };
+    const processed: string[] = [];
+    const logged: unknown[] = [];
+    const coordinator = new CommandCoordinator({
+      api: {
+        claimCommands: async () => [first, second],
+        listConnections: async () => [connection],
+        complete: async () => {
+          throw new Error("completion transport failed with secret material");
+        },
+      },
+      processor: {
+        processClaim: async (item) => {
+          processed.push(item.commandId);
+        },
+      },
+      leaseSeconds: 90,
+      claimLimit: 3,
+      maxConcurrency: 1,
+      logger: {
+        info() {},
+        warn() {},
+        error(_message, context) {
+          logged.push(context);
+        },
+      },
+    });
+
+    await expect(coordinator.runCycle()).rejects.toThrow(/claimed command task failed/i);
+
+    expect(processed).toEqual([second.commandId]);
+    expect(logged).toEqual([
+      expect.objectContaining({
+        commandId: first.commandId,
+        error: "Error",
+      }),
+    ]);
+    expect(JSON.stringify(logged)).not.toContain("secret material");
   });
 
   it("renews the lease, backs up, executes an allowlisted action, and post-checks", async () => {
@@ -550,5 +668,139 @@ describe("command processor", () => {
     await Promise.all([first, second]);
 
     expect(maximumActive).toBe(1);
+  });
+
+  it("renews a claimed command while it waits beyond the renewal threshold for the RouterOS gate", async () => {
+    const routerOperationSemaphore = new AsyncSemaphore(1);
+    let releaseGate!: () => void;
+    const gateBlock = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    const gateHolder = routerOperationSemaphore.use(() => gateBlock);
+    await Promise.resolve();
+
+    let renewalCallback: (() => void | Promise<void>) | undefined;
+    let renewalDelayMs = 0;
+    let renewals = 0;
+    const test = harness({}, false, {}, {
+      routerOperationSemaphore,
+      renewLease: async () => {
+        renewals += 1;
+      },
+      clock: {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+        setInterval: (callback, milliseconds) => {
+          renewalCallback = callback;
+          renewalDelayMs = milliseconds;
+          return 1;
+        },
+        clearInterval: () => undefined,
+        sleep: async () => undefined,
+      },
+    });
+
+    const processing = test.processor.processClaim(claim(), connection);
+    await Promise.resolve();
+    expect(renewalDelayMs).toBe(30_000);
+    expect(test.calls).not.toContain("backup");
+
+    await renewalCallback?.();
+    expect(renewals).toBe(1);
+    expect(test.calls).not.toContain("backup");
+
+    releaseGate();
+    await Promise.all([gateHolder, processing]);
+  });
+
+  it("serializes a queued renewal with the execution-entry renewal", async () => {
+    const routerOperationSemaphore = new AsyncSemaphore(1);
+    let releaseGate!: () => void;
+    const gateBlock = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    const gateHolder = routerOperationSemaphore.use(() => gateBlock);
+    await Promise.resolve();
+
+    let renewalCallback: (() => void | Promise<void>) | undefined;
+    const renewalReleases: Array<() => void> = [];
+    let releaseFutureRenewals = false;
+    let activeRenewals = 0;
+    let maximumActiveRenewals = 0;
+    const test = harness({}, false, {}, {
+      routerOperationSemaphore,
+      renewLease: async () => {
+        activeRenewals += 1;
+        maximumActiveRenewals = Math.max(maximumActiveRenewals, activeRenewals);
+        if (!releaseFutureRenewals) {
+          await new Promise<void>((resolve) => renewalReleases.push(resolve));
+        }
+        activeRenewals -= 1;
+      },
+      clock: {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+        setInterval: (callback) => {
+          renewalCallback = callback;
+          return 1;
+        },
+        clearInterval: () => undefined,
+        sleep: async () => undefined,
+      },
+    });
+
+    const processing = test.processor.processClaim(claim(), connection);
+    const queuedRenewal = renewalCallback?.();
+    await Promise.resolve();
+    expect(activeRenewals).toBe(1);
+
+    releaseGate();
+    try {
+      for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+      expect(maximumActiveRenewals).toBe(1);
+    } finally {
+      releaseFutureRenewals = true;
+      for (const release of renewalReleases) release();
+      await Promise.all([gateHolder, queuedRenewal, processing]);
+    }
+  });
+
+  it("waits for a slow queued renewal before settling a paused claim", async () => {
+    let renewalCallback: (() => void | Promise<void>) | undefined;
+    let releaseRenewal!: () => void;
+    const renewalBlock = new Promise<void>((resolve) => {
+      releaseRenewal = resolve;
+    });
+    let renewalStarted = false;
+    const test = harness({}, false, {}, {
+      renewLease: async () => {
+        renewalStarted = true;
+        await renewalBlock;
+      },
+      clock: {
+        now: () => new Date("2026-07-28T00:00:00.000Z"),
+        setInterval: (callback) => {
+          renewalCallback = callback;
+          return 1;
+        },
+        clearInterval: () => undefined,
+        sleep: async () => undefined,
+      },
+    });
+
+    const processing = test.processor.processClaim(claim(), {
+      ...connection,
+      changesPaused: true,
+    });
+    const queuedRenewal = renewalCallback?.();
+    await Promise.resolve();
+    expect(renewalStarted).toBe(true);
+
+    try {
+      for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+      expect(test.completions).toHaveLength(0);
+    } finally {
+      releaseRenewal();
+      await Promise.all([queuedRenewal, processing]);
+    }
+    expect(test.completions).toHaveLength(1);
   });
 });

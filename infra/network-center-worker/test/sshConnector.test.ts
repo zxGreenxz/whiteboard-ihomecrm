@@ -1,8 +1,13 @@
 import { EventEmitter } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 
 import type { Client } from "ssh2";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { AsyncSemaphore } from "../src/concurrency.js";
 import {
   ROUTER_OS_COMMANDS,
   ROUTER_OS_READ_COMMANDS,
@@ -87,6 +92,397 @@ describe("RouterOS SSH boundary", () => {
     expect(routerOsCommandFailed("expected end of command (line 1 column 24)\n")).toBe(true);
     expect(routerOsCommandFailed("failure: no such item\n")).toBe(true);
     expect(routerOsCommandFailed("0 R name=ether1 comment=failure: drill\n")).toBe(false);
+  });
+
+  it("waits for the SSH client terminal event before close resolves", async () => {
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        queueMicrotask(() => channel.emit("close", 0));
+      }
+
+      destroy(): void {}
+      end(): void {}
+    }
+    const client = new FakeClient();
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => client as unknown as Client,
+    });
+    await connector.flushDnsCache();
+
+    let resolved = false;
+    const closing = connector.close().then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    client.emit("close");
+    await closing;
+    expect(resolved).toBe(true);
+  });
+
+  it("does not release close on SSH end before the client actually closes", async () => {
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        queueMicrotask(() => channel.emit("close", 0));
+      }
+
+      destroy(): void {}
+      end(): void {}
+    }
+    const client = new FakeClient();
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => client as unknown as Client,
+    });
+    await connector.flushDnsCache();
+
+    let resolved = false;
+    const closing = connector.close().then(() => {
+      resolved = true;
+    });
+    client.emit("end");
+    for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    client.emit("close");
+    await closing;
+    expect(resolved).toBe(true);
+  });
+
+  it("retains an errored established client until explicit close teardown completes", async () => {
+    let destroyCalls = 0;
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        queueMicrotask(() => channel.emit("close", 0));
+      }
+
+      destroy(): void {
+        destroyCalls += 1;
+      }
+      end(): void {}
+    }
+    const client = new FakeClient();
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => client as unknown as Client,
+    });
+    await connector.flushDnsCache();
+
+    client.emit("error", new Error("transport failed"));
+    const closing = connector.close();
+    let resolved = false;
+    void closing.then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+
+    expect(destroyCalls).toBe(1);
+    expect(resolved).toBe(false);
+
+    client.emit("close");
+    await expect(closing).resolves.toBeUndefined();
+  });
+
+  it("settles close after timeout destroy even when the SSH client never emits close", async () => {
+    vi.useFakeTimers();
+    try {
+      let destroyCalls = 0;
+      class FakeClient extends EventEmitter {
+        connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+          options.hostVerifier?.(Buffer.from("fake-host-key"));
+          queueMicrotask(() => this.emit("ready"));
+        }
+
+        exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+          const channel = new EventEmitter() as EventEmitter & {
+            stderr: EventEmitter;
+            close: () => void;
+          };
+          channel.stderr = new EventEmitter();
+          channel.close = () => undefined;
+          callback(undefined, channel);
+          queueMicrotask(() => channel.emit("close", 0));
+        }
+
+        destroy(): void {
+          destroyCalls += 1;
+        }
+        end(): void {}
+      }
+      const client = new FakeClient();
+      const connector = new SshRouterConnector({
+        connection: {
+          connectionId: "connection-id",
+          organizationId: "organization-id",
+          buildingId: "building-id",
+          deviceId: "device-id",
+          deviceKind: "MIKROTIK",
+          externalKey: "router-id",
+          displayName: "Router",
+          transport: "ROUTEROS_SSH",
+          managementIp: "192.0.2.1",
+          managementPort: 22,
+          credentialRef: "router/demo",
+          hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+          pollIntervalSeconds: 30,
+          connectTimeoutMs: 1_000,
+          monitoringEnabled: true,
+          changesPaused: false,
+        },
+        credential: {
+          username: "ihome-nc-worker",
+          privateKey: "fake-private-key",
+          backupPassword: "fake-backup-password",
+        },
+        commandTimeoutMs: 1_000,
+        backupStagingDirectory: ".",
+        clientFactory: () => client as unknown as Client,
+      });
+      await connector.flushDnsCache();
+
+      const closing = connector.close();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(closing).resolves.toBeUndefined();
+      expect(destroyCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("serializes shared SFTP transfers and releases the gate after a transfer failure", async () => {
+    const stagingDirectory = await mkdtemp(join(tmpdir(), "network-center-sftp-gate-"));
+    const sftpSemaphore = new AsyncSemaphore(1);
+    let releaseFailedTransfer!: () => void;
+    const failedTransferGate = new Promise<void>((resolve) => {
+      releaseFailedTransfer = resolve;
+    });
+    let failedTransferStarted!: () => void;
+    const failedTransferStart = new Promise<void>((resolve) => {
+      failedTransferStarted = resolve;
+    });
+    let activeSftp = 0;
+    let maximumActiveSftp = 0;
+    const sftpStarts: string[] = [];
+
+    class FakeClient extends EventEmitter {
+      readonly #label: string;
+      #failNextTransfer: boolean;
+
+      constructor(label: string, failNextTransfer: boolean) {
+        super();
+        this.#label = label;
+        this.#failNextTransfer = failNextTransfer;
+      }
+
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        queueMicrotask(() => channel.emit("close", 0));
+      }
+
+      sftp(callback: (error: Error | undefined, session: unknown) => void): void {
+        const fail = this.#failNextTransfer;
+        this.#failNextTransfer = false;
+        sftpStarts.push(this.#label);
+        activeSftp += 1;
+        maximumActiveSftp = Math.max(maximumActiveSftp, activeSftp);
+        callback(undefined, {
+          createReadStream: () => {
+            if (!fail) return Readable.from([Buffer.from("backup-or-export")]);
+            failedTransferStarted();
+            return Readable.from((async function* () {
+              await failedTransferGate;
+              throw new Error("simulated SFTP failure");
+            })());
+          },
+          end: () => {
+            activeSftp -= 1;
+          },
+        });
+      }
+
+      destroy(): void {}
+      end(): void {
+        queueMicrotask(() => this.emit("close"));
+      }
+    }
+
+    const makeConnector = (label: string, failNextTransfer: boolean) =>
+      new SshRouterConnector({
+        connection: {
+          connectionId: `${label}-connection`,
+          organizationId: "organization-id",
+          buildingId: "building-id",
+          deviceId: `${label}-device`,
+          deviceKind: "MIKROTIK",
+          externalKey: `${label}-router`,
+          displayName: "Router",
+          transport: "ROUTEROS_SSH",
+          managementIp: "192.0.2.1",
+          managementPort: 22,
+          credentialRef: `router/${label}`,
+          hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+          pollIntervalSeconds: 30,
+          connectTimeoutMs: 1_000,
+          monitoringEnabled: true,
+          changesPaused: false,
+        },
+        credential: {
+          username: "ihome-nc-worker",
+          privateKey: "fake-private-key",
+          backupPassword: "fake-backup-password",
+        },
+        commandTimeoutMs: 1_000,
+        backupStagingDirectory: stagingDirectory,
+        clientFactory: () => new FakeClient(label, failNextTransfer) as unknown as Client,
+        sftpSemaphore,
+      });
+
+    const first = makeConnector("first", true);
+    const second = makeConnector("second", false);
+    try {
+      const failedBackup = first.captureBackup();
+      await failedTransferStart;
+      const successfulBackup = second.captureBackup();
+      for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+
+      expect(sftpStarts).toEqual(["first"]);
+      expect(maximumActiveSftp).toBe(1);
+
+      releaseFailedTransfer();
+      await expect(failedBackup).rejects.toMatchObject({ code: "SFTP_READ_FAILED" });
+      const backup = await successfulBackup;
+      await backup.artifact.dispose();
+
+      expect(sftpStarts).toEqual(["first", "second", "second"]);
+      expect(maximumActiveSftp).toBe(1);
+      expect(activeSftp).toBe(0);
+    } finally {
+      releaseFailedTransfer();
+      await Promise.allSettled([first.close(), second.close()]);
+      await rm(stagingDirectory, { recursive: true, force: true });
+    }
   });
 
   it("derives interface state from terse flags when boolean fields are absent", () => {

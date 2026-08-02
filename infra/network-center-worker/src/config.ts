@@ -26,7 +26,11 @@ export interface WorkerConfig {
   requestTimeoutMs: number;
   commandTimeoutMs: number;
   leaseSeconds: number;
-  maxConcurrency: number;
+  releaseSha: string;
+  pollConcurrency: number;
+  commandConcurrency: number;
+  commandClaimLimit: number;
+  sftpConcurrency: number;
   emergencyStop: boolean;
 }
 
@@ -159,6 +163,11 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
   if (argv.length > 2) {
     throw new ConfigError("Worker does not accept command-line settings or secrets");
   }
+  if (env.NETWORK_CENTER_MAX_CONCURRENCY?.trim()) {
+    throw new ConfigError(
+      "NETWORK_CENTER_MAX_CONCURRENCY was removed; configure each bounded concurrency setting explicitly",
+    );
+  }
   for (const forbidden of [
     "NETWORK_CENTER_WORKER_SECRET",
     "NETWORK_CENTER_ROUTER_PASSWORD",
@@ -185,6 +194,10 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
   const workerKey = required(env, "NETWORK_CENTER_WORKER_KEY");
   if (!/^[a-z0-9][a-z0-9._-]{2,63}$/.test(workerKey)) {
     throw new ConfigError("NETWORK_CENTER_WORKER_KEY is invalid");
+  }
+  const releaseSha = required(env, "NETWORK_CENTER_RELEASE_SHA").toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(releaseSha)) {
+    throw new ConfigError("NETWORK_CENTER_RELEASE_SHA must be a full reviewed Git revision");
   }
 
   const workerSecretFile = required(env, "NETWORK_CENTER_WORKER_SECRET_FILE");
@@ -236,10 +249,26 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
       maximum: 300,
       fallback: 90,
     }),
-    maxConcurrency: integerSetting(env, "NETWORK_CENTER_MAX_CONCURRENCY", {
+    releaseSha,
+    pollConcurrency: integerSetting(env, "NETWORK_CENTER_POLL_CONCURRENCY", {
       minimum: 1,
-      maximum: 15,
-      fallback: 4,
+      maximum: 3,
+      fallback: 3,
+    }),
+    commandConcurrency: integerSetting(env, "NETWORK_CENTER_COMMAND_CONCURRENCY", {
+      minimum: 1,
+      maximum: 3,
+      fallback: 3,
+    }),
+    commandClaimLimit: integerSetting(env, "NETWORK_CENTER_COMMAND_CLAIM_LIMIT", {
+      minimum: 1,
+      maximum: 3,
+      fallback: 3,
+    }),
+    sftpConcurrency: integerSetting(env, "NETWORK_CENTER_SFTP_CONCURRENCY", {
+      minimum: 1,
+      maximum: 1,
+      fallback: 1,
     }),
     emergencyStop: booleanSetting(env, "NETWORK_CENTER_EMERGENCY_STOP"),
   });

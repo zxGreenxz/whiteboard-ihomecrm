@@ -40,6 +40,7 @@ type RouteDefinition = {
 };
 
 const SECRET_HEADER = "x-network-worker-secret";
+const CLAIM_LIMIT = 3;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const encoder = new TextEncoder();
@@ -217,8 +218,9 @@ function connectionsArgs(body: JsonObject): Record<string, unknown> {
 }
 
 function claimArgs(body: JsonObject): Record<string, unknown> {
+  const limit = Object.hasOwn(body, "limit") ? body.limit : CLAIM_LIMIT;
   return {
-    p_limit: asInteger(body.limit ?? 5, "limit", 1, 20),
+    p_limit: asInteger(limit, "limit", 1, CLAIM_LIMIT),
     p_lease_seconds: asInteger(
       body.leaseSeconds ?? 90,
       "leaseSeconds",
@@ -579,6 +581,29 @@ function rpcErrorStatus(code: string | undefined): number {
   return 502;
 }
 
+function isValidRpcData(
+  route: RouteDefinition,
+  args: Record<string, unknown>,
+  data: unknown,
+): boolean {
+  if (route.rpcName !== "network_center_worker_claim_v2") return true;
+  const requestedLimit = args.p_limit;
+  if (!Number.isInteger(requestedLimit) || data === null ||
+    typeof data !== "object" || Array.isArray(data)) {
+    return false;
+  }
+  try {
+    const prototype = Object.getPrototypeOf(data);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    const items = (data as JsonObject).items;
+    return Array.isArray(items) &&
+      items.length <= (requestedLimit as number) &&
+      items.length <= CLAIM_LIMIT;
+  } catch {
+    return false;
+  }
+}
+
 export function createWorkerHandler(
   dependencies: WorkerHandlerDependencies = {},
 ): (request: Request) => Promise<Response> {
@@ -657,6 +682,9 @@ export function createWorkerHandler(
         error: "worker_backend_error",
         code: result.error.code ?? "UNKNOWN",
       });
+    }
+    if (!isValidRpcData(route, args, result.data)) {
+      return jsonResponse(502, { error: "worker_backend_error" });
     }
     return jsonResponse(200, { ok: true, data: result.data });
   };

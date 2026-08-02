@@ -6,6 +6,7 @@ import { NetworkCenterApiClient } from "./apiClient.js";
 import { FileBackupStore } from "./backupStore.js";
 import { CommandCoordinator, CommandProcessor } from "./commands.js";
 import { loadWorkerConfig } from "./config.js";
+import { AsyncSemaphore } from "./concurrency.js";
 import {
   InterfaceRegistry,
   RouterOperationError,
@@ -95,6 +96,8 @@ async function run(): Promise<void> {
     timeoutMs: config.requestTimeoutMs,
   });
   const interfaceRegistry = new InterfaceRegistry();
+  const routerOperationSemaphore = new AsyncSemaphore(3);
+  const sftpSemaphore = new AsyncSemaphore(config.sftpConcurrency);
   const connectorFactory = async (connection: NetworkConnection) => {
     if (!connection.credentialRef || !connection.hostKeyFingerprint) {
       throw new RouterOperationError("ROUTER_CREDENTIAL_REFERENCE_MISSING", {
@@ -114,19 +117,21 @@ async function run(): Promise<void> {
       credential,
       commandTimeoutMs: config.commandTimeoutMs,
       backupStagingDirectory: resolve(config.backupDirectory, ".staging"),
+      sftpSemaphore,
     });
   };
   const polling = new PollingCoordinator({
     api,
     connectorFactory,
     interfaceRegistry,
-    maxConcurrency: config.maxConcurrency,
+    maxConcurrency: config.pollConcurrency,
     now: () => new Date(),
     startedAt,
-    workerVersion: "0.1.0",
+    workerVersion: config.releaseSha,
     logger,
     enforceScheduling: true,
     paused: () => config.emergencyStop,
+    routerOperationSemaphore,
   });
   const commandProcessor = new CommandProcessor({
     api,
@@ -137,11 +142,15 @@ async function run(): Promise<void> {
     clock: systemClock,
     leaseSeconds: config.leaseSeconds,
     logger,
+    routerOperationSemaphore,
   });
   const commands = new CommandCoordinator({
     api,
     processor: commandProcessor,
     leaseSeconds: config.leaseSeconds,
+    claimLimit: config.commandClaimLimit,
+    maxConcurrency: config.commandConcurrency,
+    paused: () => config.emergencyStop,
     logger,
   });
   const runtime = new WorkerRuntime({
@@ -153,7 +162,7 @@ async function run(): Promise<void> {
     commands: () => commands.runCycle(),
     heartbeat: () => api.heartbeat({
       status: config.emergencyStop ? "PAUSED" : "ONLINE",
-      workerVersion: "0.1.0",
+      workerVersion: config.releaseSha,
       capabilities: ["routeros-ssh", "polling", "commands", "snapshots"],
       queueAgeSeconds: 0,
       safeMetadata: { source: "periodic" },
@@ -161,7 +170,7 @@ async function run(): Promise<void> {
     }).then(() => undefined),
     heartbeatStopped: () => api.heartbeat({
       status: "STOPPING",
-      workerVersion: "0.1.0",
+      workerVersion: config.releaseSha,
       capabilities: ["routeros-ssh", "polling", "commands", "snapshots"],
       queueAgeSeconds: 0,
       safeMetadata: {},

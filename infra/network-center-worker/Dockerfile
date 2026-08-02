@@ -1,5 +1,7 @@
 FROM node:20.20-bookworm-slim AS build
 
+ARG NETWORK_CENTER_RELEASE_SHA=0000000000000000000000000000000000000000
+
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -10,8 +12,13 @@ RUN npm run build \
 
 FROM node:20.20-bookworm-slim AS runtime
 
+ARG NETWORK_CENTER_RELEASE_SHA=0000000000000000000000000000000000000000
+
 ENV NODE_ENV=production \
-    NODE_OPTIONS=--max-old-space-size=384
+    NODE_OPTIONS=--max-old-space-size=320
+
+LABEL org.opencontainers.image.revision="${NETWORK_CENTER_RELEASE_SHA}" \
+      com.ihomecrm.component="network-center-worker"
 
 RUN groupadd --gid 10001 network-center \
   && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin network-center

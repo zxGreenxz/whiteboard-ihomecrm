@@ -1,0 +1,4 @@
+*.sh text eol=lf
+*.service text eol=lf
+*.ps1 text eol=lf
+infra/network-center-worker/deploy/*.conf text eol=lf

@@ -200,9 +200,12 @@ export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
     return this.#post("heartbeat", input, z.unknown());
   }
 
-  async claimCommands(limit = 5, leaseSeconds = 90): Promise<CommandClaim[]> {
+  async claimCommands(limit = 3, leaseSeconds = 90): Promise<CommandClaim[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) {
+      throw new RangeError("Command claim limit must be between 1 and 3");
+    }
     const data = await this.#post("claim", { limit, leaseSeconds }, z.object({
-      items: z.array(commandClaimSchema).max(20),
+      items: z.array(commandClaimSchema).max(limit),
     }));
     return data.items as CommandClaim[];
   }

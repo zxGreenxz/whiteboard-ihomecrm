@@ -169,6 +169,121 @@ Deno.test("unknown routes and non-POST methods are denied without invoking RPC",
   assertEquals(calls.length, 0);
 });
 
+Deno.test("claim defaults to the process-wide RouterOS concurrency limit", async () => {
+  const { handler, calls } = await createHarness({
+    rpcResult: { data: { items: [] }, error: null },
+  });
+
+  const response = await handler(post("/claim", {}));
+
+  assertEquals(response.status, 200);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0]?.name, "network_center_worker_claim_v2");
+  assertEquals(calls[0]?.args.p_limit, 3);
+});
+
+Deno.test("claim rejects limits above the process-wide RouterOS concurrency limit", async () => {
+  for (const limit of [4, 20]) {
+    const { handler, calls } = await createHarness();
+
+    const response = await handler(post("/claim", { limit }));
+
+    assertEquals(response.status, 400);
+    assertEquals(calls.length, 0);
+  }
+});
+
+Deno.test("claim accepts each limit within the process-wide RouterOS concurrency limit", async () => {
+  for (const limit of [1, 2, 3]) {
+    const { handler, calls } = await createHarness({
+      rpcResult: { data: { items: [] }, error: null },
+    });
+
+    const response = await handler(post("/claim", { limit }));
+
+    assertEquals(response.status, 200);
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0]?.args.p_limit, limit);
+  }
+});
+
+Deno.test("claim rejects an explicit null limit instead of applying the default", async () => {
+  const { handler, calls } = await createHarness({
+    rpcResult: { data: { items: [] }, error: null },
+  });
+
+  const response = await handler(post("/claim", { limit: null }));
+
+  assertEquals(response.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("claim fails closed when the RPC response is not an items envelope", async () => {
+  for (const data of [
+    null,
+    [],
+    { rows: [] },
+    { items: null },
+    { items: {} },
+    Object.assign(new Date(0), { items: [] }),
+    "malformed",
+  ]) {
+    const { handler } = await createHarness({
+      rpcResult: { data, error: null },
+    });
+
+    const response = await handler(post("/claim", { limit: 3 }));
+
+    assertEquals(response.status, 502);
+    assertEquals(await responseJson(response), {
+      error: "worker_backend_error",
+    });
+  }
+});
+
+Deno.test("claim fails closed when the RPC returns more rows than requested", async () => {
+  const cases = [
+    { limit: 1, rows: [{ id: "secret-row-1" }, { id: "secret-row-2" }] },
+    {
+      limit: 3,
+      rows: [
+        { id: "secret-row-1" },
+        { id: "secret-row-2" },
+        { id: "secret-row-3" },
+        { id: "secret-row-4" },
+      ],
+    },
+  ];
+
+  for (const { limit, rows } of cases) {
+    const { handler } = await createHarness({
+      rpcResult: { data: { items: rows }, error: null },
+    });
+
+    const response = await handler(post("/claim", { limit }));
+    const body = await responseJson(response);
+
+    assertEquals(response.status, 502);
+    assertEquals(body, { error: "worker_backend_error" });
+    assertEquals(JSON.stringify(body).includes("secret-row"), false);
+  }
+});
+
+Deno.test("claim preserves the production items envelope within the requested limit", async () => {
+  const rows = [{ id: "row-1" }, { id: "row-2" }];
+  const { handler } = await createHarness({
+    rpcResult: { data: { items: rows }, error: null },
+  });
+
+  const response = await handler(post("/claim", { limit: 2 }));
+
+  assertEquals(response.status, 200);
+  assertEquals(await responseJson(response), {
+    ok: true,
+    data: { items: rows },
+  });
+});
+
 Deno.test("malformed JSON, wrong content type, and oversized bodies are rejected", async () => {
   const { handler, calls } = await createHarness();
   const malformed = await handler(post("/claim", {}, { raw: "{" }));
@@ -233,9 +348,9 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     },
     {
       path: "/claim",
-      body: { limit: 5, leaseSeconds: 90 },
+      body: { limit: 3, leaseSeconds: 90 },
       rpc: "network_center_worker_claim_v2",
-      args: { p_limit: 5, p_lease_seconds: 90 },
+      args: { p_limit: 3, p_lease_seconds: 90 },
     },
     {
       path: "/renew",
@@ -429,7 +544,12 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
   ];
 
   for (const route of routes) {
-    const { handler, calls } = await createHarness();
+    const rpcData = route.path === "/claim"
+      ? { items: [] }
+      : { accepted: true };
+    const { handler, calls } = await createHarness({
+      rpcResult: { data: rpcData, error: null },
+    });
     const response = await handler(post(route.path, route.body));
     assertEquals(response.status, 200, route.path);
     assertEquals(calls, [{
@@ -438,7 +558,7 @@ Deno.test("valid routes forward only their allowlisted RPC and normalized argume
     }], route.path);
     assertEquals(await responseJson(response), {
       ok: true,
-      data: { accepted: true },
+      data: rpcData,
     });
   }
 });
@@ -571,7 +691,7 @@ Deno.test("invalid stage kinds, UUIDs, timestamps, and RPC failures are sanitize
     },
   });
   const failedResponse = await failed.handler(post("/claim", {
-    limit: 5,
+    limit: 3,
     leaseSeconds: 90,
   }));
   const failedBody = await responseJson(failedResponse);

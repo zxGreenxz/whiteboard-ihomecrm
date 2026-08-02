@@ -442,6 +442,7 @@ test("admin exports every required fail-closed command", () => {
       "set-rollout",
       "status",
       "unassign",
+      "worker-release-status",
     ],
   );
   assert.throws(

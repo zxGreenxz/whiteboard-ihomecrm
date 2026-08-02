@@ -9,6 +9,11 @@ const validEnvironment = {
   NETWORK_CENTER_CREDENTIALS_FILE: "/run/secrets/router-credentials.json",
   NETWORK_CENTER_BACKUP_DIR: "/var/lib/network-center/backups",
   NETWORK_CENTER_POLL_INTERVAL_MS: "60000",
+  NETWORK_CENTER_RELEASE_SHA: "a".repeat(40),
+  NETWORK_CENTER_POLL_CONCURRENCY: "3",
+  NETWORK_CENTER_COMMAND_CONCURRENCY: "3",
+  NETWORK_CENTER_COMMAND_CLAIM_LIMIT: "3",
+  NETWORK_CENTER_SFTP_CONCURRENCY: "1",
   NETWORK_CENTER_EMERGENCY_STOP: "false",
 };
 
@@ -38,8 +43,43 @@ describe("worker configuration", () => {
     expect(config.workerSecret).toHaveLength(48);
     expect(config.workerKey).toBe("vultr-network-center-01");
     expect(config.pollIntervalMs).toBe(60_000);
+    expect(config.releaseSha).toBe("a".repeat(40));
+    expect(config.pollConcurrency).toBe(3);
+    expect(config.commandConcurrency).toBe(3);
+    expect(config.commandClaimLimit).toBe(3);
+    expect(config.sftpConcurrency).toBe(1);
     expect(config.emergencyStop).toBe(false);
     expect(config.credentials.size).toBe(0);
+  });
+
+  it("rejects an unreviewed release identity and concurrency above the deployment envelope", () => {
+    expect(() => loadWorkerConfig({
+      env: { ...validEnvironment, NETWORK_CENTER_RELEASE_SHA: "main" },
+      argv: ["node", "dist/main.js"],
+      files: secureFiles,
+      platform: "linux",
+    })).toThrow(/RELEASE_SHA/i);
+
+    for (const [name, value] of [
+      ["NETWORK_CENTER_POLL_CONCURRENCY", "4"],
+      ["NETWORK_CENTER_COMMAND_CONCURRENCY", "4"],
+      ["NETWORK_CENTER_COMMAND_CLAIM_LIMIT", "4"],
+      ["NETWORK_CENTER_SFTP_CONCURRENCY", "2"],
+    ] as const) {
+      expect(() => loadWorkerConfig({
+        env: { ...validEnvironment, [name]: value },
+        argv: ["node", "dist/main.js"],
+        files: secureFiles,
+        platform: "linux",
+      })).toThrow(/safe range/i);
+    }
+
+    expect(() => loadWorkerConfig({
+      env: { ...validEnvironment, NETWORK_CENTER_MAX_CONCURRENCY: "15" },
+      argv: ["node", "dist/main.js"],
+      files: secureFiles,
+      platform: "linux",
+    })).toThrow(/MAX_CONCURRENCY.*removed|removed.*MAX_CONCURRENCY/i);
   });
 
   it("keeps the worker key as local labeling only and matches the database key format", () => {

@@ -11,6 +11,7 @@ import {
   type RouterObservation,
   type WorkerLogger,
 } from "./domain.js";
+import { AsyncSemaphore } from "./concurrency.js";
 import type { RouterConnector } from "./routeros/connector.js";
 
 type PollingApi = Pick<
@@ -32,6 +33,7 @@ interface PollingCoordinatorOptions {
   retryBackoffBaseMs?: number;
   retryBackoffMaximumMs?: number;
   inventoryRefreshIntervalMs?: number;
+  routerOperationSemaphore?: AsyncSemaphore;
 }
 
 interface PollState {
@@ -184,6 +186,7 @@ export class PollingCoordinator {
   readonly #retryBackoffBaseMs: number;
   readonly #retryBackoffMaximumMs: number;
   readonly #inventoryRefreshIntervalMs: number;
+  readonly #routerOperationSemaphore: AsyncSemaphore;
   readonly #states = new Map<string, PollState>();
   readonly #inventoryCache = new Map<string, InventoryCacheEntry>();
 
@@ -201,6 +204,7 @@ export class PollingCoordinator {
     this.#retryBackoffBaseMs = options.retryBackoffBaseMs ?? 5_000;
     this.#retryBackoffMaximumMs = options.retryBackoffMaximumMs ?? 300_000;
     this.#inventoryRefreshIntervalMs = options.inventoryRefreshIntervalMs ?? 600_000;
+    this.#routerOperationSemaphore = options.routerOperationSemaphore ?? new AsyncSemaphore(3);
   }
 
   #shouldPoll(connection: NetworkConnection, now: number): boolean {
@@ -550,7 +554,9 @@ export class PollingCoordinator {
     let degradedInventories = 0;
     const telemetry: TelemetryBatch[] = [];
     await concurrentMap(connections, this.#maxConcurrency, async (connection) => {
-      const batch = await this.#pollConnection(connection);
+      const batch = await this.#routerOperationSemaphore.use(
+        () => this.#pollConnection(connection),
+      );
       if (batch) {
         successes += 1;
         if (batch.inventoryDegraded) degradedInventories += 1;

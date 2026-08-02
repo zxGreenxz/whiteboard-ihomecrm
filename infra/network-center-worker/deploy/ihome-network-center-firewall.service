@@ -1,0 +1,16 @@
+[Unit]
+Description=iHomeCRM Network Center managed nftables policy
+Wants=network-pre.target
+Before=network-online.target wg-quick@wg0.service network-center-worker.service
+ConditionPathExists=/etc/nftables.d/ihome-network-center.nft
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/sbin/nft --check --file /etc/nftables.d/ihome-network-center.nft
+ExecStart=/usr/sbin/nft --file /etc/nftables.d/ihome-network-center.nft
+ExecReload=/usr/sbin/nft --check --file /etc/nftables.d/ihome-network-center.nft
+ExecReload=/usr/sbin/nft --file /etc/nftables.d/ihome-network-center.nft
+
+[Install]
+WantedBy=multi-user.target
