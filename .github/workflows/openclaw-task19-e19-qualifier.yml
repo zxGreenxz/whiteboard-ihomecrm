@@ -449,6 +449,21 @@ jobs:
                 tar -xOf "$archive" "$blob_entry" > "$diagnostics/$name.descriptor-$descriptor.json"
               fi
             done < <(jq -r '.manifests[].digest' "$diagnostics/$name.index.json")
+            if [ "$name" != "openclaw-zalo-cell-stock-linux-amd64" ] && [ -s "$diagnostics/$name.descriptor-1.json" ]; then
+              layer=0
+              while IFS= read -r digest; do
+                layer=$((layer + 1))
+                hex="${digest#sha256:}"
+                blob_entry="$(tar -tf "$archive" | awk -v path="blobs/sha256/$hex" '$0 == path || $0 == "./" path { print; exit }')"
+                if [ -z "$blob_entry" ]; then
+                  continue
+                fi
+                tar -xOf "$archive" "$blob_entry" |
+                  tar --numeric-owner --full-time -tvzf - |
+                  grep -E ' (\./)?(home|home/node|home/node/\.openclaw|home/node/\.openclaw/npm|home/node/\.openclaw/npm/projects|home/node/\.openclaw/npm/projects/zalouser|opt|opt/openclaw-cell|opt/openclaw-cell/session-crypto|opt/openclaw-cell/session-crypto/dist)/?$' \
+                    > "$diagnostics/$name.runtime-layer-$layer-ancestors.txt" || true
+              done < <(jq -r '.layers[26:].digest' "$diagnostics/$name.descriptor-1.json")
+            fi
             printf 'archive=%s size=%s sha256=%s\n' \
               "$name" "$(stat -c '%s' "$archive")" "$(sha256sum "$archive" | cut -d' ' -f1)"
             cat "$diagnostics/$name.summary.json"
