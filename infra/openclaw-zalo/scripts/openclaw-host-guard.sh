@@ -125,21 +125,44 @@ write_state() {
   mv -f "$tmp" "$state_file"
 }
 
+# Operation ID phải TẤT ĐỊNH theo (tổ chức, cell, trạng thái, fingerprint, mốc trip)
+# để lần post lại sau khi mất phản hồi KHÔNG tạo incident/notification trùng.
+# Dẫn xuất name-based bằng SHA-1 với domain separation chuỗi, rồi định dạng theo
+# khuôn UUID v5 (nibble phiên bản = 5, biến thể = 10xx) cho khớp UUID_PATTERN mà
+# Edge kiểm ([1-5]). Không dùng namespace nhị phân RFC 4122 — chỉ cần tất định,
+# chống va chạm và đúng khuôn dạng.
+OPERATION_ID_DOMAIN='ihome-openclaw-host-guard-operation-v1'
+derive_operation_id() {
+  digest=$(printf '%s\0%s\0%s\0%s\0%s\0%s' \
+    "$OPERATION_ID_DOMAIN" "$organization_id" "$cell_id" "$1" "$2" "$3" \
+    | sha1sum | cut -c1-32)
+  printf '%s-%s-5%s-%s%s-%s\n' \
+    "$(printf '%s' "$digest" | cut -c1-8)" \
+    "$(printf '%s' "$digest" | cut -c9-12)" \
+    "$(printf '%s' "$digest" | cut -c14-16)" \
+    "$(printf '%s' "$digest" | cut -c17-17 | sed 's/^[0-3]/8/;s/^[4-7]/9/;s/^[89]/a/;s/^[a-f]/b/')" \
+    "$(printf '%s' "$digest" | cut -c18-20)" \
+    "$(printf '%s' "$digest" | cut -c21-32)"
+}
+
 post_guard() {
   guard_state=$1
   fingerprint=$2
   token=$(sed -n '1p' "$token_file")
   [ "$(wc -l < "$token_file")" -eq 1 ] && [ "${#token}" -ge 32 ] && [ "${#token}" -le 512 ] || exit 1
   case "$token" in *[!0-9A-Za-z._~-]*) echo "watchdog token format is invalid" >&2; exit 1 ;; esac
-  operation_id=$(sed -n '1p' /proc/sys/kernel/random/uuid)
+  operation_id=$(derive_operation_id "$guard_state" "$fingerprint" "$trip_since")
   payload=$(printf '%s' "{\"version\":1,\"operation\":\"HOST_GUARD\",\"organizationId\":\"$organization_id\",\"operationId\":\"$operation_id\",\"observedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"cellId\":\"$cell_id\",\"state\":\"$guard_state\",\"fingerprint\":\"$fingerprint\",\"controls\":[\"PAUSE_OUTBOUND_AI_MEDIA\"],\"contentFreeMetrics\":{\"ramPercent\":$ram_percent,\"swapPercent\":$swap_percent,\"loadOne\":$load_one,\"rootFreePercent\":$root_free_percent,\"rootFreeGiB\":$root_free_gib,\"routerP95RegressionPercent\":$router_p95_regression,\"routerErrorRatePercent\":$router_error_rate}}")
   printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$token" | \
     curl --config - --fail --silent --show-error --max-time 10 --retry 2 --retry-all-errors \
       --data-binary "$payload" "$watchdog_url" >/dev/null
 }
 
+post_failed=0
+
 if [ -n "$trip_reasons" ]; then
   fingerprint=$(printf '%s' "$trip_reasons" | awk '{$1=$1; gsub(/ /,"-"); print "host-guard:" $0}')
+  guard_state=STILL_TRIPPED
   if [ ! -f "$pause_file" ]; then
     trip_since=$now
     tmp="$pause_file.tmp.$$"
@@ -147,11 +170,15 @@ if [ -n "$trip_reasons" ]; then
     printf 'version=1\nstate=PAUSED\nfingerprint=%s\nmanual_resume_permission=openclaw_zalo.manage_operations\n' "$fingerprint" > "$tmp"
     chmod 0600 "$tmp"
     mv -f "$tmp" "$pause_file"
-    post_guard TRIPPED "$fingerprint"
-  else
-    post_guard STILL_TRIPPED "$fingerprint"
+    guard_state=TRIPPED
   fi
   [ "$trip_since" -ne 0 ] || trip_since=$now
+  # FAIL-CLOSED: ghi mốc trip TRƯỚC khi gọi Edge. Nếu Edge chết, `set -e` từng
+  # làm script thoát tại curl nên trip_since không bao giờ được lưu và mốc dừng
+  # 10 phút không bao giờ tới. Giờ trạng thái cục bộ bền vững trước, việc báo
+  # Edge không được phép ngăn cưỡng chế cục bộ.
+  write_state
+  post_guard "$guard_state" "$fingerprint" || post_failed=1
   if [ $((now - trip_since)) -ge 600 ] && [ "$stopped" -eq 0 ]; then
     /usr/bin/env -i PATH="$PATH" DOCKER_HOST="$docker_host" docker compose \
       --project-name "openclaw-zalo-$cell_id" --env-file "$runtime_env" \
@@ -161,7 +188,14 @@ if [ -n "$trip_reasons" ]; then
 elif [ -f "$pause_file" ] && [ "$clear_since" -ne 0 ] && [ $((now - clear_since)) -ge 900 ]; then
   # The marker deliberately remains. Only an operator with manage_operations
   # may clear it after reviewing the incident and resuming canonical controls.
-  post_guard CLEAR_PENDING "host-guard:clear-pending-manual-resume"
+  write_state
+  post_guard CLEAR_PENDING "host-guard:clear-pending-manual-resume" || post_failed=1
 fi
 
 write_state
+
+# Báo lỗi cho timer SAU khi đã cưỡng chế cục bộ xong, không phải thay cho nó.
+if [ "$post_failed" -ne 0 ]; then
+  echo "watchdog post failed; local host-guard enforcement already applied" >&2
+  exit 1
+fi
