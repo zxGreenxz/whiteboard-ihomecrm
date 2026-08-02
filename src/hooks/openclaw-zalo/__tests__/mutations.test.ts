@@ -1,7 +1,15 @@
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
-import { isOpenClawSerializationFailure, resolveUnknownWithWinnerReload } from "@/hooks/openclaw-zalo/useOpenClawMutations";
+import { describe, expect, it, vi } from "vitest";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  executeOpenClawMutation,
+  isOpenClawSerializationFailure,
+  resolveUnknownWithWinnerReload,
+} from "@/hooks/openclaw-zalo/useOpenClawMutations";
+import { directorySyncMutationContract } from "@/lib/openclaw-zalo/action-contracts";
 import { unknownResolutionRequestSchema } from "@/lib/openclaw-zalo/validation";
+
+vi.mock("@/integrations/supabase/client", () => ({ supabase: { rpc: vi.fn() } }));
 
 const ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OUTBOX = "33333333-3333-4333-8333-333333333333";
@@ -70,5 +78,38 @@ describe("OpenClaw mutation contracts", () => {
     );
     expect(result).toBe(winner);
     expect(seenOperationIds).toEqual([operationId]);
+  });
+
+  it("replays a lost response with the exact same client operation id", async () => {
+    const rpc = supabase.rpc as unknown as ReturnType<typeof vi.fn>;
+    const variables = {
+      clientOperationId: "44444444-4444-4444-8444-444444444444",
+      request: { version: 1 as const, organizationId: ORG, accountId: "11111111-1111-4111-8111-111111111111" },
+    };
+    const safeResult = {
+      version: 1 as const,
+      runtimeCommandId: "55555555-5555-4555-8555-555555555555",
+      status: "PENDING" as const,
+    };
+    rpc
+      .mockResolvedValueOnce({ data: null, error: { message: "response lost after commit" } })
+      .mockResolvedValueOnce({ data: safeResult, error: null });
+
+    await expect(executeOpenClawMutation(
+      directorySyncMutationContract.rpcName,
+      variables,
+      directorySyncMutationContract.requestSchema,
+      directorySyncMutationContract.resultSchema,
+    )).rejects.toMatchObject({ message: "response lost after commit" });
+    await expect(executeOpenClawMutation(
+      directorySyncMutationContract.rpcName,
+      variables,
+      directorySyncMutationContract.requestSchema,
+      directorySyncMutationContract.resultSchema,
+    )).resolves.toEqual(safeResult);
+
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc.mock.calls[0]).toEqual(rpc.mock.calls[1]);
+    expect(rpc.mock.calls[1][1].p_client_operation_id).toBe(variables.clientOperationId);
   });
 });

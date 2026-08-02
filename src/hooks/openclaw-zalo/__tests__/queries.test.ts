@@ -4,6 +4,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { openClawQueryKeys } from "@/hooks/openclaw-zalo/queryKeys";
 import { selectOpenClawOrganization } from "@/hooks/openclaw-zalo/useOpenClawOrganization";
 import { resetOpenClawCache } from "@/hooks/openclaw-zalo/useOpenClawRealtime";
+import { projectOpenClawPermissions } from "@/hooks/openclaw-zalo/useOpenClawPermissions";
 import { parseUnknownItems } from "@/lib/openclaw-zalo/validation";
 
 const ORG_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -21,6 +22,10 @@ describe("OpenClaw query contracts", () => {
           openClawQueryKeys.conversations(organizationId, accountId),
           openClawQueryKeys.messages(organizationId, accountId, "33333333-3333-4333-8333-333333333333"),
           openClawQueryKeys.unknown(organizationId, accountId),
+          openClawQueryKeys.knowledgeList(organizationId, accountId),
+          openClawQueryKeys.automationList(organizationId, accountId),
+          openClawQueryKeys.salesGroups(organizationId, accountId),
+          openClawQueryKeys.schedules(organizationId, accountId),
         ];
         for (const key of keys) expect(key.slice(0, 3)).toEqual(["openclaw-zalo", organizationId, accountId]);
       }),
@@ -73,6 +78,65 @@ describe("OpenClaw query contracts", () => {
     };
     expect(parseUnknownItems(response)[0]).toMatchObject({ historicalState: "UNKNOWN", resolutionVersion: 0, resolution: null });
     expect(() => parseUnknownItems({ ...response, secret: "must fail strict parsing" })).toThrow();
+  });
+
+  it("rejects every partial UNKNOWN resolution projection", () => {
+    const unresolved = {
+      outboxId: "33333333-3333-4333-8333-333333333333",
+      accountId: ACCOUNT_A,
+      payloadHash: "a".repeat(64),
+      terminalAt: "2026-01-01T00:00:00Z",
+      resolution_version: 0,
+      authoritative_evidence_hash: null,
+      resolutionId: null,
+      outcome: null,
+      new_outbox_id: null,
+      resolvedAt: null,
+    };
+    for (const field of ["authoritative_evidence_hash", "resolutionId", "outcome", "resolvedAt"] as const) {
+      const partial = {
+        ...unresolved,
+        [field]: field === "authoritative_evidence_hash"
+          ? "b".repeat(64)
+          : field === "resolutionId"
+            ? "44444444-4444-4444-8444-444444444444"
+            : field === "outcome"
+              ? "CONFIRMED_FAILED"
+              : "2026-01-01T00:01:00Z",
+      };
+      expect(() => parseUnknownItems({ version: 1, limit: 1, items: [partial] })).toThrow();
+    }
+  });
+
+  it("isolates permissions to the organization returned by the authorization context", () => {
+    const context = {
+      organizationId: ORG_A,
+      membershipId: "33333333-3333-4333-8333-333333333333",
+      memberType: "OWNER",
+      authorizationVersion: 2,
+      isPlatformAdmin: false,
+      isOffboarded: false,
+      organizations: [{ id: ORG_A, name: "A", isDemo: false, memberType: "OWNER" }],
+      permissions: { "openclaw_zalo.view": true, "openclaw_zalo.manage_operations": true },
+      scopeSets: [{ orgWide: true, buildingIds: [], cashbookIds: [] }],
+      scopes: { "openclaw_zalo.view": 0, "openclaw_zalo.manage_operations": 0 },
+    };
+    expect(projectOpenClawPermissions(context, ORG_A)).toMatchObject({
+      organizationId: ORG_A,
+      actions: { view: true, manage_operations: true, send: false },
+    });
+    expect(() => projectOpenClawPermissions(context, ORG_B)).toThrow(/organization mismatch/i);
+    expect(projectOpenClawPermissions({
+      ...context,
+      organizationId: null,
+      membershipId: null,
+      memberType: null,
+      authorizationVersion: null,
+      organizations: [],
+      permissions: {},
+      scopeSets: [],
+      scopes: {},
+    }, ORG_B)).toBeNull();
   });
 
   it("refuses to guess among multiple organizations", () => {

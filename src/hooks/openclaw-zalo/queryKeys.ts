@@ -32,17 +32,59 @@ export const openClawQueryKeys = {
   messages: (organizationId: string, accountId: string, conversationId: string, cursorAt?: string | null, cursorId?: string | null, limit = 50) => [
     ...openClawQueryKeys.messagesRoot(organizationId, accountId), conversationId, cursorAt ?? null, cursorId ?? null, limit,
   ] as const,
+  knowledgeRoot: (organizationId: string, accountId: string) => [
+    ...openClawQueryKeys.scope(organizationId, accountId), "knowledge",
+  ] as const,
+  knowledgeList: (organizationId: string, accountId: string, limit = 50) => [
+    ...openClawQueryKeys.knowledgeRoot(organizationId, accountId), "list", limit,
+  ] as const,
+  knowledgeDetail: (organizationId: string, accountId: string, sourceId: string) => [
+    ...openClawQueryKeys.knowledgeRoot(organizationId, accountId), "detail", sourceId,
+  ] as const,
+  knowledgePreview: (organizationId: string, accountId: string, query: string, limit = 5) => [
+    ...openClawQueryKeys.knowledgeRoot(organizationId, accountId), "preview", query, limit,
+  ] as const,
+  automationsRoot: (organizationId: string, accountId: string) => [
+    ...openClawQueryKeys.scope(organizationId, accountId), "automations",
+  ] as const,
+  automationList: (organizationId: string, accountId: string, limit = 50) => [
+    ...openClawQueryKeys.automationsRoot(organizationId, accountId), "list", limit,
+  ] as const,
+  automationDetail: (organizationId: string, accountId: string, automationId: string) => [
+    ...openClawQueryKeys.automationsRoot(organizationId, accountId), "detail", automationId,
+  ] as const,
+  automationDryRun: (organizationId: string, accountId: string, automationVersionId: string) => [
+    ...openClawQueryKeys.automationsRoot(organizationId, accountId), "dry-run", automationVersionId,
+  ] as const,
+  salesGroupsRoot: (organizationId: string, accountId: string) => [
+    ...openClawQueryKeys.scope(organizationId, accountId), "sales-groups",
+  ] as const,
+  salesGroups: (organizationId: string, accountId: string, limit = 50) => [
+    ...openClawQueryKeys.salesGroupsRoot(organizationId, accountId), "list", limit,
+  ] as const,
+  schedulesRoot: (organizationId: string, accountId: string) => [
+    ...openClawQueryKeys.scope(organizationId, accountId), "schedules",
+  ] as const,
+  schedules: (organizationId: string, accountId: string, limit = 50) => [
+    ...openClawQueryKeys.schedulesRoot(organizationId, accountId), "list", limit,
+  ] as const,
+  qrChallenge: (organizationId: string, accountId: string, challengeId: string) => [
+    ...openClawQueryKeys.scope(organizationId, accountId), "qr", challengeId,
+  ] as const,
+  media: (organizationId: string, accountId: string, mediaId: string) => [
+    ...openClawQueryKeys.scope(organizationId, accountId), "media", mediaId,
+  ] as const,
   operationsRoot: (organizationId: string, accountId: string) => [
     ...openClawQueryKeys.scope(organizationId, accountId), "operations",
   ] as const,
-  unknown: (organizationId: string, accountId: string, limit = 50) => [
-    ...openClawQueryKeys.operationsRoot(organizationId, accountId), "unknown", limit,
+  unknown: (organizationId: string, accountId: string, limit = 50, cursorTerminalAt?: string | null, cursorId?: string | null) => [
+    ...openClawQueryKeys.operationsRoot(organizationId, accountId), "unknown", cursorTerminalAt ?? null, cursorId ?? null, limit,
   ] as const,
-  deadLetters: (organizationId: string, accountId: string, limit = 50) => [
-    ...openClawQueryKeys.operationsRoot(organizationId, accountId), "dead-letters", limit,
+  deadLetters: (organizationId: string, accountId: string, limit = 50, cursorCreatedAt?: string | null, cursorId?: string | null) => [
+    ...openClawQueryKeys.operationsRoot(organizationId, accountId), "dead-letters", cursorCreatedAt ?? null, cursorId ?? null, limit,
   ] as const,
-  health: (organizationId: string, accountId: string, limit = 50) => [
-    ...openClawQueryKeys.operationsRoot(organizationId, accountId), "health", limit,
+  health: (organizationId: string, accountId: string, limit = 50, cursorObservedAt?: string | null, cursorId?: string | null) => [
+    ...openClawQueryKeys.operationsRoot(organizationId, accountId), "health", cursorObservedAt ?? null, cursorId ?? null, limit,
   ] as const,
   audit: (organizationId: string, accountId: string, limit = 50) => [
     ...openClawQueryKeys.operationsRoot(organizationId, accountId), "audit", limit,
