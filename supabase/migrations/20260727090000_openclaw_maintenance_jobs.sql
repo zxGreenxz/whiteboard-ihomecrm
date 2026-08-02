@@ -7717,9 +7717,9 @@ begin
   if v_org is null then
     raise exception 'migration request organization is required' using errcode = '22023';
   end if;
-  if not exists (select 1 from public.organizations org where org.id = v_org) then
-    raise exception 'migration organization does not exist' using errcode = '42501';
-  end if;
+  -- Deliberately NO existence probe against public.organizations: that would need a
+  -- table grant for this owner, widening it for a check the data model already makes.
+  -- Writes are FK-bound to a real organization, and a bogus id simply matches no rows.
   return v_org;
 end;
 $function$;
@@ -7876,18 +7876,13 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
-  v_unresolved integer;
   v_result jsonb;
 begin
   -- Resume is the one irreversible step, so it re-checks the gate rather than
-  -- trusting that the reconcile step ran earlier in the same script.
-  select count(*) into v_unresolved from public.openclaw_outbox
-  where organization_id = v_org and state = 'UNKNOWN' and resolution_version = 0;
-  if v_unresolved > 0 then
-    raise exception 'cannot resume with % unresolved UNKNOWN rows', v_unresolved
-      using errcode = '42501';
-  end if;
+  -- trusting that the reconcile step ran earlier in the same script. The check runs
+  -- through the app_private helper, whose owner holds the table grant: doing the
+  -- count here would need openclaw_service_dispatcher to read openclaw_outbox.
+  perform app_private.openclaw_reconcile_migration_gaps_v1(p_request);
   v_result := app_private.openclaw_set_global_stop_v1(p_request, false);
   return v_result || jsonb_build_object('resumed', true);
 end;
@@ -8238,5 +8233,25 @@ grant select, insert, update on public.openclaw_runtime_leases
   to openclaw_maintenance_writer;
 grant select, update on public.openclaw_accounts to openclaw_maintenance_writer;
 grant update on public.openclaw_qr_challenges to openclaw_maintenance_writer;
+
+
+-- The public facades are owned by openclaw_service_dispatcher, which is NOINHERIT
+-- and holds no membership in openclaw_maintenance_writer. Revoking without granting
+-- left every one of them raising 42501 at runtime, invisible to a suite that runs
+-- PGlite as superuser.
+grant execute on function app_private.openclaw_migration_scope_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_drain_outbox_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_freeze_outbox_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_expire_dispatching_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_migration_cells_v1(jsonb)
+  to openclaw_service_dispatcher;
 
 commit;
