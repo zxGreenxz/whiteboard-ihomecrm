@@ -45,10 +45,6 @@ import { canUse } from "@/lib/permissionPages";
 import { useStaffUsers } from "@/hooks/useStaffUsers";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useAuth } from "@/hooks/useAuth";
-import {
-  useAccountSharedUsers,
-  useSyncAccountSharedUsers,
-} from "@/hooks/useAccountSharedUsers";
 import { supabase } from "@/integrations/supabase/client";
 import { useFinanceV2Routes, isCanonicalAccess } from "@/lib/financeV2Route";
 
@@ -234,14 +230,12 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const isEditing = !!account;
   const createMut = useCreateAccount();
   const updateMut = useUpdateAccount();
-  const syncSharedMut = useSyncAccountSharedUsers();
   const isMobile = useIsMobile();
   const { data: isAdmin } = useIsAdmin();
   const { data: currentUser } = useAuth();
   const { data: myPerms } = useMyPermissions();
   const { data: staffUsers } = useStaffUsers();
   const { data: buildings = [] } = useBuildings({ includeVirtual: true });
-  const { data: existingShared } = useAccountSharedUsers(account?.id);
 
   // Người phụ trách hiện tại của form (theo dõi để loại trừ khỏi list shared).
   const ownerId = account?.user_id ?? currentUser?.id ?? "";
@@ -251,9 +245,6 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const canEditShared =
     (!!isAdmin || (!!currentUser?.id && ownerId === currentUser.id)) &&
     canUse(myPerms, "cashbooks", "share");
-
-  // Local state cho list shared users (multi-select) — legacy mode.
-  const [sharedIds, setSharedIds] = useState<string[]>([]);
 
   // ── Finance V2 (route-aware): CUSTODIAN/KNOWER thay list shared khi org
   //    của sổ có access route CANONICAL. Sổ MỚI chưa có org/id → luôn legacy.
@@ -356,9 +347,8 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   useEffect(() => {
     if (open) {
       form.reset(defaults);
-      setSharedIds((existingShared ?? []).map((s) => s.user_id));
     }
-  }, [open, defaults, form, existingShared]);
+  }, [open, defaults, form]);
 
   const onSubmit = async (values: FormValues) => {
     const payload: AccountFormValues = {
@@ -381,32 +371,30 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
       accountId = created?.id;
     }
 
-    if (canEditShared && accountId) {
-      if (v2AccessMode) {
-        // Finance V2 CANONICAL: ghi phân quyền qua set_cashbook_access_v2
-        // (CAS revision + idempotency). KHÔNG fallback DML account_shared_users.
-        if (access) {
-          const sameSet = (a: string[], b: string[]) =>
-            a.length === b.length &&
-            [...a].sort().join("|") === [...b].sort().join("|");
-          const origCustodians = access.custodians.map((c) => c.membership_id);
-          const origKnowers = access.knowers.map((k) => k.membership_id);
-          if (
-            !sameSet(custodianIds, origCustodians) ||
-            !sameSet(knowerIds, origKnowers)
-          ) {
-            await setAccessMut.mutateAsync({
-              cashbookId: accountId,
-              custodians: custodianIds,
-              knowers: knowerIds,
-              expectedRevision: access.revision,
-            });
-          }
-        }
-      } else {
-        // Legacy: sync shared users (loại owner ra cho chắc — không share với chính mình).
-        const cleaned = sharedIds.filter((id) => id && id !== values.user_id);
-        await syncSharedMut.mutateAsync({ accountId, userIds: cleaned });
+    // Phân quyền sổ chỉ còn MỘT đường: set_cashbook_access_v2 (CAS revision +
+    // idempotency) ghi vào cashbook_possession_bindings. Đường legacy
+    // account_shared_users đã bị gỡ 02/08/2026 — nó ghi vào bảng mà không còn
+    // ai đọc, nên giữ lại chỉ tạo ra quyền ảo không có tác dụng.
+    //
+    // Sổ TẠO MỚI không đặt phân quyền ở đây: chưa có revision để CAS, và
+    // create_cashbook_v1 đã tự cấp CUSTODIAN cho người phụ trách. Giao thêm vai
+    // trò thì mở lại sổ để sửa.
+    if (canEditShared && accountId && v2AccessMode && access) {
+      const sameSet = (a: string[], b: string[]) =>
+        a.length === b.length &&
+        [...a].sort().join("|") === [...b].sort().join("|");
+      const origCustodians = access.custodians.map((c) => c.membership_id);
+      const origKnowers = access.knowers.map((k) => k.membership_id);
+      if (
+        !sameSet(custodianIds, origCustodians) ||
+        !sameSet(knowerIds, origKnowers)
+      ) {
+        await setAccessMut.mutateAsync({
+          cashbookId: accountId,
+          custodians: custodianIds,
+          knowers: knowerIds,
+          expectedRevision: access.revision,
+        });
       }
     }
 
@@ -416,7 +404,6 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const isPending =
     createMut.isPending ||
     updateMut.isPending ||
-    syncSharedMut.isPending ||
     setAccessMut.isPending;
 
   return (
@@ -638,55 +625,10 @@ const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
             )}
 
             {canEditShared && !v2AccessMode && (
-              <div className="space-y-2">
-                <div className="text-sm font-medium">
-                  Người được phép sử dụng
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Chọn các user khác cùng được xem &amp; tạo phiếu thu/chi
-                  cho sổ quỹ này. Không bao gồm người phụ trách.
-                </p>
-                {(() => {
-                  const candidates = (staffUsers ?? []).filter(
-                    (u) => u.id !== selectedOwnerId
-                  );
-                  if (candidates.length === 0) {
-                    return (
-                      <p className="text-xs text-muted-foreground italic px-1">
-                        Không có user khác để chọn.
-                      </p>
-                    );
-                  }
-                  return (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-44 overflow-y-auto border rounded-md p-2">
-                      {candidates.map((u) => {
-                        const checked = sharedIds.includes(u.id);
-                        return (
-                          <label
-                            key={u.id}
-                            className="flex items-start gap-2 text-sm cursor-pointer"
-                          >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(v) => {
-                                setSharedIds((prev) =>
-                                  v
-                                    ? [...prev, u.id]
-                                    : prev.filter((x) => x !== u.id)
-                                );
-                              }}
-                              className="mt-0.5"
-                            />
-                            <span className="leading-tight">
-                              {u.full_name || u.email || u.id.slice(0, 8)}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </div>
+              <p className="text-xs text-muted-foreground italic px-1">
+                Lưu sổ xong rồi mở lại để giao vai trò Người giữ sổ / Người biết
+                sổ.
+              </p>
             )}
 
             <DialogFooter>

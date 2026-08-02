@@ -6,7 +6,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { X, Pencil, Trash2, Wallet } from "lucide-react";
 import { type AccountWithBalance } from "@/hooks/useAccounts";
-import { useAccountSharedUsers } from "@/hooks/useAccountSharedUsers";
 import {
   useCashbookAccessAdminV2,
   useCashbookOrgId,
@@ -51,7 +50,6 @@ export function CashbookDetailDialog({
 }: Props) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { data: sharedUsers } = useAccountSharedUsers(account?.id);
 
   // ── Finance V2 (route-aware): khi org của sổ có access route CANONICAL,
   //    hiển thị 2 dòng CUSTODIAN/KNOWER (get_cashbook_access_admin_v2) thay
@@ -74,10 +72,6 @@ export function CashbookDetailDialog({
   );
 
   if (!account) return null;
-
-  const sharedLabels = (sharedUsers ?? [])
-    .map((s) => s.full_name || s.email || s.user_id.slice(0, 8))
-    .join(", ");
 
   const showV2Access = v2AccessMode && !!access;
   const memberNames = (list: CashbookAccessMemberV2[]) =>
@@ -140,10 +134,7 @@ export function CashbookDetailDialog({
                 />
               </>
             ) : (
-              <Row
-                label="Người được phép sử dụng:"
-                value={sharedLabels || "—"}
-              />
+              <Row label="Phân quyền sổ:" value="Đang tải…" />
             )}
             <Row
               label="Ngày chốt số dư đầu kỳ:"
