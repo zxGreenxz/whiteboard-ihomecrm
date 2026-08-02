@@ -13,6 +13,7 @@ import {
   redactSecrets,
   sha256,
 } from "./network-center-rollout-common.mjs";
+import { loadMigrationSources } from "./network-center-function-bodies.mjs";
 
 export const NETWORK_CENTER_ROLLOUT_LOCK = "ihomecrm:network-center-rollout:v1";
 
@@ -236,10 +237,7 @@ function catalogFingerprint(required, result) {
   return sha256(JSON.stringify({ required: [...required].sort(), objects: [...objects].sort() }));
 }
 
-export async function writeReceiptAtomic(
-  receipt,
-  { receiptRoot = RECEIPT_ROOT, allowExisting = false } = {},
-) {
+export function resolveReceiptPath(receipt, receiptRoot = RECEIPT_ROOT) {
   const projectRef = String(receipt.projectRef ?? "");
   const manifestDigest = String(receipt.manifestDigest ?? "");
   const migrationDigest = String(receipt.migrationSha256 ?? "");
@@ -248,11 +246,46 @@ export async function writeReceiptAtomic(
   }
   if (!/^[a-f0-9]{64}$/.test(migrationDigest)) throw new Error("Invalid receipt migration digest");
   const directory = join(receiptRoot, projectRef, manifestDigest);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const target = join(
+  return {
     directory,
-    `${String(receipt.ordinal ?? 0).padStart(2, "0")}-${migrationDigest}.json`,
+    target: join(
+      directory,
+      `${String(receipt.ordinal ?? 0).padStart(2, "0")}-${migrationDigest}.json`,
+    ),
+  };
+}
+
+/**
+ * Refuse a stage whose receipt already exists, BEFORE the transaction runs.
+ *
+ * Receipts are immutable by design, so a pre-existing one used to be discovered
+ * only after the stage had committed - the exact commit-then-fail shape this
+ * rollout hardens against. It is not hypothetical: the 2026-08-02 no-op run
+ * minted a full set of "reconciled-existing" receipts for work it never did, and
+ * every one of them would have bricked the genuine apply that had to follow.
+ */
+export async function assertReceiptAbsent(identity, { receiptRoot = RECEIPT_ROOT } = {}) {
+  const { target } = resolveReceiptPath(identity, receiptRoot);
+  try {
+    await lstat(target);
+  } catch (error) {
+    if (error?.code === "ENOENT") return target;
+    throw error;
+  }
+  throw new Error(
+    `Rollout receipt already exists for ${identity.migration ?? `ordinal ${identity.ordinal}`}: ${target}. ` +
+      "Receipts are written only after a stage commits, so either this stage already ran under this " +
+      "manifest digest or the receipt records work that was never performed. Confirm against the " +
+      "database and remove the stale receipt before re-running.",
   );
+}
+
+export async function writeReceiptAtomic(
+  receipt,
+  { receiptRoot = RECEIPT_ROOT, allowExisting = false } = {},
+) {
+  const { directory, target } = resolveReceiptPath(receipt, receiptRoot);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
   const contents = `${JSON.stringify(receipt)}\n`;
   if (Buffer.byteLength(contents) >= 4096) throw new Error("Rollout receipt exceeds 4096 bytes");
   const temporary = join(directory, `.${basename(target)}.${process.pid}.${randomUUID()}.tmp`);
@@ -309,6 +342,8 @@ export async function applyRollout({
   migrationBodies,
   query,
   writeReceipt = writeReceiptAtomic,
+  reserveReceipt = assertReceiptAbsent,
+  receiptRoot = RECEIPT_ROOT,
   now = () => new Date(),
   secrets = [],
   manifestDigest = sha256(JSON.stringify(manifest)),
@@ -361,6 +396,18 @@ export async function applyRollout({
       priorRequired = migration.postApply?.required ?? priorRequired;
       continue;
     }
+    // Outside the try: a receipt conflict is not a partial apply and must not be
+    // dressed up as one with a forward-fix instruction.
+    await reserveReceipt(
+      {
+        projectRef: manifest.projectRef ?? "unknownref",
+        manifestDigest,
+        ordinal: index + 1,
+        migration: migration.path,
+        migrationSha256: migration.sha256,
+      },
+      { receiptRoot },
+    );
     const startedAt = now().toISOString();
     try {
       const source = migrationBodies.get(migration.path);
@@ -414,7 +461,44 @@ export async function applyRollout({
   const postRequired = manifest.postApply?.required ?? [];
   const postResult = await query(buildCatalogReadSql(postRequired));
   assertRequiredObjects(postResult, postRequired, "Post-apply");
-  return { applied, postApplyFingerprint: catalogFingerprint(postRequired, postResult) };
+  return {
+    applied,
+    committed: applied.filter((receipt) => receipt.outcome === "committed"),
+    reconciled: applied.filter((receipt) => receipt.outcome === "reconciled-existing"),
+    total: manifest.migrations.length,
+    postApplyFingerprint: catalogFingerprint(postRequired, postResult),
+  };
+}
+
+/**
+ * Report what ran, not what the manifest contains.
+ *
+ * The old message printed manifest.migrations.length unconditionally, so the
+ * 2026-08-02 run that executed nothing announced "Applied 15 Network Center
+ * migration(s)". A rollout tool that reports work it did not do is worse than
+ * one that errors: it converts a recoverable skip into a false record.
+ */
+/**
+ * Reconciliation receipts record stages an operator explicitly resumed past.
+ * A rollout that resumes past nothing must mint nothing: the 2026-08-02 run
+ * started at index 15 of 15 and wrote a full set of "reconciled-existing"
+ * receipts for work it had not done, every one of which would then have blocked
+ * the genuine apply that had to follow.
+ */
+export function shouldReconcileExisting(startIndex, total) {
+  return startIndex > 0 && startIndex < total;
+}
+
+export function formatApplySummary({
+  committed = [],
+  reconciled = [],
+  total = 0,
+  postApplyFingerprint = "",
+} = {}) {
+  const parts = [`Applied ${committed.length} of ${total} Network Center migration(s)`];
+  if (reconciled.length) parts.push(`reconciled ${reconciled.length} pre-existing stage(s)`);
+  if (!committed.length) parts.push("no migration SQL was executed");
+  return `${parts.join("; ")}; postApply=${postApplyFingerprint}`;
 }
 
 function prefixDigest(manifest, prefix) {
@@ -434,7 +518,20 @@ export function resolveResumeIndex(manifest, classification, options = {}) {
     }
     return 0;
   }
-  if (classification.state === "complete") return manifest.migrations.length;
+  // `complete` now means every stage is PROVED applied: its catalog objects are
+  // present and every function body it owns matches the reviewed release. It no
+  // longer means "the objects exist, so presumably everything ran" - which is
+  // what silently swallowed a body-only forward fix.
+  if (classification.state === "complete") {
+    if (options.resumeFrom || options.expectedPrefix) {
+      throw new Error(
+        "Network Center rollout is already complete: every stage's catalog objects and function " +
+          "bodies match the reviewed release, so there is nothing to resume. Drop --resume-from and " +
+          "--expected-prefix, or author an additive forward-fix migration.",
+      );
+    }
+    return manifest.migrations.length;
+  }
   if (classification.state !== "prefix") {
     throw new Error(`Unsupported Network Center catalog state: ${classification.state}`);
   }
@@ -446,8 +543,21 @@ export function resolveResumeIndex(manifest, classification, options = {}) {
     options.resumeFrom !== next.path ||
     options.expectedPrefix !== expectedPrefix
   ) {
+    // A body-blocked stage lands here on purpose. It is resumable, but only
+    // through the same explicit two-flag gate every other resume goes through:
+    // the new evidence widens what the tool can SEE, never what it will do
+    // without being told.
+    const drifted = (classification.bodyMismatches ?? [])
+      .filter((item) => item.migration === classification.bodyBlockedAt)
+      .map((item) => item.qualifiedName)
+      .slice(0, 3)
+      .join(", ");
+    const reason = classification.bodyBlockedAt
+      ? `Stage ${classification.bodyBlockedAt} has not been applied: its catalog objects are all present ` +
+        `but the live function body differs from the reviewed release (${drifted}). `
+      : `Catalog already contains exact prefix ${prefix}. `;
     throw new Error(
-      `Catalog already contains exact prefix ${prefix}. Reconcile receipts, then resume explicitly: ` +
+      `${reason}Reconcile receipts, then resume explicitly: ` +
         `node scripts/apply-network-center-rollout.mjs --resume-from ${next?.path ?? "<complete>"} ` +
         `--expected-prefix ${expectedPrefix}`,
     );
@@ -485,7 +595,9 @@ async function main() {
   }
   if (options.dryRun) {
     process.stdout.write(
-      `Dry run validated ${manifest.migrations.length - requestedStartIndex} ordered migrations for ${validation.releaseSha}\n`,
+      `Dry run validated ${manifest.migrations.length - requestedStartIndex} of ` +
+        `${manifest.migrations.length} ordered migrations for ${validation.releaseSha}; ` +
+        "no database was contacted and nothing was applied\n",
     );
     return;
   }
@@ -493,16 +605,16 @@ async function main() {
   if (config.projectRef !== manifest.projectRef) throw new Error("Supabase project mismatch");
   const { auditRollout } = await import("./audit-network-center-rollout.mjs");
   const query = (sql) => executeManagementQuery({ ...config, sql });
-  const classification = await auditRollout({ manifest, mode: "classify", query });
+  // One read of the pinned files feeds both the evidence and the SQL, so the
+  // bytes the classifier reasons about are the bytes that would be executed.
+  const migrationBodies = await loadMigrationSources(manifest, REPO_ROOT);
+  const classification = await auditRollout({
+    manifest,
+    mode: "classify",
+    query,
+    sources: migrationBodies,
+  });
   const startIndex = resolveResumeIndex(manifest, classification, options);
-  const migrationBodies = new Map(
-    await Promise.all(
-      manifest.migrations.map(async (migration) => [
-        migration.path,
-        await readFile(join(REPO_ROOT, migration.path), "utf8"),
-      ]),
-    ),
-  );
   const rawManifest = await readFile(MANIFEST_PATH);
   const result = await applyRollout({
     manifest,
@@ -512,11 +624,9 @@ async function main() {
     manifestDigest: createHash("sha256").update(rawManifest).digest("hex"),
     releaseSha: validation.releaseSha,
     startIndex,
-    reconcileExisting: startIndex > 0,
+    reconcileExisting: shouldReconcileExisting(startIndex, manifest.migrations.length),
   });
-  process.stdout.write(
-    `Applied ${result.applied.length} Network Center migration(s); postApply=${result.postApplyFingerprint}\n`,
-  );
+  process.stdout.write(`${formatApplySummary(result)}\n`);
 }
 
 if (isEntrypoint(import.meta.url)) {

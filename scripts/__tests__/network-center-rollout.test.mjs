@@ -451,6 +451,215 @@ test("admin exports every required fail-closed command", () => {
   );
 });
 
+// 2026-08-02 incident. Production had every catalog descriptor, so the audit
+// classified the rollout `complete`, resolveResumeIndex returned
+// manifest.migrations.length, and applyRollout executed nothing while main()
+// printed "Applied 15 Network Center migration(s)". The migration that was
+// skipped only redefined a function body -- the commonest forward-fix shape --
+// and the broken body stayed live behind a green post-apply audit.
+test("a catalog-complete database with a stale function body is not complete", () => {
+  assert.ok(auditModule, "audit module missing");
+  if (!auditModule) return;
+  const manifest = {
+    preflight: { required: ["table:public.buildings"] },
+    migrations: [
+      { path: "one.sql", postApply: { required: ["table:public.a"] } },
+      // The forward-fix shape: no new catalog object at all.
+      { path: "two.sql", postApply: { required: ["table:public.a"] } },
+    ],
+  };
+  const evidence = {
+    expectations: new Map([
+      ["one.sql", []],
+      ["two.sql", [{ qualifiedName: "public.f", bodyDigest: "a".repeat(64) }]],
+    ]),
+    live: new Map([["public.f", new Set(["b".repeat(64)])]]),
+  };
+  const stale = auditModule.classifyCatalog(
+    manifest,
+    ["table:public.buildings", "table:public.a"],
+    evidence,
+  );
+  assert.equal(stale.state, "prefix");
+  assert.equal(stale.prefix, 1);
+  assert.deepEqual(stale.bodyMismatches.map((item) => item.qualifiedName), ["public.f"]);
+  assert.equal(stale.bodyMismatches[0].migration, "two.sql");
+
+  const healthy = auditModule.classifyCatalog(
+    manifest,
+    ["table:public.buildings", "table:public.a"],
+    { ...evidence, live: new Map([["public.f", new Set(["a".repeat(64)])]]) },
+  );
+  assert.equal(healthy.state, "complete");
+  assert.deepEqual(healthy.bodyMismatches, []);
+});
+
+test("post-apply audit names the function whose live body left the reviewed release", async () => {
+  assert.ok(auditModule, "audit module missing");
+  if (!auditModule) return;
+  const manifest = {
+    preflight: { required: [] },
+    postApply: { required: ["table:public.a"] },
+    migrations: [
+      { path: "one.sql", postApply: { required: ["table:public.a"] } },
+      { path: "two.sql", postApply: { required: ["table:public.a"] } },
+    ],
+  };
+  const sources = new Map([
+    ["one.sql", "SELECT 1;"],
+    ["two.sql", "CREATE OR REPLACE FUNCTION public.f() RETURNS int LANGUAGE plpgsql AS $fn$ BEGIN RETURN 1; END; $fn$;"],
+  ]);
+  const query = async (sql) =>
+    /prosrc/i.test(sql)
+      ? [{ result: [{ qualified_name: "public.f", identity_arguments: "", body_digest: "0".repeat(64) }] }]
+      : [{ result: [{ name: "table:public.a", present: true }] }];
+  await assert.rejects(
+    auditModule.auditRollout({ manifest, sources, mode: "post-apply", query }),
+    /public\.f/,
+  );
+});
+
+test("apply reports only the stages whose SQL actually executed", async () => {
+  assert.ok(applyModule, "apply module missing");
+  if (!applyModule) return;
+  const manifest = {
+    projectRef: "expectedprojectref1234",
+    preflight: { required: [] },
+    postApply: { required: [] },
+    migrations: [
+      { path: "one.sql", sha256: "1".repeat(64), postApply: { required: [] } },
+      { path: "two.sql", sha256: "2".repeat(64), postApply: { required: [] } },
+    ],
+  };
+  const noop = await applyModule.applyRollout({
+    manifest,
+    migrationBodies: new Map(),
+    query: async () => ({ objects: [] }),
+    writeReceipt: async () => assert.fail("a no-op rollout must not mint receipts"),
+    reserveReceipt: async () => {},
+    startIndex: 2,
+  });
+  assert.equal(noop.committed.length, 0);
+  assert.equal(noop.applied.length, 0);
+  const noopSummary = applyModule.formatApplySummary(noop);
+  assert.match(noopSummary, /Applied 0 of 2/);
+  assert.doesNotMatch(noopSummary, /Applied 2\b/);
+  // The 2026-08-02 shape: start index 15 of 15. Nothing ran, so nothing may be
+  // reconciled either.
+  assert.equal(applyModule.shouldReconcileExisting(15, 15), false);
+  assert.equal(applyModule.shouldReconcileExisting(14, 15), true);
+  assert.equal(applyModule.shouldReconcileExisting(0, 15), false);
+
+  const resumed = await applyModule.applyRollout({
+    manifest,
+    migrationBodies: new Map([["two.sql", "SELECT 2;"]]),
+    query: async () => ({ objects: [] }),
+    writeReceipt: async () => {},
+    reserveReceipt: async () => {},
+    startIndex: 1,
+    reconcileExisting: true,
+    now: () => new Date("2026-08-02T00:00:00.000Z"),
+  });
+  assert.equal(resumed.committed.length, 1);
+  assert.equal(resumed.reconciled.length, 1);
+  const resumedSummary = applyModule.formatApplySummary(resumed);
+  assert.match(resumedSummary, /Applied 1 of 2/);
+  assert.match(resumedSummary, /reconciled 1/i);
+});
+
+test("a rollout that cannot be proved complete refuses to claim it is", () => {
+  assert.ok(applyModule, "apply module missing");
+  if (!applyModule) return;
+  const manifest = {
+    migrations: [
+      { path: "one.sql", sha256: "1".repeat(64) },
+      { path: "two.sql", sha256: "2".repeat(64) },
+    ],
+  };
+  // A proved-complete rollout applies nothing and must not accept resume flags
+  // that would silently re-run a stage nobody asked for.
+  assert.equal(applyModule.resolveResumeIndex(manifest, { state: "complete", prefix: 2 }, {}), 2);
+  assert.throws(
+    () => applyModule.resolveResumeIndex(
+      manifest,
+      { state: "complete", prefix: 2 },
+      { resumeFrom: "two.sql", expectedPrefix: "a".repeat(64) },
+    ),
+    /nothing to resume|already/i,
+  );
+  // Body drift lands in the prefix branch, which still demands both flags.
+  let error;
+  try {
+    applyModule.resolveResumeIndex(
+      manifest,
+      { state: "prefix", prefix: 1, bodyMismatches: [{ migration: "two.sql", qualifiedName: "public.f" }] },
+      {},
+    );
+  } catch (caught) {
+    error = caught;
+  }
+  assert.ok(error);
+  assert.match(error.message, /--resume-from two\.sql/);
+  assert.match(error.message, /--expected-prefix [a-f0-9]{64}/);
+});
+
+test("a stage refuses to run when a receipt already claims it, before touching the database", async () => {
+  assert.ok(applyModule, "apply module missing");
+  if (!applyModule) return;
+  let stageQueries = 0;
+  const error = await applyModule.applyRollout({
+    manifest: {
+      projectRef: "expectedprojectref1234",
+      preflight: { required: [] },
+      postApply: { required: [] },
+      migrations: [{ path: "one.sql", sha256: "1".repeat(64), postApply: { required: [] } }],
+    },
+    migrationBodies: new Map([["one.sql", "SELECT 1;"]]),
+    query: async (sql) => {
+      if (!/READ ONLY/i.test(sql)) stageQueries += 1;
+      return { objects: [] };
+    },
+    writeReceipt: async () => assert.fail("must not write a receipt it refused to reserve"),
+    reserveReceipt: async () => {
+      throw new Error("Rollout receipt already exists and records work that was not performed");
+    },
+  }).catch((caught) => caught);
+  assert.match(error.message, /receipt already exists/i);
+  assert.equal(stageQueries, 0);
+
+  const directory = await mkdtemp(join(tmpdir(), "network-center-reserve-"));
+  try {
+    const identity = {
+      projectRef: "expectedprojectref1234",
+      manifestDigest: "a".repeat(64),
+      ordinal: 1,
+      migrationSha256: "d".repeat(64),
+    };
+    await applyModule.assertReceiptAbsent(identity, { receiptRoot: directory });
+    await applyModule.writeReceiptAtomic(
+      {
+        schemaVersion: 1,
+        ...identity,
+        reviewedGitSha: "b".repeat(40),
+        releaseSha: "c".repeat(40),
+        migration: "one.sql",
+        outcome: "reconciled-existing",
+        startedAt: "2026-08-02T00:00:00.000Z",
+        observedAt: "2026-08-02T00:00:00.000Z",
+        beforeCatalogFingerprint: "e".repeat(64),
+        afterCatalogFingerprint: "f".repeat(64),
+      },
+      { receiptRoot: directory },
+    );
+    await assert.rejects(
+      applyModule.assertReceiptAbsent(identity, { receiptRoot: directory }),
+      /receipt already exists/i,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("admin rejects implicit assignments and connection secrets before RPC", async () => {
   assert.ok(adminModule, "admin module missing");
   if (!adminModule) return;

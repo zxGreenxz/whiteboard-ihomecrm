@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+  REPO_ROOT,
   executeManagementQuery,
   isEntrypoint,
   loadManagementConfig,
@@ -8,6 +9,15 @@ import {
   sha256,
 } from "./network-center-rollout-common.mjs";
 import { catalogDescriptorSql } from "./apply-network-center-rollout.mjs";
+import {
+  buildFunctionBodyProbeSql,
+  evaluateStageFunctionBodies,
+  expectedFunctionNames,
+  functionBodyFingerprint,
+  liveFunctionBodiesFromResult,
+  loadMigrationSources,
+  resolveStageFunctionExpectations,
+} from "./network-center-function-bodies.mjs";
 
 export const NETWORK_CENTER_AUDIT_SQL = `BEGIN READ ONLY;
 SELECT current_database() AS database_name,
@@ -38,33 +48,93 @@ function rowsFromManagementResult(result) {
   return rows;
 }
 
-export function classifyCatalog(manifest, presentNames) {
+function describeBodyMismatches(mismatches, limit = 3) {
+  return mismatches
+    .slice(0, limit)
+    .map((item) => `${item.qualifiedName} (owned by ${item.migration})`)
+    .join(", ");
+}
+
+/**
+ * Classify the live database against the reviewed release.
+ *
+ * `evidence` carries function-body digests. Without it this answers only "do the
+ * objects exist", which is what let a stage that replaced a function body look
+ * complete before it had ever run. With it, a stage counts as applied only when
+ * its catalog descriptors are present AND every function body it owns at the end
+ * of the release matches what is live.
+ *
+ * Divergence is still judged against the CATALOG prefix, deliberately. A stale
+ * body means "this stage has not run yet", not "somebody created objects out of
+ * order", and calling it divergent would block the very forward-fix the operator
+ * needs to apply. The one case that IS divergence is a stage held back by a body
+ * whose catalog objects are already present: resuming there could not work,
+ * because the in-lock precondition requires those objects to be absent.
+ */
+export function classifyCatalog(manifest, presentNames, evidence) {
   const present = new Set(presentNames);
   const foundation = manifest.preflight?.required ?? [];
-  if (foundation.some((item) => !present.has(item))) return { state: "foundation_mismatch", prefix: 0 };
-  let prefix = 0;
+  const { satisfied: bodySatisfied, mismatches: bodyMismatches } = evaluateStageFunctionBodies(
+    manifest,
+    evidence,
+  );
+  const base = { bodyMismatches, bodyChecked: Boolean(evidence) };
+  if (foundation.some((item) => !present.has(item))) {
+    return { state: "foundation_mismatch", prefix: 0, ...base };
+  }
+  let catalogPrefix = 0;
   for (const migration of manifest.migrations) {
     const required = migration.postApply?.required ?? [];
-    const complete = required.every((item) => present.has(item));
-    if (!complete) break;
+    if (!required.every((item) => present.has(item))) break;
+    catalogPrefix += 1;
+  }
+  let prefix = 0;
+  while (prefix < catalogPrefix && bodySatisfied.get(manifest.migrations[prefix].path) !== false) {
     prefix += 1;
   }
   const allNetworkDescriptors = [
     ...new Set(manifest.migrations.flatMap((migration) => migration.postApply?.required ?? [])),
   ];
-  const expectedAtPrefix = new Set(
-    manifest.migrations.slice(0, prefix).flatMap((migration) => migration.postApply?.required ?? []),
+  const expectedAtCatalogPrefix = new Set(
+    manifest.migrations
+      .slice(0, catalogPrefix)
+      .flatMap((migration) => migration.postApply?.required ?? []),
   );
   const unexpected = allNetworkDescriptors.filter(
-    (item) => present.has(item) && !expectedAtPrefix.has(item),
+    (item) => present.has(item) && !expectedAtCatalogPrefix.has(item),
   );
-  if (unexpected.length) return { state: "divergent", prefix, unexpected };
-  if (prefix === 0) return { state: "not_started", prefix };
-  if (prefix === manifest.migrations.length) return { state: "complete", prefix };
-  return { state: "prefix", prefix };
+  if (unexpected.length) return { state: "divergent", prefix, unexpected, ...base };
+  if (prefix < catalogPrefix) {
+    const blocked = manifest.migrations[prefix];
+    const alreadyRequired = new Set(
+      manifest.migrations.slice(0, prefix).flatMap((migration) => migration.postApply?.required ?? []),
+    );
+    const introduced = (blocked.postApply?.required ?? []).filter(
+      (descriptor) => !alreadyRequired.has(descriptor),
+    );
+    if (introduced.length) {
+      return {
+        state: "divergent",
+        prefix,
+        unexpected: introduced,
+        bodyBlockedAt: blocked.path,
+        ...base,
+      };
+    }
+    return { state: "prefix", prefix, bodyBlockedAt: blocked.path, ...base };
+  }
+  if (prefix === 0) return { state: "not_started", prefix, ...base };
+  if (prefix === manifest.migrations.length) return { state: "complete", prefix, ...base };
+  return { state: "prefix", prefix, ...base };
 }
 
-export async function auditRollout({ manifest, query, mode = "post-apply" } = {}) {
+export async function auditRollout({
+  manifest,
+  query,
+  mode = "post-apply",
+  sources,
+  repoRoot = REPO_ROOT,
+} = {}) {
   const descriptors = [
     ...(manifest.preflight?.required ?? []),
     ...manifest.migrations.flatMap((migration) => migration.postApply?.required ?? []),
@@ -74,16 +144,30 @@ export async function auditRollout({ manifest, query, mode = "post-apply" } = {}
   const result = await query(buildAuditSql(uniqueDescriptors));
   const rows = rowsFromManagementResult(result);
   const presentNames = rows.filter((row) => row.present === true).map((row) => row.name);
-  const classification = classifyCatalog(manifest, presentNames);
+  // Body evidence is not optional here. A catalog-only audit is exactly the gate
+  // that passed while public.network_center_admin_status_v1 raised 42703 on
+  // every call.
+  const expectations = resolveStageFunctionExpectations(
+    manifest,
+    sources ?? (await loadMigrationSources(manifest, repoRoot)),
+  );
+  const names = expectedFunctionNames(expectations);
+  const live = liveFunctionBodiesFromResult(await query(buildFunctionBodyProbeSql(names)));
+  const classification = classifyCatalog(manifest, presentNames, { expectations, live });
+  const bodyReason = classification.bodyMismatches.length
+    ? `; function bodies differ from the reviewed release: ${describeBodyMismatches(classification.bodyMismatches)}`
+    : "";
   if (mode === "preflight" && !["not_started", "prefix"].includes(classification.state)) {
-    throw new Error(`Network Center preflight catalog is ${classification.state}`);
+    throw new Error(`Network Center preflight catalog is ${classification.state}${bodyReason}`);
   }
   if (mode === "post-apply" && classification.state !== "complete") {
-    throw new Error(`Network Center post-apply catalog is ${classification.state}`);
+    throw new Error(`Network Center post-apply catalog is ${classification.state}${bodyReason}`);
   }
   return {
     ...classification,
     catalogFingerprint: sha256(JSON.stringify([...presentNames].sort())),
+    functionBodyFingerprint: functionBodyFingerprint(expectations, live),
+    functionsVerified: names.length,
     present: presentNames,
   };
 }

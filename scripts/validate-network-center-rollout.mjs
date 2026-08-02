@@ -16,6 +16,7 @@ import {
 } from "./network-center-rollout-common.mjs";
 import { collectDeploymentFiles, computeSourceDigest } from "./deploy-edge-fn.mjs";
 import { NETWORK_CENTER_ROLLOUT_LOCK, catalogDescriptorSql } from "./apply-network-center-rollout.mjs";
+import { assertStagesObservable, loadMigrationSources } from "./network-center-function-bodies.mjs";
 
 /**
  * Structural validation of the rollout contract itself.
@@ -36,8 +37,12 @@ import { NETWORK_CENTER_ROLLOUT_LOCK, catalogDescriptorSql } from "./apply-netwo
  *     healthy database look divergent and blocks the rollout mid-flight.
  *   - descriptor vocabulary: catalogDescriptorSql throws on anything it cannot
  *     verify. Better here than inside a transaction against production.
+ *   - observability (when `sources` is supplied): every stage must leave a trace
+ *     the rollout can read back, or it will be skipped in silence. On
+ *     2026-08-02 a stage that only replaced a function body passed every rule
+ *     above, was never applied, and was reported as applied anyway.
  */
-export function assertManifestStructure(manifest, { expectedMigrationPaths } = {}) {
+export function assertManifestStructure(manifest, { expectedMigrationPaths, sources } = {}) {
   if (manifest?.schemaVersion !== 1) throw new Error("Manifest rejected: unsupported schemaVersion");
   if (!/^[a-z0-9]{20}$/.test(manifest.projectRef ?? "")) {
     throw new Error("Manifest rejected: projectRef is not a Supabase project reference");
@@ -148,6 +153,7 @@ export function assertManifestStructure(manifest, { expectedMigrationPaths } = {
   if (!/^[a-f0-9]{64}$/.test(edge.sha256 ?? "")) {
     throw new Error("Manifest rejected: edgeFunction bundle digest is malformed");
   }
+  if (sources) assertStagesObservable(manifest, sources);
   return { migrationCount: migrations.length };
 }
 
@@ -259,6 +265,7 @@ export async function validateRolloutCli({
   // be that day.
   assertManifestStructure(manifest, {
     expectedMigrationPaths: await discoverNetworkCenterMigrations(repoRoot),
+    sources: await loadMigrationSources(manifest, repoRoot),
   });
   const headSha = git(["rev-parse", "HEAD"], { repoRoot }).trim();
   const releaseSha = revision ?? headSha;
