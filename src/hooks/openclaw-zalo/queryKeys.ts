@@ -17,8 +17,14 @@ export const openClawQueryKeys = {
   bootstrap: (organizationId: string | null | undefined, accountId: string | null | undefined) => [
     ...openClawQueryKeys.scope(organizationId, accountId), "bootstrap",
   ] as const,
-  overview: (organizationId: string, accountId: string) => [
-    ...openClawQueryKeys.scope(organizationId, accountId), "overview",
+  /**
+   * ORGANIZATION-scoped, not account-scoped. `openclaw_get_overview_v1` counts every
+   * account in the organization, so keying it per account cached the same org-wide
+   * numbers under each account and invited the UI to present them as that account's.
+   * The accountId parameter is kept so callers need no change, and ignored.
+   */
+  overview: (organizationId: string, _accountId?: string) => [
+    ...openClawQueryKeys.scope(organizationId, OPENCLAW_UNSELECTED_ACCOUNT), "overview",
   ] as const,
   conversationsRoot: (organizationId: string, accountId: string) => [
     ...openClawQueryKeys.scope(organizationId, accountId), "conversations",

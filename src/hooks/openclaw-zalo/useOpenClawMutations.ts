@@ -68,6 +68,62 @@ export async function executeOpenClawMutation<TRequest, TResult>(
     p_client_operation_id: operationId,
   });
   if (error) throw error;
+  return parseOpenClawWriteResult(rpcName, data, resultSchema);
+}
+
+/**
+ * Raised when the same `clientOperationId` is reused with a different request, or a
+ * single-use operation is replayed. The database answers with a normal 200 carrying
+ * `{version, conflict:true, reason}` - there is no SQL error - so parsing that shape
+ * with the route's strict result schema surfaced "unrecognized key: conflict" to the
+ * user instead of a conflict.
+ */
+export class OpenClawIdempotencyConflictError extends Error {
+  readonly rpcName: string;
+  readonly reason: string;
+
+  constructor(rpcName: string, reason: string) {
+    super(`OpenClaw operation conflict on ${rpcName}: ${reason}`);
+    this.name = "OpenClawIdempotencyConflictError";
+    this.rpcName = rpcName;
+    this.reason = reason;
+  }
+}
+
+function conflictEnvelope(value: unknown): { conflict: boolean; reason?: string; safeResult?: unknown } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  return typeof record.conflict === "boolean"
+    ? {
+        conflict: record.conflict,
+        reason: typeof record.reason === "string" ? record.reason : undefined,
+        safeResult: record.safeResult,
+      }
+    : null;
+}
+
+/**
+ * Handles the idempotency envelope before the route contract sees the payload:
+ * a conflict becomes a typed error, and a replay is unwrapped to the result the
+ * first call already produced.
+ */
+export function parseOpenClawWriteResult<TResult>(
+  rpcName: string,
+  data: unknown,
+  resultSchema: z.ZodType<TResult>,
+): TResult {
+  const envelope = conflictEnvelope(data);
+  if (envelope?.conflict === true) {
+    throw new OpenClawIdempotencyConflictError(
+      rpcName,
+      envelope.reason ?? "operation conflict",
+    );
+  }
+  // A replay carries the original result under safeResult; the caller must see the
+  // same value the first attempt returned, not the bookkeeping wrapper.
+  if (envelope !== null && envelope.safeResult !== undefined) {
+    return resultSchema.parse(envelope.safeResult);
+  }
   return resultSchema.parse(data);
 }
 

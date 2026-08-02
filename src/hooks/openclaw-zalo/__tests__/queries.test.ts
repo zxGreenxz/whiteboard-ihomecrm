@@ -18,7 +18,10 @@ describe("OpenClaw query contracts", () => {
       fc.property(fc.uuid(), fc.uuid(), (organizationId, accountId) => {
         const keys = [
           openClawQueryKeys.bootstrap(organizationId, accountId),
-          openClawQueryKeys.overview(organizationId, accountId),
+          // `overview` is deliberately NOT here: openclaw_get_overview_v1 counts the
+          // whole organization, so an account-scoped key cached org-wide numbers per
+          // account and let the UI present them as that account's. Its own scoping is
+          // asserted in overviewScope.test.ts.
           openClawQueryKeys.conversations(organizationId, accountId),
           openClawQueryKeys.messages(organizationId, accountId, "33333333-3333-4333-8333-333333333333"),
           openClawQueryKeys.unknown(organizationId, accountId),
@@ -35,7 +38,11 @@ describe("OpenClaw query contracts", () => {
 
   it("never aliases organization or account caches", () => {
     expect(openClawQueryKeys.overview(ORG_A, ACCOUNT_A)).not.toEqual(openClawQueryKeys.overview(ORG_B, ACCOUNT_A));
-    expect(openClawQueryKeys.overview(ORG_A, ACCOUNT_A)).not.toEqual(openClawQueryKeys.overview(ORG_A, ACCOUNT_B));
+    // Overview is organization-wide, so two accounts of the SAME organization must
+    // share one cache entry; aliasing across organizations is what would be wrong.
+    expect(openClawQueryKeys.overview(ORG_A, ACCOUNT_A)).toEqual(openClawQueryKeys.overview(ORG_A, ACCOUNT_B));
+    expect(openClawQueryKeys.conversations(ORG_A, ACCOUNT_A))
+      .not.toEqual(openClawQueryKeys.conversations(ORG_A, ACCOUNT_B));
   });
 
   it("projects resolved UNKNOWN without changing the historical state", () => {
