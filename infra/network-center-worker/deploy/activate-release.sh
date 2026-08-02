@@ -838,6 +838,7 @@ stage_candidate() {
   local release_dir="$RELEASES_DIR/$release_sha" temporary="" candidate_dir
   local image_tag image_id label component archive_owner archive_mode generation
   local stored_archive="$INCOMING_DIR/$release_sha.tar.gz" env_file project container
+  local build_log
   validate_sha "$release_sha"
   validate_digest "$archive_sha"
   [[ -f "$archive" && ! -L "$archive" ]] || die "release archive is unavailable"
@@ -874,7 +875,19 @@ stage_candidate() {
   find "$candidate_dir" -type f -exec chmod 0644 {} +
   chmod 0755 "$candidate_dir/deploy/"*.sh
   image_tag="ihome-network-center-worker:$release_sha"
-  docker build --pull=false --build-arg "NETWORK_CENTER_RELEASE_SHA=$release_sha" --tag "$image_tag" "$candidate_dir"
+  # stage-candidate's contract with the deploy client is "return exactly ONE
+  # bounded JSON receipt", and the client concatenates this command's stdout AND
+  # stderr before parsing it. BuildKit writes its whole progress log to stderr
+  # (measured: 0 bytes to stdout), so an unredirected build guarantees an
+  # unparseable receipt for a build that actually succeeded. Keep the build off
+  # both RPC channels and leave it in a root-only log that `die` names.
+  build_log="$STATE_DIR/last-build.log"
+  : > "$build_log"
+  chmod 0600 "$build_log"
+  if ! docker build --pull=false --build-arg "NETWORK_CENTER_RELEASE_SHA=$release_sha" \
+      --tag "$image_tag" "$candidate_dir" >> "$build_log" 2>&1; then
+    die "release image build failed; see $build_log on the host"
+  fi
   image_id="$(docker image inspect "$image_tag" --format '{{.Id}}')"
   [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]] || die "built image ID is invalid"
   label="$(docker image inspect "$image_id" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"

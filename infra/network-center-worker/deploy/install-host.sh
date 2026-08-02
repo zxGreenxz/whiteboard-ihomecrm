@@ -769,12 +769,22 @@ capture_network_prerequisite_state() {
   prior_wg_enabled="$actual_wg_enabled"
 }
 
+# Only exit codes systemd documents as a STATUS are interpreted; anything else
+# (rc 2, a DBus failure, a query error) stays fatal rather than being silently
+# read as "false", because that would let the installer believe it is restoring a
+# state it never actually observed.
+#
+# rc 4 is `no such unit`. It is a status, not an error, and it is the NORMAL
+# reading on a first install: ihome-network-center-firewall.service and the
+# worker unit do not exist until this very script installs them, so a run that
+# treats 4 as fatal can never complete its first execution on a clean host.
+# A unit that is not installed is, unambiguously, neither active nor enabled.
 service_active_state() {
   local status=0
   systemctl is-active --quiet "$1" || status=$?
   case "$status" in
     0) printf 'true\n' ;;
-    3) printf 'false\n' ;;
+    3|4) printf 'false\n' ;;
     *) return 1 ;;
   esac
 }
@@ -784,7 +794,7 @@ service_enabled_state() {
   systemctl is-enabled --quiet "$1" || status=$?
   case "$status" in
     0) printf 'true\n' ;;
-    1) printf 'false\n' ;;
+    1|4) printf 'false\n' ;;
     *) return 1 ;;
   esac
 }

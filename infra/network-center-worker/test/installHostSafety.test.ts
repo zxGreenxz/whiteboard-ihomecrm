@@ -539,6 +539,45 @@ printf '%s|%s|%s|%s|%s\\n' "$status" "$prior_firewall_active" "$prior_firewall_e
     expect(result.stdout.trim()).toBe("1|unknown|unknown|unknown|unknown");
   });
 
+  it("captures a first install, where the units this script installs do not exist yet", () => {
+    // Real systemd returns rc 4 (`no such unit`) for is-active AND is-enabled on
+    // a unit that is not installed. On a clean host that is the state of
+    // ihome-network-center-firewall.service every single time, because this
+    // script is what installs it -- so treating 4 as fatal made the first run
+    // impossible. Every mock in this file previously answered only 3/1, which is
+    // exactly why the whole suite stayed green against a script that could not
+    // complete its first execution on real hardware.
+    const { result } = runHarness(`
+source "$INSTALL_HOST"
+prior_firewall_active=unknown
+prior_firewall_enabled=unknown
+prior_wg_active=unknown
+prior_wg_enabled=unknown
+sysctl() { printf '1\\n'; }
+systemctl() {
+  local action="$1" unit="\${3:-\${2:-}}"
+  case "$unit" in
+    # wireguard-tools ships the template, so wg-quick@wg0 exists but is idle.
+    wg-quick@wg0.service)
+      case "$action" in
+        is-active) return 3;;
+        is-enabled) return 1;;
+      esac
+      ;;
+    # Installed by this very script: absent on a first run.
+    *) return 4;;
+  esac
+}
+set +e
+capture_network_prerequisite_state
+status=$?
+set -e
+printf '%s|%s|%s|%s|%s|%s\\n' "$status" "$prior_ip_forward" "$prior_firewall_active" "$prior_firewall_enabled" "$prior_wg_active" "$prior_wg_enabled"
+`);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe("0|1|false|false|false|false");
+  });
+
   it("routes activation failure through persistent and live rollback", () => {
     const source = readFileSync(installHost, "utf8");
     expect(source).toMatch(/capture_network_prerequisite_state[\s\S]*capture_persistent_host_files/);

@@ -38,6 +38,16 @@ function Assert-DeploymentIdentity {
 function Invoke-NativeChecked {
   param([Parameter(Mandatory)][string]$FilePath, [Parameter(Mandatory)][string[]]$Arguments, [switch]$Capture,
     [ValidateRange(1, 1048576)][int]$MaximumOutputBytes = $MaximumCapturedOutputBytes)
+  # Windows PowerShell 5.1 promotes ANY native-command stderr write to a
+  # terminating NativeCommandError while $ErrorActionPreference is Stop -- even
+  # when the command exits 0. ssh relays the remote command's stderr, and a
+  # successful `docker build` writes its entire progress log there, so the whole
+  # deployment aborted on a healthy build with the first stderr line as the
+  # error. Exit codes remain the authority (checked explicitly below); this only
+  # stops a benign diagnostic line from being read as a failure.
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
   if (-not $Capture) {
     & $FilePath @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$FilePath failed with exit code $LASTEXITCODE." }
@@ -55,6 +65,9 @@ function Invoke-NativeChecked {
     return ($captured -replace '\r?\n\z', '')
   } finally {
     Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  }
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
   }
 }
 
@@ -87,6 +100,18 @@ function Assert-BooleanValue {
   if ($Value -isnot [bool]) { throw "$Description type is invalid." }
 }
 
+# ConvertFrom-Json materialises a JSON integer as Int32 on Windows PowerShell 5.1
+# but as Int64 on PowerShell 7. A guard written as `-isnot [int]` therefore
+# rejects every structurally valid receipt on 7.x -- the host returned a correct
+# {"schemaVersion":2,...} and the deployment still died with "Remote state schema
+# is invalid". Both widths are accepted here, exactly as Assert-IntegerValue
+# already did for every other integer in these receipts.
+function Test-SchemaVersion {
+  param($Value, [int]$Expected)
+  if ($Value -isnot [int] -and $Value -isnot [long]) { return $false }
+  return ([long]$Value -eq [long]$Expected)
+}
+
 function Assert-IntegerValue {
   param($Value, [string]$Description, [long]$Minimum, [long]$Maximum)
   if (($Value -isnot [int] -and $Value -isnot [long]) -or [long]$Value -lt $Minimum -or [long]$Value -gt $Maximum) {
@@ -98,7 +123,7 @@ function Assert-ReleaseSchema {
   param($Release, [string]$Description)
   Assert-ExactPropertyNames $Release @("schemaVersion", "releaseSha", "imageTag", "imageId", "archiveSha256",
     "secretGeneration", "releaseDirectory", "envFile", "projectName", "containerName", "container", "secrets", "security") $Description
-  if ($Release.schemaVersion -isnot [int] -or [int]$Release.schemaVersion -ne 2) { throw "$Description schema version is invalid." }
+  if (-not (Test-SchemaVersion $Release.schemaVersion 2)) { throw "$Description schema version is invalid." }
   Assert-BoundedString $Release.releaseSha "$Description release SHA" 40 '^[a-f0-9]{40}$'
   Assert-BoundedString $Release.imageTag "$Description image tag" 128 '^ihome-network-center-worker:[a-f0-9]{40}$'
   Assert-BoundedString $Release.imageId "$Description image ID" 71 '^sha256:[a-f0-9]{64}$'
@@ -163,7 +188,7 @@ function Assert-ReleaseSchema {
 function Assert-StateSchema {
   param($State)
   Assert-ExactPropertyNames $State @("schemaVersion", "transition", "lastTransition", "current", "previous", "pending") "Remote state"
-  if ($State.schemaVersion -isnot [int] -or [int]$State.schemaVersion -ne 2) { throw "Remote state schema is invalid." }
+  if (-not (Test-SchemaVersion $State.schemaVersion 2)) { throw "Remote state schema is invalid." }
   if ($null -ne $State.transition) {
     Assert-ExactPropertyNames $State.transition @("operation", "phase") "Remote transition"
     Assert-BoundedString $State.transition.operation "Remote transition operation" 16 '^(promote|rollback)$'
@@ -171,7 +196,7 @@ function Assert-StateSchema {
   }
   if ($null -ne $State.lastTransition) {
     Assert-ExactPropertyNames $State.lastTransition @("schemaVersion", "operation", "phase", "targetReleaseSha") "Remote last transition"
-    if ($State.lastTransition.schemaVersion -isnot [int] -or [int]$State.lastTransition.schemaVersion -ne 1) { throw "Remote last transition schema is invalid." }
+    if (-not (Test-SchemaVersion $State.lastTransition.schemaVersion 1)) { throw "Remote last transition schema is invalid." }
     Assert-BoundedString $State.lastTransition.operation "Remote last transition operation" 16 '^(promote|rollback)$'
     Assert-BoundedString $State.lastTransition.phase "Remote last transition phase" 16 '^(committed|compensated|finalized)$'
     Assert-BoundedString $State.lastTransition.targetReleaseSha "Remote last transition release" 40 '^[a-f0-9]{40}$'
@@ -282,7 +307,7 @@ function Get-ReleaseStatus {
     Assert-IntegerValue $status.failedPollCount "Exact worker release status failed poll count" 0 500
     Assert-BoundedString $status.pollObservedAt "Exact worker release status pollObservedAt" 64 '^\d{4}-'
   }
-  if ($status.schemaVersion -isnot [int] -or [int]$status.schemaVersion -ne 1 -or [string]$status.workerKey -cne $WorkerKey -or
+  if (-not (Test-SchemaVersion $status.schemaVersion 1) -or [string]$status.workerKey -cne $WorkerKey -or
       [string]$status.workerVersion -cne $ExpectedReleaseSha -or
       [int]$status.assignedBuildingCount -ne [int]$status.activeAssignedBuildingCount -or
       ($null -ne $status.connectionCount -and [int]$status.successfulPollCount + [int]$status.failedPollCount -ne [int]$status.connectionCount)) {
@@ -364,7 +389,7 @@ function Assert-MutationReceipt {
     "finalize" { @("schemaVersion", "releaseSha", "result", "cleanup") }
   }
   Assert-ExactPropertyNames $Receipt $expected "$Description receipt"
-  if ($Receipt.schemaVersion -isnot [int] -or [int]$Receipt.schemaVersion -ne 2) { throw "$Description receipt schema is invalid." }
+  if (-not (Test-SchemaVersion $Receipt.schemaVersion 2)) { throw "$Description receipt schema is invalid." }
   Assert-BoundedString $Receipt.releaseSha "$Description receipt release SHA" 40 '^[a-f0-9]{40}$'
   if ($Kind -in @("stage", "promote")) {
     Assert-BoundedString $Receipt.imageId "$Description receipt image ID" 71 '^sha256:[a-f0-9]{64}$'
@@ -386,7 +411,7 @@ function Assert-MutationReceipt {
 function Assert-UnitState {
   param($State)
   Assert-ExactPropertyNames $State @("schemaVersion", "unit", "activeState", "subState", "result") "Systemd unit state"
-  if ($State.schemaVersion -isnot [int] -or [int]$State.schemaVersion -ne 1) { throw "Systemd unit state schema is invalid." }
+  if (-not (Test-SchemaVersion $State.schemaVersion 1)) { throw "Systemd unit state schema is invalid." }
   if ([string]$State.unit -cne "network-center-worker.service") { throw "Systemd unit identity is invalid." }
   Assert-BoundedString $State.activeState "Systemd active state" 32 '^[a-z-]+$'
   Assert-BoundedString $State.subState "Systemd sub-state" 32 '^[a-z-]+$'
