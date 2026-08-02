@@ -1516,13 +1516,16 @@ export function validateBehaviorTranscript(parsed, expectedVariant) {
   if (parsed.package.name !== "@openclaw/zalouser" || parsed.package.version !== "2026.7.1") {
     throw new Error("installed behavior package identity mismatch");
   }
-  // Probe chạy KHÔNG cấu hình bridge: fork phải fail-closed ngay khi khởi động
-  // (không đăng ký gì cả), còn stock vốn không có RPC riêng nên khởi động bình thường.
+  // Probe chạy KHÔNG cấu hình bridge: fork phải fail-closed ngay khi khởi động, còn
+  // stock vốn không có RPC riêng nên khởi động bình thường. Sau đó fork đăng ký thẳng
+  // `zalouser.bridge.send` từ module đã ghim để chạy các case outbound/control; stock
+  // KHÔNG được có method đó (đây vẫn là differential fork/stock thật).
   const expectedStartupError = expectedVariant === "fork" ? "BRIDGE_CONFIGURATION_INVALID" : null;
   if (parsed.unconfigured_startup_error !== expectedStartupError) {
     throw new Error("installed behavior unconfigured startup behavior mismatch");
   }
-  if (JSON.stringify(parsed.registered_methods) !== JSON.stringify([])) {
+  const expectedMethods = expectedVariant === "fork" ? ["zalouser.bridge.send"] : [];
+  if (JSON.stringify(parsed.registered_methods) !== JSON.stringify(expectedMethods)) {
     throw new Error("installed behavior registered method mismatch");
   }
   const expectedCases = expectedVariant === "fork"

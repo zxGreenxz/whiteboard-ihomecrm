@@ -249,7 +249,7 @@ function passingBehaviorTranscript(variant) {
   return {
     ...base,
     unconfigured_startup_error: "BRIDGE_CONFIGURATION_INVALID",
-    registered_methods: [],
+    registered_methods: ["zalouser.bridge.send"],
     cases: [
       {
         id: "inbound-committed",
@@ -1206,14 +1206,11 @@ test("behavioral installed-image probe runs the reviewed contract without rewrit
     implementation: "fork",
     package: { name: "@openclaw/zalouser", version: "2026.7.1" },
     unconfigured_startup_error: "BRIDGE_CONFIGURATION_INVALID",
-    registered_methods: [],
+    registered_methods: ["zalouser.bridge.send"],
     cases: [],
   };
   assert.throws(
-    () => validateBehaviorTranscript(
-      { ...fork, registered_methods: ["zalouser.bridge.send"] },
-      "fork",
-    ),
+    () => validateBehaviorTranscript({ ...fork, registered_methods: [] }, "fork"),
     /registered|behavior/i,
   );
   // Fork phai fail-closed khi thieu cau hinh bridge; stock thi khong duoc nem.

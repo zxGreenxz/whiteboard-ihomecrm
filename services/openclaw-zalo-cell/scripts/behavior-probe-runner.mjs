@@ -38,22 +38,41 @@ const apiTarget = {
 };
 const entry = (await import(pathToFileURL(`${packageRoot}/dist/index.js`).href)).default;
 if (!entry || typeof entry.register !== "function") throw new Error("installed plugin register export is missing");
-// Fork ĐÃ siết: khởi động không có cấu hình bridge thì ném BRIDGE_CONFIGURATION_INVALID
-// trước khi đăng ký bất cứ thứ gì. Probe này chạy KHÔNG cấu hình một cách chủ đích để
-// (a) chứng minh cell không thể khởi động khi thiếu cấu hình, và (b) giữ slot runtime
-// trống cho behavior-contract runtime dưới đây (installPrivateOutboundRuntime chỉ nhận
-// một chủ sở hữu). Việc đăng ký RPC khi ĐÃ cấu hình do private RPC probe chứng minh.
+// Fork ĐÃ siết (763cf4c): khởi động không có cấu hình bridge thì ném
+// BRIDGE_CONFIGURATION_INVALID TRƯỚC khi đăng ký bất cứ thứ gì. Probe chạy KHÔNG cấu
+// hình một cách chủ đích để chứng minh cell không thể khởi động khi thiếu cấu hình,
+// và để giữ slot installPrivateOutboundRuntime TRỐNG cho behavior-contract runtime
+// (slot chỉ nhận một chủ sở hữu; cấp cấu hình đầy đủ sẽ khiến bootstrap chiếm mất).
+const probeApi = new Proxy(apiTarget, {
+  get(target, property) {
+    return property in target ? target[property] : noop;
+  },
+});
 let unconfiguredStartupError = null;
 try {
-  await entry.register(new Proxy(apiTarget, {
-    get(target, property) {
-      return property in target ? target[property] : noop;
-    },
-  }));
+  await entry.register(probeApi);
 } catch (error) {
   unconfiguredStartupError = error && typeof error === "object" && typeof error.code === "string"
     ? error.code
     : "ERROR";
+}
+
+// Các case outbound/control của fork cần chính handler `zalouser.bridge.send`. Vì
+// registerFull ném trước khi đăng ký, ta gọi thẳng bộ đăng ký RPC từ module ĐÃ ĐƯỢC
+// GHIM trong FORK.json artifactMembers. Cùng một instance module với
+// behavior-contract-api.js (cả hai import cùng URL chunk), nên handler nhìn thấy đúng
+// runtime mà installInstalledBehaviorContractRuntimeV1 cài bên dưới.
+if (variant === "fork") {
+  if (unconfiguredStartupError !== "BRIDGE_CONFIGURATION_INVALID") {
+    throw new Error("fork plugin did not fail closed without bridge configuration");
+  }
+  const { registerPrivateOutboundRpc } = await import(
+    pathToFileURL(`${packageRoot}/dist/chunks/chunk-5XQCJ3VS.js`).href
+  );
+  if (typeof registerPrivateOutboundRpc !== "function") {
+    throw new Error("installed private outbound RPC registrar is missing");
+  }
+  registerPrivateOutboundRpc(probeApi, "zalouser.bridge.send");
 }
 
 const registeredMethods = gatewayMethods.map(({ method }) => method).sort();
