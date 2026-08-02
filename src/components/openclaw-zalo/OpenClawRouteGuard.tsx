@@ -17,13 +17,25 @@ import type {
 } from "@/lib/openclaw-zalo/types";
 import OpenClawBoundaryState from "./OpenClawBoundaryState";
 
-// Strict, not passthrough: an unexpected key from the authorization RPC is a
-// contract change, and silently accepting it is how a renamed or removed field
-// stops being noticed.
+/**
+ * PASSTHROUGH on purpose, and it must stay that way.
+ *
+ * `get_authorization_context_v1` is a shared platform RPC this feature does not
+ * own; it returns eleven fields (membershipId, memberType, authorizationVersion,
+ * nearestDeadline, isPlatformAdmin, isOffboarded, organizations, scopeSets,
+ * scopes, …) of which the guard reads exactly two. Making this `.strict()` took
+ * the WHOLE route down for every user - the parse threw `unrecognized_keys`, the
+ * query errored, and since a ZodError carries no `.code` the 42501 branch never
+ * matched, so everyone landed on the fatal "cannot verify permission" screen.
+ *
+ * Strictness belongs on contracts this feature owns, where an unexpected key
+ * really is a contract change. On a platform RPC whose shape is set elsewhere it
+ * only means the next field someone adds upstream breaks OpenClaw.
+ */
 const authorizationSchema = z.object({
   organizationId: z.string().uuid().nullable(),
   permissions: z.record(z.string(), z.boolean()),
-}).strict();
+}).passthrough();
 
 const OPENCLAW_VIEW_PERMISSION = "openclaw_zalo.view";
 

@@ -218,7 +218,11 @@ describe("OpenClawZaloPage", () => {
       expect(markup).toContain('data-openclaw-residual-risk="true"');
       expect(markup).toContain("không chính thức");
       expect(markup).toMatch(/quét lại QR/u);
-      expect(markup).not.toMatch(/hidden[^>]*data-openclaw-residual-risk/u);
+      // React emits attributes in prop order and data-openclaw-residual-risk is
+      // first, so a regex looking for "hidden" BEFORE it can never match. Assert on
+      // the element itself instead.
+      const strip = markup.match(/<p[^>]*data-openclaw-residual-risk="true"[^>]*>/u)?.[0] ?? "";
+      expect(strip).not.toMatch(/hidden|aria-hidden="true"|display:\s*none/u);
     }
     const viewerButton = viewer.match(/<button[^>]*aria-label="Mở kiểm soát GLOBAL_STOP"[^>]*>/)?.[0];
     const managerButton = manager.match(/<button[^>]*aria-label="Mở kiểm soát GLOBAL_STOP"[^>]*>/)?.[0];
