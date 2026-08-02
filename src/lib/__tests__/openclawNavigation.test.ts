@@ -17,16 +17,42 @@ describe("OpenClaw Zalo navigation contract", () => {
     expect(app).not.toMatch(/path="\/openclaw-zalo"[\s\S]{0,240}RequirePermission/);
   });
 
-  it("publishes distinct desktop and mobile navigation entries", () => {
-    const sidebar = readSource("src/components/layout/Sidebar.tsx");
-    const breadcrumbs = readSource("src/components/layout/Breadcrumbs.tsx");
-    const launcher = readSource("src/pages/home/launcherTiles.ts");
+  it("publishes a mobile launcher tile gated on the same module and action", async () => {
+    // Asserted against the EXPORTED data, not source text. A grep for
+    // "href: '/openclaw-zalo'" still passes when the entry is commented out, moved
+    // into dead code, or gated on the wrong module.
+    const { LAUNCHER_SECTIONS } = await import("@/pages/home/launcherTiles");
+    const tiles = LAUNCHER_SECTIONS.flatMap((section) => section.items);
+    const matching = tiles.filter((entry) => entry.href === "/openclaw-zalo");
+    expect(matching, "no launcher tile targets /openclaw-zalo").toHaveLength(1);
+    expect(matching[0]!.module).toBe("openclaw_zalo");
+    // The tile must demand exactly what the route guard demands, otherwise the user
+    // is shown an entry that bounces them straight back home.
+    expect(matching[0]!.action).toBe("view");
+  });
 
-    expect(sidebar).toContain("href: '/openclaw-zalo'");
-    expect(sidebar).toContain("module: 'openclaw_zalo'");
-    expect(launcher).toContain("href: '/openclaw-zalo'");
-    expect(launcher).toContain("module: 'openclaw_zalo'");
+  it("publishes exactly one desktop sidebar entry for the route", () => {
+    // Sidebar builds its list inline, so this stays a source assertion - but it pins
+    // the ENTRY as a whole instead of two substrings that could come from different
+    // lines and still look like a match.
+    const sidebar = readSource("src/components/layout/Sidebar.tsx");
+    const entries = sidebar.match(/\{[^{}]*href: '\/openclaw-zalo'[^{}]*\}/gu) ?? [];
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toContain("module: 'openclaw_zalo'");
+  });
+
+  it("records the breadcrumb label, and states plainly that nothing renders it yet", () => {
+    const breadcrumbs = readSource("src/components/layout/Breadcrumbs.tsx");
     expect(breadcrumbs).toContain("'/openclaw-zalo': 'OpenClaw Zalo'");
+    // KNOWN GAP, app-wide and pre-existing: Breadcrumbs is imported by no component
+    // (MainLayout dropped its breadcrumb slot), so this label cannot render for ANY
+    // feature, not only OpenClaw. Asserting that keeps the gap visible instead of
+    // letting the label above read as a satisfied requirement. Delete this assertion
+    // the day something mounts Breadcrumbs again.
+    const mounted = ["src/components/layout/MainLayout.tsx", "src/App.tsx"]
+      .map(readSource)
+      .join("\n");
+    expect(mounted).not.toContain("Breadcrumbs");
   });
 
   it("keeps the new product isolated from the legacy chat route", () => {
