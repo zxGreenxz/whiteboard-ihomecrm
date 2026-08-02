@@ -31,6 +31,8 @@ const browserReadRpcs = [
   "openclaw_list_conversations_v1",
   "openclaw_list_messages_v1",
   "openclaw_list_unknown_v1",
+  "openclaw_list_unknown_by_account_v1",
+  "openclaw_get_unknown_resolution_v1",
   "openclaw_list_knowledge_v1",
   "openclaw_get_knowledge_v1",
   "openclaw_preview_knowledge_retrieval_v1",
@@ -40,8 +42,10 @@ const browserReadRpcs = [
   "openclaw_list_sales_groups_v1",
   "openclaw_list_schedules_v1",
   "openclaw_list_dead_letters_v1",
+  "openclaw_list_dead_letters_by_account_v1",
   "openclaw_list_audit_events_v1",
   "openclaw_list_health_events_v1",
+  "openclaw_list_health_events_by_account_v1",
   "openclaw_list_legal_holds_v1",
   "openclaw_poll_qr_login_v1",
   "openclaw_resolve_media_object_v1",
@@ -242,7 +246,7 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     for (const migration of migrationManifest) {
       expect(existsSync(resolve(migrationDirectory, migration)), `missing ${migration}`).toBe(true);
     }
-    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(49);
+    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(53);
     expect(serviceRoutines).toHaveLength(35);
 
     for (const name of browserReadRpcs) {

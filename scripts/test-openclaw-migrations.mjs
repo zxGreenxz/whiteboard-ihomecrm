@@ -41,6 +41,7 @@ export const OPENCLAW_MIGRATIONS = Object.freeze([
 export const SQL_AUTHORIZATION_PROOFS = Object.freeze([
   "membership.inactive-revoked",
   "permissions.mixed",
+  "operations.account-bounded-contracts",
   "tenant.wrong-account",
   "tenant.composite-fk",
   "qr.unique",
@@ -599,6 +600,232 @@ export async function assertNoOpenClawBrowserDml(database) {
   }
 }
 
+export async function assertTask21AccountBoundedContracts(database) {
+  return withSqlHarnessSavepoint(database, async () => {
+  const selectedAccountId = "11111111-1111-4111-8111-111111111111";
+  const otherAccountId = "11111111-1111-4111-8111-111111111112";
+  const selectedOutboxId = "bbbbbbbb-bbbb-4bbb-8bbb-000000000101";
+  const otherOutboxId = "bbbbbbbb-bbbb-4bbb-8bbb-000000000102";
+  const selectedDeadLetterId = "dddddddd-dddd-4ddd-8ddd-000000000101";
+  const selectedHealthId = "eeeeeeee-eeee-4eee-8eee-000000000101";
+  const resolutionId = "cccccccc-cccc-4ccc-8ccc-000000000101";
+
+  await database.exec(`
+    insert into public.openclaw_accounts(
+      id,organization_id,account_profile,display_name,is_active
+    ) values (
+      '${otherAccountId}','${DEMO_ORG_ID}','task21-other','Task 21 other',false
+    );
+    insert into public.openclaw_contacts(
+      id,organization_id,account_id,provider_id,directory_refreshed_at
+    ) values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-000000000102','${DEMO_ORG_ID}',
+      '${otherAccountId}','task21-other-peer',statement_timestamp()
+    );
+    insert into public.openclaw_targets(
+      id,organization_id,account_id,kind,provider_id,contact_id,directory_refreshed_at
+    ) values (
+      '55555555-5555-4555-8555-555555555557','${DEMO_ORG_ID}',
+      '${otherAccountId}','PEER','task21-other-peer',
+      'aaaaaaaa-aaaa-4aaa-8aaa-000000000102',statement_timestamp()
+    );
+
+    with fixtures(id,account_id,target_id,client_operation_id,idempotency_key,terminal_at) as (
+      values
+        ('${selectedOutboxId}'::uuid,'${selectedAccountId}'::uuid,
+          '55555555-5555-4555-8555-555555555555'::uuid,
+          '99999999-9999-4999-8999-000000000101'::uuid,
+          'task21:selected','2100-01-01T00:00:00Z'::timestamptz),
+        ('${otherOutboxId}'::uuid,'${otherAccountId}'::uuid,
+          '55555555-5555-4555-8555-555555555557'::uuid,
+          '99999999-9999-4999-8999-000000000102'::uuid,
+          'task21:other','2101-01-01T00:00:00Z'::timestamptz)
+    ), payloads as (
+      select fixture.*, jsonb_build_object(
+        'version',1,'organizationId','${DEMO_ORG_ID}',
+        'accountId',fixture.account_id,'idempotencyKey',fixture.idempotency_key
+      ) payload
+      from fixtures fixture
+    )
+    insert into public.openclaw_outbox(
+      id,organization_id,account_id,target_id,source_kind,actor_id,
+      client_operation_id,idempotency_key,canonical_payload,
+      canonical_payload_bytes,payload_hash,state,terminal_at
+    )
+    select payload.id,'${DEMO_ORG_ID}',payload.account_id,payload.target_id,
+      'MANUAL','99999999-9999-4999-8999-999999999999',
+      payload.client_operation_id,payload.idempotency_key,payload.payload,
+      app_private.openclaw_jcs_bytes_v1(payload.payload),
+      encode(extensions.digest(
+        convert_to('ihome-openclaw-send-v1','UTF8')||decode('00','hex')
+          ||app_private.openclaw_jcs_bytes_v1(payload.payload),
+        'sha256'
+      ),'hex'),
+      'UNKNOWN',payload.terminal_at
+    from payloads payload;
+
+    insert into public.openclaw_dead_letters(
+      id,organization_id,account_id,outbox_id,reason_code,payload_hash,evidence,created_at
+    )
+    select
+      case when outbox.id='${selectedOutboxId}' then '${selectedDeadLetterId}'::uuid
+        else 'dddddddd-dddd-4ddd-8ddd-000000000102'::uuid end,
+      outbox.organization_id,outbox.account_id,outbox.id,'TASK21_CAP',outbox.payload_hash,
+      jsonb_build_object('version',1),
+      case when outbox.id='${selectedOutboxId}'
+        then '2100-01-01T00:00:00Z'::timestamptz
+        else '2101-01-01T00:00:00Z'::timestamptz end
+    from public.openclaw_outbox outbox
+    where outbox.id in ('${selectedOutboxId}','${otherOutboxId}');
+
+    insert into public.openclaw_health_events(
+      id,organization_id,account_id,severity,health_kind,status,
+      fingerprint,content_free_metrics,observed_at,created_at
+    ) values
+      ('${selectedHealthId}','${DEMO_ORG_ID}','${selectedAccountId}',
+        'WARN','TASK21_CAP','OPEN','task21-selected','{}',
+        '2100-01-01T00:00:00Z','2100-01-01T00:00:00Z'),
+      ('eeeeeeee-eeee-4eee-8eee-000000000102','${DEMO_ORG_ID}','${otherAccountId}',
+        'CRITICAL','TASK21_CAP','OPEN','task21-other','{}',
+        '2101-01-01T00:00:00Z','2101-01-01T00:00:00Z');
+
+    update public.openclaw_outbox
+    set resolution_version=1
+    where organization_id='${DEMO_ORG_ID}' and id='${selectedOutboxId}';
+    insert into public.openclaw_unknown_resolutions(
+      id,organization_id,account_id,outbox_id,outcome,new_outbox_id,
+      authoritative_evidence_domain,authoritative_evidence_hash,
+      operator_evidence_hash,reason_code,resolved_by,resolved_at,
+      client_operation_id,request_hash
+    ) values (
+      '${resolutionId}','${DEMO_ORG_ID}','${selectedAccountId}','${selectedOutboxId}',
+      'CONFIRMED_FAILED',null,'ihome-openclaw-unknown-authority-v1\\0',
+      repeat('a',64),repeat('b',64),'OPERATOR_CONFIRMED_FAILED',
+      '99999999-9999-4999-8999-999999999999','2100-01-02T00:00:00Z',
+      '99999999-9999-4999-8999-000000000103',repeat('c',64)
+    );
+  `);
+
+  await database.query(`select set_config(
+    'request.jwt.claim.sub','99999999-9999-4999-8999-999999999999',false
+  )`);
+  const request = (extra = {}) => JSON.stringify({
+    version: 1,
+    organizationId: DEMO_ORG_ID,
+    accountId: selectedAccountId,
+    limit: 1,
+    ...extra,
+  });
+  const [unknown, deadLetters, health, winner, wrongAccountWinner] = await Promise.all([
+    database.query(
+      `select public.openclaw_list_unknown_by_account_v1($1::jsonb) result`,
+      [request()],
+    ),
+    database.query(
+      `select public.openclaw_list_dead_letters_by_account_v1($1::jsonb) result`,
+      [request()],
+    ),
+    database.query(
+      `select public.openclaw_list_health_events_by_account_v1($1::jsonb) result`,
+      [request()],
+    ),
+    database.query(
+      `select public.openclaw_get_unknown_resolution_v1($1::jsonb) result`,
+      [JSON.stringify({
+        version: 1,
+        organizationId: DEMO_ORG_ID,
+        accountId: selectedAccountId,
+        outboxId: selectedOutboxId,
+      })],
+    ),
+    database.query(
+      `select public.openclaw_get_unknown_resolution_v1($1::jsonb) result`,
+      [JSON.stringify({
+        version: 1,
+        organizationId: DEMO_ORG_ID,
+        accountId: otherAccountId,
+        outboxId: selectedOutboxId,
+      })],
+    ),
+  ]);
+
+  assertProof(
+    unknown.rows[0].result.items.length === 1 &&
+      unknown.rows[0].result.items[0].outboxId === selectedOutboxId &&
+      deadLetters.rows[0].result.items.length === 1 &&
+      deadLetters.rows[0].result.items[0].deadLetterId === selectedDeadLetterId &&
+      health.rows[0].result.items.length === 1 &&
+      health.rows[0].result.items[0].healthEventId === selectedHealthId,
+    "An org-wide cap hid the selected account's operations records.",
+  );
+  assertProof(
+    winner.rows[0].result?.resolutionId === resolutionId &&
+      winner.rows[0].result?.organizationId === DEMO_ORG_ID &&
+      winner.rows[0].result?.accountId === selectedAccountId &&
+      winner.rows[0].result?.outboxId === selectedOutboxId &&
+      winner.rows[0].result?.resolutionVersion === 1 &&
+      winner.rows[0].result?.outcome === "CONFIRMED_FAILED" &&
+      winner.rows[0].result?.newOutboxId === null &&
+      wrongAccountWinner.rows[0].result === null,
+    "UNKNOWN winner reload was not bound to exact organization/account/outbox identity.",
+  );
+  const immutableUnknown = await database.query(
+    `select state,resolution_version from public.openclaw_outbox
+     where organization_id=$1 and account_id=$2 and id=$3`,
+    [DEMO_ORG_ID, selectedAccountId, selectedOutboxId],
+  );
+  assertProof(
+    immutableUnknown.rows[0]?.state === "UNKNOWN" &&
+      Number(immutableUnknown.rows[0]?.resolution_version) === 1,
+    "Winner reload changed the immutable UNKNOWN history row.",
+  );
+
+  await expectSqlHarnessRejection(
+    database,
+    "Task 21 missing account argument",
+    () => database.query(
+      `select public.openclaw_list_unknown_by_account_v1($1::jsonb)`,
+      [JSON.stringify({ version: 1, organizationId: DEMO_ORG_ID, limit: 1 })],
+    ),
+    /required|accountId|request object/i,
+  );
+  await expectSqlHarnessRejection(
+    database,
+    "Task 21 half cursor",
+    () => database.query(
+      `select public.openclaw_list_unknown_by_account_v1($1::jsonb)`,
+      [request({ cursorTerminalAt: "2100-01-01T00:00:00Z" })],
+    ),
+    /cursor requires timestamp and id/i,
+  );
+  await database.query(`select set_config(
+    'request.jwt.claim.sub','91000000-0000-4000-8000-000000000001',false
+  )`);
+  await expectSqlHarnessRejection(
+    database,
+    "Task 21 operations permission",
+    () => database.query(
+      `select public.openclaw_list_unknown_by_account_v1($1::jsonb)`,
+      [request()],
+    ),
+    /permission|not allowed|không|khong|42501/i,
+  );
+
+  const grants = await database.query(`
+    select
+      has_function_privilege('authenticated','public.openclaw_list_unknown_by_account_v1(jsonb)','EXECUTE') authenticated_read,
+      has_function_privilege('anon','public.openclaw_list_unknown_by_account_v1(jsonb)','EXECUTE') anon_read,
+      has_function_privilege('authenticated','public.openclaw_get_unknown_resolution_v1(jsonb)','EXECUTE') authenticated_winner,
+      has_function_privilege('anon','public.openclaw_get_unknown_resolution_v1(jsonb)','EXECUTE') anon_winner
+  `);
+  assertProof(
+    grants.rows[0].authenticated_read === true && grants.rows[0].anon_read === false &&
+      grants.rows[0].authenticated_winner === true && grants.rows[0].anon_winner === false,
+    "Task 21 browser RPC grants are not fail-closed.",
+  );
+  });
+}
+
 export async function runDisposableSqlAuthorizationMatrix() {
   const database = await createDisposableOpenClawDatabase();
   const proofs = [];
@@ -707,6 +934,8 @@ export async function runDisposableSqlAuthorizationMatrix() {
     prove("permissions.mixed");
 
     await prepareDisposableConcurrencyFixtures(database);
+    await assertTask21AccountBoundedContracts(database);
+    prove("operations.account-bounded-contracts");
     await database.exec(`
       set session_replication_role='replica';
       insert into public.openclaw_accounts(id,organization_id,account_profile,is_active)
@@ -3648,12 +3877,25 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
        from public.openclaw_outbox where id=$1`,
       [outboxId],
     );
+    const winningResolution = winners[0]?.value?.rows?.[0]?.result;
+    const reloadedWinner = await database.query(
+      `select public.openclaw_get_unknown_resolution_v1($1::jsonb) result`,
+      [JSON.stringify({
+        version: 1,
+        organizationId: DEMO_ORG_ID,
+        accountId: "11111111-1111-4111-8111-111111111111",
+        outboxId,
+      })],
+    );
     if (
       winners.length !== 1 ||
       losers.length !== 1 ||
       state.rows[0].state !== "UNKNOWN" ||
       Number(state.rows[0].resolution_version) !== 1 ||
-      state.rows[0].resolution_count !== 1
+      state.rows[0].resolution_count !== 1 ||
+      reloadedWinner.rows[0].result?.resolutionId !== winningResolution?.resolutionId ||
+      reloadedWinner.rows[0].result?.outboxId !== outboxId ||
+      reloadedWinner.rows[0].result?.accountId !== "11111111-1111-4111-8111-111111111111"
     ) {
       throw new Error(
         `UNKNOWN resolution did not preserve one immutable CAS winner: ${JSON.stringify({
@@ -3663,6 +3905,7 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
               : String(call.reason?.message ?? call.reason),
           ),
           state: state.rows[0],
+          reloadedWinner: reloadedWinner.rows[0].result,
         })}`,
       );
     }

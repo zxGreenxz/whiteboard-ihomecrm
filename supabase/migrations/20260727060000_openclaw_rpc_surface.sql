@@ -1772,6 +1772,38 @@ begin
 end;
 $function$;
 
+create or replace function app_private.openclaw_browser_account_context_v1(
+  p_request jsonb,
+  p_permission_key text,
+  p_action_label text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+begin
+  v_context := app_private.openclaw_browser_context_v1(
+    p_request, p_permission_key, p_action_label
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (p_request ->> 'accountId')::uuid;
+  if not exists (
+    select 1
+    from public.openclaw_accounts account
+    where account.organization_id = v_org
+      and account.id = v_account
+  ) then
+    raise exception 'selected OpenClaw account is unavailable' using errcode = 'P0002';
+  end if;
+  return v_context || jsonb_build_object('accountId', v_account);
+end;
+$function$;
+
 create or replace function public.openclaw_list_my_organizations_v1()
 returns jsonb
 language plpgsql
@@ -2483,6 +2515,244 @@ begin
     order by health_event.observed_at desc, health_event.id desc limit v_limit
   ) event;
   return jsonb_build_object('version', 1, 'items', v_items, 'limit', v_limit);
+end;
+$function$;
+
+create or replace function public.openclaw_list_unknown_by_account_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+  v_limit integer;
+  v_cursor_at timestamptz;
+  v_cursor_id uuid;
+  v_items jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','cursorTerminalAt','cursorId','limit'],
+    array['version','organizationId','accountId']
+  );
+  v_context := app_private.openclaw_browser_account_context_v1(
+    p_request, 'openclaw_zalo.manage_operations', 'xem UNKNOWN OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (v_context ->> 'accountId')::uuid;
+  v_limit := greatest(1, least(coalesce((p_request ->> 'limit')::integer, 50), 100));
+  v_cursor_at := nullif(p_request ->> 'cursorTerminalAt', '')::timestamptz;
+  v_cursor_id := nullif(p_request ->> 'cursorId', '')::uuid;
+  if (v_cursor_at is null) <> (v_cursor_id is null) then
+    raise exception 'UNKNOWN cursor requires timestamp and id' using errcode = '22023';
+  end if;
+
+  select coalesce(
+    jsonb_agg(item.payload order by item.terminal_at desc, item.id desc),
+    '[]'::jsonb
+  )
+  into v_items
+  from (
+    select outbox.id, outbox.terminal_at,
+      jsonb_build_object(
+        'outboxId', outbox.id, 'accountId', outbox.account_id,
+        'payloadHash', outbox.payload_hash, 'terminalAt', outbox.terminal_at,
+        'resolution_version', outbox.resolution_version,
+        'authoritative_evidence_hash', resolution.authoritative_evidence_hash,
+        'resolutionId', resolution.id, 'outcome', resolution.outcome,
+        'new_outbox_id', resolution.new_outbox_id, 'resolvedAt', resolution.resolved_at
+      ) as payload
+    from public.openclaw_outbox outbox
+    left join public.openclaw_unknown_resolutions resolution
+      on resolution.organization_id = outbox.organization_id
+     and resolution.account_id = outbox.account_id
+     and resolution.outbox_id = outbox.id
+    where outbox.organization_id = v_org
+      and outbox.account_id = v_account
+      and outbox.state = 'UNKNOWN'
+      and (
+        v_cursor_at is null
+        or (outbox.terminal_at, outbox.id) < (v_cursor_at, v_cursor_id)
+      )
+    order by outbox.terminal_at desc, outbox.id desc
+    limit v_limit
+  ) item;
+  return jsonb_build_object('version', 1, 'items', v_items, 'limit', v_limit);
+end;
+$function$;
+
+create or replace function public.openclaw_list_dead_letters_by_account_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+  v_limit integer;
+  v_cursor_at timestamptz;
+  v_cursor_id uuid;
+  v_items jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','cursorCreatedAt','cursorId','limit'],
+    array['version','organizationId','accountId']
+  );
+  v_context := app_private.openclaw_browser_account_context_v1(
+    p_request, 'openclaw_zalo.manage_operations', 'xem dead letter OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (v_context ->> 'accountId')::uuid;
+  v_limit := greatest(1, least(coalesce((p_request ->> 'limit')::integer, 50), 100));
+  v_cursor_at := nullif(p_request ->> 'cursorCreatedAt', '')::timestamptz;
+  v_cursor_id := nullif(p_request ->> 'cursorId', '')::uuid;
+  if (v_cursor_at is null) <> (v_cursor_id is null) then
+    raise exception 'dead-letter cursor requires timestamp and id' using errcode = '22023';
+  end if;
+
+  select coalesce(
+    jsonb_agg(item.payload order by item.created_at desc, item.id desc),
+    '[]'::jsonb
+  )
+  into v_items
+  from (
+    select dead_letter.id, dead_letter.created_at,
+      jsonb_build_object(
+        'deadLetterId', dead_letter.id, 'accountId', dead_letter.account_id,
+        'outboxId', dead_letter.outbox_id,
+        'sendWorkItemId', dead_letter.send_work_item_id,
+        'reasonCode', dead_letter.reason_code, 'payloadHash', dead_letter.payload_hash,
+        'createdAt', dead_letter.created_at
+      ) as payload
+    from public.openclaw_dead_letters dead_letter
+    where dead_letter.organization_id = v_org
+      and dead_letter.account_id = v_account
+      and (
+        v_cursor_at is null
+        or (dead_letter.created_at, dead_letter.id) < (v_cursor_at, v_cursor_id)
+      )
+    order by dead_letter.created_at desc, dead_letter.id desc
+    limit v_limit
+  ) item;
+  return jsonb_build_object('version', 1, 'items', v_items, 'limit', v_limit);
+end;
+$function$;
+
+create or replace function public.openclaw_list_health_events_by_account_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+  v_limit integer;
+  v_cursor_at timestamptz;
+  v_cursor_id uuid;
+  v_items jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','cursorObservedAt','cursorId','limit'],
+    array['version','organizationId','accountId']
+  );
+  v_context := app_private.openclaw_browser_account_context_v1(
+    p_request, 'openclaw_zalo.audit', 'xem sức khỏe OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (v_context ->> 'accountId')::uuid;
+  v_limit := greatest(1, least(coalesce((p_request ->> 'limit')::integer, 50), 100));
+  v_cursor_at := nullif(p_request ->> 'cursorObservedAt', '')::timestamptz;
+  v_cursor_id := nullif(p_request ->> 'cursorId', '')::uuid;
+  if (v_cursor_at is null) <> (v_cursor_id is null) then
+    raise exception 'health cursor requires timestamp and id' using errcode = '22023';
+  end if;
+
+  select coalesce(
+    jsonb_agg(item.payload order by item.observed_at desc, item.id desc),
+    '[]'::jsonb
+  )
+  into v_items
+  from (
+    select event.id, event.observed_at,
+      jsonb_build_object(
+        'healthEventId', event.id, 'accountId', event.account_id,
+        'cellId', event.cell_id, 'severity', event.severity,
+        'healthKind', event.health_kind, 'status', event.status,
+        'fingerprint', event.fingerprint,
+        'contentFreeMetrics', event.content_free_metrics,
+        'observedAt', event.observed_at, 'createdAt', event.created_at
+      ) as payload
+    from public.openclaw_health_events event
+    where event.organization_id = v_org
+      and (event.account_id = v_account or event.account_id is null)
+      and (
+        v_cursor_at is null
+        or (event.observed_at, event.id) < (v_cursor_at, v_cursor_id)
+      )
+    order by event.observed_at desc, event.id desc
+    limit v_limit
+  ) item;
+  return jsonb_build_object('version', 1, 'items', v_items, 'limit', v_limit);
+end;
+$function$;
+
+create or replace function public.openclaw_get_unknown_resolution_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+  v_outbox uuid;
+  v_result jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','outboxId'],
+    array['version','organizationId','accountId','outboxId']
+  );
+  v_context := app_private.openclaw_browser_account_context_v1(
+    p_request, 'openclaw_zalo.manage_operations', 'tải lại UNKNOWN winner OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (v_context ->> 'accountId')::uuid;
+  v_outbox := (p_request ->> 'outboxId')::uuid;
+
+  select jsonb_build_object(
+    'version', 1, 'resolutionId', resolution.id,
+    'organizationId', resolution.organization_id,
+    'accountId', resolution.account_id, 'outboxId', resolution.outbox_id,
+    'resolutionVersion', resolution.resolution_version,
+    'outcome', resolution.outcome, 'newOutboxId', resolution.new_outbox_id,
+    'authoritativeEvidenceDomain', resolution.authoritative_evidence_domain,
+    'authoritativeEvidenceHash', resolution.authoritative_evidence_hash,
+    'reasonCode', resolution.reason_code, 'resolvedBy', resolution.resolved_by,
+    'resolvedAt', resolution.resolved_at
+  )
+  into v_result
+  from public.openclaw_outbox outbox
+  join public.openclaw_unknown_resolutions resolution
+    on resolution.organization_id = outbox.organization_id
+   and resolution.account_id = outbox.account_id
+   and resolution.outbox_id = outbox.id
+  where outbox.organization_id = v_org
+    and outbox.account_id = v_account
+    and outbox.id = v_outbox
+    and outbox.state = 'UNKNOWN'
+    and outbox.resolution_version = 1;
+  return v_result;
 end;
 $function$;
 
@@ -7811,6 +8081,8 @@ alter function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb,t
 revoke all on function app_private.openclaw_consume_service_nonce_v1(jsonb,jsonb,jsonb,text) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_browser_context_v1(jsonb,text,text) owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_browser_context_v1(jsonb,text,text) from public, anon, authenticated, service_role;
+alter function app_private.openclaw_browser_account_context_v1(jsonb,text,text) owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_browser_account_context_v1(jsonb,text,text) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_apply_knowledge_write_v1(text,uuid,uuid,jsonb) owner to openclaw_function_owner;
 revoke all on function app_private.openclaw_apply_knowledge_write_v1(text,uuid,uuid,jsonb) from public, anon, authenticated, service_role;
 alter function app_private.openclaw_apply_automation_write_v1(text,uuid,uuid,jsonb) owner to openclaw_function_owner;
@@ -7848,6 +8120,12 @@ grant execute on function public.openclaw_list_messages_v1(jsonb) to authenticat
 alter function public.openclaw_list_unknown_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_unknown_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_unknown_v1(jsonb) to authenticated;
+alter function public.openclaw_list_unknown_by_account_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_list_unknown_by_account_v1(jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_list_unknown_by_account_v1(jsonb) to authenticated;
+alter function public.openclaw_get_unknown_resolution_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_get_unknown_resolution_v1(jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_get_unknown_resolution_v1(jsonb) to authenticated;
 alter function public.openclaw_list_knowledge_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_knowledge_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_knowledge_v1(jsonb) to authenticated;
@@ -7875,12 +8153,18 @@ grant execute on function public.openclaw_list_schedules_v1(jsonb) to authentica
 alter function public.openclaw_list_dead_letters_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_dead_letters_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_dead_letters_v1(jsonb) to authenticated;
+alter function public.openclaw_list_dead_letters_by_account_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_list_dead_letters_by_account_v1(jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_list_dead_letters_by_account_v1(jsonb) to authenticated;
 alter function public.openclaw_list_audit_events_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_audit_events_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_audit_events_v1(jsonb) to authenticated;
 alter function public.openclaw_list_health_events_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_health_events_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_health_events_v1(jsonb) to authenticated;
+alter function public.openclaw_list_health_events_by_account_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_list_health_events_by_account_v1(jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_list_health_events_by_account_v1(jsonb) to authenticated;
 alter function public.openclaw_list_legal_holds_v1(jsonb) owner to openclaw_function_owner;
 revoke all on function public.openclaw_list_legal_holds_v1(jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_legal_holds_v1(jsonb) to authenticated;
