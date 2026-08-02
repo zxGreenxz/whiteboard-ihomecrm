@@ -200,6 +200,25 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
 
+  // "Tải ảnh": xuất bảng DANH SÁCH PHÒNG TRỐNG (kiểu file Excel Sale gửi Zalo).
+  // Luôn lấy TOÀN BỘ phòng còn chào được, KHÔNG theo bộ lọc đang chọn trên màn
+  // hình. Lazy-import để phần vẽ canvas không nằm trong chunk mở trang.
+  const [exporting, setExporting] = useState(false);
+  const exportImage = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { downloadRoomListImage } = await import("./exportRoomListImage");
+      const n = await downloadRoomListImage(buildings);
+      tracker.track("share", { metadata: { kind: "export_image", rooms: n } });
+      showToast(n ? `Đã tải ảnh ${n} phòng trống` : "Hiện chưa có phòng trống để xuất ảnh");
+    } catch {
+      showToast("Không tạo được ảnh. Thử lại nhé.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Ghi lỗi tải dữ liệu / token sai (không log giá trị token).
   useEffect(() => {
     if (token && isError) tracker.track("error", { metadata: { kind: "fetch_or_token", where: "usePhongTrong" } });
@@ -237,10 +256,19 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
           {!isEmbedded && (
             <div className="hdr-top">
               <div className="brand-mark"><span>R</span></div>
-              <div>
+              <div className="brand-txt">
                 <div className="brand-name">Phòng trống</div>
                 <div className="brand-sub">Bảng phòng trực tiếp cho Sale</div>
               </div>
+              <button
+                type="button"
+                className="hdr-dl"
+                onClick={exportImage}
+                disabled={exporting}
+                title="Tải ảnh danh sách phòng trống"
+              >
+                <Icon.Download /><span>{exporting ? "Đang tạo…" : "Tải ảnh"}</span>
+              </button>
               <div className="live"><i className="dot" />Live · {hh}</div>
             </div>
           )}
@@ -294,7 +322,13 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
         </div>
 
         <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
-        <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
+        {/* Chỉ mount khi có quyền tạo cọc: modal gọi useAccounts() ngay lúc render,
+            khách vãng lai (anon) sẽ bị RLS chặn và nổ toast đỏ "Không thể tải
+            danh sách sổ quỹ" giữa trang công khai. Không có quyền thì depositRoom
+            luôn null nên bỏ mount cũng không mất chức năng gì. */}
+        {canQuickDeposit && (
+          <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
+        )}
         <Toast msg={toast.msg} show={toast.show} />
       </div>
     </div>
