@@ -24,6 +24,23 @@ describe("Task 20 watchdog and recovery contracts", () => {
     expect(guard).toContain("PAUSE_OUTBOUND_AI_MEDIA");
     expect(guard).toContain("openclaw_zalo.manage_operations");
     expect(guard).toContain("stop --timeout 30 cell bridge");
+
+    // Fail-closed: mốc trip phải được ghi TRƯỚC khi gọi Edge, và lỗi gọi Edge
+    // không được ngăn cưỡng chế cục bộ (pause ngay + dừng cell/bridge sau 10 phút).
+    const writeBeforePost = guard.indexOf("write_state\n  post_guard");
+    expect(writeBeforePost).toBeGreaterThan(-1);
+    expect(guard).toContain('post_guard "$guard_state" "$fingerprint" || post_failed=1');
+    expect(guard).toContain('post_guard CLEAR_PENDING "host-guard:clear-pending-manual-resume" || post_failed=1');
+    const postIndex = guard.indexOf("post_guard \"$guard_state\"");
+    const stopIndex = guard.indexOf("stop --timeout 30 cell bridge");
+    expect(postIndex).toBeGreaterThan(-1);
+    expect(stopIndex).toBeGreaterThan(postIndex);
+    expect(guard).toMatch(/if \[ "\$post_failed" -ne 0 \]; then[\s\S]*exit 1/u);
+
+    // Operation ID tất định để post lại không nhân bản incident/notification.
+    expect(guard).toContain("derive_operation_id()");
+    expect(guard).toContain('operation_id=$(derive_operation_id "$guard_state" "$fingerprint" "$trip_since")');
+    expect(guard).not.toContain("/proc/sys/kernel/random/uuid");
     expect(guard).not.toMatch(/systemctl\s+(?:stop|restart|kill)\s+(?:9router|cli-proxy)|docker\s+--host|\/var\/run\/docker\.sock/iu);
 
     const service = await text(paths[1]!);
