@@ -1,5 +1,11 @@
 import { canonicalJson, sha256Hex, utf8 } from "../_shared/openclaw/crypto.ts";
-import { handleWatchdogRequest, WATCHDOG_HEALTH_RPC, type WatchdogSnapshot } from "./handler.ts";
+import {
+  handleWatchdogRequest,
+  WATCHDOG_HEALTH_RPC,
+  type ConsumeEnvelopeNonceInput,
+  type WatchdogSnapshot,
+} from "./handler.ts";
+import { parseWatchdogKeyRegistry } from "./schemas.ts";
 
 const env = Deno.env.toObject();
 
@@ -25,7 +31,19 @@ function csv(name: string): string[] {
   return values;
 }
 
-const sharedSecret = required("OPENCLAW_WATCHDOG_SHARED_SECRET");
+function envelopeKeys(name: string): ReturnType<typeof parseWatchdogKeyRegistry> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(required(name));
+  } catch {
+    throw new Error(`${name} is invalid`);
+  }
+  const registry = parseWatchdogKeyRegistry(parsed);
+  if (!registry) throw new Error(`${name} is invalid`);
+  return registry;
+}
+
+const watchdogEnvelopeKeys = envelopeKeys("OPENCLAW_WATCHDOG_ENVELOPE_KEYS_JSON");
 const supabaseUrl = new URL(required("SUPABASE_URL")).origin;
 const serviceRoleKey = required("SUPABASE_SERVICE_ROLE_KEY");
 const probeUrl = httpsUrl("OPENCLAW_WATCHDOG_PROBE_URL", /\/openclaw-health\/v1\/snapshot\/?$/u);
@@ -56,6 +74,30 @@ async function postJson(url: string, token: string, body: unknown, signal?: Abor
   });
 }
 
+/**
+ * Envelope nonces are spent in-process and bounded by the same 60-second window
+ * the envelope itself enforces, so a replay can never outlive its own clock
+ * window inside an isolate. The durable backstop for the two operations that
+ * mutate state is the database: their deterministic operation id is the service
+ * envelope nonce, and `openclaw_service_nonces` rejects the second insert. PROBE
+ * mutates nothing, so an isolate-local store is the whole requirement there.
+ */
+const NONCE_STORE_LIMIT = 4_096;
+const spentNonces = new Map<string, number>();
+
+function consumeEnvelopeNonce(input: ConsumeEnvelopeNonceInput): Promise<boolean> {
+  const nowEpochSeconds = Math.floor(Date.now() / 1_000);
+  for (const [nonce, expiresAt] of spentNonces) {
+    if (expiresAt <= nowEpochSeconds) spentNonces.delete(nonce);
+  }
+  const key = `${input.organizationId}\u0000${input.keyGeneration}\u0000${input.nonce}`;
+  if (spentNonces.has(key)) return Promise.resolve(false);
+  // A full store must deny rather than forget: forgetting is a replay window.
+  if (spentNonces.size >= NONCE_STORE_LIMIT) return Promise.resolve(false);
+  spentNonces.set(key, input.expiresAtEpochSeconds);
+  return Promise.resolve(true);
+}
+
 async function serviceRequestHash(request: unknown): Promise<string> {
   return await sha256Hex(utf8(
     `ihome-openclaw-service-request-v1\0openclaw_record_watchdog_health_v1\0${canonicalJson(request)}`,
@@ -64,7 +106,8 @@ async function serviceRequestHash(request: unknown): Promise<string> {
 
 Deno.serve((request: Request) =>
   handleWatchdogRequest(request, {
-    sharedSecret,
+    envelopeKeys: watchdogEnvelopeKeys,
+    consumeEnvelopeNonce,
     probe: async (organizationId, signal): Promise<WatchdogSnapshot> => {
       const response = await postJson(probeUrl, probeToken, {
         version: 1,

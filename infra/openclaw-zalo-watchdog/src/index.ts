@@ -8,10 +8,17 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const ALLOWED_EDGE_PATH = /\/functions\/v1\/openclaw-watchdog\/?$/u;
 
+// Đối xứng với supabase/functions/openclaw-watchdog/schemas.ts. Bearer dùng chung
+// bị bác vì replay được và không chứng minh được operation/body/tổ chức/thế hệ khoá.
+export const WATCHDOG_ENVELOPE_DOMAIN = "ihome-openclaw-watchdog-envelope-v1";
+export const WATCHDOG_ENVELOPE_AUDIENCE = "openclaw-watchdog-edge";
+export const WATCHDOG_ENVELOPE_PATH = "/functions/v1/openclaw-watchdog";
+
 export interface WatchdogEnv {
   WATCHDOG_STATE: DurableObjectNamespace;
   OPENCLAW_WATCHDOG_EDGE_URL: string;
-  OPENCLAW_WATCHDOG_BEARER_TOKEN: string;
+  OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64: string;
+  OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION: string;
   OPENCLAW_WATCHDOG_ORGANIZATION_ID: string;
   OPENCLAW_WATCHDOG_REPEAT_WINDOW_SECONDS?: string;
 }
@@ -258,35 +265,125 @@ function edgeUrl(env: WatchdogEnv): string {
   return value.toString();
 }
 
-function environment(env: WatchdogEnv): { edgeUrl: string; organizationId: string; repeatWindowSeconds: number } {
+function environment(env: WatchdogEnv): {
+  edgeUrl: string;
+  organizationId: string;
+  repeatWindowSeconds: number;
+  keyGeneration: number;
+} {
   if (!UUID_PATTERN.test(env.OPENCLAW_WATCHDOG_ORGANIZATION_ID)) throw new Error("watchdog organization is invalid");
-  if (env.OPENCLAW_WATCHDOG_BEARER_TOKEN.length < 32 || env.OPENCLAW_WATCHDOG_BEARER_TOKEN.length > 512) {
-    throw new Error("watchdog bearer token is invalid");
+  const keyGeneration = Number(env.OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION);
+  if (!Number.isSafeInteger(keyGeneration) || keyGeneration < 1 ||
+    !/^[1-9][0-9]{0,15}$/u.test(String(env.OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION ?? ""))) {
+    throw new Error("watchdog signing key generation is invalid");
+  }
+  if (typeof env.OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64 !== "string" ||
+    env.OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64.length < 32 ||
+    env.OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64.length > 512 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u
+      .test(env.OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64)) {
+    throw new Error("watchdog signing key material is invalid");
   }
   const repeatWindowSeconds = Number(env.OPENCLAW_WATCHDOG_REPEAT_WINDOW_SECONDS ?? DEFAULT_REPEAT_WINDOW_SECONDS);
   if (!Number.isSafeInteger(repeatWindowSeconds) || repeatWindowSeconds < 180 || repeatWindowSeconds > 86_400) {
     throw new Error("watchdog repeat window is invalid");
   }
-  return { edgeUrl: edgeUrl(env), organizationId: env.OPENCLAW_WATCHDOG_ORGANIZATION_ID, repeatWindowSeconds };
+  return {
+    edgeUrl: edgeUrl(env),
+    organizationId: env.OPENCLAW_WATCHDOG_ORGANIZATION_ID,
+    repeatWindowSeconds,
+    keyGeneration,
+  };
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    if (typeof value === "number" && !Number.isFinite(value)) throw new Error("non-finite JSON number");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/gu, "-").replace(/\//gu, "_").replace(/=+$/u, "");
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+// Khoá ký chỉ import một lần cho mỗi isolate; giữ non-extractable để không có
+// đường nào đọc lại material ra log hay response.
+let signingKeyCache: { material: string; key: Promise<CryptoKey> } | null = null;
+function signingKey(env: WatchdogEnv): Promise<CryptoKey> {
+  const material = env.OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64;
+  if (signingKeyCache?.material !== material) {
+    signingKeyCache = {
+      material,
+      key: crypto.subtle.importKey(
+        "pkcs8",
+        Uint8Array.from(atob(material), (character) => character.charCodeAt(0)),
+        { name: "Ed25519" },
+        false,
+        ["sign"],
+      ),
+    };
+  }
+  return signingKeyCache.key;
+}
+
+function envelopeOperation(operation: unknown): "health.probe" | "health.record" {
+  if (operation === "PROBE") return "health.probe";
+  if (operation === "RECORD") return "health.record";
+  throw new Error("watchdog operation is not signable");
 }
 
 async function postEdge(
   env: WatchdogEnv,
   body: Record<string, unknown>,
   fetcher: typeof fetch,
+  nowMs: number,
 ): Promise<unknown> {
   const config = environment(env);
+  const payload = JSON.stringify(body);
+  const rawBody = new TextEncoder().encode(payload);
+  const envelope = {
+    version: 1,
+    audience: WATCHDOG_ENVELOPE_AUDIENCE,
+    operation: envelopeOperation(body.operation),
+    method: "POST",
+    path: WATCHDOG_ENVELOPE_PATH,
+    organizationId: config.organizationId,
+    keyGeneration: config.keyGeneration,
+    timestamp: Math.floor(nowMs / 1_000),
+    nonce: crypto.randomUUID(),
+    bodySha256: await sha256Hex(rawBody),
+  };
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    "Ed25519",
+    await signingKey(env),
+    new TextEncoder().encode(`${WATCHDOG_ENVELOPE_DOMAIN}\0${canonicalJson(envelope)}`),
+  ));
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), WATCHDOG_TIMEOUT_MS);
   try {
     const response = await fetcher(config.edgeUrl, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${env.OPENCLAW_WATCHDOG_BEARER_TOKEN}`,
         "content-type": "application/json",
         "x-openclaw-watchdog-version": "1",
+        "x-openclaw-watchdog-envelope": base64UrlEncode(
+          new TextEncoder().encode(canonicalJson(envelope)),
+        ),
+        "x-openclaw-watchdog-signature": base64UrlEncode(signature),
       },
-      body: JSON.stringify(body),
+      body: payload,
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`watchdog Edge failed with ${response.status}`);
@@ -321,7 +418,7 @@ export async function deriveRecordOperationId(input: {
     [...input.events].map((item) => `${item.healthKind}|${item.status}|${item.fingerprint}`).sort().join(","),
     [...input.controls].sort().join(","),
     [...input.notificationFingerprints].sort().join(","),
-  ].join(" ");
+  ].join("\u0000");
   const digest = new Uint8Array(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material)),
   );
@@ -363,7 +460,7 @@ export class WatchdogState implements DurableObject {
         organizationId: config.organizationId,
         probeId: operationId(),
         observedAt: now,
-      }, fetcher), config.organizationId);
+      }, fetcher, nowMs), config.organizationId);
       state.consecutiveProbeFailures = snapshot.probeOk ? 0 : state.consecutiveProbeFailures + 1;
       evaluated = evaluateSnapshot(snapshot, nowMs);
       if (!snapshot.probeOk && state.consecutiveProbeFailures < FAILURE_THRESHOLD) {
@@ -419,7 +516,7 @@ export class WatchdogState implements DurableObject {
         notification: notificationFingerprints.length === 0
           ? null
           : { fingerprints: notificationFingerprints, repeatWindow, requiredWithinSeconds: 180 },
-      }, fetcher);
+      }, fetcher, nowMs);
     }
     await this.#state.storage.put("state", state);
     return {

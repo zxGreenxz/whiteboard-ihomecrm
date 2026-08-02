@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.openclaw-runtime]
 verify_jwt = false
+
+# Custom auth bắt buộc: handler xác minh envelope Ed25519 (audience
+# openclaw-watchdog-edge) TRƯỚC mọi database call. Supabase JWT không phải
+# credential ở đây — có header `authorization` là bị từ chối 401.
+[functions.openclaw-watchdog]
+verify_jwt = false

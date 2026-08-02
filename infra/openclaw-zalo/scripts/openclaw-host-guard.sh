@@ -20,9 +20,15 @@ done
 cell_id=$(sed -n 's/^OPENCLAW_CELL_ID=//p' "$runtime_env")
 organization_id=$(sed -n 's/^OPENCLAW_ORGANIZATION_ID=//p' "$runtime_env")
 watchdog_url=$(sed -n 's/^OPENCLAW_WATCHDOG_EDGE_URL=//p' "$runtime_env")
+key_generation=$(sed -n 's/^OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION=//p' "$runtime_env")
 [ "$(grep -c '^OPENCLAW_CELL_ID=' "$runtime_env")" -eq 1 ] && \
   [ "$(grep -c '^OPENCLAW_ORGANIZATION_ID=' "$runtime_env")" -eq 1 ] && \
-  [ "$(grep -c '^OPENCLAW_WATCHDOG_EDGE_URL=' "$runtime_env")" -eq 1 ] || exit 64
+  [ "$(grep -c '^OPENCLAW_WATCHDOG_EDGE_URL=' "$runtime_env")" -eq 1 ] && \
+  [ "$(grep -c '^OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION=' "$runtime_env")" -eq 1 ] || exit 64
+printf '%s\n' "$key_generation" | grep -Eq '^[1-9][0-9]{0,15}$' || {
+  echo "watchdog signing key generation is invalid" >&2
+  exit 64
+}
 valid_uuid() { printf '%s\n' "$1" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'; }
 valid_uuid "$cell_id" && valid_uuid "$organization_id" || { echo "host guard identities are invalid" >&2; exit 64; }
 case "$watchdog_url" in
@@ -40,10 +46,14 @@ operations_dir="$runtime_root/operations/$cell_id"
 state_file="$operations_dir/host-guard.state"
 pause_file="$operations_dir/host-guard.pause"
 metrics_file="$runtime_root/operations/host/model-endpoint.metrics"
-token_file="$runtime_root/secrets/$cell_id/openclaw_watchdog_token"
+# Khoá KÝ Ed25519 riêng của host, KHÔNG phải bearer dùng chung: bearer replay được
+# và không chứng minh được operation/body/tổ chức/thế hệ khoá. Khoá riêng chỉ được
+# openssl đọc từ file 0400, không bao giờ vào argv hay biến môi trường.
+signing_key_file="$runtime_root/secrets/$cell_id/openclaw_watchdog_envelope_key.pem"
 install -d -m 0700 "$operations_dir"
-[ -f "$token_file" ] && [ ! -L "$token_file" ] && [ "$(stat -c %a "$token_file")" = "400" ] || {
-  echo "watchdog token file must be a 0400 regular file" >&2
+[ -f "$signing_key_file" ] && [ ! -L "$signing_key_file" ] && \
+  [ "$(stat -c %a "$signing_key_file")" = "400" ] || {
+  echo "watchdog signing key must be a 0400 regular file" >&2
   exit 1
 }
 
@@ -145,17 +155,56 @@ derive_operation_id() {
     "$(printf '%s' "$digest" | cut -c21-32)"
 }
 
+ENVELOPE_DOMAIN='ihome-openclaw-watchdog-envelope-v1'
+ENVELOPE_AUDIENCE='openclaw-watchdog-edge'
+ENVELOPE_PATH='/functions/v1/openclaw-watchdog'
+
+base64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+# Envelope phải là JCS: khoá sắp xếp tăng dần, không khoảng trắng. Thứ tự dưới đây
+# ĐÃ sắp xếp — đổi tên trường thì phải sắp lại, nếu không Edge tính chữ ký khác.
+build_envelope() {
+  printf '{"audience":"%s","bodySha256":"%s","keyGeneration":%s,"method":"POST","nonce":"%s","operation":"host.guard","organizationId":"%s","path":"%s","timestamp":%s,"version":1}' \
+    "$ENVELOPE_AUDIENCE" "$1" "$key_generation" "$2" "$organization_id" "$ENVELOPE_PATH" "$3"
+}
+
+# Nonce PHẢI mới mỗi lần gửi (kể cả khi post lại): nonce lặp bị Edge từ chối như
+# replay nên lần thử lại sẽ không bao giờ vào được. Tính bất biến của tác động do
+# operation_id tất định đảm nhiệm, không phải nonce.
 post_guard() {
   guard_state=$1
   fingerprint=$2
-  token=$(sed -n '1p' "$token_file")
-  [ "$(wc -l < "$token_file")" -eq 1 ] && [ "${#token}" -ge 32 ] && [ "${#token}" -le 512 ] || exit 1
-  case "$token" in *[!0-9A-Za-z._~-]*) echo "watchdog token format is invalid" >&2; exit 1 ;; esac
   operation_id=$(derive_operation_id "$guard_state" "$fingerprint" "$trip_since")
   payload=$(printf '%s' "{\"version\":1,\"operation\":\"HOST_GUARD\",\"organizationId\":\"$organization_id\",\"operationId\":\"$operation_id\",\"observedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"cellId\":\"$cell_id\",\"state\":\"$guard_state\",\"fingerprint\":\"$fingerprint\",\"controls\":[\"PAUSE_OUTBOUND_AI_MEDIA\"],\"contentFreeMetrics\":{\"ramPercent\":$ram_percent,\"swapPercent\":$swap_percent,\"loadOne\":$load_one,\"rootFreePercent\":$root_free_percent,\"rootFreeGiB\":$root_free_gib,\"routerP95RegressionPercent\":$router_p95_regression,\"routerErrorRatePercent\":$router_error_rate}}")
-  printf 'header = "Authorization: Bearer %s"\nheader = "Content-Type: application/json"\n' "$token" | \
-    curl --config - --fail --silent --show-error --max-time 10 --retry 2 --retry-all-errors \
+  body_sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -r | cut -d' ' -f1)
+  # KHÔNG dùng `curl --retry`: nó gửi lại y nguyên envelope cũ, mà nonce lặp thì
+  # Edge từ chối như replay -> lần thử lại không bao giờ thành công. Mỗi lần thử
+  # phải ký một envelope mới (nonce + timestamp mới) trên CÙNG payload, nên tác
+  # động vẫn tất định theo operation_id.
+  attempt=1
+  while [ "$attempt" -le 3 ]; do
+    nonce=$(cat /proc/sys/kernel/random/uuid)
+    envelope=$(build_envelope "$body_sha256" "$nonce" "$(date -u +%s)")
+    # Preimage có byte NUL nên KHÔNG dùng command substitution (nuốt NUL), và Ed25519
+    # là thuật toán one-shot nên `openssl pkeyutl -rawin` đòi đầu vào SEEK được —
+    # đọc từ pipe sẽ chết "unable to determine file size for oneshot operation".
+    # Vì vậy ghi preimage ra file tạm rồi ký bằng -in.
+    preimage_file="$operations_dir/host-guard.preimage.$$"
+    { printf '%s' "$ENVELOPE_DOMAIN"; printf '\000'; printf '%s' "$envelope"; } > "$preimage_file"
+    signature=$(openssl pkeyutl -sign -rawin -inkey "$signing_key_file" -in "$preimage_file" | base64url)
+    rm -f "$preimage_file"
+    envelope_header=$(printf '%s' "$envelope" | base64url)
+    if curl --fail --silent --show-error --max-time 10 \
+      --header 'Content-Type: application/json' \
+      --header "X-OpenClaw-Watchdog-Envelope: $envelope_header" \
+      --header "X-OpenClaw-Watchdog-Signature: $signature" \
       --data-binary "$payload" "$watchdog_url" >/dev/null
+    then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+  done
+  return 1
 }
 
 post_failed=0

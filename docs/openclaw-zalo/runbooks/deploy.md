@@ -15,7 +15,13 @@ the 9Router/CLI management plane.
 
 Configure secret references, never values, for:
 
-- `OPENCLAW_WATCHDOG_SHARED_SECRET`
+- `OPENCLAW_WATCHDOG_ENVELOPE_KEYS_JSON` - Ed25519 **public** key registry keyed by
+  generation. Each entry carries `generation`, `organizationId`, `publicKeySpkiBase64`,
+  `allowedOperations`, `activatesAt`, `retiresAt`, `revokedAt`. No private key ever
+  reaches the Edge. The Worker generation may sign `health.probe`/`health.record`; the
+  cell host generation may sign `host.guard` only, so a compromised host cannot forge
+  health records. There is no shared bearer secret: a bearer replays forever and proves
+  nothing about operation, body, organization, or key generation.
 - `OPENCLAW_WATCHDOG_PRINCIPAL_JSON` (current maintenance principal/fence metadata)
 - `OPENCLAW_WATCHDOG_PROBE_URL` ending `/openclaw-health/v1/snapshot`
 - `OPENCLAW_WATCHDOG_PROBE_TOKEN`
@@ -30,8 +36,19 @@ provider payload data.
 
 ## Cloudflare Worker
 
-Set `OPENCLAW_WATCHDOG_EDGE_URL`, `OPENCLAW_WATCHDOG_BEARER_TOKEN`, and exact
-`OPENCLAW_WATCHDOG_ORGANIZATION_ID` as Worker secrets. Deploy only after:
+Set `OPENCLAW_WATCHDOG_EDGE_URL`, `OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64`,
+`OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION`, and exact
+`OPENCLAW_WATCHDOG_ORGANIZATION_ID` as Worker secrets. The signing key is the Ed25519
+private key whose public half is registered in `OPENCLAW_WATCHDOG_ENVELOPE_KEYS_JSON`
+under the same generation; it is imported non-extractable and never logged.
+
+```bash
+openssl genpkey -algorithm ed25519 -out worker-<generation>.pem
+openssl pkey -in worker-<generation>.pem -outform DER | base64 -w0   # Worker secret
+openssl pkey -in worker-<generation>.pem -pubout -outform DER | base64 -w0  # registry
+```
+
+Deploy only after:
 
 ```bash
 npm --prefix infra/openclaw-zalo-watchdog ci
@@ -47,7 +64,11 @@ after 90 seconds, and an availability incident opens after three consecutive fai
 
 Install only under the rootless runner. `/srv/openclaw-runtime/host-guard.env` contains
 only `OPENCLAW_HOST_GUARD_RUNTIME_ENV=/srv/openclaw-runtime/cells/<cell>/runtime.env`.
-Provision the runner-owned `0400` watchdog token file outside Git.
+The cell `runtime.env` must declare `OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION` exactly
+once alongside `OPENCLAW_CELL_ID`, `OPENCLAW_ORGANIZATION_ID`, and
+`OPENCLAW_WATCHDOG_EDGE_URL`. Provision the runner-owned `0400` Ed25519 private key at
+`/srv/openclaw-runtime/secrets/<cell>/openclaw_watchdog_envelope_key.pem` outside Git;
+register only its public half, restricted to `host.guard`.
 
 ```bash
 systemctl --user daemon-reload
