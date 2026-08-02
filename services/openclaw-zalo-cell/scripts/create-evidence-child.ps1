@@ -1269,7 +1269,7 @@ try {
   if ($parentFields.Count -ne 2 -or $parentFields[1] -ne $ReviewedTree) {
     throw 'E must have exactly one parent and it must be ReviewedTree'
   }
-  if (((Invoke-Git @('-C', $sourceRoot, 'rev-parse', "$E^") -join "`n").Trim()) -ne $ReviewedTree) {
+  if (((Invoke-Git @('-C', $sourceRoot, 'rev-parse', "$E^")) -join "`n").Trim() -ne $ReviewedTree) {
     throw 'E is not a direct child of the reviewed tree'
   }
   $committedRawDiff = @(Invoke-Git @('-C', $sourceRoot, 'diff-tree', '--raw', '--no-renames', '--no-commit-id', '-r', $E))
@@ -1377,7 +1377,7 @@ try {
   $indexAdvanced = $true
   $evidenceMaterializationAttempted = $true
   Write-RegularFileBytesNoFollow -Path $fastForwardedEvidence -Bytes $committedEvidenceBlob.Bytes -Label 'fast-forwarded evidence'
-  if (((Invoke-Git @('-C', $sourceRoot, 'rev-parse', 'HEAD') -join "`n").Trim()) -ne $E) {
+  if (((Invoke-Git @('-C', $sourceRoot, 'rev-parse', 'HEAD')) -join "`n").Trim() -ne $E) {
     throw 'Source worktree did not materialize evidence-only E'
   }
   Assert-SourceWorktreeState -ExpectedHead $E -Context 'after E fast-forward'

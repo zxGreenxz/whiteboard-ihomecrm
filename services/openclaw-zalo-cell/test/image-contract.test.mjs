@@ -4751,3 +4751,33 @@ test("schema const compares arrays and objects structurally, not by reference", 
     assert.throws(() => validateJsonSchema(mutated, runtimeConfig), /const/i);
   }
 });
+
+test("reviewed PowerShell never lets an operator bind as a native helper parameter", async () => {
+  // PowerShell phân giải `Invoke-Git @(...) -join "x"` thành THAM SỐ -join của
+  // Invoke-Git, không phải toán tử: lỗi chỉ nổ lúc CHẠY ("A parameter cannot be
+  // found that matches parameter name 'join'"), parser không bắt được. Đã làm hỏng
+  // bước tạo E19 ở CI run 30743279449. Lời gọi phải nằm trong ngoặc riêng.
+  const operators = ["join", "split", "replace", "match", "eq", "ne", "contains"];
+  for (const script of [
+    "scripts/create-evidence-child.ps1",
+    "scripts/run-reviewed-task2.ps1",
+    "scripts/build-reproducible-image.ps1",
+  ]) {
+    const source = await readCell(script);
+    for (const [index, line] of source.split(/\r?\n/).entries()) {
+      for (const operator of operators) {
+        // Bắt `<helper> @(...)` hoặc `<helper> ...` theo ngay bởi ` -operator`
+        // mà KHÔNG có `)` đóng lời gọi ngay trước đó.
+        const pattern = new RegExp(
+          String.raw`(Invoke-Git|Invoke-NativeChecked|Invoke-QualificationGit)\s+@\([^)]*\)\s+-${operator}\b`,
+          "u",
+        );
+        assert.equal(
+          pattern.test(line),
+          false,
+          `${script}:${index + 1} lets -${operator} bind as a parameter: ${line.trim()}`,
+        );
+      }
+    }
+  }
+});
