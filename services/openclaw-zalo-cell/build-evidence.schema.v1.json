@@ -522,6 +522,36 @@
         "mtime": { "type": "integer", "const": 1785062400 }
       }
     },
+    "mergedRuntimeRootfsRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "uid", "gid", "size", "sha256", "mtime"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^.+$" },
+        "type": { "type": "string", "enum": ["file", "directory"] },
+        "mode": { "type": "string", "enum": ["0555", "0644", "0700", "0755"] },
+        "uid": { "type": "integer", "enum": [0, 1000] },
+        "gid": { "type": "integer", "enum": [0, 1000] },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "mtime": { "type": "integer", "enum": [1785062400, 1779387206, 1783950995] }
+      }
+    },
+    "entrypointRuntimeRootfsRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "mode", "uid", "gid", "size", "sha256", "mtime"],
+      "properties": {
+        "path": { "type": "string", "const": "opt/openclaw-cell/entrypoint.sh" },
+        "type": { "type": "string", "const": "file" },
+        "mode": { "type": "string", "const": "0555" },
+        "uid": { "type": "integer", "const": 1000 },
+        "gid": { "type": "integer", "const": 1000 },
+        "size": { "type": "integer" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "mtime": { "type": "integer", "const": 1785062400 }
+      }
+    },
     "ociRuntimeConfig": {
       "type": "object",
       "additionalProperties": false,
@@ -615,7 +645,7 @@
         "records": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/runtimeRootfsRecord" }
+          "items": { "$ref": "#/$defs/mergedRuntimeRootfsRecord" }
         },
         "records_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "fork_records": {
@@ -630,7 +660,7 @@
           "items": { "$ref": "#/$defs/runtimeRootfsRecord" }
         },
         "config_record": { "$ref": "#/$defs/runtimeRootfsRecord" },
-        "entrypoint_record": { "$ref": "#/$defs/runtimeRootfsRecord" }
+        "entrypoint_record": { "$ref": "#/$defs/entrypointRuntimeRootfsRecord" }
       }
     },
     "gitBlobRecord": {

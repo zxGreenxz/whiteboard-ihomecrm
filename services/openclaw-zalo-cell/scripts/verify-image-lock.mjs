@@ -103,6 +103,18 @@ const BASE_AMD64_LAYER_DIGESTS = [
   "sha256:b597d7a31e9105eccc87e346b2823a4ffc8cb878229294368feaec452875414f",
 ];
 const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = 6;
+// BuildKit `rewrite-timestamp` chỉ KÉO LÙI các mtime mới hơn SOURCE_DATE_EPOCH.
+// Thư mục tổ tiên đến từ BASE_IMAGE mà build không ghi vào (không tạo/xoá entry
+// con trực tiếp) giữ nguyên mtime đã nướng sẵn trong base digest, nên chúng
+// KHÔNG bằng epoch. Các giá trị dưới đây là hằng số của base image đã ghim
+// (`ghcr.io/openclaw/openclaw:2026.7.1@sha256:165b4992…`), quan sát giống hệt
+// nhau ở cả fork A lẫn fork B. Ghim đúng từng giá trị là siết chặt chứ không
+// phải nới: đổi base digest hoặc chèn thay đổi vào `home`/`home/node` đều làm
+// qualifier fail ngay.
+const PINNED_BASE_ROOTFS_MTIMES = Object.freeze({
+  home: 1779387206,
+  "home/node": 1783950995,
+});
 const BASE_AMD64_DIFF_IDS = [
   "sha256:b2008ac19409fa6fee4b52596271400498aebd0be04dffac5351bd1dcf230f2a",
   "sha256:1a49327bff76fa2fc2d3c6a0747073c7ccbf85c3215145b847493eae4665ca1c",
@@ -3137,6 +3149,19 @@ export function expectedStockRuntimeRecords({ tarballEntries, sourceDateEpoch })
       mtime: epoch,
     });
   }
+  // Ba thư mục tổ tiên nằm SẴN trong base image đã pin: layer delta chỉ chép
+  // lại metadata gốc của chúng (COPY vào .openclaw làm mtime của .openclaw bị
+  // clamp về epoch, còn home/home/node giữ nguyên mtime nướng trong base digest).
+  const pinnedStockAncestors = {
+    home: { mode: "0755", uid: 0, gid: 0, mtime: PINNED_BASE_ROOTFS_MTIMES.home },
+    "home/node": { mode: "0755", uid: 1000, gid: 1000, mtime: PINNED_BASE_ROOTFS_MTIMES["home/node"] },
+    "home/node/.openclaw": { mode: "0700", uid: 1000, gid: 1000, mtime: epoch },
+  };
+  for (const [path, pinned] of Object.entries(pinnedStockAncestors)) {
+    const entry = expected.get(path);
+    if (!entry) throw new Error(`pinned stock ancestor is missing: ${path}`);
+    Object.assign(entry, pinned);
+  }
   return [...expected.values()].sort((left, right) => compareUtf8(left.path, right.path));
 }
 
@@ -3358,10 +3383,13 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
   });
   const entrypointInput = lock.inputs.find(({ path }) => path === "scripts/entrypoint.sh");
   if (!entrypointInput) throw new Error("runtime entrypoint input is missing");
+  if (entrypointInput.mode !== "100755") throw new Error("runtime entrypoint input must be executable");
   expected.set(entrypointPath, {
     path: entrypointInput.path,
     type: "file",
-    mode: entrypointInput.mode === "100755" ? "0755" : "0644",
+    // Dockerfile (input đã pin trong image-lock) COPY entrypoint với --chmod=0555,
+    // nên mode trong layer tar là 0555 chứ không phải quyền git 100755→0755.
+    mode: "0555",
     uid: 1000,
     gid: 1000,
     size: entrypointInput.size,
@@ -3392,10 +3420,10 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
     });
   }
   const pinnedBaseAncestors = new Map([
-    ["home", { mode: "0755", uid: 0, gid: 0 }],
-    ["home/node", { mode: "0755", uid: 1000, gid: 1000 }],
-    ["home/node/.openclaw", { mode: "0700", uid: 1000, gid: 1000 }],
-    ["opt", { mode: "0755", uid: 0, gid: 0 }],
+    ["home", { mode: "0755", uid: 0, gid: 0, mtime: PINNED_BASE_ROOTFS_MTIMES.home }],
+    ["home/node", { mode: "0755", uid: 1000, gid: 1000, mtime: PINNED_BASE_ROOTFS_MTIMES["home/node"] }],
+    ["home/node/.openclaw", { mode: "0700", uid: 1000, gid: 1000, mtime: epoch }],
+    ["opt", { mode: "0755", uid: 0, gid: 0, mtime: epoch }],
   ]);
   const actual = new Map();
   const collisionKeys = new Set();
@@ -3414,7 +3442,7 @@ export function verifyRuntimeDeltaRecords({ fork, lock, records }) {
       if (
         record.type !== "directory" || record.mode !== pinned.mode ||
         record.uid !== pinned.uid || record.gid !== pinned.gid ||
-        record.size !== 0 || record.sha256 !== emptySha256 || record.mtime !== epoch
+        record.size !== 0 || record.sha256 !== emptySha256 || record.mtime !== pinned.mtime
       ) {
         throw new Error(`pinned base ancestor rootfs mismatch: ${record.path}`);
       }

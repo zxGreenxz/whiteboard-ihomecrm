@@ -468,7 +468,22 @@ test("runtime delta evidence count matches every final-image COPY layer", async 
     rootfsSchema.properties.entrypoint_path.const,
     "opt/openclaw-cell/entrypoint.sh",
   );
-  assert.equal(rootfsSchema.properties.entrypoint_record.$ref, "#/$defs/runtimeRootfsRecord");
+  assert.equal(
+    rootfsSchema.properties.entrypoint_record.$ref,
+    "#/$defs/entrypointRuntimeRootfsRecord",
+  );
+  const entrypointRecordSchema = schema.$defs.entrypointRuntimeRootfsRecord;
+  assert.equal(entrypointRecordSchema.properties.path.const, "opt/openclaw-cell/entrypoint.sh");
+  assert.equal(entrypointRecordSchema.properties.mode.const, "0555");
+  assert.equal(rootfsSchema.properties.records.items.$ref, "#/$defs/mergedRuntimeRootfsRecord");
+  assert.deepEqual(
+    schema.$defs.mergedRuntimeRootfsRecord.properties.mtime.enum,
+    [1785062400, 1779387206, 1783950995],
+  );
+  assert.deepEqual(
+    schema.$defs.mergedRuntimeRootfsRecord.properties.mode.enum,
+    ["0555", "0644", "0700", "0755"],
+  );
   assert.match(
     verifier,
     new RegExp(`const REVIEWED_RUNTIME_DELTA_LAYER_COUNT = ${runtimeCopyCount};`),
@@ -3942,11 +3957,21 @@ test("runtime delta requires the exact installed fork, session closure, and conf
     ...entrypoint,
     path: "opt/openclaw-cell/entrypoint.sh",
     type: "file",
-    mode: entrypoint.mode === "100755" ? "0755" : "0644",
+    // Dockerfile COPY --chmod=0555: layer tar mang 0555, không phải git 0755.
+    mode: "0555",
     uid: 1000,
     gid: 1000,
     mtime: epoch,
   });
+  // Metadata tổ tiên đến từ base image đã pin — giá trị THẬT quan sát từ layer
+  // OCI của CI (run 30727123514), không phải epoch cho home/home/node.
+  const pinnedBaseAncestorRecords = [
+    { path: "home", type: "directory", mode: "0755", uid: 0, gid: 0, size: 0, sha256: sha256(Buffer.alloc(0)), mtime: 1779387206 },
+    { path: "home/node", type: "directory", mode: "0755", uid: 1000, gid: 1000, size: 0, sha256: sha256(Buffer.alloc(0)), mtime: 1783950995 },
+    { path: "home/node/.openclaw", type: "directory", mode: "0700", uid: 1000, gid: 1000, size: 0, sha256: sha256(Buffer.alloc(0)), mtime: epoch },
+    { path: "opt", type: "directory", mode: "0755", uid: 0, gid: 0, size: 0, sha256: sha256(Buffer.alloc(0)), mtime: epoch },
+  ];
+  records.push(...pinnedBaseAncestorRecords);
 
   const delta = verifyRuntimeDeltaRecords({ fork, lock, records });
   assert.equal(delta.records.length, records.length);
@@ -4039,6 +4064,100 @@ test("runtime delta requires the exact installed fork, session closure, and conf
       }),
     /ancestor.*mismatch|missing.*ancestor/i,
   );
+  // Hồi quy blocker E19 "pinned base ancestor rootfs mismatch: home": mtime của
+  // home/home/node là hằng số base image, KHÔNG được ép về epoch, và ngược lại
+  // .openclaw/opt phải đúng epoch — mọi giá trị khác đều bị bác.
+  for (const mutation of [
+    { path: "home", patch: { mtime: epoch } },
+    { path: "home", patch: { uid: 1000, gid: 1000 } },
+    { path: "home/node", patch: { mtime: epoch } },
+    { path: "home/node", patch: { mtime: 1783950996 } },
+    { path: "home/node/.openclaw", patch: { mtime: 1779387206 } },
+    { path: "home/node/.openclaw", patch: { mode: "0755" } },
+    { path: "opt", patch: { mtime: 1779387206 } },
+  ]) {
+    assert.throws(
+      () =>
+        verifyRuntimeDeltaRecords({
+          fork,
+          lock,
+          records: records.map((entry) =>
+            entry.path === mutation.path ? { ...entry, ...mutation.patch } : entry,
+          ),
+        }),
+      /pinned base ancestor rootfs mismatch/i,
+      `mutation ${mutation.path} ${JSON.stringify(mutation.patch)}`,
+    );
+  }
+  // Schema evidence: records hợp nhất chứa mtime base thật phải qua, còn mtime
+  // lạ (không thuộc bộ pin) phải bị schema bác.
+  const schemaForMerged = JSON.parse(await readCell("build-evidence.schema.v1.json"));
+  const mergedDef = {
+    ...schemaForMerged.$defs.mergedRuntimeRootfsRecord,
+    $defs: schemaForMerged.$defs,
+  };
+  for (const record of delta.records) {
+    assert.doesNotThrow(() => validateJsonSchema(record, mergedDef), record.path);
+  }
+  assert.throws(() =>
+    validateJsonSchema(
+      { ...delta.records.find(({ path }) => path === "home"), mtime: 1779387207 },
+      mergedDef,
+    ),
+  );
+  assert.throws(() =>
+    validateJsonSchema(
+      { ...delta.entrypoint_record, mode: "0500" },
+      mergedDef,
+    ),
+  );
+});
+
+test("stock runtime expectations pin the reviewed base ancestors and probe manifest", async () => {
+  const { expectedStockRuntimeRecords } = await loadScript("scripts/verify-image-lock.mjs");
+  const lock = JSON.parse(await readCell("image-lock.json"));
+  const entries = [
+    { path: "package/package.json", bytes: Buffer.from('{"name":"@openclaw/zalouser","version":"2026.7.1"}\n', "utf8") },
+    { path: "package/dist/index.js", bytes: Buffer.from("export {};\n", "utf8") },
+  ];
+  const expected = expectedStockRuntimeRecords({
+    tarballEntries: entries,
+    sourceDateEpoch: lock.source_date_epoch,
+  });
+  const byPath = new Map(expected.map((record) => [record.path, record]));
+  assert.deepEqual(byPath.get("home"), {
+    path: "home",
+    type: "directory",
+    mode: "0755",
+    uid: 0,
+    gid: 0,
+    size: 0,
+    sha256: sha256(Buffer.alloc(0)),
+    mtime: 1779387206,
+  });
+  assert.deepEqual(byPath.get("home/node"), {
+    path: "home/node",
+    type: "directory",
+    mode: "0755",
+    uid: 1000,
+    gid: 1000,
+    size: 0,
+    sha256: sha256(Buffer.alloc(0)),
+    mtime: 1783950995,
+  });
+  assert.equal(byPath.get("home/node/.openclaw").mode, "0700");
+  assert.equal(byPath.get("home/node/.openclaw").mtime, Number(lock.source_date_epoch));
+  assert.equal(
+    byPath.get("home/node/.openclaw/npm/projects/zalouser").mtime,
+    Number(lock.source_date_epoch),
+  );
+  const manifest = byPath.get("home/node/.openclaw/npm/projects/zalouser/package.json");
+  assert.equal(manifest.mtime, Number(lock.source_date_epoch));
+  assert.equal(manifest.mode, "0644");
+  const paths = expected.map(({ path }) => path);
+  assert.deepEqual(paths, [...paths].sort((left, right) =>
+    Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+  ));
 });
 
 test("OCI runtime config is exact and cannot fall back to root or a different startup command", async () => {
