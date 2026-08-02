@@ -52,9 +52,13 @@ restore_end_epoch=$(epoch "$restore_completed_at")
 drill_started_epoch=$(date +%s)
 rpo_seconds=$((drill_started_epoch - backup_epoch))
 [ "$rpo_seconds" -ge 0 ] || rpo_seconds=0
-rto_seconds=$((restore_end_epoch - restore_start_epoch))
+# RPO là độ tươi của bản sao lưu tại thời điểm diễn tập nên đo được ngay.
 [ "$rpo_seconds" -le 900 ] || { echo "canonical Supabase RPO exceeds 15 minutes" >&2; exit 1; }
-[ "$rto_seconds" -le 14400 ] || { echo "canonical Supabase RTO exceeds 4 hours" >&2; exit 1; }
+# RTO KHÔNG được lấy từ mốc thời gian do caller khai: trước đây rto_seconds tính
+# từ --restore-started-at/--restore-completed-at và enforce TRƯỚC khi restore chạy,
+# nên một lần restore mất hơn 4 giờ vẫn sinh ra evidence PASS. Giờ RTO đo bằng
+# đồng hồ thật quanh chính lần restore và chỉ enforce SAU khi restore kết thúc.
+declared_rto_seconds=$((restore_end_epoch - restore_start_epoch))
 
 cell_id=$(sed -n 's/^OPENCLAW_CELL_ID=//p' "$runtime_env")
 organization_id=$(sed -n 's/^OPENCLAW_ORGANIZATION_ID=//p' "$runtime_env")
@@ -68,9 +72,18 @@ run_adapter() {
 }
 
 # Restore a test copy and prove canonical DB freshness before any production
-# auto/proactive/group mode can be approved.
+# auto/proactive/group mode can be approved. RTO thật = đồng hồ bao quanh đúng
+# lần restore này, không phải con số caller khai.
+measured_restore_start=$(date +%s)
 run_adapter supabase-restore-test --backup-observed-at "$backup_observed_at" \
   --restore-started-at "$restore_started_at" --restore-completed-at "$restore_completed_at"
+measured_restore_end=$(date +%s)
+rto_seconds=$((measured_restore_end - measured_restore_start))
+[ "$rto_seconds" -ge 0 ] || rto_seconds=0
+[ "$rto_seconds" -le 14400 ] || {
+  echo "measured canonical Supabase RTO exceeds 4 hours" >&2
+  exit 1
+}
 run_adapter supabase-verify-canonical --maximum-rpo-seconds 900 --maximum-rto-seconds 14400
 
 # R2 deletion is simulated inside the exact seven-day tombstone grace; the
@@ -115,7 +128,7 @@ evidence_dir=$(dirname -- "$evidence_file")
 install -d -m 0700 "$evidence_dir"
 tmp="$evidence_file.tmp.$$"
 umask 077
-printf '%s\n' "{\"version\":1,\"drillOrganizationId\":\"$organization_id\",\"cellId\":\"$cell_id\",\"completedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"actualRpoSeconds\":$rpo_seconds,\"actualRtoSeconds\":$rto_seconds,\"rpoGateSeconds\":900,\"rtoGateSeconds\":14400,\"r2GraceSeconds\":604800,\"r2RestoreVerified\":true,\"workloadTokenAuditKeysRotated\":true,\"sessionRecoveryStrategy\":\"$session_strategy\",\"plaintextSessionSnapshotFound\":false}" > "$tmp"
+printf '%s\n' "{\"version\":1,\"drillOrganizationId\":\"$organization_id\",\"cellId\":\"$cell_id\",\"completedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\",\"actualRpoSeconds\":$rpo_seconds,\"actualRtoSeconds\":$rto_seconds,\"rtoMeasurement\":\"drill-clock\",\"declaredRtoSeconds\":$declared_rto_seconds,\"rpoGateSeconds\":900,\"rtoGateSeconds\":14400,\"r2GraceSeconds\":604800,\"r2RestoreVerified\":true,\"workloadTokenAuditKeysRotated\":true,\"sessionRecoveryStrategy\":\"$session_strategy\",\"plaintextSessionSnapshotFound\":false}" > "$tmp"
 chmod 0600 "$tmp"
 mv -f "$tmp" "$evidence_file"
-echo "restore drill passed: RPO ${rpo_seconds}s, RTO ${rto_seconds}s"
+echo "restore drill passed: RPO ${rpo_seconds}s, measured RTO ${rto_seconds}s (declared ${declared_rto_seconds}s)"
