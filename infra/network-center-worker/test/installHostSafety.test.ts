@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -709,7 +710,12 @@ assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
       expect(result.status, `${label} was accepted`).not.toBe(0);
       expect(result.stderr, label).toMatch(/overlap|claimed by two peers/i);
     }
-  });
+    // Timeout, not assertions, relaxed. This case spawns 8 bash harnesses and the
+    // retired-peer guard adds one sha256sum per peer, measured at ~38 ms a spawn
+    // on Windows (16 spawns = 604 ms) — enough to push an already-slow case past
+    // the 5 s default under a 23-file parallel run. Production pays it once per
+    // install for at most 15 peers. Every assertion above is unchanged.
+  }, 20_000);
 
   it("refuses an AllowedIPs entry it cannot read as an IP network", () => {
     for (const allowed of ["10.77.0.999/32", "10.77.0.2/33", "10.77.0.2/-1", "not-an-address", "fd00::/129", "fd00:::1/64", "10.77.0.2/x"]) {
@@ -776,6 +782,104 @@ merge_wg0_configuration "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION" 
 `);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/overlap/i);
+  });
+
+  // A peer whose PRIVATE half has left the router must never be authorised
+  // again, and two supported, individually-correct behaviours combine into a
+  // revival path for exactly that:
+  //   * onboarding merges peers ADDITIVELY, so a stale generated wg0.conf still
+  //     naming the old key silently re-adds it on the next install run;
+  //   * every wg0 write is backed up first, so a pre-rotation .bak restored by
+  //     hand puts the retired peer straight back.
+  // Both funnel through the merge, so the merge is where the refusal lives.
+  const RETIRED_PEER = `${"R".repeat(43)}=`;
+  const RETIRED_DIGEST = createHash("sha256").update(RETIRED_PEER).digest("hex");
+  /** Swaps the production retirement list for a fixture one, list mechanism unchanged. */
+  const withFixtureRetirement = `retired_wg_peer_digests='${RETIRED_DIGEST} fixture retirement'\n`;
+
+  it("refuses an incoming wg0 source that would re-authorise a retired peer", () => {
+    const { result } = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-01", key: RETIRED_PEER, allowed: "10.77.0.2/32" }]),
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.3/32" }]),
+    )}${withFixtureRetirement}
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+`);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/RETIRED/);
+    expect(result.stderr).toContain(RETIRED_DIGEST);
+    expect(result.stderr).toMatch(/fixture retirement/);
+  });
+
+  it("refuses a destination that still carries a retired peer, and names the way out", () => {
+    const { result } = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.3/32" }]),
+      wgConfig([{ identity: "building-01", key: RETIRED_PEER, allowed: "10.77.0.2/32" }]),
+    )}${withFixtureRetirement}
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+`);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(RETIRED_DIGEST);
+    expect(result.stderr).toMatch(/--remove-peer/);
+  });
+
+  it("still lets an operator retire the peer explicitly, which is the remediation", () => {
+    // The refusal must not become a deadlock: --remove-peer is the ONLY way a
+    // peer leaves wg0, so blocking it would make a carried retired peer
+    // permanently un-removable by the supported path.
+    const { result } = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.3/32" }]),
+      wgConfig([{ identity: "building-01", key: RETIRED_PEER, allowed: "10.77.0.2/32" }]),
+    )}${withFixtureRetirement}
+add_wg0_peer_removal '${RETIRED_PEER}'
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+merge_wg0_configuration "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION" "$NETWORK_CENTER_ROOT/merged.conf"
+wg_peer_index "$NETWORK_CENTER_ROOT/merged.conf"
+`);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim().split("\n")).toEqual([`${PEER_TWO}\t10.77.0.3/32`]);
+  });
+
+  it("refuses a retired peer on the write path even if a preflight was skipped", () => {
+    const { result } = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-01", key: RETIRED_PEER, allowed: "10.77.0.2/32" }]),
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.3/32" }]),
+    )}${withFixtureRetirement}
+merge_wg0_configuration "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION" "$NETWORK_CENTER_ROOT/merged.conf"
+`);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(RETIRED_DIGEST);
+  });
+
+  it("identifies a retired peer by digest and never echoes the key itself", () => {
+    // A refusal that quotes the key would put key material into deploy logs and
+    // into every report that pastes them. The digest is enough to identify it.
+    const { result } = runHarness(`${wgFixtures(
+      wgConfig([{ identity: "building-01", key: RETIRED_PEER, allowed: "10.77.0.2/32" }]),
+      wgConfig([{ identity: "building-02", key: PEER_TWO, allowed: "10.77.0.3/32" }]),
+    )}${withFixtureRetirement}
+assert_wg0_merge_is_safe "$NETWORK_CENTER_ROOT/incoming.conf" "$WG0_DESTINATION"
+`);
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).not.toContain(RETIRED_PEER);
+  });
+
+  it("pins the peers this deployment has actually retired", () => {
+    // The mechanism is tested above with a fixture; this is the DATA half. Both
+    // entries are sha256 of a WireGuard PUBLIC key -- safe to publish, and all
+    // the comparison needs. Entries are only ever added, never removed: nothing
+    // later un-knows that a private half was exposed.
+    const source = readFileSync(installHost, "utf8");
+    for (const digest of [
+      // Demo router's pre-rotation key: its private half was printed to a
+      // console on 2026-08-03. The router minted a replacement itself.
+      "8acf018116fd56b0b3e79d46d5b5f90e51ab5f6d5f74c3af5fbf78eb687df04b",
+      // The superseded "reserved" placeholder keypair: it was generated off the
+      // router, so its private half exists as a file rather than only inside
+      // the hardware.
+      "0485bff6e5b7238abcbcc0dec418ba3be9950f7b1cf3641a07a90df826b67c3d",
+    ]) {
+      expect({ digest, listed: source.includes(digest) }).toEqual({ digest, listed: true });
+    }
   });
 
   it("reports every peer it retains so an omitted building is never a silent keep", () => {

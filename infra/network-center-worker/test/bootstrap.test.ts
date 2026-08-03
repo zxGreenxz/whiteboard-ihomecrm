@@ -412,6 +412,55 @@ describe("WireGuard key material", () => {
   // i.e. the tunnel's private key is reachable only through a submenu the worker
   // never issues, so `sensitive` costs the overlay its key and buys nothing.
   // -------------------------------------------------------------------------
+  // MEASURED on the demo hEX, RouterOS 7.20.8, 2026-08-03, and reproduced on a
+  // throwaway group so it is not specific to the managed one:
+  //
+  //   add policy=ssh,read               -> ssh;read;!ftp;!reboot;!write;!policy;…
+  //   set policy=write                  -> ssh;read;write;…      (grants write, touches nothing else)
+  //   set policy=!ssh                   -> read;write;!ssh;…     (denies ssh, touches nothing else)
+  //
+  // `set policy=<list>` applies the entries it NAMES and leaves every unnamed
+  // policy exactly as it was. Only `add` denies by omission. So a procedure that
+  // narrows an ALREADY-PROVISIONED group with `set policy=<grants>` returns empty
+  // stdout, exits 0, and leaves `sensitive` granted -- the one thing the whole
+  // change exists to remove. It is a silent no-op, and across 15 buildings it
+  // would have reported success while hardening nothing.
+  it("never prescribes the additive `set policy=<grants>` form that leaves sensitive granted", () => {
+    const runbook = readFileSync(
+      resolve(import.meta.dirname, "../docs/DEMO-ROUTER-RUNBOOK.md"),
+      "utf8",
+    );
+    const setCommands = [...runbook.matchAll(/\/user\/group\s+set\b[^\n]*?policy=([^\s\\]+)/gu)];
+    // Source-text checks rot silently when the text they parse is reworded, so
+    // the extraction has to prove it found the section at all.
+    expect(setCommands.length).toBeGreaterThan(0);
+    for (const command of setCommands) {
+      const terms = (command[1] ?? "").split(",");
+      for (const denied of WORKER_GROUP_DENIED_POLICIES) {
+        expect({ denied, grantedByOmission: !terms.includes(`!${denied}`) })
+          .toEqual({ denied, grantedByOmission: false });
+      }
+      for (const granted of WORKER_GROUP_POLICIES) {
+        expect({ granted, named: terms.includes(granted) }).toEqual({ granted, named: true });
+      }
+    }
+
+    // Every `add` form in the runbook must match what the generator actually
+    // emits, or the runbook builds a group the bootstrap preflight then refuses.
+    const addCommands = [...runbook.matchAll(/\/user\/group\s+add\b[^\n]*?policy=([^\s\\]+)/gu)];
+    expect(addCommands.length).toBeGreaterThan(0);
+    for (const command of addCommands) {
+      expect({ policy: command[1] }).toEqual({ policy: WORKER_GROUP_POLICIES.join(",") });
+    }
+
+    // The generated artifacts must never reach for `set` at all: `add` is the
+    // only form that denies by omission, and the templates already use it.
+    for (const [name, content] of Object.entries(generateBootstrap(fixture))) {
+      expect({ name, usesSet: /\/user\/group\s+set\b/u.test(content) })
+        .toEqual({ name, usesSet: false });
+    }
+  });
+
   it("grants the worker group no `sensitive` policy, and asserts it stays that way", () => {
     const bootstrap = generateBootstrap(fixture)["router-bootstrap.rsc"];
 

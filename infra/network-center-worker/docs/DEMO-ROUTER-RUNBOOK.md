@@ -393,7 +393,7 @@ thông báo lỗi của chính RouterOS (`failure: …`), không phải `:error`
 | 01 `wireguard-interface` | interface `wg-ihome-mgmt` (marker `:wireguard`) | có (step 15) |
 | 02 `management-address` | `/ip/address` trên wg (marker `:address`) | có (step 14) |
 | 03 `wireguard-peer` | peer VPS (marker `:peer`) | có (step 13) |
-| 04 `worker-group` | `/user/group network-center-worker`, policy `ssh,ftp,reboot,read,write,test` (KHÔNG `sensitive` — xem 3.3) | **KHÔNG** — group không mang marker nên rollback bỏ qua; gỡ tay: `/user/group remove [find where name="network-center-worker"]` |
+| 04 `worker-group` | `/user/group network-center-worker`, policy `ssh,reboot,read,write` (KHÔNG `sensitive`/`policy`/`ftp`/`test` — xem 3.3) | **KHÔNG** — group không mang marker nên rollback bỏ qua; gỡ tay: `/user/group remove [find where name="network-center-worker"]` |
 | 05 `worker-user` | user `ihome-nc-worker` (comment = marker) | có (step 16) |
 | 06 `worker-ssh-key-clear` | xóa ssh-key cũ của user đó | không cần |
 | 07 `worker-ssh-key-import` | nạp `worker-ssh-key.pub` | có (step 16, xóa cùng user) |
@@ -425,10 +425,11 @@ theo marker và selector rỗng là no-op; các `/ip/service set` thì idempoten
 
 ### 3.3 Quyền của `network-center-worker`: KHÔNG có `sensitive`
 
-`router-bootstrap.rsc` tạo group với đúng sáu policy:
+`router-bootstrap.rsc` tạo group với đúng bốn policy — và vì là `add`, mọi
+policy KHÔNG kể tên (gồm `sensitive`, `policy`, `ftp`, `test`) bị từ chối luôn:
 
 ```routeros
-/user/group add name=network-center-worker policy=ssh,ftp,reboot,read,write,test
+/user/group add name=network-center-worker policy=ssh,reboot,read,write
 ```
 
 **Vì sao bỏ `sensitive`** (đo trên hEX demo, RouterOS 7.20.8, 2026-08-03, phiên
@@ -498,40 +499,69 @@ dòng là một identity tạm tạo mới, có `:put "CHANNEL_OK"` làm control
 lại đúng hai thứ mà việc siết sinh ra để bỏ. Không có điểm cân bằng nào ở giữa,
 nên **binary backup bị loại khỏi worker**, thay bằng text export (mục 9).
 
-### 3.4 Router ĐÃ provision: chuỗi lệnh siết group (CHƯA CHẠY)
+### 3.4 Router ĐÃ provision: chuỗi lệnh siết group
 
-Router demo hiện vẫn mang `sensitive`. Đo chỉ-đọc ngày 2026-08-03:
+Áp dụng cho router đã bootstrap bằng bộ policy CŨ. Trạng thái trước khi siết:
 
 ```text
 policy = ssh;ftp;reboot;read;write;test;sensitive;!local;!telnet;!policy;
          !winbox;!password;!web;!sniff;!api;!romon;!rest-api
 ```
 
-nên preflight mới **cố ý** từ chối cả hai stage với
+nên preflight **cố ý** từ chối cả hai stage với
 `NETWORK_CENTER_GROUP_CONFLICT/group-policy-grants-sensitive` (và bản
 `lockdown-…` tương ứng) cho tới khi group được siết.
 
-> **CHƯA CHẠY LỆNH NÀO DƯỚI ĐÂY.** Router demo là gateway Internet đang sống của
-> máy vận hành. Chạy khi operator quyết định, từ phiên LAN còn mở, và **không**
-> đóng phiên cũ trước khi bước 4 xanh.
+> **ĐÃ CHẠY XONG TRÊN ROUTER DEMO** (2026-08-03): group hiện là
+> `ssh;reboot;read;write` + 13 mục `!…`, worker đọc `private-key` ra `:len` 5
+> (admin vẫn 44), và 4 lần thử tự nâng quyền đều bị `not enough permissions (9)`.
+> Mục này còn ở đây cho **14 toà nhà còn lại**.
+>
+> Router demo là gateway Internet đang sống của máy vận hành. Chạy khi operator
+> quyết định, từ phiên LAN còn mở, và **không** đóng phiên cũ trước khi bước 4
+> xanh.
+
+> **`set policy=` CỘNG DỒN — phải kể tên đủ 13 policy bị TỪ CHỐI.**
+> Đo trên hEX demo (RouterOS 7.20.8, 2026-08-03), lặp lại được trên group nháp:
+>
+> ```text
+> add policy=ssh,read   -> ssh;read;!ftp;!reboot;!write;!policy;…   (add TỪ CHỐI cái không kể tên)
+> set policy=write      -> ssh;read;write;…                        (chỉ CẤP write, không đụng cái khác)
+> set policy=!ssh       -> read;write;!ssh;…                       (chỉ TỪ CHỐI ssh, không đụng cái khác)
+> ```
+>
+> `set policy=<danh sách>` chỉ áp dụng đúng những mục **được kể tên** và giữ
+> nguyên mọi policy không kể tên. Chỉ `add` mới từ chối-bằng-cách-bỏ-sót. Nên
+> bản cũ của mục này (`set policy=ssh,ftp,reboot,read,write,test`) là **no-op
+> âm thầm** trên router đã provision: stdout rỗng, exit 0, và **`sensitive` vẫn
+> còn nguyên** — đúng thứ duy nhất việc siết này sinh ra để gỡ. Lệnh dưới đây
+> kể tên cả 4 policy được cấp lẫn 13 policy bị từ chối, nên kết quả **giống hệt
+> byte** với `add policy=ssh,reboot,read,write` trên router mới bootstrap.
 
 ```routeros
 # 1. Ảnh chụp trước (dán vào evidence)
 :put [:tostr [/user/group get [find where name="network-center-worker"] policy]]
 
-# 2. Siết group — KHÔNG remove/add lại, vì user đang trỏ vào group này
-/user/group set [find where name="network-center-worker"] policy=ssh,ftp,reboot,read,write,test
+# 2. Siết group — KHÔNG remove/add lại, vì user đang trỏ vào group này.
+#    Để NGUYÊN MỘT DÒNG: nối dòng bằng `\` khi dán vào phiên SSH hay bị nuốt.
+/user/group set [find where name="network-center-worker"] policy=ssh,reboot,read,write,!local,!telnet,!ftp,!policy,!test,!winbox,!password,!web,!sniff,!sensitive,!api,!romon,!rest-api
 
-# 3. Đọc lại: phải KHÔNG còn `sensitive` ở dạng cấp
+# 3. Đọc lại: phải KHÔNG còn `sensitive`, `ftp`, `test`, `policy` ở dạng cấp
 :put [:tostr [/user/group get [find where name="network-center-worker"] policy]]
 ```
 
 Kỳ vọng sau bước 3:
 
 ```text
-ssh;ftp;reboot;read;write;test;!local;!telnet;!policy;!winbox;!password;!web;
+ssh;reboot;read;write;!local;!telnet;!ftp;!policy;!test;!winbox;!password;!web;
 !sniff;!sensitive;!api;!romon;!rest-api
 ```
+
+> **Đừng tin stdout rỗng của `set`.** `set` không in gì kể cả khi nó không làm
+> gì. Bước 3 không phải thủ tục cho đẹp: nó là thứ DUY NHẤT chứng minh lệnh có
+> tác dụng. Và phải khẳng định **theo từng policy** (`~ "(^|;)sensitive(;|$)"`),
+> không so cả chuỗi — `:tostr` nối bằng `;` chứ không phải `,`, nên mọi so sánh
+> với chuỗi `,` đều không bao giờ khớp.
 
 **4. Cổng kiểm bắt buộc — chạy bằng credential CỦA WORKER, không phải admin.**
 Đây là chỗ trả lời câu hỏi chưa đo được ở 3.3:

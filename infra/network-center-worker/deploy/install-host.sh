@@ -346,6 +346,69 @@ wg0_peer_removal_requested() {
   printf '%s\n' "$wg0_removed_peers" | grep -Fqx -- "$1"
 }
 
+# Peers that must never be authorised again, identified by sha256 of the base64
+# public key text. Digests, not keys: a digest is safe to log, to diff and to
+# quote in a report, and it is everything the comparison needs.
+#
+# WHY THIS EXISTS. Two behaviours in this file are individually correct and
+# together form a revival path for a credential we deliberately retired:
+#   * the merge below is ADDITIVE, so a stale generated wg0.conf that still names
+#     the old key silently re-adds it on the next install run;
+#   * backup_managed_file() snapshots wg0.conf before every install, so a
+#     pre-rotation .bak restored by hand puts the retired peer straight back.
+# Every wg0 write in this project passes through the merge, so the merge is where
+# the refusal belongs. Restoring a backup by hand still bypasses this script,
+# which is why the retired peer entries in those .bak files were also replaced
+# with an invalid sentinel that wg-quick and wg_peer_index both reject.
+#
+# ONE-WAY LIST: entries are only ever added. Nothing that happens later un-knows
+# that a private half was exposed. Format is `<sha256> <reason>` per line.
+retired_wg_peer_digests="\
+8acf018116fd56b0b3e79d46d5b5f90e51ab5f6d5f74c3af5fbf78eb687df04b demo router pre-rotation key; its private half was printed to a console 2026-08-03 and the router minted a replacement
+0485bff6e5b7238abcbcc0dec418ba3be9950f7b1cf3641a07a90df826b67c3d superseded reserved placeholder minted off-router, so its private half exists as a file rather than only inside the hardware"
+
+# One external process per key and no pipeline: this runs once per peer on every
+# merge, and the obvious `| awk '{print $1}'` form cost enough extra spawns to
+# push an unrelated 8-case suite past its timeout on Windows.
+wg_peer_key_digest() {
+  local digest
+  digest="$(printf '%s' "$1" | sha256sum)"
+  printf '%s' "${digest%% *}"
+}
+
+# Prints the retirement reason and returns 0 when this DIGEST is retired.
+# Pure bash matching, deliberately: the list is short and this is a hot path.
+wg_digest_retirement_reason() {
+  local want="$1" line
+  [[ -n "$retired_wg_peer_digests" ]] || return 1
+  while IFS= read -r line; do
+    if [[ "$line" == "$want "* ]]; then
+      printf '%s' "${line#* }"
+      return 0
+    fi
+  done <<< "$retired_wg_peer_digests"
+  return 1
+}
+
+# Fails closed on every retired peer in a peer index, reporting all of them
+# rather than only the first. A peer the operator has explicitly named with
+# --remove-peer is skipped: that is the remediation, and blocking it would make
+# an already-carried retired peer permanently un-removable by the supported path.
+assert_no_retired_wg0_peers() {
+  local index="$1" key digest reason status=0
+  while IFS=$'\t' read -r key _; do
+    [[ -n "$key" ]] || continue
+    if wg0_peer_removal_requested "$key"; then continue; fi
+    digest="$(wg_peer_key_digest "$key")"
+    if reason="$(wg_digest_retirement_reason "$digest")"; then
+      printf 'wg0 configuration rejected: peer sha256:%s is RETIRED and must never be authorised again (%s)\n' \
+        "$digest" "$reason" >&2
+      status=1
+    fi
+  done <<< "$index"
+  return "$status"
+}
+
 add_wg0_peer_removal() {
   local key="${1:-}"
   [[ "$key" =~ ^[A-Za-z0-9+/]{43}=$ ]] ||
@@ -371,6 +434,10 @@ assert_wg0_merge_is_safe() {
     destination_index="$(wg_peer_index "$destination")" ||
       die "existing wg0 destination is not a usable WireGuard configuration: $destination"
   fi
+  assert_no_retired_wg0_peers "$incoming_index" ||
+    die "refusing a wg0 source that would re-authorise a retired peer; regenerate it from the router's CURRENT public key"
+  assert_no_retired_wg0_peers "$destination_index" ||
+    die "$destination still carries a retired peer; name its exact public key with --remove-peer to drop it"
   while IFS= read -r removal; do
     if [[ -z "$removal" ]]; then continue; fi
     if ! printf '%s\n' "$destination_index" | awk -F'\t' '{ print $1 }' | grep -Fqx -- "$removal"; then
@@ -451,6 +518,10 @@ merge_wg0_configuration_into() {
   } > "$output" || return 1
   wg_peer_index "$output" >/dev/null || return 1
   wg_peer_index "$output" | assert_unique_peer_addresses || return 1
+  # Write-path enforcement, mirroring the overlap guard above: whatever route a
+  # caller took to get here, the file that gets installed cannot carry a peer
+  # whose private half is known to have left the router.
+  assert_no_retired_wg0_peers "$(wg_peer_index "$output")" || return 1
 }
 
 # The fragment must define the managed table and nothing else: no `flush ruleset`,
