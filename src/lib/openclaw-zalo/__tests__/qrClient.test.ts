@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // restates the contract: a schema copied by hand would agree with whatever the
 // client happens to send, which is precisely how the previous two attempts shipped.
 import { qrRequestSchema } from "../../../../supabase/functions/openclaw-qr/schemas";
+import { browserSessionHash } from "../qrClient";
 
 const ORG = "dddd0000-0000-4000-8000-000000000001";
 const ACCOUNT = "dddd1000-0000-4000-8000-00000000000a";
@@ -74,7 +75,14 @@ describe("QR client request bodies, validated by the server's own schema", () =>
         browserNonce: NONCE,
         accessToken: ACCESS_TOKEN,
       }),
-      { version: 1, requestId: "r", result: { version: 1, challenge: null } },
+      // A READY challenge, which is what a live poll actually returns. The server
+      // never answers 200 with `challenge: null` - it turns that into 404
+      // QR_NOT_AVAILABLE - so a fixture using it would be describing a response
+      // that cannot happen.
+      {
+        version: 1, requestId: "r",
+        result: { version: 1, challenge: { challengeId: CHALLENGE, challengeStatus: "READY", issuedAt: "a", expiresAt: "b" } },
+      },
     );
     const parsed = qrRequestSchema.safeParse(body);
     expect(parsed.success, JSON.stringify(parsed)).toBe(true);
@@ -104,7 +112,10 @@ describe("QR client request bodies, validated by the server's own schema", () =>
         organizationId: ORG, challengeId: CHALLENGE,
         browserNonce: NONCE, accessToken: ACCESS_TOKEN,
       }),
-      { version: 1, requestId: "r", result: { version: 1, challenge: null } },
+      {
+        version: 1, requestId: "r",
+        result: { version: 1, challenge: { challengeId: CHALLENGE, challengeStatus: "PENDING", issuedAt: "a", expiresAt: "b" } },
+      },
     );
     expect((body as { version: unknown }).version).toBe(1);
   });
@@ -152,5 +163,24 @@ describe("QR client response reading", () => {
     await expect(pollQrLogin({
       organizationId: ORG, challengeId: CHALLENGE, browserNonce: NONCE, accessToken: ACCESS_TOKEN,
     })).rejects.toThrow(/result/iu);
+  });
+});
+
+describe("session binding", () => {
+  it("hashes what the SERVER re-derives, not something else 64 hex long", async () => {
+    // Round 2 hashed `organizationId:actorId`. That is still 64 hex characters, still
+    // passes the server's isSha256 check, still made every assertion in this file
+    // green - and was rejected with 403 SESSION_BINDING_INVALID on every real call.
+    // The server takes sha256 over UTF-8 of the JWT's `session_id` claim; this
+    // recomputes that independently rather than trusting the implementation.
+    const expected = [...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode("sess-1")),
+    )].map(byte => byte.toString(16).padStart(2, "0")).join("");
+    expect(await browserSessionHash(ACCESS_TOKEN)).toBe(expected);
+  });
+
+  it("refuses a token with no session_id rather than sending a hash of nothing", async () => {
+    const noSession = `x.${btoa(JSON.stringify({ sub: "u1" }))}.y`;
+    await expect(browserSessionHash(noSession)).rejects.toThrow(/session_id/iu);
   });
 });

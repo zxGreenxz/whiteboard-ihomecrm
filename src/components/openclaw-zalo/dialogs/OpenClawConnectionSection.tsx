@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { openClawQueryKeys } from "@/hooks/openclaw-zalo/queryKeys";
 import { useOpenClawRouteContext } from "../OpenClawRouteGuard";
 import { useOpenClawAcknowledgeDisclosure } from "@/hooks/openclaw-zalo/useOpenClawMutations";
 import { qrCountdownSeconds, qrGateState } from "@/lib/openclaw-zalo/connection";
@@ -23,6 +25,15 @@ interface OpenClawConnectionSectionProps {
  * for a retry without tripping the limiter.
  */
 const POLL_INTERVAL_MS = 2_000;
+
+/**
+ * How many consecutive poll failures before one is shown to the operator.
+ *
+ * The first failure after a successful scan is EXPECTED - it is what a completed
+ * login looks like through this endpoint - so reporting it immediately would tell
+ * every successful user that something went wrong.
+ */
+const POLL_FAILURES_BEFORE_REPORTING = 3;
 
 /**
  * Owns the QR lifetime, and it is the only thing that ever holds the image.
@@ -57,7 +68,10 @@ export default function OpenClawConnectionSection({
   // material, the strict select finds nothing, and an error banner lands on top of
   // a QR that actually worked.
   const consuming = useRef(false);
+  // Consecutive poll failures. One is expected on the happy path (see the catch).
+  const pollFailures = useRef(0);
 
+  const queryClient = useQueryClient();
   const acknowledge = useOpenClawAcknowledgeDisclosure(
     selectedOrganizationId, account?.accountId ?? "",
   );
@@ -74,6 +88,18 @@ export default function OpenClawConnectionSection({
   // DIALOG_CLOSED. ROUTE_UNMOUNTED and LOGOUT are covered by this component being
   // torn down, which drops the state with it.
   useEffect(() => { if (!open) clear(); }, [clear, open]);
+
+  // SUCCESSFUL_LOGIN, decided by the ACCOUNT rather than by the challenge.
+  //
+  // The QR endpoint cannot tell us: it answers a completed login with the same
+  // opaque 404 it uses for an expired or revoked code. The account moving to
+  // CONNECTED is the one unambiguous signal, and the poll's catch refetches it.
+  const connected = account?.connectionState === "CONNECTED";
+  useEffect(() => {
+    if (!connected) return;
+    clear();
+    onConnected?.();
+  }, [clear, connected, onConnected]);
 
   useEffect(() => {
     if (challenge === null || account === null) return undefined;
@@ -105,6 +131,7 @@ export default function OpenClawConnectionSection({
             accessToken,
           });
           if (cancelled) return;
+          pollFailures.current = 0;
           const status = result.challenge?.challengeStatus ?? null;
           // A NULL challenge is the success signal: openclaw_poll_qr_login_v1 joins
           // on `connection_state in ('QR_PENDING','CONNECTING')`, so the row stops
@@ -115,15 +142,20 @@ export default function OpenClawConnectionSection({
           // BROWSER fetched the material, so it appears on the very next tick after
           // a successful decrypt. Treating it as terminal wiped the QR about two
           // seconds after it appeared, before anyone could scan it.
-          if (status === null || status === "REVOKED") {
+          // Defensive only: over HTTP this branch is unreachable, because the Edge
+          // function turns a null challenge into 404 QR_NOT_AVAILABLE rather than a
+          // 200 with challenge:null. The real terminal signal is handled in the
+          // catch below. Kept so a future 200-null response is not misread as
+          // "still pending".
+          if (status === null) {
             clear();
-            onConnected?.();
             return;
           }
           setChallenge(previous => (previous === null ? null : { ...previous, status }));
           // READY is the first moment there is anything to decrypt.
           if (status === "READY" && current.pngDataUrl === null && !consuming.current) {
             consuming.current = true;
+            try {
             const consumed = await consumeQrChallenge({
               clientOperationId: crypto.randomUUID(),
               organizationId: selectedOrganizationId,
@@ -132,15 +164,38 @@ export default function OpenClawConnectionSection({
               browserNonce: current.nonce,
               accessToken,
             });
-            if (cancelled) return;
-            setChallenge(previous => (previous === null
-              ? null
-              : { ...previous, pngDataUrl: consumed.qrPngDataUrl }));
+              if (cancelled) return;
+              setChallenge(previous => (previous === null
+                ? null
+                : { ...previous, pngDataUrl: consumed.qrPngDataUrl }));
+            } finally {
+              // Cleared by the tick that SET it. Attached to the whole tick, a later
+              // tick that merely skipped the guard would clear the flag while the
+              // first consume was still in flight, and a third tick would fire a
+              // second consume with a fresh operation id - which idempotency cannot
+              // deduplicate.
+              consuming.current = false;
+            }
           }
         } catch (error) {
-          if (!cancelled) setErrorMessage(messageOf(error));
-        } finally {
-          consuming.current = false;
+          if (cancelled) return;
+          // A poll failure is AMBIGUOUS by design: openclaw-qr collapses expired,
+          // consumed, revoked and never-existed into one 404 QR_NOT_AVAILABLE, and
+          // a successful scan produces exactly that - openclaw_poll_qr_login_v1
+          // joins on connection_state in ('QR_PENDING','CONNECTING') AND on the
+          // connection generation, and finalizing the login moves both.
+          //
+          // So a 404 must not be read as either success or failure. Ask the
+          // authority instead: refetch the account and let the CONNECTED effect
+          // below decide. Only after several consecutive failures, with the account
+          // still not connected, is this reported as an error.
+          pollFailures.current += 1;
+          void queryClient.invalidateQueries({
+            queryKey: openClawQueryKeys.bootstrap(selectedOrganizationId, account.accountId),
+          });
+          if (pollFailures.current >= POLL_FAILURES_BEFORE_REPORTING) {
+            setErrorMessage(await messageOf(error));
+          }
         }
       })();
     }, POLL_INTERVAL_MS);
@@ -179,7 +234,7 @@ export default function OpenClawConnectionSection({
       });
       setNow(new Date().toISOString());
     } catch (error) {
-      setErrorMessage(messageOf(error));
+      setErrorMessage(await messageOf(error));
     } finally {
       setPending(false);
     }
@@ -221,7 +276,40 @@ export default function OpenClawConnectionSection({
   );
 }
 
-function messageOf(error: unknown) {
+/**
+ * What the SERVER refused with, in Vietnamese.
+ *
+ * `supabase.functions.invoke` throws a `FunctionsHttpError` whose `message` is the
+ * constant "Edge Function returned a non-2xx status code" - the same sentence for a
+ * 403 session-binding failure, a 429 rate limit and a 400 bad request. The useful
+ * part is the response body `{error:{code,message}}`, reachable through
+ * `error.context`, so 403/429/404 stop looking identical to the operator.
+ *
+ * Async because reading the body is; callers await it.
+ */
+const REFUSAL_COPY: Record<string, string> = {
+  SESSION_BINDING_INVALID:
+    "Phiên trình duyệt không khớp. Tải lại trang rồi thử lại.",
+  QR_RATE_LIMITED: "Yêu cầu mã quá nhanh. Chờ một chút rồi thử lại.",
+  QR_NOT_AVAILABLE: "Mã này không còn dùng được. Yêu cầu mã mới.",
+  ORIGIN_DENIED: "Tên miền này chưa được cho phép gọi dịch vụ QR.",
+  AUTHENTICATION_REQUIRED: "Phiên đăng nhập đã hết hạn. Đăng nhập lại rồi thử tiếp.",
+  INVALID_REQUEST: "Yêu cầu không hợp lệ. Báo vận hành kèm thời điểm gặp lỗi.",
+};
+
+async function messageOf(error: unknown) {
+  const context = (error as { context?: { json?: () => Promise<unknown> } })?.context;
+  if (typeof context?.json === "function") {
+    try {
+      const body = await context.json() as { error?: { code?: string; message?: string } };
+      const code = body?.error?.code;
+      if (code && code in REFUSAL_COPY) return REFUSAL_COPY[code];
+      if (code) return `Dịch vụ QR từ chối: ${code}`;
+    } catch {
+      // Body already consumed or not JSON; fall through to the generic message.
+    }
+  }
   if (error instanceof Error && error.message) return error.message;
   return "Không lấy được mã QR. Thử lại hoặc báo vận hành.";
 }
+

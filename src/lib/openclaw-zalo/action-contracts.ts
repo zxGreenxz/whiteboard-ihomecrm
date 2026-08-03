@@ -267,31 +267,12 @@ export const takeoverListContract = {
   }).strict(),
 } as const;
 
-export const qrPollContract = {
-  rpcName: "openclaw_poll_qr_login_v1",
-  requestSchema: z.object({
-    ...versionSchema,
-    organizationId: idSchema,
-    challengeId: idSchema,
-    browserNonceHash: hashSchema,
-    authSessionHash: hashSchema,
-  }).strict(),
-  resultSchema: z.object({
-    ...versionSchema,
-    challenge: z.object({
-      challengeId: idSchema,
-      accountId: idSchema,
-      cellId: idSchema,
-      challengeVersion: z.number().int().nonnegative(),
-      challengeStatus: z.enum(["PENDING", "READY", "EXPIRED", "CONSUMED", "REVOKED"]),
-      materialVersion: z.number().int().nonnegative(),
-      issuedAt: timestampSchema,
-      expiresAt: timestampSchema,
-      consumedAt: timestampSchema.nullable(),
-      revokedAt: timestampSchema.nullable(),
-    }).strict().nullable(),
-  }).strict(),
-} as const;
+/*
+ * `qrPollContract` lived here and is gone: polling now goes through the
+ * `openclaw-qr` Edge function, whose request shape is validated by that function's
+ * own schema in src/lib/openclaw-zalo/__tests__/qrClient.test.ts rather than by a
+ * second copy of the contract here.
+ */
 
 export const mediaResolveContract = {
   rpcName: "openclaw_resolve_media_object_v1",
@@ -663,7 +644,6 @@ export const OPENCLAW_ACTION_CONTRACTS = [
   scheduleListContract,
   aiDraftListContract,
   takeoverListContract,
-  qrPollContract,
   mediaResolveContract,
   unknownByAccountContract,
   deadLettersByAccountContract,

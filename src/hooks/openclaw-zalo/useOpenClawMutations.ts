@@ -19,8 +19,6 @@ import { fetchOpenClawUnknownResolution } from "./useOpenClawOperations";
 export type BrowserWriteRpc =
   | "openclaw_acknowledge_disclosure_v1"
   | "openclaw_acknowledge_risk_v1"
-  | "openclaw_begin_qr_login_v1"
-  | "openclaw_consume_qr_challenge_v1"
   | "openclaw_disconnect_account_v1"
   | "openclaw_create_send_intent_v1"
   | "openclaw_takeover_conversation_v1"
@@ -374,49 +372,16 @@ export function useOpenClawAcknowledgeRisk(organizationId: string, accountId: st
   );
 }
 
-const beginQrRequestSchema = z.object({
-  version: z.literal(1), organizationId: idSchema, accountId: idSchema, cellId: idSchema,
-  browserNonceHash: hashSchema, authSessionHash: hashSchema,
-  disclosureVersion: z.number().int().nonnegative(),
-}).strict();
-const beginQrResultSchema = z.object({
-  version: z.literal(1), organizationId: idSchema, accountId: idSchema, cellId: idSchema,
-  challengeId: idSchema, runtimeCommandId: idSchema, issuedAt: z.string().min(1),
-  expiresAt: z.string().min(1), status: z.literal("PENDING"),
-}).strict();
-export type OpenClawBeginQrRequest = z.infer<typeof beginQrRequestSchema>;
-export type OpenClawBeginQrResult = z.infer<typeof beginQrResultSchema>;
-
-export function useOpenClawBeginQrLogin(organizationId: string, accountId: string) {
-  return useOpenClawValidatedMutation(
-    organizationId,
-    accountId,
-    "openclaw_begin_qr_login_v1",
-    beginQrRequestSchema as z.ZodType<OpenClawBeginQrRequest & { organizationId: string }>,
-    beginQrResultSchema,
-  );
-}
-
-const consumeQrRequestSchema = z.object({
-  version: z.literal(1), organizationId: idSchema, challengeId: idSchema,
-  browserNonceHash: hashSchema, authSessionHash: hashSchema,
-}).strict();
-const consumeQrResultSchema = z.object({
-  version: z.literal(1), organizationId: idSchema, challengeId: idSchema,
-  status: z.literal("CONSUMED"), materialVersion: z.number().int().positive(),
-}).strict();
-export type OpenClawConsumeQrRequest = z.infer<typeof consumeQrRequestSchema>;
-export type OpenClawConsumeQrResult = z.infer<typeof consumeQrResultSchema>;
-
-export function useOpenClawConsumeQrChallenge(organizationId: string, accountId: string) {
-  return useOpenClawValidatedMutation(
-    organizationId,
-    accountId,
-    "openclaw_consume_qr_challenge_v1",
-    consumeQrRequestSchema as z.ZodType<OpenClawConsumeQrRequest & { organizationId: string }>,
-    consumeQrResultSchema,
-  );
-}
+/*
+ * The QR login mutations lived here and are gone.
+ *
+ * `openclaw_begin_qr_login_v1` and `openclaw_consume_qr_challenge_v1` are real RPCs,
+ * but the browser must not call them directly: the consume RPC deliberately returns
+ * no ciphertext (and is revoked from `authenticated` anyway), so a client on that
+ * path can never obtain a scannable code. The whole flow goes through the
+ * `openclaw-qr` Edge function via src/lib/openclaw-zalo/qrClient.ts. Leaving these
+ * exported was a live landmine for whoever wired them up next.
+ */
 
 const disconnectRequestSchema = z.object({
   version: z.literal(1), organizationId: idSchema, accountId: idSchema,
@@ -527,10 +492,8 @@ export function useOpenClawMarkConversationRead(organizationId: string, accountI
 
 export function useOpenClawConnectionMutations(organizationId: string, accountId: string) {
   const acknowledgeRisk = useOpenClawAcknowledgeRisk(organizationId, accountId);
-  const beginQrLogin = useOpenClawBeginQrLogin(organizationId, accountId);
-  const consumeQrChallenge = useOpenClawConsumeQrChallenge(organizationId, accountId);
   const disconnectAccount = useOpenClawDisconnectAccount(organizationId, accountId);
-  return { acknowledgeRisk, beginQrLogin, consumeQrChallenge, disconnectAccount };
+  return { acknowledgeRisk, disconnectAccount };
 }
 
 export function useOpenClawHandoffMutations(organizationId: string, accountId: string) {

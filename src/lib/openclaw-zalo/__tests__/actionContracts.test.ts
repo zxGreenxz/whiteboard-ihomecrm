@@ -17,7 +17,6 @@ import {
   legalHoldMutationContracts,
   mediaResolveContract,
   OPENCLAW_ACTION_CONTRACTS,
-  qrPollContract,
   salesGroupListContract,
   scheduleListContract,
   scheduleMutationContracts,
@@ -51,7 +50,6 @@ describe("OpenClaw action contracts", () => {
       // Added by Task 23: takeover ownership was emitted exactly once, to exactly
       // the browser that created it, so a reload showed no takeover at all.
       "openclaw_list_takeovers_v1",
-      "openclaw_poll_qr_login_v1",
       "openclaw_resolve_media_object_v1",
       "openclaw_list_unknown_by_account_v1",
       "openclaw_list_dead_letters_by_account_v1",
@@ -87,7 +85,6 @@ describe("OpenClaw action contracts", () => {
       { contract: automationDryRunContract, request: { version: 1, organizationId: ORG, automationVersionId: ID, sampleInputs: {} } },
       { contract: salesGroupListContract, request: { version: 1, organizationId: ORG, accountId: ACCOUNT, limit: 50 } },
       { contract: scheduleListContract, request: { version: 1, organizationId: ORG, accountId: ACCOUNT, limit: 50 } },
-      { contract: qrPollContract, request: { version: 1, organizationId: ORG, challengeId: ID, browserNonceHash: HASH, authSessionHash: HASH } },
       { contract: mediaResolveContract, request: { version: 1, organizationId: ORG, mediaId: ID } },
       { contract: unknownByAccountContract, request: { version: 1, organizationId: ORG, accountId: ACCOUNT, limit: 50 } },
       { contract: deadLettersByAccountContract, request: { version: 1, organizationId: ORG, accountId: ACCOUNT, limit: 50 } },
@@ -134,7 +131,6 @@ describe("OpenClaw action contracts", () => {
       { contract: automationDryRunContract, result: { version: 1, eligible: true, dryRunHash: HASH, sendCreated: false, reason: "DRY_RUN_ONLY" } },
       { contract: salesGroupListContract, result: { version: 1, limit: 1, items: [{ targetId: ID, groupId: ID_2, displayName: "Sales", memberCount: 3, directoryVersion: 1, directoryRefreshedAt: NOW, targetVersion: 1, isActive: true, isAllowed: null, allowlistVersion: null, directoryExpiresAt: null }] } },
       { contract: scheduleListContract, result: { version: 1, limit: 1, items: [{ scheduleId: ID, automationVersionId: ID_2, targetId: null, campaignId: null, scheduleVersion: 1, status: "PAUSED", timezone: "Asia/Bangkok", localRecurrenceRule: "FREQ=DAILY", nextRunAt: null, missedOccurrencePolicy: "SKIPPED_MISSED", updatedAt: NOW }] } },
-      { contract: qrPollContract, result: { version: 1, challenge: null } },
       { contract: mediaResolveContract, result: { version: 1, mediaId: ID, organizationId: ORG, accountId: ACCOUNT, conversationId: ID_2, messageId: ID, mime: "image/png", byteLength: 10, sha256: HASH, objectKey: "media/key", byteState: "AVAILABLE", sessionGeneration: 1 } },
       { contract: unknownByAccountContract, result: { version: 1, limit: 1, items: [] } },
       { contract: deadLettersByAccountContract, result: { version: 1, limit: 1, items: [] } },

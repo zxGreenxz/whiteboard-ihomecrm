@@ -9710,11 +9710,18 @@ grant execute on function public.openclaw_list_ai_drafts_v1(jsonb) to authentica
 -- spelled out here, because a migration-hygiene gate scans this file for that
 -- role-switching statement and a comment matches it just as well as code would.)
 --
--- SELECT only, on a COLUMN LIST: the six call sites read id, organization_id,
--- user_id and status and nothing else, and this role owns ~90 SECURITY DEFINER
--- bodies that would all inherit anything wider. The table carries no row-level
--- security anywhere in the migration chain, so this adds no policy surface.
-grant select (id, organization_id, user_id, status)
+-- SELECT only, on a COLUMN LIST, because this role owns ~90 SECURITY DEFINER bodies
+-- that would all inherit anything wider. The table carries no row-level security
+-- anywhere in the migration chain, so this adds no policy surface.
+--
+-- `member_type` is in the list and must stay: openclaw_create_legal_hold_v1 and
+-- openclaw_release_legal_hold_v1 read `membership.member_type = 'OWNER'`. A first
+-- attempt at this grant omitted it and broke both RPCs for every caller - column
+-- privileges are checked per referenced column, so the failure is a flat
+-- "permission denied for table organization_memberships" with no hint which column
+-- was missing. The regression test derives this list from the function bodies
+-- rather than restating it.
+grant select (id, organization_id, user_id, status, member_type)
   on public.organization_memberships to openclaw_function_owner;
 
 -- ---------------------------------------------------------------------------

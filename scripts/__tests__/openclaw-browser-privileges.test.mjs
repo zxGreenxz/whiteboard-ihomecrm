@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { createDisposableOpenClawDatabase } from "../test-openclaw-migrations.mjs";
@@ -33,7 +36,10 @@ async function attemptAs(database, role, sql) {
     await database.query(sql);
     return null;
   } catch (error) {
-    return error.message;
+    // Always a string: PGlite does not guarantee `message` is one for every error
+    // class, and `.toMatch()` on an object fails with a TypeError that hides which
+    // statement was actually refused.
+    return String(error?.message ?? error);
   } finally {
     await database.query("rollback");
   }
@@ -52,25 +58,51 @@ describe("browser RPC privileges under the owning role", () => {
     });
   }, HARNESS_TIMEOUT);
 
-  it("grants only the membership columns the definer bodies actually read", async () => {
+  it("grants exactly the membership columns the definer bodies actually read", async () => {
+    // DERIVED, not restated. The first version of this test listed the four columns
+    // the grant happened to contain, so it certified the grant against itself - and
+    // stayed green while `member_type` was missing and two shipped legal-hold RPCs
+    // raised 42501 for every caller. Column privileges are checked per referenced
+    // column and the error names only the table, so nothing points at the culprit.
+    const source = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20260727060000_openclaw_rpc_surface.sql"),
+      "utf8",
+    );
+    const referenced = new Set(
+      [...source.matchAll(/membership[.]([a-z_]+)/gu)].map((match) => match[1]),
+    );
+    expect(
+      referenced.size,
+      `no membership column references found; read ${source.length} chars`,
+    ).toBeGreaterThan(0);
+
     await withDatabase(async (database) => {
-      // A column-list grant, not the table: this role owns ~90 SECURITY DEFINER
-      // bodies, and every one of them would inherit anything wider.
-      expect(
-        await attemptAs(
-          database,
-          "openclaw_function_owner",
-          "select id, organization_id, user_id, status from public.organization_memberships limit 1",
-        ),
-      ).toBeNull();
-      expect(
-        await attemptAs(
-          database,
-          "openclaw_function_owner",
-          "select * from public.organization_memberships limit 1",
-        ),
-      ).toMatch(/permission denied/iu);
+      for (const column of [...referenced].sort()) {
+        expect(
+          await attemptAs(
+            database,
+            "openclaw_function_owner",
+            `select ${column} from public.organization_memberships limit 1`,
+          ),
+          `${column} is read by a definer body but not granted`,
+        ).toBeNull();
+      }
     });
+
+    // That the grant is a COLUMN LIST cannot be proven at runtime here: the
+    // harness's organization_memberships is a five-column stub
+    // (scripts/test-openclaw-migrations.mjs) whose columns are exactly the granted
+    // set, so `select *` succeeds against it while failing against the real table.
+    // Asserted on the statement instead, with the reason stated rather than a
+    // runtime check that would quietly mean nothing.
+    const grant = source.slice(
+      source.indexOf("grant select"),
+      source.indexOf("on public.organization_memberships to openclaw_function_owner"),
+    );
+    expect(grant, "the membership grant must stay a column list").toContain("(");
+    for (const column of referenced) {
+      expect(grant, `${column} missing from the grant statement`).toContain(column);
+    }
   }, HARNESS_TIMEOUT);
 
   it("still keeps that table away from the browser roles", async () => {
