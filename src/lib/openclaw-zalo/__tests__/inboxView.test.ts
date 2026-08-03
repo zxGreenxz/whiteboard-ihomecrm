@@ -134,7 +134,7 @@ describe("manual send gate", () => {
   const base = {
     canSend: true,
     connectionState: "CONNECTED" as const,
-    policy: { allowed: true, reason: "ALLOWED" as const },
+    effectiveMode: "MANUAL_SEND" as const,
     takeoverByAnotherMember: false,
   };
 
@@ -147,15 +147,13 @@ describe("manual send gate", () => {
       .toBe("NOT_CONNECTED");
   });
 
-  it("surfaces the policy reason verbatim instead of a generic refusal", () => {
-    // The operator needs to know it was quiet hours rather than "not allowed", or
-    // they will retry into the same wall.
-    const gate = manualSendGate({
-      ...base,
-      policy: { allowed: false, reason: "QUIET_HOURS" },
-    });
-    expect(gate.blockedBy).toBe("POLICY");
-    expect(gate.policyReason).toBe("QUIET_HOURS");
+  it("separates DRAFT_ONLY from the other two causes the server collapses", () => {
+    // openclaw_create_send_intent_v1 raises one 55000 'account is not eligible to
+    // send' for DRAFT_ONLY, a wrong connection_state, and a paused account. The
+    // browser can prove two of those, so it names them instead of leaving the
+    // operator with one message for three different problems.
+    expect(manualSendGate({ ...base, effectiveMode: "DRAFT_ONLY" }).blockedBy)
+      .toBe("DRAFT_ONLY_MODE");
   });
 
   it("blocks while another member holds the takeover", () => {
@@ -163,9 +161,13 @@ describe("manual send gate", () => {
       .toBe("TAKEOVER_HELD");
   });
 
-  it("allows only when every gate is open, and says so explicitly", () => {
+  it("claims nothing about the policy reasons the browser cannot see", () => {
+    // Eleven reasons exist server-side; the browser holds data for none of them and
+    // every one is timed against statement_timestamp(). The gate must not have a
+    // POLICY branch at all, or it will report ALLOWED inside quiet hours.
     const gate = manualSendGate(base);
     expect(gate.blockedBy).toBeNull();
     expect(gate.canSend).toBe(true);
+    expect(Object.keys(gate).sort()).toEqual(["blockedBy", "canSend"]);
   });
 });

@@ -38,6 +38,8 @@ const browserReadRpcs = [
   "openclaw_preview_knowledge_retrieval_v1",
   "openclaw_list_automations_v1",
   "openclaw_get_automation_v1",
+  "openclaw_list_ai_drafts_v1",
+  "openclaw_list_takeovers_v1",
   "openclaw_dry_run_automation_v1",
   "openclaw_list_sales_groups_v1",
   "openclaw_list_schedules_v1",
@@ -130,6 +132,22 @@ const additionalFinalServiceFacades = [
   "openclaw_service_complete_maintenance_work_v1",
   "openclaw_service_issue_retention_delete_ticket_v1",
   "openclaw_service_resume_disconnect_revocation_v1",
+  // Task 20 (watchdog + VPS migration). These take `p_request jsonb` alone rather
+  // than the p_principal/p_envelope/p_request triple, so they are inventory-listed
+  // here instead of in serviceRoutines, whose signature assertion they would fail.
+  "openclaw_service_acquire_migration_lease_v1",
+  "openclaw_service_apply_capacity_controls_v1",
+  "openclaw_service_begin_global_stop_v1",
+  "openclaw_service_consume_watchdog_envelope_nonce_v1",
+  "openclaw_service_drain_outbox_v1",
+  "openclaw_service_expire_dispatching_to_unknown_v1",
+  "openclaw_service_freeze_outbox_v1",
+  "openclaw_service_reconcile_migration_gaps_v1",
+  "openclaw_service_require_fresh_qr_login_v1",
+  "openclaw_service_resume_after_migration_v1",
+  "openclaw_service_revoke_migration_lease_v1",
+  "openclaw_service_rotate_migration_credentials_v1",
+  "openclaw_service_watchdog_snapshot_v1",
 ] as const;
 
 const legacyServiceFacades = [
@@ -246,7 +264,7 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     for (const migration of migrationManifest) {
       expect(existsSync(resolve(migrationDirectory, migration)), `missing ${migration}`).toBe(true);
     }
-    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(53);
+    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(55);
     expect(serviceRoutines).toHaveLength(35);
 
     for (const name of browserReadRpcs) {

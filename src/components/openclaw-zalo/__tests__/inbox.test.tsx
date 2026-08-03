@@ -43,14 +43,18 @@ const inboxProps = {
   sendGate: {
     canSend: true,
     connectionState: "CONNECTED" as const,
-    policy: { allowed: true, reason: "ALLOWED" as const },
+    effectiveMode: "MANUAL_SEND" as const,
     takeoverByAnotherMember: false,
   },
+  selectedDraftId: "d1",
+  sending: false,
   canManageHandoff: true,
+  isAssignedToViewer: false,
   takeover: null,
   lastSendState: null,
   onSelectConversation: noop,
   onLoadMoreConversations: noop,
+  onSelectDraft: noop,
   onConfirmSend: noop,
   onStartTakeover: noop,
   onReleaseTakeover: noop,
@@ -133,7 +137,9 @@ describe("AI draft panel", () => {
   };
 
   it("shows the text and its citations when DLP passed", () => {
-    const html = render(createElement(AiDraftPanel, { drafts: [draft], loading: false }));
+    const html = render(createElement(AiDraftPanel, {
+      drafts: [draft], loading: false, selectedDraftId: null, onSelectDraft: noop,
+    }));
     expect(html).toContain("Chào anh chị");
     expect(html).toContain("1 trích dẫn");
   });
@@ -145,7 +151,7 @@ describe("AI draft panel", () => {
       drafts: [{
         ...draft, dlpDecision: "BLOCK" as const, draftText: null, citations: null,
       }],
-      loading: false,
+      loading: false, selectedDraftId: null, onSelectDraft: noop,
     }));
     expect(html).toContain('data-openclaw-draft-withheld="d1"');
     expect(html).not.toContain("Chào anh chị");
@@ -156,9 +162,30 @@ describe("AI draft panel", () => {
     expect(html).not.toContain("knowledgeId");
   });
 
-  it("has no send control anywhere, because a draft is review-only", () => {
-    const html = render(createElement(AiDraftPanel, { drafts: [draft], loading: false }));
-    expect(html).not.toContain("<button");
+  it("offers selection only on a draft the send RPC would accept", () => {
+    // openclaw_create_send_intent_v1 refuses any draft whose dlp_decision is not
+    // PASS with an indistinguishable P0002, so offering the choice on a blocked
+    // draft would only produce a confusing failure.
+    const passed = render(createElement(AiDraftPanel, {
+      drafts: [draft], loading: false, selectedDraftId: null, onSelectDraft: noop,
+    }));
+    expect(passed).toContain('data-openclaw-action="select-draft"');
+
+    const blocked = render(createElement(AiDraftPanel, {
+      drafts: [{ ...draft, dlpDecision: "BLOCK" as const, draftText: null, citations: null }],
+      loading: false, selectedDraftId: null, onSelectDraft: noop,
+    }));
+    expect(blocked).not.toContain('data-openclaw-action="select-draft"');
+  });
+
+  it("never sends from the panel itself", () => {
+    // Selecting is not sending. The confirmation lives outside this component so
+    // that "I looked at a draft" is never one click from "a customer got a message".
+    const html = render(createElement(AiDraftPanel, {
+      drafts: [draft], loading: false, selectedDraftId: "d1", onSelectDraft: noop,
+    }));
+    expect(html).not.toContain("confirm-send");
+    expect(html).toContain("Chọn bản nháp không gửi nó đi");
   });
 });
 
@@ -168,13 +195,34 @@ describe("manual send", () => {
     expect(html).toContain('data-openclaw-action="confirm-send"');
   });
 
-  it("replaces the control with the reason the server would refuse", () => {
+  it("replaces the control with a refusal the browser can actually prove", () => {
     const html = render(createElement(OpenClawInbox, {
       ...inboxProps,
-      sendGate: { ...inboxProps.sendGate, policy: { allowed: false, reason: "QUIET_HOURS" } },
+      sendGate: { ...inboxProps.sendGate, effectiveMode: "DRAFT_ONLY" as const },
     }));
     expect(html).not.toContain('data-openclaw-action="confirm-send"');
-    expect(html).toContain('data-openclaw-policy-reason="QUIET_HOURS"');
+    expect(html).toContain('data-openclaw-send-blocked="DRAFT_ONLY_MODE"');
+  });
+
+  it("does not pretend to know the policy reasons it cannot see", () => {
+    // Quiet hours, consent, suppression, rate limits and group staleness are all
+    // decided server-side against statement_timestamp(). A preview claiming ALLOWED
+    // at 02:00 inside a quiet-hours window is worse than saying nothing.
+    const html = render(createElement(OpenClawInbox, inboxProps));
+    expect(html).not.toContain("data-openclaw-policy-reason");
+    expect(html).toContain("do máy chủ");
+    expect(html).toContain("chưa phải");
+  });
+
+  it("will not send without a chosen draft", () => {
+    // openclaw_create_send_intent_v1 derives the target FROM the draft, so there is
+    // no such thing as sending without one.
+    const html = render(createElement(OpenClawInbox, {
+      ...inboxProps, selectedDraftId: null,
+    }));
+    const button = html.match(/<button[^>]*data-openclaw-action="confirm-send"[^>]*>/u);
+    expect(button).not.toBeNull();
+    expect(button![0]).toContain('disabled=""');
   });
 
   it("never presents an in-flight send as delivered", () => {
@@ -199,6 +247,7 @@ describe("permission and handoff states", () => {
       ...inboxProps,
       sendGate: { ...inboxProps.sendGate, canSend: false },
       canManageHandoff: false,
+      isAssignedToViewer: false,
     }));
     expect(html).toContain('data-openclaw-send-blocked="PERMISSION"');
     expect(html).not.toContain('data-openclaw-action="confirm-send"');
@@ -212,12 +261,14 @@ describe("permission and handoff states", () => {
       ...inboxProps,
       sendGate: { ...inboxProps.sendGate, takeoverByAnotherMember: true },
       takeover: {
-        ownerMembershipId: "m2", ownerName: "Chị Lan",
+        ownerMembershipId: "m2",
         expiresAt: "2026-08-03T11:00:00.000Z", heldByCurrentMember: false,
       },
     }));
     expect(html).toContain('data-openclaw-takeover="other"');
-    expect(html).toContain("Chị Lan");
+    // A member cannot read the roster, so the name is genuinely unavailable rather
+    // than a lookup this code skipped.
+    expect(html).toContain("Thành viên khác đang tiếp quản");
     expect(html).toContain('data-openclaw-send-blocked="TAKEOVER_HELD"');
     expect(html).toContain("Trả lời tự động bị tạm dừng");
   });
@@ -226,7 +277,7 @@ describe("permission and handoff states", () => {
     const html = render(createElement(OpenClawInbox, {
       ...inboxProps,
       takeover: {
-        ownerMembershipId: "m1", ownerName: "Tôi",
+        ownerMembershipId: "m1",
         expiresAt: "2026-08-03T11:00:00.000Z", heldByCurrentMember: true,
       },
     }));

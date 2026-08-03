@@ -243,6 +243,30 @@ export const aiDraftListContract = {
   }).strict(),
 } as const;
 
+export const takeoverListContract = {
+  rpcName: "openclaw_list_takeovers_v1",
+  requestSchema: z.object({
+    ...versionSchema,
+    organizationId: idSchema,
+    accountId: idSchema,
+    limit: z.number().int().min(1).max(100).optional(),
+  }).strict(),
+  resultSchema: z.object({
+    ...versionSchema,
+    items: z.array(z.object({
+      takeoverId: idSchema,
+      conversationId: idSchema,
+      ownerMembershipId: idSchema,
+      // Decided server-side: the browser is never told its own membership id.
+      heldByViewer: z.boolean(),
+      takeoverVersion: z.number().int().positive(),
+      startedAt: timestampSchema,
+      expiresAt: timestampSchema,
+    }).strict()),
+    limit: z.number().int().min(1).max(100),
+  }).strict(),
+} as const;
+
 export const qrPollContract = {
   rpcName: "openclaw_poll_qr_login_v1",
   requestSchema: z.object({
@@ -638,6 +662,7 @@ export const OPENCLAW_ACTION_CONTRACTS = [
   salesGroupListContract,
   scheduleListContract,
   aiDraftListContract,
+  takeoverListContract,
   qrPollContract,
   mediaResolveContract,
   unknownByAccountContract,

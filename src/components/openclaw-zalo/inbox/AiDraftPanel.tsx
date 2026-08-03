@@ -16,6 +16,8 @@ export interface OpenClawAiDraftView {
 interface AiDraftPanelProps {
   drafts: readonly OpenClawAiDraftView[];
   loading: boolean;
+  selectedDraftId: string | null;
+  onSelectDraft: (draftId: string) => void;
 }
 
 const DLP_COPY = {
@@ -25,12 +27,17 @@ const DLP_COPY = {
 } as const;
 
 /**
- * Review-only. This panel has no send button by design.
- *
- * A draft becomes an outgoing message only through a separately enabled automation
- * path that creates a send intent under the current policy; nothing here writes.
+ * The panel never writes. It can mark a draft as the one a later, explicit send
+ * action would use, and nothing more - the send itself lives outside this component
+ * so that "I looked at a draft" can never be one click away from "a customer got a
+ * message".
  */
-export default function AiDraftPanel({ drafts, loading }: AiDraftPanelProps) {
+export default function AiDraftPanel({
+  drafts,
+  loading,
+  selectedDraftId,
+  onSelectDraft,
+}: AiDraftPanelProps) {
   if (loading && drafts.length === 0) {
     return (
       <p data-openclaw-draft="loading" className="p-4 text-sm text-[#607585]">
@@ -87,6 +94,26 @@ export default function AiDraftPanel({ drafts, loading }: AiDraftPanelProps) {
             </p>
           )}
 
+          {/* Selecting is not sending: openclaw_create_send_intent_v1 refuses any
+              draft whose dlp_decision is not PASS, so offering the choice on a
+              blocked draft would only produce an indistinguishable P0002. */}
+          {draft.dlpDecision === "PASS" && (
+            <button
+              type="button"
+              onClick={() => onSelectDraft(draft.draftId)}
+              aria-pressed={selectedDraftId === draft.draftId}
+              data-openclaw-action="select-draft"
+              data-openclaw-draft-selected={selectedDraftId === draft.draftId ? "true" : "false"}
+              className={`mt-2 min-h-11 w-full border px-3 text-sm font-bold ${
+                selectedDraftId === draft.draftId
+                  ? "border-[#0f766e] bg-[#dfeee9] text-[#0b5d51]"
+                  : "border-[#9fb0bf] bg-white text-[#102a43]"
+              }`}
+            >
+              {selectedDraftId === draft.draftId ? "Đã chọn bản nháp này" : "Chọn bản nháp này"}
+            </button>
+          )}
+
           <footer className="mt-2 text-xs leading-5 text-[#607585]">
             <span data-openclaw-draft-citations={draft.draftId}>
               {draft.citationCount} trích dẫn
@@ -99,7 +126,8 @@ export default function AiDraftPanel({ drafts, loading }: AiDraftPanelProps) {
         </article>
       ))}
       <p className="text-xs leading-5 text-[#607585]">
-        Bản nháp chỉ để xem lại. Việc gửi đi phải đi qua đường automation được bật riêng.
+        Chọn bản nháp không gửi nó đi. Việc gửi là một hành động riêng, có xác nhận, và chỉ nhận
+        bản nháp đã qua DLP.
       </p>
     </div>
   );

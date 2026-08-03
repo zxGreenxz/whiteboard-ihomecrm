@@ -68,7 +68,7 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawInbox", () => ({
 
 vi.mock("@/hooks/openclaw-zalo/useOpenClawResources", () => ({
   useOpenClawAiDrafts: () => ({ ...idleQuery, data: { version: 1, items: [], limit: 20 } }),
-  useOpenClawQrPoll: () => ({ ...idleQuery, data: { version: 1, challenge: null } }),
+  useOpenClawTakeovers: () => ({ ...idleQuery, data: { version: 1, items: [], limit: 50 } }),
 }));
 
 const idleMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
@@ -80,8 +80,14 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({
     assignConversation: idleMutation,
     markConversationRead: idleMutation,
   }),
-  useOpenClawBeginQrLogin: () => idleMutation,
+  useOpenClawCreateSendIntent: () => idleMutation,
   useOpenClawAcknowledgeDisclosure: () => idleMutation,
+}));
+
+vi.mock("@/lib/openclaw-zalo/qrClient", () => ({
+  beginQrLogin: vi.fn(),
+  pollQrLogin: vi.fn(),
+  consumeQrChallenge: vi.fn(),
 }));
 
 const { default: OpenClawCockpit } = await import("../OpenClawCockpit");

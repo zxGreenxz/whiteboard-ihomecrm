@@ -9577,13 +9577,17 @@ begin
     'sessionGeneration', account.session_generation,
     'disclosureVersion', account.disclosure_version,
     'disclosureAcknowledgedVersion', account.disclosure_acknowledged_version,
-    -- openclaw_begin_qr_login_v1 takes a cellId and refuses one that is not the
-    -- account's current cell. The browser had no way to learn it, so the QR flow
-    -- could not be started at all from the UI.
+    -- openclaw_begin_qr_login_v1 takes a cellId and selects it with
+    -- `is_current and state = 'READY'` INTO STRICT. Both conditions must be
+    -- reproduced here: filtering on is_current alone hands the browser a cell id
+    -- during provisioning or after a fence that is guaranteed to raise a bare
+    -- P0002 no_data_found, which reaches the operator as an empty error.
+    -- Null means "no cell a QR could use", which the UI can state plainly.
     'currentCellId', (
       select cell.id from public.openclaw_runtime_cells cell
       where cell.organization_id = account.organization_id
-        and cell.account_id = account.id and cell.is_current
+        and cell.account_id = account.id
+        and cell.is_current and cell.state = 'READY'
       limit 1
     )
   ) into v_account
@@ -9689,5 +9693,107 @@ alter function public.openclaw_list_ai_drafts_v1(jsonb) owner to openclaw_functi
 revoke all on function public.openclaw_list_ai_drafts_v1(jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_ai_drafts_v1(jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- The function owner can read memberships (five existing RPCs already assume it)
+-- ---------------------------------------------------------------------------
+-- `openclaw_function_owner` is NOLOGIN NOINHERIT NOBYPASSRLS and had no privilege
+-- on public.organization_memberships, yet openclaw_takeover_conversation_v1,
+-- openclaw_release_takeover_v1, openclaw_assign_conversation_v1 and two more
+-- already SELECT from it while running as that owner. Measured on a disposable
+-- database: `set role openclaw_function_owner; select 1 from
+-- public.organization_memberships` -> "permission denied for table
+-- organization_memberships". Every one of those RPCs would have failed on its first
+-- real call. The rest of the SQL suite could not see it because PGlite runs as
+-- superuser, which bypasses GRANT entirely.
+--
+-- SELECT only, and the table carries no row-level security anywhere in the
+-- migration chain, so this adds no policy surface.
+grant select on public.organization_memberships to openclaw_function_owner;
+
+-- ---------------------------------------------------------------------------
+-- Who holds a takeover, and until when
+-- ---------------------------------------------------------------------------
+-- openclaw_takeover_conversation_v1 hands the takeover id, version and expiry back
+-- exactly once, to exactly the browser that created it. Nothing could read them
+-- afterwards, so a reload - or any other member's session - showed no takeover at
+-- all while auto-reply was in fact suspended, and the UI offered "send" on a
+-- conversation someone else had taken over.
+--
+-- Gated on `openclaw_zalo.view`, not `manage_handoff`: the takeover writer already
+-- lets the assigned active member take over their own conversation without the
+-- elevated action, so gating the READ higher than the WRITE would hide from that
+-- member the very state they are allowed to create.
+--
+-- The active predicate is `released_at is null and expires_at > statement_timestamp()`,
+-- verbatim from the send preflight. Filtering on released_at alone would keep the
+-- banner up after expiry, claiming auto-reply is suspended when it is not.
+create or replace function public.openclaw_list_takeovers_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+  v_viewer uuid;
+  v_limit integer;
+  v_items jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','limit'],
+    array['version','organizationId','accountId']
+  );
+  v_context := app_private.openclaw_browser_context_v1(
+    p_request, 'openclaw_zalo.view', 'xem tiep quan hoi thoai OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (p_request ->> 'accountId')::uuid;
+  v_limit := greatest(1, least(coalesce((p_request ->> 'limit')::integer, 50), 100));
+  -- The browser is never told its own membership id anywhere else, so "mine" versus
+  -- "someone else's" has to be decided here rather than guessed in the client.
+  select membership.id into v_viewer
+  from public.organization_memberships membership
+  where membership.organization_id = v_org
+    and membership.user_id = (v_context ->> 'actorId')::uuid
+    and membership.status = 'ACTIVE'
+  limit 1;
+  select coalesce(
+    jsonb_agg(item.payload order by item.expires_at, item.conversation_id), '[]'::jsonb
+  )
+  into v_items
+  from (
+    select takeover.conversation_id, takeover.expires_at,
+      jsonb_build_object(
+        'takeoverId', takeover.id,
+        'conversationId', takeover.conversation_id,
+        'ownerMembershipId', takeover.owner_membership_id,
+        'heldByViewer', (v_viewer is not null and takeover.owner_membership_id = v_viewer),
+        'takeoverVersion', takeover.takeover_version,
+        'startedAt', takeover.started_at,
+        'expiresAt', takeover.expires_at
+      ) as payload
+    from public.openclaw_takeovers takeover
+    join public.openclaw_conversations conversation
+      on conversation.organization_id = takeover.organization_id
+     and conversation.id = takeover.conversation_id
+    where takeover.organization_id = v_org
+      and conversation.account_id = v_account
+      and takeover.released_at is null
+      and takeover.expires_at > statement_timestamp()
+    order by takeover.expires_at, takeover.conversation_id
+    limit v_limit
+  ) item;
+  return jsonb_build_object('version', 1, 'items', v_items, 'limit', v_limit);
+end;
+$function$;
+
+alter function public.openclaw_list_takeovers_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_list_takeovers_v1(jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_list_takeovers_v1(jsonb) to authenticated;
 
 commit;

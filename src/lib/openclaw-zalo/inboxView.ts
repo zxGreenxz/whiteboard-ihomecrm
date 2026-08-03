@@ -2,8 +2,8 @@ import type {
   OpenClawConnectionState,
   OpenClawConversation,
   OpenClawMessage,
+  OpenClawMode,
   OpenClawOutboxState,
-  OpenClawSendDecision,
 } from "./types";
 // The cursor shape belongs to the hook that pages with it; re-declaring it here
 // would let the two drift apart silently.
@@ -85,35 +85,56 @@ export function sendLifecycle(state: OpenClawOutboxState): SendLifecycle {
   return LIFECYCLE[state];
 }
 
-export type ManualSendBlockedBy = "PERMISSION" | "NOT_CONNECTED" | "TAKEOVER_HELD" | "POLICY";
+export type ManualSendBlockedBy =
+  | "PERMISSION"
+  | "NOT_CONNECTED"
+  | "DRAFT_ONLY_MODE"
+  | "TAKEOVER_HELD";
 
 export interface ManualSendGateInput {
   canSend: boolean;
   connectionState: OpenClawConnectionState;
-  policy: OpenClawSendDecision;
+  effectiveMode: OpenClawMode;
   takeoverByAnotherMember: boolean;
 }
 
 export interface ManualSendGate {
   canSend: boolean;
   blockedBy: ManualSendBlockedBy | null;
-  /** Carried verbatim so the operator sees "quiet hours", not "not allowed". */
-  policyReason: OpenClawSendDecision["reason"] | null;
 }
 
+/**
+ * The refusals the browser can PROVE, and only those.
+ *
+ * An earlier version fed `evaluateSendPolicy` here as a "policy preview". It was
+ * dishonest twice over. First, it mapped the wrong columns: the server sets
+ * MODE_PAUSED from `not control.feature_enabled` and ACCOUNT_PAUSED from
+ * `account.paused_at`, while this mapped MODE_PAUSED from a mode mismatch and
+ * ACCOUNT_PAUSED from the feature flag - so the operator was told the wrong reason.
+ * Second, and worse, of the eleven policy reasons the server evaluates
+ * (QUIET_HOURS, CONSENT_MISSING, SUPPRESSED, RATE_LIMITED, GROUP_NOT_ALLOWLISTED,
+ * GROUP_DIRECTORY_STALE, …) the browser holds the data for none, and every one of
+ * them is timed against `statement_timestamp()` rather than the client clock. A
+ * preview that cannot see them reports ALLOWED at 02:00 inside a quiet-hours
+ * window.
+ *
+ * These four are different: each is decided by a field the bootstrap already
+ * carries, or by the takeover list, and each has a server counterpart that raises
+ * rather than queueing. Everything else is left to the server, and the UI says so
+ * instead of guessing.
+ */
 export function manualSendGate(input: ManualSendGateInput): ManualSendGate {
   const blockedBy: ManualSendBlockedBy | null = !input.canSend
     ? "PERMISSION"
     : input.connectionState !== "CONNECTED"
       ? "NOT_CONNECTED"
-      : input.takeoverByAnotherMember
-        ? "TAKEOVER_HELD"
-        : input.policy.allowed
-          ? null
-          : "POLICY";
-  return {
-    canSend: blockedBy === null,
-    blockedBy,
-    policyReason: blockedBy === "POLICY" ? input.policy.reason : null,
-  };
+      // openclaw_create_send_intent_v1 raises 55000 'account is not eligible to
+      // send' for DRAFT_ONLY, collapsed with two other causes; the browser can
+      // separate this one out and say which it is.
+      : input.effectiveMode === "DRAFT_ONLY"
+        ? "DRAFT_ONLY_MODE"
+        : input.takeoverByAnotherMember
+          ? "TAKEOVER_HELD"
+          : null;
+  return { canSend: blockedBy === null, blockedBy };
 }

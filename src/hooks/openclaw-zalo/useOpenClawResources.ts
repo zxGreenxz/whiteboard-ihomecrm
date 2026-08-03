@@ -16,6 +16,7 @@ import {
   legalHoldMutationContracts,
   mediaResolveContract,
   aiDraftListContract,
+  takeoverListContract,
   qrPollContract,
   salesGroupListContract,
   scheduleListContract,
@@ -40,6 +41,7 @@ type BrowserReadRpc =
   | typeof salesGroupListContract.rpcName
   | typeof scheduleListContract.rpcName
   | typeof aiDraftListContract.rpcName
+  | typeof takeoverListContract.rpcName
   | typeof qrPollContract.rpcName
   | typeof mediaResolveContract.rpcName;
 
@@ -267,6 +269,31 @@ export function useOpenClawAiDrafts(
       accountId: accountId!,
       conversationId: conversationId!,
       limit,
+    }),
+  });
+}
+
+/**
+ * Active takeovers for the account, refreshed on a timer.
+ *
+ * Polled rather than subscribed: 20260727080000_openclaw_realtime_allowlist.sql
+ * raises 55000 if any openclaw table outside its seven-name allowlist joins the
+ * publication, and openclaw_takeovers is not on it.
+ */
+export function useOpenClawTakeovers(
+  organizationId: string | null,
+  accountId: string | null,
+) {
+  return useQuery({
+    queryKey: openClawQueryKeys.takeovers(organizationId ?? "", accountId ?? ""),
+    enabled: Boolean(organizationId && accountId),
+    // A takeover expires on the server clock; a stale banner would claim auto-reply
+    // is still suspended after it lapsed.
+    refetchInterval: 30_000,
+    queryFn: () => executeOpenClawQuery(takeoverListContract, {
+      version: 1,
+      organizationId: organizationId!,
+      accountId: accountId!,
     }),
   });
 }

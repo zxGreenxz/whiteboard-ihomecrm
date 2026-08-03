@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import OpenClawConnectionDialog from "../dialogs/OpenClawConnectionDialog";
 import { qrGateState } from "@/lib/openclaw-zalo/connection";
-import type { OpenClawAccountSummary, OpenClawControlState } from "@/lib/openclaw-zalo/types";
+import type { OpenClawAccountSummary } from "@/lib/openclaw-zalo/types";
 
 const account: OpenClawAccountSummary = {
   accountId: "dddd1000-0000-4000-8000-00000000000a",
@@ -20,30 +20,20 @@ const account: OpenClawAccountSummary = {
   currentCellId: "dddd2000-0000-4000-8000-000000000010",
 };
 
-const control: OpenClawControlState = {
-  globalStop: false,
-  featureEnabled: true,
-  limitedAutoReplyEnabled: false,
-  proactiveEnabled: false,
-  salesGroupsEnabled: false,
-  controlVersion: 9,
-};
 
 const noop = vi.fn();
 
 function renderDialog(overrides: {
   account?: Partial<OpenClawAccountSummary>;
-  control?: Partial<OpenClawControlState>;
   canManageConnections?: boolean;
   challenge?: Parameters<typeof OpenClawConnectionDialog>[0]["challenge"];
+  errorMessage?: string | null;
   open?: boolean;
 } = {}) {
   const merged = { ...account, ...overrides.account };
   const gate = qrGateState({
     account: merged,
-    control: { ...control, ...overrides.control },
     canManageConnections: overrides.canManageConnections ?? true,
-    now: "2026-08-03T10:00:00.000Z",
   });
   return renderToStaticMarkup(createElement(OpenClawConnectionDialog, {
     open: overrides.open ?? true,
@@ -51,6 +41,7 @@ function renderDialog(overrides: {
     accountName: merged.displayName,
     challenge: overrides.challenge ?? null,
     pending: false,
+    errorMessage: overrides.errorMessage ?? null,
     onRequestQr: noop,
     onAcknowledgeDisclosure: noop,
     onClose: noop,
@@ -74,11 +65,12 @@ function buttonTag(html: string, action: string) {
   return match![0];
 }
 
+const PNG = "data:image/png;base64,iVBORw0KGgo=";
 const CHALLENGE = {
   challengeId: "q1",
-  qrPayload: "2|abc-def",
+  pngDataUrl: PNG,
   secondsLeft: 97,
-  status: "PENDING" as const,
+  status: "READY" as const,
 };
 
 describe("connection dialog", () => {
@@ -95,9 +87,9 @@ describe("connection dialog", () => {
   it("names the gate that would refuse, and hides the code until it opens", () => {
     for (const [label, overrides] of [
       ["PERMISSION", { canManageConnections: false }],
-      ["GLOBAL_STOP", { control: { globalStop: true } }],
-      ["FEATURE_DISABLED", { control: { featureEnabled: false } }],
       ["ALREADY_CONNECTED", { account: { connectionState: "CONNECTED" as const } }],
+      ["UNRECOVERABLE_STATE", { account: { connectionState: "RECONNECT_REQUIRED" as const } }],
+      ["NO_READY_CELL", { account: { currentCellId: null } }],
       ["DISCLOSURE", { account: { disclosureAcknowledgedVersion: 1 } }],
     ] as const) {
       const html = renderDialog(overrides);
@@ -116,19 +108,42 @@ describe("connection dialog", () => {
     expect(html).toContain("Xác nhận công bố phiên bản 7");
   });
 
-  it("re-asks for acknowledgement after a LIMITED reconnect", () => {
-    const html = renderDialog({
-      account: { sessionRiskState: "LIMITED", connectionState: "RECONNECT_REQUIRED" },
-    });
-    expect(html).toContain('data-openclaw-blocked="DISCLOSURE"');
-    expect(html).toContain("Phiên bị hạn chế");
+  it("says plainly that an unrecoverable session cannot be fixed from here", () => {
+    // Nothing in the migration set moves an account out of RECONNECT_REQUIRED, so a
+    // "try again" button would only ever produce a bare P0002.
+    const html = renderDialog({ account: { connectionState: "RECONNECT_REQUIRED" } });
+    expect(html).toContain('data-openclaw-blocked="UNRECOVERABLE_STATE"');
+    expect(html).toContain("không thể tự khôi phục");
   });
 
-  it("shows the countdown while the code is live", () => {
+  it("renders the decrypted PNG, which is the only scannable form there is", () => {
+    // An earlier version printed `challengeId.nonce` as monospace text under
+    // "scan this with your phone". The real code is AES-GCM ciphertext that only the
+    // openclaw-qr Edge function can decrypt, so that string was unscannable forever.
     const html = renderDialog({ challenge: CHALLENGE });
+    expect(html).toContain('data-openclaw-qr="image"');
+    expect(html).toContain(PNG);
     expect(html).toContain('data-openclaw-qr="countdown"');
     expect(html).toContain("Còn 97s");
-    expect(html).toContain("2|abc-def");
+  });
+
+  it("waits visibly while the challenge is still PENDING", () => {
+    const html = renderDialog({
+      challenge: { ...CHALLENGE, status: "PENDING", pngDataUrl: null },
+    });
+    expect(html).toContain('data-openclaw-qr="waiting"');
+    expect(html).not.toContain('data-openclaw-qr="image"');
+  });
+
+  it("flags a ticket that outlives the documented window instead of hiding it", () => {
+    const html = renderDialog({ challenge: { ...CHALLENGE, secondsLeft: 3600 } });
+    expect(html).toContain('data-openclaw-qr="lifetime-anomaly"');
+  });
+
+  it("shows what the server refused with, rather than swallowing it", () => {
+    const html = renderDialog({ errorMessage: "Phiên đăng nhập đã hết hạn" });
+    expect(html).toContain('data-openclaw-qr="error"');
+    expect(html).toContain("Phiên đăng nhập đã hết hạn");
   });
 
   it("enables the request button when no gate blocks it", () => {
@@ -141,13 +156,13 @@ describe("connection dialog", () => {
   it("replaces an expired code with a prompt for a new one, never the stale payload", () => {
     const html = renderDialog({ challenge: { ...CHALLENGE, secondsLeft: 0 } });
     expect(html).toContain('data-openclaw-qr="expired"');
-    expect(html).not.toContain("2|abc-def");
-    // Same for a challenge the server marked expired while seconds remained.
-    const serverExpired = renderDialog({
-      challenge: { ...CHALLENGE, status: "EXPIRED" },
-    });
-    expect(serverExpired).toContain('data-openclaw-qr="expired"');
-    expect(serverExpired).not.toContain("2|abc-def");
+    expect(html).not.toContain(PNG);
+    // Same for a challenge the server marked terminal while seconds remained.
+    for (const status of ["EXPIRED", "REVOKED"] as const) {
+      const serverExpired = renderDialog({ challenge: { ...CHALLENGE, status } });
+      expect(serverExpired, status).toContain('data-openclaw-qr="expired"');
+      expect(serverExpired, status).not.toContain(PNG);
+    }
   });
 
   it("states that the code lives only in page memory", () => {

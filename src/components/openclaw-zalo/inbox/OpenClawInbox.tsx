@@ -7,7 +7,6 @@ import ConversationThread from "./ConversationThread";
 
 export interface OpenClawTakeoverView {
   ownerMembershipId: string;
-  ownerName: string;
   expiresAt: string;
   heldByCurrentMember: boolean;
 }
@@ -23,12 +22,18 @@ interface OpenClawInboxProps {
   drafts: readonly OpenClawAiDraftView[];
   draftsLoading: boolean;
   sendGate: ManualSendGateInput;
+  /** Null until the operator picks a DLP-passed draft; sending needs one. */
+  selectedDraftId: string | null;
+  sending: boolean;
   canManageHandoff: boolean;
+  /** True when this member is the conversation's assignee. */
+  isAssignedToViewer: boolean;
   takeover: OpenClawTakeoverView | null;
   /** The last observed state of a message this operator sent, if any. */
   lastSendState: OpenClawOutboxState | null;
   onSelectConversation: (conversationId: string) => void;
   onLoadMoreConversations: () => void;
+  onSelectDraft: (draftId: string) => void;
   onConfirmSend: () => void;
   onStartTakeover: () => void;
   onReleaseTakeover: () => void;
@@ -37,8 +42,8 @@ interface OpenClawInboxProps {
 const SEND_BLOCK_COPY = {
   PERMISSION: "Bạn không có quyền gửi tin.",
   NOT_CONNECTED: "Tài khoản chưa kết nối, không thể gửi.",
+  DRAFT_ONLY_MODE: "Tài khoản đang ở chế độ chỉ soạn nháp, không gửi được.",
   TAKEOVER_HELD: "Thành viên khác đang giữ quyền tiếp quản hội thoại này.",
-  POLICY: "Chính sách hiện hành không cho gửi.",
 } as const;
 
 export default function OpenClawInbox(props: OpenClawInboxProps) {
@@ -73,7 +78,10 @@ export default function OpenClawInbox(props: OpenClawInboxProps) {
                 <p className="font-bold">
                   {props.takeover.heldByCurrentMember
                     ? "Bạn đang tiếp quản hội thoại này"
-                    : `${props.takeover.ownerName} đang tiếp quản hội thoại này`}
+                    /* A member cannot read the organization roster, so the name is
+                       genuinely unavailable to the browser. "Another member" is the
+                       honest rendering, not a placeholder for a lookup that failed. */
+                    : "Thành viên khác đang tiếp quản hội thoại này"}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-[#607585]">
                   Hết hạn: {props.takeover.expiresAt}. Trả lời tự động bị tạm dừng cho tới khi nhả quyền.
@@ -87,7 +95,12 @@ export default function OpenClawInbox(props: OpenClawInboxProps) {
               mediaUnavailable={props.mediaUnavailable}
             />
 
-            <AiDraftPanel drafts={props.drafts} loading={props.draftsLoading} />
+            <AiDraftPanel
+              drafts={props.drafts}
+              loading={props.draftsLoading}
+              selectedDraftId={props.selectedDraftId}
+              onSelectDraft={props.onSelectDraft}
+            />
 
             <div className="border-t border-[#cbd5df] p-4">
               {lifecycle !== null && (
@@ -112,24 +125,36 @@ export default function OpenClawInbox(props: OpenClawInboxProps) {
                   className="border border-[#d99a6c] bg-[#fdf0e4] p-3 text-sm font-bold text-[#8a4b12]"
                 >
                   {SEND_BLOCK_COPY[gate.blockedBy]}
-                  {gate.policyReason !== null && (
-                    <span data-openclaw-policy-reason={gate.policyReason} className="mt-1 block text-xs font-normal">
-                      Lý do chính sách: {gate.policyReason}
-                    </span>
-                  )}
                 </p>
               ) : (
-                <button
-                  type="button"
-                  onClick={props.onConfirmSend}
-                  data-openclaw-action="confirm-send"
-                  className="min-h-11 w-full border border-[#0f766e] bg-[#0f766e] px-4 text-sm font-bold text-white"
-                >
-                  Xác nhận gửi thủ công
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={props.onConfirmSend}
+                    disabled={props.sending || props.selectedDraftId === null}
+                    data-openclaw-action="confirm-send"
+                    className="min-h-11 w-full border border-[#0f766e] bg-[#0f766e] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {props.selectedDraftId === null
+                      ? "Chọn một bản nháp đã qua DLP để gửi"
+                      : "Xác nhận gửi bản nháp này"}
+                  </button>
+                  {/* The browser cannot see quiet hours, consent, suppression, rate
+                      limits or group staleness, and all of them are timed on the
+                      server clock. Saying so beats a preview that reports ALLOWED
+                      at 02:00 inside a quiet-hours window. */}
+                  <p className="mt-2 text-xs leading-5 text-[#607585]">
+                    Chính sách gửi (giờ im lặng, đồng ý nhận tin, chặn, giới hạn tần suất) do máy chủ
+                    quyết định khi phát tin, không phải ở đây. Bấm gửi là đưa vào hàng đợi, chưa phải
+                    đã tới khách.
+                  </p>
+                </>
               )}
 
-              {props.canManageHandoff && (
+              {/* The takeover writer lets the ASSIGNED active member take over their
+                  own conversation without manage_handoff, so gating the button purely
+                  on the elevated action hid a control that member is allowed to use. */}
+              {(props.canManageHandoff || props.isAssignedToViewer) && (
                 <button
                   type="button"
                   onClick={props.takeover?.heldByCurrentMember ? props.onReleaseTakeover : props.onStartTakeover}

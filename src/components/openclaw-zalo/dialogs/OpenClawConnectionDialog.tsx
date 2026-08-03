@@ -1,16 +1,18 @@
 import type { QrGateState } from "@/lib/openclaw-zalo/connection";
-import { QR_TTL_SECONDS } from "@/lib/openclaw-zalo/connection";
+import { QR_TTL_SECONDS, qrLifetimeIsAnomalous } from "@/lib/openclaw-zalo/connection";
 
 /**
- * The QR challenge as the browser holds it: IN MEMORY ONLY.
+ * The QR as the browser holds it: IN MEMORY ONLY.
  *
- * Nothing here may be written to localStorage, sessionStorage, the React Query
- * cache beyond its live query, analytics, or any toast/screenshot text. The parent
- * owns the lifetime and drops it on each of `qrClearReasons()`.
+ * `pngDataUrl` is the decrypted image, which exists only after a CONSUME through
+ * the `openclaw-qr` Edge function. It is never written to localStorage,
+ * sessionStorage, the React Query cache, analytics, or any toast text; the parent
+ * owns its lifetime and drops it on every reason in `qrClearReasons()`.
  */
 export interface OpenClawQrChallengeView {
   challengeId: string;
-  qrPayload: string;
+  /** Null while the challenge is still PENDING and there is nothing to scan yet. */
+  pngDataUrl: string | null;
   secondsLeft: number;
   status: "PENDING" | "READY" | "EXPIRED" | "CONSUMED" | "REVOKED";
 }
@@ -19,9 +21,10 @@ interface OpenClawConnectionDialogProps {
   open: boolean;
   gate: QrGateState;
   accountName: string;
-  /** Null until the operator asks for a code, and again the moment it is cleared. */
   challenge: OpenClawQrChallengeView | null;
   pending: boolean;
+  /** Whatever the Edge function or RPC last refused with, shown verbatim-ish. */
+  errorMessage: string | null;
   onRequestQr: () => void;
   onAcknowledgeDisclosure: () => void;
   onClose: () => void;
@@ -29,16 +32,17 @@ interface OpenClawConnectionDialogProps {
 
 const BLOCK_COPY: Record<NonNullable<QrGateState["blockedBy"]>, string> = {
   PERMISSION: "Bạn không có quyền quản lý kết nối cho tổ chức này.",
-  GLOBAL_STOP: "GLOBAL_STOP đang bật. Gỡ dừng khẩn cấp trước khi quét QR.",
-  FEATURE_DISABLED: "OpenClaw Zalo đang tắt cho tổ chức này.",
   ALREADY_CONNECTED: "Tài khoản đang kết nối. Ngắt kết nối trước nếu muốn quét lại.",
+  UNRECOVERABLE_STATE:
+    "Phiên đang ở trạng thái không thể tự khôi phục từ giao diện. Cần can thiệp vận hành "
+    + "để đưa tài khoản về trạng thái ngắt kết nối trước khi quét mã mới.",
+  NO_READY_CELL: "Chưa có cell runtime nào sẵn sàng cho tài khoản này.",
   DISCLOSURE: "Cần xác nhận công bố phiên bản hiện hành trước khi quét QR.",
 };
 
 const DISCLOSURE_COPY = {
   NEVER_ACKNOWLEDGED: "Bạn chưa xác nhận công bố lần nào cho tài khoản này.",
   VERSION_MOVED: "Công bố đã cập nhật kể từ lần xác nhận gần nhất.",
-  LIMITED_RECONNECT: "Phiên bị hạn chế và phải kết nối lại, nên cần xác nhận lại công bố.",
 } as const;
 
 export default function OpenClawConnectionDialog({
@@ -47,13 +51,16 @@ export default function OpenClawConnectionDialog({
   accountName,
   challenge,
   pending,
+  errorMessage,
   onRequestQr,
   onAcknowledgeDisclosure,
   onClose,
 }: OpenClawConnectionDialogProps) {
   if (!open) return null;
   const blocked = gate.blockedBy;
-  const expired = challenge !== null && (challenge.secondsLeft <= 0 || challenge.status === "EXPIRED");
+  const expired = challenge !== null
+    && (challenge.secondsLeft <= 0 || challenge.status === "EXPIRED" || challenge.status === "REVOKED");
+  const scannable = challenge !== null && !expired && challenge.pngDataUrl !== null;
 
   return (
     <div
@@ -101,17 +108,41 @@ export default function OpenClawConnectionDialog({
           </div>
         )}
 
+        {errorMessage !== null && (
+          <p
+            data-openclaw-qr="error"
+            className="mt-4 border border-[#c0563a] bg-[#fdeceb] p-3 text-sm font-bold text-[#8a2f1c]"
+          >
+            {errorMessage}
+          </p>
+        )}
+
         {challenge !== null && !expired && (
           <div className="mt-4 border border-[#cbd5df] bg-white p-4 text-center">
-            <p
-              data-openclaw-qr="payload"
-              className="mx-auto max-w-full break-all font-mono text-xs text-[#102a43]"
-            >
-              {challenge.qrPayload}
-            </p>
+            {scannable ? (
+              <img
+                src={challenge.pngDataUrl!}
+                alt="Mã QR đăng nhập Zalo"
+                data-openclaw-qr="image"
+                className="mx-auto h-56 w-56 max-w-full"
+              />
+            ) : (
+              <p data-openclaw-qr="waiting" className="py-16 text-sm text-[#607585]">
+                Đang chờ máy chủ phát mã…
+              </p>
+            )}
             <p className="mt-3 text-sm font-bold" data-openclaw-qr="countdown">
-              Còn {challenge.secondsLeft}s / {QR_TTL_SECONDS}s
+              Còn {challenge.secondsLeft}s
             </p>
+            {qrLifetimeIsAnomalous(challenge.secondsLeft) && (
+              <p
+                data-openclaw-qr="lifetime-anomaly"
+                className="mt-1 text-xs font-bold leading-5 text-[#8a4b12]"
+              >
+                Mã này sống lâu hơn {QR_TTL_SECONDS}s thông thường. Đóng hộp thoại nếu bạn không
+                chủ động yêu cầu, rồi báo vận hành.
+              </p>
+            )}
             <p className="mt-1 text-xs leading-5 text-[#607585]">
               Mã chỉ nằm trong bộ nhớ trang. Đóng hộp thoại, rời trang hoặc đổi tổ chức là mã bị xoá.
             </p>

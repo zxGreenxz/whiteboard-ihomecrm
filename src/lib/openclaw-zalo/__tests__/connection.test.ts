@@ -7,6 +7,7 @@ import {
   qrCountdownSeconds,
   qrGateState,
   qrClearReasons,
+  qrLifetimeIsAnomalous,
 } from "../connection";
 import type { OpenClawAccountSummary, OpenClawControlState } from "../types";
 
@@ -45,16 +46,23 @@ describe("QR countdown", () => {
     expect(qrCountdownSeconds(EXPIRES, "2026-08-03T10:02:00.000Z")).toBe(0);
   });
 
-  it("never reports time left after expiry, and never more than the ceiling", () => {
-    // A clock skewed backwards must not resurrect an expired code, and a server
-    // sending an absurd lifetime must not park a QR on screen for an hour.
+  it("never reports time left after expiry", () => {
+    // A clock skewed backwards must not resurrect an expired code.
     fc.assert(fc.property(fc.integer({ min: -86_400, max: 86_400 }), (offsetSeconds) => {
       const now = new Date(Date.parse(EXPIRES) - offsetSeconds * 1000).toISOString();
       const left = qrCountdownSeconds(EXPIRES, now);
       expect(left).toBeGreaterThanOrEqual(0);
-      expect(left).toBeLessThanOrEqual(QR_TTL_SECONDS);
       if (offsetSeconds <= 0) expect(left).toBe(0);
     }));
+  });
+
+  it("reports an over-long ticket instead of hiding it behind the ceiling", () => {
+    // The old upper clamp displayed a frozen "120s" while a one-hour ticket sat on
+    // screen for an hour - a visible anomaly turned invisible.
+    const hour = qrCountdownSeconds("2026-08-03T11:00:00.000Z", ISSUED);
+    expect(hour).toBe(3600);
+    expect(qrLifetimeIsAnomalous(hour)).toBe(true);
+    expect(qrLifetimeIsAnomalous(QR_TTL_SECONDS)).toBe(false);
   });
 
   it("treats an unparseable timestamp as expired rather than as infinite", () => {
@@ -79,55 +87,63 @@ describe("disclosure gate", () => {
       .versionToAcknowledge).toBe(7);
   });
 
-  it("re-arms when a LIMITED session forces a reconnect", () => {
-    // A LIMITED reconnect is a fresh grant of access to the phone, so the operator
-    // acknowledges again even though the published version has not moved.
+  it("does not invent a re-acknowledgement the server cannot clear", () => {
+    // An earlier version re-armed on LIMITED + RECONNECT_REQUIRED. Nothing in the
+    // migration set ever writes session_risk_state='LIMITED', and the acknowledge
+    // RPC touches neither session_risk_state nor connection_state - so the gate
+    // could never be satisfied and locked the operator out with no exit.
     const limited = disclosureState({
       ...account,
       sessionRiskState: "LIMITED",
       connectionState: "RECONNECT_REQUIRED",
     });
-    expect(limited.acknowledged).toBe(false);
-    expect(limited.reason).toBe("LIMITED_RECONNECT");
+    expect(limited.acknowledged).toBe(true);
+    expect(limited.reason).toBeNull();
   });
 });
 
 describe("QR gate", () => {
-  const base = { account, control, canManageConnections: true, now: ISSUED };
+  const base = { account, canManageConnections: true };
 
-  it("blocks a QR the server would refuse, and says which gate stopped it", () => {
+  it("blocks exactly what the server blocks, and nothing it does not", () => {
     expect(qrGateState({ ...base, canManageConnections: false }).blockedBy)
       .toBe("PERMISSION");
-    expect(qrGateState({ ...base, control: { ...control, globalStop: true } }).blockedBy)
-      .toBe("GLOBAL_STOP");
-    expect(qrGateState({ ...base, control: { ...control, featureEnabled: false } }).blockedBy)
-      .toBe("FEATURE_DISABLED");
+    expect(qrGateState({ ...base, account: { ...account, connectionState: "CONNECTED" } })
+      .blockedBy).toBe("ALREADY_CONNECTED");
+    expect(qrGateState({ ...base, account: { ...account, currentCellId: null } })
+      .blockedBy).toBe("NO_READY_CELL");
     expect(qrGateState({
       ...base,
       account: { ...account, disclosureAcknowledgedVersion: 1 },
     }).blockedBy).toBe("DISCLOSURE");
   });
 
-  it("orders the gates the way the server does, so the UI never blames the wrong one", () => {
-    // GLOBAL_STOP is checked before the disclosure gate server-side. If the UI
-    // reported DISCLOSURE here, an operator would acknowledge and still be refused.
-    const both = qrGateState({
-      ...base,
-      control: { ...control, globalStop: true },
-      account: { ...account, disclosureAcknowledgedVersion: null },
-    });
-    expect(both.blockedBy).toBe("GLOBAL_STOP");
+  it("does not block on GLOBAL_STOP or the feature flag, because the server does not", () => {
+    // openclaw_begin_qr_login_v1 checks neither. Blocking here told the operator to
+    // lift the emergency stop, after which the server refused for disclosure anyway
+    // - the exact misattribution the old comment claimed to prevent.
+    const stale = { ...account, disclosureAcknowledgedVersion: 1 };
+    expect(qrGateState({ ...base, account: stale }).blockedBy).toBe("DISCLOSURE");
   });
 
-  it("allows the QR only when every gate is open", () => {
-    const open = qrGateState(base);
-    expect(open.blockedBy).toBeNull();
-    expect(open.canRequestQr).toBe(true);
+  it("refuses RECONNECT_REQUIRED as unrecoverable rather than raising a bare P0002", () => {
+    // The server's account select is `into strict` on
+    // `connection_state in ('DISCONNECTED','QR_PENDING')`, so this state yields
+    // no_data_found with no message. No function in the migration set moves an
+    // account out of RECONNECT_REQUIRED, so the honest answer is that the UI cannot
+    // fix it.
+    for (const state of ["RECONNECT_REQUIRED", "CONNECTING", "DISCONNECTING"] as const) {
+      expect(qrGateState({ ...base, account: { ...account, connectionState: state } })
+        .blockedBy, state).toBe("UNRECOVERABLE_STATE");
+    }
   });
 
-  it("refuses to keep offering a QR while one is already connected", () => {
-    expect(qrGateState({ ...base, account: { ...account, connectionState: "CONNECTED" } }).blockedBy)
-      .toBe("ALREADY_CONNECTED");
+  it("allows the QR from the two states the server accepts", () => {
+    for (const state of ["DISCONNECTED", "QR_PENDING"] as const) {
+      const open = qrGateState({ ...base, account: { ...account, connectionState: state } });
+      expect(open.blockedBy, state).toBeNull();
+      expect(open.canRequestQr, state).toBe(true);
+    }
   });
 });
 

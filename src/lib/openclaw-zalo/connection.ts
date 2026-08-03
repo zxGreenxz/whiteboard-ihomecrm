@@ -8,30 +8,38 @@ import type { OpenClawAccountSummary, OpenClawControlState } from "./types";
  */
 export const QR_TTL_SECONDS = 120;
 
+/** True when a ticket outlives the documented window, which is worth surfacing. */
+export function qrLifetimeIsAnomalous(secondsLeft: number) {
+  return secondsLeft > QR_TTL_SECONDS;
+}
+
 function epoch(timestamp: string): number | null {
   const value = Date.parse(timestamp);
   return Number.isFinite(value) ? value : null;
 }
 
 /**
- * Whole seconds left before `expiresAt`, clamped to [0, QR_TTL_SECONDS].
+ * Whole seconds left before `expiresAt`, floored at 0.
  *
- * Both clamps matter. A browser clock skewed backwards must not resurrect an
- * expired code, and a malformed or over-long lifetime must not park a QR - which
- * grants access to the operator's phone - on screen indefinitely. An unparseable
- * timestamp counts as expired, because the safe reading of "I cannot tell when this
- * dies" is "it is already dead".
+ * NOT clamped at the top. An earlier version returned `min(seconds, 120)` and
+ * claimed that stopped an over-long ticket from parking a QR on screen - it did
+ * not: expiry is driven by the real `expiresAt`, so a one-hour ticket sat there for
+ * an hour while the UI confidently displayed a frozen "120s". The clamp turned a
+ * visible anomaly into an invisible one. Callers that want the ceiling enforced
+ * should compare against {@link QR_TTL_SECONDS} and act, not hide the number.
+ *
+ * An unparseable timestamp counts as expired: the safe reading of "I cannot tell
+ * when this dies" is "it is already dead".
  */
 export function qrCountdownSeconds(expiresAt: string, now: string): number {
   const end = epoch(expiresAt);
   const current = epoch(now);
   if (end === null || current === null) return 0;
   const seconds = Math.floor((end - current) / 1000);
-  if (seconds <= 0) return 0;
-  return Math.min(seconds, QR_TTL_SECONDS);
+  return seconds <= 0 ? 0 : seconds;
 }
 
-export type DisclosureReason = "VERSION_MOVED" | "NEVER_ACKNOWLEDGED" | "LIMITED_RECONNECT" | null;
+export type DisclosureReason = "VERSION_MOVED" | "NEVER_ACKNOWLEDGED" | null;
 
 export interface DisclosureState {
   acknowledged: boolean;
@@ -43,9 +51,15 @@ export interface DisclosureState {
 /**
  * Whether the operator still owes an acknowledgement before a QR may be requested.
  *
- * Mirrors what `openclaw_begin_qr_login_v1` enforces, plus the plan's rule that a
- * LIMITED session forcing a reconnect re-arms the disclosure: that reconnect is a
- * fresh grant of access to the phone even though the published version has not moved.
+ * Mirrors exactly what `openclaw_begin_qr_login_v1` enforces:
+ * `disclosure_acknowledged_version <> disclosure_version or disclosure_acknowledged_at is null`.
+ *
+ * An earlier version also re-armed on a LIMITED session forcing a reconnect. That
+ * was an INVENTED LOCKOUT: nothing in the migration set ever writes
+ * `session_risk_state = 'LIMITED'`, the acknowledge RPC touches neither
+ * session_risk_state nor connection_state, and the gate therefore could never be
+ * satisfied - the operator acknowledged, the account came back unchanged, and the
+ * button stayed disabled with no way out through the UI.
  */
 export function disclosureState(account: OpenClawAccountSummary): DisclosureState {
   const versionToAcknowledge = account.disclosureVersion;
@@ -55,24 +69,19 @@ export function disclosureState(account: OpenClawAccountSummary): DisclosureStat
   if (account.disclosureAcknowledgedVersion !== account.disclosureVersion) {
     return { acknowledged: false, versionToAcknowledge, reason: "VERSION_MOVED" };
   }
-  if (account.sessionRiskState === "LIMITED" && account.connectionState === "RECONNECT_REQUIRED") {
-    return { acknowledged: false, versionToAcknowledge, reason: "LIMITED_RECONNECT" };
-  }
   return { acknowledged: true, versionToAcknowledge, reason: null };
 }
 
 export type QrBlockedBy =
   | "PERMISSION"
-  | "GLOBAL_STOP"
-  | "FEATURE_DISABLED"
   | "ALREADY_CONNECTED"
+  | "UNRECOVERABLE_STATE"
+  | "NO_READY_CELL"
   | "DISCLOSURE";
 
 export interface QrGateInput {
   account: OpenClawAccountSummary;
-  control: OpenClawControlState | null;
   canManageConnections: boolean;
-  now: string;
 }
 
 export interface QrGateState {
@@ -82,23 +91,40 @@ export interface QrGateState {
 }
 
 /**
- * The gates a QR request must pass, IN THE ORDER THE SERVER CHECKS THEM.
+ * The gates a QR request must pass, MIRRORING `openclaw_begin_qr_login_v1`.
  *
- * Order is the whole point. If the UI reported DISCLOSURE while GLOBAL_STOP was
- * also set, the operator would acknowledge the disclosure and still be refused,
- * with no idea why. Reporting the gate the server would actually hit first keeps
- * the explanation truthful.
+ * Read that function before changing anything here. What it actually checks, in
+ * order: `require_perm_v1('openclaw_zalo.manage_connections')`, then a
+ * `select ... into strict` on the account (`is_active`, `connection_state in
+ * ('DISCONNECTED','QR_PENDING')`, no unacknowledged revocation), then a strict
+ * select on the cell (`is_current and state = 'READY'`), then one on the lease,
+ * then the disclosure comparison.
+ *
+ * What it does NOT check: `global_stop` and `feature_enabled`. An earlier version
+ * of this gate blocked on both and claimed to be "in the order the server checks
+ * them". It was not: with GLOBAL_STOP set and the disclosure stale, the client told
+ * the operator to lift the emergency stop, and the server then refused for
+ * disclosure anyway - the exact misattribution the comment claimed to prevent.
+ *
+ * The three strict selects raise a bare `P0002 no_data_found` with no message, so
+ * anything predictable from the bootstrap is worth blocking on here rather than
+ * letting an operator meet an empty error.
  */
 export function qrGateState(input: QrGateInput): QrGateState {
-  const disclosure = disclosureState(input.account);
+  const { account } = input;
+  const disclosure = disclosureState(account);
   const blockedBy: QrBlockedBy | null = !input.canManageConnections
     ? "PERMISSION"
-    : input.control?.globalStop === true
-      ? "GLOBAL_STOP"
-      : input.control?.featureEnabled === false
-        ? "FEATURE_DISABLED"
-        : input.account.connectionState === "CONNECTED"
-          ? "ALREADY_CONNECTED"
+    : account.connectionState === "CONNECTED"
+      ? "ALREADY_CONNECTED"
+      // DISCONNECTED and QR_PENDING are the only states the server accepts.
+      // CONNECTING and DISCONNECTING are transient; RECONNECT_REQUIRED is not - no
+      // function in the migration set moves an account out of it, so the honest
+      // answer is that the UI cannot fix this, not a button that raises P0002.
+      : account.connectionState !== "DISCONNECTED" && account.connectionState !== "QR_PENDING"
+        ? "UNRECOVERABLE_STATE"
+        : account.currentCellId === null
+          ? "NO_READY_CELL"
           : disclosure.acknowledged
             ? null
             : "DISCLOSURE";
