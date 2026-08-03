@@ -15,6 +15,7 @@ const stopProps = {
   alreadyStopped: false,
   typedConfirmation: GLOBAL_STOP_CONFIRMATION,
   busy: false,
+  failureMessage: null as string | null,
   onTypedConfirmationChange: noop,
   onConfirm: noop,
   onClose: noop,

@@ -26,6 +26,8 @@ interface OpenClawOverviewProps {
   control: OpenClawControlState | null;
   counts: OverviewCounts | null;
   incidents: readonly HealthIncidentView[];
+  /** True when the incident query itself failed - usually a missing `audit` permission. */
+  incidentsUnavailable: boolean;
   loading: boolean;
   canManageOperations: boolean;
   onOpenGlobalStop: () => void;
@@ -110,7 +112,18 @@ export default function OpenClawOverview(props: OpenClawOverviewProps) {
         <h2 className="text-sm font-extrabold uppercase tracking-[0.1em] text-[#607585]">
           Sự cố gần đây
         </h2>
-        {props.incidents.length === 0 ? (
+        {props.incidentsUnavailable ? (
+          // "No incidents recorded" for a member who simply cannot READ incidents is
+          // a false all-clear, and this is the default landing section - so every
+          // view-only member was being told the system was healthy.
+          <p
+            data-openclaw-overview="incidents-unavailable"
+            className="mt-2 text-sm font-bold text-[#8a4b12]"
+          >
+            Không đọc được nhật ký sự cố. Mục này cần quyền kiểm toán; đây KHÔNG phải là
+            &quot;không có sự cố&quot;.
+          </p>
+        ) : props.incidents.length === 0 ? (
           <p data-openclaw-overview="no-incidents" className="mt-2 text-sm text-[#607585]">
             Chưa ghi nhận sự cố nào.
           </p>

@@ -7,6 +7,8 @@ interface OpenClawGlobalStopDialogProps {
   alreadyStopped: boolean;
   typedConfirmation: string;
   busy: boolean;
+  /** What the last attempt failed with; silence here would be the worst outcome. */
+  failureMessage: string | null;
   onTypedConfirmationChange: (value: string) => void;
   onConfirm: () => void;
   onClose: () => void;
@@ -72,6 +74,15 @@ export default function OpenClawGlobalStopDialog(props: OpenClawGlobalStopDialog
             className="mt-3 text-sm font-bold text-[#8a4b12]"
           >
             {BLOCK_COPY[gate.blockedBy]}
+          </p>
+        )}
+
+        {props.failureMessage !== null && (
+          <p
+            data-openclaw-global-stop="failure"
+            className="mt-3 border border-[#c0563a] bg-[#fdeceb] p-3 text-sm font-bold text-[#8a2f1c]"
+          >
+            {props.failureMessage}
           </p>
         )}
 

@@ -15,6 +15,7 @@ const props = {
   }],
   deadLetters: [{ deadLetterId: "dl-1", reasonCode: "PROVIDER_REJECTED", createdAt: "2026-08-03T08:00:00Z" }],
   loading: false,
+  listsUnavailable: false,
   canManageOperations: true,
   canAudit: true,
   busy: false,
@@ -59,11 +60,19 @@ describe("operations screen", () => {
 
     const outbox = render({ lastReplay: { kind: "NEW_OUTBOX", outboxId: "o1" } });
     expect(outbox).toContain('data-openclaw-replay="NEW_OUTBOX"');
-    expect(outbox).toContain("tin gửi MỚI tới khách");
+    expect(outbox).toContain("dòng gửi MỚI tới khách trong hàng đợi");
   });
 
-  it("says replay is subject to a policy recheck, so it does not read as force", () => {
-    expect(render()).toContain("kiểm lại chính sách hiện hành");
+  it("warns that replay queues immediately and does NOT recheck policy", () => {
+    // The RPC inserts the outbox row unconditionally. An earlier version of this copy
+    // promised a policy recheck that does not happen, and this test pinned the false
+    // sentence - so the wrong claim was regression-protected.
+    const html = render();
+    expect(html).toContain('data-openclaw-operations="replay-warning"');
+    expect(html).toContain("không kiểm chính sách ở bước này");
+    expect(html).toContain("GLOBAL_STOP");
+    // The refuted claim must not come back.
+    expect(html).not.toContain("sẽ không có tin nào được tạo");
   });
 
   it("names which of the two permissions a legal hold is missing", () => {

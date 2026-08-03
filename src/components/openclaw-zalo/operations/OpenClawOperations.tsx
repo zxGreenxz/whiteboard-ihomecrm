@@ -24,6 +24,8 @@ interface OpenClawOperationsProps {
   unknownRows: readonly UnknownRowView[];
   deadLetters: readonly DeadLetterView[];
   loading: boolean;
+  /** True when the two list queries failed rather than returned nothing. */
+  listsUnavailable: boolean;
   canManageOperations: boolean;
   canAudit: boolean;
   busy: boolean;
@@ -49,7 +51,11 @@ const HOLD_BLOCK_COPY = {
 
 const REPLAY_COPY = {
   WORK_ITEM: "Đã xếp một việc gửi lại cho runtime xử lý. Chưa có tin mới nào tới khách.",
-  NEW_OUTBOX: "Đã tạo một tin gửi MỚI tới khách, sau khi máy chủ kiểm lại chính sách.",
+  // NOT "after the server rechecked policy". openclaw_replay_dead_letter_v1 copies the
+  // old canonical payload and inserts the outbox row unconditionally, carrying the
+  // ORIGINAL session/control/takeover versions. Policy is evaluated later, when the
+  // runtime claims the row for dispatch.
+  NEW_OUTBOX: "Đã tạo một dòng gửi MỚI tới khách trong hàng đợi. Chưa gửi đi.",
 } as const;
 
 export default function OpenClawOperations(props: OpenClawOperationsProps) {
@@ -66,7 +72,17 @@ export default function OpenClawOperations(props: OpenClawOperationsProps) {
         <h2 className="text-sm font-extrabold uppercase tracking-[0.1em] text-[#607585]">
           Tin không xác định
         </h2>
-        {props.unknownRows.length === 0 ? (
+        {props.listsUnavailable ? (
+          // A permission-denied read must never read as "nothing to reconcile": that
+          // is the one sentence that would stop an operator from looking further.
+          <p
+            data-openclaw-operations="unknown-unavailable"
+            className="mt-2 text-sm font-bold text-[#8a4b12]"
+          >
+            Không đọc được danh sách. Mục này cần quyền vận hành; đây KHÔNG phải là
+            &quot;không có gì cần đối chiếu&quot;.
+          </p>
+        ) : props.unknownRows.length === 0 ? (
           <p data-openclaw-operations="unknown-empty" className="mt-2 text-sm text-[#607585]">
             {props.loading ? "Đang tải…" : "Không có tin nào cần đối chiếu."}
           </p>
@@ -121,7 +137,14 @@ export default function OpenClawOperations(props: OpenClawOperationsProps) {
             {REPLAY_COPY[props.lastReplay.kind]}
           </p>
         )}
-        {props.deadLetters.length === 0 ? (
+        {props.listsUnavailable ? (
+          <p
+            data-openclaw-operations="dead-letter-unavailable"
+            className="mt-2 text-sm font-bold text-[#8a4b12]"
+          >
+            Không đọc được danh sách dead-letter.
+          </p>
+        ) : props.deadLetters.length === 0 ? (
           <p data-openclaw-operations="dead-letter-empty" className="mt-2 text-sm text-[#607585]">
             Không có dead-letter.
           </p>
@@ -148,11 +171,20 @@ export default function OpenClawOperations(props: OpenClawOperationsProps) {
             ))}
           </ul>
         )}
-        {/* The recheck is the server's, not a promise this screen can keep on its
-            own - but saying it happens is what stops "replay" reading as "force". */}
-        <p className="mt-2 text-xs leading-5 text-[#607585]">
-          Gửi lại chỉ tạo tin mới sau khi máy chủ kiểm lại chính sách hiện hành. Nếu chính sách
-          đang chặn, sẽ không có tin nào được tạo.
+        {/* An earlier version of this copy told the operator that replay "only creates
+            a message after the server rechecks policy, and creates nothing if policy is
+            blocking". That is FALSE: the RPC inserts the row unconditionally and policy
+            is only evaluated at dispatch. During an incident with GLOBAL_STOP on, an
+            operator reassured by that sentence could queue dozens of real
+            customer-facing rows that all become deliverable the moment the stop is
+            lifted. */}
+        <p
+          data-openclaw-operations="replay-warning"
+          className="mt-2 border border-[#d99a6c] bg-[#fdf0e4] p-2 text-xs leading-5 text-[#8a4b12]"
+        >
+          Gửi lại tạo NGAY một dòng trong hàng đợi, không kiểm chính sách ở bước này. Chính sách
+          (giờ im lặng, đồng ý nhận tin, GLOBAL_STOP…) chỉ được xét lúc phát tin. Nếu đang bật
+          GLOBAL_STOP thì các dòng này nằm chờ và sẽ đi ra ngay khi gỡ dừng.
         </p>
       </section>
 

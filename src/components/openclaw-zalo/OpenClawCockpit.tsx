@@ -97,7 +97,10 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
         paused={paused}
         globalStop={control?.globalStop ?? false}
         canManageOperations={can("manage_operations")}
-        onGlobalStop={() => setActiveSection("operations")}
+        // The stop control lives on the overview, beside the status it changes.
+        // Routing this to "operations" sent an operator mid-incident to a screen with
+        // no stop button, under a tooltip promising the control was there.
+        onGlobalStop={() => setActiveSection("overview")}
       />
 
       {!mobile && (

@@ -41,6 +41,7 @@ const props = {
     deadLetterCount: 0,
   },
   incidents: [],
+  incidentsUnavailable: false,
   loading: false,
   canManageOperations: true,
   onOpenGlobalStop: noop,

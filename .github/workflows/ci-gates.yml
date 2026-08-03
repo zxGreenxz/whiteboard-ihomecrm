@@ -5,10 +5,10 @@
 # (typecheck/lint/build/vitest) và KHÔNG dùng continue-on-error — lệnh fail thì
 # job fail. Nhờ vậy CI XANH ngay khi merge file này, không đỏ vì thiếu secret.
 #
-# Các gate cần Supabase PAT / Management API / tài khoản test được tách RIÊNG và
-# chỉ chạy khi maintainer đã cấu hình secret. GitHub Actions KHÔNG cho tham chiếu
-# `secrets.*` trực tiếp trong `if:` cấp job → dùng job "preflight" đọc secret ra
-# output rồi các job optional `needs: preflight` + `if: needs.preflight.outputs.*`.
+# Các gate cần Supabase PAT / Management API / tài khoản test được tách RIÊNG,
+# chỉ chạy trên refs/heads/main qua push hoặc workflow_dispatch, và chỉ khi
+# maintainer đã cấu hình secret. PR và release/* chỉ chạy các gate không secret.
+# Job "preflight" đọc secret ra output cho các job optional `needs: preflight`.
 #
 # Secrets cần cấu hình (Settings → Secrets and variables → Actions):
 #   - SUPABASE_PAT            : Supabase Management API personal access token
@@ -20,16 +20,24 @@
 #                                dùng cho reconcile-money (nguồn B/C).
 #
 # GỢI Ý: thêm SUPABASE_PAT sớm để 2 gate ACL/view-invoker (chống drift quyền anon
-# + lộ view xuyên-tenant) có hiệu lực trên mọi PR.
+# + lộ view xuyên-tenant) có hiệu lực trên push/manual của refs/heads/main.
 
 name: CI Gates
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches:
       - main
       - 'release/*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-gates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
@@ -37,7 +45,11 @@ jobs:
   # (Không thể dùng secrets.* trong `if:` cấp job → phải qua bước này.)
   # ─────────────────────────────────────────────────────────────────────────
   preflight:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       has_pat: ${{ steps.check.outputs.has_pat }}
       has_cli_token: ${{ steps.check.outputs.has_cli_token }}
@@ -60,49 +72,390 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   quality-gates:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node (khớp engines >=20 trong package.json)
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          node-version: '20'
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
           cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Cài dependency (npm ci — khớp package-lock.json)
         run: npm ci
 
+      - name: OpenClaw isolation boundary
+        run: node scripts/check-openclaw-isolation.mjs
+
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline
 
-      - name: Lint (eslint .)
-        run: npm run lint
+      - name: Typecheck strict app (tsconfig.app.json)
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      - name: Lint root-owned code
+        run: >
+          npm run lint --
+          --ignore-pattern 'services/**'
+          --ignore-pattern 'infra/**'
+          --ignore-pattern 'supabase/functions/**'
+          --ignore-pattern '.tmp-openclaw-host/**'
+          --ignore-pattern '.e2e-fleet/**'
 
       - name: Build (vite build — bắt lỗi build-time không lộ ở tsc/eslint)
         run: npm run build
 
-      # 65 file test rải khắp nhiều thư mục (src/components/*/__tests__,
-      # src/hooks/__tests__, src/lib/__tests__, src/lib/*.test.ts,
-      # src/copilot/__tests__…) — không gom về 1 path con nên chạy toàn bộ suite.
-      - name: Vitest (toàn bộ suite — property-based + unit)
-        run: npx vitest run
+      # Keep root discovery inside root-owned suites. Node-only packages run in
+      # openclaw-package-gates, so Bridge node:sqlite tests are never collected here.
+      - name: Vitest (root-owned app and script suites)
+        run: >
+          npx vitest run src scripts/__tests__
+          --exclude 'services/**'
+          --exclude 'infra/**'
+          --exclude '.tmp-openclaw-host/**'
+          --exclude '.e2e-fleet/**'
+          --exclude 'src/lib/__tests__/openclawZaloMigrations.test.ts'
+          --exclude 'scripts/__tests__/openclaw-sql-harness.test.mjs'
+          --exclude 'scripts/__tests__/openclaw-concurrency-harness.test.mjs'
+          --exclude 'scripts/__tests__/openclaw-browser-dml-matrix.test.mjs'
+          --exclude 'scripts/__tests__/openclaw-composite-fk-indexes.test.mjs'
+          --exclude 'scripts/__tests__/openclaw-schema-drift-harness.test.mjs'
+          --exclude 'scripts/__tests__/openclaw-full-reset-harness.test.mjs'
+
+  openclaw-edge-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: quality-gates
+    env:
+      DENO_NO_PACKAGE_JSON: '1'
+      DENO_NO_UPDATE_CHECK: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Setup Deno 2.9.4
+        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
+        with:
+          deno-version: v2.9.4
+
+      - name: Vitest (bounded OpenClaw Edge scopes)
+        run: >
+          npx vitest run
+          supabase/functions/_shared/openclaw
+          supabase/functions/openclaw-control
+          supabase/functions/openclaw-qr
+          supabase/functions/openclaw-runtime-token
+          supabase/functions/openclaw-runtime
+          supabase/functions/openclaw-object-tickets
+
+      - name: Deno cache production entrypoints
+        run: |
+          deno cache --frozen --lock=deno.lock \
+            supabase/functions/openclaw-control/index.ts \
+            supabase/functions/openclaw-qr/index.ts \
+            supabase/functions/openclaw-runtime-token/index.ts \
+            supabase/functions/openclaw-runtime/index.ts \
+            supabase/functions/openclaw-object-tickets/index.ts \
+            supabase/functions/_shared/openclaw/deps.ts
+
+      - name: Deno lint bounded Edge scopes
+        run: |
+          deno cache --frozen --lock=deno.lock \
+            supabase/functions/openclaw-control/index.ts \
+            supabase/functions/openclaw-qr/index.ts \
+            supabase/functions/openclaw-runtime-token/index.ts \
+            supabase/functions/openclaw-runtime/index.ts \
+            supabase/functions/openclaw-object-tickets/index.ts \
+            supabase/functions/_shared/openclaw/deps.ts
+          deno lint \
+            supabase/functions/openclaw-control \
+            supabase/functions/openclaw-qr \
+            supabase/functions/openclaw-runtime-token \
+            supabase/functions/openclaw-runtime \
+            supabase/functions/openclaw-object-tickets \
+            supabase/functions/_shared/openclaw
+
+      - name: Deno check production entrypoints
+        run: |
+          deno check --frozen --lock=deno.lock \
+            supabase/functions/openclaw-control/index.ts \
+            supabase/functions/openclaw-qr/index.ts \
+            supabase/functions/openclaw-runtime-token/index.ts \
+            supabase/functions/openclaw-runtime/index.ts \
+            supabase/functions/openclaw-object-tickets/index.ts
+
+  openclaw-sql-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: quality-gates
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: OpenClaw canonical local SQL gates
+        run: npm run test:openclaw:sql
+
+  generated-types-local-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality-gates
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Deterministic local generated-types drift
+        env:
+          SUPABASE_TYPES_SOURCE: local
+          SUPABASE_TYPES_LOCAL_ENGINE: pglite
+        run: |
+          npm run gen:types
+          git diff --exit-code -- src/integrations/supabase/types.ts
+
+  openclaw-package-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: quality-gates
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - services/openclaw-zalo-bridge
+          - services/openclaw-zalo-maintenance
+          - infra/openclaw-media-gateway
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Install package dependencies
+        run: npm --prefix "${{ matrix.package }}" ci
+
+      - name: Build package
+        run: npm --prefix "${{ matrix.package }}" run build
+
+      - name: Typecheck package
+        run: npm --prefix "${{ matrix.package }}" run typecheck
+
+      - name: Test package
+        run: npm --prefix "${{ matrix.package }}" run test
+
+      - name: Lint package when defined
+        run: npm --prefix "${{ matrix.package }}" run lint --if-present
+
+  openclaw-session-crypto-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: quality-gates
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+          cache-dependency-path: services/openclaw-zalo-cell/session-crypto/package-lock.json
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Install session-crypto dependencies
+        run: npm --prefix services/openclaw-zalo-cell/session-crypto ci
+
+      # verify:dist compares the committed three-file runtime closure with two
+      # independent clean builds before any later step can overwrite it.
+      - name: Verify deterministic session-crypto dist
+        run: npm --prefix services/openclaw-zalo-cell/session-crypto run verify:dist
+
+      - name: Test session-crypto
+        run: npm --prefix services/openclaw-zalo-cell/session-crypto run test
+
+      - name: Typecheck session-crypto
+        run: npm --prefix services/openclaw-zalo-cell/session-crypto run typecheck
+
+      - name: Lint session-crypto when defined
+        run: npm --prefix services/openclaw-zalo-cell/session-crypto run lint --if-present
+
+  openclaw-vendor-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: quality-gates
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+          cache: 'npm'
+          cache-dependency-path: services/openclaw-zalo-cell/vendor/zalouser-bridge/package-lock.json
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Provision exact vendor npm
+        run: npm install --global npm@11.12.1
+
+      - name: Run dependency-free vendor preflight
+        run: |
+          test "$(npm --version)" = "11.12.1"
+          npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run preflight
+
+      - name: Install vendor harness dependencies
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge ci
+
+      - name: Verify reviewed upstream provenance
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:upstream
+
+      - name: Prepare verified vendor source
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run vendor:prepare
+
+      - name: Typecheck vendor harness
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run typecheck
+
+      - name: Test vendor harness
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run test
+
+      - name: Build vendor artifact
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run build
+
+      - name: Pack vendor artifact
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run pack
+
+      - name: Verify vendor artifact
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run verify:artifact
+
+      - name: Lint vendor harness when defined
+        run: npm --prefix services/openclaw-zalo-cell/vendor/zalouser-bridge run lint --if-present
+
+  openclaw-cell-image-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - openclaw-session-crypto-gate
+      - openclaw-vendor-gate
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24.18.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
+
+      - name: Verify source-only cell image contracts
+        run: node --test services/openclaw-zalo-cell/test/image-contract.test.mjs
+
+  openclaw-docker-builds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: openclaw-package-gates
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: bridge
+            context: services/openclaw-zalo-bridge
+            dockerfile: services/openclaw-zalo-bridge/Dockerfile
+          - service: maintenance
+            context: services/openclaw-zalo-maintenance
+            dockerfile: services/openclaw-zalo-maintenance/Dockerfile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Build ${{ matrix.service }} image without publishing
+        run: docker build --file "${{ matrix.dockerfile }}" --tag "openclaw-${{ matrix.service }}:ci" "${{ matrix.context }}"
 
   # ─────────────────────────────────────────────────────────────────────────
   # Gate BẢO MẬT (cần SUPABASE_PAT): definer-acl + view-invoker gọi Management
-  # API. THÊM secret SUPABASE_PAT → 2 gate này tự động có hiệu lực mọi PR/push.
+  # API. Chỉ chạy trên push/manual refs/heads/main; PR và release/* không nhận secret.
   # ─────────────────────────────────────────────────────────────────────────
   security-gates:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: preflight
-    if: needs.preflight.outputs.has_pat == 'true'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.preflight.outputs.has_pat == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '24.18.0'
           cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Cài dependency
         run: npm ci
@@ -143,21 +496,25 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   generated-types-drift:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: preflight
-    if: needs.preflight.outputs.has_cli_token == 'true'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.preflight.outputs.has_cli_token == 'true'
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          version: latest
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '24.18.0'
           cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Cài dependency
         run: npm ci
@@ -166,11 +523,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          npm run gen:types > /tmp/types.generated.ts
-          # Dòng đầu file committed là comment header thêm tay (xem CLAUDE.md) — bỏ qua khi so.
-          diff -u <(tail -n +2 src/integrations/supabase/types.ts) <(tail -n +2 /tmp/types.generated.ts) \
-            && echo "✅ types.ts khớp schema DB — không trôi." \
-            || { echo "❌ types.ts TRÔI so với schema thật — chạy: npm run gen:types > src/integrations/supabase/types.ts (rồi thêm lại header)"; exit 1; }
+          npm run gen:types
+          git diff --exit-code -- src/integrations/supabase/types.ts
 
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: đối chiếu tiền 3 nguồn độc lập (bug class cap-1000 PostgREST).
@@ -178,16 +532,25 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   reconcile-money:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: preflight
-    if: needs.preflight.outputs.has_test_creds == 'true'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.preflight.outputs.has_test_creds == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '24.18.0'
           cache: 'npm'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Cài dependency (cần @supabase/supabase-js)
         run: npm ci
@@ -207,15 +570,24 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   cross-tenant-isolation:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: preflight
-    if: needs.preflight.outputs.has_pat == 'true'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.preflight.outputs.has_pat == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version: '24.18.0'
+
+      - name: Verify exact stable Node runtime
+        run: node -e "if(process.version!=='v24.18.0'){console.error('Expected exact stable Node v24.18.0, got '+process.version);process.exit(1)}"
 
       - name: Ma trận âm bản cách ly tenant (OWNER/ADMIN/FULL-SCOPE staff)
         env:

@@ -15,6 +15,7 @@ export default function OpenClawOverviewSection() {
   const canManageOperations = can("manage_operations");
   const [stopOpen, setStopOpen] = useState(false);
   const [typedConfirmation, setTypedConfirmation] = useState("");
+  const [stopFailure, setStopFailure] = useState<string | null>(null);
 
   const overviewQuery = useOpenClawOverview(selectedOrganizationId, accountId);
   const healthQuery = useOpenClawHealthEvents(selectedOrganizationId, accountId, 10);
@@ -30,6 +31,10 @@ export default function OpenClawOverviewSection() {
         account={account}
         control={bootstrap.control}
         counts={overviewQuery.data ?? null}
+        // A failed read is NOT "no incidents". This is the default landing section, so
+        // that distinction decides whether every view-only member is told the system
+        // is healthy.
+        incidentsUnavailable={healthQuery.error != null}
         incidents={(healthQuery.data?.items ?? []).map(item => ({
           healthEventId: item.healthEventId,
           severity: item.severity,
@@ -55,10 +60,17 @@ export default function OpenClawOverviewSection() {
         alreadyStopped={bootstrap.control?.globalStop === true}
         typedConfirmation={typedConfirmation}
         busy={setControlState.isPending}
+        failureMessage={stopFailure}
         onTypedConfirmationChange={setTypedConfirmation}
         onConfirm={() => {
           const control = bootstrap.control;
-          if (control === null) return;
+          if (control === null) {
+            // The gate cannot see this, so without the message the button would be
+            // enabled and the click would do nothing at all.
+            setStopFailure("Chưa đọc được trạng thái điều khiển hiện tại. Tải lại trang rồi thử lại.");
+            return;
+          }
+          setStopFailure(null);
           setControlState.mutate({
             clientOperationId: crypto.randomUUID(),
             request: {
@@ -71,7 +83,16 @@ export default function OpenClawOverviewSection() {
               globalStop: true,
               reasonCode: "OPERATOR_EMERGENCY_STOP",
             },
-          }, { onSuccess: () => setStopOpen(false) });
+          }, {
+            onSuccess: () => setStopOpen(false),
+            // Silence on the one control whose entire purpose is a panic button is the
+            // worst possible outcome: the operator cannot tell whether sending stopped.
+            onError: error => setStopFailure(
+              (error as { code?: string })?.code === "40001"
+                ? "Ai đó vừa đổi cấu hình điều khiển. Tải lại trang rồi thử lại."
+                : "Không dừng được. Tin vẫn có thể đang được gửi — thử lại hoặc báo vận hành.",
+            ),
+          });
         }}
         onClose={() => setStopOpen(false)}
       />

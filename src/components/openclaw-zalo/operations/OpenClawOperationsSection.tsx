@@ -56,6 +56,9 @@ export default function OpenClawOperationsSection() {
           createdAt: item.createdAt,
         }))}
         loading={unknownQuery.isLoading || deadLetterQuery.isLoading}
+        // A refused read must not read as "nothing to reconcile" - that is the one
+        // sentence that would stop an operator looking further.
+        listsUnavailable={unknownQuery.error != null || deadLetterQuery.error != null}
         canManageOperations={canManageOperations}
         canAudit={canAudit}
         busy={replay.isPending || legalHolds.create.isPending}

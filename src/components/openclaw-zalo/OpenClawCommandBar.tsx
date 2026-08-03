@@ -187,7 +187,7 @@ export default function OpenClawCommandBar({
           onClick={onGlobalStop}
           disabled={!canManageOperations}
           title={canManageOperations
-            ? "Mở mục Vận hành để bật GLOBAL_STOP"
+            ? "Mở Tổng quan để bật GLOBAL_STOP"
             : "Cần quyền manage_operations"}
           className="min-h-11 shrink-0 border border-[#b42318] bg-[#b42318] px-3 text-xs font-extrabold text-white hover:bg-[#8f201a] disabled:cursor-not-allowed disabled:border-[#c8a6a2] disabled:bg-[#ead4d1] disabled:text-[#795e5b]"
         >
