@@ -14,6 +14,8 @@ import OpenClawConnectionDialog from "./OpenClawConnectionDialog";
 interface OpenClawConnectionSectionProps {
   open: boolean;
   onClose: () => void;
+  /** Fired when the poll shows the account has left the QR flow - see below. */
+  onConnected?: () => void;
 }
 
 /**
@@ -34,6 +36,7 @@ const POLL_INTERVAL_MS = 2_000;
 export default function OpenClawConnectionSection({
   open,
   onClose,
+  onConnected,
 }: OpenClawConnectionSectionProps) {
   const { selectedOrganizationId, bootstrap, can } = useOpenClawRouteContext();
   const account = bootstrap.account;
@@ -48,6 +51,12 @@ export default function OpenClawConnectionSection({
   // does not tear down and restart the interval.
   const challengeRef = useRef(challenge);
   challengeRef.current = challenge;
+  // A CONSUME in flight. Without this the next 2s tick reads the pre-commit
+  // `pngDataUrl === null` and fires a SECOND consume with a fresh operation id, so
+  // idempotency does not deduplicate it - the challenge is no longer PENDING with
+  // material, the strict select finds nothing, and an error banner lands on top of
+  // a QR that actually worked.
+  const consuming = useRef(false);
 
   const acknowledge = useOpenClawAcknowledgeDisclosure(
     selectedOrganizationId, account?.accountId ?? "",
@@ -75,10 +84,14 @@ export default function OpenClawConnectionSection({
       void (async () => {
         const current = challengeRef.current;
         if (current === null) return;
-        // EXPIRED: stop polling and drop the material rather than leaving a dead
-        // payload on screen for someone to photograph.
+        // EXPIRED: drop the material rather than leave a dead payload on screen for
+        // someone to photograph. Cleared outright rather than flagged, because the
+        // effect never restarts while a challenge exists - flagging it re-created a
+        // new object every 2s forever, re-rendering until the dialog closed, and
+        // kept `pngDataUrl` in state despite a comment claiming otherwise.
         if (qrCountdownSeconds(current.expiresAt, new Date().toISOString()) <= 0) {
-          setChallenge(previous => (previous === null ? null : { ...previous, status: "EXPIRED" }));
+          setChallenge(null);
+          setErrorMessage("Mã đã hết hạn. Yêu cầu mã mới để tiếp tục.");
           return;
         }
         try {
@@ -86,26 +99,31 @@ export default function OpenClawConnectionSection({
           const accessToken = data.session?.access_token;
           if (!accessToken) return;
           const result = await pollQrLogin({
-            clientOperationId: crypto.randomUUID(),
             organizationId: selectedOrganizationId,
-            accountId: account.accountId,
             challengeId: current.challengeId,
             browserNonce: current.nonce,
             accessToken,
           });
           if (cancelled) return;
           const status = result.challenge?.challengeStatus ?? null;
-          // A null challenge means the account has left QR_PENDING/CONNECTING - the
-          // join in openclaw_poll_qr_login_v1 stops matching once login succeeds or
-          // the session is revoked. Treating that as "still PENDING" is what kept a
-          // consumed code on screen; treat it as terminal instead.
-          if (status === null || status === "CONSUMED" || status === "REVOKED") {
+          // A NULL challenge is the success signal: openclaw_poll_qr_login_v1 joins
+          // on `connection_state in ('QR_PENDING','CONNECTING')`, so the row stops
+          // matching once the scan lands and the account moves on - or once the
+          // session is revoked. Either way there is nothing left to show.
+          //
+          // CONSUMED is NOT that signal. The consume RPC sets it to record that THIS
+          // BROWSER fetched the material, so it appears on the very next tick after
+          // a successful decrypt. Treating it as terminal wiped the QR about two
+          // seconds after it appeared, before anyone could scan it.
+          if (status === null || status === "REVOKED") {
             clear();
+            onConnected?.();
             return;
           }
           setChallenge(previous => (previous === null ? null : { ...previous, status }));
           // READY is the first moment there is anything to decrypt.
-          if (status === "READY" && current.pngDataUrl === null) {
+          if (status === "READY" && current.pngDataUrl === null && !consuming.current) {
+            consuming.current = true;
             const consumed = await consumeQrChallenge({
               clientOperationId: crypto.randomUUID(),
               organizationId: selectedOrganizationId,
@@ -121,6 +139,8 @@ export default function OpenClawConnectionSection({
           }
         } catch (error) {
           if (!cancelled) setErrorMessage(messageOf(error));
+        } finally {
+          consuming.current = false;
         }
       })();
     }, POLL_INTERVAL_MS);
@@ -130,7 +150,7 @@ export default function OpenClawConnectionSection({
       clearInterval(tick);
       clearInterval(poll);
     };
-  }, [account, challenge === null, clear, selectedOrganizationId]);
+  }, [account, challenge === null, clear, onConnected, selectedOrganizationId]);
 
   const requestQr = useCallback(async () => {
     if (account?.currentCellId == null) return;

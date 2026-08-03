@@ -5,13 +5,27 @@ import { supabase } from "@/integrations/supabase/client";
  * `supabase.rpc`.
  *
  * This is not a stylistic choice. The scannable code is AES-256-GCM ciphertext in
- * the database; the only key lives in the Edge function's `OPENCLAW_QR_ENCRYPTION_KEY_B64`
- * environment, and the browser-facing SQL RPC `openclaw_consume_qr_challenge_v1`
- * deliberately returns `{challengeId, status, materialVersion}` with no ciphertext
- * at all. A client that calls the RPC directly can never obtain a QR to display.
+ * the database; the only key lives in the Edge function's
+ * `OPENCLAW_QR_ENCRYPTION_KEY_B64` environment, and the browser-facing SQL RPC
+ * `openclaw_consume_qr_challenge_v1` deliberately returns
+ * `{challengeId, status, materialVersion}` with no ciphertext at all. A client that
+ * calls the RPC directly can never obtain a QR to display.
  *
  * The function is a single slug with no internal routing: one POST, and the
  * `operation` field in the body selects BEGIN, POLL or CONSUME.
+ *
+ * TWO THINGS THE SERVER IS STRICT ABOUT, both of which broke earlier versions:
+ *
+ *  1. `version: 1` is checked BEFORE anything else, and is itself part of the
+ *     exact-key set. Omitting it rejected every call with 400 regardless of how
+ *     correct the rest of the body was.
+ *  2. The key sets differ per operation and are compared by LENGTH as well as
+ *     membership. POLL takes neither `clientOperationId` nor `accountId` - the
+ *     handler calls `openclaw_poll_qr_login_v1(p_request)` with one argument.
+ *
+ * `src/lib/openclaw-zalo/__tests__/qrClient.test.ts` runs the server's own
+ * `qrRequestSchema` against the bodies built here, so these claims are checked
+ * rather than asserted.
  */
 const FUNCTION_SLUG = "openclaw-qr";
 
@@ -32,7 +46,7 @@ function base64UrlDecode(value: string) {
  * mismatch with 403 SESSION_BINDING_INVALID before running any RPC, so it has to be
  * this value and no other. An earlier version hashed `organizationId:actorId` -
  * both public, identical on every device, and unchanged by logout - which would
- * have been refused by the server on every call while also binding nothing.
+ * have been refused on every call while also binding nothing.
  */
 export async function browserSessionHash(accessToken: string) {
   const [, payload] = accessToken.split(".");
@@ -57,16 +71,28 @@ export interface QrBeginResult {
   expiresAt: string;
 }
 
+/**
+ * Posts to the function and unwraps its envelope.
+ *
+ * Every success is `{version, requestId, result}`. Reading the top level yielded
+ * `undefined` for every field: BEGIN produced a challenge with no expiry, so the
+ * dialog immediately rendered "expired" for a code it had just minted; POLL
+ * produced no challenge, so the first tick destroyed it; CONSUME produced
+ * `<img src={undefined}>`. A missing `result` is a contract violation, not a
+ * value to pass along.
+ */
 async function callQrFunction<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke<T>(FUNCTION_SLUG, {
+  const { data, error } = await supabase.functions.invoke<{ result?: T }>(FUNCTION_SLUG, {
     // `invoke` attaches the caller's Authorization header, which the function
     // forwards to PostgREST - BEGIN and POLL run as the signed-in user, only
     // CONSUME switches to the service role, server-side.
     body,
   });
   if (error) throw error;
-  if (data == null) throw new Error("QR endpoint returned no body");
-  return data;
+  if (data == null || typeof data !== "object" || !("result" in data) || data.result == null) {
+    throw new Error("QR endpoint returned no result envelope");
+  }
+  return data.result;
 }
 
 /**
@@ -84,6 +110,7 @@ export async function beginQrLogin(input: {
   disclosureVersion: number;
 }): Promise<QrBeginResult> {
   return callQrFunction<QrBeginResult>({
+    version: 1,
     operation: "BEGIN",
     clientOperationId: input.clientOperationId,
     organizationId: input.organizationId,
@@ -95,19 +122,20 @@ export async function beginQrLogin(input: {
   });
 }
 
+/**
+ * Polls one challenge. Deliberately takes no `clientOperationId` or `accountId`:
+ * POLL_KEYS excludes both, and the key check compares length as well as membership.
+ */
 export async function pollQrLogin(input: {
-  clientOperationId: string;
   organizationId: string;
-  accountId: string;
   challengeId: string;
   browserNonce: string;
   accessToken: string;
 }): Promise<{ challenge: QrChallengeSnapshot | null }> {
   return callQrFunction({
+    version: 1,
     operation: "POLL",
-    clientOperationId: input.clientOperationId,
     organizationId: input.organizationId,
-    accountId: input.accountId,
     challengeId: input.challengeId,
     browserNonceHash: await sha256Hex(input.browserNonce),
     authSessionHash: await browserSessionHash(input.accessToken),
@@ -128,6 +156,7 @@ export async function consumeQrChallenge(input: {
   accessToken: string;
 }): Promise<{ qrPngDataUrl: string; status: string }> {
   return callQrFunction({
+    version: 1,
     operation: "CONSUME",
     clientOperationId: input.clientOperationId,
     organizationId: input.organizationId,

@@ -1,4 +1,4 @@
-import type { OpenClawAccountSummary, OpenClawControlState } from "./types";
+import type { OpenClawAccountSummary } from "./types";
 
 /**
  * The ceiling the UI will display for a QR code, matching the plan's 120-second

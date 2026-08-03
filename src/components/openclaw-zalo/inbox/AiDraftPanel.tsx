@@ -94,10 +94,13 @@ export default function AiDraftPanel({
             </p>
           )}
 
-          {/* Selecting is not sending: openclaw_create_send_intent_v1 refuses any
-              draft whose dlp_decision is not PASS, so offering the choice on a
-              blocked draft would only produce an indistinguishable P0002. */}
-          {draft.dlpDecision === "PASS" && (
+          {/* Selecting is not sending. openclaw_create_send_intent_v1 refuses any
+              draft that is not PASS *and* not in ('REVIEW_ONLY','APPROVED') - and a
+              draft that was already sent is PUBLISHED, so without the second half of
+              this condition the panel offered "select" on an already-sent draft and
+              the click produced a bare P0002 with no message. */}
+          {draft.dlpDecision === "PASS"
+            && (draft.publicationState === "REVIEW_ONLY" || draft.publicationState === "APPROVED") && (
             <button
               type="button"
               onClick={() => onSelectDraft(draft.draftId)}

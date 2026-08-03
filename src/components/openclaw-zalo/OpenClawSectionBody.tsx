@@ -31,15 +31,28 @@ export default function OpenClawSectionBody({
 }: OpenClawSectionBodyProps) {
   // Disconnection outranks the section: nothing under it has meaningful data, and
   // showing an empty inbox would read as "no conversations" rather than "no session".
-  if (connectionState === "DISCONNECTED" || connectionState === "RECONNECT_REQUIRED") {
+  //
+  // QR_PENDING is included deliberately. openclaw_begin_qr_login_v1 moves the
+  // account into it the moment a code is requested, and it was NOT in this list -
+  // so the one control that opens the connection dialog vanished as soon as the
+  // operator used it, stranding them with no way back until an unrelated refetch.
+  if (
+    connectionState === "DISCONNECTED"
+    || connectionState === "RECONNECT_REQUIRED"
+    || connectionState === "QR_PENDING"
+  ) {
     return (
       <div className="p-4 sm:p-7">
         <OpenClawBoundaryState
           state="disconnected"
           message={connectionState === "RECONNECT_REQUIRED"
             ? "Phiên cần được xác minh và kết nối lại trước khi tiếp tục."
+            : connectionState === "QR_PENDING"
+              ? "Đang chờ quét mã QR. Mở lại hộp thoại nếu mã đã đóng hoặc hết hạn."
+              : undefined}
+          actionLabel={canManageConnections
+            ? (connectionState === "QR_PENDING" ? "Mở lại mã QR" : "Kết nối lại")
             : undefined}
-          actionLabel={canManageConnections ? "Kết nối lại" : undefined}
           onAction={canManageConnections ? onReconnect : undefined}
           compact
         />

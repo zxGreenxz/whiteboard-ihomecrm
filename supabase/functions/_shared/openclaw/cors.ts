@@ -15,7 +15,15 @@ export function buildCorsHeaders(
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Headers": "authorization, content-type, x-request-id",
+    // `apikey` and `x-client-info` are added by supabase-js on EVERY call: the
+    // former by fetchWithAuth, the latter from DEFAULT_HEADERS. A cross-origin POST
+    // with a JSON body always preflights, and the browser compares the full
+    // Access-Control-Request-Headers list against this one - so omitting them
+    // blocked the request before it ever reached the function, with nothing in the
+    // server log to show for it. The other browser-invoked functions in this repo
+    // (admin-create-user, send-push) already allow exactly these.
+    "Access-Control-Allow-Headers":
+      "authorization, apikey, content-type, x-client-info, x-request-id",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Max-Age": "600",
     Vary: "Origin",

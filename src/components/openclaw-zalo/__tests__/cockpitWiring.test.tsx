@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 const harness = vi.hoisted(() => ({
   connectionState: "CONNECTED" as
-    | "CONNECTED" | "DISCONNECTED" | "RECONNECT_REQUIRED",
+    | "CONNECTED" | "DISCONNECTED" | "RECONNECT_REQUIRED" | "QR_PENDING",
   permissions: new Set<string>(["view", "send", "manage_connections", "manage_handoff"]),
 }));
 
@@ -57,6 +57,13 @@ vi.mock("../OpenClawRouteGuard", () => ({
     permissions: { organizationId: ORG, actions: {} },
     can: (action: string) => harness.permissions.has(action),
   }),
+}));
+
+vi.mock("@tanstack/react-query", async importOriginal => ({
+  ...(await importOriginal<typeof import("@tanstack/react-query")>()),
+  // The cockpit invalidates the OpenClaw query root once a scan lands; SSR has no
+  // provider, so give it a client that records rather than one that throws.
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
 const idleQuery = { data: undefined, isLoading: false, error: null, refetch: vi.fn() };
@@ -137,6 +144,25 @@ describe("cockpit wiring", () => {
     expect(readOnly).not.toContain("Kết nối lại");
     // Still a usable screen for that member, not an error page.
     expect(readOnly).toContain("Phiên cần được xác minh");
+  });
+
+  it("keeps the reconnect route open while a QR is pending", () => {
+    // openclaw_begin_qr_login_v1 moves the account to QR_PENDING the moment a code
+    // is requested. That state was absent from the disconnected branch, so the only
+    // control that opens the dialog disappeared as soon as the operator used it.
+    harness.connectionState = "QR_PENDING";
+    const html = render();
+    expect(html).toContain("Mở lại mã QR");
+    expect(html).toContain("Đang chờ quét mã QR");
+  });
+
+  it("does not claim to prove the nav wiring it cannot exercise", () => {
+    // Stated rather than faked: `activeSection` is internal state and this repo has
+    // no DOM to click the nav with, so the nav -> state -> body edge is covered by
+    // the e2e fleet (Task 26), not here. What IS proven above is that the body
+    // renders the inbox for "inbox" and the placeholder for anything else.
+    const html = render();
+    expect(html).toContain("Hộp thư");
   });
 
   it("does not render the connection dialog until it is opened", () => {

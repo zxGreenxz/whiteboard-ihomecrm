@@ -17,7 +17,6 @@ import {
   mediaResolveContract,
   aiDraftListContract,
   takeoverListContract,
-  qrPollContract,
   salesGroupListContract,
   scheduleListContract,
   scheduleMutationContracts,
@@ -42,7 +41,6 @@ type BrowserReadRpc =
   | typeof scheduleListContract.rpcName
   | typeof aiDraftListContract.rpcName
   | typeof takeoverListContract.rpcName
-  | typeof qrPollContract.rpcName
   | typeof mediaResolveContract.rpcName;
 
 interface ReadContract {
@@ -298,25 +296,16 @@ export function useOpenClawTakeovers(
   });
 }
 
-export function useOpenClawQrPoll(
-  organizationId: string | null,
-  accountId: string | null,
-  request: z.infer<typeof qrPollContract.requestSchema> | null,
-) {
-  return useQuery({
-    queryKey: openClawQueryKeys.qrChallenge(
-      organizationId ?? "",
-      accountId ?? "",
-      request?.challengeId ?? "",
-    ),
-    enabled: Boolean(organizationId && accountId && request),
-    staleTime: 0,
-    queryFn: () => {
-      assertOrganizationScope(request! as { organizationId: string }, organizationId!);
-      return executeOpenClawQuery(qrPollContract, request!);
-    },
-  });
-}
+/*
+ * `useOpenClawQrPoll` lived here and is gone.
+ *
+ * It polled `openclaw_poll_qr_login_v1` straight from PostgREST. That RPC exists and
+ * is granted, but it can never yield a scannable code: the QR is AES-GCM ciphertext
+ * and only the `openclaw-qr` Edge function holds the key. The whole flow - BEGIN,
+ * POLL and CONSUME - now goes through that function via src/lib/openclaw-zalo/qrClient.ts,
+ * and its poll result is component state rather than a React Query entry, so no QR
+ * metadata outlives the dialog in the cache.
+ */
 
 export function useOpenClawMediaObject(
   organizationId: string | null,

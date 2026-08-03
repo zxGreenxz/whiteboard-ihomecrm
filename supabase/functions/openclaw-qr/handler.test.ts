@@ -865,4 +865,31 @@ describe("OpenClaw one-time QR reveal handler", () => {
     expect(response.status).toBe(403);
     expect(rpc).not.toHaveBeenCalled();
   });
+
+  it("allows the headers supabase-js actually sends on every browser call", async () => {
+    // supabase-js adds `apikey` (fetchWithAuth) and `x-client-info` (DEFAULT_HEADERS)
+    // to every request. A cross-origin POST with a JSON body always preflights, and
+    // the browser compares the FULL Access-Control-Request-Headers list against the
+    // response - so a missing entry blocks the call before it reaches this function,
+    // leaving nothing in the server log. That is exactly what happened to the QR
+    // dialog the first time it was wired to this endpoint.
+    const response = await handleQrRequest(
+      new Request("https://edge.example/openclaw-qr", {
+        method: "OPTIONS",
+        headers: {
+          origin: ORIGIN,
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "apikey,authorization,content-type,x-client-info",
+        },
+      }),
+      dependencies({ rpc: vi.fn() }),
+    );
+
+    expect(response.status).toBe(204);
+    const allowed = (response.headers.get("access-control-allow-headers") ?? "")
+      .split(",").map((entry) => entry.trim().toLowerCase());
+    for (const header of ["apikey", "authorization", "content-type", "x-client-info"]) {
+      expect(allowed, header).toContain(header);
+    }
+  });
 });

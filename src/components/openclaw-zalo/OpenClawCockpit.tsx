@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   BookOpenText,
@@ -15,6 +16,7 @@ import OpenClawSectionNav, {
 import { useOpenClawRouteContext } from "./OpenClawRouteGuard";
 import OpenClawConnectionSection from "./dialogs/OpenClawConnectionSection";
 import OpenClawSectionBody from "./OpenClawSectionBody";
+import { openClawQueryKeys } from "@/hooks/openclaw-zalo/queryKeys";
 
 interface OpenClawCockpitProps {
   mobile: boolean;
@@ -70,6 +72,7 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
   } = useOpenClawRouteContext();
   const [activeSection, setActiveSection] = useState<OpenClawSection>("overview");
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const queryClient = useQueryClient();
   const account = bootstrap.account;
   const control = bootstrap.control;
   const section = SECTION_COPY[activeSection];
@@ -149,7 +152,17 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
         )}
       </main>
 
-      <OpenClawConnectionSection open={connectionOpen} onClose={() => setConnectionOpen(false)} />
+      <OpenClawConnectionSection
+        open={connectionOpen}
+        onClose={() => setConnectionOpen(false)}
+        onConnected={() => {
+          // The bootstrap has staleTime 15s and no refetchInterval, so without this
+          // a successful scan left the cockpit showing the disconnected boundary
+          // until something unrelated happened to refetch.
+          setConnectionOpen(false);
+          void queryClient.invalidateQueries({ queryKey: openClawQueryKeys.all });
+        }}
+      />
 
       {mobile && (
         <OpenClawSectionNav

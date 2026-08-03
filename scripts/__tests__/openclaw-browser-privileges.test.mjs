@@ -52,6 +52,27 @@ describe("browser RPC privileges under the owning role", () => {
     });
   }, HARNESS_TIMEOUT);
 
+  it("grants only the membership columns the definer bodies actually read", async () => {
+    await withDatabase(async (database) => {
+      // A column-list grant, not the table: this role owns ~90 SECURITY DEFINER
+      // bodies, and every one of them would inherit anything wider.
+      expect(
+        await attemptAs(
+          database,
+          "openclaw_function_owner",
+          "select id, organization_id, user_id, status from public.organization_memberships limit 1",
+        ),
+      ).toBeNull();
+      expect(
+        await attemptAs(
+          database,
+          "openclaw_function_owner",
+          "select * from public.organization_memberships limit 1",
+        ),
+      ).toMatch(/permission denied/iu);
+    });
+  }, HARNESS_TIMEOUT);
+
   it("still keeps that table away from the browser roles", async () => {
     await withDatabase(async (database) => {
       // The grant exists for SECURITY DEFINER bodies, not for callers. A member must

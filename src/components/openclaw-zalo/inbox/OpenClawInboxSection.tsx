@@ -132,11 +132,22 @@ export default function OpenClawInboxSection() {
         ? sendState.state
         : null}
       onSelectConversation={selectConversation}
-      onLoadMoreConversations={() => setCursor(conversationCursorAfter(conversations))}
+      onLoadMoreConversations={() => {
+        // The query is keyed on the cursor and returns ONE page, so paging replaces
+        // the list rather than appending. The selected conversation would then be
+        // absent while its thread stayed open, and confirm-send dereferenced a null.
+        // Clearing the selection keeps the screen honest about what it is showing.
+        setCursor(conversationCursorAfter(conversations));
+        setSelectedConversationId(null);
+        setSelectedDraftId(null);
+        setSendState(null);
+      }}
       onSelectDraft={setSelectedDraftId}
       onConfirmSend={() => {
         const draft = drafts.find(item => item.draftId === selectedDraftId);
-        if (!draft || selectedConversationId === null) return;
+        // `selectedConversation`, not the id: after paging the id can survive while
+        // the object is gone, and the target comes from the object.
+        if (!draft || selectedConversation === null) return;
         createSendIntent.mutate({
           // One id per confirmation. A retry that reuses it is a replay; a fresh id
           // on retry sends a SECOND real message to a real person.
@@ -147,7 +158,7 @@ export default function OpenClawInboxSection() {
             sourceDraftId: draft.draftId,
             // The conversation's target, not the conversation: the outbox addresses
             // a peer or group, and the server cross-checks it against the draft.
-            targetId: selectedConversation!.targetId,
+            targetId: selectedConversation.targetId,
             expectedDraftVersion: draft.draftVersion,
             // Required as a KEY even when null; omitting it raises 22023.
             replyToMessageId: null,
@@ -158,7 +169,7 @@ export default function OpenClawInboxSection() {
           // migration actively refuses to publish it. Anything further would be
           // invented, and "SENT" invented is a lie about a real customer.
           onSuccess: () => setSendState({
-            conversationId: selectedConversationId,
+            conversationId: selectedConversation.conversationId,
             state: "QUEUED",
           }),
         });

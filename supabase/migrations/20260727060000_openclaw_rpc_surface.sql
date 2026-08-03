@@ -9710,9 +9710,12 @@ grant execute on function public.openclaw_list_ai_drafts_v1(jsonb) to authentica
 -- spelled out here, because a migration-hygiene gate scans this file for that
 -- role-switching statement and a comment matches it just as well as code would.)
 --
--- SELECT only, and the table carries no row-level security anywhere in the
--- migration chain, so this adds no policy surface.
-grant select on public.organization_memberships to openclaw_function_owner;
+-- SELECT only, on a COLUMN LIST: the six call sites read id, organization_id,
+-- user_id and status and nothing else, and this role owns ~90 SECURITY DEFINER
+-- bodies that would all inherit anything wider. The table carries no row-level
+-- security anywhere in the migration chain, so this adds no policy surface.
+grant select (id, organization_id, user_id, status)
+  on public.organization_memberships to openclaw_function_owner;
 
 -- ---------------------------------------------------------------------------
 -- Who holds a takeover, and until when
