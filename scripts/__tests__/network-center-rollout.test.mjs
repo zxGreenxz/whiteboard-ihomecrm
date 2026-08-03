@@ -575,7 +575,13 @@ test("admin exports every required fail-closed command", () => {
     [...adminModule.ADMIN_COMMANDS].sort(),
     [
       "assign",
+      // The two access-port commands are the only caller of
+      // app_private.network_center_enroll_access_interface_v1, which had none
+      // at all until 20260729148000 -- so a port could never stop being
+      // protected and CYCLE_ACCESS_PORT was unreachable for the whole fleet.
+      "enroll-access-port",
       "finalize-worker-cutover",
+      "list-access-ports",
       "provision-connection",
       "provision-worker",
       "revoke-worker",

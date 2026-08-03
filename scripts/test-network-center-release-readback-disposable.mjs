@@ -76,6 +76,15 @@ export const BOOTSTRAP_UNMODELLED_MIGRATIONS = Object.freeze({
     "preflights on app_private.network_center_worker_ingest_legacy_impl_v1 and "
     + "alters public.network_client_current / network_client_sessions; this "
     + "bootstrap builds none of the telemetry ingest surface",
+  "20260729148000_network_center_action_path_reachability.sql":
+    "preflights on app_private.network_center_worker_ingest_legacy_impl_v1 (for "
+    + "the same reason as 147000), re-declares app_private.network_center_worker_"
+    + "inventory_legacy_impl_v1, and attaches a trigger to "
+    + "public.network_device_current; this bootstrap builds none of the telemetry "
+    + "or inventory ingest surface. Its behaviour is covered end to end by "
+    + "scripts/test-network-center-action-path-disposable.mjs, which replays every "
+    + "real migration by glob against a real PostgreSQL 17 cluster instead of a "
+    + "bootstrap replica",
 });
 
 export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {

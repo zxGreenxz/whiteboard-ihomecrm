@@ -19,6 +19,8 @@ export const ADMIN_COMMANDS = new Set([
   "assign",
   "unassign",
   "provision-connection",
+  "list-access-ports",
+  "enroll-access-port",
   "set-rollout",
   "finalize-worker-cutover",
   "status",
@@ -38,6 +40,8 @@ const COMMAND_FLAGS = new Map([
       "hostKeyFingerprint", "pollIntervalSeconds", "connectTimeoutMs",
     ]),
   ],
+  ["list-access-ports", new Set(["buildingId"])],
+  ["enroll-access-port", new Set(["interfaceId", "confirmImmutableKey", "reason"])],
   ["set-rollout", new Set(["buildingId", "state", "expectedVersion", "reason"])],
   ["finalize-worker-cutover", new Set()],
   ["status", new Set(["buildingId", "limit"])],
@@ -53,6 +57,13 @@ const RFC3339_INSTANT_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T
 const RFC3339_INSTANT_MAX_LENGTH = 35;
 const HOST_KEY_PATTERN = /^SHA256:[A-Za-z0-9+/]{20,}={0,2}$/;
 const OPAQUE_CREDENTIAL_REF_PATTERN = /^router\/[A-Za-z0-9][A-Za-z0-9._/-]{1,127}$/;
+// Enrolling an access port is what makes that port cyclable, so the operator has
+// to type its immutable key exactly. `ether1` is the WAN uplink on every device
+// in this fleet and is refused here, not only server-side, and the match is
+// case-sensitive so `Ether4` reads as the typo it is instead of a synonym.
+const ACCESS_PORT_IMMUTABLE_KEY_PATTERN = /^ether(?:[2-9]|[1-9][0-9])$/;
+const ENROLL_REASON_MIN_LENGTH = 8;
+const ENROLL_REASON_MAX_LENGTH = 500;
 
 // Every Network Center admin function is created in `public`. This project's
 // PostgREST is exposed as `db_schema = "api, public, graphql_public"` and the
@@ -379,6 +390,41 @@ export async function provisionConnection(options = {}) {
   return { operation, status: await readback(rpc) };
 }
 
+export async function listAccessPorts({ buildingId = null, rpc } = {}) {
+  if (buildingId !== null && !UUID_PATTERN.test(buildingId ?? "")) throw new Error("Invalid building id");
+  if (!rpc) throw new Error("RPC transport is required");
+  const payload = await rpc("network_center_admin_list_access_ports_v1", {
+    p_building_id: buildingId,
+  });
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.ports)) {
+    throw new Error("Network Center access port listing returned an invalid payload");
+  }
+  return payload;
+}
+
+export async function enrollAccessPort({ interfaceId, confirmImmutableKey, reason, rpc } = {}) {
+  if (!UUID_PATTERN.test(interfaceId ?? "")) throw new Error("Invalid access port interface id");
+  if (!ACCESS_PORT_IMMUTABLE_KEY_PATTERN.test(confirmImmutableKey ?? "")) {
+    throw new Error(
+      "Enrolling an access port requires its exact immutable key (ether2 to ether99); ether1 is the WAN uplink and is never enrollable",
+    );
+  }
+  const enrollReason = String(reason ?? "").trim();
+  if (enrollReason.length < ENROLL_REASON_MIN_LENGTH || enrollReason.length > ENROLL_REASON_MAX_LENGTH) {
+    throw new Error(
+      `Enrollment reason must be ${ENROLL_REASON_MIN_LENGTH} to ${ENROLL_REASON_MAX_LENGTH} characters`,
+    );
+  }
+  if (!rpc) throw new Error("RPC transport is required");
+  const operation = await rpc("network_center_admin_enroll_access_port_v1", {
+    p_interface_id: interfaceId,
+    p_confirm_immutable_key: confirmImmutableKey,
+    p_reason: enrollReason,
+    p_request_id: randomUUID(),
+  });
+  return { operation, status: await readback(rpc) };
+}
+
 export async function setRollout({ buildingId, rolloutState, expectedVersion, reason, rpc } = {}) {
   if (
     !UUID_PATTERN.test(buildingId ?? "") ||
@@ -577,11 +623,62 @@ function extractServiceRoleKey({ environment = process.env, localConfig = "" } =
   return match?.[1] ?? null;
 }
 
+// A hung upstream must never hold an operator's terminal open. Node's undici
+// defaults are 300 s for response headers AND 300 s for the body, and a gateway
+// that retries stacks them, so a single admin call could sit silent for minutes
+// with nothing printed — observed in production when a stale `--expected-version`
+// made `set-rollout` wait through two ~2 minute timeouts before a 504. Every
+// request this CLI makes is therefore bounded by an AbortController deadline.
+// There is deliberately NO retry: an admin RPC refusal is a decision, not a
+// transient, and re-sending one would be the wrong answer to a slow response.
+const ADMIN_RPC_TIMEOUT_ENV = "NETWORK_CENTER_ADMIN_RPC_TIMEOUT_MS";
+const DEFAULT_ADMIN_RPC_TIMEOUT_MS = 30_000;
+const MIN_ADMIN_RPC_TIMEOUT_MS = 1_000;
+const MAX_ADMIN_RPC_TIMEOUT_MS = 600_000;
+
+/**
+ * Resolves the per-request deadline in milliseconds. An explicit `timeoutMs` is
+ * a caller-owned budget (tests use single-digit values); the operator-facing
+ * environment variable is additionally floored at 1 s so a fat-fingered value
+ * cannot turn every admin RPC into an instant UNKNOWN. An unusable value is
+ * refused here instead of silently falling back to the default, because a
+ * deadline the operator believes is in force but is not is precisely the failure
+ * this bound exists to remove.
+ */
+export function resolveAdminRpcTimeoutMs({ environment = process.env, timeoutMs } = {}) {
+  if (timeoutMs !== undefined) {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_ADMIN_RPC_TIMEOUT_MS) {
+      throw new Error(
+        `Admin RPC timeout must be an integer from 1 to ${MAX_ADMIN_RPC_TIMEOUT_MS} milliseconds; received ${timeoutMs}`,
+      );
+    }
+    return timeoutMs;
+  }
+  const declared = environment?.[ADMIN_RPC_TIMEOUT_ENV];
+  if (declared === undefined || declared === null || String(declared).trim() === "") {
+    return DEFAULT_ADMIN_RPC_TIMEOUT_MS;
+  }
+  const raw = String(declared).trim();
+  const parsed = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < MIN_ADMIN_RPC_TIMEOUT_MS ||
+    parsed > MAX_ADMIN_RPC_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `${ADMIN_RPC_TIMEOUT_ENV} must be an integer from ${MIN_ADMIN_RPC_TIMEOUT_MS} to ${MAX_ADMIN_RPC_TIMEOUT_MS} milliseconds; received ${raw}`,
+    );
+  }
+  return parsed;
+}
+
 async function loadRpcConfig({
   repoRoot = REPO_ROOT,
   environment = process.env,
   fetchImpl = fetch,
+  timeoutMs,
 } = {}) {
+  const deadlineMs = resolveAdminRpcTimeoutMs({ environment, timeoutMs });
   const [configToml, localConfig] = await Promise.all([
     readFile(join(repoRoot, "supabase", "config.toml"), "utf8"),
     loadLocalRuntimeConfig(repoRoot),
@@ -590,11 +687,26 @@ async function loadRpcConfig({
   let serviceRoleKey = extractServiceRoleKey({ environment, localConfig });
   if (!serviceRoleKey) {
     const pat = extractManagementPat({ environment, localConfig });
-    const response = await fetchImpl(
-      `https://api.supabase.com/v1/projects/${projectRef}/api-keys`,
-      { headers: { Authorization: `Bearer ${pat}` } },
-    );
-    const text = await response.text();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), deadlineMs);
+    let response;
+    let text;
+    try {
+      response = await fetchImpl(
+        `https://api.supabase.com/v1/projects/${projectRef}/api-keys`,
+        { headers: { Authorization: `Bearer ${pat}` }, signal: controller.signal },
+      );
+      text = await response.text();
+    } catch (error) {
+      throw new Error(redactSecrets(
+        controller.signal.aborted
+          ? `Could not resolve runtime service-role credential: the Supabase Management API did not answer within ${deadlineMs} ms`
+          : `Could not resolve runtime service-role credential: ${error?.message ?? error}`,
+        [pat],
+      ));
+    } finally {
+      clearTimeout(timer);
+    }
     if (!response.ok) {
       throw new Error(
         redactSecrets(`Could not resolve runtime service-role credential (${response.status})`, [pat]),
@@ -724,9 +836,25 @@ function isExactCredentialMutationResponse(name, payload, args) {
   return false;
 }
 
-export function createRpcTransport(config, fetchImpl = fetch) {
+export function createRpcTransport(config, fetchImpl = fetch, options = {}) {
+  const deadlineMs = resolveAdminRpcTimeoutMs(options);
   return async (name, args) => {
+    // The deadline covers the body read as well as the headers: undici bounds
+    // those separately and either one hanging is the same silent terminal.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), deadlineMs);
+    // An abandoned request is ALWAYS "UNKNOWN". A credential-mutating RPC may
+    // already have committed server-side when the deadline fires, so calling a
+    // timeout "REJECTED" would delete a live secret. Never reclassify this.
+    const unknownOutcome = (error) => createRpcError(
+      controller.signal.aborted
+        ? `Admin RPC ${name} timed out after ${deadlineMs} ms; outcome is UNKNOWN (the call may or may not have committed).`
+        : `Admin RPC ${name} outcome is unknown: ${error?.message ?? error}`,
+      "UNKNOWN",
+      [config.serviceRoleKey],
+    );
     let response;
+    let text;
     try {
       response = await fetchImpl(
         `https://${config.projectRef}.supabase.co/rest/v1/rpc/${encodeURIComponent(name)}`,
@@ -734,16 +862,15 @@ export function createRpcTransport(config, fetchImpl = fetch) {
           method: "POST",
           headers: adminRpcHeaders(config.serviceRoleKey),
           body: JSON.stringify(args),
+          signal: controller.signal,
         },
       );
+      text = await response.text();
     } catch (error) {
-      throw createRpcError(
-        `Admin RPC ${name} outcome is unknown: ${error?.message ?? error}`,
-        "UNKNOWN",
-        [config.serviceRoleKey],
-      );
+      throw unknownOutcome(error);
+    } finally {
+      clearTimeout(timer);
     }
-    const text = await response.text();
     if (!response.ok) {
       throw createRpcError(
         `Admin RPC ${name} failed (${response.status}): ${text.slice(0, 2_000)}`,
@@ -845,6 +972,17 @@ async function runCommand(command, flags, rpc) {
       hostKeyFingerprint: flags.hostKeyFingerprint,
       pollIntervalSeconds: flags.pollIntervalSeconds ? Number(flags.pollIntervalSeconds) : 60,
       connectTimeoutMs: flags.connectTimeoutMs ? Number(flags.connectTimeoutMs) : 8000,
+      rpc,
+    });
+  }
+  if (command === "list-access-ports") {
+    return listAccessPorts({ buildingId: flags.buildingId ?? null, rpc });
+  }
+  if (command === "enroll-access-port") {
+    return enrollAccessPort({
+      interfaceId: flags.interfaceId,
+      confirmImmutableKey: flags.confirmImmutableKey,
+      reason: flags.reason,
       rpc,
     });
   }
