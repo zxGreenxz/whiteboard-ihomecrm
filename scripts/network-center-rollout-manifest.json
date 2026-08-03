@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "projectRef": "tryymsxyyckgbrmmvozx",
-  "reviewedGitSha": "0000000000000000000000000000000000000000",
+  "reviewedGitSha": "5256d2ea2ae10f7f52cfefaafb1840e35c6601f5",
   "lockName": "ihomecrm:network-center-rollout:v1",
   "preflight": {
     "required": [
