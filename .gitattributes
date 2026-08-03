@@ -3,3 +3,4 @@
 *.ps1 text eol=lf
 infra/network-center-worker/deploy/*.conf text eol=lf
 *.sql text eol=lf
+supabase/functions/** text eol=lf
