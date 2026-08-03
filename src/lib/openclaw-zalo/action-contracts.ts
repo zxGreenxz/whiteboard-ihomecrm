@@ -229,7 +229,10 @@ export const aiDraftListContract = {
       humanEditVersion: z.number().int().nonnegative(),
       dlpDecision: z.enum(["PASS", "BLOCK", "REVIEW"]),
       publicationState: z.enum(["REVIEW_ONLY", "APPROVED", "REJECTED", "PUBLISHED"]),
-      citations: z.array(jsonValueSchema),
+      citationCount: z.number().int().nonnegative(),
+      // Null whenever DLP did not pass, same rule as draftText: citations are
+      // free-form jsonb and could carry source excerpts.
+      citations: z.array(jsonValueSchema).nullable(),
       knowledgeVersionIds: z.array(idSchema),
       createdAt: timestampSchema,
       // NULL whenever DLP did not pass. Nullable rather than defaulted to "" so the

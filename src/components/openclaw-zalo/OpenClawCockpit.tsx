@@ -13,8 +13,8 @@ import OpenClawSectionNav, {
   type OpenClawSection,
 } from "./OpenClawSectionNav";
 import { useOpenClawRouteContext } from "./OpenClawRouteGuard";
-import OpenClawInboxSection from "./inbox/OpenClawInboxSection";
 import OpenClawConnectionSection from "./dialogs/OpenClawConnectionSection";
+import OpenClawSectionBody from "./OpenClawSectionBody";
 
 interface OpenClawCockpitProps {
   mobile: boolean;
@@ -121,21 +121,12 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
               </div>
             </header>
 
-            {account.connectionState === "DISCONNECTED" || account.connectionState === "RECONNECT_REQUIRED" ? (
-              <div className="p-4 sm:p-7">
-                <OpenClawBoundaryState
-                  state="disconnected"
-                  message={account.connectionState === "RECONNECT_REQUIRED"
-                    ? "Phiên cần được xác minh và kết nối lại trước khi tiếp tục."
-                    : undefined}
-                  actionLabel={can("manage_connections") ? "Kết nối lại" : undefined}
-                  onAction={can("manage_connections") ? () => setConnectionOpen(true) : undefined}
-                  compact
-                />
-              </div>
-            ) : activeSection === "inbox" ? (
-              <OpenClawInboxSection />
-            ) : (
+            <OpenClawSectionBody
+              activeSection={activeSection}
+              connectionState={account.connectionState}
+              canManageConnections={can("manage_connections")}
+              onReconnect={() => setConnectionOpen(true)}
+            >
               <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-7 lg:grid-cols-3">
                 <article className="min-h-32 border border-[#cbd5df] bg-white p-4">
                   <p className="text-xs font-extrabold uppercase tracking-[0.1em] text-[#607585]">Phạm vi</p>
@@ -153,7 +144,7 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
                   <p className="mt-1 text-xs leading-5 text-[#607585]">Các workflow chi tiết được gắn vào shell theo từng phase kế tiếp.</p>
                 </article>
               </div>
-            )}
+            </OpenClawSectionBody>
           </section>
         )}
       </main>

@@ -4,7 +4,9 @@ export interface OpenClawAiDraftView {
   humanEditVersion: number;
   dlpDecision: "PASS" | "BLOCK" | "REVIEW";
   publicationState: "REVIEW_ONLY" | "APPROVED" | "REJECTED" | "PUBLISHED";
-  citations: unknown[];
+  citationCount: number;
+  /** Null unless DLP passed - free-form jsonb follows the same rule as the text. */
+  citations: unknown[] | null;
   knowledgeVersionIds: string[];
   createdAt: string;
   /** Null unless DLP passed. The SERVER withholds it; this is not a UI redaction. */
@@ -87,7 +89,8 @@ export default function AiDraftPanel({ drafts, loading }: AiDraftPanelProps) {
 
           <footer className="mt-2 text-xs leading-5 text-[#607585]">
             <span data-openclaw-draft-citations={draft.draftId}>
-              {draft.citations.length} trích dẫn
+              {draft.citationCount} trích dẫn
+              {draft.citations === null && " (nội dung được giữ lại)"}
             </span>
             {" · "}
             <span>{draft.knowledgeVersionIds.length} phiên bản tri thức</span>

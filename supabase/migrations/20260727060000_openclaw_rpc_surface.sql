@@ -9661,7 +9661,14 @@ begin
         'humanEditVersion', draft.human_edit_version,
         'dlpDecision', draft.dlp_decision,
         'publicationState', draft.publication_state,
-        'citations', draft.citations,
+        -- `citations` is free-form jsonb (only constrained to be an array), so if the
+        -- retrieval writer ever puts source EXCERPTS in it, a BLOCKed draft would
+        -- ship restricted text through the one field the withholding rule missed.
+        -- The count survives for every draft because a reviewer needs to know the
+        -- draft was grounded; the contents follow the same rule as the text.
+        'citationCount', jsonb_array_length(draft.citations),
+        'citations', case when draft.dlp_decision = 'PASS' then draft.citations end,
+        -- uuids, not content: safe to expose regardless of the DLP decision.
         'knowledgeVersionIds', to_jsonb(draft.knowledge_version_ids),
         'createdAt', draft.created_at,
         -- Withheld, not redacted in place: an empty string would be

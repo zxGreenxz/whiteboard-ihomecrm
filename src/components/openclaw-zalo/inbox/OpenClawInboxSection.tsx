@@ -85,6 +85,7 @@ export default function OpenClawInboxSection() {
         humanEditVersion: item.humanEditVersion,
         dlpDecision: item.dlpDecision,
         publicationState: item.publicationState,
+        citationCount: item.citationCount,
         citations: item.citations,
         knowledgeVersionIds: item.knowledgeVersionIds,
         createdAt: item.createdAt,

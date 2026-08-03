@@ -5,7 +5,6 @@ import {
   MANUAL_SEND_STATES,
   conversationCursorAfter,
   manualSendGate,
-  messageCursorAfter,
   sendLifecycle,
   threadEvents,
 } from "../inboxView";
@@ -57,9 +56,11 @@ describe("thread ordering", () => {
       message("b", "2026-08-03T10:00:02.000Z"),
       message("c", "2026-08-03T10:00:03.000Z"),
     ];
-    const expected = threadEvents(events).map(event => event.messageId);
+    // Compared against a LITERAL, not against threadEvents(events): running the
+    // function on both sides made a sort-direction inversion invisible, because both
+    // sides would have flipped together.
     fc.assert(fc.property(fc.shuffledSubarray(events, { minLength: 3 }), (shuffled) => {
-      expect(threadEvents(shuffled).map(event => event.messageId)).toEqual(expected);
+      expect(threadEvents(shuffled).map(event => event.messageId)).toEqual(["a", "b", "c"]);
     }));
   });
 
@@ -85,15 +86,10 @@ describe("cursor pagination", () => {
       lastReceivedAt: "2026-08-03T10:00:01.000Z",
       id: "old",
     });
-    expect(messageCursorAfter([
-      message("new", "2026-08-03T10:00:03.000Z"),
-      message("old", "2026-08-03T10:00:01.000Z"),
-    ])).toEqual({ receivedAt: "2026-08-03T10:00:01.000Z", id: "old" });
   });
 
   it("returns no cursor for an empty page, which ends the pagination", () => {
     expect(conversationCursorAfter([])).toBeNull();
-    expect(messageCursorAfter([])).toBeNull();
   });
 });
 
@@ -122,12 +118,15 @@ describe("send lifecycle", () => {
       .toEqual(["SENT", "FAILED", "DEAD_LETTER"]);
   });
 
-  it("gives every state a Vietnamese label, so no raw enum reaches the operator", () => {
-    for (const state of MANUAL_SEND_STATES) {
-      const { label } = sendLifecycle(state);
+  it("gives every state its OWN Vietnamese label, so no raw enum reaches the operator", () => {
+    const labels = MANUAL_SEND_STATES.map(state => sendLifecycle(state).label);
+    for (const [index, label] of labels.entries()) {
       expect(label.length).toBeGreaterThan(0);
-      expect(label).not.toBe(state);
+      expect(label).not.toBe(MANUAL_SEND_STATES[index]);
     }
+    // Distinct, not merely non-empty: `label = "x"` for everything, or one label
+    // shared by SENT and FAILED, satisfied the previous version of this assertion.
+    expect(new Set(labels).size).toBe(MANUAL_SEND_STATES.length);
   });
 });
 

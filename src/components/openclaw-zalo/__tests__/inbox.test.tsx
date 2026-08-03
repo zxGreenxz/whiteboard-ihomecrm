@@ -128,7 +128,7 @@ describe("AI draft panel", () => {
   const draft = {
     draftId: "d1", draftVersion: 2, humanEditVersion: 0,
     dlpDecision: "PASS" as const, publicationState: "REVIEW_ONLY" as const,
-    citations: [{ knowledgeId: "k1" }], knowledgeVersionIds: ["k1"],
+    citationCount: 1, citations: [{ knowledgeId: "k1" }], knowledgeVersionIds: ["k1"],
     createdAt: "2026-08-03T10:00:00.000Z", draftText: "Chào anh chị",
   };
 
@@ -142,11 +142,18 @@ describe("AI draft panel", () => {
     // The server sends draftText: null for a non-PASS draft, so there is nothing to
     // redact client-side - and nothing that a DOM inspector could recover.
     const html = render(createElement(AiDraftPanel, {
-      drafts: [{ ...draft, dlpDecision: "BLOCK" as const, draftText: null }],
+      drafts: [{
+        ...draft, dlpDecision: "BLOCK" as const, draftText: null, citations: null,
+      }],
       loading: false,
     }));
     expect(html).toContain('data-openclaw-draft-withheld="d1"');
     expect(html).not.toContain("Chào anh chị");
+    // The count still tells a reviewer the draft was grounded; the contents do not
+    // ship, because citations is free-form jsonb that could carry source excerpts.
+    expect(html).toContain("1 trích dẫn");
+    expect(html).toContain("nội dung được giữ lại");
+    expect(html).not.toContain("knowledgeId");
   });
 
   it("has no send control anywhere, because a draft is review-only", () => {

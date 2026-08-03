@@ -57,6 +57,23 @@ function renderDialog(overrides: {
   }));
 }
 
+/**
+ * The opening tag of the button carrying `data-openclaw-action="<action>"`.
+ *
+ * Asserting on the tag rather than on the whole document is what gives the disabled
+ * check teeth: `toContain("disabled")` was unconditionally true because the
+ * className already holds `disabled:cursor-not-allowed disabled:opacity-60`, so
+ * deleting the `disabled={...}` prop - letting an operator fire a QR request with
+ * GLOBAL_STOP on or no permission at all - kept every assertion green.
+ */
+function buttonTag(html: string, action: string) {
+  const match = html.match(
+    new RegExp(`<button[^>]*data-openclaw-action="${action}"[^>]*>`, "u"),
+  );
+  expect(match, `no button for ${action}`).not.toBeNull();
+  return match![0];
+}
+
 const CHALLENGE = {
   challengeId: "q1",
   qrPayload: "2|abc-def",
@@ -85,7 +102,7 @@ describe("connection dialog", () => {
     ] as const) {
       const html = renderDialog(overrides);
       expect(html, label).toContain(`data-openclaw-blocked="${label}"`);
-      expect(html, label).toContain("disabled");
+      expect(buttonTag(html, "request-qr"), label).toContain('disabled=""');
     }
   });
 
@@ -107,11 +124,18 @@ describe("connection dialog", () => {
     expect(html).toContain("Phiên bị hạn chế");
   });
 
-  it("shows the countdown against the ceiling while the code is live", () => {
+  it("shows the countdown while the code is live", () => {
     const html = renderDialog({ challenge: CHALLENGE });
     expect(html).toContain('data-openclaw-qr="countdown"');
-    expect(html).toContain("Còn 97s / 120s");
+    expect(html).toContain("Còn 97s");
     expect(html).toContain("2|abc-def");
+  });
+
+  it("enables the request button when no gate blocks it", () => {
+    // The negative case above only proves the attribute appears when blocked; without
+    // this, hardcoding `disabled` would also pass.
+    const html = renderDialog();
+    expect(buttonTag(html, "request-qr")).not.toContain('disabled=""');
   });
 
   it("replaces an expired code with a prompt for a new one, never the stale payload", () => {

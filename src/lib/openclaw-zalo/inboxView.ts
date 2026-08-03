@@ -5,12 +5,9 @@ import type {
   OpenClawOutboxState,
   OpenClawSendDecision,
 } from "./types";
-// The cursor shapes belong to the hooks that page with them; re-declaring them here
+// The cursor shape belongs to the hook that pages with it; re-declaring it here
 // would let the two drift apart silently.
-import type {
-  OpenClawConversationCursor,
-  OpenClawMessageCursor,
-} from "@/hooks/openclaw-zalo/useOpenClawInbox";
+import type { OpenClawConversationCursor } from "@/hooks/openclaw-zalo/useOpenClawInbox";
 
 /**
  * Puts a thread in reading order and collapses duplicates.
@@ -35,21 +32,21 @@ export function threadEvents(events: readonly OpenClawMessage[]): OpenClawMessag
 /**
  * The cursor for the NEXT page: the oldest row of the page just rendered.
  *
- * Both list RPCs order newest-first and page with `(received_at, id) < cursor`, so
- * taking the first row instead would re-request the page already on screen forever.
+ * The list RPC orders newest-first and pages with `(last_received_at, id) < cursor`,
+ * so taking the first row instead would re-request the page already on screen
+ * forever.
+ *
+ * There is deliberately no message equivalent: threads are not paged yet, and the
+ * only message array the app holds is `threadEvents()` output, which is OLDEST-first
+ * - feeding that to a "take the last row" cursor would return the newest row and
+ * re-request the same page forever. The helper existed with no caller, so it was a
+ * footgun waiting for the first person to reach for it.
  */
 export function conversationCursorAfter(
   page: readonly OpenClawConversation[],
 ): OpenClawConversationCursor | null {
   const last = page.at(-1);
   return last ? { lastReceivedAt: last.lastReceivedAt, id: last.conversationId } : null;
-}
-
-export function messageCursorAfter(
-  page: readonly OpenClawMessage[],
-): OpenClawMessageCursor | null {
-  const last = page.at(-1);
-  return last ? { receivedAt: last.receivedAt, id: last.messageId } : null;
 }
 
 /** Outbox states a manually sent message can be observed in, in lifecycle order. */
