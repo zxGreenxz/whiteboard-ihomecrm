@@ -110,7 +110,51 @@ export function normalizedPolicyExpressionSql(expression) {
   );
 }
 
-export function catalogDescriptorSql(descriptor) {
+// ---------------------------------------------------------------------------
+// data-state descriptors
+// ---------------------------------------------------------------------------
+//
+// Every other descriptor kind is MONOTONE: once a table, column, index, policy
+// or function exists, nothing in normal operation removes it, so "is it there?"
+// is a sound proof that the stage which created it has run. The manifest
+// generator enforces exactly that, dropping any descriptor it watches disappear
+// during the replay (`not monotonic: introduced by ..., absent again after ...`).
+//
+// `rows_rollout_off:` is not monotone and cannot be. It asserts that no site row
+// has been switched out of `OFF`, and this release ships
+// `public.network_center_admin_set_rollout_v1` precisely so an operator CAN
+// switch one on. It survives the generator's monotonicity filter only because a
+// disposable replay never promotes a site: it is monotone in the harness and
+// guaranteed non-monotone in production. On 2026-08-03 that cost a rollout - the
+// DEMO organisation had been promoted to EXECUTE, the descriptor went false, the
+// catalog prefix walk stopped at the stage that introduced it, and 185
+// descriptors production legally holds were reported as divergence.
+//
+// So a data-state descriptor never speaks about whether a stage has run. It is
+// judged only where it can mean what it says: inside the stage transaction,
+// against the state THIS ROLLOUT INHERITED. On a database that inherited nothing
+// - a greenfield apply - the rendered predicate is identical to the absolute
+// all-OFF assertion it replaces.
+export const DATA_STATE_DESCRIPTOR_PREFIX = "rows_";
+
+export function isDataStateDescriptor(descriptor) {
+  return String(descriptor).startsWith(DATA_STATE_DESCRIPTOR_PREFIX);
+}
+
+export function partitionDescriptors(descriptors = []) {
+  const catalog = [];
+  const dataState = [];
+  for (const descriptor of descriptors) {
+    (isDataStateDescriptor(descriptor) ? dataState : catalog).push(descriptor);
+  }
+  return { catalog, dataState };
+}
+
+function sqlTextArray(values) {
+  return `ARRAY[${values.map((value) => `'${String(value).replaceAll("'", "''")}'`).join(", ")}]::text[]`;
+}
+
+export function catalogDescriptorSql(descriptor, options = {}) {
   const parts = String(descriptor).split(":");
   const [kind, ...rest] = parts.length === 1 ? ["table", ...parts] : parts;
   const identity = rest.join(":").replaceAll("'", "''");
@@ -245,6 +289,20 @@ export function catalogDescriptorSql(descriptor) {
     )`;
   }
   if (kind === "rows_rollout_off" && identity === "public.network_site_settings") {
+    // The exemption is keyed on organisation AND building AND state, so a site
+    // this rollout inherited at one rollout state is not exempt at another: the
+    // only thing forgiven is the exact promotion that was already there before
+    // the first stage ran. Sites moving back towards OFF simply drop out of the
+    // predicate, which is the direction the absolute assertion always allowed.
+    const baseline = (options.dataStateBaseline ?? []).map(String);
+    const exemption = baseline.length
+      ? `
+          AND (
+            settings.organization_id::text || ':' ||
+            settings.building_id::text || ':' ||
+            coalesce(to_jsonb(settings)->>'rollout_state', '')
+          ) <> ALL (${sqlTextArray(baseline)})`
+      : "";
     return `(
       EXISTS (
         SELECT 1 FROM pg_attribute attribute
@@ -255,19 +313,19 @@ export function catalogDescriptorSql(descriptor) {
       )
       AND NOT EXISTS (
         SELECT 1 FROM public.network_site_settings settings
-        WHERE to_jsonb(settings)->>'rollout_state' IS DISTINCT FROM 'OFF'
+        WHERE to_jsonb(settings)->>'rollout_state' IS DISTINCT FROM 'OFF'${exemption}
       )
     )`;
   }
   throw new Error(`Unsupported catalog descriptor: ${descriptor}`);
 }
 
-export function buildCatalogReadSql(required = []) {
+export function buildCatalogReadSql(required = [], options = {}) {
   const rows = required.length
     ? required
         .map((descriptor) => {
           const escaped = descriptor.replaceAll("'", "''");
-          return `('${escaped}', ${catalogDescriptorSql(descriptor)})`;
+          return `('${escaped}', ${catalogDescriptorSql(descriptor, options)})`;
         })
         .join(",\n      ")
     : "('__foundation__', true)";
@@ -279,11 +337,11 @@ FROM (VALUES
 COMMIT;`;
 }
 
-function buildCatalogAssertion(required = [], label = "catalog", forbidden = []) {
+function buildCatalogAssertion(required = [], label = "catalog", forbidden = [], options = {}) {
   if (!required.length && !forbidden.length) return "";
   const condition = [
-    ...required.map(catalogDescriptorSql),
-    ...forbidden.map((descriptor) => `NOT (${catalogDescriptorSql(descriptor)})`),
+    ...required.map((descriptor) => catalogDescriptorSql(descriptor, options)),
+    ...forbidden.map((descriptor) => `NOT (${catalogDescriptorSql(descriptor, options)})`),
   ].join(" AND ");
   const escapedLabel = label.replaceAll("'", "''");
   return `DO $catalog$
@@ -305,9 +363,11 @@ export function buildMigrationTransaction({
   body,
   priorRequired = [],
   futureForbidden = [],
+  dataStateBaseline = [],
 }) {
   const postRequired = migration.postApply?.required ?? [];
   const postForbidden = futureForbidden.filter((descriptor) => !postRequired.includes(descriptor));
+  const options = { dataStateBaseline };
   return `BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '120s';
@@ -318,10 +378,10 @@ BEGIN
   END IF;
 END;
 $lock$;
-${buildCatalogAssertion(priorRequired, "expected prefix", futureForbidden)}
+${buildCatalogAssertion(priorRequired, "expected prefix", futureForbidden, options)}
 -- Network Center rollout stage: ${migration.path}
 ${body}
-${buildCatalogAssertion(postRequired, `postcondition for ${migration.path}`, postForbidden)}
+${buildCatalogAssertion(postRequired, `postcondition for ${migration.path}`, postForbidden, options)}
 ${buildCatalogReadback(postRequired)}
 NOTIFY pgrst, 'reload schema';
 COMMIT;`;
@@ -350,6 +410,45 @@ function assertRequiredObjects(result, required, label) {
 function catalogFingerprint(required, result) {
   const objects = resultObjects(result);
   return sha256(JSON.stringify({ required: [...required].sort(), objects: [...objects].sort() }));
+}
+
+/**
+ * What this rollout INHERITED: every site that was already switched out of `OFF`
+ * before the first stage ran, identified exactly.
+ *
+ * Read once, before any stage, and then frozen into every stage's assertion. A
+ * per-stage re-read would let a stage that switches a site on satisfy its own
+ * postcondition, which is the whole property being defended.
+ *
+ * Two round trips on purpose. `public.network_site_settings` does not exist on a
+ * database this rollout has never touched, and a query naming it does not PARSE
+ * there - it would abort a greenfield apply before the first stage.
+ */
+export const DATA_STATE_BASELINE_SQL = `BEGIN READ ONLY;
+SELECT coalesce(array_agg(entry ORDER BY entry), '{}'::text[]) AS objects
+FROM (
+  SELECT (
+    settings.organization_id::text || ':' ||
+    settings.building_id::text || ':' ||
+    coalesce(to_jsonb(settings)->>'rollout_state', '')
+  ) AS entry
+  FROM public.network_site_settings settings
+  WHERE to_jsonb(settings)->>'rollout_state' IS DISTINCT FROM 'OFF'
+) inherited;
+COMMIT;`;
+
+const DATA_STATE_TABLE_SQL = `BEGIN READ ONLY;
+SELECT coalesce(array_agg(name), '{}'::text[]) AS objects
+FROM (
+  SELECT 'public.network_site_settings' AS name
+  WHERE to_regclass('public.network_site_settings') IS NOT NULL
+) probe;
+COMMIT;`;
+
+export async function readDataStateBaseline(query) {
+  const probe = await query(DATA_STATE_TABLE_SQL);
+  if (!resultObjects(probe).length) return [];
+  return resultObjects(await query(DATA_STATE_BASELINE_SQL));
 }
 
 export function resolveReceiptPath(receipt, receiptRoot = RECEIPT_ROOT) {
@@ -465,9 +564,19 @@ export async function applyRollout({
   releaseSha = "unknown",
   startIndex = 0,
   reconcileExisting = false,
+  readBaseline = readDataStateBaseline,
 } = {}) {
+  // Only a manifest that declares a data-state descriptor pays for the probe.
+  // A release with none must issue exactly the queries it always did.
+  const declaresDataState = [
+    ...(manifest.preflight?.required ?? []),
+    ...manifest.migrations.flatMap((migration) => migration.postApply?.required ?? []),
+    ...(manifest.postApply?.required ?? []),
+  ].some(isDataStateDescriptor);
+  const dataStateBaseline = declaresDataState ? await readBaseline(query) : [];
+  const descriptorOptions = { dataStateBaseline };
   const foundationRequired = manifest.preflight?.required ?? [];
-  const preflightResult = await query(buildCatalogReadSql(foundationRequired));
+  const preflightResult = await query(buildCatalogReadSql(foundationRequired, descriptorOptions));
   assertRequiredObjects(preflightResult, foundationRequired, "Preflight");
   let beforeFingerprint = catalogFingerprint(foundationRequired, preflightResult);
   const applied = [];
@@ -534,6 +643,7 @@ export async function applyRollout({
         futureForbidden: allNetworkDescriptors.filter(
           (descriptor) => !priorRequired.includes(descriptor),
         ),
+        dataStateBaseline,
       });
       const stageResult = await query(sql);
       const afterRequired = migration.postApply?.required ?? priorRequired;
@@ -574,10 +684,11 @@ export async function applyRollout({
     }
   }
   const postRequired = manifest.postApply?.required ?? [];
-  const postResult = await query(buildCatalogReadSql(postRequired));
+  const postResult = await query(buildCatalogReadSql(postRequired, descriptorOptions));
   assertRequiredObjects(postResult, postRequired, "Post-apply");
   return {
     applied,
+    dataStateBaseline,
     committed: applied.filter((receipt) => receipt.outcome === "committed"),
     reconciled: applied.filter((receipt) => receipt.outcome === "reconciled-existing"),
     total: manifest.migrations.length,

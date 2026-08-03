@@ -8,7 +8,11 @@ import {
   redactSecrets,
   sha256,
 } from "./network-center-rollout-common.mjs";
-import { catalogDescriptorSql } from "./apply-network-center-rollout.mjs";
+import {
+  catalogDescriptorSql,
+  isDataStateDescriptor,
+  partitionDescriptors,
+} from "./apply-network-center-rollout.mjs";
 import {
   buildFunctionBodyProbeSql,
   evaluateStageFunctionBodies,
@@ -25,9 +29,12 @@ SELECT current_database() AS database_name,
   txid_current_if_assigned() IS NULL AS no_write_transaction_assigned;
 COMMIT;`;
 
-export function buildAuditSql(descriptors) {
+export function buildAuditSql(descriptors, options = {}) {
   const rows = descriptors
-    .map((descriptor) => `('${descriptor.replaceAll("'", "''")}', ${catalogDescriptorSql(descriptor)})`)
+    .map(
+      (descriptor) =>
+        `('${descriptor.replaceAll("'", "''")}', ${catalogDescriptorSql(descriptor, options)})`,
+    )
     .join(",\n    ");
   return `BEGIN READ ONLY;
 SELECT name, present
@@ -90,22 +97,47 @@ function describeMissingDescriptors(missing, limit = 5) {
  * needs to apply. The one case that IS divergence is a stage held back by a body
  * whose catalog objects are already present: resuming there could not work,
  * because the in-lock precondition requires those objects to be absent.
+ *
+ * DATA-STATE DESCRIPTORS TAKE NO PART IN THE VERDICT. See
+ * DATA_STATE_DESCRIPTOR_PREFIX in the apply module: a descriptor whose truth an
+ * operator is entitled to change after the release cannot prove that a stage
+ * ran, and on 2026-08-03 letting one try reported a healthy prefix-22 database
+ * as divergent and withheld the resume. They are measured and RETURNED, in
+ * `dataState`, because a check that disappears from the verdict must not also
+ * disappear from the report - the assertion with teeth lives in the stage
+ * transaction, rendered against the state the rollout inherited.
  */
 export function classifyCatalog(manifest, presentNames, evidence) {
   const present = new Set(presentNames);
-  const foundation = manifest.preflight?.required ?? [];
+  const { catalog: foundation, dataState: foundationDataState } = partitionDescriptors(
+    manifest.preflight?.required ?? [],
+  );
   const { satisfied: bodySatisfied, mismatches: bodyMismatches } = evaluateStageFunctionBodies(
     manifest,
     evidence,
   );
-  const base = { bodyMismatches, bodyChecked: Boolean(evidence) };
+  const dataStateDescriptors = [
+    ...new Set([
+      ...foundationDataState,
+      ...manifest.migrations.flatMap((migration) =>
+        (migration.postApply?.required ?? []).filter(isDataStateDescriptor),
+      ),
+      ...(manifest.postApply?.required ?? []).filter(isDataStateDescriptor),
+    ]),
+  ].sort();
+  const dataState = dataStateDescriptors.map((descriptor) => ({
+    descriptor,
+    satisfied: present.has(descriptor),
+  }));
+  const catalogRequired = (migration) =>
+    (migration.postApply?.required ?? []).filter((item) => !isDataStateDescriptor(item));
+  const base = { bodyMismatches, bodyChecked: Boolean(evidence), dataState };
   if (foundation.some((item) => !present.has(item))) {
     return { state: "foundation_mismatch", prefix: 0, ...base };
   }
   let catalogPrefix = 0;
   for (const migration of manifest.migrations) {
-    const required = migration.postApply?.required ?? [];
-    if (!required.every((item) => present.has(item))) break;
+    if (!catalogRequired(migration).every((item) => present.has(item))) break;
     catalogPrefix += 1;
   }
   let prefix = 0;
@@ -113,12 +145,10 @@ export function classifyCatalog(manifest, presentNames, evidence) {
     prefix += 1;
   }
   const allNetworkDescriptors = [
-    ...new Set(manifest.migrations.flatMap((migration) => migration.postApply?.required ?? [])),
+    ...new Set(manifest.migrations.flatMap((migration) => catalogRequired(migration))),
   ];
   const expectedAtCatalogPrefix = new Set(
-    manifest.migrations
-      .slice(0, catalogPrefix)
-      .flatMap((migration) => migration.postApply?.required ?? []),
+    manifest.migrations.slice(0, catalogPrefix).flatMap((migration) => catalogRequired(migration)),
   );
   const unexpected = allNetworkDescriptors.filter(
     (item) => present.has(item) && !expectedAtCatalogPrefix.has(item),
@@ -127,9 +157,9 @@ export function classifyCatalog(manifest, presentNames, evidence) {
   if (prefix < catalogPrefix) {
     const blocked = manifest.migrations[prefix];
     const alreadyRequired = new Set(
-      manifest.migrations.slice(0, prefix).flatMap((migration) => migration.postApply?.required ?? []),
+      manifest.migrations.slice(0, prefix).flatMap((migration) => catalogRequired(migration)),
     );
-    const introduced = (blocked.postApply?.required ?? []).filter(
+    const introduced = catalogRequired(blocked).filter(
       (descriptor) => !alreadyRequired.has(descriptor),
     );
     if (introduced.length) {
@@ -175,13 +205,24 @@ export async function auditRollout({
   const live = liveFunctionBodiesFromResult(await query(buildFunctionBodyProbeSql(names)));
   const classification = classifyCatalog(manifest, presentNames, { expectations, live });
   const present = new Set(presentNames);
-  const missing = uniqueDescriptors.filter((descriptor) => !present.has(descriptor));
+  // Data-state descriptors are reported separately, never as a missing catalog
+  // object: "the fleet has a site switched on" is an observation about the
+  // operator, and folding it into `missing` is what made the 2026-08-03 refusal
+  // unreadable.
+  const missing = uniqueDescriptors.filter(
+    (descriptor) => !present.has(descriptor) && !isDataStateDescriptor(descriptor),
+  );
   const bodyReason = classification.bodyMismatches.length
     ? `; function bodies differ from the reviewed release: ${describeBodyMismatches(classification.bodyMismatches)}`
     : "";
   const missingReason = describeMissingDescriptors(missing);
+  // The preflight refusal used to name only the function bodies, so an operator
+  // reading it could not see which catalog object was actually absent. Both
+  // halves of the evidence, in both modes.
   if (mode === "preflight" && !["not_started", "prefix"].includes(classification.state)) {
-    throw new Error(`Network Center preflight catalog is ${classification.state}${bodyReason}`);
+    throw new Error(
+      `Network Center preflight catalog is ${classification.state}${bodyReason}${missingReason}`,
+    );
   }
   if (mode === "post-apply" && classification.state !== "complete") {
     throw new Error(
