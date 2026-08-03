@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { NetworkCenterApiClient } from "./apiClient.js";
+import { ApiClientError, NetworkCenterApiClient } from "./apiClient.js";
 import { FileBackupStore } from "./backupStore.js";
 import { CommandCoordinator, CommandProcessor } from "./commands.js";
 import { loadWorkerConfig } from "./config.js";
@@ -108,8 +108,20 @@ export class WorkerRuntime {
         consecutiveFailures = 0;
       } catch (error) {
         consecutiveFailures += 1;
+        // `error.name` alone is what this line used to say, and for the whole
+        // F6 outage that meant the entire log was the word "ApiClientError" -
+        // no route, no status, no SQLSTATE. The code, status and the server's
+        // own reason are all bounded, non-secret values the failure already
+        // carries, so a single log line can name the failure now.
         this.#options.logger.error(`${name} cycle failed`, redactForLog({
           error: error instanceof Error ? error.name : "unknown",
+          ...(error instanceof ApiClientError
+            ? {
+              code: error.code,
+              status: error.status,
+              serverReason: error.serverReason,
+            }
+            : {}),
           consecutiveFailures,
         }));
       }

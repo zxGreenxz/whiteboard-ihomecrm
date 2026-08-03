@@ -28,6 +28,7 @@ import {
   routerOsExportCommandIsRedacted,
   routerOsInterfaceState,
 } from "../src/routeros/sshConnector.js";
+import { CLIENT_CONNECTION_TYPES, CLIENT_SESSION_TYPES } from "../src/domain.js";
 import { createFakeRouterSession, createTestConnector } from "./support/fakeRouterClient.js";
 import { FakeRouterOs } from "./support/fakeRouterOs.js";
 
@@ -1087,5 +1088,237 @@ describe("interface telemetry honesty", () => {
       txBytes: null,
       errorCount: null,
     });
+  });
+});
+
+describe("client telemetry value domains", () => {
+  // The demo hEX has exactly one DHCP lease - its operator's own LAN gateway -
+  // so this is the production shape, not an edge case. Before F6 no test in this
+  // package ever produced a single client observation, because the fake answered
+  // the lease command with "".
+  const leasedRouter = () => new FakeRouterOs({
+    interfaces: [
+      { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      { id: "*2", name: "bridge", defaultName: "bridge", type: "bridge", disabled: false },
+    ],
+    dhcpLeases: [{
+      address: "192.168.88.254",
+      macAddress: "BC:FC:E7:64:E3:FB",
+      hostName: "DESKTOP-DEMO",
+      expiresAfter: "9m59s",
+    }],
+  });
+
+  it("stores a garbled counter as not-observed rather than as a negative", async () => {
+    // Same failure class as F6, found by auditing every field that lands in a
+    // constrained column: rx_bytes, tx_bytes and error_count are all `>= 0` and
+    // cpu_pct is `BETWEEN 0 AND 100`, so a negative or over-range reading is a
+    // 23514 that destroys the whole batch - not a smaller number.
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      interfaceCounters: {
+        ether1: { rxByte: -1, txByte: 5, rxError: -2, txError: -3 },
+      },
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.interfaces[0]?.sample).toMatchObject({
+      rxBytes: null,
+      txBytes: 5,
+      errorCount: null,
+    });
+  });
+
+  it("drops an out-of-range CPU reading instead of clamping it", async () => {
+    // `network_device_current.cpu_pct` is `BETWEEN 0 AND 100`. Clamping 137 to
+    // 100 would invent a reading the router never gave; this codebase has
+    // already paid once for a fabricated telemetry value.
+    const inRange = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      resource: "version=7.20.8 uptime=1h cpu-load=37\n",
+    });
+    const outOfRange = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      resource: "version=7.20.8 uptime=1h cpu-load=137\n",
+    });
+
+    const kept = await createTestConnector(
+      createFakeRouterSession(inRange).clientFactory,
+    ).poll();
+    const dropped = await createTestConnector(
+      createFakeRouterSession(outOfRange).clientFactory,
+    ).poll();
+
+    expect(kept.device.cpuPct).toBe(37);
+    expect(dropped.device.cpuPct).toBeNull();
+  });
+
+  it("parses interface counters without ever yielding a negative", () => {
+    expect(parseInterfaceCounters([{ name: "ether1", "rx-byte": "-1", "tx-byte": "7" }]).get("ether1"))
+      .toEqual({ rxBytes: null, txBytes: 7, errorCount: null });
+    expect(parseInterfaceCounters([{ name: "ether1", "rx-error": "-4", "tx-error": "2" }]).get("ether1"))
+      .toEqual({ rxBytes: null, txBytes: null, errorCount: 2 });
+  });
+
+  it("emits a client row at all for a router that has a lease", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    // This assertion is the one that was missing. Everything below is vacuous
+    // without it: an empty array satisfies every "for each client" check.
+    expect(observation.clients).toHaveLength(1);
+    expect(observation.clients[0]).toMatchObject({
+      externalKey: "bc:fc:e7:64:e3:fb",
+      sessionKey: "dhcp:bc:fc:e7:64:e3:fb",
+      observedMac: "bc:fc:e7:64:e3:fb",
+      observedIp: "192.168.88.254",
+      hostname: "DESKTOP-DEMO",
+    });
+  });
+
+  it("emits only values the client tables' CHECK domains accept", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.clients.length).toBeGreaterThan(0);
+    for (const client of observation.clients) {
+      // Membership, not equality: the assertion is "the schema accepts this",
+      // which is the property production needed and never had. The two arrays
+      // are pinned to the live CHECK constraints by the disposable-PostgreSQL
+      // proof (scripts/test-network-center-ingest-domains-disposable.mjs), so a
+      // wrong list here fails there rather than passing quietly in both places.
+      expect(CLIENT_CONNECTION_TYPES).toContain(client.connectionType);
+      expect(CLIENT_SESSION_TYPES).toContain(client.sessionType);
+    }
+  });
+
+  it("classifies a DHCP lease as a DHCP session of unknown medium", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    // A DHCP lease record says which SESSION produced the address and nothing
+    // whatever about the medium underneath it - `/ip/dhcp-server/lease/print`
+    // carries no ethernet/wireless discriminator - so UNKNOWN is the honest
+    // connection type and is also the column's own default.
+    expect(observation.clients[0]?.sessionType).toBe("DHCP");
+    expect(observation.clients[0]?.connectionType).toBe("UNKNOWN");
+  });
+
+  it("keeps every emitted client field inside its column's constraint", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+    const client = observation.clients[0];
+
+    // session_key / client_fingerprint: char_length(btrim(...)) BETWEEN 8 AND 200.
+    expect(client?.sessionKey.trim().length).toBeGreaterThanOrEqual(8);
+    expect(client?.sessionKey.trim().length).toBeLessThanOrEqual(200);
+    expect(client?.clientFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    // network_client_current_time_check: first <= last <= observed AND expires > last.
+    expect(Date.parse(client?.firstSeenAt ?? "")).toBeLessThanOrEqual(Date.parse(client?.lastSeenAt ?? ""));
+    expect(Date.parse(client?.lastSeenAt ?? "")).toBeLessThanOrEqual(Date.parse(observation.observedAt));
+    expect(Date.parse(client?.expiresAt ?? "")).toBeGreaterThan(Date.parse(client?.lastSeenAt ?? ""));
+    // hostname: char_length(hostname) <= 255.
+    expect((client?.hostname ?? "").length).toBeLessThanOrEqual(255);
+  });
+
+  it("still produces an in-domain client when the lease has no MAC or hostname", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [{ address: "192.168.88.7", status: "waiting" }],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+    const client = observation.clients[0];
+
+    expect(observation.clients).toHaveLength(1);
+    expect(CLIENT_CONNECTION_TYPES).toContain(client?.connectionType);
+    expect(CLIENT_SESSION_TYPES).toContain(client?.sessionType);
+    expect(client?.observedMac).toBeNull();
+    expect(client?.hostname).toBeNull();
+    // The degenerate key still clears the 8-character session_key floor.
+    expect(client?.sessionKey.trim().length).toBeGreaterThanOrEqual(8);
+  });
+
+  // Found while writing the domain tests above, in the same object literal as
+  // F6 and with the same blast radius: a BLANK key value produced
+  // `sessionKey: "dhcp:"` - 5 characters against
+  // `CHECK (char_length(btrim(session_key)) BETWEEN 8 AND 200)` - which is
+  // another 23514 that rolls the whole telemetry transaction back. `?? null`
+  // only rejects null and undefined, so "" sailed straight through it.
+  it("treats a blank lease MAC and address as absent, not as an empty key", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [
+        { address: "  ", macAddress: "", status: "waiting" },
+        // Non-blank but too short to carry a legal `dhcp:` key on its own.
+        { macAddress: "ab", status: "waiting" },
+      ],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.clients).toHaveLength(2);
+    for (const client of observation.clients) {
+      expect(client.sessionKey.trim().length).toBeGreaterThanOrEqual(8);
+      expect(client.externalKey.trim().length).toBeGreaterThan(0);
+    }
+    expect(observation.clients[0]?.observedMac).toBeNull();
+    expect(observation.clients[0]?.observedIp).toBeNull();
+    // Distinct rows keep distinct identities rather than colliding on one key.
+    expect(observation.clients[0]?.sessionKey)
+      .not.toBe(observation.clients[1]?.sessionKey);
+  });
+
+  // observed_mac is cast to `macaddr` by the ingest RPC. An uncastable string is
+  // a 22P02 that destroys the same batch a 23514 would, so a value that is not a
+  // canonical MAC is reported as not-observed rather than forwarded.
+  it("refuses to forward a lease MAC Postgres could not cast", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [{ address: "192.168.88.9", macAddress: "not-a-mac", status: "bound" }],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+    const client = observation.clients[0];
+
+    expect(observation.clients).toHaveLength(1);
+    expect(client?.observedMac).toBeNull();
+    // The row is still identified and still stored - the router's own lease
+    // identity remains the session key, so nothing is silently dropped and the
+    // identity does not churn if the MAC later becomes parseable.
+    expect(client?.sessionKey).toBe("dhcp:not-a-mac");
+    // randomizedMac must be read off the value that survived validation, not off
+    // the raw string: `["2","6","a","e"].includes("o")` on "not-a-mac" is the
+    // kind of accident that invents a privacy signal from a parse failure.
+    expect(client?.randomizedMac).toBe(false);
   });
 });

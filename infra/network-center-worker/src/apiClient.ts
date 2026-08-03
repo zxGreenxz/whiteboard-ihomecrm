@@ -80,18 +80,29 @@ export class ApiClientError extends Error {
   readonly retryable: boolean;
   readonly status: number | null;
   readonly code: string;
+  /**
+   * What the SERVER called the failure: the SQLSTATE for an RPC error
+   * (`23514`), or the Edge's own reason string for a rejected request.
+   *
+   * It exists because the F6 diagnosis needed three logs from three systems to
+   * learn one fact the server had already stated. Null when the response
+   * carried nothing usable.
+   */
+  readonly serverReason: string | null;
 
   constructor(options: {
     code: string;
     retryable: boolean;
     status?: number | null;
     message?: string;
+    serverReason?: string | null;
   }) {
     super(options.message ?? "Network Center worker API request failed");
     this.name = "ApiClientError";
     this.code = options.code;
     this.retryable = options.retryable;
     this.status = options.status ?? null;
+    this.serverReason = options.serverReason ?? null;
   }
 }
 
@@ -106,6 +117,52 @@ const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+/** Hard cap on an error body. Anything larger is discarded unread. */
+const MAX_ERROR_REASON_BYTES = 4_096;
+/** Hard cap on what is kept from it, so a log line can never be flooded. */
+const MAX_ERROR_REASON_LENGTH = 200;
+
+/**
+ * The server's own name for a failure, read from a STRICTLY BOUNDED error body.
+ *
+ * The Edge answers `{error, code}` for an RPC failure (`code` is the SQLSTATE)
+ * and `{error, reason}` for a rejected request, and both were previously thrown
+ * away by cancelling the body - which is why an F6 poll logged nothing but
+ * `ApiClientError` and the actual cause had to be recovered by correlating
+ * three separate systems' logs at matching timestamps.
+ *
+ * Bounded twice and fails closed to null: a declared-oversize body is never
+ * read, a body that turns out oversize is discarded, and any parse failure
+ * yields null rather than propagating. Only the two known keys are read, so no
+ * unexpected server field can reach a log through here.
+ */
+async function readErrorReason(response: Response): Promise<string | null> {
+  const declaredLength = Number(response.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(declaredLength) || declaredLength > MAX_ERROR_REASON_BYTES) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The response is already unusable; intentionally ignore cancellation errors.
+    }
+    return null;
+  }
+  try {
+    const raw = await response.text();
+    if (Buffer.byteLength(raw, "utf8") > MAX_ERROR_REASON_BYTES) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const body = parsed as Record<string, unknown>;
+    const reason = typeof body.code === "string"
+      ? body.code
+      : typeof body.reason === "string"
+        ? body.reason
+        : null;
+    return reason === null ? null : reason.slice(0, MAX_ERROR_REASON_LENGTH);
+  } catch {
+    return null;
+  }
 }
 
 export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
@@ -141,15 +198,12 @@ export class NetworkCenterApiClient implements NetworkCenterWorkerApi {
       }
 
       if (!response.ok) {
-        try {
-          await response.body?.cancel();
-        } catch {
-          // The response is already unusable; intentionally ignore cancellation errors.
-        }
+        const serverReason = await readErrorReason(response);
         throw new ApiClientError({
           code: `HTTP_${response.status}`,
           retryable: isRetryableStatus(response.status),
           status: response.status,
+          serverReason,
         });
       }
 

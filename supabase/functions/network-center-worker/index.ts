@@ -65,6 +65,62 @@ const COMMAND_OUTCOMES = new Set([
   "CANCELLED_BY_KILL_SWITCH",
 ]);
 
+// ---------------------------------------------------------------------------
+// Telemetry value domains.
+//
+// This function used to validate the SHAPE of an ingest payload and nothing
+// about its VALUES: `asArray(payload.clients, ..., 256)` and no more. So when
+// the worker sent `connectionType: "DHCP"` / `sessionType: "LEASE"` - two values
+// no CHECK constraint in the schema accepts - they were forwarded intact, and
+// the first thing that noticed was Postgres, mid-transaction, which rolled back
+// every device, interface and client row in the batch.
+//
+// The sets below mirror the CHECK constraints EXACTLY: not laxer (that forwards
+// a violation again) and not stricter (that would refuse data the database is
+// happy to store). Comparison is exact, with no case folding, because the CHECK
+// is exact - accepting "dhcp" here would mean the Edge silently repairing a
+// value the database would have rejected, which is how a producer drifts into a
+// shape only this function understands.
+//
+// They are a RESTATEMENT of the database and are pinned to it rather than
+// trusted: scripts/test-network-center-ingest-domains-disposable.mjs reads the
+// real domains out of pg_get_constraintdef on a real PostgreSQL 17 cluster built
+// from the real migrations and fails if any set here differs by one member.
+// ---------------------------------------------------------------------------
+
+/** `network_client_current.connection_type`, `network_client_sessions.connection_type`. */
+const CLIENT_CONNECTION_TYPES = new Set([
+  "UNKNOWN",
+  "ETHERNET",
+  "WIFI",
+  "VPN",
+]);
+/** `network_client_current.session_type`. */
+const CLIENT_SESSION_TYPES = new Set([
+  "UNKNOWN",
+  "DHCP",
+  "HOTSPOT",
+  "STATIC",
+  "ARP",
+]);
+/** `network_device_current.health_status`. */
+const DEVICE_HEALTH_STATUSES = new Set([
+  "UNKNOWN",
+  "HEALTHY",
+  "DEGRADED",
+  "CRITICAL",
+  "OFFLINE",
+]);
+/** `network_device_current.pppoe_state`. */
+const DEVICE_PPPOE_STATES = new Set([
+  "UNKNOWN",
+  "UP",
+  "DOWN",
+  "NOT_APPLICABLE",
+]);
+/** `network_interface_current.link_state`. */
+const INTERFACE_LINK_STATES = new Set(["UNKNOWN", "UP", "DOWN"]);
+
 class RequestValidationError extends Error {}
 
 // Thrown when a caller of readJsonBody supplies a byte cap that is not a
@@ -190,6 +246,24 @@ function asUpperEnum(
   return normalized;
 }
 
+/**
+ * A telemetry field that must land inside a CHECK-constrained column.
+ *
+ * Absent and null are ALLOWED: the ingest RPC coalesces both to 'UNKNOWN', which
+ * is a legal member of every domain here, so rejecting them would refuse rows
+ * the database stores happily. Anything present must match a member exactly.
+ */
+function assertTelemetryDomain(
+  value: unknown,
+  field: string,
+  allowed: ReadonlySet<string>,
+): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== "string" || !allowed.has(value)) {
+    throw new RequestValidationError(`${field} is outside its value domain`);
+  }
+}
+
 function heartbeatArgs(body: JsonObject): Record<string, unknown> {
   const capabilities = asArray(body.capabilities, "capabilities", 32).map((
     capability,
@@ -260,9 +334,51 @@ function renewArgs(body: JsonObject): Record<string, unknown> {
 function ingestArgs(body: JsonObject): Record<string, unknown> {
   const payload = asBoundedObject(body.payload, "payload", 524_288);
   asTimestamp(payload.observedAt, "payload.observedAt");
-  asArray(payload.devices ?? [], "payload.devices", 256);
-  asArray(payload.interfaces ?? [], "payload.interfaces", 256);
-  asArray(payload.clients ?? [], "payload.clients", 256);
+  const devices = asArray(payload.devices ?? [], "payload.devices", 256);
+  const interfaces = asArray(
+    payload.interfaces ?? [],
+    "payload.interfaces",
+    256,
+  );
+  const clients = asArray(payload.clients ?? [], "payload.clients", 256);
+
+  // Every enumerated column this RPC writes, checked before the transaction
+  // opens. `jsonb_to_recordset` also requires each element to BE an object, so
+  // that is asserted here too rather than left to a 22023 from inside the CTE.
+  devices.forEach((device, index) => {
+    const row = asObject(device, `payload.devices[${index}]`);
+    assertTelemetryDomain(
+      row.healthStatus,
+      `payload.devices[${index}].healthStatus`,
+      DEVICE_HEALTH_STATUSES,
+    );
+    assertTelemetryDomain(
+      row.pppoeState,
+      `payload.devices[${index}].pppoeState`,
+      DEVICE_PPPOE_STATES,
+    );
+  });
+  interfaces.forEach((item, index) => {
+    const row = asObject(item, `payload.interfaces[${index}]`);
+    assertTelemetryDomain(
+      row.linkState,
+      `payload.interfaces[${index}].linkState`,
+      INTERFACE_LINK_STATES,
+    );
+  });
+  clients.forEach((client, index) => {
+    const row = asObject(client, `payload.clients[${index}]`);
+    assertTelemetryDomain(
+      row.connectionType,
+      `payload.clients[${index}].connectionType`,
+      CLIENT_CONNECTION_TYPES,
+    );
+    assertTelemetryDomain(
+      row.sessionType,
+      `payload.clients[${index}].sessionType`,
+      CLIENT_SESSION_TYPES,
+    );
+  });
   return { p_payload: payload };
 }
 
@@ -604,11 +720,40 @@ function createServiceRpc(
   };
 }
 
+/**
+ * HTTP status for a PostgreSQL SQLSTATE.
+ *
+ * The unmapped default is 502, and that default is what made F6 cost a
+ * three-log triangulation to identify. Postgres said `23514` and named the
+ * constraint (`network_client_current_session_type_check`); this function did
+ * not know the code, answered a generic 502 `worker_backend_error`, and the
+ * worker logged the single word `ApiClientError`. Everything needed to diagnose
+ * it existed and was discarded one layer at a time.
+ *
+ * So the rule follows the SQLSTATE CLASSES rather than an accumulating list of
+ * the individual codes that have already bitten us:
+ *
+ *  - class 22 (data exception) is always "the payload itself is wrong" - 22023
+ *    invalid parameter, 22P02 a string Postgres cannot cast to macaddr/inet,
+ *    22003 out of range -> 400;
+ *  - 23502 not-null and 23514 check violation say the same thing about a
+ *    constrained column -> 400;
+ *  - 23505 unique and 23503 foreign key are conflicts with rows that do or do
+ *    not exist, not malformed input -> 409;
+ *  - 42501 -> 403, P0002 -> 404, 55000 -> 409.
+ *
+ * 400 and 409 are both non-retryable for the worker's HTTP client, which is the
+ * behaviour this class of failure needs: re-sending a byte-identical malformed
+ * payload cannot start working, whereas a 502 is retried forever. The SQLSTATE
+ * itself is returned in `code`, so the response names the failure either way.
+ */
 function rpcErrorStatus(code: string | undefined): number {
-  if (code === "22023") return 400;
+  if (code === undefined) return 502;
+  if (code.startsWith("22")) return 400;
+  if (code === "23502" || code === "23514") return 400;
   if (code === "42501") return 403;
   if (code === "P0002") return 404;
-  if (code === "23505" || code === "55000") return 409;
+  if (code === "23503" || code === "23505" || code === "55000") return 409;
   return 502;
 }
 
@@ -697,7 +842,16 @@ export function createWorkerHandler(
       };
     } catch (error) {
       if (error instanceof RequestValidationError) {
-        return jsonResponse(400, { error: "invalid_request" });
+        // The reason is the FIELD PATH and a fixed phrase - never the value, so
+        // nothing from the payload is echoed back. The caller is already
+        // authenticated at this point (the credential digest was computed
+        // above), and telling an authenticated worker which of its own fields it
+        // got wrong is the difference between a fixable error and the opaque
+        // 400 that F6-class defects hide behind.
+        return jsonResponse(400, {
+          error: "invalid_request",
+          reason: error.message,
+        });
       }
       return jsonResponse(400, { error: "invalid_request" });
     }

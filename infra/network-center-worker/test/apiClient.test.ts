@@ -62,6 +62,87 @@ describe("worker Edge API client", () => {
     expect(error).toMatchObject({ retryable: true, status: 503 });
     expect(String((error as Error).message)).not.toContain("router");
     expect(String((error as Error).message)).not.toContain(secret);
+    // A body that is not the Edge's own error envelope yields no reason at all,
+    // rather than a truncated slice of whatever the server happened to send.
+    expect((error as ApiClientError).serverReason).toBeNull();
+  });
+
+  it("keeps the SQLSTATE the server named instead of discarding it", async () => {
+    const client = new NetworkCenterApiClient({
+      baseUrl: new URL("https://example.test/worker"),
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      // Exactly what the Edge answers for a CHECK violation now that 23514 is
+      // mapped: the failure names itself, and the worker must not throw that
+      // away - recovering it cost a three-system log correlation last time.
+      fetch: async () => Response.json(
+        { error: "worker_backend_error", code: "23514" },
+        { status: 400 },
+      ),
+    });
+
+    const error = await client.ingest({ observedAt: "2026-08-03T00:00:00.000Z" })
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiClientError);
+    expect(error).toMatchObject({
+      code: "HTTP_400",
+      status: 400,
+      // A malformed payload cannot become valid by being sent again.
+      retryable: false,
+      serverReason: "23514",
+    });
+  });
+
+  it("keeps the rejected field path the Edge reported", async () => {
+    const client = new NetworkCenterApiClient({
+      baseUrl: new URL("https://example.test/worker"),
+      secret: "s".repeat(48),
+      timeoutMs: 1_000,
+      fetch: async () => Response.json({
+        error: "invalid_request",
+        reason: "payload.clients[0].sessionType is outside its value domain",
+      }, { status: 400 }),
+    });
+
+    const error = await client.ingest({ observedAt: "2026-08-03T00:00:00.000Z" })
+      .catch((cause: unknown) => cause);
+
+    expect((error as ApiClientError).serverReason)
+      .toBe("payload.clients[0].sessionType is outside its value domain");
+  });
+
+  it("refuses to read an oversized error body at all", async () => {
+    const secret = "secret-that-must-not-leak".repeat(2);
+    let cancelled = false;
+    const client = new NetworkCenterApiClient({
+      baseUrl: new URL("https://example.test/worker"),
+      secret,
+      timeoutMs: 1_000,
+      fetch: async () => {
+        const response = Response.json(
+          { error: "worker_backend_error", code: "x".repeat(64) },
+          { status: 500 },
+        );
+        response.headers.set("content-length", String(64 * 1024));
+        Object.defineProperty(response, "body", {
+          value: { cancel: async () => { cancelled = true; } },
+        });
+        return response;
+      },
+    });
+
+    const error = await client.heartbeat({
+      status: "ONLINE",
+      workerVersion: "test",
+      capabilities: [],
+      queueAgeSeconds: 0,
+      safeMetadata: {},
+      startedAt: "2026-08-03T00:00:00.000Z",
+    }).catch((cause: unknown) => cause);
+
+    expect((error as ApiClientError).serverReason).toBeNull();
+    expect(cancelled).toBe(true);
   });
 
   it("accepts typed claim metadata and sends fenced observations without worker-authored success", async () => {

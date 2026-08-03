@@ -39,11 +39,77 @@ export interface NetworkConnection {
   changesPaused: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Value domains the control plane's CHECK constraints accept.
+//
+// WHY THESE ARE CONSTANTS AND NOT COMMENTS. The worker shipped
+// `connectionType: "DHCP"` and `sessionType: "LEASE"` to production. Neither
+// value appears in any CHECK constraint in the schema: `DHCP` is a legal
+// SESSION type that was written into the CONNECTION field, and `LEASE` is not a
+// telemetry value at all - it is a `network_client_links.source`. Postgres
+// rejected the row with SQLSTATE 23514 and, because the ingest RPC is ONE
+// transaction, took the whole telemetry batch - interfaces included - down with
+// it, on every poll, forever.
+//
+// Nothing caught it because `RouterClientObservation` was
+// `{ externalKey: string; [key: string]: JsonValue }`: an index signature makes
+// the worker's most schema-coupled payload the least type-checked object in the
+// package, so both literals were just `string`.
+//
+// These arrays are a RESTATEMENT of the database, so they are pinned to it
+// rather than trusted: scripts/test-network-center-ingest-domains-disposable.mjs
+// builds a real PostgreSQL 17 cluster from the real migrations, reads the
+// domains out of pg_get_constraintdef, and fails if any array here differs from
+// the catalog by a single member. Edit one without editing the schema and that
+// proof goes red.
+// ---------------------------------------------------------------------------
+
+/** `network_client_current.connection_type`, `network_client_sessions.connection_type`. */
+export const CLIENT_CONNECTION_TYPES = ["UNKNOWN", "ETHERNET", "WIFI", "VPN"] as const;
+/** `network_client_current.session_type`. */
+export const CLIENT_SESSION_TYPES = ["UNKNOWN", "DHCP", "HOTSPOT", "STATIC", "ARP"] as const;
+/** `network_device_current.health_status`. */
+export const DEVICE_HEALTH_STATUSES = [
+  "UNKNOWN",
+  "HEALTHY",
+  "DEGRADED",
+  "CRITICAL",
+  "OFFLINE",
+] as const;
+/** `network_interface_current.link_state`. */
+export const INTERFACE_LINK_STATES = ["UNKNOWN", "UP", "DOWN"] as const;
+/** `network_interfaces.interface_role`. */
+export const INTERFACE_ROLES = [
+  "WAN",
+  "LAN",
+  "ACCESS",
+  "UPLINK",
+  "MANAGEMENT",
+  "UNKNOWN",
+] as const;
+/** `network_interfaces.interface_kind`. */
+export const INTERFACE_KINDS = [
+  "ETHERNET",
+  "WIRELESS",
+  "WIREGUARD",
+  "BRIDGE",
+  "VLAN",
+  "LOOPBACK",
+  "OTHER",
+] as const;
+
+export type ClientConnectionType = (typeof CLIENT_CONNECTION_TYPES)[number];
+export type ClientSessionType = (typeof CLIENT_SESSION_TYPES)[number];
+export type DeviceHealthStatus = (typeof DEVICE_HEALTH_STATUSES)[number];
+export type InterfaceLinkState = (typeof INTERFACE_LINK_STATES)[number];
+export type InterfaceRole = (typeof INTERFACE_ROLES)[number];
+export type InterfaceKind = (typeof INTERFACE_KINDS)[number];
+
 export interface RouterInterfaceObservation {
   externalKey: string;
   displayName: string;
   immutableKey?: string | null;
-  role: string;
+  role: InterfaceRole;
   protected: boolean;
   enabled: boolean;
   sample?: JsonObject;
@@ -67,9 +133,34 @@ export interface ArubaQuarantineObservation {
   fingerprint: string;
 }
 
+/**
+ * One observed client, shaped exactly like the `clients[]` recordset
+ * `network_center_worker_ingest_v2` destructures.
+ *
+ * DELIBERATELY CLOSED. There is no index signature: every field the ingest RPC
+ * reads is declared, and the two that land in a CHECK-constrained column carry
+ * their real union type, so a value the database would reject cannot compile.
+ * The RPC ignores unknown keys anyway, so an open shape bought nothing and cost
+ * the entire type-check of this payload.
+ */
 export interface RouterClientObservation {
   externalKey: string;
-  [key: string]: JsonValue;
+  deviceId: string;
+  /** `network_client_current.session_key`: 8-200 characters after trimming. */
+  sessionKey: string;
+  /** `network_client_current.client_fingerprint`: 8-200 characters. */
+  clientFingerprint: string;
+  observedMac: string | null;
+  observedIp: string | null;
+  hostname: string | null;
+  connectionType: ClientConnectionType;
+  sessionType: ClientSessionType;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /** Must be strictly after `lastSeenAt` - the table's own time CHECK. */
+  expiresAt: string;
+  randomizedMac: boolean;
+  interfaceId?: string | null;
 }
 
 export interface RouterObservation {

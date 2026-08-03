@@ -7,6 +7,9 @@ import { Client, type ClientChannel } from "ssh2";
 import {
   RouterOperationError,
   type ArubaObservation,
+  type DeviceHealthStatus,
+  type InterfaceKind,
+  type InterfaceLinkState,
   type JsonObject,
   type ManagedInterfaceTarget,
   type NetworkConnection,
@@ -329,10 +332,35 @@ interface SshConnectorOptions {
   clientFactory?: () => Client;
 }
 
+/**
+ * A counter or gauge read off the router.
+ *
+ * NEGATIVE IS REJECTED, not stored. Every one of this function's call sites
+ * lands in a column that forbids it - `network_interface_current.rx_bytes`,
+ * `tx_bytes` and `error_count` are all `>= 0`, and `network_device_current`
+ * bounds `cpu_pct` - so a negative here is not a smaller number, it is a 23514
+ * that rolls back the entire telemetry transaction for the whole worker. The
+ * router's counters are unsigned; a value that is not is a garbled read, and
+ * "not observed" is the honest way to store a garbled read.
+ */
 function integer(value: string | undefined): number | null {
   if (!value || !/^-?\d+$/.test(value)) return null;
   const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/**
+ * A percentage gauge, bounded the way its column is
+ * (`CHECK (cpu_pct IS NULL OR cpu_pct BETWEEN 0 AND 100)`).
+ *
+ * Out of range becomes null rather than being clamped: clamping 137 to 100
+ * would invent a reading the router never gave, and this codebase has already
+ * paid for one fabricated telemetry value (the link-flap counter stored as a
+ * line speed).
+ */
+function percentage(value: string | undefined): number | null {
+  const parsed = integer(value);
+  return parsed !== null && parsed <= 100 ? parsed : null;
 }
 
 function boolean(value: string | undefined): boolean {
@@ -444,6 +472,24 @@ function parseDurationSeconds(value: string | undefined): number | null {
   const minutes = Number(/(\d+)m/.exec(value)?.[1] ?? 0);
   const seconds = Number(/(\d+)s/.exec(value)?.[1] ?? 0);
   return (((weeks * 7 + days) * 24 + hours) * 60 + minutes) * 60 + seconds;
+}
+
+/**
+ * `network_client_current.session_key` and `network_client_sessions.session_key`
+ * are both `CHECK (char_length(btrim(session_key)) BETWEEN 8 AND 200)`, and the
+ * worker builds them as `dhcp:` + the lease's own identity. Five of the eight
+ * characters are therefore already spent before the identity is appended.
+ */
+const MIN_SESSION_KEY_SOURCE_LENGTH = 3;
+
+/**
+ * Absent, blank or whitespace-only all mean "the router did not report this".
+ * RouterOS omits keys it has no value for, but a value that trims to nothing is
+ * indistinguishable from absence and must not be allowed to become an identity.
+ */
+function blankToNull(value: string | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export function leaseExpiryIso(
@@ -620,7 +666,7 @@ export function resolveManagedAccessPort(
   };
 }
 
-function interfaceKind(type: string): string {
+function interfaceKind(type: string): InterfaceKind {
   const normalized = type.toLowerCase();
   if (normalized.includes("wireguard")) return "WIREGUARD";
   if (normalized.includes("bridge")) return "BRIDGE";
@@ -1048,7 +1094,10 @@ export class SshRouterConnector implements RouterConnector {
           || role === "UPLINK",
         enabled: state.enabled,
         sample: {
-          linkState: state.running ? "UP" : "DOWN",
+          // `satisfies` and not a bare literal: `sample` is a JsonObject, so
+          // without it this field is only `string` - the same hole that let the
+          // two client literals through.
+          linkState: (state.running ? "UP" : "DOWN") satisfies InterfaceLinkState,
           // null, not 0. A zero here is indistinguishable from a genuinely idle
           // interface, and every downstream rollup treats the series as a
           // monotonic counter, so a fabricated zero manufactures a negative
@@ -1065,19 +1114,50 @@ export class SshRouterConnector implements RouterConnector {
     });
 
     const clients: RouterClientObservation[] = parseRouterOsRecords(leaseOutput).map((record, index) => {
-      const mac = record["mac-address"]?.toLowerCase() ?? null;
-      const address = record.address ?? null;
-      const key = mac ?? address ?? `lease-${index}`;
+      // `?? null` is not enough here, and the difference is another whole-batch
+      // rollback. A BLANK value is not null, so `?? null` kept it, `mac ?? address`
+      // then chose it, and `sessionKey` became the 5-character `"dhcp:"` against
+      // `CHECK (char_length(btrim(session_key)) BETWEEN 8 AND 200)`. Blank means
+      // absent, so the key falls through to the `lease-N` form, which always
+      // clears the floor.
+      const mac = blankToNull(record["mac-address"])?.toLowerCase() ?? null;
+      const address = blankToNull(record.address);
+      // observed_mac is cast to `macaddr` by the ingest RPC, so a value Postgres
+      // cannot parse is a 22P02 with exactly the blast radius of a 23514. An
+      // unparseable MAC is reported as not-observed; it still identifies the row.
+      const observedMac = mac !== null && HARDWARE_MAC.test(mac) ? mac : null;
+      // The router's own identity for the lease, preferred in that order - but
+      // only if it can carry a legal session key. `dhcp:` is 5 characters and the
+      // floor is 8, so a source shorter than 3 characters is not usable as one.
+      const key = [mac, address].find(
+        (candidate): candidate is string =>
+          candidate !== null && candidate.length >= MIN_SESSION_KEY_SOURCE_LENGTH,
+      ) ?? `lease-${index}`;
       return {
         externalKey: key,
         deviceId: this.#connection.deviceId,
         sessionKey: `dhcp:${key}`,
         clientFingerprint: createHash("sha256").update(key).digest("hex"),
-        observedMac: mac,
+        observedMac,
         observedIp: address,
-        hostname: record["host-name"] ?? null,
-        connectionType: "DHCP",
-        sessionType: "LEASE",
+        hostname: blankToNull(record["host-name"]),
+        // These two were SWAPPED, and neither value was legal where it stood.
+        //
+        // `connection_type` is the MEDIUM (UNKNOWN/ETHERNET/WIFI/VPN) and
+        // `session_type` is HOW the address was handed out
+        // (UNKNOWN/DHCP/HOTSPOT/STATIC/ARP). A DHCP lease record proves the
+        // second and says nothing at all about the first:
+        // `/ip/dhcp-server/lease/print detail terse` carries no
+        // ethernet/wireless discriminator, so UNKNOWN here is the observation
+        // the router actually supports - and it is the column's own DEFAULT and
+        // the ingest RPC's own coalesce target, i.e. the schema's word for "not
+        // observed". Guessing ETHERNET would be a fabricated medium.
+        //
+        // `LEASE` was never a telemetry value in any version of this schema: the
+        // only CHECK constraint in the database that admits it is
+        // `network_client_links.source`, which the ingest never writes.
+        connectionType: "UNKNOWN",
+        sessionType: "DHCP",
         firstSeenAt: now,
         lastSeenAt: now,
         expiresAt: leaseExpiryIso(
@@ -1085,7 +1165,8 @@ export class SshRouterConnector implements RouterConnector {
           record["expires-after"],
           this.#connection.pollIntervalSeconds * 3,
         ),
-        randomizedMac: mac ? ["2", "6", "a", "e"].includes(mac[1] ?? "") : false,
+        randomizedMac: observedMac !== null
+          && ["2", "6", "a", "e"].includes(observedMac[1] ?? ""),
       };
     });
 
@@ -1100,11 +1181,11 @@ export class SshRouterConnector implements RouterConnector {
       deviceId: this.#connection.deviceId,
       lastSeenAt: now,
       reachable: true,
-      healthStatus: "HEALTHY",
+      healthStatus: "HEALTHY" satisfies DeviceHealthStatus,
       identity: identity.name ?? this.#connection.displayName,
       routerosVersion: resource.version ?? null,
       uptimeSeconds: parseDurationSeconds(resource.uptime),
-      cpuPct: integer(resource["cpu-load"]),
+      cpuPct: percentage(resource["cpu-load"]),
       memoryUsedBytes: totalMemory !== null && freeMemory !== null ? totalMemory - freeMemory : null,
       memoryTotalBytes: totalMemory,
       diskUsedBytes: totalDisk !== null && freeDisk !== null ? totalDisk - freeDisk : null,

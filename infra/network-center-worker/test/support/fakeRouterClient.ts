@@ -69,10 +69,14 @@ function readCommandOutput(router: FakeRouterOs, command: string): string | null
   if (command === ROUTER_OS_READ_COMMANDS.interfaces) return router.printInterfaces();
   if (command === ROUTER_OS_READ_COMMANDS.interfaceStats) return router.printInterfaceStats();
   if (command === ROUTER_OS_READ_COMMANDS.firewallFilters) return router.printFirewall();
-  if (command === ROUTER_OS_READ_COMMANDS.resource) return "version=7.15 uptime=1h cpu-load=1\n";
+  if (command === ROUTER_OS_READ_COMMANDS.resource) return router.resource;
+  // Leases are served from the fixture, NOT hard-coded to "". Answering this
+  // command with the empty string is what kept `observation.clients` empty in
+  // every test and made the client half of the payload unreachable from the
+  // suite - see FakeRouterOs.printLeases.
+  if (command === ROUTER_OS_READ_COMMANDS.leases) return router.printLeases();
   if (
     command === ROUTER_OS_READ_COMMANDS.dhcpClients
-    || command === ROUTER_OS_READ_COMMANDS.leases
     || command === ROUTER_OS_READ_COMMANDS.neighbors
   ) return "";
   if (command === ROUTER_OS_READ_COMMANDS.dns) return "servers=1.1.1.1\n";

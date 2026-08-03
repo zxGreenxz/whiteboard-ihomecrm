@@ -89,6 +89,38 @@ export interface FakeInterfaceCounters {
   comment?: string;
 }
 
+/**
+ * One row of `/ip/dhcp-server/lease/print detail terse without-paging`.
+ *
+ * WHY THIS EXISTS AT ALL. Until now the fake answered that command with the
+ * EMPTY STRING, so `observation.clients` was `[]` in every single test in this
+ * package, and every field of a client observation was therefore unreachable
+ * from the suite. That is exactly how `connectionType: "DHCP"` /
+ * `sessionType: "LEASE"` - two values no CHECK constraint in the schema accepts
+ * - shipped green through 422 tests: the code that produces them never ran.
+ * The demo hEX has exactly ONE lease (its own operator's LAN gateway), so the
+ * production payload always contains a client row and the whole telemetry
+ * transaction always rolled back.
+ *
+ * The rendering below is the RouterOS 7 lease record shape - `.id` and flags
+ * first, then space-separated `key=value` with quoted `host-name` and
+ * `client-id` - not a byte capture from the hardware, which this task is
+ * forbidden from touching. Only the five keys the connector actually reads
+ * (`address`, `mac-address`, `host-name`, `expires-after`, plus the row flags)
+ * carry meaning for the assertions.
+ */
+export interface FakeDhcpLease {
+  /** Omitted renders no `address=` key at all, which is how RouterOS terse output
+   * signals absence - it does not print an empty value. */
+  address?: string;
+  macAddress?: string;
+  hostName?: string;
+  /** RouterOS duration form, e.g. `9m59s`. Omitted models a lease with none. */
+  expiresAfter?: string;
+  status?: string;
+  server?: string;
+}
+
 export interface FakeSchedulerEntry {
   name: string;
   comment: string;
@@ -263,6 +295,10 @@ export class FakeRouterOs {
    * would hide the very gap that produced `rxBytes: 0` on every real sample.
    */
   readonly interfaceCounters: Map<string, FakeInterfaceCounters>;
+  /** DHCP server leases. Empty by default; the demo hEX really has one. */
+  readonly dhcpLeases: FakeDhcpLease[];
+  /** `/system/resource/print`. Overridable so out-of-range gauges are testable. */
+  readonly resource: string;
   /** When true the router refuses `/interface/print stats`, as an old build would. */
   readonly refuseInterfaceStats: boolean;
   /** When true `/export` is refused on stdout with exit status 0. */
@@ -277,6 +313,8 @@ export class FakeRouterOs {
     jobs?: Array<{ script: string }>;
     deviceMode?: Partial<FakeDeviceMode>;
     interfaceCounters?: Record<string, FakeInterfaceCounters>;
+    dhcpLeases?: FakeDhcpLease[];
+    resource?: string;
     refuseInterfaceStats?: boolean;
     /** Router refuses `/export` — the refusal arrives on stdout, exit status 0. */
     refuseExport?: boolean;
@@ -289,6 +327,8 @@ export class FakeRouterOs {
       Object.entries(options.interfaceCounters ?? {}).map(([name, entry]) => [name, { ...entry }]),
     );
     this.refuseInterfaceStats = options.refuseInterfaceStats ?? false;
+    this.dhcpLeases = (options.dhcpLeases ?? []).map((entry) => ({ ...entry }));
+    this.resource = options.resource ?? "version=7.15 uptime=1h cpu-load=1\n";
     this.interfaces = options.interfaces.map((entry) => ({ ...entry }));
     this.firewall = (options.firewall ?? []).map((entry) => ({ ...entry }));
     for (const entry of options.scheduler ?? []) this.scheduler.push({ ...entry });
@@ -385,6 +425,28 @@ export class FakeRouterOs {
       "/ip service set ssh address=192.168.88.240/28,10.77.0.1/32",
       "",
     ].join("\n");
+  }
+
+  /**
+   * `/ip/dhcp-server/lease/print detail terse without-paging`. Returns "" when
+   * the fixture declares no lease, which is what a router with an empty pool
+   * answers - and what this fake answered unconditionally before F6.
+   */
+  printLeases(): string {
+    if (this.dhcpLeases.length === 0) return "";
+    return `${this.dhcpLeases.map((lease, index) => {
+      const fields = [`${index} D`];
+      if (lease.address !== undefined) fields.push(`address=${lease.address}`);
+      if (lease.macAddress !== undefined) fields.push(`mac-address=${lease.macAddress}`);
+      fields.push(
+        `server=${lease.server ?? "defconf"}`,
+        `status=${lease.status ?? "bound"}`,
+      );
+      if (lease.expiresAfter !== undefined) fields.push(`expires-after=${lease.expiresAfter}`);
+      if (lease.hostName !== undefined) fields.push(`host-name="${lease.hostName}"`);
+      fields.push("dynamic=yes", "blocked=no", "disabled=no");
+      return fields.join(" ");
+    }).join("\n")}\n`;
   }
 
   printFirewall(): string {
