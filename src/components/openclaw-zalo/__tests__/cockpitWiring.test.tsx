@@ -73,9 +73,18 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawInbox", () => ({
   useOpenClawMessages: () => ({ ...idleQuery, data: { version: 1, items: [], limit: 50 } }),
 }));
 
+const emptyList = { version: 1, items: [], limit: 50 };
+
 vi.mock("@/hooks/openclaw-zalo/useOpenClawResources", () => ({
   useOpenClawAiDrafts: () => ({ ...idleQuery, data: { version: 1, items: [], limit: 20 } }),
-  useOpenClawTakeovers: () => ({ ...idleQuery, data: { version: 1, items: [], limit: 50 } }),
+  useOpenClawTakeovers: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawKnowledgeList: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawKnowledge: () => ({ ...idleQuery, data: undefined }),
+  useOpenClawKnowledgePreview: () => ({ ...idleQuery, data: undefined }),
+  useOpenClawAutomationList: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawAutomation: () => ({ ...idleQuery, data: undefined }),
+  useOpenClawSalesGroups: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawSchedules: () => ({ ...idleQuery, data: emptyList }),
 }));
 
 const idleMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
@@ -102,7 +111,9 @@ const { default: OpenClawSectionBody } = await import("../OpenClawSectionBody");
 
 const render = () => renderToStaticMarkup(createElement(OpenClawCockpit, { mobile: false }));
 
-const renderSection = (activeSection: "overview" | "inbox") =>
+const renderSection = (
+  activeSection: "overview" | "inbox" | "knowledge" | "automation" | "schedules",
+) =>
   renderToStaticMarkup(createElement(OpenClawSectionBody, {
     activeSection,
     connectionState: "CONNECTED" as const,
@@ -134,6 +145,25 @@ describe("cockpit wiring", () => {
     const overview = renderSection("overview");
     expect(overview).toContain("placeholder");
     expect(overview).not.toContain('data-openclaw-inbox=');
+  });
+
+  it("mounts each Task 24 section behind its own id, and only there", () => {
+    // Same guarantee as the inbox: rendered rather than grepped, so removing a branch
+    // or pointing it at the wrong component fails here.
+    const cases = [
+      ["knowledge", "data-openclaw-knowledge="],
+      ["automation", "data-openclaw-automation="],
+      ["schedules", "data-openclaw-schedules="],
+    ] as const;
+    for (const [section, marker] of cases) {
+      const html = renderSection(section);
+      expect(html, section).toContain(marker);
+      expect(html, section).not.toContain("placeholder");
+    }
+    // And the overview still shows the placeholder rather than any of them.
+    const overview = renderSection("overview");
+    expect(overview).toContain("placeholder");
+    for (const [, marker] of cases) expect(overview).not.toContain(marker);
   });
 
   it("offers the reconnect trigger only to a member who may manage connections", () => {
