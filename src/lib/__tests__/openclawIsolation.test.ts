@@ -62,7 +62,12 @@ afterEach(() => {
 describe("OpenClaw Zalo isolation guardrail", () => {
   it("finds no forbidden references in the repository OpenClaw scopes", () => {
     expect(scanOpenClawFiles()).toEqual([]);
-  });
+    // Bounded, not disabled. This walks the whole repository: ~1.6s alone, ~4.4s
+    // when the 144-file suite runs in parallel, which crossed the 5s default and
+    // read as a flaky isolation failure - the message said "timed out", not
+    // "forbidden reference", and diagnosing it as flakiness for two rounds was the
+    // mistake. A genuine hang still fails here.
+  }, 60_000);
 
   it("scans every isolated scope while allowing the canonical channel and approved fork seams", () => {
     const root = makeFixture({
