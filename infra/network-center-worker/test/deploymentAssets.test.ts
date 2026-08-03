@@ -16,6 +16,7 @@ const requiredFiles = [
   "deploy/rollback-release.sh",
   "scripts/deploy-vultr.ps1",
   "scripts/rollback-vultr.ps1",
+  "scripts/release-state-contract.ps1",
 ];
 
 function text(path: string): string {
@@ -510,21 +511,27 @@ describe("immutable Network Center host deployment", () => {
   // with the same evidence the deploy fix carries.
   it("never interpolates the known-hosts path straight into the ssh option value", () => {
     const source = text("scripts/rollback-vultr.ps1");
+    // The helper itself now lives in the contract file both clients dot-source,
+    // so the assertion follows it there - but only after proving the rollback
+    // script really loads that file. Otherwise this could be satisfied by a
+    // helper nothing calls.
+    expect(source).toMatch(/^\. \(Join-Path \$PSScriptRoot "release-state-contract\.ps1"\)$/m);
+    const contract = text("scripts/release-state-contract.ps1");
     // Comments are stripped before asserting: the defect can only live in code,
-    // and both scripts quote the broken form verbatim in the comment that
+    // and the contract quotes the broken form verbatim in the comment that
     // explains it. Matching the comment would make this test unfixable.
-    const code = source
+    const code = `${source}\n${contract}`
       .split("\n")
       .filter((line) => !line.trimStart().startsWith("#"))
       .join("\n");
     // Platform-independent so Linux CI keeps the regression covered even where
     // powershell.exe cannot run.
     expect(code).not.toMatch(/UserKnownHostsFile=\$\w/);
-    expect(source).toMatch(/function Resolve-SshOptionPath/);
+    expect(contract).toMatch(/function Resolve-SshOptionPath/);
     expect(code).toMatch(/\$knownHostsOption = "UserKnownHostsFile=" \+ \(Resolve-SshOptionPath \$KnownHostsFile\)/);
     expect(code).toMatch(/"-o", \$knownHostsOption/);
     // The helper must refuse rather than hand ssh a pin it will not read.
-    expect(source).toMatch(/8\.3 short names are unavailable/);
+    expect(contract).toMatch(/8\.3 short names are unavailable/);
   });
 
   it.runIf(process.platform === "win32")(

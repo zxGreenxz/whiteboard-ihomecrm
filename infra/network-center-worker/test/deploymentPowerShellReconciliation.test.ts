@@ -8,7 +8,22 @@ import { afterEach, describe, expect, it } from "vitest";
 const workerRoot = resolve(new URL("../", import.meta.url).pathname.slice(1));
 const deploy = join(workerRoot, "scripts", "deploy-vultr.ps1");
 const rollback = join(workerRoot, "scripts", "rollback-vultr.ps1");
+const contract = join(workerRoot, "scripts", "release-state-contract.ps1");
 const roots: string[] = [];
+
+// The release-state contract used to be a byte-identical copy inside BOTH
+// clients, which is why every defect in it (D2, D3 and defect 8) was two
+// defects. It now lives in one dot-sourced file. Source-level assertions have to
+// follow it there, but they must not become satisfiable by a file the script
+// never loads - so reading the effective source also PROVES the dot-source line
+// is present in the script itself.
+function effectiveSource(script: string): string {
+  const source = readFileSync(script, "utf8");
+  expect(source, `${script} must dot-source release-state-contract.ps1`).toMatch(
+    /^\. \(Join-Path \$PSScriptRoot "release-state-contract\.ps1"\)$/m,
+  );
+  return `${source}\n${readFileSync(contract, "utf8")}`;
+}
 const shaA = "a".repeat(40);
 const shaB = "b".repeat(40);
 const imageA = `sha256:${"1".repeat(64)}`;
@@ -242,7 +257,7 @@ $script:calls=0
 function Invoke-NativeChecked {
   $script:calls++
   if ($script:calls -eq 1) { throw 'ssh failed with exit code 255.' }
-  return '{"schemaVersion":1,"unit":"network-center-worker.service","activeState":"active","subState":"exited","result":"success"}'
+  return "ActiveState=active\`nSubState=exited\`nResult=success"
 }
 Invoke-SystemdRestartReconciled -SshTarget 'root@test' -SshOptions @() | ConvertTo-Json -Compress`);
     expect(success.status, success.stderr).toBe(0);
@@ -260,7 +275,7 @@ $script:calls=0
 function Invoke-NativeChecked {
   $script:calls++
   if ($script:calls -eq 1) { throw 'ssh failed with exit code 255.' }
-  return '{"schemaVersion":1,"unit":"network-center-worker.service","activeState":"inactive","subState":"dead","result":"exit-code"}'
+  return "ActiveState=inactive\`nSubState=dead\`nResult=exit-code"
 }
 Invoke-SystemdRestartReconciled -SshTarget 'root@test' -SshOptions @()`);
     expect(inactive.status).not.toBe(0);
@@ -448,12 +463,15 @@ Get-PostSwitchHeartbeatFloor -RepositoryRoot 'repo' -ExpectedReleaseSha '${shaB}
       expect(switches).toEqual(["PlanOnly"]);
       // Comments deliberately DISCUSS the rejected flag, so only executable
       // lines are searched for one.
-      const code = source.split(/\r?\n/u).filter((line) => !line.trimStart().startsWith("#")).join("\n");
+      const code = effectiveSource(script).split(/\r?\n/u).filter((line) => !line.trimStart().startsWith("#")).join("\n");
       expect(code).not.toMatch(/AllowNoConnection|SkipPoll|IgnorePoll|WaivePoll|NoConnections/i);
       // The count the gate compares against must come from the server payload,
-      // never from a literal in the script.
-      expect(source).toMatch(/\$expected = \[int\]\$Status\.expectedConnectionCount/);
-      expect(source).not.toMatch(/connectionCount -ge 1/);
+      // never from a literal in the script. Read from the EFFECTIVE source (the
+      // script plus the contract it dot-sources) so moving the gate into the
+      // shared file cannot satisfy this by relocation, and so a script that
+      // stopped loading the contract fails the assertion in effectiveSource.
+      expect(effectiveSource(script)).toMatch(/\$expected = \[int\]\$Status\.expectedConnectionCount/);
+      expect(effectiveSource(script)).not.toMatch(/connectionCount -ge 1/);
     }
   });
 });
@@ -615,4 +633,349 @@ Invoke-NativeChecked -FilePath 'powershell.exe' -Arguments @('-NoProfile','-NonI
       expect(`${result.stdout}${result.stderr}`).toMatch(/exit code 7/i);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Defects 7 and 8, and the D7 diagnosability gap. All three were unreachable
+// until 2026-08-03, because they need a host whose `previous` slot is non-null -
+// and f678e5e's promotion over b6bade8 was the FIRST promote in this project's
+// history with a previous release. Every fixture that decides these cases is
+// therefore built from the host's OWN receipt rather than from a hand-written
+// shape that might not be the shape production produces.
+// ---------------------------------------------------------------------------
+
+// CAPTURED, not hand-written. `sudo -- activate-release.sh inspect-state` on
+// 139.180.130.31 on 2026-08-03 with f678e5e promoted over b6bade8, stored
+// verbatim in test/support/live-inspect-state-post-promote.json. The two facts
+// that matter are both in it: previous.releaseSha is b6bade8 while
+// previous.container.releaseSha is f678e5e (promote_pending gives the promoted
+// release the SAME fixed container name the outgoing release already had), and
+// previous.security.exactSecretGenerationMounted is therefore false.
+const liveState = JSON.parse(
+  readFileSync(join(workerRoot, "test", "support", "live-inspect-state-post-promote.json"), "utf8"),
+) as { current: { releaseSha: string }; previous: { releaseSha: string; container: { releaseSha: string } } };
+const liveReceipt = JSON.stringify(liveState);
+const liveCurrentSha = liveState.current.releaseSha;
+const livePreviousSha = liveState.previous.releaseSha;
+const scriptName = (script: string) => (script === deploy ? "deploy" : "rollback");
+
+describe("post-promote previous slot, abandoned transitions and remote diagnostics", () => {
+  it("captured fixture really is a post-promote receipt with a foreign container under previous", () => {
+    // Guards the fixture itself: if it were ever regenerated from a host with a
+    // null previous, every defect-8 case below would pass vacuously.
+    expect(livePreviousSha).not.toBe(liveCurrentSha);
+    expect(liveState.previous.container.releaseSha).toBe(liveCurrentSha);
+  });
+
+  for (const script of [deploy, rollback]) {
+    const label = scriptName(script);
+
+    it(`${label}: accepts the host's real post-promote receipt where previous names the live container`, () => {
+      const result = run(script, `
+$state = ConvertFrom-BoundedJson -Output '${liveReceipt}' -Description 'Remote state'
+$null = Assert-StateSchema $state
+"$([string]$state.current.releaseSha)|$([string]$state.previous.releaseSha)|$([string]$state.previous.container.releaseSha)|$($state.previous.security.exactSecretGenerationMounted)"`);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stdout.trim()).toBe(`${liveCurrentSha}|${livePreviousSha}|${liveCurrentSha}|False`);
+    });
+
+    it(`${label}: still refuses a previous slot whose container really is its own and is mixed`, () => {
+      // The skip is scoped to a container that demonstrably belongs to ANOTHER
+      // release. A `previous` pointer whose live container carries its own
+      // identity is still held to the whole observed envelope, so the fix
+      // cannot be read as "previous is never checked".
+      const result = run(script, `
+$state = ConvertFrom-BoundedJson -Output '${liveReceipt}' -Description 'Remote state'
+$state.previous.container.releaseSha = $state.previous.releaseSha
+$state.previous.container.imageId = $state.previous.imageId
+$state.previous.security.exactSecretGenerationMounted = $true
+$state.previous.security.secretMountReadOnly = $true
+$state.previous.security.readonlyRootfs = $false
+$null = Assert-StateSchema $state`);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/previous release observed container security state is mixed/i);
+    });
+
+    it(`${label}: still refuses a current slot whose observed container security is mixed`, () => {
+      const result = run(script, `
+$state = ConvertFrom-BoundedJson -Output '${liveReceipt}' -Description 'Remote state'
+$state.current.container.exactMatch = $false
+$state.current.security.readonlyRootfs = $false
+$null = Assert-StateSchema $state`);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/current release observed container security state is mixed/i);
+    });
+
+    it(`${label}: surfaces the remote command's own output when it exits non-zero`, () => {
+      // D7. The captured stdout/stderr used to be dropped in the `finally`, so
+      // the host's own `die` text - which names the exact guard that refused -
+      // was reduced to "ssh failed with exit code N." and a real promote failure
+      // could not be diagnosed from the client at all.
+      const result = run(script, `
+Invoke-NativeChecked -FilePath 'powershell.exe' -Arguments @('-NoProfile','-NonInteractive','-Command','[Console]::Error.WriteLine(''network-center activation: the prior deployment transition requires explicit finalization''); exit 1') -Capture`);
+      expect(result.status).not.toBe(0);
+      const output = `${result.stdout}${result.stderr}`;
+      expect(output).toMatch(/exit code 1/);
+      expect(output).toMatch(/the prior deployment transition requires explicit finalization/);
+    });
+
+    it(`${label}: redacts credential shapes out of the surfaced remote output`, () => {
+      const result = run(script, `
+Invoke-NativeChecked -FilePath 'powershell.exe' -Arguments @('-NoProfile','-NonInteractive','-Command','[Console]::Error.WriteLine(''request failed authorization: Bearer sbp_0123456789abcdef0123456789abcdef''); exit 1') -Capture`);
+      expect(result.status).not.toBe(0);
+      const output = `${result.stdout}${result.stderr}`;
+      expect(output).not.toContain("sbp_0123456789abcdef0123456789abcdef");
+      expect(output).toMatch(/redacted/);
+    });
+
+    it(`${label}: classifies a dropped ssh session by message shape, not by a substring of remote output`, () => {
+      // Surfacing remote output made the old `-match 'exit code 255'` test
+      // unsafe: a remote program printing that string would have had its
+      // mutation silently reconciled as a dropped session.
+      const result = run(script, `
+"$(Test-SshDisconnect 'ssh failed with exit code 255.')|$(Test-SshDisconnect 'ssh failed with exit code 1. Remote output: container exited, exit code 255')|$(Test-SshDisconnect 'node failed with exit code 255.')"`);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stdout.trim()).toBe("True|False|False");
+    });
+  }
+
+  it("deploy: a remote failure quoting exit code 255 is not reconciled as a systemd disconnect", () => {
+    const result = run(deploy, `
+function Invoke-NativeChecked { throw 'ssh failed with exit code 1. Remote output: docker reported exit code 255' }
+function Get-AuthoritativeUnitState { throw 'the disconnect path must not be reached' }
+Invoke-SystemdRestartReconciled -SshTarget 'root@test' -SshOptions @()`);
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toMatch(/Systemd restart failed without a disconnect/);
+  });
+
+  it("deploy: finalizes a committed promotion that has no previous release to compensate to", () => {
+    // DEFECT 7 exactly as it happened. b6bade8's promote committed, a later step
+    // failed, and because `beforeState.current` was null on the green-field host
+    // the catch took neither the compensate branch nor the abort branch. The
+    // journal stayed `committed`, and begin_transition then refused every later
+    // promote AND the rollback path until a human finalized it by hand.
+    const result = run(deploy, `${stateFactory}
+$script:commands = New-Object System.Collections.ArrayList
+function Invoke-NativeChecked { param($FilePath, $Arguments, [switch]$Capture, [int]$MaximumOutputBytes)
+  $null = $script:commands.Add([string]$Arguments[-1])
+  return '{"schemaVersion":2,"releaseSha":"${shaB}","result":"finalized","cleanup":"complete"}' }
+function Restore-RejectedPromotion { throw 'compensation is impossible without a previous release' }
+$greenfield = New-State $null $null $null
+$committed = New-State (New-Release '${shaB}' '${imageB}' '${generationB}') $null $null
+$resolution = Resolve-CommittedPromotionFailure -State $committed -BeforeState $greenfield -PromoteBeforeState $greenfield -BaselineAssignmentStatus $null -CandidateReleaseSha '${shaB}' -RepositoryRoot 'repo' -SshTarget 'root@test' -SshOptions @()
+"$resolution@@$($script:commands -join '|')"`);
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    const [resolution, commands] = result.stdout.trim().split("@@");
+    expect(resolution).toMatch(/no previous release to compensate to/);
+    expect(resolution).toMatch(/transition was finalized/);
+    expect(commands).toContain(`finalize-last-transition ${shaB}`);
+  });
+
+  it("deploy: reports the journal as still unfinalized when the host refuses to finalize", () => {
+    // The host guards finalize-last-transition on the pointer set and on
+    // pointer_exact_healthy, so this path can never rubber-stamp a broken
+    // switch - and when the host refuses, that refusal has to reach the operator
+    // instead of replacing the original failure.
+    const result = run(deploy, `${stateFactory}
+function Invoke-NativeChecked { throw 'ssh failed with exit code 1. Remote output: network-center activation: finalization pointer set is mixed' }
+$greenfield = New-State $null $null $null
+$committed = New-State (New-Release '${shaB}' '${imageB}' '${generationB}') $null $null
+Resolve-CommittedPromotionFailure -State $committed -BeforeState $greenfield -PromoteBeforeState $greenfield -BaselineAssignmentStatus $null -CandidateReleaseSha '${shaB}' -RepositoryRoot 'repo' -SshTarget 'root@test' -SshOptions @()`);
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    expect(result.stdout).toMatch(/left unfinalized/);
+    expect(result.stdout).toMatch(/finalization pointer set is mixed/);
+  });
+
+  it("deploy: still compensates back to the previous release when there is one", () => {
+    const result = run(deploy, `${stateFactory}
+$script:restored = 'no'
+function Restore-RejectedPromotion { $script:restored = 'yes' }
+function Complete-AbandonedTransition { throw 'a compensable promotion must not be finalized in place' }
+$before = New-State (New-Release '${shaA}' '${imageA}' '${generationA}') $null $null
+$committed = New-State (New-Release '${shaB}' '${imageB}' '${generationB}') (New-Release '${shaA}' '${imageA}' '${generationA}') $null
+$resolution = Resolve-CommittedPromotionFailure -State $committed -BeforeState $before -PromoteBeforeState $before -BaselineAssignmentStatus $null -CandidateReleaseSha '${shaB}' -RepositoryRoot 'repo' -SshTarget 'root@test' -SshOptions @()
+"$resolution@@$script:restored"`);
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    expect(result.stdout.trim()).toBe("exact previous state was restored@@yes");
+  });
+
+  it("deploy: leaves the remaining failure classification alone when the promotion never committed", () => {
+    const result = run(deploy, `${stateFactory}
+function Complete-AbandonedTransition { throw 'nothing was committed; there is no journal to finalize' }
+function Restore-RejectedPromotion { throw 'nothing was committed; there is nothing to compensate' }
+$before = New-State (New-Release '${shaA}' '${imageA}' '${generationA}') $null $null
+$unchanged = New-State (New-Release '${shaA}' '${imageA}' '${generationA}') $null $null
+$resolution = Resolve-CommittedPromotionFailure -State $unchanged -BeforeState $before -PromoteBeforeState $before -BaselineAssignmentStatus $null -CandidateReleaseSha '${shaB}' -RepositoryRoot 'repo' -SshTarget 'root@test' -SshOptions @()
+if ($null -ne $resolution) { throw "expected no resolution, got: $resolution" }
+'unclassified'`);
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    expect(result.stdout.trim()).toBe("unclassified");
+  });
+
+  // The rollback harness drives the REAL Invoke-RollbackMain end to end with the
+  // host calls stubbed, because the defect lives in its control flow rather than
+  // in any one helper. It is also the exact live scenario: rolling back onto
+  // b6bade8, whose mounted credential map is `{}` so it can never satisfy the
+  // poll gate, leaves the pointer swap committed while the readback fails.
+  const rollbackMainHarness = (waitBody: string) => `${stateFactory}
+$script:commands = New-Object System.Collections.ArrayList
+$knownHosts = [IO.Path]::GetTempFileName()
+Set-Content -LiteralPath $knownHosts -Value 'pinned' -Encoding ascii
+$script:KnownHostsFile = $knownHosts
+$script:HostName = 'test.invalid'
+$script:PlanOnly = $false
+$currentRelease = New-Release '${shaB}' '${imageB}' '${generationB}'
+$previousRelease = New-Release '${shaA}' '${imageA}' '${generationA}'
+$before = New-State $currentRelease $previousRelease $null
+$after = New-State $previousRelease $currentRelease $null
+function Invoke-NativeChecked { param($FilePath, $Arguments, [switch]$Capture, [int]$MaximumOutputBytes)
+  $null = $script:commands.Add([string]$Arguments[-1])
+  return '{"schemaVersion":2,"releaseSha":"${shaA}","result":"finalized","cleanup":"complete"}' }
+function Get-ReconciledRemoteState { return $before }
+function Get-ReleaseStatus { param([string]$RepositoryRoot, [string]$ExpectedReleaseSha)
+  [pscustomobject]@{ workerVersion = $ExpectedReleaseSha; activeAssignmentHash = ('9' * 64); activeAssignmentCount = 2;
+    activeAssignedBuildingCount = 2; assignedBuildingCount = 2; expectedConnectionCount = 1; successfulPollCount = 1;
+    heartbeatAt = '2026-08-01T00:05:00Z'; pollObservedAt = '2026-08-01T00:04:59Z' } }
+function Invoke-RollbackMutationReconciled { [pscustomobject]@{ State = $after; Release = $previousRelease; Reconciled = $true } }
+function Get-AuthoritativeUnitState { [pscustomobject]@{ schemaVersion = 1; unit = 'network-center-worker.service';
+  activeState = 'active'; subState = 'exited'; result = 'success' } }
+${waitBody}
+$outcome = 'no-error'
+try { $null = Invoke-RollbackMain } catch { $outcome = $_.Exception.Message }
+Remove-Item -LiteralPath $knownHosts -Force -ErrorAction SilentlyContinue
+"$outcome@@$($script:commands -join '|')"`;
+
+  it("rollback: finalizes the committed pointer swap when the post-switch readback fails", () => {
+    const result = run(rollback, rollbackMainHarness(
+      `function Wait-WorkerRevision { throw 'Rollback worker heartbeat did not read back exact previous revision.' }`,
+    ));
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    const [outcome, commands] = result.stdout.trim().split("@@");
+    expect(outcome).toMatch(/Rollback switched to the previous release but its readback failed/);
+    expect(outcome).toMatch(/transition was finalized/);
+    expect(outcome).toMatch(/did not read back exact previous revision/);
+    expect(commands).toContain(`finalize-last-transition ${shaA}`);
+  });
+
+  it("rollback: a healthy readback still finalizes exactly once and reports the swap", () => {
+    const result = run(rollback, rollbackMainHarness(`function Wait-WorkerRevision {
+  [pscustomobject]@{ activeAssignmentHash = ('9' * 64); activeAssignmentCount = 2; activeAssignedBuildingCount = 2;
+    assignedBuildingCount = 2; expectedConnectionCount = 1; successfulPollCount = 1 } }`));
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    const [outcome, commands] = result.stdout.trim().split("@@");
+    expect(outcome).toBe("no-error");
+    expect(commands.split("|").filter((command) => command.includes("finalize-last-transition"))).toHaveLength(1);
+  });
+
+  it("keeps the shared release-state contract in exactly one place", () => {
+    // The copy is what turned each of D2, D3 and defect 8 into two defects, and
+    // it had already begun to drift (the rollback copy of Invoke-NativeChecked
+    // had lost its non-capture branch and its Mandatory guards). Re-introducing
+    // a local override of any contract function must fail here.
+    const contractSource = readFileSync(contract, "utf8");
+    const shared = [...contractSource.matchAll(/^function ([A-Za-z][A-Za-z-]+) \{/gm)].map((match) => match[1]);
+    expect(shared).toContain("Assert-ReleaseSchema");
+    expect(shared).toContain("Invoke-NativeChecked");
+    expect(shared).toContain("Complete-AbandonedTransition");
+    expect(shared.length).toBeGreaterThan(10);
+    for (const script of [deploy, rollback]) {
+      const source = readFileSync(script, "utf8");
+      expect(source).toMatch(/^\. \(Join-Path \$PSScriptRoot "release-state-contract\.ps1"\)$/m);
+      const redefined = shared.filter((name) => new RegExp(`^function ${name}\\b`, "m").test(source));
+      expect(redefined, `${script} re-defines shared contract functions`).toEqual([]);
+    }
+    // The recovery path may depend on the contract; it must never depend on the
+    // deploy client, which is the coupling that would make a broken deploy break
+    // the rollback.
+    expect(readFileSync(rollback, "utf8")).not.toMatch(/deploy-vultr\.ps1/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The trigger behind defect 7, found by RUNNING the repaired rollback against
+// production: Windows PowerShell 5.1 strips embedded double quotes on the way to
+// a native command, so the remote jq program that built the systemd receipt lost
+// the quotes around the unit name, jq compile-errored, and jq exits 3. Every
+// invocation of Get-AuthoritativeUnitState from Windows had always failed with a
+// bare "ssh failed with exit code 3."
+// ---------------------------------------------------------------------------
+describe("remote commands survive PowerShell native-argument quoting", () => {
+  it("Windows PowerShell 5.1 really does strip embedded double quotes from native arguments", () => {
+    // The measurement the fix is built on, reproduced locally against a native
+    // command instead of ssh so it needs no host. If this ever stops being true
+    // the fix is still correct, but the reason recorded next to it is not.
+    const result = run(deploy, `
+$probeScript = [IO.Path]::GetTempFileName() + '.ps1'
+Set-Content -LiteralPath $probeScript -Value '[Console]::Out.Write($args[0])' -Encoding ascii
+$probe = 'x{a:"b"}y'
+$echoed = & powershell.exe -NoProfile -NonInteractive -File $probeScript $probe
+Remove-Item -LiteralPath $probeScript -Force -ErrorAction SilentlyContinue
+"$probe|$echoed"`);
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    const [held, received] = result.stdout.trim().split("|");
+    expect(held).toBe('x{a:"b"}y');
+    expect(received).toBe("x{a:b}y");
+  });
+
+  for (const script of [deploy, rollback]) {
+    const label = scriptName(script);
+
+    it(`${label}: builds the systemd readback command with no quote characters at all`, () => {
+      const result = run(script, `
+$command = Get-WorkerUnitStateCommand
+if ($command -match '["'']') { throw "quote character survived in: $command" }
+$command`);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stdout.trim()).toBe(
+        "sudo -- systemctl show network-center-worker.service --property=ActiveState --property=SubState --property=Result",
+      );
+    });
+
+    it(`${label}: reads the unit state out of systemctl's own Property=Value output`, () => {
+      const result = run(script, `
+$state = ConvertFrom-SystemdShowText -Output "ActiveState=active\`nSubState=exited\`nResult=success" -Unit 'network-center-worker.service'
+$null = Assert-UnitState $state
+$state | ConvertTo-Json -Compress`);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        schemaVersion: 1, unit: "network-center-worker.service", activeState: "active", subState: "exited", result: "success",
+      });
+    });
+
+    it(`${label}: refuses systemctl output that is short, repeated, renamed or unparseable`, () => {
+      const cases = [
+        "ActiveState=active`nSubState=exited",
+        "ActiveState=active`nActiveState=active`nResult=success",
+        "ActiveState=active`nSubState=exited`nUnexpected=success",
+        "ActiveState=active`nSubState=exited`nResult=success`nExtra=1",
+        "jq: error: network/0 is not defined at <top-level>, line 1, column 23:",
+      ];
+      for (const output of cases) {
+        const result = run(script, `
+$null = ConvertFrom-SystemdShowText -Output "${output}" -Unit 'network-center-worker.service'`);
+        expect(result.status, `accepted ${output}`).not.toBe(0);
+        expect(`${result.stdout}${result.stderr}`).toMatch(/Systemd unit state/i);
+      }
+    });
+
+    it(`${label}: an inactive unit is still refused after the format change`, () => {
+      const result = run(script, `
+$null = Assert-UnitState (ConvertFrom-SystemdShowText -Output "ActiveState=failed\`nSubState=failed\`nResult=exit-code" -Unit 'network-center-worker.service')`);
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toMatch(/not authoritatively active/i);
+    });
+  }
+
+  it("deploy: builds the preflight command with no quote characters that PowerShell can eat", () => {
+    const result = run(deploy, `
+$command = Get-PreflightCommand
+if ($command -match '"') { throw "double quote survived in: $command" }
+$command`);
+    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+    // Single quotes are safe - PowerShell passes them through untouched - and the
+    // remote sh needs them to keep the compound command in one argv element.
+    expect(result.stdout.trim()).toMatch(/^sudo -- \/bin\/sh -c '.*'$/);
+    expect(result.stdout).toContain("sysctl -n net.ipv4.ip_forward | grep -qx 1");
+    expect(result.stdout).not.toContain("test ");
+  });
 });

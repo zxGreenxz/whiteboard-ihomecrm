@@ -11,7 +11,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$MaximumCapturedOutputBytes = 65536
+. (Join-Path $PSScriptRoot "release-state-contract.ps1")
 
 $Stages = @(
   "preflight-systemd-wireguard-firewall",
@@ -35,246 +35,23 @@ function Assert-DeploymentIdentity {
   if ($WorkerKey -notmatch '^[a-z0-9][a-z0-9._-]{2,63}$') { throw "Worker key is invalid." }
 }
 
-function Resolve-SshOptionPath {
-  # OpenSSH parses the VALUE of an `-o Keyword=value` argument with argv_split,
-  # and UserKnownHostsFile takes a LIST of files, so a value carrying a space is
-  # read as several paths. The default Windows location is
-  # `C:\Users\<name with a space>\.ssh\known_hosts`, which becomes the two files
-  # `C:\Users\Nguyen` and `Tam\.ssh\known_hosts`: the host-key pin is then never
-  # read, and with StrictHostKeyChecking=yes every deployment dies at
-  # "Host key verification failed" with nothing pointing at the real cause.
-  #
-  # MEASURED, not assumed (OpenSSH_for_Windows_9.5p2, Windows PowerShell 5.1):
-  #   ssh -G -o 'UserKnownHostsFile=/x ~/y'  ->  userknownhostsfile /x C:\Users\...\y
-  # The tilde in the SECOND word expanded, and tilde expansion is per file, so
-  # ssh had already split one argv element into two paths.
-  #
-  # Quoting cannot fix it from Windows PowerShell 5.1, also measured:
-  #   "UserKnownHostsFile=`"$p`""   -> the quotes are stripped before ssh sees them
-  #   "UserKnownHostsFile=\`"$p\`"" -> the argument is split into TWO argv entries
-  # So the space has to go. The 8.3 short name is space-free by construction;
-  # if the volume has 8.3 name creation disabled we refuse loudly rather than
-  # hand ssh a pin it will not read.
-  param([Parameter(Mandatory)][string]$Path)
-  $full = (Resolve-Path -LiteralPath $Path).ProviderPath
-  if ($full -notmatch '\s') { return $full }
-  $short = $null
-  try {
-    $short = (New-Object -ComObject Scripting.FileSystemObject).GetFile($full).ShortPath
-  } catch {
-    throw ("Pinned known-hosts path '$full' contains a space and no 8.3 short name could be obtained: " +
-      $_.Exception.Message + " Pass -KnownHostsFile a path with no spaces.")
-  }
-  if ([string]::IsNullOrWhiteSpace($short) -or $short -match '\s') {
-    throw ("Pinned known-hosts path '$full' contains a space and 8.3 short names are unavailable on this " +
-      "volume, so ssh would read it as several files and silently ignore the pin. " +
-      "Pass -KnownHostsFile a path with no spaces.")
-  }
-  return $short
-}
-
-function Invoke-NativeChecked {
-  param([Parameter(Mandatory)][string]$FilePath, [Parameter(Mandatory)][string[]]$Arguments, [switch]$Capture,
-    [ValidateRange(1, 1048576)][int]$MaximumOutputBytes = $MaximumCapturedOutputBytes)
-  # Windows PowerShell 5.1 promotes ANY native-command stderr write to a
-  # terminating NativeCommandError while $ErrorActionPreference is Stop -- even
-  # when the command exits 0. ssh relays the remote command's stderr, and a
-  # successful `docker build` writes its entire progress log there, so the whole
-  # deployment aborted on a healthy build with the first stderr line as the
-  # error. Exit codes remain the authority (checked explicitly below); this only
-  # stops a benign diagnostic line from being read as a failure.
-  $previousErrorActionPreference = $ErrorActionPreference
-  $ErrorActionPreference = "Continue"
-  try {
-  if (-not $Capture) {
-    & $FilePath @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "$FilePath failed with exit code $LASTEXITCODE." }
-    return
-  }
-  $stdoutPath = [IO.Path]::GetTempFileName()
-  $stderrPath = [IO.Path]::GetTempFileName()
-  try {
-    & $FilePath @Arguments 1> $stdoutPath 2> $stderrPath
-    $exitCode = $LASTEXITCODE
-    $capturedBytes = (Get-Item -LiteralPath $stdoutPath).Length + (Get-Item -LiteralPath $stderrPath).Length
-    if ($capturedBytes -gt $MaximumOutputBytes) { throw "$FilePath output exceeds the capture byte bound." }
-    if ($exitCode -ne 0) { throw "$FilePath failed with exit code $exitCode." }
-    $captured = (Get-Content -LiteralPath $stdoutPath -Raw) + (Get-Content -LiteralPath $stderrPath -Raw)
-    return ($captured -replace '\r?\n\z', '')
-  } finally {
-    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
-  }
-  } finally {
-    $ErrorActionPreference = $previousErrorActionPreference
-  }
-}
-
-# PowerShell 7's ConvertFrom-Json silently deserialises any ISO-8601-looking
-# string into [datetime]; Windows PowerShell 5.1 leaves it a [string]. Every
-# guard in these scripts contracts on the wire TEXT, so on 7 a valid
-# {"startedAt":"2026-08-01T00:00:00Z"} was rejected outright with "startedAt
-# string is invalid" - and worse, `[string]$value` on such a DateTime renders
-# "08/01/2026 00:00:00", which Convert-StatusTime then parses as a LOCAL instant
-# with no offset. The heartbeat and poll freshness floors would have been silently
-# wrong by the host's UTC offset instead of failing loudly.
-#
-# Normalising back to the round-trip ("o") form makes the receipt contract
-# byte-identical on both editions: a UTC value keeps its Z, an offset value keeps
-# its offset, and the instant is preserved in both cases. Applied to every
-# receipt rather than only to the release status, so a timestamp added to any
-# future receipt cannot reintroduce the split.
-function ConvertTo-InvariantReceiptText {
-  param($Value, [int]$Depth = 0)
-  if ($Depth -gt 8) { throw "Receipt nesting exceeds the supported depth." }
-  if ($Value -is [datetime]) { return $Value.ToString("o", [Globalization.CultureInfo]::InvariantCulture) }
-  if ($Value -is [datetimeoffset]) { return $Value.ToString("o", [Globalization.CultureInfo]::InvariantCulture) }
-  if ($Value -is [psobject]) {
-    foreach ($property in @($Value.PSObject.Properties)) {
-      if ($property.MemberType -ne "NoteProperty") { continue }
-      $property.Value = ConvertTo-InvariantReceiptText -Value $property.Value -Depth ($Depth + 1)
-    }
-  }
-  return $Value
-}
-
-function ConvertFrom-BoundedJson {
-  param([AllowEmptyString()][string]$Output, [string]$Description)
-  if ([Text.Encoding]::UTF8.GetByteCount($Output) -gt $MaximumCapturedOutputBytes) { throw "$Description exceeds the JSON byte bound." }
-  $lines = @($Output -split "`n")
-  if ($lines.Count -ne 1 -or $lines[0] -notmatch '^\{.*\}$') { throw "$Description must return exactly one bounded JSON receipt." }
-  try { $parsed = $lines[0] | ConvertFrom-Json } catch { throw "$Description returned invalid JSON." }
-  return ConvertTo-InvariantReceiptText -Value $parsed
-}
-
-function Assert-ExactPropertyNames {
-  param($Value, [string[]]$Expected, [string]$Description)
-  if ($null -eq $Value -or $Value -isnot [psobject]) { throw "$Description must be an object." }
-  $actual = @($Value.PSObject.Properties.Name | Sort-Object)
-  $wanted = @($Expected | Sort-Object)
-  if ($actual.Count -ne $wanted.Count -or (($actual -join "`0") -cne ($wanted -join "`0"))) {
-    throw "$Description has unknown, missing, or secret-like fields."
-  }
-}
-
-function Assert-BoundedString {
-  param($Value, [string]$Description, [int]$MaximumLength, [string]$Pattern = '')
-  if ($Value -isnot [string] -or $Value.Length -gt $MaximumLength -or $Value.Contains("`n") -or $Value.Contains("`r") -or
-      ($Pattern -and $Value -cnotmatch $Pattern)) { throw "$Description string is invalid." }
-}
-
-function Assert-BooleanValue {
-  param($Value, [string]$Description)
-  if ($Value -isnot [bool]) { throw "$Description type is invalid." }
-}
-
-# ConvertFrom-Json materialises a JSON integer as Int32 on Windows PowerShell 5.1
-# but as Int64 on PowerShell 7. A guard written as `-isnot [int]` therefore
-# rejects every structurally valid receipt on 7.x -- the host returned a correct
-# {"schemaVersion":2,...} and the deployment still died with "Remote state schema
-# is invalid". Both widths are accepted here, exactly as Assert-IntegerValue
-# already did for every other integer in these receipts.
-function Test-SchemaVersion {
-  param($Value, [int]$Expected)
-  if ($Value -isnot [int] -and $Value -isnot [long]) { return $false }
-  return ([long]$Value -eq [long]$Expected)
-}
-
-function Assert-IntegerValue {
-  param($Value, [string]$Description, [long]$Minimum, [long]$Maximum)
-  if (($Value -isnot [int] -and $Value -isnot [long]) -or [long]$Value -lt $Minimum -or [long]$Value -gt $Maximum) {
-    throw "$Description integer is invalid."
-  }
-}
-
-function Assert-ReleaseSchema {
-  param($Release, [string]$Description)
-  Assert-ExactPropertyNames $Release @("schemaVersion", "releaseSha", "imageTag", "imageId", "archiveSha256",
-    "secretGeneration", "releaseDirectory", "envFile", "projectName", "containerName", "container", "secrets", "security") $Description
-  if (-not (Test-SchemaVersion $Release.schemaVersion 2)) { throw "$Description schema version is invalid." }
-  Assert-BoundedString $Release.releaseSha "$Description release SHA" 40 '^[a-f0-9]{40}$'
-  Assert-BoundedString $Release.imageTag "$Description image tag" 128 '^ihome-network-center-worker:[a-f0-9]{40}$'
-  Assert-BoundedString $Release.imageId "$Description image ID" 71 '^sha256:[a-f0-9]{64}$'
-  Assert-BoundedString $Release.archiveSha256 "$Description archive digest" 64 '^[a-f0-9]{64}$'
-  Assert-BoundedString $Release.secretGeneration "$Description secret generation" 64 '^[a-f0-9]{64}$'
-  foreach ($name in @("releaseDirectory", "envFile", "projectName", "containerName")) {
-    Assert-BoundedString $Release.$name "$Description $name" 512 '^[^\x00-\x1f]+$'
-  }
-  Assert-ExactPropertyNames $Release.container @("exists", "status", "health", "imageId", "releaseSha", "exactMatch") "$Description container"
-  Assert-BooleanValue $Release.container.exists "$Description container exists"
-  Assert-BooleanValue $Release.container.exactMatch "$Description container exactMatch"
-  Assert-BoundedString $Release.container.status "$Description container status" 32 '^[a-z-]+$'
-  Assert-BoundedString $Release.container.health "$Description container health" 32 '^[a-z-]+$'
-  foreach ($name in @("imageId", "releaseSha")) {
-    if ($null -ne $Release.container.$name) { Assert-BoundedString $Release.container.$name "$Description container $name" 71 '^[a-z0-9:]+$' }
-  }
-  Assert-ExactPropertyNames $Release.secrets @("persistentAvailable", "runtimeAvailable", "exactMatch") "$Description secrets"
-  foreach ($name in @("persistentAvailable", "runtimeAvailable", "exactMatch")) { Assert-BooleanValue $Release.secrets.$name "$Description secrets $name" }
-  if ($Release.secrets.exactMatch -cne ($Release.secrets.persistentAvailable -and $Release.secrets.runtimeAvailable)) {
-    throw "$Description secret exactness fields are mixed."
-  }
-  Assert-ExactPropertyNames $Release.security @("user", "readonlyRootfs", "memory", "nanoCpus", "pidsLimit", "restartPolicy",
-    "dockerSocketMounted", "exactSecretGenerationMounted", "secretMountSource", "secretMountDestination", "secretMountReadOnly",
-    "capDrop", "capDropAll", "securityOpt", "noNewPrivileges", "networkMode", "hostNetwork", "initEnabled", "tmpfs",
-    "exactTmpfs", "nodeOptions", "exactNodeOptions") "$Description security"
-  foreach ($name in @("readonlyRootfs", "dockerSocketMounted", "exactSecretGenerationMounted", "secretMountReadOnly", "capDropAll",
-    "noNewPrivileges", "hostNetwork", "initEnabled", "exactTmpfs", "exactNodeOptions")) { Assert-BooleanValue $Release.security.$name "$Description security $name" }
-  foreach ($name in @("memory", "nanoCpus", "pidsLimit")) { Assert-IntegerValue $Release.security.$name "$Description security $name" 0 2147483648 }
-  foreach ($name in @("user", "restartPolicy", "secretMountSource", "secretMountDestination", "capDrop", "securityOpt", "networkMode", "tmpfs", "nodeOptions")) {
-    Assert-BoundedString $Release.security.$name "$Description security $name" 512 '^[^\x00-\x1f]*$'
-  }
-  if ($Release.container.exactMatch -and (-not $Release.container.exists -or [string]$Release.container.status -cne "running" -or
-      [string]$Release.container.health -cne "healthy" -or [string]$Release.container.imageId -cne [string]$Release.imageId -or
-      [string]$Release.container.releaseSha -cne [string]$Release.releaseSha -or -not $Release.secrets.exactMatch -or
-      [string]$Release.security.user -cne "10001:10001" -or -not $Release.security.readonlyRootfs -or
-      [long]$Release.security.memory -ne 536870912 -or [long]$Release.security.nanoCpus -ne 500000000 -or
-      [long]$Release.security.pidsLimit -ne 128 -or [string]$Release.security.restartPolicy -cne "unless-stopped" -or
-      $Release.security.dockerSocketMounted -or -not $Release.security.exactSecretGenerationMounted -or
-      -not $Release.security.secretMountReadOnly -or [string]$Release.security.capDrop -cne "ALL" -or
-      -not $Release.security.capDropAll -or [string]$Release.security.securityOpt -cne "no-new-privileges:true" -or
-      -not $Release.security.noNewPrivileges -or [string]$Release.security.networkMode -cne "host" -or
-      -not $Release.security.hostNetwork -or -not $Release.security.initEnabled -or -not $Release.security.exactTmpfs -or
-      [string]$Release.security.nodeOptions -cne "--max-old-space-size=320" -or -not $Release.security.exactNodeOptions)) {
-    throw "$Description exact container/security state is mixed."
-  }
-  if ($Release.container.exists -and ([string]$Release.container.status -cne "running" -or [string]$Release.container.health -cne "healthy" -or
-      [string]$Release.container.imageId -cnotmatch '^sha256:[a-f0-9]{64}$' -or [string]$Release.container.releaseSha -cnotmatch '^[a-f0-9]{40}$' -or
-      [string]$Release.security.user -cne "10001:10001" -or -not $Release.security.readonlyRootfs -or
-      [long]$Release.security.memory -ne 536870912 -or [long]$Release.security.nanoCpus -ne 500000000 -or
-      [long]$Release.security.pidsLimit -ne 128 -or [string]$Release.security.restartPolicy -cne "unless-stopped" -or
-      $Release.security.dockerSocketMounted -or -not $Release.security.exactSecretGenerationMounted -or
-      -not $Release.security.secretMountReadOnly -or [string]$Release.security.capDrop -cne "ALL" -or
-      -not $Release.security.capDropAll -or [string]$Release.security.securityOpt -cne "no-new-privileges:true" -or
-      -not $Release.security.noNewPrivileges -or [string]$Release.security.networkMode -cne "host" -or
-      -not $Release.security.hostNetwork -or -not $Release.security.initEnabled -or -not $Release.security.exactTmpfs -or
-      [string]$Release.security.nodeOptions -cne "--max-old-space-size=320" -or -not $Release.security.exactNodeOptions)) {
-    throw "$Description observed container security state is mixed."
-  }
-  if (-not $Release.container.exists -and $Release.container.exactMatch) { throw "$Description missing container cannot be exact." }
-}
-
-function Assert-StateSchema {
-  param($State)
-  Assert-ExactPropertyNames $State @("schemaVersion", "transition", "lastTransition", "current", "previous", "pending") "Remote state"
-  if (-not (Test-SchemaVersion $State.schemaVersion 2)) { throw "Remote state schema is invalid." }
-  if ($null -ne $State.transition) {
-    Assert-ExactPropertyNames $State.transition @("operation", "phase") "Remote transition"
-    Assert-BoundedString $State.transition.operation "Remote transition operation" 16 '^(promote|rollback)$'
-    Assert-BoundedString $State.transition.phase "Remote transition phase" 16 '^(prepared|commit-intent)$'
-  }
-  if ($null -ne $State.lastTransition) {
-    Assert-ExactPropertyNames $State.lastTransition @("schemaVersion", "operation", "phase", "targetReleaseSha") "Remote last transition"
-    if (-not (Test-SchemaVersion $State.lastTransition.schemaVersion 1)) { throw "Remote last transition schema is invalid." }
-    Assert-BoundedString $State.lastTransition.operation "Remote last transition operation" 16 '^(promote|rollback)$'
-    Assert-BoundedString $State.lastTransition.phase "Remote last transition phase" 16 '^(committed|compensated|finalized)$'
-    Assert-BoundedString $State.lastTransition.targetReleaseSha "Remote last transition release" 40 '^[a-f0-9]{40}$'
-  }
-  foreach ($name in @("current", "previous", "pending")) {
-    if ($null -ne $State.$name) {
-      Assert-ReleaseSchema $State.$name "Remote $name release"
-      if ($State.$name.secrets.exactMatch -cne $true) { throw "Remote $name release secret generation is not exact." }
-    }
-  }
-  return $State
+# Same defect class as Get-AuthoritativeUnitState (see release-state-contract.ps1):
+# Windows PowerShell 5.1 eats embedded double quotes on the way to a native
+# command, so `test "$(sysctl -n net.ipv4.ip_forward)" = 1` reached the host as
+# `test $(sysctl -n net.ipv4.ip_forward) = 1`. PROVEN from the host's own sudo
+# audit log, which recorded the unquoted form for the 2026-08-02 18:10:03
+# PowerShell run and the escaped form for a 18:15:59 run driven another way.
+# It happened to work only because sysctl prints a single word; an empty read
+# would have collapsed it to `test = 1`, a shell syntax error rather than a
+# refusal. Rebuilt with no quote characters at all, and stricter: grep -qx
+# accepts only an exact `1` line and fails closed on empty output.
+function Get-PreflightCommand {
+  return ("sudo -- /bin/sh -c 'systemctl is-active --quiet docker.service && " +
+    "systemctl is-active --quiet wg-quick@wg0.service && " +
+    "systemctl is-active --quiet ihome-network-center-firewall.service && " +
+    "systemctl is-enabled --quiet network-center-worker.service && " +
+    "sysctl -n net.ipv4.ip_forward | grep -qx 1 && " +
+    "nft --check --file /etc/nftables.d/ihome-network-center.nft'")
 }
 
 function Assert-ReleaseIdentity {
@@ -307,22 +84,6 @@ function Assert-ExactReleaseState {
     $release.security.exactSecretGenerationMounted -cne $true
   ) { throw "Remote $Slot container security envelope mismatch." }
   return $release
-}
-
-function Get-StateIdentityJson {
-  param($State)
-  $null = Assert-StateSchema $State
-  $identity = [ordered]@{ schemaVersion = 2; transition = $State.transition; lastTransition = $State.lastTransition }
-  foreach ($slot in @("current", "previous", "pending")) {
-    $value = $State.$slot
-    $identity[$slot] = if ($null -eq $value) { $null } else { [ordered]@{
-      schemaVersion = [int]$value.schemaVersion; releaseSha = [string]$value.releaseSha; imageTag = [string]$value.imageTag
-      imageId = [string]$value.imageId; archiveSha256 = [string]$value.archiveSha256
-      secretGeneration = [string]$value.secretGeneration; releaseDirectory = [string]$value.releaseDirectory
-      envFile = [string]$value.envFile; projectName = [string]$value.projectName; containerName = [string]$value.containerName
-    } }
-  }
-  return ($identity | ConvertTo-Json -Depth 5 -Compress)
 }
 
 function Resolve-AmbiguousRemoteMutation {
@@ -391,52 +152,6 @@ function Convert-StatusTime {
   if (-not [DateTimeOffset]::TryParse([string]$Value, [Globalization.CultureInfo]::InvariantCulture,
     [Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) { throw "Exact worker release status timestamp is invalid." }
   return $parsed
-}
-
-# The poll expectation is DERIVED FROM THE DATABASE, never chosen by whoever
-# runs the deploy.
-#
-# The previous rule was `connectionCount >= 1 AND successfulPollCount =
-# connectionCount AND failedPollCount = 0`. On a green-field fleet there are no
-# rows in network_device_connections at all, so a perfectly healthy worker
-# reports connections=0 and that rule can never be met: promoting a worker would
-# require a reachable router, and onboarding a router requires a promoted
-# worker. An operator switch such as -AllowNoConnections would have dissolved
-# the deadlock and opened a far worse hole - it gets left on, and then a fleet
-# whose routers are ALL unreachable promotes green.
-#
-# `expectedConnectionCount` comes from
-# network_center_admin_worker_release_status_v1 (20260729143000). PostgreSQL
-# counts the connections it would actually serve THIS worker under the same
-# predicate as network_center_worker_list_connections_v2. The only inputs this
-# script gives that function are the worker key and the release SHA, both
-# already pinned, so the deploying client cannot widen, narrow or invent the
-# number it is measured against.
-#
-#   expected = 0 -> exactly zero successful and zero failed polls. "Nothing to
-#                   poll" becomes a PROVABLE healthy state instead of a waived
-#                   one; every other liveness signal (PAUSED, exact release SHA,
-#                   assignment count/hash, heartbeat and poll freshness) still
-#                   has to hold.
-#   expected > 0 -> successfulPollCount must equal the expectation and there
-#                   must be no failures, so a fleet whose connections all fail
-#                   still fails the gate.
-function Test-ExactPollEvidence {
-  param($Status)
-  if ($null -eq $Status) { return $false }
-  # Poll evidence has to be PRESENT. Get-ReleaseStatus already refuses a mixed
-  # set, so one null here means the release has never reported a cycle at all.
-  # PowerShell coerces `[int]$null` to 0, so an unguarded numeric comparison
-  # would read "never polled" as "polled nothing successfully" and promote a
-  # worker that never ran a cycle - the exact hole the flag would have opened.
-  if ($null -eq $Status.connectionCount -or $null -eq $Status.successfulPollCount -or
-      $null -eq $Status.failedPollCount -or $null -eq $Status.pollObservedAt) { return $false }
-  if ([int]$Status.failedPollCount -ne 0) { return $false }
-  $expected = [int]$Status.expectedConnectionCount
-  if ($expected -eq 0) {
-    return ([int]$Status.connectionCount -eq 0 -and [int]$Status.successfulPollCount -eq 0)
-  }
-  return ([int]$Status.connectionCount -eq $expected -and [int]$Status.successfulPollCount -eq $expected)
 }
 
 function Wait-WorkerRevision {
@@ -525,63 +240,14 @@ function Assert-MutationReceipt {
   return $Receipt
 }
 
-function Assert-UnitState {
-  param($State)
-  Assert-ExactPropertyNames $State @("schemaVersion", "unit", "activeState", "subState", "result") "Systemd unit state"
-  if (-not (Test-SchemaVersion $State.schemaVersion 1)) { throw "Systemd unit state schema is invalid." }
-  if ([string]$State.unit -cne "network-center-worker.service") { throw "Systemd unit identity is invalid." }
-  Assert-BoundedString $State.activeState "Systemd active state" 32 '^[a-z-]+$'
-  Assert-BoundedString $State.subState "Systemd sub-state" 32 '^[a-z-]+$'
-  Assert-BoundedString $State.result "Systemd result" 32 '^[a-z-]+$'
-  if ([string]$State.activeState -cne "active" -or [string]$State.subState -notin @("running", "exited") -or
-      [string]$State.result -cne "success") { throw "Systemd worker unit is not authoritatively active." }
-  return $State
-}
-
-function Get-AuthoritativeUnitState {
-  param([string]$SshTarget, [string[]]$SshOptions)
-  $command = 'active=$(sudo -- systemctl show network-center-worker.service --property=ActiveState --value); sub=$(sudo -- systemctl show network-center-worker.service --property=SubState --value); result=$(sudo -- systemctl show network-center-worker.service --property=Result --value); jq -cn --arg active "$active" --arg sub "$sub" --arg result "$result" ''{schemaVersion:1,unit:"network-center-worker.service",activeState:$active,subState:$sub,result:$result}'''
-  $output = Invoke-NativeChecked ssh ($SshOptions + @($SshTarget, $command)) -Capture
-  return Assert-UnitState (ConvertFrom-BoundedJson $output "Systemd unit state")
-}
-
 function Invoke-SystemdRestartReconciled {
   param([string]$SshTarget, [string[]]$SshOptions)
   try {
     $null = Invoke-NativeChecked ssh ($SshOptions + @($SshTarget, "sudo -- systemctl restart network-center-worker.service")) -Capture
   } catch {
-    if ($_.Exception.Message -notmatch 'exit code 255') { throw "Systemd restart failed without a disconnect; compensation is required." }
+    if (-not (Test-SshDisconnect $_.Exception.Message)) { throw "Systemd restart failed without a disconnect; compensation is required." }
   }
   return Get-AuthoritativeUnitState $SshTarget $SshOptions
-}
-
-function Get-PointerIdentityJson {
-  param($State)
-  $null = Assert-StateSchema $State
-  $value = [ordered]@{}
-  foreach ($slot in @("current", "previous", "pending")) {
-    $item = $State.$slot
-    $value[$slot] = if ($null -eq $item) { $null } else { [ordered]@{
-      schemaVersion = [int]$item.schemaVersion; releaseSha = [string]$item.releaseSha; imageTag = [string]$item.imageTag
-      imageId = [string]$item.imageId; archiveSha256 = [string]$item.archiveSha256; secretGeneration = [string]$item.secretGeneration
-      releaseDirectory = [string]$item.releaseDirectory; envFile = [string]$item.envFile; projectName = [string]$item.projectName
-      containerName = [string]$item.containerName
-    } }
-  }
-  return ($value | ConvertTo-Json -Depth 4 -Compress)
-}
-
-function Get-ReconciledRemoteState {
-  param([string]$SshTarget, [string[]]$SshOptions)
-  $output = Invoke-NativeChecked -FilePath "ssh" -Arguments ($SshOptions + @($SshTarget,
-    "sudo -- /opt/ihome-network-center/bin/activate-release.sh inspect-state")) -Capture
-  $state = Assert-StateSchema -State (ConvertFrom-BoundedJson -Output $output -Description "Remote state")
-  if ($null -ne $state.transition) {
-    $output = Invoke-NativeChecked -FilePath "ssh" -Arguments ($SshOptions + @($SshTarget,
-      "sudo -- /opt/ihome-network-center/bin/activate-release.sh reconcile-state")) -Capture
-    $state = Assert-StateSchema -State (ConvertFrom-BoundedJson -Output $output -Description "Remote reconciliation")
-  }
-  return $state
 }
 
 function Invoke-RemoteMutationReconciled {
@@ -596,7 +262,7 @@ function Invoke-RemoteMutationReconciled {
     $receipt = ConvertFrom-BoundedJson -Output $output -Description $Description
     $receipt = Assert-MutationReceipt $receipt $ReceiptKind $Description
   } catch {
-    if ($_.Exception.Message -match 'exit code 255') { $lostReceipt = $true; $receipt = $null }
+    if (Test-SshDisconnect $_.Exception.Message) { $lostReceipt = $true; $receipt = $null }
     else { throw }
   }
   $resolved = Resolve-AmbiguousRemoteMutation -BeforeState $BeforeState -ExpectedSlot $ExpectedSlot `
@@ -622,7 +288,7 @@ function Invoke-CompensatingTransition {
       "sudo -- /opt/ihome-network-center/bin/activate-release.sh compensate-last-transition $CandidateReleaseSha")) -Capture
     $receipt = Assert-MutationReceipt (ConvertFrom-BoundedJson $output "Deployment compensation") compensate "Deployment compensation"
   } catch {
-    if ($_.Exception.Message -notmatch 'exit code 255') { throw }
+    if (-not (Test-SshDisconnect $_.Exception.Message)) { throw }
   }
   $state = Get-ReconciledRemoteState $SshTarget $SshOptions
   if ((Get-PointerIdentityJson $state) -cne (Get-PointerIdentityJson $BeforeState)) {
@@ -643,7 +309,7 @@ function Remove-RejectedCandidate {
         "sudo -- /opt/ihome-network-center/bin/activate-release.sh abort-pending $CandidateReleaseSha")) -Capture
     } catch {
       # Commit-then-disconnect is resolved by the exact state readback below.
-      if ($_.Exception.Message -notmatch 'exit code 255') { throw }
+      if (-not (Test-SshDisconnect $_.Exception.Message)) { throw }
     }
     $state = Get-ReconciledRemoteState $SshTarget $SshOptions
   }
@@ -680,6 +346,42 @@ function Restore-RejectedPromotion {
     -SshTarget $SshTarget -SshOptions $SshOptions
 }
 
+# DEFECT 7 - the routing decision taken when a deployment fails with the
+# promotion already COMMITTED on the host. It used to live inline in the main
+# catch, gated on `$null -ne $beforeState.current`, and that gate is what left
+# b6bade8's promotion stranded: on a green-field host there IS no previous
+# release, so the compensate-and-finalize branch was skipped, the abort branch
+# did not apply either (pending is null after a promote), and the run threw
+# "mixed remote state" with the journal still at `committed`. begin_transition
+# then refused EVERY later transition - the next promote and the rollback path
+# alike - until a human finalized it by hand.
+#
+# Both outcomes are now terminal for the journal:
+#   * a previous release exists -> compensate back to it, which finalizes;
+#   * no previous release exists -> there is nothing to compensate TO. Rolling a
+#     green-field host back means rolling it back to no worker at all, which is a
+#     strictly larger outage than leaving a release the host has already proven
+#     exact-healthy at the container level. So the promotion is kept, the journal
+#     is driven terminal, and the run still fails loudly with both facts in the
+#     message.
+# Returns $null when the promotion did not commit, so the caller's remaining
+# classification (aborted pending / unchanged pre-state / mixed) is untouched.
+function Resolve-CommittedPromotionFailure {
+  param($State, $BeforeState, $PromoteBeforeState, $BaselineAssignmentStatus, [string]$CandidateReleaseSha,
+    [string]$RepositoryRoot, [string]$SshTarget, [string[]]$SshOptions)
+  if ($null -eq $PromoteBeforeState -or $null -eq $State -or $null -eq $State.current -or
+      [string]$State.current.releaseSha -cne $CandidateReleaseSha) { return $null }
+  if ($null -ne $BeforeState.current) {
+    $null = Restore-RejectedPromotion -CandidateReleaseSha $CandidateReleaseSha -PreStageState $BeforeState `
+      -PromoteBeforeState $PromoteBeforeState -BaselineAssignmentStatus $BaselineAssignmentStatus `
+      -RepositoryRoot $RepositoryRoot -SshTarget $SshTarget -SshOptions $SshOptions
+    return "exact previous state was restored"
+  }
+  $outcome = Complete-AbandonedTransition -ReleaseSha $CandidateReleaseSha -SshTarget $SshTarget -SshOptions $SshOptions
+  return ("there was no previous release to compensate to, so the promoted release stays live " +
+    "and its transition was $outcome")
+}
+
 function Invoke-FinalizeTransition {
   param([string]$ReleaseSha, [string]$SshTarget, [string[]]$SshOptions, $ExpectedState)
   try {
@@ -687,7 +389,7 @@ function Invoke-FinalizeTransition {
       "sudo -- /opt/ihome-network-center/bin/activate-release.sh finalize-last-transition $ReleaseSha")) -Capture
     return Assert-MutationReceipt (ConvertFrom-BoundedJson $output "Deployment finalization") finalize "Deployment finalization"
   } catch {
-    if ($_.Exception.Message -notmatch 'exit code 255') { throw }
+    if (-not (Test-SshDisconnect $_.Exception.Message)) { throw }
     $state = Get-ReconciledRemoteState $SshTarget $SshOptions
     if ((Get-PointerIdentityJson $state) -cne (Get-PointerIdentityJson $ExpectedState) -or
         $null -eq $state.lastTransition -or [string]$state.lastTransition.phase -cne "finalized" -or
@@ -732,8 +434,7 @@ function Invoke-DeploymentMain {
   $beforeStatus = $null
   $beforeAssignmentStatus = $null
   try {
-    $preflight = "sudo -- /bin/sh -c 'systemctl is-active --quiet docker.service && systemctl is-active --quiet wg-quick@wg0.service && systemctl is-active --quiet ihome-network-center-firewall.service && systemctl is-enabled --quiet network-center-worker.service && test `"`$(sysctl -n net.ipv4.ip_forward)`" = 1 && nft --check --file /etc/nftables.d/ihome-network-center.nft'"
-    $null = Invoke-NativeChecked ssh ($sshOptions + @($sshTarget, $preflight)) -Capture
+    $null = Invoke-NativeChecked ssh ($sshOptions + @($sshTarget, (Get-PreflightCommand))) -Capture
     $beforeState = Get-ReconciledRemoteState -SshTarget $sshTarget -SshOptions $sshOptions
     if ($null -ne $beforeState.current) {
       $beforeAssignmentStatus = Get-ReleaseStatus $repositoryRoot $beforeState.current.releaseSha
@@ -782,13 +483,10 @@ function Invoke-DeploymentMain {
     if (-not $mutationStarted) { throw "Deployment failed before remote mutation. Cause: $cause" }
     try {
       $state = Get-ReconciledRemoteState $sshTarget $sshOptions
-      if ($null -ne $promoteBeforeState -and $null -ne $beforeState.current -and $null -ne $state.current -and
-          [string]$state.current.releaseSha -ceq $ReleaseSha) {
-        $null = Restore-RejectedPromotion -CandidateReleaseSha $ReleaseSha -PreStageState $beforeState `
-          -PromoteBeforeState $promoteBeforeState -BaselineAssignmentStatus $beforeAssignmentStatus `
-          -RepositoryRoot $repositoryRoot -SshTarget $sshTarget -SshOptions $sshOptions
-        throw "Deployment failed after promotion; exact previous state was restored. Cause: $cause"
-      }
+      $resolution = Resolve-CommittedPromotionFailure -State $state -BeforeState $beforeState `
+        -PromoteBeforeState $promoteBeforeState -BaselineAssignmentStatus $beforeAssignmentStatus `
+        -CandidateReleaseSha $ReleaseSha -RepositoryRoot $repositoryRoot -SshTarget $sshTarget -SshOptions $sshOptions
+      if ($null -ne $resolution) { throw "Deployment failed after promotion; $resolution. Cause: $cause" }
       if ($null -ne $state.pending -and [string]$state.pending.releaseSha -ceq $ReleaseSha) {
         try {
           $null = Invoke-NativeChecked ssh ($sshOptions + @($sshTarget, "sudo -- /opt/ihome-network-center/bin/activate-release.sh abort-pending $ReleaseSha")) -Capture
