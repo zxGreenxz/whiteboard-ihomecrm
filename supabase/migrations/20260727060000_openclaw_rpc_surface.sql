@@ -31,6 +31,32 @@ begin
 end;
 $role$;
 
+do $openclaw_owner_grants$
+declare
+  v_role text;
+  v_schema text;
+begin
+  -- No-op on a superuser harness: superusers already satisfy both checks below.
+  -- On Supabase the connected role is the non-superuser `postgres`, which needs
+  -- SET on each owner role (PostgreSQL 16+ withholds it from role creators) and
+  -- needs each owner role to hold CREATE on the schema it will own objects in.
+  -- Both are revoked again at the end of this file.
+  for v_role in
+    select rolname from pg_catalog.pg_roles where rolname like 'openclaw\_%'
+  loop
+    if not pg_catalog.pg_has_role(current_user, v_role, 'SET') then
+      execute format('grant %I to %I with set true', v_role, current_user);
+    end if;
+    foreach v_schema in array array['public', 'app_private'] loop
+      if pg_catalog.to_regnamespace(v_schema) is not null
+         and not pg_catalog.has_schema_privilege(v_role, v_schema, 'CREATE') then
+        execute format('grant create on schema %I to %I', v_schema, v_role);
+      end if;
+    end loop;
+  end loop;
+end
+$openclaw_owner_grants$;
+
 revoke all on all tables in schema public from openclaw_service_dispatcher;
 revoke all on all sequences in schema public from openclaw_service_dispatcher;
 grant usage on schema public, app_private to openclaw_service_dispatcher;
@@ -9809,4 +9835,24 @@ revoke all on function public.openclaw_list_takeovers_v1(jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_takeovers_v1(jsonb) to authenticated;
 
+
+do $openclaw_owner_grants_release$
+declare
+  v_role text;
+  v_schema text;
+begin
+  -- CREATE was only ever needed to hand ownership over. Revoking it leaves the
+  -- objects owned by the role and leaves SECURITY DEFINER execution working, so
+  -- no openclaw role keeps the ability to create objects after this migration.
+  for v_role in
+    select rolname from pg_catalog.pg_roles where rolname like 'openclaw\_%'
+  loop
+    foreach v_schema in array array['public', 'app_private'] loop
+      if pg_catalog.to_regnamespace(v_schema) is not null then
+        execute format('revoke create on schema %I from %I', v_schema, v_role);
+      end if;
+    end loop;
+  end loop;
+end
+$openclaw_owner_grants_release$;
 commit;
