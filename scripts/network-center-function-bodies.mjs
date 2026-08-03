@@ -290,36 +290,133 @@ export function expectedFunctionNames(expectations) {
   return [...new Set([...expectations.values()].flat().map((item) => item.qualifiedName))].sort();
 }
 
+// Statement shapes a SUBSUMED stage is allowed to contain - see
+// assertStagesObservable. The list is deliberately tiny: it covers a stage whose
+// only durable effect is the function bodies it declares, plus the ACL and
+// comment that belong to those same functions. Anything outside it (DO blocks,
+// ALTER, INSERT/UPDATE/DELETE, CREATE TABLE/INDEX/POLICY, DROP, ...) can leave a
+// durable effect that a later CREATE OR REPLACE FUNCTION does NOT reproduce, so
+// a stage carrying one is never eligible and the rollout keeps refusing it.
+const SUBSUMABLE_STATEMENT = [
+  /^BEGIN\b/i,
+  /^COMMIT\b/i,
+  /^SELECT\s+pg_advisory_xact_lock\s*\(/i,
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\b/i,
+  /^NOTIFY\s+pgrst\b/i,
+];
+// These three carry an effect that is only reproduced if it targets a function
+// this stage itself declares, so they are checked against the declared names
+// rather than merely allowed.
+const FUNCTION_SCOPED_STATEMENT = [
+  /^REVOKE\b/i,
+  /^GRANT\b/i,
+  /^COMMENT\s+ON\s+FUNCTION\b/i,
+];
+
 /**
  * A stage nothing can observe is a stage that will be skipped forever.
  *
- * This is the structural guarantee behind the fix: a stage either adds at least
- * one catalog descriptor the previous stage did not require, or it owns at least
- * one function body at the end of the release. Either way the rollout can tell
- * "already applied" from "not applied yet". Neither means the tool would have to
- * guess, and guessing is what printed "Applied 15" after applying nothing.
+ * The structural guarantee: a stage either adds at least one catalog descriptor
+ * the previous stage did not require, or it owns at least one function body at
+ * the end of the release. Either way the rollout can tell "already applied" from
+ * "not applied yet", and guessing is what printed "Applied 15" after applying
+ * nothing.
+ *
+ * THE THIRD CLASS: PROVABLY SUBSUMED, which is not the same as observable.
+ *
+ * A body-only forward fix owns exactly one thing - the function body it
+ * declares - so a LATER forward fix to the same function takes that ownership
+ * away and leaves the earlier stage owning nothing and adding nothing. That is
+ * what 20260729146000 did to 20260729143000 and 20260729144000: each of those
+ * stages declares exactly one function, and 146000 re-declares both.
+ *
+ * Such a stage genuinely cannot be observed, and the honest reason is that there
+ * is nothing left to observe: applying it and skipping it reach a byte-identical
+ * end state, because the later stage overwrites the body either way. Refusing it
+ * would not protect anything - it would only make the release unshippable, since
+ * the superseded stages are already applied in production and cannot be removed
+ * from a manifest that must stay complete.
+ *
+ * This is NOT the "Applied 15" failure. There the tool skipped a stage whose
+ * effect nothing else reproduced, so the fix was lost while success was
+ * reported. Here the effect is reproduced, by construction, by a stage the
+ * rollout can observe.
+ *
+ * The clause is kept narrow enough that it cannot be used as an escape hatch:
+ *
+ *   - The stage must DECLARE at least one function. A stage that declares
+ *     nothing (a pure GRANT, policy or constraint stage) is still refused, which
+ *     is the case that motivated the `policy:` descriptor rather than a
+ *     relaxation.
+ *   - Owning nothing while declaring something already means, by last-writer-
+ *     wins, that EVERY function it declares is re-declared later. Partial
+ *     subsumption cannot reach here: the stage would still own the remainder.
+ *   - Every statement must be one this shape can reproduce. A subsumed stage
+ *     that also backfills a table, alters a type or creates a policy is refused,
+ *     because a later CREATE OR REPLACE FUNCTION does not reproduce that.
+ *
+ * Subsumed stages are RETURNED, not silently swallowed, so a caller can report
+ * them and a reviewer can see that a stage in the release is now a no-op.
  */
 export function assertStagesObservable(manifest, sources) {
   const expectations = resolveStageFunctionExpectations(manifest, sources);
-  const seen = new Set();
   const migrations = manifest.migrations ?? [];
+  const declaredNames = migrations.map((migration) => [
+    ...new Set(
+      extractFunctionDefinitions(sources.get(migration.path), migration.path).map(
+        (definition) => definition.qualifiedName,
+      ),
+    ),
+  ]);
+  const seen = new Set();
+  const subsumed = [];
   for (let index = 0; index < migrations.length; index += 1) {
     const migration = migrations[index];
     const required = migration.postApply?.required ?? [];
     const added = required.filter((descriptor) => !seen.has(descriptor));
     const owned = expectations.get(migration.path) ?? [];
     if (!added.length && !owned.length) {
-      throw new Error(
-        `Manifest rejected: rollout stage ${index + 1} ${migration.path} is unobservable. It adds no ` +
-          "catalog descriptor beyond the previous stage and owns no function body at the end of the " +
-          "release, so the rollout could never distinguish an applied stage from a skipped one and " +
-          "would pass over it silently on every run. Give the stage a postApply descriptor, or express " +
-          "the change as a CREATE OR REPLACE FUNCTION whose body this release owns.",
-      );
+      const declares = declaredNames[index];
+      const refuse = (why) => {
+        throw new Error(
+          `Manifest rejected: rollout stage ${index + 1} ${migration.path} is unobservable. It adds no ` +
+            "catalog descriptor beyond the previous stage and owns no function body at the end of the " +
+            "release, so the rollout could never distinguish an applied stage from a skipped one and " +
+            `would pass over it silently on every run. ${why} Give the stage a postApply descriptor, or ` +
+            "express the change as a CREATE OR REPLACE FUNCTION whose body this release owns.",
+        );
+      };
+      if (!declares.length) {
+        refuse("It declares no function either, so nothing in this release reproduces its effect.");
+      }
+      for (const statement of splitSqlStatements(sources.get(migration.path))) {
+        const head = stripLeadingNoise(statement);
+        if (SUBSUMABLE_STATEMENT.some((pattern) => pattern.test(head))) continue;
+        if (
+          FUNCTION_SCOPED_STATEMENT.some((pattern) => pattern.test(head))
+          && declares.some((name) => head.includes(name))
+        ) {
+          continue;
+        }
+        refuse(
+          "Its function bodies are all re-declared by a later stage, but it also carries a statement "
+            + `no later CREATE OR REPLACE FUNCTION reproduces: ${head.slice(0, 80).replace(/\s+/g, " ")}.`,
+        );
+      }
+      subsumed.push({
+        ordinal: index + 1,
+        path: migration.path,
+        supersededBy: declares.map((name) => {
+          const later = migrations.findIndex(
+            (_, laterIndex) => laterIndex > index && declaredNames[laterIndex].includes(name),
+          );
+          return { qualifiedName: name, by: migrations[later].path };
+        }),
+      });
     }
     for (const descriptor of required) seen.add(descriptor);
   }
-  return { stages: migrations.length };
+  return { stages: migrations.length, subsumed };
 }
 
 /**

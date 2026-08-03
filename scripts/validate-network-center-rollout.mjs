@@ -153,8 +153,12 @@ export function assertManifestStructure(manifest, { expectedMigrationPaths, sour
   if (!/^[a-f0-9]{64}$/.test(edge.sha256 ?? "")) {
     throw new Error("Manifest rejected: edgeFunction bundle digest is malformed");
   }
-  if (sources) assertStagesObservable(manifest, sources);
-  return { migrationCount: migrations.length };
+  // A subsumed stage is legitimate but it is NOT nothing: it says a migration in
+  // this release has become a no-op because a later stage re-declares every
+  // function it owns. That belongs in front of whoever runs the rollout, not
+  // buried in a return value nobody reads.
+  const subsumedStages = sources ? assertStagesObservable(manifest, sources).subsumed : [];
+  return { migrationCount: migrations.length, subsumedStages };
 }
 
 export async function validateLocalRollout({
@@ -263,7 +267,7 @@ export async function validateRolloutCli({
   // Structure first: a malformed or incomplete contract is a defect in the
   // contract, and saying so beats reporting whatever the git state happens to
   // be that day.
-  assertManifestStructure(manifest, {
+  const structure = assertManifestStructure(manifest, {
     expectedMigrationPaths: await discoverNetworkCenterMigrations(repoRoot),
     sources: await loadMigrationSources(manifest, repoRoot),
   });
@@ -281,7 +285,7 @@ export async function validateRolloutCli({
   // Reading the reviewed revision only makes sense once that revision is known
   // to be reachable. Reading it first turns "reviewed revision is not an
   // ancestor" - the actionable message - into a raw `git show` failure.
-  return validateLocalRollout({
+  const validated = await validateLocalRollout({
     manifest,
     projectRef: parseProjectRef(configToml),
     isClean: git(["status", "--porcelain"], { repoRoot }).trim() === "",
@@ -291,6 +295,7 @@ export async function validateRolloutCli({
     releaseSha,
     headSha,
   });
+  return { ...validated, subsumedStages: structure.subsumedStages };
 }
 
 function parseArgs(argv) {
@@ -307,6 +312,13 @@ async function main() {
   process.stdout.write(
     `Network Center rollout validated: ${result.migrationCount} migrations, reviewed=${result.reviewedGitSha}, release=${result.releaseSha}\n`,
   );
+  for (const stage of result.subsumedStages ?? []) {
+    const by = [...new Set(stage.supersededBy.map((item) => item.by))].join(", ");
+    process.stdout.write(
+      `  note: stage ${stage.ordinal} ${stage.path} is a no-op in this release; `
+        + `every function it declares is re-declared by ${by}\n`,
+    );
+  }
 }
 
 if (isEntrypoint(import.meta.url)) {

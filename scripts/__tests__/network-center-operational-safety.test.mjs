@@ -174,7 +174,8 @@ test("the disposable proof carries and enforces the operational-safety invariant
   assert.equal(
     disposableRunner.TOTAL_DISPOSABLE_INVARIANTS,
     disposableRunner.RELEASE_READBACK_INVARIANTS
-      + disposableRunner.OPERATIONAL_SAFETY_INVARIANTS,
+      + disposableRunner.OPERATIONAL_SAFETY_INVARIANTS
+      + disposableRunner.COVERAGE_HONESTY_INVARIANTS,
   );
   assert.ok(
     disposableRunner.MIGRATION_PATHS.some((path) =>

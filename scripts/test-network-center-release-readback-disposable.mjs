@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -38,16 +38,59 @@ const STATUS_HONESTY_MIGRATION_PATH = join(
   "migrations",
   "20260729144000_network_center_worker_heartbeat_status_honesty.sql",
 );
+// Everything past the four stages above is DISCOVERED from the migration
+// directory, never named.
+//
+// A named path cannot keep this proof honest about a forward fix. Delete or
+// rename the file and a named path simply stops being read: the superseded
+// function body stays installed, every older invariant still passes, and the
+// proof certifies exactly the body the forward fix was written to replace. A
+// glob turns the same deletion into a red run, because the invariants that
+// depend on the fix are evaluated against the unfixed body.
+//
+// The floor is the newest stage this proof's curated bootstrap does NOT model:
+// 20260729145000 preflights on five reader functions that are never built here,
+// so it is excluded along with everything before it. Raise the floor only by
+// teaching the bootstrap to satisfy the stage you are admitting.
+const DISCOVERED_MIGRATION_FLOOR = "20260729145000";
+const MIGRATION_DIRECTORY = join(REPO_ROOT, "supabase", "migrations");
+const NETWORK_CENTER_MIGRATION_PATTERN =
+  /^(\d{14})_network_center_[a-z0-9_]+\.sql$/;
+
+export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {
+  const discovered = readdirSync(directory)
+    .map((name) => [name, NETWORK_CENTER_MIGRATION_PATTERN.exec(name)])
+    .filter(([, match]) => match !== null && match[1] > DISCOVERED_MIGRATION_FLOOR)
+    .map(([name]) => name)
+    .sort();
+  // A glob that matched nothing is this repository's most repeated failure mode:
+  // the check goes green while verifying an empty set. Name the glob that rotted
+  // rather than returning [] and letting the caller apply nothing in silence.
+  if (!discovered.length) {
+    throw new Error(
+      `No Network Center migration was discovered after ${DISCOVERED_MIGRATION_FLOOR} in ${directory}. `
+        + "This proof applies forward fixes by glob precisely so a deleted or renamed one fails loudly "
+        + "here instead of leaving the superseded function body certified.",
+    );
+  }
+  return discovered.map((name) => join(directory, name));
+}
+
+export const DISCOVERED_MIGRATION_PATHS = discoverForwardFixMigrations();
 export const MIGRATION_PATHS = [
   MIGRATION_PATH,
   OPERATIONAL_SAFETY_MIGRATION_PATH,
   EXPECTED_CONNECTIONS_MIGRATION_PATH,
   STATUS_HONESTY_MIGRATION_PATH,
+  ...DISCOVERED_MIGRATION_PATHS,
 ];
 export const RELEASE_READBACK_INVARIANTS = 37;
 export const OPERATIONAL_SAFETY_INVARIANTS = 25;
+export const COVERAGE_HONESTY_INVARIANTS = 33;
 export const TOTAL_DISPOSABLE_INVARIANTS =
-  RELEASE_READBACK_INVARIANTS + OPERATIONAL_SAFETY_INVARIANTS;
+  RELEASE_READBACK_INVARIANTS
+  + OPERATIONAL_SAFETY_INVARIANTS
+  + COVERAGE_HONESTY_INVARIANTS;
 const NATIVE_COMMAND_TIMEOUT_MS = 60_000;
 const PG_CTL_TIMEOUT_MS = 30_000;
 const POSTGRES_VERSION_PROBE_TIMEOUT_MS = 10_000;
@@ -1312,6 +1355,375 @@ SELECT
   device.organization_id, device.building_id, device.id, 'MIKROTIK', 1,
   true, true, true, clock_timestamp() - interval '1 day'
 FROM public.network_devices device;
+`;
+
+// The browser-visible half of the heartbeat, which the two fragments above do
+// not model. 20260729136000 does not CREATE public.network_worker_building_status
+// or the heartbeat implementation that writes it - it RENAMES the implementation
+// 20260729133000 already shipped - so a proof that stubs the implementation can
+// only ever observe what the wrapper RETURNS, never what an operator SEES.
+//
+// This fragment closes that gap by installing 20260729133000's real bodies, with
+// their real defect intact: `started_at = LEAST(existing, EXCLUDED)` on a row
+// keyed by (organization_id, building_id), which pins the column to the earliest
+// start ever recorded for that building and can never advance. Production was
+// measured showing exactly that - both DEMO buildings reporting the start time
+// of a release three promotions old. The forward fix discovered by glob is what
+// must repair it, and the invariants below fail if it does not.
+//
+// Everything here is copied from the shipped migrations rather than paraphrased:
+// the table DDL, its index, its RLS policy and grants come from
+// 20260729133000:11-48, and both function bodies are byte-identical to that
+// migration's (sha256 a5c293de... and 12043dcc..., each verified against the
+// live production catalog).
+const BUILDING_STATUS_BOOTSTRAP_SQL = String.raw`
+-- Tenants for the two heartbeat workers the release-readback fragment drives.
+-- Without them the real implementation's building-status write has no foreign
+-- key to land on, and every pre-existing heartbeat invariant would fail for a
+-- reason that has nothing to do with what it tests.
+INSERT INTO public.organizations VALUES
+  ('40000000-0000-4000-8000-000000000001', 'Disposable heartbeat org one'),
+  ('40000000-0000-4000-8000-000000000002', 'Disposable heartbeat org two');
+
+INSERT INTO public.buildings (id, organization_id, name) VALUES
+  ('20000000-0000-4000-8000-000000000001',
+   '40000000-0000-4000-8000-000000000001', 'Heartbeat building one'),
+  ('20000000-0000-4000-8000-000000000003',
+   '40000000-0000-4000-8000-000000000001', 'Heartbeat building three'),
+  ('20000000-0000-4000-8000-000000000004',
+   '40000000-0000-4000-8000-000000000002', 'Heartbeat building four');
+
+INSERT INTO public.organization_memberships (
+  id, organization_id, user_id, member_type, status
+) VALUES
+  ('90000000-0000-4000-8000-000000000001',
+   '40000000-0000-4000-8000-000000000001',
+   '60000000-0000-4000-8000-000000000001', 'OWNER', 'ACTIVE'),
+  ('90000000-0000-4000-8000-000000000002',
+   '40000000-0000-4000-8000-000000000002',
+   '60000000-0000-4000-8000-000000000002', 'OWNER', 'ACTIVE');
+
+CREATE TABLE public.network_worker_building_status (
+  organization_id uuid NOT NULL,
+  building_id uuid NOT NULL,
+  status text NOT NULL
+    CHECK (status IN ('ONLINE', 'DEGRADED', 'PAUSED', 'STOPPING')),
+  heartbeat_at timestamptz NOT NULL,
+  queue_age_seconds integer NOT NULL DEFAULT 0
+    CHECK (queue_age_seconds BETWEEN 0 AND 31536000),
+  started_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CONSTRAINT network_worker_building_status_building_fk
+    FOREIGN KEY (organization_id, building_id)
+    REFERENCES public.buildings(organization_id, id) ON DELETE CASCADE,
+  CONSTRAINT network_worker_building_status_time_check
+    CHECK (started_at <= heartbeat_at),
+  PRIMARY KEY (organization_id, building_id)
+);
+
+CREATE INDEX network_worker_building_status_tenant_building_idx
+  ON public.network_worker_building_status (
+    organization_id, building_id, heartbeat_at DESC
+  );
+
+ALTER TABLE public.network_worker_building_status ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.network_worker_building_status FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY network_worker_building_status_view
+  ON public.network_worker_building_status
+  FOR SELECT TO authenticated
+  USING ((SELECT public.can_do_on_building(
+    'network_center', 'view', building_id
+  )));
+
+REVOKE ALL ON TABLE public.network_worker_building_status
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON TABLE public.network_worker_building_status TO authenticated;
+
+CREATE OR REPLACE FUNCTION app_private.network_center_worker_can_access_building_v2(
+  p_worker_id uuid,
+  p_organization_id uuid,
+  p_building_id uuid,
+  p_required_capability text,
+  p_now timestamptz DEFAULT clock_timestamp()
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog'
+AS $fn$
+BEGIN
+  IF p_worker_id IS NULL OR p_organization_id IS NULL
+     OR p_building_id IS NULL
+     OR p_required_capability NOT IN (
+       'HEARTBEAT', 'POLL', 'TELEMETRY', 'INVENTORY',
+       'EXECUTE', 'INCIDENT', 'SNAPSHOT', 'MAINTENANCE'
+     ) OR p_now IS NULL THEN
+    RETURN false;
+  END IF;
+
+  PERFORM 1
+  FROM public.network_workers worker
+  JOIN public.network_worker_assignments assignment
+    ON assignment.worker_id = worker.id
+  WHERE worker.id = p_worker_id
+    AND worker.status IN ('ACTIVE', 'DRAINING')
+    AND p_required_capability = ANY(worker.capabilities)
+    AND assignment.worker_id = p_worker_id
+    AND assignment.organization_id = p_organization_id
+    AND assignment.building_id = p_building_id
+    AND assignment.active_from <= p_now
+    AND (assignment.active_until IS NULL OR assignment.active_until > p_now)
+    AND CASE
+      WHEN p_required_capability = 'HEARTBEAT' THEN
+        assignment.can_poll OR assignment.can_inventory OR assignment.can_execute
+      WHEN p_required_capability IN (
+        'POLL', 'TELEMETRY', 'INCIDENT', 'MAINTENANCE'
+      ) THEN assignment.can_poll
+      WHEN p_required_capability = 'INVENTORY' THEN assignment.can_inventory
+      WHEN p_required_capability IN ('EXECUTE', 'SNAPSHOT') THEN assignment.can_execute
+      ELSE false
+    END
+  FOR UPDATE OF worker, assignment;
+  RETURN FOUND;
+END;
+$fn$;
+
+-- 20260729133000's real implementation, replacing the permissive stub. This is
+-- the body 20260729136000 renames into app_private, so from here on the proof
+-- exercises the code that actually writes what an operator reads.
+CREATE OR REPLACE FUNCTION public.network_center_worker_heartbeat_v2(
+  p_credential_digest text,
+  p_worker_version text,
+  p_capabilities text[],
+  p_status text,
+  p_queue_age_seconds integer,
+  p_safe_metadata jsonb,
+  p_started_at timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog'
+AS $fn$
+DECLARE
+  v_worker_id uuid;
+  v_worker_key text;
+  v_worker_status text;
+  v_registry_capabilities text[];
+  v_now timestamptz := clock_timestamp();
+  v_status text := upper(btrim(coalesce(p_status, '')));
+  v_building_count integer;
+BEGIN
+  SELECT authenticated.worker_id, authenticated.worker_key,
+    authenticated.worker_status, authenticated.capabilities
+  INTO v_worker_id, v_worker_key, v_worker_status, v_registry_capabilities
+  FROM app_private.network_center_authenticate_worker_v2(
+    p_credential_digest
+  ) authenticated;
+
+  IF char_length(btrim(coalesce(p_worker_version, ''))) NOT BETWEEN 1 AND 100
+     OR cardinality(coalesce(p_capabilities, ARRAY[]::text[])) > 32
+     OR v_status NOT IN ('ONLINE', 'DEGRADED', 'PAUSED', 'STOPPING')
+     OR p_queue_age_seconds NOT BETWEEN 0 AND 31536000
+     OR p_safe_metadata IS NULL OR jsonb_typeof(p_safe_metadata) <> 'object'
+     OR octet_length(p_safe_metadata::text) > 16384
+     OR p_started_at IS NULL OR p_started_at > v_now THEN
+    RAISE EXCEPTION 'Invalid worker heartbeat' USING ERRCODE = '22023';
+  END IF;
+  PERFORM app_private.network_center_assert_safe_json_v1(
+    p_safe_metadata, 'worker heartbeat metadata'
+  );
+
+  WITH authorized_buildings AS MATERIALIZED (
+    SELECT DISTINCT assignment.organization_id, assignment.building_id
+    FROM public.network_workers worker
+    JOIN public.network_worker_assignments assignment
+      ON assignment.worker_id = worker.id
+    WHERE worker.id = v_worker_id
+      AND worker.status IN ('ACTIVE', 'DRAINING')
+      AND 'HEARTBEAT' = ANY(worker.capabilities)
+      AND assignment.active_from <= v_now
+      AND (
+        assignment.active_until IS NULL
+        OR assignment.active_until > v_now
+      )
+      AND (
+        assignment.can_poll OR assignment.can_inventory
+        OR assignment.can_execute
+      )
+      AND app_private.network_center_worker_can_access_building_v2(
+        v_worker_id, assignment.organization_id,
+        assignment.building_id,
+        'HEARTBEAT',
+        v_now
+      )
+  ), upserted AS (
+    INSERT INTO public.network_worker_building_status (
+      organization_id, building_id, status, heartbeat_at,
+      queue_age_seconds, started_at, updated_at
+    )
+    SELECT organization_id, building_id, v_status, v_now,
+      p_queue_age_seconds, p_started_at, v_now
+    FROM authorized_buildings
+    ON CONFLICT (organization_id, building_id) DO UPDATE SET
+      status = EXCLUDED.status,
+      heartbeat_at = EXCLUDED.heartbeat_at,
+      queue_age_seconds = EXCLUDED.queue_age_seconds,
+      started_at = LEAST(
+        public.network_worker_building_status.started_at,
+        EXCLUDED.started_at
+      ),
+      updated_at = EXCLUDED.updated_at
+    RETURNING building_id
+  )
+  SELECT count(*) INTO v_building_count FROM upserted;
+
+  IF v_building_count = 0 THEN
+    RAISE EXCEPTION 'Worker has no active assigned building'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN jsonb_build_object(
+    'status', v_status, 'heartbeatAt', v_now,
+    'assignedBuildingCount', v_building_count
+  );
+END;
+$fn$;
+
+-- The bounded legacy compatibility wrapper, carrying the same defect. It is
+-- never executed here - it has no Edge route and its compatibility snapshot is
+-- not modelled - but it is a second live writer of the same column, so the
+-- forward fix's catalog sweep has to find and repair it too.
+CREATE OR REPLACE FUNCTION public.network_center_worker_heartbeat_v1(
+  p_worker_id text,
+  p_worker_version text,
+  p_capabilities text[],
+  p_status text,
+  p_queue_age_seconds integer,
+  p_safe_metadata jsonb,
+  p_started_at timestamptz
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog'
+AS $fn$
+DECLARE
+  v_compat_worker_id uuid;
+  v_compat_worker_key text;
+  v_now timestamptz := clock_timestamp();
+  v_status text := upper(btrim(coalesce(p_status, '')));
+  v_count integer;
+BEGIN
+  SELECT compatibility.worker_id, compatibility.worker_key
+  INTO v_compat_worker_id, v_compat_worker_key
+  FROM app_private.network_center_compatibility_worker_v1() compatibility;
+  IF char_length(btrim(coalesce(p_worker_version, ''))) NOT BETWEEN 1 AND 100
+     OR cardinality(coalesce(p_capabilities, ARRAY[]::text[])) > 32
+     OR v_status NOT IN ('ONLINE', 'DEGRADED', 'PAUSED', 'STOPPING')
+     OR p_queue_age_seconds NOT BETWEEN 0 AND 31536000
+     OR p_safe_metadata IS NULL OR jsonb_typeof(p_safe_metadata) <> 'object'
+     OR p_started_at IS NULL OR p_started_at > v_now THEN
+    RAISE EXCEPTION 'Invalid worker heartbeat' USING ERRCODE = '22023';
+  END IF;
+  PERFORM app_private.network_center_assert_safe_json_v1(
+    p_safe_metadata, 'worker heartbeat metadata'
+  );
+
+  WITH snapshot_assignments AS MATERIALIZED (
+    SELECT assignment.organization_id, assignment.building_id
+    FROM app_private.network_worker_compatibility_state state
+    JOIN public.network_worker_assignments assignment
+      ON assignment.worker_id = state.worker_id
+    WHERE state.singleton AND state.worker_id = v_compat_worker_id
+      AND state.finalized_at IS NULL AND state.expires_at > v_now
+      AND assignment.can_poll
+      AND assignment.active_from <= v_now
+      AND assignment.active_until > v_now
+      AND state.assignment_snapshot @> jsonb_build_array(jsonb_build_object(
+        'assignmentId', assignment.id,
+        'organizationId', assignment.organization_id,
+        'buildingId', assignment.building_id,
+        'deviceId', assignment.device_id
+      ))
+  ), upserted AS (
+    INSERT INTO public.network_worker_building_status (
+      organization_id, building_id, status, heartbeat_at,
+      queue_age_seconds, started_at, updated_at
+    )
+    SELECT DISTINCT organization_id, building_id, v_status, v_now,
+      p_queue_age_seconds, p_started_at, v_now
+    FROM snapshot_assignments
+    ON CONFLICT (organization_id, building_id) DO UPDATE SET
+      status = EXCLUDED.status, heartbeat_at = EXCLUDED.heartbeat_at,
+      queue_age_seconds = EXCLUDED.queue_age_seconds,
+      started_at = LEAST(
+        public.network_worker_building_status.started_at,
+        EXCLUDED.started_at
+      ), updated_at = EXCLUDED.updated_at
+    RETURNING building_id
+  ) SELECT count(*) INTO v_count FROM upserted;
+  IF v_count = 0 THEN
+    RAISE EXCEPTION 'Legacy compatibility has no active snapshot assignment'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN jsonb_build_object(
+    'status', v_status, 'heartbeatAt', v_now,
+    'assignedBuildingCount', v_count
+  );
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.network_center_worker_heartbeat_v1(
+  text, text, text[], text, integer, jsonb, timestamptz
+) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.network_center_worker_heartbeat_v1(
+  text, text, text[], text, integer, jsonb, timestamptz
+) TO service_role;
+
+-- The two workers this proof's own fragment drives, plus their credential
+-- digests. Both carry HEARTBEAT and POLL, both are ACTIVE: nothing about the
+-- REGISTRY distinguishes the blind worker from the healthy one, which is the
+-- point - the only difference is what each can actually reach.
+INSERT INTO public.network_workers VALUES
+  (
+    '10000000-0000-4000-8000-00000000000b',
+    'disposable-worker-blind',
+    'Disposable blind worker',
+    'ACTIVE',
+    ARRAY['HEARTBEAT', 'POLL']::text[]
+  ),
+  (
+    '10000000-0000-4000-8000-00000000000c',
+    'disposable-worker-green',
+    'Disposable green-field worker',
+    'ACTIVE',
+    ARRAY['HEARTBEAT', 'POLL']::text[]
+  );
+
+CREATE OR REPLACE FUNCTION app_private.network_center_authenticate_worker_v2(
+  p_digest text
+)
+RETURNS TABLE(
+  worker_id uuid,
+  worker_key text,
+  worker_status text,
+  capabilities text[]
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path TO 'pg_catalog'
+AS $fn$
+  SELECT worker.id, worker.worker_key, worker.status, worker.capabilities
+  FROM public.network_workers worker
+  WHERE worker.worker_key = CASE p_digest
+    WHEN 'digest-worker-01' THEN 'disposable-worker-01'
+    WHEN 'digest-worker-02' THEN 'disposable-worker-02'
+    WHEN 'digest-worker-exec' THEN 'disposable-worker-exec'
+    WHEN 'digest-worker-blind' THEN 'disposable-worker-blind'
+    WHEN 'digest-worker-green' THEN 'disposable-worker-green'
+  END
+$fn$;
 `;
 
 const ASSERTION_SQL = String.raw`
@@ -3216,6 +3628,617 @@ SELECT jsonb_build_object(
 ) AS disposable_operational_safety_proof;
 `;
 
+// =============================================================================
+// The forward fix discovered by glob: a worker that reaches NOTHING may not
+// report ONLINE, and the building status an operator reads may not report a
+// start time from a process that exited hours ago.
+//
+// The fixture is a SIMULATED CREDENTIAL-LESS WORKER, not a hand-written row. It
+// is registered exactly like a healthy one - ACTIVE, HEARTBEAT + POLL, a live
+// assignment, an enabled RouterOS-SSH connection on an active MikroTik - and
+// then posts the byte-for-byte payload the production container posts:
+// status ONLINE with {connections: 0, successfulPolls: 0, failedPolls: 0}.
+// Nothing in the registry distinguishes it from a working worker. The only
+// difference is that it reaches nothing, and the server has to notice.
+// =============================================================================
+const COVERAGE_HONESTY_ASSERTION_SQL = String.raw`
+RESET ROLE;
+
+-- The blind worker: one pollable connection it will never reach.
+INSERT INTO public.network_worker_assignments (
+  id, worker_id, organization_id, building_id, device_id, device_kind,
+  assignment_version, can_poll, can_inventory, can_execute, active_from, active_until
+) VALUES
+  ('c0000000-0000-4000-8000-0000000000b1',
+   '10000000-0000-4000-8000-00000000000b',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d1', 'MIKROTIK', 1,
+   true, false, false, statement_timestamp() - interval '1 day', NULL),
+  ('c0000000-0000-4000-8000-0000000000b2',
+   '10000000-0000-4000-8000-00000000000b',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d2', 'MIKROTIK', 1,
+   true, false, false, statement_timestamp() - interval '1 day', NULL),
+  -- The green-field worker: a real assignment, and nothing to poll.
+  ('c0000000-0000-4000-8000-0000000000c1',
+   '10000000-0000-4000-8000-00000000000c',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a4',
+   '50000000-0000-4000-8000-0000000000d9', 'MIKROTIK', 1,
+   true, false, false, statement_timestamp() - interval '1 day', NULL);
+
+INSERT INTO public.network_device_connections (
+  id, organization_id, building_id, device_id, transport, management_ip,
+  management_port, credential_ref, is_enabled
+) VALUES
+  ('b0000000-0000-4000-8000-0000000000f1',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d1',
+   'ROUTEROS_SSH', '10.77.0.250', 22, 'router/blind-d1', true),
+  -- Provisioned but disabled until the coverage-arithmetic section enables it.
+  ('b0000000-0000-4000-8000-0000000000f2',
+   '40000000-0000-4000-8000-0000000000aa',
+   '20000000-0000-4000-8000-0000000000a1',
+   '50000000-0000-4000-8000-0000000000d2',
+   'ROUTEROS_SSH', '10.77.0.251', 22, 'router/blind-d2', false);
+
+DO $coverage_honesty$
+DECLARE
+  c_blind_digest constant text := 'digest-worker-blind';
+  c_blind_worker constant text := 'disposable-worker-blind';
+  c_blind_id constant uuid := '10000000-0000-4000-8000-00000000000b';
+  c_green_digest constant text := 'digest-worker-green';
+  c_green_worker constant text := 'disposable-worker-green';
+  c_green_id constant uuid := '10000000-0000-4000-8000-00000000000c';
+  c_org constant uuid := '40000000-0000-4000-8000-0000000000aa';
+  c_blind_building constant uuid := '20000000-0000-4000-8000-0000000000a1';
+  c_green_building constant uuid := '20000000-0000-4000-8000-0000000000a4';
+  c_release constant text := repeat('1', 40);
+  c_fresh_release constant text := repeat('2', 40);
+  c_green_release constant text := repeat('3', 40);
+  c_green_fresh_release constant text := repeat('4', 40);
+  -- Exactly what the production container reports: a completed cycle over
+  -- nothing at all.
+  c_blind_evidence constant jsonb := jsonb_build_object(
+    'connections', 0, 'successfulPolls', 0, 'failedPolls', 0
+  );
+  c_periodic constant jsonb := jsonb_build_object('source', 'periodic');
+  c_started constant timestamptz := clock_timestamp() - interval '5 minutes';
+  v_result jsonb;
+  v_row app_private.network_worker_release_heartbeats%ROWTYPE;
+  v_building public.network_worker_building_status%ROWTYPE;
+  v_blind jsonb;
+  v_green jsonb;
+  v_expected integer;
+BEGIN
+  -- 1. The expectation is server state and it is not zero: PostgreSQL would
+  --    serve this worker exactly one pollable connection.
+  v_expected := app_private.network_center_worker_expected_connections_v1(
+    c_blind_id, clock_timestamp()
+  );
+  IF v_expected IS DISTINCT FROM 1 THEN
+    RAISE EXCEPTION
+      'the blind worker''s server-derived expectation is %, not the one connection it is assigned',
+      coalesce(v_expected::text, '<null>');
+  END IF;
+
+  -- 2. THE ACCEPTANCE TEST. The exact production payload must not come back
+  --    ONLINE.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_release, ARRAY['polling'], 'ONLINE', 0,
+    c_blind_evidence, c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'a worker that reached nothing reported % while its expectation was 1',
+      coalesce(v_result->>'status', '<null>');
+  END IF;
+
+  -- 3. The release row - the deploy gate's own source - stores the downgrade
+  --    next to the untouched zero evidence.
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_id = c_blind_id
+    AND heartbeat.worker_version = c_release;
+  IF v_row.status <> 'DEGRADED' THEN
+    RAISE EXCEPTION 'release readback stored % for a worker that polled nothing',
+      v_row.status;
+  END IF;
+  -- 4. The evidence itself is NOT rewritten. The server downgrades the claim,
+  --    it never edits the counts, or the readback would stop being evidence.
+  IF v_row.connection_count <> 0 OR v_row.successful_poll_count <> 0
+     OR v_row.failed_poll_count <> 0 THEN
+    RAISE EXCEPTION
+      'the guard rewrote the reported poll evidence to %/%/%',
+      coalesce(v_row.connection_count::text, '<null>'),
+      coalesce(v_row.successful_poll_count::text, '<null>'),
+      coalesce(v_row.failed_poll_count::text, '<null>');
+  END IF;
+
+  -- 5. THE ROW THE UI READS. public.network_worker_building_status is what the
+  --    browser subscribes to; production showed it ONLINE for both DEMO
+  --    buildings against this very payload.
+  SELECT status.* INTO v_building
+  FROM public.network_worker_building_status status
+  WHERE status.organization_id = c_org AND status.building_id = c_blind_building;
+  IF v_building.status <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'the operator-visible building status reads % for a worker that reached nothing',
+      coalesce(v_building.status, '<null>');
+  END IF;
+
+  -- 6. 20260729144000 CANNOT have done this. Its predicate is failedPolls > 0
+  --    and the reported failure count is zero, so a green result here would
+  --    have proved only that the older guard still works.
+  IF v_row.failed_poll_count <> 0 THEN
+    RAISE EXCEPTION
+      'the fixture reported % failures, so the older failure guard could have produced this verdict',
+      v_row.failed_poll_count;
+  END IF;
+
+  -- 7. The full readback the deployment gate consumes is now internally
+  --    consistent: DEGRADED, zero successes, one expected.
+  v_blind := public.network_center_admin_worker_release_status_v1(
+    c_blind_worker, c_release
+  );
+  IF v_blind->>'status' <> 'DEGRADED'
+     OR (v_blind->>'successfulPollCount')::integer <> 0
+     OR (v_blind->>'expectedConnectionCount')::integer <> 1 THEN
+    RAISE EXCEPTION
+      'the release readback is still incoherent: status=%, successful=%, expected=%',
+      coalesce(v_blind->>'status', '<null>'),
+      coalesce(v_blind->>'successfulPollCount', '<null>'),
+      coalesce(v_blind->>'expectedConnectionCount', '<null>');
+  END IF;
+
+  -- ---------------------------------------------------------------------
+  -- A GENUINE GREEN FIELD MUST STAY ONLINE. This is the state 20260729143000
+  -- exists to make provable, and breaking it would recreate the first-deploy
+  -- deadlock: no router can be onboarded until a worker is promoted, and no
+  -- worker can be promoted until it reports healthy.
+  -- ---------------------------------------------------------------------
+  -- 8. Its expectation is a real zero, not a missing number.
+  v_expected := app_private.network_center_worker_expected_connections_v1(
+    c_green_id, clock_timestamp()
+  );
+  IF v_expected IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'the green-field worker''s expectation is %, not 0',
+      coalesce(v_expected::text, '<null>');
+  END IF;
+
+  -- 9. Zero of zero passes through untouched.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_green_digest, c_green_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 0, 'successfulPolls', 0, 'failedPolls', 0
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'ONLINE' THEN
+    RAISE EXCEPTION
+      'a green field with nothing to poll was degraded to %', v_result->>'status';
+  END IF;
+
+  -- 10. ... in the row the operator reads, too.
+  SELECT status.* INTO v_building
+  FROM public.network_worker_building_status status
+  WHERE status.organization_id = c_org AND status.building_id = c_green_building;
+  IF v_building.status <> 'ONLINE' THEN
+    RAISE EXCEPTION 'a green-field building reads % instead of ONLINE',
+      coalesce(v_building.status, '<null>');
+  END IF;
+
+  -- 11. A green-field release that has never completed a cycle at all is still
+  --     ONLINE: with nothing to poll there is nothing for it to prove.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_green_digest, c_green_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    c_periodic, c_started
+  );
+  IF v_result->>'status' <> 'ONLINE' THEN
+    RAISE EXCEPTION
+      'a green-field release with no cycle yet was degraded to %',
+      v_result->>'status';
+  END IF;
+
+  -- 12. THE EQUIVALENCE. A fleet that reaches nothing and a fleet with nothing
+  --     to reach must no longer read back the same. That collision is the whole
+  --     defect, so it is asserted directly rather than inferred.
+  v_green := public.network_center_admin_worker_release_status_v1(
+    c_green_worker, c_green_release
+  );
+  IF (
+    v_blind->>'status', v_blind->>'connectionCount',
+    v_blind->>'successfulPollCount', v_blind->>'failedPollCount'
+  ) IS NOT DISTINCT FROM (
+    v_green->>'status', v_green->>'connectionCount',
+    v_green->>'successfulPollCount', v_green->>'failedPollCount'
+  ) THEN
+    RAISE EXCEPTION
+      'an all-unreachable fleet still reads back exactly like an unprovisioned one: %',
+      v_blind->>'status' || '/' || v_blind->>'connectionCount' || '/'
+        || v_blind->>'successfulPollCount' || '/' || v_blind->>'failedPollCount';
+  END IF;
+
+  -- ---------------------------------------------------------------------
+  -- THE CANARY. deploy-vultr.ps1 starts every candidate with
+  -- EMERGENCY_STOP=true; it heartbeats PAUSED and then STOPPING, and it
+  -- legitimately completes no successful poll. Relabelling it would break the
+  -- deploy flow, so the guard must not touch it.
+  -- ---------------------------------------------------------------------
+  -- 13. PAUSED with zero coverage stays PAUSED in the release row.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_release, ARRAY['polling'], 'PAUSED', 0,
+    c_blind_evidence, c_started
+  );
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_id = c_blind_id AND heartbeat.worker_version = c_release;
+  IF v_row.status <> 'PAUSED' THEN
+    RAISE EXCEPTION 'an emergency-stopped canary was relabelled %', v_row.status;
+  END IF;
+
+  -- 14. ... and in the row the operator reads.
+  SELECT status.* INTO v_building
+  FROM public.network_worker_building_status status
+  WHERE status.organization_id = c_org AND status.building_id = c_blind_building;
+  IF v_building.status <> 'PAUSED' THEN
+    RAISE EXCEPTION 'the canary''s building status was relabelled %',
+      coalesce(v_building.status, '<null>');
+  END IF;
+
+  -- 15. STOPPING is a lifecycle state too, including with no evidence at all.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_release, ARRAY['polling'], 'STOPPING', 0,
+    c_periodic, c_started
+  );
+  SELECT heartbeat.* INTO v_row
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_id = c_blind_id AND heartbeat.worker_version = c_release;
+  IF v_row.status <> 'STOPPING' THEN
+    RAISE EXCEPTION 'a stopping worker was relabelled %', v_row.status;
+  END IF;
+
+  -- 16. The gate keeps its number the whole time. A PAUSED canary is not
+  --     downgraded, but the expectation it will be measured against at promote
+  --     time is still computed and still 1.
+  IF (public.network_center_admin_worker_release_status_v1(
+    c_blind_worker, c_release
+  )->>'expectedConnectionCount')::integer <> 1 THEN
+    RAISE EXCEPTION 'the paused canary lost its server-derived expectation';
+  END IF;
+
+  -- ---------------------------------------------------------------------
+  -- BEFORE THE FIRST CYCLE, and recovery afterwards.
+  -- ---------------------------------------------------------------------
+  -- 17. A brand-new release with no poll evidence at all, on a fleet that HAS
+  --     connections, has not earned ONLINE.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    c_periodic, c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'a release that has never completed a cycle claimed % on a fleet with 1 connection',
+      v_result->>'status';
+  END IF;
+
+  -- 18. It is not sticky. The first cycle that covers the fleet reports ONLINE
+  --     immediately - the incoming count is read before the retained one.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 1, 'successfulPolls', 1, 'failedPolls', 0
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'ONLINE' THEN
+    RAISE EXCEPTION 'a recovered release stayed % after a fully covered cycle',
+      v_result->>'status';
+  END IF;
+
+  -- 19. ... including in the row the operator reads.
+  SELECT status.* INTO v_building
+  FROM public.network_worker_building_status status
+  WHERE status.organization_id = c_org AND status.building_id = c_blind_building;
+  IF v_building.status <> 'ONLINE' THEN
+    RAISE EXCEPTION 'the recovered building status is still %',
+      coalesce(v_building.status, '<null>');
+  END IF;
+
+  -- 20. The retained path is measured too: a periodic heartbeat carrying no
+  --     evidence inherits the covered cycle and stays ONLINE, so the guard
+  --     downgrades without PINNING.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    c_periodic, c_started
+  );
+  IF v_result->>'status' <> 'ONLINE' THEN
+    RAISE EXCEPTION 'the guard pinned a covered release to %', v_result->>'status';
+  END IF;
+
+  -- ---------------------------------------------------------------------
+  -- COVERAGE ARITHMETIC. The expectation follows server state, and the claim is
+  -- measured against it exactly.
+  -- ---------------------------------------------------------------------
+  UPDATE public.network_device_connections SET is_enabled = true
+  WHERE id = 'b0000000-0000-4000-8000-0000000000f2';
+
+  -- 21. Enabling a connection raises the bar, and the SAME retained evidence
+  --     that was healthy a moment ago is no longer sufficient.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    c_periodic, c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'a worker covering 1 of 2 connections through retained evidence claimed %',
+      v_result->>'status';
+  END IF;
+
+  -- 22. Partial fresh coverage is also short, and it carries NO failures - so
+  --     again only the coverage rule can catch it.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 1, 'successfulPolls', 1, 'failedPolls', 0
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION 'a worker that polled 1 of 2 connections claimed %',
+      v_result->>'status';
+  END IF;
+
+  -- 23. THE BAR IS SERVER STATE, NOT THE CLIENT'S OWN FLEET SIZE. This is the
+  --     forged-green-gate case: the worker declares a one-connection fleet and
+  --     reports covering all of it, which is internally consistent and would
+  --     satisfy any check written against the numbers the client supplies. The
+  --     server counts two and refuses.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 1, 'successfulPolls', 1, 'failedPolls', 0
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'a worker that declared its own one-connection fleet and covered it reported %',
+      v_result->>'status';
+  END IF;
+
+  -- 24. Exact coverage of the widened fleet is ONLINE again.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 2, 'successfulPolls', 2, 'failedPolls', 0
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'ONLINE' THEN
+    RAISE EXCEPTION 'a fully covered 2-connection fleet reported %',
+      v_result->>'status';
+  END IF;
+
+  -- 25. DOWNGRADE ONLY. A worker that reports DEGRADED while fully covered is
+  --     left DEGRADED; silently promoting it would be the same defect pointing
+  --     the other way.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'DEGRADED', 0,
+    jsonb_build_object(
+      'connections', 2, 'successfulPolls', 2, 'failedPolls', 0
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION 'the server upgraded a self-declared DEGRADED worker to %',
+      v_result->>'status';
+  END IF;
+
+  -- 26. And the failure rule from 20260729144000 still fires independently:
+  --     full coverage with a failure present is still DEGRADED.
+  v_result := public.network_center_worker_heartbeat_v2(
+    c_blind_digest, c_fresh_release, ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object(
+      'connections', 3, 'successfulPolls', 2, 'failedPolls', 1
+    ),
+    c_started
+  );
+  IF v_result->>'status' <> 'DEGRADED' THEN
+    RAISE EXCEPTION
+      'a covered fleet with a failing connection reported %', v_result->>'status';
+  END IF;
+
+  UPDATE public.network_device_connections SET is_enabled = false
+  WHERE id = 'b0000000-0000-4000-8000-0000000000f2';
+END
+$coverage_honesty$;
+
+-- =============================================================================
+-- started_at on the building-status row must track the process that is
+-- REPORTING, not the oldest one ever seen.
+-- =============================================================================
+DO $building_started_at_advances$
+DECLARE
+  c_blind_digest constant text := 'digest-worker-blind';
+  c_org constant uuid := '40000000-0000-4000-8000-0000000000aa';
+  c_building constant uuid := '20000000-0000-4000-8000-0000000000a1';
+  c_old_start constant timestamptz := clock_timestamp() - interval '3 hours';
+  c_new_start constant timestamptz := clock_timestamp() - interval '2 minutes';
+  v_started timestamptz;
+  v_release_started timestamptz;
+BEGIN
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_blind_digest, repeat('5', 40), ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object('connections', 1, 'successfulPolls', 1, 'failedPolls', 0),
+    c_old_start
+  );
+  -- 27. A newer process reporting for the same building must move the column.
+  --     LEAST pinned it to the oldest start forever; production showed both DEMO
+  --     buildings frozen at a release three promotions old.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_blind_digest, repeat('6', 40), ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object('connections', 1, 'successfulPolls', 1, 'failedPolls', 0),
+    c_new_start
+  );
+  SELECT status.started_at INTO v_started
+  FROM public.network_worker_building_status status
+  WHERE status.organization_id = c_org AND status.building_id = c_building;
+  IF v_started IS DISTINCT FROM c_new_start THEN
+    RAISE EXCEPTION
+      'building status start time is % but the reporting process started at % (delta %)',
+      coalesce(v_started::text, '<null>'), c_new_start::text,
+      coalesce((c_new_start - v_started)::text, '<null>');
+  END IF;
+
+  -- 28. An OLDER process reporting afterwards moves it back, because the column
+  --     means "the worker serving this building started then" - it is the live
+  --     reporter's start, exactly like status and heartbeat_at beside it, not a
+  --     high-water mark in either direction.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_blind_digest, repeat('5', 40), ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object('connections', 1, 'successfulPolls', 1, 'failedPolls', 0),
+    c_old_start
+  );
+  SELECT status.started_at INTO v_started
+  FROM public.network_worker_building_status status
+  WHERE status.organization_id = c_org AND status.building_id = c_building;
+  IF v_started IS DISTINCT FROM c_old_start THEN
+    RAISE EXCEPTION
+      'building status start time did not follow the reporting process (% vs %)',
+      coalesce(v_started::text, '<null>'), c_old_start::text;
+  END IF;
+
+  -- 29. THE FIX IS SURGICAL. The sibling LEAST on
+  --     app_private.network_worker_release_heartbeats is CORRECT and untouched:
+  --     that row is keyed by (worker, release), so the earliest start of one
+  --     release is a stable identity rather than an ever-older floor. Release
+  --     5 has now been reported twice, the second time with a LATER start.
+  PERFORM public.network_center_worker_heartbeat_v2(
+    c_blind_digest, repeat('5', 40), ARRAY['polling'], 'ONLINE', 0,
+    jsonb_build_object('connections', 1, 'successfulPolls', 1, 'failedPolls', 0),
+    clock_timestamp() - interval '1 minute'
+  );
+  SELECT heartbeat.started_at INTO v_release_started
+  FROM app_private.network_worker_release_heartbeats heartbeat
+  WHERE heartbeat.worker_id = '10000000-0000-4000-8000-00000000000b'
+    AND heartbeat.worker_version = repeat('5', 40);
+  IF v_release_started IS DISTINCT FROM c_old_start THEN
+    RAISE EXCEPTION
+      'the release row stopped keeping the earliest start of its own release (% vs %)',
+      coalesce(v_release_started::text, '<null>'), c_old_start::text;
+  END IF;
+END
+$building_started_at_advances$;
+
+-- =============================================================================
+-- Catalog-level guarantees the migration makes about itself.
+-- =============================================================================
+DO $catalog_guarantees$
+DECLARE
+  v_offender text;
+  v_caller text;
+  v_src text;
+BEGIN
+  -- 30. No live body anywhere still pins the building-status start time. The
+  --     v1 compatibility wrapper is a second writer with no Edge route, so a
+  --     hand-written two-function fix would have been easy to leave half done.
+  SELECT string_agg(
+    schema_row.nspname || '.' || function_row.proname, ', '
+    ORDER BY schema_row.nspname || '.' || function_row.proname
+  )
+  INTO v_offender
+  FROM pg_proc function_row
+  JOIN pg_namespace schema_row ON schema_row.oid = function_row.pronamespace
+  WHERE schema_row.nspname IN ('public', 'app_private')
+    AND function_row.prosrc IS NOT NULL
+    AND function_row.prosrc ~
+      'LEAST\(\s*public\.network_worker_building_status\.started_at';
+  IF v_offender IS NOT NULL THEN
+    RAISE EXCEPTION
+      'a live function still pins the building-status start time with LEAST: %',
+      v_offender;
+  END IF;
+
+  -- 31. The poll expectation has exactly ONE definition, reached by both
+  --     readers. Two inline copies that must agree forever by hand is the shape
+  --     this repository keeps getting bitten by.
+  FOREACH v_caller IN ARRAY ARRAY[
+    'public.network_center_admin_worker_release_status_v1(text,text)',
+    'public.network_center_worker_heartbeat_v2(text,text,text[],text,integer,jsonb,timestamp with time zone)'
+  ]
+  LOOP
+    SELECT proc.prosrc INTO v_src
+    FROM pg_proc proc WHERE proc.oid = to_regprocedure(v_caller);
+    IF v_src IS NULL
+       OR position(
+         'app_private.network_center_worker_expected_connections_v1' in v_src
+       ) = 0 THEN
+      RAISE EXCEPTION
+        '% does not derive the poll expectation from the shared predicate', v_caller;
+    END IF;
+    IF position('pollable_connections' in v_src) <> 0 THEN
+      RAISE EXCEPTION
+        '% still carries an inline copy of the pollable-connection predicate', v_caller;
+    END IF;
+  END LOOP;
+
+  -- 32. The helper is service-role-invisible and STABLE. A VOLATILE helper
+  --     would make the STABLE readback that calls it unusable from PostgREST's
+  --     READ ONLY transaction, and an exposed one would widen the definer
+  --     surface for no reason.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc proc
+    WHERE proc.oid = to_regprocedure(
+      'app_private.network_center_worker_expected_connections_v1(uuid,timestamp with time zone)'
+    )
+      AND proc.provolatile = 's'
+      AND proc.prosecdef
+      AND proc.proconfig = ARRAY['search_path=pg_catalog']::text[]
+  ) THEN
+    RAISE EXCEPTION 'the expectation helper is not a pinned STABLE SECURITY DEFINER';
+  END IF;
+  IF has_function_privilege(
+    'service_role',
+    'app_private.network_center_worker_expected_connections_v1(uuid,timestamp with time zone)',
+    'EXECUTE'
+  ) OR has_function_privilege(
+    'authenticated',
+    'app_private.network_center_worker_expected_connections_v1(uuid,timestamp with time zone)',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'the expectation helper is executable outside the definer chain';
+  END IF;
+
+  -- 33. The browser-visible table was NOT widened. Publishing poll counts on a
+  --     realtime-replicated, tenant-readable table to answer a question the
+  --     honest status already answers is the information leak this feature has
+  --     already been bitten by once.
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute attribute
+    WHERE attribute.attrelid = 'public.network_worker_building_status'::regclass
+      AND attribute.attnum > 0
+      AND NOT attribute.attisdropped
+      AND attribute.attname NOT IN (
+        'organization_id', 'building_id', 'status', 'heartbeat_at',
+        'queue_age_seconds', 'started_at', 'updated_at'
+      )
+  ) THEN
+    RAISE EXCEPTION
+      'public.network_worker_building_status grew a column beyond the reviewed browser-visible set';
+  END IF;
+END
+$catalog_guarantees$;
+
+SELECT jsonb_build_object(
+  'status', 'PASS',
+  'invariants', 95
+) AS disposable_coverage_honesty_proof;
+`;
+
 function executableName(name) {
   return process.platform === "win32" ? `${name}.exe` : name;
 }
@@ -3365,7 +4388,8 @@ export async function runDisposableReleaseProof({ environment = process.env } = 
     });
     started = true;
     runNative(binaries.psql, connectionArgs, {
-      input: `${BOOTSTRAP_SQL}\n${OPERATIONAL_SAFETY_BOOTSTRAP_SQL}`,
+      input: `${BOOTSTRAP_SQL}\n${OPERATIONAL_SAFETY_BOOTSTRAP_SQL}\n`
+        + BUILDING_STATUS_BOOTSTRAP_SQL,
       quiet: true,
     });
     const migrations = await Promise.all(
@@ -3379,7 +4403,8 @@ export async function runDisposableReleaseProof({ environment = process.env } = 
       binaries.psql,
       ["-q", "-t", "-A", ...connectionArgs],
       {
-        input: `${ASSERTION_SQL}\n${OPERATIONAL_SAFETY_ASSERTION_SQL}`,
+        input: `${ASSERTION_SQL}\n${OPERATIONAL_SAFETY_ASSERTION_SQL}\n`
+          + COVERAGE_HONESTY_ASSERTION_SQL,
         quiet: true,
       },
     );
@@ -3401,9 +4426,11 @@ export async function runDisposableReleaseProof({ environment = process.env } = 
         && Object.hasOwn(entry, "invariants"));
     const verdict = verdicts.at(-1) ?? null;
     if (
-      verdicts.length !== 2
+      verdicts.length !== 3
       || verdicts.some((entry) => entry?.status !== "PASS")
       || verdicts[0]?.invariants !== RELEASE_READBACK_INVARIANTS
+      || verdicts[1]?.invariants
+        !== RELEASE_READBACK_INVARIANTS + OPERATIONAL_SAFETY_INVARIANTS
       || verdict?.invariants !== TOTAL_DISPOSABLE_INVARIANTS
     ) {
       throw new Error("Disposable release proof did not return the expected PASS verdict");

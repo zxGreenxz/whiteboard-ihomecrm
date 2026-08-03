@@ -586,10 +586,30 @@ test("disposable proof exercises both retention reachability and null poll evide
     /verdicts\[0\]\?\.invariants !== RELEASE_READBACK_INVARIANTS/,
     "the release readback verdict must still be checked exactly",
   );
+  // One verdict per assertion fragment, each checked exactly. A fragment that
+  // stops printing its verdict - because it threw, or because someone dropped
+  // it - must fail the proof rather than shorten it silently.
   assert.match(
     source,
-    /verdicts\.length !== 2/,
-    "a missing operational-safety verdict must fail the proof",
+    /verdicts\.length !== 3/,
+    "a missing operational-safety or coverage-honesty verdict must fail the proof",
+  );
+  assert.match(
+    source,
+    /verdicts\[1\]\?\.invariants[\s\S]{0,60}!== RELEASE_READBACK_INVARIANTS\s*\+\s*OPERATIONAL_SAFETY_INVARIANTS/,
+    "the cumulative operational-safety verdict must still be checked exactly",
+  );
+  // The forward fix is DISCOVERED, never named: a deleted or renamed one has to
+  // turn this proof red instead of leaving the superseded body certified.
+  assert.match(
+    source,
+    /readdirSync\(directory\)/,
+    "forward-fix stages must be discovered from the migration directory",
+  );
+  assert.match(
+    source,
+    /No Network Center migration was discovered after/,
+    "an empty forward-fix glob must name itself rather than apply nothing in silence",
   );
   assert.match(
     source,

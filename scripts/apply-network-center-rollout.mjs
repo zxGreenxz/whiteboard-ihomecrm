@@ -699,6 +699,17 @@ async function main() {
   const manifest = await loadManifest();
   const { validateRolloutCli } = await import("./validate-network-center-rollout.mjs");
   const validation = await validateRolloutCli({ revision: options.revision, manifest });
+  // Say out loud which stages this release has turned into no-ops. They are
+  // legitimate - a later stage re-declares every function they own - but an
+  // operator watching a production rollout should not have to infer that from a
+  // stage that appears to do nothing.
+  for (const stage of validation.subsumedStages ?? []) {
+    const by = [...new Set(stage.supersededBy.map((item) => item.by))].join(", ");
+    process.stdout.write(
+      `note: stage ${stage.ordinal} ${stage.path} is a no-op in this release; `
+        + `every function it declares is re-declared by ${by}\n`,
+    );
+  }
   let requestedStartIndex = 0;
   if (options.resumeFrom) {
     requestedStartIndex = manifest.migrations.findIndex((item) => item.path === options.resumeFrom);
