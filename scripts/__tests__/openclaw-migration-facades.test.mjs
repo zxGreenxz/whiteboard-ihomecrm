@@ -280,32 +280,37 @@ describe("migration facades under the calling role", () => {
     });
   });
 
-  it("keeps the retention cron role out of the migration surface", async () => {
+  it("narrows the retention cron role without cutting what it already had", async () => {
     await withDatabase(async (database) => {
-      // These helpers used to be owned by openclaw_maintenance_writer - the role the
-      // retention/audit cron runs as - so every policy they needed handed that cron
-      // cross-organization write authority over GLOBAL_STOP, the outbox, leases,
-      // credentials and account session state.
-      const widened = await database.query(
-        `select tablename, policyname from pg_policies
-         where schemaname = 'public'
-           and 'openclaw_maintenance_writer' = any(roles)
-           and tablename in (
-             'openclaw_control_states', 'openclaw_outbox', 'openclaw_runtime_leases',
-             'openclaw_accounts', 'openclaw_runtime_credentials'
-           )
-           and cmd = 'ALL'`,
-      );
-      expect(widened.rows).toEqual([]);
+      const privileges = async (role, table) => (await database.query(
+        `select privilege_type from information_schema.table_privileges
+         where grantee = $1 and table_name = $2 order by privilege_type`,
+        [role, table],
+      )).rows.map((row) => row.privilege_type);
 
-      const privileges = await database.query(
-        `select table_name, privilege_type from information_schema.table_privileges
-         where grantee = 'openclaw_maintenance_writer'
-           and table_name in ('openclaw_control_states', 'openclaw_runtime_leases')`,
-      );
-      expect(privileges.rows).toEqual([]);
+      // The cron KEEPS the access it had before this task. An earlier version of
+      // this test asserted the opposite and locked in a production break: a blanket
+      // revoke had stripped select/update on openclaw_outbox (granted by the RPC
+      // surface) and select on control_states / runtime_credentials (granted by the
+      // retention source loop), so smoke cleanup and retention scanning hit 42501.
+      expect(await privileges("openclaw_maintenance_writer", "openclaw_outbox"))
+        .toEqual(["SELECT", "UPDATE"]);
+      for (const table of ["openclaw_control_states", "openclaw_runtime_credentials"]) {
+        expect(await privileges("openclaw_maintenance_writer", table), table)
+          .toContain("SELECT");
+      }
 
-      // And the surface really is owned by the dedicated role now.
+      // But it does NOT keep the write verbs this task briefly handed it.
+      expect(await privileges("openclaw_maintenance_writer", "openclaw_control_states"))
+        .not.toContain("INSERT");
+      expect(await privileges("openclaw_maintenance_writer", "openclaw_runtime_leases"))
+        .toEqual([]);
+      expect(await privileges("openclaw_maintenance_writer", "openclaw_accounts"))
+        .toEqual([]);
+      expect(await privileges("openclaw_maintenance_writer", "openclaw_qr_challenges"))
+        .not.toContain("UPDATE");
+
+      // And the migration surface really is owned by the dedicated role.
       const owners = await database.query(
         `select proname, pg_get_userbyid(proowner) as owner
          from pg_proc where proname in (
@@ -315,6 +320,10 @@ describe("migration facades under the calling role", () => {
       );
       expect(owners.rows.length).toBeGreaterThan(0);
       for (const row of owners.rows) expect(row.owner).toBe("openclaw_migration_writer");
+
+      // The migration role must not be able to read the audit chain it appends to.
+      expect(await privileges("openclaw_migration_writer", "openclaw_audit_events"))
+        .toEqual([]);
     });
   });
 

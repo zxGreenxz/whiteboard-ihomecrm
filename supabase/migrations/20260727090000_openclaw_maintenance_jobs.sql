@@ -8365,11 +8365,17 @@ begin
   -- version checked only that SOME lease existed, which a stale lower-token lease
   -- from an aborted migration would satisfy while the organization still had
   -- accounts pointing nowhere.
+  -- Only accounts that still hold an ACTIVE lease need a replacement. Counting
+  -- every account that ever had a lease row blocked revoke and rotate FOREVER:
+  -- replacing an account deactivates the old one (one active account per
+  -- organization), and its historical REVOKED lease can never move to the new
+  -- cell, because the lease FK ties a cell to exactly one account.
   select count(*) into v_pending
   from (
     select distinct lease.account_id
     from public.openclaw_runtime_leases lease
     where lease.organization_id = v_scope.organization_id
+      and lease.status = 'ACTIVE' and lease.released_at is null
   ) account
   where not exists (
     select 1 from public.openclaw_runtime_leases lease
@@ -8579,12 +8585,17 @@ drop policy if exists openclaw_accounts_migration_writer_all
 drop policy if exists openclaw_runtime_credentials_migration_writer_all
   on public.openclaw_runtime_credentials;
 
-revoke all on public.openclaw_control_states,
-  public.openclaw_outbox,
-  public.openclaw_runtime_leases,
-  public.openclaw_accounts,
-  public.openclaw_runtime_credentials
-  from openclaw_maintenance_writer;
+-- Revoke ONLY what section 10/11 granted, verb by verb. A blanket
+-- `revoke all ... from openclaw_maintenance_writer` also stripped grants that
+-- PRE-DATE this task - select/update on openclaw_outbox (rpc_surface), and select
+-- on openclaw_control_states / openclaw_runtime_credentials from the retention
+-- source loop above - which broke the smoke cleanup and retention scanning cron
+-- with 42501 in production.
+revoke insert, update on public.openclaw_control_states from openclaw_maintenance_writer;
+revoke select, insert, update on public.openclaw_runtime_leases from openclaw_maintenance_writer;
+revoke select, update on public.openclaw_accounts from openclaw_maintenance_writer;
+revoke insert, update on public.openclaw_runtime_credentials from openclaw_maintenance_writer;
+revoke update on public.openclaw_qr_challenges from openclaw_maintenance_writer;
 
 -- Grant the migration role exactly the verbs its facades use, no more.
 grant select, insert, update on public.openclaw_control_states
@@ -8675,13 +8686,10 @@ revoke all on function app_private.openclaw_audit_migration_step_v1(uuid, text, 
 grant execute on function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
   to openclaw_service_dispatcher, openclaw_migration_writer;
 
-grant select, insert on public.openclaw_audit_events to openclaw_migration_writer;
-create policy openclaw_audit_events_migration_writer_append
-  on public.openclaw_audit_events for insert to openclaw_migration_writer
-  with check (true);
-create policy openclaw_audit_events_migration_writer_select
-  on public.openclaw_audit_events for select to openclaw_migration_writer
-  using (true);
+-- No grant or policy on public.openclaw_audit_events: append_openclaw_audit_v1 is
+-- SECURITY DEFINER owned by openclaw_function_owner, so the migration role needs
+-- none. Granting them added an org-wide SELECT over the hash-chained audit log
+-- that nothing reads.
 
 -- The audit call sits at the END of each facade: a step that raised has not
 -- happened, and must not leave a record claiming it did.
@@ -8858,5 +8866,85 @@ grant execute on function app_private.append_openclaw_audit_v1(
 
 grant execute on function app_private.openclaw_jcs_text_v1(jsonb)
   to openclaw_migration_writer;
+
+
+-- ---------------------------------------------------------------------------
+-- 15. rotate and revoke are different steps and must do different work
+-- ---------------------------------------------------------------------------
+-- Both used to call openclaw_retire_old_cell_v1, so whichever ran second reported
+-- `affected: 0` - migration evidence claiming a credential rotation that had
+-- already happened one step earlier, or none at all. migrate-cell.sh runs rotate
+-- (step 7) BEFORE acquire (8) and revoke (9), so rotate retires the credentials and
+-- revoke verifies the handover finished and left nothing usable behind.
+
+create or replace function app_private.openclaw_verify_old_cell_retired_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_pending integer;
+  v_live_credentials integer;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  select count(*) into v_pending
+  from (
+    select distinct lease.account_id
+    from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.status = 'ACTIVE' and lease.released_at is null
+  ) account
+  where not exists (
+    select 1 from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.account_id = account.account_id
+      and lease.cell_id = v_scope.new_cell
+      and lease.status = 'ACTIVE' and lease.released_at is null
+  );
+  if v_pending > 0 then
+    raise exception '% account(s) still hold no active lease on the new cell', v_pending
+      using errcode = '42501';
+  end if;
+
+  -- The old cell must be unusable: a live credential on it would let a fenced cell
+  -- keep authenticating.
+  select count(*) into v_live_credentials
+  from public.openclaw_runtime_credentials credential
+  where credential.organization_id = v_scope.organization_id
+    and credential.cell_id = v_scope.old_cell and credential.revoked_at is null;
+  if v_live_credentials > 0 then
+    raise exception 'old cell still holds % unrevoked credential(s); rotate first',
+      v_live_credentials using errcode = '42501';
+  end if;
+
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', 0);
+end;
+$function$;
+
+alter function app_private.openclaw_verify_old_cell_retired_v1(jsonb)
+  owner to openclaw_migration_writer;
+revoke all on function app_private.openclaw_verify_old_cell_retired_v1(jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function app_private.openclaw_verify_old_cell_retired_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+create or replace function public.openclaw_service_revoke_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_verify_old_cell_retired_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'revoke-old-credential-and-lease', p_request
+  );
+  return v_result;
+end;
+$function$;
 
 commit;
