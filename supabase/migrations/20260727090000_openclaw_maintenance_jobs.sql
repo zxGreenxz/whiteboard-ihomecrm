@@ -2411,6 +2411,46 @@ begin
            (to_jsonb(OLD)-array['lifecycle_state','archived_at']) then
       return NEW;
     end if;
+    -- RECORDING A VALIDATION RESULT IS NOT REDACTION.
+    --
+    -- openclaw_validate_knowledge_v1 sets validation_result on a DRAFT and changes
+    -- nothing else. Without this exemption it raised 42501 unconditionally - the
+    -- RPC runs as openclaw_function_owner, not openclaw_maintenance_writer - and
+    -- because openclaw_publish_knowledge_v1 hard-requires a non-null
+    -- validation_result that nothing else ever writes, PUBLISH was unreachable too.
+    -- The whole knowledge lifecycle was dead from the moment this trigger replaced
+    -- the append-only one, and no test noticed because PGlite runs as superuser
+    -- while `current_user` inside a definer body is the function OWNER, not the
+    -- session role.
+    --
+    -- Direction matters: the redaction path below NULLS validation_result, so
+    -- null -> non-null is provably the opposite operation and cannot be used to
+    -- erase evidence. Everything else must be byte-identical.
+    if TG_TABLE_NAME='openclaw_knowledge_versions'
+       and OLD.lifecycle_state='DRAFT' and NEW.lifecycle_state='DRAFT'
+       and OLD.validation_result is null and NEW.validation_result is not null
+       and (to_jsonb(NEW)-'validation_result')
+         is not distinct from (to_jsonb(OLD)-'validation_result') then
+      return NEW;
+    end if;
+    -- ARCHIVING A DRAFT.
+    --
+    -- openclaw_archive_knowledge_v1 accepts a DRAFT as well as a PUBLISHED version,
+    -- and sets published_at because an archived row must carry one. For a PUBLISHED
+    -- row coalesce leaves that column alone and the exemption above matches; for a
+    -- DRAFT it moves, so that exemption's byte-identical test failed and archiving a
+    -- draft was impossible. Scoped to knowledge versions: no policy-version RPC
+    -- performs this transition, and widening a redaction guard for a caller that
+    -- does not exist is how guards stop meaning anything.
+    if TG_TABLE_NAME='openclaw_knowledge_versions'
+       and OLD.lifecycle_state='DRAFT' and NEW.lifecycle_state='ARCHIVED'
+       and OLD.archived_at is null and NEW.archived_at is not null
+       and OLD.published_at is null and NEW.published_at is not null
+       and (to_jsonb(NEW)-array['lifecycle_state','archived_at','published_at'])
+         is not distinct from
+           (to_jsonb(OLD)-array['lifecycle_state','archived_at','published_at']) then
+      return NEW;
+    end if;
   end if;
   if current_user<>'openclaw_maintenance_writer' then
     raise exception 'only openclaw_maintenance_writer may perform retention redaction'
