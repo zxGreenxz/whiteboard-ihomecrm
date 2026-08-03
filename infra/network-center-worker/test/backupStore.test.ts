@@ -79,7 +79,7 @@ function input(
     commandId: `50000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
     attemptNo: 1,
     createdAt,
-    encryption: "ROUTEROS_AES_SHA256" as const,
+    encryption: "ROUTEROS_EXPORT_PLAINTEXT" as const,
     artifact,
   };
 }
@@ -156,12 +156,12 @@ describe("verified backup store", () => {
       "40000000-0000-4000-8000-000000000001",
     );
     expect(
-      (await readdir(deviceDirectory)).filter((name) => name.endsWith(".backup"))
+      (await readdir(deviceDirectory)).filter((name) => name.endsWith(".rsc"))
         .length,
     ).toBeLessThanOrEqual(3);
 
     await store.rotate(new Date("2026-07-29T00:01:00.000Z"));
-    const remaining = (await readdir(deviceDirectory)).filter((name) => name.endsWith(".backup"));
+    const remaining = (await readdir(deviceDirectory)).filter((name) => name.endsWith(".rsc"));
 
     expect(remaining).toHaveLength(2);
     await expect(stat(receipts[0]!.path)).rejects.toMatchObject({ code: "ENOENT" });

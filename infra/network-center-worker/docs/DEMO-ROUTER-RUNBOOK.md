@@ -44,10 +44,18 @@ Trong phiên LAN hiện tại, chỉ đọc và lưu evidence cục bộ ngoài 
 /user/print detail without-paging
 ```
 
-Chụp một binary backup mã hóa AES-SHA256 và một export
-`terse show-sensitive=no`. Mật khẩu backup phải nằm trong file mode `0600`, không
-đưa vào terminal history, chat hoặc commit. Ghi lại SHA-256 của hai artifact; raw
-artifact nằm ngoài repo.
+Chụp **một text export đã redact** làm snapshot tiền-action:
+
+```routeros
+/export terse hide-sensitive
+```
+
+Ghi lại SHA-256 của artifact; raw artifact nằm ngoài repo.
+
+> **KHÔNG còn binary backup.** `/system/backup/save` đã bị bỏ khỏi đường đi của
+> worker (đo 2026-08-03: nó đòi `policy`+`test`, và tải `.backup` về qua SFTP đòi
+> `sensitive` — không bộ policy nào vừa chạy được backup vừa cấm worker đọc
+> private key). Chi tiết ở mục 9.
 
 ## 2. Sinh key và input ngoài repo
 
@@ -385,7 +393,7 @@ thông báo lỗi của chính RouterOS (`failure: …`), không phải `:error`
 | 01 `wireguard-interface` | interface `wg-ihome-mgmt` (marker `:wireguard`) | có (step 15) |
 | 02 `management-address` | `/ip/address` trên wg (marker `:address`) | có (step 14) |
 | 03 `wireguard-peer` | peer VPS (marker `:peer`) | có (step 13) |
-| 04 `worker-group` | `/user/group network-center-worker` | **KHÔNG** — group không mang marker nên rollback bỏ qua; gỡ tay: `/user/group remove [find where name="network-center-worker"]` |
+| 04 `worker-group` | `/user/group network-center-worker`, policy `ssh,ftp,reboot,read,write,test` (KHÔNG `sensitive` — xem 3.3) | **KHÔNG** — group không mang marker nên rollback bỏ qua; gỡ tay: `/user/group remove [find where name="network-center-worker"]` |
 | 05 `worker-user` | user `ihome-nc-worker` (comment = marker) | có (step 16) |
 | 06 `worker-ssh-key-clear` | xóa ssh-key cũ của user đó | không cần |
 | 07 `worker-ssh-key-import` | nạp `worker-ssh-key.pub` | có (step 16, xóa cùng user) |
@@ -414,6 +422,152 @@ chọn `recoveryCidr` phủ được địa chỉ thật của máy vận hành.
 
 Rollback chạy được trên trạng thái dở dang vì mọi lệnh remove của nó đều chọn
 theo marker và selector rỗng là no-op; các `/ip/service set` thì idempotent.
+
+### 3.3 Quyền của `network-center-worker`: KHÔNG có `sensitive`
+
+`router-bootstrap.rsc` tạo group với đúng sáu policy:
+
+```routeros
+/user/group add name=network-center-worker policy=ssh,ftp,reboot,read,write,test
+```
+
+**Vì sao bỏ `sensitive`** (đo trên hEX demo, RouterOS 7.20.8, 2026-08-03, phiên
+chỉ-đọc, KHÔNG đổi gì trên router):
+
+| lệnh | kết quả đo |
+|---|---|
+| `/interface/wireguard/print detail` | `private-key="<44 ký tự>"` — lộ **plaintext** |
+| `/interface/wireguard/export terse` | 543 B, **0** lần xuất hiện `private-key` |
+| `/interface/wireguard/export terse show-sensitive` | 602 B, **1** `private-key` dài 44 |
+| `/interface/print detail terse` (lệnh poll THẬT) | 1338 B, **0** trường nhạy cảm |
+| 7 lệnh đọc còn lại của worker | **0** trường nhạy cảm |
+
+Nghĩa là private key của tunnel chỉ với tới được qua submenu
+`/interface/wireguard` — thứ worker **không bao giờ gọi**. Bỏ `sensitive` đóng
+hẳn đường đọc plaintext mà không mất một lệnh nào.
+
+> Dòng thứ hai của bảng là bài học riêng: `export terse` mặc định ĐÃ ẩn key
+> (`/export terse` và `/export hide-sensitive terse` cho ra output **byte y hệt
+> nhau**), nhưng flag anh em `show-sensitive` thì **in trọn key**. Đừng bao giờ
+> "sửa" một lệnh export bằng cách bỏ bớt chữ.
+
+**Bộ policy tối thiểu, suy lại ngày 2026-08-03** sau khi binary backup rời khỏi
+đường đi của worker — đo trên 6 identity tạm:
+
+| lệnh worker thật sự gửi | `ssh,read` | `ssh,read,write` | `+ftp` |
+|---|---|---|---|
+| `:put [/interface/print as-value stats]` | OK | OK | OK |
+| mọi `/…/print` còn lại trong poll | OK | OK | OK |
+| `/export terse hide-sensitive` (stdout) | OK | OK | OK |
+| `:execute script={…}` (arm dead-man) | OK | OK | OK |
+| `/system/script/job/remove` (disarm) | **DENIED** | OK | OK |
+| `/export … file=` (ĐÃ BỎ) | DENIED | DENIED | OK |
+| SFTP subsystem (ĐÃ BỎ) | DENIED | DENIED | OK |
+
+- **`test` KHÔNG cần nữa.** `:execute` chạy được với identity `ssh,read` trần.
+  Thứ duy nhất đổi giữa cột 1 và cột 2 là `write` (`/system/script/job/remove`).
+  `test` trước đây chỉ phục vụ `/system/backup/save`, mà lệnh đó đã bị bỏ.
+- **`ftp` KHÔNG cần nữa.** Nó chỉ gác `/export … file=` và SFTP subsystem
+  (`Unable to start subsystem: sftp`); export giờ đọc thẳng từ stdout.
+
+⇒ bộ tối thiểu: **`ssh,reboot,read,write`**.
+
+`policy` bị chặn: có nó, worker tự sửa được group của chính mình để cấp lại
+`sensitive` (đã đo, không phải suy đoán). `ftp` và `test` **cũng** bị chặn — giữ
+một policy được cấp mà không lệnh nào dùng chỉ là capability nằm chờ.
+
+**`reboot` là policy DUY NHẤT chưa đo được**: chứng minh nó đòi hỏi bắn
+`/system/reboot` vào chính gateway Internet đang sống của operator. Nó được giữ
+theo tài liệu RouterOS, và ghi rõ là *chưa đo* thay vì trưng ra như bằng chứng.
+
+**Rủi ro backup: ĐÃ ĐÓNG bằng cách bỏ hẳn binary backup** (đo 2026-08-03, mỗi
+dòng là một identity tạm tạo mới, có `:put "CHANNEL_OK"` làm control cùng phiên):
+
+- `/system/backup/save` đòi `policy` **và** `test` — không phải `write`, không
+  phải `ftp`, không phải `sensitive`. Group worker đang chạy production **thiếu
+  `policy`**, nên nó trả `Failed to save system configuration backup`, `file=0`.
+  Lặp lại 3 lần: pre-action backup **vốn đã hỏng sẵn** trước mọi việc siết.
+- tải `.backup` về qua SFTP đòi `sensitive` — tương quan tuyệt đối trên 7
+  identity, trong khi `.rsc` tải được ở cả 7 (đó là control chứng minh kênh SFTP
+  vẫn sống).
+- user có `policy` mà `!sensitive` **tự sửa group của chính nó** để thêm
+  `sensitive`, rồi đọc trọn private key ở lần login kế tiếp (`:len` 5 trong
+  phiên, 44 sau khi reconnect).
+
+⇒ Bộ policy nhỏ nhất chạy được binary backup **rộng hơn** bộ đang deploy và cấp
+lại đúng hai thứ mà việc siết sinh ra để bỏ. Không có điểm cân bằng nào ở giữa,
+nên **binary backup bị loại khỏi worker**, thay bằng text export (mục 9).
+
+### 3.4 Router ĐÃ provision: chuỗi lệnh siết group (CHƯA CHẠY)
+
+Router demo hiện vẫn mang `sensitive`. Đo chỉ-đọc ngày 2026-08-03:
+
+```text
+policy = ssh;ftp;reboot;read;write;test;sensitive;!local;!telnet;!policy;
+         !winbox;!password;!web;!sniff;!api;!romon;!rest-api
+```
+
+nên preflight mới **cố ý** từ chối cả hai stage với
+`NETWORK_CENTER_GROUP_CONFLICT/group-policy-grants-sensitive` (và bản
+`lockdown-…` tương ứng) cho tới khi group được siết.
+
+> **CHƯA CHẠY LỆNH NÀO DƯỚI ĐÂY.** Router demo là gateway Internet đang sống của
+> máy vận hành. Chạy khi operator quyết định, từ phiên LAN còn mở, và **không**
+> đóng phiên cũ trước khi bước 4 xanh.
+
+```routeros
+# 1. Ảnh chụp trước (dán vào evidence)
+:put [:tostr [/user/group get [find where name="network-center-worker"] policy]]
+
+# 2. Siết group — KHÔNG remove/add lại, vì user đang trỏ vào group này
+/user/group set [find where name="network-center-worker"] policy=ssh,ftp,reboot,read,write,test
+
+# 3. Đọc lại: phải KHÔNG còn `sensitive` ở dạng cấp
+:put [:tostr [/user/group get [find where name="network-center-worker"] policy]]
+```
+
+Kỳ vọng sau bước 3:
+
+```text
+ssh;ftp;reboot;read;write;test;!local;!telnet;!policy;!winbox;!password;!web;
+!sniff;!sensitive;!api;!romon;!rest-api
+```
+
+**4. Cổng kiểm bắt buộc — chạy bằng credential CỦA WORKER, không phải admin.**
+Đây là chỗ trả lời câu hỏi chưa đo được ở 3.3:
+
+```routeros
+# 4a. private key phải KHÔNG còn đọc được (kỳ vọng: 5, KHÔNG phải 44)
+:put [:len [:tostr [/interface/wireguard get [find where name="wg-ihome-mgmt"] private-key]]]
+
+# 4b. snapshot tiền-action phải chạy được — đây là TOÀN BỘ những gì worker cần.
+#     Không có file nào được tạo trên router, nên không có gì phải dọn.
+/export terse hide-sensitive
+
+# 4c. dead-man switch của port cycle phải arm + disarm được
+:local j [:execute script={:delay 1s}]; :put ("JOB:" . [:tostr $j]); /system/script/job/remove [/system/script/job/find where .id=$j]; :put ("LEFT:" . [:len [/system/script/job/find where .id=$j]])
+
+# 4d. những thứ PHẢI bị từ chối (nếu chạy được ⇒ group còn rộng hơn tối thiểu)
+/export terse hide-sensitive file=nc-policy-probe
+```
+
+- 4a trả về `44` ⇒ việc siết **không** có tác dụng, dừng lại và điều tra.
+  (`5` là placeholder RouterOS trả khi giấu giá trị — đã đo cả hai đầu.)
+- 4a phải đọc ở **phiên đăng nhập MỚI**: đổi policy chỉ có hiệu lực sau khi
+  reconnect. Một lần đo trước đây thấy `5` trong phiên và `44` sau khi kết nối
+  lại — probe nào bỏ bước reconnect sẽ kết luận sai.
+- 4b bị từ chối ⇒ dừng, group thiếu `read`.
+- 4c phải in `JOB:*…` rồi `LEFT:0`. Chỉ in `JOB:` rồi
+  `not enough permissions (9)` ⇒ group thiếu `write`.
+- 4d **phải** trả `not enough permissions (9) (:export; line 1)`. Nếu nó ghi được
+  file ⇒ group vẫn còn `ftp`, chưa đạt tối thiểu.
+
+(RouterOS trả `failure: …` / `not enough permissions` ra **stdout với exit code
+0** — phải đọc chữ, đừng tin mỗi exit status.)
+
+**5.** Sau khi 4a/4b/4c xanh: chạy lại một poll cycle đầy đủ rồi mới tới mục 7.
+Không cần re-import `router-bootstrap.rsc`; nếu có import lại thì preflight mới
+sẽ pass vì group đã đúng.
 
 ## 4. Bring up WireGuard trên VPS
 
@@ -502,8 +656,13 @@ Thử tuần tự và kiểm audit/stage ở mỗi bước:
 4. `REBOOT_ROUTER`: làm cuối cùng; xác minh `UNCERTAIN`/reconciliation nếu SSH
    rớt sau khi lệnh đã gửi, và không tự reboot lần hai.
 
-Mỗi action phải có lease renewal, pre-backup AES-SHA256, redacted snapshot,
-event stages, post-check và audit. User có `network_center.execute` chạy ngay;
+Mỗi action phải có lease renewal, snapshot text đã redact (`/export terse
+hide-sensitive`), event stages, post-check và audit.
+
+> `backupPasswordFile` trong config worker giờ **không còn được dùng** — không
+> lệnh nào trên router tiêu thụ nó nữa. Nó vẫn nằm trong schema config và deploy
+> asset để không phá hợp đồng deploy đang chạy; hãy gỡ nó trong lần chỉnh
+> deploy-asset kế tiếp, và tới lúc đó thì secret đó có thể xoá khỏi host. User có `network_center.execute` chạy ngay;
 không có approval workflow.
 
 ## 9. Rollback
@@ -521,10 +680,50 @@ Nếu WireGuard/SSH worker không ổn định:
    dừng giữa chừng, `NC_STEP` cuối cùng là bước chưa hoàn tất — đọc theo bảng ở
    mục 3.2;
 3. xác minh cả tám management service và `strong-crypto` trở về đúng pre-state;
-4. giữ binary backup/export để điều tra nhưng không commit;
-5. xóa/rotate key và worker secret bị nghi lộ;
-6. chỉ khôi phục binary backup khi rollback script không đủ và đã xác nhận đúng
-   router/model/RouterOS version.
+4. giữ text export tiền-action để điều tra nhưng không commit;
+5. xóa/rotate key và worker secret bị nghi lộ.
+
+### 9.1 KHÔNG CÒN BINARY BACKUP — đánh đổi phải đọc trước khi có sự cố
+
+Snapshot tiền-action giờ là **text** `/export terse hide-sensitive`, không phải
+ảnh `.backup`. Lý do đầy đủ ở mục 3.3; hệ quả vận hành:
+
+- **Bốn action đóng không cần binary restore.** `FLUSH_DNS_CACHE` và
+  `RENEW_DHCP_LEASE` không đổi một dòng config nào; `REBOOT_ROUTER` cũng vậy;
+  `CYCLE_ACCESS_PORT` chỉ lật cờ `disabled` của đúng một interface, đằng sau
+  dead-man switch chạy trên router tự bật lại kể cả khi worker chết. Không có
+  action nào chạm tới state chỉ ảnh nhị phân mới khôi phục được.
+- **Đường rollback chính không đổi**: phiên LAN recovery + `/import
+  router-rollback.rsc`. Binary backup trước đây cũng chỉ là bước 6 "khi script
+  rollback không đủ".
+- **ĐÁNH ĐỔI, nói thẳng:** text export **không** khôi phục được state nhị phân mà
+  ảnh `.backup` khôi phục được — certificate và private key của nó, SSH host
+  key, WireGuard private key, hash mật khẩu user. Với `hide-sensitive` thì những
+  thứ đó vắng mặt **theo thiết kế**. Nghĩa là: một router dựng lại **chỉ** từ
+  artifact này sẽ **mất danh tính tunnel quản trị** và phải bootstrap lại từ
+  đầu (mục 2–4). Đây không phải sự cố, nhưng phải biết trước, không phải phát
+  hiện lúc 3 giờ sáng.
+- Muốn có ảnh nhị phân đầy đủ thì **operator tự chạy bằng credential admin**,
+  ngoài worker — vì chính worker không được phép, và đó là điều mong muốn:
+
+  ```routeros
+  /system/backup/save name=<tên> password=<mật khẩu> encryption=aes-sha256
+  ```
+
+  Lưu ý ảnh này **chứa WireGuard private key ở dạng base64** (đã đo: có mặt ở
+  cùng offset kể cả khi user tạo backup không đọc được key qua CLI), nên nó là
+  vật liệu nhạy cảm ngang private key — cất và luân chuyển tương ứng.
+
+### 9.2 Artifact tiền-action nằm ở đâu, và nó KHÔNG được mã hoá
+
+`backupStore` lưu artifact dưới dạng `*.rsc`, mode `0600` trong thư mục `0700`,
+nhãn `ROUTEROS_EXPORT_PLAINTEXT` — **plaintext, đúng như tên gọi**. Nhãn cũ
+`ROUTEROS_AES_SHA256` đã bị bỏ vì nó khẳng định một lớp mã hoá không còn tồn tại.
+
+Đổi lại, artifact này **an toàn hơn thứ nó thay thế khi nằm im**: `.backup` cũ
+chứa private key và được mã hoá bằng `backupPassword` mà **chính worker giữ**
+(khoá nằm cạnh ổ khoá); export mới không chứa key ngay từ đầu — đo được **0** lần
+xuất hiện `private-key=` trong 8133 B.
 
 Evidence được phép commit chỉ gồm test, runbook, hash và kết luận đã redact; không
 commit IP thật, host key, WireGuard key, SSH key, password, raw export hoặc binary

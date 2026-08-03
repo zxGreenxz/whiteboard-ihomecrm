@@ -58,6 +58,35 @@ export interface FakeInterface {
   defaultName: string;
   type: string;
   disabled: boolean;
+  /**
+   * The link-flap counter RouterOS 7.20.8 really does print from
+   * `/interface/print detail terse`. Present here because the connector used to
+   * read it AS THE LINE SPEED, and a fixture that omits it cannot reproduce that.
+   */
+  linkDowns?: number;
+  /**
+   * Negotiated rate as RouterOS renders it ("1Gbps"). The demo hEX prints NO
+   * rate field at all from `/interface/print detail terse`, which is why the
+   * default is undefined.
+   */
+  rate?: string;
+}
+
+/**
+ * What `:put [/interface/print as-value stats]` returns for one interface.
+ * Omitting a key models a router that did not print that counter - which must
+ * reach the sample as null, never as zero. On the demo hEX the bridge slaves
+ * really do omit `rx-error`/`tx-error` while carrying `rx-byte`/`tx-byte`.
+ */
+export interface FakeInterfaceCounters {
+  rxByte?: number;
+  txByte?: number;
+  rxError?: number;
+  txError?: number;
+  /** Renders `slave=true`, exactly as ether2-ether5 do on the demo hEX. */
+  slave?: boolean;
+  /** Free-text comment, rendered UNESCAPED - the router does not escape it. */
+  comment?: string;
 }
 
 export interface FakeSchedulerEntry {
@@ -228,13 +257,38 @@ export class FakeRouterOs {
   #jobVariables = new Map<string, Map<string, Value>>();
   #runningJobs = false;
 
+  /**
+   * Absent by default, matching the demo hEX: `/interface/print stats` is the
+   * only place these counters exist, so a fixture that hands them out for free
+   * would hide the very gap that produced `rxBytes: 0` on every real sample.
+   */
+  readonly interfaceCounters: Map<string, FakeInterfaceCounters>;
+  /** When true the router refuses `/interface/print stats`, as an old build would. */
+  readonly refuseInterfaceStats: boolean;
+  /** When true `/export` is refused on stdout with exit status 0. */
+  readonly refuseExport: boolean;
+  /** When true `/export` answers with an empty body. */
+  readonly emptyExport: boolean;
+
   constructor(options: {
     interfaces: FakeInterface[];
     firewall?: Array<Record<string, string>>;
     scheduler?: FakeSchedulerEntry[];
     jobs?: Array<{ script: string }>;
     deviceMode?: Partial<FakeDeviceMode>;
+    interfaceCounters?: Record<string, FakeInterfaceCounters>;
+    refuseInterfaceStats?: boolean;
+    /** Router refuses `/export` — the refusal arrives on stdout, exit status 0. */
+    refuseExport?: boolean;
+    /** Router answers `/export` with nothing at all. */
+    emptyExport?: boolean;
   }) {
+    this.refuseExport = options.refuseExport ?? false;
+    this.emptyExport = options.emptyExport ?? false;
+    this.interfaceCounters = new Map(
+      Object.entries(options.interfaceCounters ?? {}).map(([name, entry]) => [name, { ...entry }]),
+    );
+    this.refuseInterfaceStats = options.refuseInterfaceStats ?? false;
     this.interfaces = options.interfaces.map((entry) => ({ ...entry }));
     this.firewall = (options.firewall ?? []).map((entry) => ({ ...entry }));
     for (const entry of options.scheduler ?? []) this.scheduler.push({ ...entry });
@@ -255,8 +309,82 @@ export class FakeRouterOs {
   printInterfaces(): string {
     return `${this.interfaces.map((entry) =>
       `.id=${entry.id} name=${entry.name} default-name=${entry.defaultName}`
-      + ` type=${entry.type} disabled=${entry.disabled} running=${!entry.disabled}`,
+      + ` type=${entry.type} disabled=${entry.disabled} running=${!entry.disabled}`
+      + (entry.rate === undefined ? "" : ` rate=${entry.rate}`)
+      + (entry.linkDowns === undefined ? "" : ` link-downs=${entry.linkDowns}`),
     ).join("\n")}\n`;
+  }
+
+  /**
+   * `:put [/interface/print as-value stats]`.
+   *
+   * THIS FIXTURE IS WHY THE COUNTERS WERE NEVER COLLECTED. It used to emit
+   * SPACE-separated `key=value` pairs, ONE LINE PER INTERFACE — a shape the
+   * router has never produced for `stats` in any form. The connector's parser
+   * was then written to match the fixture, so the tests were green against
+   * output that could not exist and every real counter read `null`.
+   *
+   * The shape below is transcribed from output CAPTURED on the demo hEX
+   * (RouterOS 7.20.8, 2026-08-03, `:put [/interface/print as-value stats]`,
+   * 1305 bytes for 8 interfaces):
+   *
+   *  - EVERYTHING on ONE line — records concatenated with no separator;
+   *  - fields joined with `;`, `key=value`, no spaces, no quoting, no escaping;
+   *  - `.id` first in every record, everything after it in ALPHABETICAL order;
+   *  - bridge slaves carry `slave=true` and OMIT `rx-error`/`tx-error`;
+   *  - a `comment` is emitted verbatim, `;` and all.
+   *
+   * Returns "" when no fixture counters were declared, and the RouterOS refusal
+   * shape (stdout, exit 0) when the build rejects `stats`.
+   */
+  printInterfaceStats(): string {
+    if (this.refuseInterfaceStats) {
+      return "failure: expected end of command (line 1 column 19)\n";
+    }
+    const rows = this.interfaces
+      .map((entry) => ({ name: entry.name, counters: this.interfaceCounters.get(entry.name) }))
+      .filter((row): row is { name: string; counters: FakeInterfaceCounters } =>
+        row.counters !== undefined);
+    if (rows.length === 0) return "";
+    // Alphabetical after `.id`, exactly as the router orders them:
+    // comment < disabled < name < rx-byte < rx-error < slave < tx-byte < tx-error.
+    return `${rows.map((row, index) => {
+      const fields = [`.id=*${index + 1}`];
+      if (row.counters.comment !== undefined) fields.push(`comment=${row.counters.comment}`);
+      fields.push("disabled=false", `name=${row.name}`);
+      if (row.counters.rxByte !== undefined) fields.push(`rx-byte=${row.counters.rxByte}`);
+      if (row.counters.rxError !== undefined) fields.push(`rx-error=${row.counters.rxError}`);
+      if (row.counters.slave) fields.push("slave=true");
+      if (row.counters.txByte !== undefined) fields.push(`tx-byte=${row.counters.txByte}`);
+      if (row.counters.txError !== undefined) fields.push(`tx-error=${row.counters.txError}`);
+      return fields.join(";");
+    }).join(";")}\n`;
+  }
+
+  /**
+   * `/export terse hide-sensitive`. Transcribed from the CAPTURED demo-hEX
+   * answer (7.20.8, 8133 B, 79 lines): a five-line `#` header, then one
+   * `/`-prefixed command per line with no continuation wrapping, and the
+   * WireGuard interface line WITHOUT its `private-key=` — that field is present
+   * only under the sibling `show-sensitive` flag, which this worker must never
+   * send.
+   */
+  printExport(): string {
+    if (this.refuseExport) return "expected end of command (line 1 column 29)";
+    if (this.emptyExport) return "";
+    return [
+      "# 2026-08-03 06:33:07 by RouterOS 7.20.8",
+      "# software id = ZWBC-WSV7",
+      "#",
+      "# model = E50UG",
+      "# serial number = HMF0BFQDZ5E",
+      "/interface bridge add admin-mac=D0:EA:11:96:FA:37 auto-mac=no comment=defconf name=bridge",
+      "/interface wireguard add comment=demo:wireguard listen-port=51820 mtu=1420 name=wg-ihome-mgmt",
+      "/ip address add address=192.168.88.1/24 comment=defconf interface=bridge network=192.168.88.0",
+      "/ip dhcp-client add comment=defconf interface=ether1",
+      "/ip service set ssh address=192.168.88.240/28,10.77.0.1/32",
+      "",
+    ].join("\n");
   }
 
   printFirewall(): string {

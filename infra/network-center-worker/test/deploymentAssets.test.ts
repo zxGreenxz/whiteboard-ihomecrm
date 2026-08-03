@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -217,15 +219,100 @@ describe("immutable Network Center host deployment", () => {
       "NETWORK_CENTER_POLL_CONCURRENCY",
       "NETWORK_CENTER_COMMAND_CONCURRENCY",
       "NETWORK_CENTER_COMMAND_CLAIM_LIMIT",
-      "NETWORK_CENTER_SFTP_CONCURRENCY",
     ]) expect(config).toContain(name);
     expect(main).toMatch(/workerVersion:\s*config\.releaseSha/g);
-    expect(main).toMatch(/new AsyncSemaphore\(config\.sftpConcurrency\)/);
     expect(commands.indexOf("#paused()"))
       .toBeLessThan(commands.indexOf("claimCommands(this.#claimLimit"));
     expect(commands).toMatch(/mapWithConcurrency\([\s\S]*#maxConcurrency/);
-    expect(ssh).toMatch(/#sftpSemaphore\.use/);
+
+    // NETWORK_CENTER_SFTP_CONCURRENCY is gone, and so is every SFTP call site.
+    // The worker's only SFTP user was the binary `/system/backup/save` download,
+    // which RouterOS gates on the `sensitive` policy — perfect correlation
+    // across seven measured identities — so keeping the transport alive would
+    // have kept the credential wide. The redacted export now arrives on the
+    // command channel. This asserts the REMOVAL, because a concurrency bound on
+    // a transport nobody opens is the kind of dead guard that reads as safety.
+    // Comments are stripped first: this file DOCUMENTS at length what was
+    // removed and why, and a naive substring match would fire on the
+    // explanation rather than on any surviving call. What must be gone is the
+    // CODE.
+    const withoutComments = (source: string) => source
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const sshCode = withoutComments(ssh);
+    expect(config).not.toContain("NETWORK_CENTER_SFTP_CONCURRENCY");
+    expect(withoutComments(main)).not.toMatch(/sftpSemaphore/);
+    expect(sshCode).not.toMatch(/sftpSemaphore|\.sftp\(|SFTPWrapper/);
+    expect(sshCode).not.toMatch(/system\/backup\/save/);
+    // And the export must be sent in its redacted form. `show-sensitive=no` is a
+    // syntax error on v7; the flag that parses, `show-sensitive`, prints the
+    // WireGuard private key in full.
+    expect(sshCode).toContain('"/export terse hide-sensitive"');
+    // No `/export …` command LITERAL may carry `show-sensitive` in any form.
+    // Scoped to command literals on purpose: `routerOsExportCommandIsRedacted`
+    // legitimately names the flag in order to reject it, and a blanket ban would
+    // have forced the guard itself out of the file.
+    expect(sshCode).not.toMatch(/"\/export[^"]*show-sensitive/);
+    expect(sshCode).toContain("routerOsExportCommandIsRedacted");
   });
+
+  // OpenSSH splits the VALUE of `-o Keyword=value` on whitespace, and
+  // UserKnownHostsFile is a file LIST, so the Windows default
+  // C:\Users\<name with a space>\.ssh\known_hosts was read as two paths and the
+  // host-key pin was silently never loaded. Quoting is not an option from
+  // Windows PowerShell 5.1 (embedded quotes are stripped; backslash-escaped
+  // quotes split the argument), so the deploy script must remove the space.
+  it.runIf(process.platform === "win32")(
+    "strips whitespace out of the pinned known-hosts path it hands to ssh",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "nc known hosts "));
+      try {
+        const knownHosts = join(root, "known_hosts");
+        writeFileSync(knownHosts, "example.invalid ssh-ed25519 AAAA\n");
+        expect(knownHosts).toMatch(/\s/);
+
+        const result = runPowerShell("scripts/deploy-vultr.ps1", [
+          "-ReleaseSha", "a".repeat(40),
+          "-HostName", "network.example.invalid",
+          "-KnownHostsFile", knownHosts,
+          "-PlanOnly",
+        ]);
+        expect(result.status, result.stderr).toBe(0);
+        const plan = JSON.parse(result.stdout) as { knownHostsOption: string | null };
+        expect(plan.knownHostsOption).not.toBeNull();
+        expect(plan.knownHostsOption).not.toMatch(/\s/);
+        // Still the same file, not some other path that merely lacks a space.
+        expect(readFileSync(plan.knownHostsOption as string, "utf8"))
+          .toBe("example.invalid ssh-ed25519 AAAA\n");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "leaves a space-free known-hosts path exactly as given",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "nc-known-hosts-"));
+      try {
+        const knownHosts = join(root, "known_hosts");
+        writeFileSync(knownHosts, "example.invalid ssh-ed25519 AAAA\n");
+        expect(knownHosts).not.toMatch(/\s/);
+
+        const result = runPowerShell("scripts/deploy-vultr.ps1", [
+          "-ReleaseSha", "a".repeat(40),
+          "-HostName", "network.example.invalid",
+          "-KnownHostsFile", knownHosts,
+          "-PlanOnly",
+        ]);
+        expect(result.status, result.stderr).toBe(0);
+        const plan = JSON.parse(result.stdout) as { knownHostsOption: string | null };
+        expect(plan.knownHostsOption).toBe(knownHosts);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("plans archive, canary, drain, switch and readback without contacting a host", () => {
     const sha = "a".repeat(40);
@@ -413,4 +500,80 @@ describe("immutable Network Center host deployment", () => {
     ]);
     expect(text("scripts/rollback-vultr.ps1")).toMatch(/New-RollbackReadbackBaseline/);
   });
+
+  // The rollback path carried the SAME `-o UserKnownHostsFile=$KnownHostsFile`
+  // as the deploy path: OpenSSH argv_split's the option VALUE and
+  // UserKnownHostsFile is a file LIST, so the Windows default
+  // C:\Users\<name with a space>\.ssh\known_hosts is read as two paths and the
+  // pin is silently never loaded. Fixing only the deploy script would have left
+  // the failure for the one run where failing is worst, so it is covered here
+  // with the same evidence the deploy fix carries.
+  it("never interpolates the known-hosts path straight into the ssh option value", () => {
+    const source = text("scripts/rollback-vultr.ps1");
+    // Comments are stripped before asserting: the defect can only live in code,
+    // and both scripts quote the broken form verbatim in the comment that
+    // explains it. Matching the comment would make this test unfixable.
+    const code = source
+      .split("\n")
+      .filter((line) => !line.trimStart().startsWith("#"))
+      .join("\n");
+    // Platform-independent so Linux CI keeps the regression covered even where
+    // powershell.exe cannot run.
+    expect(code).not.toMatch(/UserKnownHostsFile=\$\w/);
+    expect(source).toMatch(/function Resolve-SshOptionPath/);
+    expect(code).toMatch(/\$knownHostsOption = "UserKnownHostsFile=" \+ \(Resolve-SshOptionPath \$KnownHostsFile\)/);
+    expect(code).toMatch(/"-o", \$knownHostsOption/);
+    // The helper must refuse rather than hand ssh a pin it will not read.
+    expect(source).toMatch(/8\.3 short names are unavailable/);
+  });
+
+  it.runIf(process.platform === "win32")(
+    "rollback strips whitespace out of the pinned known-hosts path it hands to ssh",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "nc rollback known hosts "));
+      try {
+        const knownHosts = join(root, "known_hosts");
+        writeFileSync(knownHosts, "example.invalid ssh-ed25519 AAAA\n");
+        expect(knownHosts).toMatch(/\s/);
+
+        const result = runPowerShell("scripts/rollback-vultr.ps1", [
+          "-HostName", "network.example.invalid",
+          "-KnownHostsFile", knownHosts,
+          "-PlanOnly",
+        ]);
+        expect(result.status, result.stderr).toBe(0);
+        const plan = JSON.parse(result.stdout) as { knownHostsOption: string | null };
+        expect(plan.knownHostsOption).not.toBeNull();
+        expect(plan.knownHostsOption).not.toMatch(/\s/);
+        // Still the same file, not some other path that merely lacks a space.
+        expect(readFileSync(plan.knownHostsOption as string, "utf8"))
+          .toBe("example.invalid ssh-ed25519 AAAA\n");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "rollback leaves a space-free known-hosts path exactly as given",
+    () => {
+      const root = mkdtempSync(join(tmpdir(), "nc-rollback-known-hosts-"));
+      try {
+        const knownHosts = join(root, "known_hosts");
+        writeFileSync(knownHosts, "example.invalid ssh-ed25519 AAAA\n");
+        expect(knownHosts).not.toMatch(/\s/);
+
+        const result = runPowerShell("scripts/rollback-vultr.ps1", [
+          "-HostName", "network.example.invalid",
+          "-KnownHostsFile", knownHosts,
+          "-PlanOnly",
+        ]);
+        expect(result.status, result.stderr).toBe(0);
+        const plan = JSON.parse(result.stdout) as { knownHostsOption: string | null };
+        expect(plan.knownHostsOption).toBe(knownHosts);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

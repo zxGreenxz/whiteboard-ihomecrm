@@ -14,6 +14,49 @@ $MaximumCapturedOutputBytes = 65536
 $Stages = @("capture-redacted-status-and-assignment-hash", "validate-previous-exact-image", "stop-current",
   "start-previous", "health-revision-readback", "verify-assignment-hash-unchanged", "commit-pointer-swap")
 
+function Resolve-SshOptionPath {
+  # Ported verbatim from deploy-vultr.ps1, where the defect was measured. The
+  # rollback path carried the identical `-o UserKnownHostsFile=$KnownHostsFile`
+  # and would have failed the same way, on the run where failing is worst.
+  #
+  # OpenSSH parses the VALUE of an `-o Keyword=value` argument with argv_split,
+  # and UserKnownHostsFile takes a LIST of files, so a value carrying a space is
+  # read as several paths. The default Windows location is
+  # `C:\Users\<name with a space>\.ssh\known_hosts`, which becomes the two files
+  # `C:\Users\Nguyen` and `Tam\.ssh\known_hosts`: the host-key pin is then never
+  # read, and with StrictHostKeyChecking=yes every rollback dies at
+  # "Host key verification failed" with nothing pointing at the real cause.
+  #
+  # MEASURED, not assumed (OpenSSH_for_Windows_9.5p2, Windows PowerShell 5.1):
+  #   ssh -G -o 'UserKnownHostsFile=/x ~/y'  ->  userknownhostsfile /x C:\Users\...\y
+  # The tilde in the SECOND word expanded, and tilde expansion is per file, so
+  # ssh had already split one argv element into two paths. It is NOT a
+  # PowerShell argument-passing bug: PowerShell delivers one argv element.
+  #
+  # Quoting cannot fix it from Windows PowerShell 5.1, also measured:
+  #   "UserKnownHostsFile=`"$p`""   -> the quotes are stripped before ssh sees them
+  #   "UserKnownHostsFile=\`"$p\`"" -> the argument is split into TWO argv entries
+  # So the space has to go. The 8.3 short name is space-free by construction;
+  # if the volume has 8.3 name creation disabled we refuse loudly rather than
+  # hand ssh a pin it will not read.
+  param([Parameter(Mandatory)][string]$Path)
+  $full = (Resolve-Path -LiteralPath $Path).ProviderPath
+  if ($full -notmatch '\s') { return $full }
+  $short = $null
+  try {
+    $short = (New-Object -ComObject Scripting.FileSystemObject).GetFile($full).ShortPath
+  } catch {
+    throw ("Pinned known-hosts path '$full' contains a space and no 8.3 short name could be obtained: " +
+      $_.Exception.Message + " Pass -KnownHostsFile a path with no spaces.")
+  }
+  if ([string]::IsNullOrWhiteSpace($short) -or $short -match '\s') {
+    throw ("Pinned known-hosts path '$full' contains a space and 8.3 short names are unavailable on this " +
+      "volume, so ssh would read it as several files and silently ignore the pin. " +
+      "Pass -KnownHostsFile a path with no spaces.")
+  }
+  return $short
+}
+
 function Invoke-NativeChecked {
   param([string]$FilePath, [string[]]$Arguments, [switch]$Capture,
     [ValidateRange(1, 1048576)][int]$MaximumOutputBytes = $MaximumCapturedOutputBytes)
@@ -455,11 +498,22 @@ function New-RollbackReadbackBaseline {
 function Invoke-RollbackMain {
   if ($HostName -notmatch '^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$' -or $UserName -cne "root" -or
       $WorkerKey -notmatch '^[a-z0-9][a-z0-9._-]{2,63}$') { throw "Remote identity is invalid." }
-  if ($PlanOnly) { [ordered]@{ host = $HostName; stages = $Stages } | ConvertTo-Json -Compress; return }
-  if (-not (Test-Path $KnownHostsFile -PathType Leaf)) { throw "Pinned known-hosts file is required." }
+  if ($PlanOnly) {
+    # The resolved option value is reported so the space-stripping above is
+    # observable without running a rollback. Only resolvable when the file is
+    # actually there; plan-only has never required it to exist.
+    $plannedKnownHosts = if (Test-Path -LiteralPath $KnownHostsFile -PathType Leaf) {
+      Resolve-SshOptionPath $KnownHostsFile
+    } else { $null }
+    [ordered]@{ host = $HostName; stages = $Stages; knownHostsOption = $plannedKnownHosts } |
+      ConvertTo-Json -Compress
+    return
+  }
+  if (-not (Test-Path -LiteralPath $KnownHostsFile -PathType Leaf)) { throw "Pinned known-hosts file is required." }
+  $knownHostsOption = "UserKnownHostsFile=" + (Resolve-SshOptionPath $KnownHostsFile)
   $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
   $sshTarget = "$UserName@$HostName"
-  $sshOptions = @("-p", "$Port", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=$KnownHostsFile", "-o", "IdentitiesOnly=yes")
+  $sshOptions = @("-p", "$Port", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", $knownHostsOption, "-o", "IdentitiesOnly=yes")
   $beforeState = Get-ReconciledRemoteState $sshTarget $sshOptions
   $current = Assert-ReleaseIdentity $beforeState.current "Current release"
   $expected = Assert-ReleaseIdentity $beforeState.previous "Previous release"

@@ -4,6 +4,7 @@ import type { Client } from "ssh2";
 
 import {
   ROUTER_OS_COMMANDS,
+  ROUTER_OS_EXPORT_COMMAND,
   ROUTER_OS_READ_COMMANDS,
   SshRouterConnector,
 } from "../../src/routeros/sshConnector.js";
@@ -47,6 +48,15 @@ export interface FakeRouterClientOptions {
    * time-of-use race against a read the worker already did.
    */
   beforeCommand?: (command: string) => void;
+  /**
+   * Called whenever the connector asks the SSH client for an SFTP session. Its
+   * whole point is to be able to assert ZERO calls: the worker must not open one
+   * at all now that the binary backup is gone, and `ftp` has left the managed
+   * group, so a router would REFUSE the subsystem ("Unable to start subsystem:
+   * sftp", measured under `ssh,read,write`). A fake that silently granted SFTP
+   * would let that regression through.
+   */
+  onSftp?: () => void;
 }
 
 export interface FakeRouterSession {
@@ -57,6 +67,7 @@ export interface FakeRouterSession {
 function readCommandOutput(router: FakeRouterOs, command: string): string | null {
   if (command === ROUTER_OS_READ_COMMANDS.identity) return router.printIdentity();
   if (command === ROUTER_OS_READ_COMMANDS.interfaces) return router.printInterfaces();
+  if (command === ROUTER_OS_READ_COMMANDS.interfaceStats) return router.printInterfaceStats();
   if (command === ROUTER_OS_READ_COMMANDS.firewallFilters) return router.printFirewall();
   if (command === ROUTER_OS_READ_COMMANDS.resource) return "version=7.15 uptime=1h cpu-load=1\n";
   if (
@@ -65,6 +76,11 @@ function readCommandOutput(router: FakeRouterOs, command: string): string | null
     || command === ROUTER_OS_READ_COMMANDS.neighbors
   ) return "";
   if (command === ROUTER_OS_READ_COMMANDS.dns) return "servers=1.1.1.1\n";
+  // The redacted config export the pre-action snapshot now captures off stdout.
+  // Shaped like the real thing: a `#` header block, then one `/`-prefixed
+  // command per line, and NOT one `private-key=` anywhere — `hide-sensitive`
+  // strips them at the router (measured: 0 occurrences in 8133 B).
+  if (command === ROUTER_OS_EXPORT_COMMAND) return router.printExport();
   if (
     command === ROUTER_OS_COMMANDS.reboot
     || command === ROUTER_OS_COMMANDS.flushDnsCache
@@ -148,6 +164,12 @@ export function createFakeRouterSession(
       }
     }
 
+    sftp(callback: (error: Error | undefined, session: unknown) => void): void {
+      options.onSftp?.();
+      // Mirrors a router whose group has no `ftp`: the subsystem never starts.
+      callback(new Error("Unable to start subsystem: sftp"), undefined);
+    }
+
     destroy(): void {}
     end(): void {
       queueMicrotask(() => this.emit("close"));
@@ -159,7 +181,7 @@ export function createFakeRouterSession(
 
 export function createTestConnector(
   clientFactory: () => Client,
-  overrides: { commandTimeoutMs?: number } = {},
+  overrides: { commandTimeoutMs?: number; backupStagingDirectory?: string } = {},
 ): SshRouterConnector {
   return new SshRouterConnector({
     connection: {
@@ -186,7 +208,7 @@ export function createTestConnector(
       backupPassword: "fake-backup-password",
     },
     commandTimeoutMs: overrides.commandTimeoutMs ?? 60_000,
-    backupStagingDirectory: ".",
+    backupStagingDirectory: overrides.backupStagingDirectory ?? ".",
     clientFactory,
   });
 }

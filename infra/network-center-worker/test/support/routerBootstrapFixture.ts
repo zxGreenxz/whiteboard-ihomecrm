@@ -1,4 +1,9 @@
-import { FakeRouterOsDevice, type RouterOsRow } from "./fakeRouterOsImport.js";
+import {
+  FakeRouterOsDevice,
+  groupPolicyValue,
+  ROUTER_OS_POLICIES,
+  type RouterOsRow,
+} from "./fakeRouterOsImport.js";
 
 /**
  * WireGuard keys for tests are the published RFC 7748 §6.1 X25519 vectors, so the
@@ -77,9 +82,42 @@ function serviceRows(liveSshSession: boolean): RouterOsRow[] {
   return rows;
 }
 
+export { groupPolicyValue, ROUTER_OS_POLICIES } from "./fakeRouterOsImport.js";
+
+/**
+ * What `router-bootstrap.rsc` provisions today: the re-derived minimum.
+ *
+ * `ftp` and `test` left the set on 2026-08-03 with the binary backup they
+ * served. Measured on the demo hEX: `:execute` (which arms the port-cycle
+ * dead-man switch) runs under a bare `ssh,read` identity, so `test` was never
+ * needed by anything but `/system/backup/save`; and `/export terse
+ * hide-sensitive` reads off stdout under `ssh,read` too, so `ftp` — which gated
+ * only `/export … file=` and the SFTP subsystem — has nothing left to gate.
+ */
+export const HARDENED_WORKER_POLICIES = ["ssh", "reboot", "read", "write"];
+
+/**
+ * The set the bootstrap granted before the re-derivation, and what the demo
+ * router still carries. Every one of `sensitive`, `ftp` and `test` is now
+ * asserted ABSENT, so a router in this state is refused by name.
+ */
+export const LEGACY_WORKER_POLICIES = [
+  ...HARDENED_WORKER_POLICIES,
+  "ftp",
+  "test",
+  "sensitive",
+];
+
 export interface StockDeviceOptions {
   /** Defaults to true: the scripts are delivered over SSH, so a session is live. */
   liveSshSession?: boolean;
+  /**
+   * Model a router that has ALREADY been bootstrapped: the managed group and
+   * user exist. Without this every test runs against a virgin router, so the
+   * whole "group already present" preflight branch — and the re-import and
+   * lockdown paths that depend on it — was never executed by any test.
+   */
+  provisionedWorkerGroup?: readonly string[];
   /** Give the named ether port its own address and take it out of the bridge. */
   dedicatedRecoveryPort?: { name: string; address: string };
   /** Drop the bridge's static address, leaving only a DHCP-assigned one. */
@@ -141,7 +179,20 @@ export function stockHexDevice(options: StockDeviceOptions = {}): FakeRouterOsDe
     "/interface/bridge/port": {
       rows: bridgedPorts.map((name) => ({ interface: name, bridge: "bridge", dynamic: "false" })),
     },
-    "/interface/wireguard": { rows: [] },
+    // A bootstrapped router already carries the managed tunnel, and stage 2
+    // refuses to run without it. The private key is deliberately NOT modelled:
+    // nothing in these scripts reads one back, and the whole point of the
+    // hardened group is that the worker cannot.
+    "/interface/wireguard": {
+      rows: options.provisionedWorkerGroup
+        ? [{
+          name: "wg-ihome-mgmt",
+          comment: `${OWNERSHIP_MARKER}:wireguard`,
+          "listen-port": "51820",
+          disabled: "false",
+        }]
+        : [],
+    },
     "/interface/wireguard/peers": { rows: [] },
     "/ip/address": { rows: addresses },
     "/ip/service": { rows: serviceRows(liveSshSession) },
@@ -166,11 +217,35 @@ export function stockHexDevice(options: StockDeviceOptions = {}): FakeRouterOsDe
         ...(options.extraFirewallRows ?? []),
       ],
     },
-    "/user": { rows: [{ name: "admin", group: "full", comment: "", disabled: "false" }] },
+    "/user": {
+      rows: [
+        { name: "admin", group: "full", comment: "", disabled: "false" },
+        ...(options.provisionedWorkerGroup
+          ? [{
+            name: bootstrapFixture.routerUser,
+            group: "network-center-worker",
+            comment: OWNERSHIP_MARKER,
+            disabled: "false",
+          }]
+          : []),
+      ],
+    },
     "/user/group": {
       rows: [
-        { name: "full", policy: "local,telnet,ssh,ftp,reboot,read,write,policy,test" },
-        { name: "read", policy: "local,telnet,ssh,reboot,read,test,winbox,password" },
+        { name: "full", policy: groupPolicyValue([...ROUTER_OS_POLICIES]) },
+        {
+          name: "read",
+          policy: groupPolicyValue([
+            "local", "telnet", "ssh", "reboot", "read", "test", "winbox",
+            "password", "web", "sniff", "sensitive", "api", "romon", "rest-api",
+          ]),
+        },
+        ...(options.provisionedWorkerGroup
+          ? [{
+            name: "network-center-worker",
+            policy: groupPolicyValue(options.provisionedWorkerGroup),
+          }]
+          : []),
       ],
     },
     "/user/ssh-keys": { rows: [] },

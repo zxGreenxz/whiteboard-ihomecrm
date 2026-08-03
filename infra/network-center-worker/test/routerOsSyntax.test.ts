@@ -279,9 +279,13 @@ describe("diagnosability is enforced, not remembered", () => {
 
     // The census is what stops a guard being deleted quietly: the generator only
     // checks the shape of what is there, not that anything is.
+    // +7 per stage over the original census: the single `group-policy-mismatch`
+    // equality guard became one identity per policy — six "missing-<policy>" and
+    // two "grants-<policy>". With verbose=no the identity is the only diagnosis
+    // an operator gets, so "the group is wrong" had to become "which policy".
     expect(census).toEqual({
-      "router-bootstrap.rsc": 34,
-      "router-lockdown.rsc": 5,
+      "router-bootstrap.rsc": 41,
+      "router-lockdown.rsc": 12,
       "router-rollback.rsc": 2,
     });
   });
@@ -341,7 +345,7 @@ describe("diagnosability is enforced, not remembered", () => {
       ARTIFACTS.map((name) => [name, files[name]]),
     ));
 
-    expect(index.size).toBe(34 + 5 + 2 + 12 + 9 + 16);
+    expect(index.size).toBe(41 + 12 + 2 + 12 + 9 + 16);
     expect(index.get("recovery-rule-dst-port")).toMatch(/^router-bootstrap\.rsc line \d+$/u);
   });
 
@@ -465,7 +469,7 @@ describe("selector interpolation is structurally quoted", () => {
         {
           name: "router-bootstrap.rsc.tmpl",
           placeholder: "RECOVERY_GATEWAY_ADDRESS",
-          line: 90,
+          line: 92,
         },
       ]);
     expect(occurrences.filter((entry) => entry.context === "string").length)

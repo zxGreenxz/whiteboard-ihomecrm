@@ -157,7 +157,6 @@ async function run(): Promise<void> {
   });
   const interfaceRegistry = new InterfaceRegistry();
   const routerOperationSemaphore = new AsyncSemaphore(3);
-  const sftpSemaphore = new AsyncSemaphore(config.sftpConcurrency);
   const connectorFactory = async (connection: NetworkConnection) => {
     if (!connection.credentialRef || !connection.hostKeyFingerprint) {
       throw new RouterOperationError("ROUTER_CREDENTIAL_REFERENCE_MISSING", {
@@ -177,7 +176,6 @@ async function run(): Promise<void> {
       credential,
       commandTimeoutMs: config.commandTimeoutMs,
       backupStagingDirectory: resolve(config.backupDirectory, ".staging"),
-      sftpSemaphore,
     });
   };
   const polling = new PollingCoordinator({

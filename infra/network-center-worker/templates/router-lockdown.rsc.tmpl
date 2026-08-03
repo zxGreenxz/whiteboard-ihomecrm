@@ -5,7 +5,6 @@
 :local ncUser @@ROUTER_USER@@
 :local ncMarker @@OWNERSHIP_MARKER@@
 :local ncGroup "network-center-worker"
-:local ncExpectedPolicy "ssh,ftp,reboot,read,write,test,sensitive"
 :local ncWgName "wg-ihome-mgmt"
 :local ncWgMarker ($ncMarker . ":wireguard")
 :local ncRecoveryMarker ($ncMarker . ":lan-recovery")
@@ -22,7 +21,10 @@
 # lookup still never runs against a menu that holds no matching row.
 :if ([:len $ncGroups] != 1) do={ :error "NETWORK_CENTER_GROUP_CONFLICT/lockdown-group-not-unique" }
 :if ([/user get $ncUsers group] != $ncGroup) do={ :error "NETWORK_CENTER_GROUP_CONFLICT/lockdown-user-group-mismatch" }
-:if ([:tostr [/user/group get $ncGroups policy]] != $ncExpectedPolicy) do={ :error "NETWORK_CENTER_GROUP_CONFLICT/lockdown-group-policy-mismatch" }
+# Per-policy membership, not whole-string equality. The old comparison here was
+# measured to fire on the provisioned demo router (checks above it PASS, this one
+# FIRES), which made stage 2 unimportable on every already-bootstrapped building.
+@@LOCKDOWN_GROUP_POLICY_ASSERTIONS@@
 :if ([:len $ncWgs] != 1 || [/interface/wireguard get $ncWgs comment] != $ncWgMarker) do={
   :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/lockdown-wireguard-not-owned"
 }

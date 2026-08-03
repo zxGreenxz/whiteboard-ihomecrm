@@ -15,8 +15,8 @@ import { resolve, sep } from "node:path";
 
 import { RouterOperationError } from "./domain.js";
 import {
-  ROUTER_BACKUP_MAX_BYTES,
   ROUTER_BACKUP_TIMEOUT_MS,
+  ROUTER_EXPORT_MAX_BYTES,
   type StagedSftpFile,
 } from "./routeros/boundedSftpRead.js";
 
@@ -36,7 +36,22 @@ export interface BackupCandidate {
   commandId: string;
   attemptNo: number;
   createdAt: Date;
-  encryption: "ROUTEROS_AES_SHA256";
+  /**
+   * What the staged artifact actually IS, not what we wish it were.
+   *
+   * It used to read `ROUTEROS_AES_SHA256` because the artifact was a binary
+   * `/system/backup/save` image encrypted with the worker's own backup password.
+   * That path is gone — no policy set both completes it and denies the
+   * credential the WireGuard private key — and the artifact is now the redacted
+   * `/export terse hide-sensitive` text. Leaving the old label would have
+   * asserted at-rest encryption that no longer exists, in the one field an
+   * operator would consult to decide how to handle the file.
+   *
+   * The text carries no keys or passwords (`hide-sensitive` strips them at the
+   * router), and it is written 0600 inside a 0700 directory, but it is
+   * plaintext and the label says so.
+   */
+  encryption: "ROUTEROS_EXPORT_PLAINTEXT";
   artifact: StagedSftpFile;
 }
 
@@ -198,7 +213,12 @@ export class FileBackupStore implements BackupStore {
       if (!entry.isDirectory() || entry.name === ".staging" || !UUID.test(entry.name)) continue;
       const directory = resolve(this.#root, entry.name);
       for (const child of await readdir(directory, { withFileTypes: true })) {
-        if (!child.isFile() || !child.name.endsWith(".backup")) continue;
+        // `.rsc` is what this store writes now that the artifact is a text
+        // export. `.backup` is still swept because a host that ever promoted a
+        // binary image must keep counting it toward the volume budget and keep
+        // rotating it — an extension change that quietly orphaned old artifacts
+        // would leak disk on exactly the hosts with the most to clean up.
+        if (!child.isFile() || !/\.(?:rsc|backup)$/.test(child.name)) continue;
         const path = resolve(directory, child.name);
         if (!descendant(this.#root, path)) continue;
         const details = await stat(path);
@@ -284,9 +304,9 @@ export class FileBackupStore implements BackupStore {
       || input.attemptNo < 1
       || input.attemptNo > 1_000
       || !Number.isFinite(createdAtMs)
-      || input.encryption !== "ROUTEROS_AES_SHA256"
+      || input.encryption !== "ROUTEROS_EXPORT_PLAINTEXT"
       || input.artifact.bytes < 1
-      || input.artifact.bytes > ROUTER_BACKUP_MAX_BYTES
+      || input.artifact.bytes > ROUTER_EXPORT_MAX_BYTES
       || !/^[a-f0-9]{64}$/.test(input.artifact.sha256)
       || !descendant(this.#stagingRoot, artifactPath)
     ) {
@@ -312,7 +332,7 @@ export class FileBackupStore implements BackupStore {
         const deviceDirectory = resolve(this.#root, input.deviceId);
         await mkdir(deviceDirectory, { recursive: true, mode: 0o700 });
         const timestamp = String(Math.trunc(createdAtMs)).padStart(13, "0");
-        const name = `${timestamp}-${input.commandId}-${input.attemptNo}-${sourceHash}.backup`;
+        const name = `${timestamp}-${input.commandId}-${input.attemptNo}-${sourceHash}.rsc`;
         const target = resolve(deviceDirectory, name);
         if (!descendant(this.#root, target)) throw backupError("BACKUP_PATH_INVALID");
 

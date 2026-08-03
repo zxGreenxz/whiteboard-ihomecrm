@@ -23,6 +23,133 @@ const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 const SAFE_HOST = /^(?:[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])$/;
 const DEPLOYMENT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{7,63}$/;
 const MANAGED_ROUTER_USER = "ihome-nc-worker";
+
+// ---------------------------------------------------------------------------
+// Managed worker group policy
+//
+// MEASURED on the demo hEX (RouterOS 7.20.8, 2026-08-03), not assumed. Every
+// command the worker issues lives in src/routeros/; each was run read-only and
+// its output scanned for sensitive fields:
+//
+//   /interface/print detail terse without-paging   1342 B, 0 sensitive fields
+//   /ip/dhcp-client|dhcp-server/lease|neighbor|
+//   firewall/filter/print detail terse             0 sensitive fields
+//   :put [/system/identity|resource|/ip/dns print as-value]
+//                                                  0 sensitive fields
+//   /interface/wireguard/print detail              private-key="<44 chars>"
+//
+// The last line is the exposure this constant exists to close, and the first is
+// why closing it is free: the WireGuard private key is reachable ONLY through
+// the `/interface/wireguard` submenu, which the worker never issues. The generic
+// `/interface` menu the poll loop DOES issue carries no key at all.
+//
+// So `sensitive` buys the worker nothing and hands an attacker who holds the
+// worker credential the overlay tunnel's private key in one command. It is
+// dropped. `policy` was never granted and is asserted absent for the same reason.
+//
+// ---------------------------------------------------------------------------
+// RE-DERIVED 2026-08-03, after the binary backup left the worker's path.
+//
+// `ftp` and `test` were both here to serve commands the worker no longer sends.
+// Re-measured against the ACTUAL post-change command surface, six throwaway
+// identities, each with a `:put "CHANNEL_OK"` control in the same session:
+//
+//   command                                    ssh,read  ssh,read,write  +ftp
+//   :put [/interface/print as-value stats]        OK          OK          OK
+//   every other /…/print in the poll loop         OK          OK          OK
+//   /export terse hide-sensitive   (STDOUT)       OK          OK          OK
+//   :execute script={…}   (arms the guard)        OK          OK          OK
+//   /system/script/job/remove  (disarms it)    DENIED         OK          OK
+//   /export … file=   (REMOVED)                DENIED      DENIED         OK
+//   SFTP subsystem    (REMOVED)                DENIED      DENIED         OK
+//
+//  - `test` is NOT required. `:execute` is a console primitive and ran under a
+//    bare `ssh,read` identity; the ONLY thing that flipped between the read-only
+//    and the write identity was `/system/script/job/remove`, i.e. `write`.
+//    `test` was only ever needed by `/system/backup/save`, which is gone.
+//  - `ftp` is NOT required. It gated exactly two things — `/export … file=` and
+//    the SFTP subsystem ("Unable to start subsystem: sftp") — and the export is
+//    now read off stdout, where it costs `read` and nothing else.
+//
+// `reboot` is the one policy here NOT measured: proving it would mean issuing
+// `/system/reboot` against the operator's live internet gateway. It is retained
+// on RouterOS's documented meaning, and is flagged as unmeasured rather than
+// quietly presented as evidence.
+/** Exactly the policies the worker's command surface needs, canonical order. */
+export const WORKER_GROUP_POLICIES = Object.freeze([
+  "ssh",     // SSH transport for every command
+  "reboot",  // /system/reboot  (REBOOT_ROUTER — documented, not measured)
+  "read",    // every /…/print and find, `/export … ` to stdout, `:execute`
+  "write",   // dns cache flush, dhcp renew, interface disable/enable, job remove
+]);
+
+/**
+ * Policies the managed group must never hold.
+ *
+ * `sensitive` reveals `/interface/wireguard` private keys and is the sole gate
+ * on downloading a `.backup` over SFTP. `policy` would let the worker rewrite
+ * its own group and grant itself `sensitive` back — measured, not assumed: a
+ * `policy`-holding `!sensitive` user set its own group and read the private key
+ * in full on the next login.
+ *
+ * `ftp` and `test` join them because the surface above no longer reaches a
+ * single command that needs either, and a granted-but-unused policy is just a
+ * capability waiting for the next feature to quietly consume. Asserting their
+ * ABSENCE — not merely declining to grant them — is what makes the minimum
+ * enforceable in both directions.
+ *
+ * OPERATIONAL CONSEQUENCE, deliberate: a router already provisioned with the
+ * old wider group now FAILS the bootstrap/lockdown assertions with
+ * `…-policy-grants-ftp` / `-test` / `-sensitive` until its group is re-created.
+ * That is a loud, named refusal rather than a silent over-grant. See
+ * DEMO-ROUTER-RUNBOOK.md for the re-create procedure.
+ */
+export const WORKER_GROUP_DENIED_POLICIES = Object.freeze([
+  "sensitive",
+  "policy",
+  "ftp",
+  "test",
+]);
+
+/**
+ * RouterOS renders a group's `policy` as an ARRAY whose `:tostr` joins with `;`
+ * — not `,` — and which SPELLS OUT the denied policies as `!name` entries.
+ * Measured on the provisioned demo router:
+ *
+ *   ssh;ftp;reboot;read;write;test;sensitive;!local;!telnet;!policy;!winbox;
+ *   !password;!web;!sniff;!api;!romon;!rest-api
+ *
+ * The previous guard compared that against the literal
+ * `"ssh,ftp,reboot,read,write,test,sensitive"`, so it could never match: it
+ * fired `group-policy-mismatch` on every re-import and made router-lockdown.rsc
+ * unimportable on every already-provisioned router. Membership is therefore
+ * tested per policy with an anchored regex instead of by whole-string equality,
+ * which is also immune to RouterOS adding a policy name in a future release.
+ *
+ * The `(^|;)name(;|\$)` anchoring is what keeps a DENIED `!sensitive` entry from
+ * reading as a granted `sensitive`; both directions were measured on hardware.
+ */
+export function workerGroupPolicyTerm(name) {
+  return `"(^|;)${name}(;|\\$)"`;
+}
+
+/**
+ * The per-policy assertions for one script. `!( … ~ … )` is the measured working
+ * negation on 7.20.8 — `!~` parses as "invert a string" and dies at run time —
+ * and each assertion carries its own error identity because with `verbose=no`
+ * the identity is the only thing that says WHICH policy was wrong.
+ */
+export function workerGroupPolicyAssertions(slugPrefix, groupsVariable) {
+  const actual = `[:tostr [/user/group get ${groupsVariable} policy]]`;
+  return [
+    ...WORKER_GROUP_POLICIES.map((name) =>
+      `:if (!(${actual} ~ ${workerGroupPolicyTerm(name)})) do={ :error`
+      + ` "NETWORK_CENTER_GROUP_CONFLICT/${slugPrefix}-policy-missing-${name}" }`),
+    ...WORKER_GROUP_DENIED_POLICIES.map((name) =>
+      `:if (${actual} ~ ${workerGroupPolicyTerm(name)}) do={ :error`
+      + ` "NETWORK_CENTER_GROUP_CONFLICT/${slugPrefix}-policy-grants-${name}" }`),
+  ].join("\n");
+}
 const MANAGEMENT_SERVICE_NAMES = Object.freeze([
   "ssh",
   "winbox",
@@ -924,6 +1051,15 @@ export function generateBootstrap(input) {
     OWNERSHIP_MARKER: routerOsQuotedValue(ownershipMarker),
     SERVICE_ROLLBACK_COMMANDS: routerOsScriptBlock(serviceRollbackCommands),
     SSH_STRONG_CRYPTO_ROLLBACK: routerOsBareValue(value.sshStrongCrypto ? "yes" : "no"),
+    // One source of truth: the list that is GRANTED on `/user/group add` is the
+    // same list the preflight ASSERTS, in both scripts, so the two cannot drift.
+    WORKER_GROUP_POLICY: routerOsBareValue(WORKER_GROUP_POLICIES.join(",")),
+    WORKER_GROUP_POLICY_ASSERTIONS: routerOsScriptBlock(
+      workerGroupPolicyAssertions("group", "$ncGroups"),
+    ),
+    LOCKDOWN_GROUP_POLICY_ASSERTIONS: routerOsScriptBlock(
+      workerGroupPolicyAssertions("lockdown-group", "$ncGroups"),
+    ),
   };
   const scripts = {
     "router-bootstrap.rsc": renderRouterOsTemplate(

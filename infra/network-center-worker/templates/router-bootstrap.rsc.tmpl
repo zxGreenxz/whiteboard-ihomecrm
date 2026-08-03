@@ -13,7 +13,6 @@
 # The generator refuses to emit this file if either rule is broken.
 :local ncWgName "wg-ihome-mgmt"
 :local ncGroup "network-center-worker"
-:local ncExpectedPolicy "ssh,ftp,reboot,read,write,test,sensitive"
 :local ncUser @@ROUTER_USER@@
 :local ncRecoveryName @@RECOVERY_INTERFACE@@
 :local ncWanName @@WAN_INTERFACE@@
@@ -40,9 +39,12 @@
   :if ([:len $ncUsers] = 1 && [/user get $ncUsers group] != $ncGroup) do={
     :error "NETWORK_CENTER_GROUP_CONFLICT/user-group-mismatch"
   }
-  :if ([:tostr [/user/group get $ncGroups policy]] != $ncExpectedPolicy) do={
-    :error "NETWORK_CENTER_GROUP_CONFLICT/group-policy-mismatch"
-  }
+  # Per-policy membership, NOT whole-string equality. Measured on the demo hEX
+  # (7.20.8): `:tostr` of a group's policy array joins with `;` and spells the
+  # denied ones out as `!name`, so the old `!= "ssh,ftp,…"` comparison could
+  # never match and fired on every re-import. Anchoring keeps `!sensitive` from
+  # reading as a granted `sensitive` — both directions measured on hardware.
+@@WORKER_GROUP_POLICY_ASSERTIONS@@
 }
 :local ncWgs [/interface/wireguard find where name=$ncWgName]
 :if ([:len $ncWgs] > 1) do={ :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/wireguard-not-unique" }
@@ -159,7 +161,7 @@
 # it by hand is the documented follow-up (runbook 3.2).
 :put "NC_STEP:04:worker-group"
 :if ([:len [/user/group find where name=$ncGroup]] = 0) do={
-  /user/group add name=$ncGroup policy=ssh,ftp,reboot,read,write,test,sensitive
+  /user/group add name=$ncGroup policy=@@WORKER_GROUP_POLICY@@
 }
 
 :put "NC_STEP:05:worker-user"

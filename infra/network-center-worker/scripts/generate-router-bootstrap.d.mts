@@ -137,6 +137,26 @@ export function renderRouterOsTemplate(
   values: Record<string, RouterOsTemplateValue>,
 ): string;
 
+/**
+ * Exactly the policies the managed worker's command surface needs, in RouterOS's
+ * canonical order. `sensitive` is deliberately absent: measured on the demo hEX
+ * (7.20.8), the WireGuard private key is reachable only via
+ * `/interface/wireguard/print detail`, a submenu the worker never issues.
+ */
+export const WORKER_GROUP_POLICIES: readonly string[];
+
+/** Policies the managed group must never hold: `sensitive` and `policy`. */
+export const WORKER_GROUP_DENIED_POLICIES: readonly string[];
+
+/** `"(^|;)<name>(;|\$)"` — anchored so a denied `!name` cannot read as granted. */
+export function workerGroupPolicyTerm(name: string): string;
+
+/** One `:if`/`:error` per required and per denied policy, joined by newlines. */
+export function workerGroupPolicyAssertions(
+  slugPrefix: string,
+  groupsVariable: string,
+): string;
+
 /** `wg pubkey`, in-process. Throws for anything that is not a 32-byte base64 key. */
 export function wireGuardPublicKeyFromPrivate(privateKey: string): string;
 

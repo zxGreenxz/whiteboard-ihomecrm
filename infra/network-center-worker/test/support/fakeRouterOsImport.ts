@@ -595,7 +595,7 @@ class Interpreter {
     const rest = parts.slice(skip);
     if (!this.#device.has(path)) this.#fail(`no such command prefix (${path})`);
     if (verb === "add" || (verb === "import" && rest.every((token) => token.includes("=")))) {
-      this.#device.rows(path).push({ ".id": this.#device.mintId(), ...this.#assignments(rest) });
+      this.#device.rows(path).push({ ".id": this.#device.mintId(), ...this.#assignments(rest, path) });
       this.#device.mutations.push(`${verb} ${path}`);
       return;
     }
@@ -606,7 +606,7 @@ class Interpreter {
         return;
       }
       const selected = this.#select(path, rest[0] ?? "");
-      const assignments = this.#assignments(rest.slice(1));
+      const assignments = this.#assignments(rest.slice(1), path);
       // The measured hardware contract: a selector that also matches a dynamic row
       // makes the whole `set` fail, and nothing is written.
       this.#refuseDynamic(path, selected, "set");
@@ -644,15 +644,60 @@ class Interpreter {
     });
   }
 
-  #assignments(parts: string[]): RouterOsRow {
+  #assignments(parts: string[], path?: string): RouterOsRow {
     const values: RouterOsRow = {};
     for (const token of parts) {
       const separator = token.indexOf("=");
       if (separator <= 0) this.#fail(`expected end of command (${token})`);
       values[token.slice(0, separator)] = this.#text(this.#evaluate(token.slice(separator + 1)));
     }
+    // RouterOS does not store a group's `policy` as the text it was handed: it
+    // parses it into an array and renders it back `;`-joined with every denied
+    // policy spelled out as `!name`. Echoing the written form back is what let a
+    // preflight that can NEVER match on hardware pass every test in this suite.
+    if (path === "/user/group" && typeof values.policy === "string") {
+      values.policy = normalizeGroupPolicy(values.policy);
+    }
     return values;
   }
+}
+
+/**
+ * Every policy RouterOS 7.20.8 knows, in the canonical order it renders them —
+ * read off the demo hEX's own built-in `full` group on 2026-08-03.
+ */
+export const ROUTER_OS_POLICIES = [
+  "local", "telnet", "ssh", "ftp", "reboot", "read", "write", "policy", "test",
+  "winbox", "password", "web", "sniff", "sensitive", "api", "romon", "rest-api",
+] as const;
+
+/**
+ * A group's `policy` AS ROUTEROS RENDERS IT. MEASURED verbatim on the demo hEX
+ * (RouterOS 7.20.8, 2026-08-03) for the three groups that router carries:
+ *
+ *   read   local;telnet;ssh;reboot;read;test;winbox;password;web;sniff;
+ *          sensitive;api;romon;rest-api;!ftp;!write;!policy
+ *   full   local;telnet;ssh;ftp;reboot;read;write;policy;test;winbox;password;
+ *          web;sniff;sensitive;api;romon;rest-api
+ *   network-center-worker
+ *          ssh;ftp;reboot;read;write;test;sensitive;!local;!telnet;!policy;
+ *          !winbox;!password;!web;!sniff;!api;!romon;!rest-api
+ */
+export function groupPolicyValue(granted: readonly string[]): string {
+  const grantedSet = new Set(granted);
+  const unknown = granted.filter((name) => !ROUTER_OS_POLICIES.includes(name as never));
+  if (unknown.length > 0) throw new Error(`unknown RouterOS policy: ${unknown.join(",")}`);
+  return [
+    ...ROUTER_OS_POLICIES.filter((name) => grantedSet.has(name)),
+    ...ROUTER_OS_POLICIES.filter((name) => !grantedSet.has(name)).map((name) => `!${name}`),
+  ].join(";");
+}
+
+/** `policy=ssh,ftp,…` as written in a script -> what the router reports back. */
+export function normalizeGroupPolicy(written: string): string {
+  return groupPolicyValue(
+    written.split(/[,;]/u).map((name) => name.trim()).filter((name) => name && !name.startsWith("!")),
+  );
 }
 
 export interface RouterOsImportResult {

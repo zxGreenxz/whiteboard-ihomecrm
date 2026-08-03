@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 
-import { Client, type ClientChannel, type SFTPWrapper } from "ssh2";
+import { Client, type ClientChannel } from "ssh2";
 
 import {
   RouterOperationError,
@@ -15,17 +15,9 @@ import {
   type RouterInterfaceObservation,
   type RouterObservation,
 } from "../domain.js";
-import { AsyncSemaphore } from "../concurrency.js";
 import type { ActionObservation, CommandIntent } from "../reconciliation.js";
 import type { RouterBackup, RouterConnector, RouterHealth } from "./connector.js";
-import {
-  ROUTER_BACKUP_MAX_BYTES,
-  ROUTER_BACKUP_TIMEOUT_MS,
-  ROUTER_EXPORT_MAX_BYTES,
-  ROUTER_EXPORT_TIMEOUT_MS,
-  readSftpRemoteFileBounded,
-  stageSftpRemoteFileBounded,
-} from "./boundedSftpRead.js";
+import { stageExportTextBounded } from "./boundedSftpRead.js";
 import {
   ACCESS_PORT_CYCLE_TIMEOUT_MARGIN_MS,
   MAX_ACCESS_PORT_CYCLE_SECONDS,
@@ -51,12 +43,81 @@ export const ROUTER_OS_READ_COMMANDS = Object.freeze({
   identity: ":put [/system/identity/print as-value]",
   resource: ":put [/system/resource/print as-value]",
   interfaces: "/interface/print detail terse without-paging",
+  // `/interface/print detail` carries NO byte or error counters on RouterOS
+  // 7.20.8 — verified against the demo hEX, where every interface parsed to
+  // rx/tx/error 0. The counters live behind the `stats` print modifier.
+  //
+  // It must be read with `as-value`, NOT with `terse`. Measured on the demo hEX
+  // (7.20.8, 2026-08-03): `/interface/print stats terse without-paging` returns
+  // output BYTE-IDENTICAL to the same command without `terse` (870 B both ways)
+  // — `stats` ignores `terse` and always renders a fixed-width column table:
+  //
+  //     Flags: R - RUNNING; S - SLAVE
+  //     Columns: NAME, RX-BYTE, TX-BYTE, RX-PACKET, TX-PACKET
+  //     0 R  ether1          79 740 110 494  119 752 269 836  105 512 018 …
+  //     ;;; defconf
+  //     5 R  bridge         123 021 591 925   79 688 209 862  123 917 871 …
+  //
+  // There is not one `name=` or `rx-byte=` token in it, the numbers carry SPACE
+  // thousands separators, `;;;` comment lines are interleaved, and there are no
+  // error or drop columns at all — so a key=value parser matches nothing and
+  // every counter would read `null` FOREVER. That is a silent, total telemetry
+  // outage wearing the costume of "not collected", which is why the command and
+  // the parser are pinned together here and in `parseRouterOsValueRecords`.
+  //
+  // This read stays BEST EFFORT: if a build rejects it the sample records "not
+  // collected" (null) instead of a fabricated zero, and the poll still succeeds.
+  // See `#readInterfaceCounters`.
+  interfaceStats: ":put [/interface/print as-value stats]",
   dhcpClients: "/ip/dhcp-client/print detail terse without-paging",
   leases: "/ip/dhcp-server/lease/print detail terse without-paging",
   neighbors: "/ip/neighbor/print detail terse without-paging",
   firewallFilters: "/ip/firewall/filter/print detail terse without-paging",
   dns: ":put [/ip/dns/print as-value]",
 });
+
+/**
+ * The pre-action snapshot: a REDACTED TEXT config export, read straight off
+ * stdout.
+ *
+ * `hide-sensitive` is a FLAG on RouterOS v7, not a `name=value` pair. The form
+ * this worker used to send, `/export terse show-sensitive=no file=…`, is a
+ * SYNTAX ERROR for every identity including `admin`/`full` — measured on the
+ * demo hEX (7.20.8):
+ *
+ *     /export terse show-sensitive=no   -> expected end of command (line 1 column 29)
+ *     /export hide-sensitive=yes        -> expected end of command (line 1 column 23)
+ *     /export show-sensitive=yes        -> expected end of command (line 1 column 23)
+ *     /export terse hide-sensitive      -> 8133 B, 79 lines, 0 `private-key=`
+ *     /ip/address/export terse          -> 354 B  (positive control)
+ *
+ * Column 29 is exactly the `=` after `show-sensitive`, so the redacted export
+ * has never once been captured on any router.
+ *
+ * `hide-sensitive` is written out even though it is the 7.20.8 DEFAULT
+ * (`/export terse` and `/export hide-sensitive terse` were byte-identical,
+ * sha256 682b14564b4801af both). Relying on that default is a one-word mistake
+ * away from disaster: the sibling flag `/export terse show-sensitive` PARSES,
+ * and it prints the WireGuard private key in full (8192 B, one `private-key=`
+ * of length 44). Anyone "fixing" the broken form by deleting `=no` would have
+ * turned a snapshot that captures nothing into one that exfiltrates the tunnel
+ * key on every action. `routerOsExportCommandIsRedacted` pins that shut.
+ *
+ * `terse` is load-bearing for a second reason: it stops RouterOS wrapping long
+ * commands across continuation lines, so every line of the body begins with `/`
+ * or `#` and no line of *config* can be mistaken for a RouterOS failure line by
+ * `routerOsCommandFailed`.
+ */
+export const ROUTER_OS_EXPORT_COMMAND = "/export terse hide-sensitive";
+
+/**
+ * True only for an export command that is redacted. Exported so the guarantee is
+ * asserted from tests rather than trusted to a string literal nobody re-reads.
+ */
+export function routerOsExportCommandIsRedacted(command: string): boolean {
+  return /(?:^|\s)hide-sensitive(?:\s|$)/.test(command)
+    && !/(?:^|\s)show-sensitive(?:\s|$)/.test(command);
+}
 
 const MAX_COMMAND_OUTPUT_BYTES = 2 * 1024 * 1024;
 const MAX_SSH_CLOSE_WAIT_MS = 5_000;
@@ -175,6 +236,75 @@ export function parseRouterOsRecords(output: string): Array<Record<string, strin
   return records;
 }
 
+/**
+ * Splits `:put [/… print as-value …]` output into one record per row.
+ *
+ * `parseRouterOsRecords` cannot do this. That parser is line-oriented, and
+ * as-value output for EIGHT interfaces arrives as ONE line of 1305 bytes with
+ * the records concatenated and nothing between them — so it would fold the whole
+ * fleet of interfaces into a single record whose `name` is whatever the router
+ * printed last. Captured verbatim from the demo hEX (7.20.8, 2026-08-03):
+ *
+ *     .id=*2;disabled=false;name=ether1;running=true;rx-byte=79740110494;
+ *     rx-drop=0;rx-error=0;rx-packet=105512018;tx-byte=119752269836;tx-drop=0;
+ *     tx-error=0;tx-packet=121576454;tx-queue-drop=2234046;.id=*3;…;name=ether2;…
+ *
+ * The only record boundary is that every record begins with `.id=`.
+ *
+ * ## Why the boundary needs a guard
+ *
+ * as-value does NOT quote or escape its values. Measured directly, by setting a
+ * comment on a throwaway group and reading it back:
+ *
+ *     comment set to:  alpha;name=INJECTED;.id=*999;beta
+ *     as-value gave:   .id=*E;comment=alpha;name=INJECTED;.id=*999;beta;
+ *                      name=zzcbrw-g1-grp;policy=ssh;read;…
+ *
+ * So a `;` inside a comment is indistinguishable from a field separator, and a
+ * bare `.id=` boundary would split one interface into two — silently halving a
+ * counter series. This is not an attack, it is an operator typing an interface
+ * comment like `uplink; do not touch`.
+ *
+ * Two further measured invariants make it survivable:
+ *
+ *   1. `.id` is always emitted FIRST in a record; and
+ *   2. every other field follows in ALPHABETICAL order (`comment` < `disabled` <
+ *      `dynamic` < `name` < `running` < `rx-byte` < … < `slave` < `tx-byte` < …,
+ *      confirmed on two independent records).
+ *
+ * `comment` is the only free-text field, and it sorts before `name` and before
+ * every counter — so tokens injected through it can only ever land BEFORE the
+ * genuine field of the same key, never after. Hence both rules below:
+ *
+ *   - a `.id=` starts a new record only once the current record has a `name`,
+ *     which no comment-borne `.id` can satisfy; and
+ *   - a repeated key keeps the LAST value, so the genuine `name`/`rx-byte` wins
+ *     over anything a comment smuggled in ahead of it.
+ *
+ * A `;` inside an interface NAME would still defeat this, and nothing here can
+ * detect that; RouterOS does not accept such names and the bootstrap never
+ * writes one.
+ */
+export function parseRouterOsValueRecords(output: string): Array<Record<string, string>> {
+  const records: Array<Record<string, string>> = [];
+  let current: Record<string, string> | null = null;
+  // Newlines are not field separators in as-value output — the router emits at
+  // most a trailing one — so they are stripped rather than split on.
+  for (const field of output.replace(/[\r\n]/g, "").split(";")) {
+    const separator = field.indexOf("=");
+    if (separator <= 0) continue;
+    const key = field.slice(0, separator).trim();
+    const value = field.slice(separator + 1).trim();
+    if (key === ".id" && (current === null || current.name !== undefined)) {
+      current = {};
+      records.push(current);
+    }
+    if (current === null) continue;
+    current[key] = value;
+  }
+  return records;
+}
+
 const ROUTEROS_FAILURE_LINE =
   /^(?:expected end of command|syntax error|bad command name|failure:|script error:)/i;
 
@@ -197,7 +327,6 @@ interface SshConnectorOptions {
   backupStagingDirectory: string;
   now?: () => Date;
   clientFactory?: () => Client;
-  sftpSemaphore?: AsyncSemaphore;
 }
 
 function integer(value: string | undefined): number | null {
@@ -222,6 +351,79 @@ export function routerOsInterfaceState(
     enabled,
     running: enabled && (boolean(record.running) || hasFlag(record, "R")),
   };
+}
+
+/**
+ * Parses a RouterOS link rate into bits per second.
+ *
+ * `nominalSpeedBps` used to be `parseBytes(record.rate ?? record["link-downs"])`,
+ * which was wrong twice over. RouterOS 7.20.8 emits no `rate` field at all from
+ * `/interface/print detail terse`, so the value actually stored was the
+ * **link-flap counter** — the demo hEX reported `ether1 nominalSpeedBps: 3` and
+ * `ether2: 8`, which were its `link-downs=3` and `link-downs=8`. And even when a
+ * build does emit `rate`, it renders it as `1Gbps`/`100Mbps`, which `parseBytes`
+ * (bare digits, or KiB/MiB/GiB/TiB) cannot read either, so it would have
+ * returned null anyway.
+ *
+ * Returns null for anything that is not a recognisable rate. Null means "not
+ * observed": `nominal_speed_bps` is a nullable column with a `> 0` CHECK, so an
+ * absent speed is representable and a wrong one is not.
+ */
+export function parseLinkSpeedBps(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d+(?:\.\d+)?)\s*(G|M|K)?bps$/i.exec(value.trim());
+  if (!match?.[1]) return null;
+  const multipliers: Record<string, number> = { g: 1_000_000_000, m: 1_000_000, k: 1_000 };
+  const scale = match[2] ? multipliers[match[2].toLowerCase()] ?? 1 : 1;
+  const parsed = Math.round(Number(match[1]) * scale);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * Error counter from a single interface record, or null when the router printed
+ * neither half. `(rx ?? 0) + (tx ?? 0)` on an absent pair is the false zero.
+ */
+function errorCountFrom(record: Record<string, string>): number | null {
+  const rxErrors = integer(record["rx-error"]);
+  const txErrors = integer(record["tx-error"]);
+  if (rxErrors === null && txErrors === null) return null;
+  return (rxErrors ?? 0) + (txErrors ?? 0);
+}
+
+/**
+ * Merges `:put [/interface/print as-value stats]` records into a name-keyed
+ * counter map.
+ *
+ * A counter is present only when the router actually printed it. An interface
+ * the stats read never mentioned is absent from the map entirely, which is what
+ * makes "the router did not tell us" distinguishable from "the counter is zero".
+ *
+ * FIELD ABSENCE IS REAL, and that is why null-not-zero is the storage decision
+ * rather than a style preference. Measured on the demo hEX: the bridge slaves
+ * `ether2`–`ether5` report `slave=true` and OMIT `rx-error`, `tx-error`,
+ * `rx-drop` and `tx-drop` entirely, while `ether1`, `bridge`, `lo` and
+ * `wg-ihome-mgmt` carry all four. Storing 0 for a slave would invent an error
+ * count the router never claimed, and every downstream rollup reads these as
+ * monotonic counters — so the next genuine reading would look like a negative
+ * delta.
+ */
+export function parseInterfaceCounters(
+  records: Record<string, string>[],
+): Map<string, { rxBytes: number | null; txBytes: number | null; errorCount: number | null }> {
+  const counters = new Map<
+    string,
+    { rxBytes: number | null; txBytes: number | null; errorCount: number | null }
+  >();
+  for (const record of records) {
+    const name = record.name?.trim();
+    if (!name) continue;
+    counters.set(name, {
+      rxBytes: integer(record["rx-byte"]),
+      txBytes: integer(record["tx-byte"]),
+      errorCount: errorCountFrom(record),
+    });
+  }
+  return counters;
 }
 
 function parseBytes(value: string | undefined): number | null {
@@ -541,7 +743,6 @@ export class SshRouterConnector implements RouterConnector {
   readonly #now: () => Date;
   readonly #clientFactory: () => Client;
   readonly #backupStagingDirectory: string;
-  readonly #sftpSemaphore: AsyncSemaphore;
   #client: Client | null = null;
   #connecting: Promise<Client> | null = null;
   #dnsCommandAck = false;
@@ -576,7 +777,6 @@ export class SshRouterConnector implements RouterConnector {
     this.#now = options.now ?? (() => new Date());
     this.#clientFactory = options.clientFactory ?? (() => new Client());
     this.#backupStagingDirectory = resolve(options.backupStagingDirectory);
-    this.#sftpSemaphore = options.sftpSemaphore ?? new AsyncSemaphore(1);
   }
 
   async #connect(): Promise<Client> {
@@ -758,20 +958,35 @@ export class SshRouterConnector implements RouterConnector {
     return outcome.output;
   }
 
-  async #sftp(): Promise<SFTPWrapper> {
-    const client = await this.#connect();
-    return new Promise((resolve, reject) => {
-      client.sftp((error, sftp) => {
-        if (error) {
-          reject(new RouterOperationError("SFTP_UNAVAILABLE", {
-            retryable: true,
-            mayHaveExecuted: false,
-          }));
-          return;
-        }
-        resolve(sftp);
-      });
-    });
+  // There is deliberately no `#sftp()` here any more. The worker opens NO SFTP
+  // session on any router: the only thing it ever fetched that way was the
+  // binary `.backup`, whose download is gated on the `sensitive` policy (perfect
+  // correlation across seven measured identities), and the redacted export now
+  // arrives on the command channel. That is what lets `ftp` leave the managed
+  // group entirely — see WORKER_GROUP_POLICIES in scripts/generate-router-bootstrap.mjs.
+
+  /**
+   * Reads the interface byte/error counters, tolerating a router that cannot
+   * answer.
+   *
+   * This is the ONE read in `poll()` that is allowed to come back empty, because
+   * the `stats` print modifier is the only place RouterOS keeps these counters
+   * and the exact spelling has not been exercised against every firmware in the
+   * fleet. A refusal here must not take a whole poll cycle down — it must leave
+   * the counters unset, so the sample says "not collected" instead of "zero".
+   *
+   * Parsed with `parseRouterOsValueRecords`, NOT `parseRouterOsRecords`: the
+   * as-value answer is one line holding every interface, so the line-oriented
+   * parser would return a single merged record. Needs only the `read` policy —
+   * measured identical output under `ssh,read` and under the `sensitive`-bearing
+   * set, so nothing about the counters justifies a wider credential.
+   */
+  async #readInterfaceCounters(): Promise<
+    Map<string, { rxBytes: number | null; txBytes: number | null; errorCount: number | null }>
+  > {
+    const outcome = await this.#executeDetailed(ROUTER_OS_READ_COMMANDS.interfaceStats);
+    if (outcome.failure || !outcome.completed) return new Map();
+    return parseInterfaceCounters(parseRouterOsValueRecords(outcome.output));
   }
 
   async poll(): Promise<RouterObservation> {
@@ -779,6 +994,7 @@ export class SshRouterConnector implements RouterConnector {
       identityOutput,
       resourceOutput,
       interfaceOutput,
+      interfaceCounters,
       dhcpOutput,
       leaseOutput,
       neighborOutput,
@@ -788,6 +1004,7 @@ export class SshRouterConnector implements RouterConnector {
         this.#execute(ROUTER_OS_READ_COMMANDS.identity),
         this.#execute(ROUTER_OS_READ_COMMANDS.resource),
         this.#execute(ROUTER_OS_READ_COMMANDS.interfaces),
+        this.#readInterfaceCounters(),
         this.#execute(ROUTER_OS_READ_COMMANDS.dhcpClients),
         this.#execute(ROUTER_OS_READ_COMMANDS.leases),
         this.#execute(ROUTER_OS_READ_COMMANDS.neighbors),
@@ -811,10 +1028,15 @@ export class SshRouterConnector implements RouterConnector {
         : null;
       const role = interfaceRole(name, type, immutableKey);
       const state = routerOsInterfaceState(record);
-      const speed = parseBytes(record.rate ?? record["link-downs"]);
+      // NEVER fall back to another field here. The previous
+      // `record.rate ?? record["link-downs"]` silently stored the link-flap
+      // counter as a line speed on every real router, because RouterOS 7.20.8
+      // prints no `rate` at all.
+      const speed = parseLinkSpeedBps(record.rate);
+      const counters = interfaceCounters.get(name);
       const metadata: JsonObject = { interfaceKind: interfaceKind(type), sortOrder: index };
       if (record["mac-address"]) metadata.macAddress = record["mac-address"];
-      if (speed) metadata.nominalSpeedBps = speed;
+      if (speed !== null) metadata.nominalSpeedBps = speed;
       return {
         externalKey: immutableKey ?? name,
         displayName: name,
@@ -827,9 +1049,16 @@ export class SshRouterConnector implements RouterConnector {
         enabled: state.enabled,
         sample: {
           linkState: state.running ? "UP" : "DOWN",
-          rxBytes: integer(record["rx-byte"]) ?? 0,
-          txBytes: integer(record["tx-byte"]) ?? 0,
-          errorCount: (integer(record["rx-error"]) ?? 0) + (integer(record["tx-error"]) ?? 0),
+          // null, not 0. A zero here is indistinguishable from a genuinely idle
+          // interface, and every downstream rollup treats the series as a
+          // monotonic counter, so a fabricated zero manufactures a negative
+          // delta on the next real reading. The column is nullable end to end
+          // (network_interface_current.rx_bytes/tx_bytes/error_count and the
+          // ingest recordset all accept NULL), so "not collected" is
+          // representable without a schema change.
+          rxBytes: counters?.rxBytes ?? integer(record["rx-byte"]),
+          txBytes: counters?.txBytes ?? integer(record["tx-byte"]),
+          errorCount: counters?.errorCount ?? errorCountFrom(record),
           ...metadata,
         },
       };
@@ -894,52 +1123,84 @@ export class SshRouterConnector implements RouterConnector {
     };
   }
 
+  /**
+   * Captures the pre-action snapshot as a REDACTED TEXT EXPORT read off stdout.
+   *
+   * ## Why the binary `.backup` is gone
+   *
+   * It could never be made to work by any credential this hardening is willing
+   * to issue. Measured on the demo hEX (7.20.8), each row a freshly created
+   * throwaway identity, each with a `:put "CHANNEL_OK"` control in the same run:
+   *
+   *   - `/system/backup/save` requires `policy` AND `test` — not `write`, not
+   *     `ftp`, not `sensitive`. The group deployed in production today
+   *     (`ssh,ftp,reboot,read,write,test,sensitive`) lacks `policy`, so it
+   *     answers `Failed to save system configuration backup` and writes 0 files.
+   *     Reproduced three times: the pre-action backup is ALREADY broken on the
+   *     live worker credential, before any hardening.
+   *   - downloading a `.backup` over SFTP requires `sensitive` — perfect
+   *     correlation across seven identities, with a `.rsc` fetch succeeding in
+   *     every one of them as the channel control.
+   *   - a `policy`-holding, `!sensitive` user SET ITS OWN GROUP to add
+   *     `sensitive` and then read the WireGuard private key in full on a fresh
+   *     login (`:len` 5 in-session, 44 after reconnect).
+   *
+   * So the smallest policy set that completes a binary backup is strictly wider
+   * than the one deployed today and hands over both of the capabilities this
+   * work exists to remove. There is no tunable middle.
+   *
+   * ## Why a text export is the right replacement, not a weaker one
+   *
+   * None of the actions this snapshot precedes mutates state that only a binary
+   * image can restore: `FLUSH_DNS_CACHE` and `RENEW_DHCP_LEASE` change no
+   * configuration at all, `REBOOT_ROUTER` changes none either, and
+   * `CYCLE_ACCESS_PORT` toggles one interface's `disabled` flag behind a
+   * router-side dead-man switch that restores it without the worker. The
+   * documented rollback path is `/import router-rollback.rsc` over the LAN
+   * recovery session; the binary was already only step 6, "when the rollback
+   * script is not enough".
+   *
+   * The text export also downloads for EVERY identity measured and needs only
+   * `read` (8455 B under `ssh,read`), so the credential narrows instead of
+   * widening. And it is arguably safer at rest than what it replaces: the
+   * `.backup` provably contained the WireGuard private key as base64 at a fixed
+   * offset, encrypted with a password THE WORKER ITSELF HOLDS, whereas
+   * `hide-sensitive` strips the key before it ever leaves the router (0
+   * occurrences of `private-key=` in 8133 B).
+   *
+   * ## The trade-off, stated rather than buried
+   *
+   * A text export cannot restore binary-only state that a `.backup` image can —
+   * certificates and their private keys, SSH host keys, the WireGuard private
+   * key, user password hashes. Under `hide-sensitive` those are absent by
+   * construction, so a router rebuilt from this artifact alone comes back
+   * WITHOUT its management tunnel identity and must be re-bootstrapped. That is
+   * written into DEMO-ROUTER-RUNBOOK.md §9 and must not be discovered during an
+   * incident.
+   *
+   * No router-side file is created, so there is no `/file/remove` cleanup and
+   * nothing to leave behind when a session dies mid-capture.
+   */
   async captureBackup(): Promise<RouterBackup> {
-    const suffix = randomBytes(12).toString("hex");
-    const backupName = `nc-${suffix}`;
-    const exportName = `nc-${suffix}-redacted`;
-    const backupFile = `${backupName}.backup`;
-    const exportFile = `${exportName}.rsc`;
-    try {
-      await this.#execute(
-        `/system/backup/save name=${quoteRouterOsValue(backupName)} password=${quoteRouterOsValue(this.#credential.backupPassword)} encryption=aes-sha256`,
-      );
-      await this.#execute(
-        `/export terse show-sensitive=no file=${quoteRouterOsValue(exportName)}`,
-      );
-      return await this.#sftpSemaphore.use(async () => {
-        const exportSftp = await this.#sftp();
-        const redacted = await readSftpRemoteFileBounded(exportSftp, exportFile, {
-          kind: "export",
-          maxBytes: ROUTER_EXPORT_MAX_BYTES,
-          timeoutMs: ROUTER_EXPORT_TIMEOUT_MS,
-        });
-        await mkdir(this.#backupStagingDirectory, { recursive: true, mode: 0o700 });
-        const localPath = resolve(this.#backupStagingDirectory, `${backupName}.backup.part`);
-        if (!localPath.startsWith(`${this.#backupStagingDirectory}${sep}`)) {
-          throw new RouterOperationError("SFTP_STAGING_PATH_INVALID", {
-            retryable: false,
-            mayHaveExecuted: false,
-          });
-        }
-        const backupSftp = await this.#sftp();
-        const artifact = await stageSftpRemoteFileBounded(backupSftp, backupFile, {
-          kind: "backup",
-          destinationPath: localPath,
-          maxBytes: ROUTER_BACKUP_MAX_BYTES,
-          timeoutMs: ROUTER_BACKUP_TIMEOUT_MS,
-        });
-        return { artifact, redactedExport: redacted.toString("utf8") };
+    // Fails CLOSED, unlike the counters read: a refusal here throws
+    // ROUTEROS_COMMAND_REJECTED and the action never runs. A pre-action snapshot
+    // that quietly captured nothing is exactly the defect this replaces.
+    const redactedExport = await this.#execute(ROUTER_OS_EXPORT_COMMAND);
+    await mkdir(this.#backupStagingDirectory, { recursive: true, mode: 0o700 });
+    const localPath = resolve(
+      this.#backupStagingDirectory,
+      `nc-${randomBytes(12).toString("hex")}.rsc.part`,
+    );
+    if (!localPath.startsWith(`${this.#backupStagingDirectory}${sep}`)) {
+      throw new RouterOperationError("ROUTER_EXPORT_STAGING_PATH_INVALID", {
+        retryable: false,
+        mayHaveExecuted: false,
       });
-    } finally {
-      try {
-        await this.#execute(
-          `/file/remove [find where name=${quoteRouterOsValue(backupFile)}]; /file/remove [find where name=${quoteRouterOsValue(exportFile)}]`,
-        );
-      } catch {
-        // Cleanup failure is intentionally non-fatal; remote names are random and contain no secrets.
-      }
     }
+    const artifact = await stageExportTextBounded(redactedExport, {
+      destinationPath: localPath,
+    });
+    return { artifact, redactedExport };
   }
 
   async healthCheck(): Promise<RouterHealth> {

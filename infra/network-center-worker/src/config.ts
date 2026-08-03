@@ -35,7 +35,6 @@ export interface WorkerConfig {
   pollConcurrency: number;
   commandConcurrency: number;
   commandClaimLimit: number;
-  sftpConcurrency: number;
   emergencyStop: boolean;
 }
 
@@ -286,11 +285,6 @@ export function loadWorkerConfig(input: LoadConfigInput = {}): WorkerConfig {
       minimum: 1,
       maximum: 3,
       fallback: 3,
-    }),
-    sftpConcurrency: integerSetting(env, "NETWORK_CENTER_SFTP_CONCURRENCY", {
-      minimum: 1,
-      maximum: 1,
-      fallback: 1,
     }),
     emergencyStop: booleanSetting(env, "NETWORK_CENTER_EMERGENCY_STOP"),
   });

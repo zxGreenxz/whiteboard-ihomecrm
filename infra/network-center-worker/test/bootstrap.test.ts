@@ -9,10 +9,15 @@ import {
   generateBootstrap,
   generateWireGuardKeypair,
   wireGuardPublicKeyFromPrivate,
+  WORKER_GROUP_DENIED_POLICIES,
+  WORKER_GROUP_POLICIES,
 } from "../scripts/generate-router-bootstrap.mjs";
 import {
   bootstrapFixture as fixture,
   dedicatedPortFixture,
+  groupPolicyValue,
+  HARDENED_WORKER_POLICIES,
+  LEGACY_WORKER_POLICIES,
   RFC7748_ALICE_PRIVATE,
   RFC7748_ALICE_PUBLIC,
   RFC7748_BOB_PRIVATE,
@@ -80,7 +85,7 @@ describe("demo router bootstrap generator", () => {
     expect(firewallGuard).toBeLessThan(firstMutation);
     expect(firstMutation).toBeGreaterThan(ownershipGuard);
     expect(bootstrap).toContain(
-      ':local ncExpectedPolicy "ssh,ftp,reboot,read,write,test,sensitive"',
+      ':if ([:tostr [/user/group get $ncGroups policy]] ~ "(^|;)sensitive(;|\\$)")',
     );
     expect(bootstrap).not.toContain(
       '[:len $ncUsers] = 0) do={ :error "NETWORK_CENTER_GROUP_CONFLICT"',
@@ -395,5 +400,78 @@ describe("WireGuard key material", () => {
       },
     );
     expect(second.status).toBe(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Worker group policy scope
+  //
+  // Measured on the demo hEX (RouterOS 7.20.8, 2026-08-03) with a read-only
+  // session; nothing on that router was changed:
+  //   /interface/wireguard/print detail  -> private-key="<44 chars>"  (46 incl. quotes)
+  //   /interface/print detail terse      -> 1342 bytes, 0 sensitive fields
+  // i.e. the tunnel's private key is reachable only through a submenu the worker
+  // never issues, so `sensitive` costs the overlay its key and buys nothing.
+  // -------------------------------------------------------------------------
+  it("grants the worker group no `sensitive` policy, and asserts it stays that way", () => {
+    const bootstrap = generateBootstrap(fixture)["router-bootstrap.rsc"];
+
+    // The grant itself.
+    expect(bootstrap).toContain("/user/group add name=$ncGroup policy=ssh,reboot,read,write");
+    expect(WORKER_GROUP_POLICIES).not.toContain("sensitive");
+    expect(WORKER_GROUP_POLICIES).not.toContain("policy");
+
+    // The grant and the preflight come from one constant, so they cannot drift:
+    // every granted policy is also asserted present, and every denied one absent.
+    for (const policy of WORKER_GROUP_POLICIES) {
+      expect(bootstrap).toContain(`NETWORK_CENTER_GROUP_CONFLICT/group-policy-missing-${policy}`);
+    }
+    for (const policy of WORKER_GROUP_DENIED_POLICIES) {
+      expect(bootstrap).toContain(`NETWORK_CENTER_GROUP_CONFLICT/group-policy-grants-${policy}`);
+    }
+
+    // Stage 2 carries the same assertions, or a router hardened at stage 1 could
+    // be quietly re-widened before lockdown.
+    const lockdown = generateBootstrap(fixture)["router-lockdown.rsc"];
+    for (const policy of [...WORKER_GROUP_POLICIES, ...WORKER_GROUP_DENIED_POLICIES]) {
+      expect(lockdown).toContain(`lockdown-group-policy-${
+        WORKER_GROUP_POLICIES.includes(policy) ? "missing" : "grants"
+      }-${policy}`);
+    }
+
+    // The dead comparison this replaced. `:tostr` of a policy ARRAY joins with
+    // `;` and spells denied policies out as `!name`, so no `,`-joined literal can
+    // ever equal it — pinning its absence keeps it from being reintroduced.
+    expect(bootstrap).not.toContain("ncExpectedPolicy");
+    expect(lockdown).not.toContain("ncExpectedPolicy");
+  });
+
+  it("models a group's policy the way RouterOS renders it, not the way it is written", () => {
+    // Verbatim from the demo hEX's own three groups. If `groupPolicyValue` ever
+    // stops reproducing these, every preflight test built on it is measuring a
+    // router that does not exist.
+    expect(groupPolicyValue([
+      "local", "telnet", "ssh", "reboot", "read", "test", "winbox", "password",
+      "web", "sniff", "sensitive", "api", "romon", "rest-api",
+    ])).toBe(
+      "local;telnet;ssh;reboot;read;test;winbox;password;web;sniff;sensitive;"
+      + "api;romon;rest-api;!ftp;!write;!policy",
+    );
+    expect(groupPolicyValue([
+      "local", "telnet", "ssh", "ftp", "reboot", "read", "write", "policy", "test",
+      "winbox", "password", "web", "sniff", "sensitive", "api", "romon", "rest-api",
+    ])).toBe(
+      "local;telnet;ssh;ftp;reboot;read;write;policy;test;winbox;password;web;"
+      + "sniff;sensitive;api;romon;rest-api",
+    );
+    // The demo router's CURRENT, un-hardened managed group — the exact policy
+    // string read back off the hardware, so the model is checked against the
+    // device rather than against itself.
+    expect(groupPolicyValue(LEGACY_WORKER_POLICIES)).toBe(
+      "ssh;ftp;reboot;read;write;test;sensitive;!local;!telnet;!policy;!winbox;"
+      + "!password;!web;!sniff;!api;!romon;!rest-api",
+    );
+    // Separator and negation are the two things the old guard got wrong.
+    expect(groupPolicyValue(HARDENED_WORKER_POLICIES)).toContain("!sensitive");
+    expect(groupPolicyValue(HARDENED_WORKER_POLICIES)).not.toContain(",");
   });
 });

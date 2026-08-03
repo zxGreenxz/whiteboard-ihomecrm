@@ -13,7 +13,6 @@ const validEnvironment = {
   NETWORK_CENTER_POLL_CONCURRENCY: "3",
   NETWORK_CENTER_COMMAND_CONCURRENCY: "3",
   NETWORK_CENTER_COMMAND_CLAIM_LIMIT: "3",
-  NETWORK_CENTER_SFTP_CONCURRENCY: "1",
   NETWORK_CENTER_EMERGENCY_STOP: "false",
 };
 
@@ -47,7 +46,6 @@ describe("worker configuration", () => {
     expect(config.pollConcurrency).toBe(3);
     expect(config.commandConcurrency).toBe(3);
     expect(config.commandClaimLimit).toBe(3);
-    expect(config.sftpConcurrency).toBe(1);
     expect(config.emergencyStop).toBe(false);
     expect(config.credentials.size).toBe(0);
   });
@@ -64,7 +62,6 @@ describe("worker configuration", () => {
       ["NETWORK_CENTER_POLL_CONCURRENCY", "4"],
       ["NETWORK_CENTER_COMMAND_CONCURRENCY", "4"],
       ["NETWORK_CENTER_COMMAND_CLAIM_LIMIT", "4"],
-      ["NETWORK_CENTER_SFTP_CONCURRENCY", "2"],
     ] as const) {
       expect(() => loadWorkerConfig({
         env: { ...validEnvironment, [name]: value },

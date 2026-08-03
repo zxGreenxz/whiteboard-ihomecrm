@@ -19,6 +19,8 @@ import {
 import {
   bootstrapFixture,
   dedicatedPortFixture,
+  HARDENED_WORKER_POLICIES,
+  LEGACY_WORKER_POLICIES,
   MANAGEMENT_SERVICE_STATE,
   OWNERSHIP_MARKER,
   stockHexDevice,
@@ -621,5 +623,128 @@ describe("recovery-interface contract", () => {
     ).toBe(false);
     expect(serviceRow(device, "ssh", false).address).toBe("10.77.0.1/32");
     expect(serviceRow(device, "winbox", false).disabled).toBe("yes");
+  });
+
+  // -------------------------------------------------------------------------
+  // The already-provisioned router
+  //
+  // Every test above starts from a VIRGIN router, so `[:len $ncGroups] = 1` was
+  // false and the entire group-policy preflight branch never executed. On the
+  // real demo router that branch is the one that runs, and it was measured
+  // read-only on 2026-08-03 to reject the router outright:
+  //
+  //   CHK23_group_unique=PASS
+  //   CHK24_user_group=PASS
+  //   WOULD_ERROR=lockdown-group-policy-mismatch   <-- fires
+  //
+  // i.e. stage 2 was unimportable on every building that had completed stage 1.
+  // -------------------------------------------------------------------------
+  it("re-imports stage 1 onto a router it has already hardened", () => {
+    const device = stockHexDevice({ provisionedWorkerGroup: HARDENED_WORKER_POLICIES });
+
+    const result = importRouterOsScript(
+      device,
+      generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+    );
+
+    expect(result.output).toContain("NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF");
+    // Idempotent: the existing group is accepted, not duplicated.
+    expect(device.rows("/user/group").filter((row) => row.name === "network-center-worker"))
+      .toHaveLength(1);
+    expect(device.mutations).not.toContain("add /user/group");
+  });
+
+  it("applies lockdown to a router hardened at stage 1", () => {
+    const device = stockHexDevice({ provisionedWorkerGroup: HARDENED_WORKER_POLICIES });
+
+    const result = importRouterOsScript(
+      device,
+      generateBootstrap(bootstrapFixture)["router-lockdown.rsc"],
+    );
+
+    expect(result.output).toContain("NETWORK_CENTER_LOCKDOWN_APPLIED");
+    expect(serviceRow(device, "ssh", false).address).toBe("10.77.0.1/32");
+  });
+
+  it("refuses both stages while the managed group still grants `sensitive`", () => {
+    // Exactly the demo router's live state: `sensitive` granted, so the worker's
+    // credential can read the overlay tunnel's private key with one command.
+    const files = generateBootstrap(bootstrapFixture);
+
+    const bootstrap = importFailure(
+      stockHexDevice({ provisionedWorkerGroup: LEGACY_WORKER_POLICIES }),
+      files["router-bootstrap.rsc"],
+    );
+    const lockdown = importFailure(
+      stockHexDevice({ provisionedWorkerGroup: LEGACY_WORKER_POLICIES }),
+      files["router-lockdown.rsc"],
+    );
+
+    expect(bootstrap.message).toBe("NETWORK_CENTER_GROUP_CONFLICT/group-policy-grants-sensitive");
+    expect(lockdown.message)
+      .toBe("NETWORK_CENTER_GROUP_CONFLICT/lockdown-group-policy-grants-sensitive");
+    // Refused in the PREFLIGHT: nothing was written before the check fired.
+    expect(bootstrap.output).toEqual([]);
+    expect(lockdown.output).toEqual([]);
+  });
+
+  it("names the exact policy that is missing from an under-provisioned group", () => {
+    // `verbose=no` means the identity is the whole diagnosis, so a group short of
+    // one policy must not report the same thing as a group short of another.
+    for (const missing of HARDENED_WORKER_POLICIES) {
+      const failure = importFailure(
+        stockHexDevice({
+          provisionedWorkerGroup: HARDENED_WORKER_POLICIES.filter((name) => name !== missing),
+        }),
+        generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+      );
+
+      expect(failure.message)
+        .toBe(`NETWORK_CENTER_GROUP_CONFLICT/group-policy-missing-${missing}`);
+    }
+  });
+
+  it("rejects a group that has been widened to `policy`, which could re-grant sensitive", () => {
+    const failure = importFailure(
+      stockHexDevice({ provisionedWorkerGroup: [...HARDENED_WORKER_POLICIES, "policy"] }),
+      generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+    );
+
+    expect(failure.message).toBe("NETWORK_CENTER_GROUP_CONFLICT/group-policy-grants-policy");
+  });
+
+  it("names ftp and test as over-grants, on a group that is otherwise clean", () => {
+    // `ftp` and `test` left the minimum on 2026-08-03 with the binary backup
+    // they served: measured on the demo hEX, `:execute` runs under `ssh,read`
+    // and `/export terse hide-sensitive` reads off stdout, so neither policy
+    // gates a command the worker still sends.
+    //
+    // Deliberately WITHOUT `sensitive`. A fixture that carried it would be
+    // refused for `sensitive` first and would pass no matter what the denied
+    // list said about `ftp`/`test` — which is precisely how an earlier version
+    // of this suite failed to notice the two had been dropped from it.
+    for (const surplus of ["ftp", "test"]) {
+      const failure = importFailure(
+        stockHexDevice({ provisionedWorkerGroup: [...HARDENED_WORKER_POLICIES, surplus] }),
+        generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+      );
+
+      expect(failure.message)
+        .toBe(`NETWORK_CENTER_GROUP_CONFLICT/group-policy-grants-${surplus}`);
+      // Refused in the PREFLIGHT: nothing was written before the check fired.
+      expect(failure.output).toEqual([]);
+    }
+  });
+
+  it("accepts exactly the re-derived minimum and nothing wider", () => {
+    expect(HARDENED_WORKER_POLICIES).toEqual(["ssh", "reboot", "read", "write"]);
+    const device = stockHexDevice({ provisionedWorkerGroup: HARDENED_WORKER_POLICIES });
+
+    const result = importRouterOsScript(
+      device,
+      generateBootstrap(bootstrapFixture)["router-bootstrap.rsc"],
+    );
+
+    expect(result.output).toContain("NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF");
   });
 });

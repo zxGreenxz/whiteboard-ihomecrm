@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, unlink, type FileHandle } from "node:fs/promises";
 import { isAbsolute } from "node:path";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 
 import { RouterOperationError } from "../domain.js";
 
@@ -155,6 +155,58 @@ export async function stageSftpFileBounded(
   } finally {
     await closeQuietly(handle);
     if (ownsDestination && !completed) await unlinkQuietly(options.destinationPath);
+  }
+}
+
+/**
+ * Every `SFTP_*` failure `stageSftpFileBounded` can raise, mapped to the name an
+ * operator should see when the bytes came off STDOUT and no SFTP session was
+ * ever opened. A pre-action snapshot that fails with `SFTP_READ_EMPTY` on a
+ * router the worker never opened SFTP to would send an incident straight at the
+ * wrong subsystem.
+ */
+const EXPORT_STAGING_ERROR_CODES: Readonly<Record<string, string>> = Object.freeze({
+  SFTP_READ_EMPTY: "ROUTER_EXPORT_EMPTY",
+  SFTP_READ_LIMIT_EXCEEDED: "ROUTER_EXPORT_TOO_LARGE",
+  SFTP_READ_TIMEOUT: "ROUTER_EXPORT_STAGING_TIMEOUT",
+  SFTP_READ_FAILED: "ROUTER_EXPORT_STAGING_FAILED",
+  SFTP_READ_OPTIONS_INVALID: "ROUTER_EXPORT_STAGING_OPTIONS_INVALID",
+  SFTP_STAGING_PATH_INVALID: "ROUTER_EXPORT_STAGING_PATH_INVALID",
+  SFTP_STAGING_WRITE_FAILED: "ROUTER_EXPORT_STAGING_WRITE_FAILED",
+  SFTP_STAGING_FAILED: "ROUTER_EXPORT_STAGING_FAILED",
+});
+
+/**
+ * Stages a text config export that was read off the command channel.
+ *
+ * Deliberately routed through `stageSftpFileBounded` rather than a fresh
+ * `writeFile`: that function is where the exclusive `wx` create, mode `0600`,
+ * the byte ceiling, the streaming sha256, the `fsync` and the delete-on-failure
+ * live, and the snapshot artifact must keep every one of them just because its
+ * bytes now arrive over stdout instead of over SFTP. An empty export stays a
+ * hard failure — `SFTP_READ_EMPTY` becomes `ROUTER_EXPORT_EMPTY` — because a
+ * zero-byte pre-action snapshot is the failure mode being designed out.
+ */
+export async function stageExportTextBounded(
+  text: string,
+  options: { destinationPath: string },
+): Promise<StagedSftpFile> {
+  try {
+    return await stageSftpFileBounded(Readable.from([Buffer.from(text, "utf8")]), {
+      kind: "export",
+      destinationPath: options.destinationPath,
+      maxBytes: ROUTER_EXPORT_MAX_BYTES,
+      timeoutMs: ROUTER_EXPORT_TIMEOUT_MS,
+    });
+  } catch (error) {
+    const mapped = error instanceof RouterOperationError
+      ? EXPORT_STAGING_ERROR_CODES[error.code]
+      : undefined;
+    if (!mapped || !(error instanceof RouterOperationError)) throw error;
+    throw new RouterOperationError(mapped, {
+      retryable: error.retryable,
+      mayHaveExecuted: false,
+    });
   }
 }
 

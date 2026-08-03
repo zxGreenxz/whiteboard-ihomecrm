@@ -25,7 +25,7 @@ import {
   type CommandIntentAction,
 } from "./reconciliation.js";
 import {
-  ROUTER_BACKUP_MAX_BYTES,
+  ROUTER_EXPORT_MAX_BYTES,
   type StagedSftpFile,
 } from "./routeros/boundedSftpRead.js";
 import {
@@ -572,7 +572,10 @@ export class CommandProcessor {
         return;
       }
 
-      await this.#backupStore.assertReserve(ROUTER_BACKUP_MAX_BYTES);
+      // Reserve what a redacted text export can actually take (1 MiB), not the
+      // 16 MiB a binary image needed. Reserving 16x the real figure turned a
+      // healthy disk into a RESERVE refusal and fail-closed every action.
+      await this.#backupStore.assertReserve(ROUTER_EXPORT_MAX_BYTES);
       await this.#stage(claim, "BACKUP_STARTED");
       const backup = await connector.captureBackup();
       stagedArtifact = backup.artifact;
@@ -584,7 +587,7 @@ export class CommandProcessor {
         commandId: claim.commandId,
         attemptNo: claim.attemptNo,
         createdAt: this.#clock.now(),
-        encryption: "ROUTEROS_AES_SHA256",
+        encryption: "ROUTEROS_EXPORT_PLAINTEXT",
         artifact: stagedArtifact,
       });
       stagedArtifact = undefined;
