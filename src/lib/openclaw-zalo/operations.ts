@@ -97,21 +97,149 @@ export function unknownBadges(input: {
   return badges;
 }
 
-export type ResolutionFailure = "ALREADY_RESOLVED" | "PERMISSION_DENIED" | "STALE_EVIDENCE" | "UNKNOWN";
+export type ResolutionFailure =
+  | "ALREADY_RESOLVED"
+  | "PERMISSION_DENIED"
+  | "STALE_EVIDENCE"
+  | "NEW_SEND_FAILED"
+  | "MALFORMED_REQUEST"
+  | "UNKNOWN";
 
 /**
- * What a failed resolution means.
+ * What a failed resolution means, derived from what the server actually raises.
  *
- * 40001 is the interesting one: the resolution is one-time, so it means somebody
- * else resolved it first. The correct response is to show THEIR outcome, not to
- * retry - which is why the hook reloads the winner rather than surfacing an error.
+ * `openclaw_resolve_unknown_v1` throws 40001 for three different situations and
+ * 22023 for two, so the SQLSTATE alone cannot say what happened - the message has
+ * to be read as well:
+ *
+ *   40001 concurrent winner / lost CAS  -> somebody else resolved it first
+ *   40001 authority evidence mismatch   -> the evidence we sent is stale
+ *   40001 intent was not created        -> the resolution stands, the new send failed
+ *   22023 outcome/reason mismatch       -> our own request was malformed
+ *   22023 newIntent must be null ...    -> our own request was malformed
+ *
+ * These are not interchangeable to an operator. "Someone else already handled it"
+ * means reload and read their outcome; "the request was malformed" is our bug and
+ * retrying it will fail identically.
  */
 export function classifyResolutionFailure(error: unknown): ResolutionFailure {
-  if (error !== null && typeof error === "object") {
-    const code = (error as { code?: unknown }).code;
-    if (code === "40001") return "ALREADY_RESOLVED";
-    if (code === "42501") return "PERMISSION_DENIED";
-    if (code === "22023" || code === "55000") return "STALE_EVIDENCE";
+  if (error === null || typeof error !== "object") return "UNKNOWN";
+  const code = (error as { code?: unknown }).code;
+  const message = String((error as { message?: unknown }).message ?? "");
+
+  if (code === "42501") return "PERMISSION_DENIED";
+  if (code === "22023") return "MALFORMED_REQUEST";
+  if (code === "40001") {
+    if (/concurrent winner|lost CAS/u.test(message)) return "ALREADY_RESOLVED";
+    if (/evidence mismatch/u.test(message)) return "STALE_EVIDENCE";
+    if (/intent was not created/u.test(message)) return "NEW_SEND_FAILED";
+    // A 40001 the server can raise but this list does not name yet. Saying
+    // "already resolved" here would send the operator to look for a winner that
+    // does not exist.
+    return "UNKNOWN";
   }
   return "UNKNOWN";
+}
+
+/**
+ * The authority evidence an operator must echo back to resolve an UNKNOWN.
+ *
+ * Both fields come from `openclaw_get_unknown_resolution_v1` and are echoed
+ * verbatim: the server recomputes the hash and refuses anything that differs, so
+ * constructing either value on the client would only produce a 40001. The domain
+ * carries a literal trailing "\0" that the server compares exactly - one more
+ * reason to pass it through untouched rather than rebuild it.
+ */
+export interface UnknownAuthorityEvidence {
+  authoritativeEvidenceDomain: string;
+  authoritativeEvidenceHash: string;
+  resolutionVersion: number;
+}
+
+export interface UnknownNewIntentInput {
+  clientOperationId: string;
+  targetId: string;
+  sourceDraftId: string;
+  expectedDraftVersion: number;
+  replyToMessageId: string | null;
+}
+
+export interface UnknownResolutionRequestInput {
+  organizationId: string;
+  outboxId: string;
+  outcome: OpenClawUnknownResolutionOutcome;
+  authority: UnknownAuthorityEvidence;
+  /** 64 lowercase hex characters; the server stores it and checks only the shape. */
+  operatorEvidenceHash: string;
+  newIntent: UnknownNewIntentInput | null;
+}
+
+/**
+ * Builds the request body `openclaw_resolve_unknown_v1` accepts.
+ *
+ * The server validates the object strictly - an unexpected key or a missing one is
+ * refused before anything else runs - so this returns exactly the ten documented
+ * keys and derives `reasonCode` from the outcome rather than letting a caller pair
+ * them, because a mismatched pair is a 22023 the operator cannot act on.
+ */
+export function buildUnknownResolutionRequest(
+  input: UnknownResolutionRequestInput,
+): Record<string, unknown> {
+  const outcome = UNKNOWN_OUTCOMES.find(entry => entry.outcome === input.outcome);
+  if (outcome === undefined) throw new Error(`unknown resolution outcome: ${input.outcome}`);
+  if (!/^[0-9a-f]{64}$/u.test(input.operatorEvidenceHash)) {
+    throw new Error("operatorEvidenceHash must be 64 lowercase hex characters");
+  }
+  if (outcome.createsNewSend !== (input.newIntent !== null)) {
+    throw new Error(
+      outcome.createsNewSend
+        ? "NEW_INTENT_CREATED requires newIntent"
+        : `${input.outcome} must not carry newIntent`,
+    );
+  }
+
+  return {
+    version: 1,
+    organizationId: input.organizationId,
+    outboxId: input.outboxId,
+    expectedResolutionVersion: input.authority.resolutionVersion,
+    expectedEvidenceDomain: input.authority.authoritativeEvidenceDomain,
+    expectedEvidenceHash: input.authority.authoritativeEvidenceHash,
+    outcome: input.outcome,
+    reasonCode: outcome.reasonCode,
+    operatorEvidenceHash: input.operatorEvidenceHash,
+    newIntent: input.newIntent === null ? null : {
+      clientOperationId: input.newIntent.clientOperationId,
+      targetId: input.newIntent.targetId,
+      sourceDraftId: input.newIntent.sourceDraftId,
+      expectedDraftVersion: input.newIntent.expectedDraftVersion,
+      replyToMessageId: input.newIntent.replyToMessageId,
+    },
+  };
+}
+
+/**
+ * Hashes what the operator says they observed.
+ *
+ * The server only checks that this is 64 hex characters - it never recomputes it -
+ * so the value is worth nothing unless the client derives it from the actual
+ * observation. Hashing a canonical statement means two operators who checked the
+ * same thing produce the same hash, and the audit row can be matched back to a
+ * statement rather than to an arbitrary number.
+ */
+export async function operatorEvidenceHash(input: {
+  outboxId: string;
+  outcome: OpenClawUnknownResolutionOutcome;
+  observedAt: string;
+  observation: string;
+}): Promise<string> {
+  const statement = [
+    "ihome-openclaw-operator-observation-v1",
+    input.outboxId,
+    input.outcome,
+    input.observedAt,
+    input.observation.trim(),
+  ].join("\n");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(statement));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
