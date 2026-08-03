@@ -428,13 +428,32 @@ export interface ClassifiedWorkerError {
  *   same blip *after* a disruptive action must stay UNCERTAIN and be reconciled.
  * Anything else still fails closed as a permanent failure.
  */
+/**
+ * `actionExecuted` is the caller's own knowledge that the router action was
+ * already dispatched and returned. It has to be able to OVERRIDE an error's
+ * `mayHaveExecuted: false`, because that flag is two different statements
+ * wearing one boolean: the connector saying "this provably did not run" (a
+ * refusal on a completed channel) and the connector saying nothing at all (the
+ * hard-coded default on a connect timeout, which cannot know what happened
+ * before it). Consulting only the flag classified a post-action connect failure
+ * as RETRYABLE_FAILURE; the command was re-queued, and because
+ * `pre_observation` is frozen on first write the retry skipped straight back to
+ * the action - so a REBOOT_ROUTER whose router HAD come back was rebooted again,
+ * once per attempt, on real hardware.
+ *
+ * The property, which matters more than the reboot: a disruptive action that may
+ * have executed is never silently replayed. Only `disruptive` actions are
+ * escalated, because the rest (FLUSH_DNS_CACHE, RENEW_DHCP_LEASE) are idempotent
+ * by construction and a replay of those costs nothing - while UNCERTAIN blocks
+ * every later command for the device until it is reconciled.
+ */
 export function classifyWorkerError(
   error: unknown,
   disruptive: boolean,
-  actionStarted = false,
+  actionExecuted = false,
 ): ClassifiedWorkerError {
   if (error instanceof RouterOperationError) {
-    const outcome: CommandOutcome = disruptive && error.mayHaveExecuted
+    const outcome: CommandOutcome = disruptive && (error.mayHaveExecuted || actionExecuted)
       ? "UNCERTAIN"
       : error.retryable ? "RETRYABLE_FAILURE" : "FAILED";
     return {
@@ -444,7 +463,7 @@ export function classifyWorkerError(
     };
   }
   if (error instanceof ApiClientError) {
-    const outcome: CommandOutcome = disruptive && actionStarted
+    const outcome: CommandOutcome = disruptive && actionExecuted
       ? "UNCERTAIN"
       : error.retryable ? "RETRYABLE_FAILURE" : "FAILED";
     return {

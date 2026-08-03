@@ -110,8 +110,37 @@ function stagedEventsBeforeObservation(action: CommandIntentAction): number {
   return action === "CAPTURE_SNAPSHOT" ? 1 : 3;
 }
 
-/** Settle time the worker itself waits after a reboot before observing. */
-const REBOOT_SETTLE_MS = 5_000;
+/**
+ * Share of the observation budget still unspent when a reboot is dispatched that
+ * the post-check may spend WAITING for the router to answer again.
+ *
+ * The constant this replaces was a flat 5 s sleep followed by one observation.
+ * Measured on the reference hEX 7.20.8 the router takes 54-70 s to answer SSH
+ * after `/system/reboot`, so that post-check could never succeed: it was
+ * guaranteed to hit a dead router, and the transport failure it produced was
+ * re-queued as a retry that issued a SECOND reboot. ~9.5 minutes of the
+ * 10-minute deadline the server stamps for REBOOT_ROUTER went unused.
+ *
+ * A share rather than a duration, because the only honest source for "how long
+ * may this take" is the deadline the command already carries. Half of what is
+ * left at dispatch: on the server's own 10-minute reboot deadline that is a
+ * little under five minutes, which is 4-5x the measured return and leaves room
+ * for hardware slower than a hEX; on a shorter deadline it shrinks with it and
+ * never has to be re-tuned. The other half is not spare - the observation, the
+ * evidence reports that follow it and every reconciliation attempt all have to
+ * fit inside the SAME deadline.
+ *
+ * It is a ceiling, not a wait. #settleRebootedRouter probes and returns as soon
+ * as the router proves it rebooted, so the normal case still settles in about a
+ * minute.
+ */
+export const REBOOT_SETTLE_BUDGET_SHARE = 0.5;
+
+export function rebootSettleCeilingMs(remainingBudgetMs: number): number {
+  return Number.isFinite(remainingBudgetMs)
+    ? Math.max(0, Math.floor(remainingBudgetMs * REBOOT_SETTLE_BUDGET_SHARE))
+    : 0;
+}
 
 /**
  * Wall-clock the action itself consumes before its result can be observed. Only
@@ -121,6 +150,7 @@ const REBOOT_SETTLE_MS = 5_000;
 function actionExecutionCostMs(
   action: CommandIntentAction,
   parameters: Record<string, unknown>,
+  remainingBudgetMs: number,
 ): number {
   if (action === "CYCLE_ACCESS_PORT") {
     const duration = Number(parameters.durationSeconds);
@@ -130,7 +160,12 @@ function actionExecutionCostMs(
       ? duration * 1_000
       : 0;
   }
-  if (action === "REBOOT_ROUTER") return REBOOT_SETTLE_MS;
+  // A reboot has no fixed cost - the worker waits for the router, not for a
+  // constant - so what the deadline gate reserves is the settle CEILING the
+  // post-check is allowed to spend. The gate then refuses exactly those reboots
+  // that could not spend their whole window and still report, which on the
+  // current stage budget means a deadline under ~70 s.
+  if (action === "REBOOT_ROUTER") return rebootSettleCeilingMs(remainingBudgetMs);
   return 0;
 }
 
@@ -220,10 +255,98 @@ export class CommandProcessor {
    * post-action observation can be stamped: the action itself, every staged event
    * that has to be reported before it, and reaching the router read.
    */
-  #observationLeadMs(action: CommandIntentAction, parameters: Record<string, unknown>): number {
-    return actionExecutionCostMs(action, parameters)
+  #observationLeadMs(action: CommandIntentAction, claim: CommandClaim): number {
+    const remainingBudgetMs = Date.parse(claim.observationDeadline) - this.#clock.now().getTime();
+    return actionExecutionCostMs(action, claim.parameters, remainingBudgetMs)
       + stagedEventsBeforeObservation(action) * this.#stageBudgetMs
       + OBSERVATION_READ_HEADROOM_MS;
+  }
+
+  /**
+   * Waits for a rebooted router to answer again, and observes it when it does.
+   *
+   * Three things this is NOT. It is not a longer sleep: it probes, and returns
+   * the moment the router's own evidence says the reboot happened, so the normal
+   * case costs about the 54-70 s the hardware actually takes rather than the
+   * whole ceiling. It is not bounded by a constant: the ceiling is
+   * REBOOT_SETTLE_BUDGET_SHARE of the budget left on the command's own
+   * server-stamped `observationDeadline`. And it is not a retry loop around the
+   * ACTION - `reboot()` is issued exactly once, before this is ever called.
+   *
+   * A probe that merely SUCCEEDS is not the answer. Immediately after the command
+   * the pre-reboot SSH session can still be alive, and recording that read as the
+   * post-action state would file the OLD boot identity against a reboot that was
+   * simply still in progress. So the loop keeps going until `reconcileAction`
+   * says the evidence proves the reboot, and only falls back to the last reading
+   * once the window closes - which leaves the verdict to the database's own
+   * NEW_BOOT_IDENTITY_AND_UPTIME postcondition instead of guessing it here.
+   *
+   * Exhausting the window without ever reaching the router is not a failure to
+   * retry either: the caller classifies it UNCERTAIN, because by then the action
+   * has been dispatched. That routes into the reconciliation claim, which
+   * re-observes and provably never replays the action.
+   */
+  async #settleRebootedRouter(
+    claim: CommandClaim,
+    intent: CommandIntent,
+    connector: RouterConnector,
+    before: ActionObservation,
+    connection: NetworkConnection,
+    lease: CommandLeaseMonitor,
+    actionExecuted: boolean,
+  ): Promise<ActionObservation> {
+    const deadline = Date.parse(claim.observationDeadline);
+    const startedAt = this.#clock.now().getTime();
+    const lastProbeStart = Math.min(
+      startedAt + rebootSettleCeilingMs(deadline - startedAt),
+      deadline - OBSERVATION_READ_HEADROOM_MS,
+    );
+    // Paced by the operator's own connect timeout for this router: a probe against
+    // a host that is still down already costs exactly that before it gives up, so
+    // this is the smallest interval that is not simply hammering a dead address.
+    const probeIntervalMs = Math.max(1_000, connection.connectTimeoutMs);
+    // The window is expressed BOTH as an instant and as a probe count. A clock
+    // that reports the same time forever - a stopped monotonic source, a test
+    // double whose sleep does not advance - would otherwise turn the ceiling into
+    // an unbounded loop holding the device queue and a RouterOS semaphore slot.
+    // Two independent bounds, whichever is reached first.
+    const maxProbes = Math.max(
+      1,
+      Math.floor(Math.max(0, lastProbeStart - startedAt) / probeIntervalMs) + 1,
+    );
+    let lastObservation: ActionObservation | null = null;
+    let lastFailure: unknown;
+    for (let probe = 0; probe < maxProbes; probe += 1) {
+      lease.assert(actionExecuted);
+      try {
+        const observation = await connector.observeAction(intent);
+        lastFailure = undefined;
+        if (reconcileAction(intent, before, observation).outcome === "SUCCEEDED") {
+          return observation;
+        }
+        lastObservation = observation;
+      } catch (error) {
+        // A non-retryable router error is a verdict, not a closed door: stop.
+        if (!(error instanceof RouterOperationError) || !error.retryable) throw error;
+        lastFailure = error;
+      }
+      if (this.#clock.now().getTime() + probeIntervalMs > lastProbeStart) break;
+      // Every probe gets a fresh session. The cached one belongs to the router
+      // that was told to reboot, and a half-open socket would answer no faster.
+      try {
+        await connector.close();
+      } catch {
+        this.#logger.warn("Router connector close failed between reboot probes", {
+          deviceId: claim.deviceId,
+        });
+      }
+      await this.#clock.sleep(probeIntervalMs);
+    }
+    if (lastObservation) return lastObservation;
+    throw lastFailure ?? new RouterOperationError("REBOOT_SETTLE_WINDOW_EXHAUSTED", {
+      retryable: true,
+      mayHaveExecuted: true,
+    });
   }
 
   /**
@@ -508,12 +631,23 @@ export class CommandProcessor {
     let actionResult: Record<string, unknown> = { applied: false };
     let beforeObservation: ActionObservation | null = claim.preObservation;
     let transitionVersion = claim.transitionVersion;
-    let actionStarted = false;
+    /**
+     * Set once the router action has been DISPATCHED and control has come back
+     * from it. From that instant nothing the worker subsequently observes can
+     * prove the action did not happen, so no later failure may be reported as a
+     * clean retry - see classifyWorkerError.
+     *
+     * Deliberately not set before #performAction: the validation that runs in
+     * there (INVALID_PARAMETERS, INVALID_CYCLE_DURATION, INTERFACE_REQUIRED) and
+     * a router's own refusal both happen with the router untouched, and those
+     * must stay terminal rather than lock the device into UNCERTAIN.
+     */
+    let actionExecuted = false;
 
     try {
       this.#assertObservable(claim, 0, "OBSERVATION_DEADLINE_EXCEEDED");
       await lease.renew();
-      lease.assert(actionStarted);
+      lease.assert(actionExecuted);
       const action = safeAction(claim.actionType);
       if (!claim.reconciliation) {
         // Refuse a doomed command here, before the backup pipeline, not after it.
@@ -521,14 +655,14 @@ export class CommandProcessor {
         // can spend more of the budget than was ever left.
         this.#assertObservable(
           claim,
-          this.#observationLeadMs(action, claim.parameters),
+          this.#observationLeadMs(action, claim),
           "OBSERVATION_DEADLINE_UNREACHABLE",
         );
       }
       const intent = this.#intent(action, claim);
       connector = await this.#connectorFactory(connection);
       await this.#stage(claim, "VALIDATED", { actionType: action });
-      lease.assert(actionStarted);
+      lease.assert(actionExecuted);
 
       if (claim.reconciliation) {
         await this.#stage(claim, "RECONCILIATION_STARTED");
@@ -608,7 +742,7 @@ export class CommandProcessor {
         exportSha256: contentHash,
         bytes: backupReceipt.bytes,
       });
-      lease.assert(actionStarted);
+      lease.assert(actionExecuted);
       if (this.#emergencyStop()) {
         await finish({
           outcome: "CANCELLED_BY_KILL_SWITCH",
@@ -630,20 +764,22 @@ export class CommandProcessor {
 
       this.#assertObservable(
         claim,
-        this.#observationLeadMs(action, claim.parameters),
+        this.#observationLeadMs(action, claim),
         "OBSERVATION_DEADLINE_UNREACHABLE",
       );
 
       if (action !== "CAPTURE_SNAPSHOT") {
         await this.#stage(claim, "EXECUTION_STARTED", { actionType: action });
-        actionStarted = true;
         actionResult = await this.#performAction(action, claim, connector);
+        actionExecuted = true;
         await this.#recordPortCycleEvidence(claim, action, connector);
         await this.#stage(claim, "EXECUTION_COMPLETED", { actionType: action, actionResult });
-        if (action === "REBOOT_ROUTER") await this.#clock.sleep(REBOOT_SETTLE_MS);
       }
-      lease.assert(actionStarted);
+      lease.assert(actionExecuted);
 
+      // Staged BEFORE the settle window, not after it: the post-check really does
+      // start here, and the event is the only record of when the worker began
+      // waiting for the router to come back.
       await this.#stage(claim, "POST_CHECK_STARTED");
       const afterObservation = action === "CAPTURE_SNAPSHOT"
         ? {
@@ -654,11 +790,21 @@ export class CommandProcessor {
             encryptedArtifactHash: backupReceipt.sha256,
           },
         }
-        : await this.#withDurableCycleEvidence(
-          claim,
-          action,
-          await connector.observeAction(intent),
-        );
+        : action === "REBOOT_ROUTER"
+          ? await this.#settleRebootedRouter(
+            claim,
+            intent,
+            connector,
+            beforeObservation,
+            connection,
+            lease,
+            actionExecuted,
+          )
+          : await this.#withDurableCycleEvidence(
+            claim,
+            action,
+            await connector.observeAction(intent),
+          );
       const decision = reconcileAction(intent, beforeObservation, afterObservation);
       transitionVersion = await this.#observe(
         claim,
@@ -691,8 +837,11 @@ export class CommandProcessor {
       if (connector && attempted === "CYCLE_ACCESS_PORT") {
         await this.#recordPortCycleEvidence(claim, "CYCLE_ACCESS_PORT", connector);
       }
-      const disruptive = DISRUPTIVE_ACTIONS.has(claim.actionType.toUpperCase());
-      const classified = classifyWorkerError(error, disruptive, actionStarted);
+      // .trim() as well as .toUpperCase(): safeAction() trims, so a padded
+      // action type still reaches connector.reboot(), and without the trim here
+      // it would then be classified as a NON-disruptive action and replayed.
+      const disruptive = DISRUPTIVE_ACTIONS.has(attempted);
+      const classified = classifyWorkerError(error, disruptive, actionExecuted);
       await finish({
         outcome: classified.outcome,
         result: classified.result,

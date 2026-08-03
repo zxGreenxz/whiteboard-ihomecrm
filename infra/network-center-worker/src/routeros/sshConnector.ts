@@ -946,6 +946,11 @@ export class SshRouterConnector implements RouterConnector {
     const pinned = normalizeHostFingerprint(this.#connection.hostKeyFingerprint ?? "");
     this.#connecting = new Promise<Client>((resolve, reject) => {
       const client = this.#clientFactory();
+      // `mayHaveExecuted: false` here is "this CONNECT did nothing", never "the
+      // command did nothing" - a connect cannot know what ran before it. The
+      // caller is the one that knows, and classifyWorkerError takes its
+      // `actionExecuted` into account precisely so this default cannot turn a
+      // post-action transport failure into a retry that replays the action.
       const timeout = setTimeout(() => {
         client.destroy();
         reject(new RouterOperationError("SSH_CONNECT_TIMEOUT", {

@@ -9,6 +9,8 @@ import {
   CommandCoordinator,
   CommandProcessor,
   OBSERVATION_READ_HEADROOM_MS,
+  REBOOT_SETTLE_BUDGET_SHARE,
+  rebootSettleCeilingMs,
   sanitizeRouterExport,
 } from "../src/commands.js";
 import type { BackupStore } from "../src/backupStore.js";
@@ -1336,5 +1338,366 @@ describe("command processor", () => {
       await Promise.all([queuedRenewal, processing]);
     }
     expect(test.completions).toHaveLength(1);
+  });
+
+  it("waits for a rebooting router to answer instead of post-checking a dead one", async () => {
+    // Measured on the reference hEX 7.20.8: SSH answers again 54-70 s after
+    // /system/reboot. The first probes therefore hit a router that is still down,
+    // exactly as they did in production.
+    let observeCalls = 0;
+    let current = Date.parse("2026-07-28T00:00:00.000Z");
+    const slept: number[] = [];
+    const test = harness({
+      observeAction: async () => {
+        observeCalls += 1;
+        if (observeCalls === 1) {
+          return {
+            observedAt: new Date(current).toISOString(),
+            reachable: true,
+            boot: { bootId: "routeros-boot:1784815213", uptimeSeconds: 936_727 },
+          };
+        }
+        if (observeCalls <= 3) {
+          throw new RouterOperationError("SSH_CONNECT_TIMEOUT", {
+            retryable: true,
+            mayHaveExecuted: false,
+          });
+        }
+        return {
+          observedAt: new Date(current).toISOString(),
+          reachable: true,
+          boot: { bootId: "routeros-boot:1784901600", uptimeSeconds: 60 },
+        };
+      },
+    }, false, {}, {
+      clock: {
+        now: () => new Date(current),
+        setInterval: () => 1,
+        clearInterval: () => undefined,
+        sleep: async (milliseconds: number) => {
+          slept.push(milliseconds);
+          current += milliseconds;
+        },
+      },
+    });
+
+    await test.processor.processClaim(claim("REBOOT_ROUTER"), connection);
+
+    // ONE reboot, and the post-check waited for the router rather than failing it.
+    expect(test.calls.filter((value) => value === "reboot")).toHaveLength(1);
+    expect(slept).toEqual([connection.connectTimeoutMs, connection.connectTimeoutMs]);
+    expect(test.completions).toHaveLength(1);
+    expect(test.completions[0]).toMatchObject({
+      outcome: "EVALUATE_POSTCONDITION",
+      result: { actionType: "REBOOT_ROUTER" },
+    });
+    expect(test.observations.map((entry) => entry.observationKind))
+      .toEqual(["PRE_ACTION", "POST_ACTION"]);
+    expect(test.observations[1]).toMatchObject({
+      evidence: { boot: { bootId: "routeros-boot:1784901600", uptimeSeconds: 60 } },
+    });
+    expect(test.stages.find((entry) => entry.eventKind === "POST_CHECK_COMPLETED")?.payload)
+      .toMatchObject({ decision: { outcome: "SUCCEEDED" } });
+  });
+
+  it("reports a reboot whose router never answers as UNCERTAIN, never retryable", async () => {
+    let observeCalls = 0;
+    let current = Date.parse("2026-07-28T00:00:00.000Z");
+    const slept: number[] = [];
+    const test = harness({
+      observeAction: async () => {
+        observeCalls += 1;
+        if (observeCalls === 1) {
+          return {
+            observedAt: new Date(current).toISOString(),
+            reachable: true,
+            boot: { bootId: "routeros-boot:1784815213", uptimeSeconds: 936_727 },
+          };
+        }
+        throw new RouterOperationError("SSH_CONNECT_TIMEOUT", {
+          retryable: true,
+          mayHaveExecuted: false,
+        });
+      },
+    }, false, {}, {
+      clock: {
+        now: () => new Date(current),
+        setInterval: () => 1,
+        clearInterval: () => undefined,
+        sleep: async (milliseconds: number) => {
+          slept.push(milliseconds);
+          current += milliseconds;
+        },
+      },
+    });
+
+    await test.processor.processClaim(claim("REBOOT_ROUTER"), connection);
+
+    // RETRYABLE_FAILURE is what re-queued the command in production, and because
+    // pre_observation is frozen the retry went straight back to connector.reboot().
+    expect(test.completions[0]).not.toMatchObject({ outcome: "RETRYABLE_FAILURE" });
+    expect(test.completions[0]).toMatchObject({
+      outcome: "UNCERTAIN",
+      result: { code: "SSH_CONNECT_TIMEOUT" },
+    });
+    expect(test.calls.filter((value) => value === "reboot")).toHaveLength(1);
+    expect(slept.length).toBeGreaterThan(1);
+  });
+
+  it("sizes the reboot settle window from the command's own deadline", async () => {
+    const windowFor = async (observationDeadline: string) => {
+      let observeCalls = 0;
+      let current = Date.parse("2026-07-28T00:00:00.000Z");
+      const slept: number[] = [];
+      const test = harness({
+        observeAction: async () => {
+          observeCalls += 1;
+          if (observeCalls === 1) {
+            return {
+              observedAt: new Date(current).toISOString(),
+              reachable: true,
+              boot: { bootId: "boot-1", uptimeSeconds: 936_727 },
+            };
+          }
+          throw new RouterOperationError("SSH_CONNECT_TIMEOUT", {
+            retryable: true,
+            mayHaveExecuted: false,
+          });
+        },
+      }, false, {}, {
+        clock: {
+          now: () => new Date(current),
+          setInterval: () => 1,
+          clearInterval: () => undefined,
+          sleep: async (milliseconds: number) => {
+            slept.push(milliseconds);
+            current += milliseconds;
+          },
+        },
+      });
+      await test.processor.processClaim(
+        { ...claim("REBOOT_ROUTER"), observationDeadline },
+        connection,
+      );
+      return {
+        waited: slept.reduce((total, value) => total + value, 0),
+        stoppedAt: current,
+        outcome: test.completions[0]?.outcome,
+      };
+    };
+
+    // Same code, two deadlines, two windows: the window is derived, not a constant.
+    const short = await windowFor("2026-07-28T00:02:00.000Z");
+    const long = await windowFor("2026-07-28T00:05:00.000Z");
+
+    const shortCeiling = REBOOT_SETTLE_BUDGET_SHARE * 120_000;
+    const longCeiling = REBOOT_SETTLE_BUDGET_SHARE * 300_000;
+    expect(short.waited).toBeGreaterThan(shortCeiling - 2 * connection.connectTimeoutMs);
+    expect(short.waited).toBeLessThanOrEqual(shortCeiling);
+    expect(long.waited).toBeGreaterThan(longCeiling - 2 * connection.connectTimeoutMs);
+    expect(long.waited).toBeLessThanOrEqual(longCeiling);
+    expect(long.waited).toBeGreaterThan(short.waited);
+    // Half the budget is deliberately left for the observation, its reports and
+    // the reconciliation attempts, which share the SAME deadline.
+    expect(short.stoppedAt).toBeLessThan(Date.parse("2026-07-28T00:02:00.000Z"));
+    expect(long.stoppedAt).toBeLessThan(Date.parse("2026-07-28T00:05:00.000Z"));
+    expect(short.outcome).toBe("UNCERTAIN");
+    expect(long.outcome).toBe("UNCERTAIN");
+  });
+
+  it("keeps a router's own refusal of a reboot terminal instead of wedging the device", async () => {
+    const test = harness({
+      reboot: async () => {
+        throw new RouterOperationError("ROUTEROS_COMMAND_REJECTED", {
+          retryable: false,
+          mayHaveExecuted: false,
+        });
+      },
+    });
+
+    await test.processor.processClaim(claim("REBOOT_ROUTER"), connection);
+
+    // The router answered on a completed channel that it refused: it provably did
+    // not reboot, so nothing is uncertain and the device must not be locked out.
+    expect(test.completions[0]).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "ROUTEROS_COMMAND_REJECTED" },
+    });
+  });
+
+  it("keeps a pre-dispatch validation failure on a disruptive action terminal", async () => {
+    const test = harness();
+    test.interfaceRegistry.update(connection.deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    await test.processor.processClaim({
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 4_000 },
+    }, connection);
+
+    expect(test.calls).not.toContain("cycle-port");
+    expect(test.completions[0]).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "INVALID_CYCLE_DURATION" },
+    });
+  });
+
+  it("keeps a port cycle uncertain when its post-check cannot reach the router", async () => {
+    let observeCalls = 0;
+    const test = harness({
+      observeAction: async () => {
+        observeCalls += 1;
+        if (observeCalls === 1) {
+          return {
+            observedAt: "2026-07-28T00:00:00.000Z",
+            reachable: true,
+            accessInterface: {
+              managedResourceId: "50000000-0000-4000-8000-000000000001",
+              immutableKey: "ether4",
+              enabled: true,
+              disabledObserved: false,
+              enabledObserved: true,
+            },
+          };
+        }
+        throw new RouterOperationError("SSH_CONNECT_TIMEOUT", {
+          retryable: true,
+          mayHaveExecuted: false,
+        });
+      },
+    });
+    test.interfaceRegistry.update(connection.deviceId, [{
+      managedResourceId: "50000000-0000-4000-8000-000000000001",
+      id: "70000000-0000-4000-8000-000000000001",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }]);
+
+    await test.processor.processClaim({
+      ...claim("CYCLE_ACCESS_PORT"),
+      interfaceId: "70000000-0000-4000-8000-000000000001",
+      parameters: { durationSeconds: 5 },
+      managedTarget: {
+        managedResourceId: "50000000-0000-4000-8000-000000000001",
+        immutableKey: "ether4",
+      },
+    }, connection);
+
+    // The cycle is disruptive and non-idempotent too: a retry replays it, because
+    // pre_observation is frozen and the retry skips straight to the action.
+    expect(test.calls.filter((value) => value === "cycle-port")).toHaveLength(1);
+    expect(test.completions[0]).not.toMatchObject({ outcome: "RETRYABLE_FAILURE" });
+    expect(test.completions[0]).toMatchObject({
+      outcome: "UNCERTAIN",
+      result: { code: "SSH_CONNECT_TIMEOUT" },
+    });
+  });
+
+  it("treats a padded action type as the disruptive action it names", async () => {
+    let observeCalls = 0;
+    const test = harness({
+      observeAction: async () => {
+        observeCalls += 1;
+        if (observeCalls === 1) {
+          return {
+            observedAt: "2026-07-28T00:00:00.000Z",
+            reachable: true,
+            boot: { bootId: "boot-1", uptimeSeconds: 936_727 },
+          };
+        }
+        throw new RouterOperationError("SSH_CONNECT_FAILED", {
+          retryable: true,
+          mayHaveExecuted: false,
+        });
+      },
+    });
+
+    await test.processor.processClaim(claim(" REBOOT_ROUTER "), connection);
+
+    expect(test.calls.filter((value) => value === "reboot")).toHaveLength(1);
+    expect(test.completions[0]).toMatchObject({ outcome: "UNCERTAIN" });
+  });
+
+  it("settles the production-shaped reboot on ONE reboot, in about a minute", async () => {
+    // Every number here is the one production actually used on 2026-08-03:
+    // a 10-minute observation deadline stamped by the server for REBOOT_ROUTER,
+    // connect_timeout_ms 8000 on the demo hEX's connection, and a router that
+    // answers SSH again 62 s after the command (measured: 54-70 s).
+    const productionConnection = { ...connection, connectTimeoutMs: 8_000, pollIntervalSeconds: 60 };
+    const startMs = Date.parse("2026-08-03T10:12:23.000Z");
+    const routerBackAtMs = startMs + 62_000;
+    let current = startMs;
+    let observeCalls = 0;
+    const slept: number[] = [];
+    const test = harness({
+      observeAction: async () => {
+        observeCalls += 1;
+        if (observeCalls === 1) {
+          return {
+            observedAt: new Date(current).toISOString(),
+            reachable: true,
+            boot: { bootId: "routeros-boot:1784815213", uptimeSeconds: 936_727 },
+          };
+        }
+        if (current < routerBackAtMs) {
+          // A dead router burns the whole connect timeout before it gives up.
+          current += productionConnection.connectTimeoutMs;
+          throw new RouterOperationError("SSH_CONNECT_TIMEOUT", {
+            retryable: true,
+            mayHaveExecuted: false,
+          });
+        }
+        return {
+          observedAt: new Date(current).toISOString(),
+          reachable: true,
+          boot: {
+            bootId: `routeros-boot:${Math.floor(routerBackAtMs / 1_000) - 8}`,
+            uptimeSeconds: Math.floor((current - routerBackAtMs) / 1_000) + 8,
+          },
+        };
+      },
+    }, false, {}, {
+      clock: {
+        now: () => new Date(current),
+        setInterval: () => 1,
+        clearInterval: () => undefined,
+        sleep: async (milliseconds: number) => {
+          slept.push(milliseconds);
+          current += milliseconds;
+        },
+      },
+    });
+
+    await test.processor.processClaim({
+      ...claim("REBOOT_ROUTER"),
+      observationDeadline: new Date(startMs + 600_000).toISOString(),
+    }, productionConnection);
+
+    const waited = current - startMs;
+    // ONE reboot. This is the whole point: the old code issued a second one.
+    expect(test.calls.filter((value) => value === "reboot")).toHaveLength(1);
+    expect(test.completions).toHaveLength(1);
+    expect(test.completions[0]).toMatchObject({ outcome: "EVALUATE_POSTCONDITION" });
+    expect(test.stages.find((entry) => entry.eventKind === "POST_CHECK_COMPLETED")?.payload)
+      .toMatchObject({ decision: { outcome: "SUCCEEDED" } });
+    // The normal case costs about the router's real return, NOT the ceiling: the
+    // ceiling is ~4 min 45 s here and must not be spent when the router is back.
+    expect(waited).toBeGreaterThanOrEqual(62_000);
+    expect(waited).toBeLessThan(90_000);
+    expect(rebootSettleCeilingMs(600_000)).toBe(300_000);
+    expect(waited).toBeLessThan(rebootSettleCeilingMs(600_000) / 3);
   });
 });

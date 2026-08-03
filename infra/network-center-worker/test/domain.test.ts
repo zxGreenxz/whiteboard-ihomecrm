@@ -142,4 +142,29 @@ describe("worker domain safeguards", () => {
       result: { code: "UNEXPECTED_WORKER_ERROR" },
     });
   });
+
+  it("never downgrades a disruptive action that already ran to a retryable failure", () => {
+    // A connect failure raised while OBSERVING a router that was just told to
+    // reboot cannot prove the reboot did not happen. mayHaveExecuted: false is the
+    // connector's default, not a determination, so the caller's knowledge that the
+    // action was already dispatched has to win - otherwise the command is re-queued
+    // and, with pre_observation frozen, the reboot is issued a second time.
+    expect(classifyWorkerError(new RouterOperationError("SSH_CONNECT_TIMEOUT", {
+      retryable: true,
+      mayHaveExecuted: false,
+    }), true, true)).toMatchObject({ outcome: "UNCERTAIN" });
+
+    // Before dispatch the connector's "it provably did not run" still wins: a
+    // refused reboot must stay terminal rather than lock the device out.
+    expect(classifyWorkerError(new RouterOperationError("ROUTEROS_COMMAND_REJECTED", {
+      retryable: false,
+      mayHaveExecuted: false,
+    }), true, false)).toMatchObject({ outcome: "FAILED" });
+
+    // Non-disruptive actions are idempotent by construction, so a replay is free.
+    expect(classifyWorkerError(new RouterOperationError("SSH_CONNECT_TIMEOUT", {
+      retryable: true,
+      mayHaveExecuted: false,
+    }), false, true)).toMatchObject({ outcome: "RETRYABLE_FAILURE" });
+  });
 });
