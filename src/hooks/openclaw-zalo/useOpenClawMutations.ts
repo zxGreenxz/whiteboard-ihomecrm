@@ -17,6 +17,7 @@ import { openClawQueryKeys } from "./queryKeys";
 import { fetchOpenClawUnknownResolution } from "./useOpenClawOperations";
 
 export type BrowserWriteRpc =
+  | "openclaw_acknowledge_disclosure_v1"
   | "openclaw_acknowledge_risk_v1"
   | "openclaw_begin_qr_login_v1"
   | "openclaw_consume_qr_challenge_v1"
@@ -330,6 +331,38 @@ const acknowledgeRiskResultSchema = z.object({
 }).strict();
 export type OpenClawAcknowledgeRiskRequest = z.infer<typeof acknowledgeRiskRequestSchema>;
 export type OpenClawAcknowledgeRiskResult = z.infer<typeof acknowledgeRiskResultSchema>;
+
+const acknowledgeDisclosureRequestSchema = z.object({
+  version: z.literal(1), organizationId: idSchema, accountId: idSchema,
+  disclosureVersion: z.number().int().positive(),
+}).strict();
+const acknowledgeDisclosureResultSchema = z.object({
+  version: z.literal(1), organizationId: idSchema, accountId: idSchema,
+  disclosureAcknowledgedVersion: z.number().int().positive(),
+  disclosureAcknowledgedAt: z.string().min(1),
+  idempotentReplay: z.boolean(),
+}).strict();
+export type OpenClawAcknowledgeDisclosureRequest =
+  z.infer<typeof acknowledgeDisclosureRequestSchema>;
+export type OpenClawAcknowledgeDisclosureResult =
+  z.infer<typeof acknowledgeDisclosureResultSchema>;
+
+/**
+ * The version MUST come from the account, never from a constant: the RPC raises
+ * 40001 on a mismatch, so a client-side default breaks the day the text is
+ * republished.
+ */
+export function useOpenClawAcknowledgeDisclosure(organizationId: string, accountId: string) {
+  return useOpenClawValidatedMutation(
+    organizationId,
+    accountId,
+    "openclaw_acknowledge_disclosure_v1",
+    acknowledgeDisclosureRequestSchema as z.ZodType<
+      OpenClawAcknowledgeDisclosureRequest & { organizationId: string }
+    >,
+    acknowledgeDisclosureResultSchema,
+  );
+}
 
 export function useOpenClawAcknowledgeRisk(organizationId: string, accountId: string) {
   return useOpenClawValidatedMutation(

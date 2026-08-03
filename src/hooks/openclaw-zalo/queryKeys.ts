@@ -74,6 +74,9 @@ export const openClawQueryKeys = {
   schedules: (organizationId: string, accountId: string, limit = 50) => [
     ...openClawQueryKeys.schedulesRoot(organizationId, accountId), "list", limit,
   ] as const,
+  aiDrafts: (organizationId: string, accountId: string, conversationId: string, limit = 20) => [
+    ...openClawQueryKeys.scope(organizationId, accountId), "ai-drafts", conversationId, limit,
+  ] as const,
   qrChallenge: (organizationId: string, accountId: string, challengeId: string) => [
     ...openClawQueryKeys.scope(organizationId, accountId), "qr", challengeId,
   ] as const,

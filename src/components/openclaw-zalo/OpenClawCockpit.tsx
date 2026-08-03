@@ -13,6 +13,8 @@ import OpenClawSectionNav, {
   type OpenClawSection,
 } from "./OpenClawSectionNav";
 import { useOpenClawRouteContext } from "./OpenClawRouteGuard";
+import OpenClawInboxSection from "./inbox/OpenClawInboxSection";
+import OpenClawConnectionSection from "./dialogs/OpenClawConnectionSection";
 
 interface OpenClawCockpitProps {
   mobile: boolean;
@@ -67,6 +69,7 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
     can,
   } = useOpenClawRouteContext();
   const [activeSection, setActiveSection] = useState<OpenClawSection>("overview");
+  const [connectionOpen, setConnectionOpen] = useState(false);
   const account = bootstrap.account;
   const control = bootstrap.control;
   const section = SECTION_COPY[activeSection];
@@ -125,9 +128,13 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
                   message={account.connectionState === "RECONNECT_REQUIRED"
                     ? "Phiên cần được xác minh và kết nối lại trước khi tiếp tục."
                     : undefined}
+                  actionLabel={can("manage_connections") ? "Kết nối lại" : undefined}
+                  onAction={can("manage_connections") ? () => setConnectionOpen(true) : undefined}
                   compact
                 />
               </div>
+            ) : activeSection === "inbox" ? (
+              <OpenClawInboxSection />
             ) : (
               <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-7 lg:grid-cols-3">
                 <article className="min-h-32 border border-[#cbd5df] bg-white p-4">
@@ -150,6 +157,8 @@ export default function OpenClawCockpit({ mobile }: OpenClawCockpitProps) {
           </section>
         )}
       </main>
+
+      <OpenClawConnectionSection open={connectionOpen} onClose={() => setConnectionOpen(false)} />
 
       {mobile && (
         <OpenClawSectionNav

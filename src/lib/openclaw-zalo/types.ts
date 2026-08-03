@@ -60,6 +60,11 @@ export interface OpenClawAccountSummary {
   effectiveMode: OpenClawMode;
   connectionGeneration: number;
   sessionGeneration: number;
+  disclosureVersion: number;
+  /** Null until the operator has acknowledged any version at all. */
+  disclosureAcknowledgedVersion: number | null;
+  /** Null while the account has no current runtime cell. */
+  currentCellId: string | null;
 }
 
 export interface OpenClawControlState {

@@ -211,6 +211,35 @@ export const scheduleListContract = {
   }).strict(),
 } as const;
 
+export const aiDraftListContract = {
+  rpcName: "openclaw_list_ai_drafts_v1",
+  requestSchema: z.object({
+    ...versionSchema,
+    organizationId: idSchema,
+    accountId: idSchema,
+    conversationId: idSchema,
+    limit: z.number().int().min(1).max(50).optional(),
+  }).strict(),
+  resultSchema: z.object({
+    ...versionSchema,
+    items: z.array(z.object({
+      draftId: idSchema,
+      conversationId: idSchema,
+      draftVersion: z.number().int().positive(),
+      humanEditVersion: z.number().int().nonnegative(),
+      dlpDecision: z.enum(["PASS", "BLOCK", "REVIEW"]),
+      publicationState: z.enum(["REVIEW_ONLY", "APPROVED", "REJECTED", "PUBLISHED"]),
+      citations: z.array(jsonValueSchema),
+      knowledgeVersionIds: z.array(idSchema),
+      createdAt: timestampSchema,
+      // NULL whenever DLP did not pass. Nullable rather than defaulted to "" so the
+      // panel can tell "withheld" from "the model produced nothing".
+      draftText: z.string().nullable(),
+    }).strict()),
+    limit: z.number().int().min(1).max(50),
+  }).strict(),
+} as const;
+
 export const qrPollContract = {
   rpcName: "openclaw_poll_qr_login_v1",
   requestSchema: z.object({
@@ -605,6 +634,7 @@ export const OPENCLAW_ACTION_CONTRACTS = [
   automationDryRunContract,
   salesGroupListContract,
   scheduleListContract,
+  aiDraftListContract,
   qrPollContract,
   mediaResolveContract,
   unknownByAccountContract,

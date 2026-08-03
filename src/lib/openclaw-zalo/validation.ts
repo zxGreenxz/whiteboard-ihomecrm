@@ -36,6 +36,13 @@ const accountSchema = z.object({
   effectiveMode: z.enum(["DRAFT_ONLY", "MANUAL_SEND", "LIMITED_AUTO_REPLY", "PROACTIVE", "SALES_GROUPS"]),
   connectionGeneration: z.number().int().nonnegative(),
   sessionGeneration: z.number().int().nonnegative(),
+  // The server refuses a QR with 42501 unless these two agree. Without them the UI
+  // could only report the refusal after the fact instead of showing the gate.
+  disclosureVersion: z.number().int().nonnegative(),
+  disclosureAcknowledgedVersion: z.number().int().nonnegative().nullable(),
+  // Null while the account has no current cell, which is exactly when a QR cannot
+  // be requested anyway.
+  currentCellId: z.string().uuid().nullable(),
 }).strict();
 
 const controlSchema = z.object({

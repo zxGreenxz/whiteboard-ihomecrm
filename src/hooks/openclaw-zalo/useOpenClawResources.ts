@@ -15,6 +15,7 @@ import {
   knowledgePreviewContract,
   legalHoldMutationContracts,
   mediaResolveContract,
+  aiDraftListContract,
   qrPollContract,
   salesGroupListContract,
   scheduleListContract,
@@ -38,6 +39,7 @@ type BrowserReadRpc =
   | typeof automationDryRunContract.rpcName
   | typeof salesGroupListContract.rpcName
   | typeof scheduleListContract.rpcName
+  | typeof aiDraftListContract.rpcName
   | typeof qrPollContract.rpcName
   | typeof mediaResolveContract.rpcName;
 
@@ -237,6 +239,34 @@ export function useOpenClawSchedules(
       organizationId: organizationId!,
       accountId: accountId!,
       limit: safeLimit,
+    }),
+  });
+}
+
+/**
+ * Review-only drafts for one conversation. `draftText` is null unless DLP passed -
+ * the server withholds it, so no client-side redaction is involved or possible.
+ */
+export function useOpenClawAiDrafts(
+  organizationId: string | null,
+  accountId: string | null,
+  conversationId: string | null,
+  limit = 20,
+) {
+  return useQuery({
+    queryKey: openClawQueryKeys.aiDrafts(
+      organizationId ?? "",
+      accountId ?? "",
+      conversationId ?? "",
+      limit,
+    ),
+    enabled: Boolean(organizationId && accountId && conversationId),
+    queryFn: () => executeOpenClawQuery(aiDraftListContract, {
+      version: 1,
+      organizationId: organizationId!,
+      accountId: accountId!,
+      conversationId: conversationId!,
+      limit,
     }),
   });
 }

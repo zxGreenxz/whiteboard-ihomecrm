@@ -45,6 +45,9 @@ describe("OpenClaw action contracts", () => {
       "openclaw_dry_run_automation_v1",
       "openclaw_list_sales_groups_v1",
       "openclaw_list_schedules_v1",
+      // Added by Task 23: openclaw_ai_drafts shipped in 20260727025000 with no read
+      // path, so the review-only draft panel had nothing to render.
+      "openclaw_list_ai_drafts_v1",
       "openclaw_poll_qr_login_v1",
       "openclaw_resolve_media_object_v1",
       "openclaw_list_unknown_by_account_v1",

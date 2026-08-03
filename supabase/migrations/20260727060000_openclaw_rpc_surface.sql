@@ -9538,4 +9538,149 @@ revoke all on function public.openclaw_service_ack_disconnect_revocation_v1(uuid
 grant execute on function public.openclaw_service_ack_disconnect_revocation_v1(uuid,jsonb)
   to service_role;
 
+-- ---------------------------------------------------------------------------
+-- Bootstrap carries the disclosure gate the server already enforces
+-- ---------------------------------------------------------------------------
+-- openclaw_begin_qr_login_v1 refuses with 42501 'current disclosure acknowledgement
+-- required' unless disclosure_acknowledged_version equals disclosure_version, and
+-- openclaw_acknowledge_disclosure_v1 refuses a version it did not ask for. Neither
+-- number reached the browser, so the UI could not tell the operator WHY a QR was
+-- refused, nor which version to acknowledge - it could only show the raw error after
+-- the fact. Exposing both makes the gate visible before the attempt.
+--
+-- Read-only additions to a payload the caller already receives under
+-- `openclaw_zalo.view`; they carry no session material.
+create or replace function public.openclaw_get_bootstrap_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account jsonb;
+  v_control jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request, array['version','organizationId'], array['version','organizationId']
+  );
+  v_context := app_private.openclaw_browser_context_v1(
+    p_request, 'openclaw_zalo.view', 'xem OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  select jsonb_build_object(
+    'accountId', account.id, 'displayName', account.display_name,
+    'connectionState', account.connection_state, 'sessionRiskState', account.session_risk_state,
+    'configuredMode', account.configured_mode, 'effectiveMode', account.effective_mode,
+    'connectionGeneration', account.connection_generation,
+    'sessionGeneration', account.session_generation,
+    'disclosureVersion', account.disclosure_version,
+    'disclosureAcknowledgedVersion', account.disclosure_acknowledged_version,
+    -- openclaw_begin_qr_login_v1 takes a cellId and refuses one that is not the
+    -- account's current cell. The browser had no way to learn it, so the QR flow
+    -- could not be started at all from the UI.
+    'currentCellId', (
+      select cell.id from public.openclaw_runtime_cells cell
+      where cell.organization_id = account.organization_id
+        and cell.account_id = account.id and cell.is_current
+      limit 1
+    )
+  ) into v_account
+  from public.openclaw_accounts account
+  where account.organization_id = v_org and account.is_active
+  order by account.created_at desc, account.id desc limit 1;
+  select jsonb_build_object(
+    'globalStop', control.global_stop, 'featureEnabled', control.feature_enabled,
+    'limitedAutoReplyEnabled', control.limited_auto_reply_enabled,
+    'proactiveEnabled', control.proactive_enabled,
+    'salesGroupsEnabled', control.sales_groups_enabled,
+    'controlVersion', control.control_version
+  ) into v_control
+  from public.openclaw_control_states control
+  where control.organization_id = v_org and control.control_key = 'GLOBAL_STOP';
+  return jsonb_build_object(
+    'version', 1, 'organizationId', v_org, 'account', v_account,
+    'control', v_control, 'actorId', v_context ->> 'actorId'
+  );
+end;
+$function$;
+
+alter function public.openclaw_get_bootstrap_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_get_bootstrap_v1(jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_get_bootstrap_v1(jsonb) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- AI drafts are readable, but never before DLP has cleared them
+-- ---------------------------------------------------------------------------
+-- The drafts table has existed since 20260727025000 with no way for the browser to
+-- read it, so the review-only draft panel had nothing to render. This exposes it
+-- under the same `openclaw_zalo.view` gate as messages, with one rule the browser
+-- must not be trusted to apply itself:
+--
+--   `draftText` is withheld unless dlp_decision = 'PASS'.
+--
+-- A BLOCK/REVIEW draft is exactly the case where the text may carry restricted
+-- content, so it never leaves the database. The panel still learns the draft exists
+-- and why it is withheld, which is what an operator needs in order to act.
+create or replace function public.openclaw_list_ai_drafts_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+  v_conversation uuid;
+  v_limit integer;
+  v_items jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','conversationId','limit'],
+    array['version','organizationId','accountId','conversationId']
+  );
+  v_context := app_private.openclaw_browser_context_v1(
+    p_request, 'openclaw_zalo.view', 'xem ban nhap AI OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (p_request ->> 'accountId')::uuid;
+  v_conversation := (p_request ->> 'conversationId')::uuid;
+  v_limit := greatest(1, least(coalesce((p_request ->> 'limit')::integer, 20), 50));
+  select coalesce(jsonb_agg(item.payload order by item.draft_version desc), '[]'::jsonb)
+  into v_items
+  from (
+    select draft.draft_version,
+      jsonb_build_object(
+        'draftId', draft.id,
+        'conversationId', draft.conversation_id,
+        'draftVersion', draft.draft_version,
+        'humanEditVersion', draft.human_edit_version,
+        'dlpDecision', draft.dlp_decision,
+        'publicationState', draft.publication_state,
+        'citations', draft.citations,
+        'knowledgeVersionIds', to_jsonb(draft.knowledge_version_ids),
+        'createdAt', draft.created_at,
+        -- Withheld, not redacted in place: an empty string would be
+        -- indistinguishable from a draft the model genuinely produced empty.
+        'draftText', case when draft.dlp_decision = 'PASS' then draft.draft_text end
+      ) as payload
+    from public.openclaw_ai_drafts draft
+    where draft.organization_id = v_org and draft.account_id = v_account
+      and draft.conversation_id = v_conversation
+    order by draft.draft_version desc
+    limit v_limit
+  ) item;
+  return jsonb_build_object('version', 1, 'items', v_items, 'limit', v_limit);
+end;
+$function$;
+
+alter function public.openclaw_list_ai_drafts_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_list_ai_drafts_v1(jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_list_ai_drafts_v1(jsonb) to authenticated;
+
 commit;
