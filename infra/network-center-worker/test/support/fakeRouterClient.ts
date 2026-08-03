@@ -90,10 +90,8 @@ function readCommandOutput(router: FakeRouterOs, command: string): string | null
   // every test and made the client half of the payload unreachable from the
   // suite - see FakeRouterOs.printLeases.
   if (command === ROUTER_OS_READ_COMMANDS.leases) return router.printLeases();
-  if (
-    command === ROUTER_OS_READ_COMMANDS.dhcpClients
-    || command === ROUTER_OS_READ_COMMANDS.neighbors
-  ) return "";
+  if (command === ROUTER_OS_READ_COMMANDS.dhcpClients) return router.dhcpClients;
+  if (command === ROUTER_OS_READ_COMMANDS.neighbors) return "";
   if (command === ROUTER_OS_READ_COMMANDS.dns) return "servers=1.1.1.1\n";
   // The redacted config export the pre-action snapshot now captures off stdout.
   // Shaped like the real thing: a `#` header block, then one `/`-prefixed
@@ -206,7 +204,16 @@ export function createFakeRouterSession(
 
 export function createTestConnector(
   clientFactory: () => Client,
-  overrides: { commandTimeoutMs?: number; backupStagingDirectory?: string } = {},
+  overrides: {
+    commandTimeoutMs?: number;
+    backupStagingDirectory?: string;
+    /**
+     * Injects the worker-side clock. Required to test anything derived from
+     * `now - uptime`: without it the boot identity moves with real time and a
+     * stability assertion would be measuring the test runner, not the code.
+     */
+    now?: () => Date;
+  } = {},
 ): SshRouterConnector {
   return new SshRouterConnector({
     connection: {
@@ -235,5 +242,6 @@ export function createTestConnector(
     commandTimeoutMs: overrides.commandTimeoutMs ?? 60_000,
     backupStagingDirectory: overrides.backupStagingDirectory ?? ".",
     clientFactory,
+    ...(overrides.now ? { now: overrides.now } : {}),
   });
 }

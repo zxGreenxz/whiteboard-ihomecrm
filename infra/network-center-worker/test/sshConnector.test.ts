@@ -15,6 +15,7 @@ import {
   leaseExpiryIso,
   normalizeHostFingerprint,
   parseArubaNeighbors,
+  parseDurationSeconds,
   parseInterfaceCounters,
   parseLinkSpeedBps,
   parseRouterOsResourceId,
@@ -29,6 +30,7 @@ import {
   routerOsInterfaceState,
 } from "../src/routeros/sshConnector.js";
 import { CLIENT_CONNECTION_TYPES, CLIENT_SESSION_TYPES } from "../src/domain.js";
+import { reconcileAction } from "../src/reconciliation.js";
 import { createFakeRouterSession, createTestConnector } from "./support/fakeRouterClient.js";
 import { FakeRouterOs } from "./support/fakeRouterOs.js";
 
@@ -1320,5 +1322,250 @@ describe("client telemetry value domains", () => {
     // the raw string: `["2","6","a","e"].includes("o")` on "not-a-mac" is the
     // kind of accident that invents a privacy signal from a parse failure.
     expect(client?.randomizedMac).toBe(false);
+  });
+});
+
+/**
+ * ## Provenance of every duration fixture in this block
+ *
+ * `CAPTURED` values were read off the demo hEX (RouterOS 7.20.8) on 2026-08-03
+ * over SSH, read-only, and are quoted verbatim together with the command that
+ * produced them. The `[:totime N]` rows are the strongest of them: RouterOS is
+ * told the exact number of seconds and answers with its own rendering, so the
+ * input/output pair is ground truth rather than an assumption about the grammar.
+ *
+ * `HAND-WRITTEN` values are marked as such. They exist only for shapes the demo
+ * router does not currently emit (`ms`/`us`/`ns`) and for refusals.
+ *
+ * This distinction is the whole point: the defect being fixed here survived
+ * because the only uptime fixture in the suite was the HAND-WRITTEN `uptime=1h`
+ * (`test/support/fakeRouterOs.ts`), which the broken parser handled perfectly.
+ * No captured uptime was ever asserted against.
+ */
+describe("RouterOS duration parsing", () => {
+  it("parses the two renderings RouterOS actually emits for the same value", () => {
+    // CAPTURED, same session, same property - `terse` renders the suffix run and
+    // `as-value` renders the clock, and they must agree:
+    //   /ip/dhcp-client/print detail terse            -> expires-after=20h43m44s
+    //   :put [/ip/dhcp-client/print as-value proplist=expires-after,...]
+    //                                                 -> expires-after=20:43:44
+    expect(parseDurationSeconds("20h43m44s")).toBe(74_624);
+    expect(parseDurationSeconds("20:43:44")).toBe(74_624);
+    //   /ip/dhcp-server/lease/print terse             -> expires-after=29m4s age=2d5h16m
+    //   :put [/ip/dhcp-server/lease/print as-value ...] -> expires-after=00:29:04 age=2d05:16:00
+    expect(parseDurationSeconds("29m4s")).toBe(1_744);
+    expect(parseDurationSeconds("00:29:04")).toBe(1_744);
+    expect(parseDurationSeconds("2d5h16m")).toBe(191_760);
+    expect(parseDurationSeconds("2d05:16:00")).toBe(191_760);
+    //   /ip/neighbor/print terse -> age=33s ; as-value -> age=00:00:33
+    expect(parseDurationSeconds("33s")).toBe(33);
+    expect(parseDurationSeconds("00:00:33")).toBe(33);
+    // CAPTURED: `last-seen` comes back suffixed even from `as-value`, so the two
+    // renderings are not selectable by command - both must always be handled.
+    expect(parseDurationSeconds("56s")).toBe(56);
+    // CAPTURED: /ip/firewall/connection/print terse -> timeout=23h57m25s
+    expect(parseDurationSeconds("23h57m25s")).toBe(86_245);
+  });
+
+  it("parses the uptime rendering that was being truncated to whole days", () => {
+    // CAPTURED: `:put [/system/resource get uptime]` -> 1w3d15:41:57
+    // The old parser matched only `(\d+)w` `(\d+)d` `(\d+)h` `(\d+)m` `(\d+)s`,
+    // found no h/m/s suffix in the clock half, and returned 1w3d = 864000 -
+    // which is exactly the frozen value 151 consecutive production samples
+    // carried across 2 h 46 m.
+    expect(parseDurationSeconds("1w3d15:41:57")).toBe(920_517);
+    expect(parseDurationSeconds("1w3d15:41:57")).not.toBe(864_000);
+    // CAPTURED, 14 consecutive reads 4 s apart: the value has to MOVE.
+    const first = parseDurationSeconds("1w3d15:44:14");
+    const last = parseDurationSeconds("1w3d15:45:06");
+    expect(last! - first!).toBe(52);
+  });
+
+  it("agrees with RouterOS's own rendering of a known number of seconds", () => {
+    // CAPTURED input/output pairs from `:put [:totime N]`, N chosen to sit on
+    // every boundary of the grammar.
+    const totime: Array<[number, string]> = [
+      [0, "00:00:00"],
+      [1, "00:00:01"],
+      [45, "00:00:45"],
+      [59, "00:00:59"],
+      [60, "00:01:00"],
+      [61, "00:01:01"],
+      [599, "00:09:59"],
+      [3_599, "00:59:59"],
+      [3_600, "01:00:00"],
+      [3_661, "01:01:01"],
+      [86_399, "23:59:59"],
+      [86_400, "1d00:00:00"],
+      [86_461, "1d00:01:01"],
+      [90_061, "1d01:01:01"],
+      [604_800, "1w00:00:00"],
+      [864_000, "1w3d00:00:00"],
+      [1_234_567, "2w06:56:07"],
+      [99_999_999, "165w2d09:46:39"],
+    ];
+    for (const [seconds, rendered] of totime) {
+      expect({ rendered, seconds: parseDurationSeconds(rendered) })
+        .toEqual({ rendered, seconds });
+    }
+  });
+
+  it("parses the sub-second forms and does not read `ms` as minutes", () => {
+    // CAPTURED: `:put (00:00:01 / 2)`, `/ 1000`, `/ 1000000`, `(00:00:02 / 3)`.
+    expect(parseDurationSeconds("00:00:00.500")).toBe(0.5);
+    expect(parseDurationSeconds("00:00:00.001")).toBe(0.001);
+    expect(parseDurationSeconds("00:00:00.000001")).toBe(0.000001);
+    expect(parseDurationSeconds("00:00:00.666666666")).toBeCloseTo(0.666666666, 9);
+    // HAND-WRITTEN - the demo hEX emits no `ms`/`us`/`ns` in anything this
+    // worker reads today (NTP is disabled, so `last-adjustment` is absent), but
+    // RouterOS does render them elsewhere and the old parser turned `450ms`
+    // into 450 MINUTES via `/(\d+)m/`. The order of alternation is load-bearing.
+    expect(parseDurationSeconds("450ms")).toBeCloseTo(0.45, 9);
+    expect(parseDurationSeconds("450ms")).not.toBe(27_000);
+    expect(parseDurationSeconds("1500us")).toBeCloseTo(0.0015, 9);
+    expect(parseDurationSeconds("2ns")).toBeCloseTo(2e-9, 12);
+    expect(parseDurationSeconds("1m450ms")).toBeCloseTo(60.45, 9);
+  });
+
+  it("returns null rather than a fabricated zero for anything it cannot parse", () => {
+    // The old parser returned 0 for every unrecognised string, and 0 is
+    // indistinguishable from "just rebooted" / "lease about to expire".
+    // CAPTURED refusal shape - RouterOS answers a denied command on STDOUT with
+    // exit status 0, so this string really can arrive where a duration was
+    // expected.
+    expect(parseDurationSeconds("not enough permissions (9)")).toBeNull();
+    // CAPTURED non-duration that contains something clock-shaped:
+    // `:put [/system/resource/print as-value]` -> build-time=2026-01-30 09:17:54
+    expect(parseDurationSeconds("2026-01-30 09:17:54")).toBeNull();
+    expect(parseDurationSeconds("never")).toBeNull();
+    expect(parseDurationSeconds("")).toBeNull();
+    expect(parseDurationSeconds(undefined)).toBeNull();
+    expect(parseDurationSeconds("1w3d15:41")).toBeNull();
+    // Positive control on the same call site, so the nulls above are not just a
+    // parser that rejects everything.
+    expect(parseDurationSeconds("1h")).toBe(3_600);
+    expect(parseDurationSeconds("120")).toBe(120);
+  });
+});
+
+describe("REBOOT_ROUTER verification against real RouterOS uptime", () => {
+  const rebootIntent = {
+    actionType: "REBOOT_ROUTER" as const,
+    deviceId: "device-id",
+    managedTarget: {},
+    expectedPostcondition: {},
+    observationDeadline: "2026-08-03T23:00:00.000Z",
+  };
+
+  function rebootConnector(uptime: string, now: Date) {
+    const router = new FakeRouterOs({
+      interfaces: [{ id: "*B", name: "ether2", defaultName: "ether2", type: "ether", disabled: false }],
+      // CAPTURED shape: `:put [/system/resource/print as-value]` answers
+      // `...;uptime=1w3d15:41:57;version=7.20.8 (long-term);...`
+      resource: `version=7.20.8 (long-term);uptime=${uptime};cpu-load=1\n`,
+    });
+    return createTestConnector(createFakeRouterSession(router).clientFactory, { now: () => now });
+  }
+
+  it("settles a genuine reboot as SUCCEEDED when prior uptime was under 24 h", async () => {
+    // The reported defect: below 24 h BOTH observations parsed to 0 under the
+    // old parser, `0 < 0` is false, and a completed reboot settled UNCERTAIN -
+    // in exactly the state a router is in right after a previous reboot.
+    // The uptime strings use the CAPTURED clock rendering (`:totime 3600` ->
+    // `01:00:00`); the particular values are chosen to sit under the boundary.
+    const before = await rebootConnector("02:15:00", new Date("2026-08-03T12:00:00.000Z"))
+      .observeAction(rebootIntent);
+    const after = await rebootConnector("00:00:47", new Date("2026-08-03T12:02:30.000Z"))
+      .observeAction(rebootIntent);
+
+    expect(before.boot?.uptimeSeconds).toBe(8_100);
+    expect(after.boot?.uptimeSeconds).toBe(47);
+    expect(before.boot?.bootId).not.toBe(after.boot?.bootId);
+    expect(reconcileAction(rebootIntent, before, after)).toEqual({
+      outcome: "SUCCEEDED",
+      evidence: {
+        actionType: "REBOOT_ROUTER",
+        previousBootId: before.boot?.bootId,
+        bootId: after.boot?.bootId,
+        previousUptimeSeconds: 8_100,
+        uptimeSeconds: 47,
+      },
+    });
+  });
+
+  it("keeps a router that did NOT reboot out of SUCCEEDED", async () => {
+    // Negative control for the test above: same code path, uptime still rising.
+    const before = await rebootConnector("02:15:00", new Date("2026-08-03T12:00:00.000Z"))
+      .observeAction(rebootIntent);
+    const after = await rebootConnector("02:17:30", new Date("2026-08-03T12:02:30.000Z"))
+      .observeAction(rebootIntent);
+
+    expect(before.boot?.bootId).toBe(after.boot?.bootId);
+    expect(reconcileAction(rebootIntent, before, after).outcome).toBe("UNCERTAIN");
+  });
+
+  it("derives a boot identity that holds still while the router stays up", async () => {
+    // CAPTURED: two of 14 consecutive `:put [/system/resource get uptime]` reads
+    // taken 52 s apart, paired with the worker-side clock recorded at each read.
+    // Under the day-truncated parse these produced two DIFFERENT boot ids - 14
+    // distinct ids in 52 s - which is why `bootId` carried no information at all.
+    const first = await rebootConnector("1w3d15:44:14", new Date(1_785_735_871_000))
+      .observeAction(rebootIntent);
+    const last = await rebootConnector("1w3d15:45:06", new Date(1_785_735_923_000))
+      .observeAction(rebootIntent);
+
+    expect(first.boot?.bootId).toBe("routeros-boot:1784815217");
+    expect(last.boot?.bootId).toBe("routeros-boot:1784815217");
+  });
+
+  it("omits the boot evidence entirely when uptime cannot be read", async () => {
+    // A refusal or a garbled read used to become `uptimeSeconds: 0` plus a boot
+    // id of "now", which is precisely the fingerprint of a successful reboot.
+    const before = await rebootConnector("02:15:00", new Date("2026-08-03T12:00:00.000Z"))
+      .observeAction(rebootIntent);
+    const after = await rebootConnector(
+      "not enough permissions (9)",
+      new Date("2026-08-03T12:02:30.000Z"),
+    ).observeAction(rebootIntent);
+
+    expect(after.boot).toBeUndefined();
+    expect(after.reachable).toBe(true);
+    expect(reconcileAction(rebootIntent, before, after).outcome).toBe("UNCERTAIN");
+  });
+
+  it("omits the DHCP expiry when `expires-after` cannot be read", async () => {
+    const renewIntent = { ...rebootIntent, actionType: "RENEW_DHCP_LEASE" as const };
+    // CAPTURED: `/ip/dhcp-client/print detail terse without-paging` on the demo
+    // hEX, trimmed to the fields this observation reads.
+    const bound = "0 comment=defconf interface=ether1 status=bound expires-after=20h43m44s\n";
+    const garbled = "0 comment=defconf interface=ether1 status=bound expires-after=never\n";
+    function dhcpConnector(dhcpClients: string) {
+      const router = new FakeRouterOs({
+        interfaces: [{ id: "*B", name: "ether2", defaultName: "ether2", type: "ether", disabled: false }],
+        dhcpClients,
+      });
+      return createTestConnector(createFakeRouterSession(router).clientFactory, {
+        now: () => new Date("2026-08-03T12:00:00.000Z"),
+      });
+    }
+
+    const readable = await dhcpConnector(bound).observeAction(renewIntent);
+    const unreadable = await dhcpConnector(garbled).observeAction(renewIntent);
+
+    // Positive control: the same code path does produce the number.
+    expect(readable.dhcp).toEqual({
+      leaseKey: "ether1",
+      status: "bound",
+      expiresInSeconds: 74_624,
+    });
+    expect(unreadable.dhcp).toEqual({ leaseKey: "ether1", status: "bound" });
+    // 0 was the old value, and 0 is smaller than every real reading, so a
+    // garbled PRE_ACTION read made any later reading look like a renewal.
+    expect(reconcileAction(renewIntent, unreadable, readable).outcome).toBe("UNCERTAIN");
+    expect(reconcileAction(
+      renewIntent,
+      { ...readable, dhcp: { leaseKey: "ether1", status: "bound", expiresInSeconds: 120 } },
+      readable,
+    ).outcome).toBe("SUCCEEDED");
   });
 });

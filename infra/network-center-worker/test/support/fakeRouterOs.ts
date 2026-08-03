@@ -299,6 +299,12 @@ export class FakeRouterOs {
   readonly dhcpLeases: FakeDhcpLease[];
   /** `/system/resource/print`. Overridable so out-of-range gauges are testable. */
   readonly resource: string;
+  /**
+   * `/ip/dhcp-client/print detail terse`. Empty by default (no WAN DHCP client),
+   * overridable so the RENEW_DHCP_LEASE observation can be driven with the
+   * `expires-after` renderings a real router emits.
+   */
+  readonly dhcpClients: string;
   /** When true the router refuses `/interface/print stats`, as an old build would. */
   readonly refuseInterfaceStats: boolean;
   /** When true `/export` is refused on stdout with exit status 0. */
@@ -315,6 +321,7 @@ export class FakeRouterOs {
     interfaceCounters?: Record<string, FakeInterfaceCounters>;
     dhcpLeases?: FakeDhcpLease[];
     resource?: string;
+    dhcpClients?: string;
     refuseInterfaceStats?: boolean;
     /** Router refuses `/export` — the refusal arrives on stdout, exit status 0. */
     refuseExport?: boolean;
@@ -328,7 +335,13 @@ export class FakeRouterOs {
     );
     this.refuseInterfaceStats = options.refuseInterfaceStats ?? false;
     this.dhcpLeases = (options.dhcpLeases ?? []).map((entry) => ({ ...entry }));
-    this.resource = options.resource ?? "version=7.15 uptime=1h cpu-load=1\n";
+    // `uptime` is a CAPTURED rendering (`:put [/system/resource get uptime]` on
+    // the demo hEX, 2026-08-03). The previous default was the hand-written
+    // `uptime=1h`, which the day-truncating parser handled perfectly — so every
+    // poll test in this package agreed with a parser that dropped `HH:MM:SS`.
+    // A fixture that cannot fail is how that defect reached production.
+    this.resource = options.resource ?? "version=7.15 uptime=1w3d15:41:57 cpu-load=1\n";
+    this.dhcpClients = options.dhcpClients ?? "";
     this.interfaces = options.interfaces.map((entry) => ({ ...entry }));
     this.firewall = (options.firewall ?? []).map((entry) => ({ ...entry }));
     for (const entry of options.scheduler ?? []) this.scheduler.push({ ...entry });

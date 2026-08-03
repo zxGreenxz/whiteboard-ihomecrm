@@ -495,15 +495,98 @@ function parseBytes(value: string | undefined): number | null {
   return Math.round(Number(match[1]) * 1024 ** (powers[match[2].toLowerCase()] ?? 0));
 }
 
-function parseDurationSeconds(value: string | undefined): number | null {
+/**
+ * Seconds per RouterOS duration unit.
+ *
+ * `ms`/`us`/`ns` MUST be matched before `m`/`s`. The parser this replaced used
+ * `/(\d+)m/` and therefore read `450ms` as 450 MINUTES — a 60 000x overstatement.
+ */
+const ROUTER_OS_DURATION_UNIT_SECONDS: Readonly<Record<string, number>> = Object.freeze({
+  w: 604_800,
+  d: 86_400,
+  h: 3_600,
+  m: 60,
+  s: 1,
+  ms: 1e-3,
+  us: 1e-6,
+  ns: 1e-9,
+});
+
+/** Sticky so the suffix run must be consumed left-to-right with no gaps. */
+const ROUTER_OS_DURATION_UNIT = /(\d+(?:\.\d+)?)(ms|us|ns|w|d|h|m|s)/y;
+
+/**
+ * The trailing `HH:MM:SS[.frac]` clock, with whatever `<n>w<n>d` prefix RouterOS
+ * put in front of it captured separately.
+ */
+const ROUTER_OS_DURATION_CLOCK = /^(.*?)(\d+):([0-5]\d):([0-5]\d(?:\.\d+)?)$/;
+
+/**
+ * Parses a RouterOS duration into seconds.
+ *
+ * ## RouterOS emits TWO renderings of the same value, and both reach this worker
+ *
+ * Measured on the demo hEX (7.20.8) on 2026-08-03, same router, same session:
+ *
+ *   - `:put [/system/resource get uptime]`                     -> `1w3d15:41:57`
+ *   - `:put [/ip/dhcp-client/print as-value  proplist=…]`      -> `expires-after=20:43:44`
+ *   - `/ip/dhcp-client/print detail terse`                     -> `expires-after=20h43m44s`
+ *   - `/ip/dhcp-server/lease/print terse     proplist=…`       -> `age=2d5h16m expires-after=29m4s`
+ *   - `:put [/ip/dhcp-server/lease/print as-value proplist=…]` -> `age=2d05:16:00 expires-after=00:29:04`
+ *
+ * So `as-value` (the `:put […]` reads) renders `[<n>w][<n>d]HH:MM:SS` and `terse`
+ * renders the suffix run `2d5h16m` — for the SAME property. `:totime` confirms
+ * the clock half is always present and always zero-padded in the first form:
+ * `0 -> 00:00:00`, `45 -> 00:00:45`, `3600 -> 01:00:00`, `86400 -> 1d00:00:00`,
+ * `604800 -> 1w00:00:00`, `1234567 -> 2w06:56:07`, `99999999 -> 165w2d09:46:39`.
+ * Sub-second values append a fraction to the seconds field rather than using a
+ * unit: `00:00:00.500`, `00:00:00.001`, `00:00:00.000001`.
+ *
+ * The parser this replaced matched only `(\d+)w|d|h|m|s`, so the ENTIRE clock
+ * half was dropped: `1w3d15:41:57` parsed as 864000 — day-truncated, and stuck
+ * at exactly that value across 151 consecutive production samples spanning
+ * 2 h 46 m. Everything downstream that measured elapsed time from it was
+ * therefore reading a clock that never moved.
+ *
+ * ## Unparseable is `null`, never `0`
+ *
+ * The old parser returned 0 for any unrecognised string, which is
+ * indistinguishable from "just rebooted" — and RouterOS refusals arrive on
+ * stdout with exit code 0, so an unrecognised value is a live possibility, not a
+ * theoretical one. Callers must decide what an absent measurement means.
+ */
+export function parseDurationSeconds(value: string | undefined): number | null {
   if (!value) return null;
-  if (/^\d+$/.test(value)) return Number(value);
-  const weeks = Number(/(\d+)w/.exec(value)?.[1] ?? 0);
-  const days = Number(/(\d+)d/.exec(value)?.[1] ?? 0);
-  const hours = Number(/(\d+)h/.exec(value)?.[1] ?? 0);
-  const minutes = Number(/(\d+)m/.exec(value)?.[1] ?? 0);
-  const seconds = Number(/(\d+)s/.exec(value)?.[1] ?? 0);
-  return (((weeks * 7 + days) * 24 + hours) * 60 + minutes) * 60 + seconds;
+  const text = value.trim().toLowerCase();
+  if (!text) return null;
+  // Already seconds. Kept from the previous parser: internal callers and stored
+  // observations hand this function a plain count.
+  if (/^\d+$/.test(text)) return Number(text);
+
+  let total = 0;
+  let head = text;
+
+  const clock = ROUTER_OS_DURATION_CLOCK.exec(text);
+  if (clock?.[2] !== undefined && clock[3] !== undefined && clock[4] !== undefined) {
+    total += Number(clock[2]) * 3_600 + Number(clock[3]) * 60 + Number(clock[4]);
+    head = clock[1] ?? "";
+  }
+
+  let index = 0;
+  while (index < head.length) {
+    ROUTER_OS_DURATION_UNIT.lastIndex = index;
+    const unit = ROUTER_OS_DURATION_UNIT.exec(head);
+    // Anything the grammar does not cover makes the whole value unparseable.
+    // Guessing a number out of a string RouterOS did not promise is how the
+    // day-truncation survived 151 samples without anyone noticing.
+    if (!unit || unit.index !== index || unit[1] === undefined || unit[2] === undefined) return null;
+    total += Number(unit[1]) * (ROUTER_OS_DURATION_UNIT_SECONDS[unit[2]] ?? 0);
+    index = ROUTER_OS_DURATION_UNIT.lastIndex;
+  }
+
+  // Reaching here means either the clock matched or every character of `head`
+  // was consumed by a unit token, so `total` is always a real measurement.
+  return total;
 }
 
 /**
@@ -1360,14 +1443,23 @@ export class SshRouterConnector implements RouterConnector {
       ]);
       const clients = parseRouterOsRecords(dhcpOutput);
       const bound = clients.find((record) => record.status?.toLowerCase() === "bound");
+      const expiresInSeconds = bound ? parseDurationSeconds(bound["expires-after"]) : null;
       return {
         observedAt,
         reachable: parseRouterOsRecords(identityOutput).length > 0,
-        dhcp: bound ? {
-          leaseKey: bound[".id"] ?? bound.interface ?? "wan-dhcp",
-          status: "bound",
-          expiresInSeconds: parseDurationSeconds(bound["expires-after"]) ?? 0,
-        } : { notApplicable: true },
+        dhcp: bound
+          ? {
+            leaseKey: bound[".id"] ?? bound.interface ?? "wan-dhcp",
+            status: "bound",
+            // Same fail-closed rule as `boot` above: an unreadable
+            // `expires-after` used to become 0, and 0 is the smallest possible
+            // "before", so a garbled PRE_ACTION read made every later reading
+            // look like a successful renewal. Omitting the field leaves the
+            // verdict UNCERTAIN in the worker and in the settle function, whose
+            // `{dhcp,expiresInSeconds}` regex fails closed identically.
+            ...(expiresInSeconds === null ? {} : { expiresInSeconds }),
+          }
+          : { notApplicable: true },
       };
     }
     if (intent.actionType === "CYCLE_ACCESS_PORT") {
@@ -1400,8 +1492,27 @@ export class SshRouterConnector implements RouterConnector {
         this.#execute(ROUTER_OS_READ_COMMANDS.resource),
       ]);
       const resource = parseRouterOsRecords(resourceOutput)[0] ?? {};
-      const uptimeSeconds = parseDurationSeconds(resource.uptime) ?? 0;
-      const bootEpochSeconds = Math.floor(this.#now().getTime() / 1_000) - uptimeSeconds;
+      const uptimeSeconds = parseDurationSeconds(resource.uptime);
+      // An unreadable uptime used to become `0`, which is exactly what a router
+      // that has just rebooted reports — so a garbled or refused read (RouterOS
+      // puts refusals on stdout with exit code 0) would have settled
+      // REBOOT_ROUTER as SUCCEEDED on no evidence at all. Omitting `boot`
+      // instead leaves the verdict UNCERTAIN in the worker AND in
+      // `network_center_settle_command`, whose regex on
+      // `{boot,uptimeSeconds}` fails closed the same way.
+      if (uptimeSeconds === null) {
+        return { observedAt, reachable: parseRouterOsRecords(identityOutput).length > 0 };
+      }
+      // `now - uptime` is the only boot identity RouterOS offers: there is no
+      // boot UUID. It is honest ONLY once uptime parses correctly — measured on
+      // the demo hEX over 14 reads spanning 52 s, the corrected derivation
+      // yields ONE value (spread 0 s) while the day-truncated one yielded 14
+      // distinct values drifting 1 s per wall-clock second. Deliberately NOT
+      // quantised: a bucket wide enough to absorb tick jitter is also wide
+      // enough to collapse a fast reboot's before/after into one bucket, which
+      // would resurrect the false-UNCERTAIN this change exists to remove.
+      const bootEpochSeconds = Math.floor(this.#now().getTime() / 1_000)
+        - Math.round(uptimeSeconds);
       return {
         observedAt,
         reachable: parseRouterOsRecords(identityOutput).length > 0,
