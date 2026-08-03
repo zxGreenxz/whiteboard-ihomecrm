@@ -648,6 +648,28 @@ describe("OpenClaw runtime route allowlist", () => {
     expect(route.validateRequest({ ...request, commandResults: Array(9).fill(request.commandResults[0]) }))
       .toBe(false);
     expect(route.validateResponse(response)).toBe(true);
+    // Capacity controls ride back to the cell in this exact response. The contract is
+    // exact-keyed, so an unlisted key would 502 EVERY heartbeat for EVERY organization
+    // and silently brick the runtime the moment the migration lands.
+    expect(route.validateResponse({
+      ...response,
+      capacityControls: [{
+        control: "PAUSE_ALL_OUTBOUND_MEDIA",
+        appliedAt: "2026-08-01T00:00:00.000Z",
+        reasonFingerprint: "quota:transfer:100",
+        requiresManualResume: true,
+      }],
+    })).toBe(true);
+    // Optional in BOTH directions: the Edge and the migration deploy separately, so
+    // each side must tolerate the other being ahead.
+    expect(route.validateResponse({ ...response, capacityControls: [] })).toBe(true);
+    expect(route.validateResponse(response)).toBe(true);
+    // Still exact: a malformed control or an unknown key is rejected.
+    expect(route.validateResponse({
+      ...response,
+      capacityControls: [{ control: "NOT_A_CONTROL", appliedAt: "2026-08-01T00:00:00.000Z", reasonFingerprint: "x", requiresManualResume: true }],
+    })).toBe(false);
+    expect(route.validateResponse({ ...response, unexpectedKey: 1 })).toBe(false);
     expect(route.validateResponse({
       ...response,
       commandResultAcks: [{

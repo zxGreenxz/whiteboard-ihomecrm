@@ -7075,4 +7075,1956 @@ grant execute on function app_private.enforce_openclaw_evidence_retention_v1(int
 revoke all on function app_private.run_openclaw_maintenance_jobs_v1()
   from public, anon, authenticated, service_role;
 
+-- OpenClaw Zalo - watchdog egress surface
+--
+-- The external watchdog used to be wired to two INBOUND URLs on the OpenClaw VPS
+-- (`/openclaw-health/v1/snapshot` and `/openclaw-health/v1/controls`). Those
+-- endpoints never existed, and they cannot exist: the frozen design spec states
+-- that OpenClaw "chi them rule egress/namespace rieng va khong expose inbound
+-- port" on that host. Opening 443 into the machine that holds the Zalo session is
+-- exactly the surface the architecture spends its effort avoiding.
+--
+-- Everything the watchdog needs already travels OUTWARD on an existing path: the
+-- cell calls POST /v1/heartbeat every minute, which refreshes
+-- openclaw_runtime_cells.last_heartbeat_at and appends content-free metrics to
+-- openclaw_health_events. This migration turns that existing flow into the
+-- watchdog's data source, and gives capacity controls a durable home that the
+-- cell picks up in the response of the same heartbeat call.
+--
+-- It also gives the Ed25519 watchdog envelope a DURABLE one-time nonce store.
+-- An in-process store cannot be a replay guard on Supabase Edge Functions, which
+-- run many isolates: a captured envelope replayed against a cold isolate inside
+-- its 60-second window would otherwise be accepted, and the notification-only
+-- RECORD path (empty events) spends no other nonce.
+
+-- ---------------------------------------------------------------------------
+-- 1. Durable one-time nonce store for the watchdog envelope
+-- ---------------------------------------------------------------------------
+
+create table public.openclaw_watchdog_envelope_nonces (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete restrict,
+  key_generation bigint not null check (key_generation > 0),
+  operation text not null
+    check (operation in ('health.probe', 'health.record', 'host.guard')),
+  nonce_hash text not null check (nonce_hash ~ '^[0-9a-f]{64}$'),
+  body_sha256 text not null check (body_sha256 ~ '^[0-9a-f]{64}$'),
+  signed_at timestamptz not null,
+  expires_at timestamptz not null,
+  consumed_at timestamptz not null default clock_timestamp(),
+  unique (organization_id, id),
+  -- One row per nonce per organization: the second insert is the replay.
+  unique (organization_id, nonce_hash),
+  check (expires_at > signed_at and expires_at <= signed_at + interval '2 minutes')
+);
+
+create index openclaw_watchdog_envelope_nonces_expiry_idx
+  on public.openclaw_watchdog_envelope_nonces (expires_at);
+
+alter table public.openclaw_watchdog_envelope_nonces enable row level security;
+alter table public.openclaw_watchdog_envelope_nonces force row level security;
+
+-- ---------------------------------------------------------------------------
+-- 2. Capacity controls
+-- ---------------------------------------------------------------------------
+
+create table public.openclaw_capacity_controls (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete restrict,
+  control text not null check (control in (
+    'DISABLE_AUTOMATIC_VIDEO_FILE_CACHE',
+    'PAUSE_NONCRITICAL_PROACTIVE_GROUP_MEDIA',
+    'PAUSE_ALL_OUTBOUND_MEDIA',
+    'PAUSE_OUTBOUND_AI_MEDIA'
+  )),
+  applied_operation_id uuid not null,
+  reason_fingerprint text not null check (
+    length(reason_fingerprint) between 1 and 128
+      and reason_fingerprint !~ '[[:cntrl:]]'
+  ),
+  -- Health-generated pauses never auto-resume. Only a user holding
+  -- openclaw_zalo.manage_operations releases them after reviewing the incident.
+  requires_manual_resume boolean not null default true,
+  applied_at timestamptz not null default clock_timestamp(),
+  released_at timestamptz,
+  released_by uuid references auth.users(id) on delete restrict,
+  unique (organization_id, id),
+  check ((released_at is null) = (released_by is null))
+);
+
+-- At most one ACTIVE row per control per organization; re-applying the same
+-- control is a no-op instead of a duplicate.
+create unique index openclaw_capacity_controls_active_uidx
+  on public.openclaw_capacity_controls (organization_id, control)
+  where released_at is null;
+create index openclaw_capacity_controls_operation_idx
+  on public.openclaw_capacity_controls (organization_id, applied_operation_id);
+
+alter table public.openclaw_capacity_controls enable row level security;
+alter table public.openclaw_capacity_controls force row level security;
+
+create policy openclaw_capacity_controls_authenticated_audit_select
+  on public.openclaw_capacity_controls for select to authenticated
+  using (organization_id in (
+    select app_private.openclaw_authorized_org_ids_v1('openclaw_zalo.audit')
+  ));
+
+create policy openclaw_capacity_controls_maintenance_writer_all
+  on public.openclaw_capacity_controls for all to openclaw_maintenance_writer
+  using (true) with check (true);
+
+create policy openclaw_watchdog_envelope_nonces_maintenance_writer_all
+  on public.openclaw_watchdog_envelope_nonces for all to openclaw_maintenance_writer
+  using (true) with check (true);
+
+-- Closed ACL first: every OpenClaw table starts denied to every browser-facing
+-- role, and only the exact privileges below are handed back.
+revoke all on public.openclaw_capacity_controls,
+  public.openclaw_watchdog_envelope_nonces
+  from public, anon, authenticated, service_role;
+
+-- The heartbeat wrapper is owned by openclaw_service_dispatcher, so that role
+-- needs its own policy AND grant: NOBYPASSRLS means a grant alone reads nothing.
+create policy openclaw_capacity_controls_service_dispatcher_select
+  on public.openclaw_capacity_controls for select to openclaw_service_dispatcher
+  using (true);
+
+-- The snapshot reads heartbeat freshness from openclaw_runtime_cells. The
+-- retention loop above already gave openclaw_maintenance_writer select on
+-- openclaw_health_events, but never on the cells table.
+create policy openclaw_runtime_cells_watchdog_writer_select
+  on public.openclaw_runtime_cells for select to openclaw_maintenance_writer
+  using (true);
+
+grant select on public.openclaw_capacity_controls to authenticated;
+grant select on public.openclaw_capacity_controls to openclaw_service_dispatcher;
+grant select on public.openclaw_runtime_cells to openclaw_maintenance_writer;
+grant select, insert, update on public.openclaw_capacity_controls
+  to openclaw_maintenance_writer;
+grant select, insert, delete on public.openclaw_watchdog_envelope_nonces
+  to openclaw_maintenance_writer;
+
+-- ---------------------------------------------------------------------------
+-- 3. Narrow service context for the watchdog egress operations
+-- ---------------------------------------------------------------------------
+-- Deliberately NOT a copy of openclaw_validate_service_context_v1: that function
+-- is ~270 lines covering every channel operation, and copying it to add two rows
+-- to a CASE would be the kind of silent drift this codebase cannot afford. This
+-- validator enforces the same properties for exactly the maintenance principal
+-- and the exactly-one scope these two operations need.
+
+create or replace function app_private.openclaw_watchdog_service_context_v1(
+  p_principal jsonb,
+  p_envelope jsonb,
+  p_request jsonb,
+  p_expected_operation text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid;
+  v_maintenance uuid;
+  v_credential_generation bigint;
+  v_lease_generation bigint;
+  v_fencing_token bigint;
+  v_request_hash text;
+  v_iat timestamptz;
+  v_exp timestamptz;
+  v_operations constant text[] := array[
+    'openclaw_watchdog_snapshot_v1', 'openclaw_apply_capacity_controls_v1'
+  ];
+begin
+  if not (p_expected_operation = any(v_operations)) then
+    raise exception 'watchdog service operation matrix mismatch' using errcode = '42501';
+  end if;
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_principal,
+    array['version','principalKind','organizationId','maintenancePrincipalId',
+      'credentialGeneration','leaseGeneration','fencingToken','allowedOperations'],
+    array['version','principalKind','organizationId','maintenancePrincipalId',
+      'credentialGeneration','leaseGeneration','fencingToken','allowedOperations',
+      'accountId','cellId','sessionGeneration','localSessionGeneration','authMode']
+  );
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_envelope,
+    array['version','operation','nonce','iat','exp','requestHash'],
+    array['version','operation','nonce','iat','exp','requestHash']
+  );
+  if p_principal ->> 'version' <> '1' or p_envelope ->> 'version' <> '1' then
+    raise exception 'service context version mismatch' using errcode = '42501';
+  end if;
+  -- A maintenance principal carries no session at all. The canonical validator
+  -- asserts this too; leaving it out here would be exactly the silent drift the
+  -- header comment claims this narrow validator avoids.
+  if coalesce(nullif(p_principal ->> 'sessionGeneration', '')::bigint, 0) <> 0
+     or coalesce(nullif(p_principal ->> 'localSessionGeneration', '')::bigint, 0) <> 0
+     or coalesce(p_principal ->> 'authMode', 'NORMAL') <> 'NORMAL'
+  then
+    raise exception 'watchdog principal carries channel session state' using errcode = '42501';
+  end if;
+  if p_envelope ->> 'operation' is distinct from p_expected_operation then
+    raise exception 'envelope operation mismatch' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_principal -> 'allowedOperations') <> 'array'
+     or not ((p_principal -> 'allowedOperations') ? p_expected_operation)
+  then
+    raise exception 'service operation is not allowed' using errcode = '42501';
+  end if;
+
+  v_request_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-service-request-v1', 'UTF8')
+      || decode('00', 'hex') || convert_to(p_expected_operation, 'UTF8')
+      || decode('00', 'hex') || app_private.openclaw_jcs_bytes_v1(p_request),
+    'sha256'
+  ), 'hex');
+  if p_envelope ->> 'requestHash' is distinct from v_request_hash then
+    raise exception 'service request hash mismatch' using errcode = '42501';
+  end if;
+
+  v_iat := (p_envelope ->> 'iat')::timestamptz;
+  v_exp := (p_envelope ->> 'exp')::timestamptz;
+  if statement_timestamp() < v_iat - interval '30 seconds'
+     or statement_timestamp() >= v_exp
+     or v_exp > v_iat + interval '5 minutes'
+  then
+    raise exception 'service envelope expired or outside DB time window' using errcode = '42501';
+  end if;
+
+  if p_principal ->> 'principalKind' is distinct from 'MAINTENANCE' then
+    raise exception 'watchdog principal kind mismatch' using errcode = '42501';
+  end if;
+  v_org := (p_principal ->> 'organizationId')::uuid;
+  v_maintenance := nullif(p_principal ->> 'maintenancePrincipalId', '')::uuid;
+  v_credential_generation := (p_principal ->> 'credentialGeneration')::bigint;
+  v_lease_generation := (p_principal ->> 'leaseGeneration')::bigint;
+  v_fencing_token := (p_principal ->> 'fencingToken')::bigint;
+
+  if v_org is null or v_maintenance is null
+     or nullif(p_principal ->> 'accountId', '') is not null
+     or nullif(p_principal ->> 'cellId', '') is not null
+     or not exists (
+       select 1
+       from public.openclaw_maintenance_credentials credential
+       join public.openclaw_maintenance_principals principal
+         on principal.organization_id = credential.organization_id
+        and principal.id = credential.maintenance_principal_id
+       join public.openclaw_maintenance_leases lease
+         on lease.organization_id = credential.organization_id
+        and lease.maintenance_principal_id = credential.maintenance_principal_id
+       where credential.organization_id = v_org
+         and credential.maintenance_principal_id = v_maintenance
+         and credential.credential_generation = v_credential_generation
+         and credential.revoked_at is null
+         and 'watchdog.health' = any(credential.allowed_scopes)
+         and lease.lease_generation = v_lease_generation
+         and lease.fencing_token = v_fencing_token
+         and lease.status = 'ACTIVE'
+         and lease.expires_at > statement_timestamp()
+         and principal.is_current and principal.revoked_at is null
+     )
+  then
+    raise exception 'credential generation mismatch, lease generation mismatch, fencing token mismatch, or maintenance principal is stale'
+      using errcode = '42501';
+  end if;
+
+  return jsonb_build_object(
+    'version', 1, 'principalKind', 'MAINTENANCE', 'organizationId', v_org,
+    'accountId', null, 'cellId', null,
+    'maintenancePrincipalId', v_maintenance,
+    'credentialGeneration', v_credential_generation,
+    'leaseGeneration', v_lease_generation, 'fencingToken', v_fencing_token,
+    'operation', p_expected_operation, 'scope', 'watchdog.health',
+    'requestHash', v_request_hash, 'iat', v_iat, 'exp', v_exp,
+    'nonce', p_envelope ->> 'nonce'
+  );
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 4. Snapshot: what the watchdog used to fetch from an inbound port
+-- ---------------------------------------------------------------------------
+
+create or replace function app_private.openclaw_watchdog_snapshot_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_principal ->> 'organizationId')::uuid;
+  v_now timestamptz := statement_timestamp();
+  v_heartbeat timestamptz;
+  v_metrics jsonb := '{}'::jsonb;
+  v_cells integer := 0;
+  v_ready integer := 0;
+begin
+  if p_request ->> 'version' <> '1' then
+    raise exception 'watchdog snapshot version mismatch' using errcode = '22023';
+  end if;
+
+  -- Freshest heartbeat across the organization's current cells. This measures the
+  -- END-TO-END path that actually matters (can the cell still reach Supabase),
+  -- which an inbound probe of the cell's own HTTP port cannot observe: a cell can
+  -- answer a probe cheerfully while its link to Supabase has been down for hours.
+  select count(*), count(*) filter (where cell.state = 'READY'), max(cell.last_heartbeat_at)
+    into v_cells, v_ready, v_heartbeat
+  from public.openclaw_runtime_cells cell
+  where cell.organization_id = v_org and cell.is_current;
+
+  -- Newest content-free metric bundle the cell pushed with its heartbeat.
+  select event.content_free_metrics into v_metrics
+  from public.openclaw_health_events event
+  where event.organization_id = v_org
+    and event.health_kind = 'RUNTIME_HEARTBEAT'
+  order by event.observed_at desc, event.created_at desc
+  limit 1;
+
+  return jsonb_build_object(
+    'version', 1,
+    'organizationId', v_org,
+    'observedAt', v_now,
+    -- probeOk is false when no current cell is READY or nothing has reported yet;
+    -- the Worker's own 90-second staleness rule then decides severity.
+    'probeOk', v_cells > 0 and v_ready > 0 and v_heartbeat is not null,
+    'heartbeatAt', v_heartbeat,
+    'currentCells', v_cells,
+    'readyCells', v_ready,
+    'metrics', coalesce(v_metrics, '{}'::jsonb)
+  );
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 5. Capacity controls: what the watchdog used to POST to an inbound port
+-- ---------------------------------------------------------------------------
+
+create or replace function app_private.openclaw_apply_capacity_controls_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := (p_principal ->> 'organizationId')::uuid;
+  v_operation uuid;
+  v_control text;
+  v_reason text;
+  v_applied integer := 0;
+  v_already integer := 0;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','operationId','controls','reasonFingerprint','requiresManualResume'],
+    array['version','operationId','controls','reasonFingerprint','requiresManualResume']
+  );
+  if p_request ->> 'version' <> '1'
+     or jsonb_typeof(p_request -> 'controls') <> 'array'
+     or jsonb_array_length(p_request -> 'controls') < 1
+     or jsonb_array_length(p_request -> 'controls') > 4
+     or jsonb_typeof(p_request -> 'requiresManualResume') <> 'boolean'
+  then
+    raise exception 'bounded capacity controls required' using errcode = '22023';
+  end if;
+  v_operation := (p_request ->> 'operationId')::uuid;
+  v_reason := p_request ->> 'reasonFingerprint';
+
+  for v_control in select value from jsonb_array_elements_text(p_request -> 'controls') loop
+    -- Idempotent by construction: the partial unique index collapses a repeat of
+    -- an already-active control, so a retried watchdog tick cannot double-apply.
+    insert into public.openclaw_capacity_controls(
+      organization_id, control, applied_operation_id, reason_fingerprint,
+      requires_manual_resume
+    ) values (
+      v_org, v_control, v_operation, v_reason,
+      (p_request ->> 'requiresManualResume')::boolean
+    )
+    on conflict (organization_id, control) where released_at is null do nothing;
+    if found then v_applied := v_applied + 1; else v_already := v_already + 1; end if;
+  end loop;
+
+  return jsonb_build_object(
+    'version', 1, 'applied', v_applied, 'alreadyActive', v_already,
+    'databaseTime', statement_timestamp()
+  );
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 6. Watchdog envelope nonce consumption
+-- ---------------------------------------------------------------------------
+-- No principal is required: the Edge has already proven the Ed25519 signature
+-- over the envelope before calling this. The database's only job here is to make
+-- "one-time" durable across isolates, which no in-process map can do.
+
+create or replace function app_private.openclaw_consume_watchdog_envelope_nonce_v1(
+  p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_nonce_hash text;
+  v_signed_at timestamptz;
+  v_inserted uuid;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','keyGeneration','operation','nonce','bodySha256','signedAtEpochSeconds'],
+    array['version','organizationId','keyGeneration','operation','nonce','bodySha256','signedAtEpochSeconds']
+  );
+  if p_request ->> 'version' <> '1'
+     or p_request ->> 'nonce' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     or p_request ->> 'bodySha256' !~ '^[0-9a-f]{64}$'
+     or p_request ->> 'signedAtEpochSeconds' !~ '^[1-9][0-9]{0,14}$'
+  then
+    raise exception 'watchdog envelope nonce request invalid' using errcode = '22023';
+  end if;
+
+  v_signed_at := to_timestamp((p_request ->> 'signedAtEpochSeconds')::bigint);
+  -- The Edge already enforces a 60-second skew window; this bound is the
+  -- database refusing to store anything it could not have just authenticated.
+  if abs(extract(epoch from (statement_timestamp() - v_signed_at))) > 90 then
+    raise exception 'watchdog envelope is outside the database clock window'
+      using errcode = '42501';
+  end if;
+
+  v_nonce_hash := encode(extensions.digest(
+    convert_to('ihome-openclaw-watchdog-envelope-nonce-v1', 'UTF8')
+      || decode('00', 'hex') || convert_to(p_request ->> 'operation', 'UTF8')
+      || decode('00', 'hex') || convert_to(p_request ->> 'nonce', 'UTF8'),
+    'sha256'
+  ), 'hex');
+
+  insert into public.openclaw_watchdog_envelope_nonces(
+    organization_id, key_generation, operation, nonce_hash, body_sha256,
+    signed_at, expires_at
+  ) values (
+    (p_request ->> 'organizationId')::uuid,
+    (p_request ->> 'keyGeneration')::bigint,
+    p_request ->> 'operation',
+    v_nonce_hash,
+    p_request ->> 'bodySha256',
+    v_signed_at,
+    v_signed_at + interval '90 seconds'
+  )
+  on conflict (organization_id, nonce_hash) do nothing
+  returning id into v_inserted;
+
+  if v_inserted is null then
+    raise exception 'watchdog envelope nonce replay rejected' using errcode = '42501';
+  end if;
+
+  -- Opportunistic prune keeps the table bounded without a scheduled job; the
+  -- watchdog runs once a minute, so this stays small.
+  delete from public.openclaw_watchdog_envelope_nonces
+  where expires_at < statement_timestamp() - interval '10 minutes';
+
+  return jsonb_build_object('version', 1, 'consumed', true);
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 7. Public service wrappers
+-- ---------------------------------------------------------------------------
+
+create or replace function public.openclaw_service_watchdog_snapshot_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_context jsonb;
+begin
+  v_context := app_private.openclaw_watchdog_service_context_v1(
+    p_principal, p_envelope, p_request, 'openclaw_watchdog_snapshot_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context, p_envelope, p_request, 'RUNTIME'
+  );
+  return app_private.openclaw_watchdog_snapshot_v1(v_context, p_envelope, p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_apply_capacity_controls_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_context jsonb;
+begin
+  v_context := app_private.openclaw_watchdog_service_context_v1(
+    p_principal, p_envelope, p_request, 'openclaw_apply_capacity_controls_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context, p_envelope, p_request, 'RUNTIME'
+  );
+  return app_private.openclaw_apply_capacity_controls_v1(v_context, p_envelope, p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_consume_watchdog_envelope_nonce_v1(
+  p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_consume_watchdog_envelope_nonce_v1(p_request);
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 8. Capacity controls reach the cell in the heartbeat it already makes
+-- ---------------------------------------------------------------------------
+-- Only the thin public wrapper changes; app_private.openclaw_runtime_heartbeat_v1
+-- keeps its exact reviewed body. The cell learns about active controls in the
+-- response of the call it already makes every minute, so no inbound port, no new
+-- command kind, and no change to the runtime command state machine are needed.
+
+create or replace function public.openclaw_service_runtime_heartbeat_v1(
+  p_principal jsonb, p_envelope jsonb, p_request jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_result jsonb;
+  v_controls jsonb;
+begin
+  v_context := app_private.openclaw_validate_service_context_v1(
+    p_principal, p_envelope, p_request, 'openclaw_runtime_heartbeat_v1'
+  );
+  v_context := app_private.openclaw_consume_service_nonce_v1(
+    v_context, p_envelope, p_request, 'RUNTIME'
+  );
+  v_result := app_private.openclaw_runtime_heartbeat_v1(v_context, p_envelope, p_request);
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'control', control.control,
+    'appliedAt', control.applied_at,
+    'reasonFingerprint', control.reason_fingerprint,
+    'requiresManualResume', control.requires_manual_resume
+  ) order by control.control), '[]'::jsonb) into v_controls
+  from public.openclaw_capacity_controls control
+  where control.organization_id = (v_context ->> 'organizationId')::uuid
+    and control.released_at is null;
+
+  return v_result || jsonb_build_object('capacityControls', v_controls);
+end;
+$function$;
+
+-- ---------------------------------------------------------------------------
+-- 9. Ownership and grants
+-- ---------------------------------------------------------------------------
+
+alter table public.openclaw_capacity_controls owner to openclaw_maintenance_writer;
+alter table public.openclaw_watchdog_envelope_nonces owner to openclaw_maintenance_writer;
+
+alter function app_private.openclaw_watchdog_service_context_v1(jsonb,jsonb,jsonb,text)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_consume_watchdog_envelope_nonce_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+
+revoke all on function app_private.openclaw_watchdog_service_context_v1(jsonb,jsonb,jsonb,text)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_consume_watchdog_envelope_nonce_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function app_private.openclaw_watchdog_service_context_v1(jsonb,jsonb,jsonb,text)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_consume_watchdog_envelope_nonce_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+alter function public.openclaw_service_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_consume_watchdog_envelope_nonce_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+
+revoke all on function public.openclaw_service_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_consume_watchdog_envelope_nonce_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function public.openclaw_service_watchdog_snapshot_v1(jsonb,jsonb,jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_apply_capacity_controls_v1(jsonb,jsonb,jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_consume_watchdog_envelope_nonce_v1(jsonb)
+  to service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- 10. Migration and recovery facades the two operator adapters call
+-- ---------------------------------------------------------------------------
+-- openclaw-migration-adapter.mjs and openclaw-recovery-adapter.mjs delegate their
+-- state changes here. Without these functions both scripts fail closed at step 1,
+-- which is safe but means neither the VPS migration nor the restore drill can ever
+-- complete.
+--
+-- These take p_request only and are granted to service_role alone: they are
+-- operator tools run from the host with the service key, not a runtime principal
+-- holding a lease. Every one is CAS- or state-guarded so a repeated call from a
+-- retried step cannot double-apply, and every one names its exact organization.
+
+create or replace function app_private.openclaw_migration_scope_v1(p_request jsonb)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid;
+begin
+  if p_request ->> 'version' <> '1' then
+    raise exception 'migration request version mismatch' using errcode = '22023';
+  end if;
+  v_org := nullif(p_request ->> 'organizationId', '')::uuid;
+  if v_org is null then
+    raise exception 'migration request organization is required' using errcode = '22023';
+  end if;
+  -- Deliberately NO existence probe against public.organizations: that would need a
+  -- table grant for this owner, widening it for a check the data model already makes.
+  -- Writes are FK-bound to a real organization, and a bogus id simply matches no rows.
+  return v_org;
+end;
+$function$;
+
+create or replace function app_private.openclaw_set_global_stop_v1(
+  p_request jsonb, p_stop boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_version bigint;
+begin
+  -- Idempotent by design: a retried step finds the flag already in the target
+  -- state and reports success without inventing a second control version.
+  insert into public.openclaw_control_states(organization_id, control_key, global_stop, reason)
+  values (v_org, 'GLOBAL_STOP', p_stop, left(coalesce(p_request ->> 'reason', ''), 200))
+  on conflict (organization_id, control_key) do update
+    set global_stop = excluded.global_stop,
+        reason = excluded.reason,
+        control_version = public.openclaw_control_states.control_version
+          + case when public.openclaw_control_states.global_stop is distinct from excluded.global_stop
+              then 1 else 0 end,
+        updated_at = clock_timestamp()
+  returning control_version into v_version;
+  return jsonb_build_object(
+    'version', 1, 'globalStopActive', p_stop, 'controlVersion', v_version
+  );
+end;
+$function$;
+
+create or replace function app_private.openclaw_drain_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_returned integer;
+begin
+  -- Return leased-but-not-yet-dispatching work to the queue. DISPATCHING is left
+  -- alone on purpose: its outcome is unknown until the provider answers, and
+  -- requeueing it would risk a duplicate send.
+  with returned as (
+    update public.openclaw_outbox
+      set state = 'QUEUED', claim_token_hash = null, lease_expires_at = null
+      where organization_id = v_org and state = 'LEASED'
+      returning 1
+  )
+  select count(*) into v_returned from returned;
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_returned);
+end;
+$function$;
+
+create or replace function app_private.openclaw_freeze_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_states text[];
+  v_frozen integer;
+begin
+  if jsonb_typeof(p_request -> 'states') <> 'array'
+     or jsonb_array_length(p_request -> 'states') < 1 then
+    raise exception 'freeze states are required' using errcode = '22023';
+  end if;
+  select array_agg(value) into v_states from jsonb_array_elements_text(p_request -> 'states');
+  if not (v_states <@ array['QUEUED','LEASED']::text[]) then
+    raise exception 'freeze states must be a subset of QUEUED,LEASED' using errcode = '22023';
+  end if;
+  -- Freezing IS GLOBAL_STOP plus a drained queue; this step refuses to claim the
+  -- outbox is frozen while sends could still start.
+  if not exists (
+    select 1 from public.openclaw_control_states control
+    where control.organization_id = v_org and control.global_stop
+  ) then
+    raise exception 'outbox cannot be frozen while GLOBAL_STOP is inactive' using errcode = '42501';
+  end if;
+  select count(*) into v_frozen from public.openclaw_outbox
+  where organization_id = v_org and state = any(v_states);
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_frozen);
+end;
+$function$;
+
+create or replace function app_private.openclaw_expire_dispatching_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_moved integer;
+begin
+  -- Expired DISPATCHING becomes UNKNOWN and NEVER retries: the provider may have
+  -- delivered it already. An operator resolves each one explicitly.
+  with moved as (
+    update public.openclaw_outbox
+      set state = 'UNKNOWN', terminal_at = clock_timestamp(),
+          claim_token_hash = null, lease_expires_at = null
+      where organization_id = v_org and state = 'DISPATCHING'
+        and lease_expires_at is not null and lease_expires_at <= clock_timestamp()
+      returning 1
+  )
+  select count(*) into v_moved from moved;
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_moved);
+end;
+$function$;
+
+create or replace function app_private.openclaw_reconcile_migration_gaps_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_unresolved integer;
+begin
+  select count(*) into v_unresolved from public.openclaw_outbox
+  where organization_id = v_org and state = 'UNKNOWN' and resolution_version = 0;
+  -- Fail closed: an operator must resolve every UNKNOWN before the organization
+  -- resumes, otherwise a possibly-delivered message stays ambiguous forever.
+  if v_unresolved > 0 then
+    raise exception 'migration leaves % unresolved UNKNOWN rows; operator resolution is required',
+      v_unresolved using errcode = '42501';
+  end if;
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', 0);
+end;
+$function$;
+
+create or replace function public.openclaw_service_begin_global_stop_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_set_global_stop_v1(p_request, true);
+end;
+$function$;
+
+create or replace function public.openclaw_service_resume_after_migration_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_result jsonb;
+begin
+  -- Resume is the one irreversible step, so it re-checks the gate rather than
+  -- trusting that the reconcile step ran earlier in the same script. The check runs
+  -- through the app_private helper, whose owner holds the table grant: doing the
+  -- count here would need openclaw_service_dispatcher to read openclaw_outbox.
+  perform app_private.openclaw_reconcile_migration_gaps_v1(p_request);
+  v_result := app_private.openclaw_set_global_stop_v1(p_request, false);
+  return v_result || jsonb_build_object('resumed', true);
+end;
+$function$;
+
+create or replace function public.openclaw_service_drain_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_drain_outbox_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_freeze_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_freeze_outbox_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_expire_dispatching_to_unknown_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_expire_dispatching_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_reconcile_migration_gaps_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_reconcile_migration_gaps_v1(p_request);
+end;
+$function$;
+
+alter function app_private.openclaw_migration_scope_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_drain_outbox_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_freeze_outbox_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_expire_dispatching_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+
+revoke all on function app_private.openclaw_migration_scope_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_drain_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_freeze_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_expire_dispatching_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+alter function public.openclaw_service_begin_global_stop_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_resume_after_migration_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_drain_outbox_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_freeze_outbox_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_expire_dispatching_to_unknown_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_reconcile_migration_gaps_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+
+revoke all on function public.openclaw_service_begin_global_stop_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_resume_after_migration_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_drain_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_freeze_outbox_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_expire_dispatching_to_unknown_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_reconcile_migration_gaps_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function public.openclaw_service_begin_global_stop_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_resume_after_migration_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_drain_outbox_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_freeze_outbox_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_expire_dispatching_to_unknown_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_reconcile_migration_gaps_v1(jsonb)
+  to service_role;
+
+create policy openclaw_control_states_migration_writer_all
+  on public.openclaw_control_states for all to openclaw_maintenance_writer
+  using (true) with check (true);
+create policy openclaw_outbox_migration_writer_all
+  on public.openclaw_outbox for all to openclaw_maintenance_writer
+  using (true) with check (true);
+grant select, insert, update on public.openclaw_control_states
+  to openclaw_maintenance_writer;
+grant select, update on public.openclaw_outbox to openclaw_maintenance_writer;
+
+
+-- ---------------------------------------------------------------------------
+-- 11. Credential, lease and session facades for the migration adapter
+-- ---------------------------------------------------------------------------
+-- Same contract as section 10: p_request only, service_role only, every step
+-- guarded so a retried invocation cannot double-apply.
+
+create or replace function app_private.openclaw_migration_cells_v1(p_request jsonb)
+returns table(organization_id uuid, old_cell uuid, new_cell uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_old uuid := nullif(p_request ->> 'oldCellId', '')::uuid;
+  v_new uuid := nullif(p_request ->> 'newCellId', '')::uuid;
+begin
+  if v_old is null or v_new is null or v_old = v_new then
+    raise exception 'migration requires distinct old and new cell ids' using errcode = '22023';
+  end if;
+  return query select v_org, v_old, v_new;
+end;
+$function$;
+
+create or replace function public.openclaw_service_acquire_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_account uuid;
+  v_old_token bigint;
+  v_old_generation bigint;
+  v_new_token bigint;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  -- The new cell must fence STRICTLY above every lease the organization has ever
+  -- issued, not merely above the old cell's: a lease left behind by an earlier
+  -- failed migration would otherwise still out-rank the new one.
+  select lease.account_id, max(lease.fencing_token), max(lease.lease_generation)
+    into v_account, v_old_token, v_old_generation
+  from public.openclaw_runtime_leases lease
+  where lease.organization_id = v_scope.organization_id
+  group by lease.account_id
+  order by max(lease.fencing_token) desc
+  limit 1;
+
+  if v_account is null then
+    raise exception 'no existing lease to advance from' using errcode = 'P0002';
+  end if;
+
+  -- Idempotent: a retry finds the new cell already holding the higher lease.
+  select lease.fencing_token into v_new_token
+  from public.openclaw_runtime_leases lease
+  where lease.organization_id = v_scope.organization_id
+    and lease.cell_id = v_scope.new_cell and lease.status = 'ACTIVE'
+    and lease.fencing_token > v_old_token;
+
+  if v_new_token is null then
+    insert into public.openclaw_runtime_leases(
+      organization_id, account_id, cell_id, lease_generation, fencing_token,
+      status, expires_at
+    ) values (
+      v_scope.organization_id, v_account, v_scope.new_cell,
+      v_old_generation + 1, v_old_token + 1, 'ACTIVE',
+      clock_timestamp() + interval '1 hour'
+    )
+    returning fencing_token into v_new_token;
+  end if;
+
+  if v_new_token <= v_old_token then
+    raise exception 'new fencing token did not advance' using errcode = '42501';
+  end if;
+  return jsonb_build_object(
+    'version', 1, 'oldFencingToken', v_old_token, 'newFencingToken', v_new_token
+  );
+end;
+$function$;
+
+create or replace function public.openclaw_service_revoke_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_revoked integer;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  -- Refuse to fence the old cell before the new one actually holds a higher lease;
+  -- doing it in the wrong order leaves the organization with no active cell at all.
+  if not exists (
+    select 1 from public.openclaw_runtime_leases new_lease
+    where new_lease.organization_id = v_scope.organization_id
+      and new_lease.cell_id = v_scope.new_cell and new_lease.status = 'ACTIVE'
+  ) then
+    raise exception 'new cell holds no active lease; refusing to revoke the old one'
+      using errcode = '42501';
+  end if;
+
+  with revoked as (
+    update public.openclaw_runtime_leases
+      set status = 'REVOKED', released_at = clock_timestamp()
+      where organization_id = v_scope.organization_id
+        and cell_id = v_scope.old_cell and status = 'ACTIVE'
+      returning 1
+  )
+  select count(*) into v_revoked from revoked;
+
+  update public.openclaw_runtime_credentials
+    set revoked_at = clock_timestamp(), revoked_reason = 'vps-migration'
+    where organization_id = v_scope.organization_id
+      and cell_id = v_scope.old_cell and revoked_at is null;
+
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_revoked);
+end;
+$function$;
+
+create or replace function public.openclaw_service_rotate_migration_credentials_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_rotated integer;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+  -- Rotation here means retiring the OLD cell's credentials. The new credential is
+  -- minted out of band and never travels through this facade: a credential value
+  -- in a request body would end up in logs and evidence.
+  with rotated as (
+    update public.openclaw_runtime_credentials
+      set revoked_at = clock_timestamp(), revoked_reason = 'vps-migration-rotate'
+      where organization_id = v_scope.organization_id
+        and cell_id = v_scope.old_cell and revoked_at is null
+      returning 1
+  )
+  select count(*) into v_rotated from rotated;
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_rotated);
+end;
+$function$;
+
+create or replace function public.openclaw_service_require_fresh_qr_login_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_accounts integer;
+begin
+  -- A session is never copied or restored: advancing session_generation invalidates
+  -- every credential, ticket and challenge bound to the old one, so the only way
+  -- back is a fresh QR scan by a human.
+  with invalidated as (
+    update public.openclaw_accounts
+      set session_generation = session_generation + 1,
+          connection_state = 'RECONNECT_REQUIRED',
+          session_risk_state = 'INVALID',
+          updated_at = clock_timestamp()
+      where organization_id = v_org and is_active
+      returning 1
+  )
+  select count(*) into v_accounts from invalidated;
+
+  update public.openclaw_qr_challenges
+    set revoked_at = clock_timestamp()
+    where organization_id = v_org and revoked_at is null and consumed_at is null;
+
+  return jsonb_build_object(
+    'version', 1, 'sessionInvalidated', true, 'affected', v_accounts
+  );
+end;
+$function$;
+
+alter function app_private.openclaw_migration_cells_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+revoke all on function app_private.openclaw_migration_cells_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+alter function public.openclaw_service_acquire_migration_lease_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_revoke_migration_lease_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_rotate_migration_credentials_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+alter function public.openclaw_service_require_fresh_qr_login_v1(jsonb)
+  owner to openclaw_service_dispatcher;
+
+revoke all on function public.openclaw_service_acquire_migration_lease_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_revoke_migration_lease_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_rotate_migration_credentials_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function public.openclaw_service_require_fresh_qr_login_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function public.openclaw_service_acquire_migration_lease_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_revoke_migration_lease_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_rotate_migration_credentials_v1(jsonb)
+  to service_role;
+grant execute on function public.openclaw_service_require_fresh_qr_login_v1(jsonb)
+  to service_role;
+
+create policy openclaw_runtime_leases_migration_writer_all
+  on public.openclaw_runtime_leases for all to openclaw_maintenance_writer
+  using (true) with check (true);
+create policy openclaw_accounts_migration_writer_all
+  on public.openclaw_accounts for all to openclaw_maintenance_writer
+  using (true) with check (true);
+grant select, insert, update on public.openclaw_runtime_leases
+  to openclaw_maintenance_writer;
+grant select, update on public.openclaw_accounts to openclaw_maintenance_writer;
+grant update on public.openclaw_qr_challenges to openclaw_maintenance_writer;
+
+
+-- The public facades are owned by openclaw_service_dispatcher, which is NOINHERIT
+-- and holds no membership in openclaw_maintenance_writer. Revoking without granting
+-- left every one of them raising 42501 at runtime, invisible to a suite that runs
+-- PGlite as superuser.
+grant execute on function app_private.openclaw_migration_scope_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_drain_outbox_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_freeze_outbox_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_expire_dispatching_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_migration_cells_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+
+-- ---------------------------------------------------------------------------
+-- 12. Lease handover, corrected
+-- ---------------------------------------------------------------------------
+-- The first version was unrunnable and unsafe in two ways.
+--
+-- `openclaw_runtime_leases_one_effective_uidx` is a partial UNIQUE INDEX on
+-- (organization_id, account_id) where status='ACTIVE'. Indexes are checked per
+-- statement, so "insert the new ACTIVE lease, then in a LATER step revoke the old
+-- one" can never work: the insert always collides. And the revoke step refused to
+-- run until the new lease existed, so neither step could go first - the migration
+-- deadlocked at step 8 every time.
+--
+-- The second flaw: the old version picked ONE account by `max(fencing_token)`,
+-- while the revoke step retired the old cell's leases for EVERY account. An
+-- organization with N accounts lost N-1 leases with nothing to replace them.
+--
+-- Acquire is therefore the atomic HANDOVER, per account, in one statement pair
+-- inside one function. Revoke then only retires credentials and verifies.
+
+create or replace function app_private.openclaw_handover_leases_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_account uuid;
+  v_old_token bigint;
+  v_old_generation bigint;
+  v_moved integer := 0;
+  v_already integer := 0;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  -- The account is derived FROM THE NEW CELL, not guessed from fencing tokens:
+  -- openclaw_runtime_cells rows are per (organization, account), so a --new-cell id
+  -- belongs to exactly one account, and the lease FK is (org, account, cell).
+  -- Guessing by max(fencing_token) could pick an account the new cell is not for,
+  -- which the foreign key then rejects.
+  for v_account in
+    select cell.account_id
+    from public.openclaw_runtime_cells cell
+    where cell.organization_id = v_scope.organization_id
+      and cell.id = v_scope.new_cell
+  loop
+    -- Idempotent: a retried step finds this account already handed over.
+    if exists (
+      select 1 from public.openclaw_runtime_leases lease
+      where lease.organization_id = v_scope.organization_id
+        and lease.account_id = v_account
+        and lease.cell_id = v_scope.new_cell
+        and lease.status = 'ACTIVE' and lease.released_at is null
+    ) then
+      v_already := v_already + 1;
+      continue;
+    end if;
+
+    -- Fence strictly above every lease this account has EVER held, not merely above
+    -- the old cell's: a lease left behind by an aborted migration would otherwise
+    -- still out-rank the new one.
+    select max(lease.fencing_token), max(lease.lease_generation)
+      into v_old_token, v_old_generation
+    from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.account_id = v_account;
+
+    update public.openclaw_runtime_leases
+      set status = 'REVOKED', released_at = clock_timestamp()
+      where organization_id = v_scope.organization_id
+        and account_id = v_account
+        and status = 'ACTIVE' and released_at is null;
+
+    insert into public.openclaw_runtime_leases(
+      organization_id, account_id, cell_id, lease_generation, fencing_token,
+      status, expires_at
+    ) values (
+      v_scope.organization_id, v_account, v_scope.new_cell,
+      coalesce(v_old_generation, 0) + 1, coalesce(v_old_token, 0) + 1, 'ACTIVE',
+      clock_timestamp() + interval '1 hour'
+    );
+    v_moved := v_moved + 1;
+  end loop;
+
+  if v_moved = 0 and v_already = 0 then
+    raise exception 'no lease exists to hand over' using errcode = 'P0002';
+  end if;
+  return jsonb_build_object(
+    'version', 1, 'movedAccounts', v_moved, 'alreadyOnNewCell', v_already
+  );
+end;
+$function$;
+
+create or replace function app_private.openclaw_retire_old_cell_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_pending integer;
+  v_credentials integer;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  -- Refuse while ANY account still lacks an active lease on the new cell. The old
+  -- version checked only that SOME lease existed, which a stale lower-token lease
+  -- from an aborted migration would satisfy while the organization still had
+  -- accounts pointing nowhere.
+  -- Only accounts that still hold an ACTIVE lease need a replacement. Counting
+  -- every account that ever had a lease row blocked revoke and rotate FOREVER:
+  -- replacing an account deactivates the old one (one active account per
+  -- organization), and its historical REVOKED lease can never move to the new
+  -- cell, because the lease FK ties a cell to exactly one account.
+  select count(*) into v_pending
+  from (
+    select distinct lease.account_id
+    from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.status = 'ACTIVE' and lease.released_at is null
+  ) account
+  where not exists (
+    select 1 from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.account_id = account.account_id
+      and lease.cell_id = v_scope.new_cell
+      and lease.status = 'ACTIVE' and lease.released_at is null
+  );
+  if v_pending > 0 then
+    raise exception '% account(s) still hold no active lease on the new cell', v_pending
+      using errcode = '42501';
+  end if;
+
+  with retired as (
+    update public.openclaw_runtime_credentials
+      set revoked_at = clock_timestamp(), revoked_reason = 'vps-migration'
+      where organization_id = v_scope.organization_id
+        and cell_id = v_scope.old_cell and revoked_at is null
+      returning 1
+  )
+  select count(*) into v_credentials from retired;
+
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', v_credentials);
+end;
+$function$;
+
+create or replace function public.openclaw_service_acquire_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_handover_leases_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_revoke_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_retire_old_cell_v1(p_request);
+end;
+$function$;
+
+create or replace function public.openclaw_service_rotate_migration_credentials_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  -- Rotation retires the OLD cell's credentials. The new credential is minted out of
+  -- band and never travels through this facade: a credential value in a request body
+  -- would land in logs and evidence.
+  return app_private.openclaw_retire_old_cell_v1(p_request);
+end;
+$function$;
+
+create or replace function app_private.openclaw_require_fresh_qr_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_org uuid := app_private.openclaw_migration_scope_v1(p_request);
+  v_accounts integer;
+begin
+  -- A session is never copied or restored: advancing session_generation invalidates
+  -- every credential, ticket and challenge bound to the old one, so the only way back
+  -- is a fresh QR scan by a human.
+  with invalidated as (
+    update public.openclaw_accounts
+      set session_generation = session_generation + 1,
+          connection_state = 'RECONNECT_REQUIRED',
+          session_risk_state = 'INVALID',
+          updated_at = clock_timestamp()
+      where organization_id = v_org and is_active
+        -- Idempotent: a retried step after the human already re-scanned must not
+        -- kill the fresh session.
+        and connection_state <> 'RECONNECT_REQUIRED'
+      returning 1
+  )
+  select count(*) into v_accounts from invalidated;
+
+  update public.openclaw_qr_challenges
+    set revoked_at = clock_timestamp()
+    where organization_id = v_org and revoked_at is null and consumed_at is null;
+
+  return jsonb_build_object(
+    'version', 1, 'sessionInvalidated', true, 'affected', v_accounts
+  );
+end;
+$function$;
+
+create or replace function public.openclaw_service_require_fresh_qr_login_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  return app_private.openclaw_require_fresh_qr_v1(p_request);
+end;
+$function$;
+
+alter function app_private.openclaw_handover_leases_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_retire_old_cell_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+alter function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  owner to openclaw_maintenance_writer;
+
+revoke all on function app_private.openclaw_handover_leases_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_retire_old_cell_v1(jsonb)
+  from public, anon, authenticated, service_role;
+revoke all on function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  from public, anon, authenticated, service_role;
+
+grant execute on function app_private.openclaw_handover_leases_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_retire_old_cell_v1(jsonb)
+  to openclaw_service_dispatcher;
+grant execute on function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+grant select, insert, update on public.openclaw_runtime_credentials
+  to openclaw_maintenance_writer;
+create policy openclaw_runtime_credentials_migration_writer_all
+  on public.openclaw_runtime_credentials for all to openclaw_maintenance_writer
+  using (true) with check (true);
+
+
+-- ---------------------------------------------------------------------------
+-- 13. A dedicated role for the migration surface
+-- ---------------------------------------------------------------------------
+-- The migration helpers were owned by openclaw_maintenance_writer, the role the
+-- retention/audit CRON runs as. Every policy they needed therefore widened that
+-- role: the cron job ended up with cross-organization write authority over
+-- GLOBAL_STOP, the outbox, leases, credentials and account session state - none of
+-- which it has any business touching.
+--
+-- Ownership moves to a role that exists only for the VPS migration surface, so the
+-- blast radius of these policies is exactly the migration facades.
+
+do $migration_role$
+begin
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'openclaw_migration_writer') then
+    create role openclaw_migration_writer with NOLOGIN NOINHERIT NOBYPASSRLS;
+  else
+    alter role openclaw_migration_writer with NOLOGIN NOINHERIT NOBYPASSRLS;
+  end if;
+end;
+$migration_role$;
+
+grant usage on schema public, app_private, extensions to openclaw_migration_writer;
+
+-- Re-own the migration helpers.
+alter function app_private.openclaw_migration_scope_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_migration_cells_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_set_global_stop_v1(jsonb, boolean)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_drain_outbox_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_freeze_outbox_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_expire_dispatching_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_reconcile_migration_gaps_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_handover_leases_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_retire_old_cell_v1(jsonb)
+  owner to openclaw_migration_writer;
+alter function app_private.openclaw_require_fresh_qr_v1(jsonb)
+  owner to openclaw_migration_writer;
+
+-- Re-grant execute: changing the owner does not carry the previous grants.
+grant execute on function app_private.openclaw_migration_scope_v1(jsonb),
+  app_private.openclaw_migration_cells_v1(jsonb),
+  app_private.openclaw_set_global_stop_v1(jsonb, boolean),
+  app_private.openclaw_drain_outbox_v1(jsonb),
+  app_private.openclaw_freeze_outbox_v1(jsonb),
+  app_private.openclaw_expire_dispatching_v1(jsonb),
+  app_private.openclaw_reconcile_migration_gaps_v1(jsonb),
+  app_private.openclaw_handover_leases_v1(jsonb),
+  app_private.openclaw_retire_old_cell_v1(jsonb),
+  app_private.openclaw_require_fresh_qr_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+-- Retire the policies that widened the retention role.
+drop policy if exists openclaw_control_states_migration_writer_all
+  on public.openclaw_control_states;
+drop policy if exists openclaw_outbox_migration_writer_all
+  on public.openclaw_outbox;
+drop policy if exists openclaw_runtime_leases_migration_writer_all
+  on public.openclaw_runtime_leases;
+drop policy if exists openclaw_accounts_migration_writer_all
+  on public.openclaw_accounts;
+drop policy if exists openclaw_runtime_credentials_migration_writer_all
+  on public.openclaw_runtime_credentials;
+
+-- Revoke ONLY what section 10/11 granted, verb by verb. A blanket
+-- `revoke all ... from openclaw_maintenance_writer` also stripped grants that
+-- PRE-DATE this task - select/update on openclaw_outbox (rpc_surface), and select
+-- on openclaw_control_states / openclaw_runtime_credentials from the retention
+-- source loop above - which broke the smoke cleanup and retention scanning cron
+-- with 42501 in production.
+revoke insert, update on public.openclaw_control_states from openclaw_maintenance_writer;
+revoke select, insert, update on public.openclaw_runtime_leases from openclaw_maintenance_writer;
+revoke select, update on public.openclaw_accounts from openclaw_maintenance_writer;
+revoke insert, update on public.openclaw_runtime_credentials from openclaw_maintenance_writer;
+revoke update on public.openclaw_qr_challenges from openclaw_maintenance_writer;
+
+-- Grant the migration role exactly the verbs its facades use, no more.
+grant select, insert, update on public.openclaw_control_states
+  to openclaw_migration_writer;
+grant select, update on public.openclaw_outbox to openclaw_migration_writer;
+grant select, insert, update on public.openclaw_runtime_leases
+  to openclaw_migration_writer;
+grant select, update on public.openclaw_accounts to openclaw_migration_writer;
+grant select, update on public.openclaw_runtime_credentials
+  to openclaw_migration_writer;
+grant select on public.openclaw_runtime_cells to openclaw_migration_writer;
+grant update on public.openclaw_qr_challenges to openclaw_migration_writer;
+
+create policy openclaw_control_states_migration_writer_all
+  on public.openclaw_control_states for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_outbox_migration_writer_all
+  on public.openclaw_outbox for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_runtime_leases_migration_writer_all
+  on public.openclaw_runtime_leases for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_accounts_migration_writer_all
+  on public.openclaw_accounts for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_runtime_credentials_migration_writer_all
+  on public.openclaw_runtime_credentials for all to openclaw_migration_writer
+  using (true) with check (true);
+create policy openclaw_runtime_cells_migration_writer_select
+  on public.openclaw_runtime_cells for select to openclaw_migration_writer
+  using (true);
+create policy openclaw_qr_challenges_migration_writer_update
+  on public.openclaw_qr_challenges for update to openclaw_migration_writer
+  using (true) with check (true);
+
+
+-- ---------------------------------------------------------------------------
+-- 14. Every migration facade leaves a trace
+-- ---------------------------------------------------------------------------
+-- These facades stop an entire organization's outbound and force an org-wide QR
+-- re-login. Anyone holding the service key could run them, against any
+-- organization, and leave nothing behind: no actor, no evidence, no way to tell a
+-- planned migration from an abuse of the key.
+--
+-- They now append to the SAME hash-chained audit log the rest of the product uses,
+-- so a missing or altered entry breaks the chain rather than passing unnoticed.
+
+create or replace function app_private.openclaw_audit_migration_step_v1(
+  p_organization_id uuid,
+  p_step text,
+  p_request jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_evidence jsonb;
+  v_actor uuid;
+  v_caller text;
+  v_run record;
+  v_request_id uuid;
+begin
+  -- ATTRIBUTION IS TAKEN FROM THE SESSION, NEVER FROM THE REQUEST.
+  --
+  -- A record whose actor is whatever the caller typed proves nothing: the party we
+  -- are trying to distinguish - someone holding the service key - writes the
+  -- request. Everything recorded below is either set by PostgREST from a verified
+  -- JWT, or read from the database itself.
+  --
+  -- Be clear about what that buys HERE: these facades are granted to
+  -- `service_role` only, and a service-key JWT carries no `sub`, so `actorId` is
+  -- null on every invocation these functions can currently receive. It is recorded
+  -- anyway because the value is free, and because the day a member role is granted
+  -- one of these, an unattributed step must look different from an attributed one.
+  -- The load-bearing signal is `rolloutRunId` below, not this.
+  begin
+    v_actor := nullif(
+      current_setting('request.jwt.claims', true)::jsonb ->> 'sub', ''
+    )::uuid;
+  exception when others then
+    v_actor := null;
+  end;
+  -- Who ran it, at three levels, because one of them is uninformative in each of
+  -- the two call paths. Over PostgREST the `role` GUC is the answer and reads
+  -- `service_role`; over a direct psql connection nothing sets it and it reads the
+  -- literal 'none', which is why session_user/current_user are recorded too.
+  -- SECURITY DEFINER changes current_user but not the GUC.
+  v_caller := coalesce(nullif(current_setting('role', true), ''), 'unset');
+
+  -- The canonical rollout run that AUTHORIZES this step - restricted to RUNNING.
+  --
+  -- Matching COMPLETE runs too made this worthless: `openclaw_rollout_runs_one_active_uidx`
+  -- bounds RUNNING to one per organization, but COMPLETE rows accumulate forever, so
+  -- once an organization finished its first rollout EVERY later step - planned or
+  -- not - inherited that run's id and `rolloutRunId: null` could never appear again.
+  -- A finished rollout authorizes nothing; only a run still in flight does.
+  select run.id, run.stage, run.started_at
+    into v_run
+  from public.openclaw_rollout_runs run
+  where run.organization_id = p_organization_id
+    and run.status = 'RUNNING'
+  order by run.started_at desc, run.id desc
+  limit 1;
+
+  -- Correlates the steps of ONE adapter invocation; ignored unless it is a uuid,
+  -- because a caller-supplied string must never widen what the audit accepts.
+  v_request_id := case
+    when coalesce(p_request ->> 'requestId', '')
+      ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then (p_request ->> 'requestId')::uuid
+  end;
+
+  -- Content-free by construction: the step, the organization, and a digest of the
+  -- request. Never the request itself, which can carry cell ids and operator text.
+  --
+  -- Everything forensic lives in the EVIDENCE, not in the neighbouring columns:
+  -- append_openclaw_audit_v1 hashes previous_hash|sequence|event_type|evidence_hash,
+  -- so actor_id/request_id/correlation_id sit outside the chain and could be edited
+  -- without breaking it. They are still written for indexing, but the copies here
+  -- are the tamper-evident ones.
+  v_evidence := jsonb_build_object(
+    'version', 3,
+    'step', p_step,
+    'organizationId', p_organization_id,
+    'requestDigest', encode(
+      extensions.digest(app_private.openclaw_jcs_bytes_v1(p_request), 'sha256'), 'hex'
+    ),
+    'actorId', v_actor,
+    'callerRole', v_caller,
+    'sessionUser', session_user,
+    'currentUser', current_user,
+    'requestId', v_request_id,
+    'rolloutRunId', v_run.id,
+    'rolloutStage', v_run.stage
+  );
+  perform app_private.append_openclaw_audit_v1(
+    p_organization_id,
+    'OPENCLAW_MIGRATION_STEP',
+    v_actor,
+    'openclaw-migration-adapter',
+    v_request_id,
+    v_run.id,
+    v_evidence,
+    convert_to(v_evidence::text, 'UTF8')
+  );
+end;
+$function$;
+
+-- `force row level security` applies to the owner too, so the definer function
+-- needs both the grant and a policy to read the run that authorizes the step.
+--
+-- The grant is a COLUMN LIST, not the table: the audit only needs to know which run
+-- is in flight and how far it has got. A table-wide grant would hand this role
+-- `reviewed_commit_sha`, `artifact_digests`, `upstream_sri` and `project_ref` for
+-- every tenant, and every future definer function owned by it would inherit that.
+grant select (id, organization_id, stage, status, started_at)
+  on public.openclaw_rollout_runs to openclaw_migration_writer;
+create policy openclaw_rollout_runs_migration_writer_select
+  on public.openclaw_rollout_runs for select to openclaw_migration_writer
+  using (true);
+
+alter function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
+  owner to openclaw_migration_writer;
+revoke all on function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
+  to openclaw_service_dispatcher, openclaw_migration_writer;
+
+-- No grant or policy on public.openclaw_audit_events: append_openclaw_audit_v1 is
+-- SECURITY DEFINER owned by openclaw_function_owner, so the migration role needs
+-- none. Granting them added an org-wide SELECT over the hash-chained audit log
+-- that nothing reads.
+
+-- The audit call sits at the END of each facade: a step that raised has not
+-- happened, and must not leave a record claiming it did.
+create or replace function public.openclaw_service_begin_global_stop_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_set_global_stop_v1(p_request, true);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'global-stop', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_drain_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_drain_outbox_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'drain-outbox', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_freeze_outbox_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_freeze_outbox_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'freeze-outbox', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_expire_dispatching_to_unknown_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_expire_dispatching_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'move-expired-dispatching-to-unknown', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_reconcile_migration_gaps_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_reconcile_migration_gaps_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'reconcile-gaps-and-unknown', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_acquire_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_handover_leases_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'acquire-higher-fencing-lease', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_revoke_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_retire_old_cell_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'revoke-old-credential-and-lease', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_rotate_migration_credentials_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_retire_old_cell_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'rotate-workload-credentials', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_require_fresh_qr_login_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_require_fresh_qr_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'require-fresh-qr-login', p_request
+  );
+  return v_result;
+end;
+$function$;
+
+create or replace function public.openclaw_service_resume_after_migration_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  perform app_private.openclaw_reconcile_migration_gaps_v1(p_request);
+  v_result := app_private.openclaw_set_global_stop_v1(p_request, false);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'resume-organization', p_request
+  );
+  return v_result || jsonb_build_object('resumed', true);
+end;
+$function$;
+
+
+-- The audit helper leans on two shared functions; changing the owner of the
+-- migration surface means it needs its own execute grant on both.
+grant execute on function app_private.openclaw_jcs_bytes_v1(jsonb)
+  to openclaw_migration_writer;
+grant execute on function app_private.append_openclaw_audit_v1(
+  uuid, text, uuid, text, uuid, uuid, jsonb, bytea)
+  to openclaw_migration_writer;
+
+
+grant execute on function app_private.openclaw_jcs_text_v1(jsonb)
+  to openclaw_migration_writer;
+
+
+-- ---------------------------------------------------------------------------
+-- 15. rotate and revoke are different steps and must do different work
+-- ---------------------------------------------------------------------------
+-- Both used to call openclaw_retire_old_cell_v1, so whichever ran second reported
+-- `affected: 0` - migration evidence claiming a credential rotation that had
+-- already happened one step earlier, or none at all. migrate-cell.sh runs rotate
+-- (step 7) BEFORE acquire (8) and revoke (9), so rotate retires the credentials and
+-- revoke verifies the handover finished and left nothing usable behind.
+
+create or replace function app_private.openclaw_verify_old_cell_retired_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_scope record;
+  v_pending integer;
+  v_live_credentials integer;
+begin
+  select * into v_scope from app_private.openclaw_migration_cells_v1(p_request);
+
+  select count(*) into v_pending
+  from (
+    select distinct lease.account_id
+    from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.status = 'ACTIVE' and lease.released_at is null
+  ) account
+  where not exists (
+    select 1 from public.openclaw_runtime_leases lease
+    where lease.organization_id = v_scope.organization_id
+      and lease.account_id = account.account_id
+      and lease.cell_id = v_scope.new_cell
+      and lease.status = 'ACTIVE' and lease.released_at is null
+  );
+  if v_pending > 0 then
+    raise exception '% account(s) still hold no active lease on the new cell', v_pending
+      using errcode = '42501';
+  end if;
+
+  -- The old cell must be unusable: a live credential on it would let a fenced cell
+  -- keep authenticating.
+  select count(*) into v_live_credentials
+  from public.openclaw_runtime_credentials credential
+  where credential.organization_id = v_scope.organization_id
+    and credential.cell_id = v_scope.old_cell and credential.revoked_at is null;
+  if v_live_credentials > 0 then
+    raise exception 'old cell still holds % unrevoked credential(s); rotate first',
+      v_live_credentials using errcode = '42501';
+  end if;
+
+  return jsonb_build_object('version', 1, 'applied', true, 'affected', 0);
+end;
+$function$;
+
+alter function app_private.openclaw_verify_old_cell_retired_v1(jsonb)
+  owner to openclaw_migration_writer;
+revoke all on function app_private.openclaw_verify_old_cell_retired_v1(jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function app_private.openclaw_verify_old_cell_retired_v1(jsonb)
+  to openclaw_service_dispatcher;
+
+create or replace function public.openclaw_service_revoke_migration_lease_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare v_result jsonb;
+begin
+  v_result := app_private.openclaw_verify_old_cell_retired_v1(p_request);
+  perform app_private.openclaw_audit_migration_step_v1(
+    (p_request ->> 'organizationId')::uuid, 'revoke-old-credential-and-lease', p_request
+  );
+  return v_result;
+end;
+$function$;
+
 commit;

@@ -1,0 +1,24 @@
+name = "openclaw-zalo-watchdog"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+workers_dev = false
+preview_urls = false
+
+[triggers]
+crons = ["* * * * *"]
+
+[[durable_objects.bindings]]
+name = "WATCHDOG_STATE"
+class_name = "WatchdogState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WatchdogState"]
+
+# Secrets configured with `wrangler secret put`:
+# OPENCLAW_WATCHDOG_EDGE_URL, OPENCLAW_WATCHDOG_SIGNING_KEY_PKCS8_BASE64,
+# OPENCLAW_WATCHDOG_SIGNING_KEY_GENERATION, OPENCLAW_WATCHDOG_ORGANIZATION_ID.
+# The signing key is Ed25519 (PKCS8 DER, base64); the Edge holds only its public
+# half. There is no shared bearer token: every call carries a per-request signed
+# envelope bound to operation, body digest, organization, clock, and nonce.
+# The Edge endpoint is the only network target.

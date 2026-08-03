@@ -78,9 +78,10 @@ OpenClaw dùng bundle riêng, không dùng chung transport hay secret với Zalo
 | `openclaw-object-tickets` | `openclaw-object-tickets/index.ts` | Supabase browser JWT; `verify_jwt=true` |
 | `openclaw-runtime-token` | `openclaw-runtime-token/index.ts` | Credential exchange riêng; `verify_jwt=false` |
 | `openclaw-runtime` | `openclaw-runtime/index.ts` | Request-bound runtime token; `verify_jwt=false` |
+| `openclaw-watchdog` | `openclaw-watchdog/index.ts` | Envelope Ed25519 ký riêng; `verify_jwt=false` |
 
 Thứ tự deploy là `openclaw-control`, `openclaw-qr`, `openclaw-runtime-token`,
-`openclaw-runtime`, rồi `openclaw-object-tickets`. Mỗi lệnh dùng
+`openclaw-runtime`, `openclaw-object-tickets`, rồi `openclaw-watchdog`. Mỗi lệnh dùng
 `node scripts/deploy-edge-fn.mjs <slug> --include-shared openclaw`; multipart chỉ
 chứa target function và `_shared/openclaw/**`.
 
@@ -95,6 +96,32 @@ Tên cấu hình bắt buộc, không ghi giá trị vào Git hoặc log:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `OPENCLAW_RUNTIME_TOKEN_SIGNING_KEY`
 - `OPENCLAW_BROWSER_ORIGINS`
+- `OPENCLAW_WATCHDOG_ENVELOPE_KEYS_JSON` (chỉ public key Ed25519 theo generation)
+
+## `openclaw-watchdog` — custom auth bằng envelope Ed25519
+
+Entrypoint chính xác: `openclaw-watchdog/index.ts`, `verify_jwt=false`. Không có
+bearer dùng chung: mỗi request mang header `X-OpenClaw-Watchdog-Envelope`
+(base64url của JCS envelope) và `X-OpenClaw-Watchdog-Signature` (base64url chữ ký
+Ed25519 trên `ihome-openclaw-watchdog-envelope-v1\0<envelope>`).
+
+Envelope ràng buộc: `audience` = `openclaw-watchdog-edge`, `operation` ∈
+{`health.probe`, `health.record`, `host.guard`}, `method`/`path`, `organizationId`,
+`keyGeneration`, `timestamp` (lệch tối đa 60 giây), `nonce` một lần, `bodySha256`.
+Handler xác minh generation + đồng hồ + digest body + chữ ký + nonce TRƯỚC mọi
+database call, từ chối browser `Origin` và mọi header `authorization` (kể cả
+Supabase browser JWT), và chỉ gọi `openclaw_service_record_watchdog_health_v1`.
+
+Thế hệ khoá khai `allowedOperations`: Worker ký `health.probe`/`health.record`,
+host guard chỉ ký `host.guard` — host bị chiếm không giả mạo được health record.
+Xoay khoá là THÊM generation mới rồi đặt `retiresAt`/`revokedAt` cho generation cũ;
+không bao giờ sửa tại chỗ. Private key chỉ nằm ở Worker secret và file `0400` của
+runner; Edge chỉ giữ public key.
+
+Deny tests bắt buộc: chữ ký giả, replay đúng nonce, đồng hồ lệch, body đổi sau khi
+ký, sai operation/audience/path, generation hết hạn/bị thu hồi/không tồn tại,
+generation ký ngoài `allowedOperations`, payload chéo tổ chức, bearer JWT, và không
+log envelope/chữ ký/khoá.
 
 Hai runtime function phải reject browser `Origin` trước mọi database call. Chúng
 derive organization/account/cell hoặc maintenance principal từ credential, lease,

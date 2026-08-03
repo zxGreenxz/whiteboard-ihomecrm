@@ -1,0 +1,90 @@
+# OpenClaw Zalo - Backup And Restore
+
+## Production gate
+
+Before auto-reply, proactive, or sales-group production, verify the Supabase canonical
+database has `RPO <= 15 minutes` and `RTO <= 4 hours`. If either is unknown or fails,
+remain draft/manual limited. R2 durable object RPO is zero after verified upload and
+accidental-delete restore RTO is at most four hours inside the seven-day tombstone grace.
+
+The VPS, SQLite spool, and temporary media are not backups. Supabase is canonical; R2 is
+the durable media store. Do not copy plaintext Zalo cookies/session snapshots.
+
+## Quarterly restore drill
+
+Run only against the DEMO organization and a test restore target:
+
+```bash
+infra/openclaw-zalo/scripts/restore-drill.sh \
+  --runtime-env /srv/openclaw-runtime/cells/<demo-cell>/runtime.env \
+  --adapter /opt/ihome-openclaw/bin/openclaw-recovery-adapter \
+  --evidence-file /srv/openclaw-runtime/evidence/restore-<date>.json \
+  --backup-observed-at <RFC3339> \
+  --restore-started-at <RFC3339> \
+  --restore-completed-at <RFC3339> \
+  --r2-object-id <opaque-test-media-uuid> \
+  --secret-source-dir /run/openclaw-rotation/<drill> \
+  --session-strategy reencrypt \
+  --drill-organization dddd0000-0000-4000-8000-000000000001
+```
+
+The adapter must restore a canonical DB test copy, simulate accidental R2 delete inside
+`604800` seconds, restore and verify the object, then delete the fixture. The script
+rotates runtime workload, maintenance/token, gateway token, and audit keys. Session AES
+rotation uses authenticated atomic decrypt/re-encrypt (`temp write -> fsync -> rename`)
+or `--session-strategy relogin`, which invalidates old material and requires a fresh QR.
+
+Evidence contains actual RPO/RTO, IDs, booleans, strategy, and timestamps only. It must
+prove no plaintext session snapshot exists and must contain no key, token, email, QR,
+cookie, object key, message, prompt, or provider error.
+
+## Recovery adapter
+
+The drill delegates every state-changing step to `openclaw-recovery-adapter`. It is
+committed at `infra/openclaw-zalo/scripts/openclaw-recovery-adapter.mjs`; install it
+as `/opt/ihome-openclaw/bin/openclaw-recovery-adapter` (a copy or a wrapper that
+execs it with the pinned Node 24.15.0).
+
+It FAILS CLOSED. Any step whose infrastructure is unreachable exits non-zero, so the
+drill cannot produce PASS evidence for work that never ran:
+
+The two Postgres URIs are split into discrete libpq variables before psql or
+pg_restore runs. Passing a URI as `PGDATABASE` does NOT work: libpq only expands a
+URI supplied through `PQconnectdbParams`, while environment defaults are literal, so
+the client would look for a database named `postgresql://…` on the local host.
+
+- `OPENCLAW_RECOVERY_CANONICAL_URL` - read-only Postgres URI of the canonical
+  store. RPO is MEASURED from it (`max(observed_at)` on health events), never taken
+  from a caller-declared timestamp.
+- `OPENCLAW_RECOVERY_RESTORE_URL` + `OPENCLAW_RECOVERY_BACKUP_FILE` - the disposable
+  restore target and the backup artifact. `pg_restore` runs for real against that
+  target; the step then proves the restored copy actually holds OpenClaw tables and
+  no more rows than the canonical store.
+- `OPENCLAW_RECOVERY_SUPABASE_URL`, `OPENCLAW_RECOVERY_SUPABASE_SERVICE_KEY` -
+  session invalidation step (PostgREST facade).
+- `OPENCLAW_RECOVERY_R2_ENDPOINT`, `OPENCLAW_RECOVERY_R2_TOKEN` - tombstone
+  delete/restore/verify inside the seven-day grace.
+- `OPENCLAW_RECOVERY_SESSION_CRYPTO_BIN` - the committed session-crypto binary used
+  for atomic decrypt/re-encrypt; the adapter never reimplements that crypto.
+
+**Shape of the `*_URL` Postgres URIs.** The adapters split the URI into discrete
+`PG*` variables rather than handing it to libpq whole, so the accepted shape is
+narrower than "any connection string":
+
+- Query parameters are mapped by name (`sslmode`, `sslrootcert`, `target_session_attrs`,
+  `options`, `connect_timeout`, `passfile`, …). An unrecognised parameter is a hard
+  refusal, not a silent drop - dropping `sslrootcert` would have weakened TLS and
+  dropping `target_session_attrs=read-write` would have aimed a write step at a
+  replica. The platform's own decorations `?supa=` and `?pgbouncer=` are ignored, so
+  a URI copied straight from the Supabase dashboard works.
+- libpq's comma-separated multi-host form is refused. Commas inside the password are
+  fine.
+- The child process gets a PG-free environment, so `PGSERVICE`, `PGHOSTADDR` or
+  `PGSSLMODE` exported in the operator's shell cannot redirect or downgrade the
+  connection. **`PGPASSFILE` is the one exception and is passed through**, because
+  injecting the password through a temporary passfile is what this project's
+  operating guidance asks for; a password inside the URI still wins over it.
+
+It refuses any organization other than DEMO `dddd0000-...-0001`. RPO comes from the
+canonical store's own measurement, never from a caller-declared timestamp. Plaintext
+session findings are reported as opaque digests, never as paths.
