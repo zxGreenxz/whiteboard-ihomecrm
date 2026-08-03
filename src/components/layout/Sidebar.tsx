@@ -60,6 +60,7 @@ import {
   Coins,
   Share2,
   MessageSquare,
+  Bot,
   Sparkles,
   Landmark,
   ShieldCheck,
@@ -122,6 +123,7 @@ const navigationGroups: NavGroup[] = [
     label: 'KÊNH CHAT',
     items: [
       { title: 'Chat Zalo', href: '/chat-zalo', icon: MessageSquare, module: 'chat_zalo' },
+      { title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, module: 'openclaw_zalo' },
     ],
   },
   {

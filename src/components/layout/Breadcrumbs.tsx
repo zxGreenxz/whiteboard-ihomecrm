@@ -17,6 +17,7 @@ const routeLabels: Record<string, string> = {
 
   // Kênh chat
   '/chat-zalo': 'Chat Zalo',
+  '/openclaw-zalo': 'OpenClaw Zalo',
 
   // Danh mục dữ liệu
   '/buildings': 'Toà nhà',
