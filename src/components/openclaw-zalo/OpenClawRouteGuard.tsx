@@ -21,9 +21,10 @@ import OpenClawBoundaryState from "./OpenClawBoundaryState";
  * PASSTHROUGH on purpose, and it must stay that way.
  *
  * `get_authorization_context_v1` is a shared platform RPC this feature does not
- * own; it returns eleven fields (membershipId, memberType, authorizationVersion,
- * nearestDeadline, isPlatformAdmin, isOffboarded, organizations, scopeSets,
- * scopes, …) of which the guard reads exactly two. Making this `.strict()` took
+ * own; its authenticated branch returns ten fields (membershipId, memberType,
+ * authorizationVersion, isPlatformAdmin, isOffboarded, organizations, scopeSets,
+ * scopes, …) and its empty-package branch adds nearestDeadline, of which the guard
+ * reads exactly two. Making this `.strict()` took
  * the WHOLE route down for every user - the parse threw `unrecognized_keys`, the
  * query errored, and since a ZodError carries no `.code` the 42501 branch never
  * matched, so everyone landed on the fatal "cannot verify permission" screen.
@@ -32,7 +33,7 @@ import OpenClawBoundaryState from "./OpenClawBoundaryState";
  * really is a contract change. On a platform RPC whose shape is set elsewhere it
  * only means the next field someone adds upstream breaks OpenClaw.
  */
-const authorizationSchema = z.object({
+export const authorizationSchema = z.object({
   organizationId: z.string().uuid().nullable(),
   permissions: z.record(z.string(), z.boolean()),
 }).passthrough();

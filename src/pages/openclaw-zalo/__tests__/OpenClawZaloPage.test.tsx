@@ -218,11 +218,16 @@ describe("OpenClawZaloPage", () => {
       expect(markup).toContain('data-openclaw-residual-risk="true"');
       expect(markup).toContain("không chính thức");
       expect(markup).toMatch(/quét lại QR/u);
-      // React emits attributes in prop order and data-openclaw-residual-risk is
-      // first, so a regex looking for "hidden" BEFORE it can never match. Assert on
-      // the element itself instead.
-      const strip = markup.match(/<p[^>]*data-openclaw-residual-risk="true"[^>]*>/u)?.[0] ?? "";
-      expect(strip).not.toMatch(/hidden|aria-hidden="true"|display:\s*none/u);
+      // Match ANY tag carrying the marker: pinning <p> made the assertion vacuous
+      // the moment the element changed, because the failed match fell back to "".
+      const strip = markup.match(/<[a-z]+[^>]*data-openclaw-residual-risk="true"[^>]*>/u)?.[0];
+      expect(strip, "residual-risk element is not rendered at all").toBeTruthy();
+      // Attribute-precise: a bare /hidden/ also matches className="overflow-hidden"
+      // or "md:hidden", which are not hiding anything.
+      expect(strip).not.toMatch(/\shidden(?=[\s>=])|aria-hidden="true"|display:\s*none/u);
+      // NOTE: this only sees the element's own attributes. A hidden ANCESTOR, a
+      // class-driven display:none, sr-only, h-0 or opacity-0 are invisible to
+      // renderToStaticMarkup and are not covered here.
     }
     const viewerButton = viewer.match(/<button[^>]*aria-label="Mở kiểm soát GLOBAL_STOP"[^>]*>/)?.[0];
     const managerButton = manager.match(/<button[^>]*aria-label="Mở kiểm soát GLOBAL_STOP"[^>]*>/)?.[0];
