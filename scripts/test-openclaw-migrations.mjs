@@ -3817,36 +3817,34 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
         'request.jwt.claim.sub','99999999-9999-4999-8999-999999999999',false
       )`,
     );
+    // Read the evidence exactly the way a browser must: through the RPC. Rebuilding
+    // the hash here would only prove the test agrees with itself, and would keep
+    // passing if the read path a real operator depends on returned nothing at all.
     const authority = await database.query(
-      `
-        with authority as (
-          select jsonb_build_object(
-            'version',1,'outboxId',outbox.id,'organizationId',outbox.organization_id,
-            'accountId',outbox.account_id,'state',outbox.state,
-            'resolutionVersion',outbox.resolution_version,
-            'payloadHash',outbox.payload_hash,'claimGeneration',outbox.claim_generation,
-            'fencingToken',outbox.fencing_token,
-            'sessionGeneration',outbox.session_generation,
-            'controlVersion',outbox.control_version,
-            'takeoverVersion',outbox.takeover_version,'attempts','[]'::jsonb
-          ) value
-          from public.openclaw_outbox outbox where outbox.id=$1
-        )
-        select encode(extensions.digest(
-          convert_to('ihome-openclaw-unknown-authority-v1','UTF8')
-            ||decode('00','hex')||app_private.openclaw_jcs_bytes_v1(value),
-          'sha256'
-        ),'hex') value from authority
-      `,
-      [outboxId],
+      `select public.openclaw_get_unknown_authority_v1($1::jsonb) result`,
+      [JSON.stringify({
+        version: 1,
+        organizationId: DEMO_ORG_ID,
+        accountId: "11111111-1111-4111-8111-111111111111",
+        outboxId,
+      })],
     );
+    const evidence = authority.rows[0]?.result;
+    if (!evidence || typeof evidence.authorityHash !== "string") {
+      throw new Error(
+        "No authority evidence for an unresolved UNKNOWN: it cannot be resolved from a browser.",
+      );
+    }
+    if (evidence.resolutionVersion !== 0) {
+      throw new Error("Authority evidence was offered for an already-resolved UNKNOWN.");
+    }
     const request = {
       version: 1,
       organizationId: DEMO_ORG_ID,
       outboxId,
       expectedResolutionVersion: 0,
-      expectedEvidenceDomain: "ihome-openclaw-unknown-authority-v1\\0",
-      expectedEvidenceHash: authority.rows[0].value,
+      expectedEvidenceDomain: evidence.authorityDomain,
+      expectedEvidenceHash: evidence.authorityHash,
       outcome: "CONFIRMED_FAILED",
       reasonCode: "OPERATOR_CONFIRMED_FAILED",
       operatorEvidenceHash: "9".repeat(64),
@@ -3887,12 +3885,25 @@ export async function runDisposableConcurrencyScenario(database, scenario) {
         outboxId,
       })],
     );
+    // Once it is resolved there is nothing left to authorise, so the evidence read
+    // path must go quiet. Still answering here would let the UI offer a second
+    // choice that could only ever fail with 40001.
+    const spentAuthority = await database.query(
+      `select public.openclaw_get_unknown_authority_v1($1::jsonb) result`,
+      [JSON.stringify({
+        version: 1,
+        organizationId: DEMO_ORG_ID,
+        accountId: "11111111-1111-4111-8111-111111111111",
+        outboxId,
+      })],
+    );
     if (
       winners.length !== 1 ||
       losers.length !== 1 ||
       state.rows[0].state !== "UNKNOWN" ||
       Number(state.rows[0].resolution_version) !== 1 ||
       state.rows[0].resolution_count !== 1 ||
+      spentAuthority.rows[0].result !== null ||
       reloadedWinner.rows[0].result?.resolutionId !== winningResolution?.resolutionId ||
       reloadedWinner.rows[0].result?.outboxId !== outboxId ||
       reloadedWinner.rows[0].result?.accountId !== "11111111-1111-4111-8111-111111111111"

@@ -4597,26 +4597,14 @@ begin
   if v_outbox.state<>'UNKNOWN' or v_outbox.resolution_version<>0
      or (p_request->>'expectedResolutionVersion')::integer<>0
   then raise exception 'UNKNOWN resolution lost CAS' using errcode='40001'; end if;
-  v_authority:=jsonb_build_object(
-    'version',1,'outboxId',v_outbox.id,'organizationId',v_org,'accountId',v_outbox.account_id,
-    'state',v_outbox.state,'resolutionVersion',v_outbox.resolution_version,
-    'payloadHash',v_outbox.payload_hash,'claimGeneration',v_outbox.claim_generation,
-    'fencingToken',v_outbox.fencing_token,'sessionGeneration',v_outbox.session_generation,
-    'controlVersion',v_outbox.control_version,'takeoverVersion',v_outbox.takeover_version,
-    'attempts',coalesce((select jsonb_agg(jsonb_build_object(
-      'attemptId',attempt.id,'claimGeneration',attempt.claim_generation,
-      'outcome',attempt.outcome,'reasonCode',attempt.reason_code,
-      'deliveryEvidenceHash',attempt.delivery_evidence_hash,
-      'possibleHandoffPrefixLength',attempt.possible_handoff_prefix_length,
-      'knownProviderMessageIds',attempt.known_provider_message_ids
-    ) order by attempt.attempt_number,attempt.id)
-    from public.openclaw_delivery_attempts attempt
-    where attempt.organization_id=v_org and attempt.account_id=v_outbox.account_id
-      and attempt.outbox_id=v_outbox.id),'[]'::jsonb)
-  );
-  v_authority_hash:=encode(extensions.digest(
-    convert_to('ihome-openclaw-unknown-authority-v1','UTF8')
-      ||decode('00','hex')||app_private.openclaw_jcs_bytes_v1(v_authority),'sha256'),'hex');
+  -- Computed by the same helper the browser reads from. Two copies of this hash
+  -- would drift into a permanent 40001 that nobody could debug, because the caller
+  -- would be echoing a correctly-read value that this side no longer produces.
+  v_authority:=app_private.openclaw_unknown_authority_v1(v_org,v_outbox.account_id,v_outbox.id);
+  if v_authority is null then
+    raise exception 'UNKNOWN resolution lost CAS' using errcode='40001';
+  end if;
+  v_authority_hash:=v_authority->>'hash';
   if p_request->>'expectedEvidenceDomain'<>'ihome-openclaw-unknown-authority-v1\0'
      or p_request->>'expectedEvidenceHash' is distinct from v_authority_hash
      or (p_request->>'operatorEvidenceHash')!~'^[0-9a-f]{64}$'
@@ -9834,6 +9822,130 @@ alter function public.openclaw_list_takeovers_v1(jsonb) owner to openclaw_functi
 revoke all on function public.openclaw_list_takeovers_v1(jsonb)
   from public, anon, authenticated, service_role;
 grant execute on function public.openclaw_list_takeovers_v1(jsonb) to authenticated;
+
+
+--
+-- The authority evidence an operator must echo back to resolve an UNKNOWN.
+--
+-- `openclaw_resolve_unknown_v1` refuses any request whose `expectedEvidenceHash`
+-- differs from what it recomputes, and `openclaw_get_unknown_resolution_v1` only
+-- returns that hash AFTER a resolution exists - which is exactly when it is no
+-- longer needed. Without this read path an UNKNOWN can never be resolved from a
+-- browser at all, because the hash covers delivery-attempt internals no read RPC
+-- exposes and a JCS serialization no client can reproduce byte for byte.
+--
+-- Both sides call this one function, so the value the operator echoes back is by
+-- construction the value the resolver will compare against.
+create or replace function app_private.openclaw_unknown_authority_v1(
+  p_organization_id uuid,
+  p_account_id uuid,
+  p_outbox_id uuid
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $function$
+declare
+  v_outbox public.openclaw_outbox;
+  v_authority jsonb;
+begin
+  -- Only an UNKNOWN that nobody has resolved yet has authority evidence to offer.
+  -- Anything else returns null, which the resolver reads as a lost CAS.
+  select outbox.* into v_outbox
+  from public.openclaw_outbox outbox
+  where outbox.organization_id = p_organization_id
+    and outbox.account_id = p_account_id
+    and outbox.id = p_outbox_id
+    and outbox.state = 'UNKNOWN'
+    and outbox.resolution_version = 0;
+  if not found then return null; end if;
+
+  v_authority := jsonb_build_object(
+    'version',1,'outboxId',v_outbox.id,'organizationId',p_organization_id,
+    'accountId',v_outbox.account_id,
+    'state',v_outbox.state,'resolutionVersion',v_outbox.resolution_version,
+    'payloadHash',v_outbox.payload_hash,'claimGeneration',v_outbox.claim_generation,
+    'fencingToken',v_outbox.fencing_token,'sessionGeneration',v_outbox.session_generation,
+    'controlVersion',v_outbox.control_version,'takeoverVersion',v_outbox.takeover_version,
+    'attempts',coalesce((select jsonb_agg(jsonb_build_object(
+      'attemptId',attempt.id,'claimGeneration',attempt.claim_generation,
+      'outcome',attempt.outcome,'reasonCode',attempt.reason_code,
+      'deliveryEvidenceHash',attempt.delivery_evidence_hash,
+      'possibleHandoffPrefixLength',attempt.possible_handoff_prefix_length,
+      'knownProviderMessageIds',attempt.known_provider_message_ids
+    ) order by attempt.attempt_number,attempt.id)
+    from public.openclaw_delivery_attempts attempt
+    where attempt.organization_id = p_organization_id
+      and attempt.account_id = v_outbox.account_id
+      and attempt.outbox_id = v_outbox.id),'[]'::jsonb)
+  );
+
+  -- Only the domain and the digest leave this function. The authority object itself
+  -- carries fencing tokens and provider message ids, which no browser needs.
+  return jsonb_build_object(
+    'domain','ihome-openclaw-unknown-authority-v1\0',
+    'hash',encode(extensions.digest(
+      convert_to('ihome-openclaw-unknown-authority-v1','UTF8')
+        ||decode('00','hex')||app_private.openclaw_jcs_bytes_v1(v_authority),'sha256'),'hex'),
+    'resolutionVersion',v_outbox.resolution_version
+  );
+end;
+$function$;
+
+alter function app_private.openclaw_unknown_authority_v1(uuid, uuid, uuid)
+  owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_unknown_authority_v1(uuid, uuid, uuid)
+  from public, anon, authenticated, service_role;
+
+create or replace function public.openclaw_get_unknown_authority_v1(p_request jsonb)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $function$
+declare
+  v_context jsonb;
+  v_org uuid;
+  v_account uuid;
+  v_authority jsonb;
+begin
+  perform app_private.openclaw_assert_strict_object_v1(
+    p_request,
+    array['version','organizationId','accountId','outboxId'],
+    array['version','organizationId','accountId','outboxId']
+  );
+  -- Same permission the resolution itself requires: reading the evidence is only
+  -- ever a step towards recording an outcome.
+  v_context := app_private.openclaw_browser_account_context_v1(
+    p_request, 'openclaw_zalo.manage_operations', 'đọc bằng chứng UNKNOWN OpenClaw Zalo'
+  );
+  v_org := (v_context ->> 'organizationId')::uuid;
+  v_account := (v_context ->> 'accountId')::uuid;
+
+  v_authority := app_private.openclaw_unknown_authority_v1(
+    v_org, v_account, (p_request ->> 'outboxId')::uuid
+  );
+  -- Null means there is nothing to resolve - already resolved, or not an UNKNOWN.
+  -- The caller must show that rather than offer a choice that would 40001.
+  if v_authority is null then return null; end if;
+
+  return jsonb_build_object(
+    'version',1,'organizationId',v_org,'accountId',v_account,
+    'outboxId',(p_request ->> 'outboxId')::uuid,
+    'authorityDomain',v_authority->>'domain',
+    'authorityHash',v_authority->>'hash',
+    'resolutionVersion',(v_authority->>'resolutionVersion')::integer
+  );
+end;
+$function$;
+
+alter function public.openclaw_get_unknown_authority_v1(jsonb) owner to openclaw_function_owner;
+revoke all on function public.openclaw_get_unknown_authority_v1(jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.openclaw_get_unknown_authority_v1(jsonb) to authenticated;
 
 
 do $openclaw_owner_grants_release$
