@@ -603,17 +603,34 @@ describe("OpenClaw Realtime, maintenance, and activation migrations", () => {
     expect(finalize).toMatch(
       /objectStatus'[\s\S]*?DELETED'[\s\S]*?r2VersionOrEtag'[\s\S]*?NOT_FOUND/i,
     );
+    // The binding is checked against the LINEAGE row, not the ticket row. These four
+    // assertions named `v_ticket.` until d20c7b9 split each issuance of a logical
+    // ticket into its own immutable lineage record; the ticket only carries the
+    // latest state, while the receipt has to match the exact authorization that
+    // produced it. Lineage is the stricter of the two, so the assertions moved
+    // rather than being dropped.
     expect(finalize).toMatch(
-      /v_ticket\.maintenance_principal_id\s*<>\s*\(p_principal->>'maintenancePrincipalId'\)::uuid/i,
+      /v_lineage\.maintenance_principal_id\s*<>\s*\(p_principal->>'maintenancePrincipalId'\)::uuid/i,
     );
     expect(finalize).toMatch(
-      /v_ticket\.credential_generation\s*<>\s*\(p_principal->>'credentialGeneration'\)::bigint/i,
+      /v_lineage\.credential_generation\s*<>\s*\(p_principal->>'credentialGeneration'\)::bigint/i,
     );
     expect(finalize).toMatch(
-      /v_ticket\.maintenance_lease_generation\s*<>\s*\(p_principal->>'leaseGeneration'\)::bigint/i,
+      /v_lineage\.maintenance_lease_generation\s*<>\s*\(p_principal->>'leaseGeneration'\)::bigint/i,
     );
     expect(finalize).toMatch(
-      /v_ticket\.fencing_token\s*<>\s*\(p_principal->>'fencingToken'\)::bigint/i,
+      /v_lineage\.fencing_token\s*<>\s*\(p_principal->>'fencingToken'\)::bigint/i,
+    );
+    // …and the lineage row cannot outlive the ownership it records, which is what
+    // makes checking it sufficient. Two independent reasons, both pinned here:
+    // the final CAS refuses unless the work item is STILL owned by the lineage's
+    // principal, and the composite foreign key blocks moving that ownership while
+    // any lineage row references it.
+    expect(finalize).toMatch(
+      /work\.maintenance_principal_id\s*=\s*v_lineage\.maintenance_principal_id/i,
+    );
+    expect(maintenance).toMatch(
+      /foreign key \(organization_id,maintenance_principal_id,work_item_id\)\s*references public\.openclaw_maintenance_work_items\(\s*organization_id,maintenance_principal_id,id\s*\)/i,
     );
     expect(finalize.indexOf("maintenance principal binding mismatch"))
       .toBeGreaterThan(finalize.indexOf("v_ticket.state='FINALIZED'"));
