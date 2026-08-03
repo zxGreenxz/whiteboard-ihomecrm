@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import OpenClawGlobalStopDialog from "../dialogs/OpenClawGlobalStopDialog";
 import OpenClawUnknownResolutionDialog from "../dialogs/OpenClawUnknownResolutionDialog";
-import { GLOBAL_STOP_CONFIRMATION } from "@/lib/openclaw-zalo/operations";
+import {
+  GLOBAL_STOP_CONFIRMATION,
+  MIN_OBSERVATION_LENGTH,
+  UNAVAILABLE_UNKNOWN_OUTCOMES,
+} from "@/lib/openclaw-zalo/operations";
+import type { OpenClawUnknownResolutionOutcome } from "@/lib/openclaw-zalo/types";
 
 const noop = vi.fn();
 
@@ -71,10 +76,16 @@ const unknownProps = {
   open: true,
   outboxId: "ob-1",
   canManageOperations: true,
-  selectedOutcome: null,
+  selectedOutcome: null as OpenClawUnknownResolutionOutcome | null,
+  observation: "Đã mở máy khách lúc 10:05, thấy tin đã tới.",
+  authorityHash: "b".repeat(64) as string | null,
+  authorityLoading: false,
+  authorityError: false,
   winner: null,
   busy: false,
+  failureMessage: null as string | null,
   onSelectOutcome: noop,
+  onObservationChange: noop,
   onConfirm: noop,
   onClose: noop,
 };
@@ -135,5 +146,56 @@ describe("UNKNOWN resolution dialog", () => {
     const html = renderUnknown({ canManageOperations: false, selectedOutcome: "CONFIRMED_SENT" });
     expect(html).toContain('data-openclaw-unknown-blocked="PERMISSION"');
     expect(buttonTag(html, "confirm-unknown-resolution")).toContain('disabled=""');
+  });
+
+  it("asks for the observation the evidence hash will stand for", () => {
+    // The server stores the hash and never recomputes it, so an empty observation
+    // would put a meaningless number into the audit record.
+    const html = renderUnknown({ selectedOutcome: "CONFIRMED_SENT", observation: "" });
+    expect(html).toContain('data-openclaw-unknown="observation"');
+    expect(html).toContain('data-openclaw-unknown-blocked="OBSERVATION"');
+    expect(buttonTag(html, "confirm-unknown-resolution")).toContain('disabled=""');
+    expect(buttonTag(
+      renderUnknown({ selectedOutcome: "CONFIRMED_SENT", observation: "x".repeat(MIN_OBSERVATION_LENGTH) }),
+      "confirm-unknown-resolution",
+    )).not.toContain('disabled=""');
+  });
+
+  it("will not let an outcome be recorded before the evidence is read", () => {
+    // Submitting without it is a guaranteed 40001, and the operator would have no
+    // way to tell that from a real conflict.
+    for (const [state, overrides] of [
+      ["AUTHORITY_LOADING", { authorityLoading: true }],
+      ["AUTHORITY_ERROR", { authorityError: true }],
+      ["AUTHORITY_UNAVAILABLE", { authorityHash: null }],
+    ] as const) {
+      const html = renderUnknown({ selectedOutcome: "CONFIRMED_SENT", ...overrides });
+      expect(html, state).toContain(`data-openclaw-unknown-blocked="${state}"`);
+      expect(buttonTag(html, "confirm-unknown-resolution"), state).toContain('disabled=""');
+    }
+  });
+
+  it("shows why an outcome it cannot build is disabled instead of hiding it", () => {
+    // Hiding it would leave an operator hunting for a choice they remember. The
+    // reason names the alternative that does work.
+    const html = renderUnknown();
+    for (const [outcome, reason] of Object.entries(UNAVAILABLE_UNKNOWN_OUTCOMES)) {
+      const button = html.match(
+        new RegExp(`<button[^>]*data-openclaw-unknown-outcome="${outcome}"[^>]*>`, "u"),
+      );
+      expect(button, outcome).not.toBeNull();
+      expect(button![0], outcome).toContain('disabled=""');
+      expect(html).toContain(reason.slice(0, 30));
+    }
+  });
+
+  it("surfaces what a failed attempt failed with", () => {
+    // Silence here would leave the operator pressing a button that does nothing.
+    const html = renderUnknown({
+      selectedOutcome: "CONFIRMED_SENT",
+      failureMessage: "Người khác vừa đối chiếu tin này trước bạn.",
+    });
+    expect(html).toContain('data-openclaw-unknown="failure"');
+    expect(html).toContain("Người khác vừa đối chiếu");
   });
 });

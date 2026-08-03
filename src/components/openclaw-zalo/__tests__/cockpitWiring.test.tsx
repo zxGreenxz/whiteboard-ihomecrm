@@ -131,10 +131,13 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawOperations", () => ({
   useOpenClawHealthEvents: () => ({ ...idleQuery, data: emptyList }),
   // Returns a bare array, unlike the dead-letter hook's page envelope.
   useOpenClawUnknown: () => ({ ...idleQuery, data: [] }),
+  // Null while no UNKNOWN dialog is open; the section reads it unconditionally.
+  useOpenClawUnknownAuthority: () => ({ ...idleQuery, data: null }),
   useOpenClawDeadLetters: () => ({ ...idleQuery, data: emptyList }),
 }));
 
 vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({
+  useOpenClawResolveUnknown: () => idleMutation,
   useOpenClawHandoffMutations: () => ({
     takeoverConversation: idleMutation,
     releaseTakeover: idleMutation,

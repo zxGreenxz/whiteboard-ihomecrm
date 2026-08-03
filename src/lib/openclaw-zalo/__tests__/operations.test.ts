@@ -10,6 +10,7 @@ import {
   operatorEvidenceHash,
   UNKNOWN_OUTCOMES,
   unknownBadges,
+  type UnknownAuthorityEvidence,
 } from "../operations";
 
 /**
@@ -176,7 +177,7 @@ describe("resolution failure classification", () => {
 });
 
 describe("UNKNOWN resolution request", () => {
-  const authority = {
+  const authority: UnknownAuthorityEvidence = {
     authoritativeEvidenceDomain: "ihome-openclaw-unknown-authority-v1\\0",
     authoritativeEvidenceHash: "b".repeat(64),
     resolutionVersion: 0,

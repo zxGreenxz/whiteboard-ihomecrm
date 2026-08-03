@@ -1,4 +1,7 @@
-import type { OpenClawUnknownResolutionOutcome } from "./types";
+import type {
+  OpenClawUnknownResolutionOutcome,
+  OpenClawUnknownResolutionRequest,
+} from "./types";
 
 /**
  * The exact phrase an operator must type to stop every send in the organization.
@@ -142,6 +145,69 @@ export function classifyResolutionFailure(error: unknown): ResolutionFailure {
 }
 
 /**
+ * Outcomes the browser cannot offer, and why.
+ *
+ * NEW_INTENT_CREATED needs `sourceDraftId`, `targetId` and `expectedDraftVersion`
+ * for the replacement send. No read RPC returns any of them for an UNKNOWN row -
+ * the lists carry only the outbox id and payload hash - so the request could only
+ * ever be assembled from guesses. Offering the button anyway would invite an
+ * operator to press something guaranteed to fail, so it is shown disabled with
+ * this reason rather than hidden, which would leave them wondering where it went.
+ */
+export const UNAVAILABLE_UNKNOWN_OUTCOMES = {
+  NEW_INTENT_CREATED:
+    "Chưa dùng được ở đây: bản nháp và người nhận của lần gửi mới không đọc được từ màn hình này. "
+    + "Hãy ghi nhận “Đã xác nhận không tới khách”, rồi soạn lần gửi mới từ hộp thoại tin nhắn.",
+} as const satisfies Partial<Record<OpenClawUnknownResolutionOutcome, string>>;
+
+export type UnknownResolutionBlockedBy =
+  | "PERMISSION"
+  | "ALREADY_RESOLVED"
+  | "AUTHORITY_LOADING"
+  | "AUTHORITY_UNAVAILABLE"
+  | "AUTHORITY_ERROR"
+  | "OUTCOME"
+  | "OUTCOME_UNAVAILABLE"
+  | "OBSERVATION";
+
+/** Enough text that the hash stands for an observation rather than a keystroke. */
+export const MIN_OBSERVATION_LENGTH = 10;
+
+export interface UnknownResolutionGateInput {
+  canManageOperations: boolean;
+  alreadyResolved: boolean;
+  authorityLoading: boolean;
+  authorityError: boolean;
+  /** Null once loading finished and the server had no evidence left to offer. */
+  authorityHash: string | null;
+  selectedOutcome: OpenClawUnknownResolutionOutcome | null;
+  observation: string;
+}
+
+/**
+ * Whether an outcome can be recorded, and what is missing when it cannot.
+ *
+ * The order matters: an operator without permission should be told that, not sent
+ * off to write an observation they will not be allowed to submit.
+ */
+export function unknownResolutionGate(input: UnknownResolutionGateInput): {
+  canRecord: boolean;
+  blockedBy: UnknownResolutionBlockedBy | null;
+} {
+  const blockedBy: UnknownResolutionBlockedBy | null =
+    !input.canManageOperations ? "PERMISSION"
+      : input.alreadyResolved ? "ALREADY_RESOLVED"
+        : input.authorityError ? "AUTHORITY_ERROR"
+          : input.authorityLoading ? "AUTHORITY_LOADING"
+            : input.authorityHash === null ? "AUTHORITY_UNAVAILABLE"
+              : input.selectedOutcome === null ? "OUTCOME"
+                : input.selectedOutcome in UNAVAILABLE_UNKNOWN_OUTCOMES ? "OUTCOME_UNAVAILABLE"
+                  : input.observation.trim().length < MIN_OBSERVATION_LENGTH ? "OBSERVATION"
+                    : null;
+  return { canRecord: blockedBy === null, blockedBy };
+}
+
+/**
  * The authority evidence an operator must echo back to resolve an UNKNOWN.
  *
  * Both fields come from `openclaw_get_unknown_resolution_v1` and are echoed
@@ -151,9 +217,12 @@ export function classifyResolutionFailure(error: unknown): ResolutionFailure {
  * reason to pass it through untouched rather than rebuild it.
  */
 export interface UnknownAuthorityEvidence {
-  authoritativeEvidenceDomain: string;
+  // Literal types, not `string`: the server compares the domain byte for byte and
+  // the CAS only ever accepts version 0, so anything else is a request that cannot
+  // succeed and should not typecheck.
+  authoritativeEvidenceDomain: "ihome-openclaw-unknown-authority-v1\\0";
   authoritativeEvidenceHash: string;
-  resolutionVersion: number;
+  resolutionVersion: 0;
 }
 
 export interface UnknownNewIntentInput {
@@ -184,7 +253,7 @@ export interface UnknownResolutionRequestInput {
  */
 export function buildUnknownResolutionRequest(
   input: UnknownResolutionRequestInput,
-): Record<string, unknown> {
+): OpenClawUnknownResolutionRequest {
   const outcome = UNKNOWN_OUTCOMES.find(entry => entry.outcome === input.outcome);
   if (outcome === undefined) throw new Error(`unknown resolution outcome: ${input.outcome}`);
   if (!/^[0-9a-f]{64}$/u.test(input.operatorEvidenceHash)) {
@@ -198,24 +267,38 @@ export function buildUnknownResolutionRequest(
     );
   }
 
-  return {
+  const base = {
     version: 1,
     organizationId: input.organizationId,
     outboxId: input.outboxId,
     expectedResolutionVersion: input.authority.resolutionVersion,
     expectedEvidenceDomain: input.authority.authoritativeEvidenceDomain,
     expectedEvidenceHash: input.authority.authoritativeEvidenceHash,
-    outcome: input.outcome,
-    reasonCode: outcome.reasonCode,
     operatorEvidenceHash: input.operatorEvidenceHash,
-    newIntent: input.newIntent === null ? null : {
-      clientOperationId: input.newIntent.clientOperationId,
-      targetId: input.newIntent.targetId,
-      sourceDraftId: input.newIntent.sourceDraftId,
-      expectedDraftVersion: input.newIntent.expectedDraftVersion,
-      replyToMessageId: input.newIntent.replyToMessageId,
-    },
-  };
+  } as const;
+
+  // A switch rather than a computed pair: the compiler then checks each outcome
+  // against the reason code the server demands for it, instead of trusting that
+  // whatever the table happened to hold was the right one.
+  switch (input.outcome) {
+    case "CONFIRMED_SENT":
+      return { ...base, outcome: "CONFIRMED_SENT", reasonCode: "OPERATOR_CONFIRMED_SENT", newIntent: null };
+    case "CONFIRMED_FAILED":
+      return { ...base, outcome: "CONFIRMED_FAILED", reasonCode: "OPERATOR_CONFIRMED_FAILED", newIntent: null };
+    case "NEW_INTENT_CREATED":
+      return {
+        ...base,
+        outcome: "NEW_INTENT_CREATED",
+        reasonCode: "OPERATOR_CREATED_NEW_INTENT",
+        newIntent: {
+          clientOperationId: input.newIntent!.clientOperationId,
+          targetId: input.newIntent!.targetId,
+          sourceDraftId: input.newIntent!.sourceDraftId,
+          expectedDraftVersion: input.newIntent!.expectedDraftVersion,
+          replyToMessageId: input.newIntent!.replyToMessageId,
+        },
+      };
+  }
 }
 
 /**

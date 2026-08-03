@@ -55,6 +55,9 @@ describe("OpenClaw action contracts", () => {
       "openclaw_list_dead_letters_by_account_v1",
       "openclaw_list_health_events_by_account_v1",
       "openclaw_get_unknown_resolution_v1",
+      // Without this the resolve RPC can never be called: it refuses any request
+      // whose evidence hash it did not produce, and nothing else exposes one.
+      "openclaw_get_unknown_authority_v1",
       "openclaw_create_knowledge_draft_v1",
       "openclaw_update_knowledge_draft_v1",
       "openclaw_validate_knowledge_v1",

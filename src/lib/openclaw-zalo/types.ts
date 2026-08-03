@@ -342,6 +342,7 @@ export type OpenClawRpcName =
   | "openclaw_list_unknown_v1"
   | "openclaw_list_unknown_by_account_v1"
   | "openclaw_get_unknown_resolution_v1"
+  | "openclaw_get_unknown_authority_v1"
   | "openclaw_list_knowledge_v1"
   | "openclaw_get_knowledge_v1"
   | "openclaw_preview_knowledge_retrieval_v1"

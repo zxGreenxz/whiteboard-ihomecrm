@@ -4,6 +4,7 @@ import type { OpenClawUnknownResolution } from "@/lib/openclaw-zalo/types";
 import {
   deadLettersByAccountContract,
   healthEventsByAccountContract,
+  unknownAuthorityGetContract,
   unknownByAccountContract,
   unknownResolutionGetContract,
 } from "@/lib/openclaw-zalo/action-contracts";
@@ -22,7 +23,8 @@ type AccountOperationsRpc =
   | typeof unknownByAccountContract.rpcName
   | typeof deadLettersByAccountContract.rpcName
   | typeof healthEventsByAccountContract.rpcName
-  | typeof unknownResolutionGetContract.rpcName;
+  | typeof unknownResolutionGetContract.rpcName
+  | typeof unknownAuthorityGetContract.rpcName;
 
 // One typed entry point instead of a per-file cast; see openClawRpc.ts.
 const accountOperationsRpc = (name: AccountOperationsRpc, request: Record<string, unknown>) =>
@@ -57,6 +59,42 @@ export async function fetchOpenClawUnknownResolution(
   const { data, error } = await accountOperationsRpc(unknownResolutionGetContract.rpcName, request);
   if (error) throw error;
   return unknownResolutionGetContract.resultSchema.parse(data) as OpenClawUnknownResolution | null;
+}
+
+export async function fetchOpenClawUnknownAuthority(
+  organizationId: string,
+  accountId: string,
+  outboxId: string,
+) {
+  const request = unknownAuthorityGetContract.requestSchema.parse({
+    version: 1, organizationId, accountId, outboxId,
+  });
+  const { data, error } = await accountOperationsRpc(unknownAuthorityGetContract.rpcName, request);
+  if (error) throw error;
+  return unknownAuthorityGetContract.resultSchema.parse(data);
+}
+
+/**
+ * The authority evidence for one UNKNOWN, read fresh each time the dialog opens.
+ *
+ * It is deliberately not cached for long: the hash covers every delivery attempt,
+ * so an attempt landing between the read and the write invalidates it. A stale
+ * cached value would turn into a 40001 the operator cannot explain.
+ */
+export function useOpenClawUnknownAuthority(
+  organizationId: string | null,
+  accountId: string | null,
+  outboxId: string | null,
+) {
+  return useQuery({
+    queryKey: openClawQueryKeys.unknownAuthority(
+      organizationId ?? "", accountId ?? "", outboxId ?? "",
+    ),
+    enabled: Boolean(organizationId && accountId && outboxId),
+    staleTime: 0,
+    gcTime: 0,
+    queryFn: () => fetchOpenClawUnknownAuthority(organizationId!, accountId!, outboxId!),
+  });
 }
 
 export function useOpenClawUnknown(

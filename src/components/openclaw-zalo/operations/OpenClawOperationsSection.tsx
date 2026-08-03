@@ -3,15 +3,43 @@ import { useOpenClawRouteContext } from "../OpenClawRouteGuard";
 import {
   useOpenClawDeadLetters,
   useOpenClawUnknown,
+  useOpenClawUnknownAuthority,
 } from "@/hooks/openclaw-zalo/useOpenClawOperations";
 import {
   useOpenClawDeadLetterReplayMutation,
   useOpenClawLegalHoldMutations,
 } from "@/hooks/openclaw-zalo/useOpenClawResources";
+import { useOpenClawResolveUnknown } from "@/hooks/openclaw-zalo/useOpenClawMutations";
 import { classifyReplayResult, type LegalHoldTargetKind, type ReplayOutcome } from "@/lib/openclaw-zalo/legalHold";
+import {
+  buildUnknownResolutionRequest,
+  classifyResolutionFailure,
+  operatorEvidenceHash,
+  type ResolutionFailure,
+} from "@/lib/openclaw-zalo/operations";
+import type { OpenClawUnknownResolutionOutcome } from "@/lib/openclaw-zalo/types";
 import OpenClawBoundaryState from "../OpenClawBoundaryState";
-import OpenClawUnknownResolutionDialog from "../dialogs/OpenClawUnknownResolutionDialog";
+import OpenClawUnknownResolutionDialog, {
+  type UnknownResolutionWinner,
+} from "../dialogs/OpenClawUnknownResolutionDialog";
 import OpenClawOperations from "./OpenClawOperations";
+
+/**
+ * What each failure means to the person who pressed the button.
+ *
+ * These are not interchangeable: "somebody else got there first" means reload and
+ * read their outcome, while a malformed request is our bug and will fail the same
+ * way however many times it is retried.
+ */
+const RESOLUTION_FAILURE_COPY: Record<ResolutionFailure, string> = {
+  ALREADY_RESOLVED: "Người khác vừa đối chiếu tin này trước bạn. Đóng rồi mở lại để xem kết luận của họ.",
+  PERMISSION_DENIED: "Bạn không có quyền vận hành để ghi nhận kết luận.",
+  STALE_EVIDENCE:
+    "Tin này vừa có thay đổi nên bằng chứng bạn đang xem đã cũ. Đóng rồi mở lại để đọc bằng chứng mới.",
+  NEW_SEND_FAILED: "Đã ghi nhận kết luận, nhưng lần gửi mới không tạo được.",
+  MALFORMED_REQUEST: "Yêu cầu gửi lên không hợp lệ — đây là lỗi của phần mềm, thử lại cũng hỏng như vậy.",
+  UNKNOWN: "Chưa ghi nhận được kết luận. Thử lại sau.",
+};
 
 /** Wires the reconciliation screen and the one-time UNKNOWN resolution dialog. */
 export default function OpenClawOperationsSection() {
@@ -21,6 +49,10 @@ export default function OpenClawOperationsSection() {
   const canAudit = can("audit");
 
   const [openUnknownId, setOpenUnknownId] = useState<string | null>(null);
+  const [selectedOutcome, setSelectedOutcome] = useState<OpenClawUnknownResolutionOutcome | null>(null);
+  const [observation, setObservation] = useState("");
+  const [winner, setWinner] = useState<UnknownResolutionWinner | null>(null);
+  const [resolutionFailure, setResolutionFailure] = useState<string | null>(null);
   const [lastReplay, setLastReplay] = useState<ReplayOutcome | null>(null);
   const [holdTargetKind, setHoldTargetKind] = useState<LegalHoldTargetKind>("ORGANIZATION");
   const [holdTargetId, setHoldTargetId] = useState("");
@@ -32,6 +64,14 @@ export default function OpenClawOperationsSection() {
     selectedOrganizationId ?? "", accountId ?? "",
   );
   const legalHolds = useOpenClawLegalHoldMutations(
+    selectedOrganizationId ?? "", accountId ?? "",
+  );
+  // Read only while the dialog is open, and never cached: the hash covers every
+  // delivery attempt, so a stale one becomes a 40001 nobody can explain.
+  const authority = useOpenClawUnknownAuthority(
+    selectedOrganizationId, accountId, openUnknownId,
+  );
+  const resolveUnknown = useOpenClawResolveUnknown(
     selectedOrganizationId ?? "", accountId ?? "",
   );
 
@@ -106,14 +146,68 @@ export default function OpenClawOperationsSection() {
         open={openUnknownId !== null}
         outboxId={openUnknownId ?? ""}
         canManageOperations={canManageOperations}
-        selectedOutcome={null}
-        // The winner is shown once the resolution hook reloads it after a 40001;
-        // until the outcome selection is wired, this dialog is read-only.
-        winner={null}
-        busy={false}
-        onSelectOutcome={() => undefined}
-        onConfirm={() => undefined}
-        onClose={() => setOpenUnknownId(null)}
+        selectedOutcome={selectedOutcome}
+        observation={observation}
+        authorityHash={authority.data?.authorityHash ?? null}
+        authorityLoading={authority.isLoading}
+        authorityError={authority.error != null}
+        winner={winner}
+        busy={resolveUnknown.isPending}
+        failureMessage={resolutionFailure}
+        onSelectOutcome={setSelectedOutcome}
+        onObservationChange={setObservation}
+        onConfirm={() => {
+          const evidence = authority.data;
+          // The button is gated on this, but the gate lives in the dialog and this
+          // read is what the request is actually built from.
+          if (openUnknownId === null || selectedOutcome === null || !evidence) return;
+          setResolutionFailure(null);
+          void (async () => {
+            const request = buildUnknownResolutionRequest({
+              organizationId: selectedOrganizationId,
+              outboxId: openUnknownId,
+              outcome: selectedOutcome,
+              authority: {
+                authoritativeEvidenceDomain: evidence.authorityDomain,
+                authoritativeEvidenceHash: evidence.authorityHash,
+                resolutionVersion: evidence.resolutionVersion,
+              },
+              operatorEvidenceHash: await operatorEvidenceHash({
+                outboxId: openUnknownId,
+                outcome: selectedOutcome,
+                observedAt: new Date().toISOString(),
+                observation,
+              }),
+              newIntent: null,
+            });
+            resolveUnknown.mutate({
+              clientOperationId: crypto.randomUUID(),
+              request,
+            }, {
+              onSuccess: result => {
+                // A 40001 makes the hook reload whoever won, so a success here can be
+                // either our own resolution or somebody else's. Both are shown the
+                // same way: as the outcome of record.
+                setWinner({
+                  resolutionId: result.resolutionId,
+                  outcome: result.outcome,
+                  resolvedAt: result.resolvedAt,
+                  newOutboxId: result.newOutboxId ?? null,
+                });
+              },
+              onError: error => setResolutionFailure(
+                RESOLUTION_FAILURE_COPY[classifyResolutionFailure(error)],
+              ),
+            });
+          })();
+        }}
+        onClose={() => {
+          setOpenUnknownId(null);
+          setSelectedOutcome(null);
+          setObservation("");
+          setWinner(null);
+          setResolutionFailure(null);
+        }}
       />
     </>
   );

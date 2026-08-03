@@ -340,6 +340,34 @@ export const unknownResolutionGetContract = {
   resultSchema: unknownResolutionSchema.nullable(),
 } as const;
 
+/**
+ * The evidence an operator must echo back to resolve an UNKNOWN.
+ *
+ * Null means there is nothing left to authorise - already resolved, or not an
+ * UNKNOWN at all - so a caller that gets null must show that rather than offer a
+ * choice which could only fail.
+ */
+export const unknownAuthorityGetContract = {
+  rpcName: "openclaw_get_unknown_authority_v1",
+  requestSchema: z.object({
+    ...versionSchema,
+    organizationId: idSchema,
+    accountId: idSchema,
+    outboxId: idSchema,
+  }).strict(),
+  resultSchema: z.object({
+    ...versionSchema,
+    organizationId: idSchema,
+    accountId: idSchema,
+    outboxId: idSchema,
+    // Pinned to the exact string the resolver compares against, trailing "\0" and
+    // all: a domain built any other way is a guaranteed 40001.
+    authorityDomain: z.literal("ihome-openclaw-unknown-authority-v1\\0"),
+    authorityHash: hashSchema,
+    resolutionVersion: z.literal(0),
+  }).strict().nullable(),
+} as const;
+
 const knowledgeDraftResultSchema = z.object({
   ...versionSchema,
   sourceId: idSchema,
@@ -649,6 +677,7 @@ export const OPENCLAW_ACTION_CONTRACTS = [
   deadLettersByAccountContract,
   healthEventsByAccountContract,
   unknownResolutionGetContract,
+  unknownAuthorityGetContract,
   ...Object.values(knowledgeMutationContracts),
   ...Object.values(automationMutationContracts),
   groupAllowlistMutationContract,

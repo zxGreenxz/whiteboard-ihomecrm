@@ -92,6 +92,11 @@ export const openClawQueryKeys = {
   unknown: (organizationId: string, accountId: string, limit = 50, cursorTerminalAt?: string | null, cursorId?: string | null) => [
     ...openClawQueryKeys.operationsRoot(organizationId, accountId), "unknown", cursorTerminalAt ?? null, cursorId ?? null, limit,
   ] as const,
+  // Keyed by outbox: the evidence is per-UNKNOWN and must never be served from
+  // another row's cache entry.
+  unknownAuthority: (organizationId: string, accountId: string, outboxId: string) => [
+    ...openClawQueryKeys.operationsRoot(organizationId, accountId), "unknown-authority", outboxId,
+  ] as const,
   deadLetters: (organizationId: string, accountId: string, limit = 50, cursorCreatedAt?: string | null, cursorId?: string | null) => [
     ...openClawQueryKeys.operationsRoot(organizationId, accountId), "dead-letters", cursorCreatedAt ?? null, cursorId ?? null, limit,
   ] as const,

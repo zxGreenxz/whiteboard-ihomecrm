@@ -1,5 +1,24 @@
-import { UNKNOWN_OUTCOMES, unknownBadges } from "@/lib/openclaw-zalo/operations";
+import {
+  MIN_OBSERVATION_LENGTH,
+  UNAVAILABLE_UNKNOWN_OUTCOMES,
+  UNKNOWN_OUTCOMES,
+  unknownBadges,
+  unknownResolutionGate,
+} from "@/lib/openclaw-zalo/operations";
 import type { OpenClawUnknownResolutionOutcome } from "@/lib/openclaw-zalo/types";
+
+const BLOCK_COPY: Record<string, string> = {
+  PERMISSION: "Bạn không có quyền vận hành để đối chiếu.",
+  ALREADY_RESOLVED: "Tin này đã được đối chiếu rồi.",
+  AUTHORITY_LOADING: "Đang đọc bằng chứng của tin này…",
+  AUTHORITY_UNAVAILABLE:
+    "Không còn bằng chứng để đối chiếu — tin này đã được xử lý, hoặc không còn ở trạng thái không xác định.",
+  AUTHORITY_ERROR:
+    "Chưa đọc được bằng chứng của tin này, nên chưa ghi nhận được. Thử mở lại sau.",
+  OUTCOME: "Chọn một kết luận ở trên.",
+  OUTCOME_UNAVAILABLE: "Kết luận này chưa dùng được ở đây.",
+  OBSERVATION: `Ghi lại điều bạn thấy, ít nhất ${MIN_OBSERVATION_LENGTH} ký tự.`,
+};
 
 export interface UnknownResolutionWinner {
   resolutionId: string;
@@ -14,10 +33,19 @@ interface OpenClawUnknownResolutionDialogProps {
   outboxId: string;
   canManageOperations: boolean;
   selectedOutcome: OpenClawUnknownResolutionOutcome | null;
+  /** What the operator says they checked; it is what the evidence hash stands for. */
+  observation: string;
+  /** Null when the server has no evidence left to offer for this outbox. */
+  authorityHash: string | null;
+  authorityLoading: boolean;
+  authorityError: boolean;
   /** Set once the server reports someone else resolved this first. */
   winner: UnknownResolutionWinner | null;
   busy: boolean;
+  /** What the last attempt failed with; silence would leave nothing to act on. */
+  failureMessage: string | null;
   onSelectOutcome: (outcome: OpenClawUnknownResolutionOutcome) => void;
+  onObservationChange: (value: string) => void;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -79,31 +107,86 @@ export default function OpenClawUnknownResolutionDialog(
             )}
           </div>
         ) : (
-          <fieldset className="mt-4 grid gap-2" disabled={!props.canManageOperations}>
-            <legend className="sr-only">Kết luận</legend>
-            {UNKNOWN_OUTCOMES.map(item => (
-              <button
-                key={item.outcome}
-                type="button"
-                onClick={() => props.onSelectOutcome(item.outcome)}
-                aria-pressed={props.selectedOutcome === item.outcome}
-                data-openclaw-unknown-outcome={item.outcome}
-                className={`border px-3 py-2 text-left text-sm ${
-                  props.selectedOutcome === item.outcome
-                    ? "border-[#0f766e] bg-[#dfeee9]"
-                    : "border-[#cbd5df] bg-white"
-                }`}
-              >
-                <span className="font-bold">{item.label}</span>
-                <span className="mt-1 block text-xs leading-5 text-[#607585]">{item.detail}</span>
-              </button>
-            ))}
-          </fieldset>
+          <>
+            <fieldset className="mt-4 grid gap-2" disabled={!props.canManageOperations}>
+              <legend className="sr-only">Kết luận</legend>
+              {UNKNOWN_OUTCOMES.map(item => {
+                const unavailable = UNAVAILABLE_UNKNOWN_OUTCOMES[
+                  item.outcome as keyof typeof UNAVAILABLE_UNKNOWN_OUTCOMES
+                ];
+                return (
+                  <button
+                    key={item.outcome}
+                    type="button"
+                    onClick={() => props.onSelectOutcome(item.outcome)}
+                    // Shown disabled rather than hidden: an operator who expected this
+                    // choice must learn why it is gone, not hunt for it.
+                    disabled={unavailable !== undefined}
+                    aria-pressed={props.selectedOutcome === item.outcome}
+                    data-openclaw-unknown-outcome={item.outcome}
+                    data-openclaw-unknown-outcome-unavailable={unavailable === undefined ? undefined : "true"}
+                    className={`border px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60 ${
+                      props.selectedOutcome === item.outcome
+                        ? "border-[#0f766e] bg-[#dfeee9]"
+                        : "border-[#cbd5df] bg-white"
+                    }`}
+                  >
+                    <span className="font-bold">{item.label}</span>
+                    <span className="mt-1 block text-xs leading-5 text-[#607585]">
+                      {unavailable ?? item.detail}
+                    </span>
+                  </button>
+                );
+              })}
+            </fieldset>
+
+            <label
+              htmlFor="openclaw-unknown-observation"
+              className="mt-4 block text-xs font-extrabold uppercase tracking-[0.1em] text-[#607585]"
+            >
+              Bạn đã kiểm tra và thấy gì?
+            </label>
+            {/* The server stores a hash of this and never recomputes it, so the text
+                is the only thing that gives the audit record any meaning. */}
+            <textarea
+              id="openclaw-unknown-observation"
+              value={props.observation}
+              onChange={event => props.onObservationChange(event.target.value)}
+              disabled={!props.canManageOperations}
+              rows={3}
+              data-openclaw-unknown="observation"
+              placeholder="Ví dụ: mở Zalo trên máy khách lúc 10:05, thấy tin đã tới."
+              className="mt-1 w-full border border-[#9fb0bf] bg-white p-2 text-sm"
+            />
+          </>
         )}
 
-        {!props.canManageOperations && (
-          <p data-openclaw-unknown-blocked="PERMISSION" className="mt-3 text-sm font-bold text-[#8a4b12]">
-            Bạn không có quyền vận hành để đối chiếu.
+        {(() => {
+          const gate = unknownResolutionGate({
+            canManageOperations: props.canManageOperations,
+            alreadyResolved: props.winner !== null,
+            authorityLoading: props.authorityLoading,
+            authorityError: props.authorityError,
+            authorityHash: props.authorityHash,
+            selectedOutcome: props.selectedOutcome,
+            observation: props.observation,
+          });
+          return gate.blockedBy === null || gate.blockedBy === "ALREADY_RESOLVED" ? null : (
+            <p
+              data-openclaw-unknown-blocked={gate.blockedBy}
+              className="mt-3 text-sm font-bold text-[#8a4b12]"
+            >
+              {BLOCK_COPY[gate.blockedBy]}
+            </p>
+          );
+        })()}
+
+        {props.failureMessage !== null && (
+          <p
+            data-openclaw-unknown="failure"
+            className="mt-3 border border-[#c0563a] bg-[#fdeceb] p-3 text-sm font-bold text-[#8a2f1c]"
+          >
+            {props.failureMessage}
           </p>
         )}
 
@@ -112,7 +195,15 @@ export default function OpenClawUnknownResolutionDialog(
             <button
               type="button"
               onClick={props.onConfirm}
-              disabled={!props.canManageOperations || props.selectedOutcome === null || props.busy}
+              disabled={!unknownResolutionGate({
+                canManageOperations: props.canManageOperations,
+                alreadyResolved: props.winner !== null,
+                authorityLoading: props.authorityLoading,
+                authorityError: props.authorityError,
+                authorityHash: props.authorityHash,
+                selectedOutcome: props.selectedOutcome,
+                observation: props.observation,
+              }).canRecord || props.busy}
               data-openclaw-action="confirm-unknown-resolution"
               className="min-h-11 flex-1 border border-[#0f766e] bg-[#0f766e] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
