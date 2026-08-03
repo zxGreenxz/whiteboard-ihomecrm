@@ -57,12 +57,48 @@ const MIGRATION_DIRECTORY = join(REPO_ROOT, "supabase", "migrations");
 const NETWORK_CENTER_MIGRATION_PATTERN =
   /^(\d{14})_network_center_[a-z0-9_]+\.sql$/;
 
+// A single watermark cannot express every "the bootstrap does not model this".
+// It assumes newer stages are always closer to the world this bootstrap builds,
+// and 20260729147000 broke that assumption: it is NEWER than 20260729146000
+// (heartbeat coverage, fully modelled and which MUST stay applied) yet it
+// preflights on the telemetry ingest writer, which this bootstrap never builds
+// -- exactly the reason 20260729145000 set the floor in the first place. Moving
+// the floor to cover it would silently stop applying 146000 and leave this proof
+// certifying the superseded heartbeat body, which is the failure the glob
+// exists to prevent.
+//
+// So the exceptions are NAMED, with their reason, and every name is asserted to
+// still exist on disk: an exclusion that rots is a loud failure here rather than
+// a stage that quietly stops being applied. Delete an entry only by teaching the
+// bootstrap to satisfy that stage.
+export const BOOTSTRAP_UNMODELLED_MIGRATIONS = Object.freeze({
+  "20260729147000_network_center_telemetry_counter_honesty.sql":
+    "preflights on app_private.network_center_worker_ingest_legacy_impl_v1 and "
+    + "alters public.network_client_current / network_client_sessions; this "
+    + "bootstrap builds none of the telemetry ingest surface",
+});
+
 export function discoverForwardFixMigrations(directory = MIGRATION_DIRECTORY) {
-  const discovered = readdirSync(directory)
+  const present = readdirSync(directory)
     .map((name) => [name, NETWORK_CENTER_MIGRATION_PATTERN.exec(name)])
     .filter(([, match]) => match !== null && match[1] > DISCOVERED_MIGRATION_FLOOR)
     .map(([name]) => name)
     .sort();
+  // An exclusion list is only honest while every entry still names a real file.
+  // Otherwise a renamed migration silently rejoins the glob (or, worse, the
+  // reason for excluding it outlives the file and nobody can tell).
+  for (const excluded of Object.keys(BOOTSTRAP_UNMODELLED_MIGRATIONS)) {
+    if (!existsSync(join(directory, excluded))) {
+      throw new Error(
+        `${excluded} is excluded from this proof as unmodelled by its bootstrap, but no such `
+          + `migration exists in ${directory}. Remove the exclusion or restore the file; do not `
+          + "leave a stale exemption that a future migration could inherit by name.",
+      );
+    }
+  }
+  const discovered = present.filter(
+    (name) => !Object.hasOwn(BOOTSTRAP_UNMODELLED_MIGRATIONS, name),
+  );
   // A glob that matched nothing is this repository's most repeated failure mode:
   // the check goes green while verifying an empty set. Name the glob that rotted
   // rather than returning [] and letting the caller apply nothing in silence.

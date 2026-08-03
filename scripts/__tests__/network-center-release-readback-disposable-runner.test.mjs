@@ -273,3 +273,61 @@ test("disposable PostgreSQL runner cannot retain pg_ctl pipes and cleans its TEM
     rmSync(ownedTempRoot, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// The bootstrap-unmodelled exclusion list.
+//
+// The forward-fix glob is what keeps this proof honest: delete a fix and the
+// run goes red instead of certifying the superseded body. An exclusion list is
+// a hole in exactly that mechanism, so it gets the same scrutiny the glob does.
+// ---------------------------------------------------------------------------
+test("the forward-fix glob still applies every stage the bootstrap does model", () => {
+  const discovered = disposableRunner
+    .discoverForwardFixMigrations()
+    .map((path) => basename(path));
+  assert.ok(discovered.length > 0, "the forward-fix glob matched nothing");
+  assert.ok(
+    discovered.includes("20260729146000_network_center_worker_heartbeat_coverage_honesty.sql"),
+    "the heartbeat coverage forward fix stopped being applied; this proof would "
+      + `certify the superseded body. discovered=${discovered.join(", ")}`,
+  );
+});
+
+test("a stage the bootstrap cannot model is excluded by name, never by watermark", () => {
+  const excluded = Object.keys(disposableRunner.BOOTSTRAP_UNMODELLED_MIGRATIONS);
+  assert.ok(excluded.length > 0, "the exclusion list is empty but still referenced");
+  const discovered = disposableRunner
+    .discoverForwardFixMigrations()
+    .map((path) => basename(path));
+  for (const name of excluded) {
+    assert.ok(
+      !discovered.includes(name),
+      `${name} is listed as unmodelled by the bootstrap yet is still applied`,
+    );
+    assert.ok(
+      typeof disposableRunner.BOOTSTRAP_UNMODELLED_MIGRATIONS[name] === "string"
+        && disposableRunner.BOOTSTRAP_UNMODELLED_MIGRATIONS[name].length > 20,
+      `${name} is excluded without a reason anyone can act on`,
+    );
+    // Excluding a stage is only defensible while the stage is NEWER than the
+    // floor. Anything at or below it is already excluded and the entry is dead.
+    assert.ok(
+      name.slice(0, 14) > "20260729145000",
+      `${name} is already below the discovery floor; the exclusion entry is dead`,
+    );
+  }
+});
+
+test("an exclusion that no longer names a real migration fails loudly", () => {
+  const emptyDirectory = mkdtempSync(join(tempRoot, "network-center-exclusion-test-"));
+  try {
+    assert.throws(
+      () => disposableRunner.discoverForwardFixMigrations(emptyDirectory),
+      /excluded from this proof as unmodelled by its bootstrap, but no such/u,
+      "a stale exclusion must fail loudly instead of quietly exempting a name a "
+        + "future migration could inherit",
+    );
+  } finally {
+    rmSync(emptyDirectory, { recursive: true, force: true });
+  }
+});
