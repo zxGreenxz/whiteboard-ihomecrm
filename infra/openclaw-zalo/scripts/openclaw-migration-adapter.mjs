@@ -14,6 +14,12 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+// Shared with the other adapter: one parser, so a fix cannot land on only
+// one of the two hosts that run these scripts.
+import {
+  childEnvironment,
+  connectionEnvironment as splitConnectionUri,
+} from "./openclaw-connection-env.mjs";
 import { readFileSync, statSync } from "node:fs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -102,35 +108,17 @@ function environment(name) {
   return value.trim();
 }
 
+/** Fail-closed wrapper so a bad URI aborts the run like every other refusal here. */
+export function connectionEnvironment(uri) {
+  return splitConnectionUri(uri, (message) => new FailClosed(message));
+}
+
 /**
  * Read-only query against the canonical store. Three migration steps verify facts
  * that live in Postgres and nowhere else; inventing RPC facades for them would have
  * dressed a guess up as a check. The URI carries the password so it travels through
  * the environment, never argv, where /proc/<pid>/cmdline exposes it.
  */
-/** See the recovery adapter: libpq does not URI-expand PGDATABASE from the env. */
-export function connectionEnvironment(uri) {
-  let parsed;
-  try {
-    parsed = new URL(uri);
-  } catch {
-    throw new FailClosed("connection URI is malformed");
-  }
-  if (!/^postgres(ql)?:$/u.test(parsed.protocol)) {
-    throw new FailClosed("connection URI must use the postgres scheme");
-  }
-  const database = decodeURIComponent(parsed.pathname.replace(/^\//u, ""));
-  if (!database) throw new FailClosed("connection URI carries no database name");
-  const variables = { PGDATABASE: database };
-  if (parsed.hostname) variables.PGHOST = parsed.hostname;
-  if (parsed.port) variables.PGPORT = parsed.port;
-  if (parsed.username) variables.PGUSER = decodeURIComponent(parsed.username);
-  if (parsed.password) variables.PGPASSWORD = decodeURIComponent(parsed.password);
-  const sslmode = parsed.searchParams.get("sslmode");
-  if (sslmode) variables.PGSSLMODE = sslmode;
-  return variables;
-}
-
 function canonicalScalar(sql) {
   const connection = environment("OPENCLAW_MIGRATION_CANONICAL_URL");
   let output;
@@ -141,7 +129,7 @@ function canonicalScalar(sql) {
       {
         encoding: "utf8",
         timeout: 120_000,
-        env: { ...process.env, ...connectionEnvironment(connection) },
+        env: childEnvironment(process.env, connectionEnvironment(connection)),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

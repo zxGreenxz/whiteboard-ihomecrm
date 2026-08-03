@@ -128,6 +128,68 @@ describe("Task 20 recovery and migration adapters", () => {
     }
   });
 
+  it("refuses connection parameters it would otherwise drop", async () => {
+    const { connectionEnvironment } = await import(
+      "../scripts/openclaw-recovery-adapter.mjs"
+    );
+    // Keeping only sslmode meant a URI asking for a pinned root certificate, or for
+    // a primary rather than a replica, connected with NEITHER - quietly. Those two
+    // now arrive as the variables libpq reads.
+    expect(connectionEnvironment(
+      "postgresql://u:p@db.example.com/openclaw" +
+        "?sslmode=verify-full&sslrootcert=/etc/ssl/ca.pem&target_session_attrs=read-write",
+    )).toEqual({
+      PGDATABASE: "openclaw",
+      PGHOST: "db.example.com",
+      PGUSER: "u",
+      PGPASSWORD: "p",
+      PGSSLMODE: "verify-full",
+      PGSSLROOTCERT: "/etc/ssl/ca.pem",
+      PGTARGETSESSIONATTRS: "read-write",
+    });
+    // A parameter this parser does not understand is usually a typo in a
+    // security-relevant setting, so it stops the run instead of vanishing.
+    expect(() => connectionEnvironment(
+      "postgresql://u:p@db.example.com/openclaw?sslmodee=require",
+    )).toThrow(/unsupported parameter sslmodee/u);
+    // libpq's comma-separated multi-host form is not supported; `new URL` would
+    // hand the whole string to DNS as one opaque hostname.
+    expect(() => connectionEnvironment(
+      "postgresql://u:p@a.example.com:5432,b.example.com:5432/openclaw",
+    )).toThrow(/multi-host/u);
+  });
+
+  it("gives the child a PG-free environment so nothing inherited outranks the URI", async () => {
+    const { childEnvironment } = await import("../scripts/openclaw-connection-env.mjs");
+    const parent = {
+      PATH: "/usr/bin",
+      // PGSERVICE alone can redirect the entire connection to another host, and
+      // PGHOSTADDR outranks PGHOST - an operator with either exported in their
+      // shell would have silently drilled against the wrong database.
+      PGSERVICE: "someone-elses-cluster",
+      PGHOSTADDR: "10.0.0.9",
+      PGSSLMODE: "disable",
+    };
+    const child = childEnvironment(parent, { PGHOST: "db.example.com", PGDATABASE: "openclaw" });
+    expect(child.PATH).toBe("/usr/bin");
+    expect(child.PGHOST).toBe("db.example.com");
+    expect(child.PGSERVICE).toBeUndefined();
+    expect(child.PGHOSTADDR).toBeUndefined();
+    expect(child.PGSSLMODE).toBeUndefined();
+  });
+
+  it("runs both adapters through ONE connection parser", async () => {
+    const { readFile } = await import("node:fs/promises");
+    // The parser was duplicated in both files. A fix that lands on only one of them
+    // is a fix that misses whichever host runs the other script.
+    for (const adapter of [recoveryAdapter, migrationAdapter]) {
+      const source = await readFile(adapter, "utf8");
+      expect(source, adapter).toContain('from "./openclaw-connection-env.mjs"');
+      expect(source, adapter).toContain("childEnvironment(process.env,");
+      expect(source, adapter).not.toMatch(/\.\.\.process\.env,\s*\.\.\./u);
+    }
+  });
+
   it("passes --dbname to pg_restore, without which it restores nothing", async () => {
     const { readFile } = await import("node:fs/promises");
     const source = await readFile(recoveryAdapter, "utf8");

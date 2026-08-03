@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createDisposableOpenClawDatabase } from "../test-openclaw-migrations.mjs";
+import {
+  createDisposableOpenClawDatabase,
+  OPENCLAW_MIGRATIONS,
+} from "../test-openclaw-migrations.mjs";
 
 /**
  * Executes the migration/recovery facades AS THE ROLE THAT WILL CALL THEM.
@@ -92,6 +95,60 @@ async function seedTwoAccountCells(database) {
   return accounts;
 }
 
+/**
+ * A rollout run that PERMITS activation. Handing a lease to a new cell is an
+ * activation, so exercising the success path needs a real rollout rather than a
+ * trigger bypass - bypassing would also disable the foreign keys this handover
+ * depends on, and prove nothing.
+ */
+async function seedPermittingRollout(database) {
+  // The guard demands a digest per reviewed migration, so the fixture is built from
+  // the manifest itself rather than an empty object.
+  const digests = JSON.stringify({
+    ...Object.fromEntries(OPENCLAW_MIGRATIONS.map((file) => [file, "e".repeat(64)])),
+    // Must equal the cell rows themselves: the guard compares the run against the
+    // cell it is about to activate, so inventing values here would only prove that
+    // a fixture can agree with itself.
+    cellReviewedCommitSha: SHA,
+    cellImageDigest: DIGEST,
+    cellConfigDigest: CONFIG,
+  });
+  // The manifest hash is derived by the database, not asserted here: hardcoding it
+  // would make this fixture drift silently the day the manifest changes.
+  await database.query(
+    `insert into public.openclaw_rollout_runs(
+       organization_id, reviewed_commit_sha, migration_manifest_sha256, upstream_sri,
+       upstream_git_head, patch_series_sha256, built_tgz_sha256, artifact_digests,
+       project_ref, stage, stage_version, stage_entered_at, status, started_at)
+     values ($1, $2, app_private.openclaw_rollout_manifest_hash_v1($3::jsonb), 'sha384-x',
+             $2, $4, $4, $3::jsonb, 'tryymsxyyckgbrmmvozx',
+             'SALES_GROUPS', 1, clock_timestamp(), 'RUNNING', clock_timestamp())`,
+    [ORG, SHA, digests, "d".repeat(64)],
+  );
+}
+
+/**
+ * Brings the NEW cell to the state migrate-cell.sh leaves it in just before the
+ * lease step: current, and holding a live credential. Step 7 (rotate) runs before
+ * step 8 (acquire), so at handover time the new cell is the reviewed one.
+ */
+async function promoteNewCell(database, account) {
+  await database.query("set session_replication_role = replica");
+  await database.query(
+    `update public.openclaw_runtime_cells set is_current = (id = $2)
+     where organization_id = $1 and account_id = $3`,
+    [ORG, NEW_CELL, account],
+  );
+  await database.query(
+    `insert into public.openclaw_runtime_credentials(
+       organization_id, account_id, cell_id, credential_generation, credential_hash,
+       allowed_scopes)
+     values ($1, $2, $3, 1, $4, array['heartbeat'])`,
+    [ORG, account, NEW_CELL, "1".repeat(64)],
+  );
+  await database.query("set session_replication_role = origin");
+}
+
 async function withDatabase(operation) {
   const database = await createDisposableOpenClawDatabase({ verifyCli: false });
   try {
@@ -114,6 +171,15 @@ const FACADES = [
 /** Resume is separate: it is gated by the canonical activation guard, see below. */
 const RESUME_FACADE = ["openclaw_service_resume_after_migration_v1", { reason: "migration-complete" }];
 
+/**
+ * Each assertion builds its OWN disposable PGlite database and replays all twelve
+ * migrations, which takes seconds - and longer when the eight SQL harness files run
+ * in parallel under `test:openclaw:sql:fast`. The 5s default turned that contention
+ * into three red tests that pass in isolation. Bounded, not disabled: a genuine hang
+ * still fails.
+ */
+const HARNESS_TIMEOUT = 120_000;
+
 describe("migration facades under the calling role", () => {
   it("is a real role switch, not a superuser no-op", async () => {
     await withDatabase(async (database) => {
@@ -123,7 +189,7 @@ describe("migration facades under the calling role", () => {
       const asDefault = (await database.query("select current_user as who")).rows[0].who;
       expect(asDefault).not.toBe("service_role");
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("executes the whole migration sequence as service_role, in order", async () => {
     await withDatabase(async (database) => {
@@ -152,7 +218,7 @@ describe("migration facades under the calling role", () => {
       }
       expect(failures).toEqual([]);
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("refuses to resume while the canonical rollout stage forbids activation", async () => {
     await withDatabase(async (database) => {
@@ -179,7 +245,7 @@ describe("migration facades under the calling role", () => {
       }
       expect(message).toMatch(/rollout stage does not permit activation/u);
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("refuses to hand over a lease while the rollout stage forbids activation", async () => {
     await withDatabase(async (database) => {
@@ -205,7 +271,128 @@ describe("migration facades under the calling role", () => {
       }
       expect(message).toMatch(/rollout stage does not permit activation/u);
     });
-  });
+  }, HARNESS_TIMEOUT);
+
+  it("attributes a step to the rollout that authorized it", async () => {
+    await withDatabase(async (database) => {
+      await seedTwoAccountCells(database);
+      await seedPermittingRollout(database);
+      let entry;
+      await database.query("begin");
+      try {
+        await database.query("set local role service_role");
+        await database.query(
+          `select public.openclaw_service_drain_outbox_v1($1::jsonb)`,
+          [JSON.stringify({
+            version: 1, organizationId: ORG,
+            requestId: "dddd3000-0000-4000-8000-000000000001",
+          })],
+        );
+        await database.query("reset role");
+        entry = await database.query(
+          `select request_id, correlation_id, redacted_evidence
+           from public.openclaw_audit_events
+           where organization_id = $1 and event_type = 'OPENCLAW_MIGRATION_STEP'
+           order by organization_sequence desc limit 1`,
+          [ORG],
+        );
+      } finally {
+        await database.query("rollback");
+      }
+      const run = entry.rows[0];
+      // A reviewer can now answer "was this migration approved?" from the log alone.
+      expect(run.redacted_evidence.rolloutRunId).toMatch(/^[0-9a-f-]{36}$/u);
+      expect(run.redacted_evidence.rolloutStage).toBe("SALES_GROUPS");
+      // Steps of one adapter invocation correlate; the run id ties them together.
+      expect(run.correlation_id).toBe(run.redacted_evidence.rolloutRunId);
+      expect(run.request_id).toBe("dddd3000-0000-4000-8000-000000000001");
+    });
+  }, HARNESS_TIMEOUT);
+
+  it("ignores a request id that is not a uuid instead of failing the step", async () => {
+    await withDatabase(async (database) => {
+      let entry;
+      await database.query("begin");
+      try {
+        await database.query("set local role service_role");
+        await database.query(
+          `select public.openclaw_service_drain_outbox_v1($1::jsonb)`,
+          [JSON.stringify({ version: 1, organizationId: ORG, requestId: "'; drop--" })],
+        );
+        await database.query("reset role");
+        entry = await database.query(
+          `select request_id from public.openclaw_audit_events
+           where organization_id = $1 and event_type = 'OPENCLAW_MIGRATION_STEP'
+           order by organization_sequence desc limit 1`,
+          [ORG],
+        );
+      } finally {
+        await database.query("rollback");
+      }
+      // Caller-supplied text must not widen what the audit column accepts, and must
+      // not take the migration down either.
+      expect(entry.rows[0].request_id).toBeNull();
+    });
+  }, HARNESS_TIMEOUT);
+
+  it("hands the lease over atomically, and is idempotent on retry", async () => {
+    await withDatabase(async (database) => {
+      const [activeAccount] = await seedTwoAccountCells(database);
+      await seedPermittingRollout(database);
+      await promoteNewCell(database, activeAccount);
+      const request = JSON.stringify({
+        version: 1, organizationId: ORG, oldCellId: OLD_CELL, newCellId: NEW_CELL,
+      });
+      await database.query("begin");
+      try {
+        await database.query("set local role service_role");
+        const first = await database.query(
+          `select public.openclaw_service_acquire_migration_lease_v1($1::jsonb) as result`,
+          [request],
+        );
+        expect(first.rows[0].result.movedAccounts).toBe(1);
+
+        await database.query("reset role");
+        const active = await database.query(
+          `select account_id, cell_id, fencing_token from public.openclaw_runtime_leases
+           where organization_id = $1 and account_id = $2
+             and status = 'ACTIVE' and released_at is null`,
+          [ORG, activeAccount],
+        );
+        // Scoped to the handed-over account on purpose: the OTHER account's lease
+        // sits on its own cell and must NOT be touched by a per-cell handover.
+        // The partial unique index allows exactly one active lease per account, so a
+        // second ACTIVE row would have raised rather than reached this assertion.
+        expect(active.rows).toHaveLength(1);
+        const untouched = await database.query(
+          `select cell_id from public.openclaw_runtime_leases
+           where organization_id = $1 and account_id <> $2 and status = 'ACTIVE'`,
+          [ORG, activeAccount],
+        );
+        expect(untouched.rows).toHaveLength(1);
+        expect(active.rows[0].cell_id).toBe(NEW_CELL);
+
+        const previous = await database.query(
+          `select max(fencing_token) as token from public.openclaw_runtime_leases
+           where organization_id = $1 and account_id = $2 and status = 'REVOKED'`,
+          [ORG, activeAccount],
+        );
+        expect(Number(active.rows[0].fencing_token))
+          .toBeGreaterThan(Number(previous.rows[0].token));
+
+        await database.query("set local role service_role");
+        const again = await database.query(
+          `select public.openclaw_service_acquire_migration_lease_v1($1::jsonb) as result`,
+          [request],
+        );
+        // A retried step after a lost response must not mint a second lease.
+        expect(again.rows[0].result.movedAccounts).toBe(0);
+        expect(again.rows[0].result.alreadyOnNewCell).toBe(1);
+      } finally {
+        await database.query("rollback");
+      }
+    });
+  }, HARNESS_TIMEOUT);
 
   it("refuses to retire the old cell while any account still has no new lease", async () => {
     await withDatabase(async (database) => {
@@ -227,7 +414,7 @@ describe("migration facades under the calling role", () => {
       }
       expect(message).toMatch(/hold no active lease on the new cell/u);
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("leaves a hash-chained audit entry for every step it performs", async () => {
     await withDatabase(async (database) => {
@@ -270,15 +457,23 @@ describe("migration facades under the calling role", () => {
       for (const [index, row] of entries.rows.entries()) {
         expect(row.redacted_evidence.requestDigest).toMatch(/^[0-9a-f]{64}$/u);
         // Content-free: the request itself never enters the evidence.
-        expect(Object.keys(row.redacted_evidence).sort())
-          .toEqual(["organizationId", "requestDigest", "step", "version"]);
+        expect(Object.keys(row.redacted_evidence).sort()).toEqual([
+          "callerRole", "organizationId", "requestDigest", "rolloutRunId",
+          "rolloutStage", "step", "version",
+        ]);
+        // The role is read from the session, so it reports what actually ran the
+        // step - not what the request claimed. These calls used the service key.
+        expect(row.redacted_evidence.callerRole).toBe("service_role");
+        // No canonical rollout backs this fixture, and the record says so rather
+        // than staying silent: that IS the planned/unplanned distinction.
+        expect(row.redacted_evidence.rolloutRunId).toBeNull();
         if (index === 0) continue;
         expect(row.previous_hash).toBe(entries.rows[index - 1].event_hash);
         expect(Number(row.organization_sequence))
           .toBe(Number(entries.rows[index - 1].organization_sequence) + 1);
       }
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("narrows the retention cron role without cutting what it already had", async () => {
     await withDatabase(async (database) => {
@@ -325,7 +520,7 @@ describe("migration facades under the calling role", () => {
       expect(await privileges("openclaw_migration_writer", "openclaw_audit_events"))
         .toEqual([]);
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("denies the same facades to anon and authenticated", async () => {
     await withDatabase(async (database) => {
@@ -343,7 +538,7 @@ describe("migration facades under the calling role", () => {
         expect(denied, `${role} was not denied`).toBe(true);
       }
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("keeps GLOBAL_STOP idempotent across a retried step", async () => {
     await withDatabase(async (database) => {
@@ -362,7 +557,7 @@ describe("migration facades under the calling role", () => {
       // A repeated step must not mint a new control version.
       expect(versions[0]).toBe(versions[1]);
     });
-  });
+  }, HARNESS_TIMEOUT);
 
   it("refuses to freeze the outbox while GLOBAL_STOP is inactive", async () => {
     await withDatabase(async (database) => {
@@ -378,5 +573,5 @@ describe("migration facades under the calling role", () => {
       }
       expect(message).toMatch(/GLOBAL_STOP is inactive/u);
     });
-  });
+  }, HARNESS_TIMEOUT);
 });

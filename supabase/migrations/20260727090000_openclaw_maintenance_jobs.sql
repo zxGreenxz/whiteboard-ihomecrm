@@ -8655,29 +8655,83 @@ set search_path = ''
 as $function$
 declare
   v_evidence jsonb;
+  v_actor uuid;
+  v_caller text;
+  v_run record;
+  v_request_id uuid;
 begin
+  -- ATTRIBUTION IS TAKEN FROM THE SESSION, NEVER FROM THE REQUEST.
+  --
+  -- A record whose actor is whatever the caller typed proves nothing: the party
+  -- we are trying to distinguish (someone holding the service key) writes the
+  -- request. Everything recorded below is either set by PostgREST from a verified
+  -- JWT, or read from the database itself.
+  begin
+    v_actor := nullif(
+      current_setting('request.jwt.claims', true)::jsonb ->> 'sub', ''
+    )::uuid;
+  exception when others then
+    -- No claims, malformed claims, or a non-uuid subject: unattributed is the
+    -- honest answer, and a null actor is exactly the signal a reviewer wants.
+    v_actor := null;
+  end;
+  -- The role in effect at call time. SECURITY DEFINER changes current_user but not
+  -- the `role` GUC, so this still reads what PostgREST (or the adapter) set:
+  -- `service_role` for a service key, a member role for a signed-in operator.
+  v_caller := coalesce(nullif(current_setting('role', true), ''), 'unknown');
+
+  -- The canonical rollout run that backs this step. An attacker with the service
+  -- key cannot fabricate one - it carries the reviewed commit and manifest hash
+  -- the activation guard checks - so `rolloutRunId: null` marks a step that ran
+  -- with NO approved rollout behind it. That is the planned/unplanned distinction.
+  select run.id, run.stage, run.reviewed_commit_sha
+    into v_run
+  from public.openclaw_rollout_runs run
+  where run.organization_id = p_organization_id
+    and run.status in ('RUNNING', 'COMPLETE')
+  order by (run.status = 'RUNNING') desc, run.started_at desc, run.id desc
+  limit 1;
+
+  -- Correlates the steps of ONE adapter invocation; ignored unless it is a uuid,
+  -- because a caller-supplied string must never widen what the audit accepts.
+  v_request_id := case
+    when coalesce(p_request ->> 'requestId', '')
+      ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    then (p_request ->> 'requestId')::uuid
+  end;
+
   -- Content-free by construction: the step, the organization, and a digest of the
   -- request. Never the request itself, which can carry cell ids and operator text.
   v_evidence := jsonb_build_object(
-    'version', 1,
+    'version', 2,
     'step', p_step,
     'organizationId', p_organization_id,
     'requestDigest', encode(
       extensions.digest(app_private.openclaw_jcs_bytes_v1(p_request), 'sha256'), 'hex'
-    )
+    ),
+    'callerRole', v_caller,
+    'rolloutRunId', v_run.id,
+    'rolloutStage', v_run.stage
   );
   perform app_private.append_openclaw_audit_v1(
     p_organization_id,
     'OPENCLAW_MIGRATION_STEP',
-    null,
+    v_actor,
     'openclaw-migration-adapter',
-    null,
-    null,
+    v_request_id,
+    v_run.id,
     v_evidence,
     convert_to(v_evidence::text, 'UTF8')
   );
 end;
 $function$;
+
+-- `force row level security` applies to the owner too, so the definer function
+-- needs both the grant and a policy to read the run that authorizes the step.
+grant select on public.openclaw_rollout_runs to openclaw_migration_writer;
+create policy openclaw_rollout_runs_migration_writer_select
+  on public.openclaw_rollout_runs for select to openclaw_migration_writer
+  using (true);
 
 alter function app_private.openclaw_audit_migration_step_v1(uuid, text, jsonb)
   owner to openclaw_migration_writer;

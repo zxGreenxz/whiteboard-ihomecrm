@@ -16,6 +16,12 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+// Shared with the other adapter: one parser, so a fix cannot land on only
+// one of the two hosts that run these scripts.
+import {
+  childEnvironment,
+  connectionEnvironment as splitConnectionUri,
+} from "./openclaw-connection-env.mjs";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -131,37 +137,15 @@ function environment(name) {
  * never placed on a command line, where /proc/<pid>/cmdline would expose them.
  */
 /**
- * Splits a postgres URI into the discrete libpq variables.
+ * Splits a postgres URI into the discrete libpq variables. The reasoning - libpq
+ * does not URI-expand from the environment, the password must stay out of argv,
+ * and inherited PG* variables must not reach the child - lives with the parser in
+ * openclaw-connection-env.mjs, which the migration adapter shares.
  *
- * Passing the whole URI as `PGDATABASE` does NOT work: libpq only URI-expands
- * `dbname` when it arrives through `PQconnectdbParams(expand_dbname=true)`, while
- * environment defaults are taken literally. The first version therefore asked for
- * a database literally named "postgresql://…" on the local default host, and every
- * step that used it failed with a misleading "query failed".
- *
- * Discrete variables also keep the password out of argv, unlike putting the URI on
- * the command line where /proc/<pid>/cmdline exposes it.
+ * Wrapped here so a bad URI aborts the run like every other refusal in this file.
  */
 export function connectionEnvironment(uri) {
-  let parsed;
-  try {
-    parsed = new URL(uri);
-  } catch {
-    throw new FailClosed("connection URI is malformed");
-  }
-  if (!/^postgres(ql)?:$/u.test(parsed.protocol)) {
-    throw new FailClosed("connection URI must use the postgres scheme");
-  }
-  const database = decodeURIComponent(parsed.pathname.replace(/^\//u, ""));
-  if (!database) throw new FailClosed("connection URI carries no database name");
-  const variables = { PGDATABASE: database };
-  if (parsed.hostname) variables.PGHOST = parsed.hostname;
-  if (parsed.port) variables.PGPORT = parsed.port;
-  if (parsed.username) variables.PGUSER = decodeURIComponent(parsed.username);
-  if (parsed.password) variables.PGPASSWORD = decodeURIComponent(parsed.password);
-  const sslmode = parsed.searchParams.get("sslmode");
-  if (sslmode) variables.PGSSLMODE = sslmode;
-  return variables;
+  return splitConnectionUri(uri, (message) => new FailClosed(message));
 }
 
 function psqlScalar(connectionEnv, sql) {
@@ -174,7 +158,7 @@ function psqlScalar(connectionEnv, sql) {
       {
         encoding: "utf8",
         timeout: 120_000,
-        env: { ...process.env, ...connectionEnvironment(connection) },
+        env: childEnvironment(process.env, connectionEnvironment(connection)),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
@@ -324,7 +308,7 @@ async function run({ command, values, booleans }) {
             // Four hours is the RTO gate; a restore that outruns it must fail here
             // rather than let the drill report a passing time.
             timeout: 4 * 60 * 60 * 1000,
-            env: { ...process.env, ...restoreVariables },
+            env: childEnvironment(process.env, restoreVariables),
             input: readFileSync(backupFile),
             stdio: ["pipe", "pipe", "pipe"],
           },
