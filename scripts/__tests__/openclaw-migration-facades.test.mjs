@@ -45,6 +45,7 @@ const NEW_CELL = cellId(2, 0);
 const SHA = "a".repeat(40);
 const DIGEST = `sha256:${"b".repeat(64)}`;
 const CONFIG = "c".repeat(64);
+const STALE_CELL = "dddd2000-0000-4000-8000-000000000099";
 
 /**
  * ONE active account plus one retired account holding a historical lease.
@@ -101,7 +102,7 @@ async function seedTwoAccountCells(database) {
  * trigger bypass - bypassing would also disable the foreign keys this handover
  * depends on, and prove nothing.
  */
-async function seedPermittingRollout(database) {
+async function seedPermittingRollout(database, status = "RUNNING") {
   // The guard demands a digest per reviewed migration, so the fixture is built from
   // the manifest itself rather than an empty object.
   const digests = JSON.stringify({
@@ -119,11 +120,13 @@ async function seedPermittingRollout(database) {
     `insert into public.openclaw_rollout_runs(
        organization_id, reviewed_commit_sha, migration_manifest_sha256, upstream_sri,
        upstream_git_head, patch_series_sha256, built_tgz_sha256, artifact_digests,
-       project_ref, stage, stage_version, stage_entered_at, status, started_at)
+       project_ref, stage, stage_version, stage_entered_at, status, started_at,
+       completed_at)
      values ($1, $2, app_private.openclaw_rollout_manifest_hash_v1($3::jsonb), 'sha384-x',
              $2, $4, $4, $3::jsonb, 'tryymsxyyckgbrmmvozx',
-             'SALES_GROUPS', 1, clock_timestamp(), 'RUNNING', clock_timestamp())`,
-    [ORG, SHA, digests, "d".repeat(64)],
+             'SALES_GROUPS', 1, clock_timestamp(), $5, clock_timestamp(),
+             case when $5 = 'COMPLETE' then clock_timestamp() end)`,
+    [ORG, SHA, digests, "d".repeat(64), status],
   );
 }
 
@@ -145,6 +148,30 @@ async function promoteNewCell(database, account) {
        allowed_scopes)
      values ($1, $2, $3, 1, $4, array['heartbeat'])`,
     [ORG, account, NEW_CELL, "1".repeat(64)],
+  );
+  await database.query("set session_replication_role = origin");
+}
+
+/**
+ * A REVOKED lease with a high fencing token on an unrelated cell of the same
+ * account, standing in for one left behind by an aborted migration.
+ */
+async function seedStaleLease(database, account, token) {
+  await database.query("set session_replication_role = replica");
+  await database.query(
+    `insert into public.openclaw_runtime_cells(
+       id, organization_id, account_id, cell_generation, state, is_current,
+       reviewed_commit_sha, image_digest, config_digest)
+     values ($1, $2, $3, 9, 'RETIRED', false, $4, $5, $6) on conflict (id) do nothing`,
+    [STALE_CELL, ORG, account, SHA, DIGEST, CONFIG],
+  );
+  await database.query(
+    `insert into public.openclaw_runtime_leases(
+       organization_id, account_id, cell_id, lease_generation, fencing_token,
+       status, expires_at, released_at)
+     values ($1, $2, $3, 9, $4, 'REVOKED',
+             clock_timestamp() + interval '1 minute', clock_timestamp())`,
+    [ORG, account, STALE_CELL, token],
   );
   await database.query("set session_replication_role = origin");
 }
@@ -175,10 +202,11 @@ const RESUME_FACADE = ["openclaw_service_resume_after_migration_v1", { reason: "
  * Each assertion builds its OWN disposable PGlite database and replays all twelve
  * migrations, which takes seconds - and longer when the eight SQL harness files run
  * in parallel under `test:openclaw:sql:fast`. The 5s default turned that contention
- * into three red tests that pass in isolation. Bounded, not disabled: a genuine hang
- * still fails.
+ * into three red tests that pass in isolation. Bounded, and kept close to the ~4s
+ * these actually take: at 120s a genuine hang would burn ~26 minutes across the file
+ * before the suite went red.
  */
-const HARNESS_TIMEOUT = 120_000;
+const HARNESS_TIMEOUT = 45_000;
 
 describe("migration facades under the calling role", () => {
   it("is a real role switch, not a superuser no-op", async () => {
@@ -309,6 +337,40 @@ describe("migration facades under the calling role", () => {
     });
   }, HARNESS_TIMEOUT);
 
+  it("does not credit a step to a rollout that already finished", async () => {
+    await withDatabase(async (database) => {
+      await seedTwoAccountCells(database);
+      // Inserted COMPLETE rather than transitioned into it: the rollout state machine
+      // refuses an UPDATE that skips its own checkpoints, and this test is about how
+      // the audit READS a finished run, not about how one legitimately finishes.
+      await seedPermittingRollout(database, "COMPLETE");
+      let entry;
+      await database.query("begin");
+      try {
+        await database.query("set local role service_role");
+        await database.query(
+          `select public.openclaw_service_drain_outbox_v1($1::jsonb)`,
+          [JSON.stringify({ version: 1, organizationId: ORG })],
+        );
+        await database.query("reset role");
+        entry = await database.query(
+          `select correlation_id, redacted_evidence from public.openclaw_audit_events
+           where organization_id = $1 and event_type = 'OPENCLAW_MIGRATION_STEP'
+           order by organization_sequence desc limit 1`,
+          [ORG],
+        );
+      } finally {
+        await database.query("rollback");
+      }
+      // COMPLETE rows accumulate forever. Matching them made the whole signal
+      // worthless: after an organization's first rollout finished, every later step -
+      // planned or not - inherited that run's id and `rolloutRunId: null` could never
+      // appear again. A finished rollout authorizes nothing.
+      expect(entry.rows[0].redacted_evidence.rolloutRunId).toBeNull();
+      expect(entry.rows[0].correlation_id).toBeNull();
+    });
+  }, HARNESS_TIMEOUT);
+
   it("ignores a request id that is not a uuid instead of failing the step", async () => {
     await withDatabase(async (database) => {
       let entry;
@@ -340,6 +402,12 @@ describe("migration facades under the calling role", () => {
       const [activeAccount] = await seedTwoAccountCells(database);
       await seedPermittingRollout(database);
       await promoteNewCell(database, activeAccount);
+      // A stale lease left behind by an aborted migration, on a cell that is NOT the
+      // one being handed over, carrying a much higher token. The handover fences
+      // above every lease the account ever held - not just the old cell's - so
+      // without this row both rules produce the same number and a regression to
+      // per-cell fencing would stay green.
+      await seedStaleLease(database, activeAccount, 99);
       const request = JSON.stringify({
         version: 1, organizationId: ORG, oldCellId: OLD_CELL, newCellId: NEW_CELL,
       });
@@ -370,6 +438,10 @@ describe("migration facades under the calling role", () => {
           [ORG, activeAccount],
         );
         expect(untouched.rows).toHaveLength(1);
+        // The VALUE, not just the count: a handover that wrongly moved every account
+        // in the organization would revoke this lease and mint a new ACTIVE one on
+        // NEW_CELL - still exactly one row, so a length-only check stays green.
+        expect(untouched.rows[0].cell_id).toBe(cellId(1, 1));
         expect(active.rows[0].cell_id).toBe(NEW_CELL);
 
         const previous = await database.query(
@@ -377,6 +449,10 @@ describe("migration facades under the calling role", () => {
            where organization_id = $1 and account_id = $2 and status = 'REVOKED'`,
           [ORG, activeAccount],
         );
+        // Guard the guard: `max()` over an empty set is NULL and `Number(null)` is 0,
+        // so this comparison would pass vacuously if the revoke ever stopped happening.
+        expect(previous.rows[0].token).not.toBeNull();
+        expect(Number(previous.rows[0].token)).toBe(99);
         expect(Number(active.rows[0].fencing_token))
           .toBeGreaterThan(Number(previous.rows[0].token));
 
@@ -458,15 +534,22 @@ describe("migration facades under the calling role", () => {
         expect(row.redacted_evidence.requestDigest).toMatch(/^[0-9a-f]{64}$/u);
         // Content-free: the request itself never enters the evidence.
         expect(Object.keys(row.redacted_evidence).sort()).toEqual([
-          "callerRole", "organizationId", "requestDigest", "rolloutRunId",
-          "rolloutStage", "step", "version",
+          "actorId", "callerRole", "currentUser", "organizationId", "requestDigest",
+          "requestId", "rolloutRunId", "rolloutStage", "sessionUser", "step", "version",
         ]);
+        // Inside the evidence, which IS hash-chained. append_openclaw_audit_v1 hashes
+        // previous_hash|sequence|event_type|evidence_hash, so the actor_id/request_id
+        // COLUMNS sit outside the chain and could be edited without breaking it.
+        expect(row.redacted_evidence).toHaveProperty("actorId");
         // The role is read from the session, so it reports what actually ran the
         // step - not what the request claimed. These calls used the service key.
         expect(row.redacted_evidence.callerRole).toBe("service_role");
         // No canonical rollout backs this fixture, and the record says so rather
         // than staying silent: that IS the planned/unplanned distinction.
         expect(row.redacted_evidence.rolloutRunId).toBeNull();
+        // A service key carries no `sub`, so this is null on every call these
+        // facades can currently receive. Pinned so the claim stays honest.
+        expect(row.redacted_evidence.actorId).toBeNull();
         if (index === 0) continue;
         expect(row.previous_hash).toBe(entries.rows[index - 1].event_hash);
         expect(Number(row.organization_sequence))

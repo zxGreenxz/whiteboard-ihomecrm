@@ -67,6 +67,24 @@ the client would look for a database named `postgresql://…` on the local host.
 - `OPENCLAW_RECOVERY_SESSION_CRYPTO_BIN` - the committed session-crypto binary used
   for atomic decrypt/re-encrypt; the adapter never reimplements that crypto.
 
+**Shape of the `*_URL` Postgres URIs.** The adapters split the URI into discrete
+`PG*` variables rather than handing it to libpq whole, so the accepted shape is
+narrower than "any connection string":
+
+- Query parameters are mapped by name (`sslmode`, `sslrootcert`, `target_session_attrs`,
+  `options`, `connect_timeout`, `passfile`, …). An unrecognised parameter is a hard
+  refusal, not a silent drop - dropping `sslrootcert` would have weakened TLS and
+  dropping `target_session_attrs=read-write` would have aimed a write step at a
+  replica. The platform's own decorations `?supa=` and `?pgbouncer=` are ignored, so
+  a URI copied straight from the Supabase dashboard works.
+- libpq's comma-separated multi-host form is refused. Commas inside the password are
+  fine.
+- The child process gets a PG-free environment, so `PGSERVICE`, `PGHOSTADDR` or
+  `PGSSLMODE` exported in the operator's shell cannot redirect or downgrade the
+  connection. **`PGPASSFILE` is the one exception and is passed through**, because
+  injecting the password through a temporary passfile is what this project's
+  operating guidance asks for; a password inside the URI still wins over it.
+
 It refuses any organization other than DEMO `dddd0000-...-0001`. RPO comes from the
 canonical store's own measurement, never from a caller-declared timestamp. Plaintext
 session findings are reported as opaque digests, never as paths.

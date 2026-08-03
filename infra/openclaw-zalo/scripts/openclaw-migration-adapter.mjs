@@ -12,7 +12,7 @@
 //      and refuse to name, inspect, or mutate the external 9Router / cli-proxy-api
 //      containers beyond the read the plan explicitly allows.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 // Shared with the other adapter: one parser, so a fix cannot land on only
 // one of the two hosts that run these scripts.
@@ -257,7 +257,14 @@ async function run({ command, values, booleans }) {
   const newCell = requireUuid(values, "new-cell");
   if (oldCell === newCell) throw new UsageError("old and new cell must differ");
   const scope = { organizationId: organization, oldCellId: oldCell, newCellId: newCell, step: command };
-  const identity = { organizationId: organization, oldCellId: oldCell, newCellId: newCell };
+  // One id per adapter invocation, so the audit rows of a single migrate-cell.sh run
+  // can be pulled out as a unit. Generated HERE rather than per RPC call: the point
+  // is to tie the steps together, and it must be stable across the retries inside
+  // any one step. `crypto.randomUUID` is what makes it collision-free without state.
+  const requestId = randomUUID();
+  const identity = {
+    organizationId: organization, oldCellId: oldCell, newCellId: newCell, requestId,
+  };
 
   switch (command) {
     case "global-stop": {

@@ -44,6 +44,17 @@ const PARAMETER_VARIABLES = Object.freeze({
 });
 
 /**
+ * Decorations the platform appends to its own connection strings.
+ *
+ * These are not libpq parameters and carry nothing this code needs - `supa` is what
+ * the Supabase dashboard staples onto pooler URIs, `pgbouncer` is a driver hint. An
+ * operator copying a URI from the dashboard would otherwise hit a hard refusal on a
+ * string the platform itself handed them, so they are skipped by name rather than
+ * lumped in with genuinely unknown parameters.
+ */
+const IGNORED_PARAMETERS = new Set(["supa", "pgbouncer"]);
+
+/**
  * Splits a connection URI into PG* variables.
  *
  * @param {string} uri
@@ -54,11 +65,17 @@ export function connectionEnvironment(uri, fail) {
   if (typeof uri !== "string" || uri.trim() === "") {
     throw fail("connection URI is missing");
   }
-  // `new URL` accepts `host1:5432,host2:5432` as a single opaque hostname, which
-  // would send the whole thing to DNS and fail late with a confusing error - or,
-  // worse, resolve. libpq's multi-host form is not supported here; say so.
+  // libpq's comma-separated multi-host form is not supported here. It has to be
+  // detected BEFORE `new URL`, which rejects `a:5432,b:5432` outright as malformed -
+  // a true refusal, but one that tells the operator nothing about why.
+  //
+  // Scanned on the host portion only, after dropping userinfo at the LAST `@`: a
+  // comma is legal in userinfo, and checking the whole authority rejected any
+  // rotated password containing one, sending the operator hunting for a multi-host
+  // configuration that does not exist.
   const authority = uri.slice(uri.indexOf("//") + 2).split(/[/?]/u, 1)[0];
-  if (authority.includes(",")) {
+  const hostPortion = authority.slice(authority.lastIndexOf("@") + 1);
+  if (hostPortion.includes(",")) {
     throw fail("multi-host connection URIs are not supported");
   }
   let parsed;
@@ -74,17 +91,28 @@ export function connectionEnvironment(uri, fail) {
   if (!database) throw fail("connection URI carries no database name");
 
   const variables = { PGDATABASE: database };
-  if (parsed.hostname) variables.PGHOST = decodeURIComponent(parsed.hostname);
+  if (parsed.hostname) {
+    // `new URL` keeps the brackets on an IPv6 literal. libpq strips them only inside
+    // its own URI parser, never for PGHOST, so `[2406:da18::1]` would reach the
+    // resolver verbatim and die with "could not translate host name". Supabase
+    // direct endpoints are AAAA-only, so this shape is live, not hypothetical.
+    variables.PGHOST = decodeURIComponent(parsed.hostname).replace(/^\[|\]$/gu, "");
+  }
   if (parsed.port) variables.PGPORT = parsed.port;
   if (parsed.username) variables.PGUSER = decodeURIComponent(parsed.username);
   if (parsed.password) variables.PGPASSWORD = decodeURIComponent(parsed.password);
 
   for (const [name, value] of parsed.searchParams) {
+    if (IGNORED_PARAMETERS.has(name)) continue;
+    // `Object.hasOwn`, not `in` or a truthiness check: a plain-object lookup walks
+    // Object.prototype, so `?constructor=`, `?toString=` and `?__proto__=` all
+    // returned something truthy and skipped this throw, putting a junk key into the
+    // child environment while the fail-closed claim said otherwise.
+    if (!Object.hasOwn(PARAMETER_VARIABLES, name)) {
+      throw fail(`connection URI carries unsupported parameter ${name}`);
+    }
     const variable = PARAMETER_VARIABLES[name];
-    // Refusing beats dropping: the operator wrote the parameter for a reason, and
-    // an unrecognised one usually means a typo in a security-relevant setting.
-    if (!variable) throw fail(`connection URI carries unsupported parameter ${name}`);
-    if (variable in variables) {
+    if (Object.hasOwn(variables, variable)) {
       throw fail(`connection URI sets ${name} more than once`);
     }
     variables[variable] = value;
@@ -93,8 +121,20 @@ export function connectionEnvironment(uri, fail) {
 }
 
 /**
- * A complete child environment: the parent's, minus EVERY inherited PG* variable,
- * plus exactly what the URI specifies.
+ * Inherited variables that may NOT be overridden by the URI, but are kept.
+ *
+ * The rule this file enforces is "nothing inherited may change WHERE we connect or
+ * WHO we connect as". PGPASSFILE changes neither: it supplies a password for the
+ * host/user the URI already named. It is kept because this project's own operating
+ * guidance says to inject the password through a temporary passfile rather than in
+ * the URI - stripping it left the child with no password at all, and `psql` failed
+ * with the opaque "canonical query failed with status 2".
+ */
+const KEPT_PARENT_VARIABLES = new Set(["PGPASSFILE"]);
+
+/**
+ * A complete child environment: the parent's, minus every inherited PG* variable
+ * that could redirect the connection, plus exactly what the URI specifies.
  *
  * @param {NodeJS.ProcessEnv} parent
  * @param {Record<string, string>} variables - from {@link connectionEnvironment}
@@ -103,9 +143,16 @@ export function childEnvironment(parent, variables) {
   const environment = {};
   for (const [name, value] of Object.entries(parent)) {
     // PGSERVICE alone can redirect the whole connection to another host, and
-    // PGHOSTADDR outranks PGHOST. Nothing inherited may reach libpq.
-    if (name.startsWith("PG")) continue;
+    // PGHOSTADDR outranks PGHOST. Case-insensitive because Windows environment
+    // names are, and `Pguser` reached libpq intact.
+    const isPostgresVariable = name.slice(0, 2).toUpperCase() === "PG";
+    if (isPostgresVariable && !KEPT_PARENT_VARIABLES.has(name.toUpperCase())) continue;
     environment[name] = value;
+  }
+  // The URI still wins: a passfile inherited from the shell must not override a
+  // password the operator put in the URI for this specific run.
+  if (variables.PGPASSWORD !== undefined || variables.PGPASSFILE !== undefined) {
+    delete environment.PGPASSFILE;
   }
   return { ...environment, ...variables };
 }

@@ -8662,34 +8662,44 @@ declare
 begin
   -- ATTRIBUTION IS TAKEN FROM THE SESSION, NEVER FROM THE REQUEST.
   --
-  -- A record whose actor is whatever the caller typed proves nothing: the party
-  -- we are trying to distinguish (someone holding the service key) writes the
+  -- A record whose actor is whatever the caller typed proves nothing: the party we
+  -- are trying to distinguish - someone holding the service key - writes the
   -- request. Everything recorded below is either set by PostgREST from a verified
   -- JWT, or read from the database itself.
+  --
+  -- Be clear about what that buys HERE: these facades are granted to
+  -- `service_role` only, and a service-key JWT carries no `sub`, so `actorId` is
+  -- null on every invocation these functions can currently receive. It is recorded
+  -- anyway because the value is free, and because the day a member role is granted
+  -- one of these, an unattributed step must look different from an attributed one.
+  -- The load-bearing signal is `rolloutRunId` below, not this.
   begin
     v_actor := nullif(
       current_setting('request.jwt.claims', true)::jsonb ->> 'sub', ''
     )::uuid;
   exception when others then
-    -- No claims, malformed claims, or a non-uuid subject: unattributed is the
-    -- honest answer, and a null actor is exactly the signal a reviewer wants.
     v_actor := null;
   end;
-  -- The role in effect at call time. SECURITY DEFINER changes current_user but not
-  -- the `role` GUC, so this still reads what PostgREST (or the adapter) set:
-  -- `service_role` for a service key, a member role for a signed-in operator.
-  v_caller := coalesce(nullif(current_setting('role', true), ''), 'unknown');
+  -- Who ran it, at three levels, because one of them is uninformative in each of
+  -- the two call paths. Over PostgREST the `role` GUC is the answer and reads
+  -- `service_role`; over a direct psql connection nothing sets it and it reads the
+  -- literal 'none', which is why session_user/current_user are recorded too.
+  -- SECURITY DEFINER changes current_user but not the GUC.
+  v_caller := coalesce(nullif(current_setting('role', true), ''), 'unset');
 
-  -- The canonical rollout run that backs this step. An attacker with the service
-  -- key cannot fabricate one - it carries the reviewed commit and manifest hash
-  -- the activation guard checks - so `rolloutRunId: null` marks a step that ran
-  -- with NO approved rollout behind it. That is the planned/unplanned distinction.
-  select run.id, run.stage, run.reviewed_commit_sha
+  -- The canonical rollout run that AUTHORIZES this step - restricted to RUNNING.
+  --
+  -- Matching COMPLETE runs too made this worthless: `openclaw_rollout_runs_one_active_uidx`
+  -- bounds RUNNING to one per organization, but COMPLETE rows accumulate forever, so
+  -- once an organization finished its first rollout EVERY later step - planned or
+  -- not - inherited that run's id and `rolloutRunId: null` could never appear again.
+  -- A finished rollout authorizes nothing; only a run still in flight does.
+  select run.id, run.stage, run.started_at
     into v_run
   from public.openclaw_rollout_runs run
   where run.organization_id = p_organization_id
-    and run.status in ('RUNNING', 'COMPLETE')
-  order by (run.status = 'RUNNING') desc, run.started_at desc, run.id desc
+    and run.status = 'RUNNING'
+  order by run.started_at desc, run.id desc
   limit 1;
 
   -- Correlates the steps of ONE adapter invocation; ignored unless it is a uuid,
@@ -8702,14 +8712,24 @@ begin
 
   -- Content-free by construction: the step, the organization, and a digest of the
   -- request. Never the request itself, which can carry cell ids and operator text.
+  --
+  -- Everything forensic lives in the EVIDENCE, not in the neighbouring columns:
+  -- append_openclaw_audit_v1 hashes previous_hash|sequence|event_type|evidence_hash,
+  -- so actor_id/request_id/correlation_id sit outside the chain and could be edited
+  -- without breaking it. They are still written for indexing, but the copies here
+  -- are the tamper-evident ones.
   v_evidence := jsonb_build_object(
-    'version', 2,
+    'version', 3,
     'step', p_step,
     'organizationId', p_organization_id,
     'requestDigest', encode(
       extensions.digest(app_private.openclaw_jcs_bytes_v1(p_request), 'sha256'), 'hex'
     ),
+    'actorId', v_actor,
     'callerRole', v_caller,
+    'sessionUser', session_user,
+    'currentUser', current_user,
+    'requestId', v_request_id,
     'rolloutRunId', v_run.id,
     'rolloutStage', v_run.stage
   );
@@ -8728,7 +8748,13 @@ $function$;
 
 -- `force row level security` applies to the owner too, so the definer function
 -- needs both the grant and a policy to read the run that authorizes the step.
-grant select on public.openclaw_rollout_runs to openclaw_migration_writer;
+--
+-- The grant is a COLUMN LIST, not the table: the audit only needs to know which run
+-- is in flight and how far it has got. A table-wide grant would hand this role
+-- `reviewed_commit_sha`, `artifact_digests`, `upstream_sri` and `project_ref` for
+-- every tenant, and every future definer function owned by it would inherit that.
+grant select (id, organization_id, stage, status, started_at)
+  on public.openclaw_rollout_runs to openclaw_migration_writer;
 create policy openclaw_rollout_runs_migration_writer_select
   on public.openclaw_rollout_runs for select to openclaw_migration_writer
   using (true);

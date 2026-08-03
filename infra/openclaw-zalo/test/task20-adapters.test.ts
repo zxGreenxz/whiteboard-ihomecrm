@@ -159,6 +159,80 @@ describe("Task 20 recovery and migration adapters", () => {
     )).toThrow(/multi-host/u);
   });
 
+  it("refuses a parameter that only exists on Object.prototype", async () => {
+    const { connectionEnvironment } = await import(
+      "../scripts/openclaw-recovery-adapter.mjs"
+    );
+    // A plain-object lookup walks the prototype chain, so these all returned
+    // something truthy and skipped the fail-closed throw: `?constructor=1` put
+    // `{"function Object() { [native code] }": "1"}` into the child environment.
+    for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      expect(() => connectionEnvironment(
+        `postgresql://u:p@db.example.com/openclaw?${name}=1`,
+      ), name).toThrow(/unsupported parameter/u);
+    }
+  });
+
+  it("accepts the decorations the platform staples onto its own URIs", async () => {
+    const { connectionEnvironment } = await import(
+      "../scripts/openclaw-recovery-adapter.mjs"
+    );
+    // `?supa=` is what the Supabase dashboard appends to pooler strings. Refusing it
+    // meant a hard failure on a URI the platform itself handed the operator.
+    expect(connectionEnvironment(
+      "postgresql://u:p@pooler.example.com:5432/postgres?supa=base-pooler.x&pgbouncer=true",
+    )).toEqual({
+      PGDATABASE: "postgres",
+      PGHOST: "pooler.example.com",
+      PGPORT: "5432",
+      PGUSER: "u",
+      PGPASSWORD: "p",
+    });
+  });
+
+  it("does not mistake a comma in the password for a multi-host URI", async () => {
+    const { connectionEnvironment } = await import(
+      "../scripts/openclaw-recovery-adapter.mjs"
+    );
+    // A comma is legal in userinfo. Scanning the raw authority rejected any rotated
+    // password containing one, and sent the operator hunting for a multi-host config
+    // that does not exist.
+    expect(connectionEnvironment("postgresql://u:pa,ss@db.example.com/openclaw").PGPASSWORD)
+      .toBe("pa,ss");
+  });
+
+  it("hands libpq an IPv6 host it can actually resolve", async () => {
+    const { connectionEnvironment } = await import(
+      "../scripts/openclaw-recovery-adapter.mjs"
+    );
+    // `new URL` keeps the brackets; libpq strips them only inside its own URI parser,
+    // never for PGHOST. Supabase direct endpoints are AAAA-only, so this is live.
+    expect(connectionEnvironment("postgresql://u:p@[2406:da18::1]:5432/openclaw").PGHOST)
+      .toBe("2406:da18::1");
+  });
+
+  it("keeps an inherited PGPASSFILE, which the operating guidance tells operators to use", async () => {
+    const { childEnvironment } = await import("../scripts/openclaw-connection-env.mjs");
+    // Stripping every PG* variable also stripped the one that carries the password
+    // when the operator followed this project's own rule to inject it through a
+    // temporary passfile: psql then failed with an opaque "status 2".
+    const kept = childEnvironment(
+      { PGPASSFILE: "/tmp/pass", PGSERVICE: "elsewhere" },
+      { PGHOST: "db.example.com", PGDATABASE: "openclaw" },
+    );
+    expect(kept.PGPASSFILE).toBe("/tmp/pass");
+    expect(kept.PGSERVICE).toBeUndefined();
+    // The URI still wins: a password for THIS run must not be shadowed by a passfile
+    // left in the operator's shell.
+    expect(childEnvironment(
+      { PGPASSFILE: "/tmp/pass" },
+      { PGHOST: "db.example.com", PGDATABASE: "openclaw", PGPASSWORD: "secret" },
+    ).PGPASSFILE).toBeUndefined();
+    // Windows environment names are case-insensitive, and `Pguser` reached libpq.
+    expect(childEnvironment({ Pguser: "someone" }, { PGDATABASE: "openclaw" }).Pguser)
+      .toBeUndefined();
+  });
+
   it("gives the child a PG-free environment so nothing inherited outranks the URI", async () => {
     const { childEnvironment } = await import("../scripts/openclaw-connection-env.mjs");
     const parent = {

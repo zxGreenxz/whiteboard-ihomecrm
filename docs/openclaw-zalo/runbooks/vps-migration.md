@@ -60,6 +60,24 @@ credentials revoked rather than resuming the organization on an unverified migra
 - `OPENCLAW_MIGRATION_COTENANT_DIGEST` - the digest printed by
   `snapshot-old-cotenants`, which `compare-cotenants` must reproduce exactly.
 
+**Shape of the `*_URL` Postgres URIs.** The adapters split the URI into discrete
+`PG*` variables rather than handing it to libpq whole, so the accepted shape is
+narrower than "any connection string":
+
+- Query parameters are mapped by name (`sslmode`, `sslrootcert`, `target_session_attrs`,
+  `options`, `connect_timeout`, `passfile`, …). An unrecognised parameter is a hard
+  refusal, not a silent drop - dropping `sslrootcert` would have weakened TLS and
+  dropping `target_session_attrs=read-write` would have aimed a write step at a
+  replica. The platform's own decorations `?supa=` and `?pgbouncer=` are ignored, so
+  a URI copied straight from the Supabase dashboard works.
+- libpq's comma-separated multi-host form is refused. Commas inside the password are
+  fine.
+- The child process gets a PG-free environment, so `PGSERVICE`, `PGHOSTADDR` or
+  `PGSSLMODE` exported in the operator's shell cannot redirect or downgrade the
+  connection. **`PGPASSFILE` is the one exception and is passed through**, because
+  injecting the password through a temporary passfile is what this project's
+  operating guidance asks for; a password inside the URI still wins over it.
+
 Co-tenant handling is read-only by construction: the adapter only ever runs
 `docker ps` and `docker inspect`, and holds no stop/restart/kill/exec verb, so it
 cannot disturb the external 9Router or cli-proxy-api containers. `--copy-session` must
