@@ -29,10 +29,20 @@ describe("schedule actions", () => {
     expect(Object.keys(actions).sort()).toEqual(["cancel", "pause"]);
   });
 
+  it("covers exactly the statuses the CHECK constraint allows", () => {
+    // An earlier version invented "RUNNING" and omitted "ACTIVE" - the one status
+    // that means live and sending - so a running schedule rendered with a blank
+    // label. Driving every real status here is what keeps the copy table complete.
+    for (const status of ["PAUSED", "ACTIVE", "CANCELLED", "COMPLETE"] as const) {
+      const actions = scheduleActions({ canManage: true, status });
+      expect(Object.keys(actions).sort(), status).toEqual(["cancel", "pause"]);
+    }
+  });
+
   it("withholds pause for a schedule that is already paused or finished", () => {
     expect(scheduleActions({ canManage: true, status: "PAUSED" }).pause.blockedBy).toBe("STATUS");
     expect(scheduleActions({ canManage: true, status: "CANCELLED" }).pause.blockedBy).toBe("STATUS");
-    expect(scheduleActions({ canManage: true, status: "RUNNING" }).pause.enabled).toBe(true);
+    expect(scheduleActions({ canManage: true, status: "ACTIVE" }).pause.enabled).toBe(true);
   });
 
   it("still allows cancelling a paused schedule", () => {
@@ -43,7 +53,7 @@ describe("schedule actions", () => {
   });
 
   it("offers nothing without the managing permission", () => {
-    const actions = scheduleActions({ canManage: false, status: "RUNNING" });
+    const actions = scheduleActions({ canManage: false, status: "ACTIVE" });
     expect(actions.pause.blockedBy).toBe("PERMISSION");
     expect(actions.cancel.blockedBy).toBe("PERMISSION");
   });
@@ -72,6 +82,18 @@ describe("directory freshness", () => {
 });
 
 describe("CRM event types", () => {
+  it("names the table each event's CHECK constraint actually pairs it with", () => {
+    // A regex like /^public\./ accepts any invented table name, and one shipped:
+    // `sales_task_due` was labelled `public.sales_tasks`, a table that exists
+    // nowhere, while the constraint pairs it with `lead_activities`.
+    expect(OPENCLAW_CRM_EVENT_TYPES.map(event => [event.eventType, event.canonicalSource]))
+      .toEqual([
+        ["lead_created_or_assigned", "public.leads"],
+        ["room_became_available", "public.rooms"],
+        ["sales_task_due", "public.lead_activities"],
+      ]);
+  });
+
   it("carries exactly the three the CHECK constraint allows, with their sources", () => {
     // There is no RPC to enumerate them - the source of truth is a CHECK constraint -
     // so this list is hardcoded and its provenance is part of the contract.

@@ -18,13 +18,23 @@ export default function OpenClawSchedulesSection() {
   const { selectedOrganizationId, bootstrap, can } = useOpenClawRouteContext();
   const accountId = bootstrap.account?.accountId ?? null;
 
-  const groupsQuery = useOpenClawSalesGroups(selectedOrganizationId, accountId);
-  const schedulesQuery = useOpenClawSchedules(selectedOrganizationId, accountId);
+  // Both list RPCs require manage_automation. Querying without it yields 42501 and
+  // an undefined `data`, which the screen would then render as "no groups / no
+  // schedules" - a permission problem told to the operator as an absence of data.
+  const canManage = can("manage_automation");
+  const groupsQuery = useOpenClawSalesGroups(
+    canManage ? selectedOrganizationId : null, accountId,
+  );
+  const schedulesQuery = useOpenClawSchedules(
+    canManage ? selectedOrganizationId : null, accountId,
+  );
 
   const groups: SalesGroupView[] = (groupsQuery.data?.items ?? []).map(item => ({
     targetId: item.targetId,
     displayName: item.displayName,
-    memberCount: item.memberCount,
+    // Nullable in the contract because the column is; rendering `null` produced
+    // " thành viên" with no number.
+    memberCount: item.memberCount ?? 0,
     directoryVersion: item.directoryVersion,
     directoryRefreshedAt: item.directoryRefreshedAt,
     directoryExpiresAt: item.directoryExpiresAt ?? null,
@@ -41,13 +51,23 @@ export default function OpenClawSchedulesSection() {
     missedOccurrencePolicy: item.missedOccurrencePolicy,
   }));
 
+  if (!canManage) {
+    return (
+      <p data-openclaw-schedules="no-permission" className="p-4 text-sm font-bold text-[#8a4b12]">
+        Bạn không có quyền quản lý tự động hoá cho tổ chức này.
+      </p>
+    );
+  }
+
   return (
     <OpenClawSchedulesAndGroups
       groups={groups}
       schedules={schedules}
       loading={groupsQuery.isLoading || schedulesQuery.isLoading}
-      // The write paths are not bound yet, so the controls stay disabled with their
-      // reason visible rather than pretending to work.
+      // The write paths are not bound yet - pause and cancel need
+      // `expectedScheduleVersion`, which the view type does not yet carry - so the
+      // controls stay disabled AND the screen now renders the reason, which it did
+      // not before.
       canManage={false}
       now={new Date().toISOString()}
       busy={false}

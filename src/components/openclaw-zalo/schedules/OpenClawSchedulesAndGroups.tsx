@@ -35,17 +35,25 @@ const FRESHNESS_COPY = {
   UNKNOWN: "Không rõ hạn danh bạ",
 } as const;
 
-const STATUS_COPY = {
+const STATUS_COPY: Record<OpenClawScheduleStatus, string> = {
   PAUSED: "Đang tạm dừng",
+  // The one status that means live and sending. It was missing, so React rendered
+  // an empty line for it - on a screen that tells the operator activation happens
+  // elsewhere, which made a running schedule invisible.
+  ACTIVE: "Đang chạy",
   CANCELLED: "Đã huỷ",
-  RUNNING: "Đang chạy",
   COMPLETE: "Đã xong",
-} as const;
+};
 
 const ACTION_COPY: Record<ScheduleAction, string> = {
   pause: "Tạm dừng",
   cancel: "Huỷ",
 };
+
+const SCHEDULE_BLOCK_COPY = {
+  PERMISSION: "Cần quyền quản lý tự động hoá.",
+  STATUS: "Không hợp lệ ở trạng thái hiện tại.",
+} as const;
 
 export default function OpenClawSchedulesAndGroups(props: OpenClawSchedulesAndGroupsProps) {
   if (props.loading && props.groups.length === 0 && props.schedules.length === 0) {
@@ -158,18 +166,29 @@ export default function OpenClawSchedulesAndGroups(props: OpenClawSchedulesAndGr
                   <p className="mt-1 text-xs leading-5 text-[#607585]">
                     Lỡ nhịp thì bỏ qua ({schedule.missedOccurrencePolicy}), không gửi bù.
                   </p>
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {(Object.keys(ACTION_COPY) as ScheduleAction[]).map(action => (
-                      <button
-                        key={action}
-                        type="button"
-                        onClick={() => props.onScheduleAction(action, schedule)}
-                        disabled={!actions[action].enabled || props.busy}
-                        data-openclaw-action={`schedule-${action}`}
-                        className="min-h-11 flex-1 border border-[#9fb0bf] bg-white px-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {ACTION_COPY[action]}
-                      </button>
+                      <div key={action}>
+                        <button
+                          type="button"
+                          onClick={() => props.onScheduleAction(action, schedule)}
+                          disabled={!actions[action].enabled || props.busy}
+                          data-openclaw-action={`schedule-${action}`}
+                          className="min-h-11 w-full border border-[#9fb0bf] bg-white px-3 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {ACTION_COPY[action]}
+                        </button>
+                        {/* A greyed button with no reason reads as a broken screen.
+                            The knowledge screen states its reasons; so does this. */}
+                        {actions[action].blockedBy !== null && (
+                          <p
+                            data-openclaw-schedule-blocked={`${action}:${actions[action].blockedBy}`}
+                            className="mt-1 text-xs leading-5 text-[#8a4b12]"
+                          >
+                            {SCHEDULE_BLOCK_COPY[actions[action].blockedBy!]}
+                          </p>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </li>

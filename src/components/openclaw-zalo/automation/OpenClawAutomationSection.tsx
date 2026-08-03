@@ -22,15 +22,31 @@ export default function OpenClawAutomationSection() {
   const accountId = bootstrap.account?.accountId ?? null;
   const [selectedAutomationId, setSelectedAutomationId] = useState<string | null>(null);
 
-  const listQuery = useOpenClawAutomationList(selectedOrganizationId, accountId);
+  // Gated like the knowledge screen: every automation RPC requires
+  // manage_automation, so a view-only member gets 42501, `data` stays undefined,
+  // and an ungated screen would report a permission problem as "no automations".
+  const canManageAutomation = can("manage_automation");
+  const listQuery = useOpenClawAutomationList(
+    canManageAutomation ? selectedOrganizationId : null, accountId,
+  );
   const automations = listQuery.data?.items ?? [];
   const first = automations[0] ?? null;
   // Defaults to the first automation so the wizard has something to show without a
   // second click; the picker overrides it.
   const detailQuery = useOpenClawAutomation(
-    selectedOrganizationId, accountId, selectedAutomationId ?? first?.automationId ?? null,
+    canManageAutomation ? selectedOrganizationId : null,
+    accountId,
+    selectedAutomationId ?? first?.automationId ?? null,
   );
   const selected = detailQuery.data?.automation ?? null;
+
+  if (!canManageAutomation) {
+    return (
+      <p data-openclaw-automation="no-permission" className="p-4 text-sm font-bold text-[#8a4b12]">
+        Bạn không có quyền quản lý tự động hoá cho tổ chức này.
+      </p>
+    );
+  }
 
   if (listQuery.isLoading) {
     return <OpenClawBoundaryState state="loading" compact />;
@@ -72,7 +88,7 @@ export default function OpenClawAutomationSection() {
         mode={(selected?.mode ?? "DRAFT_ONLY") as OpenClawMode}
         currentStep={wizardStepFromConfiguration(selected?.configuration ?? null)}
         control={bootstrap.control}
-        canManageAutomation={can("manage_automation")}
+        canManageAutomation={canManageAutomation}
         dryRunHash={selected?.dryRunHash ?? null}
         dryRunResult={null}
         busy={detailQuery.isLoading}

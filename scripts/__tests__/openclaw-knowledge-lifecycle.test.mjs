@@ -25,6 +25,7 @@ const ORG = "dddd0000-0000-4000-8000-000000000001";
 const ACCOUNT = "dddd1000-0000-4000-8000-00000000000a";
 const SOURCE = "dddd5000-0000-4000-8000-000000000001";
 const VERSION = "dddd6000-0000-4000-8000-000000000001";
+const POLICY = "dddd7000-0000-4000-8000-000000000001";
 
 async function withSeededDatabase(operation) {
   const database = await createDisposableOpenClawDatabase({ verifyCli: false });
@@ -141,5 +142,92 @@ describe("knowledge lifecycle under the retention guard", () => {
         ).not.toBeNull();
       }
     });
+  }, HARNESS_TIMEOUT);
+});
+
+describe("policy versions are untouched by the knowledge exemptions", () => {
+  it("still lets the maintenance writer redact a policy version", async () => {
+    // REGRESSION. The knowledge exemptions were first written as
+    // `TG_TABLE_NAME='openclaw_knowledge_versions' and OLD.validation_result is null`.
+    // openclaw_policy_versions has no such column, and PL/pgSQL evaluates the whole
+    // boolean as one SQL expression - SQL AND does not guarantee short-circuit - so
+    // the field reference resolved anyway and raised 42703 BEFORE the current_user
+    // check. That aborted the entire retention pass for the organization, not just
+    // policy redaction, because one run enumerates every evidence kind together.
+    const database = await createDisposableOpenClawDatabase({ verifyCli: false });
+    try {
+      await database.query("set session_replication_role = replica");
+      await database.query(
+        `insert into public.organizations(id, name) values ($1, 'policy-harness')
+         on conflict (id) do nothing`,
+        [ORG],
+      );
+      await database.query(
+        `insert into public.openclaw_policy_versions(
+           id, organization_id, account_id, policy_id, version, lifecycle_state,
+           timezone, rate_limits, policy_payload, payload_hash, disclosure_version,
+           published_at, archived_at)
+         values ($1, $2, $3, $4, 1, 'ARCHIVED', 'Asia/Bangkok', '{}'::jsonb, '{}'::jsonb, $5, 1,
+                 clock_timestamp(), clock_timestamp())
+         on conflict (id) do nothing`,
+        [POLICY, ORG, ACCOUNT, POLICY, "b".repeat(64)],
+      );
+      await database.query("set session_replication_role = origin");
+
+      await database.query("begin");
+      let failure = null;
+      try {
+        await database.query("set local role openclaw_maintenance_writer");
+        await database.query(
+          `update public.openclaw_policy_versions
+           set rate_limits = jsonb_build_object('marker','REDACTED_BY_RETENTION'),
+               policy_payload = jsonb_build_object('marker','REDACTED_BY_RETENTION')
+           where organization_id = $1 and id = $2`,
+          [ORG, POLICY],
+        );
+      } catch (error) {
+        failure = String(error?.message ?? error);
+      } finally {
+        await database.query("rollback");
+      }
+      expect(failure).toBeNull();
+    } finally {
+      await database.close();
+    }
+  }, HARNESS_TIMEOUT);
+
+  it("still refuses a policy update that is not a redaction", async () => {
+    const database = await createDisposableOpenClawDatabase({ verifyCli: false });
+    try {
+      await database.query("set session_replication_role = replica");
+      await database.query(
+        `insert into public.organizations(id, name) values ($1, 'policy-harness')
+         on conflict (id) do nothing`,
+        [ORG],
+      );
+      await database.query(
+        `insert into public.openclaw_policy_versions(
+           id, organization_id, account_id, policy_id, version, lifecycle_state,
+           timezone, rate_limits, policy_payload, payload_hash, disclosure_version,
+           published_at, archived_at)
+         values ($1, $2, $3, $4, 1, 'ARCHIVED', 'Asia/Bangkok', '{}'::jsonb, '{}'::jsonb, $5, 1,
+                 clock_timestamp(), clock_timestamp())
+         on conflict (id) do nothing`,
+        [POLICY, ORG, ACCOUNT, POLICY, "b".repeat(64)],
+      );
+      await database.query("set session_replication_role = origin");
+
+      // 42501 from the current_user check, NOT 42703 from a missing field.
+      const failure = await asFunctionOwner(
+        database,
+        `update public.openclaw_policy_versions set timezone = 'UTC'
+         where organization_id = $1 and id = $2`,
+        [ORG, POLICY],
+      );
+      expect(failure).toMatch(/only openclaw_maintenance_writer/iu);
+      expect(failure).not.toMatch(/validation_result/iu);
+    } finally {
+      await database.close();
+    }
   }, HARNESS_TIMEOUT);
 });

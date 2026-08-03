@@ -3,20 +3,33 @@ import { useOpenClawRouteContext } from "../OpenClawRouteGuard";
 import {
   useOpenClawKnowledge,
   useOpenClawKnowledgeList,
+  useOpenClawKnowledgeMutations,
   useOpenClawKnowledgePreview,
 } from "@/hooks/openclaw-zalo/useOpenClawResources";
+import { classifyKnowledgeFailure } from "@/lib/openclaw-zalo/knowledge";
 import type { KnowledgeSourceView } from "@/lib/openclaw-zalo/knowledge";
 import OpenClawKnowledge from "./OpenClawKnowledge";
 
 /**
  * Wires the knowledge screen to real data.
  *
- * The mutations are deliberately not bound yet: create and update both need a
- * content body, and no RPC returns the existing one, so an edit form here would have
- * to invent a compose flow before the read gap is closed. The read screen is
- * genuinely useful on its own - lifecycle, sensitivity, version and the blocked
- * reasons - and shipping it without a half-built editor keeps that honest.
+ * Validate, publish and archive ARE bound: their requests are
+ * `{version, organizationId, sourceId, knowledgeVersionId}` and nothing more, and the
+ * detail RPC already returns the version id. Only Edit stays unbound, because create
+ * and update need a content body that no RPC returns - and it is DISABLED rather
+ * than wired to a no-op. An enabled button that does nothing is the failure this
+ * screen was written to avoid.
  */
+/** One sentence per distinct server behaviour, because each needs a different act. */
+const FAILURE_COPY = {
+  IDEMPOTENCY_CONFLICT: "Thao tác trùng mã lần gọi. Thử lại để hệ thống cấp mã mới.",
+  VERSION_CONFLICT: "Người khác vừa sửa nguồn này. Tải lại rồi thao tác trên phiên bản mới.",
+  NOT_FOUND: "Không tìm thấy nguồn hoặc phiên bản này trong tổ chức hiện tại.",
+  PERMISSION_DENIED: "Bạn không có quyền thực hiện thao tác này.",
+  PRECONDITION: "Trạng thái hiện tại không cho phép thao tác này. Tải lại để xem trạng thái mới.",
+  UNKNOWN: "Thao tác không thành công. Thử lại hoặc báo vận hành.",
+} as const;
+
 export default function OpenClawKnowledgeSection() {
   const { selectedOrganizationId, bootstrap, can } = useOpenClawRouteContext();
   const accountId = bootstrap.account?.accountId ?? null;
@@ -45,6 +58,10 @@ export default function OpenClawKnowledgeSection() {
     selectedSourceId,
   );
   const detail = detailQuery.data?.knowledge ?? null;
+  const mutations = useOpenClawKnowledgeMutations(
+    selectedOrganizationId ?? "", accountId ?? "",
+  );
+  const [failure, setFailure] = useState<string | null>(null);
 
   const sources: KnowledgeSourceView[] = (listQuery.data?.items ?? []).map(item => ({
     sourceId: item.sourceId!,
@@ -70,11 +87,35 @@ export default function OpenClawKnowledgeSection() {
         text: match.chunkText!,
       }))}
       previewQuery={previewQuery}
-      busy={detailQuery.isLoading}
-      onSelectSource={setSelectedSourceId}
-      // Mutations land with the compose flow; wiring a handler that silently does
-      // nothing would be worse than a disabled control.
-      onAct={() => undefined}
+      busy={detailQuery.isLoading || mutations.validate.isPending
+        || mutations.publish.isPending || mutations.archive.isPending}
+      onSelectSource={sourceId => {
+        setSelectedSourceId(sourceId);
+        setFailure(null);
+      }}
+      failureMessage={failure}
+      onAct={(action, source) => {
+        // Edit needs a compose flow; the screen disables it rather than accepting a
+        // click it cannot honour.
+        if (action === "edit") return;
+        const knowledgeVersionId = detail?.publishedVersionId ?? null;
+        if (knowledgeVersionId === null) {
+          setFailure("Chưa đọc được phiên bản hiện tại của nguồn này. Tải lại rồi thử tiếp.");
+          return;
+        }
+        const request = {
+          version: 1 as const,
+          organizationId: selectedOrganizationId,
+          sourceId: source.sourceId,
+          knowledgeVersionId,
+        };
+        const variables = { clientOperationId: crypto.randomUUID(), request };
+        const onError = (error: unknown) => setFailure(FAILURE_COPY[classifyKnowledgeFailure(error)]);
+        setFailure(null);
+        if (action === "validate") mutations.validate.mutate(variables, { onError });
+        if (action === "publish") mutations.publish.mutate(variables, { onError });
+        if (action === "archive") mutations.archive.mutate(variables, { onError });
+      }}
       onPreviewQueryChange={setPreviewQuery}
     />
   );

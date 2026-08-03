@@ -26,6 +26,7 @@ const props = {
   previewMatches: [],
   previewQuery: "",
   busy: false,
+  failureMessage: null as string | null,
   onSelectSource: noop,
   onAct: noop,
   onPreviewQueryChange: noop,
@@ -71,11 +72,26 @@ describe("knowledge screen", () => {
     expect(html).toContain("Phải kiểm tra bản nháp trước khi xuất bản");
   });
 
-  it("refuses to edit an archived source", () => {
-    // The update RPC has no lifecycle guard and would move it back to DRAFT.
+  it("refuses to edit an archived source for the lifecycle reason", () => {
+    // The update RPC has no lifecycle guard and would move it back to DRAFT. The
+    // reason shown must be that, not the missing compose flow.
     const html = render({ sources: [{ ...source, lifecycleState: "ARCHIVED" }] });
     expect(buttonTag(html, "edit")).toContain('disabled=""');
     expect(html).toContain('data-openclaw-knowledge-blocked="edit:LIFECYCLE"');
+    expect(html).not.toContain('data-openclaw-knowledge-blocked="edit:NO_COMPOSE_FLOW"');
+  });
+
+  it("disables Edit and says why, instead of accepting a click it cannot honour", () => {
+    // An enabled button wired to a no-op is the failure this screen exists to avoid.
+    const html = render();
+    expect(buttonTag(html, "edit")).toContain('disabled=""');
+    expect(html).toContain('data-openclaw-knowledge-blocked="edit:NO_COMPOSE_FLOW"');
+  });
+
+  it("shows what an action was refused with", () => {
+    const html = render({ failureMessage: "Người khác vừa sửa nguồn này." });
+    expect(html).toContain('data-openclaw-knowledge="failure"');
+    expect(html).toContain("Người khác vừa sửa nguồn này.");
   });
 
   it("states that the draft body cannot be read back, and shows the hash instead", () => {

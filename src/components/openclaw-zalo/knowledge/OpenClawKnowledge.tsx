@@ -14,6 +14,8 @@ interface OpenClawKnowledgeProps {
   previewMatches: readonly { chunkIndex: number; text: string }[];
   previewQuery: string;
   busy: boolean;
+  /** What the last action was refused with, already mapped to operator copy. */
+  failureMessage: string | null;
   onSelectSource: (sourceId: string) => void;
   onAct: (action: KnowledgeAction, source: KnowledgeSourceView) => void;
   onPreviewQueryChange: (query: string) => void;
@@ -143,6 +145,15 @@ export default function OpenClawKnowledge(props: OpenClawKnowledgeProps) {
               nội dung nội bộ thành nội dung khách xem được thì phải tạo nguồn mới.
             </p>
 
+            {props.failureMessage !== null && (
+              <p
+                data-openclaw-knowledge="failure"
+                className="mt-3 border border-[#c0563a] bg-[#fdeceb] p-3 text-sm font-bold text-[#8a2f1c]"
+              >
+                {props.failureMessage}
+              </p>
+            )}
+
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {(Object.keys(ACTION_COPY) as KnowledgeAction[]).map(action => {
                 const state = knowledgeActions({
@@ -155,12 +166,23 @@ export default function OpenClawKnowledge(props: OpenClawKnowledgeProps) {
                     <button
                       type="button"
                       onClick={() => props.onAct(action, selected)}
-                      disabled={!state.enabled || props.busy}
+                      // Edit has no compose flow yet, so it is disabled rather than
+                      // wired to a handler that silently does nothing.
+                      disabled={!state.enabled || props.busy || action === "edit"}
                       data-openclaw-action={`knowledge-${action}`}
                       className="min-h-11 w-full border border-[#0f766e] bg-white px-3 text-sm font-bold text-[#0b5d51] disabled:cursor-not-allowed disabled:border-[#9fb0bf] disabled:text-[#8695a2]"
                     >
                       {ACTION_COPY[action]}
                     </button>
+                    {action === "edit" && state.blockedBy === null && (
+                      <p
+                        data-openclaw-knowledge-blocked="edit:NO_COMPOSE_FLOW"
+                        className="mt-1 text-xs leading-5 text-[#8a4b12]"
+                      >
+                        Chưa sửa được từ đây: nội dung cũ không đọc lại được nên cần một màn
+                        hình soạn thảo riêng.
+                      </p>
+                    )}
                     {state.blockedBy !== null && (
                       <p
                         data-openclaw-knowledge-blocked={`${action}:${state.blockedBy}`}

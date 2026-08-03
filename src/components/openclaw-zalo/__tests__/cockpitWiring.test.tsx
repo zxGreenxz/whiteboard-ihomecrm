@@ -17,7 +17,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const harness = vi.hoisted(() => ({
   connectionState: "CONNECTED" as
     | "CONNECTED" | "DISCONNECTED" | "RECONNECT_REQUIRED" | "QR_PENDING",
-  permissions: new Set<string>(["view", "send", "manage_connections", "manage_handoff"]),
+  // Includes the managing permissions, because every knowledge and automation RPC
+  // demands one: without them the sections render their permission notice and the
+  // mount assertions below would pass on the degenerate branch.
+  permissions: new Set<string>([
+    "view", "send", "manage_connections", "manage_handoff",
+    "manage_knowledge", "manage_automation",
+  ]),
 }));
 
 const ORG = "dddd0000-0000-4000-8000-000000000001";
@@ -67,6 +73,7 @@ vi.mock("@tanstack/react-query", async importOriginal => ({
 }));
 
 const idleQuery = { data: undefined, isLoading: false, error: null, refetch: vi.fn() };
+const idleActionMutation = { mutate: vi.fn(), isPending: false };
 
 vi.mock("@/hooks/openclaw-zalo/useOpenClawInbox", () => ({
   useOpenClawInbox: () => ({ ...idleQuery, data: { version: 1, items: [], limit: 50 } }),
@@ -78,13 +85,35 @@ const emptyList = { version: 1, items: [], limit: 50 };
 vi.mock("@/hooks/openclaw-zalo/useOpenClawResources", () => ({
   useOpenClawAiDrafts: () => ({ ...idleQuery, data: { version: 1, items: [], limit: 20 } }),
   useOpenClawTakeovers: () => ({ ...idleQuery, data: emptyList }),
-  useOpenClawKnowledgeList: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawKnowledgeList: () => ({
+    ...idleQuery,
+    data: { version: 1, items: [{
+      sourceId: "s1", title: "FAQ", sourceKind: "FAQ", sensitivity: "CUSTOMER_SAFE",
+      lifecycleState: "DRAFT", currentVersion: 1,
+    }], limit: 50 },
+  }),
   useOpenClawKnowledge: () => ({ ...idleQuery, data: undefined }),
   useOpenClawKnowledgePreview: () => ({ ...idleQuery, data: undefined }),
-  useOpenClawAutomationList: () => ({ ...idleQuery, data: emptyList }),
-  useOpenClawAutomation: () => ({ ...idleQuery, data: undefined }),
+  // NON-EMPTY on purpose: with an empty list the automation section short-circuits
+  // to its "no automations" paragraph, and a prefix assertion on
+  // `data-openclaw-automation=` would pass without the wizard ever rendering.
+  useOpenClawAutomationList: () => ({
+    ...idleQuery,
+    data: { version: 1, items: [{ automationId: "a1", name: "Trả lời khách mới" }], limit: 50 },
+  }),
+  useOpenClawAutomation: () => ({
+    ...idleQuery,
+    data: { version: 1, automation: { automationId: "a1", name: "Trả lời khách mới", mode: "DRAFT_ONLY" } },
+  }),
   useOpenClawSalesGroups: () => ({ ...idleQuery, data: emptyList }),
   useOpenClawSchedules: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawKnowledgeMutations: () => ({
+    createDraft: idleActionMutation,
+    updateDraft: idleActionMutation,
+    validate: idleActionMutation,
+    publish: idleActionMutation,
+    archive: idleActionMutation,
+  }),
 }));
 
 const idleMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
@@ -124,7 +153,10 @@ const renderSection = (
 
 beforeEach(() => {
   harness.connectionState = "CONNECTED";
-  harness.permissions = new Set(["view", "send", "manage_connections", "manage_handoff"]);
+  harness.permissions = new Set([
+    "view", "send", "manage_connections", "manage_handoff",
+    "manage_knowledge", "manage_automation",
+  ]);
 });
 
 describe("cockpit wiring", () => {
@@ -150,10 +182,13 @@ describe("cockpit wiring", () => {
   it("mounts each Task 24 section behind its own id, and only there", () => {
     // Same guarantee as the inbox: rendered rather than grepped, so removing a branch
     // or pointing it at the wrong component fails here.
+    // Markers that only the REAL screen emits. Prefix matches like
+    // `data-openclaw-knowledge=` were satisfied by the permission notice and the
+    // "no automations" paragraph, so two of the three assertions proved nothing.
     const cases = [
-      ["knowledge", "data-openclaw-knowledge="],
-      ["automation", "data-openclaw-automation="],
-      ["schedules", "data-openclaw-schedules="],
+      ["knowledge", 'data-openclaw-knowledge="sources"'],
+      ["automation", 'data-openclaw-automation="wizard"'],
+      ["schedules", 'data-openclaw-schedules="groups"'],
     ] as const;
     for (const [section, marker] of cases) {
       const html = renderSection(section);

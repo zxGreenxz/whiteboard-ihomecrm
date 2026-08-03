@@ -20,11 +20,22 @@ export const OPENCLAW_CRM_EVENT_TYPES = [
   {
     eventType: "sales_task_due",
     label: "Công việc bán hàng tới hạn",
-    canonicalSource: "public.sales_tasks",
+    // Not `sales_tasks`: the CHECK pairs this event with `lead_activities` and the
+    // emitter writes that table. A plausible-looking wrong table name is worse than
+    // none, because an operator would go looking for it.
+    canonicalSource: "public.lead_activities",
   },
 ] as const;
 
-export type OpenClawScheduleStatus = "PAUSED" | "CANCELLED" | "RUNNING" | "COMPLETE";
+/**
+ * Exactly the statuses the CHECK constraint allows.
+ *
+ * `RUNNING` was invented here and `ACTIVE` - the one status that means "this
+ * schedule is live and sending" - was missing, so a live schedule rendered with a
+ * BLANK label on a screen whose copy tells the operator activation happens
+ * elsewhere.
+ */
+export type OpenClawScheduleStatus = "PAUSED" | "ACTIVE" | "CANCELLED" | "COMPLETE";
 
 export type ScheduleAction = "pause" | "cancel";
 
