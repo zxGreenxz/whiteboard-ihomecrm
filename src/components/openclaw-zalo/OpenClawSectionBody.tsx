@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { OpenClawConnectionState } from "@/lib/openclaw-zalo/types";
 import OpenClawBoundaryState from "./OpenClawBoundaryState";
 import OpenClawInboxSection from "./inbox/OpenClawInboxSection";
+import OpenClawOverviewSection from "./overview/OpenClawOverviewSection";
 import OpenClawKnowledgeSection from "./knowledge/OpenClawKnowledgeSection";
 import OpenClawAutomationSection from "./automation/OpenClawAutomationSection";
 import OpenClawSchedulesSection from "./schedules/OpenClawSchedulesSection";
@@ -64,6 +65,7 @@ export default function OpenClawSectionBody({
   }
 
   switch (activeSection) {
+    case "overview": return <OpenClawOverviewSection />;
     case "inbox": return <OpenClawInboxSection />;
     case "knowledge": return <OpenClawKnowledgeSection />;
     case "automation": return <OpenClawAutomationSection />;

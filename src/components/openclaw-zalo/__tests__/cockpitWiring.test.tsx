@@ -118,6 +118,14 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawResources", () => ({
 
 const idleMutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false };
 
+vi.mock("@/hooks/openclaw-zalo/useOpenClawOverview", () => ({
+  useOpenClawOverview: () => ({ ...idleQuery, data: undefined }),
+}));
+
+vi.mock("@/hooks/openclaw-zalo/useOpenClawOperations", () => ({
+  useOpenClawHealthEvents: () => ({ ...idleQuery, data: emptyList }),
+}));
+
 vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({
   useOpenClawHandoffMutations: () => ({
     takeoverConversation: idleMutation,
@@ -127,6 +135,7 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({
   }),
   useOpenClawCreateSendIntent: () => idleMutation,
   useOpenClawAcknowledgeDisclosure: () => idleMutation,
+  useOpenClawSetControlState: () => idleMutation,
 }));
 
 vi.mock("@/lib/openclaw-zalo/qrClient", () => ({
@@ -141,7 +150,7 @@ const { default: OpenClawSectionBody } = await import("../OpenClawSectionBody");
 const render = () => renderToStaticMarkup(createElement(OpenClawCockpit, { mobile: false }));
 
 const renderSection = (
-  activeSection: "overview" | "inbox" | "knowledge" | "automation" | "schedules",
+  activeSection: "overview" | "inbox" | "knowledge" | "automation" | "schedules" | "operations",
 ) =>
   renderToStaticMarkup(createElement(OpenClawSectionBody, {
     activeSection,
@@ -164,7 +173,7 @@ describe("cockpit wiring", () => {
     // Pins the default so the next assertion is meaningful rather than accidental.
     const html = render();
     expect(html).not.toContain('data-openclaw-inbox=');
-    expect(html).toContain("Tổng quan vận hành");
+    expect(html).toContain('data-openclaw-overview="root"');
   });
 
   it("mounts the inbox for the inbox section, and only for it", () => {
@@ -174,9 +183,14 @@ describe("cockpit wiring", () => {
     expect(inbox).toContain('data-openclaw-inbox=');
     expect(inbox).not.toContain("placeholder");
 
+    // The overview is now a real screen too, so the placeholder children are only
+    // reachable from a section with no component of its own.
     const overview = renderSection("overview");
-    expect(overview).toContain("placeholder");
+    expect(overview).toContain('data-openclaw-overview="root"');
     expect(overview).not.toContain('data-openclaw-inbox=');
+
+    const operations = renderSection("operations");
+    expect(operations).toContain("placeholder");
   });
 
   it("mounts each Task 24 section behind its own id, and only there", () => {
@@ -195,9 +209,9 @@ describe("cockpit wiring", () => {
       expect(html, section).toContain(marker);
       expect(html, section).not.toContain("placeholder");
     }
-    // And the overview still shows the placeholder rather than any of them.
+    // And the overview shows its own screen rather than any of them.
     const overview = renderSection("overview");
-    expect(overview).toContain("placeholder");
+    expect(overview).toContain('data-openclaw-overview="root"');
     for (const [, marker] of cases) expect(overview).not.toContain(marker);
   });
 
