@@ -107,6 +107,11 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawResources", () => ({
   }),
   useOpenClawSalesGroups: () => ({ ...idleQuery, data: emptyList }),
   useOpenClawSchedules: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawDeadLetterReplayMutation: () => idleActionMutation,
+  useOpenClawLegalHoldMutations: () => ({
+    create: idleActionMutation,
+    release: idleActionMutation,
+  }),
   useOpenClawKnowledgeMutations: () => ({
     createDraft: idleActionMutation,
     updateDraft: idleActionMutation,
@@ -124,6 +129,9 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawOverview", () => ({
 
 vi.mock("@/hooks/openclaw-zalo/useOpenClawOperations", () => ({
   useOpenClawHealthEvents: () => ({ ...idleQuery, data: emptyList }),
+  // Returns a bare array, unlike the dead-letter hook's page envelope.
+  useOpenClawUnknown: () => ({ ...idleQuery, data: [] }),
+  useOpenClawDeadLetters: () => ({ ...idleQuery, data: emptyList }),
 }));
 
 vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({
@@ -189,8 +197,9 @@ describe("cockpit wiring", () => {
     expect(overview).toContain('data-openclaw-overview="root"');
     expect(overview).not.toContain('data-openclaw-inbox=');
 
+    // Operations is a real screen now too; the placeholder children are unreachable.
     const operations = renderSection("operations");
-    expect(operations).toContain("placeholder");
+    expect(operations).toContain('data-openclaw-operations="root"');
   });
 
   it("mounts each Task 24 section behind its own id, and only there", () => {

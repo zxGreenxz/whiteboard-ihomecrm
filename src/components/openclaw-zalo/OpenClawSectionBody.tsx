@@ -3,6 +3,7 @@ import type { OpenClawConnectionState } from "@/lib/openclaw-zalo/types";
 import OpenClawBoundaryState from "./OpenClawBoundaryState";
 import OpenClawInboxSection from "./inbox/OpenClawInboxSection";
 import OpenClawOverviewSection from "./overview/OpenClawOverviewSection";
+import OpenClawOperationsSection from "./operations/OpenClawOperationsSection";
 import OpenClawKnowledgeSection from "./knowledge/OpenClawKnowledgeSection";
 import OpenClawAutomationSection from "./automation/OpenClawAutomationSection";
 import OpenClawSchedulesSection from "./schedules/OpenClawSchedulesSection";
@@ -70,6 +71,7 @@ export default function OpenClawSectionBody({
     case "knowledge": return <OpenClawKnowledgeSection />;
     case "automation": return <OpenClawAutomationSection />;
     case "schedules": return <OpenClawSchedulesSection />;
+    case "operations": return <OpenClawOperationsSection />;
     default: break;
   }
 
