@@ -3,7 +3,13 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const read = (name: string) => readFileSync(resolve(process.cwd(), "supabase/migrations", name), "utf8");
+// CRLF-normalised. `core.autocrlf=true` in the SYSTEM gitconfig gives the checkout
+// CRLF while these assertions are written with LF, so any check that spans a line
+// boundary fails on Windows and passes on CI for byte-identical SQL. A sibling gate
+// file hit exactly that on an `alter function ...()` / `owner to ...` pair.
+const read = (name: string) =>
+  readFileSync(resolve(process.cwd(), "supabase/migrations", name), "utf8")
+    .replace(/\r\n/gu, "\n");
 
 const inbox = () => read("20260727020000_openclaw_inbox_schema.sql");
 const automation = () => read("20260727025000_openclaw_inbound_automation.sql");

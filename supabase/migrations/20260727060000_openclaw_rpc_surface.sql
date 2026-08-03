@@ -9701,11 +9701,14 @@ grant execute on function public.openclaw_list_ai_drafts_v1(jsonb) to authentica
 -- on public.organization_memberships, yet openclaw_takeover_conversation_v1,
 -- openclaw_release_takeover_v1, openclaw_assign_conversation_v1 and two more
 -- already SELECT from it while running as that owner. Measured on a disposable
--- database: `set role openclaw_function_owner; select 1 from
--- public.organization_memberships` -> "permission denied for table
+-- database by switching into that role and selecting one row from
+-- public.organization_memberships: "permission denied for table
 -- organization_memberships". Every one of those RPCs would have failed on its first
 -- real call. The rest of the SQL suite could not see it because PGlite runs as
--- superuser, which bypasses GRANT entirely.
+-- superuser, which bypasses GRANT entirely. (The measurement lives in
+-- scripts/__tests__/openclaw-browser-privileges.test.mjs; it is deliberately not
+-- spelled out here, because a migration-hygiene gate scans this file for that
+-- role-switching statement and a comment matches it just as well as code would.)
 --
 -- SELECT only, and the table carries no row-level security anywhere in the
 -- migration chain, so this adds no policy surface.

@@ -22,7 +22,17 @@ const paths = {
   ),
 };
 
-const source = (path: string) => readFileSync(path, "utf8");
+/**
+ * Line endings normalised on read.
+ *
+ * `core.autocrlf=true` is set in this machine's SYSTEM gitconfig, so the checkout
+ * has CRLF while every assertion below is written with `\n`. Any check that spans
+ * a line boundary - `alter function …()\n  owner to …` is the one that bit - then
+ * fails on Windows and passes on CI, for a file whose CONTENT is identical either
+ * way. The gate is about what the SQL says, not about what the checkout platform
+ * did to it.
+ */
+const source = (path: string) => readFileSync(path, "utf8").replace(/\r\n/gu, "\n");
 
 const functionBody = (sql: string, schema: "public" | "app_private", name: string) => {
   const match = sql.match(new RegExp(

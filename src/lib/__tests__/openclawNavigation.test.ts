@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const readSource = (relativePath: string) => readFileSync(relativePath, "utf8");
+// CRLF-normalised: see openclawInboxMigration.test.ts. A checkout with CRLF makes
+// any assertion spanning a line boundary fail on Windows for identical source.
+const readSource = (relativePath: string) =>
+  readFileSync(relativePath, "utf8").replace(/\r\n/gu, "\n");
 
 describe("OpenClaw Zalo navigation contract", () => {
   it("lazy-loads an exact, independently guarded route", () => {

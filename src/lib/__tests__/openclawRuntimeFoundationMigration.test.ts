@@ -3,10 +3,12 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+// CRLF-normalised: see openclawInboxMigration.test.ts. A checkout with CRLF makes
+// any assertion spanning a line boundary fail on Windows for identical SQL.
 const migration = () => readFileSync(
   resolve(process.cwd(), "supabase/migrations/20260727015000_openclaw_security_principals.sql"),
   "utf8",
-);
+).replace(/\r\n/gu, "\n");
 
 const tables = [
   "openclaw_accounts",
