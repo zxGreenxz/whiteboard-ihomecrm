@@ -57,6 +57,21 @@ export interface FakeRouterClientOptions {
    * would let that regression through.
    */
   onSftp?: () => void;
+  /**
+   * Answers `command` with a refusal instead of running it, the way a real
+   * RouterOS answers one: the text on STDOUT with **exit status 0**.
+   *
+   * Models a router whose managed group lacks the policy a command needs. The
+   * shape is measured, not invented — on the demo hEX (7.20.8, 2026-08-03) four
+   * different denied commands answered:
+   *
+   *     not enough permissions (9)
+   *     not enough permissions (9) (/user/add; line 1)
+   *
+   * Note there is NO `failure:` prefix, which is exactly why this class of
+   * refusal used to read as success.
+   */
+  refuse?: (command: string) => string | null;
 }
 
 export interface FakeRouterSession {
@@ -138,6 +153,12 @@ export function createFakeRouterSession(
         // still `undefined` and never emits `exit`.
         channel.emit("close", undefined);
       });
+
+      const refusal = options.refuse?.(command) ?? null;
+      if (refusal !== null) {
+        settle(refusal.endsWith("\n") ? refusal : `${refusal}\n`, ending ?? { kind: "exit", code: 0 });
+        return;
+      }
 
       const readOutput = readCommandOutput(router, command);
       if (readOutput !== null) {

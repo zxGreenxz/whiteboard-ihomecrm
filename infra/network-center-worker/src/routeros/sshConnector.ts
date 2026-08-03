@@ -309,7 +309,7 @@ export function parseRouterOsValueRecords(output: string): Array<Record<string, 
 }
 
 const ROUTEROS_FAILURE_LINE =
-  /^(?:expected end of command|syntax error|bad command name|failure:|script error:)/i;
+  /^(?:expected end of command|syntax error|bad command name|failure:|script error:|not enough permissions)/i;
 
 /**
  * RouterOS reports a refused command by printing it on **stdout** and still exiting 0
@@ -318,9 +318,41 @@ const ROUTEROS_FAILURE_LINE =
  * channel: a multi-statement command prints everything its earlier statements already
  * produced, so anchoring the check at the start of the output turns a refused command
  * into a silent success. Every line is checked instead.
+ *
+ * A PERMISSION refusal does NOT carry the `failure:` prefix. Measured on the demo
+ * hEX (7.20.8, 2026-08-03) under the hardened worker group, four different denied
+ * commands answered on stdout with exit status 0:
+ *
+ *     not enough permissions (9)
+ *     not enough permissions (9) (/user/add; line 1)
+ *
+ * Without this alternative every such refusal read as SUCCESS. That matters most
+ * for `/system/reboot`: `reboot` is the one policy in the worker's minimum set
+ * that has never been measured (proving it means rebooting a live gateway), so a
+ * missing `reboot` policy is a real possibility — and it would have surfaced as a
+ * reboot the worker believed it had issued, failing only later and silently as an
+ * unexplained postcondition miss. Now it surfaces as the router's own words.
  */
 export function routerOsCommandFailed(output: string): boolean {
-  return output.split(/\r?\n/u).some((line) => ROUTEROS_FAILURE_LINE.test(line.trimStart()));
+  return routerOsFailureLine(output) !== null;
+}
+
+/**
+ * The first line of `output` RouterOS meant as a refusal, trimmed and bounded, or
+ * null. This is what gets reported as the failure message, so an operator reads
+ * *why* the router said no ("not enough permissions (9)") instead of a generic
+ * "Router operation failed".
+ *
+ * Only a line that MATCHED the refusal grammar is ever returned, and it is capped,
+ * so no arbitrary config text — and in particular no key material, which cannot
+ * match — can be carried out of the router this way.
+ */
+export function routerOsFailureLine(output: string): string | null {
+  for (const line of output.split(/\r?\n/u)) {
+    const candidate = line.trim();
+    if (ROUTEROS_FAILURE_LINE.test(candidate)) return candidate.slice(0, 200);
+  }
+  return null;
 }
 
 interface SshConnectorOptions {
@@ -975,10 +1007,14 @@ export class SshRouterConnector implements RouterConnector {
             });
             return;
           }
-          const rejected = (code: string) => settle({
+          const rejected = (code: string, message?: string) => settle({
             output,
             completed: true,
-            failure: new RouterOperationError(code, { retryable: false, mayHaveExecuted }),
+            failure: new RouterOperationError(code, {
+              retryable: false,
+              mayHaveExecuted,
+              ...(message === undefined ? {} : { message }),
+            }),
           });
           if (status !== 0) {
             rejected("ROUTEROS_COMMAND_FAILED");
@@ -988,8 +1024,10 @@ export class SshRouterConnector implements RouterConnector {
             rejected("ROUTEROS_COMMAND_REJECTED");
             return;
           }
-          if (routerOsCommandFailed(output)) {
-            rejected("ROUTEROS_COMMAND_REJECTED");
+          const refusal = routerOsFailureLine(output);
+          if (refusal !== null) {
+            // The router's own words, so the recorded failure names the cause.
+            rejected("ROUTEROS_COMMAND_REJECTED", refusal);
             return;
           }
           settle({ output, completed: true, failure: null });
@@ -1557,6 +1595,27 @@ export class SshRouterConnector implements RouterConnector {
         error instanceof RouterOperationError
         && error.code === "SSH_EXEC_NO_EXIT_STATUS"
       ) return;
+      // A REFUSAL is the opposite case, and it must not inherit `mayHaveExecuted`.
+      // `/system/reboot` is a single statement: if the router answered on a completed
+      // channel that it refused the command, the router demonstrably did not reboot.
+      // Reported as UNCERTAIN it would lock the device out of every later command
+      // (including REBOOT_ROUTER) until a human retires it, and pause the building —
+      // for something that provably never happened. Terminal FAILED, carrying the
+      // router's own refusal text, is the legible outcome.
+      //
+      // Scoped to reboot deliberately: a multi-statement command such as the port
+      // cycle can be refused at a later statement with earlier ones already applied,
+      // so `mayHaveExecuted` stays true there.
+      if (
+        error instanceof RouterOperationError
+        && error.code === "ROUTEROS_COMMAND_REJECTED"
+      ) {
+        throw new RouterOperationError("ROUTEROS_COMMAND_REJECTED", {
+          retryable: false,
+          mayHaveExecuted: false,
+          message: error.message,
+        });
+      }
       throw error;
     }
   }

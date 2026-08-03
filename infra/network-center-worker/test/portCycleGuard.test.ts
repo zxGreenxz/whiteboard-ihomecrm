@@ -7,10 +7,12 @@ import {
   MAX_ACCESS_PORT_CYCLE_SECONDS,
   MIN_ACCESS_PORT_CYCLE_SECONDS,
 } from "../src/routeros/portCycle.js";
+import { classifyWorkerError } from "../src/domain.js";
 import {
   ROUTER_OS_COMMANDS,
   ROUTER_OS_READ_COMMANDS,
   routerOsCommandFailed,
+  routerOsFailureLine,
 } from "../src/routeros/sshConnector.js";
 import { createFakeRouterSession, createTestConnector } from "./support/fakeRouterClient.js";
 import { FakeRouterOs } from "./support/fakeRouterOs.js";
@@ -441,6 +443,22 @@ describe("RouterOS failure reporting", () => {
     expect(routerOsCommandFailed("failure: no such item\n")).toBe(true);
   });
 
+  it("recognises a PERMISSION refusal, which carries no `failure:` prefix", () => {
+    // Measured on the demo hEX under the hardened worker group (2026-08-03).
+    // Every one of these came back on stdout with exit status 0.
+    expect(routerOsCommandFailed("not enough permissions (9)\n")).toBe(true);
+    expect(routerOsCommandFailed("not enough permissions (9) (/user/add; line 1)\n")).toBe(true);
+    expect(routerOsFailureLine("not enough permissions (9)\n")).toBe("not enough permissions (9)");
+    // ...and it is still recognised after output the same command already printed.
+    expect(routerOsCommandFailed("NC_CYCLE_OWNER:ether4\nnot enough permissions (9)\n")).toBe(true);
+    // The reported line is the REFUSAL, not the marker that preceded it.
+    expect(routerOsFailureLine("NC_CYCLE_OWNER:ether4\nnot enough permissions (9)\n"))
+      .toBe("not enough permissions (9)");
+    // Router data that merely mentions permissions is still not a failure.
+    expect(routerOsCommandFailed("0 R name=ether1 comment=not enough permissions\n")).toBe(false);
+    expect(routerOsFailureLine("NC_CYCLE_ARMED:*102:ether4\n")).toBeNull();
+  });
+
   it("does not mistake router data that merely mentions a failure for one", () => {
     expect(routerOsCommandFailed(
       "0 R name=ether1 comment=failure: drill\n1 R name=ether2 comment=syntax error demo\n",
@@ -575,6 +593,50 @@ describe("SSH exec completion contract", () => {
 
     await expect(connector.flushDnsCache()).rejects.toMatchObject({
       code: "SSH_EXEC_NO_EXIT_STATUS",
+    });
+  });
+
+  it("fails a reboot refused for permissions, terminally, in the router's own words", async () => {
+    // `reboot` is the ONE policy in the worker's minimum set that has never been
+    // measured — proving it means rebooting a live gateway — so "the group lacks
+    // reboot" is a live possibility, and this is what it must look like when it
+    // happens. RouterOS answers on stdout with exit status 0 and no `failure:`
+    // prefix, so before this was recognised the worker reported the reboot as
+    // ISSUED and failed later as an unexplained postcondition miss.
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      refuse: (command) =>
+        command === ROUTER_OS_COMMANDS.reboot ? "not enough permissions (9)" : null,
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    await expect(connector.reboot()).rejects.toMatchObject({
+      name: "RouterOperationError",
+      code: "ROUTEROS_COMMAND_REJECTED",
+      retryable: false,
+      // The router ANSWERED that it refused, on a completed channel, and
+      // `/system/reboot` is a single statement — so it provably did not reboot.
+      // UNCERTAIN here would lock the device out of every later command until a
+      // human retired it, and pause the building, for a non-event.
+      mayHaveExecuted: false,
+      message: "not enough permissions (9)",
+    });
+  });
+
+  it("settles a refused reboot as FAILED, not as UNCERTAIN", async () => {
+    const router = makeRouter();
+    const session = createFakeRouterSession(router, {
+      refuse: (command) =>
+        command === ROUTER_OS_COMMANDS.reboot ? "not enough permissions (9)" : null,
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    const error = await connector.reboot().catch((thrown: unknown) => thrown);
+    // REBOOT_ROUTER is disruptive, which is the branch that turns
+    // `mayHaveExecuted` into a device-locking UNCERTAIN.
+    expect(classifyWorkerError(error, true)).toMatchObject({
+      outcome: "FAILED",
+      result: { code: "ROUTEROS_COMMAND_REJECTED", message: "not enough permissions (9)" },
     });
   });
 
