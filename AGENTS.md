@@ -8,6 +8,20 @@ File này áp dụng cho mọi session Codex làm việc trên repo này.
 - shadcn/ui + Tailwind, react-hook-form + zod
 - Supabase (Postgres + Auth + Storage), migrations dưới `supabase/migrations/`
 - Test: Vitest + fast-check (property-based) — chạy `npx vitest run <path>`
+- **Test Edge Function (`supabase/functions/*/index.test.ts`)**: chạy bằng Deno,
+  không phải Vitest. Máy chưa có Deno thì tải bản portable (không cài hệ thống,
+  không đụng PATH) rồi gọi thẳng exe:
+  ```bash
+  curl -sL -o deno.zip https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip
+  unzip -o deno.zip   # ra deno.exe
+  ./deno.exe test --config supabase/functions/network-center-worker/deno.json \
+    supabase/functions/network-center-worker/index.test.ts --allow-env
+  ```
+  CI pin `deno-version: v2.x` qua `denoland/setup-deno@v2` (không khoá patch); bản
+  đã xác minh chạy 22/22 test xanh là **v2.9.4**. GOTCHA: suite này KHÔNG test
+  `/ingest` với giá trị ngoài miền hay `rpcErrorStatus` với `23502`/`23514`/`23503`
+  — logic đó được phủ bởi test Node import cùng `index.ts`
+  (`scripts/__tests__/network-center-ingest-domains.test.mjs`), không phải suite Deno.
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
   Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
   `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).

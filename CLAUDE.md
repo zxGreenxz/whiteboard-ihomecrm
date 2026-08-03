@@ -8,6 +8,25 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 - shadcn/ui + Tailwind, react-hook-form + zod
 - Supabase (Postgres + Auth + Storage), migrations dưới `supabase/migrations/`
 - Test: Vitest + fast-check (property-based) — chạy `npx vitest run <path>`
+- **Test Edge Function (`supabase/functions/*/index.test.ts`)**: chạy bằng **Deno**,
+  không phải Vitest/Node. Máy chưa có Deno cài sẵn thì tải bản portable (không cài
+  hệ thống, không đụng PATH/profile) rồi gọi thẳng exe:
+  ```bash
+  curl -sL -o deno.zip https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip
+  unzip -o deno.zip   # ra deno.exe trong thư mục hiện tại
+  ./deno.exe test --config supabase/functions/network-center-worker/deno.json \
+    supabase/functions/network-center-worker/index.test.ts --allow-env
+  ```
+  CI (`.github/workflows/network-center-validation.yml`) pin `deno-version: v2.x`
+  qua `denoland/setup-deno@v2` (không khoá patch); bản đã xác minh chạy 22/22 test
+  xanh trên Windows là **v2.9.4** (03/08/2026). Mỗi thư mục function có `deno.json`
+  + `deno.lock` riêng khoá version các npm specifier (`@supabase/supabase-js`, `zod`).
+  GOTCHA: `index.test.ts` không có test nào gọi `/ingest` với giá trị ngoài miền
+  (`connectionType`/`sessionType`…) hay ép `rpcErrorStatus` nhận `23502`/`23514`/`23503`
+  — đã xác nhận bằng đột biến (vô hiệu hoá logic đó vẫn 22/22 xanh). Domain validation
+  và SQLSTATE remap của `index.ts` được phủ bởi test Node (`scripts/__tests__/network-center-ingest-domains.test.mjs`,
+  `scripts/test-network-center-ingest-domains-disposable.mjs`) import thẳng module đó,
+  không phải bởi suite Deno này.
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
   Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
   `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).
