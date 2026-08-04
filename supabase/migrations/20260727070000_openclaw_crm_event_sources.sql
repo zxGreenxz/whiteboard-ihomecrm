@@ -37,7 +37,7 @@ begin
      or to_regprocedure('app_private.lock_org_for_decision_v1(uuid)') is null
      or to_regprocedure('app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)') is null
      or to_regprocedure('app_private.authorized_scope_v3(text,uuid)') is null
-     or to_regprocedure('auth.uid()') is null
+     or to_regprocedure('app_private.openclaw_actor_id_v1()') is null
   then
     raise exception 'OpenClaw CRM event source dependencies are incomplete' using errcode = '55000';
   end if;
@@ -46,8 +46,11 @@ $preflight$;
 
 grant usage on schema extensions to openclaw_function_owner;
 grant execute on function extensions.digest(bytea,text) to openclaw_function_owner;
+-- NOTE: this grant is silently discarded on Supabase (postgres is not a member
+-- of supabase_admin, which owns schema auth). It is kept only so a fresh
+-- superuser database matches production; nothing may depend on it working.
 grant usage on schema auth to openclaw_function_owner;
-grant execute on function auth.uid() to openclaw_function_owner;
+grant execute on function app_private.openclaw_actor_id_v1() to openclaw_function_owner;
 grant execute on function app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)
   to openclaw_function_owner;
 grant execute on function app_private.authorized_scope_v3(text,uuid)
@@ -437,7 +440,7 @@ as $function$
 declare
   v_organization_id uuid;
   v_building_id uuid;
-  v_actor_id uuid := (select auth.uid());
+  v_actor_id uuid := (select app_private.openclaw_actor_id_v1());
   v_permission_key text := case when TG_OP = 'INSERT' then 'leads.create' else 'leads.edit' end;
   v_allowed boolean;
   v_jwt_role text := pg_catalog.current_setting('request.jwt.claim.role',true);

@@ -57,6 +57,37 @@ begin
 end
 $openclaw_owner_grants$;
 
+--
+-- The actor id, read WITHOUT going through schema auth.
+--
+-- Every OpenClaw browser RPC is SECURITY DEFINER owned by openclaw_function_owner
+-- and used to call auth.uid(). That fails in production with
+-- "42501: permission denied for schema auth": schema auth belongs to
+-- supabase_admin, `postgres` is not a member of it, and so the
+-- `grant usage on schema auth to openclaw_function_owner` these migrations issue
+-- is silently discarded - PostgreSQL WARNS that no privileges were granted and
+-- carries on, so the migration reports success while every browser call is dead.
+-- A superuser harness grants it fine, which is why nothing caught this locally.
+--
+-- auth.uid() is itself only a read of two GUCs, so this reproduces it exactly
+-- while needing no privilege on any schema at all.
+create or replace function app_private.openclaw_actor_id_v1()
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select coalesce(
+    nullif(current_setting('request.jwt.claim.sub', true), ''),
+    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')
+  )::uuid
+$function$;
+
+alter function app_private.openclaw_actor_id_v1() owner to openclaw_function_owner;
+revoke all on function app_private.openclaw_actor_id_v1()
+  from public, anon, authenticated, service_role;
+
 revoke all on all tables in schema public from openclaw_service_dispatcher;
 revoke all on all sequences in schema public from openclaw_service_dispatcher;
 grant usage on schema public, app_private to openclaw_service_dispatcher;
@@ -1324,7 +1355,7 @@ declare
   v_inserted boolean := false;
   v_row_count bigint := 0;
 begin
-  if p_actor_id is null or p_actor_id is distinct from (select auth.uid()) then
+  if p_actor_id is null or p_actor_id is distinct from (select app_private.openclaw_actor_id_v1()) then
     raise exception 'authenticated actor mismatch' using errcode = '42501';
   end if;
   v_request_hash := app_private.openclaw_client_request_hash_v1(p_operation_key, p_request);
@@ -1387,7 +1418,7 @@ declare
   v_result_hash text;
   v_result jsonb;
 begin
-  if p_actor_id is null or p_actor_id is distinct from (select auth.uid()) then
+  if p_actor_id is null or p_actor_id is distinct from (select app_private.openclaw_actor_id_v1()) then
     raise exception 'authenticated actor mismatch' using errcode = '42501';
   end if;
   if jsonb_typeof(p_safe_result) <> 'object' or octet_length(p_safe_result::text) > 8192 then
@@ -1782,7 +1813,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid());
+  v_actor uuid := (select app_private.openclaw_actor_id_v1());
   v_org uuid;
 begin
   if v_actor is null then
@@ -1837,7 +1868,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid());
+  v_actor uuid := (select app_private.openclaw_actor_id_v1());
   v_items jsonb;
 begin
   if v_actor is null then
@@ -2863,7 +2894,7 @@ begin
    and command.expected_connection_generation+1=challenge.challenge_version
   where challenge.organization_id = v_org
     and challenge.id = (p_request ->> 'challengeId')::uuid
-    and challenge.actor_id = (select auth.uid())
+    and challenge.actor_id = (select app_private.openclaw_actor_id_v1())
     and challenge.browser_nonce_hash = p_request ->> 'browserNonceHash'
     and challenge.auth_session_hash = p_request ->> 'authSessionHash'
   for update of challenge;
@@ -2907,7 +2938,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_account public.openclaw_accounts%rowtype;
   v_result jsonb;
 begin
@@ -2959,7 +2990,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_account public.openclaw_accounts%rowtype;
   v_cell public.openclaw_runtime_cells%rowtype; v_lease public.openclaw_runtime_leases%rowtype;
   v_command_id uuid := gen_random_uuid(); v_challenge_id uuid := gen_random_uuid();
@@ -3110,7 +3141,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_challenge public.openclaw_qr_challenges%rowtype;
   v_safe_result jsonb;
 begin
@@ -3165,7 +3196,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_account public.openclaw_accounts%rowtype;
   v_cell public.openclaw_runtime_cells%rowtype; v_lease public.openclaw_runtime_leases%rowtype;
   v_command_id uuid := gen_random_uuid(); v_revocation_id uuid := gen_random_uuid();
@@ -3289,7 +3320,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_draft public.openclaw_ai_drafts%rowtype;
   v_target public.openclaw_targets%rowtype; v_account public.openclaw_accounts%rowtype;
   v_policy_version uuid; v_payload jsonb; v_parts jsonb; v_payload_bytes bytea;
@@ -3394,7 +3425,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_conversation public.openclaw_conversations%rowtype;
   v_membership uuid; v_takeover_id uuid := gen_random_uuid(); v_version bigint; v_result jsonb;
 begin
@@ -3465,7 +3496,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_takeover public.openclaw_takeovers%rowtype;
   v_membership uuid; v_result jsonb;
 begin
@@ -3516,7 +3547,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_conversation public.openclaw_conversations%rowtype;
   v_membership uuid := (p_request ->> 'membershipId')::uuid; v_result jsonb;
 begin
@@ -3567,7 +3598,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+  v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_conversation public.openclaw_conversations%rowtype;
   v_result jsonb;
 begin
@@ -3739,7 +3770,7 @@ create or replace function public.openclaw_create_knowledge_draft_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -3765,7 +3796,7 @@ create or replace function public.openclaw_update_knowledge_draft_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -3791,7 +3822,7 @@ create or replace function public.openclaw_validate_knowledge_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -3817,7 +3848,7 @@ create or replace function public.openclaw_publish_knowledge_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -3843,7 +3874,7 @@ create or replace function public.openclaw_archive_knowledge_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request ->> 'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -3984,7 +4015,7 @@ create or replace function public.openclaw_create_automation_draft_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -4013,7 +4044,7 @@ create or replace function public.openclaw_save_automation_step_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -4040,7 +4071,7 @@ create or replace function public.openclaw_publish_automation_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -4066,7 +4097,7 @@ create or replace function public.openclaw_pause_automation_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -4184,7 +4215,7 @@ create or replace function public.openclaw_upsert_group_allowlist_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_target public.openclaw_targets%rowtype;
   v_version bigint; v_id uuid := gen_random_uuid(); v_result jsonb;
 begin
@@ -4234,7 +4265,7 @@ create or replace function public.openclaw_upsert_schedule_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -4263,7 +4294,7 @@ create or replace function public.openclaw_pause_schedule_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -4289,7 +4320,7 @@ create or replace function public.openclaw_cancel_schedule_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_result jsonb;
 begin
   perform app_private.openclaw_assert_strict_object_v1(p_request,
@@ -4315,7 +4346,7 @@ create or replace function public.openclaw_request_directory_sync_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_account public.openclaw_accounts%rowtype;
   v_cell public.openclaw_runtime_cells%rowtype; v_lease public.openclaw_runtime_leases%rowtype;
   v_id uuid:=gen_random_uuid(); v_payload jsonb; v_bytes bytea; v_result jsonb;
@@ -4361,7 +4392,7 @@ create or replace function public.openclaw_set_control_state_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_control public.openclaw_control_states%rowtype;
   v_result jsonb;
 begin
@@ -4413,7 +4444,7 @@ create or replace function public.openclaw_create_legal_hold_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_hold_id uuid:=gen_random_uuid();
   v_version bigint; v_result jsonb;
 begin
@@ -4466,7 +4497,7 @@ create or replace function public.openclaw_release_legal_hold_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_hold public.openclaw_retention_holds%rowtype;
   v_result jsonb;
 begin
@@ -4506,7 +4537,7 @@ create or replace function public.openclaw_replay_dead_letter_v1(
 )
 returns jsonb language plpgsql security definer set search_path = ''
 as $function$
-declare v_actor uuid := (select auth.uid()); v_org uuid := (p_request->>'organizationId')::uuid;
+declare v_actor uuid := (select app_private.openclaw_actor_id_v1()); v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb; v_request_hash text; v_dead public.openclaw_dead_letters%rowtype;
   v_old public.openclaw_outbox%rowtype; v_payload jsonb; v_bytes bytea; v_hash text;
   v_new_outbox uuid; v_result jsonb;
@@ -4563,7 +4594,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid());
+  v_actor uuid := (select app_private.openclaw_actor_id_v1());
   v_org uuid := (p_request ->> 'organizationId')::uuid;
   v_operation jsonb; v_request_hash text;
   v_outbox public.openclaw_outbox%rowtype;
@@ -9348,7 +9379,7 @@ security definer
 set search_path = ''
 as $function$
 declare
-  v_actor uuid := (select auth.uid());
+  v_actor uuid := (select app_private.openclaw_actor_id_v1());
   v_org uuid := (p_request->>'organizationId')::uuid;
   v_operation jsonb;
   v_request_hash text;
