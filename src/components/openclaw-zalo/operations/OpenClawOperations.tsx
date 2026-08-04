@@ -1,9 +1,22 @@
 import {
   LEGAL_HOLD_TARGET_KINDS,
   legalHoldGate,
+  legalHoldReleaseGate,
   type LegalHoldTargetKind,
   type ReplayOutcome,
 } from "@/lib/openclaw-zalo/legalHold";
+
+export interface LegalHoldView {
+  holdId: string;
+  targetKind: string;
+  targetId: string;
+  reason: string;
+  holdVersion: number;
+  createdAt: string;
+  expiresAt: string | null;
+  releasedAt: string | null;
+  releaseReason: string | null;
+}
 
 export interface DeadLetterView {
   deadLetterId: string;
@@ -28,25 +41,50 @@ interface OpenClawOperationsProps {
   listsUnavailable: boolean;
   canManageOperations: boolean;
   canAudit: boolean;
+  /** ACTIVE OWNER membership; legal holds need it on top of both permissions. */
+  isActiveOwner: boolean;
   busy: boolean;
   /** The outcome of the most recent replay, if one has been run this session. */
   lastReplay: ReplayOutcome | null;
+  /** What the last replay failed with; silence would read as success. */
+  replayFailure: string | null;
   holdTargetKind: LegalHoldTargetKind;
   holdTargetId: string;
   holdReason: string;
+  holds: readonly LegalHoldView[];
+  holdsLoading: boolean;
+  /** True when the hold list could not be read, as opposed to being empty. */
+  holdsUnavailable: boolean;
+  holdFailure: string | null;
+  releasingHoldId: string | null;
+  releaseReason: string;
   onOpenUnknown: (outboxId: string) => void;
   onReplayDeadLetter: (deadLetterId: string) => void;
   onHoldTargetKindChange: (kind: LegalHoldTargetKind) => void;
   onHoldTargetIdChange: (targetId: string) => void;
   onHoldReasonChange: (reason: string) => void;
   onCreateHold: () => void;
+  onSelectHoldForRelease: (holdId: string | null) => void;
+  onReleaseReasonChange: (reason: string) => void;
+  onReleaseHold: (hold: LegalHoldView) => void;
 }
 
 const HOLD_BLOCK_COPY = {
   PERMISSION_AUDIT: "Cần thêm quyền kiểm toán để tạo lệnh giữ bằng chứng.",
   PERMISSION_OPERATIONS: "Cần thêm quyền vận hành để tạo lệnh giữ bằng chứng.",
+  // The server checks organization_memberships separately from the permissions, so
+  // a member with both permissions still gets 42501 without an owner membership.
+  NOT_OWNER: "Chỉ chủ sở hữu tổ chức (đang hoạt động) mới tạo hoặc gỡ được lệnh giữ.",
   NO_TARGET: "Nhập định danh đối tượng cần giữ.",
-  NO_REASON: "Nhập lý do giữ; lý do này đi vào nhật ký kiểm toán.",
+  NO_REASON: "Nhập lý do giữ; lý do được lưu cùng lệnh giữ.",
+} as const;
+
+const RELEASE_BLOCK_COPY = {
+  PERMISSION_AUDIT: "Cần thêm quyền kiểm toán để gỡ lệnh giữ.",
+  PERMISSION_OPERATIONS: "Cần thêm quyền vận hành để gỡ lệnh giữ.",
+  NOT_OWNER: "Chỉ chủ sở hữu tổ chức (đang hoạt động) mới gỡ được lệnh giữ.",
+  ALREADY_RELEASED: "Lệnh giữ này đã được gỡ rồi.",
+  NO_REASON: "Nhập lý do gỡ.",
 } as const;
 
 const REPLAY_COPY = {
@@ -62,6 +100,7 @@ export default function OpenClawOperations(props: OpenClawOperationsProps) {
   const holdGate = legalHoldGate({
     canAudit: props.canAudit,
     canManageOperations: props.canManageOperations,
+    isActiveOwner: props.isActiveOwner,
     targetId: props.holdTargetId,
     reason: props.holdReason,
   });
@@ -135,6 +174,16 @@ export default function OpenClawOperations(props: OpenClawOperationsProps) {
             className="mt-2 border border-[#cbd5df] p-2 text-sm font-bold"
           >
             {REPLAY_COPY[props.lastReplay.kind]}
+          </p>
+        )}
+        {props.replayFailure !== null && (
+          // A replay that failed silently reads exactly like one that worked, and the
+          // operator's next move - wait, or try again - depends on knowing which.
+          <p
+            data-openclaw-replay="failure"
+            className="mt-2 border border-[#c0563a] bg-[#fdeceb] p-3 text-sm font-bold text-[#8a2f1c]"
+          >
+            {props.replayFailure}
           </p>
         )}
         {props.listsUnavailable ? (
@@ -240,10 +289,126 @@ export default function OpenClawOperations(props: OpenClawOperationsProps) {
         >
           Tạo lệnh giữ
         </button>
+
+        {props.holdFailure !== null && (
+          <p
+            data-openclaw-hold="failure"
+            className="mt-2 border border-[#c0563a] bg-[#fdeceb] p-3 text-sm font-bold text-[#8a2f1c]"
+          >
+            {props.holdFailure}
+          </p>
+        )}
+
+        {/* NOT "the reason goes into the audit record". The audit event for
+            OPENCLAW_LEGAL_HOLD_CREATED carries holdId, targetKind, targetId,
+            holdVersion and active - and no reason. The reason is stored on the hold
+            row itself, which is what the list below reads. */}
         <p className="mt-2 text-xs leading-5 text-[#607585]">
-          Lệnh giữ chặn việc xoá theo vòng đời lưu trữ và được ghi vào nhật ký kiểm toán chỉ-thêm.
-          Lý do bạn nhập nằm trong bản ghi đó.
+          Lệnh giữ chặn việc xoá theo vòng đời lưu trữ, và việc tạo nó được ghi vào nhật ký
+          kiểm toán chỉ-thêm. Lý do bạn nhập được lưu cùng lệnh giữ và hiện ở danh sách dưới đây.
         </p>
+
+        <h3 className="mt-4 text-xs font-extrabold uppercase tracking-[0.1em] text-[#607585]">
+          Các lệnh giữ hiện có
+        </h3>
+        {props.holdsUnavailable ? (
+          // "No holds" and "we could not read the holds" mean opposite things to
+          // someone deciding whether evidence is protected.
+          <p data-openclaw-holds="unavailable" className="mt-1 text-sm font-bold text-[#8a4b12]">
+            Chưa đọc được danh sách lệnh giữ, nên KHÔNG kết luận được là không có lệnh nào.
+          </p>
+        ) : props.holdsLoading ? (
+          <p data-openclaw-holds="loading" className="mt-1 text-sm text-[#607585]">Đang tải…</p>
+        ) : props.holds.length === 0 ? (
+          <p data-openclaw-holds="empty" className="mt-1 text-sm text-[#607585]">
+            Chưa có lệnh giữ nào trong tổ chức này.
+          </p>
+        ) : (
+          <ul className="mt-1 grid gap-2">
+            {props.holds.map(hold => {
+              const releaseGate = legalHoldReleaseGate({
+                canAudit: props.canAudit,
+                canManageOperations: props.canManageOperations,
+                isActiveOwner: props.isActiveOwner,
+                releasedAt: hold.releasedAt,
+                releaseReason: props.releaseReason,
+              });
+              const selected = props.releasingHoldId === hold.holdId;
+              return (
+                <li
+                  key={hold.holdId}
+                  data-openclaw-hold-row={hold.holdId}
+                  data-openclaw-hold-state={hold.releasedAt === null ? "ACTIVE" : "RELEASED"}
+                  className="border border-[#cbd5df] bg-white p-2 text-sm"
+                >
+                  <p className="font-bold">
+                    {hold.targetKind} · <span className="font-mono text-xs">{hold.targetId}</span>
+                  </p>
+                  <p data-openclaw-hold="stored-reason" className="mt-1 text-xs leading-5 text-[#526777]">
+                    Lý do giữ: {hold.reason}
+                  </p>
+                  <p className="mt-1 text-xs text-[#607585]">
+                    Tạo lúc {hold.createdAt} · bản {hold.holdVersion}
+                    {hold.expiresAt !== null && ` · hết hạn ${hold.expiresAt}`}
+                  </p>
+                  {hold.releasedAt !== null ? (
+                    <p data-openclaw-hold="released" className="mt-1 text-xs text-[#607585]">
+                      Đã gỡ lúc {hold.releasedAt}
+                      {hold.releaseReason !== null && ` — ${hold.releaseReason}`}
+                    </p>
+                  ) : selected ? (
+                    <>
+                      <label className="mt-2 block text-xs font-bold text-[#607585]">Lý do gỡ</label>
+                      <input
+                        type="text"
+                        value={props.releaseReason}
+                        onChange={event => props.onReleaseReasonChange(event.target.value)}
+                        data-openclaw-hold="release-reason"
+                        className="mt-1 min-h-11 w-full border border-[#9fb0bf] bg-white px-3 text-sm"
+                      />
+                      {releaseGate.blockedBy !== null && (
+                        <p
+                          data-openclaw-release-blocked={releaseGate.blockedBy}
+                          className="mt-1 text-sm font-bold text-[#8a4b12]"
+                        >
+                          {RELEASE_BLOCK_COPY[releaseGate.blockedBy]}
+                        </p>
+                      )}
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => props.onReleaseHold(hold)}
+                          disabled={!releaseGate.canRelease || props.busy}
+                          data-openclaw-action="release-legal-hold"
+                          className="min-h-11 flex-1 border border-[#c0563a] bg-[#c0563a] px-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Gỡ lệnh giữ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => props.onSelectHoldForRelease(null)}
+                          data-openclaw-action="cancel-release"
+                          className="min-h-11 flex-1 border border-[#9fb0bf] bg-white px-3 text-sm font-bold text-[#102a43]"
+                        >
+                          Thôi
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => props.onSelectHoldForRelease(hold.holdId)}
+                      data-openclaw-action="begin-release"
+                      className="mt-2 min-h-11 w-full border border-[#9fb0bf] bg-white px-3 text-sm font-bold text-[#102a43]"
+                    >
+                      Gỡ lệnh giữ này…
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
     </div>
   );

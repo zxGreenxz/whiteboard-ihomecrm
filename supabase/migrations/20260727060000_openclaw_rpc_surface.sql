@@ -9619,7 +9619,19 @@ begin
   where control.organization_id = v_org and control.control_key = 'GLOBAL_STOP';
   return jsonb_build_object(
     'version', 1, 'organizationId', v_org, 'account', v_account,
-    'control', v_control, 'actorId', v_context ->> 'actorId'
+    'control', v_control, 'actorId', v_context ->> 'actorId',
+    -- Legal holds require an ACTIVE OWNER membership on top of both permissions,
+    -- and nothing else tells the browser whether the caller has one. Without this
+    -- the UI could only offer the button and let the server refuse it, which is
+    -- the one thing every other control on this screen avoids. A boolean about
+    -- the caller's own membership reveals nothing they do not already know.
+    'isActiveOwner', exists(
+      select 1 from public.organization_memberships membership
+      where membership.organization_id = v_org
+        and membership.user_id = (v_context ->> 'actorId')::uuid
+        and membership.status = 'ACTIVE'
+        and membership.member_type = 'OWNER'
+    )
   );
 end;
 $function$;

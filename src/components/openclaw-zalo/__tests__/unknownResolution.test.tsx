@@ -1,8 +1,15 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import OpenClawOperations from "../operations/OpenClawOperations";
+
+/** The migration is the authority on what the audit event actually carries. */
+const RPC_SQL = readFileSync(
+  "supabase/migrations/20260727060000_openclaw_rpc_surface.sql",
+  "utf8",
+);
 
 const noop = vi.fn();
 
@@ -18,17 +25,38 @@ const props = {
   listsUnavailable: false,
   canManageOperations: true,
   canAudit: true,
+  isActiveOwner: true,
   busy: false,
-  lastReplay: null,
+  lastReplay: null as { kind: "WORK_ITEM"; workItemId: string } | { kind: "NEW_OUTBOX"; outboxId: string } | null,
+  replayFailure: null as string | null,
   holdTargetKind: "MESSAGE" as const,
   holdTargetId: "dddd8000-0000-4000-8000-000000000001",
   holdReason: "Tranh chấp hợp đồng",
+  holds: [{
+    holdId: "hold-1",
+    targetKind: "MESSAGE",
+    targetId: "dddd8000-0000-4000-8000-000000000001",
+    reason: "Tranh chấp hợp đồng",
+    holdVersion: 1,
+    createdAt: "2026-08-03T07:00:00Z",
+    expiresAt: null as string | null,
+    releasedAt: null as string | null,
+    releaseReason: null as string | null,
+  }],
+  holdsLoading: false,
+  holdsUnavailable: false,
+  holdFailure: null as string | null,
+  releasingHoldId: null as string | null,
+  releaseReason: "",
   onOpenUnknown: noop,
   onReplayDeadLetter: noop,
   onHoldTargetKindChange: noop,
   onHoldTargetIdChange: noop,
   onHoldReasonChange: noop,
   onCreateHold: noop,
+  onSelectHoldForRelease: noop,
+  onReleaseReasonChange: noop,
+  onReleaseHold: noop,
 };
 
 const render = (overrides: Partial<typeof props> = {}) =>
@@ -95,8 +123,74 @@ describe("operations screen", () => {
     expect(html.indexOf('value="ORGANIZATION"')).toBeLessThan(html.indexOf('value="AI_DRAFT"'));
   });
 
-  it("says the reason goes into the audit record", () => {
-    expect(render()).toContain("nhật ký kiểm toán");
+  it("does not claim the reason reaches the audit record, because it does not", () => {
+    // The audit event the RPC emits carries holdId, targetKind, targetId, holdVersion
+    // and active - and no reason. The reason lives on the hold row, which is what the
+    // list below reads. Promising an auditor they will find it in the append-only log
+    // would be a promise the server does not keep.
+    const create = /create or replace function public\.openclaw_create_legal_hold_v1[\s\S]*?\n\$function\$;/u
+      .exec(RPC_SQL);
+    expect(create, "create RPC not found").not.toBeNull();
+    const auditPayload = /v_result:=jsonb_build_object\(([\s\S]*?)\);/u.exec(create![0]);
+    expect(auditPayload, "audit payload not found").not.toBeNull();
+    expect(auditPayload![1]).not.toContain("'reason'");
+
+    const html = render();
+    expect(html).toContain("nhật ký kiểm toán");
+    expect(html).toContain("lưu cùng lệnh giữ");
+  });
+
+  it("shows the stored reason on each hold rather than only in the audit log", () => {
+    const html = render();
+    expect(html).toContain('data-openclaw-hold-row="hold-1"');
+    expect(html).toContain('data-openclaw-hold="stored-reason"');
+    expect(html).toContain("Tranh chấp hợp đồng");
+  });
+
+  it("separates an unreadable hold list from an empty one", () => {
+    // "No holds" and "we could not read the holds" mean opposite things to someone
+    // deciding whether evidence is protected from deletion.
+    expect(render({ holds: [], holdsUnavailable: true }))
+      .toContain('data-openclaw-holds="unavailable"');
+    expect(render({ holds: [], holdsLoading: true })).toContain('data-openclaw-holds="loading"');
+    expect(render({ holds: [] })).toContain('data-openclaw-holds="empty"');
+  });
+
+  it("requires an active owner for both creating and releasing a hold", () => {
+    const html = render({ isActiveOwner: false, releasingHoldId: "hold-1", releaseReason: "xong việc" });
+    expect(html).toContain('data-openclaw-hold-blocked="NOT_OWNER"');
+    expect(buttonTag(html, "create-legal-hold")).toContain('disabled=""');
+    expect(html).toContain('data-openclaw-release-blocked="NOT_OWNER"');
+    expect(buttonTag(html, "release-legal-hold")).toContain('disabled=""');
+  });
+
+  it("will not offer to release a hold somebody already released", () => {
+    const released = [{
+      ...props.holds[0],
+      releasedAt: "2026-08-03T11:00:00Z",
+      releaseReason: "Vụ việc đã khép",
+    }];
+    const html = render({ holds: released, releasingHoldId: "hold-1" });
+    expect(html).toContain('data-openclaw-hold-state="RELEASED"');
+    expect(html).toContain('data-openclaw-hold="released"');
+    expect(html).not.toContain('data-openclaw-action="release-legal-hold"');
+  });
+
+  it("needs a reason before it will release", () => {
+    const withForm = { releasingHoldId: "hold-1" };
+    expect(buttonTag(render({ ...withForm, releaseReason: " " }), "release-legal-hold"))
+      .toContain('disabled=""');
+    expect(buttonTag(render({ ...withForm, releaseReason: "Vụ việc đã khép" }), "release-legal-hold"))
+      .not.toContain('disabled=""');
+  });
+
+  it("surfaces what a failed hold or replay failed with", () => {
+    // A write that failed silently reads exactly like one that worked, and the next
+    // move - wait, or try again - depends on knowing which.
+    expect(render({ holdFailure: "Đối tượng này đã có một lệnh giữ đang hiệu lực" }))
+      .toContain('data-openclaw-hold="failure"');
+    expect(render({ replayFailure: "Chưa phát lại được dead-letter này." }))
+      .toContain('data-openclaw-replay="failure"');
   });
 
   it("blocks both write actions for a member who cannot operate", () => {

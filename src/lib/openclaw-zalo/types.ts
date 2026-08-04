@@ -82,6 +82,8 @@ export interface OpenClawBootstrap {
   account: OpenClawAccountSummary | null;
   control: OpenClawControlState | null;
   actorId: string;
+  /** ACTIVE OWNER membership: legal holds require it in addition to permissions. */
+  isActiveOwner: boolean;
 }
 
 export interface OpenClawOverview {

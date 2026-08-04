@@ -60,6 +60,9 @@ export const bootstrapResponseSchema = z.object({
   account: accountSchema.nullable(),
   control: controlSchema.nullable(),
   actorId: idSchema,
+  // Legal holds need an ACTIVE OWNER membership on top of both permissions, and
+  // no other read tells the browser whether the caller has one.
+  isActiveOwner: z.boolean(),
 }).strict();
 
 export const overviewResponseSchema = z.object({

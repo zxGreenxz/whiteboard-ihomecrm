@@ -134,6 +134,7 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawOperations", () => ({
   // Null while no UNKNOWN dialog is open; the section reads it unconditionally.
   useOpenClawUnknownAuthority: () => ({ ...idleQuery, data: null }),
   useOpenClawDeadLetters: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawLegalHolds: () => ({ ...idleQuery, data: emptyList }),
 }));
 
 vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useOpenClawRouteContext } from "../OpenClawRouteGuard";
 import {
   useOpenClawDeadLetters,
+  useOpenClawLegalHolds,
   useOpenClawUnknown,
   useOpenClawUnknownAuthority,
 } from "@/hooks/openclaw-zalo/useOpenClawOperations";
@@ -10,7 +11,13 @@ import {
   useOpenClawLegalHoldMutations,
 } from "@/hooks/openclaw-zalo/useOpenClawResources";
 import { useOpenClawResolveUnknown } from "@/hooks/openclaw-zalo/useOpenClawMutations";
-import { classifyReplayResult, type LegalHoldTargetKind, type ReplayOutcome } from "@/lib/openclaw-zalo/legalHold";
+import {
+  classifyLegalHoldFailure,
+  classifyReplayResult,
+  type LegalHoldFailure,
+  type LegalHoldTargetKind,
+  type ReplayOutcome,
+} from "@/lib/openclaw-zalo/legalHold";
 import {
   buildUnknownResolutionRequest,
   classifyResolutionFailure,
@@ -23,6 +30,15 @@ import OpenClawUnknownResolutionDialog, {
   type UnknownResolutionWinner,
 } from "../dialogs/OpenClawUnknownResolutionDialog";
 import OpenClawOperations from "./OpenClawOperations";
+
+/** What a legal-hold write failed with, in words the operator can act on. */
+const LEGAL_HOLD_FAILURE_COPY: Record<LegalHoldFailure, string> = {
+  ALREADY_HELD: "Đối tượng này đã có một lệnh giữ đang hiệu lực — không cần tạo thêm.",
+  PERMISSION_DENIED: "Bị từ chối: cần đủ quyền kiểm toán, quyền vận hành, và là chủ sở hữu tổ chức đang hoạt động.",
+  VERSION_CONFLICT: "Lệnh giữ vừa thay đổi (có thể ai đó đã gỡ trước). Tải lại danh sách rồi thử lại.",
+  NOT_FOUND: "Không tìm thấy lệnh giữ này nữa.",
+  UNKNOWN: "Chưa thực hiện được thao tác với lệnh giữ. Thử lại sau.",
+};
 
 /**
  * What each failure means to the person who pressed the button.
@@ -57,9 +73,14 @@ export default function OpenClawOperationsSection() {
   const [holdTargetKind, setHoldTargetKind] = useState<LegalHoldTargetKind>("ORGANIZATION");
   const [holdTargetId, setHoldTargetId] = useState("");
   const [holdReason, setHoldReason] = useState("");
+  const [holdFailure, setHoldFailure] = useState<string | null>(null);
+  const [replayFailure, setReplayFailure] = useState<string | null>(null);
+  const [releasingHoldId, setReleasingHoldId] = useState<string | null>(null);
+  const [releaseReason, setReleaseReason] = useState("");
 
   const unknownQuery = useOpenClawUnknown(selectedOrganizationId, accountId);
   const deadLetterQuery = useOpenClawDeadLetters(selectedOrganizationId, accountId);
+  const holdsQuery = useOpenClawLegalHolds(selectedOrganizationId, accountId);
   const replay = useOpenClawDeadLetterReplayMutation(
     selectedOrganizationId ?? "", accountId ?? "",
   );
@@ -101,13 +122,32 @@ export default function OpenClawOperationsSection() {
         listsUnavailable={unknownQuery.error != null || deadLetterQuery.error != null}
         canManageOperations={canManageOperations}
         canAudit={canAudit}
-        busy={replay.isPending || legalHolds.create.isPending}
+        isActiveOwner={bootstrap.isActiveOwner}
+        busy={replay.isPending || legalHolds.create.isPending || legalHolds.release.isPending}
         lastReplay={lastReplay}
+        replayFailure={replayFailure}
         holdTargetKind={holdTargetKind}
         holdTargetId={holdTargetId}
         holdReason={holdReason}
+        holds={(holdsQuery.data?.items ?? []).map(hold => ({
+          holdId: hold.holdId,
+          targetKind: hold.targetKind,
+          targetId: hold.targetId,
+          reason: hold.reason,
+          holdVersion: hold.holdVersion,
+          createdAt: hold.createdAt,
+          expiresAt: hold.expiresAt ?? null,
+          releasedAt: hold.releasedAt ?? null,
+          releaseReason: hold.releaseReason ?? null,
+        }))}
+        holdsLoading={holdsQuery.isLoading}
+        holdsUnavailable={holdsQuery.error != null}
+        holdFailure={holdFailure}
+        releasingHoldId={releasingHoldId}
+        releaseReason={releaseReason}
         onOpenUnknown={setOpenUnknownId}
         onReplayDeadLetter={deadLetterId => {
+          setReplayFailure(null);
           replay.mutate({
             clientOperationId: crypto.randomUUID(),
             request: { version: 1, organizationId: selectedOrganizationId, deadLetterId },
@@ -115,12 +155,16 @@ export default function OpenClawOperationsSection() {
             // The RPC answers with one of two shapes and they mean different things,
             // so the outcome is classified rather than flattened to "done".
             onSuccess: result => setLastReplay(classifyReplayResult(result)),
+            onError: () => setReplayFailure(
+              "Chưa phát lại được dead-letter này. Không có tin nào được tạo; thử lại sau.",
+            ),
           });
         }}
         onHoldTargetKindChange={setHoldTargetKind}
         onHoldTargetIdChange={setHoldTargetId}
         onHoldReasonChange={setHoldReason}
         onCreateHold={() => {
+          setHoldFailure(null);
           legalHolds.create.mutate({
             clientOperationId: crypto.randomUUID(),
             request: {
@@ -138,6 +182,39 @@ export default function OpenClawOperationsSection() {
               setHoldTargetId("");
               setHoldReason("");
             },
+            onError: error => setHoldFailure(
+              LEGAL_HOLD_FAILURE_COPY[classifyLegalHoldFailure(error)],
+            ),
+          });
+        }}
+        onSelectHoldForRelease={holdId => {
+          setReleasingHoldId(holdId);
+          setReleaseReason("");
+          setHoldFailure(null);
+        }}
+        onReleaseReasonChange={setReleaseReason}
+        onReleaseHold={hold => {
+          setHoldFailure(null);
+          legalHolds.release.mutate({
+            clientOperationId: crypto.randomUUID(),
+            request: {
+              version: 1,
+              organizationId: selectedOrganizationId,
+              holdId: hold.holdId,
+              // The server compares this against the stored version and refuses a
+              // mismatch with 40001, so it comes from the row being shown rather
+              // than from a counter this component keeps.
+              expectedHoldVersion: hold.holdVersion,
+              releaseReason: releaseReason.trim(),
+            },
+          }, {
+            onSuccess: () => {
+              setReleasingHoldId(null);
+              setReleaseReason("");
+            },
+            onError: error => setHoldFailure(
+              LEGAL_HOLD_FAILURE_COPY[classifyLegalHoldFailure(error)],
+            ),
           });
         }}
       />
