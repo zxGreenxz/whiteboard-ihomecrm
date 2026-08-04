@@ -43,6 +43,18 @@ describe("legal hold gate", () => {
     expect(legalHoldGate({ ...base, reason: "\n" }).blockedBy).toBe("NO_REASON");
   });
 
+  it("refuses a target that is not a UUID, and says so before the write", () => {
+    // The contract types targetId as a UUID and the client parses the request
+    // BEFORE calling the RPC, so a mistyped id dies on a ZodError - which has no
+    // SQLSTATE, so the failure classifier called it "unknown, try again later".
+    // Retrying a typo fails identically; the operator has to be told what is wrong.
+    for (const bad of ["khong-phai-uuid", "12345", "dddd8000-0000-4000-8000", `${"d".repeat(32)}`]) {
+      expect(legalHoldGate({ ...base, targetId: bad }).blockedBy, bad).toBe("BAD_TARGET");
+    }
+    // Surrounding whitespace is forgiven, exactly as the write trims it.
+    expect(legalHoldGate({ ...base, targetId: `  ${base.targetId}  ` }).canCreate).toBe(true);
+  });
+
   it("puts the permission checks ahead of the field checks", () => {
     // Otherwise a member without the permission fills the form, gets an enabled
     // button, and meets a server refusal.

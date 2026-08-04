@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildUnknownResolutionRequest,
   classifyResolutionFailure,
+  dialogFailure,
+  dialogWinner,
   GLOBAL_STOP_CONFIRMATION,
   globalStopConfirmationMatches,
   globalStopGate,
@@ -173,6 +175,74 @@ describe("resolution failure classification", () => {
       .toBe("PERMISSION_DENIED");
     expect(classifyResolutionFailure(new Error("boom"))).toBe("UNKNOWN");
     expect(classifyResolutionFailure(null)).toBe("UNKNOWN");
+  });
+});
+
+describe("which conclusion the dialog shows", () => {
+  const settled = {
+    resolutionId: "r-1",
+    outcome: "CONFIRMED_SENT" as const,
+    resolvedAt: "2026-08-03T10:00:00Z",
+    newOutboxId: null,
+  };
+  const mine = {
+    resolutionId: "r-2",
+    outcome: "CONFIRMED_FAILED" as const,
+    resolvedAt: "2026-08-03T11:00:00Z",
+    newOutboxId: null,
+  };
+
+  it("shows the conclusion a row already carries", () => {
+    // "Xem kết luận" used to open a dialog that showed nothing and offered to
+    // resolve a row somebody had already resolved, because the winner was only ever
+    // learned from this session's own mutation.
+    expect(dialogWinner({
+      openOutboxId: "ob-1", mutationWinner: null, rowResolution: settled,
+    })).toEqual(settled);
+  });
+
+  it("prefers this session's own result over the list, which may be stale", () => {
+    expect(dialogWinner({
+      openOutboxId: "ob-1",
+      mutationWinner: { outboxId: "ob-1", winner: mine },
+      rowResolution: settled,
+    })).toEqual(mine);
+  });
+
+  it("never shows one row's conclusion under another row", () => {
+    // The close button is not disabled while a write is in flight, so a callback
+    // can land after the operator moved on. Untagged state would then put ob-1's
+    // outcome under ob-2's heading - and an operator would read it as settled.
+    expect(dialogWinner({
+      openOutboxId: "ob-2",
+      mutationWinner: { outboxId: "ob-1", winner: mine },
+      rowResolution: null,
+    })).toBeNull();
+    expect(dialogWinner({
+      openOutboxId: "ob-2",
+      mutationWinner: { outboxId: "ob-1", winner: mine },
+      rowResolution: settled,
+    })).toEqual(settled);
+  });
+
+  it("shows nothing when no row is open", () => {
+    expect(dialogWinner({
+      openOutboxId: null,
+      mutationWinner: { outboxId: "ob-1", winner: mine },
+      rowResolution: settled,
+    })).toBeNull();
+  });
+
+  it("keeps a failure message with the row it was raised for", () => {
+    expect(dialogFailure({
+      openOutboxId: "ob-1", failure: { outboxId: "ob-1", message: "hỏng" },
+    })).toBe("hỏng");
+    expect(dialogFailure({
+      openOutboxId: "ob-2", failure: { outboxId: "ob-1", message: "hỏng" },
+    })).toBeNull();
+    expect(dialogFailure({
+      openOutboxId: null, failure: { outboxId: "ob-1", message: "hỏng" },
+    })).toBeNull();
   });
 });
 

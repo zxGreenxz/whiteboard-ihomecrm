@@ -76,6 +76,10 @@ const HOLD_BLOCK_COPY = {
   // a member with both permissions still gets 42501 without an owner membership.
   NOT_OWNER: "Chỉ chủ sở hữu tổ chức (đang hoạt động) mới tạo hoặc gỡ được lệnh giữ.",
   NO_TARGET: "Nhập định danh đối tượng cần giữ.",
+  // Said here rather than after the write fails: a mistyped id is refused by the
+  // request schema before it reaches the server, and the resulting error carries no
+  // SQLSTATE — so it used to surface as "thử lại sau", which never works.
+  BAD_TARGET: "Định danh phải là UUID (ví dụ dddd8000-0000-4000-8000-000000000001).",
   NO_REASON: "Nhập lý do giữ; lý do được lưu cùng lệnh giữ.",
 } as const;
 

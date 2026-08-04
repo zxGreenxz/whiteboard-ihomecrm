@@ -18,7 +18,18 @@ export type LegalHoldBlockedBy =
   | "PERMISSION_OPERATIONS"
   | "NOT_OWNER"
   | "NO_TARGET"
+  | "BAD_TARGET"
   | "NO_REASON";
+
+/**
+ * The target is a UUID, and the request schema enforces that BEFORE the RPC runs.
+ *
+ * Without this check the field accepts any text, the button enables, and the write
+ * dies inside the client on a ZodError - which carries no SQLSTATE, so the failure
+ * classifier reads it as "unknown, try again later". Retrying a mistyped id fails
+ * identically every time, so that advice sends an operator round a loop.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export interface LegalHoldGateInput {
   canAudit: boolean;
@@ -51,9 +62,11 @@ export function legalHoldGate(input: LegalHoldGateInput): {
         ? "NOT_OWNER"
         : input.targetId.trim() === ""
           ? "NO_TARGET"
-          : input.reason.trim() === ""
-            ? "NO_REASON"
-            : null;
+          : !UUID.test(input.targetId.trim())
+            ? "BAD_TARGET"
+            : input.reason.trim() === ""
+              ? "NO_REASON"
+              : null;
   return { canCreate: blockedBy === null, blockedBy };
 }
 

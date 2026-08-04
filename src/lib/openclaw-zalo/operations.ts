@@ -144,6 +144,52 @@ export function classifyResolutionFailure(error: unknown): ResolutionFailure {
   return "UNKNOWN";
 }
 
+export interface UnknownRowResolution {
+  resolutionId: string;
+  outcome: OpenClawUnknownResolutionOutcome;
+  resolvedAt: string;
+  newOutboxId: string | null;
+}
+
+/**
+ * Which conclusion the dialog should show for the row that is open.
+ *
+ * Two failures live here, and both are invisible when the wiring is read as
+ * straight-line code.
+ *
+ * The first: a row that is ALREADY resolved carries its conclusion in the list
+ * response. If the dialog only ever learns a winner from its own mutation result,
+ * pressing "Xem kết luận" on a settled row opens a dialog that shows no
+ * conclusion and offers to resolve it again.
+ *
+ * The second: a mutation callback can land after the operator closed the dialog or
+ * opened a different row - nothing disables the close button while a write is in
+ * flight. Winner state held without its outbox id then appears under whatever row
+ * happens to be open, which is how one message's outcome gets read as another's.
+ */
+export function dialogWinner(input: {
+  openOutboxId: string | null;
+  /** Set by this session's own mutation, tagged with the row it was about. */
+  mutationWinner: { outboxId: string; winner: UnknownRowResolution } | null;
+  /** What the list says about the open row, if anything. */
+  rowResolution: UnknownRowResolution | null;
+}): UnknownRowResolution | null {
+  if (input.openOutboxId === null) return null;
+  if (input.mutationWinner !== null && input.mutationWinner.outboxId === input.openOutboxId) {
+    return input.mutationWinner.winner;
+  }
+  return input.rowResolution;
+}
+
+/** The same rule for a failure message: it belongs to the row it was raised for. */
+export function dialogFailure(input: {
+  openOutboxId: string | null;
+  failure: { outboxId: string; message: string } | null;
+}): string | null {
+  if (input.openOutboxId === null || input.failure === null) return null;
+  return input.failure.outboxId === input.openOutboxId ? input.failure.message : null;
+}
+
 /**
  * Outcomes the browser cannot offer, and why.
  *

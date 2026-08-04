@@ -21,6 +21,8 @@ import {
 import {
   buildUnknownResolutionRequest,
   classifyResolutionFailure,
+  dialogFailure,
+  dialogWinner,
   operatorEvidenceHash,
   type ResolutionFailure,
 } from "@/lib/openclaw-zalo/operations";
@@ -67,8 +69,14 @@ export default function OpenClawOperationsSection() {
   const [openUnknownId, setOpenUnknownId] = useState<string | null>(null);
   const [selectedOutcome, setSelectedOutcome] = useState<OpenClawUnknownResolutionOutcome | null>(null);
   const [observation, setObservation] = useState("");
-  const [winner, setWinner] = useState<UnknownResolutionWinner | null>(null);
-  const [resolutionFailure, setResolutionFailure] = useState<string | null>(null);
+  // Keyed by outbox, not stored bare. A mutation callback can land after the
+  // operator has closed the dialog or opened a different row - the "Đóng" button is
+  // not disabled while a write is in flight - and bare state would then show one
+  // row's conclusion under another row's heading.
+  const [mutationWinner, setMutationWinner] =
+    useState<{ outboxId: string; winner: UnknownResolutionWinner } | null>(null);
+  const [resolutionFailure, setResolutionFailure] =
+    useState<{ outboxId: string; message: string } | null>(null);
   const [lastReplay, setLastReplay] = useState<ReplayOutcome | null>(null);
   const [holdTargetKind, setHoldTargetKind] = useState<LegalHoldTargetKind>("ORGANIZATION");
   const [holdTargetId, setHoldTargetId] = useState("");
@@ -97,6 +105,20 @@ export default function OpenClawOperationsSection() {
   );
 
   if (!bootstrap.account) return <OpenClawBoundaryState state="no-account" compact />;
+
+  const openRow = openUnknownId === null
+    ? null
+    : (unknownQuery.data ?? []).find(item => item.outboxId === openUnknownId) ?? null;
+  const winner = dialogWinner({
+    openOutboxId: openUnknownId,
+    mutationWinner,
+    rowResolution: openRow?.resolution == null ? null : {
+      resolutionId: openRow.resolution.resolutionId,
+      outcome: openRow.resolution.outcome,
+      resolvedAt: openRow.resolution.resolvedAt,
+      newOutboxId: openRow.resolution.newOutboxId ?? null,
+    },
+  });
 
   return (
     <>
@@ -230,7 +252,9 @@ export default function OpenClawOperationsSection() {
         authorityError={authority.error != null}
         winner={winner}
         busy={resolveUnknown.isPending}
-        failureMessage={resolutionFailure}
+        failureMessage={
+          dialogFailure({ openOutboxId: openUnknownId, failure: resolutionFailure })
+        }
         onSelectOutcome={setSelectedOutcome}
         onObservationChange={setObservation}
         onConfirm={() => {
@@ -239,6 +263,9 @@ export default function OpenClawOperationsSection() {
           // read is what the request is actually built from.
           if (openUnknownId === null || selectedOutcome === null || !evidence) return;
           setResolutionFailure(null);
+          // Captured now: the callbacks below can land after the operator opened a
+          // different row, and they must report against the row they were about.
+          const outboxId = openUnknownId;
           void (async () => {
             const request = buildUnknownResolutionRequest({
               organizationId: selectedOrganizationId,
@@ -265,16 +292,20 @@ export default function OpenClawOperationsSection() {
                 // A 40001 makes the hook reload whoever won, so a success here can be
                 // either our own resolution or somebody else's. Both are shown the
                 // same way: as the outcome of record.
-                setWinner({
-                  resolutionId: result.resolutionId,
-                  outcome: result.outcome,
-                  resolvedAt: result.resolvedAt,
-                  newOutboxId: result.newOutboxId ?? null,
+                setMutationWinner({
+                  outboxId,
+                  winner: {
+                    resolutionId: result.resolutionId,
+                    outcome: result.outcome,
+                    resolvedAt: result.resolvedAt,
+                    newOutboxId: result.newOutboxId ?? null,
+                  },
                 });
               },
-              onError: error => setResolutionFailure(
-                RESOLUTION_FAILURE_COPY[classifyResolutionFailure(error)],
-              ),
+              onError: error => setResolutionFailure({
+                outboxId,
+                message: RESOLUTION_FAILURE_COPY[classifyResolutionFailure(error)],
+              }),
             });
           })();
         }}
@@ -282,7 +313,7 @@ export default function OpenClawOperationsSection() {
           setOpenUnknownId(null);
           setSelectedOutcome(null);
           setObservation("");
-          setWinner(null);
+          setMutationWinner(null);
           setResolutionFailure(null);
         }}
       />
