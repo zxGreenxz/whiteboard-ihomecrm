@@ -5881,9 +5881,33 @@ function schemaDriftFailure(reason) {
   return new Error(`${reason}\n${FORWARD_CORRECTIVE_INSTRUCTION}`);
 }
 
+/**
+ * Every drift finding, not just the first.
+ *
+ * This used to throw on the first mismatch. That made the ledger check - a
+ * bookkeeping column - able to hide every substantive answer behind it: an
+ * operator running the go-live gate saw "identity mismatch at file 1" and never
+ * learned whether views were unsafe, whether function owners had drifted, or
+ * whether an activation flag was already on. A gate that reports one thing at a
+ * time is a gate that gets run once and then worked around.
+ */
 function validateSchemaDriftSnapshot({ snapshot, manifest, expectedFunctions }) {
+  const findings = [];
+  const record = reason => { findings.push(reason); };
+  const report = () => {
+    if (findings.length === 0) return;
+    throw schemaDriftFailure(
+      findings.length === 1
+        ? findings[0]
+        : `${findings.length} phát hiện drift:\n`
+          + findings.map(finding => `  - ${finding}`).join("\n"),
+    );
+  };
+
   if (!Array.isArray(snapshot.migrations) ||
       snapshot.migrations.length !== manifest.entries.length) {
+    // Cardinality is the one that cannot be collected past: every check below
+    // indexes into this array.
     throw schemaDriftFailure("Remote migration identity cardinality mismatch.");
   }
   for (let index = 0; index < manifest.entries.length; index += 1) {
@@ -5898,7 +5922,16 @@ function validateSchemaDriftSnapshot({ snapshot, manifest, expectedFunctions }) 
       Number(actual?.statementCount) !== 1 ||
       actual?.recordedSha256 !== expected.sha256
     ) {
-      throw schemaDriftFailure(`Remote migration identity mismatch at ${expected.file}.`);
+      // Named specifically, because "the ledger has no statements recorded" and
+      // "the file changed after it was applied" call for opposite responses and
+      // both used to arrive as the same sentence.
+      record(
+        `Remote migration identity mismatch at ${expected.file}.`
+        + (Number(actual?.statementCount) !== 1
+          ? ` (ledger records ${actual?.statementCount ?? "no"} statements for it,`
+            + " so its applied bytes were never recorded)"
+          : ""),
+      );
     }
   }
   const recordedLines = snapshot.migrations
@@ -5910,14 +5943,14 @@ function validateSchemaDriftSnapshot({ snapshot, manifest, expectedFunctions }) 
     .update(recordedLines)
     .digest("hex");
   if (recordedAggregate !== manifest.aggregateSha256) {
-    throw schemaDriftFailure("Remote aggregate migration manifest mismatch.");
+    record("Remote aggregate migration manifest mismatch.");
   }
   if (!Array.isArray(snapshot.unsafeViews) || snapshot.unsafeViews.length !== 0) {
-    throw schemaDriftFailure("A public view is missing security_invoker=true.");
+    record("A public view is missing security_invoker=true.");
   }
   if (canonicalComparisonJson(snapshot.functions) !==
       canonicalComparisonJson(expectedFunctions)) {
-    throw schemaDriftFailure("Function owner, search_path, or grant snapshot drifted.");
+    record("Function owner, search_path, or grant snapshot drifted.");
   }
   const expectedActivationColumns = [
     "feature_enabled",
@@ -5937,12 +5970,13 @@ function validateSchemaDriftSnapshot({ snapshot, manifest, expectedFunctions }) 
       column?.isNullable !== "NO" ||
       !/^\(?false\)?(?:::boolean)?$/i.test(String(column?.columnDefault ?? ""))
     ) {
-      throw schemaDriftFailure(`Activation default drifted for ${expectedActivationColumns[index]}.`);
+      record(`Activation default drifted for ${expectedActivationColumns[index]}.`);
     }
   }
   if (Number(snapshot.enabledRowCount) !== 0) {
-    throw schemaDriftFailure("An OpenClaw activation flag is already enabled.");
+    record("An OpenClaw activation flag is already enabled.");
   }
+  report();
 }
 
 export async function runSchemaDrift(
