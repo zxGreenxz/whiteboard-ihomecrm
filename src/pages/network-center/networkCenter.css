@@ -383,6 +383,8 @@
 .nc-state-page p,
 .nc-state-card p { max-width: 620px; color: var(--nc-muted); font-weight: 700; }
 .nc-state-card { display: flex; min-height: 420px; flex-direction: column; align-items: center; justify-content: center; gap: 16px; border: 3px solid var(--nc-ink); padding: 24px; text-align: center; }
+.nc-detail-failures { display: flex; max-width: 620px; flex-direction: column; gap: 6px; list-style: none; color: var(--nc-muted); font-weight: 800; text-align: left; }
+.nc-detail-failures strong { color: var(--nc-ink); }
 .nc-spin { animation: nc-spin 1s linear infinite; }
 @keyframes nc-spin { to { transform: rotate(360deg); } }
 

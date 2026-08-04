@@ -106,6 +106,22 @@ function requestId(value?: string): string {
   return value ?? crypto.randomUUID();
 }
 
+/**
+ * Hàng hạm đội chỉ hiển thị thêm được interface WAN, sự cố đang mở và bảo trì.
+ * Cả ba đều đòi hỏi ít nhất một trong các dấu hiệu dưới đây do CHÍNH RPC hạm đội
+ * trả về, nên khi cả ba đều rỗng thì gọi `network_center_get_building_v1` chỉ
+ * tốn một round-trip mà không thêm dữ liệu nào cho màn hình hạm đội.
+ */
+function fleetItemNeedsDetail(item: {
+  routerId?: string | null;
+  openIncidents?: number | null;
+  maintenanceActive?: boolean | null;
+}): boolean {
+  return Boolean(item.routerId)
+    || (item.openIncidents ?? 0) > 0
+    || Boolean(item.maintenanceActive);
+}
+
 function actionName(type: NetworkActionRequest["type"]): string {
   return type.toUpperCase();
 }
@@ -136,11 +152,27 @@ export class SupabaseNetworkCenterRepository implements NetworkCenterRepository 
       undefined,
       parseNetworkCenterFleet,
     );
-    const details = await Promise.all(
-      fleet.items.map((item) => this.fetchBuildingDto(item.buildingId)),
-    );
+    const details = await Promise.all(fleet.items.map(async (item) => {
+      // Chính RPC hạm đội đã nói toà này không có router, không sự cố mở và
+      // không bảo trì → RPC chi tiết không thêm được gì cho hàng hạm đội. Bỏ
+      // một lượt gọi thay vì fan-out N+1 cho toàn bộ danh sách.
+      if (!fleetItemNeedsDetail(item)) return { detail: undefined, error: undefined };
+      try {
+        return { detail: await this.fetchBuildingDto(item.buildingId), error: undefined };
+      } catch (error) {
+        // Lỗi chi tiết của MỘT toà không được đánh sập cả hạm đội; hàng đó giữ
+        // nguyên số liệu thật của RPC hạm đội và mang cờ báo lỗi cho UI.
+        return {
+          detail: undefined,
+          error: error instanceof Error
+            ? error.message
+            : "Không tải được chi tiết toà nhà",
+        };
+      }
+    }));
     return fleet.items.map((item, index) => {
-      const building = mapNetworkCenterFleetItem(item, details[index]);
+      const building = mapNetworkCenterFleetItem(item, details[index].detail);
+      if (details[index].error) building.detailError = details[index].error;
       return building;
     });
   }

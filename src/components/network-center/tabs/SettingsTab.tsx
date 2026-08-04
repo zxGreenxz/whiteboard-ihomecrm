@@ -1,4 +1,4 @@
-import { Pause, Save } from "lucide-react";
+import { Pause, Save, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Input } from "@/components/ui/input";
@@ -17,15 +17,17 @@ export function SettingsTab({ site, controller }: { site: NetworkBuilding; contr
     site.rolloutState,
     controller.executeDisabledMessage,
   );
-  const [draft, setDraft] = useState<NetworkSettings>(site.settings);
+  const storedSettings = site.settings;
+  const [draft, setDraft] = useState<NetworkSettings | null>(storedSettings);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    setDraft(site.settings);
+    setDraft(storedSettings);
     setError("");
     setSaving(false);
-  }, [site.buildingId, site.settings]);
+  }, [site.buildingId, storedSettings]);
   const save = async () => {
+    if (!draft || site.settingsVersion === null) return;
     setError("");
     setSaving(true);
     try {
@@ -38,6 +40,29 @@ export function SettingsTab({ site, controller }: { site: NetworkBuilding; contr
       setSaving(false);
     }
   };
+  // Toà chưa có dòng cài đặt trong control plane: đây là trạng thái RỖNG bình
+  // thường, không phải lỗi. KHÔNG dựng giá trị mặc định giả để lấp ô nhập.
+  if (!draft || site.settingsVersion === null) {
+    return (
+      <section className="nc-panel">
+        <div className="nc-panel-heading">
+          <div>
+            <p className="nc-eyebrow">Chính sách theo toà nhà</p>
+            <h3>Cài đặt</h3>
+          </div>
+        </div>
+        <div className="nc-state-card">
+          <SlidersHorizontal aria-hidden="true" />
+          <h2>Chưa cấu hình Network Center</h2>
+          <p>
+            Toà nhà này chưa có bản ghi cài đặt nào trong control plane, nên chưa có
+            chu kỳ kiểm tra, giờ backup hay ngưỡng cảnh báo để hiển thị. Network Center
+            không tự tạo dữ liệu thay thế.
+          </p>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="nc-panel">
       <div className="nc-panel-heading"><div><p className="nc-eyebrow">Chính sách theo toà nhà</p><h3>Cài đặt</h3></div><ExecuteButton canExecute={controller.canExecute} rolloutState={site.rolloutState} disabledReason={controller.executeDisabledMessage} disabled={saving} onClick={() => void save()}><Save data-icon="inline-start" /> {saving ? "Đang lưu…" : "Lưu cài đặt"}</ExecuteButton></div>

@@ -19,6 +19,7 @@ import { resolveNetworkActor } from "@/lib/network-center/actorIdentity";
 import { DemoNetworkCenterRepository } from "@/lib/network-center/demoRepository";
 import { createIntentRegistry } from "@/lib/network-center/intentRegistry";
 import { networkCenterQueryKeys } from "@/lib/network-center/queryKeys";
+import { shouldRetryNetworkCenterQuery } from "@/lib/network-center/retryPolicy";
 import {
   createAsyncDemoNetworkCenterRepository,
   synchronizeDemoNetworkCenterRepository,
@@ -130,6 +131,8 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     queryKey: fleetKey,
     queryFn: () => requireRepository().listFleet(),
     enabled: canView && !buildingsQuery.isLoading && !permissionsQuery.isLoading,
+    retry: shouldRetryNetworkCenterQuery,
+    retryOnMount: false,
   });
   const fleet = useMemo(() => fleetQuery.data ?? [], [fleetQuery.data]);
 
@@ -166,6 +169,8 @@ export function useNetworkCenter(selectedBuildingId?: string) {
       return requireRepository().getBuilding(normalizedSelectedBuildingId, fallback);
     },
     enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
+    retry: shouldRetryNetworkCenterQuery,
+    retryOnMount: false,
   });
   const activeIntent = useMemo(
     () => intentRegistry.list({
@@ -216,6 +221,8 @@ export function useNetworkCenter(selectedBuildingId?: string) {
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     maxPages: 1,
     enabled: canView && Boolean(normalizedSelectedBuildingId) && fleetQuery.isSuccess,
+    retry: shouldRetryNetworkCenterQuery,
+    retryOnMount: false,
   });
   const arubaNodes = useMemo<ArubaNode[]>(
     () => arubaQuery.data?.pages.at(-1)?.items ?? [],

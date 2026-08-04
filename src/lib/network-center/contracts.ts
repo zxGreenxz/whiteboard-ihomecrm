@@ -243,8 +243,15 @@ export interface NetworkBuilding {
   revisions: ConfigRevision[];
   jobs: NetworkJob[];
   audit: AuditRecord[];
-  settings: NetworkSettings;
-  settingsVersion: number;
+  /** `null` = toà chưa được provisioning (không có dòng `network_site_settings`). */
+  settings: NetworkSettings | null;
+  settingsVersion: number | null;
+  /**
+   * Chỉ được đặt khi RPC chi tiết của RIÊNG toà này thất bại thật. Hàng vẫn giữ
+   * nguyên số liệu do RPC hạm đội trả về — KHÔNG bịa dữ liệu thay thế — và UI
+   * phải nói rõ phần chi tiết chưa tải được.
+   */
+  detailError?: string;
 }
 
 export interface FleetFilters {

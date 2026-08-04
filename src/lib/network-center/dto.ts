@@ -139,6 +139,21 @@ const settingsSchema = z.object({
   version: z.number().int().positive(),
 });
 
+// Toà nhà CHƯA có dòng `network_site_settings`: RPC vẫn trả 200 nhưng LEFT JOIN
+// cho ra một object toàn null. Đó là trạng thái RỖNG hợp lệ (chưa provisioning),
+// KHÔNG phải vi phạm hợp đồng — đọc thành `null` để UI hiển thị trạng thái rỗng
+// bình tĩnh. Mọi hình dạng khác (nửa null, số ngoài khoảng…) vẫn là lỗi thật.
+const absentSettingsSchema = z.object({
+  pollingSeconds: z.null(),
+  backupHour: z.null(),
+  alertSensitivity: z.null(),
+  dependencyGrouping: z.null(),
+  changesPaused: z.null(),
+  version: z.null(),
+}).transform(() => null);
+
+const settingsOrAbsentSchema = z.union([settingsSchema, absentSettingsSchema]);
+
 const buildingSchema = z.object({
   buildingId: uuidSchema,
   buildingName: z.string().min(1).max(300),
@@ -149,7 +164,7 @@ const buildingSchema = z.object({
   incidents: z.array(incidentSchema).max(500),
   maintenance: maintenanceSchema,
   revisions: z.array(revisionSchema).max(50),
-  settings: settingsSchema,
+  settings: settingsOrAbsentSchema,
 });
 
 const arubaItemSchema = z.object({
@@ -517,14 +532,10 @@ function baseFleetBuilding(item: NetworkCenterFleetItemDto, now: number): Networ
     revisions: [],
     jobs: [],
     audit: [],
-    settings: {
-      pollingSeconds: 60,
-      backupHour: "03:00",
-      alertSensitivity: "standard",
-      dependencyGrouping: true,
-      changesPaused: false,
-    },
-    settingsVersion: 1,
+    // RPC hạm đội KHÔNG trả cài đặt. Không bịa giá trị mặc định ở đây — chỉ RPC
+    // chi tiết mới biết toà có dòng `network_site_settings` hay không.
+    settings: null,
+    settingsVersion: null,
   };
 }
 
@@ -787,8 +798,8 @@ export function mergeNetworkCenterBuilding(
     incidents: detail.incidents.map((item) => mapIncident(detail.buildingId, item)),
     maintenance: mapMaintenance(detail.maintenance),
     revisions: detail.revisions.map(mapRevision),
-    settings: settingsFromDto(detail.settings),
-    settingsVersion: detail.settings.version,
+    settings: detail.settings ? settingsFromDto(detail.settings) : null,
+    settingsVersion: detail.settings?.version ?? null,
     arubaNodes,
     arubaTotal,
     arubaOnline: loadedAllAruba
