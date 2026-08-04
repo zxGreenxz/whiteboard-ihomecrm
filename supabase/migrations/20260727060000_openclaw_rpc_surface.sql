@@ -9926,10 +9926,19 @@ alter function app_private.openclaw_unknown_authority_v1(uuid, uuid, uuid)
 revoke all on function app_private.openclaw_unknown_authority_v1(uuid, uuid, uuid)
   from public, anon, authenticated, service_role;
 
+-- VOLATILE (the default), NOT stable, even though this only reads.
+--
+-- PostgREST picks the transaction mode from the routine's volatility: IMMUTABLE
+-- and STABLE run in a READ ONLY transaction, only VOLATILE gets read-write. This
+-- function's authorization chain reaches app_private.lock_org_for_decision_v1,
+-- which takes a row lock, and a lock is illegal in a read-only transaction - so
+-- marking it stable made every browser call fail with
+-- "25006: cannot execute SELECT FOR NO KEY UPDATE in a read-only transaction".
+-- Measured on production; every other browser getter here is volatile for the
+-- same reason.
 create or replace function public.openclaw_get_unknown_authority_v1(p_request jsonb)
 returns jsonb
 language plpgsql
-stable
 security definer
 set search_path = ''
 as $function$

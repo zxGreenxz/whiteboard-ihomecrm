@@ -272,6 +272,21 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     // is pinned so a new browser-callable RPC cannot slip in without a reviewer
     // noticing it appear here.
     expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(56);
+
+    // PostgREST derives the transaction mode from volatility: IMMUTABLE and STABLE
+    // run READ ONLY, only VOLATILE gets read-write. Every one of these functions
+    // authorizes through app_private.lock_org_for_decision_v1, which takes a row
+    // lock - illegal in a read-only transaction. A `stable` marker here is not a
+    // hint, it is a guaranteed
+    // "25006: cannot execute SELECT FOR NO KEY UPDATE in a read-only transaction"
+    // on every call. This was measured on production, not inferred.
+    for (const name of [...browserReadRpcs, ...browserWriterRpcs]) {
+      // Only the header, not the body: a function whose SQL happens to mention the
+      // word "stable" in a comment or a column name is not the thing being checked.
+      const header = functionBody(source, "public", name).definitionSql.split("as $function$")[0];
+      expect(header, `${name} must not be declared stable or immutable`)
+        .not.toMatch(/^\s*(?:stable|immutable)\s*$/imu);
+    }
     expect(serviceRoutines).toHaveLength(35);
 
     for (const name of browserReadRpcs) {
