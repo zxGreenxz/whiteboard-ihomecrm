@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOpenClawRouteContext } from "../OpenClawRouteGuard";
 import { useOpenClawOverview } from "@/hooks/openclaw-zalo/useOpenClawOverview";
-import { useOpenClawHealthEvents } from "@/hooks/openclaw-zalo/useOpenClawOperations";
+import {
+  useOpenClawAuditEvents,
+  useOpenClawHealthEvents,
+} from "@/hooks/openclaw-zalo/useOpenClawOperations";
 import { useOpenClawSetControlState } from "@/hooks/openclaw-zalo/useOpenClawMutations";
+import { verifyAuditChain, type AuditChainVerdict } from "@/lib/openclaw-zalo/auditChain";
 import OpenClawBoundaryState from "../OpenClawBoundaryState";
 import OpenClawGlobalStopDialog from "../dialogs/OpenClawGlobalStopDialog";
 import OpenClawOverview from "./OpenClawOverview";
@@ -19,6 +23,31 @@ export default function OpenClawOverviewSection() {
 
   const overviewQuery = useOpenClawOverview(selectedOrganizationId, accountId);
   const healthQuery = useOpenClawHealthEvents(selectedOrganizationId, accountId, 10);
+  const auditQuery = useOpenClawAuditEvents(selectedOrganizationId, accountId, 50);
+  const [auditChain, setAuditChain] = useState<AuditChainVerdict | null>(null);
+
+  // Verification is async (SHA-256 via WebCrypto), so it runs as an effect rather
+  // than during render. It is deliberately recomputed on every fetch: a verdict
+  // held over from an earlier page would claim assurance about rows nobody checked.
+  const auditItems = auditQuery.data?.items;
+  useEffect(() => {
+    if (auditItems === undefined) {
+      setAuditChain(null);
+      return;
+    }
+    let cancelled = false;
+    void verifyAuditChain(auditItems.map(item => ({
+      auditEventId: item.auditEventId,
+      organizationSequence: item.organizationSequence,
+      eventType: item.eventType,
+      evidenceHash: item.evidenceHash,
+      previousHash: item.previousHash,
+      eventHash: item.eventHash,
+    }))).then(verdict => {
+      if (!cancelled) setAuditChain(verdict);
+    });
+    return () => { cancelled = true; };
+  }, [auditItems]);
   const setControlState = useOpenClawSetControlState(
     selectedOrganizationId ?? "", accountId ?? "",
   );
@@ -45,6 +74,8 @@ export default function OpenClawOverviewSection() {
         }))}
         loading={overviewQuery.isLoading}
         canManageOperations={canManageOperations}
+        canAudit={can("audit")}
+        auditChain={auditChain}
         onOpenGlobalStop={() => {
           // The phrase is retyped every time. Carrying it over between openings
           // would turn a deliberate confirmation into a second click.

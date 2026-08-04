@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import OpenClawOverview from "../overview/OpenClawOverview";
+import type { AuditChainVerdict } from "@/lib/openclaw-zalo/auditChain";
 import type { OpenClawAccountSummary, OpenClawControlState } from "@/lib/openclaw-zalo/types";
 
 const noop = vi.fn();
@@ -44,6 +45,8 @@ const props = {
   incidentsUnavailable: false,
   loading: false,
   canManageOperations: true,
+  canAudit: true,
+  auditChain: null as AuditChainVerdict | null,
   onOpenGlobalStop: noop,
 };
 
@@ -97,10 +100,69 @@ describe("operational overview", () => {
     // A tile reading "0 ms p95" when nothing measures p95 invites the operator to
     // conclude the system is fast.
     const html = render();
-    for (const key of ["queueLagP95", "transferQuota", "auditVerification", "lastRestoreDrill"]) {
+    for (const key of ["queueLagP95", "transferQuota", "lastRestoreDrill"]) {
       expect(html, key).toContain(`data-openclaw-unavailable="${key}"`);
     }
     expect(html).toContain("sẽ khiến bạn");
+  });
+
+  it("no longer calls the audit chain unmeasurable, because it is measurable", () => {
+    // openclaw_list_audit_events_v1 returns all four inputs to the event hash, so
+    // the chain is recomputable here. Leaving it on the "cannot measure" list would
+    // hide a check an auditor can actually run.
+    expect(render()).not.toContain('data-openclaw-unavailable="auditVerification"');
+  });
+
+  it("separates an unread audit chain from a verified one", () => {
+    // Null means nobody checked. Rendering that as a tick would be the worst
+    // possible lie on this particular tile.
+    const unread = render({ auditChain: null });
+    expect(unread).toContain('data-openclaw-audit-chain="unavailable"');
+    expect(unread).not.toContain('data-openclaw-audit-chain="INTACT"');
+    // And a member without `audit` is told why, rather than shown a failure.
+    expect(render({ auditChain: null, canAudit: false })).toContain("Cần quyền kiểm toán");
+  });
+
+  it("does not report an empty page as an intact chain", () => {
+    const html = render({
+      auditChain: {
+        checkedCount: 0, linkedCount: 0, fromSequence: null, toSequence: null,
+        findings: [], intact: true,
+      },
+    });
+    expect(html).toContain('data-openclaw-audit-chain="empty"');
+    expect(html).not.toContain('data-openclaw-audit-chain="INTACT"');
+  });
+
+  it("states what recomputing the chain does NOT prove", () => {
+    // Without this the tick reads as "the audit log is trustworthy", which is more
+    // than a browser can establish: it never sees the evidence behind evidenceHash.
+    const html = render({
+      auditChain: {
+        checkedCount: 3, linkedCount: 2, fromSequence: 1, toSequence: 3,
+        findings: [], intact: true,
+      },
+    });
+    expect(html).toContain('data-openclaw-audit-chain="INTACT"');
+    expect(html).toContain('data-openclaw-audit-chain="limitation"');
+    expect(html).toContain("KHÔNG chứng minh");
+  });
+
+  it("names where a broken chain broke", () => {
+    const html = render({
+      auditChain: {
+        checkedCount: 3, linkedCount: 2, fromSequence: 1, toSequence: 3,
+        findings: [
+          { kind: "HASH_MISMATCH", auditEventId: "ev-2", organizationSequence: 2 },
+          { kind: "SEQUENCE_GAP", fromSequence: 3, toSequence: 7 },
+        ],
+        intact: false,
+      },
+    });
+    expect(html).toContain('data-openclaw-audit-chain="BROKEN"');
+    expect(html).toContain('data-openclaw-audit-finding="HASH_MISMATCH"');
+    expect(html).toContain('data-openclaw-audit-finding="SEQUENCE_GAP"');
+    expect(html).toContain("Thiếu sự kiện giữa bản 3 và 7");
   });
 
   it("renders incident metrics by whatever key arrived", () => {

@@ -126,6 +126,8 @@ export const OVERVIEW_UNAVAILABLE = [
   { key: "transferQuota", label: "Hạn mức truyền tải" },
   { key: "supabaseEgress", label: "Băng thông Supabase" },
   { key: "objectStorage", label: "Yêu cầu và dung lượng R2" },
-  { key: "auditVerification", label: "Kết quả kiểm chứng chuỗi audit" },
+  // auditVerification is NOT here: openclaw_list_audit_events_v1 returns all four
+  // inputs to the event hash, so the chain is recomputable in the browser. See
+  // auditChain.ts; the tile states what that check does and does not prove.
   { key: "lastRestoreDrill", label: "Lần diễn tập khôi phục gần nhất" },
 ] as const;

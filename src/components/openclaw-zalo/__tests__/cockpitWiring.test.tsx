@@ -135,6 +135,7 @@ vi.mock("@/hooks/openclaw-zalo/useOpenClawOperations", () => ({
   useOpenClawUnknownAuthority: () => ({ ...idleQuery, data: null }),
   useOpenClawDeadLetters: () => ({ ...idleQuery, data: emptyList }),
   useOpenClawLegalHolds: () => ({ ...idleQuery, data: emptyList }),
+  useOpenClawAuditEvents: () => ({ ...idleQuery, data: emptyList }),
 }));
 
 vi.mock("@/hooks/openclaw-zalo/useOpenClawMutations", () => ({

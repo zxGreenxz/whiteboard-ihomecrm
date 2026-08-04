@@ -10,6 +10,10 @@ import {
   type OperationalStatus,
   type OverviewCounts,
 } from "@/lib/openclaw-zalo/overview";
+import {
+  AUDIT_CHAIN_LIMITATION,
+  type AuditChainVerdict,
+} from "@/lib/openclaw-zalo/auditChain";
 import type { OpenClawAccountSummary, OpenClawControlState } from "@/lib/openclaw-zalo/types";
 
 export interface HealthIncidentView {
@@ -30,6 +34,10 @@ interface OpenClawOverviewProps {
   incidentsUnavailable: boolean;
   loading: boolean;
   canManageOperations: boolean;
+  /** Reading the audit log needs the audit permission; without it there is nothing to verify. */
+  canAudit: boolean;
+  /** Null while unread or unreadable - NOT the same as a chain that verified. */
+  auditChain: AuditChainVerdict | null;
   onOpenGlobalStop: () => void;
 }
 
@@ -152,6 +160,61 @@ export default function OpenClawOverview(props: OpenClawOverviewProps) {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      <section className="border border-[#cbd5df] bg-white p-4">
+        <h2 className="text-sm font-extrabold uppercase tracking-[0.1em] text-[#607585]">
+          Kiểm chứng chuỗi nhật ký kiểm toán
+        </h2>
+        {props.auditChain === null ? (
+          <p data-openclaw-audit-chain="unavailable" className="mt-2 text-sm font-bold text-[#8a4b12]">
+            {props.canAudit
+              ? "Chưa đọc được nhật ký kiểm toán, nên chưa kiểm chứng được."
+              : "Cần quyền kiểm toán để đọc và kiểm chứng chuỗi này."}
+          </p>
+        ) : props.auditChain.checkedCount === 0 ? (
+          // "Nothing to check" must not read as "checked and fine".
+          <p data-openclaw-audit-chain="empty" className="mt-2 text-sm text-[#607585]">
+            Chưa có sự kiện kiểm toán nào để kiểm chứng.
+          </p>
+        ) : (
+          <>
+            <p
+              data-openclaw-audit-chain={props.auditChain.intact ? "INTACT" : "BROKEN"}
+              data-openclaw-tone={props.auditChain.intact ? "OK" : "STOP"}
+              className={`mt-2 text-sm font-bold ${
+                props.auditChain.intact ? "text-[#0f766e]" : "text-[#8a2f1c]"
+              }`}
+            >
+              {props.auditChain.intact
+                ? `✓ Tính lại khớp cho ${props.auditChain.checkedCount} sự kiện `
+                  + `(bản ${props.auditChain.fromSequence}–${props.auditChain.toSequence}), `
+                  + `${props.auditChain.linkedCount} mối nối liền mạch.`
+                : `✗ Chuỗi có vấn đề ở ${props.auditChain.findings.length} chỗ trong `
+                  + `${props.auditChain.checkedCount} sự kiện đọc được.`}
+            </p>
+            {props.auditChain.findings.length > 0 && (
+              <ul className="mt-1 grid gap-0.5">
+                {props.auditChain.findings.map((finding, index) => (
+                  <li
+                    key={`${finding.kind}-${index}`}
+                    data-openclaw-audit-finding={finding.kind}
+                    className="font-mono text-xs text-[#8a2f1c]"
+                  >
+                    {finding.kind === "SEQUENCE_GAP"
+                      ? `Thiếu sự kiện giữa bản ${finding.fromSequence} và ${finding.toSequence}`
+                      : `${finding.kind} tại bản ${finding.organizationSequence}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* Required, not optional: without it "✓ verified" overstates what a
+                browser can see, and an auditor could rely on the wrong assurance. */}
+            <p data-openclaw-audit-chain="limitation" className="mt-2 text-xs leading-5 text-[#607585]">
+              {AUDIT_CHAIN_LIMITATION}
+            </p>
+          </>
         )}
       </section>
 
