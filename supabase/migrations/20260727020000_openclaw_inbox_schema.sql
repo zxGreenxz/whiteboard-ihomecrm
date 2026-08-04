@@ -255,6 +255,17 @@ create index openclaw_messages_unread_idx
 create index openclaw_conversations_active_idx
   on public.openclaw_conversations
     (organization_id, account_id, status, last_received_at desc, id desc);
+-- The index above carries `status` BETWEEN the equality columns and the ordering
+-- columns, so it can only serve a query that also filters on status.
+-- `openclaw_list_conversations_v1` does not: it filters on
+-- (organization_id, account_id) and orders by (last_received_at desc, id desc).
+-- Measured on 10,000 seeded rows, that query fell back to a sequential scan plus a
+-- sort - ten thousand rows read to return fifty - and the keyset cursor page did
+-- the same, which means page 20 cost exactly what page 1 cost and the cursor
+-- bought nothing. This index matches the query as written.
+create index openclaw_conversations_recent_idx
+  on public.openclaw_conversations
+    (organization_id, account_id, last_received_at desc, id desc);
 
 alter table public.openclaw_conversations
   add constraint openclaw_conversations_last_message_fkey
