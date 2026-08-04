@@ -27,6 +27,9 @@ import type { IncomeExpenseWithRelations } from "@/hooks/useIncomeExpenses";
 import { kqkdStatusLabel } from "@/lib/kqkd";
 import { useIncomeExpenseHistory } from "@/hooks/useIncomeExpenses";
 import { useIsAdmin, useIsSuperAdmin } from "@/hooks/useIsAdmin";
+import { useMyPermissions } from "@/hooks/useMyPermissions";
+import { canUse } from "@/lib/permissionPages";
+import { canShowAnnotateAction } from "@/lib/voucherAnnotate";
 import { useAuth } from "@/hooks/useAuth";
 import { StorageImage } from "@/components/ui/storage-image";
 import { AttachmentLightbox } from "@/components/ui/attachment-lightbox";
@@ -39,7 +42,7 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voucher: IncomeExpenseWithRelations | null;
-  onCancel?: (id: string) => void;
+  onCancel?: (id: string, type?: string | null) => void;
   onEdit?: (voucher: IncomeExpenseWithRelations) => void;
   /** Sửa nhanh 3 field (sổ quỹ + đính kèm + ghi chú) — cho creator của
    *  phiếu đã ghi nhận/đã huỷ, không cần super admin. */
@@ -92,6 +95,7 @@ export function IncomeExpenseDetailDialog({
   const [paySheetOpen, setPaySheetOpen] = useState(false);
   const isMobile = useIsMobile();
   const { data: isAdmin = false } = useIsAdmin();
+  const { data: perms } = useMyPermissions();
   const { data: isSuperAdmin = false } = useIsSuperAdmin();
   const { data: authUser } = useAuth();
   const currentUserId = authUser?.id ?? null;
@@ -138,8 +142,13 @@ export function IncomeExpenseDetailDialog({
   const isCreator =
     !!currentUserId && voucher.user_id === currentUserId;
   const showFullEdit = !!onEdit && (isUnapproved || isAdmin);
-  const showQuickEdit =
-    !!onQuickEdit && !isUnapproved && !isAdmin && isCreator;
+  const showQuickEdit = canShowAnnotateAction({
+    hasHandler: !!onQuickEdit,
+    isUnapproved,
+    isAdmin,
+    isCreator,
+    canEdit: canUse(perms, "income_expenses", "edit"),
+  });
 
   return (
     <>
@@ -196,7 +205,12 @@ export function IncomeExpenseDetailDialog({
                   size="icon"
                   variant="default"
                   className="h-8 w-8 bg-amber-500 hover:bg-amber-600"
-                  title="Sửa sổ quỹ / hình ảnh / ghi chú"
+                  // ĐỢT C: sổ quỹ chỉ sửa được ở phiếu THU.
+                  title={
+                    voucher.type === "INCOME"
+                      ? "Sửa sổ quỹ / hình ảnh / ghi chú"
+                      : "Sửa hình ảnh / ghi chú"
+                  }
                   onClick={() => {
                     onQuickEdit!(voucher);
                     onOpenChange(false);
@@ -240,7 +254,7 @@ export function IncomeExpenseDetailDialog({
                   className="h-8 w-8 bg-orange-500 hover:bg-orange-600"
                   title="Huỷ phiếu"
                   onClick={() => {
-                    onCancel(voucher.id);
+                    onCancel(voucher.id, voucher.type);
                     onOpenChange(false);
                   }}
                 >

@@ -355,10 +355,28 @@ export type ReversePaymentRpcInvoker = (
   args: Record<string, unknown>,
 ) => PromiseLike<{ data: unknown; error: PaymentRpcError | null }>;
 
+/**
+ * Đường nào đã thật sự chạy (Đợt 5). Server tự quyết theo chế độ kế toán của
+ * tổ chức, FE chỉ đọc lại để nói đúng chuyện đã xảy ra:
+ *  - IN_PLACE_CANCEL: chính phiếu thu bị huỷ, KHÔNG có phiếu đối ứng nào.
+ *  - COUNTER_VOUCHER: sinh phiếu chi đối ứng như trước (chế độ Chuẩn kế toán).
+ * Đường legacy v3 không trả trường này nên đọc ra `undefined`.
+ */
+export type ReversalMode = "IN_PLACE_CANCEL" | "COUNTER_VOUCHER";
+
+export function readReversalMode(result: unknown): ReversalMode | null {
+  const mode = (result as { reversal_mode?: unknown } | null)?.reversal_mode;
+  return mode === "IN_PLACE_CANCEL" || mode === "COUNTER_VOUCHER" ? mode : null;
+}
+
 export async function reverseInvoicePaymentBySource(
   rpc: ReversePaymentRpcInvoker,
   input: ReverseInvoicePaymentInput,
-): Promise<{ result: unknown; source: "COLLECTION" | "LEGACY_PAYMENT" }> {
+): Promise<{
+  result: unknown;
+  source: "COLLECTION" | "LEGACY_PAYMENT";
+  reversalMode: ReversalMode | null;
+}> {
   const key = normalizeIdempotencyKey(input.idempotency_key);
   const reason = input.reason.trim();
   if (!input.reversal_date || reason.length < 8 || reason.length > 1000) {
@@ -385,5 +403,5 @@ export async function reverseInvoicePaymentBySource(
         p_idempotency_key: key,
       });
   if (response.error) throw response.error;
-  return { result: response.data, source };
+  return { result: response.data, source, reversalMode: readReversalMode(response.data) };
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import "./phongTrong.css";
 import { Icon } from "./icons";
-import { FloorPlan, ListView, OverviewView } from "./PhongTrongParts";
+import { FilterBar, FloorPlan, ListView, OverviewView, PRICE_BANDS } from "./PhongTrongParts";
 import { DetailSheet, Toast } from "./PhongTrongSheet";
 import { SAMPLE_BUILDINGS, type Building, type Room } from "./sampleData";
 import { usePhongTrong } from "./usePhongTrong";
@@ -45,8 +45,14 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const [propId, setPropId] = usePersistedState<string>("flt:phong-trong:propId", OVERVIEW);
   const [view, setView] = usePersistedState<"map" | "list">("flt:phong-trong:view", "list");
   const [district, setDistrict] = usePersistedState("flt:phong-trong:district", "all");
+  const [band, setBand] = usePersistedState<string>("flt:phong-trong:band", "all");
   const showRented = false;
   const isOverview = propId === OVERVIEW;
+  // Id lạ trong localStorage (dải giá cũ) → coi như "Mọi giá".
+  const bandTest = useMemo(
+    () => (PRICE_BANDS.find((b) => b.id === band) ?? PRICE_BANDS[0]).test,
+    [band],
+  );
 
   const [room, setRoom] = useState<Room | null>(null);
   const [sheetShow, setSheetShow] = useState(false);
@@ -123,6 +129,12 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
     if (first) setPropId(first.id);
   };
 
+  // Chọn dải giá (chip) — ghi building_select kèm metadata (event_type có CHECK ở DB, không thêm loại mới).
+  const pickBand = (id: string) => {
+    tracker.track("building_select", { metadata: { kind: "price_band", band: id } });
+    setBand(id);
+  };
+
   // Chọn tòa (chip) — ghi building_select.
   const selectBuilding = (id: string) => {
     setPropId(id);
@@ -148,9 +160,9 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
   const listRooms = useMemo(() => {
     if (!building) return [] as Room[];
     return building.rooms
-      .filter((r) => showRented || r.status !== "rented")
+      .filter((r) => (showRented || r.status !== "rented") && bandTest(r.price))
       .sort((a, b) => b.floor - a.floor || a.no - b.no);
-  }, [building]);
+  }, [building, bandTest]);
 
   // Đo thời gian xem chi tiết mỗi phòng: chốt dwell khi đóng / mở phòng khác / rời trang.
   const roomDwell = useRef<{ id: string; code: string; no: number; bid: string; bname: string; at: number } | null>(null);
@@ -187,7 +199,25 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
 
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
-  const alwaysTrue = () => true;
+
+  // "Tải ảnh": xuất bảng DANH SÁCH PHÒNG TRỐNG (kiểu file Excel Sale gửi Zalo).
+  // Luôn lấy TOÀN BỘ phòng còn chào được, KHÔNG theo bộ lọc đang chọn trên màn
+  // hình. Lazy-import để phần vẽ canvas không nằm trong chunk mở trang.
+  const [exporting, setExporting] = useState(false);
+  const exportImage = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { downloadRoomListImage } = await import("./exportRoomListImage");
+      const n = await downloadRoomListImage(buildings);
+      tracker.track("share", { metadata: { kind: "export_image", rooms: n } });
+      showToast(n ? `Đã tải ảnh ${n} phòng trống` : "Hiện chưa có phòng trống để xuất ảnh");
+    } catch {
+      showToast("Không tạo được ảnh. Thử lại nhé.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Ghi lỗi tải dữ liệu / token sai (không log giá trị token).
   useEffect(() => {
@@ -226,10 +256,19 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
           {!isEmbedded && (
             <div className="hdr-top">
               <div className="brand-mark"><span>R</span></div>
-              <div>
+              <div className="brand-txt">
                 <div className="brand-name">Phòng trống</div>
                 <div className="brand-sub">Bảng phòng trực tiếp cho Sale</div>
               </div>
+              <button
+                type="button"
+                className="hdr-dl"
+                onClick={exportImage}
+                disabled={exporting}
+                title="Tải ảnh danh sách phòng trống"
+              >
+                <Icon.Download /><span>{exporting ? "Đang tạo…" : "Tải ảnh"}</span>
+              </button>
               <div className="live"><i className="dot" />Live · {hh}</div>
             </div>
           )}
@@ -265,22 +304,31 @@ export default function PhongTrongPage(props: PhongTrongPageProps = {}) {
               </button>
             ))}
           </div>
+
+          <div className="sel-lbl">Khoảng giá</div>
+          <FilterBar band={band} setBand={pickBand} />
         </div>
 
         <div className="scroll">
           {view === "map"
             ? (isOverview
                 ? visibleBuildings.map((b) => (
-                    <FloorPlan key={b.id} building={b} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />
+                    <FloorPlan key={b.id} building={b} showRented={showRented} bandTest={bandTest} onOpen={openRoom} />
                   ))
-                : <FloorPlan building={building} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} />)
+                : <FloorPlan building={building} showRented={showRented} bandTest={bandTest} onOpen={openRoom} />)
             : (isOverview
-                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={alwaysTrue} onOpen={openRoom} onQuickDeposit={canQuickDeposit ? openDeposit : undefined} />
+                ? <OverviewView buildings={visibleBuildings} showRented={showRented} bandTest={bandTest} onOpen={openRoom} onQuickDeposit={canQuickDeposit ? openDeposit : undefined} />
                 : <ListView rooms={listRooms} onOpen={openRoom} />)}
         </div>
 
         <DetailSheet room={room} show={sheetShow} onClose={closeSheet} onToast={showToast} saved={saved} toggleSave={toggleSave} onGo={openRoom} buildings={buildings} onQuickDeposit={canQuickDeposit ? (r) => { closeSheet(); openDeposit(r); } : undefined} />
-        <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
+        {/* Chỉ mount khi có quyền tạo cọc: modal gọi useAccounts() ngay lúc render,
+            khách vãng lai (anon) sẽ bị RLS chặn và nổ toast đỏ "Không thể tải
+            danh sách sổ quỹ" giữa trang công khai. Không có quyền thì depositRoom
+            luôn null nên bỏ mount cũng không mất chức năng gì. */}
+        {canQuickDeposit && (
+          <QuickDepositModal room={depositRoom} onClose={() => setDepositRoom(null)} onDone={showToast} />
+        )}
         <Toast msg={toast.msg} show={toast.show} />
       </div>
     </div>

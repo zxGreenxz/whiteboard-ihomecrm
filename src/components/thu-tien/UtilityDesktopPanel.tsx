@@ -220,7 +220,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                       const paying = S.payingKey === k;
                       const Icon = t === 'electric' ? Zap : Droplet;
                       return (
-                        <tr key={k} className={first ? 'ud-first' : ''}>
+                        <tr key={k} className={first ? 'ud-first' : ''} {...(paid ? {} : S.pasteProps(k))}>
                           <td className="ud-td-bld">
                             {first ? (
                               <div className="ud-bldcell">
@@ -284,6 +284,7 @@ export function UtilityDesktopPanel({ billingMonth, onBillingMonthChange, onClos
                               <input
                                 className="ud-amt" type="text" inputMode="numeric" placeholder="Số tiền"
                                 value={formatVN(amount)}
+                                onFocus={() => S.setActiveKey(k)}
                                 onChange={(e) => S.setAmount(k, parseVN(e.target.value))}
                               />
                             )}

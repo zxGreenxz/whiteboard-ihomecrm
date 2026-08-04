@@ -43,7 +43,7 @@ interface Props {
   /** Mở form sửa cho 1 phiếu con trong đợt (Super Admin). */
   onEditVoucher?: (voucher: IncomeExpenseWithRelations) => void;
   /** Huỷ 1 phiếu con riêng lẻ (khác với huỷ cả đợt). */
-  onCancelVoucher?: (voucherId: string) => void;
+  onCancelVoucher?: (voucherId: string, type?: string | null) => void;
   /** Duyệt 1 phiếu con (nếu còn nháp). */
   onApproveVoucher?: (voucher: IncomeExpenseWithRelations) => void;
 }
@@ -432,7 +432,8 @@ export function IncomeExpenseBatchDetailDialog({
           onCancelVoucher
             ? (id) => {
                 setChildVoucher(null);
-                onCancelVoucher(id);
+                // Cả đợt cùng một loại — lấy thẳng từ batch, khỏi tra ngược.
+                onCancelVoucher(id, batch.type);
               }
             : undefined
         }

@@ -1,4 +1,9 @@
 {
+    "build": {
+        "env": {
+            "VITE_NETWORK_CENTER_MODE": "production"
+        }
+    },
     "headers": [
         {
             "source": "/(.*)",

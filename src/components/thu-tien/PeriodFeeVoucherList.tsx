@@ -55,6 +55,13 @@ export function PeriodFeeVoucherList({ open, title, vouchers, canRecordPayment, 
               <div className="ptt-vrow-main">
                 <div className="ptt-vrow-l1">
                   <span className="ptt-vrow-amt">{fmtFull(v.amount)}</span>
+                  {/* Phiếu đa hạng mục: `amount` chỉ là phần của hạng mục đang xem
+                      (A2), phải nói rõ tổng phiếu kẻo tưởng phiếu chỉ có bấy nhiêu. */}
+                  {v.voucherTotal !== v.amount && (
+                    <span className="ptt-vrow-book" title="Tổng CẢ phiếu — phiếu này có nhiều hạng mục">
+                      · phiếu {fmtFull(v.voucherTotal)}
+                    </span>
+                  )}
                   {v.status === 'UNAPPROVED' && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}
                   {v.isAuto && <span className="ptt-auto">TỰ ĐỘNG</span>}
                   {v.inBatch && <span className="ptt-badge-batch">PHIẾU TỔNG</span>}
@@ -121,11 +128,25 @@ export function PeriodFeePayDraftModal({ target, myBooks, defaultBookId, attachm
         </div>
 
         <div className="ptt-edit-body">
+          {/* Số tiền phải là TỔNG CẢ PHIẾU: pay_draft_fee_voucher duyệt & ghi sổ
+              cả phiếu, không phải riêng hạng mục đang xem (A2 đổi nghĩa `amount`
+              thành Σ item khớp hạng mục). Nhãn sai ở đây là mời người dùng duyệt
+              một số tiền khác con số họ đọc. */}
           <div className="ptt-draftpay-amt">
             <span className="ptt-field-lbl">Số tiền phiếu</span>
-            <span className="ptt-draftpay-num">{fmtFull(target.voucher.amount)}</span>
+            <span className="ptt-draftpay-num">{fmtFull(target.voucher.voucherTotal)}</span>
             {target.voucher.isAuto && <span className="ptt-auto">TỰ ĐỘNG</span>}
           </div>
+          {target.voucher.voucherTotal !== target.voucher.amount && (
+            <div className="ptt-note info">
+              <AlertTriangle />
+              <span>
+                Phiếu này có <b>nhiều hạng mục</b> — phần thuộc {target.categoryLabel.toLowerCase()} là{' '}
+                <b>{fmtFull(target.voucher.amount)}</b>. Duyệt là duyệt <b>cả phiếu</b>{' '}
+                {fmtFull(target.voucher.voucherTotal)}.
+              </span>
+            </div>
+          )}
 
           <label className="ptt-field">
             <span className={'ptt-field-lbl' + (!chosen ? ' danger' : '')}>Sổ quỹ ghi chi (bắt buộc)</span>

@@ -11,22 +11,22 @@ import { useCopilotEntitlement } from './useAiProviders';
 
 const ChatPanel = lazy(() => import('./ChatPanel'));
 
-const PUBLIC_PREFIXES = [
+const HIDDEN_PREFIXES = [
   '/login', '/register', '/forgot-password', '/reset-password',
-  '/c/', '/r/', '/phongtrong',
+  '/c/', '/r/', '/phongtrong', '/network-center',
 ];
 
 export default function CopilotLauncher() {
   const location = useLocation();
   const { data: user } = useAuth();
 
-  const isPublic = PUBLIC_PREFIXES.some(
+  const isHidden = HIDDEN_PREFIXES.some(
     (p) => location.pathname === p || location.pathname.startsWith(p),
   );
 
   // Query entitlement/permission chỉ chạy khi có session + không phải trang
   // public (component con mount có điều kiện — tránh query mồ côi).
-  if (!user || isPublic) return null;
+  if (!user || isHidden) return null;
   return <GatedLauncher />;
 }
 

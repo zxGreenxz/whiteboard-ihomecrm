@@ -590,12 +590,19 @@ export async function generateSupabaseTypes({
   const packagePath = join(repoRoot, 'package.json');
   const localConfigPath = join(repoRoot, 'CLAUDE.local.md');
   const outputPath = join(repoRoot, 'src', 'integrations', 'supabase', 'types.ts');
-  const [configToml, linkedProjectRef, packageJson, localConfig] = await Promise.all([
+  const [configToml, linkedProjectRef, packageJson, ownLocalConfig] = await Promise.all([
     readOptional(configPath),
     readOptional(linkedRefPath),
     readOptional(packagePath),
     readOptional(localConfigPath),
   ]);
+  // A git worktree carries no CLAUDE.local.md of its own - the real one lives in
+  // the primary checkout. Without this fallback the token lookup fails for exactly
+  // the setup this work is done in. (Kept from origin/main.)
+  const localConfig = ownLocalConfig
+    ?? (resolve(repoRoot).replaceAll('\\', '/').includes('/.claude/worktrees/')
+      ? await readOptional(resolve(repoRoot, '..', '..', '..', 'CLAUDE.local.md'))
+      : undefined);
   const source = environment.SUPABASE_TYPES_SOURCE === 'local' ? 'local' : 'project';
   const localEngine =
     source === 'local'
@@ -614,6 +621,10 @@ export async function generateSupabaseTypes({
     npmExecPath: environment.npm_execpath,
     source,
   });
+  // An allowlist, not a denylist. origin/main deleted SUPABASE_PAT and
+  // SUPABASE_ACCESS_TOKEN from a copy of the whole environment; that only removes
+  // the two secrets somebody remembered. Passing just the keys the child needs
+  // cannot leak the next secret nobody thinks of.
   const childEnvironment = buildMinimalChildEnvironment(
     environment,
     source === 'project' ? { SUPABASE_ACCESS_TOKEN: accessToken } : {},

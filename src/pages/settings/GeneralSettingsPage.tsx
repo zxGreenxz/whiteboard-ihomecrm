@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import MainLayout from "@/components/layout/MainLayout";
+import NotificationOrgConfigCard from '@/components/notifications/NotificationOrgConfigCard';
 import { supabase } from '@/integrations/supabase/client';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Settings, FileText, DollarSign, Bell, Upload, Info, Receipt, MapPin } from 'lucide-react';
@@ -27,6 +29,10 @@ import {
   useAcceptanceGeofenceSetting,
   useUpdateAcceptanceGeofenceSetting,
 } from '@/hooks/useSettings';
+import {
+  useAccountingStandard,
+  useSetAccountingStandard,
+} from '@/hooks/useAccountingStandard';
 import { toast } from 'sonner';
 
 // =============================================
@@ -399,11 +405,100 @@ function IeAutoApproveThresholdCard() {
 }
 
 // =============================================
+// Chuẩn kế toán (Đợt 1 — org-wide, chỉ Chủ sở hữu tổ chức đổi được)
+// Nguồn sự thật: app_private.org_accounting_mode (sổ append-only) qua RPC.
+// Liệt kê THEO TỪNG TỔ CHỨC có tên: chủ có 2 org sẽ thấy 2 dòng và không bao
+// giờ bấm nhầm — mẫu cũ suy ra org bằng min(id) nên luôn ghi vào org thật.
+// =============================================
+
+function AccountingStandardCard() {
+  const { data: orgs, isLoading } = useAccountingStandard();
+  const setStandard = useSetAccountingStandard();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Chuẩn kế toán</CardTitle>
+        <CardDescription>
+          <strong>Bật</strong> — cơ chế chặt: phiếu đã ghi sổ là bất biến, muốn sửa
+          phải Huỷ rồi Tạo bản sao, huỷ khoản thu hoá đơn sẽ sinh thêm phiếu đối
+          ứng. <strong>Tắt</strong> — cơ chế linh hoạt cho mô hình nhỏ: người giữ
+          sổ tự sửa/huỷ trong kỳ chưa chốt, huỷ trừ thẳng khỏi sổ quỹ không đẻ
+          phiếu đối ứng, đổi lại kiểm soát bằng chốt & bàn giao sổ quỹ. Chỉ Chủ sở
+          hữu tổ chức thay đổi được.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Đang tải…</p>
+        ) : !orgs || orgs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Bạn chưa thuộc tổ chức nào.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {orgs.map((org) => (
+              <div
+                key={org.organization_id}
+                className="flex items-center justify-between gap-4 rounded-md border border-zinc-200 p-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{org.organization_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {org.strict_mode
+                      ? 'Đang chạy cơ chế CHẶT (chuẩn kế toán).'
+                      : 'Đang chạy cơ chế LINH HOẠT.'}
+                    {!org.can_manage && ' Chỉ Chủ sở hữu tổ chức đổi được.'}
+                  </p>
+                </div>
+                <Switch
+                  checked={org.strict_mode}
+                  disabled={!org.can_manage || setStandard.isPending}
+                  onCheckedChange={(checked) =>
+                    setStandard.mutate({
+                      organizationId: org.organization_id,
+                      strict: checked,
+                    })
+                  }
+                  aria-label={`Chuẩn kế toán cho ${org.organization_name}`}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Mọi lần bật/tắt đều được ghi vào sổ append-only kèm người đổi và thời
+          điểm. Máy chủ mới là nơi quyết định chế độ — giao diện chỉ ẩn/hiện nút.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// =============================================
 // Main Page Component
 // =============================================
 
+// Deep-link `?tab=notification` TRƯỚC ĐÂY KHÔNG CHẠY: `<Tabs defaultValue="basic">` là
+// uncontrolled nên URL bị bỏ qua hoàn toàn. Chuyển sang controlled qua useSearchParams để
+// thông báo/menu có thể trỏ thẳng vào đúng tab.
+const SETTINGS_TABS = ['basic', 'contract', 'invoice', 'payment', 'notification'] as const;
+
 const GeneralSettingsPage = () => {
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const requestedTab = searchParams.get('tab') ?? '';
+  const activeTab = (SETTINGS_TABS as readonly string[]).includes(requestedTab)
+    ? requestedTab
+    : 'basic';
+
+  const handleTabChange = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', value);
+    // replace: đổi tab không nên đẻ thêm một mục trong lịch sử — bấm Back phải rời trang.
+    setSearchParams(next, { replace: true });
+  };
 
   // General settings (individual keys)
   const { data: generalSettings, isLoading: loadingGeneral } = useGeneralSettings();
@@ -468,7 +563,7 @@ const GeneralSettingsPage = () => {
         </div>
 
         {/* 5 Tabs */}
-        <Tabs defaultValue="basic">
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="basic">
               <Settings className="h-4 w-4 mr-2" />
@@ -619,19 +714,24 @@ const GeneralSettingsPage = () => {
                 settings={settings}
                 onSettingChange={handleSettingChange}
               />
+              <AccountingStandardCard />
               <IeAutoApproveThresholdCard />
             </div>
           </TabsContent>
 
           {/* Tab: Thông báo */}
           <TabsContent value="notification">
-            <SettingsTabContent
-              title="Cấu hình thông báo"
-              description="Các tùy chọn thông báo tự động cho hệ thống"
-              items={NOTIFICATION_SETTINGS}
-              settings={settings}
-              onSettingChange={handleSettingChange}
-            />
+            <div className="space-y-4">
+              <SettingsTabContent
+                title="Cấu hình thông báo"
+                description="Các tùy chọn thông báo tự động cho hệ thống"
+                items={NOTIFICATION_SETTINGS}
+                settings={settings}
+                onSettingChange={handleSettingChange}
+              />
+              {/* Card RỜI (khuôn giống tab Thu chi): nguồn sự thật khác bảng `settings`. */}
+              <NotificationOrgConfigCard />
+            </div>
           </TabsContent>
         </Tabs>
       </div>

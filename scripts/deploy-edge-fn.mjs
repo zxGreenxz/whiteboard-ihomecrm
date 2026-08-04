@@ -1,245 +1,171 @@
 #!/usr/bin/env node
-import { lstat, readFile, readdir } from "node:fs/promises";
-import { basename, join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { lstat, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  MANIFEST_PATH,
+  RECEIPT_ROOT,
+  REPO_ROOT,
+  isEntrypoint,
+  loadManagementConfig,
+  loadManifest,
+  redactSecrets,
+  sha256,
+} from "./network-center-rollout-common.mjs";
+import { writeReceiptAtomic } from "./apply-network-center-rollout.mjs";
 
-export const OPENCLAW_EDGE_FUNCTIONS = Object.freeze({
-  "openclaw-control": Object.freeze({ verifyJwt: true }),
-  "openclaw-qr": Object.freeze({ verifyJwt: true }),
-  "openclaw-object-tickets": Object.freeze({ verifyJwt: true }),
-  "openclaw-runtime-token": Object.freeze({ verifyJwt: false }),
-  "openclaw-runtime": Object.freeze({ verifyJwt: false }),
-});
+const WORKER_SLUG = "network-center-worker";
+const WORKER_FILES = ["deno.json", "deno.lock", "index.ts", "workerAuth.ts"];
 
-const PROJECT_REF_PATTERN = /^[a-z0-9]{20}$/;
-const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const ACCESS_TOKEN_PATTERN = /^sbp_[A-Za-z0-9_-]{8,}$/;
-
-function compareUtf8(left, right) {
-  return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
-}
-
-function redactSensitiveText(value, knownSecrets = []) {
-  let result = String(value ?? "");
-  for (const secret of knownSecrets.filter(Boolean).sort((a, b) => b.length - a.length)) {
-    result = result.split(secret).join("[REDACTED_SECRET]");
+export function buildDeploymentMetadata(slug, sourceDigest, args = []) {
+  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug ?? "")) {
+    throw new Error("Invalid Edge function slug");
   }
-  return result
-    .replace(/\bsbp_[A-Za-z0-9_-]+\b/gi, "[REDACTED_PAT]")
-    .replace(/\bpostgres(?:ql)?:\/\/[^\s]+/gi, "[REDACTED_DATABASE_URL]")
-    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?\b/g, "[REDACTED_JWT]");
-}
-
-export function parseDeployArgs(args) {
-  if (!Array.isArray(args) || args.length === 0 || !SLUG_PATTERN.test(args[0])) {
-    throw new Error(
-      "Usage: deploy-edge-fn.mjs <slug> [--no-verify-jwt] [--include-shared openclaw]",
-    );
+  if (!/^[a-f0-9]{64}$/.test(sourceDigest ?? "")) {
+    throw new Error("Invalid Edge source digest");
   }
-  const slug = args[0];
-  let includeShared;
-  let noVerifyJwt = false;
-  for (let index = 1; index < args.length; index += 1) {
-    const argument = args[index];
-    if (argument === "--no-verify-jwt") {
-      if (noVerifyJwt) throw new Error("Duplicate --no-verify-jwt flag.");
-      noVerifyJwt = true;
-      continue;
-    }
-    if (argument === "--include-shared") {
-      if (includeShared !== undefined || index + 1 >= args.length) {
-        throw new Error("Invalid --include-shared argument.");
-      }
-      includeShared = args[index + 1];
-      index += 1;
-      continue;
-    }
-    throw new Error(`Unknown deploy argument: ${argument}`);
-  }
-
-  if (includeShared !== undefined) {
-    if (includeShared !== "openclaw") {
-      throw new Error("Only --include-shared openclaw is supported.");
-    }
-    const settings = OPENCLAW_EDGE_FUNCTIONS[slug];
-    if (!settings) throw new Error("Slug is not an OpenClaw entrypoint.");
-    if (noVerifyJwt && settings.verifyJwt) {
-      throw new Error("CLI JWT mode conflicts with the version-controlled OpenClaw JWT mode.");
-    }
-    return { slug, includeShared };
-  }
-
-  return { slug, verifyJwt: !noVerifyJwt };
-}
-
-async function collectFiles(directory) {
-  const result = [];
-  async function walk(current) {
-    const entries = await readdir(current, { withFileTypes: true });
-    for (const entry of entries.sort((left, right) => compareUtf8(left.name, right.name))) {
-      const path = join(current, entry.name);
-      const metadata = await lstat(path);
-      if (metadata.isSymbolicLink()) {
-        throw new Error(`Symbolic links are forbidden in Edge bundles: ${path}`);
-      }
-      if (metadata.isDirectory()) await walk(path);
-      else if (metadata.isFile()) result.push(path);
-      else throw new Error(`Unsupported Edge bundle entry: ${path}`);
-    }
-  }
-  await walk(directory);
-  return result;
-}
-
-function prepareOpenClawBundleFiles(root, sourcePaths) {
-  return sourcePaths.flatMap((sourcePath) => {
-    const bundlePath = relative(root, sourcePath).replace(/\\/g, "/");
-    const segments = bundlePath.split("/");
-    if (segments.some((segment) => segment.startsWith("."))) {
-      throw new Error(`Sensitive dotfiles are forbidden in OpenClaw Edge bundles: ${bundlePath}`);
-    }
-    if (
-      segments.includes("__tests__") ||
-      bundlePath.endsWith(".test.ts") ||
-      bundlePath.endsWith(".spec.ts")
-    ) {
-      return [];
-    }
-    if (!bundlePath.endsWith(".ts")) {
-      throw new Error(`Unsupported OpenClaw Edge bundle source: ${bundlePath}`);
-    }
-    return [{ path: bundlePath, sourcePath }];
-  });
-}
-
-export async function buildEdgeFunctionBundle({
-  functionsRoot,
-  slug,
-  includeShared,
-  verifyJwt,
-}) {
-  if (!SLUG_PATTERN.test(slug)) throw new Error("Unsafe Edge function slug.");
-  const root = resolve(functionsRoot);
-  const functionRoot = join(root, slug);
-  const sharedMode = includeShared !== undefined;
-  let resolvedVerifyJwt = verifyJwt;
-  let entrypointPath = "index.ts";
-  let files;
-
-  if (sharedMode) {
-    if (includeShared !== "openclaw") {
-      throw new Error("Only the OpenClaw shared bundle is supported.");
-    }
-    const settings = OPENCLAW_EDGE_FUNCTIONS[slug];
-    if (!settings) throw new Error("Slug is not an OpenClaw entrypoint.");
-    resolvedVerifyJwt = settings.verifyJwt;
-    entrypointPath = `${slug}/index.ts`;
-    files = prepareOpenClawBundleFiles(root, [
-      ...await collectFiles(join(root, "_shared", "openclaw")),
-      ...await collectFiles(functionRoot),
-    ]);
-  } else {
-    if (typeof resolvedVerifyJwt !== "boolean") {
-      throw new Error("Legacy Edge deployment requires an explicit JWT mode.");
-    }
-    files = (await collectFiles(functionRoot)).map((path) => ({
-      path: relative(functionRoot, path).replace(/\\/g, "/"),
-      sourcePath: path,
-    }));
-  }
-
-  files.sort((left, right) => compareUtf8(left.path, right.path));
-  if (!files.some((file) => file.path === entrypointPath)) {
-    throw new Error(`Edge entrypoint is missing: ${entrypointPath}`);
+  const requestedNoVerify = args.includes("--no-verify-jwt");
+  if (requestedNoVerify && slug !== WORKER_SLUG) {
+    throw new Error("--no-verify-jwt is allowed only for network-center-worker");
   }
   return {
-    metadata: {
-      name: slug,
-      entrypoint_path: entrypointPath,
-      verify_jwt: resolvedVerifyJwt,
-    },
-    files: await Promise.all(files.map(async (file) => ({
-      path: file.path,
-      bytes: new Uint8Array(await readFile(file.sourcePath)),
-    }))),
+    name: slug,
+    entrypoint_path: "index.ts",
+    verify_jwt: slug === WORKER_SLUG ? false : true,
+    source_digest: sourceDigest,
   };
 }
 
-export async function deployEdgeFunction({
-  bundle,
-  projectRef,
-  accessToken,
-  fetchImpl = fetch,
-}) {
-  if (!PROJECT_REF_PATTERN.test(projectRef)) throw new Error("Invalid Supabase project ref.");
-  if (!ACCESS_TOKEN_PATTERN.test(accessToken)) throw new Error("Invalid Supabase access token.");
+export function computeSourceDigest(fileDescriptors) {
+  const normalized = [...fileDescriptors]
+    .map(({ path, sha256: digest }) => ({ path: path.replaceAll("\\", "/"), sha256: digest }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  return sha256(JSON.stringify(normalized));
+}
 
+export async function collectDeploymentFiles({
+  repoRoot = REPO_ROOT,
+  slug,
+  expectedFiles,
+} = {}) {
+  const names = expectedFiles ?? (slug === WORKER_SLUG ? WORKER_FILES : null);
+  if (!names?.length) throw new Error(`No explicit deployment file allowlist for ${slug}`);
+  const functionRoot = join(repoRoot, "supabase", "functions", slug);
+  const files = [];
+  for (const path of [...names].sort()) {
+    if (path.includes("..") || path.startsWith("/") || path.includes("\\")) {
+      throw new Error(`Unsafe Edge deployment path: ${path}`);
+    }
+    const absolutePath = join(functionRoot, path);
+    const metadata = await lstat(absolutePath);
+    if (metadata.isSymbolicLink() || !metadata.isFile()) {
+      throw new Error(`Edge deployment file must be a regular non-symlink file: ${path}`);
+    }
+    const contents = await readFile(absolutePath);
+    files.push({ path, absolutePath, contents, sha256: sha256(contents) });
+  }
+  return files;
+}
+
+export async function deployEdgeFunction({
+  slug,
+  args = [],
+  revision,
+  manifest,
+  config,
+  fetchImpl = fetch,
+  writeReceipt = writeReceiptAtomic,
+  receiptRoot = RECEIPT_ROOT,
+  manifestDigest,
+} = {}) {
+  if (!/^[a-f0-9]{40}$/.test(revision ?? "")) {
+    throw new Error("A full release revision is required");
+  }
+  manifest ??= await loadManifest(MANIFEST_PATH);
+  config ??= await loadManagementConfig();
+  manifestDigest ??= sha256(await readFile(MANIFEST_PATH));
+  if (slug !== manifest.edgeFunction.slug) throw new Error("Edge slug does not match rollout manifest");
+  if (config.projectRef !== manifest.projectRef) throw new Error("Edge deploy project mismatch");
+  const files = await collectDeploymentFiles({
+    slug,
+    expectedFiles: manifest.edgeFunction.files.map((file) => file.path),
+  });
+  for (const file of files) {
+    const expected = manifest.edgeFunction.files.find((candidate) => candidate.path === file.path);
+    if (expected?.sha256 !== file.sha256) throw new Error(`Edge source digest mismatch: ${file.path}`);
+  }
+  const sourceDigest = computeSourceDigest(files);
+  if (sourceDigest !== manifest.edgeFunction.sha256) throw new Error("Edge bundle digest mismatch");
+  const metadata = buildDeploymentMetadata(slug, sourceDigest, args);
+  const { source_digest: ignoredDigest, ...apiMetadata } = metadata;
   const form = new FormData();
-  form.append("metadata", JSON.stringify(bundle.metadata));
-  for (const file of bundle.files) {
-    form.append(
-      "file",
-      new Blob([file.bytes], { type: "application/typescript" }),
-      file.path,
-    );
+  form.append("metadata", JSON.stringify(apiMetadata));
+  for (const file of files) {
+    form.append("file", new Blob([file.contents], { type: "application/octet-stream" }), file.path);
   }
   const response = await fetchImpl(
-    `https://api.supabase.com/v1/projects/${projectRef}/functions/deploy?slug=${encodeURIComponent(bundle.metadata.name)}`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-      body: form,
-    },
+    `https://api.supabase.com/v1/projects/${config.projectRef}/functions/deploy?slug=${slug}`,
+    { method: "POST", headers: { Authorization: `Bearer ${config.pat}` }, body: form },
   );
   const responseText = await response.text();
   if (!response.ok) {
     throw new Error(
-      `Deploy failed (${response.status}): ${redactSensitiveText(responseText, [accessToken])}`,
+      redactSecrets(`Edge deploy failed (${response.status}): ${responseText.slice(0, 2_000)}`, [config.pat]),
     );
   }
-  let result;
-  try {
-    result = JSON.parse(responseText);
-  } catch {
-    throw new Error("Supabase deployment response was not JSON.");
+  const deployed = JSON.parse(responseText);
+  if (deployed.slug !== slug || deployed.verify_jwt !== false) {
+    throw new Error("Edge deploy readback did not preserve worker slug and verify_jwt=false");
   }
-  return result;
+  await writeReceipt(
+    {
+      schemaVersion: 1,
+      manifestDigest,
+      projectRef: config.projectRef,
+      reviewedGitSha: manifest.reviewedGitSha,
+      releaseSha: revision,
+      ordinal: 0,
+      migration: `edge:${slug}`,
+      migrationSha256: sourceDigest,
+      outcome: "committed",
+      startedAt: new Date().toISOString(),
+      observedAt: new Date().toISOString(),
+      beforeCatalogFingerprint: "edge-deploy",
+      afterCatalogFingerprint: `version:${deployed.version}`,
+    },
+    { receiptRoot },
+  );
+  return { slug, version: deployed.version, verify_jwt: false, source_digest: sourceDigest };
 }
 
-async function loadDeploymentInputs(repositoryRoot) {
-  const localInstructions = await readFile(join(repositoryRoot, "CLAUDE.local.md"), "utf8");
-  const accessToken = localInstructions.match(/\bsbp_[A-Za-z0-9_-]+\b/)?.[0];
-  if (!accessToken) throw new Error("Supabase access token is unavailable.");
-  const configToml = await readFile(join(repositoryRoot, "supabase", "config.toml"), "utf8");
-  const projectRef = configToml.match(/^project_id\s*=\s*"([^"]+)"\s*$/m)?.[1];
-  if (!projectRef) throw new Error("Supabase project ref is unavailable.");
-  return { accessToken, projectRef };
+function parseCliArgs(argv) {
+  const slug = argv[0];
+  let revision;
+  for (let index = 1; index < argv.length; index += 1) {
+    if (argv[index] === "--revision") revision = argv[++index];
+    else if (argv[index] !== "--no-verify-jwt") throw new Error(`Unknown argument: ${argv[index]}`);
+  }
+  return { slug, revision, args: argv.filter((arg) => arg === "--no-verify-jwt") };
 }
 
 async function main() {
-  const options = parseDeployArgs(process.argv.slice(2));
-  const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
-  const functionsRoot = join(repositoryRoot, "supabase", "functions");
-  const inputs = await loadDeploymentInputs(repositoryRoot);
-  const bundle = await buildEdgeFunctionBundle({
-    functionsRoot,
-    slug: options.slug,
-    includeShared: options.includeShared,
-    verifyJwt: options.verifyJwt,
-  });
-  const info = await deployEdgeFunction({ bundle, ...inputs });
+  const options = parseCliArgs(process.argv.slice(2));
+  if (!options.slug) {
+    throw new Error(
+      "Usage: node scripts/deploy-edge-fn.mjs <slug> [--no-verify-jwt] --revision <40-char-sha>",
+    );
+  }
+  const { validateRolloutCli } = await import("./validate-network-center-rollout.mjs");
+  const validation = await validateRolloutCli({ revision: options.revision });
+  options.revision = validation.releaseSha;
+  const result = await deployEdgeFunction(options);
   process.stdout.write(
-    `Deployed "${String(info.name ?? basename(bundle.metadata.name))}" ` +
-      `(slug=${String(info.slug ?? bundle.metadata.name)}) ` +
-      `version=${String(info.version ?? "unknown")} ` +
-      `verify_jwt=${String(info.verify_jwt ?? bundle.metadata.verify_jwt)}\n`,
+    `Deployed ${result.slug} version=${result.version} verify_jwt=${result.verify_jwt} source_digest=${result.source_digest}\n`,
   );
 }
 
-const entryPoint = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
-if (entryPoint === import.meta.url) {
+if (isEntrypoint(import.meta.url)) {
   main().catch((error) => {
-    console.error(redactSensitiveText(error?.message ?? error));
+    console.error(redactSecrets(error?.message ?? error));
     process.exitCode = 1;
   });
 }

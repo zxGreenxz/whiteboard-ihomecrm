@@ -57,32 +57,17 @@ export const useConfirmReconciliation = () => {
   });
 };
 
-// B6 cut-over: "Chốt số & khoá sổ" — kiểm kê ngày D, ghi phiếu "Điều chỉnh
-// số dư đầu kỳ" NGOÀI-KQKD cho phần chênh (nếu có) và set accounts.lock_date.
-// KHÔNG sửa số quá khứ / initial_amount (RPC 20260704150000).
-export const useCreateOpeningAdjustment = () => {
-  const invalidate = useInvalidateRecon();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (args: { accountId: string; countedBalance: number; asOf?: string }) => {
-      const { data, error } = await (supabase as any).rpc("create_opening_adjustment", {
-        p_account_id: args.accountId,
-        p_counted_balance: args.countedBalance,
-        p_as_of: args.asOf ?? undefined,
-      });
-      if (error) throw new Error(error.message);
-      return data as {
-        account_id: string; system_balance: number; counted_balance: number;
-        diff: number; voucher_id: string | null; locked_to: string;
-      };
-    },
-    onSuccess: () => {
-      invalidate();
-      qc.invalidateQueries({ queryKey: ["income-expenses"] });
-      qc.invalidateQueries({ queryKey: ["accounts"] });
-    },
-  });
-};
+// ĐỢT 6 — ĐÃ XOÁ useCreateOpeningAdjustment.
+//
+// Nó gọi `create_opening_adjustment`, mà Đợt 3 đã REVOKE khỏi `authenticated`
+// (ACL trên prod còn mỗi `postgres`) vì hàm đó tự gỡ `lock_date = NULL` giữa
+// transaction để lách chính trigger khoá của mình — mẫu bypass không được phép
+// tồn tại song song với khoá vĩnh viễn. Giữ hook lại chỉ để UI gọi rồi ăn 42501
+// SAU KHI đã kịp ghi một dòng cashbook_reconciliations.
+//
+// Khoá kỳ giờ đi qua nghi thức hai bên: propose_cashbook_closing_v1 →
+// confirm_cashbook_closing_v1 (xem src/hooks/useCashbookClosing.ts), ghi biên
+// bản vào app_private.cashbook_closures.
 
 export const useCancelReconciliation = () => {
   const invalidate = useInvalidateRecon();

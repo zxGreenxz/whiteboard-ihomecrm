@@ -1,0 +1,54 @@
+# iHomeCRM Network Center - stage 2 (only after WG + pinned SSH verification)
+# Imported with verbose=no like every other stage, so the :error identity and the
+# NC_STEP breadcrumbs are the whole diagnostic surface. Steps 01..09 below run in
+# order and /import undoes nothing, so the last one printed is the one that failed.
+:local ncUser @@ROUTER_USER@@
+:local ncMarker @@OWNERSHIP_MARKER@@
+:local ncGroup "network-center-worker"
+:local ncWgName "wg-ihome-mgmt"
+:local ncWgMarker ($ncMarker . ":wireguard")
+:local ncRecoveryMarker ($ncMarker . ":lan-recovery")
+:local ncUsers [/user find where name=$ncUser]
+:local ncGroups [/user/group find where name=$ncGroup]
+:local ncWgs [/interface/wireguard find where name=$ncWgName]
+:if ([:len $ncUsers] != 1 || [/user get $ncUsers comment] != $ncMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/lockdown-user-not-owned"
+}
+# Three separate :if statements, not one `||` chain across lines: a parenthesised
+# condition may not span lines on RouterOS, and this one was both of the errors
+# /import reported for this file. Order matters and is preserved - `||` stopped
+# at the first true term, and /import stops at the first :error, so the group
+# lookup still never runs against a menu that holds no matching row.
+:if ([:len $ncGroups] != 1) do={ :error "NETWORK_CENTER_GROUP_CONFLICT/lockdown-group-not-unique" }
+:if ([/user get $ncUsers group] != $ncGroup) do={ :error "NETWORK_CENTER_GROUP_CONFLICT/lockdown-user-group-mismatch" }
+# Per-policy membership, not whole-string equality. The old comparison here was
+# measured to fire on the provisioned demo router (checks above it PASS, this one
+# FIRES), which made stage 2 unimportable on every already-bootstrapped building.
+@@LOCKDOWN_GROUP_POLICY_ASSERTIONS@@
+:if ([:len $ncWgs] != 1 || [/interface/wireguard get $ncWgs comment] != $ncWgMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/lockdown-wireguard-not-owned"
+}
+
+# `and !dynamic` on every selector: this script is delivered over SSH and RouterOS
+# lists a dynamic connection entry beside the static service, so the bare selector
+# resolves to two rows and the `set` is refused.
+:put "NC_STEP:01:lockdown-ssh-vps-only"
+/ip/service set [find where name="ssh" and !dynamic] disabled=no port=22 address=@@VPS_PEER_ADDRESS@@
+:put "NC_STEP:02:lockdown-winbox"
+/ip/service set [find where name="winbox" and !dynamic] disabled=yes address=@@VPS_PEER_ADDRESS@@
+:put "NC_STEP:03:lockdown-telnet"
+/ip/service set [find where name="telnet" and !dynamic] disabled=yes
+:put "NC_STEP:04:lockdown-ftp"
+/ip/service set [find where name="ftp" and !dynamic] disabled=yes
+:put "NC_STEP:05:lockdown-www"
+/ip/service set [find where name="www" and !dynamic] disabled=yes
+:put "NC_STEP:06:lockdown-www-ssl"
+/ip/service set [find where name="www-ssl" and !dynamic] disabled=yes
+:put "NC_STEP:07:lockdown-api"
+/ip/service set [find where name="api" and !dynamic] disabled=yes
+:put "NC_STEP:08:lockdown-api-ssl"
+/ip/service set [find where name="api-ssl" and !dynamic] disabled=yes
+# Last on purpose: LAN recovery survives every earlier failure in this file.
+:put "NC_STEP:09:lockdown-remove-lan-recovery"
+/ip/firewall/filter remove [find where comment=$ncRecoveryMarker and !dynamic]
+:put "NETWORK_CENTER_LOCKDOWN_APPLIED"

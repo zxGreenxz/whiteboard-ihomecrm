@@ -1,2 +1,13 @@
+*.sh text eol=lf
+*.service text eol=lf
+*.ps1 text eol=lf
+infra/network-center-worker/deploy/*.conf text eol=lf
+*.sql text eol=lf
+supabase/functions/** text eol=lf
+
+# Vendored upstream fork: the artifact is verified byte for byte, so git must not
+# normalise anything under it. These rules sit AFTER the eol=lf rules on purpose -
+# later patterns win, and `*.sql` above would otherwise rewrite line endings for
+# any .sql file the vendor tree carries and break its recorded SHA-256.
 services/openclaw-zalo-cell/vendor/zalouser-bridge/** -text
 services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/*.tgz binary

@@ -19,6 +19,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusinessPerformance';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
+import { NETWORK_CENTER_RUNTIME_ENABLED } from '@/lib/network-center/runtime';
 import {
   Collapsible,
   CollapsibleContent,
@@ -38,6 +39,7 @@ import {
   Gauge,
   Receipt,
   HandCoins,
+  Banknote,
   CreditCard,
   Package,
   BarChart3,
@@ -62,12 +64,14 @@ import {
   MessageSquare,
   Bot,
   Sparkles,
+  Gift,
   Landmark,
   ShieldCheck,
   PanelLeft,
   Pin,
   PinOff,
   LogOut,
+  Network,
 } from 'lucide-react';
 
 interface NavItem {
@@ -162,16 +166,23 @@ const navigationGroups: NavGroup[] = [
           { title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, module: 'meter_readings' },
           { title: 'Hoá đơn', href: '/invoices', icon: Receipt, module: 'invoices' },
           { title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, module: 'thu_tien' },
+          // Đóng tiền Tập trung theo Kỳ (tách khỏi overlay của /thu-tien).
+          { title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, module: 'thu_tien', action: 'collect' },
           { title: 'Thu chi', href: '/income-expense', icon: CreditCard, module: 'income_expenses' },
           // Hộp thư duyệt: không khai `module` → luôn hiện, khớp route /approvals
           // (không bọc RequirePermission). RPC lọc theo auth.uid() nên người không
           // phải bước duyệt nào chỉ thấy danh sách rỗng.
           { title: 'Chờ duyệt', href: '/approvals', icon: ClipboardList },
           { title: 'Sổ quỹ', href: '/finance/cashbooks', icon: Wallet, module: 'cashbooks' },
+          // Cấu hình giá phí cố định theo toà — nguồn gợi ý số tiền cho /thanh-toan.
+          { title: 'Phí cố định', href: '/settings/finance/fixed-fees', icon: Settings, module: 'thu_tien', action: 'collect' },
           { title: 'Bảng lương', href: '/finance/salary', icon: HandCoins, module: 'salary', selfHref: '/finance/my-salary' },
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
+      ...(NETWORK_CENTER_RUNTIME_ENABLED
+        ? [{ title: 'Trung tâm mạng', href: '/network-center', icon: Network, module: 'network_center', action: 'view' } satisfies NavItem]
+        : []),
       { title: 'Công việc', href: '/tasks', icon: ClipboardList, module: 'tasks' },
       { title: 'Thông báo', href: '/notifications', icon: Bell, module: 'notifications' },
     ],
@@ -214,6 +225,9 @@ const navigationGroups: NavGroup[] = [
           // Quản trị AI Copilot: super admin = full (kill switch/entitlements/
           // providers/chi phí); owner/user thường = tab Sử dụng (gate trong page)
           { title: 'Trợ lý AI', href: '/settings/ai-copilot', icon: Sparkles, module: 'ai_copilot' },
+          // Sự kiện quay số may mắn: không gắn `module` vì tính năng nằm ngoài
+          // ma trận phân quyền theo sổ/toà — RPC tự chặn OWNER/STAFF (42501).
+          { title: 'Quay số may mắn', href: '/quayso/admin', icon: Gift },
         ],
       },
     ],

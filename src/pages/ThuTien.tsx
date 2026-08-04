@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { ArrowLeft, HandCoins, Plug, Repeat } from 'lucide-react';
 import './thu-tien.css';
 import { useBuildings } from '@/hooks/useBuildings';
@@ -26,8 +27,6 @@ import { RoomCellGrid } from '@/components/thu-tien/RoomCellGrid';
 import { CollectDrawer } from '@/components/thu-tien/CollectDrawer';
 import { CollectionReport } from '@/components/thu-tien/CollectionReport';
 import { HandoverSheet } from '@/components/thu-tien/HandoverSheet';
-import { PeriodFeeSheet } from '@/components/thu-tien/PeriodFeeSheet';
-import { PeriodFeePanel } from '@/components/thu-tien/PeriodFeePanel';
 import { ManagePanel } from '@/components/thu-tien/ManagePanel';
 import { useCashHandoverList } from '@/hooks/useCashHandovers';
 import { useInvoiceCollectors } from '@/hooks/useInvoiceCollectors';
@@ -40,6 +39,7 @@ const currentMonth = () => {
 
 const ThuTien = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: buildings = [] } = useBuildings();
   const { data: perms } = useMyPermissions();
   // Quyền chi tiết trang Thu tiền (fallback legacy: invoices.record_payment)
@@ -65,7 +65,6 @@ const ThuTien = () => {
   });
   const [report, setReport] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
   const [handover, setHandover] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
-  const [utility, setUtility] = useState<{ mounted: boolean; show: boolean }>({ mounted: false, show: false });
   const { actionCount: handoverActionCount } = useCashHandoverList();
 
   useEffect(() => {
@@ -218,22 +217,46 @@ const ThuTien = () => {
     setReport((r) => ({ ...r, show: false }));
     window.setTimeout(() => setReport({ mounted: false, show: false }), 320);
   };
-  const openHandover = () => {
+  // useCallback: được dùng làm dep của effect deep-link bên dưới — arrow mới mỗi
+  // render sẽ bắt effect chạy lại liên tục.
+  const openHandover = useCallback(() => {
     setHandover({ mounted: true, show: false });
     requestAnimationFrame(() => setHandover({ mounted: true, show: true }));
-  };
+  }, []);
   const closeHandover = () => {
     setHandover((h) => ({ ...h, show: false }));
     window.setTimeout(() => setHandover({ mounted: false, show: false }), 320);
   };
-  const openUtility = () => {
-    setUtility({ mounted: true, show: false });
-    requestAnimationFrame(() => setUtility({ mounted: true, show: true }));
-  };
-  const closeUtility = () => {
-    setUtility((u) => ({ ...u, show: false }));
-    window.setTimeout(() => setUtility({ mounted: false, show: false }), 320);
-  };
+
+  // ── Deep-link `/thu-tien?handover=<uuid>` ────────────────────────────────
+  // Thông báo "Bàn giao tiền mặt chờ bạn xác nhận" (E5). HandoverSheet chỉ nhận
+  // {show, onClose} — không có prop id — nên deep-link mở đúng bảng bàn giao,
+  // phiếu cần xác nhận nằm ngay trong danh sách chờ của bảng đó.
+  // BẮT BUỘC gọi openHandover(): sheet chạy animation 2 pha (mount → rAF bật
+  // .show); setHandover({mounted:true,show:true}) thẳng là mất hiệu ứng trượt.
+  const handledHandoverRef = useRef<string | null>(null);
+  useEffect(() => {
+    const handoverId = searchParams.get('handover');
+    if (!handoverId) {
+      handledHandoverRef.current = null;
+      return;
+    }
+    // Chưa biết quyền (perms đang tải) thì CHƯA kết luận — giữ param, effect
+    // chạy lại khi có dữ liệu, tránh báo "không có quyền" oan.
+    if (!perms) return;
+    if (handledHandoverRef.current === handoverId) return;
+    handledHandoverRef.current = handoverId;
+
+    // Cùng cổng quyền với nút mở bảng bàn giao trên thanh tiêu đề.
+    if (canRecordPayment) openHandover();
+    else toast.info('Bạn không có quyền mở bảng bàn giao tiền mặt.');
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('handover');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, perms, canRecordPayment, openHandover]);
+  // "Đóng tiền" giờ là page riêng /thanh-toan (không còn overlay tại chỗ).
+  const openUtility = () => navigate('/thanh-toan');
 
   const emptyIcon = statusFilter === 'paid' || allRooms.length === 0 ? '🔍' : '🎉';
   const emptyMessage =
@@ -254,27 +277,18 @@ const ThuTien = () => {
   return (
     <div className="tt-stage">
       {/* Desktop ≥1024px: cột trái 75% là panel quản lý/báo cáo; CSS ẩn trên mobile.
-          Mở "Điện nước" → thay panel này bằng UtilityDesktopPanel (mobile vẫn chỉ
-          thấy sheet trong khung điện thoại). Dùng chung billingMonth. */}
-      {utility.mounted ? (
-        <PeriodFeePanel
-          billingMonth={billingMonth}
-          onBillingMonthChange={setBillingMonth}
-          onClose={closeUtility}
-          canRecordPayment={canRecordPayment}
-        />
-      ) : (
-        <ManagePanel
-          buildings={buildingOpts}
-          billingMonth={billingMonth}
-          onBillingMonthChange={setBillingMonth}
-          phoneBuildingId={buildingId}
-          onPickBuilding={setBuildingId}
-          onBack={() => navigate(-1)}
-          onOpenUtility={openUtility}
-          canRecordPayment={canRecordPayment}
-        />
-      )}
+          Nút "Điện nước" điều hướng sang page /thanh-toan. Dùng chung billingMonth
+          qua sessionStorage nên đi qua lại giữ nguyên kỳ đang xem. */}
+      <ManagePanel
+        buildings={buildingOpts}
+        billingMonth={billingMonth}
+        onBillingMonthChange={setBillingMonth}
+        phoneBuildingId={buildingId}
+        onPickBuilding={setBuildingId}
+        onBack={() => navigate(-1)}
+        onOpenUtility={openUtility}
+        canRecordPayment={canRecordPayment}
+      />
       <div className="tt-phone-col">
         <div className="tt-page">
         <div className="hdr">
@@ -383,15 +397,6 @@ const ThuTien = () => {
         )}
 
         {handover.mounted && <HandoverSheet show={handover.show} onClose={closeHandover} />}
-        {utility.mounted && (
-          <PeriodFeeSheet
-            show={utility.show}
-            onClose={closeUtility}
-            billingMonth={billingMonth}
-            onBillingMonthChange={setBillingMonth}
-            canRecordPayment={canRecordPayment}
-          />
-        )}
         </div>
       </div>
     </div>

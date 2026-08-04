@@ -175,14 +175,26 @@ export const paymentsInRange = (
   return { sum, has };
 };
 
-/** ID payment gần nhất (để Hoàn tác xoá phiếu thu vừa ghi); null nếu chưa có. */
-export const latestPaymentId = (inv: InvoiceWithRelations): string | null => {
-  const ps = inv.payments ?? [];
+/**
+ * Payment gần nhất CÒN SỐNG (để Hoàn tác). null nếu chưa có.
+ *
+ * Đợt 5: lọc `reversed_at IS NULL`. Trước đây không lọc, nên sau một lần hoàn
+ * tác thì nút Hoàn tác vẫn trỏ vào đúng payment vừa đảo và bấm tiếp là báo lỗi
+ * khó hiểu thay vì đảo khoản thu còn lại.
+ */
+export const latestLivePayment = (
+  inv: InvoiceWithRelations,
+): { id: string; collection_id: string | null } | null => {
+  const ps = (inv.payments ?? []).filter((p: any) => !p.reversed_at);
   if (!ps.length) return null;
-  let best = ps[0];
-  for (const p of ps) if (p.payment_date >= best.payment_date) best = p;
-  return best.id;
+  let best: any = ps[0];
+  for (const p of ps as any[]) if (p.payment_date >= best.payment_date) best = p;
+  return { id: best.id, collection_id: best.collection_id ?? null };
 };
+
+/** Giữ chữ ký cũ cho các caller chỉ cần id. */
+export const latestPaymentId = (inv: InvoiceWithRelations): string | null =>
+  latestLivePayment(inv)?.id ?? null;
 
 // ── Snapshot theo ngày (tái dựng "chưa thu của ngày D" từ lịch sử payments) ──
 

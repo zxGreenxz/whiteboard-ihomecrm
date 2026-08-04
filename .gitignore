@@ -59,6 +59,9 @@ draft/
 supabase/.temp/
 test-results/
 
+# Network Center rollout receipts (bounded operational evidence; never source)
+.network-center-rollout/
+
 # Bản sao repo do hạm đội subagent tạo (harness tự sinh) — KHÔNG bao giờ commit
 .claude/worktrees/
 
@@ -76,3 +79,12 @@ services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/
 
 # Ke hoach backfill coc (chua du lieu kinh doanh, khong commit)
 scripts/.backfill-deposit-plan.json
+
+# Understand Anything local scratch/runtime (commit graph + fingerprints, not these)
+.ua/intermediate/
+.ua/tmp/
+.ua/.trash-*/
+.ua/dashboard-logs/
+.ua/start-dashboard.ps1
+.ua/diff-overlay.json
+.clone-org-snapshots/

@@ -50,9 +50,26 @@ export default defineConfig(({ mode }) => ({
     // .e2e-fleet/*.spec.ts are Playwright specs (see .e2e-fleet/playwright.config.ts),
     // not vitest unit tests — keep them out of `vitest run` so the CI quality gate
     // does not fail on Playwright-only APIs (test.use, FLEET_BASE_URL, ...).
+    //
+    // .claude/worktrees/** are git worktrees of OTHER branches (gitignored). Without
+    // this, `npx vitest run` picks up their test files and reports them as failures of
+    // the current branch — measured 29/07/2026: 9 file "đỏ" đều từ worktree
+    // mikrotik-center, 0 lỗi thật trong src/. `npx vitest run src` does NOT help
+    // (the argument is a name pattern, not a path filter).
+    //
+    // The vendored fork's upstream/artifacts/.work trees carry the upstream
+    // package's own tests. Running them would report another project's suite as
+    // this one's, and `verify:upstream` already covers that code.
     exclude: [
       ...configDefaults.exclude,
       ".e2e-fleet/**",
+      "**/.claude/worktrees/**",
+      // Same class as the line above: `vitest run` takes NAME patterns, not paths,
+      // so any scratch checkout left in the repo root gets swept in and its
+      // failures are reported as this project's. `.tmp-openclaw-host/` is a copy of
+      // the upstream OpenClaw tree and brings ~40 red files that have nothing to do
+      // with this repo.
+      ".tmp-*/**",
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/package/**",
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
       "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**",

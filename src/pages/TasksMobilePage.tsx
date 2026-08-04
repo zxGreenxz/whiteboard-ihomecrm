@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { ArrowLeft, Plus, Search, SlidersHorizontal, Clock, CheckCircle2 } from 'lucide-react';
 import '@/styles/mobileApp.css';
 import {
@@ -64,6 +65,7 @@ const shortName = (n: string) => {
  */
 export default function TasksMobilePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: authUser } = useAuth();
   const { data: perms } = useMyPermissions();
   const canCreate = canUse(perms, 'tasks', 'create');
@@ -87,6 +89,36 @@ export default function TasksMobilePage() {
 
   const { data: allJobs = [], isLoading, isError, refetch } = useJobs(appliedFilters);
   const deleteJob = useDeleteJob();
+
+  // ── Deep-link `/tasks?job=<uuid>` — bản MOBILE (state độc lập với desktop) ──
+  // Đây mới là bản quan trọng: push chỉ có nghĩa trên điện thoại. useJobs kéo
+  // hết dòng trong cửa sổ 90 ngày nên chỉ cần find() rồi mở sheet chi tiết.
+  const handledJobParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const jobId = searchParams.get('job');
+    if (!jobId) {
+      handledJobParamRef.current = null;
+      return;
+    }
+    // Chưa tải xong / lỗi mạng: giữ param, effect chạy lại khi có dữ liệu.
+    if (isLoading || isError) return;
+    if (handledJobParamRef.current === jobId) return;
+    handledJobParamRef.current = jobId;
+
+    const job = (allJobs as JobWithRelations[]).find((j) => j.id === jobId) ?? null;
+    if (job) {
+      setSelectedJob(job);
+      setIsDetailOpen(true);
+    } else {
+      toast.info('Không tìm thấy công việc trong danh sách đang xem', {
+        description: 'Việc có thể đã quá 90 ngày hoặc bị bộ lọc hiện tại loại ra.',
+      });
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('job');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, allJobs, isLoading, isError]);
 
   const myUserId = authUser?.id ?? null;
   const isAssignedToMe = (job: any) =>

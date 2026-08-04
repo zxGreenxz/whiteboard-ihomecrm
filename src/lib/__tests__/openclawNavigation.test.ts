@@ -20,18 +20,29 @@ describe("OpenClaw Zalo navigation contract", () => {
     expect(app).not.toMatch(/path="\/openclaw-zalo"[\s\S]{0,240}RequirePermission/);
   });
 
-  it("publishes a mobile launcher tile gated on the same module and action", async () => {
-    // Asserted against the EXPORTED data, not source text. A grep for
-    // "href: '/openclaw-zalo'" still passes when the entry is commented out, moved
-    // into dead code, or gated on the wrong module.
+  it("publishes no launcher tile while the runtime flag is off", async () => {
+    // The flag defaults off, which is the state a production build ships in until
+    // the rollout gates pass. A tile that outlived its route would render for every
+    // owner - they hold the permission - and land them on the 404 page.
     const { LAUNCHER_SECTIONS } = await import("@/pages/home/launcherTiles");
+    const { OPENCLAW_RUNTIME_ENABLED } = await import("@/lib/openclaw-zalo/runtime");
+    expect(OPENCLAW_RUNTIME_ENABLED, "the flag must default off").toBe(false);
     const tiles = LAUNCHER_SECTIONS.flatMap((section) => section.items);
-    const matching = tiles.filter((entry) => entry.href === "/openclaw-zalo");
-    expect(matching, "no launcher tile targets /openclaw-zalo").toHaveLength(1);
-    expect(matching[0]!.module).toBe("openclaw_zalo");
-    // The tile must demand exactly what the route guard demands, otherwise the user
-    // is shown an entry that bounces them straight back home.
-    expect(matching[0]!.action).toBe("view");
+    expect(tiles.filter((entry) => entry.href === "/openclaw-zalo")).toHaveLength(0);
+  });
+
+  it("gates the launcher tile on the same module and action as the route", () => {
+    // Source-asserted because the exported data cannot carry the tile while the flag
+    // is off. It still pins the ENTRY as a whole rather than two substrings that
+    // could come from different lines: the tile must demand exactly what the route
+    // guard demands, or a user is shown an entry that bounces them home.
+    const tiles = readSource("src/pages/home/launcherTiles.ts");
+    const entries = tiles.match(/\{[^{}]*href: '\/openclaw-zalo'[^{}]*\}/gu) ?? [];
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toContain("module: 'openclaw_zalo'");
+    expect(entries[0]).toContain("action: 'view'");
+    // And it must sit inside the flag, not beside it.
+    expect(tiles).toMatch(/OPENCLAW_RUNTIME_ENABLED[\s\S]{0,200}href: '\/openclaw-zalo'/u);
   });
 
   it("publishes exactly one desktop sidebar entry for the route", () => {

@@ -38,10 +38,19 @@ Phiếu trên trang Thu chi chia 3 lớp (suy tự động, không chọn tay):
 ### 1.5 Chia lợi nhuận cổ đông
 - Theo nhịp tháng ở mục 2; phiếu chi từ **sổ thực của chủ**, hạng mục chia LN (ngoài KQKD), toà ảo Chung.
 
-### 1.6 Điều chỉnh & khoá sổ (cut-over / định kỳ)
-- Kiểm kê két/sao kê → trang **Báo cáo bàn giao** → "Chốt số" → tick **"Chốt số & KHOÁ SỔ"**.
-- Hệ ghi nhận đối soát, nếu lệch tự sinh phiếu **"Điều chỉnh số dư đầu kỳ"** (APPROVED, `kqkd_amount = 0` — không bao giờ ảnh hưởng lợi nhuận, ẩn khỏi báo cáo P&L) và set `accounts.lock_date` = ngày chốt.
-- **KHÔNG bao giờ** sửa phiếu quá khứ hay `initial_amount` để "ép" số dư.
+### 1.6 Chốt sổ & bàn giao quỹ (nghi thức HAI BÊN)
+
+> ⚠️ **Luồng cũ đã chết** (30/07/2026): "Báo cáo bàn giao → Chốt số → tick *Chốt số & KHOÁ SỔ*" khoá sổ TRƯỚC khi bên kia đồng ý, và `create_opening_adjustment` đằng sau nó **đã bị REVOKE** nên bấm chỉ ăn `42501` sau khi đã kịp ghi một dòng rác. Nút đó đã gỡ. Phiếu "Điều chỉnh số dư đầu kỳ" chỉ còn giá trị tra cứu lịch sử.
+
+Luồng hiện hành — trang **Tài chính → Sổ quỹ** (cả desktop lẫn app điện thoại):
+
+1. **Người đang giữ sổ** bấm *Chốt sổ & bàn giao quỹ*: hệ liệt kê rào chặn (phiếu chờ duyệt, phiếu đã duyệt chưa ghi sổ, phiên bàn giao đang treo…), rồi nhập **số đếm thật trong két** — sổ ngân hàng thì nhập **số dư trên sao kê** — chọn người ký, gõ `CHOT SO`. Bước này **chưa khoá gì cả**.
+2. **Người nhận** (Chủ sở hữu tổ chức hoặc Kế toán) thấy đề nghị trong hộp thư đầu trang Sổ quỹ + thông báo `E6b`, đếm lại, **gõ lại con số** rồi ký. Lúc này kỳ mới khoá.
+3. Lệch số → hệ tự lập phiếu **"Thừa quỹ / Thiếu quỹ khi chốt sổ"** (`system_source = cashbook.closing.diff`, ngoài KQKD nên không đụng số đã chia cho cổ đông) và ghi **biên bản in được** (`/finance/cashbooks/closure/<id>`).
+4. **Khoá là VĨNH VIỄN** — không ai mở lại, kể cả chủ. Sai sót phát hiện sau xử lý bằng phiếu điều chỉnh ở kỳ hiện tại. Vẫn bổ sung được ảnh chứng từ + ghi chú cho phiếu cũ.
+
+- Người ký phải **khác** người đề nghị (CHECK ở tầng bảng). Sổ nào chỉ một người dính líu thì phải gán ai đó vào vai trò **Kế toán** (Cài đặt → Thành viên, phạm vi *toàn tổ chức*) mới chốt được.
+- **KHÔNG bao giờ** sửa phiếu quá khứ hay `initial_amount` để "ép" số dư — `a00_accounts_closed_book_guard` chặn cứng sau khi sổ đã chốt.
 
 ## 2. Nhịp vận hành
 
@@ -49,8 +58,10 @@ Phiếu trên trang Thu chi chia 3 lớp (suy tự động, không chọn tay):
 |---|---|
 | Hằng ngày | Thu tiền đúng sổ cá nhân; phiếu nháp không để quá 3 ngày (trang Thu chi lớp "Chờ xử lý" phải về 0) |
 | T2 & T5 | Bàn giao tiền mặt về két chính/ngân hàng |
-| Hằng tuần | Đối soát sổ ngân hàng vs sao kê (nút Chốt số, chưa cần khoá) |
-| Cuối tháng | **Chốt số → Khoá sổ → chạy Phân bổ LN (kiểm thanh Kiểm chứng ✓) → chốt chia LN → chi LN** — đúng thứ tự |
+| Sau mỗi lần bàn giao | Người giao nhận thông báo *"đã bàn giao xong — chốt sổ?"* → đếm số còn lại trong két và chốt sổ luôn (§1.6). Bỏ qua được, nhưng bỏ nhiều thì cuối tháng phải dò lại |
+| Cuối tháng | **Chốt sổ từng sổ (§1.6) → chốt LN tháng → chi LN** — đúng thứ tự |
+
+> ⚠️ **Chốt LN SAU KHI HẾT THÁNG.** Chốt giữa tháng là chốt trên số liệu còn thiếu ngày, và mọi phiếu ghi sau đó bị **trigger khoá**; muốn ghi tiếp phải "Mở khoá tháng", mà mở khoá thì **XOÁ phần đã phân bổ cho cổ đông/quản lý** và phải chốt lại. Tab *Chốt LN tháng* đã cảnh báo cả hai việc này (tháng chưa kết thúc · còn sổ quỹ chưa chốt) nhưng **không chặn** — quyết định cuối là của chủ.
 
 ## 3. Cut-over ngày D (chuẩn hoá két lần đầu)
 

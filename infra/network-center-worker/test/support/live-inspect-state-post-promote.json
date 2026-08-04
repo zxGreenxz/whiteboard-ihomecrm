@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 2,
+  "transition": null,
+  "lastTransition": {
+    "schemaVersion": 1,
+    "operation": "promote",
+    "phase": "finalized",
+    "targetReleaseSha": "f678e5e4616a7437ac2faa2731af6fcd7cf46536"
+  },
+  "current": {
+    "schemaVersion": 2,
+    "releaseSha": "f678e5e4616a7437ac2faa2731af6fcd7cf46536",
+    "imageTag": "ihome-network-center-worker:f678e5e4616a7437ac2faa2731af6fcd7cf46536",
+    "imageId": "sha256:dab6aa42c41aaa09c4dcafe1e11c3ff24d17d002568e57ea3188bf7df6d4bd9f",
+    "archiveSha256": "4fe547c0cfc1e432f68935de24d3a9039f47edb422e8508073acd6a3a857dff4",
+    "secretGeneration": "ef53f24a53eed2c852d5be19fc1747c7b1fd2f1d83dd3297afa4c184d0a42723",
+    "releaseDirectory": "/opt/ihome-network-center/releases/f678e5e4616a7437ac2faa2731af6fcd7cf46536",
+    "envFile": "/opt/ihome-network-center/releases/f678e5e4616a7437ac2faa2731af6fcd7cf46536/.env.active",
+    "projectName": "ihome-network-center",
+    "containerName": "ihome-network-center-worker",
+    "container": {
+      "exists": true,
+      "status": "running",
+      "health": "healthy",
+      "imageId": "sha256:dab6aa42c41aaa09c4dcafe1e11c3ff24d17d002568e57ea3188bf7df6d4bd9f",
+      "releaseSha": "f678e5e4616a7437ac2faa2731af6fcd7cf46536",
+      "exactMatch": true
+    },
+    "secrets": {
+      "persistentAvailable": true,
+      "runtimeAvailable": true,
+      "exactMatch": true
+    },
+    "security": {
+      "user": "10001:10001",
+      "readonlyRootfs": true,
+      "memory": 536870912,
+      "nanoCpus": 500000000,
+      "pidsLimit": 128,
+      "restartPolicy": "unless-stopped",
+      "dockerSocketMounted": false,
+      "exactSecretGenerationMounted": true,
+      "secretMountSource": "/run/ihome-network-center/secret-generations/ef53f24a53eed2c852d5be19fc1747c7b1fd2f1d83dd3297afa4c184d0a42723",
+      "secretMountDestination": "/run/secrets/network-center",
+      "secretMountReadOnly": true,
+      "capDrop": "ALL",
+      "capDropAll": true,
+      "securityOpt": "no-new-privileges:true",
+      "noNewPrivileges": true,
+      "networkMode": "host",
+      "hostNetwork": true,
+      "initEnabled": true,
+      "tmpfs": "/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700",
+      "exactTmpfs": true,
+      "nodeOptions": "--max-old-space-size=320",
+      "exactNodeOptions": true
+    }
+  },
+  "previous": {
+    "schemaVersion": 2,
+    "releaseSha": "b6bade8ab964ec30a2b52f1fb4fb62921ec771cf",
+    "imageTag": "ihome-network-center-worker:b6bade8ab964ec30a2b52f1fb4fb62921ec771cf",
+    "imageId": "sha256:1d0111b196ec7c83f0a4b5dbb5c82d4c9f6acc8432a509b72c2586ace26923a8",
+    "archiveSha256": "07d84125a82bc79cbe71e62fbefa3cb1133abd2caa4e1adaa052a59d4951c081",
+    "secretGeneration": "67ab3b3e0b510e2d535bfb88582a7bb4389fd5641a96dd016fc19bc2937f3a4b",
+    "releaseDirectory": "/opt/ihome-network-center/releases/b6bade8ab964ec30a2b52f1fb4fb62921ec771cf",
+    "envFile": "/opt/ihome-network-center/releases/b6bade8ab964ec30a2b52f1fb4fb62921ec771cf/.env.active",
+    "projectName": "ihome-network-center",
+    "containerName": "ihome-network-center-worker",
+    "container": {
+      "exists": true,
+      "status": "running",
+      "health": "healthy",
+      "imageId": "sha256:dab6aa42c41aaa09c4dcafe1e11c3ff24d17d002568e57ea3188bf7df6d4bd9f",
+      "releaseSha": "f678e5e4616a7437ac2faa2731af6fcd7cf46536",
+      "exactMatch": false
+    },
+    "secrets": {
+      "persistentAvailable": true,
+      "runtimeAvailable": true,
+      "exactMatch": true
+    },
+    "security": {
+      "user": "10001:10001",
+      "readonlyRootfs": true,
+      "memory": 536870912,
+      "nanoCpus": 500000000,
+      "pidsLimit": 128,
+      "restartPolicy": "unless-stopped",
+      "dockerSocketMounted": false,
+      "exactSecretGenerationMounted": false,
+      "secretMountSource": "",
+      "secretMountDestination": "",
+      "secretMountReadOnly": false,
+      "capDrop": "ALL",
+      "capDropAll": true,
+      "securityOpt": "no-new-privileges:true",
+      "noNewPrivileges": true,
+      "networkMode": "host",
+      "hostNetwork": true,
+      "initEnabled": true,
+      "tmpfs": "/tmp:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700",
+      "exactTmpfs": true,
+      "nodeOptions": "--max-old-space-size=320",
+      "exactNodeOptions": true
+    }
+  },
+  "pending": null
+}

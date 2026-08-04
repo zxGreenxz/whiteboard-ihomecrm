@@ -140,6 +140,60 @@ describe("buildPreviousDebtByContract — nợ cũ + carry-over", () => {
     ]);
     expect(m.get("c1")).toBeUndefined();
   });
+
+  // Án lệ 203/65NTG (31/07/2026): HĐ tháng 7 có nợ cũ NHẬP TAY (sources rỗng)
+  // → mất link carry-over → prefill tháng 8 cộng đúp cả nợ tháng 6 lẫn tháng 7
+  // (1.234.000 thay vì 733.500). Fallback dedup: HĐ có previous_debt > 0 mà
+  // sources rỗng thì coi mọi HĐ cũ hơn cùng contract đã được nó gánh.
+  it("nợ cũ NHẬP TAY (sources rỗng) vẫn dedup được HĐ cũ hơn — không cộng đúp", () => {
+    const withMonth = (
+      id: string, month: string, total: number, paid: number,
+      prevDebt: number, srcs: unknown[] = [],
+    ) => ({
+      ...inv(id, "c1", total, paid, srcs),
+      billing_month: month,
+      previous_debt: prevDebt,
+    });
+    const m = buildPreviousDebtByContract([
+      // Tháng 6: còn nợ 500.500
+      withMonth("i6", "2026-06", 4534500, 4034000, 0),
+      // Tháng 7: nợ cũ 500.000 nhập tay (sources rỗng) → đã gánh tháng 6
+      withMonth("i7", "2026-07", 4733500, 4000000, 500000),
+    ]);
+    expect(m.get("c1")!.total).toBe(733500);
+    expect(m.get("c1")!.sources.map((s) => s.id)).toEqual(["i7"]);
+  });
+
+  it("HĐ cũ hơn KHÔNG bị dedup oan khi HĐ sau không có nợ cũ", () => {
+    const withMonth = (id: string, month: string, total: number, paid: number) => ({
+      ...inv(id, "c1", total, paid, []),
+      billing_month: month,
+      previous_debt: 0,
+    });
+    const m = buildPreviousDebtByContract([
+      withMonth("i6", "2026-06", 500000, 0),
+      withMonth("i7", "2026-07", 300000, 0),
+    ]);
+    expect(m.get("c1")!.total).toBe(800000);
+    expect(m.get("c1")!.sources.map((s) => s.id).sort()).toEqual(["i6", "i7"]);
+  });
+
+  it("fallback dedup KHÔNG rò sang contract khác", () => {
+    const row = (
+      id: string, contract: string, month: string, total: number, prevDebt: number,
+    ) => ({
+      ...inv(id, contract, total, 0, []),
+      billing_month: month,
+      previous_debt: prevDebt,
+    });
+    const m = buildPreviousDebtByContract([
+      row("a6", "c1", "2026-06", 500000, 0),
+      row("a7", "c1", "2026-07", 700000, 500000), // gánh a6
+      row("b6", "c2", "2026-06", 400000, 0), // contract khác — phải giữ nguyên
+    ]);
+    expect(m.get("c1")!.sources.map((s) => s.id)).toEqual(["a7"]);
+    expect(m.get("c2")!.total).toBe(400000);
+  });
 });
 
 describe("buildExcelRows — ghép contract-room-meter + promo/credit/nợ", () => {

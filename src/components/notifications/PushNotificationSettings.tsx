@@ -27,6 +27,9 @@ export default function PushNotificationSettings() {
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [ready, setReady] = useState(false);
+  // Chi tiết lỗi lần gửi thử gần nhất — hiện ngay trên thẻ, không chỉ trong toast
+  // (toast biến mất trước khi người dùng kịp đọc mã lỗi).
+  const [lastError, setLastError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -83,12 +86,35 @@ export default function PushNotificationSettings() {
 
   const handleTest = async () => {
     setTesting(true);
+    setLastError(null);
     try {
-      const { sent, total } = await sendTestPush();
-      if (sent > 0) toast.success(`Đã gửi thông báo thử tới ${sent}/${total} thiết bị`);
-      else toast.warning("Chưa gửi được — hãy bật thông báo trên thiết bị này trước");
+      const { sent, total, failed, pruned, errors } = await sendTestPush();
+
+      if (sent > 0) {
+        toast.success(
+          `Đã gửi tới ${sent}/${total} thiết bị. Không thấy gì? Kiểm tra chế độ Không làm phiền của máy.`,
+        );
+      } else if (total === 0) {
+        toast.warning('Thiết bị này chưa đăng ký. Bật công tắc "Bật trên thiết bị này" trước.');
+      } else {
+        // Gửi được lệnh nhưng KHÔNG thiết bị nào nhận — đây là ca trước đây bị giấu đi.
+        const first = errors[0];
+        const detail = first
+          ? `HTTP ${first.status ?? "?"} · ${first.host} · ${first.body}`
+          : "không có chi tiết lỗi";
+        setLastError(detail);
+        toast.error(`Gửi thất bại ${failed}/${total} thiết bị — ${detail}`, { duration: 12000 });
+        console.error("[push] gửi thử thất bại", errors);
+      }
+
+      if (pruned > 0) {
+        toast.warning(`${pruned} thiết bị đã hết hạn đăng ký và được gỡ. Hãy bật lại trên máy đó.`);
+        setSubscribed(await isSubscribed());
+      }
     } catch (e) {
-      toast.error("Gửi thử thất bại: " + ((e as Error)?.message || String(e)));
+      const msg = (e as Error)?.message || String(e);
+      setLastError(msg);
+      toast.error("Gửi thử thất bại: " + msg, { duration: 12000 });
     } finally {
       setTesting(false);
     }
@@ -164,6 +190,20 @@ export default function PushNotificationSettings() {
           {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
           Gửi thông báo thử
         </Button>
+
+        {lastError && (
+          <Alert variant="destructive">
+            <BellOff className="h-4 w-4" />
+            <AlertDescription className="space-y-1">
+              <div className="font-medium">Lần gửi thử gần nhất thất bại</div>
+              <code className="block break-all text-xs">{lastError}</code>
+              <div className="text-xs">
+                HTTP 403/401 nghĩa là cặp khoá VAPID không khớp với đăng ký trên máy — tắt rồi bật
+                lại công tắc ở trên để đăng ký lại bằng khoá hiện tại.
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
       </CardContent>
     </Card>
   );

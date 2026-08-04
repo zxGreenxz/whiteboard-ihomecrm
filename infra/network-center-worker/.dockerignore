@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+.env
+secrets
+*.log
+*.backup
+*.rsc
+wg0.conf
+worker-ssh-key.pub
+test

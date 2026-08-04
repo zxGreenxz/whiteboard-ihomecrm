@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { getSessionUser, getSessionUserId } from '@/lib/authSession';
+import { getSessionUser } from '@/lib/authSession';
 import { toast } from 'sonner';
 
 // =============================================
@@ -36,15 +37,23 @@ export interface UpdateProfileData {
   language?: string;
 }
 
+export const profileQueryKeys = {
+  prefix: ['profile'] as const,
+  byUser: (userId: string | null) => ['profile', userId] as const,
+};
+
 // =============================================
 // Get Profile
 // =============================================
 
 export const useProfile = () => {
+  const { data: user } = useAuth();
+  const userId = user?.id ?? null;
+
   return useQuery({
-    queryKey: ['profile'],
+    queryKey: profileQueryKeys.byUser(userId),
+    enabled: userId !== null,
     queryFn: async (): Promise<Profile | null> => {
-      const userId = await getSessionUserId();
       if (!userId) return null;
 
       const { data, error } = await supabase

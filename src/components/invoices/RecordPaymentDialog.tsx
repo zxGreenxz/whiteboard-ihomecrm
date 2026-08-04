@@ -207,6 +207,14 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     )?.id ?? '';
   }, [virtualAccounts]);
 
+  const renderAccountItems = () =>
+    realAccounts.map((a: any) => (
+      <SelectItem key={a.id} value={a.id}>
+        {a.name}
+        {a.bank_name ? ` — ${a.bank_name}` : ''}
+      </SelectItem>
+    ));
+
   const accountIdForMethod = (method: PaymentMethod): string => {
     // TM: sổ Thu của chính nhân viên đang đăng nhập (joey → Hiển Thu,
     // nathan → Hiệp Thu, v.v. — match qua accounts.user_id). User khác
@@ -814,60 +822,94 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 </div>
               </div>
 
-              {/* Phương thức thanh toán */}
-              <div className="space-y-2">
-                <Label>Phương thức thanh toán *</Label>
-                <Select
-                  value={watchedLines?.[0]?.payment_method ?? 'TM'}
-                  onValueChange={(value) => {
-                    const method = value as PaymentMethod;
-                    setValue('payment_lines.0.payment_method', method, {
-                      shouldValidate: true,
-                    });
-                    const next = accountIdForMethod(method);
-                    if (next) {
-                      setValue('payment_lines.0.account_id', next, {
+              {/* Phương thức thanh toán — khi TK thì kèm ô Sổ quỹ cùng dòng
+                  để quản lý đổi sang sổ khác ngay lúc thu. */}
+              <div className="flex gap-4 items-start">
+                <div
+                  className={
+                    watchedLines?.[0]?.payment_method === 'TK'
+                      ? 'w-28 shrink-0 space-y-2'
+                      : 'flex-1 space-y-2'
+                  }
+                >
+                  <Label>
+                    {watchedLines?.[0]?.payment_method === 'TK'
+                      ? 'Phương thức *'
+                      : 'Phương thức thanh toán *'}
+                  </Label>
+                  <Select
+                    value={watchedLines?.[0]?.payment_method ?? 'TM'}
+                    onValueChange={(value) => {
+                      const method = value as PaymentMethod;
+                      setValue('payment_lines.0.payment_method', method, {
                         shouldValidate: true,
                       });
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue>
-                      {watchedLines?.[0]?.payment_method ?? 'TM'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="TM">TM</SelectItem>
-                    {isTtVisibleForRow(
-                      watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
-                    ) && <SelectItem value="TT">TT</SelectItem>}
-                    {isTkVisibleForRow(
-                      0,
-                      fields[0]?.id ?? '',
-                      watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
-                    ) && <SelectItem value="TK">TK</SelectItem>}
-                    {showTkPlusForRow(
-                      0,
-                      fields[0]?.id ?? '',
-                      watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
-                    ) && (
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        title="Bấm để hiện phương thức TK"
-                        className="relative flex w-full cursor-pointer select-none items-center justify-center rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          unlockTkForField(fields[0]?.id ?? '');
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </div>
+                      const next = accountIdForMethod(method);
+                      if (next) {
+                        setValue('payment_lines.0.account_id', next, {
+                          shouldValidate: true,
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {watchedLines?.[0]?.payment_method ?? 'TM'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TM">TM</SelectItem>
+                      {isTtVisibleForRow(
+                        watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
+                      ) && <SelectItem value="TT">TT</SelectItem>}
+                      {isTkVisibleForRow(
+                        0,
+                        fields[0]?.id ?? '',
+                        watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
+                      ) && <SelectItem value="TK">TK</SelectItem>}
+                      {showTkPlusForRow(
+                        0,
+                        fields[0]?.id ?? '',
+                        watchedLines?.[0]?.payment_method as PaymentMethod | undefined,
+                      ) && (
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          title="Bấm để hiện phương thức TK"
+                          className="relative flex w-full cursor-pointer select-none items-center justify-center rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            unlockTkForField(fields[0]?.id ?? '');
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {watchedLines?.[0]?.payment_method === 'TK' && (
+                  <div className="flex-1 space-y-2 min-w-0">
+                    <Label>Sổ quỹ nhận *</Label>
+                    <Select
+                      value={watchedLines?.[0]?.account_id ?? ''}
+                      onValueChange={(v) =>
+                        setValue('payment_lines.0.account_id', v, { shouldValidate: true })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
+                      </SelectTrigger>
+                      <SelectContent>{renderAccountItems()}</SelectContent>
+                    </Select>
+                    {errors.payment_lines?.[0]?.account_id && (
+                      <p className="text-sm text-red-500">
+                        {errors.payment_lines[0]?.account_id?.message}
+                      </p>
                     )}
-                  </SelectContent>
-                </Select>
+                  </div>
+                )}
               </div>
 
               {/* Ngày thanh toán */}
@@ -882,11 +924,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                 )}
               </div>
 
-              {/* Sổ quỹ nhận — chỉ hiện khi auto-pick chưa ra (accounts
+              {/* Sổ quỹ nhận — TM/TT chỉ hiện khi auto-pick chưa ra (accounts
                   chưa load xong hoặc tòa nhà chưa cấu hình default cho
-                  phương thức này). Đã cấu hình default sổ quỹ rồi thì
-                  field này luôn ẩn — lấy theo default. */}
-              {!watchedLines?.[0]?.account_id && (
+                  phương thức này). TK đã có ô riêng cạnh phương thức. */}
+              {!watchedLines?.[0]?.account_id
+                && watchedLines?.[0]?.payment_method !== 'TK' && (
                 <div className="space-y-2">
                   <Label>Sổ quỹ nhận *</Label>
                   <Select
@@ -898,14 +940,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                     <SelectTrigger>
                       <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {realAccounts.map((a: any) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
-                          {a.bank_name ? ` — ${a.bank_name}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
+                    <SelectContent>{renderAccountItems()}</SelectContent>
                   </Select>
                   {errors.payment_lines?.[0]?.account_id && (
                     <p className="text-sm text-red-500">
@@ -1028,10 +1063,11 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                       </Select>
                     </div>
                   </div>
-                  {/* Sổ quỹ nhận — chỉ hiện khi auto-pick chưa ra (toà nhà
-                      chưa cấu hình default cho phương thức này). Đã có
-                      default rồi thì luôn ẩn — lấy theo default. */}
-                  {!watchedLines?.[idx]?.account_id && (
+                  {/* Sổ quỹ nhận — luôn hiện với dòng TK (cho đổi sổ tại chỗ);
+                      TM/TT chỉ hiện khi auto-pick chưa ra (toà nhà chưa cấu
+                      hình default cho phương thức này). */}
+                  {(watchedLines?.[idx]?.payment_method === 'TK'
+                    || !watchedLines?.[idx]?.account_id) && (
                     <div className="space-y-2">
                       <Label>Sổ quỹ nhận *</Label>
                       <Select
@@ -1047,14 +1083,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
                         <SelectTrigger>
                           <SelectValue placeholder="Chọn sổ quỹ nhận tiền" />
                         </SelectTrigger>
-                        <SelectContent>
-                          {realAccounts.map((a: any) => (
-                            <SelectItem key={a.id} value={a.id}>
-                              {a.name}
-                              {a.bank_name ? ` — ${a.bank_name}` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
+                        <SelectContent>{renderAccountItems()}</SelectContent>
                       </Select>
                       {errors.payment_lines?.[idx]?.account_id && (
                         <p className="text-sm text-red-500">

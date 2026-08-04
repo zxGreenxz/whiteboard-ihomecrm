@@ -1,0 +1,204 @@
+# iHomeCRM Network Center - stage 1 (keep narrow LAN recovery)
+# Upload worker-ssh-key.pub before importing this file.
+#
+# DIAGNOSTICS. This file is imported with `verbose=no` (runbook 3.1 step 4:
+# `verbose=yes` makes RouterOS read every :local as EMPTY inside an :if
+# CONDITION, measured 2026-08-03). With no echo, the only two things a failed
+# run prints are the :error identity and the NC_STEP breadcrumbs already
+# emitted. So:
+#   - every :error raises NETWORK_CENTER_<CLASS>/<slug>, unique bundle-wide;
+#   - every mutation is preceded by its own NC_STEP breadcrumb, numbered 01..12.
+# `/import` stops at the first failure and undoes nothing, so the LAST NC_STEP
+# printed is the mutation that failed and every earlier one completed.
+# The generator refuses to emit this file if either rule is broken.
+:local ncWgName "wg-ihome-mgmt"
+:local ncGroup "network-center-worker"
+:local ncUser @@ROUTER_USER@@
+:local ncRecoveryName @@RECOVERY_INTERFACE@@
+:local ncWanName @@WAN_INTERFACE@@
+:local ncMarker @@OWNERSHIP_MARKER@@
+:local ncWgMarker ($ncMarker . ":wireguard")
+:local ncAddressMarker ($ncMarker . ":address")
+:local ncPeerMarker ($ncMarker . ":peer")
+:local ncHandshakeMarker ($ncMarker . ":wg-handshake")
+:local ncManagementMarker ($ncMarker . ":wg-management")
+:local ncRecoveryMarker ($ncMarker . ":lan-recovery")
+
+# Ownership preflight: every collision is rejected before the first mutation.
+:local ncUsers [/user find where name=$ncUser]
+:if ([:len $ncUsers] > 1) do={ :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/user-not-unique" }
+:if ([:len $ncUsers] = 1 && [/user get $ncUsers comment] != $ncMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/user-marker-mismatch"
+}
+:local ncGroups [/user/group find where name=$ncGroup]
+:if ([:len $ncGroups] > 1) do={ :error "NETWORK_CENTER_GROUP_CONFLICT/group-not-unique" }
+:if ([:len $ncGroups] = 0 && [:len $ncUsers] = 1) do={
+  :error "NETWORK_CENTER_GROUP_CONFLICT/group-missing-for-user"
+}
+:if ([:len $ncGroups] = 1) do={
+  :if ([:len $ncUsers] = 1 && [/user get $ncUsers group] != $ncGroup) do={
+    :error "NETWORK_CENTER_GROUP_CONFLICT/user-group-mismatch"
+  }
+  # Per-policy membership, NOT whole-string equality. Measured on the demo hEX
+  # (7.20.8): `:tostr` of a group's policy array joins with `;` and spells the
+  # denied ones out as `!name`, so the old `!= "ssh,ftp,…"` comparison could
+  # never match and fired on every re-import. Anchoring keeps `!sensitive` from
+  # reading as a granted `sensitive` — both directions measured on hardware.
+@@WORKER_GROUP_POLICY_ASSERTIONS@@
+}
+:local ncWgs [/interface/wireguard find where name=$ncWgName]
+:if ([:len $ncWgs] > 1) do={ :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/wireguard-not-unique" }
+:if ([:len $ncWgs] = 1 && [/interface/wireguard get $ncWgs comment] != $ncWgMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT/wireguard-marker-mismatch"
+}
+:local ncRecovery [/interface find where name=$ncRecoveryName]
+:local ncWan [/interface find where name=$ncWanName]
+:if ([:len $ncRecovery] != 1 || [:len $ncWan] != 1) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-or-wan-not-unique"
+}
+:if ([:tostr $ncRecovery] = [:tostr $ncWan]) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-is-wan"
+}
+# The recovery interface must be the router's own L3 edge onto the operator's LAN.
+# On stock RouterOS defconf that is the BRIDGE: ether2-etherN are bridge ports with
+# no address of their own, so demanding an unbridged ether port with a direct IP is
+# unsatisfiable on the hardware this fleet actually runs. A dedicated out-of-band
+# ether port is still accepted for sites that have one.
+:local ncRecoveryType [:tostr [/interface get $ncRecovery type]]
+:if ($ncRecoveryType != "ether" && $ncRecoveryType != "bridge") do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-type-unsupported"
+}
+# Read in a nested :if: a bridge carries no default-name at all, and reading an
+# absent property is a hard error rather than an empty string.
+# `!(x ~ "...")` and the escaped `\$`, both measured on RouterOS 7.20.8: `!~` is
+# not an operator (it inverts a string and dies at run time, exit 1), and a bare
+# `$` before a closing quote is a parse error that /import refuses the file for.
+:if ($ncRecoveryType = "ether") do={
+  :if (!([:tostr [/interface get $ncRecovery default-name]] ~ "^ether([2-9]|[1-9][0-9])\$")) do={
+    :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-default-name-unexpected"
+  }
+}
+:if ([:tostr [/interface get $ncRecovery disabled]] != "false") do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-interface-disabled"
+}
+# An ether recovery port must own its L3 edge. A bridge IS the edge, and a bridge is
+# never listed among its own ports, so one test covers both shapes.
+:if ([:len [/interface/bridge/port find where interface=$ncRecoveryName]] > 0) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-is-bridge-port"
+}
+# The rule is only a path if the router answers on the address the operator routes
+# to, on this interface, and only a durable one if that address is configured
+# rather than leased - a recovery path that expires with a DHCP lease is not one.
+:if ([:len [/ip/address find where interface=$ncRecoveryName and address=@@RECOVERY_GATEWAY_ADDRESS@@ and disabled=no and !dynamic]] != 1) do={
+  :error "NETWORK_CENTER_RECOVERY_INTERFACE_INVALID/recovery-address-not-static"
+}
+# Every selector below excludes dynamic rows so the preflight inspects exactly the
+# rows the mutations later write, and so no mutation can be handed an unwritable
+# dynamic sibling.
+:local ncRecoveryRules [/ip/firewall/filter find where comment=$ncRecoveryMarker and !dynamic]
+:local ncHandshakeRules [/ip/firewall/filter find where comment=$ncHandshakeMarker and !dynamic]
+:local ncManagementRules [/ip/firewall/filter find where comment=$ncManagementMarker and !dynamic]
+:if ([:len $ncRecoveryRules] > 1 || [:len $ncHandshakeRules] > 1 || [:len $ncManagementRules] > 1) do={
+  :error "NETWORK_CENTER_FIREWALL_CONFLICT/marker-rules-not-unique"
+}
+# One :if per property, each condition complete on its own line. A parenthesised
+# condition that spans lines is a RouterOS parse error at the newline itself, and
+# every continuation line is then read as a new statement: these three blocks
+# were 21 of the 22 errors /import reported, so these guards had never run.
+# A multi-line do={ ... } body is fine, which is why the nesting is the fix.
+# One identity per property too: with verbose=no the identity is the only thing
+# that says WHICH of the eighteen comparisons below rejected the router.
+:if ([:len $ncRecoveryRules] = 1) do={
+  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules chain]] != "input") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-chain" }
+  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules action]] != "accept") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-action" }
+  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules protocol]] != "tcp") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-protocol" }
+  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules dst-port]] != "22") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-dst-port" }
+  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules src-address]] != "@@RECOVERY_CIDR@@") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-src-address" }
+  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules in-interface]] != $ncRecoveryName) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-in-interface" }
+  :if ([:tostr [/ip/firewall/filter get $ncRecoveryRules disabled]] != "false") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/recovery-rule-disabled" }
+}
+:if ([:len $ncHandshakeRules] = 1) do={
+  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules chain]] != "input") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/handshake-rule-chain" }
+  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules action]] != "accept") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/handshake-rule-action" }
+  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules protocol]] != "udp") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/handshake-rule-protocol" }
+  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules dst-port]] != "@@WG_PORT@@") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/handshake-rule-dst-port" }
+  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules in-interface]] != $ncWanName) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/handshake-rule-in-interface" }
+  :if ([:tostr [/ip/firewall/filter get $ncHandshakeRules disabled]] != "false") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/handshake-rule-disabled" }
+}
+:if ([:len $ncManagementRules] = 1) do={
+  :if ([:tostr [/ip/firewall/filter get $ncManagementRules chain]] != "input") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/management-rule-chain" }
+  :if ([:tostr [/ip/firewall/filter get $ncManagementRules action]] != "accept") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/management-rule-action" }
+  :if ([:tostr [/ip/firewall/filter get $ncManagementRules in-interface]] != $ncWgName) do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/management-rule-in-interface" }
+  :if ([:tostr [/ip/firewall/filter get $ncManagementRules src-address]] != "@@VPS_PEER_ADDRESS@@") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/management-rule-src-address" }
+  :if ([:tostr [/ip/firewall/filter get $ncManagementRules disabled]] != "false") do={ :error "NETWORK_CENTER_FIREWALL_CONFLICT/management-rule-disabled" }
+}
+
+# Preflight passed. Everything below writes to the router; the breadcrumb comes
+# first so a failure inside a block is attributed to that block and not the next.
+:put "NC_STEP:01:wireguard-interface"
+:if ([:len $ncWgs] = 0) do={
+  /interface/wireguard add name=$ncWgName listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ comment=$ncWgMarker
+} else={
+  /interface/wireguard set $ncWgs listen-port=@@WG_PORT@@ private-key=@@ROUTER_WG_PRIVATE_KEY@@ disabled=no
+}
+
+:put "NC_STEP:02:management-address"
+:if ([:len [/ip/address find where interface=$ncWgName and comment=$ncAddressMarker and !dynamic]] = 0) do={
+  /ip/address add address=@@ROUTER_ADDRESS@@ interface=$ncWgName comment=$ncAddressMarker
+} else={
+  /ip/address set [find where interface=$ncWgName and comment=$ncAddressMarker and !dynamic] address=@@ROUTER_ADDRESS@@ disabled=no
+}
+
+:put "NC_STEP:03:wireguard-peer"
+:if ([:len [/interface/wireguard/peers find where interface=$ncWgName and comment=$ncPeerMarker]] = 0) do={
+  /interface/wireguard/peers add interface=$ncWgName public-key=@@VPS_WG_PUBLIC_KEY@@ allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s comment=$ncPeerMarker
+} else={
+  /interface/wireguard/peers set [find where interface=$ncWgName and comment=$ncPeerMarker] public-key=@@VPS_WG_PUBLIC_KEY@@ allowed-address=@@VPS_PEER_ADDRESS@@ endpoint-address=@@VPS_ENDPOINT@@ endpoint-port=@@WG_PORT@@ persistent-keepalive=25s disabled=no
+}
+
+# router-rollback.rsc removes objects by ownership marker and a group carries
+# none, so a run that stops after NC_STEP:04 leaves this group behind. Removing
+# it by hand is the documented follow-up (runbook 3.2).
+:put "NC_STEP:04:worker-group"
+:if ([:len [/user/group find where name=$ncGroup]] = 0) do={
+  /user/group add name=$ncGroup policy=@@WORKER_GROUP_POLICY@@
+}
+
+:put "NC_STEP:05:worker-user"
+:if ([:len $ncUsers] = 0) do={
+  /user add name=$ncUser group=$ncGroup password=@@ROUTER_PASSWORD@@ comment=$ncMarker
+} else={
+  /user set $ncUsers group=$ncGroup password=@@ROUTER_PASSWORD@@ disabled=no comment=$ncMarker
+}
+
+:put "NC_STEP:06:worker-ssh-key-clear"
+/user/ssh-keys remove [find where user=$ncUser]
+:put "NC_STEP:07:worker-ssh-key-import"
+/user/ssh-keys import public-key-file="worker-ssh-key.pub" user=$ncUser
+:put "NC_STEP:08:ssh-strong-crypto"
+/ip/ssh set strong-crypto=yes
+
+# Stage 1 keeps one explicitly selected, RFC1918 /28-/32 recovery path.
+# `and !dynamic` is what makes this line executable: this script is delivered over
+# SSH, RouterOS lists a dynamic connection entry beside the static `ssh` service
+# whenever a session is live, and a `set` whose selector also matches that entry is
+# refused - which would abort /import here, after six mutations and before every
+# firewall rule, leaving the router half-bootstrapped with no recovery marker.
+:put "NC_STEP:09:ssh-service-allowlist"
+/ip/service set [find where name="ssh" and !dynamic] disabled=no port=22 address=@@RECOVERY_CIDR@@,@@VPS_PEER_ADDRESS@@
+
+:put "NC_STEP:10:firewall-lan-recovery"
+:if ([:len [/ip/firewall/filter find where comment=$ncRecoveryMarker and !dynamic]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept protocol=tcp dst-port=22 src-address=@@RECOVERY_CIDR@@ in-interface=@@RECOVERY_INTERFACE@@ place-before=0 comment=$ncRecoveryMarker
+}
+
+:put "NC_STEP:11:firewall-wg-handshake"
+:if ([:len [/ip/firewall/filter find where comment=$ncHandshakeMarker and !dynamic]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept protocol=udp in-interface=@@WAN_INTERFACE@@ dst-port=@@WG_PORT@@ place-before=0 comment=$ncHandshakeMarker
+}
+:put "NC_STEP:12:firewall-wg-management"
+:if ([:len [/ip/firewall/filter find where comment=$ncManagementMarker and !dynamic]] = 0) do={
+  /ip/firewall/filter add chain=input action=accept in-interface=$ncWgName src-address=@@VPS_PEER_ADDRESS@@ place-before=0 comment=$ncManagementMarker
+}
+
+:put "NETWORK_CENTER_STAGE1_PENDING_RECOVERY_PROOF"

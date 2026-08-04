@@ -80,6 +80,7 @@ const routeLabels: Record<string, string> = {
   '/settings/categories/income-expense-types': 'Loại thu chi',
   '/settings/categories/service-quotas': 'Định mức dịch vụ',
   '/settings/meters': 'Đồng hồ công tơ',
+  '/quayso/admin': 'Quay số may mắn',
   '/settings/categories/suppliers': 'Nhà cung cấp',
   '/settings/categories/warehouses': 'Kho tài sản',
   '/settings/categories/asset-types': 'Loại tài sản',

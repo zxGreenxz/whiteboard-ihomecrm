@@ -2,26 +2,26 @@
 
 File này áp dụng cho mọi session Codex làm việc trên repo này.
 
-## Codex Subagent Routing
-
-Use the project custom agents for substantial work:
-
-- `architect`: plan complex, risky, cross-cutting, migration, authorization, or data-model changes before implementation.
-- `scout_mini`: perform focused repository exploration and trace relevant files, symbols, flows, and tests.
-- `mini`: handle small read-only research or diagnostic tasks; it is the lightweight alias for the scout tier.
-- `implementer`: make scoped code changes and run relevant tests after the approach is clear.
-- `reviewer`: independently review non-trivial changes after implementation, with findings ordered by severity.
-
-The main agent owns task decomposition, integrates all results, resolves conflicts, and delivers the final answer. Delegate only concrete bounded tasks, avoid delegation for trivial work, and do not run multiple write-capable agents against overlapping files.
-
-When spawning a custom agent, select it with the exact registered `agent_type`; `task_name` is only the task label. Do not combine a different `agent_type` with a full-history fork. Always pass `fork_turns = "none"` explicitly so the selected agent can load its own model and instructions; omitting this field currently defaults to a full-history fork. For substantial implementation, prefer the flow `architect` or `scout_mini` -> `implementer` -> `reviewer`.
-
 ## Stack ngắn gọn
 
 - React + TypeScript + Vite (deploy Vercel — production: <https://ptcrm.vercel.app>)
 - shadcn/ui + Tailwind, react-hook-form + zod
 - Supabase (Postgres + Auth + Storage), migrations dưới `supabase/migrations/`
 - Test: Vitest + fast-check (property-based) — chạy `npx vitest run <path>`
+- **Test Edge Function (`supabase/functions/*/index.test.ts`)**: chạy bằng Deno,
+  không phải Vitest. Máy chưa có Deno thì tải bản portable (không cài hệ thống,
+  không đụng PATH) rồi gọi thẳng exe:
+  ```bash
+  curl -sL -o deno.zip https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip
+  unzip -o deno.zip   # ra deno.exe
+  ./deno.exe test --config supabase/functions/network-center-worker/deno.json \
+    supabase/functions/network-center-worker/index.test.ts --allow-env
+  ```
+  CI pin `deno-version: v2.x` qua `denoland/setup-deno@v2` (không khoá patch); bản
+  đã xác minh chạy 22/22 test xanh là **v2.9.4**. GOTCHA: suite này KHÔNG test
+  `/ingest` với giá trị ngoài miền hay `rpcErrorStatus` với `23502`/`23514`/`23503`
+  — logic đó được phủ bởi test Node import cùng `index.ts`
+  (`scripts/__tests__/network-center-ingest-domains.test.mjs`), không phải suite Deno.
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
   Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
   `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).

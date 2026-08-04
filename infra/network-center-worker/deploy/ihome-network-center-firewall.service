@@ -1,0 +1,23 @@
+[Unit]
+Description=iHomeCRM Network Center managed nftables policy
+Wants=network-pre.target
+Before=network-online.target wg-quick@wg0.service network-center-worker.service
+# Assert, not Condition: systemd.unit(5) skips a unit whose Condition* is unmet and
+# still reports the job as SUCCESSFUL, which would satisfy the Requires= that
+# wg-quick@wg0 gets from the install-host drop-in and bring wg0 up forwarding with
+# no policy loaded. A failed Assert* fails the unit and its dependents with it.
+AssertPathExists=/etc/nftables.d/ihome-network-center.nft
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/sbin/nft --check --file /etc/nftables.d/ihome-network-center.nft
+ExecStart=/usr/sbin/nft --file /etc/nftables.d/ihome-network-center.nft
+ExecReload=/usr/sbin/nft --check --file /etc/nftables.d/ihome-network-center.nft
+ExecReload=/usr/sbin/nft --file /etc/nftables.d/ihome-network-center.nft
+# Scoped teardown: only the managed table is removed. The host ruleset is never
+# flushed because this VPS also carries an unrelated production workload.
+ExecStop=-/usr/sbin/nft delete table inet ihome_network_center
+
+[Install]
+WantedBy=multi-user.target

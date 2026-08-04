@@ -1,0 +1,36 @@
+# iHomeCRM Network Center - stage 2 (only after WG + pinned SSH verification)
+:local ncUser @@ROUTER_USER@@
+:local ncMarker @@OWNERSHIP_MARKER@@
+:local ncGroup "network-center-worker"
+:local ncExpectedPolicy "ssh,ftp,reboot,read,write,test,sensitive"
+:local ncWgName "wg-ihome-mgmt"
+:local ncWgMarker ($ncMarker . ":wireguard")
+:local ncRecoveryMarker ($ncMarker . ":lan-recovery")
+:local ncUsers [/user find where name=$ncUser]
+:local ncGroups [/user/group find where name=$ncGroup]
+:local ncWgs [/interface/wireguard find where name=$ncWgName]
+:if ([:len $ncUsers] != 1 || [/user get $ncUsers comment] != $ncMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+:if ([:len $ncGroups] != 1
+     || [/user get $ncUsers group] != $ncGroup
+     || [:tostr [/user/group get $ncGroups policy]] != $ncExpectedPolicy) do={
+  :error "NETWORK_CENTER_GROUP_CONFLICT"
+}
+:if ([:len $ncWgs] != 1 || [/interface/wireguard get $ncWgs comment] != $ncWgMarker) do={
+  :error "NETWORK_CENTER_OWNERSHIP_CONFLICT"
+}
+
+# `and !dynamic` on every selector: this script is delivered over SSH and RouterOS
+# lists a dynamic connection entry beside the static service, so the bare selector
+# resolves to two rows and the `set` is refused.
+/ip/service set [find where name="ssh" and !dynamic] disabled=no port=22 address=@@VPS_PEER_ADDRESS@@
+/ip/service set [find where name="winbox" and !dynamic] disabled=yes address=@@VPS_PEER_ADDRESS@@
+/ip/service set [find where name="telnet" and !dynamic] disabled=yes
+/ip/service set [find where name="ftp" and !dynamic] disabled=yes
+/ip/service set [find where name="www" and !dynamic] disabled=yes
+/ip/service set [find where name="www-ssl" and !dynamic] disabled=yes
+/ip/service set [find where name="api" and !dynamic] disabled=yes
+/ip/service set [find where name="api-ssl" and !dynamic] disabled=yes
+/ip/firewall/filter remove [find where comment=$ncRecoveryMarker and !dynamic]
+:put "NETWORK_CENTER_LOCKDOWN_APPLIED"

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { contractFormSchema } from "@/lib/contractValidation";
 import type { ContractFormData } from "@/lib/contractValidation";
 import { calculateContractDepositBalance } from "@/lib/contractCreateRpc";
+import { describeDepositAdjustment } from "@/lib/contractPriceAdjustment";
 import type { ContractWithRelations, PaymentCycle } from "@/types/contract";
 import {
   useCreateContract,
@@ -168,8 +169,13 @@ export function useContractFormState({
   // Danh sách dòng "Đã đặt cọc": mỗi dòng = 1 lần khách đưa cọc → 1 phiếu thu
   // cọc (is_deposit) vào SỔ QUỸ THẬT đã chọn (sổ CỌC chỉ là sổ ảo theo dõi).
   const [depositRows, setDepositRows] = useState<DepositRow[]>([]);
-  // Cờ user đã tự sửa ô "Tiền cọc" → ngừng auto mặc định = tiền thuê.
-  const [depositTouched, setDepositTouched] = useState(false);
+  // Khoá/mở 2 ô tiền. KHOÁ (xám + nút bút chì) = bám mặc định:
+  //   - "Tiền thuê"  bám giá niêm yết của phòng (rooms.rent_price)
+  //   - "Tiền cọc"   bám tiền thuê của hợp đồng
+  // MỞ KHOÁ = user tự quyết → ngừng auto-đồng bộ, và việc lệch mặc định được
+  // lưu dấu (room_price_history + dòng ghi chú "[Điều chỉnh cọc]").
+  const [rentUnlocked, setRentUnlocked] = useState(false);
+  const [depositUnlocked, setDepositUnlocked] = useState(false);
   const defaultDepositAccountId = useMemo(
     () => pickDefaultDepositAccountId(accounts, authUser?.id),
     [accounts, authUser?.id],
@@ -279,16 +285,14 @@ export function useContractFormState({
   const removeDepositRow = (uid: string) =>
     setDepositRows((p) => p.filter((r) => r.uid !== uid));
 
-  // "Tiền cọc" mặc định = tiền thuê khi user CHƯA tự sửa ô cọc (chỉ tạo mới).
+  // ---- Giá mặc định của PHÒNG (nguồn của ô "Tiền thuê" khi còn khoá) ----
+  const selectedRoom = useMemo(
+    () => rooms.find((r) => r.id === selectedRoomId),
+    [rooms, selectedRoomId],
+  );
+  const roomDefaultRent = Number(selectedRoom?.rent_price ?? 0);
+
   const rentForDepositDefault = form.watch("rent_price") ?? 0;
-  useEffect(() => {
-    if (isEditMode || !open) return;
-    if (depositTouched) return;
-    if ((rentForDepositDefault ?? 0) > 0) {
-      form.setValue("total_deposit", rentForDepositDefault);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rentForDepositDefault, depositTouched, isEditMode, open]);
 
   // ---- Reset form when dialog opens ----
   useEffect(() => {
@@ -300,7 +304,10 @@ export function useContractFormState({
       setSelectedBuildingId(buildingId);
       setSelectedRoomId(contract.room_id ?? "");
       setDepositRows([]);
-      setDepositTouched(true); // edit: total_deposit đã có giá trị thật, không auto đè
+      // Sửa HĐ: cả 2 ô đều KHOÁ (xám) hiển thị giá đã ký — muốn đổi phải bấm
+      // bút chì. Không auto-đồng bộ gì ở chế độ sửa.
+      setRentUnlocked(false);
+      setDepositUnlocked(false);
 
       form.reset({
         room_id: contract.room_id ?? "",
@@ -362,9 +369,10 @@ export function useContractFormState({
       setSelectedServices([]);
       setUseCustomServices(false);
       setDepositRows([]);
-      // prefill từ Cọc giữ chỗ: total_deposit theo cọc đã đưa; coi như đã chỉnh
-      // tay để tiền thuê không auto đè. Phiếu giữ chỗ hiện ở dòng cọc cũ (xám).
-      setDepositTouched(!!prefill?.depositAmount);
+      setRentUnlocked(false);
+      // prefill từ Cọc giữ chỗ: total_deposit theo cọc đã đưa → mở khoá sẵn ô
+      // cọc để tiền thuê không auto đè. Phiếu giữ chỗ hiện ở dòng cọc cũ (xám).
+      setDepositUnlocked(!!prefill?.depositAmount);
       form.reset({
         room_id: prefill?.roomId ?? "",
         signed_date: new Date().toISOString().split("T")[0],
@@ -389,6 +397,33 @@ export function useContractFormState({
       });
     }
   }, [open, contract, form, prefill]);
+
+  // Hai effect "bám mặc định" phải khai báo SAU effect reset ở trên: React chạy
+  // effect theo thứ tự khai báo, nên nếu đặt trước thì trong cùng một commit
+  // `form.reset()` sẽ ghi đè giá vừa điền (ô Tiền thuê về 0) mà dependency
+  // không đổi → hết cơ hội chạy lại. Ca dính: mở lại dialog cho ĐÚNG phòng vừa
+  // mở (prefill từ Cọc giữ chỗ / Sơ đồ toà) — selectedRoomId chưa kịp đổi.
+
+  // "Tiền thuê" mặc định = giá niêm yết của phòng, tự đổi theo phòng được chọn.
+  // Chỉ ở chế độ TẠO MỚI: form sửa phải giữ nguyên giá đã ký của HĐ.
+  useEffect(() => {
+    if (isEditMode || !open) return;
+    if (rentUnlocked) return;
+    if ((form.getValues("rent_price") ?? 0) === roomDefaultRent) return;
+    form.setValue("rent_price", roomDefaultRent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomDefaultRent, rentUnlocked, isEditMode, open]);
+
+  // "Tiền cọc" mặc định = tiền thuê khi ô cọc CÒN KHOÁ (chỉ tạo mới).
+  useEffect(() => {
+    if (isEditMode || !open) return;
+    if (depositUnlocked) return;
+    if ((form.getValues("total_deposit") ?? 0) === (rentForDepositDefault ?? 0)) {
+      return;
+    }
+    form.setValue("total_deposit", rentForDepositDefault ?? 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rentForDepositDefault, depositUnlocked, isEditMode, open]);
 
   // Tiền cọc ghi vào SỔ QUỸ THẬT user chọn ở từng dòng "Đã đặt cọc" (sổ CỌC
   // chỉ là sổ ảo theo dõi, không nhận dòng tiền). RPC tạo các phiếu này cùng HĐ.
@@ -465,6 +500,17 @@ export function useContractFormState({
   const totalDepositWatch = form.watch("total_deposit") ?? 0;
   const discountMonthsWatch = form.watch("discount_months") ?? 0;
   const discountAmtWatch = form.watch("discount_amount_per_month") ?? 0;
+
+  // Cọc lệch tiền thuê → hint dưới ô cọc + dòng ghi chú "[Điều chỉnh cọc]" khi
+  // lưu. Cùng một nguồn tính để 2 chỗ không bao giờ nói khác nhau.
+  const depositAdjustment = useMemo(
+    () => describeDepositAdjustment(rentPriceWatch, totalDepositWatch),
+    [rentPriceWatch, totalDepositWatch],
+  );
+  // Giá ký khác giá niêm yết của phòng → nhắc, và trigger DB ghi lịch sử giá.
+  const rentDiffersFromRoom =
+    roomDefaultRent > 0 && Math.abs(rentPriceWatch - roomDefaultRent) >= 0.01;
+
   const invoiceServices = useCustomServices
     ? selectedServices
     : buildingServicesAsSelected;
@@ -736,12 +782,18 @@ export function useContractFormState({
     useCustomServices,
     invoiceItems,
     depositRows,
-    setDepositTouched,
+    rentUnlocked,
+    unlockRent: () => setRentUnlocked(true),
+    depositUnlocked,
+    unlockDeposit: () => setDepositUnlocked(true),
     commissionContractId,
     setCommissionContractId,
     // form
     form,
     // derived
+    roomDefaultRent,
+    rentDiffersFromRoom,
+    depositAdjustment,
     depositDebtMode,
     depositPaidTotal,
     depositRemaining,

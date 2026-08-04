@@ -10,11 +10,15 @@ import {
   remainingOf,
   repCustomer,
   telUrl,
-  latestPaymentId,
+  latestLivePayment,
 } from '@/lib/collect';
 import { useQuickCollect } from '@/hooks/useQuickCollect';
 import { useInvoiceItemsLite } from '@/hooks/useCollectionReport';
-import { useDeletePayment } from '@/hooks/useDeletePayment';
+import {
+  useDeletePayment,
+  useCollectionReversalEligibility,
+  COLLECTION_BLOCK_TEXT,
+} from '@/hooks/useDeletePayment';
 import { useUpdateInvoiceNote } from '@/hooks/useUpdateInvoiceNote';
 import { uploadReceiptToStorage } from '@/lib/receiptUpload';
 import type { CollectMethod } from '@/lib/cashAccount';
@@ -54,11 +58,21 @@ export function CollectDrawer({
   onNavigate,
 }: Props) {
   // Sổ quỹ chỉ tải khi sheet thực sự mở (drawer luôn mounted để chạy animation).
-  const { collect, accountIdFor, changeAccountNameFor, isCollecting } = useQuickCollect({
-    enabled: !!invoice,
-  });
+  const { collect, accountIdFor, accountOptionsFor, changeAccountNameFor, isCollecting } =
+    useQuickCollect({ enabled: !!invoice });
   const deletePayment = useDeletePayment();
   const updateNote = useUpdateInvoiceNote();
+
+  // Đợt 5: hỏi server xem khoản thu gần nhất có hoàn tác được không, để nút
+  // "Hoàn tác" nói đúng lý do thay vì bấm rồi mới biết.
+  const undoTarget = invoice ? latestLivePayment(invoice) : null;
+  const { data: undoEligibility } = useCollectionReversalEligibility(
+    undoTarget?.collection_id ? [undoTarget.collection_id] : [],
+  );
+  const undoRow = undoTarget?.collection_id
+    ? undoEligibility?.[undoTarget.collection_id]
+    : undefined;
+  const undoBlock = undoRow?.mode === 'BLOCKED' ? (undoRow.reason_code ?? 'UNKNOWN') : null;
 
   const compact = mode === 'keypad';
   // Chi tiết hoá đơn nạp lazy — list /thu-tien không còn kéo invoice_items.
@@ -133,9 +147,20 @@ export function CollectDrawer({
     updateNote.mutate({ invoice_id: invoice.id, notes: noteDraft });
   };
 
+  // ĐỢT 5 — đường hoàn tác THỨ HAI (mobile Thu tiền). Trước đây bấm là chạy
+  // luôn: không xác nhận, không lý do, không biết kỳ đã đóng hay chưa. Sau Đợt 5
+  // server có thể CHẶN vì lợi nhuận/sổ quỹ đã chốt, nên hỏi trước và nói rõ vì
+  // sao, thay vì để người dùng bấm rồi ăn một toast đỏ khó hiểu.
   const doUndo = () => {
-    const pid = latestPaymentId(invoice);
-    if (pid) deletePayment.mutate({ payment_id: pid });
+    if (!undoTarget) return;
+    if (undoBlock) {
+      toast.error(COLLECTION_BLOCK_TEXT[undoBlock]);
+      return;
+    }
+    deletePayment.mutate({
+      payment_id: undoTarget.id,
+      collection_id: undoTarget.collection_id,
+    });
   };
 
   const doCall = () => {
@@ -172,6 +197,12 @@ export function CollectDrawer({
         notes: noteDraft,
         receiptImageUrl: url,
         paymentDate,
+        // Sổ quỹ người thu chọn tay ở dòng TK (mỗi phương thức tối đa 1 dòng).
+        accountOverrides: Object.fromEntries(
+          lines
+            .filter((line) => line.accountId)
+            .map((line) => [line.method, line.accountId as string]),
+        ),
       });
       // Thu xong → invoice cập nhật (remaining 0) → form tự ẩn, hiện "Đã thu đủ".
     } catch (e) {
@@ -250,6 +281,8 @@ export function CollectDrawer({
                 methodAvailable={methodAvailable}
                 changeAccountName={changeAccountName}
                 canCredit={!!invoice.contract_id}
+                bookOptions={accountOptionsFor(invoice)}
+                defaultTkBookId={accountIdFor(invoice, 'TK')}
                 onChange={setPayState}
               />
             </>
@@ -271,12 +304,16 @@ export function CollectDrawer({
               <button
                 type="button"
                 className="is-sub-btn undo"
-                disabled={deletePayment.isPending}
+                disabled={deletePayment.isPending || !!undoBlock}
+                title={undoBlock ? COLLECTION_BLOCK_TEXT[undoBlock] : undefined}
                 onClick={doUndo}
               >
                 <Undo2 />
                 Hoàn tác
               </button>
+              {undoBlock && (
+                <div className="is-sub-hint">{COLLECTION_BLOCK_TEXT[undoBlock]}</div>
+              )}
             </div>
           )}
         </div>

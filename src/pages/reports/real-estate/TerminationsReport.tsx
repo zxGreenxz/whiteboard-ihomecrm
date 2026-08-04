@@ -10,6 +10,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Wallet } from 'lucide-react';
+import { TerminationRefundDialog } from '@/components/contracts/TerminationRefundDialog';
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -47,6 +51,9 @@ export default function TerminationsReport() {
       <ReportCard title="Tỷ lệ bỏ trả" value={`${terminationRate}%`} icon={Percent} description="So với tổng HĐ" />
     </>
   );
+
+  // Đợt 7/8: hồ sơ đang mở dialog hoàn cọc.
+  const [refundFor, setRefundFor] = useState<string | null>(null);
 
   const exportData = terminations.map(term => ({
     "Mã HĐ": term.contract_number || term.id.slice(0, 8),
@@ -100,6 +107,7 @@ export default function TerminationsReport() {
                       <TableHead>Ngày thanh lý</TableHead>
                       <TableHead>Lý do</TableHead>
                       <TableHead>Tiền cọc</TableHead>
+                      <TableHead className="text-right">Hoàn cọc</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -125,6 +133,16 @@ export default function TerminationsReport() {
                           </Badge>
                         </TableCell>
                         <TableCell>{formatCurrency(term.total_deposit)}</TableCell>
+                        <TableCell className="text-right">
+                          {/* Đợt 7/8: đối chiếu số hoàn với cọc THẬT rồi mới sinh phiếu.
+                              Trước đây chỉ có con số trên hồ sơ, không ai đối chiếu — nên
+                              mới có 9 hồ sơ hoàn vượt cọc thật. */}
+                          <Button size="sm" variant="outline"
+                                  onClick={() => setRefundFor(term.id)}>
+                            <Wallet className="h-3.5 w-3.5 mr-1" />
+                            Kiểm tra
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -135,6 +153,11 @@ export default function TerminationsReport() {
             )}
           </CardContent>
         </Card>
+
+        <TerminationRefundDialog
+          terminationId={refundFor}
+          onOpenChange={(v) => { if (!v) setRefundFor(null); }}
+        />
       </ReportLayout>
     </MainLayout>
   );

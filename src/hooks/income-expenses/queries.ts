@@ -462,7 +462,8 @@ export const incomeExpensesListQuery = (
 
       // Map vouchers to IncomeExpenseWithRelations
       const mapped: IncomeExpenseWithRelations[] = (vouchers as any[]).map(
-        (v: any) => ({
+        (v: any) => {
+          const row: IncomeExpenseWithRelations = {
           id: v.id,
           user_id: v.user_id,
           // Finance V2 (§12.1): 4 trục + version — thiếu các field này là toàn bộ
@@ -515,7 +516,17 @@ export const incomeExpensesListQuery = (
           items: itemsByVoucherId.get(v.id) ?? [],
           created_at: v.created_at,
           updated_at: v.updated_at,
-        })
+          };
+          // Phiếu ĐỐI ỨNG di sản (Đợt 5): FK trỏ về phiếu gốc, dùng để gộp ẩn
+          // hai dòng rời rạc thành một dòng "đã hoàn tác" (voucherReversalGrouping).
+          // Gán SAU object literal thay vì khai trong IncomeExpenseWithRelations:
+          // cột đã có sẵn trong `select("*")`, còn type dùng chung do file khác
+          // sở hữu — tránh đụng độ. Đọc lại qua getReversalOf().
+          (row as { reversal_of_income_expense_id?: string | null })
+            .reversal_of_income_expense_id =
+            v.reversal_of_income_expense_id ?? null;
+          return row;
+        }
       );
 
       // Search đã áp dụng server-side ở trên — count là tổng khớp thật.

@@ -35,7 +35,7 @@ const THU_TIEN_SELECT = `
   ),
   building:buildings!invoices_building_id_fkey (id, name, name_sort, default_account_id_tt, default_account_id_tk),
   room:rooms!invoices_room_id_fkey (id, name, name_sort),
-  payments (id, amount, payment_date, payment_method, created_at)
+  payments (id, amount, payment_date, payment_method, created_at, collection_id, reversed_at)
 `;
 
 /** 1 query hoá đơn/kỳ (mọi toà) dùng chung cho cả trang Thu tiền. */

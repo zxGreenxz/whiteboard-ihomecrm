@@ -15,7 +15,7 @@ import {
   buildEdgeFunctionBundle,
   deployEdgeFunction,
   parseDeployArgs,
-} from "../deploy-edge-fn.mjs";
+} from "../deploy-openclaw-edge-fn.mjs";
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "openclaw-edge-bundle-"));

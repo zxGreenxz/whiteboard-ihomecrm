@@ -403,7 +403,7 @@ function StepForfeit({
 
         {/* B4: hiện rõ CON SỐ cọc sẽ chuyển doanh thu trước khi chốt */}
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-center justify-between gap-2">
-          <span>Tiền cọc chuyển thành doanh thu (chờ duyệt):</span>
+          <span>Tiền cọc chuyển thành doanh thu (tự duyệt):</span>
           <strong className="tabular-nums whitespace-nowrap">
             {formatVND(forfeitAmount)} đ
           </strong>
@@ -419,10 +419,10 @@ function StepForfeit({
           Khi thanh lý bỏ cọc:{" "}
           <strong>tất cả hoá đơn còn nợ ở trên sẽ bị huỷ</strong> (phần đã thu —
           nếu có — được giữ lại làm doanh thu, chỉ huỷ phần nợ). Tiền cọc được
-          ghi nhận thành <strong>phí phạt</strong>: hệ thống tạo sẵn một{" "}
-          <strong>phiếu thu "Doanh thu bỏ cọc" (chờ duyệt)</strong> rút từ sổ
-          CỌC. Vào sổ thu chi bấm <strong>Duyệt</strong> thì cọc mới vào doanh
-          thu (KQKD) và hoá đơn thanh lý mới tất toán.
+          ghi nhận thành <strong>phí phạt</strong>: hệ thống tạo{" "}
+          <strong>phiếu thu "Doanh thu bỏ cọc" và tự duyệt ngay</strong> (rút từ
+          sổ CỌC, không đụng sổ quỹ tiền thật) — cọc vào doanh thu (KQKD) và hoá
+          đơn thanh lý tất toán ngay, <strong>không cần bấm Duyệt</strong>.
         </div>
 
         {/* Thu thêm — tạo hoá đơn thu tiền khách RIÊNG với hoá đơn bù cọc */}
@@ -473,7 +473,7 @@ function StepForfeit({
             <AlertDialogDescription asChild>
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between">
-                  <span>Cọc chuyển thành doanh thu (chờ duyệt)</span>
+                  <span>Cọc chuyển thành doanh thu (tự duyệt)</span>
                   <b className="tabular-nums">{formatVND(forfeitAmount)} đ</b>
                 </div>
                 <div className="flex justify-between">
@@ -489,8 +489,8 @@ function StepForfeit({
                   </div>
                 )}
                 <p className="pt-2 text-muted-foreground">
-                  Thao tác này <b>không thể hoàn tác</b>. Sau khi chạy, vào Thu
-                  chi bấm <b>Duyệt</b> phiếu "Doanh thu bỏ cọc" để hoàn tất.
+                  Thao tác này <b>không thể hoàn tác</b>. Phiếu "Doanh thu bỏ
+                  cọc" được <b>tự duyệt</b> ngay — không phải làm thêm bước nào.
                 </p>
               </div>
             </AlertDialogDescription>

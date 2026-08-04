@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,10 @@ import { usePhoneViewport } from "@/hooks/use-mobile";
 import { useRoomIdsByCode } from "@/hooks/useRoomIdsByCode";
 import { isRoomCodeQuery, resolveSearch } from "@/lib/roomCodeSearch";
 import { usePersistedState } from "@/hooks/usePersistedState";
+import {
+  IE_APPROVAL_STATUS_PARAM_VALUES,
+  IE_LAYER_PARAM_VALUES,
+} from "@/lib/notificationRoutes";
 // Finance V2 (route-aware §9.6/§12): duyệt-only / duyệt+ghi sổ atomic khi org CANONICAL.
 import {
   useFinanceV2Routes,
@@ -83,34 +87,39 @@ import {
   adoptVoucherAttachmentsAsEvidence,
 } from "@/hooks/income-expenses/financeV2Mutations";
 import IncomeExpensePostingDialog from "@/components/income-expenses/IncomeExpensePostingDialog";
+// Đợt 4: hỏi-trước can_flex_cancel_v1 + writer huỷ-một-nhát có CAS hai version.
+import {
+  useFlexCancelEligibility,
+  useCancelVoucherFlex,
+  flexCancelGate,
+} from "@/hooks/income-expenses/flexMutations";
+// ĐỢT A: phiếu THU đi cửa riêng cancel_income_voucher_v1 (huỷ ở đâu cũng được,
+// tự liên kết hoá đơn). Phiếu CHI giữ nguyên thang cũ — hai đường tách hẳn.
+import {
+  useIncomeCancelEligibility,
+  useCancelIncomeVoucher,
+  voucherCancelDecision,
+} from "@/hooks/income-expenses/incomeVoucherCancel";
+import VoucherHistoryDialog from "@/components/income-expenses/VoucherHistoryDialog";
 
 const IncomeExpenseMobilePage = lazy(() => import("./IncomeExpenseMobilePage"));
 
 const EMPTY_FILTERS: IncomeExpenseFilters = EMPTY_INCOME_EXPENSE_FILTERS;
 
+// Khoá sessionStorage của bộ lọc — dùng lại ở effect khôi phục sau deep-link,
+// nên khai hằng để hai chỗ không trôi khỏi nhau.
+const FILTERS_STORAGE_KEY = "flt:income-expense:filters";
+
 const IncomeExpenseDesktopPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Giữ qua F5 (sessionStorage); ?account_id trên URL vẫn THẮNG nhờ effect dưới.
-  const [filters, setFilters] = usePersistedState<IncomeExpenseFilters>("flt:income-expense:filters", () => {
+  // Giữ qua F5 (sessionStorage); param trên URL vẫn THẮNG nhờ effect deep-link.
+  const [filters, setFilters] = usePersistedState<IncomeExpenseFilters>(FILTERS_STORAGE_KEY, () => {
     const accountId = searchParams.get("account_id");
     return accountId
       ? { ...EMPTY_FILTERS, account_id: accountId }
       : EMPTY_FILTERS;
   });
-
-  // Khi user vào /income-expense?account_id=xxx, pre-load filter và clear URL
-  useEffect(() => {
-    const accountId = searchParams.get("account_id");
-    if (accountId) {
-      setFilters((f) => ({ ...f, account_id: accountId }));
-      // Xoá query để URL sạch — filter chip vẫn hiển thị
-      const next = new URLSearchParams(searchParams);
-      next.delete("account_id");
-      setSearchParams(next, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [searchQuery, setSearchQuery] = usePersistedState("flt:income-expense:search", "");
   // Search đẩy xuống server (list + stats RPC + rooms-lookup) → debounce 350ms
@@ -134,9 +143,16 @@ const IncomeExpenseDesktopPage = () => {
     useState<IncomeExpenseWithRelations | null>(null);
   const [verifyVoucher, setVerifyVoucher] =
     useState<IncomeExpenseWithRelations | null>(null);
+  // Đợt 4: màn đọc lại mốc lập/duyệt/huỷ + nhật ký thay đổi trước/sau.
+  const [historyVoucher, setHistoryVoucher] =
+    useState<IncomeExpenseWithRelations | null>(null);
   const [detailBatchId, setDetailBatchId] = useState<string | null>(null);
   const [formType, setFormType] = useState<"INCOME" | "EXPENSE">("INCOME");
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  // Loại phiếu đang huỷ, nhớ riêng vì phiếu mở từ CHI TIẾT ĐỢT (phiếu tổng)
+  // hầu như không nằm trong trang danh sách lẻ hiện tại: tra ngược trong
+  // `vouchers` sẽ ra null ⇒ type=undefined ⇒ rơi ngược về thang huỷ CŨ.
+  const [cancelTargetType, setCancelTargetType] = useState<string | null>(null);
   // Huỷ phiếu ĐÃ CHI: cảnh báo hoàn-tác-tiền + lý do (ghi vào reversal).
   const [cancelReason, setCancelReason] = useState("");
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
@@ -161,6 +177,92 @@ const IncomeExpenseDesktopPage = () => {
   // setPage là useCallback ổn định, còn `pagination` là object MỚI mỗi render —
   // đưa cả object vào deps effect dưới là reset trang mỗi render.
   const { setPage } = pagination;
+
+  // ── Deep-link vào trang Thu chi ───────────────────────────────────────────
+  //  ?account_id=<uuid>                        → lọc theo sổ quỹ (đường cũ, từ màn Sổ quỹ)
+  //  ?approval_status=UNAPPROVED&layer=PENDING → thông báo "Phiếu chờ bạn duyệt"
+  //
+  // BẮT BUỘC có `layer` đi kèm khi lọc theo approval_status: lớp mặc định CASH
+  // tự ép thêm `.eq('approval_status','APPROVED')`, mà postgrest-js append 2 `.eq`
+  // cùng cột thành AND ⇒ danh sách ra 0 DÒNG (bẫy đã đo).
+  //
+  // Deps là [searchParams] (KHÔNG phải [] như trước) để bấm thông báo lúc đang
+  // đứng sẵn ở /income-expense cũng áp được bộ lọc. Chống lặp: xử lý xong là xoá
+  // param khỏi URL + nhớ chữ ký query vừa xử lý.
+  const handledDeepLinkRef = useRef<string | null>(null);
+  // `filters` là usePersistedState (sessionStorage) ⇒ ép layer/approval_status là
+  // GHI ĐÈ bộ lọc user đã chọn, còn dính lại sau khi rời trang. Chụp đúng chuỗi
+  // đã lưu TRƯỚC khi ép và trả lại nguyên trạng lúc unmount.
+  const savedFiltersSnapshotRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const accountId = searchParams.get("account_id");
+    const rawApproval = searchParams.get("approval_status");
+    const rawLayer = searchParams.get("layer");
+    if (!accountId && !rawApproval && !rawLayer) {
+      handledDeepLinkRef.current = null;
+      return;
+    }
+    const signature = `${accountId ?? ""}|${rawApproval ?? ""}|${rawLayer ?? ""}`;
+    if (handledDeepLinkRef.current === signature) return;
+    handledDeepLinkRef.current = signature;
+
+    const approvalStatus =
+      rawApproval && IE_APPROVAL_STATUS_PARAM_VALUES.has(rawApproval)
+        ? (rawApproval as IncomeExpenseFilters["approval_status"])
+        : null;
+    const layer =
+      rawLayer && IE_LAYER_PARAM_VALUES.has(rawLayer)
+        ? (rawLayer as IncomeExpenseFilters["layer"])
+        : null;
+    // Link chạm tới danh sách ⇒ cặp (approval_status, layer) do LINK quyết định
+    // HOÀN TOÀN, không trộn với giá trị đang lưu. Trộn là đẻ ra tổ hợp mâu thuẫn
+    // ⇒ 0 DÒNG: lớp CASH ép `.eq('APPROVED')` cạnh `.eq('UNAPPROVED')`, lớp
+    // PENDING ép `.neq('CANCELLED')` cạnh `.eq('CANCELLED')`.
+    // Thiếu vế nào thì lấy mặc định trung tính: approval `ALL_ACTIVE`, layer null
+    // (= "Tất cả", không ràng buộc lớp).
+    const hasListIntent = approvalStatus !== null || layer !== null;
+
+    if (hasListIntent && savedFiltersSnapshotRef.current === undefined) {
+      try {
+        savedFiltersSnapshotRef.current = sessionStorage.getItem(FILTERS_STORAGE_KEY);
+      } catch {
+        savedFiltersSnapshotRef.current = null;
+      }
+    }
+
+    setFilters((f) => ({
+      ...f,
+      ...(accountId ? { account_id: accountId } : null),
+      ...(hasListIntent
+        ? { approval_status: approvalStatus ?? "ALL_ACTIVE", layer }
+        : null),
+    }));
+    setPage(1);
+
+    // Xoá query để URL sạch — filter chip vẫn hiển thị cái đang lọc.
+    const next = new URLSearchParams(searchParams);
+    next.delete("account_id");
+    next.delete("approval_status");
+    next.delete("layer");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setFilters, setSearchParams, setPage]);
+
+  // Rời trang → trả bộ lọc đã lưu về đúng trạng thái trước deep-link. Phải ghi
+  // THẲNG sessionStorage: setState lúc unmount không còn effect nào chạy để lưu.
+  useEffect(
+    () => () => {
+      const snapshot = savedFiltersSnapshotRef.current;
+      if (snapshot === undefined) return;
+      try {
+        if (snapshot === null) sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+        else sessionStorage.setItem(FILTERS_STORAGE_KEY, snapshot);
+      } catch {
+        // Storage bị chặn — bỏ qua, bộ lọc chỉ không khôi phục được.
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 350);
@@ -238,6 +340,8 @@ const IncomeExpenseDesktopPage = () => {
     useIncomeExpenseStats(effectiveFilters, { keepPreviousData: true });
 
   const cancelMutation = useCancelIncomeExpense();
+  const flexCancelMutation = useCancelVoucherFlex();
+  const cancelIncomeMutation = useCancelIncomeVoucher();
   const restoreMutation = useRestoreIncomeExpense();
   const cancelBatchMutation = useCancelIncomeExpenseBatch();
   const approveMutation = useApproveVoucher();
@@ -265,12 +369,48 @@ const IncomeExpenseDesktopPage = () => {
     approveAndPostOpen || !!postApprovedTarget,
   );
 
+  // Đợt 4 — hỏi server TRƯỚC phiếu nào huỷ được (can_flex_cancel_v1). Danh sách
+  // id phải dựng bằng useMemo: queryKey băm từ mảng đã sort, mảng mới mỗi render
+  // vẫn cùng key nhưng effect của react-query thì chạy lại vô ích.
+  const flexCancelIds = useMemo(
+    () =>
+      vouchers
+        .filter((v) => v.approval_status !== "CANCELLED")
+        .map((v) => v.id),
+    [vouchers],
+  );
+  const { data: cancelEligibility } = useFlexCancelEligibility(flexCancelIds);
+
+  // ĐỢT A: phiếu THU hỏi reader riêng (can_cancel_income_voucher_v1) — nó biết
+  // cả thứ tự LIFO của đợt thu lẫn tiền thừa đã cấn đi đâu, những thứ reader
+  // của phiếu chi không có khái niệm.
+  const incomeCancelIds = useMemo(
+    () =>
+      vouchers
+        .filter((v) => v.type === "INCOME" && v.approval_status !== "CANCELLED")
+        .map((v) => v.id),
+    [vouchers],
+  );
+  const { data: incomeCancelEligibility } =
+    useIncomeCancelEligibility(incomeCancelIds);
+
   // Phiếu đang huỷ có ĐÃ GHI SỔ không (đổi lời cảnh báo + ô lý do).
   const cancelTargetVoucher = cancelTarget
     ? vouchers.find((v) => v.id === cancelTarget) ?? null
     : null;
   const cancelTargetPosted = cancelTargetVoucher?.posting_status === "POSTED";
-  const cancelTargetIsIncome = cancelTargetVoucher?.type === "INCOME";
+  const cancelTargetIsIncome =
+    (cancelTargetVoucher?.type ?? cancelTargetType) === "INCOME";
+  // Hộp thoại xác nhận cũng phải tôn trọng câu trả lời của server: phiếu mở từ
+  // chi tiết/đợt có thể không nằm trong trang hiện tại ⇒ không có dòng ⇒ gate
+  // mặc định "cho bấm", writer là chốt chặn cuối.
+  const cancelTargetGate = voucherCancelDecision({
+    type: cancelTargetVoucher?.type ?? cancelTargetType,
+    income: cancelTarget ? incomeCancelEligibility?.[cancelTarget] : undefined,
+    flexGate: flexCancelGate(
+      cancelTarget ? cancelEligibility?.[cancelTarget] : undefined,
+    ),
+  });
 
   const isShareholderPayout = !!approveTarget?.shareholder_id;
   const approvalAccounts = isShareholderPayout
@@ -437,8 +577,9 @@ const IncomeExpenseDesktopPage = () => {
     setUnapproveTarget(null);
   }, [unapproveTarget, unapproveMutation]);
 
-  const handleCancelVoucher = useCallback((id: string) => {
+  const handleCancelVoucher = useCallback((id: string, type?: string | null) => {
     setCancelTarget(id);
+    setCancelTargetType(type ?? null);
   }, []);
 
   const handleRestoreVoucher = useCallback((id: string) => {
@@ -457,16 +598,42 @@ const IncomeExpenseDesktopPage = () => {
   }, []);
 
   const confirmCancel = useCallback(() => {
+    const reason = cancelReason.trim();
     if (cancelTarget) {
-      cancelMutation.mutate(
-        cancelReason.trim()
-          ? { id: cancelTarget, reason: cancelReason.trim() }
-          : cancelTarget,
-      );
+      // ĐỢT A: phiếu THU đi cửa riêng — server tự rẽ nhánh đợt thu hoá đơn /
+      // cặp bỏ cọc / phiếu thường và tự mở lại nợ hoá đơn. Không còn thang 6
+      // bậc, không còn "owned by system flow".
+      if (cancelTargetGate.useIncomeDoor) {
+        cancelIncomeMutation.mutate({ voucherId: cancelTarget, reason });
+      } else if (cancelTargetGate.useFlexWriter && cancelTargetVoucher) {
+        // Đợt 4 (phiếu CHI): writer linh hoạt là đường duy nhất truyền được CAS
+        // hai version. Đường cũ luôn gửi null nên hai người bấm cùng lúc là huỷ
+        // đè lên nhau trong im lặng.
+        flexCancelMutation.mutate({
+          voucherId: cancelTarget,
+          reason,
+          expectedApprovalVersion: cancelTargetVoucher.approval_version ?? null,
+          expectedPostingVersion: cancelTargetVoucher.posting_version ?? null,
+        });
+      } else {
+        cancelMutation.mutate(
+          reason ? { id: cancelTarget, reason } : cancelTarget,
+        );
+      }
     }
     setCancelTarget(null);
+    setCancelTargetType(null);
     setCancelReason("");
-  }, [cancelTarget, cancelReason, cancelMutation]);
+  }, [
+    cancelTarget,
+    cancelReason,
+    cancelMutation,
+    cancelIncomeMutation,
+    cancelTargetGate.useFlexWriter,
+    cancelTargetGate.useIncomeDoor,
+    cancelTargetVoucher,
+    flexCancelMutation,
+  ]);
 
   const confirmCancelBatch = useCallback(() => {
     if (cancelBatchTarget) {
@@ -643,6 +810,9 @@ const IncomeExpenseDesktopPage = () => {
             onUnapprove={handleUnapproveVoucher}
             onVerify={handleVerifyVoucher}
             onCopy={(v) => setCopyVoucher(v)}
+            onHistory={(v) => setHistoryVoucher(v)}
+            cancelEligibility={cancelEligibility}
+            incomeCancelEligibility={incomeCancelEligibility}
             pagination={pagination}
             totalCount={totalCount}
           />
@@ -709,6 +879,14 @@ const IncomeExpenseDesktopPage = () => {
         onOpenChange={handleVerifyClose}
         voucher={verifyVoucher}
       />
+      {/* Đợt 4: lịch sử phiếu — mốc lập/duyệt/huỷ + lý do + nhật ký trước/sau. */}
+      <VoucherHistoryDialog
+        open={!!historyVoucher}
+        onOpenChange={(o) => {
+          if (!o) setHistoryVoucher(null);
+        }}
+        voucher={historyVoucher}
+      />
       <IncomeExpenseBatchDetailDialog
         open={!!detailBatch}
         onOpenChange={(o) => {
@@ -737,6 +915,7 @@ const IncomeExpenseDesktopPage = () => {
         open={!!cancelTarget}
         onOpenChange={() => {
           setCancelTarget(null);
+          setCancelTargetType(null);
           setCancelReason("");
         }}
       >
@@ -747,11 +926,10 @@ const IncomeExpenseDesktopPage = () => {
               {cancelTargetPosted ? (
                 <>
                   Phiếu này <b>đã {cancelTargetIsIncome ? "thu" : "chi"} tiền
-                  thật</b>. Huỷ sẽ tạo bút toán <b>HOÀN TÁC</b> ghi ngày hôm
-                  nay — tiền được trả {cancelTargetIsIncome ? "ra khỏi" : "về"}{" "}
-                  sổ và <b>tồn quỹ thay đổi</b> — sau đó phiếu chuyển{" "}
-                  <b>Đã huỷ</b>. Bút toán gốc vẫn giữ nguyên trong lịch sử.
-                  Chỉ Người giữ sổ (CUSTODIAN) của sổ này thực hiện được.
+                  thật</b>. Huỷ sẽ <b>trừ thẳng khoản này khỏi tồn quỹ</b> ngay,
+                  không sinh thêm phiếu đối ứng nào trong danh sách. Phiếu
+                  chuyển <b>Đã huỷ</b> và giữ lại đầy đủ mốc lập / duyệt / huỷ
+                  cùng lý do để đối soát.
                 </>
               ) : (
                 <>
@@ -761,21 +939,72 @@ const IncomeExpenseDesktopPage = () => {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {cancelTargetPosted && (
+          {/* ĐỢT A: phiếu THU đi cửa riêng, huỷ CẢ ĐỢT THU nếu lần thu đó gồm
+              nhiều phiếu (bộ đếm toàn vẹn định nghĩa bất biến ở mức đợt thu,
+              huỷ lẻ một phiếu sẽ kẹt cổng an toàn của hệ thống). */}
+          {cancelTargetIsIncome && cancelTargetGate.mode === "COLLECTION" && (
+            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+              Đây là khoản thu của một hoá đơn. Huỷ sẽ gỡ <b>cả lần thu đó</b>{" "}
+              (kể cả khi lần thu gồm nhiều phiếu ở nhiều sổ quỹ) và{" "}
+              <b>mở lại nợ trên hoá đơn</b> để thu lại.
+            </p>
+          )}
+          {cancelTargetIsIncome && cancelTargetGate.mode === "FORFEIT_PAIR" && (
+            <p className="rounded-md bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+              Phiếu này là một chân của cặp cấn cọc bỏ cọc — huỷ sẽ lật{" "}
+              <b>cả hai chân</b> để hai sổ không lệch nhau.
+            </p>
+          )}
+          {/* Sự thật về QUYỀN. Phiếu THU (ĐỢT A, quyết định của chủ 01/08/2026):
+              chỉ người đã thu / chủ tổ chức / super admin — không còn đòi giữ
+              sổ, không còn đòi quyền theo toà. Phiếu CHI giữ luật cũ. */}
+          <p className="text-xs text-muted-foreground">
+            {cancelTargetIsIncome
+              ? "Người huỷ được: chính người đã thu khoản này, chủ tổ chức, hoặc super admin."
+              : "Người huỷ được: chủ tổ chức, super admin, người tạo phiếu — hoặc người vừa có quyền huỷ thu chi ở toà này vừa đang giữ sổ quỹ của phiếu (CUSTODIAN)."}
+          </p>
+          {/* Server đã nói trước là không huỷ được thì nói luôn ở đây, đừng để
+              người dùng gõ xong lý do rồi mới ăn toast lỗi. */}
+          {cancelTargetGate.reason && (
+            <p
+              className={
+                cancelTargetGate.canCancel
+                  ? "rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800"
+                  : "rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-700"
+              }
+            >
+              {cancelTargetGate.canCancel ? "Lưu ý: " : "Không huỷ được: "}
+              {cancelTargetGate.reason}
+            </p>
+          )}
+          {/* Đợt 4: lý do là BẮT BUỘC ở mọi trạng thái. Đây là vế "đổi lại"
+              của thoả thuận: cho huỷ thẳng không sinh phiếu đối ứng, nhưng
+              phiếu đã huỷ phải tự giải thích được khi đối soát về sau. */}
+          <div className="space-y-1">
             <Textarea
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
-              placeholder="Lý do hoàn tác/huỷ (ghi vào bút toán hoàn tác — nên nhập)"
+              placeholder="Lý do huỷ (bắt buộc, ít nhất 8 ký tự) — ví dụ: ghi nhầm số tiền, khách huỷ giao dịch…"
               rows={2}
             />
-          )}
+            <p className="text-xs text-muted-foreground">
+              Lý do được lưu cùng mốc lập / duyệt / huỷ phiếu để đối soát lại khi cần.
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Đóng</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmCancel}
+              disabled={
+                cancelReason.trim().length < 8 ||
+                !cancelTargetGate.canCancel ||
+                flexCancelMutation.isPending ||
+                cancelIncomeMutation.isPending ||
+                cancelMutation.isPending
+              }
               className="bg-red-600 hover:bg-red-700"
             >
-              {cancelTargetPosted ? "Hoàn tác & Huỷ phiếu" : "Huỷ phiếu"}
+              {cancelTargetPosted ? "Huỷ phiếu & trừ khỏi sổ quỹ" : "Huỷ phiếu"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

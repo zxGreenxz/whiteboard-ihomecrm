@@ -118,9 +118,13 @@ export type ActionKey =
   | "emergency_override"          // approvals — cửa thoát của chủ sở hữu
   | "manage_custody"              // cashbooks — giao/nhận giữ sổ
   | "post"                        // cashbooks — ghi sổ (hạch toán)
+  | "close"                       // cashbooks — đề nghị chốt & bàn giao quỹ
+  | "close_confirm"               // cashbooks — xác nhận nhận bàn giao (khoá vĩnh viễn)
   | "reverse"                     // income_expenses — đảo bút toán
   | "self_approve_within_limit"   // income_expenses — tự duyệt dưới ngưỡng
-  | "pay_manager";                // shareholder_profit — chi lương quản lý
+  | "pay_manager"                 // shareholder_profit — chi lương quản lý
+  // Trung tâm mạng: thao tác allowlist, không fallback từ quyền quản lý chung.
+  | "execute";
 
 export type PermissionsMap = Record<string, Partial<Record<ActionKey, boolean>>>;
 
@@ -212,7 +216,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "finance",
     label: "Tài chính",
     modules: [
-      { key: "cashbooks",       label: "Sổ quỹ", extra: ["share", "manage_custody", "post"] },
+      { key: "cashbooks",       label: "Sổ quỹ", extra: ["share", "manage_custody", "post", "close", "close_confirm"] },
       { key: "meter_readings",  label: "Ghi chỉ số", extra: ["export"] },
       { key: "invoices",        label: "Hoá đơn",    extra: ["approve", "cancel", "record_payment", "print", "export"] },
       { key: "thu_tien",        label: "Thu tiền (mobile)", core: ["view"], extra: ["collect", "undo", "report"] },
@@ -255,6 +259,7 @@ export const PERMISSION_GROUPS: GroupDef[] = [
     key: "ops",
     label: "Vận hành & Báo cáo",
     modules: [
+      { key: "network_center", label: "Trung tâm mạng", core: ["view", "execute"] },
       { key: "tasks",      label: "Công việc", extra: ["complete", "approve"] },
       { key: "task_types", label: "Loại công việc" },
       {
@@ -379,11 +384,14 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
   collection_cycle: "BC Chu kỳ Thu — Bàn giao",
   emergency_override: "Duyệt khẩn cấp (cửa thoát chủ sở hữu)",
   manage_custody: "Giao / nhận giữ sổ quỹ",
+  close:          "Đề nghị chốt & bàn giao quỹ",
+  close_confirm:  "Xác nhận nhận bàn giao (khoá vĩnh viễn)",
   post:           "Ghi sổ (hạch toán)",
   reverse:        "Đảo bút toán",
   self_approve_within_limit: "Tự duyệt phiếu dưới ngưỡng",
   pay_manager:    "Chi lương quản lý",
   ui_control:     "AI điều khiển trang (experimental)",
+  execute:        "Thực thi",
 };
 
 /** Build empty permissions for all modules (mọi action = false). */

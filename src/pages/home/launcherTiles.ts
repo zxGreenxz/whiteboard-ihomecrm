@@ -31,8 +31,12 @@ import {
   Wallet,
   Coins,
   Bot,
+  Network,
+  Banknote,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
+import { NETWORK_CENTER_RUNTIME_ENABLED } from '@/lib/network-center/runtime';
+import { OPENCLAW_RUNTIME_ENABLED } from '@/lib/openclaw-zalo/runtime';
 
 /** Nguồn số badge — chỉ những count "rẻ" đã có sẵn ở Home (không over-fetch). */
 export type BadgeSource = 'totalRooms';
@@ -69,8 +73,16 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
       { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },
       { id: 'tasks', title: 'Công việc', href: '/tasks', icon: ClipboardList, accent: '#0ea5e9', module: 'tasks' },
+      ...(NETWORK_CENTER_RUNTIME_ENABLED
+        ? [{ id: 'network-center', title: 'Trung tâm mạng', href: '/network-center', icon: Network, accent: '#111111', module: 'network_center', action: 'view' } satisfies LauncherTile]
+        : []),
       { id: 'sale-phong', title: 'Phòng trống', href: '/sale-phong', icon: DoorOpen, accent: '#16a34a', module: 'sale_phong', action: 'view' },
-      { id: 'openclaw-zalo', title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, accent: '#0f766e', module: 'openclaw_zalo', action: 'view' },
+      // Behind the same flag as its route. A tile that survives while the route is
+      // gone is worse than no tile: the owner has the permission, so it renders,
+      // and clicking it lands on the 404 page.
+      ...(OPENCLAW_RUNTIME_ENABLED
+        ? [{ id: 'openclaw-zalo', title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, accent: '#0f766e', module: 'openclaw_zalo', action: 'view' } satisfies LauncherTile]
+        : []),
     ],
   },
   {
@@ -85,6 +97,9 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
     label: 'Tài chính',
     items: [
       { id: 'thu-tien', title: 'Thu tiền', href: '/thu-tien', icon: HandCoins, accent: '#1f9d57', module: 'thu_tien', hot: true },
+      // Đóng tiền Tập trung theo Kỳ — gate `thu_tien.collect` khớp đúng route
+      // guard /thanh-toan (người chỉ có quyền xem không thấy ô này).
+      { id: 'thanh-toan', title: 'Thanh toán', href: '/thanh-toan', icon: Banknote, accent: '#ea580c', module: 'thu_tien', action: 'collect' },
       { id: 'invoices', title: 'Hoá đơn', href: '/invoices', icon: Receipt, accent: '#d6453f', module: 'invoices' },
       { id: 'meters', title: 'Ghi chỉ số', href: '/meter-readings', icon: Gauge, accent: '#0891b2', module: 'meter_readings' },
       { id: 'cashbook', title: 'Thu chi', href: '/income-expense', icon: CreditCard, accent: '#7c3aed', module: 'income_expenses' },

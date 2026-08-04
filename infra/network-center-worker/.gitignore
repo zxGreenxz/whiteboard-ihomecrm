@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.log
+*.backup
+*.rsc
+wg0.conf
+worker-ssh-key.pub
+bootstrap-output/
+secrets/

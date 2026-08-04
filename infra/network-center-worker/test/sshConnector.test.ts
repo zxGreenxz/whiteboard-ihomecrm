@@ -1,0 +1,1571 @@
+import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { Client } from "ssh2";
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  ROUTER_OS_COMMANDS,
+  ROUTER_OS_EXPORT_COMMAND,
+  ROUTER_OS_READ_COMMANDS,
+  SshRouterConnector,
+  leaseExpiryIso,
+  normalizeHostFingerprint,
+  parseArubaNeighbors,
+  parseDurationSeconds,
+  parseInterfaceCounters,
+  parseLinkSpeedBps,
+  parseRouterOsResourceId,
+  parseRouterOsRecords,
+  parseRouterOsValueRecords,
+  quoteRouterOsValue,
+  resolveManagedAccessPort,
+  routerOsOwnershipMarker,
+  routerOsRecoveryInterfaceNames,
+  routerOsCommandFailed,
+  routerOsExportCommandIsRedacted,
+  routerOsInterfaceState,
+} from "../src/routeros/sshConnector.js";
+import { CLIENT_CONNECTION_TYPES, CLIENT_SESSION_TYPES } from "../src/domain.js";
+import { reconcileAction } from "../src/reconciliation.js";
+import { createFakeRouterSession, createTestConnector } from "./support/fakeRouterClient.js";
+import { FakeRouterOs } from "./support/fakeRouterOs.js";
+
+describe("RouterOS SSH boundary", () => {
+  it("parses singleton and terse output without exposing a raw command API", async () => {
+    expect(parseRouterOsRecords("name=ether1;running=true\nname=ether2;running=false\n"))
+      .toEqual([
+        { name: "ether1", running: "true" },
+        { name: "ether2", running: "false" },
+      ]);
+    expect(parseRouterOsRecords(
+      '0 R name=ether1 default-name=ether1 type=ether comment="WAN uplink"\n' +
+      '1  S name=ether2 address= disabled=false\n',
+    )).toEqual([
+      { ".flags": "R", name: "ether1", "default-name": "ether1", type: "ether", comment: "WAN uplink" },
+      { ".flags": "S", name: "ether2", address: "", disabled: "false" },
+    ]);
+    expect(parseRouterOsRecords(
+      "0 R name=ether1 last-link-up-time=jul/28/2026 21:25:44 comment=WAN uplink link-downs=1\n" +
+      "1 D address=192.0.2.10 class-id=dhcpcd 5.0\n",
+    )).toEqual([
+      {
+        ".flags": "R",
+        name: "ether1",
+        "last-link-up-time": "jul/28/2026 21:25:44",
+        comment: "WAN uplink",
+        "link-downs": "1",
+      },
+      { ".flags": "D", address: "192.0.2.10", "class-id": "dhcpcd 5.0" },
+    ]);
+
+    const module = await import("../src/routeros/sshConnector.js");
+    expect(Object.keys(module)).not.toContain("execRouterOs");
+    expect(Object.keys(ROUTER_OS_COMMANDS).sort()).toEqual([
+      "flushDnsCache",
+      "reboot",
+      "renewDhcpLease",
+    ]);
+    expect(ROUTER_OS_READ_COMMANDS.identity).toBe(":put [/system/identity/print as-value]");
+    expect(ROUTER_OS_READ_COMMANDS.resource).toBe(":put [/system/resource/print as-value]");
+    expect(ROUTER_OS_READ_COMMANDS.dns).toBe(":put [/ip/dns/print as-value]");
+    for (const command of [
+      ROUTER_OS_READ_COMMANDS.interfaces,
+      ROUTER_OS_READ_COMMANDS.dhcpClients,
+      ROUTER_OS_READ_COMMANDS.leases,
+      ROUTER_OS_READ_COMMANDS.neighbors,
+    ]) {
+      expect(command).toContain("detail terse without-paging");
+    }
+  });
+
+  it("quotes dynamic values and normalizes pinned SHA256 fingerprints", () => {
+    expect(quoteRouterOsValue("ether 4\"; /system/reboot")).toBe(
+      "\"ether 4\\\"\\; /system/reboot\"",
+    );
+    expect(normalizeHostFingerprint("SHA256:YWJjZGVmZ2hpamtsbW5vcHFyc3Q=")).toBe(
+      "YWJjZGVmZ2hpamtsbW5vcHFyc3Q",
+    );
+    expect(() => normalizeHostFingerprint("MD5:aa:bb")).toThrow(/SHA256/i);
+  });
+
+  it("gives dynamic and static leases a bounded current-state expiry", () => {
+    const observedAt = "2026-07-28T00:00:00.000Z";
+    expect(leaseExpiryIso(observedAt, "2m30s", 180)).toBe("2026-07-28T00:02:30.000Z");
+    expect(leaseExpiryIso(observedAt, undefined, 180)).toBe("2026-07-28T00:03:00.000Z");
+  });
+
+  it("recognizes RouterOS command errors returned on stdout with exit code zero", () => {
+    expect(routerOsCommandFailed("expected end of command (line 1 column 24)\n")).toBe(true);
+    expect(routerOsCommandFailed("failure: no such item\n")).toBe(true);
+    expect(routerOsCommandFailed("0 R name=ether1 comment=failure: drill\n")).toBe(false);
+  });
+
+  it("waits for the SSH client terminal event before close resolves", async () => {
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        queueMicrotask(() => channel.emit("close", 0));
+      }
+
+      destroy(): void {}
+      end(): void {}
+    }
+    const client = new FakeClient();
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => client as unknown as Client,
+    });
+    await connector.flushDnsCache();
+
+    let resolved = false;
+    const closing = connector.close().then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    client.emit("close");
+    await closing;
+    expect(resolved).toBe(true);
+  });
+
+  it("does not release close on SSH end before the client actually closes", async () => {
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        queueMicrotask(() => channel.emit("close", 0));
+      }
+
+      destroy(): void {}
+      end(): void {}
+    }
+    const client = new FakeClient();
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => client as unknown as Client,
+    });
+    await connector.flushDnsCache();
+
+    let resolved = false;
+    const closing = connector.close().then(() => {
+      resolved = true;
+    });
+    client.emit("end");
+    for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    client.emit("close");
+    await closing;
+    expect(resolved).toBe(true);
+  });
+
+  it("retains an errored established client until explicit close teardown completes", async () => {
+    let destroyCalls = 0;
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        queueMicrotask(() => channel.emit("close", 0));
+      }
+
+      destroy(): void {
+        destroyCalls += 1;
+      }
+      end(): void {}
+    }
+    const client = new FakeClient();
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 1_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => client as unknown as Client,
+    });
+    await connector.flushDnsCache();
+
+    client.emit("error", new Error("transport failed"));
+    const closing = connector.close();
+    let resolved = false;
+    void closing.then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+
+    expect(destroyCalls).toBe(1);
+    expect(resolved).toBe(false);
+
+    client.emit("close");
+    await expect(closing).resolves.toBeUndefined();
+  });
+
+  it("settles close after timeout destroy even when the SSH client never emits close", async () => {
+    vi.useFakeTimers();
+    try {
+      let destroyCalls = 0;
+      class FakeClient extends EventEmitter {
+        connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+          options.hostVerifier?.(Buffer.from("fake-host-key"));
+          queueMicrotask(() => this.emit("ready"));
+        }
+
+        exec(_command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+          const channel = new EventEmitter() as EventEmitter & {
+            stderr: EventEmitter;
+            close: () => void;
+          };
+          channel.stderr = new EventEmitter();
+          channel.close = () => undefined;
+          callback(undefined, channel);
+          queueMicrotask(() => channel.emit("close", 0));
+        }
+
+        destroy(): void {
+          destroyCalls += 1;
+        }
+        end(): void {}
+      }
+      const client = new FakeClient();
+      const connector = new SshRouterConnector({
+        connection: {
+          connectionId: "connection-id",
+          organizationId: "organization-id",
+          buildingId: "building-id",
+          deviceId: "device-id",
+          deviceKind: "MIKROTIK",
+          externalKey: "router-id",
+          displayName: "Router",
+          transport: "ROUTEROS_SSH",
+          managementIp: "192.0.2.1",
+          managementPort: 22,
+          credentialRef: "router/demo",
+          hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+          pollIntervalSeconds: 30,
+          connectTimeoutMs: 1_000,
+          monitoringEnabled: true,
+          changesPaused: false,
+        },
+        credential: {
+          username: "ihome-nc-worker",
+          privateKey: "fake-private-key",
+          backupPassword: "fake-backup-password",
+        },
+        commandTimeoutMs: 1_000,
+        backupStagingDirectory: ".",
+        clientFactory: () => client as unknown as Client,
+      });
+      await connector.flushDnsCache();
+
+      const closing = connector.close();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await expect(closing).resolves.toBeUndefined();
+      expect(destroyCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // The SFTP-serialisation test that lived here is GONE, not disabled: the
+  // worker opens no SFTP session on any router any more. Its subject —
+  // "two connectors must not run concurrent SFTP transfers" — describes a
+  // capability that was removed, and a test kept alive against a deleted code
+  // path is how a suite starts certifying fiction. What replaces it is
+  // "never opens an SFTP session" below, which asserts the removal itself.
+  it("captures the pre-action snapshot as a redacted export off stdout, opening no SFTP session", async () => {
+    const stagingDirectory = await mkdtemp(join(tmpdir(), "network-center-export-"));
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+    });
+    let sftpAttempts = 0;
+    const session = createFakeRouterSession(router, { onSftp: () => { sftpAttempts += 1; } });
+    const connector = createTestConnector(session.clientFactory, {
+      backupStagingDirectory: stagingDirectory,
+    });
+
+    try {
+      const backup = await connector.captureBackup();
+
+      // The command actually sent, byte for byte. `show-sensitive=no` is a
+      // RouterOS syntax error and `show-sensitive` leaks the WireGuard key.
+      expect(session.commands).toContain("/export terse hide-sensitive");
+      expect(session.commands.join(" ")).not.toContain("show-sensitive");
+      expect(session.commands.join(" ")).not.toContain("/system/backup/save");
+      // Nothing was written on the router, so there is nothing to clean up.
+      expect(session.commands.join(" ")).not.toContain("/file/remove");
+      expect(sftpAttempts).toBe(0);
+
+      expect(backup.redactedExport).toContain("/interface wireguard add");
+      expect(backup.redactedExport).not.toContain("private-key");
+      // The staged artifact IS the export, verified by hash rather than assumed.
+      expect(backup.artifact.bytes).toBe(Buffer.byteLength(backup.redactedExport, "utf8"));
+      expect(backup.artifact.sha256).toBe(
+        createHash("sha256").update(backup.redactedExport, "utf8").digest("hex"),
+      );
+      expect(await readFile(backup.artifact.path, "utf8")).toBe(backup.redactedExport);
+      await backup.artifact.dispose();
+    } finally {
+      await connector.close();
+      await rm(stagingDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails the pre-action snapshot closed when the router refuses the export", async () => {
+    // A refusal arrives on STDOUT with exit status 0. Unlike the counters read,
+    // this one must NOT degrade quietly: a snapshot that captured nothing is
+    // exactly what `/export terse show-sensitive=no` was silently doing.
+    const stagingDirectory = await mkdtemp(join(tmpdir(), "network-center-export-fail-"));
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      refuseExport: true,
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory, {
+      backupStagingDirectory: stagingDirectory,
+    });
+
+    try {
+      await expect(connector.captureBackup()).rejects.toMatchObject({
+        code: "ROUTEROS_COMMAND_REJECTED",
+      });
+      expect(await readdir(stagingDirectory)).toEqual([]);
+    } finally {
+      await connector.close();
+      await rm(stagingDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to stage an empty export rather than record a zero-byte snapshot", async () => {
+    const stagingDirectory = await mkdtemp(join(tmpdir(), "network-center-export-empty-"));
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      emptyExport: true,
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory, {
+      backupStagingDirectory: stagingDirectory,
+    });
+
+    try {
+      await expect(connector.captureBackup()).rejects.toMatchObject({
+        code: "ROUTER_EXPORT_EMPTY",
+      });
+      expect(await readdir(stagingDirectory)).toEqual([]);
+    } finally {
+      await connector.close();
+      await rm(stagingDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("pins the export command to the redacted flag in both directions", () => {
+    expect(ROUTER_OS_EXPORT_COMMAND).toBe("/export terse hide-sensitive");
+    expect(routerOsExportCommandIsRedacted(ROUTER_OS_EXPORT_COMMAND)).toBe(true);
+    // The one-word slip that turns a broken snapshot into an exfiltration:
+    // `/export terse show-sensitive` PARSES on 7.20.8 and prints the WireGuard
+    // private key in full (measured, 44 chars).
+    expect(routerOsExportCommandIsRedacted("/export terse show-sensitive")).toBe(false);
+    expect(routerOsExportCommandIsRedacted("/export terse")).toBe(false);
+    expect(routerOsExportCommandIsRedacted("/export terse hide-sensitive show-sensitive")).toBe(false);
+  });
+
+  it("derives interface state from terse flags when boolean fields are absent", () => {
+    expect(routerOsInterfaceState({ ".flags": "R" })).toEqual({ enabled: true, running: true });
+    expect(routerOsInterfaceState({ ".flags": "X" })).toEqual({ enabled: false, running: false });
+    expect(routerOsInterfaceState({ running: "false", disabled: "false" }))
+      .toEqual({ enabled: true, running: false });
+  });
+
+  it("deduplicates Aruba aliases by serial first and hardware MAC second", () => {
+    const parsed = parseArubaNeighbors([
+      {
+        identity: "old-name",
+        "serial-number": "ap-001",
+        "mac-address": "AA:BB:CC:DD:EE:01",
+        platform: "Aruba Instant",
+      },
+      {
+        identity: "new-name",
+        "serial-number": "AP-001",
+        "mac-address": "AA:BB:CC:DD:EE:01",
+        platform: "Aruba Instant",
+      },
+      {
+        identity: "mac-only",
+        "mac-address": "AA:BB:CC:DD:EE:02",
+        platform: "HPE Aruba",
+      },
+    ]);
+
+    expect(parsed.quarantined).toEqual([]);
+    expect(parsed.valid).toHaveLength(2);
+    expect(parsed.valid[0]).toMatchObject({
+      stableIdentity: "AP-001",
+      identitySource: "SERIAL",
+      externalKey: "serial:AP-001",
+      displayName: "new-name",
+      displayOnly: true,
+    });
+    expect(parsed.valid[0]?.aliases).toEqual(expect.arrayContaining(["old-name", "new-name"]));
+    expect(parsed.valid[1]).toMatchObject({
+      stableIdentity: "aa:bb:cc:dd:ee:02",
+      identitySource: "HARDWARE_MAC",
+      externalKey: "mac:aa:bb:cc:dd:ee:02",
+      displayOnly: true,
+    });
+  });
+
+  it("quarantines only the malformed Aruba item and never returns its raw identity", () => {
+    const parsed = parseArubaNeighbors([
+      {
+        identity: "valid-ap",
+        "serial-number": "VALID-001",
+        platform: "Aruba Instant",
+      },
+      {
+        identity: "secret malformed name",
+        "mac-address": "01:00:5e:00:00:01",
+        platform: "Aruba Instant",
+      },
+    ]);
+
+    expect(parsed.valid).toHaveLength(1);
+    expect(parsed.quarantined).toHaveLength(1);
+    expect(parsed.quarantined[0]).toMatchObject({
+      code: "ARUBA_STABLE_IDENTITY_INVALID",
+    });
+    expect(parsed.quarantined[0]?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(parsed.quarantined)).not.toContain("secret malformed name");
+    expect(JSON.stringify(parsed.quarantined)).not.toContain("01:00:5e:00:00:01");
+  });
+
+  it("rejects renamed ether1 even when its display role looks like access", () => {
+    expect(() => resolveManagedAccessPort({
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether1",
+      currentName: "room-101",
+      immutableKey: "ether1",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }, [{
+      ".id": "*1",
+      name: "room-101",
+      "default-name": "ether1",
+      type: "ether",
+      running: "true",
+    }])).toThrowError(expect.objectContaining({ code: "PROTECTED_INTERFACE" }));
+  });
+
+  it("rejects a secondary physical port whose current name identifies a WAN", () => {
+    expect(() => resolveManagedAccessPort({
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether2",
+      currentName: "wan-backup",
+      immutableKey: "ether2",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }, [{
+      name: "wan-backup",
+      "default-name": "ether2",
+      type: "ether",
+      running: "true",
+    }])).toThrowError(expect.objectContaining({ code: "PROTECTED_INTERFACE" }));
+  });
+
+  it("protects the interface named by an owned bootstrap recovery rule", () => {
+    expect(routerOsRecoveryInterfaceNames([{
+      chain: "input",
+      action: "accept",
+      "in-interface": "ether2",
+      comment: "ihomecrm-network-center:v1:demo-router-20260730:lan-recovery",
+    }, {
+      chain: "input",
+      action: "accept",
+      "in-interface": "ether3",
+      comment: "unowned recovery rule",
+    }])).toEqual(new Set(["ether2"]));
+  });
+
+  it("never takes an ownership claim from a dynamic firewall row", () => {
+    // Both readers of this list run FAIL-OPEN: a matching rule is what SUPPLIES
+    // the deployment marker and what marks an interface protected, so anything
+    // that reaches them is something the worker then trusts. The bootstrap
+    // writes this rule statically and selects it with `and !dynamic` in the
+    // preflight, the rollback and the router-side cycle guard; the read side
+    // has to agree, or the two disagree about which rows are ours.
+    const marker = "ihomecrm-network-center:v1:demo-router-20260730:lan-recovery";
+    const flagged = {
+      ".flags": "D",
+      chain: "input",
+      action: "accept",
+      "in-interface": "ether2",
+      comment: marker,
+    };
+    const property = {
+      chain: "input",
+      action: "accept",
+      dynamic: "yes",
+      "in-interface": "ether3",
+      comment: marker,
+    };
+
+    // `print detail terse` reports it as a flag letter; some menus expose it as
+    // a property. Neither may be believed.
+    expect(routerOsRecoveryInterfaceNames([flagged, property])).toEqual(new Set());
+    expect(() => routerOsOwnershipMarker([flagged, property]))
+      .toThrowError(expect.objectContaining({ code: "ROUTER_OWNERSHIP_MARKER_UNAVAILABLE" }));
+
+    // The control: the same rows, static, are accepted — so the exclusion is
+    // what rejected them and not some unrelated field.
+    const { ".flags": _flags, ...staticFlagged } = flagged;
+    expect(routerOsOwnershipMarker([staticFlagged]))
+      .toBe("ihomecrm-network-center:v1:demo-router-20260730");
+    expect(routerOsRecoveryInterfaceNames([staticFlagged, { ...property, dynamic: "no" }]))
+      .toEqual(new Set(["ether2", "ether3"]));
+  });
+
+  it("targets only one live enrolled access port with matching current and immutable names", () => {
+    const target = {
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS" as const,
+      protected: false,
+      enrollmentState: "ENROLLED" as const,
+    };
+    expect(resolveManagedAccessPort(target, [{
+      ".id": "*A",
+      name: "room-401",
+      "default-name": "ether4",
+      type: "ether",
+    }])).toEqual({ resourceId: "*A", currentName: "room-401", immutableKey: "ether4" });
+    expect(resolveManagedAccessPort(target, [{
+      name: "room-401",
+      "default-name": "ether4",
+      type: "ether",
+    }])).toEqual({ resourceId: null, currentName: "room-401", immutableKey: "ether4" });
+    expect(() => resolveManagedAccessPort(target, [{
+      ".id": "*A",
+      name: "stale-name",
+      "default-name": "ether4",
+      type: "ether",
+    }])).toThrowError(expect.objectContaining({ code: "INTERFACE_IDENTITY_MISMATCH" }));
+    expect(() => resolveManagedAccessPort({ ...target, enrollmentState: "REVOKED" }, []))
+      .toThrowError(expect.objectContaining({ code: "INTERFACE_NOT_ENROLLED" }));
+    expect(parseRouterOsResourceId("*A\n")).toBe("*A");
+    expect(parseRouterOsResourceId("*A *B")).toBeNull();
+  });
+
+  it("rereads owned recovery firewall state immediately before cycling a port", async () => {
+    const commands: string[] = [];
+    class FakeClient extends EventEmitter {
+      connect(options: { hostVerifier?: (key: Buffer) => boolean }): void {
+        options.hostVerifier?.(Buffer.from("fake-host-key"));
+        queueMicrotask(() => this.emit("ready"));
+      }
+
+      exec(command: string, callback: (error: Error | undefined, channel: unknown) => void): void {
+        commands.push(command);
+        const channel = new EventEmitter() as EventEmitter & {
+          stderr: EventEmitter;
+          close: () => void;
+        };
+        channel.stderr = new EventEmitter();
+        channel.close = () => undefined;
+        callback(undefined, channel);
+        const output = command === ROUTER_OS_READ_COMMANDS.interfaces
+          ? ".id=*A name=ether2 default-name=ether2 type=ether\n"
+          : command === ROUTER_OS_READ_COMMANDS.firewallFilters
+            ? "chain=input action=accept in-interface=ether2 comment=ihomecrm-network-center:v1:demo-router-20260730:lan-recovery\n"
+            : "*A\n";
+        queueMicrotask(() => {
+          channel.emit("data", Buffer.from(output));
+          channel.emit("close", 0);
+        });
+      }
+
+      destroy(): void {}
+      end(): void {}
+    }
+
+    const connector = new SshRouterConnector({
+      connection: {
+        connectionId: "connection-id",
+        organizationId: "organization-id",
+        buildingId: "building-id",
+        deviceId: "device-id",
+        deviceKind: "MIKROTIK",
+        externalKey: "router-id",
+        displayName: "Router",
+        transport: "ROUTEROS_SSH",
+        managementIp: "192.0.2.1",
+        managementPort: 22,
+        credentialRef: "router/demo",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        pollIntervalSeconds: 30,
+        connectTimeoutMs: 1_000,
+        monitoringEnabled: true,
+        changesPaused: false,
+      },
+      credential: {
+        username: "ihome-nc-worker",
+        privateKey: "fake-private-key",
+        backupPassword: "fake-backup-password",
+      },
+      commandTimeoutMs: 60_000,
+      backupStagingDirectory: ".",
+      clientFactory: () => new FakeClient() as unknown as Client,
+    });
+
+    await expect(connector.cycleAccessPort({
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether2",
+      currentName: "ether2",
+      immutableKey: "ether2",
+      enrolledRole: "ACCESS",
+      protected: false,
+      enrollmentState: "ENROLLED",
+    }, 5)).rejects.toMatchObject({ code: "PROTECTED_INTERFACE" });
+    expect(commands).toEqual([
+      ROUTER_OS_READ_COMMANDS.interfaces,
+      ROUTER_OS_READ_COMMANDS.firewallFilters,
+    ]);
+  });
+
+  it("accepts a port cycle only after ordered RouterOS disable/enable readback markers", async () => {
+    // Driven by a RouterOS console simulator rather than a canned reply table, so the
+    // generated script has to actually run against router state to be accepted.
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*B", name: "room-401", defaultName: "ether4", type: "ether", disabled: false },
+      ],
+      firewall: [{
+        chain: "input",
+        action: "accept",
+        "in-interface": "ether9",
+        comment: "ihomecrm-network-center:v1:demo-router-20260730:lan-recovery",
+      }],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+    const commands = session.commands;
+    const target = {
+      managedResourceId: "managed-resource-uuid",
+      interfaceId: "interface-uuid",
+      interfaceKey: "ether4",
+      currentName: "room-401",
+      immutableKey: "ether4",
+      enrolledRole: "ACCESS" as const,
+      protected: false,
+      enrollmentState: "ENROLLED" as const,
+    };
+
+    await connector.cycleAccessPort(target, 5);
+    const observation = await connector.observeAction({
+      actionType: "CYCLE_ACCESS_PORT",
+      deviceId: "device-id",
+      managedTarget: target,
+      expectedPostcondition: { kind: "IMMUTABLE_ACCESS_INTERFACE_CYCLE" },
+      observationDeadline: "2026-07-30T00:05:00.000Z",
+    });
+
+    const cycleCommand = commands.find((command) => command.includes("/interface/disable"));
+    expect(cycleCommand).toContain("NC_CYCLE_DISABLED");
+    expect(cycleCommand).toContain("NC_CYCLE_ENABLED");
+    expect(observation.accessInterface).toMatchObject({
+      managedResourceId: target.managedResourceId,
+      immutableKey: target.immutableKey,
+      disabledObserved: true,
+      enabledObserved: true,
+      enabled: true,
+    });
+
+    // The guard must be armed by the same console job that disables the port, and
+    // before it: anything between the two anchors is recovery window already spent.
+    expect(cycleCommand).toContain(":execute");
+    expect(cycleCommand?.indexOf(":execute"))
+      .toBeLessThan(cycleCommand?.indexOf("/interface/disable") ?? -1);
+    expect(commands.filter((command) => command.includes(":execute"))).toHaveLength(1);
+  });
+});
+
+describe("interface telemetry honesty", () => {
+  // The exact interface shape the demo hEX printed on 2026-08-02, which is what
+  // made `nominalSpeedBps: 3` and `nominalSpeedBps: 8` land in the inventory:
+  // no `rate` field anywhere, and a `link-downs` flap counter on every port.
+  const hardwareShapedRouter = () => new FakeRouterOs({
+    interfaces: [
+      { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false, linkDowns: 3 },
+      { id: "*2", name: "ether2", defaultName: "ether2", type: "ether", disabled: false, linkDowns: 8 },
+    ],
+  });
+
+  it("parses a RouterOS link rate and refuses anything that is not one", () => {
+    expect(parseLinkSpeedBps("1Gbps")).toBe(1_000_000_000);
+    expect(parseLinkSpeedBps("100Mbps")).toBe(100_000_000);
+    expect(parseLinkSpeedBps("1000Mbps")).toBe(1_000_000_000);
+    expect(parseLinkSpeedBps("10Kbps")).toBe(10_000);
+    expect(parseLinkSpeedBps("2.5Gbps")).toBe(2_500_000_000);
+    // The two values the old code actually stored, straight from the hEX.
+    expect(parseLinkSpeedBps("3")).toBeNull();
+    expect(parseLinkSpeedBps("8")).toBeNull();
+    expect(parseLinkSpeedBps("0Mbps")).toBeNull();
+    expect(parseLinkSpeedBps(undefined)).toBeNull();
+  });
+
+  it("keeps an absent counter absent instead of summing it to zero", () => {
+    expect(parseInterfaceCounters([
+      { name: "ether1", "rx-byte": "17", "tx-byte": "29", "rx-error": "2", "tx-error": "1" },
+    ]).get("ether1")).toEqual({ rxBytes: 17, txBytes: 29, errorCount: 3 });
+    // Only one half printed: the sum is still meaningful, so it is taken.
+    expect(parseInterfaceCounters([
+      { name: "ether2", "rx-error": "4" },
+    ]).get("ether2")).toEqual({ rxBytes: null, txBytes: null, errorCount: 4 });
+    // Neither half printed: `(rx ?? 0) + (tx ?? 0)` would say 0. It must say null.
+    expect(parseInterfaceCounters([{ name: "ether3" }]).get("ether3"))
+      .toEqual({ rxBytes: null, txBytes: null, errorCount: null });
+    // An unnamed record cannot be attributed to an interface at all.
+    expect(parseInterfaceCounters([{ "rx-byte": "5" }]).size).toBe(0);
+  });
+
+  it("never reports the link-flap counter as a line speed", async () => {
+    const session = createFakeRouterSession(hardwareShapedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.interfaces.map((entry) => entry.displayName))
+      .toEqual(["ether1", "ether2"]);
+    for (const entry of observation.interfaces) {
+      expect(entry.sample).not.toHaveProperty("nominalSpeedBps");
+    }
+  });
+
+  it("reports a genuine negotiated rate when the router prints one", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false, rate: "1Gbps", linkDowns: 3 },
+      ],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.interfaces[0]?.sample?.nominalSpeedBps).toBe(1_000_000_000);
+  });
+
+  it("records not-collected rather than zero when the router prints no counters", async () => {
+    const session = createFakeRouterSession(hardwareShapedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    for (const entry of observation.interfaces) {
+      expect(entry.sample).toMatchObject({
+        rxBytes: null,
+        txBytes: null,
+        errorCount: null,
+      });
+    }
+  });
+
+  it("reads the real byte counters from the stats print", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false, linkDowns: 3 },
+        { id: "*2", name: "ether2", defaultName: "ether2", type: "ether", disabled: false, linkDowns: 8 },
+      ],
+      interfaceCounters: {
+        ether1: { rxByte: 1_234_567, txByte: 89_012, rxError: 1, txError: 2 },
+      },
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    // The command sent must be the as-value form. `/interface/print stats terse`
+    // returns a fixed-width COLUMN TABLE on 7.20.8 — `stats` ignores `terse`,
+    // byte-identical 870 B either way — with no `name=`/`rx-byte=` tokens at
+    // all, so a key=value parser matches nothing and every counter reads null
+    // forever. Pinned literally so a "tidy-up" back to `terse` fails here.
+    expect(ROUTER_OS_READ_COMMANDS.interfaceStats).toBe(":put [/interface/print as-value stats]");
+    expect(session.commands).toContain(ROUTER_OS_READ_COMMANDS.interfaceStats);
+    expect(observation.interfaces[0]?.sample).toMatchObject({
+      rxBytes: 1_234_567,
+      txBytes: 89_012,
+      errorCount: 3,
+    });
+    // ether2 was not in the stats output at all, so it stays "not collected"
+    // rather than inheriting a neighbour's zero.
+    expect(observation.interfaces[1]?.sample).toMatchObject({
+      rxBytes: null,
+      txBytes: null,
+      errorCount: null,
+    });
+  });
+
+  it("splits the single-line as-value answer into one record per interface", () => {
+    // CAPTURED VERBATIM from the demo hEX, 2026-08-03:
+    //   :put [/interface/print as-value stats]
+    // Eight interfaces, 1305 bytes, ONE line, records concatenated with `.id=`
+    // as the only boundary. Trimmed to four interfaces here; not one character
+    // of the surviving text is hand-written.
+    const captured = ".id=*2;disabled=false;name=ether1;running=true;rx-byte=79740110494;"
+      + "rx-drop=0;rx-error=0;rx-packet=105512018;tx-byte=119752269836;tx-drop=0;"
+      + "tx-error=0;tx-packet=121576454;tx-queue-drop=2234046;"
+      + ".id=*3;disabled=false;name=ether2;running=true;rx-byte=123518176767;"
+      + "rx-packet=123858267;slave=true;tx-byte=80159300638;tx-packet=104819944;"
+      + "tx-queue-drop=857;"
+      + ".id=*7;comment=defconf;disabled=false;dynamic=false;name=bridge;running=true;"
+      + "rx-byte=123021591925;rx-drop=0;rx-error=0;rx-packet=123917871;"
+      + "tx-byte=79688209862;tx-drop=0;tx-error=0;tx-packet=104820823;tx-queue-drop=0;"
+      + ".id=*8;comment=ihomecrm-network-center:v1:demo-router-20260803:wireguard;"
+      + "disabled=false;name=wg-ihome-mgmt;running=true;rx-byte=129180;rx-drop=0;"
+      + "rx-error=0;rx-packet=874;tx-byte=360776;tx-drop=0;tx-error=0;tx-packet=1789;"
+      + "tx-queue-drop=0\n";
+
+    const records = parseRouterOsValueRecords(captured);
+
+    expect(records).toHaveLength(4);
+    expect(records.map((record) => record.name))
+      .toEqual(["ether1", "ether2", "bridge", "wg-ihome-mgmt"]);
+
+    const counters = parseInterfaceCounters(records);
+    expect(counters.get("ether1")).toEqual({
+      rxBytes: 79_740_110_494,
+      txBytes: 119_752_269_836,
+      errorCount: 0,
+    });
+    // ether2 is a bridge SLAVE: the router emits `slave=true` and omits
+    // rx-error/tx-error entirely. That is why the storage decision is
+    // null-not-zero — 0 here would invent an error count the router never gave.
+    expect(records[1]?.slave).toBe("true");
+    expect(records[1]).not.toHaveProperty("rx-error");
+    expect(counters.get("ether2")).toEqual({
+      rxBytes: 123_518_176_767,
+      txBytes: 80_159_300_638,
+      errorCount: null,
+    });
+    expect(counters.get("wg-ihome-mgmt")).toEqual({
+      rxBytes: 129_180,
+      txBytes: 360_776,
+      errorCount: 0,
+    });
+  });
+
+  it("does not let a semicolon in a comment split one interface into two", () => {
+    // as-value neither quotes nor escapes its values. MEASURED by setting a
+    // comment on a throwaway group and reading it back: the router returned
+    //   .id=*E;comment=alpha;name=INJECTED;.id=*999;beta;name=zzcbrw-g1-grp;…
+    // verbatim. An operator comment as ordinary as "uplink; do not touch" is
+    // therefore enough to corrupt a naive `.id=`-splitting parser — and a
+    // counter series silently cut in half is precisely the class of defect this
+    // whole read is being rewritten to remove.
+    //
+    // HAND-WRITTEN fixture: it is the captured `bridge` record with its
+    // `comment=defconf` swapped for a hostile one, because no interface on the
+    // live gateway may be given such a comment to capture it for real.
+    const hostile = ".id=*2;disabled=false;name=ether1;running=true;rx-byte=100;"
+      + "rx-error=0;tx-byte=200;tx-error=0;"
+      + ".id=*7;comment=uplink; do not touch;.id=*999;name=EVIL;rx-byte=7;"
+      + "disabled=false;name=bridge;running=true;rx-byte=123021591925;rx-error=0;"
+      + "tx-byte=79688209862;tx-error=0\n";
+
+    const records = parseRouterOsValueRecords(hostile);
+
+    // Two interfaces, not three: the `.id=*999` smuggled through the comment is
+    // not a record boundary, because the record it landed in had no `name` yet.
+    expect(records).toHaveLength(2);
+    expect(records.map((record) => record.name)).toEqual(["ether1", "bridge"]);
+
+    // And the genuine values win over the injected ones. RouterOS emits fields
+    // alphabetically after a forced-first `.id`, and `comment` sorts before
+    // `name` and before every counter, so anything a comment injects always
+    // lands BEFORE its real counterpart — which is what makes last-wins correct.
+    const counters = parseInterfaceCounters(records);
+    expect(counters.get("EVIL")).toBeUndefined();
+    expect(counters.get("bridge")).toEqual({
+      rxBytes: 123_021_591_925,
+      txBytes: 79_688_209_862,
+      errorCount: 0,
+    });
+  });
+
+  it("keeps every interface's counters apart when the router answers on one line", async () => {
+    // The whole as-value answer for the WHOLE fleet of interfaces arrives as a
+    // single line (1305 B for eight interfaces on the demo hEX). A line-oriented
+    // parser therefore folds all of them into ONE record whose every field is
+    // the last interface's — so ether1 would silently inherit ether2's traffic
+    // and ether2 would report ether1's as "not collected".
+    //
+    // This needs TWO interfaces that BOTH carry counters. With only one the
+    // merge is invisible: a single record and a single merged record are the
+    // same thing, which is exactly how the previous version of this suite
+    // passed while the connector used the wrong parser.
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+        { id: "*2", name: "ether2", defaultName: "ether2", type: "ether", disabled: false },
+      ],
+      interfaceCounters: {
+        ether1: { rxByte: 11, txByte: 12, rxError: 1, txError: 0 },
+        ether2: { rxByte: 22, txByte: 23, slave: true },
+      },
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.interfaces[0]?.sample)
+      .toMatchObject({ rxBytes: 11, txBytes: 12, errorCount: 1 });
+    // A bridge slave: the router omits rx-error/tx-error, so "not collected".
+    expect(observation.interfaces[1]?.sample)
+      .toMatchObject({ rxBytes: 22, txBytes: 23, errorCount: null });
+  });
+
+  it("still completes the poll when the router refuses the stats print", async () => {
+    // RouterOS reports a rejected command on STDOUT with exit code 0, so this is
+    // the shape an older build would produce. The counters must degrade to
+    // not-collected; the whole cycle must NOT fail, because every other reading
+    // in this poll is still good.
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      refuseInterfaceStats: true,
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.device.reachable).toBe(true);
+    expect(observation.interfaces).toHaveLength(1);
+    expect(observation.interfaces[0]?.sample).toMatchObject({
+      rxBytes: null,
+      txBytes: null,
+      errorCount: null,
+    });
+  });
+
+  it("survives a stats channel that died without an exit status", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      interfaceCounters: { ether1: { rxByte: 42, txByte: 43 } },
+    });
+    const session = createFakeRouterSession(router, {
+      interrupt: (command) => command === ROUTER_OS_READ_COMMANDS.interfaceStats
+        ? { kind: "no-exit-status" }
+        : null,
+    });
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    // Output arrived, but nothing proves the router finished printing it, so the
+    // partial counters are discarded rather than stored as if they were complete.
+    expect(observation.interfaces[0]?.sample).toMatchObject({
+      rxBytes: null,
+      txBytes: null,
+      errorCount: null,
+    });
+  });
+});
+
+describe("client telemetry value domains", () => {
+  // The demo hEX has exactly one DHCP lease - its operator's own LAN gateway -
+  // so this is the production shape, not an edge case. Before F6 no test in this
+  // package ever produced a single client observation, because the fake answered
+  // the lease command with "".
+  const leasedRouter = () => new FakeRouterOs({
+    interfaces: [
+      { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      { id: "*2", name: "bridge", defaultName: "bridge", type: "bridge", disabled: false },
+    ],
+    dhcpLeases: [{
+      address: "192.168.88.254",
+      macAddress: "BC:FC:E7:64:E3:FB",
+      hostName: "DESKTOP-DEMO",
+      expiresAfter: "9m59s",
+    }],
+  });
+
+  it("stores a garbled counter as not-observed rather than as a negative", async () => {
+    // Same failure class as F6, found by auditing every field that lands in a
+    // constrained column: rx_bytes, tx_bytes and error_count are all `>= 0` and
+    // cpu_pct is `BETWEEN 0 AND 100`, so a negative or over-range reading is a
+    // 23514 that destroys the whole batch - not a smaller number.
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      interfaceCounters: {
+        ether1: { rxByte: -1, txByte: 5, rxError: -2, txError: -3 },
+      },
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.interfaces[0]?.sample).toMatchObject({
+      rxBytes: null,
+      txBytes: 5,
+      errorCount: null,
+    });
+  });
+
+  it("drops an out-of-range CPU reading instead of clamping it", async () => {
+    // `network_device_current.cpu_pct` is `BETWEEN 0 AND 100`. Clamping 137 to
+    // 100 would invent a reading the router never gave; this codebase has
+    // already paid once for a fabricated telemetry value.
+    const inRange = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      resource: "version=7.20.8 uptime=1h cpu-load=37\n",
+    });
+    const outOfRange = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      resource: "version=7.20.8 uptime=1h cpu-load=137\n",
+    });
+
+    const kept = await createTestConnector(
+      createFakeRouterSession(inRange).clientFactory,
+    ).poll();
+    const dropped = await createTestConnector(
+      createFakeRouterSession(outOfRange).clientFactory,
+    ).poll();
+
+    expect(kept.device.cpuPct).toBe(37);
+    expect(dropped.device.cpuPct).toBeNull();
+  });
+
+  it("parses interface counters without ever yielding a negative", () => {
+    expect(parseInterfaceCounters([{ name: "ether1", "rx-byte": "-1", "tx-byte": "7" }]).get("ether1"))
+      .toEqual({ rxBytes: null, txBytes: 7, errorCount: null });
+    expect(parseInterfaceCounters([{ name: "ether1", "rx-error": "-4", "tx-error": "2" }]).get("ether1"))
+      .toEqual({ rxBytes: null, txBytes: null, errorCount: 2 });
+  });
+
+  it("emits a client row at all for a router that has a lease", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    // This assertion is the one that was missing. Everything below is vacuous
+    // without it: an empty array satisfies every "for each client" check.
+    expect(observation.clients).toHaveLength(1);
+    expect(observation.clients[0]).toMatchObject({
+      externalKey: "bc:fc:e7:64:e3:fb",
+      sessionKey: "dhcp:bc:fc:e7:64:e3:fb",
+      observedMac: "bc:fc:e7:64:e3:fb",
+      observedIp: "192.168.88.254",
+      hostname: "DESKTOP-DEMO",
+    });
+  });
+
+  it("emits only values the client tables' CHECK domains accept", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.clients.length).toBeGreaterThan(0);
+    for (const client of observation.clients) {
+      // Membership, not equality: the assertion is "the schema accepts this",
+      // which is the property production needed and never had. The two arrays
+      // are pinned to the live CHECK constraints by the disposable-PostgreSQL
+      // proof (scripts/test-network-center-ingest-domains-disposable.mjs), so a
+      // wrong list here fails there rather than passing quietly in both places.
+      expect(CLIENT_CONNECTION_TYPES).toContain(client.connectionType);
+      expect(CLIENT_SESSION_TYPES).toContain(client.sessionType);
+    }
+  });
+
+  it("classifies a DHCP lease as a DHCP session of unknown medium", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    // A DHCP lease record says which SESSION produced the address and nothing
+    // whatever about the medium underneath it - `/ip/dhcp-server/lease/print`
+    // carries no ethernet/wireless discriminator - so UNKNOWN is the honest
+    // connection type and is also the column's own default.
+    expect(observation.clients[0]?.sessionType).toBe("DHCP");
+    expect(observation.clients[0]?.connectionType).toBe("UNKNOWN");
+  });
+
+  it("keeps every emitted client field inside its column's constraint", async () => {
+    const session = createFakeRouterSession(leasedRouter());
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+    const client = observation.clients[0];
+
+    // session_key / client_fingerprint: char_length(btrim(...)) BETWEEN 8 AND 200.
+    expect(client?.sessionKey.trim().length).toBeGreaterThanOrEqual(8);
+    expect(client?.sessionKey.trim().length).toBeLessThanOrEqual(200);
+    expect(client?.clientFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    // network_client_current_time_check: first <= last <= observed AND expires > last.
+    expect(Date.parse(client?.firstSeenAt ?? "")).toBeLessThanOrEqual(Date.parse(client?.lastSeenAt ?? ""));
+    expect(Date.parse(client?.lastSeenAt ?? "")).toBeLessThanOrEqual(Date.parse(observation.observedAt));
+    expect(Date.parse(client?.expiresAt ?? "")).toBeGreaterThan(Date.parse(client?.lastSeenAt ?? ""));
+    // hostname: char_length(hostname) <= 255.
+    expect((client?.hostname ?? "").length).toBeLessThanOrEqual(255);
+  });
+
+  it("still produces an in-domain client when the lease has no MAC or hostname", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [{ address: "192.168.88.7", status: "waiting" }],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+    const client = observation.clients[0];
+
+    expect(observation.clients).toHaveLength(1);
+    expect(CLIENT_CONNECTION_TYPES).toContain(client?.connectionType);
+    expect(CLIENT_SESSION_TYPES).toContain(client?.sessionType);
+    expect(client?.observedMac).toBeNull();
+    expect(client?.hostname).toBeNull();
+    // The degenerate key still clears the 8-character session_key floor.
+    expect(client?.sessionKey.trim().length).toBeGreaterThanOrEqual(8);
+  });
+
+  // Found while writing the domain tests above, in the same object literal as
+  // F6 and with the same blast radius: a BLANK key value produced
+  // `sessionKey: "dhcp:"` - 5 characters against
+  // `CHECK (char_length(btrim(session_key)) BETWEEN 8 AND 200)` - which is
+  // another 23514 that rolls the whole telemetry transaction back. `?? null`
+  // only rejects null and undefined, so "" sailed straight through it.
+  it("treats a blank lease MAC and address as absent, not as an empty key", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [
+        { address: "  ", macAddress: "", status: "waiting" },
+        // Non-blank but too short to carry a legal `dhcp:` key on its own.
+        { macAddress: "ab", status: "waiting" },
+      ],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+
+    expect(observation.clients).toHaveLength(2);
+    for (const client of observation.clients) {
+      expect(client.sessionKey.trim().length).toBeGreaterThanOrEqual(8);
+      expect(client.externalKey.trim().length).toBeGreaterThan(0);
+    }
+    expect(observation.clients[0]?.observedMac).toBeNull();
+    expect(observation.clients[0]?.observedIp).toBeNull();
+    // Distinct rows keep distinct identities rather than colliding on one key.
+    expect(observation.clients[0]?.sessionKey)
+      .not.toBe(observation.clients[1]?.sessionKey);
+  });
+
+  // observed_mac is cast to `macaddr` by the ingest RPC. An uncastable string is
+  // a 22P02 that destroys the same batch a 23514 would, so a value that is not a
+  // canonical MAC is reported as not-observed rather than forwarded.
+  it("refuses to forward a lease MAC Postgres could not cast", async () => {
+    const router = new FakeRouterOs({
+      interfaces: [
+        { id: "*1", name: "ether1", defaultName: "ether1", type: "ether", disabled: false },
+      ],
+      dhcpLeases: [{ address: "192.168.88.9", macAddress: "not-a-mac", status: "bound" }],
+    });
+    const session = createFakeRouterSession(router);
+    const connector = createTestConnector(session.clientFactory);
+
+    const observation = await connector.poll();
+    const client = observation.clients[0];
+
+    expect(observation.clients).toHaveLength(1);
+    expect(client?.observedMac).toBeNull();
+    // The row is still identified and still stored - the router's own lease
+    // identity remains the session key, so nothing is silently dropped and the
+    // identity does not churn if the MAC later becomes parseable.
+    expect(client?.sessionKey).toBe("dhcp:not-a-mac");
+    // randomizedMac must be read off the value that survived validation, not off
+    // the raw string: `["2","6","a","e"].includes("o")` on "not-a-mac" is the
+    // kind of accident that invents a privacy signal from a parse failure.
+    expect(client?.randomizedMac).toBe(false);
+  });
+});
+
+/**
+ * ## Provenance of every duration fixture in this block
+ *
+ * `CAPTURED` values were read off the demo hEX (RouterOS 7.20.8) on 2026-08-03
+ * over SSH, read-only, and are quoted verbatim together with the command that
+ * produced them. The `[:totime N]` rows are the strongest of them: RouterOS is
+ * told the exact number of seconds and answers with its own rendering, so the
+ * input/output pair is ground truth rather than an assumption about the grammar.
+ *
+ * `HAND-WRITTEN` values are marked as such. They exist only for shapes the demo
+ * router does not currently emit (`ms`/`us`/`ns`) and for refusals.
+ *
+ * This distinction is the whole point: the defect being fixed here survived
+ * because the only uptime fixture in the suite was the HAND-WRITTEN `uptime=1h`
+ * (`test/support/fakeRouterOs.ts`), which the broken parser handled perfectly.
+ * No captured uptime was ever asserted against.
+ */
+describe("RouterOS duration parsing", () => {
+  it("parses the two renderings RouterOS actually emits for the same value", () => {
+    // CAPTURED, same session, same property - `terse` renders the suffix run and
+    // `as-value` renders the clock, and they must agree:
+    //   /ip/dhcp-client/print detail terse            -> expires-after=20h43m44s
+    //   :put [/ip/dhcp-client/print as-value proplist=expires-after,...]
+    //                                                 -> expires-after=20:43:44
+    expect(parseDurationSeconds("20h43m44s")).toBe(74_624);
+    expect(parseDurationSeconds("20:43:44")).toBe(74_624);
+    //   /ip/dhcp-server/lease/print terse             -> expires-after=29m4s age=2d5h16m
+    //   :put [/ip/dhcp-server/lease/print as-value ...] -> expires-after=00:29:04 age=2d05:16:00
+    expect(parseDurationSeconds("29m4s")).toBe(1_744);
+    expect(parseDurationSeconds("00:29:04")).toBe(1_744);
+    expect(parseDurationSeconds("2d5h16m")).toBe(191_760);
+    expect(parseDurationSeconds("2d05:16:00")).toBe(191_760);
+    //   /ip/neighbor/print terse -> age=33s ; as-value -> age=00:00:33
+    expect(parseDurationSeconds("33s")).toBe(33);
+    expect(parseDurationSeconds("00:00:33")).toBe(33);
+    // CAPTURED: `last-seen` comes back suffixed even from `as-value`, so the two
+    // renderings are not selectable by command - both must always be handled.
+    expect(parseDurationSeconds("56s")).toBe(56);
+    // CAPTURED: /ip/firewall/connection/print terse -> timeout=23h57m25s
+    expect(parseDurationSeconds("23h57m25s")).toBe(86_245);
+  });
+
+  it("parses the uptime rendering that was being truncated to whole days", () => {
+    // CAPTURED: `:put [/system/resource get uptime]` -> 1w3d15:41:57
+    // The old parser matched only `(\d+)w` `(\d+)d` `(\d+)h` `(\d+)m` `(\d+)s`,
+    // found no h/m/s suffix in the clock half, and returned 1w3d = 864000 -
+    // which is exactly the frozen value 151 consecutive production samples
+    // carried across 2 h 46 m.
+    expect(parseDurationSeconds("1w3d15:41:57")).toBe(920_517);
+    expect(parseDurationSeconds("1w3d15:41:57")).not.toBe(864_000);
+    // CAPTURED, 14 consecutive reads 4 s apart: the value has to MOVE.
+    const first = parseDurationSeconds("1w3d15:44:14");
+    const last = parseDurationSeconds("1w3d15:45:06");
+    expect(last! - first!).toBe(52);
+  });
+
+  it("agrees with RouterOS's own rendering of a known number of seconds", () => {
+    // CAPTURED input/output pairs from `:put [:totime N]`, N chosen to sit on
+    // every boundary of the grammar.
+    const totime: Array<[number, string]> = [
+      [0, "00:00:00"],
+      [1, "00:00:01"],
+      [45, "00:00:45"],
+      [59, "00:00:59"],
+      [60, "00:01:00"],
+      [61, "00:01:01"],
+      [599, "00:09:59"],
+      [3_599, "00:59:59"],
+      [3_600, "01:00:00"],
+      [3_661, "01:01:01"],
+      [86_399, "23:59:59"],
+      [86_400, "1d00:00:00"],
+      [86_461, "1d00:01:01"],
+      [90_061, "1d01:01:01"],
+      [604_800, "1w00:00:00"],
+      [864_000, "1w3d00:00:00"],
+      [1_234_567, "2w06:56:07"],
+      [99_999_999, "165w2d09:46:39"],
+    ];
+    for (const [seconds, rendered] of totime) {
+      expect({ rendered, seconds: parseDurationSeconds(rendered) })
+        .toEqual({ rendered, seconds });
+    }
+  });
+
+  it("parses the sub-second forms and does not read `ms` as minutes", () => {
+    // CAPTURED: `:put (00:00:01 / 2)`, `/ 1000`, `/ 1000000`, `(00:00:02 / 3)`.
+    expect(parseDurationSeconds("00:00:00.500")).toBe(0.5);
+    expect(parseDurationSeconds("00:00:00.001")).toBe(0.001);
+    expect(parseDurationSeconds("00:00:00.000001")).toBe(0.000001);
+    expect(parseDurationSeconds("00:00:00.666666666")).toBeCloseTo(0.666666666, 9);
+    // HAND-WRITTEN - the demo hEX emits no `ms`/`us`/`ns` in anything this
+    // worker reads today (NTP is disabled, so `last-adjustment` is absent), but
+    // RouterOS does render them elsewhere and the old parser turned `450ms`
+    // into 450 MINUTES via `/(\d+)m/`. The order of alternation is load-bearing.
+    expect(parseDurationSeconds("450ms")).toBeCloseTo(0.45, 9);
+    expect(parseDurationSeconds("450ms")).not.toBe(27_000);
+    expect(parseDurationSeconds("1500us")).toBeCloseTo(0.0015, 9);
+    expect(parseDurationSeconds("2ns")).toBeCloseTo(2e-9, 12);
+    expect(parseDurationSeconds("1m450ms")).toBeCloseTo(60.45, 9);
+  });
+
+  it("returns null rather than a fabricated zero for anything it cannot parse", () => {
+    // The old parser returned 0 for every unrecognised string, and 0 is
+    // indistinguishable from "just rebooted" / "lease about to expire".
+    // CAPTURED refusal shape - RouterOS answers a denied command on STDOUT with
+    // exit status 0, so this string really can arrive where a duration was
+    // expected.
+    expect(parseDurationSeconds("not enough permissions (9)")).toBeNull();
+    // CAPTURED non-duration that contains something clock-shaped:
+    // `:put [/system/resource/print as-value]` -> build-time=2026-01-30 09:17:54
+    expect(parseDurationSeconds("2026-01-30 09:17:54")).toBeNull();
+    expect(parseDurationSeconds("never")).toBeNull();
+    expect(parseDurationSeconds("")).toBeNull();
+    expect(parseDurationSeconds(undefined)).toBeNull();
+    expect(parseDurationSeconds("1w3d15:41")).toBeNull();
+    // Positive control on the same call site, so the nulls above are not just a
+    // parser that rejects everything.
+    expect(parseDurationSeconds("1h")).toBe(3_600);
+    expect(parseDurationSeconds("120")).toBe(120);
+  });
+});
+
+describe("REBOOT_ROUTER verification against real RouterOS uptime", () => {
+  const rebootIntent = {
+    actionType: "REBOOT_ROUTER" as const,
+    deviceId: "device-id",
+    managedTarget: {},
+    expectedPostcondition: {},
+    observationDeadline: "2026-08-03T23:00:00.000Z",
+  };
+
+  function rebootConnector(uptime: string, now: Date) {
+    const router = new FakeRouterOs({
+      interfaces: [{ id: "*B", name: "ether2", defaultName: "ether2", type: "ether", disabled: false }],
+      // CAPTURED shape: `:put [/system/resource/print as-value]` answers
+      // `...;uptime=1w3d15:41:57;version=7.20.8 (long-term);...`
+      resource: `version=7.20.8 (long-term);uptime=${uptime};cpu-load=1\n`,
+    });
+    return createTestConnector(createFakeRouterSession(router).clientFactory, { now: () => now });
+  }
+
+  it("settles a genuine reboot as SUCCEEDED when prior uptime was under 24 h", async () => {
+    // The reported defect: below 24 h BOTH observations parsed to 0 under the
+    // old parser, `0 < 0` is false, and a completed reboot settled UNCERTAIN -
+    // in exactly the state a router is in right after a previous reboot.
+    // The uptime strings use the CAPTURED clock rendering (`:totime 3600` ->
+    // `01:00:00`); the particular values are chosen to sit under the boundary.
+    const before = await rebootConnector("02:15:00", new Date("2026-08-03T12:00:00.000Z"))
+      .observeAction(rebootIntent);
+    const after = await rebootConnector("00:00:47", new Date("2026-08-03T12:02:30.000Z"))
+      .observeAction(rebootIntent);
+
+    expect(before.boot?.uptimeSeconds).toBe(8_100);
+    expect(after.boot?.uptimeSeconds).toBe(47);
+    expect(before.boot?.bootId).not.toBe(after.boot?.bootId);
+    expect(reconcileAction(rebootIntent, before, after)).toEqual({
+      outcome: "SUCCEEDED",
+      evidence: {
+        actionType: "REBOOT_ROUTER",
+        previousBootId: before.boot?.bootId,
+        bootId: after.boot?.bootId,
+        previousUptimeSeconds: 8_100,
+        uptimeSeconds: 47,
+      },
+    });
+  });
+
+  it("keeps a router that did NOT reboot out of SUCCEEDED", async () => {
+    // Negative control for the test above: same code path, uptime still rising.
+    const before = await rebootConnector("02:15:00", new Date("2026-08-03T12:00:00.000Z"))
+      .observeAction(rebootIntent);
+    const after = await rebootConnector("02:17:30", new Date("2026-08-03T12:02:30.000Z"))
+      .observeAction(rebootIntent);
+
+    expect(before.boot?.bootId).toBe(after.boot?.bootId);
+    expect(reconcileAction(rebootIntent, before, after).outcome).toBe("UNCERTAIN");
+  });
+
+  it("derives a boot identity that holds still while the router stays up", async () => {
+    // CAPTURED: two of 14 consecutive `:put [/system/resource get uptime]` reads
+    // taken 52 s apart, paired with the worker-side clock recorded at each read.
+    // Under the day-truncated parse these produced two DIFFERENT boot ids - 14
+    // distinct ids in 52 s - which is why `bootId` carried no information at all.
+    const first = await rebootConnector("1w3d15:44:14", new Date(1_785_735_871_000))
+      .observeAction(rebootIntent);
+    const last = await rebootConnector("1w3d15:45:06", new Date(1_785_735_923_000))
+      .observeAction(rebootIntent);
+
+    expect(first.boot?.bootId).toBe("routeros-boot:1784815217");
+    expect(last.boot?.bootId).toBe("routeros-boot:1784815217");
+  });
+
+  it("omits the boot evidence entirely when uptime cannot be read", async () => {
+    // A refusal or a garbled read used to become `uptimeSeconds: 0` plus a boot
+    // id of "now", which is precisely the fingerprint of a successful reboot.
+    const before = await rebootConnector("02:15:00", new Date("2026-08-03T12:00:00.000Z"))
+      .observeAction(rebootIntent);
+    const after = await rebootConnector(
+      "not enough permissions (9)",
+      new Date("2026-08-03T12:02:30.000Z"),
+    ).observeAction(rebootIntent);
+
+    expect(after.boot).toBeUndefined();
+    expect(after.reachable).toBe(true);
+    expect(reconcileAction(rebootIntent, before, after).outcome).toBe("UNCERTAIN");
+  });
+
+  it("omits the DHCP expiry when `expires-after` cannot be read", async () => {
+    const renewIntent = { ...rebootIntent, actionType: "RENEW_DHCP_LEASE" as const };
+    // CAPTURED: `/ip/dhcp-client/print detail terse without-paging` on the demo
+    // hEX, trimmed to the fields this observation reads.
+    const bound = "0 comment=defconf interface=ether1 status=bound expires-after=20h43m44s\n";
+    const garbled = "0 comment=defconf interface=ether1 status=bound expires-after=never\n";
+    function dhcpConnector(dhcpClients: string) {
+      const router = new FakeRouterOs({
+        interfaces: [{ id: "*B", name: "ether2", defaultName: "ether2", type: "ether", disabled: false }],
+        dhcpClients,
+      });
+      return createTestConnector(createFakeRouterSession(router).clientFactory, {
+        now: () => new Date("2026-08-03T12:00:00.000Z"),
+      });
+    }
+
+    const readable = await dhcpConnector(bound).observeAction(renewIntent);
+    const unreadable = await dhcpConnector(garbled).observeAction(renewIntent);
+
+    // Positive control: the same code path does produce the number.
+    expect(readable.dhcp).toEqual({
+      leaseKey: "ether1",
+      status: "bound",
+      expiresInSeconds: 74_624,
+    });
+    expect(unreadable.dhcp).toEqual({ leaseKey: "ether1", status: "bound" });
+    // 0 was the old value, and 0 is smaller than every real reading, so a
+    // garbled PRE_ACTION read made any later reading look like a renewal.
+    expect(reconcileAction(renewIntent, unreadable, readable).outcome).toBe("UNCERTAIN");
+    expect(reconcileAction(
+      renewIntent,
+      { ...readable, dhcp: { leaseKey: "ether1", status: "bound", expiresInSeconds: 120 } },
+      readable,
+    ).outcome).toBe("SUCCEEDED");
+  });
+});

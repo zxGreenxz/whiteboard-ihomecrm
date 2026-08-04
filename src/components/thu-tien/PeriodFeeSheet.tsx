@@ -13,6 +13,7 @@ import { fmtFull, fmtBillingMonth } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
+import { useIsOrgOwner } from '@/hooks/useIsOrgOwner';
 import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { canUse } from '@/lib/permissionPages';
 import { useUtilityPayState, type MeterRow } from '@/hooks/useUtilityPayState';
@@ -23,7 +24,7 @@ import {
 import { usePeriodFeeState, addMonths, rangeLabel } from '@/hooks/usePeriodFeeState';
 import { useCreateMaintenanceBatch, type MaintenanceBatchLine } from '@/hooks/useMaintenanceBatch';
 import { uploadReceiptToStorage, validateReceiptFile } from '@/lib/receiptUpload';
-import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory } from '@/lib/feeCategories';
+import { FEE_CATEGORIES, FEE_GROUPS, feeCategoryOf, gridKeysFor, type FeeCategory, LEDGER_FAMILIES } from '@/lib/feeCategories';
 import { FeeIcon } from './feeIcons';
 import { UtilityBookMenu } from './UtilityBookMenu';
 import { UtilityCancelModal } from './UtilityCancelModal';
@@ -31,6 +32,9 @@ import { UtilityReceiptThumb } from './UtilityReceiptThumb';
 import { PeriodFeeEditModal } from './PeriodFeeEditModal';
 import { PeriodFeeVoucherList, PeriodFeePayDraftModal, PeriodFeeDupConfirmModal } from './PeriodFeeVoucherList';
 import { PeriodCommissionModal } from './PeriodCommissionModal';
+import {
+  TerminationRefundQueueSection, SaleBonusSection, DepositLedgerSection,
+} from './SettlementPanels';
 import { BookIcon } from './utilityIcons';
 import { AttachmentLightbox } from '@/components/ui/attachment-lightbox';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -41,6 +45,13 @@ interface Props {
   billingMonth: string;
   onBillingMonthChange?: (m: string) => void;
   canRecordPayment: boolean;
+  /**
+   * Sheet LÀ nội dung của page (/thanh-toan) chứ không phải lớp phủ tạm.
+   * Khi đó bỏ hẳn scrim: nó không có gì để làm mờ, mà lại là một vùng bấm
+   * "thoát trang" full-bleed nằm dưới sheet — chỉ vô hại chừng nào .sheet.full
+   * còn phủ kín 100%.
+   */
+  standalone?: boolean;
 }
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
@@ -48,7 +59,7 @@ const parseVN = (s: string) => { const d = s.replace(/\D/g, ''); return d ? pars
 const fmtDate = (d?: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '');
 const N_OPTIONS = [1, 3, 6, 12];
 
-export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChange, canRecordPayment }: Props) {
+export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChange, canRecordPayment, standalone }: Props) {
   const period = billingMonth;
   const { data: allBuildings = [] } = useIncomeExpenseFormBuildings();
   const buildings = useMemo(() => allBuildings.filter((b) => !b.is_virtual).map((b) => ({ id: b.id, name: b.name })), [allBuildings]);
@@ -58,6 +69,11 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   const { data: isAdminFlag } = useIsAdmin();
   const { data: isSuperFlag } = useIsSuperAdmin();
   const isAdmin = !!isAdminFlag || !!isSuperFlag;
+  // Xem chú thích cùng tên ở PeriodFeePanel: cờ "Đóng thêm" là PHỎNG ĐOÁN trước
+  // RPC (super admin ∪ chủ ở bất kỳ org), không phải is_admin(); câu trả lời thật
+  // là khoá `can_force` do server trả trong payload cảnh báo trùng.
+  const { data: isOrgOwnerFlag } = useIsOrgOwner();
+  const canForceFee = !!isSuperFlag || !!isOrgOwnerFlag;
   const { data: perms } = useMyPermissions();
   const canRestricted = isAdmin || canUse(perms, 'income_expenses', 'restricted_view');
   const visibleCats = useMemo(() => FEE_CATEGORIES.filter((c) => !c.restricted || canRestricted), [canRestricted]);
@@ -88,7 +104,10 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
 
   const EN = useUtilityPayState(period, buildings);
   const gridCat = cat?.family === 'GRID' ? cat : FEE_CATEGORIES.find((c) => c.family === 'GRID')!;
-  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf);
+  // canForce: xem chú thích cùng tên ở PeriodFeePanel — `p_force` chỉ dành cho
+  // chủ tổ chức / superadmin. Hai bề mặt DÙNG CHUNG state nhập liệu qua kho
+  // module trong usePeriodFeeState (V3 §−1.6), không còn 2 Record độc lập.
+  const S = usePeriodFeeState(period, gridCat, buildings, feeStatus.statusOf, feeAccounts.accountOf, { canForce: canForceFee });
 
   const visibleIdsFor = (c: FeeCategory): string[] => {
     if (!c.elevatorGated) return buildingIds;
@@ -110,12 +129,18 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
 
   const overview = useMemo(() => {
     let dueCount = 0, dueSum = 0, draftCount = 0; const nameOf = (id: string) => buildings.find((b) => b.id === id)?.name ?? id;
-    const rows = visibleCats.map((c) => {
+    const rows = visibleCats.filter((c) => !LEDGER_FAMILIES.has(c.family)).map((c) => {
       let total = 0, paidN = 0, rowDue = 0, rowDraftN = 0; const dueList: string[] = [];
       if (c.family === 'EN') { for (const b of buildingIds) for (const k of ['dien', 'nuoc'] as const) { const st = feeStatus.statusOf(b, k); if (st?.notApplicable) continue; total++; if (st && st.paidAmount > 0) paidN++; else { rowDue += st?.expectedAmount ?? 0; if (!dueList.includes(nameOf(b))) dueList.push(nameOf(b)); } } }
       else if (c.family === 'GRID') { for (const b of activeIdsFor(c)) { const st = feeStatus.statusOf(b, c.serverKey); total++; if (st && st.paidAmount > 0) paidN++; else { if (st && st.draftAmount > 0) { rowDraftN++; rowDue += st.draftAmount; } else rowDue += st?.expectedAmount ?? 0; dueList.push(nameOf(b)); } } }
       else if (c.family === 'COMMISSION') { for (const r of commissions.data ?? []) { total++; if (r.status === 'paid') paidN++; else { if (r.status === 'draft') rowDraftN++; rowDue += r.status === 'draft' ? (r.voucherAmount ?? r.expectedAmount) : r.expectedAmount; if (!dueList.includes(r.buildingName)) dueList.push(r.buildingName); } } }
-      else if (c.family === 'MAINTENANCE_BATCH') { const l = maintenance.data ?? []; total = l.length; paidN = l.length; }
+      // A3a: phiếu bảo trì CHỜ DUYỆT đã có phiếu nhưng chưa chi → không tính là paid.
+      else if (c.family === 'MAINTENANCE_BATCH') {
+        const l = maintenance.data ?? [];
+        total = l.length;
+        paidN = l.filter((x) => !x.pending).length;
+        for (const x of l) if (x.pending) { rowDraftN++; rowDue += x.amount; }
+      }
       const dueN = total - paidN; dueCount += dueN; dueSum += rowDue; draftCount += rowDraftN;
       return { cat: c, total, paidN, dueN, draftN: rowDraftN, dueList, dueSum: rowDue, pct: total ? Math.round((paidN / total) * 100) : 100, allPaid: dueN === 0 && total > 0 };
     });
@@ -162,12 +187,15 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   const mText = (m: 'ml' | 'mg') => (m === 'ml' ? 'Máy lạnh' : 'Máy giặt');
   const prevUnpaidComm = (prevCommissions.data ?? []).filter((r) => r.status !== 'paid').length;
 
-  // ── EN card render ──
+  // ── EN card render (3 trạng thái + dòng chưa khai công tơ — §−1.1/§−1.5) ──
   const renderEnRow = (row: MeterRow) => {
     const k = row.key; const paid = EN.paidThisKy(row.accountId); const amount = EN.amountOf(k); const paying = EN.payingKey === k;
+    const pending = paid ? undefined : EN.pendingThisKy(row.accountId);
+    const justPaid = paid || pending ? undefined : EN.justPaidThisKy(row.accountId);
+    const locked = !!paid || !!pending || justPaid != null;
     const Icon = row.type === 'electric' ? Zap : Droplet;
     return (
-      <div className="ubc-row" key={k}>
+      <div className="ubc-row" key={k} {...(locked || row.isSynthetic ? {} : EN.pasteProps(k))}>
         <div className="ubc-rowhead">
           <span className={'ubc-ic ' + row.type}><Icon /></span>
           <input className="ubc-code" placeholder={row.type === 'electric' ? 'Mã PE' : 'Mã nước'} value={EN.codeOf(row)} onChange={(e) => EN.setField(row, { code: e.target.value })} onBlur={() => EN.saveMeter(row)} />
@@ -179,9 +207,34 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
             <span className="ubc-bookchip"><BookIcon size={13} />{paid.book}</span>
             <button type="button" className="ubc-cancel" disabled={!canRecordPayment} onClick={() => EN.requestCancel(row)}><X /></button>
           </div>
+        ) : pending ? (
+          <div className="ubc-paid">
+            <span className="ubc-paid-pill draft">
+              <UtilityReceiptThumb attachments={pending.attachments} onView={EN.viewReceipt} size="sm" />
+              <span className="ubc-paid-txt">
+                <span className="ubc-paid-a">Đã tạo, chờ duyệt {pending.amount.toLocaleString('vi-VN')}</span>
+                <span className="ubc-paid-m">{fmtDate(pending.date)} · {pending.by}</span>
+              </span>
+            </span>
+            <button type="button" className="ubc-cancel" title="Hủy phiếu chờ duyệt" disabled={!canRecordPayment} onClick={() => EN.requestCancel(row)}><X /></button>
+          </div>
+        ) : justPaid != null ? (
+          <div className="ubc-paid">
+            <span className="ubc-paid-pill draft"><span className="ubc-paid-txt">
+              <span className="ubc-paid-a">Đã tạo {justPaid.toLocaleString('vi-VN')}</span>
+              <span className="ubc-paid-m">đang cập nhật danh sách — đừng bấm lại</span>
+            </span></span>
+          </div>
+        ) : row.isSynthetic ? (
+          <div className="ubc-pay">
+            <span className="ubc-paid-m">Chưa khai công tơ {row.type === 'electric' ? 'điện' : 'nước'}</span>
+            <button type="button" className="ptt-btn ghost sm" disabled={!canRecordPayment || EN.creatingMeter} onClick={() => EN.createMeter(row)}>
+              {EN.creatingMeter ? <span className="ub-spin dark" /> : <Plus />}Tạo công tơ
+            </button>
+          </div>
         ) : (
           <div className="ubc-pay">
-            <input className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onChange={(e) => EN.setAmount(k, parseVN(e.target.value))} />
+            <input className="ub-amt" type="text" inputMode="numeric" placeholder="Số tiền" value={formatVN(amount)} onFocus={() => EN.setActiveKey(k)} onChange={(e) => EN.setAmount(k, parseVN(e.target.value))} />
             <UtilityBookMenu accounts={EN.myBooks} valueId={EN.bookSel[k] ?? null} defaultId={EN.defaultBookId} onPick={(id) => EN.setBook(k, id)} compact disabled={!canRecordPayment} />
             <button type="button" className={'ub-attach' + (EN.attach[k] ? ' has' : '')} disabled={!canRecordPayment || EN.uploadingKey === k} onClick={() => EN.onAttachClick(k)}>{EN.uploadingKey === k ? <span className="ub-spin dark" /> : <Camera />}</button>
             <button type="button" className="ub-paybtn" disabled={!canRecordPayment || amount <= 0 || paying} onClick={() => EN.submitPay(row, row.buildingName)}>{paying ? <span className="ub-spin" /> : <Check />}</button>
@@ -197,6 +250,8 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
     if (st?.notApplicable) return null;
     const paid = !!st && st.paidAmount > 0;
     const hasDraft = !!st && st.draftAmount > 0;
+    // Khe "vừa tạo phiếu, reader chưa refetch" — xem PeriodFeePanel/§−1.6.
+    const justPaid = !paid && !hasDraft ? S.justPaidOf(b.id) : undefined;
     if (onlyDue && paid) return null;
     const vouchers = S.vouchersOf(b.id);
     const draftVoucher = vouchers.find((v) => v.status === 'UNAPPROVED');
@@ -204,16 +259,19 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
     const single = paidVouchers.length === 1 ? paidVouchers[0] : null;
     const n = S.nOf(b.id); const amount = S.amountOf(b.id); const paying = S.payingKey === b.id; const def = S.defaultAmountOf(b.id);
     const isEditingExp = expectedEdit?.bId === b.id;
+    // Rê chuột vào thẻ + Ctrl+V = đính ảnh (đã có phiếu thì append vào phiếu).
+    const pasteVoucher = paid ? (single ?? paidVouchers[0])?.id ?? null : null;
+    const canPaste = paid ? !!pasteVoucher : !hasDraft && !justPaid;
     return (
-      <div className="ptt-m-card" key={b.id}>
+      <div className="ptt-m-card" key={b.id} {...(canPaste ? S.rowPasteProps(b.id, pasteVoucher) : {})}>
         <div className="ptt-m-cardhead">
           <span className="ud-bldcode">{b.name}</span>
           <input className="ptt-m-code" placeholder={cat!.providerConfig ? 'Mã NCC' : 'Ghi chú'} value={S.codeOf(b.id)} onChange={(e) => S.setField(b.id, { code: e.target.value })} onBlur={() => S.saveConfig(b.id)} />
-          {!paid && !hasDraft && (
+          {!paid && !hasDraft && !justPaid && (
             <button type="button" className="ptt-nabtn" title="Không áp dụng" disabled={!canRecordPayment} onClick={() => S.setNotApplicable(b.id, true)}><Ban /></button>
           )}
         </div>
-        {cat!.multiPeriod && !paid && !hasDraft && (
+        {cat!.multiPeriod && !paid && !hasDraft && !justPaid && (
           <div className="ptt-m-period">
             <Calendar />
             <span className="ptt-period-chips">
@@ -247,12 +305,19 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           </div>
         ) : hasDraft && draftVoucher ? (
           <div className="ubc-paid">
-            <span className="ubc-paid-pill draft"><span className="ubc-paid-txt"><span className="ubc-paid-a">Chờ duyệt {st!.draftAmount.toLocaleString('vi-VN')}</span><span className="ubc-paid-m">chờ thanh toán · {fmtDate(draftVoucher.date)}</span></span></span>
+            <span className="ubc-paid-pill draft"><span className="ubc-paid-txt"><span className="ubc-paid-a">Đã tạo, chờ duyệt {st!.draftAmount.toLocaleString('vi-VN')}</span><span className="ubc-paid-m">chờ thanh toán · {fmtDate(draftVoucher.date)}</span></span></span>
             {draftVoucher.isAuto && <span className="ptt-auto">TỰ ĐỘNG</span>}
             <span className="ptt-m-cardacts">
               <button type="button" className="ptt-paydraft" disabled={!canRecordPayment} onClick={() => S.openPayDraft(b.id, draftVoucher)}><HandCoins />Thanh toán</button>
               {vouchers.length > 1 && <button type="button" className="ptt-edit-btn" onClick={() => setVlistFor(b.id)}><ListChecks /></button>}
             </span>
+          </div>
+        ) : justPaid ? (
+          <div className="ubc-paid">
+            <span className="ubc-paid-pill draft"><span className="ubc-paid-txt">
+              <span className="ubc-paid-a">Đã tạo {justPaid.amount.toLocaleString('vi-VN')}</span>
+              <span className="ubc-paid-m">đang cập nhật danh sách — đừng bấm lại</span>
+            </span></span>
           </div>
         ) : isEditingExp ? (
           <div className="ubc-pay">
@@ -298,15 +363,27 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
       <input ref={S.fileRef} type="file" accept="image/*" hidden onChange={S.onFileChange} />
       <input ref={EN.fileRef} type="file" accept="image/*" hidden onChange={EN.onFileChange} />
       <input ref={batchFileRef} type="file" accept="image/*" hidden onChange={onBatchFile} />
-      <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={onClose} />
+      {!standalone && <div className={'sheet-scrim' + (show ? ' show' : '')} onClick={onClose} />}
       <div className={'sheet full ptt-sheet' + (show ? ' show' : '')}>
         {/* Header */}
         <div className="ptt-m-head">
           <button type="button" className="ptt-m-trigger" onClick={() => setPickerOpen(true)}>
             <span className="ptt-m-ic" style={{ background: headerCat.accent + '18', color: headerCat.accent }}><FeeIcon name={headerCat.icon} style={{ width: 18, height: 18 }} /></span>
-            <span className="ptt-m-tt"><span className="ptt-m-lbl">{fam === 'over' ? 'Tổng quan kỳ' : cat!.label}<ChevronDown /></span><span className="ptt-m-sub">Kỳ {fmtBillingMonth(period)} · {fam === 'over' ? 'Còn thiếu phiếu' : cat!.sub}</span></span>
+            <span className="ptt-m-tt"><span className="ptt-m-lbl"><span className="ptt-m-lbltxt">{fam === 'over' ? 'Tổng quan kỳ' : cat!.label}</span><ChevronDown /></span><span className="ptt-m-sub">Kỳ {fmtBillingMonth(period)} · {fam === 'over' ? 'Còn thiếu phiếu' : cat!.sub}</span></span>
           </button>
-          <button type="button" className="rp-x" onClick={onClose}><X /></button>
+          {/* Ô chọn kỳ NGAY TRONG header sheet: .sheet.full phủ kín .tt-page nên
+              header của page phía sau (và ô <input type="month"> của nó) không
+              bấm tới được — thiếu ô này là mobile kẹt ở đúng 1 kỳ. */}
+          {onBillingMonthChange && (
+            <input
+              className="ky-input"
+              type="month"
+              title="Kỳ đang xem"
+              value={period}
+              onChange={(e) => e.target.value && onBillingMonthChange(e.target.value)}
+            />
+          )}
+          <button type="button" className="rp-x" title="Đóng" onClick={onClose}><X /></button>
         </div>
 
         <div className="sheet-scroll ptt-m-body">
@@ -349,9 +426,11 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
               </div>
               <div className="ubc-list">
                 {buildings.map((b) => {
-                  const rows = EN.metersOf(b.id).filter((r) => (enType === 'all' || r.type === enType) && !(onlyDue && EN.paidThisKy(r.accountId)));
+                  // Ô đã có phiếu (duyệt HOẶC chờ duyệt) không còn là việc phải làm.
+                  const done = (r: MeterRow) => !!EN.paidThisKy(r.accountId) || !!EN.pendingThisKy(r.accountId);
+                  const rows = EN.metersOf(b.id).filter((r) => (enType === 'all' || r.type === enType) && !(onlyDue && done(r)));
                   if (rows.length === 0) return null;
-                  const dueN = EN.metersOf(b.id).filter((r) => !EN.paidThisKy(r.accountId)).length;
+                  const dueN = EN.metersOf(b.id).filter((r) => !done(r)).length;
                   return (
                     <div className="ubc" key={b.id}>
                       <div className="ubc-head"><span className="ubc-bld">{b.name}</span>{dueN === 0 ? <span className="ubc-badge done">Đã xong</span> : <span className="ubc-badge pending">{dueN} khoản chưa đóng</span>}</div>
@@ -444,6 +523,9 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
           })()}
 
           {/* MAINTENANCE */}
+          {fam === 'TERMINATION_REFUND' && <TerminationRefundQueueSection period={period} />}
+          {fam === 'SALE_BONUS' && <SaleBonusSection period={period} />}
+          {fam === 'DEPOSIT_LEDGER' && <DepositLedgerSection period={period} />}
           {fam === 'MAINTENANCE_BATCH' && (
             <div className="ptt-m-batch">
               <button type="button" className={'ptt-batch-create wide' + (createOpen ? ' on' : '')} disabled={!canRecordPayment} onClick={() => { setCreateOpen((v) => !v); if (!createOpen && batchLines.length === 0) addLine(); }}><Plus />Tạo phiếu tổng mới</button>
@@ -486,9 +568,9 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
 
               {maintenance.groups.map((bt) => (
                 <div className="ptt-m-batchgroup" key={bt.batchId}>
-                  <div className="ptt-m-batchhead"><span className="ptt-batch-gic"><FeeIcon name="wrench" style={{ width: 15, height: 15 }} /></span><div className="ptt-batch-gh"><div className="ptt-batch-gtitle">{bt.payerName ?? 'Phiếu tổng'}</div><div className="ptt-batch-gmeta">{bt.lines.length} tòa</div></div><span className="ptt-batch-gtotal">{fmtFull(bt.total)}</span></div>
+                  <div className="ptt-m-batchhead"><span className="ptt-batch-gic"><FeeIcon name="wrench" style={{ width: 15, height: 15 }} /></span><div className="ptt-batch-gh"><div className="ptt-batch-gtitle">{bt.payerName ?? 'Phiếu tổng'}</div><div className="ptt-batch-gmeta">{bt.lines.length} tòa{bt.pendingTotal > 0 ? ` · chờ duyệt ${fmtFull(bt.pendingTotal)}` : ''}</div></div><span className="ptt-batch-gtotal">{fmtFull(bt.total)}</span></div>
                   {bt.lines.map((ln) => (
-                    <div className="ptt-m-batchrow" key={ln.voucherId}><span className="ud-bldcode">{ln.buildingName}</span><span className={'ptt-mchip ' + ln.subtype}>{mText(ln.subtype)}</span><span className="ptt-m-batchamt ud-mono">{fmtFull(ln.amount)}</span></div>
+                    <div className="ptt-m-batchrow" key={ln.voucherId}><span className="ud-bldcode">{ln.buildingName}</span><span className={'ptt-mchip ' + ln.subtype}>{mText(ln.subtype)}</span>{ln.pending && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}<span className="ptt-m-batchamt ud-mono">{fmtFull(ln.amount)}</span></div>
                   ))}
                 </div>
               ))}
@@ -496,7 +578,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                 <div className="ptt-m-batchgroup">
                   <div className="ptt-batch-sohead"><span className="ptt-batch-sotitle">Phiếu lẻ (chưa gộp)</span></div>
                   {maintenance.standalone.map((r) => (
-                    <div className="ptt-m-batchrow" key={r.voucherId}><span className="ud-bldcode">{r.buildingName}</span><span className={'ptt-mchip ' + r.subtype}>{mText(r.subtype)}</span><span className="ptt-m-batchamt ud-mono">{fmtFull(r.amount)}</span></div>
+                    <div className="ptt-m-batchrow" key={r.voucherId}><span className="ud-bldcode">{r.buildingName}</span><span className={'ptt-mchip ' + r.subtype}>{mText(r.subtype)}</span>{r.pending && <span className="ptt-badge-draft">CHỜ DUYỆT</span>}<span className="ptt-m-batchamt ud-mono">{fmtFull(r.amount)}</span></div>
                   ))}
                 </div>
               )}
@@ -523,7 +605,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
                     <button key={c.key} type="button" className={'ptt-menu-item' + (active ? ' on' : '')} onClick={() => pick(c.key)}>
                       <span className="ptt-menu-ic" style={{ background: active ? '#1b1813' : c.accent + '18', color: active ? '#fff' : c.accent }}><FeeIcon name={c.icon} style={{ width: 15, height: 15 }} /></span>
                       <span className="ptt-menu-lbl grow">{c.label}</span>
-                      {due > 0 && c.family !== 'MAINTENANCE_BATCH' && <span className="ptt-badge">{due}</span>}
+                      {due > 0 && c.family !== 'MAINTENANCE_BATCH' && !LEDGER_FAMILIES.has(c.family) && <span className="ptt-badge">{due}</span>}
                       {active && <Check className="ptt-menu-check" />}
                     </button>
                   );

@@ -1,4 +1,4 @@
-import { useCallback, useState, lazy, Suspense } from "react";
+import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { usePhoneViewport } from "@/hooks/use-mobile";
 import MainLayout from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
@@ -15,9 +15,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Search, Wallet } from "lucide-react";
 import {
+  useAccounts,
   useAccountsWithBalance,
   useDeleteAccount,
-  useUnlockAccount,
   type AccountWithBalance,
 } from "@/hooks/useAccounts";
 import { usePagination } from "@/hooks/usePagination";
@@ -26,7 +26,13 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import CashbookList from "@/components/cashbooks/CashbookList";
 import CashbookListMobile from "@/components/cashbooks/CashbookListMobile";
 import CashbookForm from "@/components/cashbooks/CashbookForm";
-import CashbookLockDialog from "@/components/cashbooks/CashbookLockDialog";
+import CloseCashbookDialog from "@/components/cashbooks/CloseCashbookDialog";
+import ConfirmCashbookClosingDialog from "@/components/cashbooks/ConfirmCashbookClosingDialog";
+import CashbookClosingInbox from "@/components/cashbooks/CashbookClosingInbox";
+import {
+  useCashbookCloseConfirmers,
+  useCashbookClosingDeepLink,
+} from "@/hooks/useCashbookClosing";
 import CashbookDetailDialog from "@/components/cashbooks/CashbookDetailDialog";
 
 const CashbooksDesktop = () => {
@@ -44,12 +50,12 @@ const CashbooksDesktop = () => {
   const totalCount = data?.totalCount ?? 0;
 
   const deleteMut = useDeleteAccount();
-  const unlockMut = useUnlockAccount();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<AccountWithBalance | null>(null);
-  const [lockOpen, setLockOpen] = useState(false);
-  const [lockTarget, setLockTarget] = useState<AccountWithBalance | null>(null);
+  // Đợt 6 — nghi thức chốt & bàn giao thay cho khoá/mở khoá tay.
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<AccountWithBalance | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [detailAcc, setDetailAcc] = useState<AccountWithBalance | null>(null);
 
@@ -67,17 +73,40 @@ const CashbooksDesktop = () => {
     setFormOpen(true);
   }, []);
 
-  const handleLock = useCallback((acc: AccountWithBalance) => {
-    setLockTarget(acc);
-    setLockOpen(true);
-  }, []);
+  // ── PA4 deep-link từ thông báo ──────────────────────────────────────
+  // `?close=<id>` (E6a "đã bàn giao xong — chốt sổ?") và `?confirm=<id>` (E6b).
+  //
+  // Sổ cần chốt có thể KHÔNG nằm trong `rows` (trang này phân trang 10 dòng),
+  // nên tra tên từ `useAccounts()` — danh sách đầy đủ, cùng cache `["accounts"]`
+  // mà nhiều màn khác đã nạp. Dialog chỉ cần `id` để chạy; tên/ngân hàng là để
+  // hiển thị, thiếu cũng không sai nghiệp vụ.
+  const { data: allAccounts } = useAccounts();
+  const [deepLinkBookId, setDeepLinkBookId] = useState<string | null>(null);
+  const [confirmRequestId, setConfirmRequestId] = useState<string | null>(null);
 
-  const handleUnlock = useCallback(
-    async (acc: AccountWithBalance) => {
-      await unlockMut.mutateAsync(acc.id);
-    },
-    [unlockMut]
-  );
+  useCashbookClosingDeepLink({
+    onClose: useCallback((id: string) => {
+      setDeepLinkBookId(id);
+      setCloseOpen(true);
+    }, []),
+    onConfirm: useCallback((id: string) => setConfirmRequestId(id), []),
+  });
+
+  const closeBookId = closeTarget?.id ?? deepLinkBookId;
+  const closeBookMeta = useMemo(() => {
+    if (closeTarget) return { name: closeTarget.name, bankName: closeTarget.bank_name ?? null };
+    if (!deepLinkBookId) return { name: null, bankName: null };
+    const found = (allAccounts ?? []).find((a) => a.id === deepLinkBookId);
+    return { name: found?.name ?? null, bankName: found?.bank_name ?? null };
+  }, [closeTarget, deepLinkBookId, allAccounts]);
+
+  const { data: confirmers } = useCashbookCloseConfirmers(closeBookId ?? null);
+
+  const handleClose = useCallback((acc: AccountWithBalance) => {
+    setDeepLinkBookId(null);
+    setCloseTarget(acc);
+    setCloseOpen(true);
+  }, []);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteId) return;
@@ -114,14 +143,17 @@ const CashbooksDesktop = () => {
             </div>
           </form>
 
+          <div className="px-3 pt-3">
+            <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
+          </div>
+
           <CashbookListMobile
             rows={rows}
             isLoading={isLoading}
             onView={handleView}
             onEdit={handleEdit}
             onDelete={(id) => setDeleteId(id)}
-            onLock={handleLock}
-            onUnlock={handleUnlock}
+            onClose={handleClose}
           />
 
           {totalCount > pagination.pageSize && (
@@ -171,6 +203,8 @@ const CashbooksDesktop = () => {
             </form>
           </div>
 
+          <CashbookClosingInbox autoOpenRequestId={confirmRequestId} />
+
           <CashbookList
             rows={rows}
             isLoading={isLoading}
@@ -179,8 +213,7 @@ const CashbooksDesktop = () => {
             onView={handleView}
             onEdit={handleEdit}
             onDelete={(id) => setDeleteId(id)}
-            onLock={handleLock}
-            onUnlock={handleUnlock}
+            onClose={handleClose}
           />
         </div>
       )}
@@ -204,13 +237,19 @@ const CashbooksDesktop = () => {
         account={editing}
       />
 
-      <CashbookLockDialog
-        open={lockOpen}
+      <CloseCashbookDialog
+        open={closeOpen}
         onOpenChange={(o) => {
-          setLockOpen(o);
-          if (!o) setLockTarget(null);
+          setCloseOpen(o);
+          if (!o) {
+            setCloseTarget(null);
+            setDeepLinkBookId(null);
+          }
         }}
-        account={lockTarget}
+        cashbookId={closeBookId ?? null}
+        cashbookName={closeBookMeta.name}
+        bankName={closeBookMeta.bankName}
+        candidates={confirmers ?? []}
       />
 
       <AlertDialog

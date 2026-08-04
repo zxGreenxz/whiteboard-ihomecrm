@@ -14,8 +14,8 @@ interface Props {
   onView: (acc: AccountWithBalance) => void;
   onEdit: (acc: AccountWithBalance) => void;
   onDelete: (id: string) => void;
-  onLock: (acc: AccountWithBalance) => void;
-  onUnlock: (acc: AccountWithBalance) => void;
+  /** Đợt 6: mở nghi thức chốt & bàn giao (thay cho khoá/mở khoá tay). */
+  onClose: (acc: AccountWithBalance) => void;
 }
 
 const formatVND = (n: number) =>
@@ -27,8 +27,7 @@ export function CashbookListMobile({
   onView,
   onEdit,
   onDelete,
-  onLock,
-  onUnlock,
+  onClose,
 }: Props) {
   // §12.6/§1810: binding KNOWER = biết sổ, KHÔNG thấy tồn quỹ (parity desktop).
   const { data: myAccess } = useMyCashbookAccessV2();
@@ -137,16 +136,19 @@ export function CashbookListMobile({
                   </span>
                 </span>
                 <div className="flex items-center gap-0.5">
-                  {canManage && (
+                  {/* Đợt 6: giữ parity với bản desktop — khoá sổ là kết quả
+                      của nghi thức hai bên, và "Mở khoá" đã bị gỡ vì
+                      lock_cashbook_period_v1(p_unlock) luôn ném [CASHBOOK_CLOSED]. */}
+                  {canManage && !isLocked && (
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-amber-500 hover:bg-amber-50"
                       onClick={(e) => {
                         e.stopPropagation();
-                        isLocked ? onUnlock(acc) : onLock(acc);
+                        onClose(acc);
                       }}
-                      title={isLocked ? "Mở khoá sổ" : "Khoá sổ"}
+                      title="Chốt sổ & bàn giao quỹ"
                     >
                       <Lock className="h-4 w-4" />
                     </Button>
