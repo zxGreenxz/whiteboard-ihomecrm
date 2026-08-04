@@ -33,6 +33,10 @@ const browserReadRpcs = [
   "openclaw_list_unknown_v1",
   "openclaw_list_unknown_by_account_v1",
   "openclaw_get_unknown_resolution_v1",
+  // Without this the resolve RPC can never be called from a browser: it refuses
+  // any request whose evidence hash it did not itself produce, and the resolution
+  // getter only answers AFTER a resolution exists.
+  "openclaw_get_unknown_authority_v1",
   "openclaw_list_knowledge_v1",
   "openclaw_get_knowledge_v1",
   "openclaw_preview_knowledge_retrieval_v1",
@@ -264,7 +268,10 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
     for (const migration of migrationManifest) {
       expect(existsSync(resolve(migrationDirectory, migration)), `missing ${migration}`).toBe(true);
     }
-    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(55);
+    // 56 since openclaw_get_unknown_authority_v1 joined the read surface; the count
+    // is pinned so a new browser-callable RPC cannot slip in without a reviewer
+    // noticing it appear here.
+    expect([...browserReadRpcs, ...browserWriterRpcs]).toHaveLength(56);
     expect(serviceRoutines).toHaveLength(35);
 
     for (const name of browserReadRpcs) {
@@ -505,7 +512,16 @@ describe("OpenClaw browser and runtime RPC surface migration", () => {
 
     for (const name of browserWriterRpcs) {
       const fn = functionBody(source, "public", name).definitionSql;
-      expect(fn, name).toMatch(/auth\.uid\(\)/i);
+      // NOT auth.uid(). These functions are SECURITY DEFINER owned by
+      // openclaw_function_owner, and that role cannot reach schema auth on
+      // Supabase: schema auth belongs to supabase_admin, `postgres` is not a
+      // member, so the migrations' own `grant usage on schema auth` is discarded
+      // with a warning rather than an error. Every call raised
+      // "42501: permission denied for schema auth" in production while a
+      // superuser harness passed. The helper reads the same two GUCs auth.uid()
+      // reads and needs no schema privilege at all.
+      expect(fn, name).toMatch(/app_private\.openclaw_actor_id_v1\(\)/iu);
+      expect(fn, name).not.toMatch(/auth\.uid\(\)/iu);
       expect(fn, name).toContain("app_private.lock_org_for_decision_v1");
       expect(fn, name).toContain("app_private.require_perm_v1");
       expect(fn, name).toContain(permissions[name]);

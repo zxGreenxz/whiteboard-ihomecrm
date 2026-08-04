@@ -161,11 +161,23 @@ describe("OpenClaw typed CRM occurrence sources migration", () => {
     expect(insertBody).toContain("from public.rooms source_row");
     expect(insertBody).toContain("from public.lead_activities source_row");
     expect(sql).toContain("to_regprocedure('app_private.authorized_scope_v3(text,uuid)') is null");
-    expect(sql).toContain("to_regprocedure('auth.uid()') is null");
+    // The preflight names the dependency this file actually has. It used to name
+    // auth.uid(), which openclaw_function_owner cannot reach on Supabase - checking
+    // for a function the caller may not call proves nothing about being able to run.
+    expect(sql).toContain("to_regprocedure('app_private.openclaw_actor_id_v1()') is null");
     expect(sql).toMatch(/grant execute on function app_private\.authorize_tenant_action_v3\(uuid,uuid,text,uuid,uuid\)\s+to openclaw_function_owner/i);
     expect(sql).toMatch(/grant execute on function app_private\.authorized_scope_v3\(text,uuid\)\s+to openclaw_function_owner/i);
-    expect(sql).toContain("grant usage on schema auth to openclaw_function_owner");
-    expect(sql).toContain("grant execute on function auth.uid() to openclaw_function_owner");
+    // The opposite of what this used to assert, and for a reason measured in
+    // production: `grant usage on schema auth` is silently discarded when postgres
+    // is not a member of supabase_admin, so a migration that issues it reports
+    // success while every browser RPC raises 42501. Asserting its ABSENCE stops the
+    // dependency being reintroduced by someone who reads the discarded grant as
+    // proof that it works.
+    // Anchored to the start of a line: the comment above the removal explains the
+    // grant by name, and a substring check would match the explanation and call it
+    // a violation.
+    expect(sql).not.toMatch(/^\s*grant\s+usage\s+on\s+schema\s+auth\b/imu);
+    expect(sql).not.toMatch(/^\s*grant\s+execute\s+on\s+function\s+auth\.uid\(\)/imu);
     expect(sql).toMatch(/grant update \(openclaw_assignment_revision\) on public\.leads\s+to openclaw_function_owner/i);
     expect(sql).toMatch(/create policy openclaw_crm_sources_function_owner_leads_lock\s+on public\.leads for update to openclaw_function_owner\s+using \(true\) with check \(true\)/i);
     expect(sql).not.toMatch(/alter table public\.lead_activities\s+alter column organization_id set not null/i);

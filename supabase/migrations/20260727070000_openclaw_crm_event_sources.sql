@@ -1,30 +1,14 @@
 begin;
 
-do $openclaw_owner_grants$
-declare
-  v_role text;
-  v_schema text;
-begin
-  -- No-op on a superuser harness: superusers already satisfy both checks below.
-  -- On Supabase the connected role is the non-superuser `postgres`, which needs
-  -- SET on each owner role (PostgreSQL 16+ withholds it from role creators) and
-  -- needs each owner role to hold CREATE on the schema it will own objects in.
-  -- Both are revoked again at the end of this file.
-  for v_role in
-    select rolname from pg_catalog.pg_roles where rolname like 'openclaw\_%'
-  loop
-    if not pg_catalog.pg_has_role(current_user, v_role, 'SET') then
-      execute format('grant %I to %I with set true', v_role, current_user);
-    end if;
-    foreach v_schema in array array['public', 'app_private'] loop
-      if pg_catalog.to_regnamespace(v_schema) is not null
-         and not pg_catalog.has_schema_privilege(v_role, v_schema, 'CREATE') then
-        execute format('grant create on schema %I to %I', v_schema, v_role);
-      end if;
-    end loop;
-  end loop;
-end
-$openclaw_owner_grants$;
+-- Ownership assignment needs two things a superuser has for free and the Supabase
+-- `postgres` role does not: SET on the owning role (PostgreSQL 16+ withholds it
+-- from role creators) and CREATE for that role on the object's schema. Both are
+-- given here and taken back before this file commits.
+grant openclaw_function_owner to current_user with set true;
+grant openclaw_runtime_writer to current_user with set true;
+grant openclaw_maintenance_writer to current_user with set true;
+grant openclaw_service_dispatcher to current_user with set true;
+grant create on schema public, app_private to openclaw_function_owner, openclaw_runtime_writer, openclaw_maintenance_writer, openclaw_service_dispatcher;
 
 do $preflight$
 begin
@@ -46,11 +30,14 @@ $preflight$;
 
 grant usage on schema extensions to openclaw_function_owner;
 grant execute on function extensions.digest(bytea,text) to openclaw_function_owner;
--- NOTE: this grant is silently discarded on Supabase (postgres is not a member
--- of supabase_admin, which owns schema auth). It is kept only so a fresh
--- superuser database matches production; nothing may depend on it working.
-grant usage on schema auth to openclaw_function_owner;
-grant execute on function app_private.openclaw_actor_id_v1() to openclaw_function_owner;
+-- Deliberately NO grant on schema auth. `postgres` is not a member of
+-- supabase_admin, which owns that schema, so `grant usage on schema auth` is
+-- discarded with a warning rather than an error: the migration reports success and
+-- every SECURITY DEFINER function owned by openclaw_function_owner then dies with
+-- "42501: permission denied for schema auth" on its first auth.uid(). Keeping a
+-- grant that provably does nothing only invites the next reader to depend on it.
+-- app_private.openclaw_actor_id_v1 replaces auth.uid() and needs no schema
+-- privilege; openclaw_function_owner owns it, so it needs no grant either.
 grant execute on function app_private.authorize_tenant_action_v3(uuid,uuid,text,uuid,uuid)
   to openclaw_function_owner;
 grant execute on function app_private.authorized_scope_v3(text,uuid)
@@ -681,23 +668,8 @@ grant select,update on public.lead_activities to openclaw_function_owner;
 grant execute on function public.recompute_room_reservation(uuid) to openclaw_function_owner;
 
 
-do $openclaw_owner_grants_release$
-declare
-  v_role text;
-  v_schema text;
-begin
-  -- CREATE was only ever needed to hand ownership over. Revoking it leaves the
-  -- objects owned by the role and leaves SECURITY DEFINER execution working, so
-  -- no openclaw role keeps the ability to create objects after this migration.
-  for v_role in
-    select rolname from pg_catalog.pg_roles where rolname like 'openclaw\_%'
-  loop
-    foreach v_schema in array array['public', 'app_private'] loop
-      if pg_catalog.to_regnamespace(v_schema) is not null then
-        execute format('revoke create on schema %I from %I', v_schema, v_role);
-      end if;
-    end loop;
-  end loop;
-end
-$openclaw_owner_grants_release$;
+-- CREATE was only ever needed to hand ownership over; ownership and SECURITY
+-- DEFINER execution both survive the revoke, so no openclaw role keeps the
+-- ability to create objects.
+revoke create on schema public, app_private from openclaw_function_owner, openclaw_runtime_writer, openclaw_maintenance_writer, openclaw_service_dispatcher;
 commit;
