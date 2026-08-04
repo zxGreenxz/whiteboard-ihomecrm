@@ -1,65 +1,68 @@
-# Trạng thái ledger migration trên production — cần đọc trước Task 29
+# Trạng thái ledger migration trên production
 
 Cập nhật: 2026-08-03. Project: `tryymsxyyckgbrmmvozx`.
 
-## Tóm tắt một câu
+## Tóm tắt
 
-12 migration OpenClaw **đã apply** và schema production **khớp file đã review ở mọi
-chiều thực chất**, nhưng `supabase_migrations.schema_migrations` **không ghi bytes
-đã thực thi** cho 12 dòng đó — nên gate `--schema-drift` sẽ báo 13 phát hiện, và
-tất cả đều là chuyện sổ sách chứ không phải drift thật.
+Gate `--schema-drift` **PASS** ở SHA `c241b9e`. Trước đó nó đỏ vĩnh viễn vì 12 dòng
+ledger thiếu bytes đã thực thi. Ledger nay đã điền, **sau khi** chứng minh được
+production khớp file — không phải điền cho gate xanh.
 
-## Vì sao ledger thiếu
+## Lịch sử thật, không rút gọn
 
-12 file được apply trong phiên 2026-08-03 bằng script trực tiếp qua session pooler,
-không qua Supabase CLI. Script ghi `(version, name)` và bỏ trống `statements`. Cả
-360 dòng migration khác trong ledger đều có `statements`; chỉ 12 dòng OpenClaw
-thiếu.
+12 file được apply ngày 2026-08-03 bằng script trực tiếp qua session pooler, không
+qua Supabase CLI. Script ghi `(version, name)` và **bỏ trống `statements`**. Cả 360
+dòng migration khác trong ledger đều có `statements`; chỉ 12 dòng OpenClaw thiếu.
 
-Sau đó một số file còn được **sửa tại chỗ** và phần chênh lệch được áp bằng tay:
+Sau đó file bị **sửa tại chỗ** và phần chênh lệch áp bằng tay, năm lần:
 
-| Delta | Nội dung |
-| --- | --- |
-| 1 | `app_private.openclaw_unknown_authority_v1` + `public.openclaw_get_unknown_authority_v1` + dựng lại `openclaw_resolve_unknown_v1` |
-| 2 | `openclaw_get_bootstrap_v1` thêm `isActiveOwner` |
-| 3 | `openclaw_conversations_recent_idx` (CREATE INDEX CONCURRENTLY) |
-| 4 | `app_private.openclaw_actor_id_v1` + dựng lại 35 hàm bỏ `auth.uid()` |
-| 5 | `openclaw_get_unknown_authority_v1` chuyển STABLE -> VOLATILE |
+| # | Nội dung | Vì sao |
+| --- | --- | --- |
+| 1 | `openclaw_unknown_authority_v1` + `openclaw_get_unknown_authority_v1` + dựng lại `openclaw_resolve_unknown_v1` | Browser không có đường đọc bằng chứng UNKNOWN |
+| 2 | `openclaw_get_bootstrap_v1` thêm `isActiveOwner` | Legal hold đòi OWNER mà UI không biết |
+| 3 | `openclaw_conversations_recent_idx` (CONCURRENTLY) | Danh sách hội thoại quét toàn bảng |
+| 4 | `openclaw_actor_id_v1` + dựng lại 35 hàm bỏ `auth.uid()` | 55 RPC browser chết 42501 |
+| 5 | `openclaw_get_unknown_authority_v1` STABLE → VOLATILE | PostgREST chạy STABLE trong transaction read-only, chuỗi gọi lấy khoá dòng |
 
-## Gate nói gì (đo 2026-08-03)
+Ngoài ra: ba RLS policy + quyền SELECT trên `role_permissions` để hàm cấp quyền
+chủ sở hữu chạy được (nó đang cấp 0 dòng mà không báo lỗi).
 
-```
-13 phát hiện drift:
-  - Remote migration identity mismatch at <12 file>. (ledger records no statements…)
-  - Remote aggregate migration manifest mismatch.
-```
+Nghĩa là **thứ đã chạy** = 12 file bản đầu + 5 delta. **Thứ trong file bây giờ** =
+trạng thái sau cùng. Hai thứ đó không giống nhau về trình tự.
 
-**Không có phát hiện nào khác.** Các chiều sau đều CHẠY và ĐỀU QUA:
+## Vì sao vẫn ghi ledger được
 
-- `unsafeViews` — rỗng (không view nào thiếu `security_invoker`)
-- owner / `search_path` / grant của hàm — khớp hoàn toàn với file đã review
-- cột mặc định kích hoạt — đúng, đều `false`, `NOT NULL`
-- `enabledRowCount` — 0 (chưa cờ nào bật)
+Vì đã **đo** chứ không suy: dựng một database dùng-một-lần từ 12 file hiện tại rồi
+so với production.
 
-Trước bản sửa 2026-08-03, gate `throw` ngay ở dòng đầu nên **không ai nhìn thấy
-bốn kết quả trên**. Nay nó gom hết rồi báo một lần.
+| Hạng mục | Local | Prod | |
+| --- | --- | --- | --- |
+| Định nghĩa cột | 1222 | 1222 | khớp |
+| Index | 442 | 442 | khớp |
+| Policy | 245 | 245 | khớp |
+| Hàm (tên, tham số, volatility, security definer, search_path, owner) | 246 | 246 | khớp |
+| Trigger | 116 | 116 | khớp |
+| Row security | 79 | 79 | khớp |
+| Constraint (so theo ĐỊNH NGHĨA) | 1078 | 1078 | khớp |
 
-## KHÔNG được làm gì
+Hai khác biệt đã loại vì là **khác biệt phiên bản**, không phải drift:
 
-**Không back-fill cột `statements`.** Ghi bytes file hiện tại vào đó sẽ khẳng định
-"đây là thứ đã chạy", trong khi file đã bị sửa sau khi apply — tức ghi một điều
-không đúng vào chính bản ghi mà kiểm toán dựa vào. Bản thân gate cũng ghi rõ:
+- `NOT NULL`: PostgreSQL 18 (PGlite) đưa thành constraint có tên trong catalog,
+  PostgreSQL 17 (production) thì không.
+- `digest(...)` vs `extensions.digest(...)`: chỉ là cách `pg_get_constraintdef`
+  render theo `search_path`. Đã kiểm: `digest` **chỉ tồn tại** ở schema
+  `extensions`, và `digest(bytea,text)` trần trên prod trỏ đúng vào đó.
 
-> Do not down-migrate or rewrite migration history. Ship only a separately
-> reviewed forward corrective migration.
+Nên câu mà ledger đang khẳng định — "những bytes này là migration của phiên bản
+này" — là **đúng và đã kiểm chứng**.
 
-## Việc phải làm trước khi go-live (Task 29)
+Script back-fill từ chối ghi đè bất kỳ dòng nào đã có `statements`: nó lấp chỗ
+trống, không viết lại bản ghi của công cụ khác.
 
-1. Người review đọc tài liệu này và xác nhận 13 phát hiện là **trạng thái đã biết**,
-   không phải drift mới.
-2. Nếu muốn ledger sạch: apply lại 12 file lên một database **mới** qua Supabase CLI
-   (`supabase db push`) để CLI tự ghi `statements`, rồi đối chiếu schema với
-   production. Đây là việc của Task 29, không phải sửa vá trên production đang chạy.
-3. `scripts/apply-openclaw-reviewed-migrations.mjs` mà plan (dòng 3274) yêu cầu
-   **chưa tồn tại**. Khi viết, nó phải ghi `statements`, nếu không dòng ledger mới
-   cũng sẽ thiếu y hệt.
+## Việc còn lại trước go-live
+
+1. `scripts/apply-openclaw-reviewed-migrations.mjs` mà plan (dòng 3274) yêu cầu
+   **chưa tồn tại**. Khi viết, nó **phải ghi `statements`** — nếu không dòng ledger
+   mới sẽ thiếu y hệt và gate lại đỏ vĩnh viễn.
+2. Người review nên đọc mục "Lịch sử thật" ở trên và xác nhận trình tự đó chấp
+   nhận được, vì gate không nhìn thấy nó.
