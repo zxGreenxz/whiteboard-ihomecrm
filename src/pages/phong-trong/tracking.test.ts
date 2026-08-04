@@ -3,6 +3,20 @@ import { createTracker, NOOP_TRACKER } from "./tracking";
 import { fmtDuration } from "@/components/sale-phong/analyticsUtils";
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * A minimal view of the client, used only for spying.
+ *
+ * `supabase.rpc` carries one overload per database function, and the generated
+ * Database type now spans every table in the project - enough that inferring
+ * through those overloads inside `vi.spyOn` exceeds TypeScript's instantiation
+ * depth (TS2589). The spy only needs to observe calls, so it attaches through
+ * this narrow shape instead, the same way src/hooks/openclaw-zalo/openClawRpc.ts
+ * keeps its one deliberate cast in a single place.
+ */
+const spyableClient = supabase as unknown as {
+  rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+};
+
 describe("fmtDuration", () => {
   it("formats m:ss and h:mm", () => {
     expect(fmtDuration(0)).toBe("0:00");
@@ -32,7 +46,7 @@ describe("createTracker", () => {
   });
 
   it("buffers events and flushes via supabase.rpc (not immediately)", async () => {
-    const rpc = vi.spyOn(supabase, "rpc").mockResolvedValue({ data: 1, error: null } as never);
+    const rpc = vi.spyOn(spyableClient, "rpc").mockResolvedValue({ data: 1, error: null } as never);
     const t = createTracker("tok-abc", { isStaff: true });
     expect(t.enabled).toBe(true);
     expect(t.sessionId).toBeTruthy();
@@ -51,7 +65,7 @@ describe("createTracker", () => {
   });
 
   it("dedupes impressions per room within a session", () => {
-    const rpc = vi.spyOn(supabase, "rpc").mockResolvedValue({ data: 1, error: null } as never);
+    const rpc = vi.spyOn(spyableClient, "rpc").mockResolvedValue({ data: 1, error: null } as never);
     const t = createTracker("tok-imp", { isStaff: false });
     const room = { room_id: "22222222-2222-2222-2222-222222222222" };
     t.track("impression", room);
