@@ -100,11 +100,24 @@ const SPEC_AREAS: readonly SpecArea[] = [
   },
   {
     key: "headless-e2e",
-    files: [".e2e-fleet/specs/openclaw-zalo.spec.ts"],
+    files: [
+      ".e2e-fleet/specs/openclaw-zalo.spec.ts",
+      ".e2e-fleet/specs/openclaw-zalo-admin.ts",
+      "src/lib/__tests__/openclawE2eGuard.test.ts",
+    ],
+  },
+  {
+    // Split out from headless-e2e rather than left inside it: the spec and its
+    // environment guard are real, runnable coverage, and folding them into a
+    // blocked entry would hide that. What is blocked is narrower and nameable.
+    key: "headless-e2e-fake-adapter",
+    files: ["supabase/functions/openclaw-fixture/index.ts"],
     blockedBy:
-      "The OpenClaw schema is not deployed to the DEMO project and the branch is not "
-      + "on main, so a browser spec has no route and no RPCs to drive. It would fail "
-      + "for the environment rather than for the code.",
+      "The fake adapter drives test-only runtime endpoints that must not exist on a "
+      + "production cell, so the scenarios need a local Supabase project - which is "
+      + "what the spec's own guard demands (FLEET_OPENCLAW_PROJECT_REF=local). "
+      + "`supabase start` requires Docker, and this machine has no Docker, no Docker "
+      + "Desktop and no WSL distro, so no local project can be brought up here.",
   },
   {
     key: "rollout",
