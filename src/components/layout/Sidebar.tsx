@@ -20,6 +20,7 @@ import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusiness
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
 import { NETWORK_CENTER_RUNTIME_ENABLED } from '@/lib/network-center/runtime';
+import { OPENCLAW_RUNTIME_ENABLED } from '@/lib/openclaw-zalo/runtime';
 import {
   Collapsible,
   CollapsibleContent,
@@ -127,7 +128,12 @@ const navigationGroups: NavGroup[] = [
     label: 'KÊNH CHAT',
     items: [
       { title: 'Chat Zalo', href: '/chat-zalo', icon: MessageSquare, module: 'chat_zalo' },
-      { title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, module: 'openclaw_zalo' },
+      // Same flag as the route and the launcher tile. Left ungated, an owner sees
+      // this in the sidebar - they hold openclaw_zalo.view - and clicking it lands
+      // on 404, because the route is compiled out.
+      ...(OPENCLAW_RUNTIME_ENABLED
+        ? [{ title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, module: 'openclaw_zalo' } satisfies NavItem]
+        : []),
     ],
   },
   {

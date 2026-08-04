@@ -45,7 +45,7 @@ describe("OpenClaw Zalo navigation contract", () => {
     expect(tiles).toMatch(/OPENCLAW_RUNTIME_ENABLED[\s\S]{0,200}href: '\/openclaw-zalo'/u);
   });
 
-  it("publishes exactly one desktop sidebar entry for the route", () => {
+  it("publishes exactly one desktop sidebar entry, and gates it on the flag", () => {
     // Sidebar builds its list inline, so this stays a source assertion - but it pins
     // the ENTRY as a whole instead of two substrings that could come from different
     // lines and still look like a match.
@@ -53,6 +53,10 @@ describe("OpenClaw Zalo navigation contract", () => {
     const entries = sidebar.match(/\{[^{}]*href: '\/openclaw-zalo'[^{}]*\}/gu) ?? [];
     expect(entries).toHaveLength(1);
     expect(entries[0]).toContain("module: 'openclaw_zalo'");
+    // All three surfaces - route, launcher tile, sidebar - move together. A sidebar
+    // entry that outlives the route is the one an owner actually clicks, because
+    // they hold the permission and the desktop nav is always on screen.
+    expect(sidebar).toMatch(/OPENCLAW_RUNTIME_ENABLED[\s\S]{0,300}href: '\/openclaw-zalo'/u);
   });
 
   it("records the breadcrumb label, and states plainly that nothing renders it yet", () => {
