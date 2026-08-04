@@ -44,7 +44,43 @@ set resource = excluded.resource,
 
 grant usage on schema public, app_private to openclaw_function_owner;
 grant select on public.permission_definitions, public.organization_roles to openclaw_function_owner;
-grant insert, update on public.role_permissions to openclaw_function_owner;
+-- SELECT as well as insert/update: the grant function uses
+-- `on conflict ... do update`, and that path reads the conflicting row, so
+-- without it the whole statement fails with "permission denied for table".
+-- What it can actually read is bounded by the row policy below - openclaw rows
+-- only - so this adds no visibility beyond this feature's own grants.
+grant select, insert, update on public.role_permissions to openclaw_function_owner;
+
+-- Table privileges are not enough: both tables have RLS enabled and their only
+-- policies are for `authenticated`. openclaw_function_owner is NOBYPASSRLS, so
+-- without these it reads ZERO permission definitions and its insert into
+-- role_permissions is refused with 42501 - and the read failure is SILENT,
+-- because `insert ... select` over an empty result set inserts nothing and raises
+-- nothing. That is why grant_openclaw_owner_permissions_v1 and the owner-role
+-- trigger below appeared to succeed on production while granting no permission at
+-- all. A superuser harness bypasses RLS and never sees it.
+--
+-- Both policies are scoped to this one role AND to openclaw rows only, so they
+-- cannot widen what any other role sees or writes.
+create policy openclaw_function_owner_reads_definitions
+  on public.permission_definitions
+  for select to openclaw_function_owner
+  using (resource = 'openclaw_zalo');
+
+-- The grant function's FIRST statement checks that the target role really is an
+-- active system owner role. Without this it reads zero rows and returns early -
+-- the quietest failure of the three, because the function then does nothing at
+-- all and reports success. Scoped to owner system roles only.
+create policy openclaw_function_owner_reads_owner_roles
+  on public.organization_roles
+  for select to openclaw_function_owner
+  using (is_system is true and name = 'Chủ sở hữu tổ chức');
+
+create policy openclaw_function_owner_writes_grants
+  on public.role_permissions
+  for all to openclaw_function_owner
+  using (starts_with(permission_key, 'openclaw_zalo.'))
+  with check (starts_with(permission_key, 'openclaw_zalo.'));
 
 create or replace function app_private.grant_openclaw_owner_permissions_v1(
   p_organization_id uuid,
