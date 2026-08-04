@@ -324,7 +324,7 @@ export async function computePreviousDebt(
     .from('invoices') as any)
     .select(`
       id, invoice_number, billing_month, total_amount, paid_amount, status, notes,
-      previous_debt_sources,
+      previous_debt, previous_debt_sources,
       room:rooms!invoices_room_id_fkey (id, name),
       building:buildings!invoices_building_id_fkey (id, name),
       invoice_items (id, type, description)
@@ -340,15 +340,32 @@ export async function computePreviousDebt(
   // Build set "đã được HĐ khác carry-over" để không cộng đúp:
   //  - carriedInvoiceIds: HĐ X xuất hiện trong previous_debt_sources của HĐ Y
   //    (mở) → HĐ X không tính riêng nữa.
+  //  - Fallback: nếu HĐ Y có previous_debt > 0 nhưng previous_debt_sources rỗng
+  //    (legacy hoặc user chỉnh tay) → coi tất cả HĐ cũ hơn Y (billing_month < Y)
+  //    đã bị carry bởi Y, tránh double-count.
   const carriedInvoiceIds = new Set<string>();
-  for (const inv of (oldInvoices ?? []) as any[]) {
+  const allInvs = (oldInvoices ?? []) as any[];
+  for (const inv of allInvs) {
     const srcs = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
     for (const s of srcs) {
       if (s?.type === 'invoice' && s?.id) carriedInvoiceIds.add(String(s.id));
     }
   }
+  // Fallback dedup: HĐ có previous_debt > 0 nhưng sources rỗng → suy luận
+  // tất cả HĐ cùng contract có billing_month nhỏ hơn đã được carry.
+  for (const inv of allInvs) {
+    const prevDebt = Number(inv.previous_debt) || 0;
+    const srcs = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
+    if (prevDebt > 0 && srcs.length === 0) {
+      for (const older of allInvs) {
+        if (older.id !== inv.id && (older.billing_month ?? '') < (inv.billing_month ?? '')) {
+          carriedInvoiceIds.add(String(older.id));
+        }
+      }
+    }
+  }
 
-  for (const inv of (oldInvoices ?? []) as any[]) {
+  for (const inv of allInvs) {
     if (carriedInvoiceIds.has(String(inv.id))) continue;
     const remaining = (Number(inv.total_amount) || 0) - (Number(inv.paid_amount) || 0);
     if (remaining < PREVIOUS_DEBT_ROUND_THRESHOLD) continue;

@@ -120,7 +120,7 @@ export async function fetchExcelInvoiceSource(buildingId: string): Promise<Excel
       .from("invoices")
       .select(`
         id, invoice_number, billing_month, total_amount, paid_amount, contract_id, status, notes,
-        previous_debt_sources,
+        previous_debt, previous_debt_sources,
         room:rooms!invoices_room_id_fkey (id, name),
         building:buildings!invoices_building_id_fkey (id, name),
         invoice_items (id, type, description)

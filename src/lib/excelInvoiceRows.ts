@@ -77,6 +77,7 @@ export interface RawOldInvoice {
   contract_id: string;
   status?: string;
   notes?: string | null;
+  previous_debt?: number | null;
   previous_debt_sources?: PreviousDebtSource[] | null;
   room?: { id: string; name: string } | null;
   building?: { id: string; name: string } | null;
@@ -194,6 +195,22 @@ export function buildPreviousDebtByContract(
         set.add(String(s.id));
         carriedInvoiceIdsByContract.set(inv.contract_id, set);
       }
+    }
+  }
+  // Fallback dedup: HĐ có previous_debt > 0 nhưng sources rỗng (legacy/user chỉnh
+  // tay) → suy luận tất cả HĐ cùng contract có billing_month nhỏ hơn đã được carry.
+  for (const inv of oldInvoices) {
+    const prevDebt = Number(inv.previous_debt) || 0;
+    const srcs = Array.isArray(inv.previous_debt_sources) ? inv.previous_debt_sources : [];
+    if (prevDebt > 0 && srcs.length === 0) {
+      const set = carriedInvoiceIdsByContract.get(inv.contract_id) || new Set<string>();
+      for (const older of oldInvoices) {
+        if (older.contract_id === inv.contract_id && older.id !== inv.id
+            && (older.billing_month ?? '') < (inv.billing_month ?? '')) {
+          set.add(String(older.id));
+        }
+      }
+      carriedInvoiceIdsByContract.set(inv.contract_id, set);
     }
   }
   for (const inv of oldInvoices) {

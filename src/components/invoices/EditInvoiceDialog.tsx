@@ -25,12 +25,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useUpdateInvoice, useExcessAmount } from '@/hooks/useInvoices';
-import type { InvoiceFormData, InvoiceWithRelations } from '@/types/invoice';
+import type {
+  InvoiceFormData,
+  InvoiceWithRelations,
+  PreviousDebtSource,
+} from '@/types/invoice';
 import { roundInvoiceTotal } from '@/lib/invoiceUtils';
+import { computePreviousDebt } from '@/lib/invoiceHelpers';
 import { useBuildingServices } from '@/hooks/useBuildingServices';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscountNoteTrigger } from './DiscountNoteTrigger';
-import { Receipt, Plus, Trash2, Pencil } from 'lucide-react';
+import { Receipt, Plus, Trash2, Pencil, RotateCcw, Loader2 } from 'lucide-react';
 import { format, parse, startOfMonth, endOfMonth } from 'date-fns';
 
 interface EditInvoiceDialogProps {
@@ -67,6 +72,8 @@ const editInvoiceSchema = z.object({
   discount_amount: z.number().min(0).default(0),
   discount_notes: z.string().nullable().optional(),
   applied_credit: z.number().min(0).optional(),
+  previous_debt: z.number().min(0).default(0),
+  previous_debt_overridden: z.boolean().default(false),
 });
 
 type EditFormData = z.infer<typeof editInvoiceSchema>;
@@ -132,6 +139,12 @@ function decomposeItems(invoice: InvoiceWithRelations) {
 const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogProps) => {
   const updateMutation = useUpdateInvoice();
   const [meterId, setMeterId] = useState<string | null>(null);
+  const [debtSources, setDebtSources] = useState<PreviousDebtSource[]>(
+    Array.isArray(invoice.previous_debt_sources)
+      ? (invoice.previous_debt_sources as PreviousDebtSource[])
+      : [],
+  );
+  const [isLoadingDebt, setIsLoadingDebt] = useState(false);
 
   const decomposed = useMemo(() => decomposeItems(invoice), [invoice]);
 
@@ -165,6 +178,8 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       discount_amount: invoice.discount_amount || 0,
       discount_notes: invoice.discount_notes || '',
       applied_credit: 0,
+      previous_debt: invoice.previous_debt || 0,
+      previous_debt_overridden: false,
     },
   });
 
@@ -191,7 +206,16 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       discount_amount: invoice.discount_amount || 0,
       discount_notes: invoice.discount_notes || '',
       applied_credit: 0,
+      previous_debt: invoice.previous_debt || 0,
+      previous_debt_overridden: false,
     });
+    // Sources gốc của HĐ — giữ nguyên nếu user không bấm "tính lại"/chỉnh tay,
+    // để lần sửa HĐ KHÔNG âm thầm xoá link cascade tất toán HĐ cũ.
+    setDebtSources(
+      Array.isArray(invoice.previous_debt_sources)
+        ? (invoice.previous_debt_sources as PreviousDebtSource[])
+        : [],
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoice.id]);
 
@@ -211,6 +235,23 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
   const watchedDiscount = watch('discount_amount') || 0;
   const watchedDiscountNotes = watch('discount_notes') || '';
   const watchedBillingMonth = watch('billing_month') || '';
+  const watchedPreviousDebt = watch('previous_debt') || 0;
+
+  // Tính lại nợ cũ từ các HĐ cũ chưa tất toán (loại chính HĐ đang sửa).
+  const handleReloadPreviousDebt = async () => {
+    if (!invoice.contract_id) return;
+    setIsLoadingDebt(true);
+    try {
+      const { total, sources } = await computePreviousDebt(invoice.contract_id, {
+        excludeInvoiceId: invoice.id,
+      });
+      setValue('previous_debt', total, { shouldDirty: true });
+      setValue('previous_debt_overridden', false);
+      setDebtSources(sources);
+    } finally {
+      setIsLoadingDebt(false);
+    }
+  };
 
   const { data: bldSvc } = useBuildingServices(invoice.building_id);
   const defaults = useMemo(() => {
@@ -272,8 +313,11 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       (s, it) => s + (it.quantity || 0) * (it.unit_price || 0),
       0,
     );
+  // total = tạm tính − giảm trừ + nợ cũ (KHỚP công thức save-side ở useUpdateInvoice).
   // làm tròn phần lẻ: <900đ → xuống, ≥900đ → lên bội số 1000 (khớp giá trị sẽ lưu)
-  const totalAmount = roundInvoiceTotal(Math.max(0, subtotal - watchedDiscount));
+  const totalAmount = roundInvoiceTotal(
+    Math.max(0, subtotal - watchedDiscount + watchedPreviousDebt),
+  );
 
   const { data: creditBalance = 0 } = useExcessAmount(invoice.contract_id);
 
@@ -359,7 +403,10 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
       applied_credit: 0,
       electricity_prev_overridden: !!data.prev_reading_overridden,
       prepaid_amount: invoice.prepaid_amount || 0,
-      previous_debt: invoice.previous_debt || 0,
+      previous_debt: data.previous_debt || 0,
+      // User chỉnh tay → clear sources để DB trigger KHÔNG cascade-paid sai
+      // (amount không còn khớp tổng sources). Cùng quy ước với flow tạo HĐ.
+      previous_debt_sources: data.previous_debt_overridden ? [] : debtSources,
       items,
     };
 
@@ -649,6 +696,53 @@ const EditInvoiceDialog = ({ open, onOpenChange, invoice }: EditInvoiceDialogPro
                 Tiền nợ khách hiện có: {formatCurrency(creditBalance)}
               </p>
             )}
+          </div>
+
+          {/* Nợ cũ (khách nợ mình) */}
+          <div className="bg-red-50 border border-red-200 p-3 rounded-md space-y-1">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="previous_debt" className="text-red-800 shrink-0">
+                Nợ cũ kỳ trước:
+              </Label>
+              <div className="flex items-center gap-1 w-56">
+                <CurrencyInput
+                  className={`h-9 text-right ${watchedPreviousDebt > 0 ? 'text-red-700 font-medium' : ''}`}
+                  suffix={false}
+                  value={watchedPreviousDebt}
+                  onChange={(v) => {
+                    setValue('previous_debt', v, { shouldDirty: true });
+                    setValue('previous_debt_overridden', true);
+                  }}
+                />
+                <button
+                  type="button"
+                  title="Tính lại nợ cũ từ các hoá đơn cũ chưa tất toán"
+                  onClick={handleReloadPreviousDebt}
+                  className="text-slate-400 hover:text-amber-600 p-1 rounded"
+                  disabled={!invoice.contract_id || isLoadingDebt}
+                >
+                  {isLoadingDebt ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+            {watch('previous_debt_overridden') ? (
+              <p className="text-[11px] text-amber-700 text-right">
+                Đã chỉnh tay — hoá đơn cũ sẽ KHÔNG tự tất toán khi thu đủ.
+              </p>
+            ) : debtSources.length > 0 ? (
+              <ul className="text-[11px] text-red-700 space-y-0.5 pt-1">
+                {debtSources.map((s, i) => (
+                  <li key={i} className="flex justify-between gap-2">
+                    <span className="truncate">📄 {s.label}</span>
+                    <span className="tabular-nums">{formatCurrency(s.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
 
           {/* Total */}
