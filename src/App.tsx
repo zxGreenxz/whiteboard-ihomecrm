@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { hideAppSplash } from "@/lib/appSplash";
 import { syncAuthQueryCache } from "@/lib/authQueryCache";
+import { OPENCLAW_RUNTIME_ENABLED } from "@/lib/openclaw-zalo/runtime";
 
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
 // đổ về danh sách).
@@ -315,16 +316,23 @@ const App = () => (
 
           {/* === KÊNH CHAT === */}
           <Route path="/chat-zalo" element={<ProtectedRoute><RequirePermission module="chat_zalo" action="view"><ChatZaloPage /></RequirePermission></ProtectedRoute>} />
-          <Route
-            path="/openclaw-zalo"
-            element={
-              <ProtectedRoute>
-                <OpenClawRouteGuard>
-                  <OpenClawZaloPage />
-                </OpenClawRouteGuard>
-              </ProtectedRoute>
-            }
-          />
+          {/* Behind a build-time flag, default OFF, the same way Network Center is.
+              `openclaw_zalo.view` is granted to every organization owner including
+              the real one, so the server permission cannot also serve as the
+              "not shipped yet" switch: it says who may use the feature, not
+              whether the feature is finished. Tasks 26/28/29 are not done. */}
+          {OPENCLAW_RUNTIME_ENABLED ? (
+            <Route
+              path="/openclaw-zalo"
+              element={
+                <ProtectedRoute>
+                  <OpenClawRouteGuard>
+                    <OpenClawZaloPage />
+                  </OpenClawRouteGuard>
+                </ProtectedRoute>
+              }
+            />
+          ) : null}
 
           {/* === DANH MỤC DỮ LIỆU === */}
           {/* /areas đã gỡ: khu vực = nhãn nhóm toà, quản lý bằng dialog trong /buildings */}
