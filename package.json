@@ -22,6 +22,7 @@
     "gate:sandbox-leak": "node scripts/clone-org/snapshot.mjs after",
     "gate:copilot-docs": "node scripts/check-copilot-docs-manifest.mjs",
     "gate:no-auto-apply": "node scripts/check-no-auto-apply.mjs",
+    "gate:agent-contract": "node scripts/check-agent-contract.mjs",
     "catalog:capture": "node scripts/capture-production-catalog.mjs --write",
     "catalog:check": "node scripts/capture-production-catalog.mjs --check",
     "gen:openclaw:vectors": "node scripts/generate-openclaw-golden-vectors.mjs",

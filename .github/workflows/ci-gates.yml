@@ -96,8 +96,9 @@ jobs:
       # Ba gate tĩnh dưới đây gom một chỗ: đều là biến đổi văn bản thuần, không
       # cần credential, chạy dưới một giây. Tách thành job riêng chỉ tốn thêm
       # runner khởi động và thêm chỗ có thể kẹt merge.
-      - name: Contract gates (Copilot docs · auto-apply · canonical types)
+      - name: Contract gates (agent rules · Copilot docs · auto-apply · canonical types)
         run: |
+          node scripts/check-agent-contract.mjs
           node scripts/check-copilot-docs-manifest.mjs
           node scripts/check-no-auto-apply.mjs
           node scripts/normalize-supabase-types.mjs --check
