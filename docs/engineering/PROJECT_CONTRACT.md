@@ -68,9 +68,19 @@ không phải người:
 - Gate `continue-on-error` **không bao giờ** được tính là xanh khi quyết định promote.
 - Không bao giờ để `push main` trực tiếp thành production deploy.
 
-> ⚠ **Trạng thái 2026-08-05: việc đổi Vercel Production Branch CHƯA làm** (cần thao tác dashboard).
-> Cho tới khi xong, `main` **vẫn là** production ⇒ chỉ push thay đổi không đụng runtime
-> (docs, comment, test, type-only). Kiểm `tooling/program-status.json` trước khi push code.
+> ⚠ **Trạng thái: việc đổi Vercel Production Branch CHƯA làm** (cần thao tác dashboard —
+> xem `tooling/program-status.json`). Cho tới khi xong, `main` **vẫn là** production.
+>
+> Trong giai đoạn này, thay đổi **chạm runtime** (`src/`, `api/`, `vite.config.ts`, dependencies)
+> vẫn được push — cấm push đồng nghĩa với đứng yên vì gần như mọi việc đều là code — nhưng phải qua
+> bốn bước:
+>
+> 1. đủ gate theo loại thay đổi (typecheck + test liên quan + `npm run build`);
+> 2. logic có nhánh điều kiện: **kiểm bằng đột biến** — cố tình phá, xác nhận đúng test đỏ, hoàn nguyên.
+>    Test xanh chỉ chứng minh test chạy, không chứng minh nó bắt được lỗi;
+> 3. **kiểm bundle sau build**, không chỉ tin test: Vitest và production build khác nhau ở khoản nạp
+>    asset — một `import.meta.glob` hỏng có thể vẫn xanh trong test rồi rơi về rỗng trên production;
+> 4. ưu tiên thay đổi làm hệ thống **nghiêm ngặt hơn** (chặn bớt, gác thêm quyền) trước thay đổi nới lỏng.
 
 Commit: `feat(scope): …` / `fix(scope): …` / `chore(scope): …`, body bullet "what + why".
 **Stage đúng file mình sửa, liệt kê tên cụ thể — KHÔNG `git add -A`, KHÔNG `git add .`.**

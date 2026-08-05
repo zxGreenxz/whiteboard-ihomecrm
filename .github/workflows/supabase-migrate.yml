@@ -27,19 +27,18 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '20'
 
       - name: Static accounting-migration validation (no DB writes, no apply)
         run: node scripts/validate-accounting-migrations.mjs
 
+      # Checker dùng chung, thay hai guard grep khác độ chặt trước đây. Bản grep
+      # cũ ở đây chỉ soi một dòng `run:` nên bỏ lọt biến thể block scalar
+      # (`run: |` rồi xuống dòng); bản ở network-center-validation.yml lại so
+      # chuỗi trần nên tự khớp vào chính nó. Xem đầu file script.
       - name: Guard - forbid auto-apply of migrations in any workflow
-        run: |
-          if grep -RInE --include='*.yml' --include='*.yaml' 'run:[^#]*supabase[[:space:]]+db[[:space:]]+push' .github/workflows; then
-            echo "::error::Auto-apply of migrations is forbidden. Apply is forward-only via PAT rollout scripts while the ledger is managed out-of-band."
-            exit 1
-          fi
-          echo "OK: no workflow auto-applies migrations."
+        run: node scripts/check-no-auto-apply.mjs

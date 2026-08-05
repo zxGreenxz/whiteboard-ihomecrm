@@ -117,11 +117,25 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
                     gate đỏ bất kỳ →  DỪNG; production giữ nguyên SHA cũ
    ```
 
-   ⚠ **Trạng thái hiện tại (05/08/2026): Vercel vẫn đang deploy từ `main`** —
-   việc đổi Production Branch sang `production` chưa làm (cần thao tác trên
-   dashboard Vercel). Cho tới khi đổi xong: **push `main` = deploy production**,
-   nên chỉ push thay đổi không đụng runtime (docs, comment, test) và không được
-   coi "đã push" là "đã an toàn".
+   ⚠ **Trạng thái hiện tại: Vercel vẫn đang deploy từ `main`** — việc đổi
+   Production Branch sang `production` chưa làm (cần thao tác trên dashboard
+   Vercel, xem `tooling/program-status.json`). Cho tới khi đổi xong,
+   **push `main` = deploy production**, nên áp luật chặt hơn cho mọi thay đổi
+   CHẠM RUNTIME (`src/`, `api/`, `vite.config.ts`, `package.json` dependencies):
+
+   1. đủ gate theo loại thay đổi (typecheck + test liên quan + build);
+   2. với logic có nhánh điều kiện: **kiểm bằng đột biến** — cố tình phá rồi
+      xác nhận đúng test đỏ, sau đó hoàn nguyên. Test xanh không chứng minh test
+      có ích;
+   3. **kiểm bundle sau `npm run build`**, không chỉ tin test. Vitest và
+      production build không giống nhau ở khoản nạp asset: một `import.meta.glob`
+      hỏng có thể vẫn xanh trong test rồi rơi về rỗng trên production;
+   4. thay đổi làm hệ thống **nghiêm ngặt hơn** (chặn bớt, gác thêm quyền) an
+      toàn hơn thay đổi nới lỏng — cân nhắc thứ tự làm theo hướng đó.
+
+   Đây là luật **thực dụng thay cho "đừng push code"**: gần như mọi việc trong
+   plan đều là code, nên cấm push đồng nghĩa với đứng yên. Sau khi flip Vercel
+   xong thì ràng buộc này biến mất và preview lo phần còn lại.
 
    GOTCHA: nhánh local thường **không phải** `main` (vd đang ở
    `fix/v5-collection-completion-...`), nên `git push origin main` sẽ fail

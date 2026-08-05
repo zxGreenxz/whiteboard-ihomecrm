@@ -37,7 +37,11 @@ on:
       - 'src/components/network-center/**'
       - 'supabase/functions/network-center-worker/**'
       - 'supabase/functions/network-watchdog/**'
-      - 'supabase/migrations/20260729*'
+      # Trước đây là 'supabase/migrations/20260729*' — một bộ lọc theo NGÀY, khớp
+      # đúng 5 trong 625 file. Mọi migration Network Center tạo sau 29/07/2026 đều
+      # lặng lẽ không kích workflow này, tức là gate tồn tại nhưng không chạy.
+      # Đổi sang toàn thư mục: thà chạy thừa còn hơn bỏ lọt migration.
+      - 'supabase/migrations/**'
   pull_request:
     paths:
       - '.github/workflows/network-center-validation.yml'
@@ -48,7 +52,11 @@ on:
       - 'src/components/network-center/**'
       - 'supabase/functions/network-center-worker/**'
       - 'supabase/functions/network-watchdog/**'
-      - 'supabase/migrations/20260729*'
+      # Trước đây là 'supabase/migrations/20260729*' — một bộ lọc theo NGÀY, khớp
+      # đúng 5 trong 625 file. Mọi migration Network Center tạo sau 29/07/2026 đều
+      # lặng lẽ không kích workflow này, tức là gate tồn tại nhưng không chạy.
+      # Đổi sang toàn thư mục: thà chạy thừa còn hơn bỏ lọt migration.
+      - 'supabase/migrations/**'
   workflow_dispatch:
 
 concurrency:
@@ -75,12 +83,12 @@ jobs:
 
     steps:
       - name: Check out the reviewed revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
       - name: Set up Node from the repository lockfile
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -89,9 +97,12 @@ jobs:
             infra/network-center-worker/package-lock.json
 
       - name: Set up Deno for the Edge function tests
-        uses: denoland/setup-deno@v2
+        uses: denoland/setup-deno@e95548e56dfa95d4e1a28d6f422fafe75c4c26fb # v2.0.3
         with:
-          deno-version: v2.x
+          # Pin chính xác thay vì v2.x: bản đã xác minh chạy 22/22 test xanh là
+          # 2.9.4. Với `v2.x`, một bản patch mới của Deno có thể làm đỏ CI vào
+          # đúng lúc không ai đụng gì tới code.
+          deno-version: 2.9.4
 
       - name: Install root dependencies from the lockfile
         run: npm ci
@@ -227,12 +238,12 @@ jobs:
 
     steps:
       - name: Check out the reviewed revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
 
       - name: Set up Node from the repository lockfile
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: npm
@@ -261,10 +272,7 @@ jobs:
               exit 1
             fi
           done
-          if grep -rn "supabase db push" .github/workflows; then
-            echo "::error::supabase db push is forbidden in CI" >&2
-            exit 1
-          fi
+          node scripts/check-no-auto-apply.mjs
 
       # MEASUREMENT, NOT A GATE - read this before "fixing" the red X.
       #
@@ -359,7 +367,7 @@ jobs:
 
       - name: Publish teardown evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: disposable-teardown-evidence-${{ matrix.shard }}
           path: disposable-evidence/

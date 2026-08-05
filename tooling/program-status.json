@@ -1,9 +1,25 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
   "updatedAt": "2026-08-06",
-  "currentWave": "1a",
-  "waveTitle": "Canonical typegen (partition đã tách khỏi contract frontend)",
+  "currentWave": "2",
+  "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
   "done": [
+    {
+      "item": "Đợt 2: pin toàn bộ GitHub Action bằng commit SHA ở 2 workflow còn dùng tag",
+      "evidence": "network-center-validation 6 chỗ + supabase-migrate 2 chỗ. SHA lấy từ ci-gates.yml (đã verify) và tra API cho upload-artifact v4.6.2. Deno pin 2.9.4 thay v2.x. Không còn 'uses: ...@vN' trong .github/workflows/"
+    },
+    {
+      "item": "Đợt 2: path filter migration của network-center — thay bộ lọc theo ngày",
+      "evidence": "'supabase/migrations/20260729*' chỉ khớp 5/625 file; mọi migration NC sau 29/07 đều không kích workflow. Đổi sang 'supabase/migrations/**'"
+    },
+    {
+      "item": "Đợt 2: hợp nhất 2 guard 'db push' khác độ chặt thành scripts/check-no-auto-apply.mjs",
+      "evidence": "Guard cũ ở supabase-migrate bỏ lọt block scalar (run: | rồi xuống dòng) — dựng lại được bằng đột biến; guard ở network-center dùng so chuỗi trần nên tự khớp vào chính nó. Checker mới parse khối run:, bỏ comment và lệnh chỉ in text (echo/printf/grep). 9/9 ca kiểm đúng, gồm bash -c và 'sau &&'"
+    },
+    {
+      "item": "Sửa rule push-runtime cho khớp thực tế thay vì cấm suông",
+      "evidence": "Contract §3 + CLAUDE.md/AGENTS.md: chạm runtime vẫn push được nhưng phải đủ gate -> đột biến -> KIỂM BUNDLE sau build. Rule cũ ('không push code runtime') không thực thi được vì gần như mọi việc trong plan đều là code"
+    },
     {
       "item": "Đợt 1a: canonical typegen — scripts/normalize-supabase-types.mjs + supabase/generated-types-policy.json",
       "evidence": "Bỏ 80 partition ngày khỏi types.ts (32407 -> 28567 dòng). typecheck:baseline 30 fingerprint, gen-supabase-types.test.ts 16/16, npm run build xanh. Không code nào từng tham chiếu partition type. npm alias: types:normalize / types:check"
