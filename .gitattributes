@@ -5,6 +5,21 @@ infra/network-center-worker/deploy/*.conf text eol=lf
 *.sql text eol=lf
 supabase/functions/** text eol=lf
 
+# Shebang + CRLF phá bộ chuyển đổi module của vitest. Một file .mjs mở đầu bằng
+# `#!/usr/bin/env node` mà dòng đó kết thúc \r\n sẽ ném "SyntaxError: Invalid or
+# unexpected token" NGAY KHI một test import nó — trong khi `node --check`,
+# `import()` của node và `esbuild.transformSync` đều nói file hoàn toàn hợp lệ.
+# Lỗi vì thế không chỉ vào đâu cả: không số dòng, không stack, chỉ "0 test".
+#
+# Đo 05/08/2026: 50 trong 52 file .mjs có shebang đang là CRLF trên đĩa, vì
+# autocrlf=true nằm ở gitconfig SYSTEM. Mỗi file là một quả mìn — nổ đúng lúc ai
+# đó viết test đầu tiên import vào nó. Blob trong git vốn đã là LF (đã kiểm), nên
+# luật này chỉ đổi chiều checkout chứ không đụng lịch sử.
+#
+# Đặt TRƯỚC khối vendor bên dưới: luật sau thắng luật trước, và một `*.mjs` đặt
+# sau sẽ ghi đè `-text` của vendor rồi phá SHA-256 byte-exact của artifact.
+*.mjs text eol=lf
+
 # Vendored upstream fork: the artifact is verified byte for byte, so git must not
 # normalise anything under it. These rules sit AFTER the eol=lf rules on purpose -
 # later patterns win, and `*.sql` above would otherwise rewrite line endings for
