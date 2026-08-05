@@ -5,6 +5,18 @@
   "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
   "done": [
     {
+      "item": "Đợt 6 (phần đầu): thay README và gỡ Lovable hoàn toàn",
+      "evidence": "README cũ là mẫu 'Welcome to your Lovable project' 74 dòng, không nhắc Supabase/CI/services/infra. Gỡ lovable-tagger khỏi devDeps + vite.config.ts, đổi package name vite_react_shadcn_ts -> ihomecrm. Bằng chứng không đổi hành vi: bundle production giữ NGUYÊN hash index-DXGpyPle.js (448.11 kB) trước và sau khi gỡ; dev server vẫn khởi động (357ms); typecheck 30 fingerprint; test xanh. Chuỗi 'lovable' chỉ còn trong docs lịch sử và .ua graph"
+    },
+    {
+      "item": "Đợt 2: PR template + tooling/risk-map.json + check-external-controls.mjs",
+      "evidence": "risk-map 8 tier thay CODEOWNERS (một owner => CODEOWNERS không tạo được reviewer thứ 2, Free không enforce được). PR template bắt ghi bằng chứng đột biến và mục 'chưa xác minh được'. External-controls: unverified KHÔNG tính là pass, cố ý không exit 1 để không bị tắt đi"
+    },
+    {
+      "item": "Đã tạo sẵn nhánh origin/production tại bb0bc3ba",
+      "evidence": "Flip Vercel giờ chỉ còn 1 thao tác dashboard. check-external-controls xác nhận productionBranchExists = present"
+    },
+    {
       "item": "Đợt 1a: 2 trang docs còn thiếu — docs/he-thong/22-network-center.md và 23-openclaw-zalo.md",
       "evidence": "Viết từ khảo sát code thật (không phỏng đoán): NC = fleet MikroTik, 4 thao tác đóng, 3 mức rollout/toà, partition ngày + retention 14 ngày, 8 điều dễ hiểu sai gồm EMERGENCY_STOP không dừng hẳn và UNCERTAIN không được retry. OpenClaw = thế hệ 2 CHƯA bật production, 8 action quyền, policy 11 lý do từ chối theo thứ tự cố định, rollout 11 bậc. Cả hai gác quyền trong manifest Copilot; README mục lục cập nhật"
     },

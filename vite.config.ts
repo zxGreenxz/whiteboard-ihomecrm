@@ -1,7 +1,6 @@
 import { defineConfig, configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 
 // Các gói @radix-ui mà ENTRY import tĩnh (qua Toaster/Tooltip/Label/Checkbox/
 // Slot của màn auth) — đo bằng build chẩn đoán 2026-07-26: tách mỗi gói Radix
@@ -35,12 +34,12 @@ const RADIX_ENTRY_CORE = new Set([
 ]);
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   server: {
     host: "::",
     port: 8080,
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
