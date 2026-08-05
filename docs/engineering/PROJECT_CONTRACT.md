@@ -82,6 +82,27 @@ không phải người:
 >    asset — một `import.meta.glob` hỏng có thể vẫn xanh trong test rồi rơi về rỗng trên production;
 > 4. ưu tiên thay đổi làm hệ thống **nghiêm ngặt hơn** (chặn bớt, gác thêm quyền) trước thay đổi nới lỏng.
 
+### Kiểm soát ngoài repo
+
+```bash
+npm run check:external-controls          # in trạng thái
+node scripts/check-external-controls.mjs --write   # ghi docs/generated/external-controls.json
+```
+
+Ảnh chụp màn hình chứng minh "lúc đó đã bật", **không** chứng minh "bây giờ vẫn bật" — mà chỉ điều thứ
+hai mới giữ production an toàn. Vì vậy bằng chứng phải chạy lại được. `unverified` **không phải pass**:
+thiếu credential nghĩa là chưa nhìn thấy, và chưa nhìn thấy thì coi như chưa an toàn.
+
+Script cố tình **không** exit 1 khi thiếu token — biến nó thành gate đỏ sẽ khiến người ta tắt đi, và khi
+ấy mất luôn khả năng nhìn.
+
+### Tier rủi ro
+
+`tooling/risk-map.json` map đường dẫn → tier (`money`, `authorization`, `migration`, `infrastructure`,
+`agent-contract`, `product-surface`, `copilot`, `docs`), kèm gate tối thiểu và cờ `crossReview`.
+Một file thuộc nhiều tier thì lấy tier **nghiêm nhất**. File này thay cho `CODEOWNERS` — với một owner
+duy nhất, CODEOWNERS không tạo được reviewer thứ hai và cũng không enforce được trên GitHub Free.
+
 Commit: `feat(scope): …` / `fix(scope): …` / `chore(scope): …`, body bullet "what + why".
 **Stage đúng file mình sửa, liệt kê tên cụ thể — KHÔNG `git add -A`, KHÔNG `git add .`.**
 Cây làm việc repo này thường có file dở dang từ phiên khác; gom nhầm là lỗi nặng.

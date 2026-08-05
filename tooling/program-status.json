@@ -86,7 +86,9 @@
       "id": "vercel-production-branch",
       "severity": "P0",
       "what": "Vercel vẫn deploy production từ main => push main = deploy production. Đây là kiểm soát cứng duy nhất khả thi ở GitHub Free (private repo không enforce được branch protection).",
-      "needs": "Thao tác trên dashboard Vercel (hoặc cấp VERCEL_TOKEN): tạo branch production tại SHA đang chạy -> Settings/Git -> Production Branch = production -> rà scope env var và 2 cron /api/salary-v5-cron -> diễn tập rollback một lần.",
+      "needs": "CÒN ĐÚNG MỘT THAO TÁC: Vercel dashboard -> Settings -> Git -> Production Branch = 'production' -> Save. Nhánh origin/production ĐÃ được tạo sẵn (tại bb0bc3ba). Sau khi đổi: rà scope env var (production vs preview) và xác nhận 2 cron /api/salary-v5-cron chỉ chạy trên production; rồi diễn tập rollback một lần (promote lại deployment trước).",
+      "warning": "Nếu main đã đi xa hơn bb0bc3ba trước khi bạn flip, hãy fast-forward production về SHA đang chạy production thật: git push origin origin/main:production",
+      "verify": "node scripts/check-external-controls.mjs (cấp VERCEL_TOKEN để xác minh được phía Vercel)",
       "whoCanDo": "chủ dự án"
     },
     {

@@ -1,0 +1,119 @@
+{
+  "$comment": "Bản đồ rủi ro theo đường dẫn — THAY cho .github/CODEOWNERS. Repo này có đúng một owner, nên CODEOWNERS không tạo ra được reviewer thứ hai và cũng không enforce được trên GitHub Free. Giá trị thật của nó là cho agent và người biết file nào nhạy cảm và phải chạy gate gì; thứ đó nên là dữ liệu máy đọc được, không phải một file cơ chế không hoạt động. Dùng bởi: PR template, quyết định có cần cross-review hay không (PROJECT_CONTRACT §12), và người viết commit.",
+  "schemaVersion": 1,
+  "tiers": {
+    "money": {
+      "label": "Tiền",
+      "why": "Sai ở đây là sai sổ sách thật của công ty đang vận hành, và thường chỉ lộ ra khi đối chiếu cuối tháng.",
+      "crossReview": true,
+      "gates": ["npm run gate:reconcile-money", "idempotency", "concurrency"],
+      "paths": [
+        "src/hooks/income-expenses/**",
+        "src/hooks/useInvoices.ts",
+        "src/hooks/useCashBook*.ts",
+        "src/hooks/useCashbookClosing.ts",
+        "src/hooks/useCashHandovers.ts",
+        "src/hooks/useDeposits.ts",
+        "src/hooks/usePeriodFees.ts",
+        "src/hooks/useUtilityBills.ts",
+        "src/hooks/useReconciliations.ts",
+        "src/hooks/useShareholderProfit.ts",
+        "src/hooks/useManagerSalary.ts",
+        "src/hooks/salary-v5/**",
+        "src/components/income-expenses/**",
+        "src/components/cashbooks/**",
+        "src/components/invoices/**",
+        "src/components/salary/**",
+        "src/lib/contractCreateRpc.ts",
+        "src/lib/paymentRecordRpc.ts",
+        "src/lib/customerCreditRpc.ts",
+        "src/lib/incomeExpenseCreateRpc.ts",
+        "api/salary-v5-cron.js"
+      ]
+    },
+    "authorization": {
+      "label": "Phân quyền / RLS",
+      "why": "RLS hỏng thì im lặng: truy vấn trả tập rỗng hoặc trả thừa dữ liệu tenant khác, không ném lỗi. Harness chạy bằng superuser sẽ không thấy gì.",
+      "crossReview": true,
+      "gates": ["harness role thật", "cross-tenant", "npm run gate:sandbox-leak"],
+      "paths": [
+        "src/lib/permissions.ts",
+        "src/lib/permissionPages.ts",
+        "src/hooks/useOrganizationAuthorization.ts",
+        "src/hooks/useIsAdmin.ts",
+        "src/hooks/useIsOrgOwner.ts",
+        "src/pages/auth/**",
+        "supabase/functions/_shared/**"
+      ]
+    },
+    "migration": {
+      "label": "Migration / schema",
+      "why": "Không rollback được. Lịch sử legacy đã không replay được, nên mỗi file mới phải tự đứng vững.",
+      "crossReview": true,
+      "gates": [
+        "npm run gate:view-invoker (nếu đụng VIEW)",
+        "npm run gate:stable-fn-locks (nếu tạo/sửa FUNCTION)",
+        "npm run catalog:check",
+        "npm run gen:types && npm run types:normalize (nếu đổi schema)"
+      ],
+      "paths": ["supabase/migrations/**", "supabase/functions/**"]
+    },
+    "infrastructure": {
+      "label": "Hạ tầng / vận hành",
+      "why": "Chạm vào máy thật, mạng thật, và các thao tác không idempotent (reboot router, xoay secret).",
+      "crossReview": true,
+      "gates": ["verifier của subsystem", "dry-run/preflight", "diễn tập rollback"],
+      "paths": [
+        "infra/**",
+        "services/**",
+        ".github/workflows/**",
+        "vercel.json",
+        "scripts/apply-*.mjs",
+        "scripts/*rollout*.mjs"
+      ]
+    },
+    "agent-contract": {
+      "label": "Hợp đồng agent",
+      "why": "Sửa sai ở đây làm MỌI phiên agent sau đó làm sai theo hướng dẫn chính thức — lỗi nhân bản chứ không đứng yên.",
+      "crossReview": false,
+      "gates": ["npm run gate:agent-contract"],
+      "paths": [
+        "CLAUDE.md",
+        "AGENTS.md",
+        "AI_RULES.md",
+        "docs/engineering/PROJECT_CONTRACT.md",
+        "tooling/**"
+      ]
+    },
+    "product-surface": {
+      "label": "Bề mặt sản phẩm",
+      "why": "Route, nav, launcher và permission page phải khớp nhau; lịch sử đã có ca route được gác nhưng tile và sidebar bị bỏ sót.",
+      "crossReview": false,
+      "gates": ["npm run typecheck:baseline", "test điều hướng", "E2E theo vai trò"],
+      "paths": [
+        "src/App.tsx",
+        "src/components/layout/Sidebar.tsx",
+        "src/pages/home/launcherTiles.ts"
+      ]
+    },
+    "copilot": {
+      "label": "AI Copilot",
+      "why": "Copilot trả lời người dùng thật bằng giọng của hệ thống; tài liệu sai hoặc rò rỉ tài liệu nhạy cảm đều là sự cố hướng ra ngoài.",
+      "crossReview": false,
+      "gates": ["npm run gate:copilot-docs"],
+      "paths": ["src/copilot/**", "docs/he-thong/**"]
+    },
+    "docs": {
+      "label": "Tài liệu",
+      "why": "Rủi ro thấp, nhưng số đếm chép tay và trang quá hạn đã từng dẫn người đọc đi sai.",
+      "crossReview": false,
+      "gates": ["npm run docs:check"],
+      "paths": ["docs/**", "README.md", "*.md"]
+    }
+  },
+  "notes": [
+    "Một file có thể thuộc nhiều tier — lấy tier NGHIÊM NHẤT khớp được.",
+    "crossReview=true nghĩa là thay đổi nên được một agent thứ hai soi độc lập trước khi promote (PROJECT_CONTRACT §12). Vì chủ dự án không làm chốt review, đây là lớp phòng thủ thay thế — nhưng chỉ áp cho ba tier cao nhất, bắt buộc cho mọi thay đổi sẽ làm mọi việc chậm gấp đôi mà không tăng an toàn tương xứng.",
+    "Danh sách gate ở đây là TỐI THIỂU, không phải đầy đủ: luôn chạy thêm test của chính domain đang sửa."
+  ]
+}
