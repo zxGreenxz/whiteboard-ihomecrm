@@ -1,0 +1,63 @@
+{
+  "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
+  "updatedAt": "2026-08-05",
+  "currentWave": "0a",
+  "waveTitle": "Chặn cứng: git, toolchain, backup, ranh giới deploy",
+  "done": [
+    {
+      "item": "Khôi phục .git vào checkout (clone full history từ origin, ghép .git, reset index — không đụng working tree)",
+      "evidence": "HEAD=a7746fc7 khớp origin/main; 3 file OpenClaw thiếu nội dung + 1 file CRLF đã checkout lại về HEAD"
+    },
+    {
+      "item": "npm ci + xác minh gate typecheck chạy được",
+      "evidence": "npm run typecheck:baseline => 30 fingerprint, khớp baseline"
+    },
+    {
+      "item": ".env và .gitnexus/ vào .gitignore",
+      "evidence": ".env chỉ chứa biến VITE_* publishable — không phải rò rỉ, nhưng chặn git add -A nuốt nhầm"
+    },
+    {
+      "item": "Đo backup production",
+      "evidence": "pitr_enabled=false; 7 backup vật lý daily; gần nhất 2026-08-04T20:54Z; RPO ~24h"
+    },
+    {
+      "item": "Phẫu thuật tối thiểu agent rules",
+      "evidence": "CLAUDE.md bỏ 'push main = xong' + sửa số 74; AGENTS.md bỏ lệnh redirect gen:types (footgun phá types.ts)"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "vercel-production-branch",
+      "severity": "P0",
+      "what": "Vercel vẫn deploy production từ main => push main = deploy production. Đây là kiểm soát cứng duy nhất khả thi ở GitHub Free (private repo không enforce được branch protection).",
+      "needs": "Thao tác trên dashboard Vercel (hoặc cấp VERCEL_TOKEN): tạo branch production tại SHA đang chạy -> Settings/Git -> Production Branch = production -> rà scope env var và 2 cron /api/salary-v5-cron -> diễn tập rollback một lần.",
+      "whoCanDo": "chủ dự án"
+    },
+    {
+      "id": "pitr-off",
+      "severity": "P0",
+      "what": "PITR tắt, chỉ có backup daily => RPO tối đa ~24h. Không được bắt đầu Đợt 1b/3 (provenance/baseline/forward lane) khi chưa xử.",
+      "needs": "Bật PITR (trả phí) HOẶC quy định bắt buộc kéo dump thủ công ngay trước mỗi thao tác schema; chọn nơi lưu dump ngoài repo.",
+      "whoCanDo": "chủ dự án"
+    },
+    {
+      "id": "gitleaks-history-scan",
+      "severity": "P1",
+      "what": "Chưa quét secret trong toàn bộ git history (giờ đã có .git nên chạy được).",
+      "needs": "Tải gitleaks portable rồi quét; rotate thứ bị lộ nếu có.",
+      "whoCanDo": "agent"
+    }
+  ],
+  "next": [
+    "Chạy gitleaks trên toàn history",
+    "Đợt 0b: viết docs/engineering/PROJECT_CONTRACT.md ĐỦ NỘI DUNG trước, kèm checklist mapping mọi rule đang sống trong CLAUDE.md, rồi mới rút adapter",
+    "Đợt 1a: normalizer partition + PR xoá 80 partition ngày trong types.ts + catalog fingerprint"
+  ],
+  "knownDirtyFiles": [
+    {
+      "path": "supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql",
+      "why": "Blob trong git chứa 307 ký tự CR trong khi .gitattributes đòi '*.sql text eol=lf' => file luôn hiện 'M' trên mọi máy, checkout không làm sạch được. Là file .sql DUY NHẤT bị vậy.",
+      "decision": "Để nguyên (không sửa file legacy trước cutoff). Khi chốt digest ở Đợt 1b phải dùng normalized digest, và cân nhắc MỘT commit normalize trước khi khoá bytes."
+    }
+  ]
+}

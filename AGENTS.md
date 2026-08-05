@@ -23,12 +23,20 @@ File này áp dụng cho mọi session Codex làm việc trên repo này.
   — logic đó được phủ bởi test Node import cùng `index.ts`
   (`scripts/__tests__/network-center-ingest-domains.test.mjs`), không phải suite Deno.
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
-  Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
-  `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).
-- **Regen Supabase types**: sau khi apply migration đổi schema, chạy
-  `npm run gen:types > src/integrations/supabase/types.ts` rồi thêm lại dòng
-  comment header đầu file. ĐỪNG để `types.ts` trôi sau migration (gây `as any` lan
-  rộng). PAT đọc từ `CLAUDE.local.md`.
+  Ratchet là **tập fingerprint** trong `ts-baseline.json` (hiện 30), KHÔNG phải con
+  số trong `ts-baseline.txt` — file đó là artifact chết, không script nào đọc. Chạy
+  `npm run typecheck:baseline`; fail khi xuất hiện fingerprint MỚI.
+- **Regen Supabase types**: sau khi apply migration đổi schema, chạy **`npm run gen:types`**
+  — **KHÔNG redirect, KHÔNG thêm header tay**. `scripts/gen-supabase-types.mjs` GHI THẲNG
+  (atomic) vào `src/integrations/supabase/types.ts` và TỰ chèn header; stdout chỉ có banner.
+  GOTCHA đã cắn: `npm run gen:types > src/integrations/supabase/types.ts` **phá file** —
+  shell cắt trắng file trước khi generator chạy, và nếu generator lỗi thì `types.ts` chỉ còn
+  một dòng banner. Muốn xem drift mà không đụng repo:
+  `cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts`.
+  ĐỪNG để `types.ts` trôi sau migration (gây `as any` lan rộng). PAT đọc từ `CLAUDE.local.md`.
+  ⚠ Hiện `types.ts` chứa sẵn ~80 partition ngày `network_{device,interface}_samples_YYYYMMDD`
+  do runtime sinh mỗi ngày — regen sẽ kéo thêm partition mới vào diff. Xử riêng, đừng gộp
+  vào PR tính năng.
 - **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
   GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
   chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.
@@ -81,8 +89,21 @@ File này áp dụng cho mọi session Codex làm việc trên repo này.
 5. **Commit** với message Việt-Anh trộn theo style hiện có (`feat(scope): mô tả`,
    `fix(scope): mô tả`). Stage file cụ thể, **không** dùng `git add -A` và không
    đưa thay đổi không liên quan của user vào commit.
-6. **Push** lên `origin/main` ngay khi commit (repo này deploy thẳng từ main qua
-   Vercel), trừ khi user yêu cầu không push hoặc môi trường không cho phép.
+6. **Push lên `origin/main`** khi commit xong. **`main` KHÔNG phải là production.**
+
+   Mô hình phát hành (xem `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md` §0.4):
+
+   ```text
+   push main  →  Vercel PREVIEW  →  gate suite  →  xanh hết  →  promote `production`
+                                                  →  đỏ bất kỳ →  DỪNG, production giữ SHA cũ
+   ```
+
+   - Chưa hoàn tất việc đổi Vercel production branch thì **coi như `main` vẫn là
+     production**: chỉ push thay đổi không đụng runtime (docs, comment, test) và
+     không tự promote.
+   - Không bao giờ tính gate `continue-on-error` là xanh khi quyết định promote.
+   - **Write database production** (Management API / apply migration) luôn cần
+     promotion token nhập tại chỗ, KHÔNG lấy PAT sẵn trong `CLAUDE.local.md`.
 
 ## Quy ước commit
 

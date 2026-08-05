@@ -32,6 +32,14 @@ crawl-resident/
 # Supabase service role key (DO NOT COMMIT)
 .env.local
 
+# .env ở root chỉ chứa biến VITE_* publishable (nhúng vào bundle client nên không
+# phải secret), nhưng vẫn không commit: giá trị khác nhau giữa máy/môi trường và
+# một lần `git add -A` nhỡ tay là nó vào lịch sử vĩnh viễn.
+.env
+
+# GitNexus local code-intelligence index (database graph, không commit)
+.gitnexus/
+
 # Claude personal config (creds, PAT) — DO NOT COMMIT
 CLAUDE.local.md
 .claude/settings.local.json

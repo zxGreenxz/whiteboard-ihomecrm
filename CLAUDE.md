@@ -28,8 +28,10 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
   `scripts/test-network-center-ingest-domains-disposable.mjs`) import thẳng module đó,
   không phải bởi suite Deno này.
 - Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
-  Repo có baseline lỗi TS pre-existing ghi ở `ts-baseline.txt`; chạy
-  `npm run typecheck:baseline` để chặn regress (fail nếu lỗi TĂNG).
+  Ratchet là **tập fingerprint** trong `ts-baseline.json` (hiện **30**), không phải con số
+  trong `ts-baseline.txt` — file `.txt` chỉ chứa chuỗi `74` và **không script/CI nào đọc**
+  (artifact chết của cơ chế đếm cũ). Chạy `npm run typecheck:baseline`; fail khi có
+  fingerprint MỚI, không quan tâm tổng số.
 - **Regen Supabase types**: sau khi apply migration đổi schema, chạy **`npm run gen:types`**
   — KHÔNG redirect, KHÔNG thêm header tay. `scripts/gen-supabase-types.mjs` GHI THẲNG vào
   `src/integrations/supabase/types.ts` (outputPath hardcode ở `:192`) và TỰ chèn header
@@ -96,8 +98,21 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
    **không** `git add -A`, **không** `git add .`. Cây làm việc của repo này
    thường xuyên có hàng chục file dở dang từ phiên khác; gom nhầm chúng vào
    commit của mình là lỗi nặng.
-6. **Push lên `origin/main` NGAY sau khi commit — tự làm, không hỏi lại user.**
-   Repo deploy thẳng từ main qua Vercel nên việc chưa push = việc chưa xong.
+6. **Push lên `origin/main` sau khi commit — tự làm, không hỏi lại user.**
+   Nhưng **`main` KHÔNG được coi là production**. Mô hình phát hành (chi tiết ở
+   `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md` §0.4):
+
+   ```text
+   push main  →  Vercel PREVIEW  →  chạy gate suite
+                    gate xanh hết  →  promote branch `production` + ghi evidence
+                    gate đỏ bất kỳ →  DỪNG; production giữ nguyên SHA cũ
+   ```
+
+   ⚠ **Trạng thái hiện tại (05/08/2026): Vercel vẫn đang deploy từ `main`** —
+   việc đổi Production Branch sang `production` chưa làm (cần thao tác trên
+   dashboard Vercel). Cho tới khi đổi xong: **push `main` = deploy production**,
+   nên chỉ push thay đổi không đụng runtime (docs, comment, test) và không được
+   coi "đã push" là "đã an toàn".
 
    GOTCHA: nhánh local thường **không phải** `main` (vd đang ở
    `fix/v5-collection-completion-...`), nên `git push origin main` sẽ fail
@@ -110,6 +125,10 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 
    Kiểm tra trước bằng `git merge-base --is-ancestor origin/main HEAD` để chắc
    là fast-forward; nếu không phải thì fetch + rebase rồi push lại.
+
+7. **Write database production** (Management API, apply migration) luôn cần
+   promotion token nhập tại chỗ — KHÔNG dùng thẳng PAT sẵn trong `CLAUDE.local.md`.
+   Deploy web sai thì rollback được; migration sai thì không.
 
 ## Quy ước commit
 
