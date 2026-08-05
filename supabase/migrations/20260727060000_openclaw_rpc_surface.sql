@@ -9792,7 +9792,7 @@ grant select (id, name)
 -- postgres) và openclaw_function_owner là NOBYPASSRLS. Không policy nào nhắc
 -- tên nó ⇒ mọi SELECT trả RỖNG, không lỗi.
 --
--- Đo trên production dữ liệu thật 05/08/2026, `set local role`:
+-- Đo trên production dữ liệu thật 05/08/2026, chạy dưới chính role đó:
 --   public.organizations           3 dòng thật -> role thấy 0
 --   public.organization_memberships 15 dòng thật -> role thấy 0
 --
@@ -9800,7 +9800,7 @@ grant select (id, name)
 -- dài về 42501 và một test riêng — CHƯA TỪNG hoạt động trên production. GRANT
 -- đúng, nhưng RLS chưa bao giờ được mở, nên 7 hàm đọc bảng đó vẫn ra rỗng. Bộ
 -- test cũ xanh vì harness PGlite dùng bảng stub 5 cột KHÔNG có policy nào (điều
--- này chính test đó đã tự ghi chú), nên `select` dưới `set role` thành công ở
+-- này chính test đó đã tự ghi chú), nên `select` dưới role sở hữu thành công ở
 -- đó và thất bại trên thật. Lỗi ồn thành lỗi im là đi lùi, không phải đi tới.
 --
 -- VỊ TỪ THEO TỔ CHỨC CỦA NGƯỜI GỌI, không phải `using (true)`:
