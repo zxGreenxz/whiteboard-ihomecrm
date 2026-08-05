@@ -23,6 +23,8 @@
     "gate:copilot-docs": "node scripts/check-copilot-docs-manifest.mjs",
     "gate:no-auto-apply": "node scripts/check-no-auto-apply.mjs",
     "gate:agent-contract": "node scripts/check-agent-contract.mjs",
+    "gate:runtime-matrix": "node scripts/check-runtime-matrix.mjs",
+    "gate:known-gaps": "node scripts/check-known-gaps.mjs",
     "catalog:capture": "node scripts/capture-production-catalog.mjs --write",
     "catalog:check": "node scripts/capture-production-catalog.mjs --check",
     "check:external-controls": "node scripts/check-external-controls.mjs",

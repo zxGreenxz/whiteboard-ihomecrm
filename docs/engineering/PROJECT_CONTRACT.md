@@ -96,6 +96,31 @@ thiếu credential nghĩa là chưa nhìn thấy, và chưa nhìn thấy thì co
 Script cố tình **không** exit 1 khi thiếu token — biến nó thành gate đỏ sẽ khiến người ta tắt đi, và khi
 ấy mất luôn khả năng nhìn.
 
+### Runtime
+
+Repo có **6 ràng buộc Node khác nhau** trên 8 manifest (+2 package chưa khai), nên
+`engines: ">=20"` ở root **không** phải sàn thật của mọi thứ — script `test:openclaw:services`
+tự chặn nếu không phải Node 24.15–24.x. Tra bảng ở `tooling/runtime-matrix.json`, đừng đoán từ root.
+
+```bash
+npm run gate:runtime-matrix   # matrix phải khớp engines + workflow, kiểm CẢ HAI chiều
+```
+
+Đáng nhớ: `infra/network-center-worker` cố ý ở `>=20 <23` (chưa test Node 24), nên CI của nó chạy
+Node 22 — **đừng "sửa" cho khớp `ci-gates`**. Deno pin `2.9.4` ở cả hai workflow.
+
+### Khoảng trống đã biết
+
+`tooling/known-gaps.yaml` — mỗi mục có `expires_at` và `exit_condition`.
+
+```bash
+npm run gate:known-gaps            # cảnh báo khi quá hạn
+node scripts/check-known-gaps.mjs --strict   # exit 1 khi quá hạn (dùng khi rà định kỳ)
+```
+
+Quá hạn thì **đóng nó hoặc gia hạn kèm lý do mới** — xoá dòng cho yên là cách biến một quyết định có
+thời hạn thành một khoảng trống vĩnh viễn không ai nhớ.
+
 ### Tier rủi ro
 
 `tooling/risk-map.json` map đường dẫn → tier (`money`, `authorization`, `migration`, `infrastructure`,

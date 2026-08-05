@@ -96,12 +96,14 @@ jobs:
       # Ba gate tĩnh dưới đây gom một chỗ: đều là biến đổi văn bản thuần, không
       # cần credential, chạy dưới một giây. Tách thành job riêng chỉ tốn thêm
       # runner khởi động và thêm chỗ có thể kẹt merge.
-      - name: Contract gates (agent rules · Copilot docs · auto-apply · canonical types)
+      - name: Contract gates (agent rules · Copilot docs · auto-apply · types · runtime · known gaps)
         run: |
           node scripts/check-agent-contract.mjs
           node scripts/check-copilot-docs-manifest.mjs
           node scripts/check-no-auto-apply.mjs
           node scripts/normalize-supabase-types.mjs --check
+          node scripts/check-runtime-matrix.mjs
+          node scripts/check-known-gaps.mjs
 
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline

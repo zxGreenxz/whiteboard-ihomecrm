@@ -5,6 +5,10 @@
   "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
   "done": [
     {
+      "item": "Đợt 2: tooling/runtime-matrix.json + known-gaps.yaml, cả hai có checker",
+      "evidence": "runtime-matrix: 12 package + 3 workflow, checker đối chiếu CẢ HAI chiều (thiếu entry / lệch engines / lệch workflow) — 3 đột biến đều bị bắt, exit 1 khi lệch. known-gaps: 6 mục có expires_at + exit_condition, gồm PITR và Vercel flip; mặc định chỉ CẢNH BÁO khi quá hạn (gate đỏ vì ngày tháng sẽ bị gia hạn hình thức), --strict để rà định kỳ"
+    },
+    {
       "item": "Đợt 6 (phần đầu): thay README và gỡ Lovable hoàn toàn",
       "evidence": "README cũ là mẫu 'Welcome to your Lovable project' 74 dòng, không nhắc Supabase/CI/services/infra. Gỡ lovable-tagger khỏi devDeps + vite.config.ts, đổi package name vite_react_shadcn_ts -> ihomecrm. Bằng chứng không đổi hành vi: bundle production giữ NGUYÊN hash index-DXGpyPle.js (448.11 kB) trước và sau khi gỡ; dev server vẫn khởi động (357ms); typecheck 30 fingerprint; test xanh. Chuỗi 'lovable' chỉ còn trong docs lịch sử và .ua graph"
     },

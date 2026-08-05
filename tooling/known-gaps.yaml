@@ -1,0 +1,82 @@
+# Sổ đăng ký các khoảng trống ĐÃ BIẾT và cố ý chưa gating.
+#
+# Vì sao cần: một bước `continue-on-error: true` hay một suite chỉ chạy được trên
+# Windows là quyết định hợp lý tại thời điểm đó — nhưng không có ngày hết hạn thì
+# nó thành vĩnh viễn, và sau vài tháng không ai còn nhớ nó là quyết định hay là
+# thứ bị bỏ quên. Mỗi mục dưới đây phải có ngày hết hạn; quá hạn thì
+# scripts/check-known-gaps.mjs kêu, và cách xử là ĐÓNG nó hoặc GIA HẠN CÓ LÝ DO,
+# không phải xoá dòng cho yên.
+#
+# Cố ý giữ schema tối thiểu: id / expires_at / why / exit_condition. Bỏ `owner`
+# (repo một người) và `evidence` (optional) — thêm field chỉ làm người ta lười
+# cập nhật.
+#
+# Kiểm: npm run gate:known-gaps
+
+schemaVersion: 1
+gaps:
+  - id: supabase-cli-replay-broken
+    where: .github/workflows/network-center-validation.yml (bước "Measure the historical Supabase replay")
+    expires_at: 2026-11-30
+    why: >
+      Replay 640 file migration qua Supabase CLI từ database trắng KHÔNG thể thành công
+      và chưa bao giờ thành công — bốn nguyên nhân độc lập ghi ở đầu
+      scripts/network-center-disposable-db.mjs. Bước này giữ lại như phép ĐO
+      (continue-on-error) chứ không phải gate; nửa gating là --local-cluster.
+    exit_condition: >
+      Đợt 3 dựng xong production baseline + forward-only lane. Khi đó môi trường mới
+      dựng từ baseline chứ không replay lịch sử, và bước đo này hết lý do tồn tại.
+
+  - id: deployment-assets-windows-only
+    where: infra/network-center-worker/test/deploymentAssets.test.ts
+    expires_at: 2026-10-31
+    why: >
+      Ba test shell ra powershell.exe vô điều kiện nên FAIL trên runner Linux. Đây là
+      tín hiệu có chủ đích: suite deployment-asset chỉ kiểm được trên Windows, tức là
+      không kiểm được trên chính nền tảng mà release chạy. Che nó đi bằng skip sẽ biến
+      một khoảng trống nhìn thấy được thành khoảng trống vô hình.
+    exit_condition: >
+      Port sang cross-platform, hoặc tách job Windows riêng trong CI để nó thực sự chạy.
+
+  - id: pitr-disabled
+    where: Supabase project tryymsxyyckgbrmmvozx
+    expires_at: 2026-09-15
+    why: >
+      Đo 2026-08-06: pitr_enabled=false, chỉ có 7 backup vật lý hằng ngày ⇒ RPO tối đa
+      ~24 giờ trên dữ liệu tiền thật. Không có cách tua về đúng thời điểm trước một lệnh
+      sai. Đây là khoảng trống nghiêm trọng nhất đang mở.
+    exit_condition: >
+      Bật PITR, HOẶC chốt thành quy trình bắt buộc: kéo dump ngay trước mỗi thao tác
+      schema và ghi vào evidence. Đợt 1b/3 không được bắt đầu trước khi một trong hai
+      điều đó xong.
+
+  - id: vercel-production-branch-not-flipped
+    where: Vercel project (Settings → Git → Production Branch)
+    expires_at: 2026-09-15
+    why: >
+      Vercel vẫn deploy production từ `main`, nên mọi push vào main là một lần phát hành.
+      Ở tier GitHub Free với repo private, branch protection không enforce được, nên ranh
+      giới deploy của Vercel là kiểm soát cứng DUY NHẤT khả thi.
+    exit_condition: >
+      Đổi Production Branch sang `production` (nhánh đã tạo sẵn), rồi
+      `npm run check:external-controls` báo vercelProductionBranch = checked.
+
+  - id: agent-rules-not-yet-thinned
+    where: CLAUDE.md, AGENTS.md, AI_RULES.md
+    expires_at: 2026-10-15
+    why: >
+      Ba file vẫn giữ nguyên nội dung đầy đủ và chỉ THÊM pointer tới PROJECT_CONTRACT.md.
+      Rút mỏng ngay sẽ có nguy cơ đánh rơi tri thức trước khi Contract được kiểm chứng qua
+      vài phiên làm việc thật.
+    exit_condition: >
+      Contract chạy ổn qua vài phiên; checklist mapping (§13) không còn dòng nào trống;
+      rồi mới rút ba file thành adapter mỏng.
+
+  - id: docs-broken-links-preexisting
+    where: 6 link hỏng trong docs/he-thong/*, docs/superpowers/plans/*
+    expires_at: 2026-10-31
+    why: >
+      Có sẵn từ trước đợt rà soát; trỏ tới file source đã đổi tên/xoá. Không sửa trong các
+      commit của chương trình này để diff giữ đúng phạm vi, nhưng đã đếm và theo dõi —
+      con số phải giảm, không được tăng.
+    exit_condition: node scripts/check-docs.mjs báo 0 lỗi.
