@@ -1,9 +1,17 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
-  "updatedAt": "2026-08-05",
-  "currentWave": "0a",
-  "waveTitle": "Chặn cứng: git, toolchain, backup, ranh giới deploy",
+  "updatedAt": "2026-08-06",
+  "currentWave": "0b",
+  "waveTitle": "Project Contract (đã viết, đang chạy thử trước khi rút adapter)",
   "done": [
+    {
+      "item": "docs/engineering/PROJECT_CONTRACT.md — nguồn luật chung cho Claude Code + Codex",
+      "evidence": "14 mục; §13 là checklist mapping từng rule cũ -> chỗ mới, gồm 5 rule ĐÃ BỎ vì sai (strict mode, Supabase Storage, routes trong App.tsx, cấm custom CSS, SUMMARY.md)"
+    },
+    {
+      "item": "CLAUDE.md / AGENTS.md / AI_RULES.md trỏ về Contract",
+      "evidence": "CHƯA rút mỏng — giữ nguyên nội dung để không rơi tri thức; AI_RULES.md có cảnh báo 4 rule sai ở đầu file"
+    },
     {
       "item": "Khôi phục .git vào checkout (clone full history từ origin, ghép .git, reset index — không đụng working tree)",
       "evidence": "HEAD=a7746fc7 khớp origin/main; 3 file OpenClaw thiếu nội dung + 1 file CRLF đã checkout lại về HEAD"
@@ -49,9 +57,9 @@
     }
   ],
   "next": [
-    "Chạy gitleaks trên toàn history",
-    "Đợt 0b: viết docs/engineering/PROJECT_CONTRACT.md ĐỦ NỘI DUNG trước, kèm checklist mapping mọi rule đang sống trong CLAUDE.md, rồi mới rút adapter",
-    "Đợt 1a: normalizer partition + PR xoá 80 partition ngày trong types.ts + catalog fingerprint"
+    "Đợt 1a: scripts/normalize-supabase-types.mjs + PR xoá 80 partition ngày trong types.ts + catalog fingerprint",
+    "Đợt 0b (còn lại): chạy Contract qua vài session rồi mới rút CLAUDE.md/AGENTS.md/AI_RULES.md thành adapter; thêm scripts/check-agent-contract.mjs",
+    "Đợt 2: gộp gate thành 3 job, pin action SHA, hợp nhất 2 guard db push, npm alias cho 4 script gate"
   ],
   "knownDirtyFiles": [
     {

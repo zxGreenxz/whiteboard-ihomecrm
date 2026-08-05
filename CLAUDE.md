@@ -2,6 +2,11 @@
 
 File này áp dụng cho mọi session Claude Code làm việc trên repo này.
 
+> **Nguồn luật chung: [`docs/engineering/PROJECT_CONTRACT.md`](docs/engineering/PROJECT_CONTRACT.md)**
+> — dùng chung cho Claude Code và Codex. Khi file này mâu thuẫn với Project Contract, **Contract thắng**.
+> File này đang trong giai đoạn chuyển tiếp: nội dung vẫn đầy đủ để không rơi mất tri thức, sẽ rút
+> thành adapter mỏng sau khi Contract chạy thử qua vài session (xem `tooling/program-status.json`).
+
 ## Stack ngắn gọn
 
 - React + TypeScript + Vite (deploy Vercel — production: <https://ptcrm.vercel.app>)

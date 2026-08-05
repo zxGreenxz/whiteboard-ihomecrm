@@ -1,5 +1,18 @@
 # AI Rules for Real Estate Management System
 
+> ⚠ **FILE NÀY ĐÃ LỖI THỜI MỘT PHẦN — đọc [`docs/engineering/PROJECT_CONTRACT.md`](docs/engineering/PROJECT_CONTRACT.md) trước.**
+>
+> Bốn rule dưới đây **SAI với hệ thống hiện tại**, đừng làm theo:
+> - "ALWAYS write TypeScript with strict mode enabled" — `tsconfig.app.json` đang `strict: false`;
+>   ratchet thật là `ts-baseline.json` (Contract §7).
+> - "STORE files in Supabase Storage buckets" — hệ thống dùng **Cloudflare R2**
+>   (`src/lib/storage/r2Config.ts`).
+> - "KEEP all route definitions in src/App.tsx" — đi ngược kế hoạch tách route + Capability Registry.
+> - "NEVER write custom CSS files" — có page CSS cô lập có chủ đích (`networkCenter.css`).
+>
+> Phần còn lại (shadcn/ui, React Hook Form + Zod, hook `use*`, Sonner, lazy load, Lucide) vẫn đúng và
+> đã được chép sang Contract §14. File này sẽ được rút gọn thành pointer sau khi Contract chạy ổn định.
+
 ## Tech Stack
 
 - **React 18** with TypeScript for the frontend framework
