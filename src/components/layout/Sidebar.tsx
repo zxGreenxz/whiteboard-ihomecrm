@@ -109,13 +109,17 @@ interface NavGroup {
   items: (NavItem | NavSection)[];
 }
 
-// Navigation configuration - khớp 100% SUMMARY.md
+// Navigation configuration.
 //
 // Mỗi mục khai báo (module, action) ĐÚNG bằng quyền route guard
 // <RequirePermission> trong App.tsx kiểm — sidebar tự ẩn mục thiếu quyền (xem
 // useMyPermissions + canUse bên dưới). Mục KHÔNG có guard ở route (Bảng tin,
 // trang tài khoản cá nhân, FAQ…) thì bỏ `module` để luôn hiện.
-const navigationGroups: NavGroup[] = [
+//
+// EXPORT có chủ đích: test đối chiếu cần đọc cấu trúc này như DỮ LIỆU. Trước đây
+// nó là biến nội bộ nên test buộc phải regex trên mã nguồn — một cách kiểm vừa
+// dễ vỡ khi format đổi, vừa có thể tự khớp vào chính comment của mình.
+export const navigationGroups: NavGroup[] = [
   {
     label: 'THEO DÕI NHANH',
     items: [
