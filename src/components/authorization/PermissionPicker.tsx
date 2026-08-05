@@ -17,7 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { PAGE_GROUPS, featureKey, type PageFeature } from '@/lib/permissionPages';
+import { VISIBLE_PAGE_GROUPS, featureKey, type PageFeature } from '@/lib/permissionPages';
 
 export interface PermissionPickerProps {
   /** Khoá đang bật. */
@@ -55,8 +55,8 @@ export function PermissionPicker({
 
   const q = tim.trim().toLowerCase();
   const nhomHienThi = useMemo(() => {
-    if (!q) return PAGE_GROUPS;
-    return PAGE_GROUPS.map((g) => ({
+    if (!q) return VISIBLE_PAGE_GROUPS;
+    return VISIBLE_PAGE_GROUPS.map((g) => ({
       ...g,
       pages: g.pages
         .map((p) => ({

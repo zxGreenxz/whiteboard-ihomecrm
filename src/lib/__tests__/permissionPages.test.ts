@@ -1,6 +1,8 @@
 // Test catalog phân quyền theo trang (permissionPages.ts) + registry
 // (permissions.ts): phủ đủ key, fallback legacy, preset, thống kê trang.
 
+import { readFileSync } from "node:fs";
+
 import { describe, it, expect } from "vitest";
 import {
   ALL_PAGES,
@@ -12,6 +14,8 @@ import {
   pageStats,
   setPageAll,
   setPageViewOnly,
+  UNSHIPPED_PAGE_KEYS,
+  VISIBLE_PAGE_GROUPS,
 } from "@/lib/permissionPages";
 import {
   ALL_MODULES,
@@ -65,6 +69,52 @@ describe("OpenClaw Zalo permission catalog", () => {
       manage_operations: false,
       audit: false,
     });
+  });
+
+  // Đo trên bundle production 05/08/2026 (main 7f47c3a): entry chunk chứa nguyên
+  // mục catalog {key:"openclaw_zalo", route:"/openclaw-zalo", desc:"Kết nối Zalo
+  // cá nhân…"} và PermissionPicker render PAGE_GROUPS KHÔNG lọc — nên chủ tổ
+  // chức mở màn phân quyền là thấy 8 tính năng của một trang mà cờ runtime đang
+  // tắt, route render null. Quyền thì có thật ở máy chủ, nên cách sửa đúng là
+  // giấu ở tầng hiển thị chứ không gỡ khỏi catalog.
+  it("giữ trang trong catalog nhưng KHÔNG chào mời khi cờ runtime tắt", async () => {
+    const { OPENCLAW_RUNTIME_ENABLED } = await import("@/lib/openclaw-zalo/runtime");
+    expect(OPENCLAW_RUNTIME_ENABLED, "cờ phải mặc định tắt").toBe(false);
+
+    // Vẫn nằm trong catalog — nếu không thì findOrphanRegistryKeys() sẽ đỏ.
+    expect(ALL_PAGES.some((p) => p.key === "openclaw_zalo")).toBe(true);
+    expect(UNSHIPPED_PAGE_KEYS.has("openclaw_zalo")).toBe(true);
+
+    // Nhưng biến mất khỏi thứ UI thực sự render.
+    const hienThi = VISIBLE_PAGE_GROUPS.flatMap((g) => g.pages);
+    expect(hienThi.filter((p) => p.key === "openclaw_zalo")).toHaveLength(0);
+    expect(hienThi.filter((p) => p.route === "/openclaw-zalo")).toHaveLength(0);
+  });
+
+  it("PermissionPicker phải render danh sách ĐÃ LỌC, không phải catalog thô", () => {
+    // Hai test trên chỉ đo lib. Nếu ai đó đổi picker về PAGE_GROUPS thì chúng
+    // vẫn xanh trong khi trang chưa ship lại hiện ra — nên chốt luôn ở nguồn.
+    // Chuẩn hoá CRLF: checkout autocrlf làm mọi khẳng định vắt qua dòng bị đỏ
+    // trên Windows với cùng một mã nguồn.
+    const picker = readFileSync(
+      "src/components/authorization/PermissionPicker.tsx",
+      "utf8",
+    ).replace(/\r\n/gu, "\n");
+
+    expect(picker).toContain("VISIBLE_PAGE_GROUPS");
+    // PAGE_GROUPS là tiền tố của VISIBLE_PAGE_GROUPS nên phải soi ranh giới từ,
+    // không thì khẳng định này tự đúng một cách vô nghĩa.
+    expect(picker).not.toMatch(/(?<![A-Z_])PAGE_GROUPS/u);
+  });
+
+  it("chỉ giấu openclaw — mọi trang đã ship khác vẫn hiển thị nguyên vẹn", () => {
+    // Chặn kiểu sửa quá tay: bộ lọc không được nuốt nhầm trang nào khác, và
+    // không được xoá cả nhóm "Kênh chat" (Chat Zalo vẫn phải còn).
+    const tatCa = ALL_PAGES.map((p) => p.key).filter((k) => k !== "openclaw_zalo");
+    const hienThi = VISIBLE_PAGE_GROUPS.flatMap((g) => g.pages).map((p) => p.key);
+    expect(hienThi.sort()).toEqual(tatCa.sort());
+    expect(hienThi).toContain("chat_zalo");
+    expect(hienThi).toContain("network_center");
   });
 });
 

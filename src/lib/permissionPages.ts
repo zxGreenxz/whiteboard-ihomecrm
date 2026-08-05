@@ -15,6 +15,7 @@
 // LƯU Ý: catalog phải phủ ĐỦ mọi (module × action) trong registry — module
 // nào không có trang riêng thì gắn vào trang gần nghĩa nhất.
 
+import { OPENCLAW_RUNTIME_ENABLED } from "@/lib/openclaw-zalo/runtime";
 import {
   actionsForModule,
   ALL_MODULES,
@@ -605,6 +606,28 @@ export const PAGE_GROUPS: PageGroup[] = [
 
 /** Flat list mọi page. */
 export const ALL_PAGES: PermissionPage[] = PAGE_GROUPS.flatMap((g) => g.pages);
+
+/**
+ * Trang của sản phẩm CHƯA SHIP trong build này.
+ *
+ * Chúng phải Ở LẠI catalog: quyền tương ứng có thật trong registry và đã được
+ * cấp ở máy chủ, nên gỡ đi là tạo "quyền mồ côi" (findOrphanRegistryKeys) —
+ * catalog mô tả quyền TỒN TẠI, không phải quyền ĐANG DÙNG ĐƯỢC.
+ *
+ * Nhưng UI phân quyền thì không được chào mời chúng. Cờ runtime tắt nghĩa là
+ * route không render; nếu picker vẫn liệt kê trang đó, chủ tổ chức thấy một
+ * sản phẩm kèm mô tả tính năng, cấp quyền xong rồi không có gì để bấm vào.
+ * Đây là "chưa ship", việc mà quyền máy chủ không diễn đạt được.
+ */
+export const UNSHIPPED_PAGE_KEYS: ReadonlySet<string> = new Set<string>(
+  OPENCLAW_RUNTIME_ENABLED ? [] : ["openclaw_zalo"],
+);
+
+/** PAGE_GROUPS đã bỏ trang chưa ship — dùng cho MỌI bề mặt hiển thị. */
+export const VISIBLE_PAGE_GROUPS: PageGroup[] = PAGE_GROUPS.map((g) => ({
+  ...g,
+  pages: g.pages.filter((p) => !UNSHIPPED_PAGE_KEYS.has(p.key)),
+})).filter((g) => g.pages.length > 0);
 
 /** Flat list mọi feature trong catalog. */
 export const ALL_PAGE_FEATURES: PageFeature[] = ALL_PAGES.flatMap((p) => p.features);
