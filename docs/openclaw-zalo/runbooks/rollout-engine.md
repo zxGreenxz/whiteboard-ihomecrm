@@ -86,6 +86,27 @@ ba, mà **số lượng vẫn đúng 12 nên không test nào đỏ**. Đừng c
 
 ---
 
+## 3b. HAI sha trong `build-evidence.json` — đừng dùng nhầm
+
+```
+supply_chain.git_binding.expected_m = 0650187981ad…   checkpoint M, một TỔ TIÊN
+supply_chain.git_binding.reviewed_r = d84f3c013f7a…   R, cây mà ẢNH được dựng từ đó
+```
+
+**`reviewed_commit_sha` của rollout run phải là `reviewed_r`.**
+
+Tôi đã điền nhầm `expected_m` và **guard vẫn cho qua** — vì nó chỉ kiểm
+`artifact_digests.cellReviewedCommitSha` khớp `reviewed_commit_sha`, tức khớp
+**nhau**, chứ không kiểm cái nào đúng. Dòng ghi ra khai sai nguồn gốc ảnh, mọi
+cổng vẫn xanh. Dùng `readCellBuildEvidence()` thay vì đọc tay hai trường này.
+
+Cũng kiểm luôn trong đó: hai lần dựng phải ra **byte giống nhau**
+(`archive_a_sha256 == archive_b_sha256 && byte_identical`), hash archive được
+thăng cấp phải khớp vai trò A/B đã ghi, và M phải là tổ tiên của R.
+
+> `source_date_epoch` trong file thật là **chuỗi** `"1785062400"`, không phải số.
+> Bản đầu của hàm so bằng `!==` với số và từ chối chính bằng chứng thật.
+
 ## 4. Khuôn dữ liệu dễ nhầm
 
 | Trường | Khuôn | Ghi chú |
@@ -149,7 +170,7 @@ Và bốn thứ **không tự động hoá được**, không phải vì thiếu
 ```bash
 node scripts/openclaw-local-stack.mjs up      # Postgres 17.6 + PostgREST + GoTrue + gateway
 node scripts/openclaw-local-seed.mjs          # đồ thị phân quyền org DEMO
-npx vitest run production-openclaw-smoke      # 49 bài hợp đồng
+npx vitest run production-openclaw-smoke      # 58 bài hợp đồng
 ```
 
 Baseline schema phải chụp trước bằng `pg_dump --schema-only` — xem
