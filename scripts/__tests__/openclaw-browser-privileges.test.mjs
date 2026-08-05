@@ -150,6 +150,40 @@ describe("browser RPC privileges under the owning role", () => {
     }
   }, HARNESS_TIMEOUT);
 
+  it("mở RLS cho role sở hữu trên cả hai bảng tổ chức, phạm vi theo người gọi", async () => {
+    // GRANT KHÔNG ĐỦ, và đây là nửa nguy hiểm hơn: thiếu policy thì mọi SELECT
+    // trả RỖNG chứ không lỗi. Đo trên production 05/08/2026, `set local role`:
+    // organizations 3 dòng thật -> role thấy 0; memberships 15 -> 0. Tức bản vá
+    // GRANT cho memberships ở migration này CHƯA TỪNG chạy được trên thật, dù
+    // có test riêng và test đó xanh (harness dùng bảng stub không policy).
+    //
+    // Vị từ phải theo NGƯỜI GỌI, không phải `using (true)`: cả 8 đường đọc hai
+    // bảng này đều là RPC trình duyệt, không đường nào chạy dưới cron.
+    await withDatabase(async (database) => {
+      const { rows } = await database.query(
+        `select tablename, policyname, qual
+           from pg_policies
+          where 'openclaw_function_owner' = any(roles)
+            and tablename in ('organizations', 'organization_memberships')
+          order by tablename`,
+      );
+
+      expect(
+        rows.map((row) => row.tablename),
+        "thiếu policy là role đọc ra rỗng trên production, im lặng",
+      ).toEqual(["organization_memberships", "organizations"]);
+
+      for (const row of rows) {
+        // `using (true)` ở đây sẽ mở dữ liệu thành viên xuyên tổ chức — chốt
+        // rằng vị từ vẫn ràng vào my_org_ids() của người gọi.
+        expect(row.qual, `${row.tablename}: vị từ phải ràng theo người gọi`).toContain(
+          "my_org_ids",
+        );
+        expect(row.qual, `${row.tablename}: không được là using(true)`).not.toBe("true");
+      }
+    });
+  }, HARNESS_TIMEOUT);
+
   it("still keeps that table away from the browser roles", async () => {
     await withDatabase(async (database) => {
       // The grant exists for SECURITY DEFINER bodies, not for callers. A member must

@@ -9788,6 +9788,44 @@ grant select (id, organization_id, user_id, status, member_type)
 grant select (id, name)
   on public.organizations to openclaw_function_owner;
 
+-- GRANT KHÔNG ĐỦ. Hai bảng trên đều bật RLS (relrowsecurity=t, force=f, owner
+-- postgres) và openclaw_function_owner là NOBYPASSRLS. Không policy nào nhắc
+-- tên nó ⇒ mọi SELECT trả RỖNG, không lỗi.
+--
+-- Đo trên production dữ liệu thật 05/08/2026, `set local role`:
+--   public.organizations           3 dòng thật -> role thấy 0
+--   public.organization_memberships 15 dòng thật -> role thấy 0
+--
+-- Nghĩa là bản vá GRANT cho organization_memberships ở trên — kèm cả chú thích
+-- dài về 42501 và một test riêng — CHƯA TỪNG hoạt động trên production. GRANT
+-- đúng, nhưng RLS chưa bao giờ được mở, nên 7 hàm đọc bảng đó vẫn ra rỗng. Bộ
+-- test cũ xanh vì harness PGlite dùng bảng stub 5 cột KHÔNG có policy nào (điều
+-- này chính test đó đã tự ghi chú), nên `select` dưới `set role` thành công ở
+-- đó và thất bại trên thật. Lỗi ồn thành lỗi im là đi lùi, không phải đi tới.
+--
+-- VỊ TỪ THEO TỔ CHỨC CỦA NGƯỜI GỌI, không phải `using (true)`:
+-- `public.my_org_ids()` là SECURITY DEFINER thuộc postgres nên nó vượt RLS và
+-- chạy được từ trong policy; nó đọc auth.uid() từ GUC của NGƯỜI GỌI, kể cả khi
+-- thân hàm definer đang chạy dưới openclaw_function_owner. Đây là lý do phần
+-- xét quyền vẫn đúng trong khi đọc bảng thì rỗng — chỉ hàm đọc THẲNG bảng mới
+-- dính.
+--
+-- Đã kiểm cả 8 đường đọc hai bảng này: tất cả đều là RPC trình duyệt
+-- (assign_conversation, create_legal_hold, get_bootstrap, list_my_organizations,
+-- list_takeovers, release_legal_hold, release_takeover, takeover_conversation).
+-- Không đường nào chạy dưới cron hay service_role — edge function
+-- openclaw-control dựng client bằng createBrowserClient() rồi requireBrowserUser()
+-- trước khi gọi, còn nhánh service_role chỉ dùng cho các RPC openclaw_service_*
+-- vốn không đọc hai bảng này. Nếu sau này có đường cron gọi vào, vị từ sẽ rỗng
+-- và hỏng ÂM THẦM — thêm đường như thế thì phải xử lý riêng, đừng nới policy.
+create policy openclaw_function_owner_reads_caller_orgs
+  on public.organizations for select to openclaw_function_owner
+  using (id = any(public.my_org_ids()));
+
+create policy openclaw_function_owner_reads_caller_memberships
+  on public.organization_memberships for select to openclaw_function_owner
+  using (organization_id = any(public.my_org_ids()));
+
 -- ---------------------------------------------------------------------------
 -- Who holds a takeover, and until when
 -- ---------------------------------------------------------------------------
