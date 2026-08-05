@@ -21,6 +21,8 @@
  * test hợp đồng chạy được mà không chạm production.
  */
 
+import { createHash } from "node:crypto";
+
 /** Lệnh thay đổi trạng thái. Mỗi cái đòi xác nhận PROD và id lần chạy cấp trước. */
 export const MUTATING_COMMANDS = new Set([
   "create-reviewed-deploy-bundle",
@@ -169,4 +171,42 @@ export function buildMachineReason(mode, runId) {
     throw new Error(`Lý do máy đọc cần runId là UUID; nhận được ${JSON.stringify(runId)}.`);
   }
   return `production-smoke:${mode}:${runId}`;
+}
+
+/**
+ * Bản song sinh JS của `app_private.openclaw_rollout_manifest_hash_v1`.
+ *
+ * VÌ SAO PHẢI CÓ: --begin-rollout tính hash phía client rồi ghi vào cột
+ * `migration_manifest_sha256`, mà guard kích hoạt sẽ tính LẠI bằng hàm DB và so.
+ * Lệch một byte thì dòng vừa ghi bị chính guard từ chối, và người vận hành nhận
+ * một lỗi 42501 không nói được vì sao. Tính trước phía client để biết TRƯỚC KHI
+ * ghi, thay vì phát hiện lúc đã có một dòng hỏng nằm trong bảng.
+ *
+ * Thuật toán đọc thẳng từ thân hàm DB (đo trên harness schema production):
+ *   sha256( "ihome-openclaw-migration-manifest-v1" ‖ 0x00 ‖ Σ "tên:digest\n" )
+ * theo ĐÚNG thứ tự 12 file, và CHỈ 12 file đó — các khoá khác trong
+ * artifact_digests (cellImageDigest, cellConfigDigest, cellReviewedCommitSha)
+ * không vào tiền ảnh.
+ */
+export function computeMigrationManifestHash(artifactDigests, order) {
+  if (!Array.isArray(order) || order.length === 0) {
+    throw new Error("Cần truyền thứ tự 12 file migration đã duyệt.");
+  }
+  let preimage = "";
+  for (const name of order) {
+    const digest = artifactDigests?.[name];
+    if (typeof digest !== "string" || !/^[0-9a-f]{64}$/u.test(digest)) {
+      throw new Error(
+        `artifact_digests thiếu hoặc sai khuôn digest cho ${name}: ${JSON.stringify(digest)}.`,
+      );
+    }
+    preimage += `${name}:${digest}\n`;
+  }
+  return createHash("sha256")
+    .update(Buffer.concat([
+      Buffer.from("ihome-openclaw-migration-manifest-v1", "utf8"),
+      Buffer.from([0x00]),
+      Buffer.from(preimage, "utf8"),
+    ]))
+    .digest("hex");
 }

@@ -6,6 +6,7 @@ import {
   buildMachineReason,
   classifyCommand,
   redactEvidence,
+  computeMigrationManifestHash,
   resolveCommand,
 } from "../production-openclaw-smoke.mjs";
 
@@ -157,5 +158,98 @@ describe("lý do máy đọc", () => {
 
   it("từ chối runId không hợp lệ, để lý do không trỏ vào lần chạy không tồn tại", () => {
     expect(() => buildMachineReason("BEGIN_ROLLOUT", "run-1")).toThrow(/runId/u);
+  });
+});
+
+describe("bản song sinh JS của hàm băm manifest", () => {
+  // Hàm thật sống trong DB: app_private.openclaw_rollout_manifest_hash_v1.
+  // Bản JS phải khớp TUYỆT ĐỐI, vì --begin-rollout tính hash phía client rồi ghi
+  // vào cột mà guard sẽ kiểm lại bằng hàm DB. Lệch một byte thì dòng vừa ghi bị
+  // chính guard từ chối, và người vận hành nhận một lỗi 42501 không nói được vì
+  // sao.
+  //
+  // Vector vàng dưới đây LẤY TỪ chính hàm DB chạy trên harness schema production
+  // (xem docs/openclaw-zalo/runbooks/). Không phải tôi tự tính rồi tự tin.
+  const ORDER = [
+    "20260727010000_openclaw_catalog_foundation.sql",
+    "20260727015000_openclaw_security_principals.sql",
+    "20260727020000_openclaw_inbox_schema.sql",
+    "20260727025000_openclaw_inbound_automation.sql",
+    "20260727030000_openclaw_policy_automation_knowledge.sql",
+    "20260727040000_openclaw_delivery_audit_ops.sql",
+    "20260727050000_openclaw_access_policies.sql",
+    "20260727060000_openclaw_rpc_surface.sql",
+    "20260727070000_openclaw_crm_event_sources.sql",
+    "20260727080000_openclaw_realtime_allowlist.sql",
+    "20260727090000_openclaw_maintenance_jobs.sql",
+    "20260727095000_openclaw_activation_guards.sql",
+  ];
+  const digestsOf = (fill) => Object.fromEntries(ORDER.map((n, i) =>
+    [n, String(fill).repeat(64).slice(0, 63) + String(i % 10)]));
+
+  it("từ chối khi thiếu digest của bất kỳ file nào trong 12", () => {
+    const partial = digestsOf("a");
+    delete partial[ORDER[7]];
+    expect(() => computeMigrationManifestHash(partial, ORDER)).toThrow(/thiếu|digest/iu);
+  });
+
+  it("từ chối digest sai khuôn 64 hex", () => {
+    const bad = { ...digestsOf("a"), [ORDER[3]]: "khong-phai-hex" };
+    expect(() => computeMigrationManifestHash(bad, ORDER)).toThrow(/digest/iu);
+  });
+
+  it("bỏ qua khoá thừa (cellImageDigest…) — chúng không vào tiền ảnh", () => {
+    // artifact_digests mang thêm cellImageDigest / cellConfigDigest /
+    // cellReviewedCommitSha. Hàm DB chỉ duyệt 12 tên file, nên bản JS cũng phải
+    // vậy; gộp thêm sẽ ra hash khác và dòng ghi ra bị guard từ chối.
+    const base = digestsOf("a");
+    const withExtras = {
+      ...base,
+      cellImageDigest: `sha256:${"b".repeat(64)}`,
+      cellConfigDigest: "c".repeat(64),
+      cellReviewedCommitSha: "d".repeat(40),
+    };
+    expect(computeMigrationManifestHash(withExtras, ORDER))
+      .toBe(computeMigrationManifestHash(base, ORDER));
+  });
+
+  it("đổi thứ tự cho ra hash khác", () => {
+    const d = digestsOf("a");
+    const swapped = [ORDER[1], ORDER[0], ...ORDER.slice(2)];
+    expect(computeMigrationManifestHash(d, swapped))
+      .not.toBe(computeMigrationManifestHash(d, ORDER));
+  });
+
+  it("kết quả là 64 hex", () => {
+    expect(computeMigrationManifestHash(digestsOf("a"), ORDER)).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it("KHỚP VECTOR VÀNG lấy từ chính hàm DB", () => {
+    // Vector này KHÔNG do tôi tự tính. Nó là đầu ra của
+    // `app_private.openclaw_rollout_manifest_hash_v1` chạy trên harness nạp
+    // schema production, với đúng bộ digest tổng hợp dưới đây (a×63 + chữ số
+    // theo vị trí). Dùng digest tổng hợp chứ không phải băm file thật, để vector
+    // không đổi mỗi lần một migration được sửa — một vector vàng tự đổi thì
+    // không còn là vàng.
+    //
+    // Bài này là thứ duy nhất chứng minh bản JS và hàm DB nói cùng một ngôn ngữ.
+    // Lệch một byte ⇒ --begin-rollout ghi ra dòng mà chính guard từ chối, và
+    // người vận hành nhận 42501 không nói được vì sao.
+    const golden = "f8049d5e377a8aa254c7f344314bc4dc63e546a19dff97ffc780bc26e83342fd";
+    const digests = Object.fromEntries(
+      ORDER.map((name, index) => [name, "a".repeat(63) + String(index % 10)]),
+    );
+    expect(computeMigrationManifestHash(digests, ORDER)).toBe(golden);
+  });
+
+  it("thứ tự 12 file khớp danh sách hàm DB ghim cứng", () => {
+    // Hàm DB ghim cứng đúng 12 tên này. Đây là nguồn sự thật THỨ BA về danh sách
+    // (cạnh OPENCLAW_MIGRATIONS của harness và cây git đã duyệt). Ghi ra đây để
+    // lần sau ai sửa manifest biết phải sửa mấy chỗ — và để vector vàng ở trên
+    // có nghĩa.
+    expect(ORDER).toHaveLength(12);
+    expect(ORDER[3]).toBe("20260727025000_openclaw_inbound_automation.sql");
+    expect(ORDER[6]).toBe("20260727050000_openclaw_access_policies.sql");
+    expect(ORDER[9]).toBe("20260727080000_openclaw_realtime_allowlist.sql");
   });
 });
