@@ -80,3 +80,15 @@ gaps:
       commit của chương trình này để diff giữ đúng phạm vi, nhưng đã đếm và theo dõi —
       con số phải giảm, không được tăng.
     exit_condition: node scripts/check-docs.mjs báo 0 lỗi.
+
+  - id: node-test-files-swept-by-vitest
+    where: scripts/__tests__/network-center-*.test.mjs (23 file) vs bước Vitest ở quality-gates
+    expires_at: 2026-09-30
+    why: >
+      Các file này dùng API 'node:test' và được node --test chạy ở workflow network-center,
+      nhưng KHÔNG nằm trong danh sách --exclude của bước Vitest ở quality-gates nên bị quét
+      hai lần. Đo tại máy: chạy ĐƠN LẺ một file qua vitest thì FAIL 'No test suite found';
+      chạy CẢ THƯ MỤC thì không thấy lỗi đó. Chưa xác minh được hành vi thật trên CI.
+    exit_condition: >
+      Đọc log job quality-gates của một lần chạy gần đây. Nếu vitest báo 0 test cho các file
+      này thì thêm chúng vào --exclude, để job không nhận công của node --test.

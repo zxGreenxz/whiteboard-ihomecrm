@@ -1,0 +1,121 @@
+#!/usr/bin/env node
+// Gate: không file test nào được MỒ CÔI.
+//
+// Một file test không nằm trong lệnh nào sẽ im lặng không bao giờ chạy. Nhìn vào
+// repo thì thấy "đã có test", nhìn vào CI thì thấy xanh, mà thực tế không ai
+// kiểm gì — tệ hơn không viết test, vì nó tạo ra cảm giác đã được che.
+//
+// Repo đã có verify-network-center-test-completeness.mjs cho một lý do cùng họ:
+// test bị SKIP cũng báo pass. Script này mở rộng ý đó ra toàn repo ở mức "file
+// có thuộc suite nào không".
+//
+//   node scripts/check-test-matrix.mjs
+//   node scripts/check-test-matrix.mjs --list   # in bảng phân bổ theo suite
+//
+// Không cần credential, không đọc database.
+
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const MATRIX_PATH = join(repoRoot, 'tooling', 'test-matrix.json');
+
+const TEST_FILE = /\.(test|spec)\.(ts|tsx|mjs|js|cjs)$/;
+
+/**
+ * Chuyển glob sang RegExp. Chỉ hỗ trợ `**` và `*` — đủ cho các pattern trong
+ * matrix, và cố ý KHÔNG kéo thêm dependency vào một gate phải chạy được ở mọi
+ * runner.
+ *
+ * Thứ tự thay thế quan trọng: xử lý `**` trước `*`, nếu không `**` sẽ bị luật
+ * của `*` (không vượt dấu /) ăn mất và mọi pattern đệ quy đều hỏng.
+ */
+export function globToRegExp(glob) {
+  let out = '';
+  for (let i = 0; i < glob.length; i += 1) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        // `**/` khớp cả zero thư mục, nên `a/**/b.ts` khớp luôn `a/b.ts`.
+        if (glob[i + 2] === '/') { out += '(?:.*/)?'; i += 2; } else { out += '.*'; i += 1; }
+      } else {
+        out += '[^/]*';
+      }
+      continue;
+    }
+    out += /[.+^${}()|[\]\\]/.test(c) ? `\\${c}` : c;
+  }
+  return new RegExp(`^${out}$`);
+}
+
+export function trackedTestFiles(ignorePatterns) {
+  const ignores = ignorePatterns.map(globToRegExp);
+  return execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8' })
+    .trim()
+    .split('\n')
+    .map((p) => p.replace(/\\/g, '/'))
+    .filter((p) => TEST_FILE.test(p))
+    .filter((p) => !ignores.some((re) => re.test(p)));
+}
+
+export function assignSuites(files, suites) {
+  const matchers = suites.map((s) => ({
+    id: s.id,
+    res: (s.includes ?? []).map(globToRegExp),
+  }));
+  const bySuite = new Map(suites.map((s) => [s.id, []]));
+  const orphans = [];
+
+  for (const file of files) {
+    const owners = matchers.filter((m) => m.res.some((re) => re.test(file))).map((m) => m.id);
+    if (owners.length === 0) orphans.push(file);
+    for (const id of owners) bySuite.get(id).push(file);
+  }
+  return { bySuite, orphans };
+}
+
+function main(argv) {
+  const matrix = JSON.parse(readFileSync(MATRIX_PATH, 'utf8'));
+  const files = trackedTestFiles(matrix.ignore ?? []);
+  const { bySuite, orphans } = assignSuites(files, matrix.suites);
+
+  if (argv.includes('--list')) {
+    for (const [id, list] of bySuite) {
+      const suite = matrix.suites.find((s) => s.id === id);
+      console.log(`${String(list.length).padStart(4)}  ${id}  [${suite.runner}]`);
+    }
+  }
+
+  const empty = [...bySuite].filter(([, list]) => list.length === 0).map(([id]) => id);
+
+  if (orphans.length > 0 || empty.length > 0) {
+    if (orphans.length > 0) {
+      console.error(`❌ ${orphans.length} file test MỒ CÔI — không suite nào chạy chúng:\n`);
+      for (const f of orphans.slice(0, 20)) console.error(`  - ${f}`);
+      if (orphans.length > 20) console.error(`  … và ${orphans.length - 20} file nữa`);
+      console.error('\n  → thêm vào `includes` của suite phù hợp trong tooling/test-matrix.json,');
+      console.error('    hoặc vào `ignore` nếu cố ý không chạy (kèm lý do trong $comment).');
+    }
+    if (empty.length > 0) {
+      console.error(`\n❌ ${empty.length} suite khai trong matrix nhưng không khớp file nào: ${empty.join(', ')}`);
+      console.error('  → suite chết: hoặc pattern sai, hoặc test đã bị xoá mà matrix chưa cập nhật.');
+    }
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(
+    `✅ ${files.length} file test, ${matrix.suites.length} suite, không file nào mồ côi.`,
+  );
+  const multi = files.filter((f) => [...bySuite].filter(([, l]) => l.includes(f)).length > 1);
+  if (multi.length > 0) {
+    // Không fail: chạy hai lần thì tốn thời gian chứ không mất an toàn.
+    console.warn(`⚠ ${multi.length} file thuộc nhiều suite (sẽ chạy trùng): ${multi.slice(0, 3).join(', ')}${multi.length > 3 ? ' …' : ''}`);
+  }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main(process.argv);
+}

@@ -5,6 +5,10 @@
   "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
   "done": [
     {
+      "item": "Đợt 2: tooling/test-matrix.json + checker chống test mồ côi",
+      "evidence": "431 file test / 8 suite / 0 mồ côi. Runner gán theo GLOB không theo thư mục (supabase/functions có 15 file .test.ts nhưng chỉ 2 chạy Deno). Gate bắt được file mồ côi bằng đột biến. Phát hiện phụ: 23 file scripts/__tests__/network-center-*.test.mjs dùng node:test nhưng KHÔNG nằm trong --exclude của bước Vitest — hành vi khác nhau giữa chạy đơn lẻ (FAIL No test suite found) và chạy cả thư mục; CHƯA xác minh trên CI thật nên ghi vào known-gaps thay vì kết luận"
+    },
+    {
       "item": "Đợt 2: tooling/runtime-matrix.json + known-gaps.yaml, cả hai có checker",
       "evidence": "runtime-matrix: 12 package + 3 workflow, checker đối chiếu CẢ HAI chiều (thiếu entry / lệch engines / lệch workflow) — 3 đột biến đều bị bắt, exit 1 khi lệch. known-gaps: 6 mục có expires_at + exit_condition, gồm PITR và Vercel flip; mặc định chỉ CẢNH BÁO khi quá hạn (gate đỏ vì ngày tháng sẽ bị gia hạn hình thức), --strict để rà định kỳ"
     },

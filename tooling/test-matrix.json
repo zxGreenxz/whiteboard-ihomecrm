@@ -1,0 +1,107 @@
+{
+  "$comment": "Bản đồ: file test nào do suite nào chạy, bằng runner gì. Vấn đề nó giải: một file test viết ra nhưng KHÔNG nằm trong lệnh nào sẽ im lặng không bao giờ chạy — nhìn vào repo thì thấy 'đã có test', nhìn vào CI thì thấy xanh, mà thực tế không ai kiểm gì. Đó cũng là lý do repo đã có verify-network-center-test-completeness.mjs: test bị SKIP cũng báo pass. File này mở rộng ý đó ra toàn repo. Kiểm: npm run gate:test-matrix",
+  "schemaVersion": 1,
+  "notes": [
+    "supabase/functions/ có 15 file *.test.ts nhưng CHỈ 2 chạy Deno (network-center-worker và network-watchdog, đều tên index.test.ts). 13 file còn lại chạy Vitest. Vì vậy runner phải gán theo GLOB/FILE, không theo thư mục.",
+    "Suite nào đòi runtime khác Node mặc định thì ghi ở trường `runtime` — tra chi tiết ở tooling/runtime-matrix.json."
+  ],
+  "suites": [
+    {
+      "id": "app-unit",
+      "runner": "vitest",
+      "ciJob": "quality-gates",
+      "command": "npx vitest run src scripts/__tests__",
+      "runtime": "node 24.18.0 (CI)",
+      "risk": "normal",
+      "includes": ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts/__tests__/**/*.test.mjs", "scripts/__tests__/**/*.test.ts"],
+      "note": "Loại trừ các harness SQL OpenClaw nặng — chúng thuộc suite openclaw-sql, xem package.json."
+    },
+    {
+      "id": "openclaw-edge",
+      "runner": "vitest",
+      "ciJob": "openclaw-edge-gates",
+      "command": "npx vitest run supabase/functions/_shared/openclaw supabase/functions/openclaw-*",
+      "risk": "security",
+      "includes": ["supabase/functions/_shared/openclaw/**/*.test.ts", "supabase/functions/openclaw-*/**/*.test.ts"],
+      "note": "Chạy bằng VITEST dù nằm trong supabase/functions — chỉ 2 file index.test.ts mới dùng Deno."
+    },
+    {
+      "id": "edge-deno",
+      "runner": "deno",
+      "ciJob": "network-center-validation / validate",
+      "command": "deno test --config supabase/functions/<fn>/deno.json supabase/functions/<fn>/index.test.ts --allow-env",
+      "runtime": "deno 2.9.4",
+      "risk": "normal",
+      "includes": ["supabase/functions/network-center-worker/index.test.ts", "supabase/functions/network-watchdog/index.test.ts"],
+      "note": "Đúng HAI file này chạy Deno. Bản đã xác minh 22/22 xanh là Deno 2.9.4."
+    },
+    {
+      "id": "e2e-fleet",
+      "runner": "playwright",
+      "ciJob": "(local — cần FLEET_PASS_*, không chạy trên CI)",
+      "command": "cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/<file>.spec.ts",
+      "risk": "normal",
+      "includes": [".e2e-fleet/specs/**/*.spec.ts"],
+      "note": "Mật khẩu không nằm trong repo nên đây là bằng chứng LOCAL đính kèm PR, không phải CI gate. Chỉ ghi vào org DEMO."
+    },
+    {
+      "id": "openclaw-services",
+      "runner": "vitest (per-package)",
+      "ciJob": "openclaw-package-gates / openclaw-session-crypto-gate / openclaw-vendor-gate",
+      "command": "npm run test:openclaw:services",
+      "runtime": "node >=24.15.0 <25 (script tự chặn)",
+      "risk": "security",
+      "includes": ["services/**/*.test.ts", "services/**/*.test.mjs"],
+      "note": "Vendored upstream (zalouser-bridge/upstream, artifacts, .work) KHÔNG tính — đó là suite của dự án khác, verify:upstream lo phần đó."
+    },
+    {
+      "id": "network-center-worker",
+      "runner": "vitest (per-package)",
+      "ciJob": "network-center-validation / validate",
+      "command": "npm --prefix infra/network-center-worker test",
+      "runtime": "node 22 (worker khai >=20 <23)",
+      "risk": "infrastructure",
+      "includes": ["infra/network-center-worker/**/*.test.ts"],
+      "knownGap": "deployment-assets-windows-only"
+    },
+    {
+      "id": "openclaw-infra",
+      "runner": "vitest (per-package)",
+      "ciJob": "openclaw-package-gates / test:openclaw:r2",
+      "command": "npm run test:openclaw:r2 và npm --prefix infra/openclaw-zalo-watchdog test",
+      "runtime": "node >=24.15.0 <25",
+      "risk": "security",
+      "includes": [
+        "infra/openclaw-media-gateway/**/*.test.ts",
+        "infra/openclaw-media-gateway/**/*.test.mjs",
+        "infra/openclaw-zalo-watchdog/**/*.test.ts",
+        "infra/openclaw-zalo/**/*.test.ts"
+      ],
+      "note2": "media-gateway có vitest.config include CẢ .test.mjs (deploy-script.test.mjs) — pattern ở đây phải phủ cả hai đuôi, nếu không gate sẽ báo mồ côi nhầm."
+    },
+    {
+      "id": "node-native",
+      "runner": "node --test",
+      "ciJob": "openclaw-cell-image-contract / network-center scripted regression",
+      "command": "node --test <file>",
+      "risk": "infrastructure",
+      "includes": ["services/openclaw-zalo-cell/test/**/*.test.mjs", "scripts/__tests__/network-center-*.test.mjs"],
+      "note": "Chạy bằng test runner của Node (import từ 'node:test'), không phải Vitest.",
+      "unresolved": {
+        "what": "Các file scripts/__tests__/network-center-*.test.mjs KHÔNG nằm trong danh sách --exclude của bước Vitest ở quality-gates, nên chúng bị vitest root quét NGOÀI việc được node --test chạy ở workflow network-center.",
+        "observed": [
+          "Chạy ĐƠN LẺ một file qua vitest: FAIL 'No test suite found in file' — vì test() của node:test không đăng ký vào vitest.",
+          "Chạy CẢ THƯ MỤC scripts/__tests__ qua vitest: không thấy lỗi đó, và TAP output của node:test xuất hiện trong log."
+        ],
+        "why_it_matters": "Nếu vitest coi các file này là 0 test thì chúng đang được TÍNH là đã chạy trong khi thật ra không kiểm gì ở job đó — cùng lớp lỗi với 'test bị skip vẫn báo pass' mà repo đã có verifier riêng.",
+        "next_step": "Xem log job quality-gates trên GitHub Actions cho một lần chạy gần đây; nếu vitest thật sự báo 0 test cho các file này thì thêm chúng vào --exclude để job không nhận công của node --test."
+      }
+    }
+  ],
+  "ignore": [
+    "**/node_modules/**",
+    "services/openclaw-zalo-cell/vendor/zalouser-bridge/upstream/**",
+    "services/openclaw-zalo-cell/vendor/zalouser-bridge/artifacts/**",
+    "services/openclaw-zalo-cell/vendor/zalouser-bridge/.work/**"
+  ]
+}

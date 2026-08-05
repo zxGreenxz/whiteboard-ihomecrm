@@ -25,6 +25,7 @@
     "gate:agent-contract": "node scripts/check-agent-contract.mjs",
     "gate:runtime-matrix": "node scripts/check-runtime-matrix.mjs",
     "gate:known-gaps": "node scripts/check-known-gaps.mjs",
+    "gate:test-matrix": "node scripts/check-test-matrix.mjs",
     "catalog:capture": "node scripts/capture-production-catalog.mjs --write",
     "catalog:check": "node scripts/capture-production-catalog.mjs --check",
     "check:external-controls": "node scripts/check-external-controls.mjs",
