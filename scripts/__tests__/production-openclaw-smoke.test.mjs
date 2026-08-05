@@ -9,7 +9,10 @@ import {
   ROLLOUT_STAGES,
   buildCellBootstrap,
   buildStageAdvance,
+  buildTransferManifest,
   readCellBuildEvidence,
+  readTar,
+  writeDeterministicTar,
   buildRolloutRunRow,
   computeMigrationManifestHash,
   resolveCommand,
@@ -643,5 +646,123 @@ describe("đọc bằng chứng dựng ảnh cell", () => {
     expect(out.imageDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(out.promotedArchiveSha256).toMatch(/^[0-9a-f]{64}$/u);
     expect(out.reviewedCommitSha).not.toBe(out.checkpointMSha);
+  });
+});
+
+describe("bundle deploy tất định", () => {
+  // Bundle là thứ được CHUYỂN LÊN VPS và nạp vào runtime. Nếu nó không tất định
+  // thì "so digest với bản đã duyệt" mất hết ý nghĩa: mỗi lần dựng ra một file
+  // khác, và không ai phân biệt được "khác vì tôi vừa sửa" với "khác vì có ai đó
+  // chèn thứ gì vào".
+  const entries = () => [
+    { path: "b.txt", bytes: Buffer.from("bbb") },
+    { path: "a.txt", bytes: Buffer.from("aaa") },
+    { path: "nested/c.txt", bytes: Buffer.from("ccc") },
+  ];
+
+  it("hai lần dựng cùng đầu vào ra BYTE GIỐNG HỆT", () => {
+    const a = writeDeterministicTar(entries());
+    const b = writeDeterministicTar(entries());
+    expect(a.equals(b)).toBe(true);
+  });
+
+  it("thứ tự đầu vào KHÔNG ảnh hưởng kết quả — entry được sắp", () => {
+    // Nếu thứ tự đầu vào lọt vào output thì hai người dựng cùng nội dung sẽ ra
+    // hai file khác nhau, và cả hai đều "đúng".
+    const forward = writeDeterministicTar(entries());
+    const reversed = writeDeterministicTar([...entries()].reverse());
+    expect(forward.equals(reversed)).toBe(true);
+  });
+
+  it("mtime bị ghim, không phải giờ hệ thống", () => {
+    const parsed = readTar(writeDeterministicTar(entries()));
+    for (const e of parsed) {
+      expect(e.mtime, `${e.path} mang giờ hệ thống`).toBe(1785062400);
+    }
+  });
+
+  it("uid/gid/uname/gname cố định — không mang danh tính người dựng", () => {
+    // Một bundle mang tên người dựng là một bundle không tái lập được trên máy
+    // khác, và là một rò rỉ nhỏ không cần thiết.
+    const parsed = readTar(writeDeterministicTar(entries()));
+    for (const e of parsed) {
+      expect(e.uid).toBe(0);
+      expect(e.gid).toBe(0);
+      expect(e.uname).toBe("");
+      expect(e.gname).toBe("");
+    }
+  });
+
+  it("đọc lại ra đúng nội dung đã ghi", () => {
+    // Mặt THUẬN. Thiếu bài này thì một hàm ghi ra toàn số 0 vẫn "tất định".
+    const parsed = readTar(writeDeterministicTar(entries()));
+    expect(parsed.map((e) => e.path)).toEqual(["a.txt", "b.txt", "nested/c.txt"]);
+    expect(parsed.find((e) => e.path === "nested/c.txt").bytes.toString()).toBe("ccc");
+  });
+
+  it("đổi MỘT byte nội dung thì tar đổi", () => {
+    const base = writeDeterministicTar(entries());
+    const changed = writeDeterministicTar([
+      ...entries().filter((e) => e.path !== "a.txt"),
+      { path: "a.txt", bytes: Buffer.from("aab") },
+    ]);
+    expect(base.equals(changed)).toBe(false);
+  });
+
+  it("từ chối đường dẫn tuyệt đối hoặc đi ngược lên trên", () => {
+    // Một entry "../../etc/passwd" trong tar là lỗ hổng giải nén cổ điển, và
+    // bundle này được giải nén BẰNG QUYỀN provisioning trên VPS.
+    for (const bad of ["/etc/passwd", "../x", "a/../../b", "C:/x"]) {
+      expect(() => writeDeterministicTar([{ path: bad, bytes: Buffer.alloc(0) }]),
+        `lọt: ${bad}`).toThrow(/đường dẫn/iu);
+    }
+  });
+
+  it("từ chối đường dẫn trùng nhau", () => {
+    // Hai entry cùng tên nghĩa là cái sau đè cái trước lúc giải nén, và bản kê
+    // trong manifest không còn mô tả đúng thứ nằm trên đĩa.
+    expect(() => writeDeterministicTar([
+      { path: "a.txt", bytes: Buffer.from("1") },
+      { path: "a.txt", bytes: Buffer.from("2") },
+    ])).toThrow(/trùng/iu);
+  });
+});
+
+describe("bản kê chuyển giao", () => {
+  const evidence = {
+    reviewedCommitSha: "d84f3c013f7aa3d7d83cf473e1ce7b5448b2d018",
+    checkpointMSha: "0650187981ad9728d295fae34eff92b508e36bc8",
+    imageDigest: `sha256:${"4".repeat(64)}`,
+    promotedArchiveSha256: "9".repeat(64),
+    sourceDateEpoch: 1785062400,
+  };
+  const files = [
+    { path: "cell/config.json", bytes: Buffer.from("{}") },
+    { path: "cell.oci.tar", bytes: Buffer.from("archive-bytes") },
+  ];
+
+  it("KHÔNG chứa bundle_sha256 — nghịch lý tự băm", () => {
+    // bundle_sha256 là băm của chính file chứa bản kê. Nhét nó vào trong thì
+    // thay đổi nội dung, làm băm khác đi, và không bao giờ hội tụ. Nó phải sống
+    // NGOÀI tar.
+    const manifest = buildTransferManifest({ evidence, files });
+    expect(JSON.stringify(manifest)).not.toMatch(/bundle_sha256/u);
+  });
+
+  it("ràng vào reviewed_r và digest ảnh, không phải checkpoint M", () => {
+    const manifest = buildTransferManifest({ evidence, files });
+    expect(manifest.reviewedCommitSha).toBe(evidence.reviewedCommitSha);
+    expect(manifest.reviewedCommitSha).not.toBe(evidence.checkpointMSha);
+    expect(manifest.imageDigest).toBe(evidence.imageDigest);
+  });
+
+  it("kê từng file kèm sha256 riêng, sắp theo đường dẫn", () => {
+    const manifest = buildTransferManifest({ evidence, files });
+    expect(manifest.files.map((f) => f.path)).toEqual(["cell.oci.tar", "cell/config.json"]);
+    for (const f of manifest.files) expect(f.sha256).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it("đi qua được bộ lọc bí mật", () => {
+    expect(() => redactEvidence(buildTransferManifest({ evidence, files }))).not.toThrow();
   });
 });

@@ -574,3 +574,139 @@ export function readCellBuildEvidence(evidence) {
     sourceDateEpoch: evidence.source_date_epoch,
   };
 }
+
+const TAR_BLOCK = 512;
+
+/**
+ * Chặn đường dẫn nguy hiểm trong tar.
+ *
+ * Bundle này được GIẢI NÉN BẰNG QUYỀN PROVISIONING trên VPS. Một entry
+ * `../../etc/passwd` là lỗ hổng giải nén cổ điển, và ở đây nó ghi được vào chỗ
+ * mà người vận hành không hề nhìn tới.
+ */
+function assertSafeTarPath(path) {
+  if (typeof path !== "string" || path.length === 0 || path.length > 100) {
+    throw new Error(`đường dẫn trong bundle không hợp lệ: ${JSON.stringify(path)}.`);
+  }
+  if (path.startsWith("/") || /^[A-Za-z]:/u.test(path) || path.includes("\\")) {
+    throw new Error(`đường dẫn trong bundle phải TƯƠNG ĐỐI: ${JSON.stringify(path)}.`);
+  }
+  if (path.split("/").includes("..")) {
+    throw new Error(`đường dẫn trong bundle không được đi ngược lên: ${JSON.stringify(path)}.`);
+  }
+}
+
+const octal = (value, width) => value.toString(8).padStart(width - 1, "0") + "\0";
+
+/**
+ * Ghi tar ustar TẤT ĐỊNH.
+ *
+ * Cùng đầu vào phải ra cùng byte, trên mọi máy, mọi thời điểm. Nếu không thì
+ * "so digest với bản đã duyệt" mất hết ý nghĩa: mỗi lần dựng ra một file khác,
+ * và không ai phân biệt được "khác vì tôi vừa sửa" với "khác vì ai đó chèn thứ
+ * gì vào".
+ *
+ * Vì thế: entry được SẮP theo đường dẫn (thứ tự đầu vào không lọt vào output),
+ * mtime ghim ở SOURCE_DATE_EPOCH, uid/gid = 0 và uname/gname rỗng (bundle không
+ * mang danh tính người dựng — vừa không tái lập được trên máy khác, vừa là một
+ * rò rỉ nhỏ không cần thiết).
+ */
+export function writeDeterministicTar(entries) {
+  if (!Array.isArray(entries)) throw new Error("entries phải là mảng.");
+  const seen = new Set();
+  for (const entry of entries) {
+    assertSafeTarPath(entry?.path);
+    if (seen.has(entry.path)) {
+      throw new Error(
+        `đường dẫn trùng trong bundle: ${entry.path}. Cái sau sẽ đè cái trước lúc ` +
+        `giải nén, và bản kê không còn mô tả đúng thứ nằm trên đĩa.`,
+      );
+    }
+    seen.add(entry.path);
+  }
+
+  const sorted = [...entries].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const blocks = [];
+  for (const { path, bytes } of sorted) {
+    const data = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? "");
+    const header = Buffer.alloc(TAR_BLOCK, 0);
+    header.write(path, 0, 100, "utf8");
+    header.write(octal(0o644, 8), 100, 8, "ascii");   // mode
+    header.write(octal(0, 8), 108, 8, "ascii");       // uid
+    header.write(octal(0, 8), 116, 8, "ascii");       // gid
+    header.write(octal(data.length, 12), 124, 12, "ascii");
+    header.write(octal(PINNED_SOURCE_DATE_EPOCH, 12), 136, 12, "ascii");
+    header.write("        ", 148, 8, "ascii");        // checksum: khoảng trắng khi tính
+    header.write("0", 156, 1, "ascii");               // typeflag: file thường
+    header.write("ustar\0", 257, 6, "ascii");
+    header.write("00", 263, 2, "ascii");
+    // uname/gname để RỖNG có chủ ý — xem chú thích đầu hàm.
+    let sum = 0;
+    for (const byte of header) sum += byte;
+    header.write(octal(sum, 8).slice(0, 7) + "\0", 148, 8, "ascii");
+
+    blocks.push(header, data);
+    const pad = (TAR_BLOCK - (data.length % TAR_BLOCK)) % TAR_BLOCK;
+    if (pad) blocks.push(Buffer.alloc(pad, 0));
+  }
+  // Hai block rỗng kết thúc, theo chuẩn.
+  blocks.push(Buffer.alloc(TAR_BLOCK * 2, 0));
+  return Buffer.concat(blocks);
+}
+
+/** Đọc lại tar do writeDeterministicTar ghi. Dùng để KIỂM chính file đã dựng. */
+export function readTar(buffer) {
+  const out = [];
+  let offset = 0;
+  while (offset + TAR_BLOCK <= buffer.length) {
+    const header = buffer.subarray(offset, offset + TAR_BLOCK);
+    if (header.every((b) => b === 0)) break;
+    const str = (start, len) =>
+      header.subarray(start, start + len).toString("utf8").replace(/\0.*$/u, "").trim();
+    const oct = (start, len) => parseInt(str(start, len) || "0", 8);
+    const path = str(0, 100);
+    const size = oct(124, 12);
+    const dataStart = offset + TAR_BLOCK;
+    out.push({
+      path,
+      bytes: buffer.subarray(dataStart, dataStart + size),
+      mtime: oct(136, 12),
+      uid: oct(108, 8),
+      gid: oct(116, 8),
+      uname: str(265, 32),
+      gname: str(297, 32),
+    });
+    offset = dataStart + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK;
+  }
+  return out;
+}
+
+/**
+ * Bản kê chuyển giao, nhúng TRONG bundle.
+ *
+ * KHÔNG chứa `bundle_sha256`: đó là băm của chính file chứa bản kê này. Nhét vào
+ * trong thì nội dung đổi, băm đổi theo, và không bao giờ hội tụ. `bundle_sha256`
+ * phải sống NGOÀI tar, cạnh nó.
+ */
+export function buildTransferManifest({ evidence, files }) {
+  if (!evidence?.reviewedCommitSha || !evidence?.imageDigest) {
+    throw new Error("Bản kê cần bằng chứng đã đọc qua readCellBuildEvidence().");
+  }
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error("Bản kê cần ít nhất một file.");
+  }
+  return {
+    version: 1,
+    // reviewed_r, KHÔNG phải checkpoint M — xem readCellBuildEvidence().
+    reviewedCommitSha: evidence.reviewedCommitSha,
+    imageDigest: evidence.imageDigest,
+    promotedArchiveSha256: evidence.promotedArchiveSha256,
+    sourceDateEpoch: PINNED_SOURCE_DATE_EPOCH,
+    files: [...files]
+      .map(({ path, bytes }) => ({
+        path,
+        sha256: createHash("sha256").update(Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes ?? "")).digest("hex"),
+      }))
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+  };
+}
