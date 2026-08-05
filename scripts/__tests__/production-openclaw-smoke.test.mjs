@@ -6,6 +6,7 @@ import {
   buildMachineReason,
   classifyCommand,
   redactEvidence,
+  buildCellBootstrap,
   buildRolloutRunRow,
   computeMigrationManifestHash,
   resolveCommand,
@@ -137,6 +138,23 @@ describe("lọc bí mật khỏi bằng chứng", () => {
     // trên xanh.
     const clean = { runId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301", stage: "WAITING_OWNER_QR", counts: { queued: 0 } };
     expect(redactEvidence(clean)).toEqual(clean);
+  });
+
+  it("KHÔNG chặn nhầm fencing_token — nó là bộ đếm, không phải chứng chỉ", () => {
+    // Bắt được khi viết bài dùng thật cho buildCellBootstrap: mẫu /token/ trần
+    // chặn luôn `fencing_token`, khiến chuỗi dựng cell không ghi nổi bằng chứng
+    // nào. Một bộ lọc chặn nhầm sẽ bị người ta tắt, và lúc đó nó không chặn gì
+    // nữa cả.
+    expect(() => redactEvidence({ fencing_token: 1, lease_generation: 2 })).not.toThrow();
+    expect(() => redactEvidence({ credential_generation: 1 })).not.toThrow();
+  });
+
+  it("vẫn chặn mọi tên mang hình dạng chứng chỉ", () => {
+    // Mặt NGƯỢC của bài trên: siết mẫu không được làm thủng nó.
+    for (const key of ["accessToken","access_token","refreshToken","idToken","apiToken",
+                       "authToken","bearerToken","sessionToken","token","tokens"]) {
+      expect(() => redactEvidence({ [key]: "x" }), `${key} lọt qua`).toThrow(/token/iu);
+    }
   });
 
   it("soi cả mảng lồng nhau, không chỉ khoá cấp một", () => {
@@ -356,5 +374,100 @@ describe("dựng dòng rollout run", () => {
     // Nếu dòng này chứa thứ gì hình dạng bí mật thì nó sẽ nằm trong bảng, trong
     // backup, và trong mọi bản dump về sau.
     expect(() => redactEvidence(buildRolloutRunRow(ok()))).not.toThrow();
+  });
+});
+
+describe("chuỗi dựng cell đầu tiên", () => {
+  // THỨ TỰ Ở ĐÂY LÀ HỢP ĐỒNG, không phải sở thích. Đo trên PostgreSQL 17.6 nạp
+  // schema production: guard chỉ coi là "kích hoạt" khi cell ở state='READY',
+  // nên phải dựng đủ account → cell PROVISIONING → credential → lease rồi MỚI
+  // lật READY. Chèn cell READY ngay từ đầu thì trúng
+  // "current artifact cell credential lease fence matrix is incomplete".
+  //
+  // Một phân tích tĩnh dài đã kết luận đây là bế tắc không gỡ được. Phép đo bác
+  // nó. Bài test này giữ kết quả đo đó khỏi bị quên.
+  const ok = () => ({
+    organizationId: "dddd0000-0000-4000-8000-000000000001",
+    accountId: "aaaa1111-0000-4000-8000-000000000001",
+    cellId: "cccc1111-0000-4000-8000-000000000001",
+    reviewedCommitSha: "0650187981ad9728d295fae34eff92b508e36bc8",
+    cellImageDigest: `sha256:${"4".repeat(64)}`,
+    cellConfigDigest: "3".repeat(64),
+    credentialHash: "a".repeat(64),
+    allowedScopes: ["heartbeat", "lease.acquire"],
+    leaseExpiresAt: "2026-08-06T00:00:00.000Z",
+  });
+
+  it("năm bước, đúng thứ tự, READY là bước CUỐI", () => {
+    const steps = buildCellBootstrap(ok());
+    expect(steps.map((s) => s.table)).toEqual([
+      "public.openclaw_accounts",
+      "public.openclaw_runtime_cells",
+      "public.openclaw_runtime_credentials",
+      "public.openclaw_runtime_leases",
+      "public.openclaw_runtime_cells",
+    ]);
+    expect(steps[1].values.state).toBe("PROVISIONING");
+    expect(steps[4].operation).toBe("update");
+    expect(steps[4].values.state).toBe("READY");
+  });
+
+  it("cell được tạo ở PROVISIONING, KHÔNG bao giờ tạo thẳng READY", () => {
+    // Nếu ai đó "tối ưu" bằng cách tạo thẳng READY, guard sẽ chặn và thông điệp
+    // lỗi ("matrix is incomplete") không hề gợi ý rằng nguyên nhân là thứ tự.
+    const steps = buildCellBootstrap(ok());
+    const inserts = steps.filter((s) => s.operation === "insert" && s.table.endsWith("cells"));
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values.state).not.toBe("READY");
+  });
+
+  it("từ chối scope ngoài danh sách đóng của schema", () => {
+    // allowed_scopes bị ràng bởi một CHECK liệt kê đúng 18 giá trị. Tôi từng gõ
+    // "runtime.read" cho có và bị chặn ngay ở tầng DB — chặn sớm ở đây thì thông
+    // điệp nói được vì sao.
+    expect(() => buildCellBootstrap({ ...ok(), allowedScopes: ["runtime.read"] }))
+      .toThrow(/scope/iu);
+    expect(() => buildCellBootstrap({ ...ok(), allowedScopes: [] })).toThrow(/scope/iu);
+  });
+
+  it("nhận mọi scope hợp lệ của schema", () => {
+    // Mặt THUẬN: danh sách chặn phải đúng bằng danh sách schema, không hẹp hơn.
+    // Hẹp hơn nghĩa là công cụ tự cấm thứ hệ thống cho phép, và người dùng sẽ
+    // đi vòng qua công cụ.
+    expect(() => buildCellBootstrap({
+      ...ok(),
+      allowedScopes: ["heartbeat", "qr.publish", "qr.result", "inbound.commit",
+        "outbox.claim", "outbox.preflight", "outbox.authorize-send", "outbox.requeue",
+        "outbox.complete", "work.claim", "work.context", "work.complete", "media.issue",
+        "lease.acquire", "cell.rebind", "generation.ack", "credential.exchange",
+        "runtime.sweep"],
+    })).not.toThrow();
+  });
+
+  it("mọi bước đều mang organization_id — không bước nào rò sang tổ chức khác", () => {
+    const steps = buildCellBootstrap(ok());
+    for (const step of steps) {
+      const org = step.values.organization_id ?? step.where?.organization_id;
+      expect(org, `${step.table} thiếu organization_id`).toBe(ok().organizationId);
+    }
+  });
+
+  it("bước lật READY ràng theo cell_id, không quét cả bảng", () => {
+    // Một UPDATE thiếu WHERE ở bảng này sẽ lật MỌI cell của MỌI tổ chức sang
+    // READY cùng lúc.
+    const flip = buildCellBootstrap(ok())[4];
+    expect(flip.where?.id).toBe(ok().cellId);
+    expect(flip.where?.organization_id).toBe(ok().organizationId);
+  });
+
+  it("từ chối digest sai khuôn, giống buildRolloutRunRow", () => {
+    expect(() => buildCellBootstrap({ ...ok(), cellImageDigest: "4".repeat(64) }))
+      .toThrow(/image digest/iu);
+    expect(() => buildCellBootstrap({ ...ok(), cellConfigDigest: `sha256:${"3".repeat(64)}` }))
+      .toThrow(/config digest/iu);
+  });
+
+  it("chuỗi dựng ra đi qua được bộ lọc bí mật", () => {
+    expect(() => redactEvidence(buildCellBootstrap(ok()))).not.toThrow();
   });
 });

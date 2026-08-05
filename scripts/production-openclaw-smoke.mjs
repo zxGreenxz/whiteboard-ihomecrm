@@ -77,7 +77,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
  */
 const FORBIDDEN_KEYS = [
   { pattern: /qr/iu, label: "dữ liệu QR" },
-  { pattern: /token|jwt|bearer|secret|password|apikey|api_key/iu, label: "token hoặc bí mật" },
+  // "token" TRẦN thì quá rộng: `fencing_token` là bộ đếm đơn điệu dùng để loại
+  // writer cũ, schema lưu ở dạng thường, và chặn nó sẽ khiến chuỗi dựng cell
+  // không ghi nổi bằng chứng nào. Chỉ chặn tên mang hình dạng CHỨNG CHỈ.
+  // Bắt được nhờ viết một bài dùng thật thay vì chỉ bài chặn.
+  {
+    pattern: /(access|refresh|id|api|auth|bearer|session)_?token|^tokens?$|jwt|bearer|secret|password|apikey|api_key/iu,
+    label: "token hoặc bí mật",
+  },
   { pattern: /cookie/iu, label: "cookie" },
   { pattern: /imei/iu, label: "IMEI" },
   { pattern: /^(message|msg)?_?(body|text|content|caption)$/iu, label: "nội dung tin nhắn" },
@@ -298,4 +305,135 @@ export function buildRolloutRunRow({
     status: "RUNNING",
     completed_at: null,
   };
+}
+
+/**
+ * Scope hợp lệ của credential runtime.
+ *
+ * Đây là bản sao danh sách trong CHECK constraint của
+ * `public.openclaw_runtime_credentials`. Chặn ở đây để thông điệp lỗi nói được
+ * VÌ SAO — tầng DB chỉ trả một lỗi check constraint không gợi ý giá trị nào hợp
+ * lệ. Tôi từng gõ "runtime.read" cho có và mất một vòng vì thế.
+ *
+ * Danh sách phải ĐÚNG BẰNG schema, không hẹp hơn: hẹp hơn nghĩa là công cụ tự
+ * cấm thứ hệ thống cho phép, và người ta sẽ đi vòng qua công cụ.
+ */
+export const RUNTIME_CREDENTIAL_SCOPES = Object.freeze([
+  "heartbeat", "qr.publish", "qr.result", "inbound.commit",
+  "outbox.claim", "outbox.preflight", "outbox.authorize-send", "outbox.requeue",
+  "outbox.complete", "work.claim", "work.context", "work.complete",
+  "media.issue", "lease.acquire", "cell.rebind", "generation.ack",
+  "credential.exchange", "runtime.sweep",
+]);
+
+/**
+ * Chuỗi dựng cell đầu tiên cho một tổ chức.
+ *
+ * THỨ TỰ LÀ HỢP ĐỒNG, không phải sở thích. Đo trên PostgreSQL 17.6 nạp schema
+ * production: guard kích hoạt chỉ coi là "kích hoạt" khi cell ở `state='READY'`,
+ * nên phải dựng đủ account → cell PROVISIONING → credential → lease rồi MỚI lật
+ * READY. Chèn thẳng cell READY sẽ trúng
+ * `current artifact cell credential lease fence matrix is incomplete`, và thông
+ * điệp đó không hề gợi ý rằng nguyên nhân là thứ tự.
+ *
+ * Một phân tích tĩnh dài từng kết luận đây là bế tắc không gỡ được. Phép đo bác
+ * nó — chuỗi này chạy thông, không cần tắt trigger.
+ *
+ * Trả về danh sách bước, KHÔNG chạy. Người vận hành đọc trước khi đồng ý.
+ */
+export function buildCellBootstrap({
+  organizationId,
+  accountId,
+  cellId,
+  reviewedCommitSha,
+  cellImageDigest,
+  cellConfigDigest,
+  credentialHash,
+  allowedScopes,
+  leaseExpiresAt,
+} = {}) {
+  for (const [name, value] of Object.entries({ organizationId, accountId, cellId })) {
+    if (typeof value !== "string" || !value) throw new Error(`Thiếu ${name}.`);
+  }
+  if (!HEX40.test(reviewedCommitSha ?? "")) {
+    throw new Error(`reviewed sha phải là 40 hex; nhận ${JSON.stringify(reviewedCommitSha)}.`);
+  }
+  if (!IMAGE_DIGEST.test(cellImageDigest ?? "")) {
+    throw new Error(`cell image digest phải theo khuôn sha256:<64 hex>.`);
+  }
+  if (!HEX64.test(cellConfigDigest ?? "")) {
+    throw new Error(`cell config digest phải là 64 hex KHÔNG có tiền tố.`);
+  }
+  if (!HEX64.test(credentialHash ?? "")) {
+    throw new Error(`credential hash phải là 64 hex.`);
+  }
+  if (!Array.isArray(allowedScopes) || allowedScopes.length === 0) {
+    throw new Error("Cần ít nhất một scope cho credential.");
+  }
+  const unknownScopes = allowedScopes.filter((s) => !RUNTIME_CREDENTIAL_SCOPES.includes(s));
+  if (unknownScopes.length) {
+    throw new Error(
+      `scope không hợp lệ: ${unknownScopes.join(", ")}. ` +
+      `Hợp lệ: ${RUNTIME_CREDENTIAL_SCOPES.join(", ")}.`,
+    );
+  }
+  if (typeof leaseExpiresAt !== "string" || Number.isNaN(Date.parse(leaseExpiresAt))) {
+    throw new Error(`leaseExpiresAt phải là mốc thời gian ISO; nhận ${JSON.stringify(leaseExpiresAt)}.`);
+  }
+
+  return [
+    {
+      operation: "insert",
+      table: "public.openclaw_accounts",
+      values: { id: accountId, organization_id: organizationId },
+    },
+    {
+      // PROVISIONING, không phải READY. Xem chú thích đầu hàm.
+      operation: "insert",
+      table: "public.openclaw_runtime_cells",
+      values: {
+        id: cellId,
+        organization_id: organizationId,
+        account_id: accountId,
+        cell_generation: 1,
+        state: "PROVISIONING",
+        is_current: true,
+        reviewed_commit_sha: reviewedCommitSha,
+        image_digest: cellImageDigest,
+        config_digest: cellConfigDigest,
+      },
+    },
+    {
+      operation: "insert",
+      table: "public.openclaw_runtime_credentials",
+      values: {
+        organization_id: organizationId,
+        account_id: accountId,
+        cell_id: cellId,
+        credential_generation: 1,
+        credential_hash: credentialHash,
+        allowed_scopes: allowedScopes,
+      },
+    },
+    {
+      operation: "insert",
+      table: "public.openclaw_runtime_leases",
+      values: {
+        organization_id: organizationId,
+        account_id: accountId,
+        cell_id: cellId,
+        lease_generation: 1,
+        fencing_token: 1,
+        expires_at: leaseExpiresAt,
+      },
+    },
+    {
+      // Bước CUỐI. Ràng theo cả id lẫn organization_id: một UPDATE thiếu WHERE ở
+      // bảng này sẽ lật MỌI cell của MỌI tổ chức sang READY cùng lúc.
+      operation: "update",
+      table: "public.openclaw_runtime_cells",
+      where: { id: cellId, organization_id: organizationId },
+      values: { state: "READY" },
+    },
+  ];
 }
