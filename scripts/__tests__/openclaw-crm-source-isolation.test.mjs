@@ -20,6 +20,25 @@ import { createDisposableOpenClawDatabase } from "../test-openclaw-migrations.mj
  * duyệt gọi, vừa chạm ba bảng đó". Role sở hữu 146 hàm và 62 trong số đó
  * `authenticated` gọi được (đo trên baseline production 05/08/2026), nên thêm
  * một hàm vi phạm là rò xuyên tổ chức mà không có gì cảnh báo.
+ *
+ * ĐỘ PHỦ CÒN THIẾU — đọc trước khi tin bài này màu xanh.
+ * Harness PGlite dựng schema từ 12 file migration OpenClaw trên một fixture, nên
+ * nó KHÔNG có các GRANT rộng đến từ phần còn lại của lịch sử migration. Đo cùng
+ * một truy vấn trên hai nơi, 05/08/2026:
+ *
+ *              tổng  secdef  trigger  authenticated  anon
+ *   PGlite      146     123       31             57     0
+ *   production  146     123       31             62    60
+ *
+ * Hình dạng hàm khớp tuyệt đối, nhưng QUYỀN thì không: PGlite thiếu 5 grant cho
+ * `authenticated` và mù hoàn toàn 60 grant cho `anon`. Hệ quả trực tiếp: nhánh
+ * `anon` của bài thứ hai luôn false ở CI (không đo được gì), và một vi phạm rơi
+ * đúng 5 hàm kia sẽ LỌT. Bài này là lưới thưa, không phải bằng chứng.
+ *
+ * Nơi đo thật là baseline production nạp vào PostgreSQL 17.6
+ * (`pg_dump --schema-only` → container supabase/postgres) — ở đó `public` và
+ * `app_private` khớp production từng dòng. Khi CI có Docker, chạy cùng truy vấn
+ * này ở đó rồi hãy coi bất biến là đã được canh.
  */
 const HARNESS_TIMEOUT = 60_000;
 
