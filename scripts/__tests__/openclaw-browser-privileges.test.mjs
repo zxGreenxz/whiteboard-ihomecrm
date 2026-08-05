@@ -105,6 +105,51 @@ describe("browser RPC privileges under the owning role", () => {
     }
   }, HARNESS_TIMEOUT);
 
+  it("grants exactly the organization columns the definer bodies actually read", async () => {
+    // Cùng một lỗi với bài trên, khác bảng, bắt được 05/08/2026 — nhưng KHÔNG
+    // phải bằng bộ SQL này. Phải gọi RPC thật dưới role `authenticated` trên
+    // baseline production mới lòi ra: openclaw_list_my_organizations_v1() là RPC
+    // đầu tiên trang gọi, và nó chết `permission denied for table organizations`
+    // vì role sở hữu không có quyền nào trên bảng đó — không table, không column.
+    //
+    // DẪN XUẤT từ thân hàm, không chép tay: một danh sách chép tay sẽ tự chứng
+    // nhận chính nó và xanh y như lần `member_type` bị thiếu.
+    const source = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20260727060000_openclaw_rpc_surface.sql"),
+      "utf8",
+    );
+    const referenced = new Set(
+      [...source.matchAll(/\borganization[.]([a-z_]+)/gu)].map((match) => match[1]),
+    );
+    expect(
+      referenced.size,
+      `không tìm thấy tham chiếu cột organization nào; đã đọc ${source.length} ký tự`,
+    ).toBeGreaterThan(0);
+
+    await withDatabase(async (database) => {
+      for (const column of [...referenced].sort()) {
+        expect(
+          await attemptAs(
+            database,
+            "openclaw_function_owner",
+            `select ${column} from public.organizations limit 1`,
+          ),
+          `${column} được thân hàm definer đọc nhưng chưa cấp`,
+        ).toBeNull();
+      }
+    });
+
+    // Cùng lý do như bài membership: bảng organizations trong harness là stub,
+    // nên "grant này là COLUMN LIST" không chứng minh được lúc chạy. Khẳng định
+    // trên câu lệnh, và nói rõ vì sao, thay vì một phép kiểm runtime vô nghĩa.
+    const marker = "on public.organizations to openclaw_function_owner";
+    const grant = source.slice(source.lastIndexOf("grant select", source.indexOf(marker)), source.indexOf(marker));
+    expect(grant, "grant trên organizations phải giữ dạng danh sách cột").toContain("(");
+    for (const column of referenced) {
+      expect(grant, `${column} thiếu trong câu grant`).toContain(column);
+    }
+  }, HARNESS_TIMEOUT);
+
   it("still keeps that table away from the browser roles", async () => {
     await withDatabase(async (database) => {
       // The grant exists for SECURITY DEFINER bodies, not for callers. A member must

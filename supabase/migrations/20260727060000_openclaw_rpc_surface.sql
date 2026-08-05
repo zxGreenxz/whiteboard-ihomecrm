@@ -9765,6 +9765,29 @@ grant execute on function public.openclaw_list_ai_drafts_v1(jsonb) to authentica
 grant select (id, organization_id, user_id, status, member_type)
   on public.organization_memberships to openclaw_function_owner;
 
+-- Cùng một lỗi, khác bảng — bắt được 05/08/2026 bằng cách gọi RPC thật dưới
+-- role `authenticated` trên baseline production, không phải bằng đọc mã.
+--
+-- public.openclaw_list_my_organizations_v1() là RPC ĐẦU TIÊN mà trang gọi
+-- (useOpenClawOrganization). Nó đọc `organization.id` và `organization.name`
+-- từ public.organizations trong khi chạy dưới openclaw_function_owner, một role
+-- NOLOGIN NOINHERIT NOBYPASSRLS **không có quyền nào** trên bảng đó — không
+-- table grant, không column grant. Kết quả: `permission denied for table
+-- organizations`, và giao diện hiện "Không thể tải danh sách tổ chức của bạn."
+--
+-- Cờ runtime đang TẮT nên chưa người dùng nào chạm phải. Ngày bật cờ thì lời
+-- gọi đầu tiên của MỌI người dùng chết ngay ở màn đầu.
+--
+-- Vì sao cả bộ SQL cũ im lặng: harness PGlite dựng schema từ 12 file migration
+-- OpenClaw trên một fixture, nên nó thiếu các GRANT rộng từ phần còn lại của
+-- lịch sử — đo được 05/08/2026 là PGlite thấy 57 hàm `authenticated` gọi được
+-- và 0 hàm `anon` gọi được, còn production là 62 và 60.
+--
+-- Danh sách cột đúng bằng cột thân hàm đọc, không hơn: role này sở hữu ~123 hàm
+-- SECURITY DEFINER và mọi thứ cấp rộng hơn đều bị tất cả chúng thừa hưởng.
+grant select (id, name)
+  on public.organizations to openclaw_function_owner;
+
 -- ---------------------------------------------------------------------------
 -- Who holds a takeover, and until when
 -- ---------------------------------------------------------------------------
