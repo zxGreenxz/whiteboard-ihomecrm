@@ -6,6 +6,7 @@ import {
   buildMachineReason,
   classifyCommand,
   redactEvidence,
+  buildRolloutRunRow,
   computeMigrationManifestHash,
   resolveCommand,
 } from "../production-openclaw-smoke.mjs";
@@ -251,5 +252,109 @@ describe("bản song sinh JS của hàm băm manifest", () => {
     expect(ORDER[3]).toBe("20260727025000_openclaw_inbound_automation.sql");
     expect(ORDER[6]).toBe("20260727050000_openclaw_access_policies.sql");
     expect(ORDER[9]).toBe("20260727080000_openclaw_realtime_allowlist.sql");
+  });
+});
+
+describe("dựng dòng rollout run", () => {
+  // Dòng này là lời khẳng định "có một cell đang chạy đúng ảnh đã duyệt". Guard
+  // kích hoạt đọc nó để quyết định cho phép bật OpenClaw hay không. Nên mọi phép
+  // kiểm phải xảy ra TRƯỚC khi ghi: một dòng sai nằm trong bảng là một lời nói
+  // dối mà hệ thống sẽ tin.
+  const ORDER = [
+    "20260727010000_openclaw_catalog_foundation.sql",
+    "20260727015000_openclaw_security_principals.sql",
+    "20260727020000_openclaw_inbox_schema.sql",
+    "20260727025000_openclaw_inbound_automation.sql",
+    "20260727030000_openclaw_policy_automation_knowledge.sql",
+    "20260727040000_openclaw_delivery_audit_ops.sql",
+    "20260727050000_openclaw_access_policies.sql",
+    "20260727060000_openclaw_rpc_surface.sql",
+    "20260727070000_openclaw_crm_event_sources.sql",
+    "20260727080000_openclaw_realtime_allowlist.sql",
+    "20260727090000_openclaw_maintenance_jobs.sql",
+    "20260727095000_openclaw_activation_guards.sql",
+  ];
+  const SHA = "0650187981ad9728d295fae34eff92b508e36bc8";
+  const IMG = `sha256:${"4".repeat(64)}`;
+  const CFG = "3".repeat(64);
+  const ok = () => ({
+    organizationId: "dddd0000-0000-4000-8000-000000000001",
+    reviewedCommitSha: SHA,
+    migrationOrder: ORDER,
+    migrationDigests: Object.fromEntries(ORDER.map((n, i) => [n, "a".repeat(63) + String(i % 10)])),
+    cellImageDigest: IMG,
+    cellConfigDigest: CFG,
+    upstreamSri: `sha512-${"b".repeat(86)}==`,
+    upstreamGitHead: "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4",
+    patchSeriesSha256: "c".repeat(64),
+    builtTgzSha256: "d".repeat(64),
+  });
+
+  it("dựng đủ 8 trường bắt buộc, bắt đầu ở FOUNDATION", () => {
+    const row = buildRolloutRunRow(ok());
+    for (const key of [
+      "organization_id", "reviewed_commit_sha", "migration_manifest_sha256",
+      "upstream_sri", "upstream_git_head", "patch_series_sha256",
+      "built_tgz_sha256", "artifact_digests",
+    ]) {
+      expect(row[key], `thiếu ${key}`).toBeDefined();
+    }
+    // Bắt đầu ở FOUNDATION chứ không nhảy thẳng: mỗi bước tiến là một lần người
+    // vận hành phải nhìn vào cổng, và bỏ bước đầu là bỏ luôn thói quen đó.
+    expect(row.stage).toBe("FOUNDATION");
+    expect(row.status).toBe("RUNNING");
+    expect(row.completed_at).toBeNull();
+  });
+
+  it("TỰ tính migration_manifest_sha256, không nhận từ người gọi", () => {
+    // Nhận hash từ tham số nghĩa là tin người gọi đã tính đúng. Người gọi chính
+    // là chỗ dễ sai nhất.
+    const args = { ...ok(), migrationManifestSha256: "e".repeat(64) };
+    const row = buildRolloutRunRow(args);
+    expect(row.migration_manifest_sha256)
+      .toBe(computeMigrationManifestHash(args.migrationDigests, ORDER));
+    expect(row.migration_manifest_sha256).not.toBe("e".repeat(64));
+  });
+
+  it("artifact_digests mang cellReviewedCommitSha TRÙNG reviewed_commit_sha", () => {
+    // Guard kiểm đúng điều này. Lệch nhau nghĩa là dòng mô tả một ảnh dựng từ
+    // commit khác commit đã duyệt — và không ai đọc được sự lệch đó bằng mắt.
+    const row = buildRolloutRunRow(ok());
+    expect(row.artifact_digests.cellReviewedCommitSha).toBe(row.reviewed_commit_sha);
+    expect(row.artifact_digests.cellImageDigest).toBe(IMG);
+    expect(row.artifact_digests.cellConfigDigest).toBe(CFG);
+  });
+
+  it("từ chối image digest sai khuôn", () => {
+    for (const bad of ["4".repeat(64), "sha256:xyz", `sha1:${"4".repeat(40)}`, ""]) {
+      expect(() => buildRolloutRunRow({ ...ok(), cellImageDigest: bad }), `lọt: ${bad}`)
+        .toThrow(/image digest/iu);
+    }
+  });
+
+  it("từ chối config digest sai khuôn", () => {
+    for (const bad of [`sha256:${"3".repeat(64)}`, "3".repeat(63), ""]) {
+      expect(() => buildRolloutRunRow({ ...ok(), cellConfigDigest: bad }), `lọt: ${bad}`)
+        .toThrow(/config digest/iu);
+    }
+  });
+
+  it("từ chối reviewed sha sai khuôn 40 hex", () => {
+    for (const bad of ["HEAD", SHA.slice(0, 39), `${SHA}x`, ""]) {
+      expect(() => buildRolloutRunRow({ ...ok(), reviewedCommitSha: bad })).toThrow(/sha/iu);
+    }
+  });
+
+  it("từ chối thiếu bất kỳ trường upstream nào", () => {
+    for (const key of ["upstreamSri", "upstreamGitHead", "patchSeriesSha256", "builtTgzSha256"]) {
+      expect(() => buildRolloutRunRow({ ...ok(), [key]: undefined }), `thiếu ${key} vẫn qua`)
+        .toThrow();
+    }
+  });
+
+  it("dòng dựng ra ĐI QUA được bộ lọc bí mật", () => {
+    // Nếu dòng này chứa thứ gì hình dạng bí mật thì nó sẽ nằm trong bảng, trong
+    // backup, và trong mọi bản dump về sau.
+    expect(() => redactEvidence(buildRolloutRunRow(ok()))).not.toThrow();
   });
 });

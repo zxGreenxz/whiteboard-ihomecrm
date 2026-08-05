@@ -210,3 +210,92 @@ export function computeMigrationManifestHash(artifactDigests, order) {
     ]))
     .digest("hex");
 }
+
+const HEX40 = /^[0-9a-f]{40}$/u;
+const HEX64 = /^[0-9a-f]{64}$/u;
+const IMAGE_DIGEST = /^sha256:[0-9a-f]{64}$/u;
+
+/**
+ * Dựng dòng `public.openclaw_rollout_runs` — và kiểm mọi thứ TRƯỚC khi ghi.
+ *
+ * Dòng này là lời khẳng định "có một cell đang chạy đúng ảnh đã duyệt". Guard
+ * kích hoạt đọc nó để quyết định có cho bật OpenClaw hay không. Một dòng sai nằm
+ * trong bảng là một lời nói dối mà hệ thống sẽ tin — và không có nút hoàn tác.
+ *
+ * KHÔNG nhận `migration_manifest_sha256` từ người gọi: hàm tự tính. Nhận từ tham
+ * số nghĩa là tin người gọi đã tính đúng, mà người gọi chính là chỗ dễ sai nhất.
+ *
+ * Trả về dòng, KHÔNG ghi. Việc ghi để tầng gọi làm, sau khi người vận hành đã
+ * đọc dòng này.
+ */
+export function buildRolloutRunRow({
+  organizationId,
+  reviewedCommitSha,
+  migrationOrder,
+  migrationDigests,
+  cellImageDigest,
+  cellConfigDigest,
+  upstreamSri,
+  upstreamGitHead,
+  patchSeriesSha256,
+  builtTgzSha256,
+} = {}) {
+  if (typeof organizationId !== "string" || !organizationId) {
+    throw new Error("Thiếu organizationId.");
+  }
+  if (!HEX40.test(reviewedCommitSha ?? "")) {
+    throw new Error(`reviewed sha phải là 40 hex; nhận ${JSON.stringify(reviewedCommitSha)}.`);
+  }
+  // Khuôn digest ảnh và digest cấu hình KHÁC NHAU, và guard kiểm riêng từng cái
+  // (`^sha256:[0-9a-f]{64}$` vs `^[0-9a-f]{64}$`). Nhầm chỗ là dòng ghi ra bị
+  // guard từ chối ở lần kích hoạt đầu tiên, tức lúc muộn nhất có thể.
+  if (!IMAGE_DIGEST.test(cellImageDigest ?? "")) {
+    throw new Error(
+      `cell image digest phải theo khuôn sha256:<64 hex>; nhận ${JSON.stringify(cellImageDigest)}.`,
+    );
+  }
+  if (!HEX64.test(cellConfigDigest ?? "")) {
+    throw new Error(
+      `cell config digest phải là 64 hex KHÔNG có tiền tố; nhận ${JSON.stringify(cellConfigDigest)}.`,
+    );
+  }
+  if (!HEX40.test(upstreamGitHead ?? "")) {
+    throw new Error(`upstream git head phải là 40 hex; nhận ${JSON.stringify(upstreamGitHead)}.`);
+  }
+  if (!HEX64.test(patchSeriesSha256 ?? "")) {
+    throw new Error(`patch series sha256 phải là 64 hex; nhận ${JSON.stringify(patchSeriesSha256)}.`);
+  }
+  if (!HEX64.test(builtTgzSha256 ?? "")) {
+    throw new Error(`built tgz sha256 phải là 64 hex; nhận ${JSON.stringify(builtTgzSha256)}.`);
+  }
+  if (typeof upstreamSri !== "string" || !upstreamSri.startsWith("sha512-")) {
+    throw new Error(`upstream SRI phải bắt đầu bằng "sha512-"; nhận ${JSON.stringify(upstreamSri)}.`);
+  }
+
+  // cellReviewedCommitSha PHẢI trùng reviewed_commit_sha — guard kiểm đúng điều
+  // này. Lệch nhau nghĩa là dòng mô tả một ảnh dựng từ commit khác commit đã
+  // duyệt, và không ai đọc được sự lệch đó bằng mắt.
+  const artifactDigests = {
+    ...migrationDigests,
+    cellReviewedCommitSha: reviewedCommitSha,
+    cellImageDigest,
+    cellConfigDigest,
+  };
+
+  return {
+    organization_id: organizationId,
+    reviewed_commit_sha: reviewedCommitSha,
+    migration_manifest_sha256: computeMigrationManifestHash(migrationDigests, migrationOrder),
+    upstream_sri: upstreamSri,
+    upstream_git_head: upstreamGitHead,
+    patch_series_sha256: patchSeriesSha256,
+    built_tgz_sha256: builtTgzSha256,
+    artifact_digests: artifactDigests,
+    // Bắt đầu ở FOUNDATION chứ không nhảy thẳng: mỗi bước tiến là một lần người
+    // vận hành phải nhìn vào cổng, và bỏ bước đầu là bỏ luôn thói quen đó.
+    stage: "FOUNDATION",
+    stage_version: 1,
+    status: "RUNNING",
+    completed_at: null,
+  };
+}
