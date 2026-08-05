@@ -6,7 +6,9 @@ import {
   buildMachineReason,
   classifyCommand,
   redactEvidence,
+  ROLLOUT_STAGES,
   buildCellBootstrap,
+  buildStageAdvance,
   buildRolloutRunRow,
   computeMigrationManifestHash,
   resolveCommand,
@@ -469,5 +471,75 @@ describe("chuỗi dựng cell đầu tiên", () => {
 
   it("chuỗi dựng ra đi qua được bộ lọc bí mật", () => {
     expect(() => redactEvidence(buildCellBootstrap(ok()))).not.toThrow();
+  });
+});
+
+describe("tiến giai đoạn", () => {
+  // Luật dưới đây ĐO trên PostgreSQL 17.6 nạp schema production, không đọc mã
+  // rồi đoán:
+  //   tiến đúng MỘT bước + stage_version đúng +1  -> qua
+  //   lùi / nhảy cóc                              -> "invalid rollout stage transition"
+  //   version không tăng, hoặc tăng 2             -> "invalid rollout stage transition"
+  //   đứng yên chỉ tăng version                   -> "stage_version cannot change
+  //                                                  without a stage transition"
+  const RUN = "11110000-0000-4000-8000-000000000001";
+  const ok = () => ({ runId: RUN, from: "FOUNDATION", to: "INFRASTRUCTURE", expectedVersion: 1 });
+
+  it("dựng UPDATE có CAS theo stage_version VÀ status", () => {
+    const step = buildStageAdvance(ok());
+    expect(step.values.stage).toBe("INFRASTRUCTURE");
+    expect(step.values.stage_version).toBe(2);
+    // CAS phải gồm cả version cũ lẫn status: thiếu version thì hai tiến trình
+    // cùng tiến một bước; thiếu status thì tiến được cả run đã PAUSED.
+    expect(step.where.stage_version).toBe(1);
+    expect(step.where.stage).toBe("FOUNDATION");
+    expect(step.where.status).toBe("RUNNING");
+    expect(step.where.id).toBe(RUN);
+  });
+
+  it("từ chối lùi giai đoạn", () => {
+    expect(() => buildStageAdvance({ ...ok(), from: "INFRASTRUCTURE", to: "FOUNDATION" }))
+      .toThrow(/lùi|liền sau/iu);
+  });
+
+  it("từ chối nhảy cóc", () => {
+    expect(() => buildStageAdvance({ ...ok(), to: "WAITING_OWNER_QR" }))
+      .toThrow(/liền sau/iu);
+  });
+
+  it("từ chối đứng yên", () => {
+    expect(() => buildStageAdvance({ ...ok(), to: "FOUNDATION" })).toThrow(/liền sau/iu);
+  });
+
+  it("từ chối giai đoạn không có thật", () => {
+    expect(() => buildStageAdvance({ ...ok(), to: "SAU_KHI_XONG" })).toThrow(/giai đoạn/iu);
+    expect(() => buildStageAdvance({ ...ok(), from: "KHONG_CO" })).toThrow(/giai đoạn/iu);
+  });
+
+  it("đòi expectedVersion là số nguyên dương", () => {
+    for (const bad of [0, -1, 1.5, "1", undefined]) {
+      expect(() => buildStageAdvance({ ...ok(), expectedVersion: bad }), `lọt: ${bad}`)
+        .toThrow(/version/iu);
+    }
+  });
+
+  it("phủ đủ 11 giai đoạn, đúng thứ tự của schema", () => {
+    // Thứ tự này là hợp đồng với CHECK constraint của cột stage. Lệch một chỗ là
+    // công cụ cho phép một bước mà DB chặn, hoặc chặn một bước mà DB cho phép.
+    expect(ROLLOUT_STAGES).toEqual([
+      "FOUNDATION", "INFRASTRUCTURE", "WAITING_OWNER_QR", "CONNECTION", "SHADOW",
+      "WAITING_OWNER_INBOUND", "LIMITED_OBSERVING", "LIMITED_VERIFIED",
+      "PROACTIVE", "SALES_GROUPS", "COMPLETE",
+    ]);
+  });
+
+  it("mọi cặp liền kề đều dựng được, không cặp nào bị chặn nhầm", () => {
+    // Mặt THUẬN: nếu chỉ có bài chặn thì một hàm luôn-ném cũng xanh.
+    for (let i = 0; i < ROLLOUT_STAGES.length - 1; i += 1) {
+      expect(
+        () => buildStageAdvance({ runId: RUN, from: ROLLOUT_STAGES[i], to: ROLLOUT_STAGES[i + 1], expectedVersion: i + 1 }),
+        `${ROLLOUT_STAGES[i]} -> ${ROLLOUT_STAGES[i + 1]} bị chặn nhầm`,
+      ).not.toThrow();
+    }
   });
 });

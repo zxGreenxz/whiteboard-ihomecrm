@@ -437,3 +437,55 @@ export function buildCellBootstrap({
     },
   ];
 }
+
+/**
+ * 11 giai đoạn rollout, ĐÚNG thứ tự của CHECK constraint trên cột `stage`.
+ *
+ * Lệch một chỗ là công cụ cho phép một bước mà DB chặn, hoặc chặn một bước mà DB
+ * cho phép — cả hai đều làm người vận hành mất niềm tin vào công cụ đúng lúc họ
+ * cần nó nhất.
+ */
+export const ROLLOUT_STAGES = Object.freeze([
+  "FOUNDATION", "INFRASTRUCTURE", "WAITING_OWNER_QR", "CONNECTION", "SHADOW",
+  "WAITING_OWNER_INBOUND", "LIMITED_OBSERVING", "LIMITED_VERIFIED",
+  "PROACTIVE", "SALES_GROUPS", "COMPLETE",
+]);
+
+/**
+ * Dựng bước tiến một giai đoạn, có CAS.
+ *
+ * Luật ĐO trên PostgreSQL 17.6 nạp schema production (không đọc mã rồi đoán):
+ *   tiến đúng MỘT bước + stage_version đúng +1 -> qua
+ *   lùi / nhảy cóc / version sai               -> "invalid rollout stage transition"
+ *   đứng yên chỉ tăng version                  -> "stage_version cannot change
+ *                                                 without a stage transition"
+ *
+ * CAS gồm CẢ version cũ LẪN status: thiếu version thì hai tiến trình cùng tiến
+ * một bước và không ai biết; thiếu status thì tiến được cả một run đã PAUSED,
+ * tức đi tiếp một cuộc rollout mà ai đó vừa cố ý dừng.
+ */
+export function buildStageAdvance({ runId, from, to, expectedVersion } = {}) {
+  if (typeof runId !== "string" || !UUID.test(runId)) {
+    throw new Error(`runId phải là UUID; nhận ${JSON.stringify(runId)}.`);
+  }
+  const fromIndex = ROLLOUT_STAGES.indexOf(from);
+  const toIndex = ROLLOUT_STAGES.indexOf(to);
+  if (fromIndex < 0) throw new Error(`giai đoạn nguồn không có thật: ${JSON.stringify(from)}.`);
+  if (toIndex < 0) throw new Error(`giai đoạn đích không có thật: ${JSON.stringify(to)}.`);
+  if (toIndex !== fromIndex + 1) {
+    throw new Error(
+      `chỉ tiến được sang giai đoạn LIỀN SAU: ${from} -> ${ROLLOUT_STAGES[fromIndex + 1] ?? "(hết)"}, ` +
+      `không phải ${to}. Lùi hay nhảy cóc đều bị DB chặn.`,
+    );
+  }
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    throw new Error(`expectedVersion phải là số nguyên dương; nhận ${JSON.stringify(expectedVersion)}.`);
+  }
+
+  return {
+    operation: "update",
+    table: "public.openclaw_rollout_runs",
+    where: { id: runId, stage: from, stage_version: expectedVersion, status: "RUNNING" },
+    values: { stage: to, stage_version: expectedVersion + 1 },
+  };
+}
