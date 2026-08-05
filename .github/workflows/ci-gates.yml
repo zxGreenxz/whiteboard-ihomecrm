@@ -93,10 +93,23 @@ jobs:
       - name: OpenClaw isolation boundary
         run: node scripts/check-openclaw-isolation.mjs
 
+      # Ba gate tĩnh dưới đây gom một chỗ: đều là biến đổi văn bản thuần, không
+      # cần credential, chạy dưới một giây. Tách thành job riêng chỉ tốn thêm
+      # runner khởi động và thêm chỗ có thể kẹt merge.
+      - name: Contract gates (Copilot docs · auto-apply · canonical types)
+        run: |
+          node scripts/check-copilot-docs-manifest.mjs
+          node scripts/check-no-auto-apply.mjs
+          node scripts/normalize-supabase-types.mjs --check
+
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline
 
-      - name: Typecheck strict app (tsconfig.app.json)
+      # Đổi tên từ "Typecheck strict app": tsconfig.app.json đang strict:false,
+      # nên tên cũ làm người đọc tưởng strict đã xong. Required check của GitHub
+      # bám theo tên JOB (quality-gates), không phải tên step, nên đổi tên step
+      # không phá cấu hình bảo vệ nhánh.
+      - name: Typecheck app (tsconfig.app.json — CHƯA strict, xem ts-baseline.json)
         run: npx tsc --noEmit -p tsconfig.app.json
 
       - name: Lint root-owned code
