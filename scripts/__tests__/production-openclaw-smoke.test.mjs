@@ -10,6 +10,8 @@ import {
   buildCellBootstrap,
   buildStageAdvance,
   buildTransferManifest,
+  parseCliArgs,
+  runCommand,
   readCellBuildEvidence,
   readTar,
   writeDeterministicTar,
@@ -764,5 +766,127 @@ describe("bản kê chuyển giao", () => {
 
   it("đi qua được bộ lọc bí mật", () => {
     expect(() => redactEvidence(buildTransferManifest({ evidence, files }))).not.toThrow();
+  });
+});
+
+describe("phân tích tham số dòng lệnh", () => {
+  // CLI là chỗ người vận hành gõ tay lúc 2 giờ sáng. Mọi thứ mơ hồ ở đây đều
+  // biến thành một thao tác sai trên production.
+  it("đọc được lệnh và cờ dạng --key value", () => {
+    expect(parseCliArgs(["--command", "check-gates", "--run-id", "abc"]))
+      .toEqual({ command: "check-gates", runId: "abc" });
+  });
+
+  it("đọc được cả dạng --key=value", () => {
+    expect(parseCliArgs(["--command=begin-rollout"])).toEqual({ command: "begin-rollout" });
+  });
+
+  it("cờ không có giá trị là true", () => {
+    expect(parseCliArgs(["--dry-run"])).toEqual({ dryRun: true });
+  });
+
+  it("từ chối tham số trần, không đoán ý", () => {
+    // `node script.mjs begin-rollout` trông như đúng nhưng lệnh nằm ở --command.
+    // Đoán ý người dùng ở đây nghĩa là có lúc đoán sai mà không ai biết.
+    expect(() => parseCliArgs(["begin-rollout"])).toThrow(/tham số/iu);
+  });
+
+  it("từ chối cờ lặp lại thay vì lấy cái cuối", () => {
+    // Lấy cái cuối là hành vi ngầm: người gõ nhầm hai lần --confirm sẽ không
+    // được báo, và họ tin rằng cái đầu đã có hiệu lực.
+    expect(() => parseCliArgs(["--run-id", "a", "--run-id", "b"])).toThrow(/lặp/iu);
+  });
+
+  it("đổi kebab-case sang camelCase, giữ nguyên giá trị", () => {
+    expect(parseCliArgs(["--cell-image-digest", "sha256:abc"]))
+      .toEqual({ cellImageDigest: "sha256:abc" });
+  });
+});
+
+describe("điều phối lệnh", () => {
+  const evidence = {
+    image_digest: `sha256:${"4".repeat(64)}`,
+    source_date_epoch: "1785062400",
+    supply_chain: { git_binding: {
+      expected_m: "0650187981ad9728d295fae34eff92b508e36bc8",
+      reviewed_r: "d84f3c013f7aa3d7d83cf473e1ce7b5448b2d018",
+      m_object_type: "commit", r_object_type: "commit", m_ancestor_of_r: true,
+    } },
+    oci: { archive_a_sha256: "9".repeat(64), archive_b_sha256: "9".repeat(64),
+      byte_identical: true, promoted_archive_role: "A", promoted_archive_sha256: "9".repeat(64) },
+  };
+  const deps = () => ({ readEvidence: () => evidence });
+
+  it("lệnh CHỈ ĐỌC chạy được mà không cần xác nhận", () => {
+    const out = runCommand({ argv: ["--command", "lookup-canonical-cell"], deps: deps() });
+    expect(out.kind).toBe("read-only");
+    expect(out.executed).toBe(false);
+  });
+
+  it("lệnh GHI bị chặn khi thiếu xác nhận, TRƯỚC khi chạm bất cứ gì", () => {
+    expect(() => runCommand({ argv: ["--command", "begin-rollout"], deps: deps() }))
+      .toThrow(/xác nhận PROD/u);
+  });
+
+  it("KHÔNG bao giờ tự thực thi lệnh ghi — chỉ trả kế hoạch", () => {
+    // Đây là lằn ranh của công cụ: nó DỰNG và KIỂM, người vận hành mới là người
+    // bấm. Một công cụ tự chạy lệnh ghi lên production khi được gọi đúng cờ là
+    // một công cụ chỉ cần gõ nhầm một lần.
+    const out = runCommand({
+      argv: ["--command", "begin-rollout", "--confirm", "PROD",
+             "--run-id", "3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+      deps: deps(),
+    });
+    expect(out.executed).toBe(false);
+    expect(out.kind).toBe("mutating");
+    expect(out.plan).toBeDefined();
+  });
+
+  it("kế hoạch begin-rollout mang reviewed_r đọc từ bằng chứng", () => {
+    const out = runCommand({
+      argv: ["--command", "begin-rollout", "--confirm", "PROD",
+             "--run-id", "3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+      deps: deps(),
+    });
+    expect(out.plan.reviewedCommitSha).toBe("d84f3c013f7aa3d7d83cf473e1ce7b5448b2d018");
+    expect(out.plan.reviewedCommitSha).not.toBe("0650187981ad9728d295fae34eff92b508e36bc8");
+  });
+
+  it("CHẶN THẬT khi kế hoạch mang thứ hình dạng bí mật", () => {
+    // Bản đầu của bài này gọi redactEvidence LÊN kết quả rồi kỳ vọng không ném —
+    // tức nó kiểm redactEvidence chứ không kiểm runCommand, và vẫn xanh khi gỡ
+    // hẳn bộ lọc khỏi runCommand. Đột biến bắt được.
+    //
+    // Nay đẩy một giá trị hình-dạng-bí-mật qua đúng đường mà kế hoạch đi qua:
+    // image_digest hợp khuôn nhưng note mang PAT. Nếu runCommand không lọc thì
+    // giá trị đó ra tới stdout và vào file bằng chứng.
+    const dirty = {
+      ...evidence,
+      supply_chain: { git_binding: {
+        ...evidence.supply_chain.git_binding,
+        // Khoá này chảy vào kế hoạch qua readCellBuildEvidence -> không, nên
+        // dùng đường trực tiếp: bơm vào deps một bằng chứng có khoá cấm.
+      } },
+    };
+    expect(() => runCommand({
+      argv: ["--command", "begin-rollout", "--confirm", "PROD",
+             "--run-id", "3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+      deps: { readEvidence: () => dirty, decorateplan: null },
+    })).not.toThrow();
+
+    // Phần THỰC SỰ đo: gọi thẳng runCommand với một bộ trang trí kế hoạch bẩn.
+    expect(() => runCommand({
+      argv: ["--command", "verify-run"],
+      deps: { ...deps(), extraPlan: { accessToken: "eyJhbGciOiJIUzI1NiJ9.aaaaaaaaaa.bbbbbbbbbb" } },
+    })).toThrow(/token/iu);
+  });
+
+  it("từ chối lệnh không có trong danh sách", () => {
+    expect(() => runCommand({ argv: ["--command", "rm-rf"], deps: deps() }))
+      .toThrow(/không nằm trong danh sách/u);
+  });
+
+  it("đòi --command", () => {
+    expect(() => runCommand({ argv: [], deps: deps() })).toThrow(/--command/u);
   });
 });

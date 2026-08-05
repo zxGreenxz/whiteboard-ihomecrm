@@ -710,3 +710,88 @@ export function buildTransferManifest({ evidence, files }) {
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
   };
 }
+
+/**
+ * Phân tích tham số dòng lệnh.
+ *
+ * CLI là chỗ người vận hành gõ tay lúc 2 giờ sáng, nên hàm này cố ý KHÔNG đoán
+ * ý: tham số trần bị từ chối (thay vì đoán nó là tên lệnh), và cờ lặp lại bị từ
+ * chối (thay vì lặng lẽ lấy cái cuối — người gõ nhầm hai lần `--confirm` sẽ tin
+ * rằng cái đầu đã có hiệu lực).
+ */
+export function parseCliArgs(argv) {
+  const out = {};
+  const camel = (k) => k.replace(/-([a-z])/gu, (_, c) => c.toUpperCase());
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+    if (!token.startsWith("--")) {
+      throw new Error(
+        `tham số trần không được chấp nhận: ${JSON.stringify(token)}. ` +
+        `Mọi thứ phải đi kèm tên cờ, vd --command begin-rollout.`,
+      );
+    }
+    const eq = token.indexOf("=");
+    const rawKey = eq >= 0 ? token.slice(2, eq) : token.slice(2);
+    const key = camel(rawKey);
+    if (Object.hasOwn(out, key)) {
+      throw new Error(`cờ --${rawKey} bị lặp. Gõ hai lần thì lần nào có hiệu lực?`);
+    }
+    if (eq >= 0) {
+      out[key] = token.slice(eq + 1);
+    } else if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) {
+      out[key] = argv[i + 1];
+      i += 1;
+    } else {
+      out[key] = true;
+    }
+  }
+  return out;
+}
+
+/**
+ * Điều phối một lệnh: phân tích cờ, qua rào an toàn, dựng kế hoạch — và DỪNG.
+ *
+ * LẰN RANH CỦA CÔNG CỤ NÀY: nó DỰNG và KIỂM, người vận hành mới là người bấm.
+ * `executed` luôn là false. Một công cụ tự chạy lệnh ghi lên production khi được
+ * gọi đúng cờ là một công cụ chỉ cần gõ nhầm một lần — và production không có
+ * nút hoàn tác.
+ *
+ * Mọi phụ thuộc đọc file / DB đều TIÊM VÀO qua `deps`.
+ */
+export function runCommand({ argv = [], deps = {} } = {}) {
+  const args = parseCliArgs(argv);
+  if (typeof args.command !== "string") {
+    throw new Error("thiếu --command. Xem docs/openclaw-zalo/runbooks/rollout-engine.md.");
+  }
+
+  const resolved = resolveCommand({
+    command: args.command,
+    confirm: args.confirm,
+    runId: args.runId,
+  });
+
+  let plan;
+  if (args.command === "begin-rollout") {
+    // Đọc bằng chứng để lấy reviewed_r — KHÔNG nhận sha từ dòng lệnh. Người gõ
+    // tay chính là chỗ nhầm checkpoint M với R, và guard không bắt được cái nhầm
+    // đó vì nó chỉ kiểm hai trường khớp nhau.
+    const evidence = readCellBuildEvidence(deps.readEvidence?.());
+    plan = {
+      reviewedCommitSha: evidence.reviewedCommitSha,
+      imageDigest: evidence.imageDigest,
+      note: "Chưa ghi gì. Xem kế hoạch rồi chạy bước ghi thủ công.",
+    };
+  }
+
+  // deps.extraPlan tồn tại ĐỂ ĐO: nó cho bộ test bơm một giá trị hình-dạng-bí-mật
+  // qua đúng đường mà kế hoạch thật đi qua, nhờ đó bài test chứng minh được bộ
+  // lọc ĐANG được gọi ở đây — chứ không phải chỉ chứng minh bộ lọc tồn tại.
+  return redactEvidence({
+    ...(deps.extraPlan ? { extra: deps.extraPlan } : {}),
+    command: resolved.command,
+    kind: resolved.kind,
+    runId: resolved.runId ?? null,
+    executed: false,
+    ...(plan ? { plan } : {}),
+  });
+}
