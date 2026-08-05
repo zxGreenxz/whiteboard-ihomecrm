@@ -237,6 +237,26 @@ cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/<file>.spec.ts
 
 ---
 
+## 8b. AI Copilot đọc tài liệu gì
+
+Copilot **không** đọc mù `docs/he-thong/`. Allowlist nằm ở `docs/he-thong/manifest.json`:
+
+- `copilotIngest: false` phải kèm `why` (hiện loại 3 file: mục lục README, writeup hiệu năng,
+  bản đồ realtime kỹ thuật);
+- `requiredPermission` cho tài liệu nhạy cảm (lương, lợi nhuận cổ đông, SOP tiền, phê duyệt tài
+  chính) — tài liệu bị loại khỏi **cả** kết quả tra cứu **lẫn** danh sách gợi ý khi không tìm thấy;
+- `perms` chưa load ⇒ chỉ trả tài liệu không gắn quyền (fail closed).
+
+```bash
+npm run gate:copilot-docs   # file .md mới BẮT BUỘC khai trong manifest, không mặc định lọt vào
+```
+
+Gate bắt cả hai chiều: file trên đĩa thiếu entry, và entry trỏ file không tồn tại. Nó cũng kiểm
+`registry.ts` còn tham chiếu manifest — chặn việc lỡ tay quay lại glob mù. Quá hạn review là
+**cảnh báo**, không fail (nếu fail thì người ta sẽ bump ngày theo nghi thức và phá luôn tín hiệu).
+
+---
+
 ## 9. Secret
 
 - **KHÔNG BAO GIỜ commit** `CLAUDE.local.md`, `.env`, `.env.local`, hay bất kỳ token/PAT nào.

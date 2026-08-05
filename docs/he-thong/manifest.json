@@ -1,0 +1,76 @@
+{
+  "$comment": "Allowlist tài liệu AI Copilot được phép đọc. TRƯỚC file này, tool huong_dan glob mù toàn bộ docs/he-thong/*.md — nghĩa là mọi file .md ai đó thả vào đây đều tự động thành nguồn tư vấn nghiệp vụ cho người dùng thật, kể cả writeup hiệu năng nội bộ hay bản đồ bảo trì realtime. Gate: node scripts/check-copilot-docs-manifest.mjs (file mới BẮT BUỘC khai ở đây, không mặc định lọt vào).",
+  "schemaVersion": 1,
+  "staleAfterDays": 180,
+  "entries": [
+    { "file": "00-tong-quan.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    { "file": "01-phan-quyen-nhan-su.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    { "file": "02-co-cau-toa-nha-phong-dich-vu.md", "copilotIngest": true, "reviewed": null },
+    { "file": "03-khach-hang-lead-ho-so.md", "copilotIngest": true, "reviewed": null },
+    { "file": "04-coc-giu-cho.md", "copilotIngest": true, "reviewed": null },
+    { "file": "05-hop-dong.md", "copilotIngest": true, "reviewed": null },
+    { "file": "06-cong-to-chi-so.md", "copilotIngest": true, "reviewed": null },
+    { "file": "07-hoa-don-thanh-toan.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    {
+      "file": "08-thu-chi-so-quy.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20",
+      "requiredPermission": { "module": "income_expenses", "action": "view" },
+      "why": "mô tả quy trình sổ quỹ và writer tiền"
+    },
+    { "file": "09-kho-vat-tu.md", "copilotIngest": true, "reviewed": null },
+    { "file": "10-tai-san.md", "copilotIngest": true, "reviewed": null },
+    { "file": "11-cong-viec-su-co.md", "copilotIngest": true, "reviewed": null },
+    {
+      "file": "12-co-dong-loi-nhuan.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20",
+      "requiredPermission": { "module": "shareholder_profit", "action": "view" },
+      "why": "cơ chế chia lợi nhuận cổ đông"
+    },
+    { "file": "13-bao-cao-dashboard-thong-bao.md", "copilotIngest": true, "reviewed": null },
+    { "file": "14-cai-dat-danh-muc-tai-lieu.md", "copilotIngest": true, "reviewed": null },
+    { "file": "15-kenh-cong-khai-sale-thu-tien.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    { "file": "16-thanh-ly-hop-dong.md", "copilotIngest": true, "reviewed": null },
+    {
+      "file": "17-luong-thuong.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20",
+      "requiredPermission": { "module": "salary", "action": "view" },
+      "why": "công thức lương/thưởng nhân sự"
+    },
+    { "file": "18-zalo-chat.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    {
+      "file": "19-sop-tien-va-so-quy.md",
+      "copilotIngest": true,
+      "reviewed": null,
+      "requiredPermission": { "module": "income_expenses", "action": "view" },
+      "why": "SOP tiền mặt"
+    },
+    {
+      "file": "20-phe-duyet-tai-chinh.md",
+      "copilotIngest": true,
+      "reviewed": "2026-07-20",
+      "requiredPermission": { "module": "income_expenses", "action": "view" },
+      "why": "ngưỡng và luồng phê duyệt tài chính"
+    },
+    { "file": "21-ai-copilot.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    { "file": "99-quy-trinh-tong.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+
+    {
+      "file": "README.md",
+      "copilotIngest": false,
+      "why": "mục lục tham chiếu nội bộ — trả nguyên văn cho người dùng cuối là vô nghĩa"
+    },
+    {
+      "file": "perf-2026-06-30-toi-uu-hieu-nang.md",
+      "copilotIngest": false,
+      "why": "writeup một đợt tối ưu hiệu năng, không phải hướng dẫn nghiệp vụ"
+    },
+    {
+      "file": "realtime-sync.md",
+      "copilotIngest": false,
+      "why": "bản đồ bảo trì kỹ thuật (bảng -> query key), dành cho lập trình viên"
+    }
+  ]
+}

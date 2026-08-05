@@ -13,6 +13,10 @@
       "evidence": "gate:view-invoker, gate:stable-fn-locks, gate:reconcile-money, gate:sandbox-leak"
     },
     {
+      "item": "Đợt 1a: chặn Copilot đọc mù tài liệu (P0.5) — docs/he-thong/manifest.json + gate + gác quyền",
+      "evidence": "23/26 file được đọc (loại README mục lục, perf writeup, realtime-sync); 5 file nhạy cảm gác quyền (lương, lợi nhuận cổ đông, SOP tiền, phê duyệt, sổ quỹ); fail closed khi perms chưa load. 4 test mới, đã kiểm bằng đột biến (bật lại ingest + bỏ gác quyền => 4 test đỏ đúng chỗ). typecheck 30 fingerprint, build xanh."
+    },
+    {
       "item": "docs/engineering/PROJECT_CONTRACT.md — nguồn luật chung cho Claude Code + Codex",
       "evidence": "14 mục; §13 là checklist mapping từng rule cũ -> chỗ mới, gồm 5 rule ĐÃ BỎ vì sai (strict mode, Supabase Storage, routes trong App.tsx, cấm custom CSS, SUMMARY.md)"
     },

@@ -51,16 +51,66 @@ export const MO_TRANG_ROUTES: Record<string, { route: string; module: string; la
 };
 
 // ── Docs hướng dẫn (lazy ?raw — không vào bundle chính) ──
+//
+// Glob CHỈ để nạp nội dung; file nào được Copilot đọc thì do
+// docs/he-thong/manifest.json quyết định. Trước đây glob này là allowlist luôn,
+// nghĩa là mọi .md ai đó thả vào thư mục đều lập tức thành nguồn tư vấn nghiệp
+// vụ cho người dùng thật — kể cả writeup hiệu năng nội bộ hay bản đồ realtime
+// dành cho lập trình viên. Gate: scripts/check-copilot-docs-manifest.mjs.
 const DOC_MODULES = import.meta.glob('/docs/he-thong/*.md', {
   query: '?raw',
   import: 'default',
 }) as Record<string, () => Promise<string>>;
 
-export function listDocTopics(): { key: string; path: string }[] {
-  return Object.keys(DOC_MODULES).map((p) => ({
-    key: p.replace(/^.*\//, '').replace(/\.md$/, ''),
-    path: p,
-  }));
+const DOC_MANIFESTS = import.meta.glob('/docs/he-thong/manifest.json', {
+  eager: true,
+  import: 'default',
+}) as Record<string, DocsManifest>;
+
+interface DocsManifestEntry {
+  file: string;
+  copilotIngest: boolean;
+  reviewed?: string | null;
+  requiredPermission?: { module: string; action: ActionKey };
+  why?: string;
+}
+interface DocsManifest {
+  schemaVersion: number;
+  staleAfterDays?: number;
+  entries: DocsManifestEntry[];
+}
+
+const DOCS_MANIFEST: DocsManifest =
+  DOC_MANIFESTS['/docs/he-thong/manifest.json'] ?? { schemaVersion: 0, entries: [] };
+
+export interface DocTopic {
+  key: string;
+  path: string;
+  requiredPermission?: { module: string; action: ActionKey };
+}
+
+/**
+ * Chủ đề tài liệu Copilot được phép đọc, đã lọc theo manifest VÀ quyền của phiên.
+ *
+ * `perms === undefined` (chưa load) ⇒ chỉ trả tài liệu không gắn quyền — fail
+ * closed, giống assertPerm.
+ */
+export function listDocTopics(perms?: PermissionsMap): DocTopic[] {
+  const allowed = new Map(
+    DOCS_MANIFEST.entries.filter((e) => e.copilotIngest).map((e) => [e.file, e]),
+  );
+  return Object.keys(DOC_MODULES)
+    .map((path) => ({ path, file: path.replace(/^.*\//, '') }))
+    .filter(({ file }) => allowed.has(file))
+    .map(({ path, file }) => {
+      const entry = allowed.get(file)!;
+      return { key: file.replace(/\.md$/, ''), path, requiredPermission: entry.requiredPermission };
+    })
+    .filter((t) => {
+      if (!t.requiredPermission) return true;
+      const { module, action } = t.requiredPermission;
+      return Boolean(perms && canUse(perms, module, action));
+    });
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
@@ -226,8 +276,11 @@ export function buildRegistry(): DomainTool[] {
       description:
         'Tra cứu tài liệu hướng dẫn nghiệp vụ hệ thống (hợp đồng, hoá đơn, thu chi, cọc, thanh lý…). Trả nội dung tài liệu khớp chủ đề.',
       inputSchema: z.object({ chu_de: z.string().min(2).describe('Chủ đề cần tra, vd "hoá đơn", "thanh lý"') }),
-      execute: async (args) => {
-        const topics = listDocTopics();
+      execute: async (args, ctx) => {
+        // Danh sách đã lọc theo quyền phiên: tài liệu gắn requiredPermission
+        // (lương, lợi nhuận cổ đông, SOP tiền) không lọt vào cả kết quả tìm lẫn
+        // danh sách gợi ý khi không tìm thấy.
+        const topics = listDocTopics(ctx.perms);
         const norm = (s: string) =>
           s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
         const q = norm(args.chu_de);

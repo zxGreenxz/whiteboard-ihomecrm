@@ -10,6 +10,7 @@ import {
   buildRegistry,
   toLlmTools,
   toPageAgentTools,
+  listDocTopics,
   MO_TRANG_ROUTES,
 } from '../tools/registry';
 import { makeIdempotencyKey } from '../tools/writeTools';
@@ -160,6 +161,46 @@ describe('registry + adapters', () => {
     await expect(
       moTrang.execute({ trang: 'hoa_don' }, { perms: STAFF_ROOMS_ONLY, navigate: () => {} }),
     ).rejects.toThrow(/quyền/);
+  });
+});
+
+describe('huong_dan — allowlist tài liệu + gác quyền', () => {
+  // Trước manifest, tool này glob mù docs/he-thong/*.md: mọi file thả vào thư
+  // mục đều thành nguồn tư vấn cho người dùng thật, và ai cũng đọc được tài
+  // liệu lương/lợi nhuận.
+  const keys = (perms?: PermissionsMap) => listDocTopics(perms).map((t) => t.key);
+
+  it('KHÔNG đọc file ngoài allowlist (perf writeup, bản đồ realtime, mục lục)', () => {
+    const all = keys(SUPER);
+    expect(all).not.toContain('perf-2026-06-30-toi-uu-hieu-nang');
+    expect(all).not.toContain('realtime-sync');
+    expect(all).not.toContain('README');
+    expect(all).toContain('07-hoa-don-thanh-toan');
+  });
+
+  it('tài liệu nhạy cảm bị loại khi thiếu quyền, hiện ra khi có quyền', () => {
+    const staff = keys(STAFF_ROOMS_ONLY);
+    expect(staff).not.toContain('17-luong-thuong');
+    expect(staff).not.toContain('12-co-dong-loi-nhuan');
+    expect(staff).toContain('05-hop-dong'); // không gắn quyền -> vẫn đọc được
+
+    const withSalary = keys({ ...STAFF_ROOMS_ONLY, salary: { view: true } });
+    expect(withSalary).toContain('17-luong-thuong');
+  });
+
+  it('fail closed khi perms chưa load', () => {
+    const none = keys(undefined);
+    expect(none).not.toContain('17-luong-thuong');
+    expect(none).not.toContain('20-phe-duyet-tai-chinh');
+    expect(none).toContain('00-tong-quan');
+  });
+
+  it('danh sách gợi ý khi không tìm thấy cũng đã lọc quyền', async () => {
+    const reg = buildRegistry();
+    const tool = reg.find((t) => t.name === 'huong_dan')!;
+    const out = await tool.execute({ chu_de: 'khong-co-chu-de-nay-dau' }, { perms: STAFF_ROOMS_ONLY });
+    expect(out).toContain('Không tìm thấy');
+    expect(out).not.toContain('17-luong-thuong');
   });
 });
 
