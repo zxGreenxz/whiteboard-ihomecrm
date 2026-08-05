@@ -1,20 +1,38 @@
 # Database schema
 
-> **Reviewed:** 2026-07-20 tại commit `1d2c9d9`
-> **Source of truth:** generated types + ordered migrations, không phải số đếm trong prose.
+> **Reviewed:** 2026-08-06
+> **Source of truth:** catalog production đã chụp + generated types, **không phải số đếm trong prose**.
 
 ## Inventory hiện tại
 
-Theo `src/integrations/supabase/types.ts`:
+**Số đếm không còn viết tay.** Chạy `npm run catalog:capture` (chỉ đọc `pg_catalog`) và đọc
+[`docs/generated/database-inventory.json`](generated/database-inventory.json).
+
+Ảnh chụp 2026-08-06, PostgreSQL 17.6, project `tryymsxyyckgbrmmvozx`:
 
 | Object public | Số lượng |
 |---|---:|
-| Tables | 164 |
-| Views | 6 |
-| Functions/RPC | 322 |
+| Bảng **logic** | 316 |
+| Phân mảnh runtime (child partition) | 82 |
+| Views | 12 |
+| Hàm trong `public` + `app_private` | 1527 (1057 SECURITY DEFINER) |
 | Enums | 30 |
+| Bảng bật realtime | 30 |
 
-Repository có **371** migration SQL hoạt động trong `supabase/migrations/` tại mốc review và một migration superseded trong `supabase/migrations-archive/`. Đây là inventory của repository, không tự chứng minh mọi migration đã deploy lên một project cụ thể.
+Ba cạm bẫy khi đọc bảng trên — bản cũ của tài liệu này dính cả ba:
+
+1. **Bảng logic ≠ tổng số bảng.** Tổng `pg_class` là 398, nhưng 82 trong đó là child partition do
+   Network Center sinh **mỗi ngày**. Con số thiết kế là 316. Bất kỳ số nào bao gồm partition sẽ tự
+   tăng theo lịch mà không ai đổi schema.
+2. **`pg_proc` ≠ số RPC.** 1527 là mọi hàm kể cả overload và hàm nội bộ; số RPC mà frontend gọi
+   được nhỏ hơn nhiều. Đừng so trực tiếp con số này với số function trong generated types.
+3. **Số file migration ≠ số migration đã deploy.** Repository hiện có 625 file trong
+   `supabase/migrations/` + 15 file trong `migrations-archive/`; ledger `schema_migrations` dừng
+   trước schema đang chạy. Xem `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md`
+   Phần VI, và **đừng coi số file là bằng chứng đã deploy**.
+
+Ảnh chụp cũng kiểm luôn ba invariant an toàn (tại 2026-08-06 đều xanh): mọi bảng logic bật RLS,
+mọi view có `security_invoker=true`, mọi hàm SECURITY DEFINER có `search_path`.
 
 ## Cách xác định schema đúng
 

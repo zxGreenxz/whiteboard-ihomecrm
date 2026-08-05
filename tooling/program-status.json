@@ -5,6 +5,14 @@
   "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
   "done": [
     {
+      "item": "Đợt 1a: catalog fingerprint — scripts/capture-production-catalog.mjs + docs/generated/database-inventory.json",
+      "evidence": "Chỉ đọc pg_catalog. Đo được 316 bảng LOGIC (không phải 398 — con số đó gồm 82 partition runtime), 12 view, 1527 hàm/1057 DEFINER, 30 enum, 30 bảng realtime; RLS/security_invoker/search_path đều sạch. Fingerprint bỏ qua partition để không đổi theo ngày. npm alias: catalog:capture / catalog:check"
+    },
+    {
+      "item": "Xoá số đếm chép tay khỏi 3 tài liệu",
+      "evidence": "DATABASE_SCHEMA.md ghi 164 bảng/6 view/322 hàm (thực tế 316/12/1527) và '371 migration' lặp ở supabase/README.md + CODEBASE_STRUCTURE.md (thực tế 625+15). Thay bằng con số sinh từ catalog + ghi rõ 3 cạm bẫy khi đọc: partition tự tăng, pg_proc != số RPC, số file != đã deploy"
+    },
+    {
       "item": "Đợt 2: pin toàn bộ GitHub Action bằng commit SHA ở 2 workflow còn dùng tag",
       "evidence": "network-center-validation 6 chỗ + supabase-migrate 2 chỗ. SHA lấy từ ci-gates.yml (đã verify) và tra API cho upload-artifact v4.6.2. Deno pin 2.9.4 thay v2.x. Không còn 'uses: ...@vN' trong .github/workflows/"
     },
@@ -85,9 +93,9 @@
     }
   ],
   "next": [
-    "Đợt 1a (còn lại): catalog fingerprint (scripts/capture-production-catalog.mjs) + 3 trang docs tối thiểu (migration truth, Network Center, OpenClaw) + chặn Copilot ingest docs stale",
-    "Đợt 2: gộp gate thành 3 job CI, pin action SHA (gồm upload-artifact), hợp nhất 2 guard db push, thay path filter 20260729*, scripts/check-external-controls.mjs",
-    "Đợt 0b (còn lại): chạy Contract qua vài session rồi mới rút CLAUDE.md/AGENTS.md/AI_RULES.md thành adapter; thêm scripts/check-agent-contract.mjs"
+    "Đợt 1a (còn lại): 3 trang docs tối thiểu — migration truth, Network Center, OpenClaw (docs/he-thong/22,23 + manifest entry)",
+    "Đợt 2 (còn lại): nối các gate mới vào CI (gate:copilot-docs, catalog:check, types:check) và gộp thành 3 job; scripts/check-agent-contract.mjs; scripts/check-external-controls.mjs",
+    "Đợt 0b (còn lại): chạy Contract qua vài session rồi mới rút CLAUDE.md/AGENTS.md/AI_RULES.md thành adapter"
   ],
   "knownDirtyFiles": [
     {

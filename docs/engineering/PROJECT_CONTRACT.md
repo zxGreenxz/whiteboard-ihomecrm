@@ -119,6 +119,24 @@ sẽ đẩy nhầm nhánh cũ); kiểm trước bằng `git merge-base --is-ance
 - Repo apply migration qua Management API (`scripts/apply-sql.mjs`, `scripts/apply-accounting-rollout.mjs`),
   **không** dùng `supabase db push`. CI có guard cấm auto-apply.
 
+### Catalog inventory — số đếm sinh bằng máy
+
+```bash
+npm run catalog:capture   # chụp catalog production -> docs/generated/database-inventory.json
+npm run catalog:check     # exit 1 nếu catalog drift so với file đã commit
+```
+
+Chỉ chạy `SELECT` trên `pg_catalog` — an toàn kể cả khi PITR tắt. Ảnh chụp 2026-08-06 (PostgreSQL 17.6):
+**316 bảng logic** + 82 phân mảnh runtime, 12 view, 1527 hàm (1057 SECURITY DEFINER), 30 enum,
+30 bảng realtime; RLS/security_invoker/search_path đều không có object hở.
+
+**Không chép số này vào tài liệu.** Ba cạm bẫy mà bản cũ của `DATABASE_SCHEMA.md` dính cả ba:
+tổng bảng (398) gồm partition sinh theo ngày nên tự tăng; `pg_proc` (1527) đếm cả overload và hàm
+nội bộ nên không so được với số RPC; số file migration không chứng minh đã deploy.
+
+Fingerprint cố tình **bỏ qua** child partition — nếu tính vào thì nó đổi mỗi ngày, báo động giả sẽ bị
+tắt trong một tuần, và khi ấy thay đổi schema thật cũng không ai thấy.
+
 ### Gate bắt buộc theo loại thay đổi
 
 | Thay đổi | Gate |
