@@ -41,6 +41,41 @@ describe("friendlyError — 42501", () => {
   });
 });
 
+describe("friendlyError — 55000", () => {
+  it.each([
+    "canonical income expense 401f14e3-a43d-4f4b-b878-6a631c27e4fd is frozen (update rejected)",
+    "link contract scope may only change contract_id of 401f14e3-a43d-4f4b-b878-6a631c27e4fd",
+    "cashbook move scope may only change account_id of 401f14e3",
+    "authorized transition may only change lifecycle columns of 401f14e3",
+  ])("giấu câu guard nội bộ sau hướng dẫn kèm mã lỗi: %s", (message) => {
+    // Án lệ 05/08/2026: cửa LINK_CONTRACT bị đợt vá sau xoá mất ⇒ tạo hợp đồng
+    // trên phòng "Đã cọc" chết 55000, nhưng user chỉ thấy "Vui lòng thử lại".
+    const fe = friendlyError({ code: "55000", message }, "Không lưu được hợp đồng");
+
+    expect(fe.title).toBe("Thao tác bị khoá bởi hệ thống kế toán");
+    expect(fe.description).toContain("55000");
+    expect(fe.description).not.toContain(message);
+  });
+
+  it.each([
+    "Phiếu cọc được chọn không hợp lệ hoặc đã được dùng",
+    "Số tiền cọc phải lớn hơn 0",
+    "Phòng đang có hợp đồng hiệu lực",
+  ])("đưa nguyên văn câu nghiệp vụ ra cho user: %s", (message) => {
+    const fe = friendlyError({ code: "55000", message }, "Không lưu được hợp đồng");
+
+    expect(fe.title).toBe("Không lưu được hợp đồng");
+    expect(fe.description).toBe(message);
+  });
+
+  it("báo chung khi 55000 không kèm message", () => {
+    const fe = friendlyError({ code: "55000", message: "" }, "Không lưu được hợp đồng");
+
+    expect(fe.title).toBe("Không lưu được hợp đồng");
+    expect(fe.description).toContain("Vui lòng thử lại");
+  });
+});
+
 describe("friendlyError — các nhánh cũ không đổi", () => {
   it("map 23505 thành lỗi trùng dữ liệu", () => {
     expect(friendlyError({ code: "23505", message: "duplicate key" }).title).toBe(

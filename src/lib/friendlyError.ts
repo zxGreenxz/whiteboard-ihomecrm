@@ -81,6 +81,23 @@ const RAW_PG_PERMISSION_MESSAGE =
   /permission denied|row-level security|must be owner|insufficient privilege/;
 
 /**
+ * 55000 cũng có hai nguồn như 42501, và cùng một cách xử lý:
+ *
+ * - Nghiệp vụ: RPC của mình `RAISE … ERRCODE 55000` kèm câu tiếng Việt nói
+ *   đúng chỗ sai ("Phiếu cọc được chọn không hợp lệ hoặc đã được dùng", "Số
+ *   tiền cọc phải lớn hơn 0"…) → đưa thẳng ra cho user.
+ * - Nội bộ: guard phiếu canonical (app_private.guard_income_expense_owned_payload
+ *   và các cửa flex-writer của nó) ném tiếng Anh "is frozen (update rejected)"
+ *   / "scope may only change…". User không làm gì được với câu đó.
+ *
+ * Án lệ 05/08/2026: cửa LINK_CONTRACT của guard bị một đợt vá sau xoá mất, mọi
+ * hợp đồng ký trên phòng "Đã cọc" chết 55000 — nhưng toast chỉ hiện "Không lưu
+ * được hợp đồng. Vui lòng thử lại", không một dấu vết nào để lần ra.
+ */
+const INTERNAL_GUARD_MESSAGE =
+  /is frozen|scope may only|authorized transition may only|canonical income expense/i;
+
+/**
  * Convert raw error → friendly { title, description }.
  *
  * @param error Supabase error / generic Error / unknown
@@ -96,6 +113,17 @@ export function friendlyError(error: any, fallbackTitle = 'Có lỗi xảy ra'):
   const msg = rawMsg.toLowerCase();
 
   if (code === '42501' && rawMsg && !RAW_PG_PERMISSION_MESSAGE.test(msg)) {
+    return { title: fallbackTitle, description: rawMsg };
+  }
+
+  if (code === '55000' && rawMsg) {
+    if (INTERNAL_GUARD_MESSAGE.test(rawMsg)) {
+      return {
+        title: 'Thao tác bị khoá bởi hệ thống kế toán',
+        description:
+          'Một phiếu liên quan đang bị khoá nên thao tác không hoàn tất. Vui lòng tải lại trang rồi thử lại; nếu vẫn lỗi, báo quản trị viên (mã 55000).',
+      };
+    }
     return { title: fallbackTitle, description: rawMsg };
   }
 
