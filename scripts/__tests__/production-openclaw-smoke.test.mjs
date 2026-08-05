@@ -9,6 +9,7 @@ import {
   ROLLOUT_STAGES,
   buildCellBootstrap,
   buildStageAdvance,
+  readCellBuildEvidence,
   buildRolloutRunRow,
   computeMigrationManifestHash,
   resolveCommand,
@@ -541,5 +542,106 @@ describe("tiến giai đoạn", () => {
         `${ROLLOUT_STAGES[i]} -> ${ROLLOUT_STAGES[i + 1]} bị chặn nhầm`,
       ).not.toThrow();
     }
+  });
+});
+
+describe("đọc bằng chứng dựng ảnh cell", () => {
+  // Bằng chứng mang HAI sha khác nhau và rất dễ dùng nhầm:
+  //   supply_chain.git_binding.expected_m  = checkpoint M, một TỔ TIÊN
+  //   supply_chain.git_binding.reviewed_r  = R, chính cây ảnh được dựng từ đó
+  // Tôi đã điền nhầm `expected_m` vào reviewed_commit_sha trong một phép thử, và
+  // guard VẪN QUA — vì nó chỉ kiểm hai trường khớp NHAU, không kiểm cái nào đúng.
+  // Dòng ghi ra sẽ khai sai nguồn gốc ảnh mà không gì báo. Hàm này tồn tại để
+  // chặn đúng chuyện đó.
+  const M = "0650187981ad9728d295fae34eff92b508e36bc8";
+  const R = "d84f3c013f7aa3d7d83cf473e1ce7b5448b2d018";
+  const ARCHIVE = "94b90d711b0fbf0a465d2422748e7b8f84fd21761c33581e639314f24672d3a8";
+  const IMAGE = `sha256:${"4".repeat(64)}`;
+  const ok = () => ({
+    image_digest: IMAGE,
+    source_date_epoch: 1785062400,
+    supply_chain: {
+      git_binding: {
+        expected_m: M, reviewed_r: R,
+        m_object_type: "commit", r_object_type: "commit", m_ancestor_of_r: true,
+      },
+    },
+    oci: {
+      archive_a_sha256: ARCHIVE, archive_b_sha256: ARCHIVE,
+      byte_identical: true, promoted_archive_role: "A", promoted_archive_sha256: ARCHIVE,
+    },
+  });
+
+  it("lấy reviewed sha từ reviewed_r, KHÔNG phải expected_m", () => {
+    const out = readCellBuildEvidence(ok());
+    expect(out.reviewedCommitSha).toBe(R);
+    expect(out.reviewedCommitSha).not.toBe(M);
+    expect(out.checkpointMSha).toBe(M);
+  });
+
+  it("từ chối khi hai lần dựng KHÔNG cho ra byte giống nhau", () => {
+    // Toàn bộ giá trị của "build tái lập được" nằm ở chỗ hai lần dựng độc lập ra
+    // cùng một byte. Mất điều đó thì digest chỉ còn là dấu vân tay của một lần
+    // dựng may mắn.
+    expect(() => readCellBuildEvidence({
+      ...ok(),
+      oci: { ...ok().oci, archive_b_sha256: "f".repeat(64), byte_identical: false },
+    })).toThrow(/tái lập|byte/iu);
+  });
+
+  it("từ chối khi archive được thăng cấp không khớp hash của vai trò đó", () => {
+    // promoted_archive_role='A' mà promoted hash lại là của B nghĩa là bundle sẽ
+    // mang bytes của một archive khác cái đã được kiểm.
+    expect(() => readCellBuildEvidence({
+      ...ok(),
+      oci: { ...ok().oci, promoted_archive_sha256: "e".repeat(64) },
+    })).toThrow(/thăng cấp|promoted/iu);
+  });
+
+  it("từ chối khi M không phải tổ tiên của R", () => {
+    expect(() => readCellBuildEvidence({
+      ...ok(),
+      supply_chain: { git_binding: { ...ok().supply_chain.git_binding, m_ancestor_of_r: false } },
+    })).toThrow(/tổ tiên/iu);
+  });
+
+  it("nhận source_date_epoch cả dạng chuỗi lẫn số", () => {
+    // File THẬT lưu giá trị này dưới dạng chuỗi. Bản đầu của hàm so bằng `!==`
+    // với số và từ chối chính bằng chứng thật — tôi đã bịa hình dạng dữ liệu
+    // trong mock thay vì đọc file. Chốt cả hai dạng.
+    expect(() => readCellBuildEvidence({ ...ok(), source_date_epoch: 1785062400 })).not.toThrow();
+    expect(() => readCellBuildEvidence({ ...ok(), source_date_epoch: "1785062400" })).not.toThrow();
+  });
+
+  it("KHÔNG nhận giá trị chỉ ép kiểu lỏng mới bằng", () => {
+    // Nhận cả chuỗi lẫn số không được biến thành nhận mọi thứ Number() ép được.
+    for (const bad of [true, [1785062400], " ", null, "1785062400abc", "0x6A6C3B00"]) {
+      expect(() => readCellBuildEvidence({ ...ok(), source_date_epoch: bad }), `lọt: ${JSON.stringify(bad)}`)
+        .toThrow(/source_date_epoch/iu);
+    }
+  });
+
+  it("từ chối source_date_epoch khác giá trị ghim của kế hoạch", () => {
+    // Kế hoạch ghim đúng 1785062400. Giá trị khác nghĩa là ảnh dựng bằng một
+    // mốc thời gian khác, và mọi so sánh byte-với-byte về sau đều vô nghĩa.
+    expect(() => readCellBuildEvidence({ ...ok(), source_date_epoch: 1785062401 }))
+      .toThrow(/source_date_epoch/iu);
+  });
+
+  it("từ chối image digest sai khuôn", () => {
+    expect(() => readCellBuildEvidence({ ...ok(), image_digest: "4".repeat(64) }))
+      .toThrow(/image digest/iu);
+  });
+
+  it("đọc được bằng chứng THẬT trong repo", async () => {
+    // Mặt THUẬN quan trọng nhất: hàm phải đọc được file thật, không chỉ file mẫu
+    // tôi tự bịa cho vừa hàm.
+    const { readFileSync } = await import("node:fs");
+    const real = JSON.parse(readFileSync("services/openclaw-zalo-cell/build-evidence.json", "utf8"));
+    const out = readCellBuildEvidence(real);
+    expect(out.reviewedCommitSha).toMatch(/^[0-9a-f]{40}$/u);
+    expect(out.imageDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(out.promotedArchiveSha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect(out.reviewedCommitSha).not.toBe(out.checkpointMSha);
   });
 });

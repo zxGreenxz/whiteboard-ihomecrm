@@ -489,3 +489,88 @@ export function buildStageAdvance({ runId, from, to, expectedVersion } = {}) {
     values: { stage: to, stage_version: expectedVersion + 1 },
   };
 }
+
+/**
+ * `SOURCE_DATE_EPOCH` mà kế hoạch ghim cho ảnh cell.
+ * Giá trị khác nghĩa là ảnh dựng bằng một mốc thời gian khác, và mọi so sánh
+ * byte-với-byte về sau đều vô nghĩa.
+ */
+const PINNED_SOURCE_DATE_EPOCH = 1785062400;
+
+/**
+ * Đọc `build-evidence.json` của cell và rút ra đúng những gì rollout cần.
+ *
+ * VÌ SAO CẦN HÀM RIÊNG: bằng chứng mang HAI sha rất dễ dùng nhầm —
+ *   `supply_chain.git_binding.expected_m` = checkpoint M, một TỔ TIÊN
+ *   `supply_chain.git_binding.reviewed_r` = R, chính cây mà ảnh được dựng từ đó
+ *
+ * Tôi đã điền nhầm `expected_m` vào `reviewed_commit_sha` trong một phép thử và
+ * guard VẪN QUA — vì guard chỉ kiểm `artifact_digests.cellReviewedCommitSha`
+ * khớp `reviewed_commit_sha`, tức khớp NHAU, chứ không kiểm cái nào đúng. Dòng
+ * ghi ra sẽ khai sai nguồn gốc ảnh và không gì báo. Đây là loại sai tệ nhất:
+ * mọi cổng đều xanh, chỉ có sự thật là sai.
+ */
+export function readCellBuildEvidence(evidence) {
+  const binding = evidence?.supply_chain?.git_binding;
+  const oci = evidence?.oci;
+  if (!binding || !oci) {
+    throw new Error("Bằng chứng thiếu supply_chain.git_binding hoặc oci.");
+  }
+  if (!HEX40.test(binding.reviewed_r ?? "")) {
+    throw new Error(`reviewed_r phải là 40 hex; nhận ${JSON.stringify(binding.reviewed_r)}.`);
+  }
+  if (!HEX40.test(binding.expected_m ?? "")) {
+    throw new Error(`expected_m phải là 40 hex; nhận ${JSON.stringify(binding.expected_m)}.`);
+  }
+  if (binding.m_ancestor_of_r !== true) {
+    throw new Error(
+      "M phải là tổ tiên của R. Không phải vậy nghĩa là chuỗi duyệt bị đứt ở đâu đó.",
+    );
+  }
+  if (!IMAGE_DIGEST.test(evidence.image_digest ?? "")) {
+    throw new Error(`image digest phải theo khuôn sha256:<64 hex>.`);
+  }
+  // File thật lưu giá trị này dưới dạng CHUỖI ("1785062400"), không phải số.
+  // Bản đầu tiên của hàm so bằng `!==` với số và từ chối chính bằng chứng thật —
+  // tôi bịa hình dạng dữ liệu trong mock thay vì đọc file. Nhận cả hai dạng,
+  // nhưng so theo GIÁ TRỊ SỐ và chỉ chấp nhận string/number, để "1785062400abc"
+  // hay `true` không lọt qua một phép ép kiểu lỏng.
+  const epochRaw = evidence.source_date_epoch;
+  const epochOk = (typeof epochRaw === "number" || typeof epochRaw === "string")
+    && Number(epochRaw) === PINNED_SOURCE_DATE_EPOCH
+    && String(epochRaw).trim() !== "";
+  if (!epochOk) {
+    throw new Error(
+      `source_date_epoch phải đúng ${PINNED_SOURCE_DATE_EPOCH}; nhận ` +
+      `${JSON.stringify(epochRaw)}. Mốc khác thì mọi so sánh byte-với-byte về ` +
+      `sau đều vô nghĩa.`,
+    );
+  }
+
+  // Toàn bộ giá trị của "build tái lập được" nằm ở chỗ hai lần dựng ĐỘC LẬP ra
+  // cùng một byte. Mất điều đó thì digest chỉ còn là dấu vân tay của một lần
+  // dựng may mắn.
+  if (oci.archive_a_sha256 !== oci.archive_b_sha256 || oci.byte_identical !== true) {
+    throw new Error(
+      "Hai lần dựng không cho ra byte giống nhau — build không tái lập được, " +
+      "digest chỉ là dấu vân tay của một lần dựng.",
+    );
+  }
+  const promotedSource = oci.promoted_archive_role === "B"
+    ? oci.archive_b_sha256
+    : oci.archive_a_sha256;
+  if (oci.promoted_archive_sha256 !== promotedSource) {
+    throw new Error(
+      `hash archive được thăng cấp không khớp vai trò ${JSON.stringify(oci.promoted_archive_role)} ` +
+      `— bundle sẽ mang bytes của một archive khác cái đã kiểm.`,
+    );
+  }
+
+  return {
+    reviewedCommitSha: binding.reviewed_r,
+    checkpointMSha: binding.expected_m,
+    imageDigest: evidence.image_digest,
+    promotedArchiveSha256: oci.promoted_archive_sha256,
+    sourceDateEpoch: evidence.source_date_epoch,
+  };
+}
