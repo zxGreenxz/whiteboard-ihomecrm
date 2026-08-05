@@ -9,11 +9,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import ErrorBoundary from "./components/errors/ErrorBoundary";
-import { supabase } from "@/integrations/supabase/client";
 import { RealtimeDataSync } from "@/hooks/useRealtimeDataSync";
 import { NotificationsRealtime } from "@/hooks/useNotifications";
 import { hideAppSplash } from "@/lib/appSplash";
-import { syncAuthQueryCache } from "@/lib/authQueryCache";
+import { AuthCacheSync } from "@/app/providers/AuthCacheSync";
 import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
 import { OPENCLAW_RUNTIME_ENABLED } from "@/lib/openclaw-zalo/runtime";
 // Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
@@ -227,21 +226,16 @@ const queryClient = new QueryClient({
     },
   },
 });
-// Listener auth DUY NHẤT giữ cache ['auth','user'] / ['auth','session'] tươi
-// (INITIAL_SESSION khi boot, SIGNED_IN, TOKEN_REFRESHED, SIGNED_OUT, cross-tab)
-// → useAuth/useSession dùng staleTime: Infinity, không round-trip mạng.
-// CẢNH BÁO: chỉ được code SYNC trong callback này — `await supabase.*` ở đây
-// gây deadlock (supabase-js giữ lock nội bộ khi dispatch sự kiện auth).
-supabase.auth.onAuthStateChange((event, session) => {
-  syncAuthQueryCache(queryClient, event, session);
-});
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <ErrorBoundary>
         <Toaster />
         <Sonner />
+        {/* Listener auth giữ cache ['auth','user'] / ['auth','session'] tươi.
+            Trước đây đăng ký ở module scope ngay trong file này và vứt luôn
+            subscription; xem AuthCacheSync để biết vì sao phải có cleanup. */}
+        <AuthCacheSync />
         {/* Hub realtime nghiệp vụ: invalidate + hâm cache prefetch khi
             invoices/income_expenses/contracts/jobs/customers đổi. */}
         <RealtimeDataSync />
