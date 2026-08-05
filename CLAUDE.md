@@ -43,8 +43,12 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
   (`:9`/`:79`); stdout chỉ có banner npm. Muốn xem drift mà không đụng repo:
   `cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts`.
   ĐỪNG để types.ts trôi sau migration (gây `as any` lan rộng). PAT đọc từ `CLAUDE.local.md`.
-  ⚠ Hiện có **drift sẵn ~92 quan hệ** (`network_*`, gồm 65 phân mảnh ngày tự sinh mỗi ngày)
-  — regen sẽ kéo chúng vào diff. Xử riêng, đừng gộp vào PR tính năng.
+  **Sau regen luôn chạy `npm run types:normalize`** để bỏ partition ngày
+  (`network_{device,interface}_samples_YYYYMMDD`) mà Network Center sinh mỗi ngày —
+  chúng không phải API frontend, để lại thì file phình ~96 dòng/ngày và drift job đỏ
+  dù logical schema không đổi. `npm run types:check` là gate (fail nếu còn partition).
+  Luật ở `supabase/generated-types-policy.json`. Đã chuẩn hoá lần đầu 06/08/2026:
+  bỏ 80 partition, 32 407 → 28 567 dòng.
 - **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
   GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
   chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.

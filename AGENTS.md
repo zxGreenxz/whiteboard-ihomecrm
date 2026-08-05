@@ -39,9 +39,10 @@ File này áp dụng cho mọi session Codex làm việc trên repo này.
   một dòng banner. Muốn xem drift mà không đụng repo:
   `cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts`.
   ĐỪNG để `types.ts` trôi sau migration (gây `as any` lan rộng). PAT đọc từ `CLAUDE.local.md`.
-  ⚠ Hiện `types.ts` chứa sẵn ~80 partition ngày `network_{device,interface}_samples_YYYYMMDD`
-  do runtime sinh mỗi ngày — regen sẽ kéo thêm partition mới vào diff. Xử riêng, đừng gộp
-  vào PR tính năng.
+  **Sau regen luôn chạy `npm run types:normalize`** để bỏ partition ngày
+  (`network_{device,interface}_samples_YYYYMMDD`) do Network Center sinh mỗi ngày — chúng không
+  phải API frontend; để lại thì file phình ~96 dòng/ngày và drift job đỏ dù logical schema không
+  đổi. Gate: `npm run types:check`. Luật ở `supabase/generated-types-policy.json`.
 - **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
   GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
   chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.

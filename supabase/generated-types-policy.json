@@ -1,0 +1,22 @@
+{
+  "$comment": "Luật phân biệt 'raw live typegen' với 'canonical generated types'. Xem PROJECT_CONTRACT.md §6 và plan §0.2/C3, P0.7.",
+  "schemaVersion": 1,
+  "canonicalTypesPath": "src/integrations/supabase/types.ts",
+  "runtimePartitions": {
+    "why": "Network Center tạo child partition theo NGÀY (network_device_samples_YYYYMMDD, network_interface_samples_YYYYMMDD) trong lúc chạy. Logical parent đã có contract; child partition không phải API mà frontend cần import type. Nếu commit chúng vào types.ts thì file phình ~96 dòng/ngày và CI drift đỏ mỗi khi maintenance sinh partition mới — dù logical schema không đổi.",
+    "namePatterns": [
+      "^network_device_samples_\\d{8}$",
+      "^network_interface_samples_\\d{8}$"
+    ],
+    "parentsMustExist": [
+      "network_device_samples",
+      "network_interface_samples"
+    ]
+  },
+  "rules": [
+    "Raw live typegen ĐƯỢC PHÉP chứa child partition — đó là sự thật của catalog.",
+    "Canonical types.ts KHÔNG chứa child partition nào khớp namePatterns.",
+    "Parent table trong parentsMustExist PHẢI còn trong canonical output; mất parent là lỗi thật, không phải nhiễu partition.",
+    "Drift check so CANONICAL output, không so raw. Kiểm kê partition thuộc về gate retention/lifecycle của Network Center, không thuộc frontend contract."
+  ]
+}

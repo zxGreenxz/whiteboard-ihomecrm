@@ -1,9 +1,17 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
   "updatedAt": "2026-08-06",
-  "currentWave": "0b",
-  "waveTitle": "Project Contract (đã viết, đang chạy thử trước khi rút adapter)",
+  "currentWave": "1a",
+  "waveTitle": "Canonical typegen (partition đã tách khỏi contract frontend)",
   "done": [
+    {
+      "item": "Đợt 1a: canonical typegen — scripts/normalize-supabase-types.mjs + supabase/generated-types-policy.json",
+      "evidence": "Bỏ 80 partition ngày khỏi types.ts (32407 -> 28567 dòng). typecheck:baseline 30 fingerprint, gen-supabase-types.test.ts 16/16, npm run build xanh. Không code nào từng tham chiếu partition type. npm alias: types:normalize / types:check"
+    },
+    {
+      "item": "npm alias cho 4 gate script trước đây phải gọi bằng đường dẫn tay",
+      "evidence": "gate:view-invoker, gate:stable-fn-locks, gate:reconcile-money, gate:sandbox-leak"
+    },
     {
       "item": "docs/engineering/PROJECT_CONTRACT.md — nguồn luật chung cho Claude Code + Codex",
       "evidence": "14 mục; §13 là checklist mapping từng rule cũ -> chỗ mới, gồm 5 rule ĐÃ BỎ vì sai (strict mode, Supabase Storage, routes trong App.tsx, cấm custom CSS, SUMMARY.md)"
@@ -57,9 +65,9 @@
     }
   ],
   "next": [
-    "Đợt 1a: scripts/normalize-supabase-types.mjs + PR xoá 80 partition ngày trong types.ts + catalog fingerprint",
-    "Đợt 0b (còn lại): chạy Contract qua vài session rồi mới rút CLAUDE.md/AGENTS.md/AI_RULES.md thành adapter; thêm scripts/check-agent-contract.mjs",
-    "Đợt 2: gộp gate thành 3 job, pin action SHA, hợp nhất 2 guard db push, npm alias cho 4 script gate"
+    "Đợt 1a (còn lại): catalog fingerprint (scripts/capture-production-catalog.mjs) + 3 trang docs tối thiểu (migration truth, Network Center, OpenClaw) + chặn Copilot ingest docs stale",
+    "Đợt 2: gộp gate thành 3 job CI, pin action SHA (gồm upload-artifact), hợp nhất 2 guard db push, thay path filter 20260729*, scripts/check-external-controls.mjs",
+    "Đợt 0b (còn lại): chạy Contract qua vài session rồi mới rút CLAUDE.md/AGENTS.md/AI_RULES.md thành adapter; thêm scripts/check-agent-contract.mjs"
   ],
   "knownDirtyFiles": [
     {

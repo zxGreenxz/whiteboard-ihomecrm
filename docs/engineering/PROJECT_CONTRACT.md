@@ -153,9 +153,24 @@ Xem drift mà không đụng repo:
 cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts
 ```
 
-⚠ `types.ts` hiện chứa **~80 partition ngày** `network_{device,interface}_samples_YYYYMMDD` do runtime
-sinh mỗi ngày (tăng ~96 dòng/ngày). Regen sẽ kéo thêm partition mới vào diff — **xử riêng, đừng gộp
-vào PR tính năng**. Child partition không phải API frontend cần import type.
+### Canonical vs raw: partition ngày
+
+Network Center sinh child partition **theo ngày** (`network_{device,interface}_samples_YYYYMMDD`).
+Raw typegen thấy chúng; **canonical `types.ts` thì không** — child partition không phải API mà
+frontend cần import type, và để chúng trong file thì mỗi ngày thêm ~96 dòng và job drift đỏ dù
+logical schema không đổi.
+
+```bash
+npm run gen:types        # lấy raw từ live
+npm run types:normalize  # bỏ partition ngày -> canonical
+npm run types:check      # gate: fail nếu canonical còn partition
+```
+
+Luật nằm ở `supabase/generated-types-policy.json` (pattern + parent bắt buộc còn), không hard-code
+trong script. Normalizer chỉ biến đổi văn bản, không cần credential.
+
+Đã chuẩn hoá lần đầu 2026-08-06: bỏ 80 partition (32 407 → 28 567 dòng); typecheck, test generator
+và build đều xanh; không có code nào từng tham chiếu partition type.
 
 PAT đọc từ `CLAUDE.local.md`.
 
