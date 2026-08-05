@@ -5,6 +5,18 @@
   "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
   "done": [
     {
+      "item": "Đợt 1a: 2 trang docs còn thiếu — docs/he-thong/22-network-center.md và 23-openclaw-zalo.md",
+      "evidence": "Viết từ khảo sát code thật (không phỏng đoán): NC = fleet MikroTik, 4 thao tác đóng, 3 mức rollout/toà, partition ngày + retention 14 ngày, 8 điều dễ hiểu sai gồm EMERGENCY_STOP không dừng hẳn và UNCERTAIN không được retry. OpenClaw = thế hệ 2 CHƯA bật production, 8 action quyền, policy 11 lý do từ chối theo thứ tự cố định, rollout 11 bậc. Cả hai gác quyền trong manifest Copilot; README mục lục cập nhật"
+    },
+    {
+      "item": "Đợt 0b: scripts/check-agent-contract.mjs + nối vào CI",
+      "evidence": "Kiểm 3 thứ: chỉ dẫn nguy hiểm không tái xuất hiện, 3 file rule cùng trỏ Contract, Contract không mất invariant đắt. Bản đầu dùng regex CÓ DẤU nên bỏ lọt câu viết không dấu — bắt được bằng đột biến rồi sửa sang so trên bản bỏ dấu. 7/7 ca đúng"
+    },
+    {
+      "item": "Đợt 2: nối 4 gate tĩnh vào quality-gates thành MỘT bước",
+      "evidence": "agent-contract + copilot-docs + no-auto-apply + types --check. Đổi tên bước 'Typecheck strict app' (gây hiểu nhầm strict đã bật) — required check bám tên JOB nên an toàn"
+    },
+    {
       "item": "Đợt 1a: catalog fingerprint — scripts/capture-production-catalog.mjs + docs/generated/database-inventory.json",
       "evidence": "Chỉ đọc pg_catalog. Đo được 316 bảng LOGIC (không phải 398 — con số đó gồm 82 partition runtime), 12 view, 1527 hàm/1057 DEFINER, 30 enum, 30 bảng realtime; RLS/security_invoker/search_path đều sạch. Fingerprint bỏ qua partition để không đổi theo ngày. npm alias: catalog:capture / catalog:check"
     },

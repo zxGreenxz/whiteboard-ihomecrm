@@ -29,6 +29,8 @@
 | 19 | [SOP tiền & sổ quỹ](19-sop-tien-va-so-quy.md) | Quy tắc vận hành tiền xuyên domain |
 | 20 | [Phê duyệt tài chính](20-phe-duyet-tai-chinh.md) | Rule, request, inbox, quyết định và posting |
 | 21 | [AI Copilot](21-ai-copilot.md) | Runtime, tool, UI-control, safety và giới hạn |
+| 22 | [Trung tâm mạng](22-network-center.md) | Fleet MikroTik, 4 thao tác đóng, rollout theo toà |
+| 23 | [OpenClaw Zalo cá nhân](23-openclaw-zalo.md) | Thế hệ 2 kênh Zalo — **chưa bật production** |
 | 99 | [Quy trình tổng end-to-end](99-quy-trinh-tong.md) | Luồng xuyên domain và nguồn sự thật |
 
 ## Tham chiếu cắt ngang

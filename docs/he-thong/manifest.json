@@ -55,6 +55,20 @@
       "why": "ngưỡng và luồng phê duyệt tài chính"
     },
     { "file": "21-ai-copilot.md", "copilotIngest": true, "reviewed": "2026-07-20" },
+    {
+      "file": "22-network-center.md",
+      "copilotIngest": true,
+      "reviewed": "2026-08-06",
+      "requiredPermission": { "module": "network_center", "action": "view" },
+      "why": "hạ tầng mạng nội bộ: fleet router, WireGuard, thao tác từ xa"
+    },
+    {
+      "file": "23-openclaw-zalo.md",
+      "copilotIngest": true,
+      "reviewed": "2026-08-06",
+      "requiredPermission": { "module": "openclaw_zalo", "action": "view" },
+      "why": "tính năng chưa bật production; mô tả cả cơ chế bảo mật phiên và đường ra mạng"
+    },
     { "file": "99-quy-trinh-tong.md", "copilotIngest": true, "reviewed": "2026-07-20" },
 
     {
