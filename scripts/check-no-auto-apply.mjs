@@ -18,61 +18,89 @@
 //
 // Không cần credential, không đọc database.
 
-import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WORKFLOW_DIR = join(repoRoot, '.github', 'workflows');
+// Step `run:` trong composite action chạy trong CI y hệt step của workflow.
+// Bản đầu chỉ quét .github/workflows nên một `uses: ./.github/actions/db-apply`
+// bọc lệnh apply là hoàn toàn vô hình.
+const ACTION_DIR = join(repoRoot, '.github', 'actions');
+
+/**
+ * `supabase` có thể kèm version ghim (`npx supabase@2.20.5 db push`) — chuyện
+ * thường ngày trong CI. Regex cũ dùng `\bsupabase\s+db` nên vỡ ngay khi gặp `@`:
+ * `npx supabase db push` bị bắt, `npx supabase@2.20.5 db push` thì lọt. Đã dựng
+ * lại và xác nhận 07/08/2026.
+ */
+const SB = String.raw`\bsupabase(?:@[\w.\-^~*]+)?\s+`;
 
 // Lệnh thực sự ghi vào database từ CI. `db pull`/`db diff`/`db lint` chỉ đọc.
 const FORBIDDEN = [
-  { re: /\bsupabase\s+db\s+push\b/, what: 'supabase db push' },
-  { re: /\bsupabase\s+migration\s+up\b/, what: 'supabase migration up' },
-  { re: /\bsupabase\s+db\s+reset\s+--linked\b/, what: 'supabase db reset --linked' },
+  { re: new RegExp(`${SB}db\\s+push\\b`), what: 'supabase db push' },
+  { re: new RegExp(`${SB}migration\\s+up\\b`), what: 'supabase migration up' },
+  // `--linked` và `--db-url` là ĐÚNG một cặp: cả hai đều trỏ lệnh vào database
+  // TỪ XA. Bản đầu chỉ liệt kê `--linked`, nên `db reset --db-url "$PROD"` —
+  // lệnh drop rồi replay TOÀN BỘ migration lên đúng database đó — đi thẳng qua.
+  // Cùng mẫu với `relkind='i'` bỏ sót `'I'`.
+  { re: new RegExp(`${SB}db\\s+reset\\b[^\\n]*--(linked|db-url)\\b`), what: 'supabase db reset lên DB từ xa' },
+  { re: new RegExp(`${SB}db\\s+push\\b[^\\n]*--db-url\\b`), what: 'supabase db push --db-url' },
 ];
 
 /**
- * Trích các dòng shell nằm trong `run:` của một workflow.
+ * Trích các lệnh shell nằm trong `run:` — bằng YAML PARSER, không đọc từng dòng.
  *
- * Không dùng YAML parser để tránh thêm dependency vào một gate phải chạy được ở
- * mọi runner; bù lại chỉ cần đúng hai dạng mà GitHub Actions cho phép:
- * `run: <lệnh>` một dòng, và `run: |` / `run: >` kèm khối thụt lề.
+ * Bản đầu tự đọc từng dòng và đẩy MỖI DÒNG THÔ vào kết quả như một đơn vị độc
+ * lập, nên chuỗi lệnh mà runner thật sự chạy không bao giờ được dựng lại. Ba
+ * cách viết hợp lệ đi thẳng qua (đã dựng và chạy thật 07/08/2026):
+ *
+ *   run: >                      ← folded scalar: YAML biến newline thành DẤU CÁCH
+ *     supabase db                 nên lệnh thật là `supabase db push --linked`.
+ *     push --linked               Trớ trêu: regex cũ NHẬN DIỆN `>` là block header
+ *                                 rồi vẫn xử lý theo từng dòng.
+ *   run: |
+ *     supabase \                ← nối dòng bằng backslash: cách viết phổ biến
+ *       db push --linked          nhất khi lệnh CI dài kèm env và cờ.
+ *
+ *   run: supabase db            ← plain multiline scalar: nhánh một-dòng cũ đẩy
+ *     push --linked               đúng `supabase db` rồi `continue`.
+ *
+ * js-yaml trả về đúng chuỗi runner nhận, nên cả ba biến mất cùng lúc. Hai gate
+ * khác trong repo (check-known-gaps, check-runtime-matrix) đã dùng js-yaml, nên
+ * đây không phải phụ thuộc mới.
  */
 export function extractRunLines(source) {
-  const lines = source.split(/\r?\n/);
+  // YAML hỏng thì NÉM, không nuốt. File không parse được là file không kiểm
+  // được, và với gate chặn apply-lên-production thì "không kiểm được" phải bằng
+  // ĐỎ chứ không bằng xanh — main() bắt và báo có tiếng.
+  const doc = yaml.load(source);
   const out = [];
 
-  for (let i = 0; i < lines.length; i += 1) {
-    // Tách rõ hai dạng bằng cách cắt phần sau "run:" rồi mới quyết định.
-    // KHÔNG dùng lookahead kiểu `run:\s*(?![|>])`: `\s*` backtrack về rỗng để
-    // lookahead nhìn thấy dấu cách thay vì `|`, nên `run: |` lọt vào nhánh
-    // một-dòng và cả khối lệnh bên dưới bị bỏ qua. Bug đó đã được dựng lại
-    // bằng đột biến trước khi sửa.
-    const m = /^(\s*)-?\s*run:(.*)$/.exec(lines[i]);
-    if (!m) continue;
-
-    const rest = m[2].trim();
-    if (rest !== '' && !/^[|>][-+]?\d*$/.test(rest)) {
-      out.push({ line: i + 1, text: rest });
-      continue;
+  const nhatRun = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const x of node) nhatRun(x);
+      return;
     }
-    if (rest === '') continue; // `run:` rỗng — không phải block scalar hợp lệ
+    if (typeof node.run === 'string') out.push(node.run);
+    for (const v of Object.values(node)) nhatRun(v);
+  };
+  nhatRun(doc);
 
-    const baseIndent = m[1].length;
-    for (let j = i + 1; j < lines.length; j += 1) {
-      const raw = lines[j];
-      if (raw.trim() === '') continue;
-      const indent = raw.length - raw.trimStart().length;
-      if (indent <= baseIndent) break;
-      out.push({ line: j + 1, text: raw });
+  const ket = [];
+  for (const raw of out) {
+    // Nối dòng bằng backslash TRƯỚC khi tách, để `supabase \` + `db push` trở
+    // lại thành một lệnh.
+    const noi = raw.replace(/\\\r?\n\s*/g, ' ');
+    for (const dong of noi.split(/\r?\n/)) {
+      const text = dong.replace(/#.*$/, '');
+      if (text.trim() !== '') ket.push({ line: 0, text });
     }
   }
-
-  // Bỏ phần comment shell để câu chữ nói về lệnh cấm không tự kích hoạt gate.
-  return out
-    .map((entry) => ({ ...entry, text: entry.text.replace(/#.*$/, '') }))
-    .filter((entry) => entry.text.trim() !== '');
+  return ket;
 }
 
 /**
@@ -89,10 +117,19 @@ export function extractRunLines(source) {
 // không phân biệt được điều này.
 const TEXT_ONLY = /^\s*(echo|printf|grep|rg|ag)\b/;
 
+/**
+ * Miễn trừ TEXT_ONLY chỉ đúng khi cụm đó THẬT SỰ chỉ in chữ.
+ *
+ * `echo "$(supabase db push --linked)"` mở đầu bằng `echo` nên bị miễn trừ cả
+ * cụm — nhưng command substitution CHẠY THẬT trước khi echo in được gì. Backtick
+ * cũng vậy. Có dấu hiệu thực thi lồng thì thôi miễn trừ.
+ */
+const CO_THUC_THI_LONG = /\$\(|`|\$\{[^}]*\(/;
+
 export function findAutoApply(source, file) {
   const hits = [];
   for (const { line, text } of extractRunLines(source)) {
-    const segments = text.split(/&&|\|\||;|(?<!\|)\|(?!\|)/).filter((s) => !TEXT_ONLY.test(s));
+    const segments = text.split(/&&|\|\||;|(?<!\|)\|(?!\|)/).filter((s) => !(TEXT_ONLY.test(s) && !CO_THUC_THI_LONG.test(s)));
     for (const { re, what } of FORBIDDEN) {
       if (segments.some((s) => re.test(s))) {
         hits.push({ file, line, what, text: text.trim() });
@@ -102,16 +139,47 @@ export function findAutoApply(source, file) {
   return hits;
 }
 
+/**
+ * Mọi file YAML có step `run:` chạy trong CI — KHÔNG chỉ .github/workflows.
+ *
+ * Composite action (.github/actions/<ten>/action.yml) chạy step `run:` y hệt
+ * workflow, nhưng bản đầu dùng readdirSync(WORKFLOW_DIR) nên một
+ * `uses: ./.github/actions/db-apply` bọc lệnh apply là hoàn toàn vô hình.
+ */
+function nguonYaml() {
+  const ra = [];
+  for (const f of readdirSync(WORKFLOW_DIR)) {
+    if (/\.ya?ml$/.test(f)) ra.push(join(WORKFLOW_DIR, f));
+  }
+  if (existsSync(ACTION_DIR)) {
+    for (const e of readdirSync(ACTION_DIR, { recursive: true, withFileTypes: true })) {
+      if (e.isFile() && /^action\.ya?ml$/.test(e.name)) {
+        ra.push(join(e.parentPath ?? e.path, e.name));
+      }
+    }
+  }
+  return ra;
+}
+
 function main() {
-  const files = readdirSync(WORKFLOW_DIR).filter((f) => /\.ya?ml$/.test(f));
-  const hits = files.flatMap((f) =>
-    findAutoApply(readFileSync(join(WORKFLOW_DIR, f), 'utf8'), f),
-  );
+  const files = nguonYaml();
+  const hits = [];
+  for (const abs of files) {
+    const ten = relative(repoRoot, abs).replace(/\\/g, '/');
+    try {
+      hits.push(...findAutoApply(readFileSync(abs, 'utf8'), ten));
+    } catch (e) {
+      console.error(`❌ ${ten}: không parse được YAML — ${e.message}`);
+      console.error('   File không kiểm được thì phải ĐỎ. Sửa YAML rồi chạy lại.');
+      process.exitCode = 1;
+      return;
+    }
+  }
 
   if (hits.length > 0) {
     console.error('❌ Workflow đang tự apply migration lên database:\n');
     for (const h of hits) {
-      console.error(`  - .github/workflows/${h.file}:${h.line} — ${h.what}`);
+      console.error(`  - ${h.file} — ${h.what}`);
       console.error(`      ${h.text}`);
     }
     console.error(
@@ -121,7 +189,7 @@ function main() {
     return;
   }
 
-  console.log(`✅ ${files.length} workflow: không có bước nào tự apply migration.`);
+  console.log(`✅ ${files.length} file YAML (workflow + composite action): không có bước nào tự apply migration.`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

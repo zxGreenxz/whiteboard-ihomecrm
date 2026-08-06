@@ -54,7 +54,7 @@ export function countCasts(source) {
 }
 
 export function scanRepo() {
-  const files = execFileSync("git", ["ls-files", "src/**/*.ts", "src/**/*.tsx"], {
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "src/**/*.ts", "src/**/*.tsx"], {
     cwd: repoRoot,
     encoding: "utf8",
   })

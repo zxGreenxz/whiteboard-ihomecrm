@@ -52,7 +52,10 @@ export function globToRegExp(glob) {
 
 export function trackedTestFiles(ignorePatterns) {
   const ignores = ignorePatterns.map(globToRegExp);
-  return execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8' })
+  // `--others --exclude-standard`: file test MỚI chưa `git add` vẫn phải bị soi.
+  // Thiếu hai cờ này, một file test mới tạo là mồ côi mà gate vẫn xanh — lỗi đã
+  // đo được 07/08/2026 ở cả ba gate dùng `git ls-files` trong repo.
+  return execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { cwd: repoRoot, encoding: 'utf8' })
     .trim()
     .split('\n')
     .map((p) => p.replace(/\\/g, '/'))

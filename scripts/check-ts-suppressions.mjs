@@ -55,9 +55,23 @@ export const DIRECTIVE = /@ts-(ignore|expect-error|nocheck)\b/g;
  * sách của git đúng bằng thứ repo chịu trách nhiệm.
  */
 export function quet() {
+  // CHỈ file TypeScript. Bản đầu quét cả .mjs/.cjs/.js/.jsx và lập tức tự cắn:
+  // chính file này nêu tên ba chỉ thị trong comment và regex, nên gate báo chính
+  // nó vi phạm — đúng căn bệnh guard grep cũ của repo từng mắc (cấm luôn việc
+  // VIẾT RA rằng điều đó bị cấm).
+  //
+  // Cách sửa không phải là miễn trừ riêng file này, mà là bám vào sự thật: chỉ
+  // thị @ts-* chỉ CÓ TÁC DỤNG nơi trình kiểm kiểu thật sự chạy. tsconfig.app.json
+  // include đúng ["src"], và `checkJs` không bật ở đâu cả — nên một @ts-ignore
+  // trong scripts/*.mjs không tắt được gì, đếm nó là đếm thứ vô hại.
+  // `--others --exclude-standard` = file MỚI chưa add nhưng không bị gitignore.
+  // Thiếu hai cờ này thì `git ls-files` chỉ thấy file ĐÃ theo dõi, và một file
+  // .tsx mới toanh kèm @ts-ignore đi thẳng qua — chính gate này đã dính (đo
+  // 07/08/2026: tạo src/lib/thuMoi.tsx có @ts-ignore ⇒ gate vẫn xanh). Vẫn tôn
+  // trọng .gitignore nên node_modules không lọt vào.
   const out = execFileSync(
     "git",
-    ["ls-files", "*.ts", "*.tsx", "*.mts", "*.cts", "*.mjs", "*.cjs", "*.js", "*.jsx"],
+    ["ls-files", "--cached", "--others", "--exclude-standard", "*.ts", "*.tsx", "*.mts", "*.cts"],
     { cwd: repoRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
   );
   const files = out.trim().split("\n").filter(Boolean).filter((f) => !f.includes("node_modules"));
