@@ -20,6 +20,7 @@ import JobCaptureCamera, {
   type JobCaptureResult,
 } from "@/components/tasks/JobCaptureCamera";
 import { awardAndNotifyJobBonus } from "@/lib/salaryBonusNotify";
+import { jsonProp } from "@/lib/jsonValue";
 import { supabase } from "@/integrations/supabase/client";
 import type { JobWithRelations } from "@/types/jobs";
 
@@ -124,9 +125,14 @@ export default function TaskCompleteDialog({
       });
       // v5 (nguồn 1 — ma trận dấu chân): tick ngày-công QUA RPC, FE không tự cộng.
       // Fire-and-forget; lỗi nuốt êm phía FE (server đã log salary_award_errors).
-      void (supabase.rpc as any)("v5_tick_from_job", { p_job_id: job.id })
-        .then(({ data }: { data: any }) => {
-          if (data?.ticked) {
+      // `supabase.rpc()` trả PostgrestBuilder — chỉ `implements PromiseLike` nên
+      // KHÔNG có `.catch()` theo kiểu; bọc `Promise.resolve()` để giữ nguyên chuỗi
+      // .then().catch() (ngữ nghĩa y hệt, chỉ chậm thêm đúng 1 microtask).
+      void Promise.resolve(
+        supabase.rpc("v5_tick_from_job", { p_job_id: job.id }),
+      )
+        .then(({ data }) => {
+          if (jsonProp(data, "ticked")) {
             queryClient.invalidateQueries({ queryKey: ["v5-my-day-summary"] });
           }
         })

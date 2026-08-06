@@ -1,13 +1,9 @@
 {
   "$comment": "Ratchet any-cast RPC. Con số CHỈ ĐƯỢC GIẢM. Thêm cast mới ⇒ CI đỏ. Sinh bởi scripts/check-rpc-cast-ratchet.mjs.",
-  "total": 7,
+  "total": 3,
   "perFile": {
-    "src/components/tasks/TaskCompleteDialog.tsx": 1,
-    "src/hooks/useAcceptanceGeofence.ts": 1,
     "src/hooks/useFinancialAnalysis.ts": 1,
-    "src/hooks/useMyContext.ts": 1,
     "src/hooks/useOrganizationAuthorization.ts": 1,
-    "src/hooks/usePublicRoomsAnalytics.ts": 1,
     "src/lib/luckyDrawApi.ts": 1
   }
 }

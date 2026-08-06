@@ -2,13 +2,16 @@
  * Data hooks cho tab "Thống kê" trang công khai Phòng trống (/r/:token).
  * Gọi 6 RPC pra_* (migration 20260621100100_public_room_analytics_reports.sql).
  *
- * - RPC chưa có trong generated types → cast (supabase.rpc as any) như convention
- *   useFinancialAnalysis. numeric/bigint qua PostgREST có thể về string → Number().
+ * - 6 RPC pra_* ĐÃ có trong generated types (types.ts:26589-26701) nên gọi typed, KHÔNG cast.
+ *   callPra nhận một thunk để mỗi supabase.rpc() giữ được tên hàm dạng literal — supabase-js
+ *   phân giải overload bằng kiểu điều kiện trên tên, truyền tên qua biến sẽ mất kiểu.
+ *   numeric/bigint qua PostgREST có thể về string → Number().
  * - p_token "" → null; p_building_ids [] → null (sort cho query key ổn định).
  */
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 const PRA = "public-rooms-analytics";
 const STALE_LIVE = 60 * 1000;
@@ -82,18 +85,17 @@ export interface PraErrorRow {
   user_agent: string | null;
 }
 
-async function callPra<T>(
-  fn: string,
-  params: Record<string, unknown>,
+async function callPra<Row, T>(
+  run: () => PromiseLike<{ data: Row[] | null; error: PostgrestError | null }>,
   errMsg: string,
-  map: (r: any) => T,
+  map: (r: Row) => T,
 ): Promise<T[]> {
-  const { data, error } = await (supabase.rpc as any)(fn, params);
+  const { data, error } = await run();
   if (error) {
     toast.error(errMsg);
     throw error;
   }
-  return ((data || []) as any[]).map(map);
+  return (data || []).map(map);
 }
 
 const baseParams = (f: PraFilters) => ({
@@ -114,7 +116,7 @@ export const usePraSummary = (f: PraFilters) =>
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callPra<PraSummaryRow>("pra_summary", baseParams(f), "Không tải được tổng quan thống kê", (r) => ({
+      callPra(() => supabase.rpc("pra_summary", baseParams(f)), "Không tải được tổng quan thống kê", (r): PraSummaryRow => ({
         total_sessions: n(r.total_sessions),
         total_views: n(r.total_views),
         room_opens: n(r.room_opens),
@@ -136,11 +138,10 @@ export const usePraTimeseries = (f: PraFilters, bucket: "day" | "hour" = "day") 
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callPra<PraTimeseriesRow>(
-        "pra_timeseries",
-        { ...baseParams(f), p_bucket: bucket },
+      callPra(
+        () => supabase.rpc("pra_timeseries", { ...baseParams(f), p_bucket: bucket }),
         "Không tải được lưu lượng theo thời gian",
-        (r) => ({
+        (r): PraTimeseriesRow => ({
           bucket: String(r.bucket),
           sessions: n(r.sessions),
           events: n(r.events),
@@ -157,11 +158,10 @@ export const usePraTopRooms = (f: PraFilters, limit = 50) =>
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callPra<PraTopRoomRow>(
-        "pra_top_rooms",
-        { ...baseParams(f), p_limit: limit },
+      callPra(
+        () => supabase.rpc("pra_top_rooms", { ...baseParams(f), p_limit: limit }),
         "Không tải được danh sách phòng được xem",
-        (r) => ({
+        (r): PraTopRoomRow => ({
           room_id: r.room_id ?? null,
           room_name: r.room_name ?? null,
           room_code: r.room_code ?? null,
@@ -182,7 +182,7 @@ export const usePraFunnel = (f: PraFilters) =>
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callPra<PraFunnelRow>("pra_funnel", baseParams(f), "Không tải được phễu tương tác", (r) => ({
+      callPra(() => supabase.rpc("pra_funnel", baseParams(f)), "Không tải được phễu tương tác", (r): PraFunnelRow => ({
         sessions: n(r.sessions),
         sessions_impression: n(r.sessions_impression),
         sessions_opened_room: n(r.sessions_opened_room),
@@ -198,7 +198,7 @@ export const usePraByToken = (f: PraFilters) =>
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callPra<PraByTokenRow>("pra_by_token", baseParams(f), "Không tải được thống kê theo link", (r) => ({
+      callPra(() => supabase.rpc("pra_by_token", baseParams(f)), "Không tải được thống kê theo link", (r): PraByTokenRow => ({
         token: String(r.token),
         label: r.label ?? null,
         revoked: !!r.revoked,
@@ -218,11 +218,10 @@ export const usePraErrors = (f: PraFilters, limit = 200) =>
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callPra<PraErrorRow>(
-        "pra_errors",
-        { ...baseParams(f), p_limit: limit },
+      callPra(
+        () => supabase.rpc("pra_errors", { ...baseParams(f), p_limit: limit }),
         "Không tải được nhật ký lỗi",
-        (r) => ({
+        (r): PraErrorRow => ({
           created_at: String(r.created_at),
           token: String(r.token),
           session_id: String(r.session_id),

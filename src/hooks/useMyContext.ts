@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from "@/lib/authSession";
+import { jsonProp } from "@/lib/jsonValue";
 
 /**
  * Phân loại user hiện tại để FE biết nên hiển thị gì:
@@ -28,16 +29,18 @@ export const useMyContext = () => {
 
       // RLS của staff_assignments chỉ cho owner đọc — dùng RPC SECURITY DEFINER
       // để staff thấy được context của chính mình.
-      const { data, error } = await (supabase.rpc as any)('get_my_context');
+      const { data, error } = await supabase.rpc('get_my_context');
       if (error || !data) {
         return { isSuper: false, isStaff: false, ownerId: user.id, defaultAreaId: null };
       }
       const result = Array.isArray(data) ? data[0] : data;
+      const ownerId = jsonProp(result, 'owner_id');
+      const defaultAreaId = jsonProp(result, 'default_area_id');
       return {
-        isSuper: !!result?.is_super,
-        isStaff: !!result?.is_staff,
-        ownerId: result?.owner_id ?? user.id,
-        defaultAreaId: result?.default_area_id ?? null,
+        isSuper: !!jsonProp(result, 'is_super'),
+        isStaff: !!jsonProp(result, 'is_staff'),
+        ownerId: typeof ownerId === 'string' ? ownerId : user.id,
+        defaultAreaId: typeof defaultAreaId === 'string' ? defaultAreaId : null,
       };
     },
     staleTime: 5 * 60 * 1000,

@@ -6,6 +6,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { jsonProp } from '@/lib/jsonValue';
 
 export interface AcceptanceGeofenceConfig {
   enabled: boolean;
@@ -24,15 +25,18 @@ export function useAcceptanceGeofenceConfig() {
   return useQuery({
     queryKey: ['acceptance-geofence-config'],
     queryFn: async (): Promise<AcceptanceGeofenceConfig> => {
-      // RPC chưa có trong types sinh tự động → cast any (giống useMyContext).
-      const { data, error } = await (supabase.rpc as any)(
+      // RPC này CÓ trong types.ts (Args: never, Returns: Json) nên gọi typed
+      // được; đọc field qua jsonProp() vì Json không có index signature.
+      const { data, error } = await supabase.rpc(
         'get_acceptance_geofence_config',
       );
       if (error || !data) return DEFAULT_GEOFENCE_CONFIG;
       const row = Array.isArray(data) ? data[0] : data;
+      const enabled = jsonProp(row, 'enabled');
+      const radiusM = jsonProp(row, 'radius_m');
       return {
-        enabled: typeof row?.enabled === 'boolean' ? row.enabled : true,
-        radiusM: Number.isFinite(row?.radius_m) ? Number(row.radius_m) : 70,
+        enabled: typeof enabled === 'boolean' ? enabled : true,
+        radiusM: Number.isFinite(radiusM) ? Number(radiusM) : 70,
       };
     },
     staleTime: 5 * 60 * 1000,
