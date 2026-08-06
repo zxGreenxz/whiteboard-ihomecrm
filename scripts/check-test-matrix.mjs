@@ -63,17 +63,46 @@ export function trackedTestFiles(ignorePatterns) {
 export function assignSuites(files, suites) {
   const matchers = suites.map((s) => ({
     id: s.id,
+    runner: s.runner,
     res: (s.includes ?? []).map(globToRegExp),
+    // `excludes` phản chiếu các cờ --exclude thật trong CI. Không có trường này
+    // thì matrix buộc phải nói dối về suite nào chạy file nào — đúng chỗ đã sai:
+    // ci-gates loại các file network-center khỏi bước Vitest, nhưng matrix vẫn
+    // khai app-unit ôm chúng.
+    exRes: (s.excludes ?? []).map(globToRegExp),
   }));
   const bySuite = new Map(suites.map((s) => [s.id, []]));
   const orphans = [];
 
   for (const file of files) {
-    const owners = matchers.filter((m) => m.res.some((re) => re.test(file))).map((m) => m.id);
+    const owners = matchers
+      .filter((m) => m.res.some((re) => re.test(file)) && !m.exRes.some((re) => re.test(file)))
+      .map((m) => m.id);
     if (owners.length === 0) orphans.push(file);
     for (const id of owners) bySuite.get(id).push(file);
   }
   return { bySuite, orphans };
+}
+
+/**
+ * Tìm các file bị HAI RUNNER KHÁC NHAU cùng nhận.
+ *
+ * Đây mới là loại trùng nguy hiểm, và trước đây gate gộp chung nó vào một dòng
+ * ⚠ "chạy trùng thì tốn thời gian chứ không mất an toàn". Câu đó chỉ đúng khi
+ * hai suite dùng cùng runner. Khác runner thì ít nhất một bên KHÔNG chạy nổi
+ * file đó: 22 file `node:test` từng bị bước Vitest quét phải và fail hàng loạt
+ * với "No test suite found", trong khi matrix vẫn khai chúng thuộc app-unit.
+ * Vì vậy trường hợp này phải ĐỎ, không phải cảnh báo.
+ */
+export function crossRunnerConflicts(files, suites, bySuite) {
+  const runnerOf = new Map(suites.map((s) => [s.id, s.runner]));
+  const conflicts = [];
+  for (const file of files) {
+    const owners = [...bySuite].filter(([, list]) => list.includes(file)).map(([id]) => id);
+    const runners = [...new Set(owners.map((id) => runnerOf.get(id)))];
+    if (runners.length > 1) conflicts.push({ file, owners, runners });
+  }
+  return conflicts;
 }
 
 function main(argv) {
@@ -89,6 +118,20 @@ function main(argv) {
   }
 
   const empty = [...bySuite].filter(([, list]) => list.length === 0).map(([id]) => id);
+  const conflicts = crossRunnerConflicts(files, matrix.suites, bySuite);
+
+  if (conflicts.length > 0) {
+    console.error(`❌ ${conflicts.length} file bị HAI RUNNER khác nhau cùng nhận:\n`);
+    for (const c of conflicts.slice(0, 10)) {
+      console.error(`  - ${c.file}\n      ${c.owners.join(' + ')} → runner ${c.runners.join(' vs ')}`);
+    }
+    if (conflicts.length > 10) console.error(`  … và ${conflicts.length - 10} file nữa`);
+    console.error('\n  Khác runner thì ít nhất một bên KHÔNG chạy nổi file đó (vd Vitest gặp');
+    console.error('  file `node:test` sẽ fail "No test suite found"). Sửa bằng `excludes`');
+    console.error('  ở suite không thực sự chạy nó, khớp đúng cờ --exclude trong CI.');
+    process.exitCode = 1;
+    return;
+  }
 
   if (orphans.length > 0 || empty.length > 0) {
     if (orphans.length > 0) {
@@ -111,8 +154,9 @@ function main(argv) {
   );
   const multi = files.filter((f) => [...bySuite].filter(([, l]) => l.includes(f)).length > 1);
   if (multi.length > 0) {
-    // Không fail: chạy hai lần thì tốn thời gian chứ không mất an toàn.
-    console.warn(`⚠ ${multi.length} file thuộc nhiều suite (sẽ chạy trùng): ${multi.slice(0, 3).join(', ')}${multi.length > 3 ? ' …' : ''}`);
+    // Tới đây thì mọi trùng lặp đều CÙNG runner (khác runner đã bị chặn đỏ ở
+    // trên). Cùng runner chạy hai lần thì tốn thời gian chứ không mất an toàn.
+    console.warn(`⚠ ${multi.length} file thuộc nhiều suite cùng runner (chạy trùng, vô hại): ${multi.slice(0, 3).join(', ')}${multi.length > 3 ? ' …' : ''}`);
   }
 }
 

@@ -19,7 +19,44 @@
         "scripts/__tests__/**/*.test.mjs",
         "scripts/__tests__/**/*.test.ts"
       ],
-      "note": "Loại trừ các harness SQL OpenClaw nặng — chúng thuộc suite openclaw-sql, xem package.json."
+      "excludes": [
+        "scripts/__tests__/network-center-*.test.mjs",
+        "src/lib/__tests__/openclawZaloMigrations.test.ts",
+        "scripts/__tests__/openclaw-sql-harness.test.mjs",
+        "scripts/__tests__/openclaw-concurrency-harness.test.mjs",
+        "scripts/__tests__/openclaw-browser-dml-matrix.test.mjs",
+        "scripts/__tests__/openclaw-composite-fk-indexes.test.mjs",
+        "scripts/__tests__/openclaw-schema-drift-harness.test.mjs",
+        "scripts/__tests__/openclaw-full-reset-harness.test.mjs"
+      ],
+      "note": "`excludes` PHẢI khớp từng cờ --exclude ở bước Vitest trong .github/workflows/ci-gates.yml. Lệch một dòng là matrix nói dối về suite nào chạy file nào.",
+      "note2": "Các file network-center-* dùng `node:test`, Vitest gặp là fail 'No test suite found' — chúng thuộc suite node-native. Các harness SQL OpenClaw nặng thuộc suite openclaw-sql."
+    },
+    {
+      "id": "openclaw-sql",
+      "runner": "vitest",
+      "ciJob": "(local — cần database, không chạy trên ci-gates)",
+      "command": "npm run test:openclaw:sql",
+      "risk": "security",
+      "includes": [
+        "src/lib/__tests__/openclawZaloMigrations.test.ts",
+        "src/lib/__tests__/openclawFullContract.test.ts",
+        "scripts/__tests__/openclaw-sql-harness.test.mjs",
+        "scripts/__tests__/openclaw-concurrency-harness.test.mjs",
+        "scripts/__tests__/openclaw-browser-dml-matrix.test.mjs",
+        "scripts/__tests__/openclaw-composite-fk-indexes.test.mjs",
+        "scripts/__tests__/openclaw-schema-drift-harness.test.mjs",
+        "scripts/__tests__/openclaw-full-reset-harness.test.mjs",
+        "scripts/__tests__/openclaw-migration-facades.test.mjs",
+        "scripts/__tests__/openclaw-browser-privileges.test.mjs",
+        "scripts/__tests__/openclaw-crm-source-isolation.test.mjs",
+        "scripts/__tests__/openclaw-knowledge-lifecycle.test.mjs",
+        "scripts/__tests__/openclaw-query-plans.test.mjs",
+        "scripts/__tests__/openclaw-host-isolation.test.mjs",
+        "scripts/__tests__/openclawCommandContract.test.mjs"
+      ],
+      "note": "Suite này ĐÃ ĐƯỢC NHẮC TÊN trong ghi chú của app-unit từ đầu nhưng chưa từng được khai — nên 15 file dưới đây không có mục nào trong matrix mô tả đúng nơi chúng chạy. Bổ sung 06/08/2026.",
+      "note2": "Danh sách file lấy từ script `test:openclaw:sql:fast` trong package.json; sửa ở đó thì phải sửa ở đây."
     },
     {
       "id": "openclaw-edge",
@@ -68,7 +105,11 @@
         "services/**/*.test.ts",
         "services/**/*.test.mjs"
       ],
-      "note": "Vendored upstream (zalouser-bridge/upstream, artifacts, .work) KHÔNG tính — đó là suite của dự án khác, verify:upstream lo phần đó."
+      "excludes": [
+        "services/openclaw-zalo-cell/test/**"
+      ],
+      "note": "Vendored upstream (zalouser-bridge/upstream, artifacts, .work) KHÔNG tính — đó là suite của dự án khác, verify:upstream lo phần đó.",
+      "note3": "`services/openclaw-zalo-cell/` KHÔNG có package.json, nên chuỗi `npm --prefix` của suite này không thể chạm tới nó — pattern `services/**` ôm nhầm. Runner thật là `node --test` ở job openclaw-cell-image-contract (suite node-native). Gate cross-runner bắt được 06/08/2026."
     },
     {
       "id": "network-center-worker",
