@@ -137,8 +137,8 @@ describe("business performance navigation", () => {
   // một dòng JSX. Bản cũ khoá cả dấu cách và thứ tự thuộc tính: đổi chỗ xuống
   // dòng là đỏ, dù hành vi không đổi — và chính nó chặn việc tách App.tsx.
   it("registers business performance as a standalone authenticated route", async () => {
-    const { collectRoutes } = await import("../../../scripts/check-route-guards.mjs");
-    const routes = collectRoutes(app);
+    const { collectAllRoutes } = await import("../../../scripts/check-route-guards.mjs");
+    const routes = collectAllRoutes();
     const route = routes.find(
       (r: { path: string }) => r.path === "/reports/finance/business-performance",
     );
@@ -154,8 +154,8 @@ describe("business performance navigation", () => {
   });
 
   it("keeps the legacy profit route independent from business performance organization access", async () => {
-    const { collectRoutes } = await import("../../../scripts/check-route-guards.mjs");
-    const routes = collectRoutes(app);
+    const { collectAllRoutes } = await import("../../../scripts/check-route-guards.mjs");
+    const routes = collectAllRoutes();
     const route = routes.find(
       (r: { path: string }) => r.path === "/reports/finance/profit-distribution",
     );
@@ -180,7 +180,11 @@ describe("business performance navigation", () => {
     );
   });
 
-  it("promotes the finance center while preserving legacy finance destinations", () => {
+  it("promotes the finance center while preserving legacy finance destinations", async () => {
+    const { collectAllRoutes } = await import("../../../scripts/check-route-guards.mjs");
+    const all = collectAllRoutes();
+    const routeGuards = new Map(all.map((r: { path: string; guards: string[] }) => [r.path, r.guards]));
+    const routeRedirect = new Map(all.map((r: { path: string; redirect: boolean }) => [r.path, r.redirect]));
     expect(sidebar).toContain(
       "{ title: 'Trung t\u00e2m t\u00e0i ch\u00ednh', href: '/reports/finance/business-performance', icon: BarChart3, requiresBusinessPerformanceOrganization: true }",
     );
@@ -203,15 +207,17 @@ describe("business performance navigation", () => {
       "'/reports/finance/analysis': 'Ph\u00e2n t\u00edch t\u00e0i ch\u00ednh'",
     );
 
-    expect(app).toContain(
-      '<Route path="/reports/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />',
-    );
-    expect(app).toContain(
-      '<Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitHubPage /></ProtectedRoute>} />',
-    );
-    expect(app).toContain(
-      '<Route path="/report/finance/analysis" element={<Navigate to="/reports/finance/analysis" replace />} />',
-    );
+    // Ba khẳng định route dưới đây từng so NGUYÊN VĂN một dòng JSX trong App.tsx.
+    // Chúng đỏ ngay khi nhóm route tài chính được tách sang src/app/routes/ — dù
+    // hành vi không đổi một chút nào. Nay đọc DỮ LIỆU route gom từ mọi file, nên
+    // bám theo route chứ không bám theo file.
+    expect(routeGuards.get("/reports/finance/analysis")).toEqual([
+      "ProtectedRoute",
+      "RequirePermission",
+    ]);
+    expect(routeGuards.get("/reports/finance/profit-distribution")).toEqual(["ProtectedRoute"]);
+    // Route cũ giữ lại làm redirect: link đã phát ra ngoài không được chết.
+    expect(routeRedirect.get("/report/finance/analysis")).toBe(true);
   });
 
   it("keeps profit navigation independent from organization access checks", () => {

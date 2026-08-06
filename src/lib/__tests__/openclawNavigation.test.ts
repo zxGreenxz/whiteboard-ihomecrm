@@ -13,8 +13,8 @@ describe("OpenClaw Zalo navigation contract", () => {
   // chặn việc tách App.tsx. Cùng một điều được kiểm, nhưng nay kiểm đúng thứ
   // mình quan tâm: route này được bọc bởi guard nào.
   it("route /openclaw-zalo dùng guard RIÊNG, không dùng RequirePermission", async () => {
-    const { collectRoutes } = await import("../../../scripts/check-route-guards.mjs");
-    const routes = collectRoutes(readSource("src/App.tsx"));
+    const { collectAllRoutes } = await import("../../../scripts/check-route-guards.mjs");
+    const routes = collectAllRoutes();
     const route = routes.find((r: { path: string }) => r.path === "/openclaw-zalo");
 
     expect(route, "route /openclaw-zalo phải tồn tại").toBeDefined();

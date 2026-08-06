@@ -37,6 +37,9 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import PublicRoute from "./components/auth/PublicRoute";
 import { AdminOnlyRoute } from "./components/auth/AdminOnlyRoute";
 import { RequirePermission } from "./components/auth/RequirePermission";
+import { settingsRoutes } from "./app/routes/settingsRoutes";
+import { financeReportRoutes } from "./app/routes/financeReportRoutes";
+import { realEstateReportRoutes } from "./app/routes/realEstateReportRoutes";
 
 // Khai báo lazy cho 99 page đã tách sang ./app/lazyPages (Đợt 4) — xem lý do ở đó.
 import {
@@ -423,50 +426,8 @@ const App = () => (
           <Route path="/my-day" element={<ProtectedRoute><MyDayPage /></ProtectedRoute>} />
           <Route path="/reports/coverage" element={<ProtectedRoute><AdminOnlyRoute><OwnerDashboardV5 /></AdminOnlyRoute></ProtectedRoute>} />
 
-          {/* === BÁO CÁO BĐS === */}
-          <Route path="/reports/real-estate" element={<ProtectedRoute><RequirePermission module="reports_real_estate"><RealEstateReportsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/vacant-rooms" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="vacant_rooms"><VacantRoomsReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/vacant" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="vacant_rooms"><VacantRoomsReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/expiring-contracts" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="expiring"><ExpiringContractsReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/expiring" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="expiring"><ExpiringContractsReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/renewals-transfers" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="renewals_transfers"><RenewalsTransfersReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/occupancy" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="occupancy"><OccupancyReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/occupancy-new" element={<Navigate to="/reports/real-estate/occupancy" replace />} />
-          <Route path="/reports/real-estate/promotions" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="promotions"><PromotionsReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/new-leases" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="new_leases"><NewLeasesReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/terminations" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="terminations"><TerminationsReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/real-estate/expense-ratio" element={<ProtectedRoute><RequirePermission module="reports_real_estate" action="expense_ratio"><ExpenseRatioReport /></RequirePermission></ProtectedRoute>} />
-
-          {/* === BÁO CÁO TÀI CHÍNH === */}
-          {/* Canonical: /reports/finance/*. Nhóm /report/finance/* (số ít, resident-style
-              cũ) chỉ còn là redirect giữ bookmark — không render component riêng. */}
-          <Route path="/report/finance/analysis" element={<Navigate to="/reports/finance/analysis" replace />} />
-          <Route path="/report/finance/cashbook" element={<Navigate to="/reports/finance/daily-cashbook" replace />} />
-          <Route path="/report/finance/cash-flow" element={<Navigate to="/reports/finance/cash-flow" replace />} />
-          <Route path="/report/finance-by-month" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
-          {/* 2 BC công nợ đã bỏ (Phase 7) — nghiệp vụ nợ xử lý ở màn Thu tiền */}
-          <Route path="/report/finance/debt" element={<Navigate to="/thu-tien" replace />} />
-          <Route path="/report/finance/billing-calendar" element={<Navigate to="/reports/finance/payment-schedule" replace />} />
-          <Route path="/report/finance/prepaid" element={<Navigate to="/reports/finance/overpayment" replace />} />
-          <Route path="/report/finance/deposit" element={<Navigate to="/reports/finance/deposits" replace />} />
-          <Route path="/reports/finance" element={<ProtectedRoute><RequirePermission module="reports_finance"><FinanceReportsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/daily-cashbook" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/cash-book" element={<ProtectedRoute><RequirePermission module="reports_finance" action="daily_cashbook"><DailyCashbookReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/cash-flow" element={<ProtectedRoute><RequirePermission module="reports_finance" action="cash_flow"><CashFlowReport /></RequirePermission></ProtectedRoute>} />
-          {/* Trang gộp: Phân bổ lợi nhuận (báo cáo) + Chia lợi nhuận cổ đông — tab theo quyền, gate bên trong */}
-          <Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitHubPage /></ProtectedRoute>} />
-          {/* 2 BC công nợ đã bỏ (Phase 7) — nghiệp vụ nợ xử lý ở màn Thu tiền */}
-          <Route path="/reports/finance/new-contract-debt" element={<Navigate to="/thu-tien" replace />} />
-          <Route path="/reports/finance/debt" element={<Navigate to="/thu-tien" replace />} />
-          <Route path="/reports/finance/customer-debt" element={<Navigate to="/thu-tien" replace />} />
-          <Route path="/reports/finance/payment-schedule" element={<ProtectedRoute><RequirePermission module="reports_finance" action="payment_schedule"><PaymentScheduleReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/overpayment" element={<ProtectedRoute><RequirePermission module="reports_finance" action="overpayment"><OverpaymentReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/deposits" element={<ProtectedRoute><RequirePermission module="reports_finance" action="deposits_report"><DepositsReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/business-performance" element={<ProtectedRoute><BusinessPerformanceReportPage /></ProtectedRoute>} />
-          <Route path="/reports/finance/analysis" element={<ProtectedRoute><RequirePermission module="reports_finance" action="analysis"><FinancialAnalysisReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/ban-giao" element={<ProtectedRoute><RequirePermission module="reports_finance" action="handover_report"><BanGiaoReport /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reports/finance/thu-ban-giao" element={<ProtectedRoute><RequirePermission module="reports_finance" action="collection_cycle"><BanGiaoCycleReport /></RequirePermission></ProtectedRoute>} />
-
+          {realEstateReportRoutes}
+          {financeReportRoutes}
           {/* === CHIA LỢI NHUẬN CỔ ĐÔNG + VÍ THU CHI CÁ NHÂN === */}
           {/* Đã gộp vào trang Phân bổ lợi nhuận → redirect các URL cũ */}
           <Route path="/finance/shareholder-profit" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
@@ -483,50 +444,7 @@ const App = () => (
           {/* === ADMIN — QUẢN LÝ TÀI KHOẢN === */}
           <Route path="/admin/users" element={<ProtectedRoute><AdminOnlyRoute><AdminUsersPage /></AdminOnlyRoute></ProtectedRoute>} />
 
-          {/* === CÀI ĐẶT HỆ THỐNG === */}
-          <Route path="/settings/general" element={<ProtectedRoute><RequirePermission module="settings"><GeneralSettingsPage /></RequirePermission></ProtectedRoute>} />
-          {/* AI Copilot admin — gate super-admin/entitlement BÊN TRONG page (RLS là gate thật) */}
-          <Route path="/settings/ai-copilot" element={<ProtectedRoute><AiCopilotAdminPage /></ProtectedRoute>} />
-          <Route path="/general-setting" element={<Navigate to="/settings/general" replace />} />
-          <Route path="/settings/categories" element={<ProtectedRoute><RequirePermission module="categories"><CategoriesPage /></RequirePermission></ProtectedRoute>} />
-          {/* Categories Sub-Pages - Tài chính */}
-          <Route path="/settings/categories/bank-accounts" element={<ProtectedRoute><RequirePermission module="categories"><BankAccountsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/auto-debt" element={<ProtectedRoute><RequirePermission module="auto_debt"><AutoDebtPage /></RequirePermission></ProtectedRoute>} />
-          {/* Loại thu chi: page chính ở /settings/income-expense-types.
-              Hai URL còn lại (legacy + Resident-style) redirect về để tránh trùng. */}
-          <Route path="/settings/categories/income-expense-types" element={<Navigate to="/settings/income-expense-types" replace />} />
-          <Route path="/setting/finance/income-expense-types" element={<Navigate to="/settings/income-expense-types" replace />} />
-          <Route path="/settings/categories/service-quotas" element={<ProtectedRoute><RequirePermission module="service_quotas"><ServiceQuotasPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/meters" element={<Navigate to="/settings/meters" replace />} />
-          <Route path="/settings/meters" element={<ProtectedRoute><RequirePermission module="meters"><MetersPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/income-expense-types" element={<ProtectedRoute><RequirePermission module="categories"><IncomeExpenseTypesNewPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/income-expense-templates" element={<ProtectedRoute><RequirePermission module="categories"><IncomeExpenseTemplatesPage /></RequirePermission></ProtectedRoute>} />
-          {/* Cashbooks (Tài khoản): canonical URL is /finance/cashbooks under
-              VẬN HÀNH → Tài chính (cùng nhóm với Thu chi). Legacy URLs aliased. */}
-          <Route path="/finance/cashbooks" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbooksPage /></RequirePermission></ProtectedRoute>} />
-          {/* Cấu hình giá phí cố định theo toà. Gate trùng /thanh-toan
-              (thu_tien/collect) để ai đóng được phí thì cấu hình được — server
-              vẫn kiểm lại từng toà trong upsert_building_fee_account. */}
-          <Route path="/settings/finance/fixed-fees" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><FixedFeesPage /></RequirePermission></ProtectedRoute>} />
-          {/* Biên bản chốt & bàn giao quỹ — in được, ký tay. Gác bằng chính
-              quyền xem sổ quỹ; nội dung biên bản đã khoá vĩnh viễn. */}
-          <Route path="/finance/cashbooks/closure/:closureId" element={<ProtectedRoute><RequirePermission module="cashbooks"><CashbookClosureRecord /></RequirePermission></ProtectedRoute>} />
-          <Route path="/setting/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
-          <Route path="/settings/finance/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
-          <Route path="/cashbooks" element={<Navigate to="/finance/cashbooks" replace />} />
-          {/* Categories Sub-Pages - Tài sản */}
-          <Route path="/settings/categories/suppliers" element={<ProtectedRoute><RequirePermission module="suppliers"><SuppliersPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/warehouses" element={<ProtectedRoute><RequirePermission module="warehouses"><WarehousesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/asset-types" element={<ProtectedRoute><RequirePermission module="asset_types"><AssetTypesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/asset-movements" element={<ProtectedRoute><RequirePermission module="assets"><AssetMovementsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/asset-maintenance" element={<ProtectedRoute><RequirePermission module="assets"><AssetMaintenancePage /></RequirePermission></ProtectedRoute>} />
-          {/* Categories Sub-Pages - Khác */}
-          <Route path="/settings/categories/hotlines" element={<ProtectedRoute><RequirePermission module="hotline"><HotlinesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/general" element={<ProtectedRoute><RequirePermission module="categories"><GeneralCategoriesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/floors" element={<ProtectedRoute><RequirePermission module="categories"><FloorsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/categories/task-types" element={<ProtectedRoute><RequirePermission module="task_types"><TaskTypesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/templates" element={<ProtectedRoute><RequirePermission module="templates"><TemplatesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/signatures" element={<ProtectedRoute><RequirePermission module="templates"><SignaturesPage /></RequirePermission></ProtectedRoute>} />
+          {settingsRoutes}
           {/* === PHÂN QUYỀN (mô hình tổ chức V3, thay trang Nhân viên cũ) === */}
           <Route path="/settings/organization" element={<ProtectedRoute><RequirePermission module="users" action="view"><OrganizationPage /></RequirePermission></ProtectedRoute>} />
           <Route path="/settings/members" element={<ProtectedRoute><RequirePermission module="users" action="view"><MembersPage /></RequirePermission></ProtectedRoute>} />

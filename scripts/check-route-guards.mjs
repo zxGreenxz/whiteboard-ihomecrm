@@ -213,6 +213,18 @@ export function collectRoutes(sourceText) {
   return found;
 }
 
+/**
+ * Toàn bộ route của ứng dụng, gom từ MỌI file khai route.
+ *
+ * Đây là thứ test nên dùng thay vì tự đọc `src/App.tsx`: mỗi lần tách một nhóm
+ * route sang file mới, test đọc App.tsx sẽ đỏ dù hành vi không đổi — đã xảy ra
+ * đúng như vậy khi tách financeReportRoutes. Dùng hàm này thì test bám theo route,
+ * không bám theo file.
+ */
+export function collectAllRoutes() {
+  return nguonRoute().flatMap((f) => collectRoutes(readFileSync(f, "utf8")));
+}
+
 // Chốt chặn chống XANH RỖNG. Nếu ai đó đổi cấu trúc thư mục, đổi cách khai route,
 // hay parser hỏng, số route bóc được sẽ tụt về gần 0 và gate vui vẻ báo "không có
 // route nào hở" — đúng nghĩa đen, và vô dụng. Ngưỡng này biến trường hợp đó thành
