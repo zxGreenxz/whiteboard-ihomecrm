@@ -1,0 +1,13 @@
+{
+  "$comment": "Ratchet: test ghim file migration KHÔNG còn là nơi định nghĩa cuối cùng. Danh sách CHỈ ĐƯỢC NGẮN LẠI. Sinh bởi scripts/check-migration-test-liveness.mjs. Cách sửa: đổi test sang liveDefinitionOf() — khuôn ở src/lib/__tests__/salaryCompletionDate.test.ts.",
+  "total": 7,
+  "files": [
+    "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
+    "src/lib/__tests__/accountingSecurityFindingsMigration.test.ts",
+    "src/lib/__tests__/businessPerformanceSnapshotsMigration.test.ts",
+    "src/lib/__tests__/customerCreditMigration.test.ts",
+    "src/lib/__tests__/financeV2WriterMigration.test.ts",
+    "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
+    "src/lib/__tests__/publicRoomsHoldingDepositMigration.test.ts"
+  ]
+}

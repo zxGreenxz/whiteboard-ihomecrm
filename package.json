@@ -56,7 +56,8 @@
     "docs:check:links": "node scripts/check-docs.mjs",
     "gate:timezone": "node scripts/check-timezone-stability.mjs",
     "gate:route-guards": "node scripts/check-route-guards.mjs",
-    "gate:doc-counts": "node scripts/check-doc-counts.mjs"
+    "gate:doc-counts": "node scripts/check-doc-counts.mjs",
+    "gate:migration-test-liveness": "node scripts/check-migration-test-liveness.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

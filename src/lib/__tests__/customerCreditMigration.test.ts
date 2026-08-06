@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,37 @@ function functionBody(name: string): string {
   const start = sql.indexOf(`FUNCTION ${name}(`);
   const next = sql.indexOf("CREATE OR REPLACE FUNCTION", start + 1);
   return sql.slice(start, next === -1 ? undefined : next);
+}
+
+/**
+ * Thân hàm của ĐỊNH NGHĨA ĐANG CHẠY — quét toàn bộ thư mục migration, lấy
+ * `CREATE OR REPLACE` CUỐI CÙNG.
+ *
+ * Vì sao cần bên cạnh `functionBody` (đọc file bị ghim ở trên): repo sửa hành vi
+ * bằng forward-fix, nên một hàm được định nghĩa lại ở migration muộn hơn. Khi đó
+ * khẳng định trên file cũ vẫn XANH vĩnh viễn — file đó bị đóng băng bởi
+ * migration-policy.json và băm sha256 trong check-migration-provenance, nên vế
+ * "actual" là HẰNG SỐ, không phải phép đo.
+ *
+ * Đo 06/08/2026: `create_invoice_with_credit_v1` đã dời sang
+ * 20260728150000_enable_non_cash_overpay_credit.sql. Bất biến tiền vẫn còn ở bản
+ * mới (đã kiểm), nhưng test cũ KHÔNG nói được điều đó — nó chỉ nói bản 21/07.
+ *
+ * Khuôn lấy từ `liveDefinitionOf()` ở salaryCompletionDate.test.ts.
+ */
+function liveFunctionBody(qualified: string): { file: string; body: string } {
+  const dir = "supabase/migrations";
+  const re = new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${qualified}\\s*\\(`, "i");
+  let hit: { file: string; body: string } | null = null;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) {
+    const text = readFileSync(`${dir}/${f}`, "utf8");
+    const at = text.search(re);
+    if (at < 0) continue;
+    const next = text.indexOf("CREATE OR REPLACE FUNCTION", at + 1);
+    hit = { file: f, body: text.slice(at, next === -1 ? undefined : next) };
+  }
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của ${qualified}`);
+  return hit;
 }
 
 describe("customer credit lifecycle migration", () => {
@@ -112,9 +143,12 @@ describe("customer credit lifecycle migration", () => {
   });
 
   it("requires invoice discount to equal non-credit discount plus applied credit", () => {
-    const body = functionBody("public.create_invoice_with_credit_v1");
-    expect(body).toContain("p_non_credit_discount_amount");
-    expect(body).toContain(
+    // Đọc ĐỊNH NGHĨA ĐANG CHẠY, không đọc file migration bị ghim: hàm này đã được
+    // định nghĩa lại ở một migration muộn hơn, nên khẳng định trên file cũ chỉ nói
+    // về bản 21/07 và sẽ xanh vĩnh viễn dù bản đang chạy có bỏ mất bất biến.
+    const { file, body } = liveFunctionBody("public.create_invoice_with_credit_v1");
+    expect(body, `định nghĩa sống ở ${file}`).toContain("p_non_credit_discount_amount");
+    expect(body, `định nghĩa sống ở ${file}`).toContain(
       "Invoice discount must equal non-credit discount plus applied credit",
     );
   });
