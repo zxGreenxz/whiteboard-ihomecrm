@@ -52,16 +52,17 @@ gaps:
       Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
       xem RPO 24 giờ còn chấp nhận được không.
 
-  - id: agent-rules-not-yet-thinned
-    where: CLAUDE.md, AGENTS.md, AI_RULES.md
-    expires_at: 2026-10-15
+  - id: claude-agents-md-still-full
+    where: CLAUDE.md (211 dòng), AGENTS.md (146 dòng)
+    expires_at: 2026-11-30
     why: >
-      Ba file vẫn giữ nguyên nội dung đầy đủ và chỉ THÊM pointer tới PROJECT_CONTRACT.md.
-      Rút mỏng ngay sẽ có nguy cơ đánh rơi tri thức trước khi Contract được kiểm chứng qua
-      vài phiên làm việc thật.
+      AI_RULES.md ĐÃ rút thành pointer (06/08). Hai file còn lại vẫn giữ nội dung đầy đủ vì
+      chúng chứa phần đặc thù từng agent (cách gọi tool, trailer commit, quy trình E2E) xen
+      lẫn phần trùng Contract — tách cần đọc từng mục, không cắt máy móc được.
+      Rủi ro hiện tại THẤP: gate check-agent-contract nay bảo vệ 16 invariant và đã chứng
+      minh bắt được khi một cái biến mất khỏi Contract.
     exit_condition: >
-      Contract chạy ổn qua vài phiên; checklist mapping (§13) không còn dòng nào trống;
-      rồi mới rút ba file thành adapter mỏng.
+      Rút CLAUDE.md/AGENTS.md còn phần đặc thù agent + pointer; gate vẫn xanh sau khi rút.
 
 
 

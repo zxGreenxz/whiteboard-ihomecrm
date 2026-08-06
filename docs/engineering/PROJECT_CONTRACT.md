@@ -184,6 +184,9 @@ vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore
 
 - Migration mới: **timestamp 14 chữ số duy nhất**, đặt trong `supabase/migrations/`, immutable sau
   khi merge. Không sửa file lịch sử đã deploy.
+- Luật cutoff và forward-only nằm ở `supabase/migration-policy.json`; trạng thái từng file ở
+  `supabase/migration-provenance.json` (sinh bằng máy). Apply qua `npm run migrate:forward` —
+  dry-run là mặc định, `--apply` đòi promotion token. Gate: `npm run gate:migration-provenance`.
 - **Legacy history KHÔNG replay được** — đừng tin `supabase db push` hay `supabase start`:
   625 file có 33 nhóm trùng version (69 file) + bộ legacy `001_`–`033_` còn collision nội bộ
   (`016_` ×4, `017_` ×2); ledger `supabase_migrations.schema_migrations` đã tụt lại sau production.
@@ -191,6 +194,18 @@ vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore
   14 file `*_apply_*.sql` hand-apply Apr–May 2026, đã phản ánh trong DB live).
 - Repo apply migration qua Management API (`scripts/apply-sql.mjs`, `scripts/apply-accounting-rollout.mjs`),
   **không** dùng `supabase db push`. CI có guard cấm auto-apply.
+
+### Listener auth — chỉ code ĐỒNG BỘ
+
+`src/app/providers/AuthCacheSync.tsx` là listener auth duy nhất giữ cache
+`['auth','user']` / `['auth','session']` tươi.
+
+**Tuyệt đối không `await supabase.*` trong callback đó** — supabase-js giữ lock nội bộ khi dispatch
+sự kiện auth, nên một `await` ở đây gây **deadlock**: app treo im lặng lúc boot, không lỗi nào để lần
+theo. Có test cố định điều này (callback phải trả `undefined`, không phải Promise).
+
+Listener đăng ký trong `useEffect` và huỷ khi unmount. Đăng ký muộn không mất `INITIAL_SESSION`:
+supabase-js gọi `_emitInitialSession` riêng cho từng subscriber mới.
 
 ### Catalog inventory — số đếm sinh bằng máy
 
