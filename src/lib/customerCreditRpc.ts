@@ -191,7 +191,7 @@ export function buildMoveOutWithCreditRpcArgs(
 export function buildInvoiceCreditLifecycleRpcArgs(
   invoiceId: string,
   request: PreparedCustomerCreditRequest,
-): Record<string, unknown> {
+): { p_invoice_id: string; p_idempotency_key: string } {
   return {
     p_invoice_id: invoiceId,
     p_idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
@@ -201,7 +201,7 @@ export function buildInvoiceCreditLifecycleRpcArgs(
 export function buildBulkInvoiceCreditLifecycleRpcArgs(
   invoiceIds: string[],
   request: PreparedCustomerCreditRequest,
-): Record<string, unknown> {
+): { p_invoice_ids: string[]; p_idempotency_key: string } {
   return {
     p_invoice_ids: [...invoiceIds],
     p_idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),

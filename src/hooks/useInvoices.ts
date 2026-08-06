@@ -6,6 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { getSessionUser } from "@/lib/authSession";
 import { isCanonicalFallbackSignal } from '@/lib/canonicalFallback';
 import { useToast } from '@/hooks/use-toast';
@@ -96,7 +97,7 @@ export const invoicesListQuery = (
       // PostgREST can still apply all filters/count/range to SETOF invoices,
       // while the EXISTS stays server-side and cannot hit the 1000-row cap.
       const invoiceSource = filters?.payment_method
-        ? (supabase as any).rpc('invoice_payment_method_drilldown', {
+        ? supabase.rpc('invoice_payment_method_drilldown', {
             p_payment_method: filters.payment_method,
           })
         : (supabase as any).from('invoices');
@@ -211,7 +212,7 @@ export const invoicesListQuery = (
       }));
 
       if (invoiceRows.length > 0) {
-        const { data: methodRows, error: methodError } = await (supabase as any).rpc(
+        const { data: methodRows, error: methodError } = await supabase.rpc(
           'invoice_active_payment_methods',
           { p_invoice_ids: invoiceRows.map((invoice) => invoice.id) },
         );
@@ -681,7 +682,7 @@ export const useCreateInvoice = () => {
         p_prepaid_amount: invoiceFields.prepaid_amount || 0,
         p_discount_notes: invoiceFields.discount_notes || null,
         p_electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
-        p_previous_debt_sources: invoiceFields.previous_debt_sources ?? [],
+        p_previous_debt_sources: (invoiceFields.previous_debt_sources ?? []) as unknown as Json,
         p_template_id: invoiceFields.template_id || null,
         p_notes: invoiceFields.notes || null,
         p_creator_name: creatorName,
@@ -699,7 +700,12 @@ export const useCreateInvoice = () => {
       // Non-credit invoices retain the existing controlled legacy fallback.
       // Generated types intentionally lag until the migration is applied.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const canonical = await (supabase.rpc as any)(rpcName, canonicalArgs);
+      // canonicalArgs dựng theo nhánh (có/không applied credit) nên chỉ suy được
+      // Record<string, unknown>. Cast riêng THAM SỐ — tên RPC vẫn do compiler kiểm.
+      const canonical = await supabase.rpc(
+        rpcName,
+        canonicalArgs as never,
+      );
       if (!canonical.error) return canonical.data;
       if (appliedCredit > 0) throw canonical.error;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
@@ -835,7 +841,7 @@ export const useUpdateInvoice = () => {
 
       // Canonical update_invoice_v1: guard server (DRAFT|APPROVED, paid=0) + replace
       // items atomic; fallback legacy khi chưa deploy/coexistence.
-      const canonical = await (supabase.rpc as any)('update_invoice_v1', {
+      const canonical = await supabase.rpc('update_invoice_v1', {
         p_invoice_id: id,
         p_contract_id: invoiceFields.contract_id,
         p_building_id: invoiceFields.building_id,
@@ -864,7 +870,7 @@ export const useUpdateInvoice = () => {
         p_prepaid_amount: invoiceFields.prepaid_amount || 0,
         p_discount_notes: invoiceFields.discount_notes || null,
         p_electricity_prev_overridden: !!invoiceFields.electricity_prev_overridden,
-        p_previous_debt_sources: invoiceFields.previous_debt_sources ?? [],
+        p_previous_debt_sources: (invoiceFields.previous_debt_sources ?? []) as unknown as Json,
         p_template_id: invoiceFields.template_id || null,
         p_notes: invoiceFields.notes || null,
       });
@@ -980,7 +986,13 @@ export const useDeleteInvoice = () => {
       return invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
+        // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
+        // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
+        (fn, args) => (supabase.rpc as unknown as (
+          n: string,
+          a: Record<string, unknown>,
+        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
         'soft_delete_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
@@ -1028,7 +1040,13 @@ export const useBulkDeleteInvoices = () => {
       return invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
+        // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
+        // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
+        (fn, args) => (supabase.rpc as unknown as (
+          n: string,
+          a: Record<string, unknown>,
+        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
         'bulk_soft_delete_invoices_with_credit_v1',
         buildBulkInvoiceCreditLifecycleRpcArgs(
           invoiceIds,
@@ -1072,7 +1090,7 @@ export const useApproveInvoice = () => {
 
       // Canonical approve_invoice_v1 (server-side state-guard + permission
       // parity RLS); fallback legacy update khi writer chưa deploy/không quyền.
-      const canonical = await (supabase.rpc as any)('approve_invoice_v1', {
+      const canonical = await supabase.rpc('approve_invoice_v1', {
         p_invoice_id: invoiceId,
       });
       if (!canonical.error) return canonical.data;
@@ -1128,7 +1146,7 @@ export const useUnapproveInvoice = () => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
-      const canonical = await (supabase.rpc as any)('unapprove_invoice_v1', {
+      const canonical = await supabase.rpc('unapprove_invoice_v1', {
         p_invoice_id: invoiceId,
       });
       if (!canonical.error) return canonical.data;
@@ -1188,7 +1206,7 @@ export const useBulkApproveInvoices = () => {
 
       // Canonical trả về SỐ LƯỢNG đã duyệt; legacy trả mảng row → chuẩn hoá
       // cả hai thành mảng-tương-đương qua count ở onSuccess (xem dưới).
-      const canonical = await (supabase.rpc as any)('bulk_approve_invoices_v1', {
+      const canonical = await supabase.rpc('bulk_approve_invoices_v1', {
         p_invoice_ids: invoiceIds,
       });
       if (!canonical.error) return { count: canonical.data as number };
@@ -1281,7 +1299,7 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
       // RBAC v2: không truyền p_user_id; quyền xác định qua can_access_building().
       // Nhờ vậy super_admin thấy đủ data của các building trong scope (kể cả invoice
       // do staff khác tạo), khắc phục lỗi "lệch owner" của bản v1.
-      const { data, error } = await (supabase.rpc as any)('get_invoice_statistics_v2', {
+      const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
         p_building_id: filters?.building_id ?? null,
         p_room_id: filters?.room_id ?? null,
         p_status: filters?.status ?? null,
@@ -1294,7 +1312,10 @@ export const invoiceStatisticsQuery = (filters?: InvoiceStatisticsFilters) => ({
 
       if (error) throw error;
 
-      const result = Array.isArray(data) ? data[0] : data;
+      // Kết quả RPC về dưới dạng Json; ép một lần ở đây thay vì cast cả
+      // supabase.rpc — như vậy tên RPC và tham số vẫn được compiler kiểm.
+      const result = (Array.isArray(data) ? data[0] : data) as unknown as
+        Record<string, number | null | undefined>;
       return {
         total_amount: Number(result?.total_amount ?? 0),
         total_paid: Number(result?.total_paid ?? 0),
@@ -1336,7 +1357,7 @@ export const useCheckOverdueInvoices = () => {
       if (!user) throw new Error('Not authenticated');
 
       // Canonical sweep server-side (phạm vi toà được phép), trả số lượng.
-      const canonical = await (supabase.rpc as any)('mark_overdue_invoices_v1', {});
+      const canonical = await supabase.rpc('mark_overdue_invoices_v1');
       if (!canonical.error) return (canonical.data as number) ?? 0;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
@@ -1398,7 +1419,7 @@ export const useExcessAmount = (contractId?: string) => {
 
       // Generated types intentionally lag until the migration is applied.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         'get_customer_credit_balance_v1',
         { p_contract_id: contractId },
       );
@@ -1606,7 +1627,13 @@ export const useRestoreInvoice = () => {
       return invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
+        // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
+        // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
+        (fn, args) => (supabase.rpc as unknown as (
+          n: string,
+          a: Record<string, unknown>,
+        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
         'restore_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
@@ -1653,7 +1680,13 @@ export const useForceCancelInvoice = () => {
       return invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
+        // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
+        // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
+        (fn, args) => (supabase.rpc as unknown as (
+          n: string,
+          a: Record<string, unknown>,
+        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
         'super_admin_force_cancel_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
@@ -1697,7 +1730,13 @@ export const useCancelInvoice = () => {
       return invokeCustomerCreditRpc(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
+        // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
+        // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
+        (fn, args) => (supabase.rpc as unknown as (
+          n: string,
+          a: Record<string, unknown>,
+        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
         'cancel_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
