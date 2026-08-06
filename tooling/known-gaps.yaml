@@ -27,6 +27,22 @@ gaps:
       Đợt 3 dựng xong production baseline + forward-only lane. Khi đó môi trường mới
       dựng từ baseline chứ không replay lịch sử, và bước đo này hết lý do tồn tại.
 
+  - id: cross-tenant-fixture-non-gating
+    where: .github/workflows/network-center-validation.yml (nhánh `cross-tenant` của bước matrix)
+    expires_at: 2026-11-30
+    why: >
+      Ma trận 20 ca xuyên-tenant dựng payload inventory dạng legacy-v1 mà đường tương thích
+      hiện tại từ chối trên database vừa dựng mới. Bản thân schema ĐÚNG — mọi migration
+      Network Center đều apply — nên cái thiếu là DỮ LIỆU FIXTURE, không phải tính chất bảo
+      mật. Vì vậy bước này nuốt lỗi bằng `|| { echo "::warning::" }` và vẫn chạy để ghi nhận
+      thay vì giấu đi.
+      Quyết định này đã được giải thích trong comment ngay tại chỗ từ trước, nhưng CHƯA có
+      trong sổ này — tức không có ngày hết hạn. Đúng thứ mà chính file này nói là cách biến
+      một quyết định có thời hạn thành khoảng trống vĩnh viễn. Đăng ký 06/08/2026.
+    exit_condition: >
+      Dựng fixture inventory đúng định dạng hiện hành cho 20 ca, rồi bỏ `|| { echo ... }` để
+      bước này gating thật.
+
   - id: deployment-assets-windows-only
     where: >
       infra/network-center-worker/test/deploymentAssets.test.ts và

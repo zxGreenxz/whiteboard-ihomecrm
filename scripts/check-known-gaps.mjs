@@ -12,7 +12,7 @@
 // Mặc định KHÔNG fail: một gate đỏ vì ngày tháng sẽ bị gia hạn theo nghi thức
 // hoặc bị tắt, và khi ấy mất luôn tín hiệu. Dùng --strict khi rà định kỳ.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
@@ -21,6 +21,38 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GAPS_PATH = join(repoRoot, 'tooling', 'known-gaps.yaml');
 
 const REQUIRED = ['id', 'expires_at', 'why', 'exit_condition'];
+
+/**
+ * Mọi chỗ CI cố ý không-gating phải khai gap id ngay tại chỗ.
+ *
+ * Header file này nêu `continue-on-error: true` làm lý do nó tồn tại, nhưng bản
+ * đầu KHÔNG hề quét workflow — nên luật chỉ là mong muốn: ai cũng thêm được một
+ * `continue-on-error` mới mà chẳng cần đăng ký, và nó thành vĩnh viễn đúng như
+ * điều file này cảnh báo.
+ *
+ * Đo 06/08/2026: 2 chỗ non-gating, 1 chỗ CHƯA có trong sổ (nhánh cross-tenant),
+ * dù đã có comment giải thích tử tế ngay tại chỗ. Giải thích không thay được hạn.
+ *
+ * Cách khai: đặt `# known-gap: <id>` trong 3 dòng ngay trước chỗ non-gating.
+ */
+const KHONG_GATING = [
+  { re: /continue-on-error:\s*true/, ten: 'continue-on-error: true' },
+  { re: /\|\|\s*\{?\s*$|\|\|\s*\{\s*$/, ten: '|| { … } nuốt lỗi' },
+  { re: /::warning::/, ten: '::warning:: thay cho lỗi' },
+];
+
+export function timChoKhongGating(noiDung) {
+  const dong = noiDung.split(/\r?\n/);
+  const ra = [];
+  for (let i = 0; i < dong.length; i += 1) {
+    const khop = KHONG_GATING.find((k) => k.re.test(dong[i]));
+    if (!khop) continue;
+    const truoc = dong.slice(Math.max(0, i - 3), i).join('\n');
+    const id = /#\s*known-gap:\s*([a-z0-9-]+)/.exec(truoc)?.[1] ?? null;
+    ra.push({ dong: i + 1, loai: khop.ten, id, noiDungDong: dong[i].trim().slice(0, 90) });
+  }
+  return ra;
+}
 
 export function validateGaps(doc, today = new Date()) {
   const problems = [];
@@ -63,6 +95,30 @@ function main(argv) {
   if (problems.length > 0) {
     console.error('❌ known-gaps.yaml không hợp lệ:\n');
     for (const p of problems) console.error(`  - ${p}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // Luật này trước đây chỉ nằm trong comment đầu file; nay thi hành được.
+  const idHopLe = new Set(gaps.map((g) => g.id));
+  const chuaKhai = [];
+  const idSai = [];
+  const wfDir = join(repoRoot, '.github', 'workflows');
+  for (const f of readdirSync(wfDir).filter((x) => /\.ya?ml$/.test(x))) {
+    for (const c of timChoKhongGating(readFileSync(join(wfDir, f), 'utf8'))) {
+      if (!c.id) chuaKhai.push(`${f}:${c.dong} — ${c.loai}: ${c.noiDungDong}`);
+      else if (!idHopLe.has(c.id)) idSai.push(`${f}:${c.dong} — known-gap: ${c.id} (không có trong sổ)`);
+    }
+  }
+
+  if (chuaKhai.length > 0 || idSai.length > 0) {
+    console.error('❌ Có chỗ CI cố ý KHÔNG-GATING mà chưa đăng ký khoảng trống:\n');
+    for (const c of chuaKhai) console.error(`  - ${c}`);
+    for (const c of idSai) console.error(`  - ${c}`);
+    console.error('\n  Thêm `# known-gap: <id>` trong 3 dòng ngay trước, và tạo mục tương ứng');
+    console.error('  trong tooling/known-gaps.yaml KÈM expires_at + exit_condition.');
+    console.error('  Một quyết định non-gating có giải thích nhưng KHÔNG có hạn sẽ thành vĩnh viễn —');
+    console.error('  đó chính là điều file known-gaps.yaml được lập ra để ngăn.');
     process.exitCode = 1;
     return;
   }

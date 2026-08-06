@@ -286,6 +286,7 @@ jobs:
       # The teardown assertions below are NOT advisory: they run regardless and
       # they do fail the job. Proving that a disposable database died is the
       # whole reason this job is allowed to start one.
+      # known-gap: supabase-cli-replay-broken
       - name: Measure the historical Supabase replay (known broken, non-gating)
         id: matrix
         continue-on-error: true
@@ -334,6 +335,7 @@ jobs:
               # database. The schema itself is correct - every Network Center
               # migration applies - so what is missing is fixture data, not a
               # security property. Recorded rather than hidden.
+              # known-gap: cross-tenant-fixture-non-gating
               node scripts/test-cross-tenant.mjs --local-cluster                 2>&1 | tee disposable-evidence/cluster-cross-tenant.log || {
                   echo "::warning::cross-tenant --local-cluster still fails on fixture payload; see log artifact"
                 }
