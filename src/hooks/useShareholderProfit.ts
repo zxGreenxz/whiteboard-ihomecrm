@@ -13,6 +13,7 @@ import {
   type ProfitUnallocatedDisposition,
 } from "@/lib/profitClose";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
+import { jsonArray } from "@/lib/jsonValue";
 
 export { computeShareholderSummary };
 export type { ShareholderSummaryRow };
@@ -188,7 +189,7 @@ export const useMonthlyBuildingProfit = (
     queryKey: ["monthly-building-profit", start, end, buildingId ?? null],
     enabled: !!start && !!end,
     queryFn: async (): Promise<MonthlyBuildingProfit[]> => {
-      const { data, error } = await (supabase.rpc as any)("fa_monthly_pnl_accrual", {
+      const { data, error } = await supabase.rpc("fa_monthly_pnl_accrual", {
         p_start_date: start,
         p_end_date: end,
         p_building_ids: buildingId ? [buildingId] : null,
@@ -468,9 +469,9 @@ export const useProfitCloseOrganizations = () => {
   return useQuery({
     queryKey: ["profit-close-scopes"],
     queryFn: async (): Promise<ProfitCloseOrganizationScope[]> => {
-      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.scopes);
+      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.scopes);
       if (error) throw error;
-      const rows = Array.isArray(data?.organizations) ? data.organizations : [];
+      const rows = jsonArray(data, "organizations");
       return rows.map((row: any) => ({
         organization_id: String(row.organization_id),
         organization_name: String(row.organization_name ?? ""),
@@ -541,7 +542,7 @@ export const useProfitCloseState = (
     queryKey: ["profit-close-state", organizationId, periodMonth],
     enabled: !!organizationId && !!periodMonth,
     queryFn: async (): Promise<ProfitCloseState> => {
-      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.state, {
+      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.state, {
         p_organization_id: organizationId,
         p_period_month: periodMonth,
       });
@@ -714,7 +715,7 @@ export const useProfitClosePreview = (
       !!periodMonth &&
       (buildingIds === null || buildingIds.length > 0),
     queryFn: async (): Promise<ProfitClosePreview> => {
-      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.preview, {
+      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.preview, {
         p_organization_id: organizationId,
         p_period_month: periodMonth,
         p_building_ids: buildingIds,
@@ -786,7 +787,7 @@ export const useCloseProfitPeriod = () => {
           }
         }
       }
-      const { data, error } = await (supabase.rpc as any)(rpcName, {
+      const { data, error } = await supabase.rpc(rpcName, {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
         p_building_ids: input.buildingIds,
@@ -853,7 +854,7 @@ export const useUnlockProfitMonth = () => {
   return useMutation({
     mutationFn: async (input: UnlockProfitMonthInput) => {
       if (input.buildingIds.length === 0) throw new Error("Không có toà nào đang khoá để mở");
-      const { data, error } = await (supabase.rpc as any)("unlock_profit_month_v1", {
+      const { data, error } = await supabase.rpc("unlock_profit_month_v1", {
         p_period_month: input.periodMonth,
         p_building_ids: input.buildingIds,
       });
@@ -883,7 +884,7 @@ export const useResetProfitPeriod = () => {
       if (input.reason.trim().length < 8 || input.reason.trim().length > 1000) {
         throw new Error("Lý do đặt lại phải có 8–1000 ký tự");
       }
-      const { data, error } = await (supabase.rpc as any)(PROFIT_CLOSE_RPC.reset, {
+      const { data, error } = await supabase.rpc(PROFIT_CLOSE_RPC.reset, {
         p_organization_id: input.organizationId,
         p_period_month: input.periodMonth,
         p_reason: input.reason.trim(),

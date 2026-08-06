@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
 import { fetchAllRows } from "@/lib/supabaseFetchAll";
 import { isCanonicalFallbackSignal } from "@/lib/canonicalFallback";
+import { jsonProp } from "@/lib/jsonValue";
 import { nrm } from "@/lib/fixedExpenseCategories";
 import { toast } from "sonner";
 import {
@@ -134,7 +135,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         trendRes,
       ] = await Promise.all([
         (supabase.from("profiles").select("id, full_name") as any).in("id", staffIds),
-        (supabase.rpc as any)("salary_work_ledger", { p_period_month: periodMonth, p_staff_id: null }),
+        supabase.rpc("salary_work_ledger", { p_period_month: periodMonth, p_staff_id: null }),
         (supabase.from("salary_monthly").select("*") as any).eq("period_month", periodMonth).in("staff_id", staffIds),
         (supabase.from("shareholders").select("id, auth_user_id") as any).in("auth_user_id", staffIds),
         (supabase.from("profit_monthly").select("status, period_month") as any).eq("period_month", periodMonth),
@@ -326,7 +327,7 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
       if (engine === "v5") {
         const [v5Arr, sssRes] = await Promise.all([
           Promise.all(staffIds.map(async (sid) => {
-            const { data } = await (supabase.rpc as any)("v5_month_money", { p_user: sid, p_month: periodMonth });
+            const { data } = await supabase.rpc("v5_month_money", { p_user: sid, p_month: periodMonth });
             return { sid, data };
           })),
           (supabase.from("salary_streak_state").select("user_id, current_streak") as any)
@@ -337,8 +338,8 @@ export const useManagerSalary = (periodMonth: string, engine: "legacy" | "v5" = 
         );
         for (const { sid, data: mm } of v5Arr) {
           v5ByStaff.set(sid, {
-            attend: num(mm?.attend_amount), streak: num(mm?.streak_amount),
-            ticked: num(mm?.ticked_days), nchuan: num(mm?.n_chuan),
+            attend: num(jsonProp(mm, "attend_amount")), streak: num(jsonProp(mm, "streak_amount")),
+            ticked: num(jsonProp(mm, "ticked_days")), nchuan: num(jsonProp(mm, "n_chuan")),
             cur: curByStaff.get(sid) || 0,
           });
         }
@@ -533,7 +534,7 @@ export const useStaffDisplayMonth = (staffId: string | null | undefined, enabled
       const cur = vnYmOf(); // giờ VN, không phải giờ máy (audit 2026-07-20)
       let overrides: Record<string, boolean> = {};
       try {
-        const { data } = await (supabase.rpc as any)("salary_staff_months");
+        const { data } = await supabase.rpc("salary_staff_months");
         if (data && typeof data === "object") overrides = data as Record<string, boolean>;
       } catch {
         /* RPC chưa có / lỗi → dùng mặc định lùi-tháng */
@@ -686,7 +687,7 @@ export const useLockSalaryMonth = () => {
           ledger: m.ledger,
         };
       });
-      const canonical = await (supabase.rpc as any)("lock_salary_month_v1", {
+      const canonical = await supabase.rpc("lock_salary_month_v1", {
         p_period_month: periodMonth,
         p_managers: canonicalManagers,
         p_idempotency_key: `sal-lock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
@@ -784,7 +785,7 @@ export const useUnlockSalaryMonth = () => {
   return useMutation({
     mutationFn: async ({ periodMonth, staffIds }: { periodMonth: string; staffIds: string[] }) => {
       // Canonical unlock (atomic + giữ organization_id); fallback legacy.
-      const canonical = await (supabase.rpc as any)("unlock_salary_month_v1", {
+      const canonical = await supabase.rpc("unlock_salary_month_v1", {
         p_period_month: periodMonth,
         p_staff_ids: staffIds,
         p_idempotency_key: `sal-unlock-${periodMonth}-${crypto.randomUUID().slice(0, 8)}`,
@@ -846,7 +847,7 @@ export const useSalaryPayout = () => {
       // đi qua ENGINE DUYỆT (state PENDING_APPROVAL — người duyệt ký mới thành chi
       // thật; trigger a70 tự gạch paid khi duyệt). Server tự clamp tiền phòng theo
       // nợ còn lại. Flag OFF → "chưa bật" → fallback legacy cascade bên dưới.
-      const canonical = await (supabase.rpc as any)("salary_payout_v1", {
+      const canonical = await supabase.rpc("salary_payout_v1", {
         p_staff_id: input.staffId,
         p_period_month: input.periodMonth,
         p_take_home: input.amount,

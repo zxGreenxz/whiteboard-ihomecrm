@@ -22,7 +22,11 @@ export interface ProfitCloseDraftSeed {
   unallocatedDispositionReason?: string | null;
 }
 
-export interface ProfitCloseAdjustmentPayload {
+// `type` chứ không phải `interface`: chỉ type alias mới được TypeScript coi là có
+// index signature ngầm, nên mới gán được vào `Json` khi truyền làm tham số RPC.
+// Interface thì không, vì nó còn có thể bị declaration merging mở rộng sau này.
+// Đổi một chữ ở đây thay được một `as any` ở chỗ gọi.
+export type ProfitCloseAdjustmentPayload = {
   building_id: string;
   adjustment_amount: number;
   adjustment_reason: string | null;

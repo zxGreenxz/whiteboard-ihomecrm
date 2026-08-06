@@ -4,7 +4,9 @@
 
 export type SalItemType = "JOB" | "DAY_BONUS" | "CONTRACT" | "CASH";
 
-export interface SalLedgerRow {
+// `type` chứ không phải `interface` — xem ghi chú ở ProfitCloseAdjustmentPayload:
+// chỉ type alias mới gán được vào `Json` khi hàng ledger đi làm tham số RPC.
+export type SalLedgerRow = {
   staff_id: string;
   item_type: SalItemType;
   source_id: string | null;
