@@ -5,6 +5,8 @@ import {
   getMeterNameFromList,
   formatSimpleMeterName,
   isLoadEnabled,
+  previousReadingWhenEditing,
+  meterNameWhenEditing,
   type UnrecordedMeter,
 } from './meterReadingFormUtils';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -251,14 +253,14 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
   // --------------------------------------------------------------------------
   const getPreviousReading = (meterId: string): number => {
     if (isEditing && reading) {
-      return reading.previous_reading ?? 0;
+      return previousReadingWhenEditing(reading);
     }
     return getPreviousReadingFromList(meterId, metersList);
   };
 
   const getMeterName = (meterId: string): string => {
     if (isEditing && reading) {
-      return formatSimpleMeterName(reading.meter_code);
+      return meterNameWhenEditing(reading);
     }
     return getMeterNameFromList(meterId, metersList);
   };

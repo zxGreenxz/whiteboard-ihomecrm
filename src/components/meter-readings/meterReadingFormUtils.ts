@@ -134,3 +134,28 @@ export function createMeterReadingPayload(input: CreateMeterReadingPayloadInput)
     approved_at: new Date().toISOString(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Nhánh CHỈNH SỬA (isEditing && reading): lấy số/tên từ chính bản ghi đang sửa,
+// không dò trong danh sách công tơ chưa ghi.
+//
+// Tách ra đây vì `meterReadingFormBugfix.preservation.test.ts` từng CHÉP TAY hai
+// hàm này vào chính file test, và bản chép đã lệch: nó viết
+// `reading.meter_name || reading.meter_code || ''` trong khi component từ lâu đã
+// dùng `formatSimpleMeterName(reading.meter_code)` và bỏ hẳn `meter_name`. Test
+// vì thế khẳng định một hành vi không còn tồn tại — xanh, nhưng nói về quá khứ.
+// ---------------------------------------------------------------------------
+
+/** Chỉ số cũ khi đang SỬA một bản ghi: lấy thẳng từ bản ghi đó. */
+export function previousReadingWhenEditing(
+  reading: { previous_reading: number | null } | null | undefined,
+): number {
+  return reading?.previous_reading ?? 0;
+}
+
+/** Tên công tơ khi đang SỬA: rút gọn từ mã của chính bản ghi đó. */
+export function meterNameWhenEditing(
+  reading: { meter_code: string | null } | null | undefined,
+): string {
+  return formatSimpleMeterName(reading?.meter_code);
+}
