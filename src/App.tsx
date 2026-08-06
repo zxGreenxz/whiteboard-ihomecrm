@@ -15,13 +15,6 @@ import { hideAppSplash } from "@/lib/appSplash";
 import { AuthCacheSync } from "@/app/providers/AuthCacheSync";
 import { NETWORK_CENTER_RUNTIME_ENABLED } from "@/lib/network-center/runtime";
 import { OPENCLAW_RUNTIME_ENABLED } from "@/lib/openclaw-zalo/runtime";
-// Backward-compat redirect: /tenants/:id → /customers/:id (giữ id, không
-// đổ về danh sách).
-function TenantToCustomerRedirect() {
-  const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/customers/${id ?? ''}`} replace />;
-}
-
 // ===== Eager imports — cần cho first paint / luôn dùng =====
 // Auth Pages (màn đầu tiên user thấy)
 import Register from "./pages/auth/Register";
@@ -40,6 +33,12 @@ import { RequirePermission } from "./components/auth/RequirePermission";
 import { settingsRoutes } from "./app/routes/settingsRoutes";
 import { financeReportRoutes } from "./app/routes/financeReportRoutes";
 import { realEstateReportRoutes } from "./app/routes/realEstateReportRoutes";
+import { quickTrackRoutes } from "./app/routes/quickTrackRoutes";
+import { catalogRoutes } from "./app/routes/catalogRoutes";
+import { customerRoutes } from "./app/routes/customerRoutes";
+import { financeWorkRoutes } from "./app/routes/financeWorkRoutes";
+import { salaryProfitRoutes } from "./app/routes/salaryProfitRoutes";
+import { adminAccountRoutes } from "./app/routes/adminAccountRoutes";
 
 // Khai báo lazy cho 99 page đã tách sang ./app/lazyPages (Đợt 4) — xem lý do ở đó.
 import {
@@ -326,24 +325,7 @@ const App = () => (
             }
           />
 
-          {/* === THEO DÕI NHANH === */}
-          {/* "/" tách nhánh: mobile → Home launcher (web-app), desktop → Dashboard. */}
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <HomeRoute />
-              </ProtectedRoute>
-            }
-          />
-          {/* /dashboard: Bảng tin — mobile mở màn web-app riêng, desktop về "/". */}
-          <Route path="/dashboard" element={<ProtectedRoute><DashboardRoute /></ProtectedRoute>} />
-          <Route path="/building-map" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingMapPage /></RequirePermission></ProtectedRoute>} />
-          {NETWORK_CENTER_RUNTIME_ENABLED ? (
-            <Route path="/network-center/*" element={<ProtectedRoute><RequirePermission module="network_center" action="view"><NetworkCenterApp /></RequirePermission></ProtectedRoute>} />
-          ) : null}
-          <Route path="/notifications" element={<ProtectedRoute><RequirePermission module="notifications"><NotificationsPage /></RequirePermission></ProtectedRoute>} />
-
+          {quickTrackRoutes}
           {/* === KÊNH CHAT === */}
           <Route path="/chat-zalo" element={<ProtectedRoute><RequirePermission module="chat_zalo" action="view"><ChatZaloPage /></RequirePermission></ProtectedRoute>} />
           {/* Behind a build-time flag, default OFF, the same way Network Center is.
@@ -362,107 +344,15 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
-          ) : null}
-
-          {/* === DANH MỤC DỮ LIỆU === */}
-          {/* /areas đã gỡ: khu vực = nhãn nhóm toà, quản lý bằng dialog trong /buildings */}
-          <Route path="/areas" element={<Navigate to="/buildings" replace />} />
-          <Route path="/buildings" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/buildings/:id" element={<ProtectedRoute><RequirePermission module="buildings"><BuildingDetailPage /></RequirePermission></ProtectedRoute>} />
-          {/* Primary route: /apartments, redirect /rooms → /apartments */}
-          <Route path="/apartments" element={<ProtectedRoute><RequirePermission module="rooms"><RoomsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/apartments/:id" element={<ProtectedRoute><RequirePermission module="rooms"><RoomDetailPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/rooms" element={<Navigate to="/apartments" replace />} />
-          <Route path="/rooms/:id" element={<Navigate to="/apartments" replace />} />
-          <Route path="/services" element={<ProtectedRoute><RequirePermission module="services"><ServicesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/sale-phong" element={<ProtectedRoute><RequirePermission module="sale_phong" action="view"><SalePhongPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/assets" element={<ProtectedRoute><RequirePermission module="assets"><AssetsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/materials" element={<ProtectedRoute><RequirePermission module="materials"><MaterialsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/materials/purchases" element={<ProtectedRoute><RequirePermission module="materials"><MaterialsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/materials/usages" element={<ProtectedRoute><RequirePermission module="materials"><MaterialsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/materials/adjustments" element={<ProtectedRoute><RequirePermission module="materials"><MaterialsPage /></RequirePermission></ProtectedRoute>} />
-
-          {/* === KHÁCH HÀNG === */}
-          <Route path="/leads" element={<ProtectedRoute><RequirePermission module="leads"><LeadsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/deposits" element={<ProtectedRoute><RequirePermission module="deposits"><DepositsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/reservations" element={<Navigate to="/deposits" replace />} />
-          <Route path="/reservations/all" element={<Navigate to="/deposits" replace />} />
-          <Route path="/contracts" element={<ProtectedRoute><RequirePermission module="contracts"><ContractsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/contracts/:id" element={<ProtectedRoute><RequirePermission module="contracts"><ContractDetailPage /></RequirePermission></ProtectedRoute>} />
-          {/* Primary route: /customers (new CustomersPage), redirect /tenants → /customers */}
-          <Route path="/customers" element={<ProtectedRoute><RequirePermission module="customers"><CustomersPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/customers/new" element={<ProtectedRoute><RequirePermission module="customers" action="create"><CustomerFormPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/customers/:id/edit" element={<ProtectedRoute><RequirePermission module="customers" action="edit"><CustomerFormPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/customers/:id/ct01" element={<ProtectedRoute><RequirePermission module="customers" action="print"><CT01FormPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/customers/:id" element={<ProtectedRoute><RequirePermission module="customers"><CustomerDetailPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/tenants" element={<Navigate to="/customers" replace />} />
-          <Route path="/tenants/:id" element={<TenantToCustomerRedirect />} />
-          <Route path="/vehicles" element={<ProtectedRoute><RequirePermission module="vehicles"><VehiclesPage /></RequirePermission></ProtectedRoute>} />
-
-          {/* === TÀI CHÍNH === */}
-          <Route path="/meter-readings" element={<ProtectedRoute><RequirePermission module="meter_readings"><MeterReadingsPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/thu-tien" element={<ProtectedRoute><RequirePermission module="thu_tien"><Suspense fallback={null}><ThuTien /></Suspense></RequirePermission></ProtectedRoute>} />
-          {/* Gate `thu_tien.collect` (không phải `view`) — giữ NGUYÊN tầm với cũ:
-              trước đây panel này chỉ mở được qua nút Plug vốn đã ẩn với người
-              không có quyền thu. Dùng `view` sẽ mở rộng ai thấy được số liệu chi. */}
-          <Route path="/thanh-toan" element={<ProtectedRoute><RequirePermission module="thu_tien" action="collect"><Suspense fallback={null}><ThanhToan /></Suspense></RequirePermission></ProtectedRoute>} />
-          <Route path="/invoices" element={<ProtectedRoute><RequirePermission module="invoices"><InvoicesPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/invoices/print/:id" element={<ProtectedRoute><RequirePermission module="invoices" action="print"><InvoicePrintPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/invoices/:id" element={<ProtectedRoute><RequirePermission module="invoices"><InvoiceDetailPage /></RequirePermission></ProtectedRoute>} />
-          {/* Primary route: /income-expense, redirect /payments → /income-expense */}
-          <Route path="/income-expense" element={<ProtectedRoute><RequirePermission module="income_expenses"><IncomeExpensePage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/income-expense/print/:id" element={<ProtectedRoute><RequirePermission module="income_expenses" action="print"><IncomeExpensePrintPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/income-expense/voucher/:id" element={<ProtectedRoute><RequirePermission module="income_expenses"><VoucherDetailPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/finance/refund-log" element={<ProtectedRoute><RequirePermission module="deposits"><RefundLogPage /></RequirePermission></ProtectedRoute>} />
-          {/* Hộp thư duyệt: KHÔNG gate RequirePermission — RPC đã lọc theo auth.uid(),
-              ai vào cũng chỉ thấy yêu cầu chờ chính mình duyệt (rỗng nếu không phải người duyệt). */}
-          <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
-          <Route path="/payments" element={<Navigate to="/income-expense" replace />} />
-          <Route path="/payments/income-expenses" element={<Navigate to="/income-expense" replace />} />
-          <Route path="/payments/income-expense" element={<Navigate to="/income-expense" replace />} />
-
-          {/* === CÔNG VIỆC === */}
-          <Route path="/tasks" element={<ProtectedRoute><RequirePermission module="tasks"><TaskManagementPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/my-day" element={<ProtectedRoute><MyDayPage /></ProtectedRoute>} />
-          <Route path="/reports/coverage" element={<ProtectedRoute><AdminOnlyRoute><OwnerDashboardV5 /></AdminOnlyRoute></ProtectedRoute>} />
-
+          ) : null}
+          {catalogRoutes}
+          {customerRoutes}
           {realEstateReportRoutes}
           {financeReportRoutes}
-          {/* === CHIA LỢI NHUẬN CỔ ĐÔNG + VÍ THU CHI CÁ NHÂN === */}
-          {/* Đã gộp vào trang Phân bổ lợi nhuận → redirect các URL cũ */}
-          <Route path="/finance/shareholder-profit" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
-          <Route path="/reports/finance/shareholder-profit" element={<Navigate to="/reports/finance/profit-distribution" replace />} />
-          <Route path="/finance/personal-wallet" element={<ProtectedRoute><RequirePermission module="personal_finance" action="view"><PersonalWalletPage /></RequirePermission></ProtectedRoute>} />
-
-          {/* === BẢNG LƯƠNG QUẢN LÝ === (trang tự rẽ admin ↔ self-view theo quyền/cấu hình) */}
-          <Route path="/finance/salary" element={<ProtectedRoute><ManagerSalaryPage /></ProtectedRoute>} />
-          {/* "Lương của tôi" — trang trọn-màn QUEST, nhân viên mở ở TAB MỚI từ sidebar */}
-          <Route path="/finance/my-salary" element={<ProtectedRoute><MySalaryPage /></ProtectedRoute>} />
-
-          {/* === BÁO CÁO CÔNG VIỆC === (đang xây dựng lại) */}
-
-          {/* === ADMIN — QUẢN LÝ TÀI KHOẢN === */}
-          <Route path="/admin/users" element={<ProtectedRoute><AdminOnlyRoute><AdminUsersPage /></AdminOnlyRoute></ProtectedRoute>} />
-
+          {financeWorkRoutes}
+          {salaryProfitRoutes}
           {settingsRoutes}
-          {/* === PHÂN QUYỀN (mô hình tổ chức V3, thay trang Nhân viên cũ) === */}
-          <Route path="/settings/organization" element={<ProtectedRoute><RequirePermission module="users" action="view"><OrganizationPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/members" element={<ProtectedRoute><RequirePermission module="users" action="view"><MembersPage /></RequirePermission></ProtectedRoute>} />
-          <Route path="/settings/roles" element={<ProtectedRoute><RequirePermission module="users" action="view"><RolesPage /></RequirePermission></ProtectedRoute>} />
-          {/* Đường cũ: giữ lại làm chuyển hướng để link đã lưu / bookmark không gãy. */}
-          <Route path="/settings/staff" element={<Navigate to="/settings/members" replace />} />
-          {/* Nhận lời mời — cần đăng nhập đúng email đã được mời. */}
-          <Route path="/invite/:token" element={<ProtectedRoute><AcceptInvitation /></ProtectedRoute>} />
-
-          {/* === TÀI KHOẢN === */}
-          <Route path="/account/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-          <Route path="/account/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
-
-          {/* === THÔNG TIN KHÁC === */}
-          <Route path="/faq" element={<ProtectedRoute><FaqPage /></ProtectedRoute>} />
-          <Route path="/changelog" element={<ProtectedRoute><ChangelogPage /></ProtectedRoute>} />
-          <Route path="/app-guide" element={<ProtectedRoute><AppGuidePage /></ProtectedRoute>} />
-
+          {adminAccountRoutes}
           {/* === REDIRECTS from old routes === */}
           <Route path="/cash-book" element={<Navigate to="/reports/finance/daily-cashbook" replace />} />
 
