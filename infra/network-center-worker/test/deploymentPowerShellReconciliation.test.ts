@@ -2,10 +2,17 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-const workerRoot = resolve(new URL("../", import.meta.url).pathname.slice(1));
+// `.pathname.slice(1)` hỏng ở CẢ HAI nền tảng, không chỉ Windows: `.pathname` giữ
+// nguyên percent-encoding (đường dẫn có dấu cách thành `%20`), còn `.slice(1)` cắt
+// mất dấu `/` đầu — mẹo đó chỉ đúng cho dạng `/C:/...` của Windows, trên Linux nó
+// biến đường dẫn tuyệt đối thành tương đối. Dòng này chạy ở TOP-LEVEL nên khi ném
+// lỗi thì cả file không load được và vitest báo "0 test" — suite biến mất mà không
+// có gì đỏ. fileURLToPath xử lý đúng cả hai việc.
+const workerRoot = fileURLToPath(new URL("../", import.meta.url));
 const deploy = join(workerRoot, "scripts", "deploy-vultr.ps1");
 const rollback = join(workerRoot, "scripts", "rollback-vultr.ps1");
 const contract = join(workerRoot, "scripts", "release-state-contract.ps1");
@@ -77,10 +84,51 @@ function run(script: string, body: string, executable = "powershell.exe") {
   const parameters = script === deploy
     ? `-ReleaseSha '${shaB}' -HostName 'test.invalid' -KnownHostsFile 'ignored' -PlanOnly`
     : `-HostName 'test.invalid' -KnownHostsFile 'ignored' -PlanOnly`;
-  writeFileSync(harness, `. '${script.replaceAll("'", "''")}' ${parameters}\n${body}\n`, "utf8");
-  return spawnSync(executable, ["-NoProfile", "-NonInteractive", "-File", harness], {
-    encoding: "utf8", windowsHide: true,
-  });
+  // `$ErrorActionPreference='Stop'` + kiểm tra sau khi dot-source: nếu không có,
+  // harness này có thể IM LẶNG KHÔNG KIỂM GÌ. Đã đo được điều đó: trên máy có
+  // execution policy mặc định, dot-source bị từ chối ("not digitally signed"),
+  // các hàm của script deploy không bao giờ được nạp — nhưng harness vẫn thoát 0.
+  // Mọi ca đòi THẤT BẠI thì đỏ (đúng như đang thấy), còn mọi ca đòi THÀNH CÔNG
+  // sẽ xanh mà chẳng kiểm gì cả. Một harness không phân biệt được "script chạy và
+  // trả 0" với "script không nạp được" thì không dùng để kết luận gì được.
+  writeFileSync(
+    harness,
+    `$ErrorActionPreference='Stop'\n` +
+      `. '${script.replaceAll("'", "''")}' ${parameters}\n` +
+      // Chốt chặn: hàm này do script deploy định nghĩa. Không có nó nghĩa là
+      // dot-source hỏng, và phải nổ thành mã thoát riêng chứ không được đi tiếp.
+      `if (-not (Get-Command Invoke-RemoteMutationReconciled -ErrorAction SilentlyContinue)) {\n` +
+      `  Write-Error 'HARNESS: dot-source that bai — khong nap duoc script deploy'\n` +
+      `  exit 97\n` +
+      `}\n` +
+      `${body}\n`,
+    "utf8",
+  );
+  // -ExecutionPolicy Bypass: script trong repo không được ký, nên trên máy dùng
+  // policy mặc định (RemoteSigned/AllSigned) PowerShell từ chối nạp. Runner CI
+  // Linux không bao giờ gặp — đây đúng loại lệch môi trường làm test chết âm thầm.
+  const result = spawnSync(
+    executable,
+    ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", harness],
+    { encoding: "utf8", windowsHide: true },
+  );
+  // Khi executable không tồn tại (Linux không có powershell.exe), spawnSync trả
+  // `error` và `status = null`. Rất nhiều ca ở dưới khẳng định
+  // `expect(result.status).not.toBe(0)` — và `null !== 0` là ĐÚNG, nên chúng XANH
+  // mà chưa hề chạy PowerShell lần nào. Đó là kiểu tệ nhất: không phải test đỏ oan,
+  // mà là test báo xanh trong khi không kiểm gì. Phải nổ rõ ràng thay vì để lọt.
+  if (result.error) {
+    throw new Error(
+      `Khong chay duoc '${executable}': ${result.error.message}\n` +
+        `Suite nay can PowerShell. Bo qua se khien moi assertion "status khac 0" xanh gia.`,
+    );
+  }
+  if (result.status === 97) {
+    throw new Error(
+      `Harness khong nap duoc ${script}. Test se vo nghia neu bo qua.\n${result.stderr}`,
+    );
+  }
+  return result;
 }
 
 // A complete worker-release-status payload as the admin CLI prints it. Overrides

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   ADMIN_COMMANDS,
@@ -703,7 +704,10 @@ test("disposable release proof runner has no production path and supports dry-ru
   assert.match(source, /initdb/i);
   assert.match(source, /pg_ctl/i);
   assert.match(source, /mkdtemp/i);
-  const result = spawnSync(process.execPath, [disposableRunnerPath.pathname.slice(1), "--dry-run"], {
+  // fileURLToPath, KHÔNG phải `.pathname.slice(1)`. Ngay trong file này, hai dòng
+  // trên truyền THẲNG object URL vào existsSync/readFileSync — Node tự decode đúng.
+  // Chỉ chỗ này ép sang chuỗi bằng tay và làm sai, nên file tự mâu thuẫn với chính nó.
+  const result = spawnSync(process.execPath, [fileURLToPath(disposableRunnerPath), "--dry-run"], {
     encoding: "utf8",
     windowsHide: true,
   });

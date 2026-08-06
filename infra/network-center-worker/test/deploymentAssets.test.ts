@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -26,7 +27,21 @@ function text(path: string): string {
 function runPowerShell(path: string, args: string[]) {
   return spawnSync(
     "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-File", new URL(path, workerRoot).pathname.slice(1), ...args],
+    // fileURLToPath, KHÔNG phải `.pathname.slice(1)`: cách cũ giữ percent-encoding
+    // nên "Nguyen Tam" thành "Nguyen%20Tam" và PowerShell không mở được file.
+    // Trớ trêu là chính các test dưới đây tồn tại để canh script deploy xử lý được
+    // đường dẫn known_hosts CÓ DẤU CÁCH — chúng bị giết bởi đúng thứ chúng đi canh.
+    // -ExecutionPolicy Bypass: script .ps1 trong repo không được ký, nên máy dùng
+    // policy mặc định sẽ từ chối nạp và test đỏ vì lý do chẳng liên quan tới code.
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      fileURLToPath(new URL(path, workerRoot)),
+      ...args,
+    ],
     { encoding: "utf8", windowsHide: true },
   );
 }
