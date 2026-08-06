@@ -48,7 +48,29 @@ const sql = `
     WHERE deleted_at IS NULL
       AND approval_status = 'APPROVED'
       AND approved_by IS NULL
-      AND system_source IS NULL
+      -- "CÓ xuất xứ" phải là một NHÃN THẬT, không phải "khác NULL".
+      --
+      -- income_expenses.system_source là text nullable KHÔNG có CHECK
+      -- constraint nào (đã liệt kê toàn bộ contype='c' của bảng — không có mục
+      -- nào nhắc cột này). Nên bộ lọc cũ IS NULL chỉ bắt MỘT dạng thiếu xuất
+      -- xứ; chuỗi RỖNG, khoảng trắng, hay bất kỳ chuỗi rác nào đều tắt hoàn
+      -- toàn phép kiểm. Cùng mẫu relkind='i' quên 'I': bắt một biến thể,
+      -- bỏ biến thể anh em.
+      --
+      -- Đo 07/08/2026: hiện 0 dòng dùng chuỗi rỗng. Cửa mở nhưng chưa ai bước
+      -- vào — bịt lúc còn sạch.
+      --
+      -- Khuôn KHÔNG bắt buộc có dấu chấm. Bản đầu tôi đòi dạng miền.hành_động
+      -- (contract.create.v2, invoice.collection…) vì 20/21 giá trị thật theo
+      -- dạng đó — nhưng giá trị thứ 21 là fixed_fee, một nhãn hợp lệ không
+      -- chấm, dùng 4 lần. Đòi dấu chấm sẽ báo nhầm chính nó. Nay chỉ đòi: bắt
+      -- đầu bằng chữ thường, tối thiểu 3 ký tự, chỉ [a-z0-9_] và dấu chấm phân
+      -- đoạn. Đủ để loại '', '   ', 'x', '0', '--', 'a b', 'RAC'.
+      AND (
+        system_source IS NULL
+        OR btrim(system_source) = ''
+        OR btrim(system_source) !~ '^[a-z][a-z0-9_]{2,}(\\.[a-z0-9_]+)*$'
+      )
       AND created_at >= '${CUTOFF}'
     GROUP BY 1, 2, 3
     ORDER BY 1 DESC
