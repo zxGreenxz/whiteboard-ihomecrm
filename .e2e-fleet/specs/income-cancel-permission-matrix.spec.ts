@@ -193,9 +193,21 @@ test('nguoi-da-thu-huy-duoc-tren-giao-dien; nguoi-khac-bi-chan', async ({ browse
       (await sbRpc(ql.auth, 'can_cancel_income_voucher_v1', { p_ids: [idChu] })).body,
     ) as { eligible: boolean; reason_code: string }[];
     // Reader bỏ qua im lặng phiếu ngoài tầm nhìn; nếu có trả dòng thì phải chặn.
+    //
+    // Nhánh rỗng là HỢP LỆ nhưng phải NHÌN THẤY ĐƯỢC: khi reader không trả dòng
+    // nào, hai khẳng định dưới đây không chạy, và nếu điều đó xảy ra mãi thì phần
+    // kiểm reason_code của reader im lặng ngừng được kiểm. Ghi annotation để đọc
+    // được từ báo cáo Playwright thay vì biến mất.
+    // (Bảo đảm an ninh CỐT LÕI — writer từ chối 403 — nằm NGOÀI if, luôn chạy.)
     if (gate.length) {
       expect(gate[0].eligible, 'quản lý toà KHÔNG được huỷ phiếu người khác').toBe(false);
       expect(gate[0].reason_code).toBe('NOT_OWNER');
+    } else {
+      test.info().annotations.push({
+        type: 'khong-kiem-duoc',
+        description:
+          'can_cancel_income_voucher_v1 trả 0 dòng cho quản lý toà — bỏ qua kiểm reason_code của reader lần này',
+      });
     }
     const denied = await sbRpc(ql.auth, 'cancel_income_voucher_v1', {
       p_voucher: idChu,
