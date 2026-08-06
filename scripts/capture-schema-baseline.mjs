@@ -84,19 +84,25 @@ export function stripRuntimePartitions(input) {
     const partitionNames = names.filter((n) => RUNTIME_PARTITION.test(n));
 
     // PostgreSQL cắt tên identifier ở 63 ký tự, nên index của partition ngày bị
-    // rút thành `network_device_samples_202607_<cột>_idx` — mất mất hai chữ số
-    // cuối của ngày. Regex tìm 8 chữ số không bắt được, và những index này trỏ
-    // tới bảng vừa bị loại ⇒ restore sẽ lỗi "relation does not exist".
-    const truncatedPartitionIndex =
-      /\bnetwork_(?:device|interface)_samples_\d{6}_[a-z0-9_]*idx/.test(chunk);
+    // rút ngắn và MẤT một phần ngày: `..._samples_202607_<cột>_idx1` (6 số),
+    // `..._samples_20260_<cột>_idx10` (5 số) — cắt càng sâu khi hậu tố càng dài.
+    //
+    // Vì vậy KHÔNG đếm chữ số. Luật đúng theo bản chất: một câu `INDEX ATTACH`
+    // gắn index con vào partition đã bị loại thì bản thân nó cũng phải bị loại,
+    // nếu không restore sẽ lỗi "relation does not exist".
+    const isPartitionIndexAttach =
+      /-- Name: network_(?:device|interface)_samples_\d+[a-z0-9_]*; Type: INDEX ATTACH/.test(chunk);
 
-    if (partitionNames.length > 0 || truncatedPartitionIndex) {
+    if (partitionNames.length > 0 || isPartitionIndexAttach) {
       partitionNames.forEach((n) => removed.add(n));
       continue;
     }
     kept.push(chunk);
   }
-  return { sql: kept.join("\n\n"), removed: [...removed].sort() };
+  // join("") chứ KHÔNG phải join("\n\n"): mỗi chunk đã tự mang dấu ngắt dòng của
+  // nó. Nối thêm \n\n làm file phình ~10k dòng so với bản gốc — dấu hiệu ban đầu
+  // khiến tôi tưởng strip đang nhân đôi nội dung.
+  return { sql: kept.join(""), removed: [...removed].sort() };
 }
 
 /** Chốt chặn: baseline TUYỆT ĐỐI không được chứa dữ liệu. */

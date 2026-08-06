@@ -1,9 +1,13 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
   "updatedAt": "2026-08-06",
-  "currentWave": "1b",
-  "waveTitle": "Provenance migration — ĐÃ CÓ manifest + gate",
+  "currentWave": "3",
+  "waveTitle": "Production baseline — đã sạch partition, đã diễn tập restore",
   "done": [
+    {
+      "item": "Đợt 3: production schema baseline + restore drill",
+      "evidence": "Baseline 316 bảng public (+65 app_private, +51 demo_snapshot, +7 clone_org), 1197 hàm, 1193 policy. Loại sạch partition runtime: 0 rò rỉ (trước đó sót 168 chỗ do PostgreSQL cắt tên index ở 63 ký tự với độ sâu KHÁC NHAU tuỳ hậu tố — sửa bằng cách bắt theo Type=INDEX ATTACH thay vì đếm chữ số). Restore drill trên PG 17.10 trần: 303 bảng, 948 hàm, 803 policy, 817 lỗi ĐỀU do thiếu schema auth/extensions và role Supabase. Chưa verified vì chưa restore trên Supabase project thật."
+    },
     {
       "item": "✅ Đợt 1b: migration provenance cho 640 file SQL",
       "evidence": "351 ledger-applied · 208 catalog-proven · 66 unknown (62 trong đó là file CHỈ ALTER/DML, không chứng minh tự động được) · 15 superseded. Provisional cutoff 20260805120000 công bố NGAY thay vì chờ hết unknown. Gate chặn: file sau cutoff thiếu entry, và file legacy bị sửa bytes — cả hai đã kiểm bằng đột biến. Độ phủ legacy chỉ là metric, không fail, để gate không bị bypass vì nợ quá khứ."
@@ -119,9 +123,9 @@
   ],
   "blockers": [],
   "next": [
-    "Đợt 3: production baseline + forward-only lane",
-    "Triage 66 file unknown theo batch",
-    "Đợt 4 lát 3: consumer sinh từ registry"
+    "Restore baseline vào một Supabase project tạm để lên verified",
+    "Forward-only lane: apply-reviewed-migration.mjs hợp nhất apply-sql.mjs + apply-accounting-rollout.mjs",
+    "Đợt 4 lát 3: consumer sinh từ capability registry"
   ],
   "knownDirtyFiles": [
     {

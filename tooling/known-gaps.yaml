@@ -76,13 +76,14 @@ gaps:
       Đọc log job quality-gates của một lần chạy gần đây. Nếu vitest báo 0 test cho các file
       này thì thêm chúng vào --exclude, để job không nhận công của node --test.
 
-  - id: baseline-draft-partition-index-leftovers
-    where: supabase/baseline/schema.sql
-    expires_at: 2026-09-30
+  - id: baseline-not-verified-on-supabase
+    where: supabase/baseline/ (manifest.json + schema.sql)
+    expires_at: 2026-10-31
     why: >
-      Baseline đã chụp và loại được 84 partition ngày, nhưng còn 126 chỗ nhắc INDEX của
-      partition bị PostgreSQL cắt tên ở 63 ký tự (network_device_samples_202607_<cot>_idx).
-      Chúng ATTACH vào bảng đã bị loại nên restore sẽ lỗi. Manifest đang để status DRAFT.
+      Baseline đã sạch partition runtime (0 rò rỉ) và restore được trên PostgreSQL 17.10
+      trần: 303 bảng, 948 hàm, 803 policy. 817 lỗi còn lại đều do target thiếu schema auth
+      và các role của Supabase — trên project Supabase thật thì chúng có sẵn. Nhưng CHƯA
+      restore thử trên một Supabase project thật nên chưa gọi là verified.
     exit_condition: >
-      Strip sạch nhóm index cắt tên, chạy restore test vào database sạch thành công, rồi đổi
-      manifest.status thành verified. Trước đó KHÔNG trỏ runbook nào vào baseline này.
+      Tạo một Supabase project tạm, restore baseline vào đó, xác nhận số bảng/hàm/policy khớp
+      production, rồi đổi manifest.status thành verified.
