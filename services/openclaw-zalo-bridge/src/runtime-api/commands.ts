@@ -365,7 +365,18 @@ function qrDataUrl(value: unknown): string {
     (result.connected !== undefined && typeof result.connected !== "boolean")
   ) fail("Gateway QR start result fields are invalid");
   boundedString(result.message, "Gateway QR message", 1, 4_096);
-  const qr = boundedString(result.qrDataUrl, "Gateway QR data URL", 23, 16_384);
+  // A real Zalo QR from the 2026.7.1 gateway is ~21 500 characters; the old 16 384
+  // cap rejected every one of them. The failure was invisible twice over: the throw
+  // is caught one frame up and sealed as AMBIGUOUS / QR_START_OUTCOME_UNKNOWN, which
+  // reads like the gateway never answered - while the cell had logged
+  // `res ✓ web.login.start` and handed back a perfectly good code.
+  //
+  // The ceiling is derived, not guessed: this string is AES-GCM encrypted and
+  // base64-encoded into `ciphertextB64`, which the runtime contract bounds at
+  // 240 000 characters (openclaw-runtime/contracts.ts:1252). Base64 costs 4/3, so
+  // 131 072 plaintext characters yield ~174 800 - inside that bound with room to
+  // spare, and far under the browser's own 1 048 576 limit.
+  const qr = boundedString(result.qrDataUrl, "Gateway QR data URL", 23, 131_072);
   if (!QR_DATA_URL.test(qr)) return fail("Gateway QR data URL is invalid");
   return qr;
 }
