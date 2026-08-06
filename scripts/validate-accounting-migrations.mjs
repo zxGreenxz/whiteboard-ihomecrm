@@ -1,5 +1,6 @@
 // Validate locally by default; live DDL compilation requires --live-rollback.
 import { createHash } from "node:crypto";
+import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -11,6 +12,41 @@ import {
   ROLLOUT_CATALOG_SCOPE_NOTICE,
   STATIC_VALIDATION_NOTICE,
 } from "./apply-accounting-rollout.mjs";
+
+/**
+ * Nói thẳng phần KHÔNG được kiểm.
+ *
+ * Workflow supabase-migrate.yml kích hoạt trên `supabase/migrations/**` — tức bất
+ * kỳ file nào trong 627+ migration. Nhưng script này chỉ kiểm đúng bộ accounting
+ * rollout khai cứng bên dưới. Ai thêm một migration đụng tiền rồi thấy bước
+ * "Static accounting-migration validation" xanh sẽ hợp lý mà tưởng file của mình
+ * đã được kiểm — trong khi nó chưa hề được nhìn tới.
+ *
+ * Không đổi phạm vi kiểm (đó là quyết định của chủ bộ rollout, không phải của một
+ * lần dọn dẹp), nhưng bắt log phải nói ra khoảng trống. Một dấu xanh im lặng về
+ * thứ nó KHÔNG kiểm là cách sinh ra niềm tin sai.
+ */
+function baoPhamViKhongPhu(daKiem, log) {
+  const daKiemSet = new Set(daKiem.map((f) => f.replace(/\\/g, "/")));
+  // KHÔNG bọc try/catch rỗng quanh đoạn này. Bản đầu tôi viết `catch { return }`
+  // và nó nuốt luôn một ReferenceError của chính tôi (quên import readdirSync):
+  // hàm im lặng không làm gì, script vẫn báo thành công, và tôi mất mấy lượt mới
+  // thấy. Đúng lớp lỗi mà đợt rà soát này đang đi tìm — chỉ khác là tôi tự tạo ra
+  // nó trong lúc đang sửa nó. Lỗi đọc thư mục migration là bất thường thật sự và
+  // phải nổ to.
+  const tatCa = readdirSync(resolve(process.cwd(), "supabase/migrations"))
+    .filter((f) => f.endsWith(".sql"))
+    .map((f) => `supabase/migrations/${f}`);
+  const moiNhatDaKiem = [...daKiemSet].sort().at(-1) ?? "";
+  const sauDo = tatCa.filter((f) => f > moiNhatDaKiem && !daKiemSet.has(f));
+  if (sauDo.length === 0) return;
+
+  log("");
+  log(`PHẠM VI: script này KHÔNG kiểm ${sauDo.length} migration mới hơn bộ accounting rollout.`);
+  log(`  Mới nhất được kiểm: ${moiNhatDaKiem.replace("supabase/migrations/", "")}`);
+  log(`  Ví dụ chưa kiểm   : ${sauDo.slice(-3).map((f) => f.replace("supabase/migrations/", "")).join(", ")}`);
+  log("  Dấu xanh của bước này CHỈ nói về bộ rollout khai trong DEFAULT_FILES.");
+}
 
 export const DEFAULT_FILES = Object.freeze([
   "supabase/migrations/20260721070000_accounting_rollout_prerequisites.sql",
@@ -85,6 +121,7 @@ export async function main(
     );
     log(STATIC_VALIDATION_NOTICE);
     log("No database query was executed. Use --live-rollback to opt in to live DDL validation.");
+    baoPhamViKhongPhu(files, log);
     return;
   }
 

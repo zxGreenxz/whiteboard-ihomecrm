@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Static accounting-migration validation (no DB writes, no apply)
+      - name: Static validation — CHỈ bộ accounting rollout (14 file), KHÔNG phủ migration mới
         run: node scripts/validate-accounting-migrations.mjs
 
       # Checker dùng chung, thay hai guard grep khác độ chặt trước đây. Bản grep
