@@ -1,16 +1,16 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-06T01:06:29.028Z",
+  "generatedAt": "2026-08-06T11:30:34.026Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
-    "catalog-proven": 208,
     "unknown": 66,
+    "catalog-proven": 209,
     "superseded": 15
   },
-  "duplicateVersions": 39,
+  "duplicateVersions": 40,
   "reviewModel": "Người review duyệt QUY TẮC phân loại và MẪU KIỂM theo batch, không ký từng file. Mọi file 'unknown' và mọi file đụng tiền/RLS/SECURITY DEFINER phải được xem 100%.",
   "entries": [
     {
@@ -173,10 +173,11 @@
       "name": "document_templates",
       "scheme": "legacy-seq",
       "sha256": "29878ad3f80b3abdc839a61fa9dac7a470ec2d53d049bcab9fddae4cc50cc005",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:table:public.document_templates",
-        "catalog:function:public.ensure_single_default_template"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "policy:public.document_templates.users can manage own templates",
+        "policy:storage.objects.users can read own templates"
       ]
     },
     {
@@ -185,10 +186,14 @@
       "name": "job_workflow_tables",
       "scheme": "legacy-seq",
       "sha256": "6ef69f9e4fd63d425347fe39ee9129ca98621d67480e25dbe4b5684d072ae62c",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:table:public.departments",
-        "catalog:table:public.job_groups"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "policy:public.job_groups.users can manage own job groups",
+        "policy:public.job_types.users can manage own job types",
+        "policy:public.task_flows.users can manage own task flows",
+        "policy:public.task_phases.users can view phases of own flows",
+        "policy:public.task_phases.users can manage phases of own flows"
       ]
     },
     {
@@ -223,7 +228,11 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "function:public.update_meters_updated_at"
+        "function:public.update_meters_updated_at",
+        "index:public.idx_meters_search",
+        "policy:public.meters.users can view own meters",
+        "policy:public.meters.users can insert own meters",
+        "policy:public.meters.users can update own meters"
       ]
     },
     {
@@ -2063,7 +2072,11 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+        "policy:public.income_expenses.income_expenses_select_all_buildings",
+        "policy:public.income_expenses.income_expenses_insert_all_buildings",
+        "policy:public.income_expenses.income_expenses_update_all_buildings",
+        "policy:public.income_expenses.income_expenses_delete_all_buildings",
+        "policy:public.income_expense_items.income_expense_items_select_all_buildings"
       ]
     },
     {
@@ -2689,9 +2702,10 @@
       "name": "push_subscriptions",
       "scheme": "timestamp14",
       "sha256": "1c76d47cc56be0b9f6db4838dd63d4320bdec1a53b5d82c53498feab8f8a7d5d",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:table:public.push_subscriptions"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "policy:public.push_subscriptions.push_subscriptions_admin_all"
       ]
     },
     {
@@ -2761,7 +2775,10 @@
         "catalog:table:public.manager_salary_config",
         "catalog:table:public.salary_bonus_rules",
         "catalog:function:public.vn_local_date",
-        "catalog:function:public.vn_local_dow"
+        "catalog:function:public.vn_local_dow",
+        "catalog:index:public.idx_ie_salary_staff",
+        "catalog:policy:public.manager_salary_config.msc_owner_all",
+        "catalog:trigger:public.manager_salary_config.set_msc_updated_at"
       ]
     },
     {
@@ -3147,7 +3164,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public._invoice_audit_income_expenses",
-        "catalog:function:public._invoice_audit_excess_amounts"
+        "catalog:function:public._invoice_audit_excess_amounts",
+        "catalog:trigger:public.income_expenses.income_expenses_invoice_audit_trigger"
       ]
     },
     {
@@ -4055,7 +4073,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.jobs_stamp_completion_time",
-        "catalog:function:public.job_photo_ok"
+        "catalog:function:public.job_photo_ok",
+        "catalog:trigger:public.jobs.trigger_jobs_stamp_completion_time"
       ]
     },
     {
@@ -4081,7 +4100,10 @@
         "catalog:table:public.profit_close_runs",
         "catalog:table:public.profit_close_revisions",
         "catalog:function:public._profit_close_audit_append_only_v2",
-        "catalog:function:public._profit_can_read_audit_v2"
+        "catalog:function:public._profit_can_read_audit_v2",
+        "catalog:index:public.profit_close_runs_org_period_idx",
+        "catalog:policy:public.profit_close_runs.profit_close_runs_org_read_v2",
+        "catalog:trigger:public.profit_close_runs.profit_close_runs_append_only_v2"
       ]
     },
     {
@@ -4150,7 +4172,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.set_ie_item_accounting_class",
-        "catalog:function:public.recompute_ie_business_result"
+        "catalog:function:public.recompute_ie_business_result",
+        "catalog:trigger:public.income_expense_items.set_ie_item_accounting_class"
       ]
     },
     {
@@ -4163,7 +4186,9 @@
       "evidence": [
         "catalog:table:public.contract_deposit_links",
         "catalog:function:public.compute_first_billing_month_v2",
-        "catalog:function:public.trg_contract_link_orphan_deposits"
+        "catalog:function:public.trg_contract_link_orphan_deposits",
+        "catalog:index:public.contract_deposit_links_contract_idx",
+        "catalog:policy:public.contract_deposit_links.contract_deposit_links_select"
       ]
     },
     {
@@ -4177,7 +4202,10 @@
         "catalog:table:public.invoice_payment_collections",
         "catalog:table:public.invoice_payment_tenders",
         "catalog:function:public.recompute_invoice_for_id",
-        "catalog:function:app_private.begin_accounting_chain_write_v1"
+        "catalog:function:app_private.begin_accounting_chain_write_v1",
+        "catalog:index:public.invoice_payment_collections_id_org_uq",
+        "catalog:policy:public.invoice_payment_collections.invoice_payment_collections_select",
+        "catalog:trigger:public.payments.a00_payment_canonical_link_guard"
       ]
     },
     {
@@ -4203,7 +4231,10 @@
       "evidence": [
         "catalog:table:public.profit_unallocated_decisions",
         "catalog:function:public._profit_enrich_unallocated_v3",
-        "catalog:function:public._profit_enrich_state_v3"
+        "catalog:function:public._profit_enrich_state_v3",
+        "catalog:index:public.profit_unallocated_decisions_run_pm_uq",
+        "catalog:policy:public.profit_unallocated_decisions.profit_unallocated_decisions_read_v3",
+        "catalog:trigger:public.profit_unallocated_decisions.profit_unallocated_decisions_append_only_v3"
       ]
     },
     {
@@ -4217,7 +4248,10 @@
         "catalog:table:public.profit_payout_reservations",
         "catalog:table:public.profit_payout_exceptions",
         "catalog:function:public._profit_allocation_reserved_v2",
-        "catalog:function:app_private.current_profit_building_source_hash_v1"
+        "catalog:function:app_private.current_profit_building_source_hash_v1",
+        "catalog:index:public.profit_allocations_id_org_uq",
+        "catalog:policy:public.profit_payout_reservations.profit_payout_reservations_read_v2",
+        "catalog:trigger:public.income_expenses.a05_profit_payout_linked_guard"
       ]
     },
     {
@@ -4229,7 +4263,9 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:table:public.accounting_repair_audit",
-        "catalog:table:public.accounting_integrity_exceptions"
+        "catalog:table:public.accounting_integrity_exceptions",
+        "catalog:index:public.accounting_repair_audit_entity_code_uq",
+        "catalog:policy:public.accounting_repair_audit.accounting_repair_audit_read"
       ]
     },
     {
@@ -4254,7 +4290,9 @@
       "evidence": [
         "catalog:table:public.accounting_integrity_exceptions",
         "catalog:function:app_private.guard_customer_credit_ledger_v1",
-        "catalog:function:app_private.guard_invoice_credit_lifecycle_v1"
+        "catalog:function:app_private.guard_invoice_credit_lifecycle_v1",
+        "catalog:index:public.customer_credit_lots_source_excess_uq",
+        "catalog:trigger:public.excess_amounts.a00_customer_credit_ledger_guard"
       ]
     },
     {
@@ -4268,7 +4306,9 @@
         "catalog:table:app_private.termination_forfeit_authorizations",
         "catalog:table:app_private.termination_move_out_writer_context",
         "catalog:function:app_private.guard_termination_forfeit_voucher_v1",
-        "catalog:function:app_private.guard_termination_forfeit_item_v1"
+        "catalog:function:app_private.guard_termination_forfeit_item_v1",
+        "catalog:index:public.idx_payments_termination_forfeit_marker_uq",
+        "catalog:trigger:public.income_expenses.a05_termination_forfeit_voucher_guard"
       ]
     },
     {
@@ -4292,7 +4332,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.count_invalid_payment_reversals_v1",
-        "catalog:function:app_private.lock_accounting_feature_rollout_v1"
+        "catalog:function:app_private.lock_accounting_feature_rollout_v1",
+        "catalog:trigger:app_private.server_feature_flags.a10_accounting_feature_activation_guard"
       ]
     },
     {
@@ -4315,7 +4356,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.record_invoice_payment_v4",
-        "catalog:function:public.record_invoice_payment_v3"
+        "catalog:function:public.record_invoice_payment_v3",
+        "catalog:trigger:public.income_expenses.a00_00_profit_payout_account_guard"
       ]
     },
     {
@@ -4338,7 +4380,8 @@
       "sha256": "640931116e6fe3f51bc7ab2ad13438c0bb69e58d14b419d95220352c7a6d737e",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:app_private.guard_customer_credit_apply_gate_v1"
+        "catalog:function:app_private.guard_customer_credit_apply_gate_v1",
+        "catalog:trigger:public.customer_credit_lots.a05_customer_credit_apply_gate"
       ]
     },
     {
@@ -4349,7 +4392,8 @@
       "sha256": "afe744661dfb4165b4ddee46dbb543af31da0c5a7bda4ef01aa81955dead2163",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:app_private.sync_regrant_role_binding_v1"
+        "catalog:function:app_private.sync_regrant_role_binding_v1",
+        "catalog:trigger:public.staff_assignments.a81_sa_role_change_sync"
       ]
     },
     {
@@ -4383,7 +4427,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:table:app_private.finance_v2_semantics_snapshot",
-        "catalog:function:app_private.finance_v2_snapshot_immutable"
+        "catalog:function:app_private.finance_v2_snapshot_immutable",
+        "catalog:trigger:app_private.finance_v2_semantics_snapshot.a00_finance_v2_snapshot_immutable"
       ]
     },
     {
@@ -4392,12 +4437,10 @@
       "name": "finance_v2_schema_inert_and_activation_guard",
       "scheme": "timestamp14",
       "sha256": "32edc78b6eebb358f95a0bb71232cc3c19ded87e7bf44dbc00aaa3b0b0323891",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:table:public.income_expense_recognition_adjustments",
-        "catalog:table:public.income_expense_postings",
-        "catalog:function:public.income_expense_recognition_adjustments_immutable",
-        "catalog:function:app_private.finance_v2_posting_event_immutable"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "trigger:app_private.finance_v2_backfill_change_log.a00_finance_v2_backfill_change_log_immutable"
       ]
     },
     {
@@ -4421,7 +4464,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:table:app_private.income_expense_v2_backfill_exceptions",
-        "catalog:table:app_private.cashbook_access_v2_backfill_exceptions"
+        "catalog:table:app_private.cashbook_access_v2_backfill_exceptions",
+        "catalog:index:app_private.income_expense_v2_backfill_exceptions_key"
       ]
     },
     {
@@ -4447,7 +4491,8 @@
         "catalog:table:app_private.finance_flow_owner_adapters",
         "catalog:table:app_private.invoice_refund_reservations",
         "catalog:function:app_private.finance_v2_stamp_owned_posting_state",
-        "catalog:function:app_private.finance_v2_transition_owned_approval"
+        "catalog:function:app_private.finance_v2_transition_owned_approval",
+        "catalog:index:app_private.invoice_refund_reservations_invoice_live_idx"
       ]
     },
     {
@@ -4471,7 +4516,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.guard_finance_v2_change_log_applied_stamp",
-        "catalog:function:app_private.finance_v2_append_reversal_v1"
+        "catalog:function:app_private.finance_v2_append_reversal_v1",
+        "catalog:trigger:app_private.finance_v2_backfill_change_log.a00_finance_v2_backfill_change_log_applied_stamp"
       ]
     },
     {
@@ -4509,7 +4555,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.finance_v2_can_read_posting_v1",
-        "catalog:function:app_private.finance_v2_visible_vouchers"
+        "catalog:function:app_private.finance_v2_visible_vouchers",
+        "catalog:policy:public.income_expense_postings.finance_v2_postings_select_custodian"
       ]
     },
     {
@@ -4532,7 +4579,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:table:app_private.finance_v2_cutover_readiness_report",
-        "catalog:function:app_private.finance_v2_cutover_readiness_v1"
+        "catalog:function:app_private.finance_v2_cutover_readiness_v1",
+        "catalog:trigger:app_private.finance_v2_cutover_readiness_report.a00_finance_v2_cutover_readiness_report_immutable"
       ]
     },
     {
@@ -4568,7 +4616,8 @@
       "evidence": [
         "catalog:function:app_private.finance_v2_auto_posting_bridge",
         "catalog:function:public.cashbook_period_totals",
-        "catalog:view:public.accounts_with_balance"
+        "catalog:view:public.accounts_with_balance",
+        "catalog:trigger:public.income_expenses.a85_finance_v2_auto_posting_bridge"
       ]
     },
     {
@@ -4649,7 +4698,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.finance_v2_register_birth_v1",
-        "catalog:function:app_private.finance_v2_birth_provenance_bridge"
+        "catalog:function:app_private.finance_v2_birth_provenance_bridge",
+        "catalog:trigger:public.income_expenses.a86_finance_v2_birth_provenance"
       ]
     },
     {
@@ -4682,7 +4732,8 @@
       "sha256": "6006d5e8e87f723b8e1c36e68c8227ffee1363ea090ceb7de667b81717f17504",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:app_private.finance_v2_close_request_on_voucher_change"
+        "catalog:function:app_private.finance_v2_close_request_on_voucher_change",
+        "catalog:trigger:public.income_expenses.a87_finance_v2_request_close_sync"
       ]
     },
     {
@@ -4738,10 +4789,9 @@
       "name": "finance_v2_evidence_upload_policy",
       "scheme": "timestamp14",
       "sha256": "deca1aab0927b4cdd5d7659f7ac0eaca6de264927ec3099360dec4f6b2474561",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:policy:storage.objects.ie_attachments_insert_v2"
       ]
     },
     {
@@ -4750,10 +4800,9 @@
       "name": "finance_v2_evidence_registry_select",
       "scheme": "timestamp14",
       "sha256": "a9ea901499d445f6b190a0b1a6e23672f7ed722f9ff53406cb580e0bbef4cee4",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:policy:public.finance_evidence_objects.fev_select_own"
       ]
     },
     {
@@ -4812,7 +4861,8 @@
       "sha256": "7e5c74b90354be519548c15a8d67a16a8da4948b517a889834440ebaec713e2a",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:app_private.ie_transition_token_upsert"
+        "catalog:function:app_private.ie_transition_token_upsert",
+        "catalog:trigger:app_private.ie_transition_authorization.a00_ie_transition_token_upsert"
       ]
     },
     {
@@ -4847,7 +4897,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.ie_fill_not_null_defaults",
-        "catalog:function:app_private.finance_v2_auto_posting_bridge_insert"
+        "catalog:function:app_private.finance_v2_auto_posting_bridge_insert",
+        "catalog:trigger:public.income_expenses.a000_ie_defaults_fill"
       ]
     },
     {
@@ -5000,7 +5051,8 @@
       "sha256": "e4eaaf444a4cf0d3c26eead4a4027cf6083a9474abe4196b33fdaae4f284e657",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:app_private.ie_normalize_lifecycle_columns"
+        "catalog:function:app_private.ie_normalize_lifecycle_columns",
+        "catalog:trigger:public.income_expenses.a001_ie_lifecycle_normalize"
       ]
     },
     {
@@ -5046,7 +5098,8 @@
       "sha256": "6f3df3e94f85c5924f94812be5cea487b8b4afcc781e9f3c26985016daf24140",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:app_private.can_write_storage_object_v1"
+        "catalog:function:app_private.can_write_storage_object_v1",
+        "catalog:policy:storage.objects.storage_pii_org_isolation_insert"
       ]
     },
     {
@@ -5059,7 +5112,8 @@
       "evidence": [
         "catalog:table:app_private.authz_helper_backup",
         "catalog:function:app_private.authorized_scope_v3",
-        "catalog:function:app_private.authorized_scope_all_v3"
+        "catalog:function:app_private.authorized_scope_all_v3",
+        "catalog:index:public.idx_role_bindings_membership_open"
       ]
     },
     {
@@ -5154,8 +5208,9 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
-      ]
+        "(chỉ ALTER/DML — không chứng minh tự động được)"
+      ],
+      "note": "1 cột file này ADD đều CÓ trong production (nhất quán, nhưng KHÔNG phải bằng chứng file đã chạy)"
     },
     {
       "path": "supabase/migrations/20260725160000_ie_guard_by_system_only_flag.sql",
@@ -5304,10 +5359,9 @@
       "name": "v5_money_indexes",
       "scheme": "timestamp14",
       "sha256": "ed037480c52e9508695052b25522aa94075cb4445fbe61d0ace27e0e96b54c95",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:index:public.idx_income_expenses_reversal_of"
       ]
     },
     {
@@ -5461,7 +5515,8 @@
       "sha256": "12350abc5674f0508d51c37f8d59d8f1d2369c2a59a70f2e1c3108051ad8f9c8",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:public.create_income_expense_v1"
+        "catalog:function:public.create_income_expense_v1",
+        "catalog:trigger:public.income_expense_types.trg_autofill_org"
       ]
     },
     {
@@ -5487,7 +5542,9 @@
         "catalog:table:public.finance_month_snapshot_runs",
         "catalog:table:public.finance_room_month_snapshots",
         "catalog:function:app_private.guard_finance_month_snapshot_immutability_v1",
-        "catalog:function:app_private.capture_finance_month_snapshot_v1"
+        "catalog:function:app_private.capture_finance_month_snapshot_v1",
+        "catalog:index:public.finance_month_snapshot_runs_status_idx",
+        "catalog:trigger:public.finance_month_snapshot_runs.finance_month_snapshot_runs_immutable_guard"
       ]
     },
     {
@@ -5500,7 +5557,9 @@
       "evidence": [
         "catalog:table:public.finance_reporting_role_assignments",
         "catalog:function:app_private.guard_finance_reporting_role_assignment_v1",
-        "catalog:function:public.business_performance_reporting_roles_v1"
+        "catalog:function:public.business_performance_reporting_roles_v1",
+        "catalog:index:public.income_expense_types_id_organization_uq",
+        "catalog:trigger:public.finance_reporting_role_assignments.finance_reporting_role_assignments_no_overlap"
       ]
     },
     {
@@ -5514,7 +5573,9 @@
         "catalog:table:public.finance_invoice_component_manifests",
         "catalog:table:public.finance_invoice_components",
         "catalog:function:app_private.sync_finance_invoice_components_v1",
-        "catalog:function:app_private.allocate_finance_collection_components_v1"
+        "catalog:function:app_private.allocate_finance_collection_components_v1",
+        "catalog:index:public.finance_invoice_components_id_org_uq",
+        "catalog:trigger:public.invoices.finance_invoice_component_sync_from_invoice"
       ]
     },
     {
@@ -5547,7 +5608,8 @@
       "sha256": "0dd6d6279837d45e44dfffb90ec68474d6a4ed00bd4a7035afed56c63c926ce5",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:public.guard_contract_deposit_paid_derived"
+        "catalog:function:public.guard_contract_deposit_paid_derived",
+        "catalog:trigger:public.contracts.a00_guard_contract_deposit_paid"
       ]
     },
     {
@@ -5614,12 +5676,12 @@
       "name": "income_expense_type_canonicalization",
       "scheme": "timestamp14",
       "sha256": "48434a5f361dbe946aec732d2801a64d81831510a948b353eaadd0122cd31a37",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:table:public.income_expense_type_merge_audit",
-        "catalog:table:public.income_expense_type_reference_repair_audit",
-        "catalog:function:public.normalize_income_expense_type_name",
-        "catalog:function:app_private.resolve_ie_type_org_for_user_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "index:public.income_expense_type_merge_map_duplicate_uq",
+        "index:public.income_expense_type_merge_map_canonical_idx",
+        "index:public.cross_org_item_type_repair_map_item_uq"
       ]
     },
     {
@@ -5632,7 +5694,10 @@
       "evidence": [
         "catalog:table:public.room_price_history",
         "catalog:function:public.log_room_price_history",
-        "catalog:function:public.log_contract_price_history"
+        "catalog:function:public.log_contract_price_history",
+        "catalog:index:public.idx_room_price_history_room",
+        "catalog:policy:public.room_price_history.room_price_history_select_rbac",
+        "catalog:trigger:public.rooms.trg_rooms_price_history"
       ]
     },
     {
@@ -5644,7 +5709,9 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:table:public.network_devices",
-        "catalog:table:public.network_interfaces"
+        "catalog:table:public.network_interfaces",
+        "catalog:index:public.network_devices_one_active_mikrotik_per_building",
+        "catalog:trigger:public.network_devices.network_devices_set_updated_at"
       ]
     },
     {
@@ -5656,7 +5723,8 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "table:public.public"
+        "index:public.network_device_samples_building_time_idx",
+        "index:public.network_interface_samples_building_time_idx"
       ]
     },
     {
@@ -5670,7 +5738,9 @@
         "catalog:table:public.network_incidents",
         "catalog:table:public.network_incident_events",
         "catalog:function:app_private.network_center_guard_command_immutable_v1",
-        "catalog:function:app_private.network_center_enqueue_command_v1"
+        "catalog:function:app_private.network_center_enqueue_command_v1",
+        "catalog:index:public.network_incidents_one_active_fingerprint_uidx",
+        "catalog:trigger:public.network_commands.network_commands_immutable_fields"
       ]
     },
     {
@@ -5679,10 +5749,10 @@
       "name": "network_center_rls_rpcs_realtime",
       "scheme": "timestamp14",
       "sha256": "453eb33d956b2f4a0376574bd860058886bfc78607b80ba511a5dfa04671dd6a",
-      "state": "catalog-proven",
-      "evidence": [
-        "catalog:function:app_private.network_center_assert_safe_json_v1",
-        "catalog:function:app_private.network_center_require_view_v1"
+      "state": "unknown",
+      "evidence": [],
+      "missingObjects": [
+        "policy:public.network_worker_heartbeats.network_worker_heartbeats_view"
       ]
     },
     {
@@ -5708,7 +5778,9 @@
         "catalog:table:public.network_workers",
         "catalog:table:public.network_worker_credentials",
         "catalog:function:app_private.network_center_authenticate_worker_v2",
-        "catalog:function:app_private.network_center_replace_worker_assignments_v1"
+        "catalog:function:app_private.network_center_replace_worker_assignments_v1",
+        "catalog:index:public.network_worker_credentials_worker_window_idx",
+        "catalog:trigger:public.network_workers.network_workers_set_updated_at"
       ]
     },
     {
@@ -5717,10 +5789,9 @@
       "name": "notifications_rls_own_row",
       "scheme": "timestamp14",
       "sha256": "e96f1b15dd7d455ee75aa59e49b7f00b616db68f365a12a585bcc7d9252bed3f",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:policy:public.notifications.notifications_select_own"
       ]
     },
     {
@@ -5734,7 +5805,9 @@
         "catalog:table:app_private.network_aruba_router_state",
         "catalog:table:app_private.network_aruba_discovery_runs",
         "catalog:function:app_private.network_center_require_execute_v1",
-        "catalog:function:public.network_center_list_fleet_v1"
+        "catalog:function:public.network_center_list_fleet_v1",
+        "catalog:index:public.network_site_settings_rollout_scope_idx",
+        "catalog:trigger:public.network_devices.network_devices_aruba_parent_guard"
       ]
     },
     {
@@ -5748,7 +5821,9 @@
         "catalog:table:public.network_managed_resources",
         "catalog:table:public.network_command_observations",
         "catalog:function:app_private.network_center_guard_command_observations_v1",
-        "catalog:function:app_private.network_center_guard_managed_resource_v1"
+        "catalog:function:app_private.network_center_guard_managed_resource_v1",
+        "catalog:index:public.network_managed_resources_scope_idx",
+        "catalog:trigger:public.network_command_observations.network_command_observations_append_only"
       ]
     },
     {
@@ -5762,7 +5837,10 @@
         "catalog:table:public.network_worker_building_status",
         "catalog:table:app_private.network_worker_compatibility_state",
         "catalog:function:app_private.network_center_worker_can_access_device_v2",
-        "catalog:function:app_private.network_center_worker_can_access_building_v2"
+        "catalog:function:app_private.network_center_worker_can_access_building_v2",
+        "catalog:index:public.network_worker_building_status_tenant_building_idx",
+        "catalog:policy:public.network_worker_building_status.network_worker_building_status_view",
+        "catalog:trigger:app_private.network_worker_compatibility_state.network_worker_compatibility_one_way"
       ]
     },
     {
@@ -5774,7 +5852,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.network_center_admin_provision_connection_v1",
-        "catalog:function:public.network_center_admin_set_rollout_v1"
+        "catalog:function:public.network_center_admin_set_rollout_v1",
+        "catalog:index:public.network_device_connections_one_enabled_per_device_idx"
       ]
     },
     {
@@ -5799,7 +5878,8 @@
       "evidence": [
         "catalog:table:app_private.network_worker_release_heartbeats",
         "catalog:function:app_private.network_center_worker_heartbeat_core_v2",
-        "catalog:function:public.network_center_worker_heartbeat_v2"
+        "catalog:function:public.network_center_worker_heartbeat_v2",
+        "catalog:index:app_private.network_worker_release_heartbeats_recent_idx"
       ]
     },
     {
@@ -5823,7 +5903,8 @@
       "evidence": [
         "catalog:table:public.network_org_mutation_gates",
         "catalog:function:app_private.network_center_org_mutations_paused_v1",
-        "catalog:function:app_private.network_center_require_execute_permission_v1"
+        "catalog:function:app_private.network_center_require_execute_permission_v1",
+        "catalog:index:public.network_org_mutation_gates_paused_idx"
       ]
     },
     {
@@ -5837,7 +5918,8 @@
         "catalog:table:app_private.network_center_watchdog_state",
         "catalog:table:app_private.network_center_watchdog_runs",
         "catalog:function:app_private.network_center_watchdog_record_run_v1",
-        "catalog:function:app_private.network_center_watchdog_liveness_scan_v1"
+        "catalog:function:app_private.network_center_watchdog_liveness_scan_v1",
+        "catalog:index:app_private.network_center_watchdog_runs_job_recent_idx"
       ]
     },
     {
@@ -5880,10 +5962,9 @@
       "name": "notifications_push_queue_columns",
       "scheme": "timestamp14",
       "sha256": "02ec0f460d08c7a0d2f5659889c0ba714432821e9994795e16616e9194cb9244",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:index:public.idx_notifications_push_queued"
       ]
     },
     {
@@ -5964,7 +6045,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.network_center_derive_device_lifecycle_v1",
-        "catalog:function:app_private.network_center_reconcile_device_lifecycle_v1"
+        "catalog:function:app_private.network_center_reconcile_device_lifecycle_v1",
+        "catalog:trigger:public.network_device_current.network_device_current_derive_lifecycle"
       ]
     },
     {
@@ -5978,7 +6060,8 @@
         "catalog:table:app_private.notification_org_config",
         "catalog:table:public.notification_preferences",
         "catalog:function:app_private.notification_events_normalize_v1",
-        "catalog:function:app_private.notification_prefs_normalize_v1"
+        "catalog:function:app_private.notification_prefs_normalize_v1",
+        "catalog:policy:public.notification_preferences.np_own"
       ]
     },
     {
@@ -6001,7 +6084,8 @@
       "sha256": "a63593571441b41f616e9a664a6bd42e3fb9e68351a15ddca3f656d50f4e9c3a",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:table:public.push_send_log"
+        "catalog:table:public.push_send_log",
+        "catalog:index:public.idx_push_send_log_created_at"
       ]
     },
     {
@@ -6013,7 +6097,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:table:app_private.notification_no_recipient_log",
-        "catalog:function:app_private.notify_no_recipient_v1"
+        "catalog:function:app_private.notify_no_recipient_v1",
+        "catalog:index:app_private.idx_notif_no_recipient_recent"
       ]
     },
     {
@@ -6025,7 +6110,9 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.notify_gate_v1",
-        "catalog:function:app_private.notify_ie_pending_refresh_v1"
+        "catalog:function:app_private.notify_ie_pending_refresh_v1",
+        "catalog:index:public.uq_notif_ie_pending_open",
+        "catalog:trigger:public.income_expenses.z95_notify_ie_ins"
       ]
     },
     {
@@ -6098,7 +6185,9 @@
       "evidence": [
         "catalog:table:app_private.org_accounting_mode",
         "catalog:function:app_private.guard_org_accounting_mode_append_only",
-        "catalog:function:app_private.ie_accounting_strict_v1"
+        "catalog:function:app_private.ie_accounting_strict_v1",
+        "catalog:index:app_private.idx_org_accounting_mode_lookup",
+        "catalog:trigger:app_private.org_accounting_mode.a00_org_accounting_mode_append_only"
       ]
     },
     {
@@ -6124,7 +6213,9 @@
       "evidence": [
         "catalog:table:app_private.cashbook_closures",
         "catalog:function:app_private.guard_cashbook_closures_append_only",
-        "catalog:function:app_private.cashbook_closed_through_v1"
+        "catalog:function:app_private.cashbook_closed_through_v1",
+        "catalog:index:app_private.idx_cashbook_closures_lookup",
+        "catalog:trigger:app_private.cashbook_closures.a00_cashbook_closures_append_only"
       ]
     },
     {
@@ -6149,7 +6240,8 @@
       "evidence": [
         "catalog:table:app_private.income_expense_cancellations",
         "catalog:function:app_private.guard_ie_cancellations_append_only",
-        "catalog:function:app_private.assert_manual_voucher_v1"
+        "catalog:function:app_private.assert_manual_voucher_v1",
+        "catalog:trigger:app_private.income_expense_cancellations.a00_ie_cancellations_append_only"
       ]
     },
     {
@@ -6186,7 +6278,8 @@
       "evidence": [
         "catalog:table:app_private.cashbook_closure_requests",
         "catalog:function:app_private.cashbook_balance_as_of_v1",
-        "catalog:function:public.cashbook_closing_blockers_v1"
+        "catalog:function:public.cashbook_closing_blockers_v1",
+        "catalog:index:app_private.uq_cashbook_closure_request_pending"
       ]
     },
     {
@@ -6210,7 +6303,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.is_org_owner_v1",
-        "catalog:function:public.guard_invoice_derived_columns"
+        "catalog:function:public.guard_invoice_derived_columns",
+        "catalog:trigger:public.invoices.a00_invoice_derived_guard"
       ]
     },
     {
@@ -6247,7 +6341,9 @@
       "evidence": [
         "catalog:table:app_private.income_expense_change_log",
         "catalog:function:app_private.guard_ie_change_log_append_only",
-        "catalog:function:app_private.log_income_expense_change"
+        "catalog:function:app_private.log_income_expense_change",
+        "catalog:index:app_private.idx_ie_change_log_voucher",
+        "catalog:trigger:app_private.income_expense_change_log.a00_ie_change_log_append_only"
       ]
     },
     {
@@ -6271,7 +6367,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.income_expenses_check_profit_lock",
-        "catalog:function:public.income_expense_items_check_profit_lock"
+        "catalog:function:public.income_expense_items_check_profit_lock",
+        "catalog:trigger:public.income_expenses.a02_ie_profit_lock_ins"
       ]
     },
     {
@@ -6306,7 +6403,8 @@
       "sha256": "daa886d63ad7ae44e3d632634d6e1fc91d1e32072f408fb19737d8d6e0f9eedc",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:public.ie_annotate_scope_delta_guard"
+        "catalog:function:public.ie_annotate_scope_delta_guard",
+        "catalog:trigger:public.income_expenses.a01_ie_annotate_scope_delta"
       ]
     },
     {
@@ -6376,7 +6474,9 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.notify_closing_nudge_v1",
-        "catalog:function:app_private.notify_closing_request_v1"
+        "catalog:function:app_private.notify_closing_request_v1",
+        "catalog:index:public.uq_notif_closing_nudge",
+        "catalog:trigger:public.cash_handovers.z95_notify_closing_nudge"
       ]
     },
     {
@@ -6424,7 +6524,8 @@
         "catalog:table:app_private.period_fee_force_events",
         "catalog:table:app_private.contract_termination_writer_xids",
         "catalog:function:public.pay_utility_bill",
-        "catalog:function:app_private.guard_period_fee_force_append_only"
+        "catalog:function:app_private.guard_period_fee_force_append_only",
+        "catalog:trigger:app_private.period_fee_force_events.a00_period_fee_force_append_only"
       ]
     },
     {
@@ -6482,7 +6583,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.transfer_room",
-        "catalog:function:public.apply_contract_transfer"
+        "catalog:function:public.apply_contract_transfer",
+        "catalog:index:public.idx_transfers_contract_status_type_date"
       ]
     },
     {
@@ -6519,7 +6621,8 @@
       "evidence": [
         "catalog:table:public.organization_timezones",
         "catalog:function:app_private.org_timezone_v1",
-        "catalog:function:public.org_today_v1"
+        "catalog:function:public.org_today_v1",
+        "catalog:policy:public.organization_timezones.org_timezones_select"
       ]
     },
     {
@@ -6579,7 +6682,9 @@
         "catalog:table:public.lucky_events",
         "catalog:table:public.lucky_event_teams",
         "catalog:function:public.lucky_gen_code",
-        "catalog:function:public.lucky_set_team_code"
+        "catalog:function:public.lucky_set_team_code",
+        "catalog:index:public.lucky_event_teams_code_key",
+        "catalog:trigger:public.lucky_event_teams.trg_lucky_set_team_code"
       ]
     },
     {
@@ -6603,7 +6708,9 @@
       "evidence": [
         "catalog:table:public.special_fee_claims",
         "catalog:function:public.preview_special_fees_v1",
-        "catalog:function:public.generate_special_fees_v1"
+        "catalog:function:public.generate_special_fees_v1",
+        "catalog:index:public.ux_special_fee_claims_slot",
+        "catalog:policy:public.special_fee_claims.special_fee_claims_read"
       ]
     },
     {
@@ -6615,7 +6722,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.lucky_event_payload_v1",
-        "catalog:function:public.lucky_save_payout_v1"
+        "catalog:function:public.lucky_save_payout_v1",
+        "catalog:policy:storage.objects.lucky proofs upload"
       ]
     },
     {
@@ -6628,7 +6736,9 @@
       "evidence": [
         "catalog:table:public.termination_refund_obligations",
         "catalog:function:public.preview_termination_refund_v1",
-        "catalog:function:public.record_termination_refund_obligation_v1"
+        "catalog:function:public.record_termination_refund_obligation_v1",
+        "catalog:index:public.ux_tro_termination_version",
+        "catalog:policy:public.termination_refund_obligations.tro_read"
       ]
     },
     {
@@ -6639,7 +6749,8 @@
       "sha256": "851b7c974ea4957237fc32a0f04c1163e5ca29711f7e11549a674f24bfe15a67",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:public.lucky_event_open_v1"
+        "catalog:function:public.lucky_event_open_v1",
+        "catalog:policy:storage.objects.lucky proofs upload"
       ]
     },
     {
@@ -6650,7 +6761,8 @@
       "sha256": "f41757aca96d5cd1b5db3c826adfbfa7891292b8e17c7349bcd25ade7ae889b7",
       "state": "catalog-proven",
       "evidence": [
-        "catalog:function:public.create_termination_refund_voucher_v1"
+        "catalog:function:public.create_termination_refund_voucher_v1",
+        "catalog:index:public.ux_tro_voucher"
       ]
     },
     {
@@ -6686,7 +6798,9 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:public.lucky_gen_slug",
-        "catalog:function:public.lucky_set_event_slug"
+        "catalog:function:public.lucky_set_event_slug",
+        "catalog:index:public.lucky_events_slug_key",
+        "catalog:trigger:public.lucky_events.trg_lucky_set_event_slug"
       ]
     },
     {
@@ -6733,7 +6847,8 @@
       "evidence": [
         "catalog:table:app_private.ie_annotate_idempotency",
         "catalog:function:app_private.ie_evidence_locked_v1",
-        "catalog:function:app_private.ie_notes_append_only_v1"
+        "catalog:function:app_private.ie_notes_append_only_v1",
+        "catalog:index:app_private.idx_ie_annotate_idem_created"
       ]
     },
     {
@@ -6745,8 +6860,9 @@
       "state": "unknown",
       "evidence": [],
       "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
-      ]
+        "(chỉ ALTER/DML — không chứng minh tự động được)"
+      ],
+      "note": "3 cột file này ADD đều CÓ trong production (nhất quán, nhưng KHÔNG phải bằng chứng file đã chạy)"
     },
     {
       "path": "supabase/migrations/20260801010000_special_fee_price_and_autopost.sql",
@@ -6758,7 +6874,8 @@
       "evidence": [
         "catalog:table:app_private.special_fee_price_versions",
         "catalog:function:app_private.special_fee_price_for_v1",
-        "catalog:function:app_private.special_fee_rule_check_v1"
+        "catalog:function:app_private.special_fee_rule_check_v1",
+        "catalog:index:app_private.ux_sfpv_slot_effective"
       ]
     },
     {
@@ -6796,7 +6913,8 @@
         "catalog:table:app_private.sale_bonus_claims",
         "catalog:table:app_private.sale_bonus_cap_versions",
         "catalog:function:app_private.sale_bonus_cap_for_v1",
-        "catalog:function:public.sale_bonus_status_v1"
+        "catalog:function:public.sale_bonus_status_v1",
+        "catalog:index:app_private.ux_sbc_deposit"
       ]
     },
     {
@@ -6820,7 +6938,8 @@
       "evidence": [
         "catalog:table:app_private.commission_tier_versions",
         "catalog:function:app_private.commission_rate_for_v1",
-        "catalog:function:app_private.commission_autopay_check_v1"
+        "catalog:function:app_private.commission_autopay_check_v1",
+        "catalog:index:app_private.ux_ctv_slot"
       ]
     },
     {
@@ -6846,7 +6965,8 @@
         "catalog:table:app_private.utility_ceiling_versions",
         "catalog:table:app_private.maintenance_rule_versions",
         "catalog:function:app_private.utility_ceiling_check_v1",
-        "catalog:function:public.set_utility_ceiling_v1"
+        "catalog:function:public.set_utility_ceiling_v1",
+        "catalog:index:app_private.ux_ucv_slot"
       ]
     },
     {
@@ -6916,7 +7036,8 @@
       "evidence": [
         "catalog:table:clone_org.sync_request",
         "catalog:function:clone_org.do_sync",
-        "catalog:function:public.clone_org_request_sync_v1"
+        "catalog:function:public.clone_org_request_sync_v1",
+        "catalog:index:clone_org.sync_request_one_open"
       ]
     },
     {
@@ -6925,10 +7046,9 @@
       "name": "org_isolation_reports_and_gaps",
       "scheme": "timestamp14",
       "sha256": "a315044502d271ccefb55665b80c74fa70d81ddaa466494ff9919bd9c97fa227",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "(file không CREATE object nào — chỉ ALTER/DML)"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:policy:public.income_expense_items.income_expense_items_hide_demo_admin"
       ]
     },
     {
@@ -7060,6 +7180,17 @@
       ]
     },
     {
+      "path": "supabase/migrations/20260802170000_move_cashbook_allow_invoice_collection.sql",
+      "version": "20260802170000",
+      "name": "move_cashbook_allow_invoice_collection",
+      "scheme": "timestamp14",
+      "sha256": "7cf1894932817dd617c19f54ca3d6914f5c52bf3c8b8e6332e9aefe4c725e436",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.move_income_voucher_cashbook_v1"
+      ]
+    },
+    {
       "path": "supabase/migrations/20260802180000_possession_backfill_from_legacy.sql",
       "version": "20260802180000",
       "name": "possession_backfill_from_legacy",
@@ -7080,7 +7211,8 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.my_possessed_cashbook_ids_v1",
-        "catalog:function:app_private.ie_visible_cashbook_ids_v1"
+        "catalog:function:app_private.ie_visible_cashbook_ids_v1",
+        "catalog:policy:public.accounts.accounts_select_possession"
       ]
     },
     {
