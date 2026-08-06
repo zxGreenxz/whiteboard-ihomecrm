@@ -15,7 +15,7 @@ export const useCreateProfitDistribution = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "distribute_shareholder_profit_v1",
         {
           p_shareholder_id: input.shareholder_id,
@@ -55,7 +55,7 @@ export const useCreateManagerSalaryPayout = () => {
       const user = await getSessionUser();
       if (!user) throw new Error("User not authenticated");
 
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "manager_salary_payout_v1",
         {
           p_manager_id: input.manager_id,

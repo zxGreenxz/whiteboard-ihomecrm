@@ -38,7 +38,7 @@ export const useMyCashbookAccess = (enabled = true) =>
     enabled,
     staleTime: 60_000,
     queryFn: async (): Promise<CashbookAccessRow[]> => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "list_my_cashbook_access_v2",
       );
       if (error) throw new Error(error.message);
@@ -65,7 +65,7 @@ export const useMoveIncomeVoucherCashbook = () => {
 
   return useMutation({
     mutationFn: async (input: MoveCashbookInput) => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "move_income_voucher_cashbook_v1",
         {
           p_voucher: input.voucherId,
@@ -78,7 +78,7 @@ export const useMoveIncomeVoucherCashbook = () => {
         toast.error(periodBlockMessage(msg) ?? msg ?? "Không đổi được sổ quỹ");
         throw error;
       }
-      return data as MoveCashbookResult;
+      return data as unknown as MoveCashbookResult;
     },
     onSuccess: (data) => {
       // Tiền vừa chuyển giữa hai sổ — mọi màn hình tồn quỹ phải tính lại.

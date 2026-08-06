@@ -108,7 +108,7 @@ export const useIncomeCancelEligibility = (ids: string[]) =>
     enabled: ids.length > 0,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, IncomeCancelEligibility>> => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "can_cancel_income_voucher_v1",
         { p_ids: ids },
       );
@@ -205,7 +205,7 @@ export const useCancelIncomeVoucher = () => {
 
   return useMutation({
     mutationFn: async (input: CancelIncomeVoucherInput) => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "cancel_income_voucher_v1",
         { p_voucher: input.voucherId, p_reason: input.reason },
       );
@@ -214,7 +214,7 @@ export const useCancelIncomeVoucher = () => {
         toast.error(periodBlockMessage(msg) ?? msg ?? "Không huỷ được phiếu thu");
         throw error;
       }
-      return data as CancelIncomeVoucherResult;
+      return data as unknown as CancelIncomeVoucherResult;
     },
     onSuccess: (data) => {
       for (const key of INVALIDATE_KEYS) {

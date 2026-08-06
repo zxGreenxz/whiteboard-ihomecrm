@@ -38,10 +38,7 @@ export const useGenerateRecurringVouchers = () => {
   return useMutation({
     mutationFn: async () => {
       // RBAC v2: không cần p_user_id; v2 tự lookup các owner caller được phép.
-      const { data, error } = await (supabase.rpc as any)(
-        "generate_recurring_vouchers_v2",
-        {}
-      );
+      const { data, error } = await supabase.rpc("generate_recurring_vouchers_v2");
       if (error) {
         toast.error(error.message || "Không thể sinh phiếu lặp lại");
         throw error;

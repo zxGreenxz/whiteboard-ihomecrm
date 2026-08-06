@@ -69,7 +69,7 @@ export const useCreateIncomeExpense = () => {
       // không hỗ trợ 0A000) → ie_compat_insert_v2 (server ép birth UNAPPROVED);
       // lỗi khác (kể cả 42501 quyền thật) → throw.
       if (isCanonicalCreateEligible(input)) {
-        const canonical = await (supabase.rpc as any)("create_income_expense_v1", {
+        const canonical = await supabase.rpc("create_income_expense_v1", {
           p_type: input.type,
           p_name: input.name,
           p_building_id: input.building_id,
@@ -275,7 +275,7 @@ export const useQuickUpdateIncomeExpense = () => {
 
   return useMutation({
     mutationFn: async (input: QuickUpdateIncomeExpenseInput) => {
-      const { error } = await (supabase as any).rpc(
+      const { error } = await supabase.rpc(
         "update_income_expense_quick",
         {
           p_id: input.id,

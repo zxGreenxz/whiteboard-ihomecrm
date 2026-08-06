@@ -104,7 +104,7 @@ export const useFlexCancelEligibility = (ids: string[]) =>
     enabled: ids.length > 0,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, FlexCancelEligibility>> => {
-      const { data, error } = await (supabase.rpc as any)("can_flex_cancel_v1", {
+      const { data, error } = await supabase.rpc("can_flex_cancel_v1", {
         p_ids: ids,
       });
       if (error) throw new Error(error.message);
@@ -126,7 +126,7 @@ export const useCancelVoucherFlex = () => {
 
   return useMutation({
     mutationFn: async (input: FlexCancelInput) => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "cancel_income_expense_flex_v1",
         {
           p_voucher: input.voucherId,
@@ -203,12 +203,12 @@ export const useVoucherCancellation = (voucherId: string | null | undefined) =>
     queryKey: ["voucher-cancellation", voucherId],
     enabled: !!voucherId,
     queryFn: async (): Promise<VoucherCancellation | null> => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "get_voucher_cancellation_v1",
         { p_voucher: voucherId },
       );
       if (error) throw new Error(error.message);
-      return (data ?? null) as VoucherCancellation | null;
+      return (data ?? null) as unknown as VoucherCancellation | null;
     },
   });
 
@@ -239,11 +239,11 @@ export const useVoucherChangeLog = (voucherId: string | null | undefined) =>
     queryKey: ["voucher-change-log", voucherId],
     enabled: !!voucherId,
     queryFn: async (): Promise<VoucherChangeLogEntry[]> => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "get_voucher_change_log_v1",
         { p_voucher: voucherId },
       );
       if (error) throw new Error(error.message);
-      return (data ?? []) as VoucherChangeLogEntry[];
+      return (data ?? []) as unknown as VoucherChangeLogEntry[];
     },
   });

@@ -144,7 +144,7 @@ export const useApproveVoucher = () => {
         throw error;
       }
 
-      const canonical = await (supabase.rpc as any)("approve_income_expense_v1", {
+      const canonical = await supabase.rpc("approve_income_expense_v1", {
         p_voucher_id: id,
       });
       if (!canonical.error) return false;
@@ -153,7 +153,7 @@ export const useApproveVoucher = () => {
         throw canonical.error;
       }
 
-      const { error } = await (supabase as any).rpc("approve_voucher", {
+      const { error } = await supabase.rpc("approve_voucher", {
         voucher_id: id,
       });
       if (error) {
@@ -191,7 +191,7 @@ export const useUnapproveVoucher = () => {
         throw error;
       }
 
-      const { error } = await (supabase as any).rpc("unapprove_voucher", {
+      const { error } = await supabase.rpc("unapprove_voucher", {
         voucher_id: id,
       });
       if (error) {
@@ -250,7 +250,7 @@ export const useCancelIncomeExpense = () => {
       //
       // Chỉ thử khi có lý do đủ dài — writer bắt buộc ≥8 ký tự để còn đối soát.
       if (reason && reason.trim().length >= 8) {
-        const flex = await (supabase.rpc as any)("cancel_income_expense_flex_v1", {
+        const flex = await supabase.rpc("cancel_income_expense_flex_v1", {
           p_voucher: id,
           p_reason: reason.trim(),
           p_expected_approval_version: null,
@@ -282,7 +282,7 @@ export const useCancelIncomeExpense = () => {
       const postingStatus = (voucher as { posting_status?: string | null })
         ?.posting_status;
       if (postingStatus === "POSTED") {
-        const rev = await (supabase.rpc as any)(
+        const rev = await supabase.rpc(
           "reverse_posted_income_expense_v2",
           {
             p_voucher: id,
@@ -304,7 +304,7 @@ export const useCancelIncomeExpense = () => {
       // Canonical cancel (phiếu flow-owned): transition + audit hash-chain
       // server-side, KHÔNG đụng payments (phiếu canonical không gắn payment).
       // Phiếu legacy → tín hiệu fallback → giữ nguyên đường cũ bên dưới.
-      const canonical = await (supabase.rpc as any)("cancel_income_expense_v1", {
+      const canonical = await supabase.rpc("cancel_income_expense_v1", {
         p_voucher_id: id,
         p_reason: reason,
       });
@@ -313,7 +313,7 @@ export const useCancelIncomeExpense = () => {
       // từ chối 'owned by system flow'; huỷ qua dispatcher §8 (release
       // reservation atomic), KHÔNG rơi xuống compat.
       if (/owned by system flow/i.test(canonical.error.message ?? "")) {
-        const owned = await (supabase.rpc as any)(
+        const owned = await supabase.rpc(
           "decide_owned_income_expense_v2",
           {
             p_voucher: id,
@@ -350,7 +350,7 @@ export const useCancelIncomeExpense = () => {
         // 7ac: phiếu do FLOW HỆ THỐNG sở hữu (vd Hoàn tiền hoá đơn) — cả cancel
         // v1 lẫn compat đều từ chối; huỷ qua dispatcher §8 (release reservation).
         if (/owned by system flow/i.test(error.message ?? "")) {
-          const owned = await (supabase.rpc as any)(
+          const owned = await supabase.rpc(
             "decide_owned_income_expense_v2",
             {
               p_voucher: id,
@@ -384,7 +384,7 @@ export const useCancelIncomeExpense = () => {
       // T3 audit-monopoly: RPC log chỉ nhận NOTE/CANCELLED_NOTE/MANUAL_LOG —
       // client không được tự dập sự kiện lifecycle 'CANCELLED' (chỉ transition
       // engine được ghi). CANCELLED_NOTE là alias chuẩn cho huỷ-đường-legacy.
-      await (supabase as any).rpc("log_income_expense_action", {
+      await supabase.rpc("log_income_expense_action", {
         p_id: id,
         p_action: "CANCELLED_NOTE",
         p_note: null,
@@ -422,7 +422,7 @@ export const useRestoreIncomeExpense = () => {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).rpc("restore_income_expense", {
+      const { error } = await supabase.rpc("restore_income_expense", {
         p_id: id,
       });
       if (error) {
@@ -459,7 +459,7 @@ export const useVerifyIncomeExpense = () => {
   return useMutation({
     mutationFn: async (input: { id: string; note: string | null }) => {
       // Canonical verify (phiếu flow-owned, token-wrapped); legacy fallback.
-      const canonical = await (supabase.rpc as any)("verify_income_expense_v1", {
+      const canonical = await supabase.rpc("verify_income_expense_v1", {
         p_id: input.id,
         p_note: input.note,
       });
@@ -469,7 +469,7 @@ export const useVerifyIncomeExpense = () => {
         throw canonical.error;
       }
 
-      const { error } = await (supabase as any).rpc("verify_income_expense", {
+      const { error } = await supabase.rpc("verify_income_expense", {
         p_id: input.id,
         p_note: input.note,
       });

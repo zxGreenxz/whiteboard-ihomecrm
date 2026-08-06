@@ -632,7 +632,7 @@ export const incomeExpenseStatsQuery = (
               .filter(([, m]) => m.group === filters.source_group)
               .map(([k]) => k)
           : null;
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         'get_income_expense_layer_stats',
         {
           p_building_ids: filters.building_ids?.length
@@ -728,7 +728,7 @@ export const useIncomeExpenseHistory = (id: string | null, enabled = true) => {
     queryKey: ["ie-history", id],
     enabled: enabled && !!id,
     queryFn: async (): Promise<IncomeExpenseAuditLog[]> => {
-      const { data, error } = await (supabase as any).rpc(
+      const { data, error } = await supabase.rpc(
         "get_income_expense_history",
         { p_id: id }
       );
