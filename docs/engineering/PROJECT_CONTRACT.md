@@ -487,6 +487,19 @@ hidden retry cho thao tác không idempotent.
 - High-risk (tiền, authz) phải qua wrapper typed do domain sở hữu. Prior art để kế thừa:
   - `src/hooks/openclaw-zalo/openClawRpc.ts` — facade "one hole"
   - `src/lib/network-center/{contracts,dto,supabaseRepository,demoRepository}.ts` — boundary đầy đủ nhất repo
-- Hiện có **244 call site RPC**, trong đó **174 (71%) đi qua `any` cast** — ba dạng cần đếm khi đo
-  baseline: `.rpc(`, `(supabase as any).rpc(`, `(supabase.rpc as any)(`. Raw-call baseline chỉ được
-  **giảm**, không được tăng.
+- Hiện có **244 call site RPC**, trong đó **176 đi qua `any` cast** trên 67 file (đo 2026-08-06),
+  dày nhất ở nhóm tiền: `useInvoices` 15, `income-expenses/statusMutations` 12, `usePeriodFees` 9.
+
+```bash
+npm run gate:rpc-cast    # ratchet: con số CHỈ ĐƯỢC GIẢM
+```
+
+Hai dạng `(supabase as any).rpc(...)` và `(supabase.rpc as any)(...)` tắt hoàn toàn kiểm tra kiểu ở
+đúng chỗ nguy hiểm nhất: **tên RPC gõ sai hay tham số sai tên vẫn biên dịch sạch**, chỉ lộ ra khi chạy
+thật. Đó chính là cơ chế đã làm contract media-resolve ship hỏng.
+
+Sửa hết trong một đợt là refactor xuyên hệ thống trên code sổ sách tiền thật — rủi ro cao hơn lợi ích.
+Vì vậy luật là **chặn tăng**: file mới không được có cast, file cũ không được thêm. Khi giảm được thì
+chạy `--write` để chốt mức mới. Mẫu để noi theo: `src/hooks/openclaw-zalo/openClawRpc.ts` — gom cast
+vào **đúng một lỗ**, tên RPC là union được compiler kiểm, kết quả cố ý để `unknown` để buộc validate
+bằng Zod thay vì tin generated type.

@@ -1,9 +1,13 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
   "updatedAt": "2026-08-06",
-  "currentWave": "3",
-  "waveTitle": "Production baseline — đã sạch partition, đã diễn tập restore",
+  "currentWave": "5",
+  "waveTitle": "Typed RPC boundary — ratchet chặn thoái lui",
   "done": [
+    {
+      "item": "Đợt 5 (bước 1): ratchet any-cast RPC — tooling/rpc-cast-baseline.json + gate",
+      "evidence": "Đo được 176 cast trên 67 file (useInvoices 15, statusMutations 12, usePeriodFees 9). Ratchet chặn: file mới có cast => đỏ, file cũ thêm cast => đỏ, giảm thì báo và cho --write chốt mức mới. Đã kiểm cả ba hướng bằng đột biến. KHÔNG đổi call site nào — refactor 176 chỗ trên code tiền thật trong một đợt rủi ro hơn lợi ích; ratchet mua thời gian mà không đụng runtime."
+    },
     {
       "item": "Đợt 3: forward-only lane — scripts/apply-reviewed-migration.mjs",
       "evidence": "Kế thừa nguyên tắc của apply-accounting-rollout.mjs (advisory lock + lock_timeout + statement_timeout + digest + dry-run) thay vì dựng runner generic. BỐN lớp chặn, đã kiểm từng cái bằng đột biến: file trước cutoff bị từ chối; file thiếu entry provenance bị từ chối; sha256 lệch manifest bị từ chối; --apply thiếu IHOMECRM_PROMOTION_TOKEN bị từ chối. Dry-run chạy thật trên production và ROLLBACK — xác nhận không ghi gì."
@@ -127,9 +131,9 @@
   ],
   "blockers": [],
   "next": [
-    "Restore baseline vào Supabase project tạm để lên verified (cần quyết định của chủ dự án về quota)",
-    "Đợt 4 lát 3: consumer sinh từ capability registry",
-    "Đợt 5: typed RPC wrapper cho tier tiền"
+    "Đợt 5 (bước 2): facade typed cho MỘT domain tiền làm mẫu, rồi hạ ratchet",
+    "Restore baseline vào Supabase project tạm để lên verified",
+    "Đợt 4 lát 3: consumer sinh từ capability registry"
   ],
   "knownDirtyFiles": [
     {

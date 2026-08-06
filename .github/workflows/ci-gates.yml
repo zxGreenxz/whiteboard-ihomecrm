@@ -106,6 +106,7 @@ jobs:
           node scripts/check-known-gaps.mjs
           node scripts/check-test-matrix.mjs
           node scripts/check-migration-provenance.mjs
+          node scripts/check-rpc-cast-ratchet.mjs
 
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline

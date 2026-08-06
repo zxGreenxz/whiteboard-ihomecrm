@@ -27,6 +27,7 @@
     "gate:known-gaps": "node scripts/check-known-gaps.mjs",
     "gate:test-matrix": "node scripts/check-test-matrix.mjs",
     "gate:migration-provenance": "node scripts/check-migration-provenance.mjs",
+    "gate:rpc-cast": "node scripts/check-rpc-cast-ratchet.mjs",
     "provenance:generate": "node scripts/generate-migration-provenance.mjs --write",
     "migrate:forward": "node scripts/apply-reviewed-migration.mjs",
     "catalog:capture": "node scripts/capture-production-catalog.mjs --write",
