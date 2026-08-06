@@ -339,11 +339,16 @@ async function rehearse() {
     console.log('   ' + msg.split('\n')[0]);
     console.log('\n   Mọi thứ đã được rollback. Chạy --apply để ghi thật.');
   } else if (msg.includes('HUY BO')) {
-    console.log('❌ SỐ CỌC BỊ ĐỔI khi ghi phiếu — KHÔNG được apply.');
-    console.log('   ' + msg);
+    console.error('❌ SỐ CỌC BỊ ĐỔI khi ghi phiếu — KHÔNG được apply.');
+    console.error('   ' + msg);
+    // Trước đây hai nhánh ❌ dưới đây chỉ IN rồi kết thúc, nên script thoát 0 —
+    // tức mã thoát của "diễn tập hỏng, ĐỪNG apply" giống hệt "diễn tập sạch".
+    // Bất kỳ ai (hoặc script nào) đọc mã thoát đều hiểu là thành công.
+    process.exitCode = 1;
   } else {
-    console.log('❌ Bị chặn bởi guard hoặc lỗi khác:');
-    console.log('   ' + msg);
+    console.error('❌ Bị chặn bởi guard hoặc lỗi khác:');
+    console.error('   ' + msg);
+    process.exitCode = 1;
   }
 }
 

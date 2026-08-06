@@ -65,7 +65,20 @@ if (!res.ok) {
   process.exit(1);
 }
 
-const rows = JSON.parse(await res.text())[0]?.r ?? [];
+// `JSON.parse(...)[0]?.r ?? []` là cách viết cũ, và nó nuốt MỌI sai lệch hình
+// dạng: đổi tên cột, đổi cấu trúc trả về, kết quả rỗng bất thường — tất cả rơi êm
+// thành mảng rỗng, `total = 0`, và gate in ✅. Gate này phát hiện phiếu APPROVED
+// không có approver, tức đường ghi tự-duyệt không dấu vết. Im lặng cho qua ở đây
+// là im lặng đúng chỗ nguy hiểm nhất.
+const parsed = JSON.parse(await res.text());
+if (!Array.isArray(parsed) || parsed.length === 0 || !Array.isArray(parsed[0]?.r)) {
+  console.error('❌ Kết quả truy vấn KHÔNG đúng hình dạng mong đợi — không kết luận được.');
+  console.error(`   Nhận: ${JSON.stringify(parsed).slice(0, 300)}`);
+  console.error('   Mong đợi: [{ r: [...] }]. Sai hình dạng nghĩa là truy vấn hoặc schema đã đổi,');
+  console.error('   KHÔNG phải "không có phiếu nào vi phạm".');
+  process.exit(1);
+}
+const rows = parsed[0].r;
 const total = rows.reduce((sum, r) => sum + Number(r.n), 0);
 
 if (total > 0) {

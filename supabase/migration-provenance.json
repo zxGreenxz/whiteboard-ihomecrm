@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-06T11:30:34.026Z",
+  "generatedAt": "2026-08-06T14:58:35.352Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
     "unknown": 66,
-    "catalog-proven": 209,
+    "catalog-proven": 210,
     "superseded": 15
   },
   "duplicateVersions": 40,
@@ -7281,6 +7281,17 @@
       "state": "catalog-proven",
       "evidence": [
         "catalog:function:app_private.guard_income_expense_owned_payload"
+      ]
+    },
+    {
+      "path": "supabase/migrations/20260806090000_commission_voucher_attachments.sql",
+      "version": "20260806090000",
+      "name": "commission_voucher_attachments",
+      "scheme": "timestamp14",
+      "sha256": "19738bf32a2d431e2daca57fecdf33d6672169f728df11e92f923107c1300f0a",
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:function:public.create_commission_voucher"
       ]
     },
     {

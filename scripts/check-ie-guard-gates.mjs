@@ -69,6 +69,18 @@ const opened = (row.scopes_opened_by_writers ?? '')
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Chốt chặn chống XANH RỖNG. Danh sách này suy ra bằng regex trên pg_proc.prosrc;
+// nếu truy vấn đổi, cột đổi tên, hay regex không còn khớp, `opened` thành [] và
+// vòng lặp dưới chạy 0 lần — gate không tìm ra vấn đề nào và báo xanh. Hệ thống
+// CHẮC CHẮN có writer mở cửa (đó là lý do gate này tồn tại), nên 0 nghĩa là phép
+// đo hỏng, không phải mọi thứ đều ổn.
+if (opened.length === 0) {
+  console.error('❌ Không bóc được scope nào từ writer — phép đo hỏng, KHÔNG phải "sạch".');
+  console.error('   Cột scopes_opened_by_writers rỗng/null. Kiểm lại truy vấn và regex prosrc.');
+  console.error('   Gate này chỉ có nghĩa khi nó THẤY danh sách cửa; thấy rỗng là đỏ.');
+  process.exit(1);
+}
+
 for (const scope of opened) {
   if (INSERT_ONLY_SCOPES.has(scope)) continue;
   if (!def.includes(`w.scope = '${scope}'`)) {
