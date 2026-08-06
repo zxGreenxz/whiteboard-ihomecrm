@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isIeLifecycleFallbackSignal } from "@/lib/canonicalFallback";
 import { periodBlockMessage } from "@/lib/cashbookClosing";
+import { todayISO } from '@/lib/collect';
 
 type RpcError = { code?: string | null; message?: string | null };
 type RpcResult = { error: RpcError | null };
@@ -287,7 +288,7 @@ export const useCancelIncomeExpense = () => {
           {
             p_voucher: id,
             p_cashbook: voucher?.account_id ?? null,
-            p_posted_on: new Date().toISOString().split("T")[0],
+            p_posted_on: todayISO(),
             p_reason: reason || "Hoàn tác để huỷ phiếu",
             p_idempotency_key: `cancel-rev-${id}-${Date.now()}`,
           },

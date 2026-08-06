@@ -26,6 +26,7 @@ import {
   isFirstMonthInvoice,
 } from '@/lib/invoiceUtils';
 import { AMOUNT_SEARCH_TOLERANCE } from '@/lib/roomCodeSearch';
+import { todayISO } from '@/lib/collect';
 import {
   buildBulkInvoiceCreditLifecycleRpcArgs,
   buildCreditInvoiceCreateRpcArgs,
@@ -1355,7 +1356,7 @@ export const useCheckOverdueInvoices = () => {
       if (!canonical.error) return (canonical.data as number) ?? 0;
       if (!isCanonicalFallbackSignal(canonical.error)) throw canonical.error;
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayISO();
 
       // Find all invoices that should be marked as OVERDUE:
       // status IN ('APPROVED', 'PARTIAL_PAID'), due_date < today, not deleted

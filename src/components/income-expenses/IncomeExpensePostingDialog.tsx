@@ -25,6 +25,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 import { StorageImage } from '@/components/ui/storage-image';
 import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { formatVND } from '@/lib/utils';
+import { todayISO } from '@/lib/collect';
 import {
   buildIncomeExpensePostingSchema,
   type IncomeExpensePostingFormValues,
@@ -130,7 +131,7 @@ function genIdempotencyKey(): string {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().split('T')[0];
+  return todayISO();
 }
 
 /**

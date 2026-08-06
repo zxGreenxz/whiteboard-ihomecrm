@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { getSessionUser } from '@/lib/authSession';
 import { formatVND } from '@/lib/utils';
 import type { DomainTool } from './registry';
+import { todayISO } from '@/lib/collect';
 
 /** Hash chuỗi ổn định (djb2) — đủ cho idempotency key client-side. */
 export function makeIdempotencyKey(parts: (string | number)[]): string {
@@ -73,7 +74,7 @@ export const taoPhieuThuChiNhap: DomainTool<Input> = {
     if (!user) throw new Error('Chưa đăng nhập.');
 
     const ieType = args.loai === 'thu' ? 'INCOME' : 'EXPENSE';
-    const voucherDate = args.ngay ?? new Date().toISOString().slice(0, 10);
+    const voucherDate = args.ngay ?? todayISO();
 
     // Resolve toà + hạng mục (RLS scope theo user)
     const buildings = await resolveBuilding(args.toa_nha);

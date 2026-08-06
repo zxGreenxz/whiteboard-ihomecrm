@@ -66,6 +66,7 @@ import { matchRecipientBankCode, RECIPIENT_BANKS } from '@/lib/vietqrDeeplink';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { todayISO } from '@/lib/collect';
 
 interface IncomeExpenseFormProps {
   open: boolean;
@@ -215,7 +216,7 @@ const IncomeExpenseForm = ({
       receive_bank_account: '',
       receive_bank_name: '',
       account_id: '',
-      voucher_date: new Date().toISOString().split('T')[0],
+      voucher_date: todayISO(),
       business_result_accounting: null,
       repeat_cycle: 'NONE',
       repeat_infinity: false,
@@ -345,7 +346,7 @@ const IncomeExpenseForm = ({
       setSelectedBuildingId(prefillBuilding ?? undefined);
       setSelectedRoomId(prefillRoom ?? undefined);
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayISO();
       // Kỳ áp dụng mặc định cho hạng mục: theo defaultPrefill.period nếu có,
       // fallback tháng hiện tại (prefillPeriodStart/End khai ở trên).
       const prefillItemsForm = (defaultPrefill?.items ?? []).map((it) => ({

@@ -55,6 +55,7 @@ import IncomeExpenseItemSelector from './IncomeExpenseItemSelector';
 import AttachmentUpload from './AttachmentUpload';
 import { useAuth } from '@/hooks/useAuth';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { todayISO } from '@/lib/collect';
 
 interface BatchItemRow {
   building_id: string;
@@ -258,7 +259,7 @@ const IncomeExpenseBatchForm = ({
       type: defaultType ?? 'EXPENSE',
       shared_name: '',
       account_id: '',
-      voucher_date: new Date().toISOString().split('T')[0],
+      voucher_date: todayISO(),
       payer_name: '',
       business_result_accounting: null,
       attachments: [],
@@ -276,7 +277,7 @@ const IncomeExpenseBatchForm = ({
       type: defaultType ?? 'EXPENSE',
       shared_name: '',
       account_id: '',
-      voucher_date: new Date().toISOString().split('T')[0],
+      voucher_date: todayISO(),
       payer_name: '',
       business_result_accounting: null,
       attachments: [],

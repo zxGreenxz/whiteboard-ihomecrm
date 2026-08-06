@@ -40,6 +40,7 @@ import { useClipboardImagePaste } from '@/hooks/useClipboardImagePaste';
 import { toast } from 'sonner';
 import { deriveInvoiceDepositDue } from '@/lib/paymentRecordRpc';
 import { deriveOverpayPolicy } from '@/lib/collectPlan';
+import { todayISO } from '@/lib/collect';
 
 interface RecordPaymentDialogProps {
   open: boolean;
@@ -115,7 +116,7 @@ const RecordPaymentDialog = ({ open, onOpenChange, invoice }: RecordPaymentDialo
     defaultValues: {
       payment_lines: [{ amount: 0, payment_method: 'TM', account_id: '' }],
       change_amount: 0,
-      payment_date: new Date().toISOString().split('T')[0],
+      payment_date: todayISO(),
       keep_as_credit: false,
     },
   });

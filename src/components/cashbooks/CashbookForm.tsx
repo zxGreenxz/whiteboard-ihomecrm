@@ -47,6 +47,7 @@ import { useBuildings } from "@/hooks/useBuildings";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useFinanceV2Routes, isCanonicalAccess } from "@/lib/financeV2Route";
+import { todayISO } from '@/lib/collect';
 
 const NO_BUILDING = "__none__";
 
@@ -224,7 +225,12 @@ interface CashbookFormProps {
   account: AccountWithBalance | null; // null = thêm
 }
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Trước đây file này tự định nghĩa một hàm TÊN Y HỆT `todayISO` nhưng ruột dùng
+// toISOString() — tức ngày UTC. Nó che mất helper đúng cùng tên ở @/lib/collect,
+// nên người đọc thấy `todayISO()` sẽ yên tâm rằng đã xử lý múi giờ, trong khi
+// thực tế ngày mở sổ quỹ (mốc của số dư đầu kỳ) lệch về hôm trước suốt 00:00–07:00
+// giờ VN. Đây là kiểu nguy hiểm nhất: không phải thiếu helper, mà là có một bản
+// giả cùng tên. Nay import bản thật.
 
 const CashbookForm = ({ open, onOpenChange, account }: CashbookFormProps) => {
   const isEditing = !!account;

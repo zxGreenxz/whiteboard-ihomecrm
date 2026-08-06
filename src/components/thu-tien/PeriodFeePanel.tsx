@@ -13,7 +13,7 @@ import {
   HandCoins, Edit3, Calendar, Ban, Pencil, History, ListChecks,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { fmtFull, fmtBillingMonth } from '@/lib/collect';
+import { fmtFull, fmtBillingMonth, todayISO } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useBuildings } from '@/hooks/useBuildings';
 import {
@@ -255,7 +255,7 @@ export function PeriodFeePanel({ billingMonth, onBillingMonthChange, onClose, ca
   const [createOpen, setCreateOpen] = useState(false);
   const [payer, setPayer] = useState('');
   const [batchBook, setBatchBook] = useState<string | null>(null);
-  const [batchDate, setBatchDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [batchDate, setBatchDate] = useState(() => todayISO());
   const [batchAtts, setBatchAtts] = useState<string[]>([]);
   const [batchUploading, setBatchUploading] = useState(false);
   const batchFileRef = useRef<HTMLInputElement>(null);

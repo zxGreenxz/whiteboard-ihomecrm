@@ -44,6 +44,7 @@ import { Receipt, Plus, Trash2, Pencil, AlertTriangle, RotateCcw, Loader2 } from
 import { format, addMonths, startOfMonth, endOfMonth, parse } from 'date-fns';
 import { calcProratedDays, prorateAmount } from '@/lib/prorateCalculation';
 import { resolveInvoicePricing } from '@/lib/contractServicePricing';
+import { todayISO } from '@/lib/collect';
 
 interface GenerateInvoiceDialogProps {
   open: boolean;
@@ -138,8 +139,10 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
   } = useForm<GenerateInvoiceFormData>({
     resolver: zodResolver(generateInvoiceSchema),
     defaultValues: {
-      issue_date: new Date().toISOString().split('T')[0],
-      due_date: addMonths(new Date(), 1).toISOString().split('T')[0],
+      issue_date: todayISO(),
+      // format() của date-fns đọc theo giờ LOCAL; toISOString() thì đổi sang UTC
+      // rồi cắt, nên trước 7h sáng giờ VN sẽ ra ngày hôm trước.
+      due_date: format(addMonths(new Date(), 1), 'yyyy-MM-dd'),
       billing_month: format(new Date(), 'yyyy-MM'),
       rent_price: 0,
       occupants: 1,

@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { PostFinanceExecutionInput } from "@/lib/incomeExpensePostingValidation";
+import { todayISO } from '@/lib/collect';
 
 // RPC v2 chưa có trong generated types cho tới lần regen sau forward-apply.
 type RpcResult = { data: unknown; error: { code?: string; message?: string } | null };
@@ -127,7 +128,7 @@ export function useReversePostingV2() {
       const { data, error } = await rpc("reverse_posted_income_expense_v2", {
         p_voucher: args.voucherId,
         p_cashbook: args.cashbookId,
-        p_posted_on: new Date().toISOString().split("T")[0],
+        p_posted_on: todayISO(),
         p_reason: args.reason || "Hoàn tác thủ công",
         p_idempotency_key: `rev-${args.voucherId}-${Date.now()}`,
       });
