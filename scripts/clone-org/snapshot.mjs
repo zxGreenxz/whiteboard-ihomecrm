@@ -76,22 +76,37 @@ log(`✓ đếm ${Object.keys(counts).length} bảng qua PostgREST`)
 // TEST không? Phép này miễn nhiễm với việc dữ liệu thật tự thay đổi (cron đêm
 // 16:55 UTC sinh vài trăm bút toán), khác hẳn kiểu so số đếm trước/sau.
 const leaks = []
+// Bảng KHÔNG kiểm được phải đếm riêng, không được lẫn vào "đã kiểm, sạch".
+// Bản trước viết `if (!res.ok) continue` rồi in `0/${tables.length}` — tức mẫu số
+// là TỔNG SỐ BẢNG chứ không phải số bảng thật sự hỏi được. Nếu token hết hạn hay
+// bị rate-limit ở 155/158 request, nó vẫn in "✓ 0/158 bảng rò rỉ" — đúng chuỗi mà
+// PROJECT_CONTRACT coi là bằng chứng đã kiểm xong. Với một cửa chặn rò rỉ giữa
+// công ty thật và org sandbox thì "không hỏi được" phải khác "hỏi rồi, sạch".
+const khongKiemDuoc = []
 for (const t of tables) {
   const res = await fetch(
     `https://${REF}.supabase.co/rest/v1/${t}?select=id&organization_id=eq.${TEST_ORG}&limit=1`,
     { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } },
   )
-  if (!res.ok) continue
+  if (!res.ok) { khongKiemDuoc.push(`${t} (HTTP ${res.status})`); continue }
   const n = Number(res.headers.get('content-range')?.split('/')[1] ?? 0)
   if (n > 0) leaks.push(`${t}=${n}`)
 }
+const daKiem = tables.length - khongKiemDuoc.length
+
 if (leaks.length) {
   console.error(`\n✗ RÒ RỈ: tài khoản thật NHÌN THẤY dữ liệu org TEST ở ${leaks.length} bảng:`)
   for (const l of leaks.slice(0, 30)) console.error('   ' + l)
   console.error('→ thiếu policy <bảng>_hide_sandbox_admin, hoặc policy bị predicate khác ghi đè.')
   process.exitCode = 1
+} else if (khongKiemDuoc.length) {
+  console.error(`\n✗ KHÔNG KẾT LUẬN ĐƯỢC: ${khongKiemDuoc.length}/${tables.length} bảng không hỏi được.`)
+  for (const t of khongKiemDuoc.slice(0, 20)) console.error('   ' + t)
+  console.error(`→ mới kiểm ${daKiem}/${tables.length} bảng, và ${daKiem} bảng sạch KHÔNG chứng minh`)
+  console.error(`  ${tables.length} bảng sạch. Sửa lỗi truy cập rồi chạy lại; đừng đọc kết quả này là PASS.`)
+  process.exitCode = 1
 } else {
-  log(`✓ 0/${tables.length} bảng rò rỉ dữ liệu org TEST sang mắt tài khoản thật`)
+  log(`✓ 0/${tables.length} bảng rò rỉ dữ liệu org TEST sang mắt tài khoản thật (hỏi được đủ ${daKiem} bảng)`)
 }
 
 // Kiểm ngược: dòng organization_id IS NULL của công ty thật KHÔNG được biến mất

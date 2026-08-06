@@ -26,8 +26,17 @@ if (!pat) {
   } catch { /* không có file cục bộ — CI truyền qua env */ }
 }
 if (!pat) {
-  console.error('Thiếu SUPABASE_PAT (env) hoặc CLAUDE.local.md — bỏ qua kiểm tra.');
-  process.exit(0);
+  console.error('=== ⚠ KHÔNG KIỂM ĐƯỢC — KHÔNG PHẢI PASS ===');
+  console.error('  Thiếu SUPABASE_PAT (env) hoặc CLAUDE.local.md.');
+  console.error('');
+  console.error('  Trước đây chỗ này thoát 0, tức "bỏ qua" và "đã kiểm, khớp" cho ra CÙNG một mã');
+  console.error('  thoát — người chạy tay không có cách nào phân biệt. Gate này canh việc khoá');
+  console.error('  quyền trong DB đều có nhãn ở FE; khoá thiếu nhãn là quyền TỒN TẠI NHƯNG VÔ HÌNH,');
+  console.error('  không ai cấp hay thu hồi được. Một chữ PASS sai ở đây là im lặng bỏ mặc điều đó.');
+  console.error('');
+  console.error('  Thoát 3 = chưa đủ điều kiện chạy (khác 1 = LỆCH thật).');
+  console.error('  CI không bị ảnh hưởng: job security-gates chỉ chạy khi preflight thấy has_pat.');
+  process.exit(3);
 }
 
 const ref = readFileSync(new URL('supabase/config.toml', root), 'utf8')
