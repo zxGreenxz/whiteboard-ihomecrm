@@ -133,20 +133,35 @@ describe("business performance navigation", () => {
     setOrganizationStatus("loading");
   });
 
-  it("registers business performance as a standalone authenticated route", () => {
-    expect(app).toContain(
-      'const BusinessPerformanceReportPage = lazy(() => import("./pages/reports/finance/BusinessPerformanceReportPage"));',
+  // Hai ca dưới đây khẳng định CẤU TRÚC route, nên đọc AST thay vì so nguyên văn
+  // một dòng JSX. Bản cũ khoá cả dấu cách và thứ tự thuộc tính: đổi chỗ xuống
+  // dòng là đỏ, dù hành vi không đổi — và chính nó chặn việc tách App.tsx.
+  it("registers business performance as a standalone authenticated route", async () => {
+    const { collectRoutes } = await import("../../../scripts/check-route-guards.mjs");
+    const routes = collectRoutes(app);
+    const route = routes.find(
+      (r: { path: string }) => r.path === "/reports/finance/business-performance",
     );
-    expect(app).toContain(
-      '<Route path="/reports/finance/business-performance" element={<ProtectedRoute><BusinessPerformanceReportPage /></ProtectedRoute>} />',
-    );
+
+    expect(route, "route business-performance phải tồn tại").toBeDefined();
+    // Chỉ cần đăng nhập, KHÔNG gắn thêm RequirePermission: quyền xem do chính
+    // trang quyết theo tổ chức, nên thêm cổng quyền ở đây sẽ chặn nhầm.
+    expect(route!.guards).toEqual(["ProtectedRoute"]);
+    expect(app).toMatch(/BusinessPerformanceReportPage\s*=\s*lazy\(/);
   });
 
-  it("keeps the legacy profit route independent from business performance organization access", () => {
-    expect(app).not.toContain("ProfitDistributionRouteGuard");
-    expect(app).toContain(
-      '<Route path="/reports/finance/profit-distribution" element={<ProtectedRoute><ProfitHubPage /></ProtectedRoute>} />',
+  it("keeps the legacy profit route independent from business performance organization access", async () => {
+    const { collectRoutes } = await import("../../../scripts/check-route-guards.mjs");
+    const routes = collectRoutes(app);
+    const route = routes.find(
+      (r: { path: string }) => r.path === "/reports/finance/profit-distribution",
     );
+
+    expect(route, "route profit-distribution phải tồn tại").toBeDefined();
+    expect(route!.guards).toEqual(["ProtectedRoute"]);
+    // ProfitDistributionRouteGuard từng tồn tại và đã bị gỡ; nó gắn quyền xem lợi
+    // nhuận vào trạng thái TỔ CHỨC, làm route cũ phụ thuộc thứ nó không nên biết.
+    expect(app).not.toContain("ProfitDistributionRouteGuard");
   });
 
   it("does not embed business performance into the profit hub", () => {

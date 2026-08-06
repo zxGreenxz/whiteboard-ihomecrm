@@ -7,17 +7,32 @@ const readSource = (relativePath: string) =>
   readFileSync(relativePath, "utf8").replace(/\r\n/gu, "\n");
 
 describe("OpenClaw Zalo navigation contract", () => {
-  it("lazy-loads an exact, independently guarded route", () => {
-    const app = readSource("src/App.tsx");
+  // Khẳng định về GUARD nay đọc CẤU TRÚC (AST) chứ không so regex trên văn bản
+  // nguồn. Bản cũ dùng `toMatch(/<Route\s+path="\/openclaw-zalo"[\s\S]*?…/)` —
+  // nó vỡ ngay khi ai đó xuống dòng khác đi, và nó là một trong ba test đang
+  // chặn việc tách App.tsx. Cùng một điều được kiểm, nhưng nay kiểm đúng thứ
+  // mình quan tâm: route này được bọc bởi guard nào.
+  it("route /openclaw-zalo dùng guard RIÊNG, không dùng RequirePermission", async () => {
+    const { collectRoutes } = await import("../../../scripts/check-route-guards.mjs");
+    const routes = collectRoutes(readSource("src/App.tsx"));
+    const route = routes.find((r: { path: string }) => r.path === "/openclaw-zalo");
 
-    expect(app).toContain(
-      'const OpenClawZaloPage = lazy(() => import("./pages/openclaw-zalo/OpenClawZaloPage"));',
-    );
-    expect(app).toContain(
-      'const OpenClawRouteGuard = lazy(() => import("./components/openclaw-zalo/OpenClawRouteGuard"));',
-    );
-    expect(app).toMatch(/<Route\s+path="\/openclaw-zalo"[\s\S]*?<OpenClawRouteGuard>[\s\S]*?<OpenClawZaloPage\s*\/>[\s\S]*?<\/OpenClawRouteGuard>/);
-    expect(app).not.toMatch(/path="\/openclaw-zalo"[\s\S]{0,240}RequirePermission/);
+    expect(route, "route /openclaw-zalo phải tồn tại").toBeDefined();
+    expect(route!.guards).toContain("OpenClawRouteGuard");
+    // Điểm cốt lõi: OpenClaw tự quyết quyền theo runtime flag + trạng thái kết
+    // nối, nên KHÔNG được đi qua RequirePermission — nếu không, người có quyền
+    // module sẽ vào được cả khi runtime tắt.
+    expect(route!.guards).not.toContain("RequirePermission");
+  });
+
+  it("nạp lazy để không kéo OpenClaw vào bundle chính", () => {
+    const app = readSource("src/App.tsx");
+    // Chỉ kiểm phần KHÔNG phụ thuộc định dạng: định danh được gán bằng lazy(...)
+    // trỏ đúng module. Không khoá dấu cách hay xuống dòng.
+    expect(app).toMatch(/OpenClawZaloPage\s*=\s*lazy\(/);
+    expect(app).toMatch(/pages\/openclaw-zalo\/OpenClawZaloPage/);
+    expect(app).toMatch(/OpenClawRouteGuard\s*=\s*lazy\(/);
+    expect(app).toMatch(/components\/openclaw-zalo\/OpenClawRouteGuard/);
   });
 
   it("publishes no launcher tile while the runtime flag is off", async () => {
