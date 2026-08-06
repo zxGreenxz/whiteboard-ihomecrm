@@ -132,6 +132,12 @@ jobs:
 
       # Keep root discovery inside root-owned suites. Node-only packages run in
       # openclaw-package-gates, so Bridge node:sqlite tests are never collected here.
+      # scripts/__tests__/network-center-*.test.mjs dùng API `node:test`, KHÔNG
+      # phải Vitest. Chúng do `node --test` chạy trong workflow network-center.
+      # Để Vitest quét thì cả 22 file fail với "No test suite found in file" —
+      # đo được 06/08/2026. Job này khi đó đỏ vì lý do chẳng liên quan gì tới
+      # chất lượng code, và một CI đỏ thường trực là thứ khiến người ta ngừng
+      # đọc kết quả CI.
       - name: Vitest (root-owned app and script suites)
         run: >
           npx vitest run src scripts/__tests__
@@ -139,6 +145,7 @@ jobs:
           --exclude 'infra/**'
           --exclude '.tmp-openclaw-host/**'
           --exclude '.e2e-fleet/**'
+          --exclude 'scripts/__tests__/network-center-*.test.mjs'
           --exclude 'src/lib/__tests__/openclawZaloMigrations.test.ts'
           --exclude 'scripts/__tests__/openclaw-sql-harness.test.mjs'
           --exclude 'scripts/__tests__/openclaw-concurrency-harness.test.mjs'

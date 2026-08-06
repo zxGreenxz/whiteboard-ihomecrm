@@ -64,18 +64,6 @@ gaps:
       rồi mới rút ba file thành adapter mỏng.
 
 
-  - id: node-test-files-swept-by-vitest
-    where: scripts/__tests__/network-center-*.test.mjs (23 file) vs bước Vitest ở quality-gates
-    expires_at: 2026-09-30
-    why: >
-      ĐÃ XÁC MINH 06/08/2026: chạy đúng lệnh của CI (vitest run src scripts/__tests__ với
-      danh sách --exclude hiện tại) thì 22 file network-center-*.test.mjs FAIL với
-      "No test suite found in file" — vitest không hiểu API 'node:test'. Chúng được
-      node --test chạy ở workflow network-center, nhưng KHÔNG nằm trong --exclude của
-      bước Vitest, nên job quality-gates đang đếm chúng là file đỏ.
-    exit_condition: >
-      Đọc log job quality-gates của một lần chạy gần đây. Nếu vitest báo 0 test cho các file
-      này thì thêm chúng vào --exclude, để job không nhận công của node --test.
 
   - id: baseline-not-verified-on-supabase
     where: supabase/baseline/ (manifest.json + schema.sql)
@@ -88,3 +76,12 @@ gaps:
     exit_condition: >
       Tạo một Supabase project tạm, restore baseline vào đó, xác nhận số bảng/hàm/policy khớp
       production, rồi đổi manifest.status thành verified.
+
+  - id: buildingfilterselect-test-failing
+    where: src/components/buildings/__tests__/BuildingFilterSelect.test.tsx
+    expires_at: 2026-09-30
+    why: >
+      2 test đỏ SẴN từ trước đợt rà soát (xác minh bằng cách stash mọi thay đổi rồi chạy
+      lại — vẫn đỏ y hệt). Không nằm trong phạm vi các đợt đang làm nên chưa xử, nhưng
+      nó khiến job quality-gates không bao giờ xanh hoàn toàn.
+    exit_condition: Sửa hoặc gỡ 2 test đó; vitest chạy file này xanh.
