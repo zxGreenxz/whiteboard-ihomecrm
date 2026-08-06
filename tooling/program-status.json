@@ -5,6 +5,10 @@
   "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
   "done": [
     {
+      "item": "✅ ĐÃ FLIP Vercel Production Branch: main -> production (06/08/2026)",
+      "evidence": "Project ihomecrm (domain chillhome.io.vn + ptcrm.vercel.app), team zxgreenxzs-projects. Xác minh SAU RELOAD: \"Every commit pushed to the production branch will create a Production Deployment\". Đã fast-forward origin/production lên ac4c8a59 (ngang main) TRƯỚC khi flip để production không trỏ code cũ. Từ đây push main chỉ tạo Preview."
+    },
+    {
       "item": "Đợt 2: tooling/test-matrix.json + checker chống test mồ côi",
       "evidence": "431 file test / 8 suite / 0 mồ côi. Runner gán theo GLOB không theo thư mục (supabase/functions có 15 file .test.ts nhưng chỉ 2 chạy Deno). Gate bắt được file mồ côi bằng đột biến. Phát hiện phụ: 23 file scripts/__tests__/network-center-*.test.mjs dùng node:test nhưng KHÔNG nằm trong --exclude của bước Vitest — hành vi khác nhau giữa chạy đơn lẻ (FAIL No test suite found) và chạy cả thư mục; CHƯA xác minh trên CI thật nên ghi vào known-gaps thay vì kết luận"
     },
@@ -99,37 +103,25 @@
     {
       "item": "Phẫu thuật tối thiểu agent rules",
       "evidence": "CLAUDE.md bỏ 'push main = xong' + sửa số 74; AGENTS.md bỏ lệnh redirect gen:types (footgun phá types.ts)"
+    },
+    {
+      "item": "gitleaks quét toàn history (đã làm từ vòng đầu, nay chốt lại)",
+      "evidence": "1665 commit / 62 MB. Không secret nào cần rotate: 6 JWT tìm được đều là anon key publishable hoặc token crawler đã hết hạn 26/02; 1494 finding còn lại là hash sha256 64-hex và ID trong tài liệu crawl đã xoá."
     }
   ],
   "blockers": [
     {
-      "id": "vercel-production-branch",
-      "severity": "P0",
-      "what": "Vercel vẫn deploy production từ main => push main = deploy production. Đây là kiểm soát cứng duy nhất khả thi ở GitHub Free (private repo không enforce được branch protection).",
-      "needs": "CÒN ĐÚNG MỘT THAO TÁC: Vercel dashboard -> Settings -> Git -> Production Branch = 'production' -> Save. Nhánh origin/production ĐÃ được tạo sẵn (tại bb0bc3ba). Sau khi đổi: rà scope env var (production vs preview) và xác nhận 2 cron /api/salary-v5-cron chỉ chạy trên production; rồi diễn tập rollback một lần (promote lại deployment trước).",
-      "warning": "Nếu main đã đi xa hơn bb0bc3ba trước khi bạn flip, hãy fast-forward production về SHA đang chạy production thật: git push origin origin/main:production",
-      "verify": "node scripts/check-external-controls.mjs (cấp VERCEL_TOKEN để xác minh được phía Vercel)",
-      "whoCanDo": "chủ dự án"
-    },
-    {
       "id": "pitr-off",
       "severity": "P0",
       "what": "PITR tắt, chỉ có backup daily => RPO tối đa ~24h. Không được bắt đầu Đợt 1b/3 (provenance/baseline/forward lane) khi chưa xử.",
-      "needs": "Bật PITR (trả phí) HOẶC quy định bắt buộc kéo dump thủ công ngay trước mỗi thao tác schema; chọn nơi lưu dump ngoài repo.",
+      "needs": "Org zxjhorrjzrtqawxyygha đang ở plan PRO nên bật được PITR, nhưng đây là ADD-ON TÍNH PHÍ RIÊNG (theo bảng giá Supabase: 7 ngày ~100 USD/tháng). Cần chủ dự án quyết chi phí. Phương án miễn phí thay thế: bắt buộc kéo dump bằng pg_dump ngay trước mỗi thao tác schema.",
       "whoCanDo": "chủ dự án"
-    },
-    {
-      "id": "gitleaks-history-scan",
-      "severity": "P1",
-      "what": "Chưa quét secret trong toàn bộ git history (giờ đã có .git nên chạy được).",
-      "needs": "Tải gitleaks portable rồi quét; rotate thứ bị lộ nếu có.",
-      "whoCanDo": "agent"
     }
   ],
   "next": [
-    "Đợt 1a (còn lại): 3 trang docs tối thiểu — migration truth, Network Center, OpenClaw (docs/he-thong/22,23 + manifest entry)",
-    "Đợt 2 (còn lại): nối các gate mới vào CI (gate:copilot-docs, catalog:check, types:check) và gộp thành 3 job; scripts/check-agent-contract.mjs; scripts/check-external-controls.mjs",
-    "Đợt 0b (còn lại): chạy Contract qua vài session rồi mới rút CLAUDE.md/AGENTS.md/AI_RULES.md thành adapter"
+    "Chờ quyết định PITR (add-on trả phí trên plan Pro) — đang chặn Đợt 1b provenance và Đợt 3 baseline",
+    "Đợt 4 lát 3: cho consumer sinh từ capability registry (hiện registry mới là nguồn ĐỐI CHIẾU)",
+    "Xác minh vụ node:test bị vitest quét: cần đọc log job quality-gates trên GitHub Actions"
   ],
   "knownDirtyFiles": [
     {

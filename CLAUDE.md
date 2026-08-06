@@ -117,11 +117,14 @@ File này áp dụng cho mọi session Claude Code làm việc trên repo này.
                     gate đỏ bất kỳ →  DỪNG; production giữ nguyên SHA cũ
    ```
 
-   ⚠ **Trạng thái hiện tại: Vercel vẫn đang deploy từ `main`** — việc đổi
-   Production Branch sang `production` chưa làm (cần thao tác trên dashboard
-   Vercel, xem `tooling/program-status.json`). Cho tới khi đổi xong,
-   **push `main` = deploy production**, nên áp luật chặt hơn cho mọi thay đổi
-   CHẠM RUNTIME (`src/`, `api/`, `vite.config.ts`, `package.json` dependencies):
+   ✅ **Đã flip 06/08/2026.** Project Vercel `ihomecrm` (domain `chillhome.io.vn`
+   + `ptcrm.vercel.app`) có Branch Tracking = **`production`**. Push `main` giờ
+   **chỉ tạo Preview**. Promote bằng `git push origin origin/main:production`
+   SAU KHI gate xanh; rollback bằng cách promote lại deployment trước.
+
+   Vẫn giữ bốn bước dưới đây cho thay đổi CHẠM RUNTIME (`src/`, `api/`,
+   `vite.config.ts`, `package.json` dependencies) — rẻ, và bắt được lỗi mà
+   preview không bắt:
 
    1. đủ gate theo loại thay đổi (typecheck + test liên quan + build);
    2. với logic có nhánh điều kiện: **kiểm bằng đột biến** — cố tình phá rồi

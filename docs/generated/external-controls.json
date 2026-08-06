@@ -1,6 +1,6 @@
 {
   "$comment": "SINH BỞI scripts/check-external-controls.mjs. \"unverified\" KHÔNG phải pass — control có thể bị tắt về sau, nên bằng chứng phải chạy lại được, không phải ảnh chụp một lần.",
-  "checkedAt": "2026-08-05T17:59:55.809Z",
+  "checkedAt": "2026-08-06T00:36:37.266Z",
   "repo": "zxGreenxz/whiteboard-ihomecrm",
   "controls": {
     "githubBranchProtection": {
@@ -17,7 +17,7 @@
     }
   },
   "localHead": {
-    "head": "bb0bc3ba488595a4ffe9cabe7520b3a6258ec8d0",
+    "head": "ac4c8a59f4449506b6788b0a7f5a98129b09e4a0",
     "branch": "main",
     "hasProductionBranch": true
   }

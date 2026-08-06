@@ -104,11 +104,13 @@ File này áp dụng cho mọi session Codex làm việc trên repo này.
                                                   →  đỏ bất kỳ →  DỪNG, production giữ SHA cũ
    ```
 
-   - Chưa hoàn tất việc đổi Vercel production branch thì **coi như `main` vẫn là
-     production**. Thay đổi chạm runtime (`src/`, `api/`, `vite.config.ts`, deps)
-     vẫn được push, nhưng phải: đủ gate (typecheck + test + build) → kiểm bằng
-     **đột biến** với logic có nhánh → **kiểm bundle sau build** (test xanh không
-     chứng minh asset nạp đúng trên production). Xem `PROJECT_CONTRACT.md` §3.
+   - ✅ Đã flip 06/08/2026: Vercel theo dõi nhánh `production`, nên push `main`
+     chỉ tạo Preview. Promote bằng `git push origin origin/main:production` sau
+     khi gate xanh; rollback bằng promote lại deployment trước.
+   - Thay đổi chạm runtime (`src/`, `api/`, `vite.config.ts`, deps) vẫn phải: đủ
+     gate (typecheck + test + build) → kiểm bằng **đột biến** với logic có nhánh
+     → **kiểm bundle sau build** (test xanh không chứng minh asset nạp đúng trên
+     production). Xem `PROJECT_CONTRACT.md` §3.
    - Không bao giờ tính gate `continue-on-error` là xanh khi quyết định promote.
    - **Write database production** (Management API / apply migration) luôn cần
      promotion token nhập tại chỗ, KHÔNG lấy PAT sẵn trong `CLAUDE.local.md`.

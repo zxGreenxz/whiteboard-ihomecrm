@@ -120,8 +120,8 @@ push main → Vercel preview → gate suite → xanh hết → promote nhánh `p
 Rollback là promote lại deployment trước. Ghi database production cần promotion token nhập tại chỗ,
 không dùng PAT sẵn trong vault.
 
-> Trạng thái: nhánh `production` đã tạo, nhưng Vercel **chưa** được đổi Production Branch — cho tới khi
-> đổi, `push main` vẫn là phát hành. Kiểm bằng `npm run check:external-controls`.
+> ✅ Đã áp dụng 06/08/2026: Vercel project `ihomecrm` theo dõi nhánh `production`. Push `main` chỉ tạo
+> Preview. Promote: `git push origin origin/main:production`. Kiểm: `npm run check:external-controls`.
 
 ## Bảo mật
 

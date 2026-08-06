@@ -50,17 +50,6 @@ gaps:
       schema và ghi vào evidence. Đợt 1b/3 không được bắt đầu trước khi một trong hai
       điều đó xong.
 
-  - id: vercel-production-branch-not-flipped
-    where: Vercel project (Settings → Git → Production Branch)
-    expires_at: 2026-09-15
-    why: >
-      Vercel vẫn deploy production từ `main`, nên mọi push vào main là một lần phát hành.
-      Ở tier GitHub Free với repo private, branch protection không enforce được, nên ranh
-      giới deploy của Vercel là kiểm soát cứng DUY NHẤT khả thi.
-    exit_condition: >
-      Đổi Production Branch sang `production` (nhánh đã tạo sẵn), rồi
-      `npm run check:external-controls` báo vercelProductionBranch = checked.
-
   - id: agent-rules-not-yet-thinned
     where: CLAUDE.md, AGENTS.md, AI_RULES.md
     expires_at: 2026-10-15

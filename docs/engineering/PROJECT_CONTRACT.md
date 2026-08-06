@@ -68,12 +68,15 @@ không phải người:
 - Gate `continue-on-error` **không bao giờ** được tính là xanh khi quyết định promote.
 - Không bao giờ để `push main` trực tiếp thành production deploy.
 
-> ⚠ **Trạng thái: việc đổi Vercel Production Branch CHƯA làm** (cần thao tác dashboard —
-> xem `tooling/program-status.json`). Cho tới khi xong, `main` **vẫn là** production.
+> ✅ **Đã flip 2026-08-06.** Vercel project `ihomecrm` (domain `chillhome.io.vn` + `ptcrm.vercel.app`)
+> có Branch Tracking = **`production`**. Từ đây **push `main` chỉ tạo Preview**; production chỉ đổi khi
+> có commit lên nhánh `production`.
 >
-> Trong giai đoạn này, thay đổi **chạm runtime** (`src/`, `api/`, `vite.config.ts`, dependencies)
-> vẫn được push — cấm push đồng nghĩa với đứng yên vì gần như mọi việc đều là code — nhưng phải qua
-> bốn bước:
+> Promote: `git push origin origin/main:production` **sau khi** gate xanh.
+> Rollback: promote lại deployment trước trên Vercel, hoặc đẩy `production` về SHA cũ.
+>
+> Vẫn giữ bốn bước dưới đây cho thay đổi **chạm runtime** (`src/`, `api/`, `vite.config.ts`,
+> dependencies) — chúng rẻ và bắt được lỗi mà preview không bắt:
 >
 > 1. đủ gate theo loại thay đổi (typecheck + test liên quan + `npm run build`);
 > 2. logic có nhánh điều kiện: **kiểm bằng đột biến** — cố tình phá, xác nhận đúng test đỏ, hoàn nguyên.
