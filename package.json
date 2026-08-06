@@ -28,6 +28,7 @@
     "gate:test-matrix": "node scripts/check-test-matrix.mjs",
     "gate:migration-provenance": "node scripts/check-migration-provenance.mjs",
     "provenance:generate": "node scripts/generate-migration-provenance.mjs --write",
+    "migrate:forward": "node scripts/apply-reviewed-migration.mjs",
     "catalog:capture": "node scripts/capture-production-catalog.mjs --write",
     "catalog:check": "node scripts/capture-production-catalog.mjs --check",
     "backup:before-schema": "node scripts/backup-before-schema.mjs",

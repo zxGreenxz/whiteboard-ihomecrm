@@ -5,6 +5,10 @@
   "waveTitle": "Production baseline — đã sạch partition, đã diễn tập restore",
   "done": [
     {
+      "item": "Đợt 3: forward-only lane — scripts/apply-reviewed-migration.mjs",
+      "evidence": "Kế thừa nguyên tắc của apply-accounting-rollout.mjs (advisory lock + lock_timeout + statement_timeout + digest + dry-run) thay vì dựng runner generic. BỐN lớp chặn, đã kiểm từng cái bằng đột biến: file trước cutoff bị từ chối; file thiếu entry provenance bị từ chối; sha256 lệch manifest bị từ chối; --apply thiếu IHOMECRM_PROMOTION_TOKEN bị từ chối. Dry-run chạy thật trên production và ROLLBACK — xác nhận không ghi gì."
+    },
+    {
       "item": "Đợt 3: production schema baseline + restore drill",
       "evidence": "Baseline 316 bảng public (+65 app_private, +51 demo_snapshot, +7 clone_org), 1197 hàm, 1193 policy. Loại sạch partition runtime: 0 rò rỉ (trước đó sót 168 chỗ do PostgreSQL cắt tên index ở 63 ký tự với độ sâu KHÁC NHAU tuỳ hậu tố — sửa bằng cách bắt theo Type=INDEX ATTACH thay vì đếm chữ số). Restore drill trên PG 17.10 trần: 303 bảng, 948 hàm, 803 policy, 817 lỗi ĐỀU do thiếu schema auth/extensions và role Supabase. Chưa verified vì chưa restore trên Supabase project thật."
     },
@@ -123,9 +127,9 @@
   ],
   "blockers": [],
   "next": [
-    "Restore baseline vào một Supabase project tạm để lên verified",
-    "Forward-only lane: apply-reviewed-migration.mjs hợp nhất apply-sql.mjs + apply-accounting-rollout.mjs",
-    "Đợt 4 lát 3: consumer sinh từ capability registry"
+    "Restore baseline vào Supabase project tạm để lên verified (cần quyết định của chủ dự án về quota)",
+    "Đợt 4 lát 3: consumer sinh từ capability registry",
+    "Đợt 5: typed RPC wrapper cho tier tiền"
   ],
   "knownDirtyFiles": [
     {
