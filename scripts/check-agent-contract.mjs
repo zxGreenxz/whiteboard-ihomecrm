@@ -31,17 +31,31 @@ const AGENT_FILES = ['CLAUDE.md', 'AGENTS.md', 'AI_RULES.md'];
 const FORBIDDEN = [
   {
     id: 'gen-types-redirect',
-    re: /gen:types\s*>/,
+    // Cờ có thể nằm GIỮA lệnh và dấu redirect (`gen:types --silent > file`), và
+    // redirect có thể ghi số fd (`1>`). Bản đầu dùng /gen:types\s*>/ nên cả hai
+    // cách viết đi thẳng qua — cùng lớp lỗi "chỉ phủ một biến thể". Bắt cả dạng
+    // CLI thô (`supabase gen types typescript … > types.ts`) vì hậu quả y hệt.
+    // `>>` (append) KHÔNG cắt file nên cố ý loại trừ.
+    // `(?<!>)` là BẮT BUỘC, không thừa: chỉ có `(?!>)` thì backtracking vô hiệu
+    // hoá nó — engine lùi lại, nuốt dấu `>` thứ nhất vào phần lazy `[^\n]{0,120}?`
+    // rồi khớp dấu thứ hai, nên `>>` (append, KHÔNG cắt file) vẫn bị báo nhầm.
+    // Test "append `>>` không bị cấm" bắt được đúng chỗ này.
+    re: /(gen:types|gen\s+types\s+typescript)[^\n]{0,120}?(?<!>)[012]?>(?!>)/,
     why: 'Redirect cắt trắng types.ts TRƯỚC khi generator chạy. Dùng `npm run gen:types` (script tự ghi atomic + tự chèn header).',
   },
   {
     id: 'push-equals-done',
-    re: /chua push\s*=\s*(viec\s*)?chua xong/i,
+    // `[^\n]{0,24}` cho phép chữ chen giữa ("chưa push LÊN MAIN = việc chưa xong").
+    re: /chua push[^\n]{0,24}=\s*(viec\s*)?chua xong/i,
     why: '`main` không phải production. Phát hành là bước promote riêng sau khi gate xanh (PROJECT_CONTRACT §3).',
   },
   {
     id: 'git-add-all',
-    re: /^\s*[-*]?\s*(dung|use|chay|run)?\s*`?git add (-A|\.)`?\s*$/im,
+    // KHÔNG neo `$`: "Stage nhanh bằng `git add -A` rồi commit." có chữ phía sau
+    // nên bản đầu trượt sạch. Thêm `--all`. Ranh giới cuối là ký tự KHÔNG PHẢI
+    // phần của đường dẫn, nên `git add ./src/x.ts` (stage file cụ thể) không bị
+    // báo nhầm, còn `git add .` thì bị.
+    re: /git add\s+(-A|--all|\.)(?![\w/\\.-])/i,
     why: 'Cây làm việc repo này thường có file dở dang từ phiên khác; phải stage tên file cụ thể.',
   },
 ];
@@ -49,26 +63,80 @@ const FORBIDDEN = [
 const deaccent = (s) =>
   s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
 
-export function findForbidden(text, file) {
-  const haystack = deaccent(stripQuotedWarnings(text));
-  return FORBIDDEN
-    .filter(({ re }) => re.test(haystack))
-    .map(({ id, why }) => ({ file, id, why }));
-}
+/**
+ * Từ báo hiệu dòng đang CẢNH BÁO về chỉ dẫn xấu chứ không ra lệnh làm nó.
+ * So trên bản đã bỏ dấu nên "KHÔNG" và "khong" cùng khớp.
+ */
+const CANH_BAO = /(khong|dung(?=\s)|cam\b|tuyet doi|gotcha|footgun|pha file|thay bang|sai|loi|⚠|❌)/i;
 
 /**
- * Bỏ các dòng ĐANG CẢNH BÁO về chỉ dẫn xấu trước khi soi.
+ * Một dòng chỉ được coi là CẢNH BÁO khi từ phủ định đứng TRƯỚC chỗ vi phạm.
  *
- * Nếu không làm vậy thì chính câu "ĐỪNG chạy gen:types > file" sẽ kích gate —
- * đúng lỗi mà guard `db push` cũ mắc phải: nó cấm luôn việc viết ra rằng điều
- * đó bị cấm. Dấu hiệu nhận biết: dòng có từ phủ định hoặc nằm trong blockquote
- * cảnh báo.
+ * Bản đầu vứt bỏ NGUYÊN DÒNG bất kỳ dòng nào chứa các từ đó, với cờ /i. Tiếng
+ * Việt dùng chữ "không" liên tục, nên chỉ cần một chữ "không" ở BẤT KỲ đâu trên
+ * dòng là cả dòng tàng hình. Đo 07/08/2026:
+ *
+ *   Chạy `npm run gen:types > …/types.ts`                        ⇒ ĐỎ (đúng)
+ *   Chạy `npm run gen:types > …/types.ts` (không cần cờ gì thêm)  ⇒ XANH
+ *
+ * Cùng một lệnh phá file, chỉ khác cái đuôi câu vô hại. Xét VỊ TRÍ thì câu cảnh
+ * báo thật ("ĐỪNG chạy gen:types > file") vẫn được tha, còn câu ra lệnh kèm chữ
+ * "không" ở cuối thì không thoát.
  */
-function stripQuotedWarnings(text) {
-  return text
-    .split(/\r?\n/)
-    .filter((line) => !/(KHÔNG|ĐỪNG|không được|GOTCHA|phá file|cấm|thay bằng|footgun|>\s*⚠)/i.test(line))
-    .join('\n');
+/**
+ * Ngoại lệ KHAI TƯỜNG MINH, ghim vào nguyên văn dòng.
+ *
+ * Hai dòng này là văn KỂ LẠI sự cố, không phải chỉ dẫn: chúng nêu đúng cái lệnh
+ * đã phá file để giải thích vì sao nó bị cấm. Từ cảnh báo nằm ở vế sau câu nên
+ * phép xét-vị-trí không tha được, và nới cửa sổ ra các dòng lân cận thì lại che
+ * mất chính ca nguy hiểm (lệnh ra lệnh kèm chữ "không" ở cuối câu) — đánh đổi
+ * sai chiều, vì ở đây BỎ LỌT đắt hơn BÁO THỪA rất nhiều.
+ *
+ * Ghim theo nguyên văn: sửa câu thì ngoại lệ hết hiệu lực và phải xét lại. Cùng
+ * nguyên tắc với PUBLIC_ROUTES — ngoại lệ được KHAI thì đọc được và cãi được.
+ */
+const MIEN_TRU = new Map([
+  [
+    'CLAUDE.md::chay `npm run gen:types` kem dau redirect `>` do vao `types.ts` — cach viet ma shell cat trang file',
+    'Văn kể lại chính sự cố AGENTS.md dạy sai suốt nhiều tháng.',
+  ],
+  [
+    'AGENTS.md::- No day chay `npm run gen:types` kem dau redirect `>` do vao `types.ts` — suot nhieu thang. Shell',
+    'Văn kể lại chính sự cố đó, ở phía AGENTS.md.',
+  ],
+]);
+
+/**
+ * Mục có tiêu đề mang nghĩa phủ định là một KHỐI cảnh báo.
+ *
+ * `PROJECT_CONTRACT.md §11 "Những gì agent KHÔNG được tự làm"` liệt kê 5 điều
+ * cấm, mỗi điều một dòng — và các dòng đó KHÔNG tự chứa từ phủ định vì phủ định
+ * đã nằm ở tiêu đề. Xét theo dòng thì cả mục biến thành 5 vi phạm.
+ */
+function tieuDePhuDinh(cacDong, chiSo) {
+  for (let i = chiSo; i >= 0; i -= 1) {
+    const m = /^#{1,6}\s+(.*)$/.exec(cacDong[i]);
+    if (m) return CANH_BAO.test(deaccent(m[1]));
+  }
+  return false;
+}
+
+export function findForbidden(text, file) {
+  const ra = [];
+  const cacDong = text.split(/\r?\n/);
+  for (const { id, re, why } of FORBIDDEN) {
+    for (let i = 0; i < cacDong.length; i += 1) {
+      const dong = deaccent(cacDong[i]);
+      const m = re.exec(dong);
+      if (!m) continue;
+      if (CANH_BAO.test(dong.slice(0, m.index))) continue; // "ĐỪNG chạy X"
+      if (tieuDePhuDinh(cacDong, i)) continue; // nằm trong mục "KHÔNG được…"
+      if (MIEN_TRU.has(`${file}::${dong.trim()}`)) continue;
+      ra.push({ file, id, why, dong: cacDong[i].trim(), soDong: i + 1 });
+      break;
+    }
+  }
+  return ra;
 }
 
 function main() {
@@ -83,6 +151,13 @@ function main() {
     process.exitCode = 1;
     return;
   }
+
+  // Soi CẢ Contract. Bản đầu chỉ chạy FORBIDDEN trên AGENT_FILES, nên viết
+  // thẳng một chỉ dẫn đã cấm vào chính nguồn luật thì gate im — mà cả ba file
+  // rule đều trỏ về đó, tức đường lan rộng nhất lại là đường duy nhất không ai
+  // canh. Đo 07/08/2026: thêm "Chưa push = việc chưa xong." vào
+  // PROJECT_CONTRACT.md ⇒ gate vẫn xanh.
+  problems.push(...findForbidden(contract, CONTRACT));
 
   for (const file of AGENT_FILES) {
     const text = read(file);
