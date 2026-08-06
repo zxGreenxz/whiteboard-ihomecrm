@@ -31,7 +31,7 @@ export function useCloneOrgSyncStatus() {
     queryFn: async (): Promise<CloneOrgSyncStatus> => {
       // RPC mới chưa có trong types.ts sinh tự động — types đang có drift sẵn
       // (~92 quan hệ network_*) nên không regen kèm thay đổi này, xem CLAUDE.md.
-      const { data, error } = await (supabase.rpc as any)('clone_org_sync_status_v1');
+      const { data, error } = await supabase.rpc('clone_org_sync_status_v1');
       if (error) throw error;
       return (data ?? null) as CloneOrgSyncStatus;
     },
@@ -49,7 +49,7 @@ export function useCloneOrgSync() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const { data, error } = await (supabase.rpc as any)('clone_org_request_sync_v1');
+      const { data, error } = await supabase.rpc('clone_org_request_sync_v1');
       if (error) throw error;
       return data as { ok: boolean; request_id: number };
     },

@@ -16,7 +16,7 @@ export const useIsAdmin = () => {
   return useQuery({
     queryKey: ["auth", "is_admin"],
     queryFn: async (): Promise<boolean> => {
-      const { data, error } = await (supabase as any).rpc("is_admin");
+      const { data, error } = await supabase.rpc("is_admin");
       if (error) {
         console.error("useIsAdmin error:", error);
         return false;
@@ -41,7 +41,7 @@ export const useIsSuperAdmin = () => {
   return useQuery({
     queryKey: ["auth", "is_super_admin"],
     queryFn: async (): Promise<boolean> => {
-      const { data, error } = await (supabase as any).rpc("is_super_admin");
+      const { data, error } = await supabase.rpc("is_super_admin");
       if (error) {
         console.error("useIsSuperAdmin error:", error);
         return false;

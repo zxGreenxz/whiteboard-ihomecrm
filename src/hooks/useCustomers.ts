@@ -242,7 +242,7 @@ export const useCustomerStats = (filters?: CustomerFilters) => {
       // resolveCustomerIdsByLocation mà useCustomers vừa chạy (1 query contracts
       // + N query contract_customers), rồi thêm 4 count = burst request; giờ
       // toàn bộ gói trong 1 câu SQL, SECURITY INVOKER giữ RLS như cũ.
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "get_customer_stats",
         {
           p_status: filters?.status ?? null,

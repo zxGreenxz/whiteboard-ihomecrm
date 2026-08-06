@@ -249,7 +249,7 @@ export const useBulkRecordPayment = () => {
           }
 
           const result = await recordInvoiceCollectionV5(
-            (fn, args) => (supabase.rpc as any)(fn, args),
+            (fn, args) => supabase.rpc(fn, args),
             attempt.request,
             attempt.idempotencyKey,
           );

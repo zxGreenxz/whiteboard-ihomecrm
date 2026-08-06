@@ -56,7 +56,7 @@ export async function awardAndNotifyJobBonus(jobId: string): Promise<AwardedBonu
   let rows: AwardedBonus[] = [];
   try {
     // award_job_bonus chưa có trong Database types (regen sau) → cast như pattern push.ts
-    const { data, error } = await (supabase.rpc as any)('award_job_bonus', {
+    const { data, error } = await supabase.rpc('award_job_bonus', {
       p_job_id: jobId,
     });
     if (error) {

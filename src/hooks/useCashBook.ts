@@ -37,7 +37,7 @@ export const useCashBookSummary = (
 
       // Trong kỳ: RPC SQL aggregate (miễn nhiễm cap-1000) — thay client-reduce
       // trên select không phân trang (hụt tổng khi vượt 1000 phiếu/kỳ).
-      const { data: periodTotals, error: ptErr } = await (supabase.rpc as any)(
+      const { data: periodTotals, error: ptErr } = await supabase.rpc(
         "cashbook_period_totals",
         {
           p_start: start_date ?? null,
@@ -64,7 +64,7 @@ export const useCashBookSummary = (
       // danh một sổ không được phép.
       let openingBalance = 0;
       if (start_date) {
-        const { data: ob, error: obErr } = await (supabase.rpc as any)(
+        const { data: ob, error: obErr } = await supabase.rpc(
           "cashbook_opening_balance",
           {
             p_before_date: start_date,
@@ -105,7 +105,7 @@ export const useCashFlowByDay = (
 
       // RPC SQL aggregate theo ngày (miễn nhiễm cap-1000): 1 dòng/ngày, đã group
       // + sort trong SQL → không kéo cả năm phiếu về client cộng tay.
-      const { data, error } = await (supabase.rpc as any)("cashflow_by_day", {
+      const { data, error } = await supabase.rpc("cashflow_by_day", {
         p_start: start_date,
         p_end: end_date,
         p_building_id: buildingId ?? null,

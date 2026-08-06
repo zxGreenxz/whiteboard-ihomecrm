@@ -115,7 +115,7 @@ export function useOverpaymentSummary(buildingIds?: string[]) {
   return useQuery({
     queryKey: ["reports", "overpayment", "summary", buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number }> => {
-      const { data, error } = await (supabase.rpc as any)("get_overpayment_summary", {
+      const { data, error } = await supabase.rpc("get_overpayment_summary", {
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
       });
       if (error) throw error;
@@ -175,7 +175,7 @@ export function useDepositsReportSummary(status?: string, buildingIds?: string[]
   return useQuery({
     queryKey: ["reports", "deposits", "summary", status ?? null, buildingIds ?? []],
     queryFn: async (): Promise<{ total: number; count: number; holdingTotal: number; inInvoiceTotal: number }> => {
-      const { data, error } = await (supabase.rpc as any)("get_deposits_report_summary", {
+      const { data, error } = await supabase.rpc("get_deposits_report_summary", {
         p_status: status && status !== "all" ? status : null,
         p_building_ids: buildingIds && buildingIds.length ? buildingIds : null,
       });

@@ -25,7 +25,7 @@ export const useMyPermissions = () => {
     queryKey: ['my-permissions'],
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await (supabase.rpc as any)('get_my_permissions');
+      const { data, error } = await supabase.rpc('get_my_permissions');
       if (error || !data) return {};
       if (typeof data === 'object' && !Array.isArray(data)) {
         return data as PermissionsMap;

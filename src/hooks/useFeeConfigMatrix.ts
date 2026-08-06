@@ -46,7 +46,7 @@ export const useFeeConfigMatrix = (buildingIds?: string[]) => {
   const query = useQuery({
     queryKey: ['fee-config-matrix', key],
     queryFn: async (): Promise<FeeConfigCell[]> => {
-      const { data, error } = await (supabase as any).rpc('get_fee_config_matrix_v1', {
+      const { data, error } = await supabase.rpc('get_fee_config_matrix_v1', {
         p_building_ids: key,
       });
       if (error) throw new Error(error.message);
@@ -114,7 +114,7 @@ export const useSaveFeeConfig = () => {
     mutationFn: async (a: SaveFeeConfigArgs) => {
       const clearAmount = a.defaultAmount === null;
       const clearProvider = a.providerCode === null;
-      const { data, error } = await (supabase as any).rpc('upsert_building_fee_account', {
+      const { data, error } = await supabase.rpc('upsert_building_fee_account', {
         p_building_id: a.buildingId,
         p_fee_category: a.feeCategory,
         p_provider_code: clearProvider ? null : (a.providerCode ?? null),

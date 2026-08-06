@@ -69,19 +69,19 @@ export function useProfitVerification(opts: {
 
       const [draftRes, allRes, kqkdRes, faRes, invRes] = await Promise.all([
         // Phiếu nháp trong kỳ (mọi phiếu UNAPPROVED → rơi vào pending của RPC).
-        (supabase.rpc as any)("get_income_expense_layer_stats", {
+        supabase.rpc("get_income_expense_layer_stats", {
           ...statsArgs,
           p_approval: "UNAPPROVED",
         }),
         // Tổng mọi khoản APPROVED (total_amount, tách lớp). Luôn tải để cảnh báo
         // phiếu đã duyệt nhưng chưa chọn sổ ở cả hai chế độ KQKD.
-        (supabase.rpc as any)("get_income_expense_layer_stats", {
+        supabase.rpc("get_income_expense_layer_stats", {
           ...statsArgs,
           p_approval: "APPROVED",
         }),
         // Tổng KQKD (kqkd_amount, mọi phiếu APPROVED bất kể lớp/sổ).
         pnlOnly
-          ? (supabase.rpc as any)("get_income_expense_layer_stats", {
+          ? supabase.rpc("get_income_expense_layer_stats", {
               ...statsArgs,
               p_approval: "APPROVED",
               p_kqkd_only: true,
@@ -90,14 +90,14 @@ export function useProfitVerification(opts: {
         // Engine chia cổ đông — chỉ đối chiếu được ở chế độ DỒN TÍCH + chỉ-KQKD
         // (fa_* luôn accrual + KQKD item-level).
         accrualMode && pnlOnly
-          ? (supabase.rpc as any)("fa_monthly_pnl_accrual", {
+          ? supabase.rpc("fa_monthly_pnl_accrual", {
               p_start_date: startDate,
               p_end_date: endDate,
               p_building_ids: bIds,
             })
           : Promise.resolve({ data: null, error: null }),
         // Đã thu của hoá đơn KỲ NÀY (billing_month) — mọi thời điểm thu.
-        (supabase.rpc as any)("get_invoice_statistics_v2", {
+        supabase.rpc("get_invoice_statistics_v2", {
           p_billing_month: ym,
           p_building_ids: bIds,
         }),

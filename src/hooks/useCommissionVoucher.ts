@@ -179,7 +179,7 @@ export const useCreateCommissionVoucher = () => {
       // resolve loại phí theo OWNER tòa (staff không cần có type seed riêng),
       // tạo voucher + item atomic, luôn UNAPPROVED (nháp — duyệt thủ công).
       // DB còn unique index uq_ie_commission_per_contract làm hàng rào cuối.
-      const { data, error } = await (supabase as any).rpc(
+      const { data, error } = await supabase.rpc(
         "create_commission_voucher",
         {
           p_contract_id: input.contract_id,

@@ -20,7 +20,7 @@ export async function tryPlaceRoomHold(roomId: string, amount: number): Promise<
   let blockedMessage: string | null = null;
   try {
     const day = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const { error } = await (supabase as any).rpc("create_reservation_deposit_v1", {
+    const { error } = await supabase.rpc("create_reservation_deposit_v1", {
       p_room_id: roomId,
       p_amount: Math.max(Math.round(amount), 1),
       p_idempotency_key: `dephold-${roomId}-${day}`,

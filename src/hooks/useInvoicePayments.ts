@@ -40,7 +40,7 @@ export const useRecordPaymentRPC = () => {
       const idempotencyKey = data.idempotency_key ?? `collect-${crypto.randomUUID()}`;
 
       return recordInvoiceCollectionV5(
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         collectionInput,
         idempotencyKey,
       );
@@ -101,7 +101,7 @@ export const useRecordRefundRPC = () => {
 
       if (data.amount <= 0) throw new Error('Số tiền hoàn trả phải > 0');
 
-      const { data: result, error } = await (supabase.rpc as any)(
+      const { data: result, error } = await supabase.rpc(
         'create_invoice_refund_obligation_v2',
         {
           p_invoice_id: data.invoice_id,

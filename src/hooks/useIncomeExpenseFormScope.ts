@@ -37,7 +37,7 @@ export const useIncomeExpenseFormBuildings = () =>
     queryKey: ["ie-form-buildings"],
     queryFn: async () => {
       // RPC chưa có trong types generated → cast any.
-      const { data, error } = await (supabase as any).rpc("ie_form_buildings");
+      const { data, error } = await supabase.rpc("ie_form_buildings");
       if (error) {
         console.error("ie_form_buildings error:", error);
         return [] as IeFormBuilding[];
@@ -64,7 +64,7 @@ export const useIncomeExpenseFormRooms = (
     queryKey: ["ie-form-rooms", bid ?? (opts?.allWhenEmpty ? "__all__" : null)],
     enabled: !!bid || !!opts?.allWhenEmpty,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("ie_form_rooms", {
+      const { data, error } = await supabase.rpc("ie_form_rooms", {
         _building_id: bid ?? null,
       });
       if (error) {

@@ -28,7 +28,7 @@ export default function AcceptInvitation() {
         return;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).rpc('accept_organization_invitation_v1', {
+      const { error } = await supabase.rpc('accept_organization_invitation_v1', {
         p_token: token,
       });
       if (huy) return;

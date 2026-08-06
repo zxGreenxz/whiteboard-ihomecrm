@@ -200,7 +200,7 @@ export const useCreatePayment = () => {
         };
         planInvoiceCollection(request);
         return recordInvoiceCollectionV5(
-          (fn, args) => (supabase.rpc as any)(fn, args),
+          (fn, args) => supabase.rpc(fn, args),
           request,
           data.idempotency_key ?? `collect-${crypto.randomUUID()}`,
         );

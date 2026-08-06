@@ -51,7 +51,7 @@ export const useVoucherSlotWarning = (a: Args) => {
     // mở form sau thấy phiếu vừa được đồng nghiệp tạo.
     staleTime: 15_000,
     queryFn: async (): Promise<VoucherSlotHit[]> => {
-      const { data, error } = await (supabase as any).rpc('get_voucher_slot_warning_v1', {
+      const { data, error } = await supabase.rpc('get_voucher_slot_warning_v1', {
         p_building_id: a.buildingId,
         p_type_ids: typeIds,
         p_start: a.start,

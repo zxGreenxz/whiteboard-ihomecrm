@@ -170,7 +170,7 @@ export const useCreateAccount = () => {
       // (20260730102000_money_tables_revoke_dml.sql) vì đó là đường cho phép
       // client tự xoá lock_date và sửa initial_amount — tức tự đổi số dư sổ
       // quỹ mà không sinh một phiếu hay posting nào.
-      const canonical = await (supabase.rpc as any)("create_cashbook_v1", {
+      const canonical = await supabase.rpc("create_cashbook_v1", {
         p_name: values.name,
         p_initial_amount: values.initial_amount,
         p_initial_date: values.initial_date,
@@ -201,7 +201,7 @@ export const useUpdateAccount = () => {
       // Canonical update_cashbook_metadata_v1 — RPC lo phần "chỉ đổi user_id /
       // is_default khi form thực sự gửi". Không còn fallback ghi thẳng bảng
       // (xem ghi chú ở useCreateAccount).
-      const canonical = await (supabase.rpc as any)("update_cashbook_metadata_v1", {
+      const canonical = await supabase.rpc("update_cashbook_metadata_v1", {
         p_cashbook_id: input.id,
         p_name: input.values.name,
         p_description: input.values.description ?? null,
@@ -229,7 +229,7 @@ export const useDeleteAccount = () => {
     mutationFn: async (id: string) => {
       // Canonical archive_cashbook_v1 (từ chối nếu còn phiếu). Không còn
       // fallback ghi thẳng bảng (xem ghi chú ở useCreateAccount).
-      const canonical = await (supabase.rpc as any)("archive_cashbook_v1", { p_cashbook_id: id });
+      const canonical = await supabase.rpc("archive_cashbook_v1", { p_cashbook_id: id });
       if (!canonical.error) return;
       toast.error(canonical.error.message || "Không thể xoá sổ quỹ");
       throw canonical.error;

@@ -330,7 +330,7 @@ function IeAutoApproveThresholdCard() {
   const { data: threshold, isLoading } = useQuery({
     queryKey: ['ie-auto-approve-threshold'],
     queryFn: async (): Promise<number | null> => {
-      const { data, error } = await (supabase as any).rpc('get_ie_auto_approve_threshold_v1');
+      const { data, error } = await supabase.rpc('get_ie_auto_approve_threshold_v1');
       if (error) throw new Error(error.message);
       return data === null || data === undefined ? null : Number(data);
     },
@@ -344,7 +344,7 @@ function IeAutoApproveThresholdCard() {
   const save = async (v: number | null) => {
     setSaving(true);
     try {
-      const { error } = await (supabase as any).rpc('set_ie_auto_approve_threshold_v1', {
+      const { error } = await supabase.rpc('set_ie_auto_approve_threshold_v1', {
         p_threshold: v,
       });
       if (error) throw new Error(error.message);

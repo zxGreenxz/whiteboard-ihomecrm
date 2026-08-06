@@ -39,7 +39,7 @@ export const usePendingApprovals = () => {
   return useQuery({
     queryKey: ["pending-approvals"],
     queryFn: async (): Promise<PendingApproval[]> => {
-      const { data, error } = await (supabase as any).rpc("list_my_pending_approvals_v1");
+      const { data, error } = await supabase.rpc("list_my_pending_approvals_v1");
       if (error) throw error;
 
       return ((data ?? []) as any[]).map((r) => ({
@@ -74,7 +74,7 @@ export const useDecideApproval = () => {
       decision: "APPROVE" | "REJECT";
       reason?: string | null;
     }) => {
-      const { data, error } = await (supabase as any).rpc("decide_financial_request_v2", {
+      const { data, error } = await supabase.rpc("decide_financial_request_v2", {
         p_request_id: input.requestId,
         p_decision: input.decision,
         p_reason: input.reason ?? null,
@@ -101,7 +101,7 @@ export const useWithdrawApproval = () => {
 
   return useMutation({
     mutationFn: async (input: { requestId: string; reason?: string | null }) => {
-      const { data, error } = await (supabase as any).rpc("withdraw_financial_request_v1", {
+      const { data, error } = await supabase.rpc("withdraw_financial_request_v1", {
         p_request_id: input.requestId,
         p_reason: input.reason ?? null,
       });

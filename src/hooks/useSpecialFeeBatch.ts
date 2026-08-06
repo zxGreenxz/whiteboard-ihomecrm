@@ -31,7 +31,7 @@ export const useSpecialFeePreview = (period: string, buildingIds?: string[], ena
     enabled: enabled && !!period,
     staleTime: 10_000,
     queryFn: async (): Promise<SpecialFeePreviewRow[]> => {
-      const { data, error } = await (supabase as any).rpc('preview_special_fees_v1', {
+      const { data, error } = await supabase.rpc('preview_special_fees_v1', {
         p_period: period,
         p_building_ids: key,
       });
@@ -76,7 +76,7 @@ export const useGenerateSpecialFees = () => {
     mutationFn: async (
       a: { period: string; buildingIds: string[]; accountId?: string | null },
     ): Promise<GenerateResult> => {
-      const { data, error } = await (supabase as any).rpc('generate_special_fees_v1', {
+      const { data, error } = await supabase.rpc('generate_special_fees_v1', {
         p_period: a.period,
         p_building_ids: a.buildingIds,
         // Khoá chống phát lại: gắn theo kỳ + tập toà + mốc phút, đủ để hai cú bấm

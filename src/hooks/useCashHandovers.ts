@@ -140,7 +140,7 @@ export const useCreateHandover = () => {
   const invalidate = useInvalidateHandover();
   return useMutation({
     mutationFn: async (args: { receiverId: string; voucherIds: string[]; note?: string }) => {
-      const { data, error } = await (supabase as any).rpc('create_cash_handover', {
+      const { data, error } = await supabase.rpc('create_cash_handover', {
         p_receiver_id: args.receiverId,
         p_voucher_ids: args.voucherIds,
         p_note: args.note ?? null,
@@ -163,7 +163,7 @@ export const useConfirmHandover = () => {
   const invalidate = useInvalidateHandover();
   return useMutation({
     mutationFn: async (args: { handoverId: string; toAccountId?: string | null }) => {
-      const { data, error } = await (supabase as any).rpc('confirm_cash_handover', {
+      const { data, error } = await supabase.rpc('confirm_cash_handover', {
         p_handover_id: args.handoverId,
         p_to_account_id: args.toAccountId ?? null,
       });
@@ -178,7 +178,7 @@ export const useRequestCancelHandover = () => {
   const invalidate = useInvalidateHandover();
   return useMutation({
     mutationFn: async (args: { handoverId: string; reason: string }) => {
-      const { data, error } = await (supabase as any).rpc('request_cancel_handover', {
+      const { data, error } = await supabase.rpc('request_cancel_handover', {
         p_handover_id: args.handoverId,
         p_reason: args.reason,
       });
@@ -193,7 +193,7 @@ export const useConfirmCancelHandover = () => {
   const invalidate = useInvalidateHandover();
   return useMutation({
     mutationFn: async (args: { handoverId: string }) => {
-      const { data, error } = await (supabase as any).rpc('confirm_cancel_handover', {
+      const { data, error } = await supabase.rpc('confirm_cancel_handover', {
         p_handover_id: args.handoverId,
       });
       if (error) throw new Error(error.message);
@@ -207,7 +207,7 @@ export const useRejectCancelHandover = () => {
   const invalidate = useInvalidateHandover();
   return useMutation({
     mutationFn: async (args: { handoverId: string }) => {
-      const { data, error } = await (supabase as any).rpc('reject_cancel_handover', {
+      const { data, error } = await supabase.rpc('reject_cancel_handover', {
         p_handover_id: args.handoverId,
       });
       if (error) throw new Error(error.message);

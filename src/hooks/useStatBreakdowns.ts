@@ -34,7 +34,7 @@ export const useChangeBreakdown = (
     queryFn: async (): Promise<ChangeBreakdownRow[]> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-      const { data, error } = await (supabase.rpc as any)('get_change_breakdown_v2', {
+      const { data, error } = await supabase.rpc('get_change_breakdown_v2', {
         p_building_id: filters?.building_id ?? null,
         p_room_id: filters?.room_id ?? null,
         p_status: filters?.status ?? null,
@@ -95,7 +95,7 @@ export const useDepositBreakdown = (
     queryFn: async (): Promise<DepositBreakdownRow[]> => {
       const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
-      const { data, error } = await (supabase.rpc as any)('get_deposit_breakdown_v2', {
+      const { data, error } = await supabase.rpc('get_deposit_breakdown_v2', {
         p_building_id: filters?.building_id ?? null,
         p_room_id: filters?.room_id ?? null,
         p_start_date: filters?.start_date ?? null,

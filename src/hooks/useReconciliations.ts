@@ -31,7 +31,7 @@ export const useProposeReconciliation = () => {
   const invalidate = useInvalidateRecon();
   return useMutation({
     mutationFn: async (args: ProposeReconArgs) => {
-      const { data, error } = await (supabase as any).rpc('propose_reconciliation', {
+      const { data, error } = await supabase.rpc('propose_reconciliation', {
         p_account_id: args.accountId,
         p_as_of: args.asOf,
         p_counted_balance: args.countedBalance,
@@ -49,7 +49,7 @@ export const useConfirmReconciliation = () => {
   const invalidate = useInvalidateRecon();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await (supabase as any).rpc('confirm_reconciliation', { p_id: id });
+      const { data, error } = await supabase.rpc('confirm_reconciliation', { p_id: id });
       if (error) throw new Error(error.message);
       return data as { id: string; status: string };
     },
@@ -73,7 +73,7 @@ export const useCancelReconciliation = () => {
   const invalidate = useInvalidateRecon();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await (supabase as any).rpc('cancel_reconciliation', { p_id: id });
+      const { data, error } = await supabase.rpc('cancel_reconciliation', { p_id: id });
       if (error) throw new Error(error.message);
       return data as { id: string; status: string };
     },

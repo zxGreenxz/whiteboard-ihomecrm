@@ -36,7 +36,7 @@ export const useSaleBonusStatus = (contractId?: string | null, enabled = true) =
     queryKey: ['sale-bonus-status', contractId],
     enabled: !!contractId && enabled,
     queryFn: async (): Promise<SaleBonusStatus> => {
-      const { data, error } = await (supabase as any).rpc('sale_bonus_status_v1', {
+      const { data, error } = await supabase.rpc('sale_bonus_status_v1', {
         p_contract_id: contractId,
       });
       if (error) throw new Error(error.message);
@@ -73,7 +73,7 @@ export const useCreateSaleBonusFromDeposit = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (a: CreateSaleBonusFromDepositArgs) => {
-      const { data, error } = await (supabase as any).rpc('create_sale_bonus_from_deposit_v1', {
+      const { data, error } = await supabase.rpc('create_sale_bonus_from_deposit_v1', {
         p_deposit_voucher_id: a.depositVoucherId,
         p_amount: a.amount,
         p_recipient: a.recipient ?? null,

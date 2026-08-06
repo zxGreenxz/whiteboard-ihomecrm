@@ -134,7 +134,7 @@ export const useUpdatePaymentMethod = () => {
       //    tiếp income_expenses; account_id là trục tiền — server chỉ cho sửa
       //    khi phiếu còn Chờ duyệt và chưa ghi sổ).
       if (voucher) {
-        const { error: updVErr } = await (supabase.rpc as any)(
+        const { error: updVErr } = await supabase.rpc(
           'ie_compat_update_pending_v2',
           {
             p_id: voucher.id,

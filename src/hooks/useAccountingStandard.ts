@@ -27,7 +27,7 @@ export const useAccountingStandard = () =>
   useQuery({
     queryKey: ACCOUNTING_STANDARD_QUERY_KEY,
     queryFn: async (): Promise<OrgAccountingStandard[]> => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "list_ie_accounting_standard_v1",
       );
       if (error) throw new Error(error.message);
@@ -44,7 +44,7 @@ export const useSetAccountingStandard = () => {
       strict: boolean;
       reason?: string | null;
     }) => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "set_ie_accounting_standard_v1",
         {
           p_organization_id: input.organizationId,

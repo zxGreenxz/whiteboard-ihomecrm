@@ -35,7 +35,7 @@ export const useIsOrgOwner = () =>
   useQuery({
     queryKey: ['auth', 'is_org_owner_self'],
     queryFn: async (): Promise<boolean> => {
-      const { data, error } = await (supabase as any).rpc('is_org_owner_self_v1');
+      const { data, error } = await supabase.rpc('is_org_owner_self_v1');
       if (error) {
         // Fail-closed: không đọc được thì coi như KHÔNG phải chủ. Server vẫn là
         // hàng rào thật, nên đoán "có" chỉ để mời bấm một nút sẽ bị từ chối.

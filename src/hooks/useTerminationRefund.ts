@@ -34,7 +34,7 @@ export const useRefundPreview = (terminationId: string | null) =>
     enabled: !!terminationId,
     staleTime: 15_000,
     queryFn: async (): Promise<RefundPreview> => {
-      const { data, error } = await (supabase as any).rpc('preview_termination_refund_v1', {
+      const { data, error } = await supabase.rpc('preview_termination_refund_v1', {
         p_termination_id: terminationId,
       });
       if (error) throw new Error(error.message);
@@ -58,8 +58,7 @@ export const useRecordObligation = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (terminationId: string) => {
-      const { data, error } = await (supabase as any)
-        .rpc('record_termination_refund_obligation_v1', { p_termination_id: terminationId });
+      const { data, error } = await supabase.rpc('record_termination_refund_obligation_v1', { p_termination_id: terminationId });
       if (error) throw new Error(error.message);
       return data as { obligationId: string; version: number; obligationStatus: ObligationStatus };
     },
@@ -80,8 +79,7 @@ export const useCreateRefundVoucher = () => {
       obligationId: string; accountId?: string | null;
       force?: boolean; forceReason?: string;
     }) => {
-      const { data, error } = await (supabase as any)
-        .rpc('create_termination_refund_voucher_v1', {
+      const { data, error } = await supabase.rpc('create_termination_refund_voucher_v1', {
           p_obligation_id: a.obligationId,
           p_account_id: a.accountId ?? null,
           p_force: a.force ?? false,

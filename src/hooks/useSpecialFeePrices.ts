@@ -39,7 +39,7 @@ export const useSpecialFeePrices = (buildingIds?: string[], month?: string) => {
   const query = useQuery({
     queryKey: ['special-fee-prices', key, month ?? null],
     queryFn: async (): Promise<SpecialFeePrice[]> => {
-      const { data, error } = await (supabase as any).rpc('get_special_fee_prices_v1', {
+      const { data, error } = await supabase.rpc('get_special_fee_prices_v1', {
         p_building_ids: key,
         p_month: month ?? null,
       });
@@ -89,7 +89,7 @@ export const useSetSpecialFeePrice = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (a: SetSpecialFeePriceArgs) => {
-      const { data, error } = await (supabase as any).rpc('set_special_fee_price_v1', {
+      const { data, error } = await supabase.rpc('set_special_fee_price_v1', {
         p_building_id: a.buildingId,
         p_fee_category: a.feeCategory,
         p_amount: a.amount,

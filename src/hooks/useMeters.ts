@@ -232,7 +232,7 @@ export const useUnrecordedMeters = (params: {
     queryKey: ["unrecorded-meters", buildingId, roomId, meterType, month],
     queryFn: async () => {
       // RBAC v2: bỏ p_user_id; quyền xác định qua can_access_building.
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "get_meters_without_readings_v2",
         {
           p_building_id: buildingId ?? null,

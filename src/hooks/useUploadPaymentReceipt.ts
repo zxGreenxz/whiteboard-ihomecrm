@@ -70,7 +70,7 @@ export const useUploadPaymentReceipt = () => {
           const next = [...existing, url];
           // Stage-7 drain: append attachments qua RPC ie_compat_update_pending_v2
           // (metadata — server cho sửa khi phiếu chưa huỷ, không đụng trục tiền).
-          const { error: updVErr } = await (supabase.rpc as any)(
+          const { error: updVErr } = await supabase.rpc(
             'ie_compat_update_pending_v2',
             {
               p_id: voucher.id,

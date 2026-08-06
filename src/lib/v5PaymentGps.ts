@@ -27,7 +27,7 @@ export async function captureGpsAndRecord(voucherIds: string[]): Promise<void> {
     let pendingNotified = false;
     for (const id of voucherIds) {
       try {
-        const { data } = await (supabase.rpc as any)("record_payment_gps", {
+        const { data } = await supabase.rpc("record_payment_gps", {
           p_income_expense_id: id,
           p_lat: lat,
           p_lng: lng,

@@ -45,7 +45,7 @@ export const useMyBuildingScope = (): MyBuildingScope => {
   const { data: rows, isLoading: assignmentsLoading } = useQuery({
     queryKey: ['my-assignments'],
     queryFn: async () => {
-      const { data, error } = await (supabase.rpc as any)('get_my_assignments');
+      const { data, error } = await supabase.rpc('get_my_assignments');
       if (error) {
         console.error('get_my_assignments error:', error);
         return [] as Array<{ user_id: string; building_id: string | null }>;
