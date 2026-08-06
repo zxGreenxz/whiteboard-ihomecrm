@@ -157,7 +157,19 @@ describe("immutable Network Center host deployment", () => {
 
   it("leaves no unreachable network activation helper for tests to aim at", () => {
     const install = text("deploy/install-host.sh");
-    for (const name of install.match(/^[a-z_]+\(\) \{$/gm) ?? []) {
+    const khaiBao = install.match(/^[a-z_]+\(\) \{$/gm) ?? [];
+
+    // Chốt chặn chống XANH RỖNG. `?? []` biến "regex không khớp gì" thành "không
+    // có hàm nào để kiểm", và vòng lặp dưới chạy 0 lần — test xanh mà chưa soi
+    // hàm nào. Regex neo vào `^` và `$` nên chỉ cần file đổi sang CRLF, hoặc ai đó
+    // đổi kiểu viết `foo()\n{`, là nó về 0 mà không ai biết.
+    // Script hiện có 47 hàm; đặt 20 để còn chỗ gộp bớt mà vẫn bắt được sập về 0.
+    expect(
+      khaiBao.length,
+      "không bóc được hàm bash nào từ install-host.sh — regex hỏng hoặc file đổi định dạng, KHÔNG phải 'không có hàm mồ côi'",
+    ).toBeGreaterThan(20);
+
+    for (const name of khaiBao) {
       const fn = name.slice(0, name.indexOf("("));
       if (fn === "main") continue;
       const callers = install.split("\n").filter((line) => {
