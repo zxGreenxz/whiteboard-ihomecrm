@@ -31,6 +31,20 @@ const ref = 'tryymsxyyckgbrmmvozx';
 
 // Mỗi scope mà một writer definer mở ra PHẢI có nhánh tương ứng trong guard,
 // nếu không writer đó chết 55000 ngay khi chạm phiếu canonical.
+//
+// TRUY VẤN BÓC SCOPE — bốn chỗ từng làm nó mù, sửa 07/08/2026:
+//   · `p2.prokind = 'f'` bỏ PROCEDURE (prokind='p'), cùng cặp function/procedure
+//     trong pg_proc — y hệt cặp relkind 'i'/'I' đã sửa ở gate provenance.
+//   · `p2.prosrc` là NULL với thân SQL chuẩn (BEGIN ATOMIC) ⇒ writer viết kiểu
+//     đó vô hình. Nay coalesce với pg_get_functiondef.
+//   · regex đòi dấu `(` DÍNH LIỀN tên hàm và tham số đầu KHÔNG chứa dấu phẩy,
+//     nên `begin_ie_flex_write_v1 (…)` hay `…(coalesce(a,b), 'X')` hay gọi bằng
+//     tên tham số `(p_id => v, p_scope => 'X')` đều lọt.
+//   · không lọc schema ⇒ pg_get_functiondef có thể nổ trên hàm internal.
+//
+// Đo trên Postgres tạm (docker, KHÔNG đụng production) với 5 cách viết lời gọi:
+// truy vấn CŨ thấy 1/5, truy vấn MỚI thấy 5/5. Bốn cửa lọt kia gọi thật sẽ là
+// 55000 ngay trên phiếu canonical — đúng án lệ LINK_CONTRACT im lặng 4 ngày.
 const sql = `
   SELECT
     (SELECT pg_get_functiondef(p.oid)
@@ -38,9 +52,12 @@ const sql = `
       WHERE n.nspname = 'app_private'
         AND p.proname = 'guard_income_expense_owned_payload') AS guard_def,
     (SELECT string_agg(DISTINCT m[1], ',')
-       FROM pg_proc p2, regexp_matches(p2.prosrc,
-              'begin_ie_flex_write_v1\\(\\s*[^,]+,\\s*''([A-Z_]+)''', 'g') m
-      WHERE p2.prokind = 'f'
+       FROM pg_proc p2
+       JOIN pg_namespace n2 ON n2.oid = p2.pronamespace,
+            regexp_matches(coalesce(p2.prosrc, pg_get_functiondef(p2.oid)),
+              'begin_ie_flex_write_v1\\s*\\((?:[^;()]|\\([^()]*\\))*?''([A-Z_][A-Z0-9_]*)''', 'g') m
+      WHERE p2.prokind IN ('f','p')
+        AND n2.nspname IN ('public','app_private')
         AND p2.proname <> 'begin_ie_flex_write_v1') AS scopes_opened_by_writers
 `;
 
@@ -74,10 +91,16 @@ const opened = (row.scopes_opened_by_writers ?? '')
 // vòng lặp dưới chạy 0 lần — gate không tìm ra vấn đề nào và báo xanh. Hệ thống
 // CHẮC CHẮN có writer mở cửa (đó là lý do gate này tồn tại), nên 0 nghĩa là phép
 // đo hỏng, không phải mọi thứ đều ổn.
-if (opened.length === 0) {
-  console.error('❌ Không bóc được scope nào từ writer — phép đo hỏng, KHÔNG phải "sạch".');
-  console.error('   Cột scopes_opened_by_writers rỗng/null. Kiểm lại truy vấn và regex prosrc.');
-  console.error('   Gate này chỉ có nghĩa khi nó THẤY danh sách cửa; thấy rỗng là đỏ.');
+// Chỉ bắt RỖNG TUYỆT ĐỐI là chưa đủ: phép đo có thể mù MỘT PHẦN — bóc được vài
+// cửa rồi bỏ sót phần còn lại — và khi ấy `opened.length > 0` nên chốt cũ im.
+// Đó chính là điều đã xảy ra: regex cũ thấy 1/5 cách viết mà vẫn qua cửa này.
+// Sàn theo SỐ LƯỢNG bắt được cả trường hợp đó.
+const TOI_THIEU_SCOPE = 4; // đo 07/08/2026: ANNOTATE, CASHBOOK_MOVE, LINK_CONTRACT, SALE_BONUS_DEPOSIT
+if (opened.length < TOI_THIEU_SCOPE) {
+  console.error(`❌ Chỉ bóc được ${opened.length} scope từ writer (sàn ${TOI_THIEU_SCOPE}) — phép đo hỏng, KHÔNG phải "sạch".`);
+  if (opened.length > 0) console.error(`   Bóc được: ${opened.join(', ')}`);
+  console.error('   Gate này chỉ có nghĩa khi nó THẤY ĐỦ danh sách cửa. Mù một phần cũng là mù.');
+  console.error('   Kiểm truy vấn/regex. ĐỪNG hạ sàn để cho qua — trừ khi thật sự đã gỡ bớt writer.');
   process.exit(1);
 }
 
