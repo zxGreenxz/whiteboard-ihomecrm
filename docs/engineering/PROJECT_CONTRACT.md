@@ -112,6 +112,19 @@ npm run gate:runtime-matrix   # matrix phải khớp engines + workflow, kiểm 
 Đáng nhớ: `infra/network-center-worker` cố ý ở `>=20 <23` (chưa test Node 24), nên CI của nó chạy
 Node 22 — **đừng "sửa" cho khớp `ci-gates`**. Deno pin `2.9.4` ở cả hai workflow.
 
+**Các package con có `node_modules` RIÊNG — phải cài trước khi chạy test của chúng ở máy:**
+
+```bash
+npm ci --prefix infra/network-center-worker
+```
+
+Bỏ bước này thì triệu chứng đánh lừa rất mạnh: vitest không thấy `node_modules` của package
+con nên leo lên `node_modules` ở root và lấy **nhầm phiên bản thư viện**. Cụ thể đã cắn
+06/08/2026 — worker khai `zod@^4` còn root là `zod@3.25.76`, nên `src/apiClient.ts` ném
+`z.uuid is not a function` (v4 dùng `z.uuid()`, v3 dùng `z.string().uuid()`). Nhìn y hệt một
+bug production làm worker không import nổi, thật ra chỉ là thiếu bước cài. CI có bước này sẵn
+(`network-center-validation.yml`) nên chỉ máy dev mới gặp.
+
 ### Khoảng trống đã biết
 
 `tooling/known-gaps.yaml` — mỗi mục có `expires_at` và `exit_condition`.

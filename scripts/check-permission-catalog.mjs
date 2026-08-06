@@ -59,7 +59,15 @@ writeFileSync(tmp, [
 
 let dump;
 try {
-  dump = spawnSync('npx', ['vite-node', tmp], {
+  // Truyền đường dẫn TƯƠNG ĐỐI, không phải `tmp` tuyệt đối. Với `shell: true`,
+  // Node KHÔNG quote đối số mà nối tất cả thành một chuỗi lệnh, nên một đường dẫn
+  // tuyệt đối chứa dấu cách bị shell cắt làm đôi: trên máy dev thật
+  // ("C:\Users\Nguyen Tam\…") gate này chết với `Cannot find module '/@fs/C:/Users/Nguyen'`.
+  // CI Linux có đường dẫn không dấu cách nên không bao giờ lộ.
+  // `cwd` đã trỏ đúng gốc repo, và đường dẫn tương đối thì không có dấu cách.
+  // (Không bỏ được `shell: true`: `npx` trên Windows là `npx.cmd`, mà Node từ chối
+  // spawn file .cmd khi shell:false — EINVAL, bản vá bảo mật.)
+  dump = spawnSync('npx', ['vite-node', 'node_modules/.cache/__perm-keys.ts'], {
     cwd: fileURLToPath(root),
     encoding: 'utf8',
     shell: true,

@@ -20,6 +20,31 @@ supabase/functions/** text eol=lf
 # sau sẽ ghi đè `-text` của vendor rồi phá SHA-256 byte-exact của artifact.
 *.mjs text eol=lf
 
+# Golden vectors là artifact hợp đồng, so sánh BYTE-EXACT trong test. Ghim LF để
+# một clone Windows bật autocrlf=true không làm test đỏ vì lý do chẳng liên quan
+# tới nội dung. Trên máy hiện tại file đang là LF thuần (đã kiểm) nên luật này chỉ
+# giữ nguyên hiện trạng, không đổi byte nào.
+contracts/openclaw-zalo/*.json text eol=lf
+
+# NGOẠI LỆ CÓ CHỦ ĐÍCH — ĐỪNG "sửa cho sạch".
+#
+# `supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql` luôn hiện là
+# "modified" trong `git status` và không bao giờ sạch được. Nguyên nhân: blob của
+# nó được commit CRLF từ trước khi có luật `*.sql text eol=lf` ở trên, nên mỗi lần
+# git so sánh, bộ lọc clean đổi cây làm việc sang LF rồi thấy khác blob CRLF.
+#
+# Ai cũng sẽ muốn chuẩn hoá nó cho hết ngứa. ĐỪNG:
+# `scripts/check-migration-provenance.mjs` hash NỘI DUNG từng file migration và so
+# với `supabase/migration-provenance.json`. Đã đo 06/08/2026 — manifest lưu hash
+# của bản CRLF (1e3c7fba…); chuyển sang LF ra 649aa51e… và gate provenance đỏ.
+# Invariant của repo là "625 file legacy giữ nguyên bytes"; đổi line ending CHÍNH LÀ
+# đổi bytes.
+#
+# Cách sống chung khi nó chặn rebase/stash:
+#   git update-index --assume-unchanged supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql
+#   …rebase…
+#   git update-index --no-assume-unchanged supabase/migrations/20260528000007_drop_beds_fix_rpcs.sql
+
 # Vendored upstream fork: the artifact is verified byte for byte, so git must not
 # normalise anything under it. These rules sit AFTER the eol=lf rules on purpose -
 # later patterns win, and `*.sql` above would otherwise rewrite line endings for

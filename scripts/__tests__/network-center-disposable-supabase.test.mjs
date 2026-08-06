@@ -572,12 +572,33 @@ test("missing Docker fails before workspace creation or production access", asyn
   assert.deepEqual(await readdir(tempRoot), []);
 });
 
+// KHÔNG dùng `skip:` ở đây, dù phần chạy thật chỉ có ý nghĩa trên Windows.
+//
+// Lý do: `scripts/verify-network-center-test-completeness.mjs` coi MỌI test bị bỏ
+// qua là lỗi, và nó tồn tại đúng vì chuyện đó đã xảy ra — 56 test gia cố host bị
+// skip im lặng ngoài Windows suốt nhiều tuần mà không gì đỏ, vì runner báo test
+// skip là pass. Một `skip:` ở đây làm bước CI trên Linux đỏ vì lý do chẳng liên
+// quan tới chất lượng code, và cách "chữa" hiển nhiên nhất là nới cái gate đó ra —
+// tức phá đúng thứ đang bảo vệ mình.
+//
+// Cách làm thay thế: `resolveNpxInvocation` NHẬN `platform` tiêm được, nên HỢP ĐỒNG
+// (Windows phải gọi qua node + npx-cli.js, không bao giờ npx.cmd) kiểm được ở MỌI
+// nền tảng. Chỉ phần THI HÀNH thật mới cần Windows, và nó nằm trong nhánh if bên
+// trong test — không sinh ra "skipped".
 test(
   "Windows invokes the actual pinned CLI through Node, never npx.cmd with shell false",
-  {
-    skip: process.platform !== "win32",
-  },
   async () => {
+    // Phần hợp đồng — chạy ở mọi nền tảng nhờ tiêm platform.
+    const win = resolveNpxInvocation({ platform: "win32", execPath: "/x/node" });
+    assert.equal(win.command, "/x/node");
+    assert.match(win.argsPrefix[0], /npx-cli\.js$/i);
+    const posix = resolveNpxInvocation({ platform: "linux" });
+    assert.equal(posix.command, "npx");
+    assert.deepEqual(posix.argsPrefix, []);
+
+    // Phần thi hành thật: chỉ Windows mới có npx-cli.js để gọi.
+    if (process.platform !== "win32") return;
+
     const invocation = resolveNpxInvocation();
     assert.equal(invocation.command, process.execPath);
     assert.match(invocation.argsPrefix[0], /npx-cli\.js$/i);
