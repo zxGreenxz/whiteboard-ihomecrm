@@ -114,7 +114,7 @@ export const useClosingBlockers = (cashbookId: string | null | undefined) =>
     // Không cache lâu: người dùng vừa đi duyệt phiếu xong quay lại là phải thấy sạch.
     staleTime: 0,
     queryFn: async (): Promise<ClosingBlocker[]> => {
-      const { data, error } = await (supabase.rpc as any)("cashbook_closing_blockers_v1", {
+      const { data, error } = await supabase.rpc("cashbook_closing_blockers_v1", {
         p_cashbook: cashbookId,
       });
       if (error) throw new Error(error.message);
@@ -132,7 +132,7 @@ export const useCashbookBalanceAsOf = (
     enabled: !!cashbookId,
     staleTime: 0,
     queryFn: async (): Promise<number | null> => {
-      const { data, error } = await (supabase.rpc as any)("cashbook_balance_as_of_v1", {
+      const { data, error } = await supabase.rpc("cashbook_balance_as_of_v1", {
         p_cashbook: cashbookId,
         p_as_of: asOf ?? null,
       });
@@ -160,7 +160,7 @@ export const useCashbookMonthlyClosingStatus = (
     // tươi từng giây, người dùng vừa chốt xong thì CLOSING_KEYS đã invalidate.
     staleTime: 120_000,
     queryFn: async (): Promise<MonthlyClosingStatus[]> => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "cashbook_closing_monthly_status_v1",
         { p_organization_id: organizationId, p_month: month },
       );
@@ -179,11 +179,11 @@ export const useCashbookClosings = (cashbookId?: string | null) =>
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<{ pending: PendingClosure[]; closures: ConfirmedClosure[] }> => {
-      const { data, error } = await (supabase.rpc as any)("list_cashbook_closings_v1", {
+      const { data, error } = await supabase.rpc("list_cashbook_closings_v1", {
         p_cashbook: cashbookId ?? null,
       });
       if (error) throw new Error(error.message);
-      return (data ?? { pending: [], closures: [] }) as {
+      return (data ?? { pending: [], closures: [] }) as unknown as {
         pending: PendingClosure[];
         closures: ConfirmedClosure[];
       };
@@ -201,7 +201,7 @@ export const useCashbookCloseConfirmers = (cashbookId: string | null | undefined
     enabled: !!cashbookId,
     staleTime: 60_000,
     queryFn: async (): Promise<Array<{ user_id: string; full_name: string | null }>> => {
-      const { data, error } = await (supabase.rpc as any)("cashbook_close_confirmers_v1", {
+      const { data, error } = await supabase.rpc("cashbook_close_confirmers_v1", {
         p_cashbook: cashbookId,
       });
       if (error) throw new Error(error.message);
@@ -220,7 +220,7 @@ export const useProposeCashbookClosing = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: ProposeClosingInput) => {
-      const { data, error } = await (supabase.rpc as any)("propose_cashbook_closing_v1", {
+      const { data, error } = await supabase.rpc("propose_cashbook_closing_v1", {
         p_cashbook: input.cashbookId,
         p_counted_balance: input.countedBalance,
         p_confirmer: input.confirmerUserId,
@@ -245,7 +245,7 @@ export const useConfirmCashbookClosing = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { requestId: string; countedBalance: number }) => {
-      const { data, error } = await (supabase.rpc as any)("confirm_cashbook_closing_v1", {
+      const { data, error } = await supabase.rpc("confirm_cashbook_closing_v1", {
         p_request: input.requestId,
         p_counted_balance: input.countedBalance,
       });
@@ -311,7 +311,7 @@ export const useCancelCashbookClosing = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { requestId: string; reason: string }) => {
-      const { data, error } = await (supabase.rpc as any)("cancel_cashbook_closing_v1", {
+      const { data, error } = await supabase.rpc("cancel_cashbook_closing_v1", {
         p_request: input.requestId,
         p_reason: input.reason,
       });

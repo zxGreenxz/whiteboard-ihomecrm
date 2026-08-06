@@ -209,7 +209,7 @@ export const usePeriodFeeStatus = (
     queryKey: ['period-fee-status', period, [...categoryKeys].sort(), [...buildingIds].sort()],
     enabled: (opts?.enabled ?? true) && !!period && categoryKeys.length > 0 && buildingIds.length > 0,
     queryFn: async (): Promise<PeriodFeeStatus[]> => {
-      const { data, error } = await (supabase as any).rpc('get_period_fee_status', {
+      const { data, error } = await supabase.rpc('get_period_fee_status', {
         p_period_start: period,
         p_period_end: period,
         p_building_ids: buildingIds,
@@ -265,7 +265,7 @@ export const usePayPeriodFee = () => {
       attachments?: string[];
       force?: boolean;          // true = bỏ qua cảnh báo trùng
     }): Promise<PayPeriodFeeResult> => {
-      const { data, error } = await (supabase as any).rpc('pay_period_fee', {
+      const { data, error } = await supabase.rpc('pay_period_fee', {
         p_building_id: args.buildingId,
         p_category_key: args.categoryKey,
         p_amount: args.amount,
@@ -293,7 +293,7 @@ export const usePayDraftFeeVoucher = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: { voucherId: string; accountId: string; attachments?: string[] | null }) => {
-      const { data, error } = await (supabase as any).rpc('pay_draft_fee_voucher', {
+      const { data, error } = await supabase.rpc('pay_draft_fee_voucher', {
         p_voucher_id: args.voucherId,
         p_account_id: args.accountId,
         p_attachments: args.attachments ?? null,
@@ -310,7 +310,7 @@ export const useCancelPeriodFee = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (voucherId: string) => {
-      const { error } = await (supabase as any).rpc('cancel_period_fee', { p_voucher_id: voucherId });
+      const { error } = await supabase.rpc('cancel_period_fee', { p_voucher_id: voucherId });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => invalidateFees(qc),
@@ -322,7 +322,7 @@ export const useAppendFeeAttachment = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: { voucherId: string; url: string }) => {
-      const { error } = await (supabase as any).rpc('append_fee_attachment', {
+      const { error } = await supabase.rpc('append_fee_attachment', {
         p_voucher_id: args.voucherId,
         p_url: args.url,
       });
@@ -348,7 +348,7 @@ export const useUpdatePeriodFee = () => {
       periodEnd?: string | null;
       notes?: string | null;          // null = giữ nguyên
     }) => {
-      const { error } = await (supabase as any).rpc('update_period_fee', {
+      const { error } = await supabase.rpc('update_period_fee', {
         p_voucher_id: args.voucherId,
         p_account_id: args.accountId ?? null,
         p_attachments: args.attachments ?? null,
@@ -441,7 +441,7 @@ export const useUpsertFeeAccount = () => {
       defaultAccountId?: string | null;
       notApplicable?: boolean | null;  // null = giữ nguyên
     }) => {
-      const { data, error } = await (supabase as any).rpc('upsert_building_fee_account', {
+      const { data, error } = await supabase.rpc('upsert_building_fee_account', {
         p_building_id: args.buildingId,
         p_fee_category: args.feeCategory,
         p_provider_code: args.providerCode ?? null,
@@ -470,7 +470,7 @@ export const usePeriodCommissions = (
     queryKey: ['period-commissions', period, [...buildingIds].sort()],
     enabled: (opts?.enabled ?? true) && !!period && buildingIds.length > 0,
     queryFn: async (): Promise<PeriodCommissionRow[]> => {
-      const { data, error } = await (supabase as any).rpc('get_period_commissions', {
+      const { data, error } = await supabase.rpc('get_period_commissions', {
         p_period_month: period,
         p_building_ids: buildingIds,
       });
@@ -506,7 +506,7 @@ export const usePeriodMaintenance = (
     queryKey: ['period-maintenance', period, [...buildingIds].sort()],
     enabled: (opts?.enabled ?? true) && !!period && buildingIds.length > 0,
     queryFn: async (): Promise<MaintenanceRow[]> => {
-      const { data, error } = await (supabase as any).rpc('get_period_maintenance', {
+      const { data, error } = await supabase.rpc('get_period_maintenance', {
         p_period_month: period,
         p_building_ids: buildingIds,
       });

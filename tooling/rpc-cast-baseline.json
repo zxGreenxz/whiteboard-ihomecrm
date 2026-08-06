@@ -1,6 +1,6 @@
 {
   "$comment": "Ratchet any-cast RPC. Con số CHỈ ĐƯỢC GIẢM. Thêm cast mới ⇒ CI đỏ. Sinh bởi scripts/check-rpc-cast-ratchet.mjs.",
-  "total": 148,
+  "total": 131,
   "perFile": {
     "src/components/tasks/TaskCompleteDialog.tsx": 1,
     "src/copilot/tools/registry.ts": 2,
@@ -12,7 +12,6 @@
     "src/hooks/useBulkRecordPayment.ts": 1,
     "src/hooks/useCashBook.ts": 3,
     "src/hooks/useCashHandovers.ts": 5,
-    "src/hooks/useCashbookClosing.ts": 8,
     "src/hooks/useCloneOrgSync.ts": 2,
     "src/hooks/useCollectionCycleReport.ts": 1,
     "src/hooks/useCommissionVoucher.ts": 1,
@@ -38,7 +37,6 @@
     "src/hooks/useNotificationSettings.ts": 6,
     "src/hooks/useOrganizationAuthorization.ts": 1,
     "src/hooks/usePayments.ts": 1,
-    "src/hooks/usePeriodFees.ts": 9,
     "src/hooks/useProfitVerification.ts": 5,
     "src/hooks/usePublicRoomsAnalytics.ts": 1,
     "src/hooks/useReconciliations.ts": 3,

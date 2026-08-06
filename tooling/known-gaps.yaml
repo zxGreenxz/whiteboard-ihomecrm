@@ -68,10 +68,11 @@ gaps:
     where: scripts/__tests__/network-center-*.test.mjs (23 file) vs bước Vitest ở quality-gates
     expires_at: 2026-09-30
     why: >
-      Các file này dùng API 'node:test' và được node --test chạy ở workflow network-center,
-      nhưng KHÔNG nằm trong danh sách --exclude của bước Vitest ở quality-gates nên bị quét
-      hai lần. Đo tại máy: chạy ĐƠN LẺ một file qua vitest thì FAIL 'No test suite found';
-      chạy CẢ THƯ MỤC thì không thấy lỗi đó. Chưa xác minh được hành vi thật trên CI.
+      ĐÃ XÁC MINH 06/08/2026: chạy đúng lệnh của CI (vitest run src scripts/__tests__ với
+      danh sách --exclude hiện tại) thì 22 file network-center-*.test.mjs FAIL với
+      "No test suite found in file" — vitest không hiểu API 'node:test'. Chúng được
+      node --test chạy ở workflow network-center, nhưng KHÔNG nằm trong --exclude của
+      bước Vitest, nên job quality-gates đang đếm chúng là file đỏ.
     exit_condition: >
       Đọc log job quality-gates của một lần chạy gần đây. Nếu vitest báo 0 test cho các file
       này thì thêm chúng vào --exclude, để job không nhận công của node --test.
