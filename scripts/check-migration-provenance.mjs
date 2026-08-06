@@ -15,13 +15,40 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MANIFEST = join(repoRoot, "supabase", "migration-provenance.json");
 const POLICY = join(repoRoot, "supabase", "migration-policy.json");
 const MIGRATIONS_DIR = join(repoRoot, "supabase", "migrations");
+
+/**
+ * Liệt kê file .sql, ĐỆ QUY và KHÔNG phân biệt hoa/thường.
+ *
+ * Bản đầu dùng readdirSync phẳng + `endsWith(".sql")`, nên một file đặt trong
+ * thư mục con hoặc đặt tên `.SQL` là vô hình với gate — cùng lớp lỗi
+ * `relkind='i'` bỏ sót `'I'`. Trả về đường dẫn TƯƠNG ĐỐI so với `dir`, dùng `/`
+ * để khớp định dạng path trong manifest trên mọi hệ điều hành.
+ */
+export function quetFileSql(dir) {
+  const ra = [];
+  for (const e of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!e.isFile() || !/\.sql$/i.test(e.name)) continue;
+    const con = relative(dir, e.parentPath ?? e.path).replace(/\\/g, "/");
+    ra.push(con ? `${con}/${e.name}` : e.name);
+  }
+  return ra.sort();
+}
+
+/**
+ * Entry có trong manifest nhưng file đã biến mất (bị xoá hoặc đổi tên).
+ *
+ * `tonTai` được tiêm vào để test được mà không cần đụng đĩa thật.
+ */
+export function entryThieuFile(entries, tonTai) {
+  return entries.filter((e) => !tonTai(e.path)).map((e) => e.path);
+}
 
 function main() {
   for (const f of [MANIFEST, POLICY]) {
@@ -38,7 +65,7 @@ function main() {
 
   const byPath = new Map(manifest.entries.map((e) => [e.path, e]));
   const problems = [];
-  const onDisk = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
+  const onDisk = quetFileSql(MIGRATIONS_DIR);
 
   let afterCutoff = 0;
   let legacyChecked = 0;
@@ -60,7 +87,26 @@ function main() {
       }
     }
 
-    if (!entry) continue; // legacy chưa có entry: là nợ đã biết, không chặn
+    // File KHÔNG có entry = file MỚI, bất kể đặt tên thế nào.
+    //
+    // Manifest phủ toàn bộ 642 file đang có, nên nhánh "legacy chưa có entry"
+    // mà bản đầu bỏ qua là nhánh CHẾT với mọi file hợp lệ — nhưng nó lại là cửa
+    // duy nhất để một file mới đi qua: chỉ cần đặt tên KHÔNG phải 14 chữ số
+    // (`018_x.sql`, `29990101_x.sql`) là `version` thành null, `isAfterCutoff`
+    // thành false, rồi rơi thẳng vào `continue`. Tức lời hứa cốt lõi của gate —
+    // mọi migration sau cutoff phải có provenance — bị vô hiệu chỉ bằng cách
+    // ĐẶT TÊN KHÁC ĐI. Đo 07/08/2026: cả hai cách đặt tên trên đều đi qua.
+    if (!entry) {
+      problems.push(
+        `${file}: có trên đĩa nhưng KHÔNG có entry provenance.\n` +
+        `      Manifest phủ toàn bộ file đang tồn tại, nên đây là file MỚI.\n` +
+        (version === null
+          ? `      Tên không theo quy ước 14 chữ số — policy bắt forward-only phải là timestamp14 duy nhất.\n`
+          : "") +
+        `      → chạy: node scripts/generate-migration-provenance.mjs --write`,
+      );
+      continue;
+    }
 
     // Immutability: file trước cutoff không được đổi bytes.
     const sha = createHash("sha256").update(readFileSync(join(MIGRATIONS_DIR, file), "utf8")).digest("hex");
@@ -77,6 +123,22 @@ function main() {
     } else if (!isAfterCutoff) {
       legacyChecked += 1;
     }
+  }
+
+  // Chiều NGƯỢC LẠI: manifest → đĩa.
+  //
+  // Bản đầu chỉ duyệt onDisk, nên một file BỊ XOÁ hoặc BỊ ĐỔI TÊN không để lại
+  // dấu vết nào: entry vẫn nằm im trong manifest, vòng lặp kia không bao giờ
+  // chạm tới nó, gate in dấu tick. Mà policy nói rõ file legacy là CHỈ ĐỌC —
+  // "không sửa, không đổi tên, không di chuyển" — nên đổi tên đúng là điều gate
+  // này phải chặn, và nó lại là điều duy nhất nó không thấy. Đo 07/08/2026:
+  // chuyển một file ra khỏi thư mục ⇒ gate vẫn xanh.
+  for (const p of entryThieuFile(manifest.entries, (rel) => existsSync(join(repoRoot, rel)))) {
+    problems.push(
+      `${p}: có trong manifest nhưng KHÔNG còn trên đĩa (bị xoá hoặc đổi tên).\n` +
+      `      Lịch sử đã deploy là chỉ-đọc: không sửa, không đổi tên, không di chuyển.\n` +
+      `      Muốn đổi hành vi thì thêm file MỚI.`,
+    );
   }
 
   // Version 14 chữ số phải duy nhất SAU cutoff (trước cutoff đã trùng sẵn 39 nhóm).
