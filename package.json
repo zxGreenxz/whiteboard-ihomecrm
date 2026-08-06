@@ -58,7 +58,8 @@
     "gate:route-guards": "node scripts/check-route-guards.mjs",
     "gate:doc-counts": "node scripts/check-doc-counts.mjs",
     "gate:migration-test-liveness": "node scripts/check-migration-test-liveness.mjs",
-    "gate:v5-calendar-parity": "node scripts/v5-calendar-parity.mjs"
+    "gate:v5-calendar-parity": "node scripts/v5-calendar-parity.mjs",
+    "gate:test-only-exports": "node scripts/check-test-only-exports.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

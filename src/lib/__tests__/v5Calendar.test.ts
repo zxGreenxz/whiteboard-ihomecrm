@@ -14,6 +14,12 @@ import {
 // Fixture ĐÃ ĐỐI CHIẾU với SQL live (vn_workdays) ngày 2026-07-03:
 //   T7/2026 = 27 ngày-làm (31 ngày − 4 CN, 0 lễ)
 //   T9/2026 = 25 ngày-làm (30 − 4 CN − 1 lễ 02/09)
+//
+// PHẠM VI: file này ghim HÀNH VI TS vào các số đã đối chiếu một lần với SQL. Nó
+// KHÔNG kiểm parity liên tục — SQL đổi thì nó không biết. Việc đó thuộc
+// `npm run gate:v5-calendar-parity` (scripts/v5-calendar-parity.mjs), nay đã gọi
+// THẲNG hàm TS ở đây qua vite-node thay vì so với một bản chép tay như trước.
+// Hai thứ bù nhau: test ghim TS, gate so TS với SQL sống.
 describe("v5Calendar — parity fixtures với SQL", () => {
   it("T7/2026 có 27 ngày-làm", () => {
     expect(workdaysInMonth(2026, 7, [])).toHaveLength(27);
