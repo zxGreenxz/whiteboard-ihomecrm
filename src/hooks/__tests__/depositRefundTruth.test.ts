@@ -106,9 +106,20 @@ describe("summarizeRefundForfeit — tổng cột của BẢNG (không phải ô
     // có dòng contract_terminations nào. Bảng bên dưới KPI chỉ liệt kê được phần
     // nối được hồ sơ, nên hai số phải đối chiếu được bằng đẳng thức dưới đây —
     // đó là lý do UI bắt buộc hiện dòng cảnh báo phần mồ côi.
-    const linkedTotal = 4302000;      // = summarizeRefundForfeit(bảng)
-    const orphanTotal = 23737100;     // refund_posted_orphan_total (8 phiếu)
+    // linkedTotal phải LẤY TỪ HÀM, không gõ tay. Bản trước khai cả ba số là hằng
+    // rồi `expect(linkedTotal + orphanTotal).toBe(refundTotal)` — tức chỉ kiểm ba
+    // con số tác giả tự gõ có cộng đúng không, KHÔNG chạm vào code sản xuất lần
+    // nào. Comment thậm chí ghi "= summarizeRefundForfeit(bảng)" nhưng nó là hằng.
+    // Đẳng thức đó không bao giờ đỏ được, kể cả khi summarizeRefundForfeit hỏng.
+    const bang = [
+      row({ id: "t1", contract_id: "c1", settlement_net: 2797000, posted_refund: 2797000 }),
+      row({ id: "t2", contract_id: "c2", settlement_net: 1505000, posted_refund: 1505000 }),
+    ];
+    const linkedTotal = summarizeRefundForfeit(bang).refundTotal; // ← từ CODE
+    const orphanTotal = 23737100;     // refund_posted_orphan_total (8 phiếu, từ DB)
     const refundTotal = 28039100;     // refund_total (10 phiếu) ← ô KPI
+
+    expect(linkedTotal).toBe(4302000);
     expect(linkedTotal + orphanTotal).toBe(refundTotal);
     // Lấy tổng bảng làm KPI là khai THIẾU đúng phần mồ côi — phương án đã bị bác.
     expect(refundTotal - linkedTotal).toBe(orphanTotal);

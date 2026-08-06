@@ -2,6 +2,22 @@ import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import type { InvoiceStatus } from '@/types/invoice';
 
+/**
+ * ĐÂY LÀ TEST MÔ HÌNH, KHÔNG PHẢI TEST CỦA RPC.
+ *
+ * Logic thu tiền thật nằm ở hàm PostgreSQL `record_invoice_payment_v3`, không phải
+ * TypeScript — nên không có gì để import. File này mô phỏng bằng TS rồi kiểm tính
+ * chất trên bản mô phỏng.
+ *
+ * Các ca dưới đây xanh KHÔNG chứng minh RPC đúng; chúng chứng minh bản mô phỏng tự
+ * nhất quán. Vẫn giữ vì nó là đặc tả chạy được của luật chuyển trạng thái hoá đơn
+ * (APPROVED → PARTIAL_PAID → PAID) và bắt được sai sót trong cách nghĩ.
+ *
+ * CHƯA NEO vào SQL sống như invoiceGeneration.property.test.ts đã làm: hàm này có
+ * nhiều phiên bản cùng tồn tại (v2, v3, v4 và hai bản _legacy), nên chọn đúng bản
+ * để neo cần đọc kỹ hơn một lượt dọn dẹp. Ghi lại đây để không ai tưởng đã neo rồi.
+ */
+
 // =============================================
 // Model Functions (pure logic mirroring DB/RPC behavior)
 // =============================================
@@ -255,10 +271,21 @@ describe('Feature: invoice-reimplementation, Property 12: Trạng thái hoá đ�
 
           const result = recordPayment(invoice, paymentAmount);
 
+          // Có `else` ném lỗi là BẮT BUỘC, không phải cho đẹp. Chuỗi if/else-if
+          // không có else nghĩa là: nếu recordPayment trả về paid_amount = 0 (một
+          // bug rất dễ xảy ra — cộng nhầm, gán nhầm), KHÔNG assertion nào chạy và
+          // test vẫn xanh. Với đầu vào hiện tại (paymentAmount luôn dương) nhánh
+          // đó không xảy ra, nhưng test phải bắt được khi nó BẮT ĐẦU xảy ra —
+          // đó mới là lúc cần biết.
           if (result.paid_amount >= totalAmount) {
             expect(result.status).toBe('PAID');
           } else if (result.paid_amount > 0) {
             expect(result.status).toBe('PARTIAL_PAID');
+          } else {
+            throw new Error(
+              `recordPayment trả paid_amount=${result.paid_amount} với payment=${paymentAmount} — ` +
+                'thu tiền dương mà số đã trả không tăng là sai, không phải trường hợp bỏ qua.',
+            );
           }
         },
       ),
