@@ -52,6 +52,22 @@ const errors = []
 const hashes = new Map()
 const linkRe = /!?\[[^\]]*\]\(([^)]+)\)/g
 
+/**
+ * Bỏ code block (``` fenced và `inline`) trước khi dò link.
+ *
+ * Cú pháp markdown-link trùng với nhiều thứ trong mã nguồn. Ca thật đã gặp:
+ * dòng PowerShell `[int64](git cat-file -s $helperBlob)` bị nhận là link tới
+ * một file tên "git cat-file -s $helperBlob". Báo động giả kiểu này nguy hiểm
+ * theo cách riêng — nó dạy người ta bỏ qua output của checker.
+ *
+ * Thay bằng dòng trống để số dòng không lệch.
+ */
+function stripCodeBlocks(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/[^\n]/g, ''))
+    .replace(/`[^`\n]*`/g, '')
+}
+
 for (const file of markdown) {
   const text = await readFile(file, 'utf8')
   const normalized = text.replaceAll('\r\n', '\n').trimEnd()
@@ -62,7 +78,7 @@ for (const file of markdown) {
 
   if (path.basename(file).startsWith('_')) continue
 
-  for (const match of text.matchAll(linkRe)) {
+  for (const match of stripCodeBlocks(text).matchAll(linkRe)) {
     const target = cleanTarget(match[1])
     if (!target || /^(https?:|mailto:|tel:|data:|#)/i.test(target)) continue
 

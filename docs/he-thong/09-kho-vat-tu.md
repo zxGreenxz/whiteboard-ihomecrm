@@ -341,7 +341,7 @@ Bảng items không có policy riêng theo parent — chúng cũng kiểm `mater
 
 > **Chuỗi cấp quyền FE đã được nối lại (2026-06-11, f528cd8 — thiết kế lại trang phân
 > quyền theo TRANG)**: catalog [permissionPages.ts](src/lib/permissionPages.ts) (nguồn dữ
-> liệu cho [PagePermissionMatrix](src/components/staff/PagePermissionMatrix.tsx) — thay
+> liệu cho [PermissionPicker](src/components/authorization/PermissionPicker.tsx) — thay
 > PermissionMatrix cũ đã xoá) có trang `materials` ("Vật tư", nhóm "Tài sản & Kho", features
 > CRUD) → **cấp được quyền kho vật tư cho staff qua UI**. Đồng bộ cùng đợt:
 >

@@ -1,6 +1,9 @@
 {
   "name": "zalo-worker",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=20"
+  },
   "private": true,
   "type": "module",
   "description": "Worker zca-js cho Chat Zalo (CRM) — chạy LOCAL trước, VPS sau. Đọc zalo_send_queue + ghi zalo_messages qua Supabase service-role. KHÔNG deploy lên Vercel.",

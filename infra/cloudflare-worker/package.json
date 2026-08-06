@@ -1,6 +1,9 @@
 {
   "name": "ihome-storage-worker",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=20"
+  },
   "private": true,
   "description": "Cloudflare Worker - cổng lưu trữ R2 (upload/sign) cho ihomecrm",
   "scripts": {

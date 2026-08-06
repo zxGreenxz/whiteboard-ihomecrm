@@ -72,14 +72,6 @@ gaps:
       Contract chạy ổn qua vài phiên; checklist mapping (§13) không còn dòng nào trống;
       rồi mới rút ba file thành adapter mỏng.
 
-  - id: docs-broken-links-preexisting
-    where: 6 link hỏng trong docs/he-thong/*, docs/superpowers/plans/*
-    expires_at: 2026-10-31
-    why: >
-      Có sẵn từ trước đợt rà soát; trỏ tới file source đã đổi tên/xoá. Không sửa trong các
-      commit của chương trình này để diff giữ đúng phạm vi, nhưng đã đếm và theo dõi —
-      con số phải giảm, không được tăng.
-    exit_condition: node scripts/check-docs.mjs báo 0 lỗi.
 
   - id: node-test-files-swept-by-vitest
     where: scripts/__tests__/network-center-*.test.mjs (23 file) vs bước Vitest ở quality-gates

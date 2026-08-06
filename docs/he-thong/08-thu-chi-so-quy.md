@@ -462,7 +462,13 @@ File: [CashbooksPage.tsx](src/pages/settings/finance/CashbooksPage.tsx). `useAcc
 [CashbookForm](src/components/cashbooks/CashbookForm.tsx) gồm thêm:
 
 - **"Tòa nhà mặc định khi tạo phiếu nhanh"** (`quick_default_building_id`, Select toà `useBuildings({includeVirtual:true})`) — dùng để Tạo phiếu nhanh tự chọn sổ theo toà (§5.1). ⚠️ **Bug đã biết**: trang edit truyền row từ view `accounts_with_balance` (view không expose cột này, §2.6/§4.4) → default form luôn `null` → **mỗi lần bấm Lưu khi sửa sổ là mất ngầm cấu hình toà→sổ**.
-- **Khối "Người được phép sử dụng"** (sổ chia sẻ, §2.7): multi-checkbox staff (loại owner ra), sync qua `useAccountSharedUsers`/`useSyncAccountSharedUsers` ([useAccountSharedUsers](src/hooks/useAccountSharedUsers.ts)); chỉ **owner của sổ hoặc admin** sửa được danh sách (`canEditShared`).
+- **Khối "Người được phép sử dụng"** (sổ chia sẻ, §2.7) — [CashbookForm.tsx](../../src/components/cashbooks/CashbookForm.tsx). Quyền sửa danh sách: **owner của sổ hoặc admin**, VÀ phải có `cashbooks.share` (fallback legacy `cashbooks.edit`) — biến `canEditShared`.
+
+  Cơ chế lưu danh sách **phụ thuộc access route của tổ chức sở hữu sổ**:
+  - Org đã dùng route **canonical** (Finance V2) → dùng cặp vai trò **CUSTODIAN / KNOWER** qua `useCashbookAccessAdminV2`.
+  - Còn lại (gồm mọi sổ MỚI chưa có org/id) → nhánh legacy.
+
+  Hệ chia sẻ sổ đời đầu (`useAccountSharedUsers` / `useSyncAccountSharedUsers`) **đã bị xoá hẳn cả DB lẫn frontend** — đừng tìm lại hook đó.
 
 ### 5.6 `/settings/income-expense-types` — Loại thu chi
 

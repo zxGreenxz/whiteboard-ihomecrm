@@ -7,16 +7,32 @@
       "node": ">=20",
       "note": "App chính. Nhưng script test:openclaw:services trong CÙNG file này tự chặn nếu không phải Node 24.15–24.x — root engines không phải sàn thật của nó."
     },
-    { "path": "docs-site/package.json", "node": ">=20", "note": "VitePress" },
+    {
+      "path": "docs-site/package.json",
+      "node": ">=20",
+      "note": "VitePress"
+    },
     {
       "path": "infra/network-center-worker/package.json",
       "node": ">=20 <23",
       "note": "CỐ Ý chưa lên Node 24 — chưa test tương thích. Đây là lý do CI của nó chạy Node 22 chứ không phải 24.18.0 như ci-gates."
     },
-    { "path": "infra/openclaw-media-gateway/package.json", "node": ">=24.15.0 <25" },
-    { "path": "infra/openclaw-zalo-watchdog/package.json", "node": ">=24.15.0 <25" },
-    { "path": "services/openclaw-egress-broker/package.json", "node": ">=24.15.0 <25" },
-    { "path": "services/openclaw-zalo-maintenance/package.json", "node": ">=24.15.0 <25" },
+    {
+      "path": "infra/openclaw-media-gateway/package.json",
+      "node": ">=24.15.0 <25"
+    },
+    {
+      "path": "infra/openclaw-zalo-watchdog/package.json",
+      "node": ">=24.15.0 <25"
+    },
+    {
+      "path": "services/openclaw-egress-broker/package.json",
+      "node": ">=24.15.0 <25"
+    },
+    {
+      "path": "services/openclaw-zalo-maintenance/package.json",
+      "node": ">=24.15.0 <25"
+    },
     {
       "path": "services/openclaw-zalo-bridge/package.json",
       "node": ">=24.18.0 <25",
@@ -34,13 +50,13 @@
     },
     {
       "path": "worker/package.json",
-      "node": null,
-      "note": "KHÔNG khai engines. Worker Zalo thế hệ cũ chạy pm2 trên VPS; không có test nào. Chưa khai là nợ, không phải quyết định."
+      "node": ">=20",
+      "note": "Worker Zalo thế hệ cũ chạy pm2 trên VPS (node index.js). Khai >=20 khớp root; supabase-js 2.x chạy tốt từ mức này. Không có test nào."
     },
     {
       "path": "infra/cloudflare-worker/package.json",
-      "node": null,
-      "note": "KHÔNG khai engines. Chạy trên runtime Workers, không phải Node — nhưng tooling build vẫn cần Node, nên vẫn nên khai."
+      "node": ">=20",
+      "note": "Chạy trên runtime Workers chứ không phải Node, nhưng tooling build (wrangler 4.x) cần Node >=20."
     }
   ],
   "workflows": [
