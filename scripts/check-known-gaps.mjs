@@ -35,17 +35,51 @@ const REQUIRED = ['id', 'expires_at', 'why', 'exit_condition'];
  *
  * Cách khai: đặt `# known-gap: <id>` trong 3 dòng ngay trước chỗ non-gating.
  */
+/**
+ * Mỗi mục là một cách LÀM CHO BƯỚC CI KHÔNG CÒN CHẶN. Bảng này từng chỉ khớp
+ * đúng một cách viết của mỗi idiom, nên gần như mọi cách viết tương đương đều
+ * lọt — đo 07/08/2026, 6 biến thể riêng biệt đều để gate xanh. Nặng nhất là
+ * `|| true`: idiom nuốt lỗi phổ biến NHẤT, và bảng cũ không có nó.
+ */
+/**
+ * Lệnh KIỂM TRA — nuốt lỗi của chúng là làm CI nói dối.
+ *
+ * Cố ý KHÔNG bắt `|| true` trên lệnh dọn dẹp (docker prune, rm, iptables dump,
+ * `grep … || true` để grep-không-khớp không giết script). Ở teardown, `|| true`
+ * là cách viết ĐÚNG chứ không phải nợ kỹ thuật — bắt nó chỉ tạo nhiễu, và một
+ * gate hay báo nhiễu sẽ bị tắt. Đo 07/08/2026: 10 chỗ khớp `|| true`, 9 là dọn
+ * dẹp hoặc thoát-sớm-khi-tìm-thấy, chỉ có bản chất của LỆNH BÊN TRÁI mới phân
+ * biệt được.
+ */
+const LENH_KIEM_TRA = /\b(node\s+scripts\/|npm\s+run|npx\s|pnpm\s|yarn\s|deno\s+(test|check|lint)|vitest|jest|pytest|tsc\b|eslint\b|psql\b|supabase\s+(db|migration|test))/;
+
 const KHONG_GATING = [
-  { re: /continue-on-error:\s*true/, ten: 'continue-on-error: true' },
-  { re: /\|\|\s*\{?\s*$|\|\|\s*\{\s*$/, ten: '|| { … } nuốt lỗi' },
-  { re: /::warning::/, ten: '::warning:: thay cho lỗi' },
+  // YAML nhận true/True/TRUE/yes/on đều là boolean thật.
+  { re: /continue-on-error:\s*(true|yes|on)\b/i, ten: 'continue-on-error: true' },
+  // Biểu thức ${{ … }} chỉ biết được lúc chạy ⇒ coi như non-gating, phải khai.
+  { re: /continue-on-error:\s*\$\{\{/, ten: 'continue-on-error: <biểu thức>' },
+  {
+    // Bảng cũ neo `$` ở CẢ HAI nhánh nên chỉ thấy `|| {` khi ngoặc nằm cuối
+    // dòng — đúng cách xuống dòng ngẫu nhiên của chỗ đã có sẵn. Viết một dòng
+    // thì lọt, và `|| true` — idiom nuốt lỗi phổ biến NHẤT — không có trong bảng.
+    re: /\|\|\s*(true\b|:\s|:$|\{)/,
+    ten: '|| true / || { … } nuốt lỗi',
+    // `cmd || { echo "❌ …"; exit 1; }` là cửa chặn THẬT, không phải nuốt lỗi —
+    // nó làm bước ĐỎ. Chỉ tính khi không có đường thoát khác 0.
+    boQua: (dong) => /exit\s+[1-9]/.test(dong) || !LENH_KIEM_TRA.test(dong.split('||')[0]),
+  },
+  { re: /::warning\b/, ten: '::warning:: thay cho lỗi' },
+  // `set +e` tắt fail-fast cho toàn bộ phần còn lại của khối.
+  // KHÔNG bắt `exit 0`: trong repo này cả hai chỗ đều là thoát-sớm-khi-tìm-thấy
+  // bên trong vòng lặp dò đường dẫn PostgreSQL, tức thành công thật.
+  { re: /^\s*set\s+\+e\b/, ten: 'set +e (tắt fail-fast)' },
 ];
 
 export function timChoKhongGating(noiDung) {
   const dong = noiDung.split(/\r?\n/);
   const ra = [];
   for (let i = 0; i < dong.length; i += 1) {
-    const khop = KHONG_GATING.find((k) => k.re.test(dong[i]));
+    const khop = KHONG_GATING.find((k) => k.re.test(dong[i]) && !k.boQua?.(dong[i]));
     if (!khop) continue;
     const truoc = dong.slice(Math.max(0, i - 3), i).join('\n');
     const id = /#\s*known-gap:\s*([a-z0-9-]+)/.exec(truoc)?.[1] ?? null;

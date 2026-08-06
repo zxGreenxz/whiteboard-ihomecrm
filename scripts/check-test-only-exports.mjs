@@ -57,17 +57,47 @@ export function locFileHelper(files) {
   return files.filter((f) => !laTest(f) && /(Helpers|Utils)\.tsx?$/.test(f));
 }
 
+/**
+ * Tên hàm được export, MỌI dạng khai báo.
+ *
+ * Bản đầu chỉ nhận `export function` / `export async function`, nên cùng một
+ * hàm chết chỉ cần viết dạng arrow-const là tàng hình. Đo 07/08/2026 bằng A/B
+ * trong cùng một file: `export function f()` ⇒ ĐỎ, `export const f = () => {}`
+ * ⇒ XANH. Cú pháp khác nhau, code chết y như nhau.
+ *
+ * `export { f }` cũng phải bắt: khai báo thường rồi export bằng danh sách ở
+ * cuối file là cách viết phổ biến không kém.
+ */
+export function tenHamExport(source) {
+  const ra = new Set();
+  for (const m of source.matchAll(/^export\s+(?:async\s+)?function\s+([A-Za-z0-9_$]+)/gm)) {
+    ra.add(m[1]);
+  }
+  // export const f = (…) => … | function (…) | async (…) => …
+  for (const m of source.matchAll(
+    /^export\s+(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*(?::[^=]+)?=\s*(?:async\s*)?(?:function\b|\(|<|[A-Za-z0-9_$]+\s*=>)/gm,
+  )) {
+    ra.add(m[1]);
+  }
+  // export { a, b as c }  — lấy tên ĐƯỢC XUẤT (sau `as` nếu có).
+  for (const m of source.matchAll(/^export\s*\{([^}]*)\}(?!\s*from)/gm)) {
+    for (const phan of m[1].split(",")) {
+      const t = phan.trim();
+      if (!t || t.startsWith("type ")) continue;
+      const nhan = /\bas\s+([A-Za-z0-9_$]+)$/.exec(t)?.[1] ?? t;
+      if (/^[A-Za-z0-9_$]+$/.test(nhan) && nhan !== "default") ra.add(nhan);
+    }
+  }
+  return [...ra];
+}
+
 export function timExportChiTestDung(files) {
   const helpers = locFileHelper(files);
   const nguonSanXuat = files.filter((f) => !laTest(f));
   const ket = [];
 
   for (const h of helpers) {
-    const ten = [
-      ...readFileSync(h, "utf8").matchAll(
-        /^export\s+(?:async\s+)?function\s+([A-Za-z0-9_]+)/gm,
-      ),
-    ].map((m) => m[1]);
+    const ten = tenHamExport(readFileSync(h, "utf8"));
     if (ten.length === 0) continue;
 
     const chet = [];

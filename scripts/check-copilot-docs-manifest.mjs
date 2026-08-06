@@ -13,7 +13,7 @@
 // Không cần credential, không đọc database.
 
 import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,7 +44,16 @@ export function findStaleEntries(manifest, today = new Date()) {
 
 function main() {
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
-  const filesOnDisk = readdirSync(DOCS_DIR).filter((f) => f.endsWith('.md'));
+  // ĐỆ QUY + không phân biệt hoa/thường + nhận cả .mdx. Bản đầu dùng readdirSync
+  // phẳng và `endsWith('.md')`, nên một file tài liệu chưa khai chỉ cần nằm
+  // trong thư mục con (docs/he-thong/noi-bo/), hoặc đặt tên `.MD`, hoặc dùng
+  // `.mdx`, là hoàn toàn vô hình — trong khi đó đúng là thứ gate sinh ra để bắt.
+  const filesOnDisk = [];
+  for (const e of readdirSync(DOCS_DIR, { recursive: true, withFileTypes: true })) {
+    if (!e.isFile() || !/\.mdx?$/i.test(e.name)) continue;
+    const con = relative(DOCS_DIR, e.parentPath ?? e.path).replace(/\\/g, '/');
+    filesOnDisk.push(con ? `${con}/${e.name}` : e.name);
+  }
   const problems = [];
 
   const { undeclared, missing } = diffManifestAgainstDir(manifest, filesOnDisk);
@@ -70,12 +79,32 @@ function main() {
     }
   }
 
-  // Registry phải lọc qua manifest, không được quay lại glob mù.
+  // Registry phải THẬT SỰ lọc qua manifest, không được quay lại glob mù.
+  //
+  // Bản đầu chỉ `registry.includes('manifest.json')` — một phép so chuỗi con
+  // trên TOÀN VĂN file, không phân biệt code với comment. Mà registry.ts vốn đã
+  // có sẵn chữ "manifest.json" trong ba dòng comment giải thích, nên xoá SẠCH
+  // code lọc manifest vẫn khiến gate xanh. Tức phép kiểm này không kiểm gì cả:
+  // nó chỉ xác nhận rằng ai đó từng viết chữ đó ở đâu đó trong file.
+  //
+  // Nay đòi ba thứ, và cả ba phải cùng có: nạp manifest, đọc entries của nó, và
+  // dùng entries đó để LỌC. Bỏ bất kỳ mảnh nào cũng đỏ.
   const registry = readFileSync(REGISTRY_PATH, 'utf8');
-  if (!registry.includes('manifest.json')) {
+  const khongPhaiComment = registry
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+
+  const doiHoi = [
+    { re: /import\.meta\.glob\(\s*['"][^'"]*manifest\.json['"]/, mo: 'nạp docs/he-thong/manifest.json' },
+    { re: /\.entries\b/, mo: 'đọc entries của manifest' },
+    { re: /\.(filter|some|find|includes|has)\s*\(/, mo: 'dùng entries để LỌC danh sách tài liệu' },
+  ];
+  const thieu = doiHoi.filter((d) => !d.re.test(khongPhaiComment));
+  if (thieu.length > 0) {
     problems.push(
-      'src/copilot/tools/registry.ts không còn tham chiếu manifest.json — ' +
-      'Copilot có thể đã quay lại đọc mù toàn thư mục.',
+      `src/copilot/tools/registry.ts không còn ${thieu.map((d) => d.mo).join(' / ')} ` +
+      '(xét trên CODE, bỏ comment) — Copilot có thể đã quay lại đọc mù toàn thư mục.',
     );
   }
 
