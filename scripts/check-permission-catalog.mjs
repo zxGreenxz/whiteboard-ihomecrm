@@ -61,9 +61,23 @@ const dbKeys = new Set((await res.json()).map((r) => r.key));
 // alias và tsconfig của dự án vẫn áp dụng (ngoài cây dự án thì import hỏng).
 const tmp = fileURLToPath(new URL('node_modules/.cache/__perm-keys.ts', root));
 mkdirSync(dirname(tmp), { recursive: true });
+// Dump CẢ HAI bề mặt: catalog thô (ALL) và catalog SAU bộ lọc hiển thị
+// (VISIBLE_PAGE_GROUPS — thứ PermissionPicker thật sự render), cộng danh sách
+// trang được KHAI là chưa ship.
+//
+// Vì sao cần: gate chỉ so DB với catalog THÔ, nên mọi cách giấu quyền ở tầng
+// hiển thị đều đi qua mà nó không thấy gì. Đo 07/08/2026: ALL=231, VISIBLE=223
+// — 8 khoá openclaw_zalo.* đang is_active trong permission_definitions và ALLOW
+// trên vai trò "Chủ sở hữu tổ chức" của cả 3 org (gồm org thật), nhưng người
+// quản trị KHÔNG nhìn thấy để xem hay thu hồi. Ở đây việc giấu là CÓ CHỦ ĐÍCH
+// và có khai (UNSHIPPED_PAGE_KEYS gác theo cờ runtime) — nên gate không nên đỏ,
+// mà phải BẮT PHẢI KHAI: giấu có khai thì đọc được và cãi được, giấu không khai
+// thì không.
 writeFileSync(tmp, [
-  "import { ALL_PAGE_FEATURES, featureKey } from '../../src/lib/permissionPages';",
-  'console.log(JSON.stringify([...new Set(ALL_PAGE_FEATURES.map(featureKey))]));',
+  "import { ALL_PAGE_FEATURES, VISIBLE_PAGE_GROUPS, UNSHIPPED_PAGE_KEYS, featureKey } from '../../src/lib/permissionPages';",
+  'const all = [...new Set(ALL_PAGE_FEATURES.map(featureKey))];',
+  'const visible = [...new Set(VISIBLE_PAGE_GROUPS.flatMap((g) => g.pages.flatMap((p) => p.features.map(featureKey))))];',
+  'console.log(JSON.stringify({ all, visible, unshipped: [...UNSHIPPED_PAGE_KEYS] }));',
 ].join('\n'), 'utf8');
 
 let dump;
@@ -84,7 +98,7 @@ try {
 } finally {
   rmSync(tmp, { force: true });
 }
-const found = dump.stdout?.match(/\[".*"\]/);
+const found = dump.stdout?.match(/\{"all":.*\}/);
 if (dump.status !== 0 || !found) {
   console.error(
     'Không đọc được catalog FE:',
@@ -94,7 +108,10 @@ if (dump.status !== 0 || !found) {
   );
   process.exit(1);
 }
-const feKeys = new Set(JSON.parse(found[0]));
+const bocRa = JSON.parse(found[0]);
+const feKeys = new Set(bocRa.all);
+const visibleKeys = new Set(bocRa.visible);
+const unshipped = new Set(bocRa.unshipped);
 
 const thieuNhan = [...dbKeys].filter((k) => !feKeys.has(k)).sort();
 const nhanMoCoi = [...feKeys].filter((k) => !dbKeys.has(k)).sort();
@@ -108,7 +125,35 @@ if (nhanMoCoi.length) {
   console.error(`\n❌ ${nhanMoCoi.length} nhãn FE trỏ tới khoá DB không có (tick vào sẽ bị RPC từ chối):`);
   nhanMoCoi.forEach((k) => console.error('   ', k));
 }
-if (thieuNhan.length || nhanMoCoi.length) {
+// Chiều thứ BA: khoá có nhãn nhưng bị GIẤU khỏi bảng phân quyền.
+//
+// Hai phép so trên đối chiếu DB với catalog THÔ, nên chúng mù hoàn toàn với
+// tầng hiển thị: một khoá vẫn "có nhãn" mà người quản trị không bao giờ thấy
+// để cấp hay thu hồi. Hậu quả giống hệt trường hợp thiếu nhãn — quyền TỒN TẠI
+// NHƯNG VÔ HÌNH — chỉ khác đường đi.
+//
+// Giấu KHÔNG phải lúc nào cũng sai: một trang chưa ship thì hiện ra chỉ gây rối.
+// Nên luật ở đây là PHẢI KHAI, không phải CẤM — cùng nguyên tắc với PUBLIC_ROUTES
+// và ROUTE_LONG_DA_KHAI. Khai rồi thì đọc được, cãi được, và tự hết hiệu lực khi
+// cờ runtime bật.
+const biGiau = [...dbKeys].filter((k) => feKeys.has(k) && !visibleKeys.has(k)).sort();
+const giauKhongKhai = biGiau.filter((k) => !unshipped.has(k.split('.')[0])).sort();
+
+if (biGiau.length) {
+  console.log(
+    `   ${biGiau.length} khoá có nhãn nhưng ẨN khỏi bảng phân quyền ` +
+    `(trang chưa ship đã khai: ${[...unshipped].join(', ') || '(không)'})`,
+  );
+}
+if (giauKhongKhai.length) {
+  console.error(`\n❌ ${giauKhongKhai.length} khoá bị ẩn khỏi bảng phân quyền mà KHÔNG khai là chưa ship:`);
+  giauKhongKhai.forEach((k) => console.error('   ', k));
+  console.error('   Chúng đang is_active trong DB và có thể đang ALLOW trên vai trò nào đó,');
+  console.error('   nhưng người quản trị không thấy để xem hay thu hồi.');
+  console.error('   Xử: hiện chúng trong picker, HOẶC khai trang vào UNSHIPPED_PAGE_KEYS kèm lý do.');
+}
+
+if (thieuNhan.length || nhanMoCoi.length || giauKhongKhai.length) {
   console.error('\nSửa src/lib/permissionPages.ts (nhãn) hoặc permission_definitions (khoá) cho khớp.');
   process.exit(1);
 }
