@@ -102,12 +102,38 @@ describe('Feature: invoice-reimplementation, Property 5: Tính toán số lượ
 
           const quantity = current_reading - previous_reading;
 
-          expect(quantity).toBe(current_reading - previous_reading);
-          expect(quantity).toBeGreaterThanOrEqual(0);
+          // Hai khẳng định cũ ở đây là TAUTOLOGY: `expect(quantity).toBe(
+          // current_reading - previous_reading)` so một biểu thức với CHÍNH biểu
+          // thức vừa tính ra nó, và `>= 0` đúng theo cấu tạo vì current = max,
+          // previous = min. Không chạm code sản xuất lần nào, không bao giờ đỏ
+          // được — trong khi nhãn ghi "Validates: Requirements 1.9".
+          //
+          // Thay bằng tính chất THẬT trên calculateInvoiceTotals: số lượng vào
+          // thành tiền TUYẾN TÍNH. Nhân đôi chỉ số tiêu thụ thì thành tiền nhân
+          // đôi — đây mới là điều hoá đơn phụ thuộc vào.
+          const donGia = 3500;
+          const mot: TotalsItem = { unit_price: donGia, quantity, coefficient: 1 };
+          const hai: TotalsItem = { unit_price: donGia, quantity: quantity * 2, coefficient: 1 };
+
+          expect(calculateInvoiceTotals([mot], 0, 0).subtotal).toBeCloseTo(donGia * quantity, 6);
+          expect(calculateInvoiceTotals([hai], 0, 0).subtotal).toBeCloseTo(
+            calculateInvoiceTotals([mot], 0, 0).subtotal * 2,
+            6,
+          );
         },
       ),
       { numRuns: 100 },
     );
+  });
+
+  it('chỉ số LÙI cho thành tiền ÂM — hàm KHÔNG tự kẹp về 0', () => {
+    // Hành vi đáng biết và chưa test nào khoá: nếu chỉ số mới NHỎ HƠN chỉ số cũ
+    // (công tơ bị thay, nhập nhầm), calculateInvoiceTotals cho ra thành tiền ÂM
+    // chứ không kẹp về 0. Đó là lựa chọn ĐÚNG — kẹp im lặng sẽ biến một số liệu
+    // sai thành một hoá đơn trông hợp lệ. Nhưng nó nghĩa là việc CHẶN phải nằm ở
+    // tầng nhập liệu, không phải ở đây; khoá lại để không ai "sửa" thành kẹp.
+    const item: TotalsItem = { unit_price: 3500, quantity: -10, coefficient: 1 };
+    expect(calculateInvoiceTotals([item], 0, 0).subtotal).toBe(-35000);
   });
 
   it('meter reading quantity feeds correctly into invoice totals calculation', () => {
