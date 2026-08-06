@@ -41,7 +41,12 @@ const demSql = (dir) => {
   let n = 0;
   for (const e of readdirSync(p, { withFileTypes: true })) {
     if (e.isDirectory()) n += demSql(join(dir, e.name));
-    else if (e.name.endsWith(".sql")) n += 1;
+    // KHÔNG phân biệt hoa/thường: một file đặt tên `.SQL` vẫn là migration (trên
+    // Windows hệ tệp còn không phân biệt nổi), nhưng bộ đếm cũ dùng
+    // `endsWith(".sql")` nên nó lọt và con số tài liệu vẫn "khớp". Đo 07/08/2026:
+    // thêm một file .SQL vào supabase/migrations ⇒ gate xanh; đúng file đó đổi
+    // thành .sql ⇒ gate đỏ ngay. Cùng lớp lỗi với `relkind='i'` bỏ sót 'I'.
+    else if (/\.sql$/i.test(e.name)) n += 1;
   }
   return n;
 };

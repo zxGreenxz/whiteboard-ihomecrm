@@ -25,7 +25,7 @@
 // Không cần credential, không đọc database.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
@@ -46,13 +46,82 @@ function nguonRoute() {
   if (existsSync(app)) files.push(app);
   const dir = join(repoRoot, "src", "app", "routes");
   if (existsSync(dir)) {
-    for (const f of readdirSync(dir)) {
-      if (/\.tsx?$/.test(f) && !f.endsWith(".test.ts") && !f.endsWith(".test.tsx")) {
-        files.push(join(dir, f));
-      }
+    // ĐỆ QUY. Bản đầu dùng readdirSync(dir) phẳng, và nó tạo ra ĐÚNG cái lỗ mà
+    // đoạn ghi chú ngay trên đây thề sẽ chặn: đặt một route KHÔNG GÁC vào
+    // src/app/routes/<thư-mục-con>/ thì gate vẫn in "146 route ... ✅", y hệt
+    // khi chưa thêm gì. Đo 07/08/2026 bằng A/B khép kín: cùng một file, cùng
+    // một route bị gỡ sạch ProtectedRoute + RequirePermission — để ở tầng một
+    // thì ĐỎ, lùi vào một tầng thư mục thì XANH. Repo đang giữa đợt tách
+    // App.tsx và bước gom route theo domain vào thư mục con là bước tiếp theo
+    // tự nhiên nhất, tức lỗ này nằm đúng trên đường đi.
+    //
+    // Đuôi file cũng nới: /\.tsx?$/ bỏ sót .jsx/.mjs/.cjs/.mts/.cts — mọi thứ
+    // đó đều dựng được <Route>.
+    for (const e of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+      if (!e.isFile()) continue;
+      if (!/\.[cm]?[jt]sx?$/.test(e.name)) continue;
+      if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(e.name)) continue;
+      files.push(join(e.parentPath ?? e.path, e.name));
     }
   }
   return files;
+}
+
+/**
+ * Mọi file trong src/ có chứa `<Route` đều PHẢI nằm trong tập nguonRoute().
+ *
+ * Đây là cái chống-xanh-rỗng thật sự, thay cho việc chỉ tin vào ngưỡng đếm.
+ * Ngưỡng tuyệt đối (TOI_THIEU_ROUTE) chỉ bắt được cuộc di cư ồ ạt: dời MỘT nhóm
+ * route ra chỗ gate không thấy chỉ làm số tụt 146 → 141, còn rất xa 100, nên
+ * ngưỡng im. Mà bào mòn từng nhóm mới đúng là cách một refactor có thật diễn ra.
+ *
+ * Phép kiểm này không trôi theo refactor: route dọn đi đâu trong src/ thì nó
+ * cũng đòi chỗ đó phải được quét.
+ */
+/**
+ * File có route LỒNG, guard thừa hưởng từ route cha ở App.tsx.
+ *
+ * Phải khai kèm lý do — cùng nguyên tắc với PUBLIC_ROUTES: một ngoại lệ được
+ * KHAI thì đọc được và cãi được, một ngoại lệ TÀNG HÌNH thì không.
+ */
+const ROUTE_LONG_DA_KHAI = new Map([
+  [
+    "src/pages/network-center/NetworkCenterApp.tsx",
+    "Route con của /network-center/* — cha đã bọc ProtectedRoute + RequirePermission(network_center.view) ở App.tsx, path ở đây là tương đối nên không tự gác lại.",
+  ],
+]);
+
+/**
+ * Dấu hiệu nhận biết phải là IMPORT, không phải chuỗi `<Route`.
+ *
+ * Bản đầu tôi dò `/<Route[\s/>]/` và nó báo 4 file, trong đó 3 là báo động giả:
+ * một file có `<Route` trong COMMENT làm ví dụ, hai file dùng ICON `Route` của
+ * lucide-react (`<Route className="h-5 w-5" />`). Một gate hay báo sai sẽ bị
+ * tắt, nên phép nhận diện phải chặt: chỉ file thực sự import Route từ
+ * react-router mới được tính.
+ */
+const IMPORT_ROUTE = /import\s*\{[^}]*\bRoute\b[^}]*\}\s*from\s*["']react-router(-dom)?["']/s;
+
+function fileCoRouteNgoaiTamQuet(daQuet) {
+  const trongTam = new Set(daQuet.map((f) => f.replace(/\\/g, "/")));
+  const ngoai = [];
+  const duyet = (thuMuc) => {
+    for (const e of readdirSync(thuMuc, { withFileTypes: true })) {
+      const p = join(thuMuc, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === "__tests__") continue;
+        duyet(p);
+      } else if (/\.[cm]?[jt]sx?$/.test(e.name) && !/\.(test|spec)\./.test(e.name)) {
+        const rel = relative(repoRoot, p).replace(/\\/g, "/");
+        if (trongTam.has(p.replace(/\\/g, "/"))) continue;
+        if (ROUTE_LONG_DA_KHAI.has(rel)) continue;
+        const src = readFileSync(p, "utf8");
+        if (IMPORT_ROUTE.test(src) && /<Route[\s/>]/.test(src)) ngoai.push(p);
+      }
+    }
+  };
+  duyet(join(repoRoot, "src"));
+  return ngoai;
 }
 
 // Component được coi là cổng chặn. Thêm guard mới thì thêm vào đây — cố ý bắt
@@ -242,6 +311,19 @@ function main(argv) {
     console.error("  Gate này chỉ có nghĩa khi nó THẤY route. Số tụt bất thường nghĩa là route");
     console.error("  đã chuyển đi nơi khác, hoặc cách khai route đã đổi và parser không theo kịp.");
     console.error("  Sửa nguonRoute() cho trỏ đúng chỗ mới — ĐỪNG hạ ngưỡng.");
+    process.exitCode = 1;
+    return;
+  }
+
+  // Chống-xanh-rỗng KHÔNG trôi theo refactor: ngưỡng ở trên chỉ bắt được di cư
+  // ồ ạt, còn dời từng nhóm route ra ngoài tầm quét thì nó im. Phép kiểm này
+  // đòi mọi file có `<Route` trong src/ phải nằm trong tập được quét.
+  const ngoaiTam = fileCoRouteNgoaiTamQuet(files);
+  if (ngoaiTam.length > 0) {
+    console.error(`❌ ${ngoaiTam.length} file có <Route nhưng NẰM NGOÀI tầm quét của gate:\n`);
+    for (const f of ngoaiTam) console.error(`  - ${relative(repoRoot, f).replace(/\\/g, "/")}`);
+    console.error("\n  Route ở những file này KHÔNG được kiểm guard — gate sẽ báo xanh trong khi");
+    console.error("  chúng có thể đang mở toang. Sửa nguonRoute() để quét cả chỗ đó.");
     process.exitCode = 1;
     return;
   }

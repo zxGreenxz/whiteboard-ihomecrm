@@ -112,6 +112,7 @@ jobs:
           node scripts/check-migration-test-liveness.mjs
           node scripts/check-test-only-exports.mjs
           node scripts/check-unknown-review.mjs
+          node scripts/check-ts-suppressions.mjs
 
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline

@@ -58,6 +58,7 @@
     "gate:route-guards": "node scripts/check-route-guards.mjs",
     "gate:doc-counts": "node scripts/check-doc-counts.mjs",
     "gate:unknown-review": "node scripts/check-unknown-review.mjs",
+    "gate:ts-suppressions": "node scripts/check-ts-suppressions.mjs",
     "gate:migration-test-liveness": "node scripts/check-migration-test-liveness.mjs",
     "gate:v5-calendar-parity": "node scripts/v5-calendar-parity.mjs",
     "gate:test-only-exports": "node scripts/check-test-only-exports.mjs"
