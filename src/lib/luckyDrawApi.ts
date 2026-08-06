@@ -11,6 +11,7 @@
  * - Không đọc/ghi thẳng bảng: RLS bật không policy, RPC là cổng duy nhất.
  */
 
+import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 /* ─────────────────────────────── Kiểu dữ liệu ─────────────────────────────── */
@@ -191,19 +192,32 @@ export async function uploadLuckyProof(
 
 /* ─────────────────────────── RPC admin (supabase-js) ──────────────────────── */
 
-// Cùng kiểu nới lỏng như callRpc của useOrganizationAuthorization: các RPC mới
-// chưa có trong generated types (types.ts đang treo regen vì drift network_*).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const rpc = (name: string, args?: Record<string, unknown>) => (supabase as any).rpc(name, args);
-
-export async function adminRpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
-  const { data, error } = await rpc(name, args);
+/**
+ * Nhận một THUNK, không nhận (tên hàm, args) — cùng lý do như `callRpc` ở
+ * useOrganizationAuthorization: supabase-js phân giải overload bằng kiểu điều
+ * kiện trên TÊN HÀM, nên tên phải là literal ngay tại chỗ gọi `supabase.rpc()`.
+ *
+ * Comment cũ ở đây nói cả 7 hàm `lucky_admin_*_v1` "chưa có trong generated
+ * types (types.ts đang treo regen vì drift network_*)". Đã kiểm lại: cả 7 đều
+ * có đủ Args/Returns trong types.ts, và cái drift network_* kia đã xử xong bằng
+ * types:normalize. Lời giải thích đó nay chỉ còn tác dụng hợp thức hoá việc né
+ * kiểm tra kiểu, nên thay bằng mô tả đúng.
+ *
+ * Lấy lại được: tên hàm, tên tham số, kiểu tham số — đều được đối chiếu thật.
+ * KHÔNG lấy lại được: `as T` vẫn là khẳng định về hình dạng trả về (các hàm này
+ * khai `RETURNS json`), và thiếu tham số bắt buộc vẫn lọt. Đừng đọc helper này
+ * như một bảo đảm toàn phần.
+ */
+export async function adminRpc<T>(
+  run: () => PromiseLike<{ data: unknown; error: PostgrestError | null }>,
+): Promise<T> {
+  const { data, error } = await run();
   if (error) throw error;
   return data as T;
 }
 
 export const luckyAdminApi = {
-  get: () => adminRpc<LuckyAdminState>('lucky_admin_get_v1'),
+  get: () => adminRpc<LuckyAdminState>(() => supabase.rpc('lucky_admin_get_v1')),
   upsertEvent: (p: {
     id?: string;
     title?: string;
@@ -212,7 +226,7 @@ export const luckyAdminApi = {
     prizeAmount?: number;
     drawAt?: string | null;
     status?: 'open' | 'closed';
-  }) => adminRpc<{ ok: boolean; eventId: string; slug: string }>('lucky_admin_upsert_event_v1', { p }),
+  }) => adminRpc<{ ok: boolean; eventId: string; slug: string }>(() => supabase.rpc('lucky_admin_upsert_event_v1', { p })),
   addTeam: (p: {
     eventId: string;
     name: string;
@@ -221,14 +235,14 @@ export const luckyAdminApi = {
     topPrize?: number | null;
     inWheel?: boolean;
   }) =>
-    adminRpc<{ ok: boolean; teamId: string; code: string }>('lucky_admin_add_team_v1', {
+    adminRpc<{ ok: boolean; teamId: string; code: string }>(() => supabase.rpc('lucky_admin_add_team_v1', {
       p_event: p.eventId,
       p_name: p.name,
       p_deals: p.deals ?? 1,
       p_top_rank: p.topRank ?? null,
       p_top_prize: p.topPrize ?? null,
       p_in_wheel: p.inWheel ?? true,
-    }),
+    })),
   updateTeam: (
     teamId: string,
     p: {
@@ -240,13 +254,13 @@ export const luckyAdminApi = {
       checkedIn?: boolean;
       regenCode?: boolean;
     },
-  ) => adminRpc<{ ok: boolean; teamId: string; code: string }>('lucky_admin_update_team_v1', { p_team: teamId, p }),
+  ) => adminRpc<{ ok: boolean; teamId: string; code: string }>(() => supabase.rpc('lucky_admin_update_team_v1', { p_team: teamId, p })),
   deleteTeam: (teamId: string) =>
-    adminRpc<{ ok: boolean }>('lucky_admin_delete_team_v1', { p_team: teamId }),
+    adminRpc<{ ok: boolean }>(() => supabase.rpc('lucky_admin_delete_team_v1', { p_team: teamId })),
   forceDraw: (eventId: string) =>
-    adminRpc<LuckyPublicState>('lucky_admin_force_draw_v1', { p_event: eventId }),
+    adminRpc<LuckyPublicState>(() => supabase.rpc('lucky_admin_force_draw_v1', { p_event: eventId })),
   resetDraw: (eventId: string) =>
-    adminRpc<{ ok: boolean }>('lucky_admin_reset_draw_v1', { p_event: eventId }),
+    adminRpc<{ ok: boolean }>(() => supabase.rpc('lucky_admin_reset_draw_v1', { p_event: eventId })),
 };
 
 /* ──────────────────────────────── Tiện ích ────────────────────────────────── */

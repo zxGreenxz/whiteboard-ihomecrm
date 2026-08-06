@@ -2,14 +2,18 @@
  * Data hooks cho trang Phân tích tài chính — gọi 6 RPC fa_* (migration
  * 20260611140000_financial_analysis_rpcs.sql).
  *
- * - RPC chưa có trong generated types → cast (supabase.rpc as any) như
- *   convention hiện có (useShareholderProfit). Gọi như METHOD trên supabase
- *   (gotcha PostgREST schema).
+ * - Cả 6 RPC fa_* ĐỀU có trong generated types nên gọi typed, KHÔNG cast.
+ *   (Comment cũ ở đây nói ngược lại và viện "convention hiện có" — sai từ lúc
+ *   types.ts được regen; nó chỉ còn tác dụng hợp thức hoá việc né kiểm tra kiểu.)
+ *   callFa nhận một thunk để mỗi supabase.rpc() giữ được tên hàm dạng literal —
+ *   supabase-js phân giải overload bằng kiểu điều kiện trên tên, truyền tên qua
+ *   biến `string` là mất sạch kiểu.
  * - numeric qua PostgREST có thể về string → Number() mọi field số.
  * - p_building_ids: [] (tất cả) chuẩn hoá thành null; sort để query key ổn định.
  */
 
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type {
@@ -28,18 +32,28 @@ const STALE_LIVE = 60 * 1000; // thu tiền/snapshot — biến động liên t�
 const normIds = (ids?: string[]): string[] | null =>
   ids && ids.length ? [...ids].sort() : null;
 
-async function callFa<T>(
-  fn: string,
-  params: Record<string, unknown>,
+/**
+ * Nhận một THUNK thay vì (tên hàm, params).
+ *
+ * Chữ ký cũ khai `fn: string` + `params: Record<string, unknown>`, và chính hai
+ * kiểu rộng đó là thứ buộc phải ép `(supabase.rpc as any)` ở trong: supabase-js
+ * phân giải overload bằng kiểu điều kiện trên TÊN HÀM, nên tên phải còn ở dạng
+ * literal ngay tại chỗ gọi `.rpc()`. Truyền qua một tham số `string` là mất sạch.
+ *
+ * Đổi sang thunk thì `Row` được suy ra TỪ CHÍNH kiểu trả về của RPC, nên hàm
+ * `map` nhận hàng đã có kiểu — không còn `(r: any)`.
+ */
+async function callFa<Row, T>(
+  run: () => PromiseLike<{ data: Row[] | null; error: PostgrestError | null }>,
   errMsg: string,
-  map: (r: any) => T,
+  map: (r: Row) => T,
 ): Promise<T[]> {
-  const { data, error } = await (supabase.rpc as any)(fn, params);
+  const { data, error } = await run();
   if (error) {
     toast.error(errMsg);
     throw error;
   }
-  return ((data || []) as any[]).map(map);
+  return (data || []).map(map);
 }
 
 export const useFaMonthlyPnl = (
@@ -54,11 +68,10 @@ export const useFaMonthlyPnl = (
     staleTime: STALE_SLOW,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callFa<FaMonthlyPnlRow>(
-        accrual ? "fa_monthly_pnl_accrual" : "fa_monthly_pnl",
-        { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) },
+      callFa(
+        () => supabase.rpc(accrual ? "fa_monthly_pnl_accrual" : "fa_monthly_pnl", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
         "Không thể tải P&L theo tháng",
-        (r) => ({
+        (r): FaMonthlyPnlRow => ({
           month: String(r.month),
           building_id: r.building_id,
           building_name: r.building_name,
@@ -82,11 +95,10 @@ export const useFaTypeBreakdown = (
     staleTime: STALE_SLOW,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callFa<FaTypeBreakdownRow>(
-        accrual ? "fa_type_breakdown_accrual" : "fa_type_breakdown",
-        { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) },
+      callFa(
+        () => supabase.rpc(accrual ? "fa_type_breakdown_accrual" : "fa_type_breakdown", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
         "Không thể tải cơ cấu thu chi",
-        (r) => ({
+        (r): FaTypeBreakdownRow => ({
           month: String(r.month),
           side: r.side === "EXPENSE" ? "EXPENSE" : "INCOME",
           type_id: r.type_id ?? null,
@@ -105,11 +117,10 @@ export const useFaOccupancyMonthly = (start?: string, end?: string, buildingIds?
     staleTime: STALE_SLOW,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callFa<FaOccupancyRow>(
-        "fa_occupancy_monthly",
-        { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) },
+      callFa(
+        () => supabase.rpc("fa_occupancy_monthly", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
         "Không thể tải tỷ lệ lấp đầy",
-        (r) => ({
+        (r): FaOccupancyRow => ({
           month: String(r.month),
           building_id: r.building_id,
           building_name: r.building_name,
@@ -127,11 +138,10 @@ export const useFaLeaseEvents = (start?: string, end?: string, buildingIds?: str
     staleTime: STALE_SLOW,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callFa<FaLeaseEventsRow>(
-        "fa_lease_events",
-        { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) },
+      callFa(
+        () => supabase.rpc("fa_lease_events", { p_start_date: start, p_end_date: end, p_building_ids: normIds(buildingIds) }),
         "Không thể tải biến động hợp đồng",
-        (r) => ({
+        (r): FaLeaseEventsRow => ({
           month: String(r.month),
           building_id: r.building_id,
           building_name: r.building_name,
@@ -153,11 +163,10 @@ export const useFaInvoiceCollection = (
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callFa<FaInvoiceCollectionRow>(
-        "fa_invoice_collection",
-        { p_start_month: startMonth, p_end_month: endMonth, p_building_ids: normIds(buildingIds) },
+      callFa(
+        () => supabase.rpc("fa_invoice_collection", { p_start_month: startMonth, p_end_month: endMonth, p_building_ids: normIds(buildingIds) }),
         "Không thể tải thu hồi hoá đơn",
-        (r) => ({
+        (r): FaInvoiceCollectionRow => ({
           billing_month: r.billing_month,
           building_id: r.building_id,
           building_name: r.building_name,
@@ -181,11 +190,10 @@ export const useFaSnapshotKpis = (buildingIds?: string[]) =>
     staleTime: STALE_LIVE,
     placeholderData: keepPreviousData,
     queryFn: () =>
-      callFa<FaSnapshotKpisRow>(
-        "fa_snapshot_kpis",
-        { p_building_ids: normIds(buildingIds) },
+      callFa(
+        () => supabase.rpc("fa_snapshot_kpis", { p_building_ids: normIds(buildingIds) }),
         "Không thể tải KPI hiện tại",
-        (r) => ({
+        (r): FaSnapshotKpisRow => ({
           building_id: r.building_id,
           building_name: r.building_name,
           total_rooms: Number(r.total_rooms) || 0,

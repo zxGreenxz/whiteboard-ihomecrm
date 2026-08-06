@@ -7,6 +7,7 @@
 // trong đúng tổ chức của người gọi.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { PostgrestError } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -173,11 +174,25 @@ export const authzKeys = {
   organization: ['authz', 'organization'] as const,
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const rpc = (name: string, args?: Record<string, unknown>) => (supabase as any).rpc(name, args);
-
-async function callRpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
-  const { data, error } = await rpc(name, args);
+/**
+ * Nhận một THUNK chứ không nhận (tên hàm, args).
+ *
+ * Lý do: supabase-js phân giải overload bằng kiểu điều kiện trên TÊN HÀM, nên
+ * tên phải ở dạng literal ngay tại chỗ gọi `supabase.rpc()`. Helper cũ nhận
+ * `name: string` + `args: Record<string, unknown>` đã xoá sạch thông tin đó
+ * ngay tại biên, khiến `.rpc()` không còn gì để khớp và buộc phải ép
+ * `(supabase as any)`. Đổi sang thunk thì tên hàm, tên tham số và kiểu tham số
+ * của cả 10 lời gọi đều được generated types đối chiếu thật.
+ *
+ * Cái KHÔNG lấy lại được: các RPC này khai `RETURNS json` nên `data` là `Json`;
+ * `as T` bên dưới vẫn là khẳng định về HÌNH DẠNG trả về, không được kiểm.
+ * Nó vốn đã như vậy từ trước (`any as T`), chỉ là giờ thấy rõ. Muốn gác nốt
+ * phần này thì phải validate ở runtime, không phải việc của một helper.
+ */
+async function callRpc<T>(
+  run: () => PromiseLike<{ data: unknown; error: PostgrestError | null }>,
+): Promise<T> {
+  const { data, error } = await run();
   if (error) throw error;
   return data as T;
 }
@@ -191,7 +206,7 @@ export const useOrganizationMembers = (enabled = true) =>
     staleTime: 30_000,
     queryFn: async () => {
       const d = await callRpc<{ organizationId: string; members: OrganizationMember[] }>(
-        'list_organization_members_v1',
+        () => supabase.rpc('list_organization_members_v1'),
       );
       return d ?? { organizationId: '', members: [] };
     },
@@ -206,7 +221,7 @@ export const useMemberAuthorization = (membershipId: string | null) =>
     staleTime: 0,
     gcTime: 0,
     queryFn: () =>
-      callRpc<MemberAuthorization>('get_member_authorization_v1', { p_membership: membershipId }),
+      callRpc<MemberAuthorization>(() => supabase.rpc('get_member_authorization_v1', { p_membership: membershipId })),
   });
 
 export const useOrganizationRoles = (enabled = true) =>
@@ -214,7 +229,7 @@ export const useOrganizationRoles = (enabled = true) =>
     queryKey: authzKeys.roles,
     enabled,
     staleTime: 30_000,
-    queryFn: async () => (await callRpc<OrganizationRole[]>('list_organization_roles_v1')) ?? [],
+    queryFn: async () => (await callRpc<OrganizationRole[]>(() => supabase.rpc('list_organization_roles_v1'))) ?? [],
   });
 
 export const useAuthorizationCatalog = (enabled = true) =>
@@ -224,7 +239,7 @@ export const useAuthorizationCatalog = (enabled = true) =>
     // Danh mục quyền + phạm vi gần như tĩnh; ~55 kB nên đừng tải lại liên tục.
     staleTime: 10 * 60_000,
     queryFn: async () =>
-      (await callRpc<AuthorizationCatalog>('list_authorization_catalog_v1')) ?? {
+      (await callRpc<AuthorizationCatalog>(() => supabase.rpc('list_authorization_catalog_v1'))) ?? {
         scopes: [],
         permissions: [],
       },
@@ -235,7 +250,7 @@ export const useOrganizationProfile = (enabled = true) =>
     queryKey: authzKeys.organization,
     enabled,
     staleTime: 30_000,
-    queryFn: () => callRpc<OrganizationProfile>('get_organization_profile_v1'),
+    queryFn: () => callRpc<OrganizationProfile>(() => supabase.rpc('get_organization_profile_v1')),
   });
 
 /* ────────────────────────────────  Ghi  ─────────────────────────────────── */
@@ -246,11 +261,13 @@ const loi = (e: unknown, macDinh: string) => {
   return m && !/^(permission denied|JSON object)/i.test(m) ? m : macDinh;
 };
 
-export interface SaveRoleBinding {
+// `type` chu khong phai `interface`: chi type alias moi gan duoc vao `Json` khi
+// mang nay di lam tham so RPC. Xem ghi chu day du o ProfitCloseAdjustmentPayload.
+export type SaveRoleBinding = {
   role_id: string;
   scope_ids: string[];
 }
-export interface SaveOverride {
+export type SaveOverride = {
   permission_key: string;
   effect: Effect;
   scope_mode: ScopeMode;
@@ -285,13 +302,13 @@ export const useSaveMemberAuthorization = () => {
       overrides?: SaveOverride[];
       reason: string;
     }) =>
-      callRpc<SaveMemberResult>('update_member_authorization_v1', {
+      callRpc<SaveMemberResult>(() => supabase.rpc('update_member_authorization_v1', {
         p_membership: v.membershipId,
         p_expected_version: v.expectedVersion,
         p_role_bindings: v.roleBindings ?? null,
         p_overrides: v.overrides ?? null,
         p_reason: v.reason,
-      }),
+      })),
     onSuccess: (r, v) => {
       qc.invalidateQueries({ queryKey: authzKeys.members });
       qc.invalidateQueries({ queryKey: authzKeys.member(v.membershipId) });
@@ -319,7 +336,7 @@ export const useUpsertOrganizationRole = () => {
       expectedVersion?: number | null;
       reason?: string;
     }) =>
-      callRpc<{ roleId: string; created: boolean; version: number; affectedMembers: number }>(
+      callRpc<{ roleId: string; created: boolean; version: number; affectedMembers: number }>(() => supabase.rpc(
         'upsert_organization_role_v1',
         {
           p_role_id: v.roleId ?? null,
@@ -328,7 +345,7 @@ export const useUpsertOrganizationRole = () => {
           p_expected_version: v.expectedVersion ?? null,
           p_reason: v.reason ?? null,
         },
-      ),
+      )),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: authzKeys.roles });
       qc.invalidateQueries({ queryKey: authzKeys.members });
@@ -353,7 +370,7 @@ export const useInviteMember = () =>
       scopeIds?: string[];
       expiresDays?: number;
     }) =>
-      callRpc<{ invitationId: string; token: string; expiresAt: string; note: string }>(
+      callRpc<{ invitationId: string; token: string; expiresAt: string; note: string }>(() => supabase.rpc(
         'invite_organization_member_v1',
         {
           p_email: v.email,
@@ -362,7 +379,7 @@ export const useInviteMember = () =>
           p_scope_ids: v.scopeIds?.length ? v.scopeIds : null,
           p_expires_days: v.expiresDays ?? 7,
         },
-      ),
+      )),
     onError: (e) => toast.error(loi(e, 'Không gửi được lời mời.')),
   });
 
@@ -370,7 +387,7 @@ export const useRevokeInvitation = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (invitationId: string) =>
-      callRpc('revoke_organization_invitation_v1', { p_invitation: invitationId }),
+      callRpc(() => supabase.rpc('revoke_organization_invitation_v1', { p_invitation: invitationId })),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authzKeys.organization });
       toast.success('Đã thu hồi lời mời.');
@@ -383,7 +400,7 @@ export const useUpdateOrganizationProfile = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (name: string) =>
-      callRpc<{ name: string }>('update_organization_profile_v1', { p_name: name }),
+      callRpc<{ name: string }>(() => supabase.rpc('update_organization_profile_v1', { p_name: name })),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: authzKeys.organization });
       toast.success('Đã lưu thông tin tổ chức.');
