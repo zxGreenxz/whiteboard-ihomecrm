@@ -293,8 +293,15 @@ async function main(argv) {
       "SELECT ns.nspname||'.'||c.relname||'.'||a.attname AS n FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace ns ON ns.oid=c.relnamespace WHERE a.attnum>0 AND NOT a.attisdropped AND c.relkind IN ('r','p') AND ns.nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND ns.nspname NOT LIKE 'pg_temp%'",
       { pat, ref },
     ),
+    // relkind 'i' = index thường, 'I' = index trên bảng PHÂN MẢNH. Bỏ sót 'I' làm
+    // bộ chứng minh mù với mọi index của Network Center (samples phân mảnh theo
+    // ngày) → file tạo chúng bị chấm `unknown` OAN. Đo 06/08/2026: 6 index
+    // relkind='I' tồn tại trong production mà truy vấn cũ không thấy cái nào,
+    // khiến 20260729020000_network_center_current_telemetry.sql mất sạch bằng
+    // chứng dù cả 2 index nó tạo đều đang chạy. So sánh: truy vấn bảng ở trên đã
+    // lấy đúng IN ('r','p') — cùng một cặp thường/phân-mảnh, chỉ index bị quên.
     runSql(
-      "SELECT ns.nspname||'.'||c.relname AS n FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace WHERE c.relkind='i' AND ns.nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND ns.nspname NOT LIKE 'pg_temp%'",
+      "SELECT ns.nspname||'.'||c.relname AS n FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace WHERE c.relkind IN ('i','I') AND ns.nspname NOT IN ('pg_catalog','information_schema','pg_toast') AND ns.nspname NOT LIKE 'pg_temp%'",
       { pat, ref },
     ),
     runSql(

@@ -1,13 +1,13 @@
 {
   "$comment": "SINH BỞI scripts/generate-migration-provenance.mjs — không sửa tay. State dựa trên BẰNG CHỨNG (ledger/catalog), không suy từ timestamp. Xem đầu script để biết luật phân loại.",
-  "generatedAt": "2026-08-06T14:58:35.352Z",
+  "generatedAt": "2026-08-06T16:43:30.149Z",
   "projectRef": "tryymsxyyckgbrmmvozx",
   "ledgerRows": 372,
   "ledgerMaxVersion": "20260727095000",
   "counts": {
     "ledger-applied": 351,
-    "unknown": 66,
-    "catalog-proven": 210,
+    "unknown": 65,
+    "catalog-proven": 211,
     "superseded": 15
   },
   "duplicateVersions": 40,
@@ -5720,11 +5720,14 @@
       "name": "network_center_current_telemetry",
       "scheme": "timestamp14",
       "sha256": "49e3c505ad737ddbf59301eecc680b640165eb53c413a9fa9253aeb819db0367",
-      "state": "unknown",
-      "evidence": [],
-      "missingObjects": [
-        "index:public.network_device_samples_building_time_idx",
-        "index:public.network_interface_samples_building_time_idx"
+      "state": "catalog-proven",
+      "evidence": [
+        "catalog:table:public.network_device_current",
+        "catalog:table:public.network_interface_current",
+        "catalog:function:app_private.network_center_reject_append_only_mutation_v1",
+        "catalog:function:app_private.network_center_ensure_raw_partitions_v1",
+        "catalog:index:public.network_device_current_building_idx",
+        "catalog:trigger:public.network_device_samples.network_device_samples_append_only"
       ]
     },
     {

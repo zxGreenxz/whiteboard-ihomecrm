@@ -81,7 +81,75 @@ export const CLAIMS = [
     dem: () => demSql("supabase/migrations-archive"),
     moTa: "số file trong supabase/migrations-archive",
   },
+
+  // ── migration-policy.json ────────────────────────────────────────────────
+  // Bốn con số dưới đây từng trôi CÙNG LÚC và không gì báo: policy ghi "62/66
+  // file unknown chỉ ALTER/DML" và "39 version trùng (88 file)" trong khi thực
+  // tế là 55/65 và 40/90. Con số sai nằm trong chính file LUẬT của migration —
+  // tức nơi người ta tra để quyết định có tin manifest hay không.
+  //
+  // Chúng đếm từ manifest (sinh bằng máy) chứ không từ repo, nên khi manifest
+  // được sinh lại sau mỗi lần apply migration thì các số này tự lệch ngay —
+  // đó chính là lúc cần đỏ.
+  {
+    file: "supabase/migration-policy.json",
+    re: /(")(\d{1,3})(\/\d{1,3} file unknown là file CHỈ ALTER)/,
+    dem: () => demUnknown().chiAlter,
+    moTa: "số file unknown chỉ ALTER/DML",
+  },
+  {
+    file: "supabase/migration-policy.json",
+    re: /(\d{1,3}\/)(\d{1,3})( file unknown là file CHỈ ALTER)/,
+    dem: () => demUnknown().tong,
+    moTa: "tổng số file unknown",
+  },
+  {
+    file: "supabase/migration-policy.json",
+    re: /(")(\d{1,3})( file unknown còn lại thì NGƯỢC LẠI)/,
+    dem: () => demUnknown().coCreate,
+    moTa: "số file unknown có CREATE nhưng object thiếu",
+  },
+  {
+    file: "supabase/migration-policy.json",
+    re: /(")(\d{1,3})( version bị trùng)/,
+    dem: () => demTrung().soVersion,
+    moTa: "số version bị trùng",
+  },
+  {
+    file: "supabase/migration-policy.json",
+    re: /( version bị trùng \()(\d{1,3})( file\))/,
+    dem: () => demTrung().soFile,
+    moTa: "số file dính version trùng",
+  },
 ];
+
+/** Đọc manifest provenance (artifact sinh bằng máy) — nguồn sự thật cho các số trên. */
+const docManifest = () =>
+  JSON.parse(readFileSync(join(repoRoot, "supabase", "migration-provenance.json"), "utf8"));
+
+/**
+ * Tách nhóm file `unknown`.
+ *
+ * `missingObjects` của một file chỉ-ALTER chứa câu giải thích chứ không phải tên
+ * object, nên phân biệt bằng tiền tố `<loại>:` — đúng dạng bộ sinh ghi ra
+ * (`policy:…`, `function:…`). Đừng khớp theo nội dung câu tiếng Việt: nó đã đổi
+ * chữ một lần và làm phép đo âm thầm sai.
+ */
+export function demUnknown(manifest = docManifest()) {
+  const unk = manifest.entries.filter((e) => e.state === "unknown");
+  const coLoai = /^(policy|function|index|trigger|table|view):/;
+  const coCreate = unk.filter((e) => (e.missingObjects ?? []).some((x) => coLoai.test(x)));
+  return { tong: unk.length, coCreate: coCreate.length, chiAlter: unk.length - coCreate.length };
+}
+
+export function demTrung(manifest = docManifest()) {
+  const theoVersion = new Map();
+  for (const e of manifest.entries) {
+    theoVersion.set(e.version, (theoVersion.get(e.version) ?? 0) + 1);
+  }
+  const trung = [...theoVersion.values()].filter((n) => n > 1);
+  return { soVersion: trung.length, soFile: trung.reduce((a, b) => a + b, 0) };
+}
 
 export function kiemTra(doc, claim) {
   const m = claim.re.exec(doc);
