@@ -2,8 +2,12 @@
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
   "updatedAt": "2026-08-06",
   "currentWave": "1b",
-  "waveTitle": "Provenance 640 file SQL (đã mở khoá: có backup + đã diễn tập restore)",
+  "waveTitle": "Provenance migration — ĐÃ CÓ manifest + gate",
   "done": [
+    {
+      "item": "✅ Đợt 1b: migration provenance cho 640 file SQL",
+      "evidence": "351 ledger-applied · 208 catalog-proven · 66 unknown (62 trong đó là file CHỈ ALTER/DML, không chứng minh tự động được) · 15 superseded. Provisional cutoff 20260805120000 công bố NGAY thay vì chờ hết unknown. Gate chặn: file sau cutoff thiếu entry, và file legacy bị sửa bytes — cả hai đã kiểm bằng đột biến. Độ phủ legacy chỉ là metric, không fail, để gate không bị bypass vì nợ quá khứ."
+    },
     {
       "item": "✅ Cơ chế backup thay cho PITR — scripts/backup-before-schema.mjs, ĐÃ CHẠY THẬT + ĐÃ DIỄN TẬP RESTORE",
       "evidence": "Chủ dự án chọn giữ miễn phí (không bật PITR add-on). Script kéo dump full qua pooler bằng PGPASSFILE tạm (password không bao giờ lên command line), ghi ra ngoài repo kèm manifest sha256. Đo thật: 21 MB / 306 giây / DB 226 MB. Diễn tập restore vào PostgreSQL 17.10 local: 399 bảng, 1408 hàm, invoices 2290 dòng, income_expenses 5374 dòng. PHÁT HIỆN QUAN TRỌNG: ~4200 lỗi khi restore vào Postgres trần đều là role Supabase không tồn tại (authenticated 644 lần) — bình thường, nhưng RLS policy chỉ vào 323/1231 nên muốn khôi phục đầy đủ phải restore vào một Supabase project."
@@ -115,10 +119,9 @@
   ],
   "blockers": [],
   "next": [
-    "Đợt 1b: provenance 640 file SQL — chạy backup trước, dùng batch + sampling theo §0.7 của plan",
     "Đợt 3: production baseline + forward-only lane",
-    "Đợt 4 lát 3: cho consumer sinh từ capability registry",
-    "Xác minh node:test bị vitest quét (cần log CI)"
+    "Triage 66 file unknown theo batch",
+    "Đợt 4 lát 3: consumer sinh từ registry"
   ],
   "knownDirtyFiles": [
     {

@@ -1,0 +1,42 @@
+{
+  "$comment": "Luật cho migration. Đọc cùng supabase/migration-provenance.json (sinh bằng máy) và docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md Phần VI.",
+  "schemaVersion": 1,
+
+  "provisionalCutoff": {
+    "version": "20260805120000",
+    "declaredAt": "2026-08-06",
+    "rule": "Mọi file có version LỚN HƠN mốc này là forward-only: bắt buộc timestamp 14 chữ số duy nhất, có digest, và có entry provenance ngay từ khi merge.",
+    "why": "Cutoff được tuyên bố NGAY thay vì chờ phân loại xong 640 file cũ. Nếu treo cutoff để đợi forensics quá khứ, mọi migration mới sẽ bị giữ làm con tin và chương trình chết ở bước này — đó là cách các đợt dọn dẹp thường thất bại.",
+    "legacyPolicy": "File có version <= cutoff là legacy-frozen: CHỈ ĐỌC. Không sửa, không đổi tên, không di chuyển. Muốn thay đổi hành vi thì viết file mới."
+  },
+
+  "states": {
+    "ledger-applied": "Khớp CHÍNH XÁC (version, name) với một dòng trong supabase_migrations.schema_migrations.",
+    "catalog-proven": "Không có trong ledger, nhưng MỌI object nó CREATE đều tồn tại trong catalog production.",
+    "superseded": "Nằm trong migrations-archive/ — README ở đó ghi rõ TUYỆT ĐỐI KHÔNG replay.",
+    "unknown": "Chưa có bằng chứng máy. KHÔNG được suy ra 'đã chạy' từ timestamp hay từ việc nó nằm trong repo."
+  },
+
+  "reviewModel": {
+    "rule": "Người review duyệt QUY TẮC phân loại và MẪU KIỂM theo batch, không ký từng file.",
+    "why": "640 chữ ký, mỗi cái 2-3 phút, là 25-30 giờ. Với khối lượng đó chữ ký sẽ thành nghi thức và trường reviewedBy mất hết ý nghĩa — tệ hơn không có, vì nó trông như đã được kiểm.",
+    "mustReviewFully": [
+      "mọi file state=unknown",
+      "mọi file đụng tiền (income_expenses, invoices, payments, cashbook, salary, profit)",
+      "mọi file đụng RLS/POLICY hoặc SECURITY DEFINER"
+    ],
+    "sampling": "Với bucket catalog-proven: duyệt quy tắc một lần + random sample n≈30."
+  },
+
+  "knownLimits": [
+    "62/66 file unknown là file CHỈ ALTER/DML — không CREATE object nào nên không thể chứng minh tự động. Sự tồn tại của bảng bị ALTER KHÔNG chứng minh file này đã chạy (file khác có thể đã tạo ra nó).",
+    "catalog-proven yếu hơn ledger-applied: nó chứng minh object TỒN TẠI, không chứng minh CHÍNH FILE NÀY tạo ra nó. Một file khác cùng tạo object trùng tên sẽ cho kết quả giống hệt.",
+    "39 version bị trùng (88 file) — vì vậy khoá định danh là (version, name, sha256), không phải version.",
+    "Ledger dừng ở 20260727095000 trong khi production có thay đổi muộn hơn. Đừng dùng max(version) của ledger làm trạng thái schema."
+  ],
+
+  "applyPath": {
+    "rule": "Apply qua Management API bằng script rollout có promotion token. KHÔNG dùng `supabase db push` — CI có gate chặn (scripts/check-no-auto-apply.mjs).",
+    "beforeAnyApply": "node scripts/backup-before-schema.mjs --reason \"...\"  (PITR đang tắt, đây là đường lùi duy nhất)"
+  }
+}
