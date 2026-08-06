@@ -28,13 +28,28 @@ const ref = 'tryymsxyyckgbrmmvozx';
 const sql = `
   WITH RECURSIVE fns AS (
     SELECT p.oid, n.nspname AS ns, p.proname AS nm, p.provolatile AS vol,
-           pg_get_functiondef(p.oid) AS def, p.proacl
+           -- BỎ COMMENT trước khi dò. Không làm vậy thì gate khớp vào chính câu
+           -- văn NÓI RẰNG hàm không khoá dòng — đo được thật:
+           -- network_center_admin_list_access_ports_v1 có comment
+           -- "No FOR UPDATE / FOR SHARE anywhere in this body: … a row lock
+           -- raises 25006", và bị chấm vi phạm vì đúng câu đó. Cùng căn bệnh với
+           -- guard grep cũ trong repo: cấm luôn việc VIẾT RA rằng điều đó bị cấm.
+           -- (Bộ lọc ACL vô tình che ca này, nên nó sống cho tới khi bỏ lọc.)
+           regexp_replace(
+             regexp_replace(pg_get_functiondef(p.oid), '/\\*.*?\\*/', ' ', 'gs'),
+             '--[^' || chr(10) || ']*', ' ', 'g') AS def,
+           p.proacl
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE p.prokind = 'f' AND n.nspname IN ('public', 'app_private')
+    -- Thêm 'api': PostgREST expose "api, public,graphql_public" và api đứng
+    -- ĐẦU nên là profile mặc định. Hàm ở đó gọi được không cần header nào.
+    WHERE p.prokind IN ('f','p') AND n.nspname IN ('public', 'app_private', 'api')
   ),
   seed AS (
     SELECT oid, nm, 0 AS depth, nm AS via FROM fns
+    -- LOCK TABLE cũng ném 25006 trong transaction read-only, y như FOR UPDATE.
+    -- Bản đầu chỉ liệt kê họ FOR …, nên một hàm khoá bằng LOCK TABLE là vô hình.
     WHERE def ~* '\\mfor\\s+(share|update|no key update|key share)\\M'
+       OR def ~* '\\mlock\\s+(table\\s+)?[a-z_.]'
   ),
   closure AS (
     SELECT oid, nm, depth, via FROM seed
@@ -48,8 +63,19 @@ const sql = `
          CASE f.vol WHEN 's' THEN 'STABLE' ELSE 'IMMUTABLE' END AS volatility,
          c.via AS lock_from
   FROM closure c JOIN fns f ON f.oid = c.oid
-  WHERE f.ns = 'public' AND f.vol <> 'v'
-    AND (f.proacl IS NULL OR array_to_string(f.proacl, ',') ILIKE '%authenticated%')
+  -- KHÔNG lọc theo ACL nữa.
+  --
+  -- Bộ lọc cũ proacl IS NULL OR proacl ILIKE '%authenticated%' loại bỏ hàm chỉ
+  -- GRANT cho service_role hoặc anon. Nhưng PostgREST quyết định READ-ONLY
+  -- theo VOLATILITY chứ không theo role: STABLE là read-only bất kể gọi bằng key
+  -- nào, và khoá dòng trong transaction read-only ném 25006 y hệt.
+  --
+  -- Đo 07/08/2026: 22 trong 505 hàm public STABLE/IMMUTABLE bị bộ lọc này che
+  -- khuất (toàn bộ họ network_center_admin_*, _profit_*, lucky_*, v5_*,
+  -- authorize_v2, effective_perms_v2 …). Hiện KHÔNG hàm nào trong số đó vi phạm
+  -- — kết quả trước và sau khi bỏ lọc đều là 0 — nên đây là lỗ tiềm ẩn, không
+  -- phải sự cố đang xảy ra. Bịt lúc còn sạch thì rẻ.
+  WHERE f.ns IN ('public', 'api') AND f.vol <> 'v'
   ORDER BY f.nm, c.depth;
 `;
 
