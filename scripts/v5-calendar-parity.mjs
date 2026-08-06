@@ -1,7 +1,10 @@
 // Parity check: SQL public.vn_workdays ≡ TS workdaysInMonth trên 24 tháng liên tiếp
 // (DoD S1 — chạy sau mỗi lần sửa calendar ở 1 trong 2 phía).
 // Dùng: node scripts/v5-calendar-parity.mjs
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 let pat = process.env.SUPABASE_PAT;
 if (!pat) {
@@ -20,22 +23,52 @@ async function sql(query) {
   return res.json();
 }
 
-// --- TS mirror (copy thuần từ src/lib/v5Calendar.ts — giữ đồng bộ tay, file TS là chuẩn) ---
 const pad = (n) => String(n).padStart(2, "0");
 const toIso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`;
-const daysInMonth = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
-const dow = (iso) => {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-};
+
+/**
+ * Gọi HÀM TS THẬT trong src/lib/v5Calendar.ts, không chép lại nó.
+ *
+ * Trước đây file này mang một "TS mirror — copy thuần từ src/lib/v5Calendar.ts,
+ * giữ đồng bộ tay". Header thì ghi "Parity check: SQL ≡ TS workdaysInMonth",
+ * nhưng thứ nó thật sự so là SQL ≡ BẢN CHÉP. Nếu ai sửa v5Calendar.ts, gate vẫn
+ * in "PARITY PASS" — tức nó không còn canh đúng thứ tên nó nói.
+ *
+ * Một gate parity mà một vế là bản chép tay thì không phải gate parity; nó chỉ
+ * chứng minh SQL khớp với thứ người viết gate NGHĨ là TS.
+ *
+ * vite-node để chạy được TS + alias của dự án (cùng cách check-permission-catalog
+ * đã dùng). Truyền đường dẫn TƯƠNG ĐỐI: với shell:true, Node không quote đối số
+ * nên đường dẫn tuyệt đối chứa dấu cách bị cắt đôi.
+ */
 function workdaysTs(y, m, holidays) {
-  const hol = new Set(holidays);
-  const out = [];
-  for (let d = 1; d <= daysInMonth(y, m); d++) {
-    const iso = toIso(y, m, d);
-    if (dow(iso) !== 0 && !hol.has(iso)) out.push(iso);
+  const rel = "node_modules/.cache/__v5-parity.ts";
+  const abs = fileURLToPath(new URL(`../${rel}`, import.meta.url));
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(
+    abs,
+    [
+      `import { workdaysInMonth } from '../../src/lib/v5Calendar';`,
+      `console.log(JSON.stringify(workdaysInMonth(${y}, ${m}, ${JSON.stringify(holidays)})));`,
+    ].join("\n"),
+    "utf8",
+  );
+  try {
+    const r = spawnSync("npx", ["vite-node", rel], {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      shell: true,
+    });
+    const found = r.stdout?.match(/\[.*\]/);
+    if (r.status !== 0 || !found) {
+      console.error("Không chạy được src/lib/v5Calendar.ts qua vite-node:");
+      console.error((r.stderr || r.stdout || "").slice(0, 600));
+      process.exit(2);
+    }
+    return JSON.parse(found[0]);
+  } finally {
+    rmSync(abs, { force: true });
   }
-  return out;
 }
 
 // Lấy holidays của owner từ DB (đúng nguồn SQL dùng)
