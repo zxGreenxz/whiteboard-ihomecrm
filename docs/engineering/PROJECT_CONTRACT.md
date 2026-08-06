@@ -321,6 +321,12 @@ unzip -o deno.zip
 ./deno.exe test --config supabase/functions/network-center-worker/deno.json \
   supabase/functions/network-center-worker/index.test.ts --allow-env
 ```
+
+Mỗi thư mục function có `deno.json` + **`deno.lock` riêng** khoá version các npm specifier
+(`@supabase/supabase-js`, `zod`). Đừng xoá `deno.lock` để "cho gọn": không có nó thì mỗi lần chạy
+Deno tự phân giải lại version mới nhất, và một edge function đang chạy production sẽ đổi dependency
+mà không ai commit gì. CI (`network-center-validation.yml`) pin `deno-version: v2.x` qua
+`denoland/setup-deno@v2` — không khoá patch, nên `deno.lock` mới là thứ giữ cho bản chạy được lặp lại.
 CI pin `deno-version: v2.x`; bản đã xác minh 22/22 xanh trên Windows là **v2.9.4**.
 
 **GOTCHA suite Deno này KHÔNG phủ**: `/ingest` với giá trị ngoài miền (`connectionType`/`sessionType`),

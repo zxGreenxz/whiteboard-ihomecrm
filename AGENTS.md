@@ -1,146 +1,43 @@
-# AGENTS.md — Workflow mặc định cho Codex
+# AGENTS.md — phần dành riêng cho Codex
 
-File này áp dụng cho mọi session Codex làm việc trên repo này.
+> **Luật chung nằm ở [`docs/engineering/PROJECT_CONTRACT.md`](docs/engineering/PROJECT_CONTRACT.md).**
+> Đọc file đó trước. Ở đây chỉ còn phần đặc thù Codex.
 
-> **Nguồn luật chung: [`docs/engineering/PROJECT_CONTRACT.md`](docs/engineering/PROJECT_CONTRACT.md)**
-> — dùng chung cho Claude Code và Codex. Khi file này mâu thuẫn với Project Contract, **Contract thắng**.
-> File này đang trong giai đoạn chuyển tiếp: nội dung vẫn đầy đủ để không rơi mất tri thức, sẽ rút
-> thành adapter mỏng sau khi Contract chạy thử qua vài session (xem `tooling/program-status.json`).
+File này từng dài 146 dòng và chép lại gần như toàn bộ Contract. Nó cũng là bằng chứng rõ nhất cho
+việc **vì sao chép luật ra nhiều nơi là sai**:
 
-## Stack ngắn gọn
+- Nó dạy chạy `npm run gen:types` kèm dấu redirect `>` đổ vào `types.ts` — suốt nhiều tháng. Shell
+  cắt trắng file đích **trước khi** generator kịp chạy, nên generator lỗi là `types.ts` chỉ còn một
+  dòng banner. CI ghi đúng cách làm ngay cạnh đó, nhưng file rule thì không ai sửa.
+  (Cố ý KHÔNG chép nguyên văn lệnh đó ở đây: một file hướng dẫn chứa sẵn lệnh phá file thì chỉ cách
+  một cú copy-paste là gây hại, bất kể câu chữ xung quanh đang chê nó. Gate `check-agent-contract`
+  cũng chặn đúng như vậy.)
+- Ngay trước khi rút, nó vẫn ghi ratchet TypeScript là "hiện 30" trong khi con số thật đã là **26**.
 
-- React + TypeScript + Vite (deploy Vercel — production: <https://ptcrm.vercel.app>)
-- shadcn/ui + Tailwind, react-hook-form + zod
-- Supabase (Postgres + Auth + Storage), migrations dưới `supabase/migrations/`
-- Test: Vitest + fast-check (property-based) — chạy `npx vitest run <path>`
-- **Test Edge Function (`supabase/functions/*/index.test.ts`)**: chạy bằng Deno,
-  không phải Vitest. Máy chưa có Deno thì tải bản portable (không cài hệ thống,
-  không đụng PATH) rồi gọi thẳng exe:
-  ```bash
-  curl -sL -o deno.zip https://github.com/denoland/deno/releases/download/v2.9.4/deno-x86_64-pc-windows-msvc.zip
-  unzip -o deno.zip   # ra deno.exe
-  ./deno.exe test --config supabase/functions/network-center-worker/deno.json \
-    supabase/functions/network-center-worker/index.test.ts --allow-env
-  ```
-  CI pin `deno-version: v2.x` qua `denoland/setup-deno@v2` (không khoá patch); bản
-  đã xác minh chạy 22/22 test xanh là **v2.9.4**. GOTCHA: suite này KHÔNG test
-  `/ingest` với giá trị ngoài miền hay `rpcErrorStatus` với `23502`/`23514`/`23503`
-  — logic đó được phủ bởi test Node import cùng `index.ts`
-  (`scripts/__tests__/network-center-ingest-domains.test.mjs`), không phải suite Deno.
-- Type check thật: `npx tsc --noEmit -p tsconfig.app.json` (root `tsc --noEmit` KHÔNG check gì).
-  Ratchet là **tập fingerprint** trong `ts-baseline.json` (hiện 30), KHÔNG phải con
-  số trong `ts-baseline.txt` — file đó là artifact chết, không script nào đọc. Chạy
-  `npm run typecheck:baseline`; fail khi xuất hiện fingerprint MỚI.
-- **Regen Supabase types**: sau khi apply migration đổi schema, chạy **`npm run gen:types`**
-  — **KHÔNG redirect, KHÔNG thêm header tay**. `scripts/gen-supabase-types.mjs` GHI THẲNG
-  (atomic) vào `src/integrations/supabase/types.ts` và TỰ chèn header; stdout chỉ có banner.
-  GOTCHA đã cắn: `npm run gen:types > src/integrations/supabase/types.ts` **phá file** —
-  shell cắt trắng file trước khi generator chạy, và nếu generator lỗi thì `types.ts` chỉ còn
-  một dòng banner. Muốn xem drift mà không đụng repo:
-  `cp src/integrations/supabase/types.ts /tmp/before.ts && npm run gen:types && diff /tmp/before.ts src/integrations/supabase/types.ts`.
-  ĐỪNG để `types.ts` trôi sau migration (gây `as any` lan rộng). PAT đọc từ `CLAUDE.local.md`.
-  **Sau regen luôn chạy `npm run types:normalize`** để bỏ partition ngày
-  (`network_{device,interface}_samples_YYYYMMDD`) do Network Center sinh mỗi ngày — chúng không
-  phải API frontend; để lại thì file phình ~96 dòng/ngày và drift job đỏ dù logical schema không
-  đổi. Gate: `npm run types:check`. Luật ở `supabase/generated-types-policy.json`.
-- **Sau MỌI migration đụng VIEW**: chạy `node scripts/check-view-invoker.mjs`.
-  GOTCHA án lệ: `CREATE OR REPLACE VIEW` làm RỚT `security_invoker=true` → view
-  chạy dưới quyền owner, lộ dữ liệu tenant khác. Script exit 1 nếu có view hở.
-- **Đối chiếu tiền**: `node scripts/reconcile-money.mjs [YYYY-MM]` so SUM SQL thật
-  với tổng 1000 dòng đầu — chạy ở mọi thay đổi đụng số tiền để bắt bug cap-1000.
+Cả hai lỗi đều không thể phát hiện bằng test — chúng là văn bản. Cách chữa duy nhất có hiệu lực là
+**chỉ có một bản**. Bảng ánh xạ từng rule cũ về vị trí mới: **Contract §13**.
 
-## Quy trình mặc định khi làm xong một thay đổi
+---
 
-1. **Chạy type check và test liên quan** — phải xanh trước khi đi tiếp.
-2. **Test trực tiếp trên web** — **MẶC ĐỊNH CHẠY ẨN (headless), KHÔNG mở cửa sổ trình duyệt.**
+## Trailer commit
 
-   Ưu tiên hạm đội headless ở `.e2e-fleet/` (Playwright Test Runner) vì nhanh nhất
-   và chạy song song được nhiều luồng:
+Thay đổi do Codex thực hiện dùng trailer:
 
-   ```bash
-   cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/<file>.spec.ts
-   ```
+```text
+Co-Authored-By: Codex <noreply@openai.com>
+```
 
-   - Tăng `FLEET_WORKERS` (8 → 30) khi cần quét rộng/nhanh. Mỗi worker là một
-     browser context riêng nên nhiều tài khoản đăng nhập song song không đá nhau.
-   - Tài khoản test DEMO khai ở `.e2e-fleet/specs/auth.ts`; **mật khẩu KHÔNG nằm
-     trong repo** — truyền qua env `FLEET_PASS_CHUNHA` / `FLEET_PASS_KETOAN` /
-     `FLEET_PASS_QUANLY` (giá trị lấy từ `CLAUDE.local.md`). Thiếu env thì test
-     báo lỗi rõ ràng ngay.
-   - Thử cả happy path lẫn edge case, và **luôn kiểm console errors**
-     (`trackConsoleErrors` đã lọc sẵn nhiễu mạng).
-   - **Chỉ ghi dữ liệu vào org DEMO `dddd0000-…0001`**; org thật `aaaa0000-…0001`
-     chỉ đọc. Mọi fixture tạo ra phải tự dọn cuối bài.
-   - Playwright MCP (`mcp__playwright__browser_*`) cũng chạy ẩn — dùng khi cần soi
-     kỹ MỘT màn hình (chụp ảnh, đọc DOM từng bước), không dùng để quét diện rộng.
-   - Nếu session không có công cụ browser nào, ghi rõ khoảng trống xác minh trong
-     báo cáo cuối, **không** tuyên bố đã test.
+Phần còn lại của quy ước commit ở Contract §3 và §11.3.
 
-   **CHỈ mở trình duyệt hiện hình (headed) khi user YÊU CẦU TƯỜNG MINH** — kiểu
-   "bật web lên để tôi xem/tôi test <X>". Khi đó:
+---
 
-   ```bash
-   cd .e2e-fleet && FLEET_HEADED=1 FLEET_WORKERS=2 npx playwright test specs/<file>.spec.ts
-   ```
+## Công cụ trình duyệt
 
-   Giữ `FLEET_WORKERS` nhỏ (1–2) cho user nhìn kịp; config đã bật `slowMo` sẵn ở
-   chế độ headed. **Không tự ý mở cửa sổ trình duyệt khi user không yêu cầu.**
-3. **Tự động hoàn thiện dữ liệu test nếu cần**: nếu tính năng cần seed/cleanup dữ
-   liệu (ví dụ phải có meter trước mới test ghi chỉ số được), dùng Supabase
-   Management API với PAT trong `CLAUDE.local.md` để chuẩn bị state đủ test trong
-   phạm vi dữ liệu test được phép, không hỏi user.
-4. **Sửa lỗi → re-test → lặp lại** đến khi tính năng chạy đúng. Không tuyên bố
-   "đã xong" khi chưa thấy nó hoạt động trong browser; nếu không thể test browser,
-   phải nói rõ chưa xác minh phần nào.
-5. **Commit** với message Việt-Anh trộn theo style hiện có (`feat(scope): mô tả`,
-   `fix(scope): mô tả`). Stage file cụ thể, **không** dùng `git add -A` và không
-   đưa thay đổi không liên quan của user vào commit.
-6. **Push lên `origin/main`** khi commit xong. **`main` KHÔNG phải là production.**
+Contract §8 quy định E2E chạy headless, chỉ ghi org DEMO, mật khẩu qua `FLEET_PASS_*`.
 
-   Mô hình phát hành (xem `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md` §0.4):
+```bash
+cd .e2e-fleet && FLEET_WORKERS=8 npx playwright test specs/<file>.spec.ts
+```
 
-   ```text
-   push main  →  Vercel PREVIEW  →  gate suite  →  xanh hết  →  promote `production`
-                                                  →  đỏ bất kỳ →  DỪNG, production giữ SHA cũ
-   ```
-
-   - ✅ Đã flip 06/08/2026: Vercel theo dõi nhánh `production`, nên push `main`
-     chỉ tạo Preview. Promote bằng `git push origin origin/main:production` sau
-     khi gate xanh; rollback bằng promote lại deployment trước.
-   - Thay đổi chạm runtime (`src/`, `api/`, `vite.config.ts`, deps) vẫn phải: đủ
-     gate (typecheck + test + build) → kiểm bằng **đột biến** với logic có nhánh
-     → **kiểm bundle sau build** (test xanh không chứng minh asset nạp đúng trên
-     production). Xem `PROJECT_CONTRACT.md` §3.
-   - Không bao giờ tính gate `continue-on-error` là xanh khi quyết định promote.
-   - **Write database production** (Management API / apply migration) luôn cần
-     promotion token nhập tại chỗ, KHÔNG lấy PAT sẵn trong `CLAUDE.local.md`.
-
-## Quy ước commit
-
-Xem `git log --oneline` để theo style. Tóm tắt:
-
-- `feat(scope): ...` — tính năng/UI mới
-- `fix(scope): ...` — sửa bug
-- `chore(scope): ...` — build/deps/config
-- Body (nếu có) viết bullet `- ...` mô tả "what + why"
-- Thay đổi do Codex thực hiện dùng trailer:
-
-  ```text
-  Co-Authored-By: Codex <noreply@openai.com>
-  ```
-
-## Cảnh báo về secrets
-
-- **KHÔNG bao giờ commit** `CLAUDE.local.md`, `.env.local`, hay bất kỳ
-  token/password/PAT nào vào repo. Các file secret phải nằm trong `.gitignore`.
-- Khi cần Supabase admin access, đọc PAT từ `CLAUDE.local.md` trong runtime —
-  không in giá trị secret ra console/log/commit message.
-
-## Cấu trúc nhanh
-
-- `src/pages/` — route entry
-- `src/components/<domain>/` — UI theo domain (income-expenses, meter-readings,
-  invoices, customers…)
-- `src/hooks/` — React Query data hooks
-- `src/lib/` — pure utils + zod schemas (`*Validation.ts`)
-- `supabase/migrations/` — SQL migrations theo timestamp
+Nếu session Codex không có công cụ browser, **ghi rõ khoảng trống xác minh trong báo cáo cuối** —
+không tuyên bố đã test.

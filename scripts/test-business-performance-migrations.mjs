@@ -1,13 +1,17 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { stripMigrationTransactionControl } from "./apply-accounting-rollout.mjs";
 import {
   executeManagementQuery,
   loadAdminConfig,
 } from "./test-business-performance-authz.mjs";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, (value) => value.slice(1)));
+// fileURLToPath chứ không phải `.pathname` — xem ghi chú đầy đủ ở
+// scripts/test-openclaw-migrations.mjs: `.pathname` giữ percent-encoding nên
+// đường dẫn có dấu cách thành `%20` và fs không mở được file.
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const MIGRATION_ROOT = resolve(ROOT, "supabase", "migrations");
 
 function resolveMigration(input) {
@@ -66,7 +70,7 @@ export async function main({
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : null;
-if (invokedPath === resolve(new URL(import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, (value) => value.slice(1)))) {
+if (invokedPath === resolve(fileURLToPath(import.meta.url))) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

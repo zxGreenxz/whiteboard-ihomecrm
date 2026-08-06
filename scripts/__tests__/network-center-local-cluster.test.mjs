@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
@@ -29,7 +30,10 @@ import {
   verifyDisposableTeardown,
 } from "../verify-network-center-disposable-teardown.mjs";
 
-const repositoryRoot = new URL("../../", import.meta.url).pathname
+// fileURLToPath chu khong phai .pathname: .pathname giu nguyen percent-encoding,
+// nen bat ky duong dan nao co dau cach deu thanh %20 va fs khong mo duoc file.
+// Da can tren may that ("C:/Users/Nguyen Tam/..." -> "Nguyen%20Tam"): 32 test do.
+const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url))
   .replace(/^\/([A-Za-z]:)/u, "$1");
 
 test("POSTGRES_BIN wins over the platform defaults", () => {

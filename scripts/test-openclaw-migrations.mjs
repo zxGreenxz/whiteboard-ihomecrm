@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
@@ -93,7 +93,12 @@ const CREDENTIAL_PROOF_DOMAINS = Object.freeze({
   MAINTENANCE: "ihome-openclaw-maintenance-credential-v1",
 });
 
-const repositoryRoot = resolve(new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+// fileURLToPath chứ không phải `.pathname`: `.pathname` giữ nguyên percent-encoding,
+// nên mọi đường dẫn có dấu cách biến thành `%20` và fs không mở được file. Đã cắn
+// trên máy thật ("C:/Users/Nguyen Tam/..." → "Nguyen%20Tam"): 32 test đỏ, mà CI
+// Linux thì xanh vì đường dẫn runner không có dấu cách — nên loại lỗi này sống rất
+// lâu. fileURLToPath xử lý đúng cả decode lẫn tiền tố ổ đĩa Windows.
+const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 export const OPENCLAW_DISPOSABLE_FIXTURE_SQL = `
   create schema if not exists extensions;

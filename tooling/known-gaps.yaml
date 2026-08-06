@@ -52,17 +52,13 @@ gaps:
       Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
       xem RPO 24 giờ còn chấp nhận được không.
 
-  - id: claude-agents-md-still-full
-    where: CLAUDE.md (211 dòng), AGENTS.md (146 dòng)
-    expires_at: 2026-11-30
-    why: >
-      AI_RULES.md ĐÃ rút thành pointer (06/08). Hai file còn lại vẫn giữ nội dung đầy đủ vì
-      chúng chứa phần đặc thù từng agent (cách gọi tool, trailer commit, quy trình E2E) xen
-      lẫn phần trùng Contract — tách cần đọc từng mục, không cắt máy móc được.
-      Rủi ro hiện tại THẤP: gate check-agent-contract nay bảo vệ 16 invariant và đã chứng
-      minh bắt được khi một cái biến mất khỏi Contract.
-    exit_condition: >
-      Rút CLAUDE.md/AGENTS.md còn phần đặc thù agent + pointer; gate vẫn xanh sau khi rút.
+# ĐÃ ĐÓNG 06/08/2026 — claude-agents-md-still-full.
+# CLAUDE.md 211 -> 62 dòng, AGENTS.md 146 -> 43, chỉ còn phần đặc thù agent
+# (trailer commit, cách gọi công cụ browser) + pointer về Contract.
+# Trước khi cắt đã đối chiếu CƠ HỌC từng chi tiết vận hành với Contract và phát
+# hiện `deno.lock` chưa được nhắc ở đâu — nếu cắt trước rồi kiểm sau thì tri thức
+# đó biến mất không dấu vết. Vì vậy MUST_MENTION của check-agent-contract nâng từ
+# 16 lên 29 invariant, và đã đột biến để chắc nó bắt được.
 
 
 
@@ -78,11 +74,10 @@ gaps:
       Tạo một Supabase project tạm, restore baseline vào đó, xác nhận số bảng/hàm/policy khớp
       production, rồi đổi manifest.status thành verified.
 
-  - id: buildingfilterselect-test-failing
-    where: src/components/buildings/__tests__/BuildingFilterSelect.test.tsx
-    expires_at: 2026-09-30
-    why: >
-      2 test đỏ SẴN từ trước đợt rà soát (xác minh bằng cách stash mọi thay đổi rồi chạy
-      lại — vẫn đỏ y hệt). Không nằm trong phạm vi các đợt đang làm nên chưa xử, nhưng
-      nó khiến job quality-gates không bao giờ xanh hoàn toàn.
-    exit_condition: Sửa hoặc gỡ 2 test đó; vitest chạy file này xanh.
+# ĐÃ ĐÓNG 06/08/2026 — buildingfilterselect-test-failing.
+# Nguyên nhân: commit 5b14e9a0 thêm option `includeVirtual` nhưng không sửa test;
+# hai test đó chỉ nói về cờ `enabled` lại so khớp TOÀN BỘ đối số nên vỡ theo.
+# Đã tách theo mối quan tâm (objectContaining) + thêm 2 test phủ `includeVirtual`
+# vốn ship không kèm test nào. 4/4 xanh, kiểm bằng đột biến hai chiều.
+# Giữ lại ghi chú này thay vì xoá trắng: biết một gap ĐÃ từng tồn tại và đóng thế
+# nào có ích hơn là để nó biến mất không dấu vết.

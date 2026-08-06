@@ -104,9 +104,16 @@ function main() {
   // Danh sách này là ĐIỀU KIỆN để rút ba file rule thành adapter mỏng: mỗi mục
   // là một tri thức đã trả giá để có. Nếu ai đó rút gọn Contract quá tay, gate
   // này là thứ duy nhất phát hiện — vì tri thức mất đi không làm test nào đỏ.
+  // 13 mục cuối thêm 06/08/2026, ngay trước khi rút CLAUDE.md (211 dòng) và
+  // AGENTS.md (146 dòng) thành adapter. Danh sách 16 mục ban đầu KHÔNG đủ: khi
+  // đối chiếu từng chi tiết vận hành trong hai file sắp cắt với Contract, có
+  // `deno.lock` chưa được nhắc ở đâu cả — tức là nếu cắt trước rồi kiểm sau thì
+  // tri thức đó biến mất không dấu vết, và không gì đỏ lên.
   const MUST_MENTION = [
     ['ts-baseline.json', 'ratchet TypeScript theo fingerprint'],
+    ['tsconfig.app.json', 'typecheck THẬT — root `tsc --noEmit` không check gì'],
     ['check-view-invoker', 'gate view security_invoker'],
+    ['security_invoker', 'CREATE OR REPLACE VIEW làm rớt cờ này'],
     ['check-stable-fn-locks', 'gate hàm STABLE lấy khoá dòng'],
     ['25006', 'mã lỗi khi hàm STABLE lấy khoá dòng qua PostgREST'],
     ['VOLATILE', 'hàm lấy khoá dòng phải khai VOLATILE'],
@@ -115,10 +122,21 @@ function main() {
     ['CLAUDE.local.md', 'credential vault'],
     ['promotion token', 'ghi database production cần token nhập tại chỗ'],
     ['hide_sandbox_admin', 'policy chặn org TEST lọt vào org thật'],
+    ['can_access_building', 'cách lọc toà đúng trong hàm SECURITY DEFINER'],
+    ['aaaa0000', 'org THẬT — chỉ đọc khi test'],
+    ['dddd0000', 'org DEMO — nơi duy nhất được ghi khi test'],
+    ['cccc0000', 'org TEST — bản sao dữ liệu thật'],
+    ['clone-org', 'đồng bộ lại org TEST'],
+    ['0/158', 'cửa chặn rò rỉ sandbox'],
     ['deadlock', 'await supabase.* trong callback auth gây treo im lặng'],
     ['FLEET_PASS', 'mật khẩu E2E không nằm trong repo'],
+    ['headless', 'E2E mặc định chạy ẩn'],
     ['2.9.4', 'phiên bản Deno đã xác minh'],
+    ['deno.lock', 'khoá version npm specifier của edge function'],
     ['gen:types', 'quy trình regen types (không redirect)'],
+    ['types:normalize', 'bỏ partition ngày sau khi regen'],
+    ['HEAD:main', 'push đúng nhánh, tránh đẩy nhánh main local cũ'],
+    ['git add -A', 'điều bị cấm khi stage'],
     ['backup-before-schema', 'PITR tắt nên phải dump trước thao tác schema'],
     ['migration-policy.json', 'cutoff và luật forward-only'],
   ];
