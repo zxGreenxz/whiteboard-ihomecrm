@@ -54,6 +54,48 @@ if (!foundMatch && !looksLikeRun) {
   process.exit(2);
 }
 
+// 2b) SÀN ĐỘ PHỦ — ratchet lỗi KHÔNG thay thế được phép kiểm này.
+//
+// Ratchet chỉ so TẬP LỖI. Nó không biết gì về việc tsc đã soi BAO NHIÊU file.
+// Thu hẹp phạm vi (đổi `include`, thêm `exclude`) làm một số lỗi baseline biến
+// mất, và gate phản ứng bằng "✅ 1 lỗi baseline đã được SỬA — chạy --write".
+// Nghe theo lời khuyên đó là khoá vĩnh viễn phần mất phủ: từ đó lỗi mới trong
+// vùng bị bỏ sẽ không bao giờ xuất hiện, mà cũng chẳng ai thấy điều gì đã đổi.
+//
+// Đo 07/08/2026: tsconfig.app.json phủ 1222 file trong src/; thêm
+// `"exclude": ["src/hooks"]` còn 1190. Con số ĐỌC ĐƯỢC, nên canh được.
+//
+// (Ghi chú trung thực: `exclude` KHÔNG chặn được file đi vào qua import, nên
+// một mình nó chưa giấu được lỗi. Phép kiểm này nhắm cái nguy hiểm hơn — phạm
+// vi teo dần rồi được chốt lại bằng --write.)
+const covPath = path.join(repoRoot, 'tooling', 'ts-coverage-baseline.json');
+const listArgs = useJsEntry
+  ? [tscJs, '--listFilesOnly', '-p', 'tsconfig.app.json']
+  : ['--listFilesOnly', '-p', 'tsconfig.app.json'];
+const listRes = spawnSync(bin, listArgs, {
+  cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, shell: false,
+});
+const soFile = ((listRes.stdout || '').match(/[/\\]src[/\\]/g) || []).length;
+
+if (WRITE) {
+  writeFileSync(
+    covPath,
+    JSON.stringify({
+      $comment: 'Sàn độ phủ typecheck: số file trong src/ mà tsconfig.app.json thực sự soi. CHỈ ĐƯỢC TĂNG. Giảm ⇒ phạm vi đã teo lại, và ratchet lỗi KHÔNG phát hiện được điều đó. Sinh bởi scripts/check-ts-baseline.mjs --write.',
+      files: soFile,
+    }, null, 2) + '\n',
+    'utf8',
+  );
+} else if (existsSync(covPath)) {
+  const san = JSON.parse(readFileSync(covPath, 'utf8')).files ?? 0;
+  if (soFile < san) {
+    console.error(`❌ Phạm vi typecheck TEO LẠI: ${soFile} file trong src/ (sàn ${san}).`);
+    console.error('   Ratchet lỗi không thấy được điều này — nó chỉ so tập lỗi, không biết tsc soi bao nhiêu file.');
+    console.error('   Kiểm tra include/exclude trong tsconfig.app.json. ĐỪNG hạ sàn để cho qua.');
+    process.exit(1);
+  }
+}
+
 // 3) PARSE + fingerprint ỔN ĐỊNH (multiset — giữ trùng lặp).
 const DIAG = /^(?<file>.+?)\((?<line>\d+),(?<col>\d+)\): error (?<code>TS\d+): (?<msg>.*)$/;
 const fingerprints = [];
@@ -62,7 +104,25 @@ for (const rawLine of out.split(/\r?\n/)) {
   if (!m) continue;
   const { file, code, msg } = m.groups;
   const relPath = path.relative(repoRoot, file).split(path.sep).join('/');
-  const normMsg = msg.replace(/'[^']*'/g, "'…'").trim();
+  // GIỮ chuỗi trong nháy ĐẦU TIÊN — đó là tên property/biến bị than phiền.
+  //
+  // Bản đầu xoá SẠCH mọi thứ trong nháy đơn, nên
+  //   Property 'zzzKhongHeCo' does not exist on type '{ a: number; b: number; }'
+  // co lại thành đúng `Property '…' does not exist on type '…'.` — trùng khít
+  // fingerprint baseline sẵn có của cùng file đó. Kết quả: MỘT lỗi cũ cấp phép
+  // cho lỗi MỚI bất kỳ cùng dạng trong cùng file. Đo 07/08/2026: gieo lỗi
+  // TS2339 thật vào RoomDetailDialog.tsx ⇒ tsc thấy rõ ở dòng 298, gate vẫn in
+  // "khớp baseline, không có gì thay đổi" và exit 0.
+  //
+  // 20/26 fingerprint baseline thuộc dạng siêu-tổng-quát này, trải trên 15 file
+  // gồm cả code tiền (invoiceHelpers, useQuickCollect, GenerateInvoiceDialog) —
+  // tức 15 vùng miễn kiểm tra không giới hạn cho đúng loại lỗi ratchet sinh ra
+  // để chặn.
+  //
+  // Vẫn chuẩn hoá các chuỗi SAU (hình dạng type) vì chúng đổi theo refactor vô
+  // hại — đó là lý do ban đầu phải chuẩn hoá.
+  let soNhay = 0;
+  const normMsg = msg.replace(/'[^']*'/g, (khop) => (++soNhay === 1 ? khop : "'…'")).trim();
   fingerprints.push(`${relPath}|${code}|${normMsg}`);
 }
 
@@ -85,9 +145,13 @@ const curSorted = [...fingerprints].sort();
 
 // 7) --write: regen baseline từ tập hiện tại (SET đã sort, unique).
 if (WRITE) {
-  const uniqueSorted = [...new Set(fingerprints)].sort();
-  writeFileSync(baselinePath, JSON.stringify(uniqueSorted, null, 2) + '\n', 'utf8');
-  console.log(`✅ Đã ghi ts-baseline.json: ${uniqueSorted.length} fingerprint (từ ${fingerprints.length} lỗi thô).`);
+  // GIỮ TRÙNG LẶP. Comment ở mục 3 hứa "multiset — giữ trùng lặp" nhưng cả
+  // --write lẫn phép so đều bóp về Set, nên bội số biến mất: 1 lỗi cũ và 27 lỗi
+  // mới cùng dạng cho ra CÙNG một phần tử. Ghi nguyên bội số thì thêm một lỗi
+  // nữa cùng dạng cũng làm số đếm vượt baseline ⇒ đỏ.
+  const sorted = [...fingerprints].sort();
+  writeFileSync(baselinePath, JSON.stringify(sorted, null, 2) + '\n', 'utf8');
+  console.log(`✅ Đã ghi ts-baseline.json: ${sorted.length} fingerprint (giữ bội số).`);
   process.exit(0);
 }
 
@@ -108,11 +172,27 @@ if (!Array.isArray(baselineArr)) {
   process.exit(2);
 }
 
-// 5) So SET: new = cur - baseline (exit 1); fixed = baseline - cur (nhắc regen, exit 0).
-const baselineSet = new Set(baselineArr);
-const curSet = new Set(curSorted);
-const newOnes = [...curSet].filter((fp) => !baselineSet.has(fp)).sort();
-const fixedOnes = [...baselineSet].filter((fp) => !curSet.has(fp)).sort();
+// 5) So BỘI SỐ, không so tập hợp.
+//
+// So bằng Set là chỗ hỏng thứ hai (chỗ thứ nhất là chuẩn hoá xoá tên định
+// danh): 1 lỗi cũ và 27 lỗi mới cùng dạng cho ra CÙNG một phần tử, nên gate
+// xanh. Đếm số lần xuất hiện thì thêm một lỗi nữa cùng dạng cũng vượt baseline.
+const dem = (arr) => arr.reduce((m, fp) => m.set(fp, (m.get(fp) ?? 0) + 1), new Map());
+const baselineDem = dem(baselineArr);
+const curDem = dem(curSorted);
+
+const newOnes = [];
+for (const [fp, n] of curDem) {
+  const cu = baselineDem.get(fp) ?? 0;
+  if (n > cu) newOnes.push(cu === 0 ? fp : `${fp}   (${cu} → ${n} lần)`);
+}
+const fixedOnes = [];
+for (const [fp, n] of baselineDem) {
+  const nay = curDem.get(fp) ?? 0;
+  if (nay < n) fixedOnes.push(nay === 0 ? fp : `${fp}   (${n} → ${nay} lần)`);
+}
+newOnes.sort();
+fixedOnes.sort();
 
 if (newOnes.length > 0) {
   console.error(`❌ ${newOnes.length} lỗi TS MỚI (không có trong baseline). Sửa trước khi commit:`);
@@ -130,5 +210,5 @@ if (fixedOnes.length > 0) {
   process.exit(0);
 }
 
-console.log(`✅ Tập lỗi TS khớp baseline (${baselineSet.size} fingerprint). Không có gì thay đổi.`);
+console.log(`✅ Tập lỗi TS khớp baseline (${baselineArr.length} fingerprint, đã tính bội số). Không có gì thay đổi.`);
 process.exit(0);

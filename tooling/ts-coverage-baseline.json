@@ -1,0 +1,4 @@
+{
+  "$comment": "Sàn độ phủ typecheck: số file trong src/ mà tsconfig.app.json thực sự soi. CHỈ ĐƯỢC TĂNG. Giảm ⇒ phạm vi đã teo lại, và ratchet lỗi KHÔNG phát hiện được điều đó. Sinh bởi scripts/check-ts-baseline.mjs --write.",
+  "files": 1222
+}
