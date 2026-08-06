@@ -19,8 +19,15 @@ export interface HeartbeatLoopOptions {
 export class HeartbeatSendError extends Error {
   readonly code = "HEARTBEAT_SEND_FAILED";
 
-  constructor() {
-    super("runtime heartbeat send failed");
+  /**
+   * The wrapper keeps secrets out of the message. Dropping the cause as well left
+   * nothing at all: a heartbeat answering 200 while the client rejected the command
+   * inside it produced exactly one useless line, "runtime heartbeat send failed",
+   * and the QR command sat at LEASED for hours. The cause is kept for a caller that
+   * wants to log it; the wrapper's own message stays content-free.
+   */
+  constructor(cause?: unknown) {
+    super("runtime heartbeat send failed", cause === undefined ? undefined : { cause });
     this.name = "HeartbeatSendError";
   }
 }
@@ -56,7 +63,22 @@ export class HeartbeatLoop {
     this.#intervalHandle = this.#setInterval(() => {
       // Scheduled failures are reflected by snapshot() and deliberately do not
       // become unhandled rejections. Direct pulse() callers still receive them.
-      void this.pulse().catch(() => undefined);
+      //
+      // They ARE logged. Swallowing them outright hid a heartbeat that returned 200
+      // on every call while the client rejected the command inside it: the bridge
+      // looked healthy, the QR command sat at LEASED, and there was nothing anywhere
+      // to read. `snapshot()` only exposes a failure COUNT, which cannot tell you
+      // which invariant failed. One line here is the difference between a five-minute
+      // diagnosis and an afternoon.
+      void this.pulse().catch((error: unknown) => {
+        console.error(JSON.stringify({
+          event: "heartbeat_pulse_failed",
+          message: error instanceof Error ? error.message : String(error),
+          cause: error instanceof Error && error.cause instanceof Error
+            ? error.cause.message
+            : undefined,
+        }));
+      });
     }, HEARTBEAT_INTERVAL_MS);
   }
 
@@ -91,9 +113,9 @@ export class HeartbeatLoop {
         await this.#send();
         this.#lastSuccessAtMs = this.#now();
         this.#consecutiveFailures = 0;
-      } catch {
+      } catch (cause) {
         this.#consecutiveFailures += 1;
-        throw new HeartbeatSendError();
+        throw new HeartbeatSendError(cause);
       } finally {
         this.#inFlight = null;
       }

@@ -72,7 +72,13 @@ class ProtocolFaithfulFakeGateway extends EventTarget implements GatewayWebSocke
       expect(params.commands).toEqual([]);
       expect(params.role).toBe("operator");
       expect(params.scopes).toEqual(["operator.admin"]);
-      expect(params.auth).toEqual({ deviceToken: this.expected.deviceToken });
+      // `token`, not `deviceToken`. This fake was written to match the client rather
+      // than the Gateway, so it certified the one shape the real 2026.7.1 Gateway
+      // rejects: `deviceToken` is matched against a token the Gateway itself minted
+      // for a paired device, and the provisioned secret is the Gateway auth token.
+      // Against the real cell, `deviceToken` answered `device_token_mismatch` on every
+      // connect; `token` answers `hello-ok`.
+      expect(params.auth).toEqual({ token: this.expected.deviceToken });
 
       const device = params.device as Record<string, unknown>;
       expect(device.id).toBe(this.expected.deviceId);
@@ -289,6 +295,36 @@ describe("authenticated OpenClaw Gateway transport", () => {
       deviceToken: "paired-device-token",
       deviceIdentity,
     })).toThrow(/TLS/i);
+  });
+
+  // The reviewed compose.cell.yaml runs the cell gateway plaintext at
+  // ws://cell:18789 on an internal:true network with no route off the host. Every
+  // url in this suite was wss://gateway.internal/openclaw, so nothing caught that
+  // the bridge refused its own infrastructure and could not start.
+  it("accepts the plaintext intra-stack gateway, and only that", () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const deviceId = createHash("sha256").update(rawPublicKey(publicKeyPem)).digest("hex");
+    const deviceIdentity = { deviceId, publicKeyPem, privateKeyPem };
+    const deviceToken = "paired-device-token";
+
+    expect(() => createGatewayCellRpcTransport({
+      url: "ws://cell:18789",
+      deviceToken,
+      deviceIdentity,
+    })).not.toThrow();
+    // A real host over plaintext is still refused, port or no port.
+    for (const url of ["ws://cell.example.com:18789", "ws://openclaw.chillhome.io.vn/openclaw"]) {
+      expect(() => createGatewayCellRpcTransport({ url, deviceToken, deviceIdentity }))
+        .toThrow(/TLS/i);
+    }
+    // Credentials in the URL stay refused even on the internal hop.
+    expect(() => createGatewayCellRpcTransport({
+      url: "ws://user:pass@cell:18789",
+      deviceToken,
+      deviceIdentity,
+    })).toThrow(/credentials/i);
   });
 
   it("preserves an explicit zero-frame handoff flag from the Gateway", async () => {

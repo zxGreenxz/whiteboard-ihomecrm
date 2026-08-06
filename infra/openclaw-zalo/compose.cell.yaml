@@ -101,6 +101,10 @@ services:
       OPENCLAW_CELL_ID: "${OPENCLAW_CELL_ID}"
       OPENCLAW_SESSION_GENERATION: "${OPENCLAW_SESSION_GENERATION:?session generation required}"
       OPENCLAW_FENCING_TOKEN: "${OPENCLAW_FENCING_TOKEN:?fencing token required}"
+      # The bridge reads both through `environmentInteger`, which throws when the
+      # name is absent, so omitting them stopped the process before it listened.
+      OPENCLAW_CONTROL_VERSION: "${OPENCLAW_CONTROL_VERSION:?control version required}"
+      OPENCLAW_TAKEOVER_VERSION: "${OPENCLAW_TAKEOVER_VERSION:?takeover version required}"
       OPENCLAW_FUNCTIONS_BASE_URL: "${OPENCLAW_FUNCTIONS_BASE_URL:?functions base url required}"
       OPENCLAW_GATEWAY_URL: ws://cell:18789
       OPENCLAW_MEDIA_GATEWAY_URL: "${OPENCLAW_MEDIA_GATEWAY_URL:?media gateway url required}"
@@ -138,6 +142,12 @@ services:
         uid: "1000"
         gid: "1000"
         mode: 0400
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=64m
+      # The data root itself must be writable: prepareBridgeStoragePaths() chmods it
+      # to 0700 at startup, and on a read_only rootfs that is EROFS. Only its two
+      # children were mounted, so the bridge could not start.
+      - /var/lib/openclaw-bridge:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=16m
     volumes:
       - type: volume
         source: bridge-spool

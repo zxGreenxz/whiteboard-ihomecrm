@@ -110,9 +110,15 @@ function record(value: unknown, name: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function exact(value: unknown, keys: readonly string[], name: string): Record<string, unknown> {
+function exact(
+  value: unknown,
+  keys: readonly string[],
+  name: string,
+  optionalKeys: readonly string[] = [],
+): Record<string, unknown> {
   const result = record(value, name);
-  const actual = Object.keys(result).sort();
+  const optional = new Set(optionalKeys);
+  const actual = Object.keys(result).filter((key) => !optional.has(key)).sort();
   const expected = [...keys].sort();
   if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
     return fail(`${name} fields are invalid`);
@@ -268,11 +274,18 @@ function parseHeartbeatResponse(
   claimToken: string,
   localSessionGeneration: number,
 ): ParsedHeartbeat {
+  // `capacityControls` is OPTIONAL, exactly as the Edge function treats it
+  // (openclaw-runtime/contracts.ts:1097). The SQL facade
+  // `openclaw_service_runtime_heartbeat_v1` returns it, the Edge passes it through,
+  // and this strict key set rejected the whole response over it - so every heartbeat
+  // answered 200 and every one was thrown away here, leaving the QR command at
+  // LEASED with nothing logged. Edge and SQL deploy separately from this service, so
+  // the key has to be tolerated whichever side is ahead.
   const response = exact(value, [
     "version", "organizationId", "accountId", "cellId", "observedAt", "accepted",
     "authMode", "currentSessionGeneration", "currentConnectionGeneration",
     "commandResultAcks", "commands",
-  ], "heartbeat response");
+  ], "heartbeat response", ["capacityControls"]);
   if (
     response.version !== 1 || response.organizationId !== binding.organizationId ||
     response.accountId !== binding.accountId || response.cellId !== binding.cellId ||
@@ -305,8 +318,21 @@ function parseHeartbeatResponse(
     } else if (
       command.sourceSessionGeneration !== currentSessionGeneration ||
       command.targetSessionGeneration !== currentSessionGeneration ||
-      command.sourceConnectionGeneration !== currentConnectionGeneration ||
-      command.targetConnectionGeneration !== currentConnectionGeneration
+      // The command ADVANCES the connection generation; it does not sit on it.
+      // Every runtime command is created with
+      // `target_connection_generation = source_connection_generation + 1`
+      // (20260727060000_openclaw_rpc_surface.sql:3084 for QR_LOGIN, :3246 for
+      // DISCONNECT), and the same file enforces that invariant at :1671 and :5231.
+      // The account's generation is bumped to the target in the same transaction,
+      // so the server hands back source = current - 1.
+      //
+      // Requiring `sourceConnectionGeneration === currentConnectionGeneration` was
+      // therefore unsatisfiable: it rejected every command the server ever issued.
+      // The bridge threw "normal command binding is invalid" inside pulse(), which
+      // nothing logs, so the QR command sat at LEASED forever and no QR was ever
+      // produced - with a healthy bridge and 200s on every heartbeat.
+      command.targetConnectionGeneration !== currentConnectionGeneration ||
+      command.targetConnectionGeneration !== command.sourceConnectionGeneration + 1
     ) return fail("normal command binding is invalid");
   }
   return {

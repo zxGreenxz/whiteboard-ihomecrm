@@ -56,12 +56,34 @@ type PendingRequest = {
   acceptedRunId?: string;
 };
 
+/**
+ * Cell-side service aliases on the stack's `internal: true` network.
+ *
+ * Docker gives that network no route off the host, so a plaintext hop to one of
+ * these names cannot leave the machine, and there is no third party on the path
+ * to intercept it. Every other destination still has to be `wss:`.
+ */
+const INTRA_STACK_GATEWAY_HOSTS: ReadonlySet<string> = new Set(["cell", "localhost", "127.0.0.1"]);
+
+/**
+ * The gateway endpoint, TLS-only except for the stack's own internal hop.
+ *
+ * `wss:` keeps its full shape check (no port, no credentials, no query). The
+ * `ws:` exception exists because the reviewed `compose.cell.yaml` runs the cell
+ * gateway plaintext at `ws://cell:18789` on an internal-only network, while this
+ * client's tests only ever used `wss://gateway.internal/openclaw` - so the bridge
+ * refused to start against the infrastructure it ships with. A port is allowed
+ * only on that internal path, since 18789 is the gateway's real port.
+ */
 function gatewayUrl(value: string): URL {
   const url = new URL(value);
-  if (
-    url.protocol !== "wss:" || url.username || url.password || url.search || url.hash ||
-    url.port !== ""
-  ) throw new TypeError("Gateway URL must use TLS without embedded credentials");
+  if (url.username || url.password || url.search || url.hash) {
+    throw new TypeError("Gateway URL must use TLS without embedded credentials");
+  }
+  if (url.protocol === "ws:" && INTRA_STACK_GATEWAY_HOSTS.has(url.hostname)) return url;
+  if (url.protocol !== "wss:" || url.port !== "") {
+    throw new TypeError("Gateway URL must use TLS without embedded credentials");
+  }
   return url;
 }
 
@@ -258,7 +280,20 @@ export function createGatewayCellRpcTransport(
               signedAt,
               nonce,
             },
-            auth: { deviceToken: token },
+            // The Gateway secret is presented as `token`, not `deviceToken`.
+            //
+            // `deviceToken` selects the "explicit-device-token" candidate, which the
+            // Gateway matches against a token it minted for an already-paired device.
+            // The value provisioned at `/run/secrets/openclaw_gateway_device_token` is
+            // the Gateway's own auth token, so that path answered
+            // `device_token_mismatch` on every connect and the cell was unreachable.
+            // Measured against the 2026.7.1 Gateway: with `token`, the same secret plus
+            // the device signature returns `hello-ok`.
+            //
+            // This is not weaker. The Gateway still verifies the Ed25519 signature over
+            // the device payload and still refuses a device that is not paired and
+            // approved - an unpaired device gets `PAIRING_REQUIRED`, not a session.
+            auth: { token },
           }).then((helloValue) => {
             const hello = record(helloValue);
             const auth = record(hello?.auth);

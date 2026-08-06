@@ -148,6 +148,20 @@ describe("bridge executable configuration", () => {
     })).not.toThrow();
   });
 
+  // The guard and the cell binding used to contradict each other: the binding
+  // requires OPENCLAW_FENCING_TOKEN inline, the guard rejected every name matching
+  // /token/, and no test passed one - so the bridge could not start at all under
+  // the reviewed compose file.
+  it("allows the fencing counter, which is not a credential", () => {
+    expect(() => assertNoInlineSecretEnvironment({
+      OPENCLAW_FENCING_TOKEN: "1",
+    })).not.toThrow();
+    // The exemption is by exact name, not by loosening the pattern.
+    expect(() => assertNoInlineSecretEnvironment({
+      OPENCLAW_GATEWAY_DEVICE_TOKEN: "inline-secret",
+    })).toThrow(/inline secret/i);
+  });
+
   it("constructs brokered media egress from the reviewed Node proxy environment", async () => {
     const request = vi.fn(async () => new Response("ok"));
     const egress = createBrokeredMediaEgressFromEnvironment({
@@ -171,6 +185,24 @@ describe("bridge executable configuration", () => {
         [bypassName]: "cdn.zalo.me,127.0.0.1",
       })).toThrow(/NO_PROXY/i);
     }
+  });
+
+  // The exact string the reviewed compose file is required to set. The old rule
+  // ("NO_PROXY must be empty") rejected it, so the bridge could not start under the
+  // very infrastructure it ships with - while both this suite and
+  // infra/openclaw-zalo/test/compose-contract.test.ts stayed green.
+  it("accepts the intra-stack bypass the reviewed compose file sets", () => {
+    expect(() => createBrokeredMediaEgressFromEnvironment({
+      NODE_USE_ENV_PROXY: "1",
+      HTTPS_PROXY: "http://egress-broker:8080",
+      NO_PROXY: "localhost,127.0.0.1,::1,cell,bridge,maintenance,egress-broker",
+    })).not.toThrow();
+    // One external host smuggled into the list is still refused.
+    expect(() => createBrokeredMediaEgressFromEnvironment({
+      NODE_USE_ENV_PROXY: "1",
+      HTTPS_PROXY: "http://egress-broker:8080",
+      NO_PROXY: "cell,bridge,openclaw-media.chillhome.io.vn",
+    })).toThrow(/NO_PROXY/i);
   });
 
   it("reaches secret loading without a test-only media egress injection", async () => {

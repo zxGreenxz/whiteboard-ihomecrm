@@ -55,7 +55,13 @@ function command(
     leaseExpiresAt: "2026-08-01T00:01:00.000Z",
     sourceSessionGeneration: 5,
     targetSessionGeneration: commandKind === "DISCONNECT" ? 6 : 5,
-    sourceConnectionGeneration: 3,
+    // A command always ADVANCES the connection generation: the server writes
+    // `target = source + 1` for both kinds and bumps the account to the target in
+    // the same transaction, so `source` is one BEHIND `currentConnectionGeneration`.
+    // This fixture used to make QR_LOGIN sit still at 3/3 - a shape the server
+    // cannot produce - which is why the client's matching (and unsatisfiable)
+    // check went unnoticed while every real QR command was rejected.
+    sourceConnectionGeneration: commandKind === "DISCONNECT" ? 3 : 2,
     targetConnectionGeneration: commandKind === "DISCONNECT" ? 4 : 3,
     expectedFencingToken: 7,
     executionState,

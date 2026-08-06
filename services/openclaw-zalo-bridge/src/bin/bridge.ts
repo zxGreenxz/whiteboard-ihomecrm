@@ -52,6 +52,24 @@ const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 8080;
 const INLINE_SECRET_NAME = /(?:credential|secret|password|token|api_?key|private_?key|service_?role)/iu;
 
+/**
+ * Names that match INLINE_SECRET_NAME but carry no secret.
+ *
+ * `OPENCLAW_FENCING_TOKEN` is the lease fencing counter - a small monotonic
+ * integer, read through `environmentInteger`, and already public in
+ * `openclaw_runtime_leases.fencing_token`. It is a "token" only in the
+ * distributed-systems sense. Without this exemption the bridge rejected the
+ * value the reviewed `compose.cell.yaml` is required to pass it, so the process
+ * refused to start at all: the guard and the binding contradicted each other and
+ * no test covered the pair.
+ *
+ * Keep this list to values that are genuinely non-secret AND required inline. A
+ * real credential belongs in a `*_FILE` mount.
+ */
+const NON_SECRET_ENVIRONMENT_NAMES: ReadonlySet<string> = new Set([
+  "OPENCLAW_FENCING_TOKEN",
+]);
+
 export interface BridgeProcessOptions {
   env?: Readonly<Record<string, string | undefined>>;
   readiness?: () => Readiness;
@@ -125,7 +143,8 @@ export function assertNoInlineSecretEnvironment(
   for (const [name, value] of Object.entries(env)) {
     if (
       value !== undefined && value.length > 0 &&
-      INLINE_SECRET_NAME.test(name) && !name.toUpperCase().endsWith("_FILE")
+      INLINE_SECRET_NAME.test(name) && !name.toUpperCase().endsWith("_FILE") &&
+      !NON_SECRET_ENVIRONMENT_NAMES.has(name.toUpperCase())
     ) {
       throw new Error(`inline secret environment variable is forbidden: ${name}`);
     }
@@ -542,6 +561,46 @@ function gatewayDeviceIdentity(value: string): {
   };
 }
 
+/**
+ * Hosts a proxy bypass may name: the stack's own service aliases and loopback.
+ *
+ * They are on the `internal: true` application network and have no external
+ * route, so naming them in NO_PROXY cannot exfiltrate anything. Everything else -
+ * every real destination, including the media gateway - must still go through the
+ * egress broker, which is the property this check exists to protect.
+ */
+const INTRA_STACK_PROXY_BYPASS: ReadonlySet<string> = new Set([
+  "localhost", "127.0.0.1", "::1", "cell", "bridge", "maintenance", "egress-broker",
+]);
+
+/**
+ * Rejects a proxy bypass that would let a real destination skip the broker.
+ *
+ * This replaces a flat "NO_PROXY must be empty". That rule was unsatisfiable in
+ * production: the reviewed `compose.cell.yaml` must set
+ * `NO_PROXY=localhost,127.0.0.1,::1,cell,bridge,maintenance,egress-broker`, because
+ * the bridge talks to the cell at `ws://cell:18789` and proxying `egress-broker`
+ * through itself is a loop. Two committed test suites asserted the opposite of each
+ * other - `infra/openclaw-zalo/test/compose-contract.test.ts` demanded those entries,
+ * this file's test demanded none - and both passed, because nothing ever started the
+ * bridge with the compose file's environment. The bridge could not boot at all.
+ */
+export function assertNoExternalProxyBypass(
+  env: Readonly<Record<string, string | undefined>>,
+): void {
+  for (const name of ["NO_PROXY", "no_proxy"] as const) {
+    const raw = env[name];
+    if (raw === undefined || raw === "") continue;
+    for (const entry of raw.split(",")) {
+      const host = entry.trim().toLowerCase();
+      if (host === "") continue;
+      if (!INTRA_STACK_PROXY_BYPASS.has(host)) {
+        throw new Error(`${name} may only bypass the stack's own hosts: ${entry.trim()}`);
+      }
+    }
+  }
+}
+
 export function createBrokeredMediaEgressFromEnvironment(
   env: Readonly<Record<string, string | undefined>>,
   request: typeof globalThis.fetch = globalThis.fetch,
@@ -549,10 +608,7 @@ export function createBrokeredMediaEgressFromEnvironment(
   if (env.NODE_USE_ENV_PROXY !== "1") {
     throw new Error("NODE_USE_ENV_PROXY=1 is required for brokered media egress");
   }
-  if ((env.NO_PROXY !== undefined && env.NO_PROXY !== "") ||
-      (env.no_proxy !== undefined && env.no_proxy !== "")) {
-    throw new Error("NO_PROXY must be empty for brokered media egress");
-  }
+  assertNoExternalProxyBypass(env);
   const rawProxy = env.HTTPS_PROXY;
   if (rawProxy === undefined || rawProxy.length === 0 || rawProxy !== rawProxy.trim()) {
     throw new Error("HTTPS_PROXY is required for brokered media egress");
