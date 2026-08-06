@@ -26,13 +26,14 @@ describe("OpenClaw Zalo navigation contract", () => {
   });
 
   it("nạp lazy để không kéo OpenClaw vào bundle chính", () => {
-    const app = readSource("src/App.tsx");
+    // Khai báo lazy đã tách khỏi App.tsx sang src/app/lazyPages.ts (Đợt 4).
     // Chỉ kiểm phần KHÔNG phụ thuộc định dạng: định danh được gán bằng lazy(...)
     // trỏ đúng module. Không khoá dấu cách hay xuống dòng.
-    expect(app).toMatch(/OpenClawZaloPage\s*=\s*lazy\(/);
-    expect(app).toMatch(/pages\/openclaw-zalo\/OpenClawZaloPage/);
-    expect(app).toMatch(/OpenClawRouteGuard\s*=\s*lazy\(/);
-    expect(app).toMatch(/components\/openclaw-zalo\/OpenClawRouteGuard/);
+    const lazyPages = readSource("src/app/lazyPages.ts");
+    expect(lazyPages).toMatch(/OpenClawZaloPage\s*=\s*lazy\(/);
+    expect(lazyPages).toMatch(/pages\/openclaw-zalo\/OpenClawZaloPage/);
+    expect(lazyPages).toMatch(/OpenClawRouteGuard\s*=\s*lazy\(/);
+    expect(lazyPages).toMatch(/components\/openclaw-zalo\/OpenClawRouteGuard/);
   });
 
   it("publishes no launcher tile while the runtime flag is off", async () => {

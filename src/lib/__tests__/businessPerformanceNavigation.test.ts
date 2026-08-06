@@ -147,7 +147,10 @@ describe("business performance navigation", () => {
     // Chỉ cần đăng nhập, KHÔNG gắn thêm RequirePermission: quyền xem do chính
     // trang quyết theo tổ chức, nên thêm cổng quyền ở đây sẽ chặn nhầm.
     expect(route!.guards).toEqual(["ProtectedRoute"]);
-    expect(app).toMatch(/BusinessPerformanceReportPage\s*=\s*lazy\(/);
+    // Khai báo lazy đã tách sang src/app/lazyPages.ts (Đợt 4).
+    expect(readSource("src/app/lazyPages.ts")).toMatch(
+      /BusinessPerformanceReportPage\s*=\s*lazy\(/,
+    );
   });
 
   it("keeps the legacy profit route independent from business performance organization access", async () => {

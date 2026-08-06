@@ -24,13 +24,36 @@
 //
 // Không cần credential, không đọc database.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const APP = join(repoRoot, "src", "App.tsx");
+
+/**
+ * Nguồn route: App.tsx + mọi file trong src/app/routes/ (thư mục sẽ có khi tách
+ * App.tsx theo Đợt 4).
+ *
+ * Vì sao quét CẢ thư mục ngay từ bây giờ, dù nó chưa tồn tại: nếu gate chỉ đọc
+ * App.tsx thì đúng lúc route được chuyển sang file khác, nó sẽ thấy ít route đi
+ * và vẫn in ✅ — một gate an ninh XANH RỖNG. Đó là kịch bản tệ nhất, vì việc tách
+ * file trông như thành công trong khi lớp bảo vệ đã im lặng biến mất.
+ */
+function nguonRoute() {
+  const files = [];
+  const app = join(repoRoot, "src", "App.tsx");
+  if (existsSync(app)) files.push(app);
+  const dir = join(repoRoot, "src", "app", "routes");
+  if (existsSync(dir)) {
+    for (const f of readdirSync(dir)) {
+      if (/\.tsx?$/.test(f) && !f.endsWith(".test.ts") && !f.endsWith(".test.tsx")) {
+        files.push(join(dir, f));
+      }
+    }
+  }
+  return files;
+}
 
 // Component được coi là cổng chặn. Thêm guard mới thì thêm vào đây — cố ý bắt
 // phải khai, để một "guard" tự chế không vô tình được tính là đã bảo vệ.
@@ -190,8 +213,26 @@ export function collectRoutes(sourceText) {
   return found;
 }
 
+// Chốt chặn chống XANH RỖNG. Nếu ai đó đổi cấu trúc thư mục, đổi cách khai route,
+// hay parser hỏng, số route bóc được sẽ tụt về gần 0 và gate vui vẻ báo "không có
+// route nào hở" — đúng nghĩa đen, và vô dụng. Ngưỡng này biến trường hợp đó thành
+// ĐỎ thay vì im lặng. Hiện có 146 route; đặt 100 để còn chỗ xoá bớt route thật.
+const TOI_THIEU_ROUTE = 100;
+
 function main(argv) {
-  const routes = collectRoutes(readFileSync(APP, "utf8"));
+  const files = nguonRoute();
+  const routes = files.flatMap((f) => collectRoutes(readFileSync(f, "utf8")));
+
+  if (routes.length < TOI_THIEU_ROUTE) {
+    console.error(
+      `❌ Chỉ bóc được ${routes.length} route từ ${files.length} file — dưới mức tối thiểu ${TOI_THIEU_ROUTE}.`,
+    );
+    console.error("  Gate này chỉ có nghĩa khi nó THẤY route. Số tụt bất thường nghĩa là route");
+    console.error("  đã chuyển đi nơi khác, hoặc cách khai route đã đổi và parser không theo kịp.");
+    console.error("  Sửa nguonRoute() cho trỏ đúng chỗ mới — ĐỪNG hạ ngưỡng.");
+    process.exitCode = 1;
+    return;
+  }
 
   if (argv.includes("--list")) {
     for (const r of routes) {

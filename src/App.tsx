@@ -38,141 +38,108 @@ import PublicRoute from "./components/auth/PublicRoute";
 import { AdminOnlyRoute } from "./components/auth/AdminOnlyRoute";
 import { RequirePermission } from "./components/auth/RequirePermission";
 
-// ===== Lazy imports — code-split theo route =====
-// Bundle chính từng là 3.8 MB (1.05 MB gzip) vì ~80 page import tĩnh kéo theo
-// xlsx/docxtemplater/recharts. Mỗi page lazy thành chunk riêng; <Suspense>
-// bọc chung quanh <Routes> (riêng /r/:token và /thu-tien giữ Suspense cục bộ
-// vì có CSS toàn cục cần cô lập).
-const BuildingMapPage = lazy(() => import("./pages/building-map/BuildingMapPage"));
-const NetworkCenterApp = lazy(() => import("./pages/network-center/NetworkCenterApp"));
-// AI Copilot — nút nổi + panel chat (gate session/entitlement/quyền bên trong)
-const CopilotLauncher = lazy(() => import("./copilot/CopilotLauncher"));
-// AI Copilot — trang quản trị (super admin: full; user thường: tab Sử dụng)
-const AiCopilotAdminPage = lazy(() => import("./copilot/admin/AiCopilotAdminPage"));
-const NotificationsPage = lazy(() => import("./pages/NotificationsPage"));
-const ChatZaloPage = lazy(() => import("./pages/chat-zalo/ChatZaloPage"));
-const OpenClawZaloPage = lazy(() => import("./pages/openclaw-zalo/OpenClawZaloPage"));
-const OpenClawRouteGuard = lazy(() => import("./components/openclaw-zalo/OpenClawRouteGuard"));
-
-// Danh mục dữ liệu
-const BuildingsPage = lazy(() => import("./pages/buildings/BuildingsPage"));
-const BuildingDetailPage = lazy(() => import("./pages/buildings/BuildingDetailPage"));
-const RoomsPage = lazy(() => import("./pages/rooms/RoomsPage"));
-const RoomDetailPage = lazy(() => import("./pages/rooms/RoomDetailPage"));
-const ServicesPage = lazy(() => import("./pages/services/ServicesPage"));
-const SalePhongPage = lazy(() => import("./pages/sale-phong/SalePhongPage"));
-
-// Khách hàng
-const LeadsPage = lazy(() => import("./pages/leads/LeadsPage"));
-const DepositsPage = lazy(() => import("./pages/deposits/DepositsPage"));
-const ContractsPage = lazy(() => import("./pages/contracts/ContractsPage"));
-const ContractDetailPage = lazy(() => import("./pages/contracts/ContractDetailPage"));
-const VehiclesPage = lazy(() => import("./pages/vehicles/VehiclesPage"));
-const CustomersPage = lazy(() => import("./pages/customers/CustomersPage"));
-const CustomerFormPage = lazy(() => import("./pages/customers/CustomerFormPage"));
-const CustomerDetailPage = lazy(() => import("./pages/customers/CustomerDetailPage"));
-const CT01FormPage = lazy(() => import("./pages/customers/CT01FormPage"));
-
-// Tài chính
-const MeterReadingsPage = lazy(() => import("./pages/meter-readings/MeterReadingsPage"));
-const InvoicesPage = lazy(() => import("./pages/invoices/InvoicesPage"));
-const InvoiceDetailPage = lazy(() => import("./pages/invoices/InvoiceDetailPage"));
-const InvoicePrintPage = lazy(() => import("./pages/invoices/InvoicePrintPage"));
-const IncomeExpensePage = lazy(() => import("./pages/payments/IncomeExpensePage"));
-const IncomeExpensePrintPage = lazy(() => import("./pages/payments/IncomeExpensePrintPage"));
-const VoucherDetailPage = lazy(() => import("./pages/payments/VoucherDetailPage"));
-const RefundLogPage = lazy(() => import("./pages/payments/RefundLogPage"));
-const ApprovalsPage = lazy(() => import("./pages/approvals/ApprovalsPage"));
-
-// Tài sản & vật tư
-const AssetsPage = lazy(() => import("./pages/assets/AssetsPage"));
-const MaterialsPage = lazy(() => import("./pages/materials/MaterialsPage"));
-
-// Báo cáo
-const RealEstateReportsPage = lazy(() => import("./pages/reports/RealEstateReportsPage"));
-const FinanceReportsPage = lazy(() => import("./pages/reports/FinanceReportsPage"));
-const VacantRoomsReport = lazy(() => import("./pages/reports/real-estate/VacantRoomsReport"));
-const ExpiringContractsReport = lazy(() => import("./pages/reports/real-estate/ExpiringContractsReport"));
-const OccupancyReport = lazy(() => import("./pages/reports/real-estate/OccupancyReport"));
-const RenewalsTransfersReport = lazy(() => import("./pages/reports/real-estate/RenewalsTransfersReport"));
-const PromotionsReport = lazy(() => import("./pages/reports/real-estate/PromotionsReport"));
-const NewLeasesReport = lazy(() => import("./pages/reports/real-estate/NewLeasesReport"));
-const TerminationsReport = lazy(() => import("./pages/reports/real-estate/TerminationsReport"));
-const ExpenseRatioReport = lazy(() => import("./pages/reports/real-estate/ExpenseRatioReport"));
-const DailyCashbookReport = lazy(() => import("./pages/reports/finance/DailyCashbookReport"));
-const CashFlowReport = lazy(() => import("./pages/reports/finance/CashFlowReport"));
-const CashbookClosureRecord = lazy(() => import("./pages/reports/finance/CashbookClosureRecord"));
-const PaymentScheduleReport = lazy(() => import("./pages/reports/finance/PaymentScheduleReport"));
-const OverpaymentReport = lazy(() => import("./pages/reports/finance/OverpaymentReport"));
-const DepositsReport = lazy(() => import("./pages/reports/finance/DepositsReport"));
-const ProfitHubPage = lazy(() => import("./pages/reports/finance/ProfitHubPage"));
-const BusinessPerformanceReportPage = lazy(() => import("./pages/reports/finance/BusinessPerformanceReportPage"));
-const FinancialAnalysisReport = lazy(() => import("./pages/reports/finance/FinancialAnalysisReport"));
-const BanGiaoReport = lazy(() => import("./pages/reports/finance/BanGiaoReport"));
-const BanGiaoCycleReport = lazy(() => import("./pages/reports/finance/BanGiaoCycleReport"));
-
-// Cài đặt
-const GeneralSettingsPage = lazy(() => import("./pages/settings/GeneralSettingsPage"));
-const CategoriesPage = lazy(() => import("./pages/settings/CategoriesPage"));
-const TemplatesPage = lazy(() => import("./pages/settings/TemplatesPage"));
-const SignaturesPage = lazy(() => import("./pages/settings/SignaturesPage"));
-const OrganizationPage = lazy(() => import("./pages/settings/OrganizationPage"));
-const MembersPage = lazy(() => import("./pages/settings/MembersPage"));
-const RolesPage = lazy(() => import("./pages/settings/RolesPage"));
-const AcceptInvitation = lazy(() => import("./pages/auth/AcceptInvitation"));
-const AdminUsersPage = lazy(() => import("./pages/admin/UsersPage"));
-const BankAccountsPage = lazy(() => import("./pages/settings/categories/BankAccountsPage"));
-const AutoDebtPage = lazy(() => import("./pages/settings/categories/AutoDebtPage"));
-const ServiceQuotasPage = lazy(() => import("./pages/settings/categories/ServiceQuotasPage"));
-const MetersPage = lazy(() => import("./pages/settings/MetersPage"));
-const IncomeExpenseTypesNewPage = lazy(() => import("./pages/settings/IncomeExpenseTypesPage"));
-const IncomeExpenseTemplatesPage = lazy(() => import("./pages/settings/IncomeExpenseTemplatesPage"));
-const CashbooksPage = lazy(() => import("./pages/settings/finance/CashbooksPage"));
-const FixedFeesPage = lazy(() => import("./pages/settings/finance/FixedFeesPage"));
-const PersonalWalletPage = lazy(() => import("./pages/finance/PersonalWalletPage"));
-const ManagerSalaryPage = lazy(() => import("./pages/finance/ManagerSalaryPage"));
-const MySalaryPage = lazy(() => import("./pages/finance/MySalaryPage"));
-const SuppliersPage = lazy(() => import("./pages/settings/categories/SuppliersPage"));
-const WarehousesPage = lazy(() => import("./pages/settings/categories/WarehousesPage"));
-const AssetTypesPage = lazy(() => import("./pages/settings/categories/AssetTypesPage"));
-const AssetMovementsPage = lazy(() => import("./pages/settings/categories/AssetMovementsPage"));
-const AssetMaintenancePage = lazy(() => import("./pages/settings/categories/AssetMaintenancePage"));
-const HotlinesPage = lazy(() => import("./pages/settings/categories/HotlinesPage"));
-const GeneralCategoriesPage = lazy(() => import("./pages/settings/categories/GeneralCategoriesPage"));
-const FloorsPage = lazy(() => import("./pages/settings/categories/FloorsPage"));
-const TaskTypesPage = lazy(() => import("./pages/settings/categories/TaskTypesPage"));
-const TaskManagementPage = lazy(() => import("./pages/TaskManagementPage"));
-const MyDayPage = lazy(() => import("./pages/my-day/MyDayPage"));
-const OwnerDashboardV5 = lazy(() => import("./pages/reports/OwnerDashboardV5"));
-
-// Tài khoản + Info + Public
-const ProfilePage = lazy(() => import("./pages/account/ProfilePage"));
-const SubscriptionPage = lazy(() => import("./pages/account/SubscriptionPage"));
-const PublicContractInvoicePage = lazy(() => import("./pages/public/PublicContractInvoicePage"));
-const FaqPage = lazy(() => import("./pages/FaqPage"));
-const ChangelogPage = lazy(() => import("./pages/ChangelogPage"));
-const AppGuidePage = lazy(() => import("./pages/AppGuidePage"));
-
-// Trang công khai "Phòng trống" (share link) — lazy để CSS toàn cục của nó
-// (phongTrong.css đặt style body ngoài @layer) chỉ nạp khi mở /r/:token,
-// không rò font/nền sang phần còn lại của CRM.
-const PhongTrongPage = lazy(() => import("./pages/phong-trong/PhongTrongPage"));
-
-// Sự kiện trao thưởng + vòng xoay may mắn. Trang công khai /quayso có bộ style
-// riêng (quayso.css scope dưới .qs-page) nên lazy để không rò sang CRM; trang
-// quản trị /quayso/admin nằm trong app đã đăng nhập.
-const QuaySoPage = lazy(() => import("./pages/quayso/QuaySoPage"));
-const QuaySoScreenPage = lazy(() => import("./pages/quayso/QuaySoScreenPage"));
-const LuckyDrawAdminPage = lazy(() => import("./pages/quayso/LuckyDrawAdminPage"));
-
-// Trang "Thu tiền" (mobile, đi thu tiền mặt) — page phụ độc lập có bộ style
-// riêng (thu-tien.css scope dưới .tt-page). Lazy để CSS + font Be Vietnam Pro /
-// Space Mono chỉ nạp khi mở /thu-tien, không kế thừa/đụng theme site.
-const ThuTien = lazy(() => import("./pages/ThuTien"));
-
-// Trang "Thanh toán" (Đóng tiền Tập trung theo Kỳ) — tách khỏi overlay của
-// /thu-tien. Dùng CHUNG thu-tien.css nên cũng cần Suspense cục bộ như trên.
-const ThanhToan = lazy(() => import("./pages/ThanhToan"));
+// Khai báo lazy cho 99 page đã tách sang ./app/lazyPages (Đợt 4) — xem lý do ở đó.
+import {
+  BuildingMapPage,
+  NetworkCenterApp,
+  CopilotLauncher,
+  AiCopilotAdminPage,
+  NotificationsPage,
+  ChatZaloPage,
+  OpenClawZaloPage,
+  OpenClawRouteGuard,
+  BuildingsPage,
+  BuildingDetailPage,
+  RoomsPage,
+  RoomDetailPage,
+  ServicesPage,
+  SalePhongPage,
+  LeadsPage,
+  DepositsPage,
+  ContractsPage,
+  ContractDetailPage,
+  VehiclesPage,
+  CustomersPage,
+  CustomerFormPage,
+  CustomerDetailPage,
+  CT01FormPage,
+  MeterReadingsPage,
+  InvoicesPage,
+  InvoiceDetailPage,
+  InvoicePrintPage,
+  IncomeExpensePage,
+  IncomeExpensePrintPage,
+  VoucherDetailPage,
+  RefundLogPage,
+  ApprovalsPage,
+  AssetsPage,
+  MaterialsPage,
+  RealEstateReportsPage,
+  FinanceReportsPage,
+  VacantRoomsReport,
+  ExpiringContractsReport,
+  OccupancyReport,
+  RenewalsTransfersReport,
+  PromotionsReport,
+  NewLeasesReport,
+  TerminationsReport,
+  ExpenseRatioReport,
+  DailyCashbookReport,
+  CashFlowReport,
+  CashbookClosureRecord,
+  PaymentScheduleReport,
+  OverpaymentReport,
+  DepositsReport,
+  ProfitHubPage,
+  BusinessPerformanceReportPage,
+  FinancialAnalysisReport,
+  BanGiaoReport,
+  BanGiaoCycleReport,
+  GeneralSettingsPage,
+  CategoriesPage,
+  TemplatesPage,
+  SignaturesPage,
+  OrganizationPage,
+  MembersPage,
+  RolesPage,
+  AcceptInvitation,
+  AdminUsersPage,
+  BankAccountsPage,
+  AutoDebtPage,
+  ServiceQuotasPage,
+  MetersPage,
+  IncomeExpenseTypesNewPage,
+  IncomeExpenseTemplatesPage,
+  CashbooksPage,
+  FixedFeesPage,
+  PersonalWalletPage,
+  ManagerSalaryPage,
+  MySalaryPage,
+  SuppliersPage,
+  WarehousesPage,
+  AssetTypesPage,
+  AssetMovementsPage,
+  AssetMaintenancePage,
+  HotlinesPage,
+  GeneralCategoriesPage,
+  FloorsPage,
+  TaskTypesPage,
+  TaskManagementPage,
+  MyDayPage,
+  OwnerDashboardV5,
+  ProfilePage,
+  SubscriptionPage,
+  PublicContractInvoicePage,
+  FaqPage,
+  ChangelogPage,
+  AppGuidePage,
+  PhongTrongPage,
+  QuaySoPage,
+  QuaySoScreenPage,
+  LuckyDrawAdminPage,
+  ThuTien,
+  ThanhToan,
+} from "./app/lazyPages";
 
 // Fallback khi đang tải chunk của route lazy
 const RouteFallback = () => (
