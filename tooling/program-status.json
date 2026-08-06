@@ -5,6 +5,10 @@
   "waveTitle": "Typed RPC boundary — ratchet chặn thoái lui",
   "done": [
     {
+      "item": "Đợt 5 (bước 2): chứng minh 157/176 any-cast là THỪA, không cần facade",
+      "evidence": "types.ts mô tả 648 function — phần lớn cast là di sản từ thời types.ts chưa đủ. Bỏ cast ở annotateMutations.ts rồi ĐỘT BIẾN chứng minh compiler bắt được: đổi p_voucher thành p_vouchr => 1 lỗi TS; đổi tên RPC => 1 lỗi TS; hoàn nguyên => 0 lỗi. Trước đó cả hai đều biên dịch sạch. scripts/find-removable-rpc-casts.mjs đo: 157 bỏ được ngay, 0 phải giữ, 16 cần xem tay. Ratchet hạ 176 -> 175."
+    },
+    {
       "item": "Đợt 5 (bước 1): ratchet any-cast RPC — tooling/rpc-cast-baseline.json + gate",
       "evidence": "Đo được 176 cast trên 67 file (useInvoices 15, statusMutations 12, usePeriodFees 9). Ratchet chặn: file mới có cast => đỏ, file cũ thêm cast => đỏ, giảm thì báo và cho --write chốt mức mới. Đã kiểm cả ba hướng bằng đột biến. KHÔNG đổi call site nào — refactor 176 chỗ trên code tiền thật trong một đợt rủi ro hơn lợi ích; ratchet mua thời gian mà không đụng runtime."
     },
@@ -131,9 +135,9 @@
   ],
   "blockers": [],
   "next": [
-    "Đợt 5 (bước 2): facade typed cho MỘT domain tiền làm mẫu, rồi hạ ratchet",
-    "Restore baseline vào Supabase project tạm để lên verified",
-    "Đợt 4 lát 3: consumer sinh từ capability registry"
+    "Bỏ dần 157 cast còn lại theo domain, mỗi domain một commit kèm typecheck + test",
+    "Restore baseline vào Supabase project tạm",
+    "Đợt 4 lát 3: consumer sinh từ registry"
   ],
   "knownDirtyFiles": [
     {

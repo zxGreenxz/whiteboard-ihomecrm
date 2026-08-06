@@ -33,7 +33,11 @@ export const useAnnotateIncomeExpense = () => {
 
   return useMutation({
     mutationFn: async (input: AnnotateIncomeExpenseInput) => {
-      const { data, error } = await (supabase.rpc as any)(
+      // Không cast: `annotate_income_expense_v1` đã có trong generated types, nên
+      // compiler kiểm được cả tên RPC lẫn tên tham số. Cast `as any` ở đây là di
+      // sản từ thời types.ts chưa mô tả hàm này — giữ lại chỉ để lại một chỗ mà
+      // gõ sai `p_voucher` vẫn biên dịch sạch.
+      const { data, error } = await supabase.rpc(
         "annotate_income_expense_v1",
         {
           p_voucher: input.voucherId,
