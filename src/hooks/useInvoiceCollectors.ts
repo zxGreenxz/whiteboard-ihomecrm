@@ -42,7 +42,7 @@ export const useInvoiceCollectors = (invoiceIds: string[]) => {
       }
       const results = await Promise.all(
         chunks.map((ids) =>
-          (supabase as any)
+          supabase
             .from('income_expenses')
             .select('invoice_id, payment_id, creator_name, total_amount, voucher_date, created_at')
             .in('invoice_id', ids)

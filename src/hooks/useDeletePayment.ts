@@ -98,7 +98,7 @@ export const useDeletePayment = () => {
         if (!paymentId) {
           throw new Error('Không tìm thấy nguồn giao dịch cần hoàn tác');
         }
-        const { data: payment, error: paymentError } = await (supabase as any)
+        const { data: payment, error: paymentError } = await supabase
           .from('payments')
           .select('id, collection_id')
           .eq('id', paymentId)

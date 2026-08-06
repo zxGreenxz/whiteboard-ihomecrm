@@ -45,7 +45,7 @@ export const useTerminationRefundQueue = (period: string, enabled = true) =>
     enabled: enabled && !!period,
     queryFn: async (): Promise<TerminationQueueRow[]> => {
       const { from, to } = monthRange(period);
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('contract_terminations')
         .select(`
           id, contract_id, termination_date, termination_type, total_deposit, refund_amount,
@@ -65,7 +65,7 @@ export const useTerminationRefundQueue = (period: string, enabled = true) =>
       // Phiếu hoàn đã tồn tại — correlate theo contract_id (cách duy nhất hôm nay).
       let vouchers: any[] = [];
       if (contractIds.length > 0) {
-        const { data: vs, error: ve } = await (supabase as any)
+        const { data: vs, error: ve } = await supabase
           .from('income_expenses')
           .select('contract_id, code, total_amount, approval_status, posting_status')
           .in('contract_id', contractIds)
@@ -126,7 +126,7 @@ export const useSaleBonusVouchers = (period: string, enabled = true) =>
     enabled: enabled && !!period,
     queryFn: async (): Promise<SaleBonusRow[]> => {
       const { from, to } = monthRange(period);
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('income_expenses')
         .select(`
           id, code, total_amount, voucher_date, approval_status, posting_status, notes,
@@ -181,7 +181,7 @@ export const useDepositLedger = (period: string, enabled = true) =>
     queryFn: async (): Promise<DepositLedgerRow[]> => {
       const { from, to } = monthRange(period);
       // `!inner` để chỉ lấy phiếu CÓ dòng cọc; phiếu thu thường không dính vào.
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('income_expenses')
         .select(`
           id, code, total_amount, voucher_date, approval_status, posting_status,

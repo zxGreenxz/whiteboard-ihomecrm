@@ -113,7 +113,7 @@ export function TerminationExtraCharges({
       if (cancelled) return;
       setMeterId(mid);
       if (mid) {
-        const { data: readings } = await (supabase as any)
+        const { data: readings } = await supabase
           .from("meter_readings")
           .select("current_reading")
           .eq("meter_id", mid)

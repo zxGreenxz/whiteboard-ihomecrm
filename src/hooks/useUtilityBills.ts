@@ -144,7 +144,7 @@ const lastNMonths = (endMonth: string, n: number): string[] => {
 
 /** Lấy type-ids của 'Đóng tiền điện' / 'Đóng tiền nước' (mọi chủ toà). */
 const fetchUtilityTypeIds = async (): Promise<{ elecIds: Set<string>; waterIds: Set<string> }> => {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('income_expense_types')
     .select('id, name')
     .eq('type', 'expense')
@@ -160,7 +160,7 @@ export const useUtilityAccounts = () => {
   const query = useQuery({
     queryKey: ['utility-accounts'],
     queryFn: async (): Promise<UtilityMeter[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('building_utility_accounts')
         .select('id, building_id, utility_type, provider_code, account_holder')
         .is('deleted_at', null)
@@ -314,7 +314,7 @@ export const useUtilityPayments = (billingMonth: string) => {
       // (§−1.1). KHÔNG lấy 'CANCELLED' — trên prod phiếu CANCELLED có
       // `deleted_at IS NULL` (đã đo 30/07: 5 phiếu utility.bill dạng này) nên
       // filter deleted_at KHÔNG loại được chúng.
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('income_expenses')
         .select(`
           id, building_id, total_amount, voucher_date, created_at, creator_name, attachments, utility_account_id,
@@ -487,7 +487,7 @@ export const useUtilityChart = (
       for (const ym of months) paidByMonth[ym] = { elec: 0, water: 0 };
 
       if (allIds.length > 0) {
-        let paidQuery = (supabase as any)
+        let paidQuery = supabase
           .from('income_expenses')
           .select(`total_amount, it:income_expense_items!inner ( income_expense_type_id, start_date )`)
           .eq('type', 'EXPENSE')

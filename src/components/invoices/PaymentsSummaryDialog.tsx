@@ -175,7 +175,7 @@ const PaymentsSummaryDialog = ({ open, onOpenChange, invoice }: Props) => {
     queryKey: ['invoice-payments-summary', 'active-receipts', invoiceId],
     enabled: open && !!invoiceId,
     queryFn: async (): Promise<PaymentReceiptRow[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('active_payment_receipts')
         .select('id, source_kind, payment_id, collection_id, voucher_id, account_id, collected_amount, applied_amount, credit_amount, payment_method, payment_date, receipt_number, receipt_image_url, created_at')
         .eq('invoice_id', invoiceId)

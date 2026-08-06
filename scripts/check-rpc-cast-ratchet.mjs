@@ -24,13 +24,27 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BASELINE = join(repoRoot, "tooling", "rpc-cast-baseline.json");
 
+/**
+ * Cố ý KHÔNG khoá vào riêng `.rpc`.
+ *
+ * Bản đầu chỉ bắt `.rpc`, và nó báo 0 trong khi repo vẫn còn 7 chỗ
+ * `(supabase as any).from(...)` trên 6 file — cùng một cast, cùng một hậu quả
+ * (tên bảng gõ sai vẫn biên dịch sạch), chỉ khác tên phương thức. Một trong số
+ * đó ở src/lib/push.ts còn kèm comment giải thích rằng `push_subscriptions`
+ * "chưa có trong Database types" — lời giải thích SAI, bảng đó nằm ở types.ts
+ * dòng 19292 và cast bỏ đi không sinh lỗi nào.
+ *
+ * Nên bắt theo BẢN CHẤT: ép `supabase` (hoặc một phương thức của nó) về `any`
+ * rồi gọi. `(?:\.\w+)+\s*\(` buộc phải có lời gọi thật phía sau — nhờ vậy các
+ * đoạn văn xuôi trong comment nhắc tới cast (repo có 4 chỗ) không bị đếm nhầm.
+ */
 const PATTERNS = [
-  // (supabase as any).rpc(...)
-  /\(\s*supabase\s+as\s+any\s*\)\s*\.rpc\s*\(/g,
-  // (supabase.rpc as any)(...)
-  /\(\s*supabase\.rpc\s+as\s+any\s*\)\s*\(/g,
-  // (supabase as unknown as {...}).rpc(...) — biến thể dài dòng cùng bản chất
-  /\(\s*supabase\s+as\s+unknown\s+as[^)]*\)\s*\.rpc\s*\(/g,
+  // (supabase as any).rpc(…) · .from(…) · .storage.from(…) · .channel(…)
+  /\(\s*supabase\s+as\s+any\s*\)\s*(?:\.\w+)+\s*\(/g,
+  // (supabase.rpc as any)(…) · (supabase.from as any)(…)
+  /\(\s*supabase\.\w+\s+as\s+any\s*\)\s*\(/g,
+  // (supabase as unknown as {...}).rpc(…) — biến thể dài dòng cùng bản chất
+  /\(\s*supabase\s+as\s+unknown\s+as[^)]*\)\s*(?:\.\w+)+\s*\(/g,
 ];
 
 export function countCasts(source) {

@@ -117,7 +117,7 @@ export function IncomeExpenseDetailDialog({
       invoice_number: string | null;
       billing_month: string | null;
     } | null> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("invoices")
         .select("id, invoice_number, billing_month")
         .eq("id", invoiceId)

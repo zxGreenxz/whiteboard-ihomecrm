@@ -26,7 +26,7 @@ export const useUploadPaymentReceipt = () => {
       const invalid = validateReceiptFile(file);
       if (invalid) throw new Error(invalid);
 
-      const { data: payment, error: paymentError } = await (supabase as any)
+      const { data: payment, error: paymentError } = await supabase
         .from('payments')
         .select('id, collection_id')
         .eq('id', payment_id)
@@ -43,7 +43,7 @@ export const useUploadPaymentReceipt = () => {
       const url = await uploadReceiptToStorage(file);
 
       // 1. Cập nhật payments.receipt_image_url (ảnh hiển thị trên popup).
-      const { data: updated, error: updPErr } = await (supabase as any)
+      const { data: updated, error: updPErr } = await supabase
         .from('payments')
         .update({ receipt_image_url: url })
         .eq('id', payment_id)
@@ -53,7 +53,7 @@ export const useUploadPaymentReceipt = () => {
       if (!updated) throw new Error('Bạn không có quyền cập nhật phiếu thu này.');
 
       // 2. Append vào income_expenses.attachments của voucher liên kết.
-      const { data: voucher, error: vErr } = await (supabase as any)
+      const { data: voucher, error: vErr } = await supabase
         .from('income_expenses')
         .select('id, attachments')
         .eq('payment_id', payment_id)

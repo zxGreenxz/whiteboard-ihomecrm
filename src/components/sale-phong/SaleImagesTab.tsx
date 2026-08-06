@@ -124,14 +124,14 @@ function RoomInfoSection({ buildingId }: { buildingId: string }) {
     setSaving(true);
     try {
       // Phòng chính: nội thất + ảnh.
-      const { error: e1 } = await (supabase as any)
+      const { error: e1 } = await supabase
         .from("rooms")
         .update({ amenities: amenities.length > 0 ? amenities : null, images })
         .eq("id", room.id);
       if (e1) throw e1;
       // Phòng tương tự: chỉ đồng bộ ảnh (giữ nguyên nội thất riêng).
       if (similarIds.length > 0) {
-        const { error: e2 } = await (supabase as any)
+        const { error: e2 } = await supabase
           .from("rooms")
           .update({ images })
           .in("id", similarIds);

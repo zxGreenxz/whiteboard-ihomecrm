@@ -22,7 +22,7 @@ async function resolveOwnType(
   userId: string,
 ): Promise<string> {
   const meta = SUBTYPE_META[sub];
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('income_expense_types')
     .select('id, name, category')
     .eq('organization_id', organizationId)
@@ -33,7 +33,7 @@ async function resolveOwnType(
     return n.includes('bao tri ' + meta.match) || n.includes(meta.match);
   });
   if (hit) return hit.id;
-  const { data: created, error: insErr } = await (supabase as any)
+  const { data: created, error: insErr } = await supabase
     .from('income_expense_types')
     .insert({
       user_id: userId,
@@ -68,7 +68,7 @@ export function useCreateMaintenanceBatch(period: string) {
       if (!args.lines.length) throw new Error('Thêm ít nhất 1 dòng (tòa × loại máy)');
 
       const buildingIds = Array.from(new Set(args.lines.map((line) => line.buildingId)));
-      const { data: scopedBuildings, error: buildingError } = await (supabase as any)
+      const { data: scopedBuildings, error: buildingError } = await supabase
         .from('buildings')
         .select('id, organization_id')
         .in('id', buildingIds);

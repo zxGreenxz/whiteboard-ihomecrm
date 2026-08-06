@@ -87,11 +87,11 @@ export default function MobileSaleInfo() {
     if (!room) return;
     setSavingRoom(true);
     try {
-      const { error: e1 } = await (supabase as any).from("rooms")
+      const { error: e1 } = await supabase.from("rooms")
         .update({ amenities: amenities.length > 0 ? amenities : null, images: rImages }).eq("id", room.id);
       if (e1) throw e1;
       if (similarIds.length > 0) {
-        const { error: e2 } = await (supabase as any).from("rooms").update({ images: rImages }).in("id", similarIds);
+        const { error: e2 } = await supabase.from("rooms").update({ images: rImages }).in("id", similarIds);
         if (e2) throw e2;
       }
       toast.success(similarIds.length > 0 ? `Đã lưu & đồng bộ ảnh cho ${similarIds.length + 1} phòng` : "Đã lưu thông tin phòng");

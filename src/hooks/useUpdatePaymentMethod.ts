@@ -27,7 +27,7 @@ export const useUpdatePaymentMethod = () => {
   return useMutation({
     mutationFn: async ({ payment_id, new_method }: UpdatePaymentMethodData) => {
       // 1. Lấy payment + invoice + building config
-      const { data: payment, error: pErr } = await (supabase as any)
+      const { data: payment, error: pErr } = await supabase
         .from('payments')
         .select(`
           id, user_id, payment_method, invoice_id, collection_id,
@@ -62,7 +62,7 @@ export const useUpdatePaymentMethod = () => {
 
       if (new_method === 'TM') {
         // Sổ "...Thu" của user đã tạo phiếu (joey/nathan/…)
-        const { data: ownThu } = await (supabase as any)
+        const { data: ownThu } = await supabase
           .from('accounts')
           .select('id, name, is_virtual')
           .eq('user_id', payment.user_id)
@@ -77,7 +77,7 @@ export const useUpdatePaymentMethod = () => {
 
         if (!newAccountId) {
           // Fallback: sổ "Chung"
-          const { data: chung } = await (supabase as any)
+          const { data: chung } = await supabase
             .from('accounts')
             .select('id, name, is_virtual')
             .ilike('name', 'chung')
@@ -91,7 +91,7 @@ export const useUpdatePaymentMethod = () => {
         newAccountId = new_method === 'TT' ? buildingDefaultTT : buildingDefaultTK;
 
         if (newAccountId) {
-          const { data: configured } = await (supabase as any)
+          const { data: configured } = await supabase
             .from('accounts')
             .select('id')
             .eq('id', newAccountId)
@@ -102,7 +102,7 @@ export const useUpdatePaymentMethod = () => {
         }
 
         if (!newAccountId && buildingName) {
-          const { data: matched } = await (supabase as any)
+          const { data: matched } = await supabase
             .from('accounts')
             .select('id, name, is_virtual')
             .eq('name', buildingName)
@@ -121,7 +121,7 @@ export const useUpdatePaymentMethod = () => {
       }
 
       // 3. Tìm phiếu Thu/Chi đã gắn với payment này (qua payment_id link).
-      const { data: voucher, error: vErr } = await (supabase as any)
+      const { data: voucher, error: vErr } = await supabase
         .from('income_expenses')
         .select('id, account_id')
         .eq('payment_id', payment_id)
@@ -146,7 +146,7 @@ export const useUpdatePaymentMethod = () => {
       }
 
       // 5. UPDATE payment_method trên payment.
-      const { data: updated, error: updPErr } = await (supabase as any)
+      const { data: updated, error: updPErr } = await supabase
         .from('payments')
         .update({ payment_method: new_method })
         .eq('id', payment_id)

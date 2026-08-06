@@ -252,7 +252,7 @@ export const usePaymentsSummary = (start_date?: string, end_date?: string) => {
         payment_date: string;
       }>(
         (from, to) => {
-          let query = (supabase as any)
+          let query = supabase
             .from("active_payment_receipts")
             .select("id, collected_amount, payment_method, payment_date")
             .neq("payment_method", "CT")

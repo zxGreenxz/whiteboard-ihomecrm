@@ -46,7 +46,7 @@ export const useOrphanDepositVouchers = (roomId?: string, startDate?: string) =>
     enabled: !!roomId,
     queryFn: async (): Promise<OrphanDepositVoucher[]> => {
       if (!roomId) return [];
-      let query = (supabase as any)
+      let query = supabase
         .from('income_expenses')
         .select(
           `id, code, name, total_amount, voucher_date, approval_status,
@@ -122,7 +122,7 @@ export const useReservationDeposits = (buildingIds?: string[]) => {
       // PAGED: phiếu cọc giữ chỗ tích luỹ mãi → phân trang (order voucher_date + id).
       const data = await fetchAllRows<any>(
         (from, to) => {
-          let query = (supabase as any)
+          let query = supabase
             .from('income_expenses')
             .select(
               `id, code, name, payer_name, total_amount, voucher_date,

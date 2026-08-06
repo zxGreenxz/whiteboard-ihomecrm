@@ -233,7 +233,7 @@ export default function BulkRecordPaymentDialog({ open, onOpenChange }: Props) {
     setLoaded(false);
     setFailures([]);
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('invoices')
         .select(
           `id, invoice_number, building_id, room_id, status,

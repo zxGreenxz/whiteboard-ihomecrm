@@ -277,7 +277,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
         const mid = (meters as any)?.[0]?.id ?? null;
         setMeterId(mid);
         if (mid) {
-          const { data: readings } = await (supabase as any)
+          const { data: readings } = await supabase
             .from('meter_readings')
             .select('current_reading, reading_date')
             .eq('meter_id', mid)
@@ -484,7 +484,7 @@ const GenerateInvoiceDialog = ({ open, onOpenChange }: GenerateInvoiceDialogProp
     // fail (unique billing_month / RLS). Báo ở đây là nói sai "đã tạo hoá đơn".
     let readingWarn: string | null = null;
     if (meterId && data.current_reading != null && consumption >= 0) {
-      const { data: existing } = await (supabase as any)
+      const { data: existing } = await supabase
         .from('meter_readings')
         .select('id')
         .eq('meter_id', meterId)

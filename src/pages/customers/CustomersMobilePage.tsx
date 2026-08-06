@@ -89,7 +89,7 @@ export default function CustomersMobilePage() {
     queryKey: ['customers-mobile-vehicles', custIds],
     enabled: custIds.length > 0,
     queryFn: async () => {
-      const { data } = await (supabase as any)
+      const { data } = await supabase
         .from('vehicles')
         .select('customer_id, vehicle_type, license_plate')
         .in('customer_id', custIds)

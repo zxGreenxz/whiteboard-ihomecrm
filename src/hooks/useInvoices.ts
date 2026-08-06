@@ -101,7 +101,7 @@ export const invoicesListQuery = (
         ? supabase.rpc('invoice_payment_method_drilldown', {
             p_payment_method: filters.payment_method,
           })
-        : (supabase as any).from('invoices');
+        : supabase.from('invoices');
 
       let query = (invoiceSource
         .select(INVOICE_LIST_SELECT, { count: 'exact' }) as any)
@@ -167,7 +167,7 @@ export const invoicesListQuery = (
       if (filters?.search?.trim()) {
         const q = filters.search.trim().replace(/[,()]/g, ' ').replace(/\s+/g, ' ').trim();
         if (q) {
-          const { data: custRows } = await (supabase as any)
+          const { data: custRows } = await supabase
             .from('customers')
             .select('id')
             .ilike('full_name', `%${q}%`)
@@ -175,7 +175,7 @@ export const invoicesListQuery = (
           const custIds = ((custRows || []) as any[]).map((c) => c.id);
           let contractIds: string[] = [];
           if (custIds.length > 0) {
-            const { data: ccRows } = await (supabase as any)
+            const { data: ccRows } = await supabase
               .from('contract_customers')
               .select('contract_id')
               .in('customer_id', custIds);
@@ -344,7 +344,7 @@ export const useInvoiceTotalsByIds = (ids: string[]) => {
       const CHUNK = 200;
       for (let i = 0; i < sortedIds.length; i += CHUNK) {
         const slice = sortedIds.slice(i, i + CHUNK);
-        const { data, error } = await (supabase as any)
+        const { data, error } = await supabase
           .from('invoices')
           .select(
             `id, total_amount, paid_amount, remaining_amount,
@@ -424,7 +424,7 @@ export const useFirstInvoiceDetails = (ids: string[]) => {
       const CHUNK = 200;
       for (let i = 0; i < sortedIds.length; i += CHUNK) {
         const slice = sortedIds.slice(i, i + CHUNK);
-        const { data, error } = await (supabase as any)
+        const { data, error } = await supabase
           .from('invoices')
           .select(
             `id, total_amount, paid_amount, notes,
@@ -502,7 +502,7 @@ export const useInvoiceRentPeriods = (ids: string[]) => {
       const CHUNK = 200;
       for (let i = 0; i < sortedIds.length; i += CHUNK) {
         const slice = sortedIds.slice(i, i + CHUNK);
-        const { data, error } = await (supabase as any)
+        const { data, error } = await supabase
           .from('invoices')
           .select('id, billing_month, invoice_items (type, from_date, to_date)')
           .in('id', slice)
@@ -565,7 +565,7 @@ export const useContractDepositVouchers = (contractId?: string | null) => {
     enabled: !!contractId,
     queryFn: async (): Promise<ContractDepositVoucher[]> => {
       if (!contractId) return [];
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('income_expenses')
         .select(
           `id, code, total_amount, voucher_date, creator_name, attachments,

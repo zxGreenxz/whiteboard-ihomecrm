@@ -40,7 +40,7 @@ export function DeleteContractDialog({
       setChecking(true);
       try {
         // Check invoices
-        const { data: invoices } = await (supabase as any)
+        const { data: invoices } = await supabase
           .from("invoices")
           .select("id")
           .eq("contract_id", contract.id)
@@ -53,7 +53,7 @@ export function DeleteContractDialog({
         }
 
         // Check termination records
-        const { data: terminations } = await (supabase as any)
+        const { data: terminations } = await supabase
           .from("contract_terminations")
           .select("id")
           .eq("contract_id", contract.id)

@@ -221,7 +221,7 @@ export const useAlerts = (buildingId?: string | null) => {
       const alerts: Alert[] = [];
 
       // Overdue invoices
-      const { data: overdueInvoices } = await (supabase as any)
+      const { data: overdueInvoices } = await supabase
         .from("invoices")
         .select(
           `id, invoice_number, due_date, total_amount, paid_amount,
@@ -256,7 +256,7 @@ export const useAlerts = (buildingId?: string | null) => {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-      const { data: expiringContracts } = await (supabase as any)
+      const { data: expiringContracts } = await supabase
         .from("contracts")
         .select(
           `id, contract_number, end_date,
@@ -313,7 +313,7 @@ export const useAlerts = (buildingId?: string | null) => {
       // Deposit shortfall — HĐ đang hiệu lực còn thiếu cọc (mode DEBT/legacy;
       // KHÔNG gồm FIRST_INVOICE vì khoản đó thu qua hoá đơn đầu, đã có cảnh báo
       // hoá đơn quá hạn riêng). Đánh dấu để admin nhớ thu đủ cọc.
-      const { data: depositShortContracts } = await (supabase as any)
+      const { data: depositShortContracts } = await supabase
         .from("contracts")
         .select(
           `id, contract_number, total_deposit, deposit_paid, deposit_remaining, deposit_topup_due_date,
@@ -371,7 +371,7 @@ export const useRecentActivities = (buildingId?: string | null) => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const { data: recentContracts } = await (supabase as any)
+      const { data: recentContracts } = await supabase
         .from("contracts")
         .select(
           `id, contract_number, created_at,
@@ -398,7 +398,7 @@ export const useRecentActivities = (buildingId?: string | null) => {
 
       // Cash collection activities only. The view removes reversals and returned
       // change; customer credit stays included, while non-cash CT is excluded.
-      const { data: recentReceipts, error: receiptsError } = await (supabase as any)
+      const { data: recentReceipts, error: receiptsError } = await supabase
         .from("active_payment_receipts")
         .select("id, invoice_id, collected_amount, payment_date")
         .neq("payment_method", "CT")
@@ -416,7 +416,7 @@ export const useRecentActivities = (buildingId?: string | null) => {
       ));
       const invoiceById = new Map<string, any>();
       if (invoiceIds.length > 0) {
-        const { data: receiptInvoices, error: invoicesError } = await (supabase as any)
+        const { data: receiptInvoices, error: invoicesError } = await supabase
           .from("invoices")
           .select(
             `id,

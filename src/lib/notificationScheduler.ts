@@ -243,7 +243,7 @@ export async function checkOverdueInvoices(userId: string, config?: any): Promis
 export async function checkDepositTopupReminders(userId: string): Promise<void> {
   const SHORTFALL_THRESHOLD = 10000;
 
-  const { data: contracts } = await (supabase as any)
+  const { data: contracts } = await supabase
     .from('contracts')
     .select(`
       id,

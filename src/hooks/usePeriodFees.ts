@@ -378,11 +378,11 @@ export const useFeeAccounts = () => {
     queryKey: ['fee-accounts'],
     queryFn: async (): Promise<FeeAccount[]> => {
       const [cfgRes, bldRes] = await Promise.all([
-        (supabase as any)
+        supabase
           .from('building_fee_accounts')
           .select('building_id, fee_category, provider_code, account_holder, default_amount, default_account_id')
           .is('deleted_at', null),
-        (supabase as any)
+        supabase
           .from('buildings')
           .select('id, hidden_fixed_expenses')
           .is('deleted_at', null),

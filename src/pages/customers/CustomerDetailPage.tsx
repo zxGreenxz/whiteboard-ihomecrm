@@ -106,7 +106,7 @@ function CustomerDetailDesktopPage() {
     queryKey: ['customer-contracts', id],
     enabled: !!id,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('contract_customers')
         .select(
           `id, is_representative, notes,

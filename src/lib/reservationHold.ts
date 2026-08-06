@@ -37,7 +37,7 @@ export async function tryPlaceRoomHold(roomId: string, amount: number): Promise<
     if (code === "55000" && msg.includes("cọc giữ chỗ còn hiệu lực")) {
       // Có hold sống — của mình (hold hôm qua chưa hết 24h) hay của người khác?
       const me = await getSessionUser();
-      const { data: holds } = await (supabase as any)
+      const { data: holds } = await supabase
         .from("room_reservation_holds")
         .select("held_by")
         .eq("room_id", roomId)

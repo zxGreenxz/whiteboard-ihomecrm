@@ -89,7 +89,7 @@ export function PrintContractDialog({
       }> = [];
 
       if (customerIds.length > 0) {
-        const { data: rows, error } = await (supabase as any)
+        const { data: rows, error } = await supabase
           .from("vehicles")
           .select(
             "vehicle_type, vehicle_name, brand, model, license_plate, color, customer_id"

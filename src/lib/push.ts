@@ -105,8 +105,7 @@ async function saveSubscription(sub: PushSubscription): Promise<void> {
   const userId = await getSessionUserId();
   if (!userId) throw new Error('Bạn chưa đăng nhập');
   const { p256dh, auth } = extractKeys(sub);
-  // push_subscriptions chưa có trong Database types (regen sau) → cast như pattern (supabase.rpc as any)
-  const { error } = await (supabase as any).from('push_subscriptions').upsert(
+  const { error } = await supabase.from('push_subscriptions').upsert(
     {
       user_id: userId,
       endpoint: sub.endpoint,
@@ -181,7 +180,7 @@ export async function disablePush(): Promise<void> {
   } catch (e) {
     console.warn('[push] unsubscribe failed', e);
   }
-  await (supabase as any).from('push_subscriptions').delete().eq('endpoint', endpoint);
+  await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
 }
 
 export interface PushSendError {

@@ -189,7 +189,7 @@ export function useMyOpenInspections(today?: string, userId?: string) {
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<OpenInspectionSession[]> => {
       // Bảng v5 chưa có trong types generated → cast (RLS vẫn chỉ trả phiên của mình)
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from("inspection_sessions")
         .select("id, building_id, type, status, photos_count, buildings(name)")
         .eq("user_id", userId)
@@ -253,7 +253,7 @@ export function useSubmitInspectionPhoto() {
  * phiên dở vẫn biết mình còn thiếu bằng chứng vị trí hay không.
  */
 export async function fetchGeoOkCount(sessionId: string): Promise<number> {
-  const { count, error } = await (supabase as any)
+  const { count, error } = await supabase
     .from("inspection_photos")
     .select("id", { count: "exact", head: true })
     .eq("session_id", sessionId)

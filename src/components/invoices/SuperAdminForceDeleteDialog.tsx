@@ -79,7 +79,7 @@ const SuperAdminForceDeleteDialog = ({
     queryKey: ['invoice-payments-summary', invoiceId],
     enabled: open && !!invoiceId,
     queryFn: async (): Promise<PaymentRow[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('payments')
         .select('id, amount, payment_method, payment_date, receipt_number, collection_id, reversed_at, created_at')
         .eq('invoice_id', invoiceId)

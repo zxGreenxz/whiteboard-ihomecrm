@@ -384,7 +384,7 @@ export const incomeExpensesListQuery = (
         // Bỏ ký tự phá cú pháp or() của PostgREST (dấu phẩy / ngoặc).
         const q = searchQuery!.trim().replace(/[,()]/g, " ").replace(/\s+/g, " ").trim();
         if (q) {
-          const { data: tenantRows } = await (supabase as any)
+          const { data: tenantRows } = await supabase
             .from("tenants")
             .select("id")
             .ilike("full_name", `%${q}%`)

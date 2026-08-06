@@ -135,14 +135,14 @@ export function ContractImportExportDialog({
     }
 
     // Load rooms for the selected building
-    const { data: rooms } = await (supabase as any)
+    const { data: rooms } = await supabase
       .from('rooms')
       .select('id, name, code')
       .eq('building_id', selectedBuildingId)
       .is('deleted_at', null);
 
     // Load existing customers
-    const { data: existingCustomers } = await (supabase as any)
+    const { data: existingCustomers } = await supabase
       .from('customers')
       .select('id, full_name, phone, id_number')
       .is('deleted_at', null);
@@ -175,7 +175,7 @@ export function ContractImportExportDialog({
         if (existingCustomer) {
           customerId = existingCustomer.id;
         } else {
-          const { data: newCustomer, error: customerError } = await (supabase as any)
+          const { data: newCustomer, error: customerError } = await supabase
             .from('customers')
             .insert({
               user_id: user.id,
@@ -211,7 +211,7 @@ export function ContractImportExportDialog({
           status: 'ACTIVE',
         };
 
-        const { data: contract, error: contractError } = await (supabase as any)
+        const { data: contract, error: contractError } = await supabase
           .from('contracts')
           .insert(contractInsert)
           .select()
@@ -224,14 +224,14 @@ export function ContractImportExportDialog({
         }
 
         // Insert contract_customer
-        await (supabase as any).from('contract_customers').insert({
+        await supabase.from('contract_customers').insert({
           contract_id: contract.id,
           customer_id: customerId,
           is_representative: true,
         });
 
         // Update room status
-        await (supabase as any)
+        await supabase
           .from('rooms')
           .update({ status: 'OCCUPIED' })
           .eq('id', room.id);

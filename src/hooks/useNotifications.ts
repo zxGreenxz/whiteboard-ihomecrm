@@ -232,7 +232,7 @@ export function useCreateNotification() {
       if (!user?.id) throw new Error('User not authenticated');
 
       // types.ts chưa regen sau khi thêm enum 'SALARY_BONUS' → cast (pattern như push.ts)
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('notifications')
         .insert({
           user_id: user.id,

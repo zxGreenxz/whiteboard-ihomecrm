@@ -304,7 +304,7 @@ export function useHeldDeposits() {
     queryFn: async (): Promise<HeldDepositRow[]> => {
       // PAGED: danh sách HĐ ACTIVE có thể > 1000 → phân trang kẻo bảng bị cắt.
       const data = await fetchAllRows<any>(
-        (from, to) => (supabase as any)
+        (from, to) => supabase
           .from('contracts')
           .select(`
             id, contract_number, total_deposit, deposit_paid, deposit_remaining,
@@ -404,7 +404,7 @@ export function useDepositRefundsForfeits() {
       // câu UPDATE với status='COMPLETED' đặt ra nên không nói được gì về tiền.
       const [data, vouchers] = await Promise.all([
         fetchAllRows<any>(
-          (from, to) => (supabase as any)
+          (from, to) => supabase
             .from('contract_terminations')
             .select(`
               id, contract_id, termination_date, termination_type,
@@ -427,7 +427,7 @@ export function useDepositRefundsForfeits() {
           { label: 'deposits.refundsForfeits' },
         ),
         fetchAllRows<any>(
-          (from, to) => (supabase as any)
+          (from, to) => supabase
             .from('income_expenses')
             .select('id, code, contract_id, total_amount')
             .eq('type', 'EXPENSE')
