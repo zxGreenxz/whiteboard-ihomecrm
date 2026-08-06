@@ -67,11 +67,11 @@ export const useSettlementReport = (from: string, to: string) =>
     queryKey: ['settlement-report', from, to],
     enabled: !!from && !!to,
     queryFn: async (): Promise<SettlementReport> => {
-      const { data, error } = await (supabase as any).rpc('cashbook_settlement_report', {
+      const { data, error } = await supabase.rpc('cashbook_settlement_report', {
         p_from: from,
         p_to: to,
       });
       if (error) throw new Error(error.message);
-      return data as SettlementReport;
+      return data as unknown as SettlementReport;
     },
   });

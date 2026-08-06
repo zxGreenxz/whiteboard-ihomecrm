@@ -67,7 +67,7 @@ export const useCollectionReversalEligibility = (collectionIds: string[]) => {
     enabled: ids.length > 0,
     staleTime: 30_000,
     queryFn: async (): Promise<Record<string, CollectionReversalEligibility>> => {
-      const { data, error } = await (supabase.rpc as any)('can_reverse_collection_v1', {
+      const { data, error } = await supabase.rpc('can_reverse_collection_v1', {
         p_collection_ids: ids,
       });
       if (error) throw new Error(error.message);
@@ -110,7 +110,7 @@ export const useDeletePayment = () => {
       }
 
       const outcome = await reverseInvoicePaymentBySource(
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        (fn, args) => supabase.rpc(fn, args as never),
         {
           payment_id: paymentId,
           collection_id: collectionId,

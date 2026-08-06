@@ -69,7 +69,7 @@ export default function FloorPlanEditorTab() {
   useEffect(() => {
     if (floor == null || !roomsAll.length) return;
     const key = String(floor);
-    setByFloor((m) => (m[key] ? m : { ...m, [key]: seedFromAuto(floor, roomsOnFloor) }));
+    setByFloor((m) => (m[key] ? m : { ...m, [key]: seedFromAuto(floor, roomsOnFloor as never) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [floor, roomsAll]);
 
@@ -116,7 +116,7 @@ export default function FloorPlanEditorTab() {
   const autoArrange = () => {
     if (floor == null) return;
     snapshot();
-    setByFloor((m) => ({ ...m, [String(floor)]: seedFromAuto(floor, roomsOnFloor) }));
+    setByFloor((m) => ({ ...m, [String(floor)]: seedFromAuto(floor, roomsOnFloor as never) }));
     setDirty(true);
     setSelectedId(null);
   };

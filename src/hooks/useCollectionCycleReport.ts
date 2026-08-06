@@ -51,12 +51,12 @@ export const useCollectionCycleReport = (managerId: string, from: string, to: st
     queryKey: ['collection-cycle', managerId, from, to],
     enabled: !!from && !!to,
     queryFn: async (): Promise<CollectionCycleReport> => {
-      const { data, error } = await (supabase as any).rpc('manager_collection_cycle_report', {
+      const { data, error } = await supabase.rpc('manager_collection_cycle_report', {
         p_manager_id: managerId || null,
         p_from: from,
         p_to: to,
       });
       if (error) throw new Error(error.message);
-      return data as CollectionCycleReport;
+      return data as unknown as CollectionCycleReport;
     },
   });

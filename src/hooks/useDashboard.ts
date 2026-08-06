@@ -76,11 +76,11 @@ export interface DashboardSummary {
 const dashboardSummaryQuery = (buildingId?: string | null) => ({
   queryKey: ["dashboard-summary", buildingId ?? null] as const,
   queryFn: async (): Promise<DashboardSummary> => {
-    const { data, error } = await (supabase.rpc as any)("get_dashboard_summary", {
+    const { data, error } = await supabase.rpc("get_dashboard_summary", {
       p_building_id: buildingId ?? null,
     });
     if (error) throw error;
-    return data as DashboardSummary;
+    return data as unknown as DashboardSummary;
   },
   // Stats dashboard không cần tươi từng phút: 5 phút + dừng khi tab ẩn.
   // Mutation vẫn invalidate queryKey nên số liệu cập nhật khi có thay đổi thật.

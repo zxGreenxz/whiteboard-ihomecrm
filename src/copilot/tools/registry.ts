@@ -125,9 +125,9 @@ export function buildRegistry(): DomainTool[] {
       }),
       requiredPermission: { module: 'rooms', action: 'view' },
       execute: async (args) => {
-        const { data, error } = await (supabase.rpc as any)('get_my_available_rooms');
+        const { data, error } = await supabase.rpc('get_my_available_rooms');
         if (error) throw new Error(`Lỗi tải phòng trống: ${error.message}`);
-        let buildings = mapPayloadToBuildings((data as RpcPayload | null) ?? null);
+        let buildings = mapPayloadToBuildings((data as unknown as RpcPayload | null) ?? null);
         if (args.toa_nha) {
           const q = args.toa_nha.toLowerCase();
           buildings = buildings.filter((b) => b.name.toLowerCase().includes(q));
@@ -249,7 +249,7 @@ export function buildRegistry(): DomainTool[] {
         const start = `${args.thang}-01`;
         const end = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); // ngày cuối tháng
         const fn = args.accrual ? 'fa_monthly_pnl_accrual' : 'fa_monthly_pnl';
-        const { data, error } = await (supabase.rpc as any)(fn, {
+        const { data, error } = await supabase.rpc(fn, {
           p_start_date: start,
           p_end_date: end,
           p_building_ids: null,

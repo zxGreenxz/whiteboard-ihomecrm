@@ -118,7 +118,7 @@ export const useIncomeExpenseTypeCategories = (
       }
 
       const set = new Set<string>();
-      for (const row of (data ?? []) as Array<{ category: string | null }>) {
+      for (const row of (data ?? []) as unknown as Array<{ category: string | null }>) {
         const c = (row.category ?? "").trim();
         if (c) set.add(c);
       }

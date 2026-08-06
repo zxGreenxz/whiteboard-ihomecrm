@@ -431,7 +431,7 @@ export const contractStatsQuery = (buildingIds?: string[]) => ({
       // 1 RPC thay 4 HEAD-count (migration 20260705210000) — bớt 3 request +
       // 3 lần plan RLS mỗi lần tải trang. SECURITY INVOKER nên RLS như cũ;
       // p_today/p_in30 truyền từ FE để giữ đúng local-date (không lệch TZ).
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "get_contract_stats",
         {
           p_building_ids: buildingIds?.length ? buildingIds : null,
@@ -565,7 +565,7 @@ export const useCreateContract = () => {
       const response = await createContractV2(
         // Generated types intentionally lag until the migration is applied.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         request,
       );
       return response.contract;
@@ -1092,7 +1092,7 @@ export const usePendingTerminations = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return (data || []) as TerminationWithRelations[];
+      return (data || []) as unknown as TerminationWithRelations[];
     },
   });
 };
@@ -1130,7 +1130,7 @@ export const useApproveTermination = () => {
       //
       // Luật thay thế: RPC lỗi thì LỖI HIỆN RA cho người dùng. Trình duyệt tuyệt
       // đối không ghi thay tiền.
-      const canonical = await (supabase.rpc as any)("approve_contract_termination_v1", {
+      const canonical = await supabase.rpc("approve_contract_termination_v1", {
         p_termination_id: data.termination_id,
         p_note: data.notes ?? null,
       });
@@ -1181,7 +1181,7 @@ export const useRejectTermination = () => {
       if (!user) throw new Error("Not authenticated");
 
       // Canonical reject (mirror legacy: về DRAFT + prefix lý do), fallback cũ.
-      const canonical = await (supabase.rpc as any)("reject_contract_termination_v1", {
+      const canonical = await supabase.rpc("reject_contract_termination_v1", {
         p_termination_id: data.termination_id,
         p_reason: data.rejection_reason ?? null,
       });

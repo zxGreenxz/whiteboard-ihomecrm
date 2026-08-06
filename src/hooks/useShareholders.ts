@@ -85,7 +85,7 @@ export const useMyShareBuildings = () => {
     queryKey: ["my-share-buildings"],
     staleTime: 5 * 60 * 1000,
     queryFn: async (): Promise<ShareBuilding[]> => {
-      const { data, error } = await (supabase as any).rpc("get_my_share_buildings");
+      const { data, error } = await supabase.rpc("get_my_share_buildings");
       if (error) return [];
       return (data ?? []) as ShareBuilding[];
     },
@@ -135,7 +135,7 @@ export const useCreateShareholder = () => {
         toast.error(error.message || "Không thể tạo cổ đông");
         throw error;
       }
-      return data as Shareholder;
+      return data as unknown as Shareholder;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["shareholders"] });
