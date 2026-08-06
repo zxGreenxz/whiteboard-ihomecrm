@@ -26,7 +26,7 @@ Ba cạm bẫy khi đọc bảng trên — bản cũ của tài liệu này dín
    tăng theo lịch mà không ai đổi schema.
 2. **`pg_proc` ≠ số RPC.** 1527 là mọi hàm kể cả overload và hàm nội bộ; số RPC mà frontend gọi
    được nhỏ hơn nhiều. Đừng so trực tiếp con số này với số function trong generated types.
-3. **Số file migration ≠ số migration đã deploy.** Repository hiện có 625 file trong
+3. **Số file migration ≠ số migration đã deploy.** Repository hiện có 627 file trong
    `supabase/migrations/` + 15 file trong `migrations-archive/`; ledger `schema_migrations` dừng
    trước schema đang chạy. Xem `docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md`
    Phần VI, và **đừng coi số file là bằng chứng đã deploy**.

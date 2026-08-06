@@ -55,7 +55,8 @@
     "docs:check": "npm run docs:check:links && npm --prefix docs-site run images:check",
     "docs:check:links": "node scripts/check-docs.mjs",
     "gate:timezone": "node scripts/check-timezone-stability.mjs",
-    "gate:route-guards": "node scripts/check-route-guards.mjs"
+    "gate:route-guards": "node scripts/check-route-guards.mjs",
+    "gate:doc-counts": "node scripts/check-doc-counts.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
