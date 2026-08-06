@@ -125,9 +125,16 @@ export function useOccupancyTrend12m(buildingIds: string[]) {
       return [...byMonth.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, v]) => {
-          const d = new Date(month);
+          // `month` là chuỗi CHỈ CÓ NGÀY ("2026-02-01") do RPC trả về. Không đưa nó
+          // qua `new Date()`: spec quy định chuỗi dạng này parse thành nửa đêm UTC,
+          // trong khi getMonth()/getFullYear() lại đọc theo GIỜ MÁY. Ở múi giờ ÂM,
+          // nửa đêm UTC ngày 1 rơi về ngày cuối tháng trước ⇒ cả biểu đồ lệch một
+          // tháng. Máy ở UTC+7 nên không lộ ra, và CI cũng chạy UTC — bắt được nhờ
+          // chạy thử ở UTC-11 (scripts/check-timezone-stability.mjs).
+          // Giá trị chỉ có ngày thì cắt chuỗi là đủ, và không phụ thuộc máy chạy.
+          const [y, m] = month.slice(0, 7).split("-");
           return {
-            month: `${d.getMonth() + 1}/${d.getFullYear()}`,
+            month: `${Number(m)}/${y}`,
             occupied: v.occupied,
             total: v.total,
             rate: v.total > 0 ? Number(((v.occupied / v.total) * 100).toFixed(1)) : 0,

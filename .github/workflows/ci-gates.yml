@@ -154,6 +154,19 @@ jobs:
           --exclude 'scripts/__tests__/openclaw-schema-drift-harness.test.mjs'
           --exclude 'scripts/__tests__/openclaw-full-reset-harness.test.mjs'
 
+      # Runner này chạy UTC còn dữ liệu và người dùng ở UTC+7, nên một lỗi ngày
+      # tháng có thể XANH ở đây và SAI trên máy người dùng — hoặc ngược lại. Bước
+      # này chạy lại nhóm src/lib + src/hooks dưới 4 múi giờ (UTC-11 → UTC+14) và
+      # đòi kết quả GIỐNG HỆT.
+      # Nó đã chứng minh giá trị ngay lần chạy đầu: bắt được useOccupancyTrend12m
+      # đưa chuỗi chỉ-có-ngày qua `new Date()` rồi đọc bằng getMonth() — biểu đồ
+      # lấp đầy lệch một tháng ở mọi múi giờ âm. Cả 2810 test đều xanh ở UTC lẫn
+      # UTC+7 nên không cách nào thấy nếu không thử ở múi giờ âm.
+      # ~48 giây (4 lượt × 12s) nên KHÔNG gộp vào bước "Contract gates" vốn dành
+      # cho các kiểm tra dưới một giây.
+      - name: Ổn định múi giờ (chạy lại test ngày/tiền ở UTC-11 → UTC+14)
+        run: npm run gate:timezone
+
   openclaw-edge-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 30
