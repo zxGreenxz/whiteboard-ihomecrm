@@ -1,5 +1,24 @@
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
+
+/**
+ * ĐÂY LÀ TEST MÔ HÌNH, KHÔNG PHẢI TEST CỦA RPC.
+ *
+ * Logic sinh hoá đơn thật nằm trong hàm PostgreSQL `generate_invoices_for_building`,
+ * không phải TypeScript — nên không có gì để import vào Vitest. File này viết một
+ * bản MÔ PHỎNG bằng TS rồi kiểm tính chất trên bản mô phỏng đó.
+ *
+ * Cần nói thẳng để không ai đọc nhầm: các ca dưới đây XANH không chứng minh RPC
+ * đúng. Chúng chứng minh bản mô phỏng tự nhất quán. RPC có thể đổi hành vi mà file
+ * này vẫn xanh — chú thích cũ ("Mirrors the behavior of the RPC") là một lời khẳng
+ * định mà không có gì kiểm.
+ *
+ * Vẫn giữ vì có giá trị thật: nó là ĐẶC TẢ CHẠY ĐƯỢC của luật sinh hoá đơn, bắt
+ * được sai sót trong chính cách nghĩ. Nhưng để nó không trôi khỏi thực tế như các
+ * bản chép khác trong repo (xem contractRoomFilter, meterReadingFormBugfix), khối
+ * cuối file neo mô hình vào ĐỊNH NGHĨA SQL ĐANG CHẠY.
+ */
 
 // =============================================
 // Types
@@ -381,5 +400,69 @@ describe('Feature: invoice-reimplementation, Property 10: Sinh hoá đơn không
       ),
       { numRuns: 100 },
     );
+  });
+});
+
+// =============================================
+// NEO MÔ HÌNH VÀO SQL ĐANG CHẠY
+// =============================================
+
+/**
+ * Mô hình ở trên giả định hai bất biến của RPC. Khối này kiểm chúng còn trong
+ * ĐỊNH NGHĨA SỐNG — quét toàn bộ thư mục migration lấy `CREATE OR REPLACE` cuối
+ * cùng, không đọc một file migration cố định (file cũ bị đóng băng bởi
+ * migration-policy + băm sha256, nên khẳng định trên nó là hằng số, không phải
+ * phép đo — xem scripts/check-migration-test-liveness.mjs).
+ *
+ * Đây KHÔNG phải parity đầy đủ giữa SQL và mô hình; nó chỉ bảo đảm hai trụ mà mô
+ * hình dựa vào không biến mất im lặng. Parity đầy đủ cần chạy RPC thật trên
+ * database, thuộc suite khác.
+ */
+function liveRpcBody(name: string): { file: string; body: string } {
+  const dir = 'supabase/migrations';
+  // Không dùng regex ở đây: chuỗi mẫu cần nhiều dấu gạch chéo ngược, mà trong
+  // template literal thì `\s` bị JS nuốt thành `s` — regex thành vô nghĩa và ném
+  // "Unterminated group". Tìm bằng chuỗi thường vừa đủ và không có bẫy escape.
+  // Phải neo vào CREATE, không chỉ "FUNCTION public.<tên>": chuỗi sau còn xuất hiện
+  // trong GRANT/REVOKE, và bắt trúng một dòng GRANT thì đoạn cắt ra chỉ dài vài
+  // chục ký tự — khẳng định bên dưới đỏ vì lý do sai. (Nó ĐÃ đỏ như vậy một lần;
+  // may là đỏ chứ không phải xanh giả.)
+  const mocs = [
+    `CREATE OR REPLACE FUNCTION public.${name}`,
+    `CREATE FUNCTION public.${name}`,
+  ];
+  let hit: { file: string; body: string } | null = null;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
+    const text = readFileSync(`${dir}/${f}`, 'utf8');
+    const at = mocs.map((m) => text.indexOf(m)).filter((i) => i >= 0).sort((a, b) => a - b)[0] ?? -1;
+    if (at < 0) continue;
+    const next = text.indexOf('CREATE OR REPLACE FUNCTION', at + 1);
+    hit = { file: f, body: text.slice(at, next === -1 ? undefined : next) };
+  }
+  if (!hit) throw new Error(`Không tìm thấy định nghĩa nào của public.${name}`);
+  return hit;
+}
+
+describe('RPC sinh hoá đơn: hai trụ mà mô hình dựa vào', () => {
+  const { file, body } = liveRpcBody('generate_invoices_for_building');
+
+  it('vẫn khoá theo billing_month — mô hình giả định mỗi hợp đồng một hoá đơn/tháng', () => {
+    expect(body, `định nghĩa sống ở ${file}`).toMatch(/billing_month/i);
+  });
+
+  it('vẫn chặn trùng theo (contract_id, billing_month) rồi BỎ QUA', () => {
+    // Mất chốt này thì chạy hai lần sinh hoá đơn đôi cho cùng một tháng: nhân đôi
+    // số phải thu của khách. Mô hình ở trên khẳng định tính idempotent, nên nếu SQL
+    // bỏ chốt mà không ai biết thì cả file này thành lời trấn an sai.
+    //
+    // Khẳng định theo CƠ CHẾ THẬT, không theo cú pháp tôi đoán: bản đầu tôi tìm
+    // `NOT EXISTS|ON CONFLICT` và test đỏ — hoá ra RPC dùng
+    // `IF EXISTS (… ) THEN <bỏ qua>`. Test đỏ đúng lúc, và nhờ đó tôi đọc ra cơ chế
+    // thật thay vì nới assertion cho nó xanh.
+    expect(body, `định nghĩa sống ở ${file}`).toMatch(/EXISTS\s*\(/i);
+    expect(body, `định nghĩa sống ở ${file}`).toMatch(/billing_month\s*=\s*p_billing_month/i);
+    expect(body, `định nghĩa sống ở ${file}`).toMatch(/contract_id\s*=/i);
+    // Nhánh trùng phải dẫn tới BỎ QUA, không phải vẫn ghi tiếp.
+    expect(body, `định nghĩa sống ở ${file}`).toMatch(/skip/i);
   });
 });
