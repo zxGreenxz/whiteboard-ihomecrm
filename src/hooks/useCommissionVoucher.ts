@@ -167,6 +167,8 @@ export interface CreateCommissionVoucherInput {
   recipient_account_number: string | null;
   /** Mô tả item — vd "Hoa hồng MG (50% × 6 tháng tiền phòng)" */
   item_description: string;
+  /** Ảnh chứng từ riêng của phiếu (URL đã upload bucket income-expense-attachments) */
+  attachments?: string[];
 }
 
 export const useCreateCommissionVoucher = () => {
@@ -192,7 +194,10 @@ export const useCreateCommissionVoucher = () => {
           p_recipient_bank: input.recipient_bank,
           p_recipient_account: input.recipient_account_number,
           p_item_description: input.item_description,
-        }
+          // p_attachments mới có ở migration 20260806090000 — types.ts chưa
+          // regen nên cast; bỏ cast khi regen types
+          p_attachments: input.attachments ?? [],
+        } as any
       );
       if (error) {
         if ((error as any).code === "23505") {

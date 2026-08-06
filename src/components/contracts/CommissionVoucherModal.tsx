@@ -31,7 +31,9 @@ import {
 } from "@/hooks/useCommissionVoucher";
 import { useSaleBonusStatus } from "@/hooks/useSaleBonus";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useAuth } from "@/hooks/useAuth";
 import BankSelect from "@/components/income-expenses/BankSelect";
+import AttachmentUpload from "@/components/income-expenses/AttachmentUpload";
 
 interface CommissionVoucherModalProps {
   open: boolean;
@@ -80,6 +82,7 @@ export function CommissionVoucherModal({
     open ? contractId : null
   );
   const { data: accounts = [] } = useAccounts();
+  const { data: authUser } = useAuth();
   const createVoucher = useCreateCommissionVoucher();
 
   // Chống chi lần 2: phiếu HH sống đã có của HĐ này (mỗi HĐ tối đa 1 phiếu/loại)
@@ -110,13 +113,17 @@ export function CommissionVoucherModal({
   const [brokerAccountNumber, setBrokerAccountNumber] = useState<string>("");
   const [brokerBank, setBrokerBank] = useState<string>("");
   const [brokerRecipient, setBrokerRecipient] = useState<string>("");
+  const [brokerAttachments, setBrokerAttachments] = useState<string[]>([]);
 
-  // Mục 3 — Sale (optional)
+  // Mục 3 — Sale (optional). Sổ quỹ riêng: mặc định theo sổ quỹ chung (mục 1),
+  // đổi được độc lập để chi thưởng nóng từ quỹ khác quỹ chi hoa hồng MG.
   const [saleAmount, setSaleAmount] = useState<number | "">("");
   const [saleName, setSaleName] = useState<string>("");
   const [saleAccountNumber, setSaleAccountNumber] = useState<string>("");
   const [saleBank, setSaleBank] = useState<string>("");
   const [saleRecipient, setSaleRecipient] = useState<string>("");
+  const [saleAccountId, setSaleAccountId] = useState<string>("");
+  const [saleAttachments, setSaleAttachments] = useState<string[]>([]);
 
   // Reset & prefill khi modal mở / dữ liệu sẵn sàng
   useEffect(() => {
@@ -138,11 +145,14 @@ export function CommissionVoucherModal({
     setBrokerAccountNumber("");
     setBrokerBank("");
     setBrokerRecipient("");
+    setBrokerAttachments([]);
     setSaleAmount("");
     setSaleName("");
     setSaleAccountNumber("");
     setSaleBank("");
     setSaleRecipient("");
+    setSaleAccountId(prefill.default_account_id ?? "");
+    setSaleAttachments([]);
   }, [open, prefill]);
 
   const tierLabel = useMemo(() => {
@@ -209,6 +219,7 @@ export function CommissionVoucherModal({
           recipient_name: brokerRecipient || null,
           recipient_bank: brokerBank || null,
           recipient_account_number: brokerAccountNumber || null,
+          attachments: brokerAttachments,
           item_description: prefill.matched_tier
             ? `Hoa hồng MG (${prefill.matched_tier.rate_percent}% tiền phòng × ${prefill.months} tháng HĐ)`
             : `Hoa hồng MG (HĐ ${prefill.months} tháng — không khớp mốc cấu hình)`,
@@ -223,7 +234,7 @@ export function CommissionVoucherModal({
           building_id: prefill.building_id,
           room_id: prefill.room_id,
           tenant_id: prefill.tenant_id,
-          account_id: accountId || null,
+          account_id: saleAccountId || null,
           voucher_date: voucherDate,
           kind: "sale",
           amount: saleAmt,
@@ -231,6 +242,7 @@ export function CommissionVoucherModal({
           recipient_name: saleRecipient || null,
           recipient_bank: saleBank || null,
           recipient_account_number: saleAccountNumber || null,
+          attachments: saleAttachments,
           item_description: `Thưởng nóng Sale HĐ ${prefill.months} tháng`,
         });
         created++;
@@ -346,7 +358,7 @@ export function CommissionVoucherModal({
                     />
                   </div>
                   <div className="space-y-1 md:col-span-2">
-                    <Label className="text-xs">Sổ quỹ</Label>
+                    <Label className="text-xs">Sổ quỹ (chi hoa hồng MG)</Label>
                     <Select
                       value={accountId}
                       onValueChange={(v) => setAccountId(v)}
@@ -425,6 +437,18 @@ export function CommissionVoucherModal({
                       className="h-10"
                     />
                   </div>
+                  {authUser?.id && (
+                    <div className="space-y-1 col-span-2 md:col-span-3">
+                      <Label className="text-xs">
+                        Ảnh chứng từ hoa hồng MG
+                      </Label>
+                      <AttachmentUpload
+                        attachments={brokerAttachments}
+                        onChange={setBrokerAttachments}
+                        userId={authUser.id}
+                      />
+                    </div>
+                  )}
                 </div>
                 )}
               </div>
@@ -501,6 +525,39 @@ export function CommissionVoucherModal({
                       className="h-10"
                     />
                   </div>
+                  <div className="space-y-1 col-span-2 md:col-span-2">
+                    <Label className="text-xs">Sổ quỹ chi thưởng nóng</Label>
+                    <Select
+                      value={saleAccountId}
+                      onValueChange={(v) => setSaleAccountId(v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn sổ quỹ..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts.map((a: any) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Riêng cho thưởng nóng — mặc định theo sổ quỹ chung ở mục 1.
+                    </p>
+                  </div>
+                  {authUser?.id && (
+                    <div className="space-y-1 col-span-2 md:col-span-3">
+                      <Label className="text-xs">
+                        Ảnh chứng từ thưởng nóng
+                      </Label>
+                      <AttachmentUpload
+                        attachments={saleAttachments}
+                        onChange={setSaleAttachments}
+                        userId={authUser.id}
+                      />
+                    </div>
+                  )}
                 </div>
                 )}
               </div>
