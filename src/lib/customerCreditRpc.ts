@@ -1,3 +1,5 @@
+import type { Json } from "@/integrations/supabase/types";
+
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
 
 export type CustomerCreditMutationKind =
@@ -31,9 +33,13 @@ export interface PreparedCustomerCreditRequest {
   idempotencyKey: string;
 }
 
-export type CustomerCreditRpcInvoker = (
+// Generic theo kiểu THAM SỐ, không khai cứng `Record<string, unknown>`: kiểu đó
+// làm mất hình dạng chính xác của args ngay tại biên, nên `supabase.rpc()` ở chỗ
+// gọi không còn khớp được với chữ ký hàm Postgres và buộc phải ép `as any`.
+// Để generic thì kiểu do builder dựng ra chảy thẳng tới `.rpc()` và được kiểm tra.
+export type CustomerCreditRpcInvoker<Args = Record<string, unknown>> = (
   fn: CustomerCreditRpcName,
-  args: Record<string, unknown>,
+  args: Args,
 ) => PromiseLike<{ data: unknown; error: CustomerCreditRpcError | null }>;
 
 const KEY_PREFIX: Record<CustomerCreditMutationKind, string> = {
@@ -142,14 +148,18 @@ export function buildCreditInvoiceCreateRpcArgs(
   };
 }
 
+// KHÔNG khai `: Record<string, unknown>` cho kiểu trả về. Annotation đó làm mất
+// hình dạng chính xác của object, và khi đó `supabase.rpc()` không còn khớp được
+// tham số với chữ ký hàm Postgres nữa — đó chính là lý do chỗ gọi phải ép `as any`.
+// Để TypeScript tự suy ra thì tên và kiểu từng tham số được kiểm tra thật.
 export function buildForfeitWithCreditRpcArgs(
   input: {
     contractId: string;
     forfeitDate: string;
-    extraCharges?: unknown[];
+    extraCharges?: Json[];
   },
   request: PreparedCustomerCreditRequest,
-): Record<string, unknown> {
+) {
   return {
     p_contract_id: input.contractId,
     p_forfeit_date: input.forfeitDate,
@@ -167,12 +177,12 @@ export function buildMoveOutWithCreditRpcArgs(
     excessRent?: number;
     outstandingDebt?: number;
     notes?: string;
-    extraCharges?: unknown[];
+    extraCharges?: Json[];
     shortfallMode?: "PAID" | "DEBT";
     receiptAccountId?: string | null;
   },
   request: PreparedCustomerCreditRequest,
-): Record<string, unknown> {
+) {
   return {
     p_contract_id: input.contractId,
     p_move_out_date: input.moveOutDate,
@@ -209,10 +219,10 @@ export function buildBulkInvoiceCreditLifecycleRpcArgs(
 }
 
 /** Credit lifecycle writes are canonical-only: every RPC error fails closed. */
-export async function invokeCustomerCreditRpc(
-  rpc: CustomerCreditRpcInvoker,
+export async function invokeCustomerCreditRpc<Args>(
+  rpc: CustomerCreditRpcInvoker<Args>,
   fn: CustomerCreditRpcName,
-  args: Record<string, unknown>,
+  args: Args,
 ): Promise<unknown> {
   const result = await rpc(fn, args);
   if (result.error) throw result.error;

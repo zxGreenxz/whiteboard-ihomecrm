@@ -15,6 +15,7 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { monthToStartDate, monthToEndDate } from '@/lib/monthPeriod';
+import { jsonProp } from '@/lib/jsonValue';
 
 export type UtilType = 'electric' | 'water';
 
@@ -192,7 +193,7 @@ export const useSaveUtilityMeter = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: { id?: string | null; buildingId: string; type: UtilType; code: string; holder: string }) => {
-      const { data, error } = await (supabase as any).rpc('save_utility_account', {
+      const { data, error } = await supabase.rpc('save_utility_account', {
         p_id: args.id ?? null,
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
@@ -211,7 +212,7 @@ export const useAddUtilityMeter = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (args: { buildingId: string; type: UtilType }) => {
-      const { data, error } = await (supabase as any).rpc('save_utility_account', {
+      const { data, error } = await supabase.rpc('save_utility_account', {
         p_id: null,
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
@@ -230,7 +231,7 @@ export const useDeleteUtilityMeter = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).rpc('delete_utility_account', { p_id: id });
+      const { error } = await supabase.rpc('delete_utility_account', { p_id: id });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['utility-accounts'] }),
@@ -253,7 +254,7 @@ export const usePayUtilityBill = () => {
       attachments?: string[];
       voucherDate?: string;
     }) => {
-      const { data, error } = await (supabase as any).rpc('pay_utility_bill', {
+      const { data, error } = await supabase.rpc('pay_utility_bill', {
         p_building_id: args.buildingId,
         p_utility_type: TYPE_DB[args.type],
         p_amount: args.amount,
@@ -283,7 +284,7 @@ export const useCancelUtilityBill = (billingMonth: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (voucherId: string) => {
-      const { error } = await (supabase as any).rpc('cancel_utility_bill', { p_voucher_id: voucherId });
+      const { error } = await supabase.rpc('cancel_utility_bill', { p_voucher_id: voucherId });
       if (error) throw new Error(error.message);
     },
     onSuccess: () => {
@@ -513,7 +514,7 @@ export const useUtilityChart = (
       // ── Phải thu (hoá đơn khách): electric/water_amount theo từng kỳ (song song) ──
       const stats = await Promise.all(
         months.map(async (ym) => {
-          const { data, error } = await (supabase.rpc as any)('get_invoice_statistics_v2', {
+          const { data, error } = await supabase.rpc('get_invoice_statistics_v2', {
             p_building_id: buildingId, p_room_id: null, p_status: null,
             p_start_date: null, p_end_date: null,
             p_billing_month: ym, p_payment_status: null, p_building_ids: null,
@@ -521,8 +522,8 @@ export const useUtilityChart = (
           if (error) return { elecBill: 0, waterBill: 0 };
           const r = Array.isArray(data) ? data[0] : data;
           return {
-            elecBill: Number(r?.electric_amount ?? 0),
-            waterBill: Number(r?.water_amount ?? 0),
+            elecBill: Number(jsonProp(r, "electric_amount") ?? 0),
+            waterBill: Number(jsonProp(r, "water_amount") ?? 0),
           };
         }),
       );

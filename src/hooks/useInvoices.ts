@@ -989,10 +989,7 @@ export const useDeleteInvoice = () => {
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
         // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
         // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-        (fn, args) => (supabase.rpc as unknown as (
-          n: string,
-          a: Record<string, unknown>,
-        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         'soft_delete_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
@@ -1043,10 +1040,7 @@ export const useBulkDeleteInvoices = () => {
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
         // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
         // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-        (fn, args) => (supabase.rpc as unknown as (
-          n: string,
-          a: Record<string, unknown>,
-        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         'bulk_soft_delete_invoices_with_credit_v1',
         buildBulkInvoiceCreditLifecycleRpcArgs(
           invoiceIds,
@@ -1630,10 +1624,7 @@ export const useRestoreInvoice = () => {
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
         // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
         // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-        (fn, args) => (supabase.rpc as unknown as (
-          n: string,
-          a: Record<string, unknown>,
-        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         'restore_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
@@ -1683,10 +1674,7 @@ export const useForceCancelInvoice = () => {
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
         // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
         // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-        (fn, args) => (supabase.rpc as unknown as (
-          n: string,
-          a: Record<string, unknown>,
-        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         'super_admin_force_cancel_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,
@@ -1733,10 +1721,7 @@ export const useCancelInvoice = () => {
         // Ranh giới abstraction: invoker cố ý nhận Record<string, unknown> để
         // test inject được fake rpc, nên chữ ký không khớp overload đã typed của
         // supabase.rpc. Cast GOM một chỗ ở đây, không rải ra từng call site.
-        (fn, args) => (supabase.rpc as unknown as (
-          n: string,
-          a: Record<string, unknown>,
-        ) => PromiseLike<{ data: unknown; error: never }>)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         'cancel_invoice_with_credit_v1',
         buildInvoiceCreditLifecycleRpcArgs(
           invoiceId,

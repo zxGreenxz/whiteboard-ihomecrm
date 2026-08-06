@@ -65,7 +65,9 @@ export const NOTIFICATION_EVENT_LABELS: Record<
   },
 };
 
-export interface NotificationEventConfig {
+// `type` chứ không phải `interface`: chỉ type alias mới gán được vào `Json`, nên
+// cả map cấu hình mới đi thẳng làm tham số RPC mà không phải ép kiểu.
+export type NotificationEventConfig = {
   enabled: boolean;
   /**
    * Ngưỡng tiền tối thiểu để phát thông báo; `null` = KHÔNG lọc theo tiền.
@@ -170,7 +172,7 @@ export function useNotificationOrgConfig() {
     queryKey: NOTIFICATION_ORG_CONFIG_KEY,
     // Đọc hỏng KHÔNG được ném lên trên: card phải render được ở trạng thái mặc định.
     queryFn: async (): Promise<NotificationOrgConfig> => {
-      const { data, error } = await (supabase.rpc as any)("get_notification_org_config_v1");
+      const { data, error } = await supabase.rpc("get_notification_org_config_v1");
       if (error) {
         warnUnavailable("get_notification_org_config_v1", error.message);
         return DEFAULT_ORG_CONFIG();
@@ -210,7 +212,7 @@ export function useSetNotificationOrgConfig() {
       quiet_start: number;
       quiet_end: number;
     }) => {
-      const { data, error } = await (supabase.rpc as any)("set_notification_org_config_v1", {
+      const { data, error } = await supabase.rpc("set_notification_org_config_v1", {
         p_events: input.events,
         p_quiet_start: input.quiet_start,
         p_quiet_end: input.quiet_end,
@@ -244,7 +246,7 @@ export function useMyOrgIds() {
   return useQuery({
     queryKey: ["my-org-ids"],
     queryFn: async (): Promise<string[]> => {
-      const { data, error } = await (supabase.rpc as any)("my_org_ids");
+      const { data, error } = await supabase.rpc("my_org_ids");
       if (error) {
         warnUnavailable("my_org_ids", error.message);
         return [];
@@ -274,7 +276,7 @@ export function useMyOrgOptions() {
     retry: false,
     staleTime: 5 * 60_000,
     queryFn: async (): Promise<{ organization_id: string; organization_name: string }[]> => {
-      const { data, error } = await (supabase.rpc as any)("list_ie_accounting_standard_v1");
+      const { data, error } = await supabase.rpc("list_ie_accounting_standard_v1");
       if (error) return [];
       return Array.isArray(data) ? (data as any[]) : [];
     },
@@ -298,7 +300,7 @@ export function useMyNotificationPreferences(organizationId: string | null) {
     retry: false,
     staleTime: 60_000,
     queryFn: async (): Promise<MyNotificationPreferences> => {
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "get_my_notification_preferences_v1",
         { p_organization_id: organizationId },
       );
@@ -350,7 +352,7 @@ export function useSetMyNotificationPreferences(organizationId: string | null) {
           { in_app: prefs[k].in_app, push: prefs[k].push, cadence: prefs[k].cadence },
         ]),
       );
-      const { data, error } = await (supabase.rpc as any)(
+      const { data, error } = await supabase.rpc(
         "set_my_notification_preferences_v1",
         { p_organization_id: organizationId, p_prefs: payload },
       );

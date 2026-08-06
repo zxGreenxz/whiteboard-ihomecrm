@@ -26,7 +26,7 @@ export const useRenewContract = () => {
       newDeposit?: number;
       notes?: string;
     }) => {
-      const { data, error } = await (supabase as any).rpc("renew_contract", {
+      const { data, error } = await supabase.rpc("renew_contract", {
         p_contract_id: params.contractId,
         p_new_end_date: params.newEndDate,
         p_new_rent_price: params.newRentPrice ?? null,
@@ -65,7 +65,7 @@ export const useTransferRoom = () => {
       transferDate: string;
       notes?: string;
     }) => {
-      const { data, error } = await (supabase as any).rpc("transfer_room", {
+      const { data, error } = await supabase.rpc("transfer_room", {
         p_contract_id: params.contractId,
         p_new_room_id: params.newRoomId,        p_new_rent_price: params.newRentPrice ?? null,
         p_transfer_date: params.transferDate,
@@ -150,7 +150,7 @@ export const useTransferContract = () => {
       transferDate: string;
       notes?: string;
     }) => {
-      const { data, error } = await (supabase as any).rpc(
+      const { data, error } = await supabase.rpc(
         "transfer_contract",
         {
           p_contract_id: params.contractId,
@@ -193,9 +193,7 @@ export const useTerminateForfeit = () => {
     }) => {
       const request = prepareCustomerCreditRequest("contract-forfeit");
       return invokeCustomerCreditRpc(
-        // Generated types intentionally lag until the migration is applied.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         "terminate_contract_forfeit_with_credit_v1",
         buildForfeitWithCreditRpcArgs(params, request),
       );
@@ -254,9 +252,7 @@ export const useTerminateMoveOut = () => {
     }) => {
       const request = prepareCustomerCreditRequest("contract-move-out");
       return invokeCustomerCreditRpc(
-        // Generated types intentionally lag until the migration is applied.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (fn, args) => (supabase.rpc as any)(fn, args),
+        (fn, args) => supabase.rpc(fn, args),
         "terminate_contract_move_out_with_credit_v1",
         buildMoveOutWithCreditRpcArgs(params, request),
       );
