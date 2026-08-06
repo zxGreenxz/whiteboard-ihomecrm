@@ -38,17 +38,19 @@ gaps:
     exit_condition: >
       Port sang cross-platform, hoặc tách job Windows riêng trong CI để nó thực sự chạy.
 
-  - id: pitr-disabled
+  - id: pitr-disabled-accepted-risk
     where: Supabase project tryymsxyyckgbrmmvozx
-    expires_at: 2026-09-15
+    expires_at: 2027-02-06
     why: >
-      Đo 2026-08-06: pitr_enabled=false, chỉ có 7 backup vật lý hằng ngày ⇒ RPO tối đa
-      ~24 giờ trên dữ liệu tiền thật. Không có cách tua về đúng thời điểm trước một lệnh
-      sai. Đây là khoảng trống nghiêm trọng nhất đang mở.
+      PITR TẮT và đây là lựa chọn có chủ đích (06/08/2026): add-on tính phí riêng, chủ dự án
+      chọn phương án miễn phí. Chỉ có backup vật lý hằng ngày ⇒ RPO tối đa ~24 giờ trên dữ
+      liệu tiền thật. Giảm nhẹ: scripts/backup-before-schema.mjs bắt buộc chạy trước mọi
+      thao tác schema (đã diễn tập restore thật 06/08).
+      PHẦN CHƯA ĐƯỢC CHE: sự cố đến từ code chạy hằng ngày — dump thủ công không giúp gì,
+      đường lùi vẫn là 24 giờ. Đây là rủi ro ĐƯỢC CHẤP NHẬN, không phải đã giải quyết.
     exit_condition: >
-      Bật PITR, HOẶC chốt thành quy trình bắt buộc: kéo dump ngay trước mỗi thao tác
-      schema và ghi vào evidence. Đợt 1b/3 không được bắt đầu trước khi một trong hai
-      điều đó xong.
+      Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
+      xem RPO 24 giờ còn chấp nhận được không.
 
   - id: agent-rules-not-yet-thinned
     where: CLAUDE.md, AGENTS.md, AI_RULES.md

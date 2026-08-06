@@ -1,9 +1,13 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
   "updatedAt": "2026-08-06",
-  "currentWave": "2",
-  "waveTitle": "Enforce: pin workflow, hợp nhất guard, sửa path filter mù",
+  "currentWave": "1b",
+  "waveTitle": "Provenance 640 file SQL (đã mở khoá: có backup + đã diễn tập restore)",
   "done": [
+    {
+      "item": "✅ Cơ chế backup thay cho PITR — scripts/backup-before-schema.mjs, ĐÃ CHẠY THẬT + ĐÃ DIỄN TẬP RESTORE",
+      "evidence": "Chủ dự án chọn giữ miễn phí (không bật PITR add-on). Script kéo dump full qua pooler bằng PGPASSFILE tạm (password không bao giờ lên command line), ghi ra ngoài repo kèm manifest sha256. Đo thật: 21 MB / 306 giây / DB 226 MB. Diễn tập restore vào PostgreSQL 17.10 local: 399 bảng, 1408 hàm, invoices 2290 dòng, income_expenses 5374 dòng. PHÁT HIỆN QUAN TRỌNG: ~4200 lỗi khi restore vào Postgres trần đều là role Supabase không tồn tại (authenticated 644 lần) — bình thường, nhưng RLS policy chỉ vào 323/1231 nên muốn khôi phục đầy đủ phải restore vào một Supabase project."
+    },
     {
       "item": "✅ ĐÃ FLIP Vercel Production Branch: main -> production (06/08/2026)",
       "evidence": "Project ihomecrm (domain chillhome.io.vn + ptcrm.vercel.app), team zxgreenxzs-projects. Xác minh SAU RELOAD: \"Every commit pushed to the production branch will create a Production Deployment\". Đã fast-forward origin/production lên ac4c8a59 (ngang main) TRƯỚC khi flip để production không trỏ code cũ. Từ đây push main chỉ tạo Preview."
@@ -109,19 +113,12 @@
       "evidence": "1665 commit / 62 MB. Không secret nào cần rotate: 6 JWT tìm được đều là anon key publishable hoặc token crawler đã hết hạn 26/02; 1494 finding còn lại là hash sha256 64-hex và ID trong tài liệu crawl đã xoá."
     }
   ],
-  "blockers": [
-    {
-      "id": "pitr-off",
-      "severity": "P0",
-      "what": "PITR tắt, chỉ có backup daily => RPO tối đa ~24h. Không được bắt đầu Đợt 1b/3 (provenance/baseline/forward lane) khi chưa xử.",
-      "needs": "Org zxjhorrjzrtqawxyygha đang ở plan PRO nên bật được PITR, nhưng đây là ADD-ON TÍNH PHÍ RIÊNG (theo bảng giá Supabase: 7 ngày ~100 USD/tháng). Cần chủ dự án quyết chi phí. Phương án miễn phí thay thế: bắt buộc kéo dump bằng pg_dump ngay trước mỗi thao tác schema.",
-      "whoCanDo": "chủ dự án"
-    }
-  ],
+  "blockers": [],
   "next": [
-    "Chờ quyết định PITR (add-on trả phí trên plan Pro) — đang chặn Đợt 1b provenance và Đợt 3 baseline",
-    "Đợt 4 lát 3: cho consumer sinh từ capability registry (hiện registry mới là nguồn ĐỐI CHIẾU)",
-    "Xác minh vụ node:test bị vitest quét: cần đọc log job quality-gates trên GitHub Actions"
+    "Đợt 1b: provenance 640 file SQL — chạy backup trước, dùng batch + sampling theo §0.7 của plan",
+    "Đợt 3: production baseline + forward-only lane",
+    "Đợt 4 lát 3: cho consumer sinh từ capability registry",
+    "Xác minh node:test bị vitest quét (cần log CI)"
   ],
   "knownDirtyFiles": [
     {

@@ -150,9 +150,33 @@ sẽ đẩy nhầm nhánh cũ); kiểm trước bằng `git merge-base --is-ance
 - Fail closed khi provenance state / reviewed SHA / precondition catalog lạ.
 - **Không rollback tự động destructive** — forward fix riêng.
 
-> ⚠ **PITR đang TẮT** (đo 2026-08-05: `pitr_enabled=false`, chỉ 7 backup vật lý hằng ngày,
-> RPO ~24h). Cho tới khi bật PITR: **kéo dump thủ công ngay trước mỗi thao tác schema**.
-> `pg_dump` 17.10 có tại `C:\Program Files\PostgreSQL\17\bin`.
+### Backup trước mỗi thao tác schema — BẮT BUỘC
+
+**PITR đang TẮT và sẽ giữ nguyên như vậy** (quyết định 2026-08-06: add-on tính phí riêng, chủ dự án
+chọn phương án miễn phí). Chỉ có backup vật lý hằng ngày ⇒ **RPO tối đa ~24 giờ**.
+
+```bash
+node scripts/backup-before-schema.mjs --reason "apply migration 2026xxxx_abc"
+```
+
+Chạy **trước** mọi migration, backfill, hay apply rollout. Script bắt buộc có `--reason` vì sáu tháng
+nữa đó là thứ duy nhất cho biết bản dump thuộc về thao tác nào. Mặc định ghi ra
+`%USERPROFILE%/ihomecrm-backups` — **ngoài repo**, để một bản sao sổ sách tiền thật không bao giờ lọt
+vào git. Kèm manifest `.json` có sha256, thời lượng và gợi ý restore.
+
+Đã đo 2026-08-06: **21 MB, 306 giây** (database 226 MB).
+
+**Điều phải biết TRƯỚC khi khẩn cấp** — đã diễn tập restore thật:
+
+- Restore vào **Postgres trần** báo ~4200 lỗi, gần như toàn bộ là `role "authenticated" does not exist`
+  (644 lần) cùng các role riêng của Supabase/OpenClaw. **Đây là bình thường**, đừng hoảng: bảng, hàm và
+  **dữ liệu vẫn vào đủ** (đo được 399 bảng, 1408 hàm, `invoices` 2290 dòng, `income_expenses` 5374 dòng).
+- Nhưng **RLS policy KHÔNG vào hết** (323/1231) vì policy tham chiếu role không tồn tại.
+  ⇒ Muốn khôi phục **đầy đủ kể cả RLS**, target phải là một **Supabase project** (đã có sẵn role), không
+  phải Postgres cài trần.
+
+> ⚠ Dump thủ công chỉ che được thao tác **có kế hoạch**. Sự cố đến từ code chạy hằng ngày vẫn có đường
+> lùi tối đa 24 giờ — đó là cái giá của việc không bật PITR, và nó chưa được giải quyết.
 
 ---
 
