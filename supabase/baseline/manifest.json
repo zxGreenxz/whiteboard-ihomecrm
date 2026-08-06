@@ -1,0 +1,46 @@
+{
+  "$comment": "SINH BỞI scripts/capture-schema-baseline.mjs — không sửa tay. Đây là đường dựng lại môi trường THAY CHO việc replay 640 file migration (vốn không chạy được).",
+  "capturedAt": "2026-08-06T01:31:56.916Z",
+  "sourceProject": "tryymsxyyckgbrmmvozx",
+  "containsData": false,
+  "sha256": "9e7837dfe41c9db1db9bc3e02cfa50cff79346398c552fd4fa881076059c1432",
+  "counts": {
+    "tables": 439,
+    "functions": 1197,
+    "views": 14,
+    "policies": 1193,
+    "indexes": 986,
+    "triggers": 493
+  },
+  "removedRuntimePartitions": 168,
+  "excludedSchemas": [
+    "auth",
+    "storage",
+    "realtime",
+    "supabase_migrations",
+    "vault",
+    "extensions",
+    "graphql*",
+    "pgbouncer",
+    "cron",
+    "net"
+  ],
+  "tablesBySchema": {
+    "public": 316,
+    "app_private": 65,
+    "demo_snapshot": 51,
+    "clone_org": 7
+  },
+  "restoreNotes": [
+    "Restore vào một Supabase project MỚI (đã có sẵn role authenticated/anon/service_role). Postgres cài trần sẽ thiếu role và RLS policy không vào được — đã đo 06/08/2026.",
+    "Sau restore, chạy hàm ensure_raw_partitions của Network Center để tạo partition ngày; baseline cố ý KHÔNG chứa chúng.",
+    "Baseline chỉ là ĐIỂM BẮT ĐẦU: apply tiếp các forward migration có version > cutoff trong migration-policy.json."
+  ],
+  "status": "DRAFT — CHƯA DÙNG ĐƯỢC",
+  "knownIssues": [
+    "Còn 126 chỗ nhắc index của partition ngày bị PostgreSQL cắt tên ở 63 ký tự (dạng network_device_samples_202607_<cột>_idx). Chúng ATTACH vào bảng đã bị loại khỏi baseline ⇒ restore sẽ lỗi 'relation does not exist'.",
+    "CHƯA chạy restore test. Theo plan, baseline chỉ được rời trạng thái draft SAU KHI restore vào database sạch thành công và các gate schema xanh.",
+    "Baseline gồm cả schema demo_snapshot (51 bảng) và clone_org (7 bảng) — cần quyết định có nên tách ra không."
+  ],
+  "doNotUseYet": "Đừng trỏ runbook hay tài liệu nào vào file này cho tới khi status đổi thành verified."
+}

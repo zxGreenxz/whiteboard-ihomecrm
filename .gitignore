@@ -96,3 +96,6 @@ scripts/.backfill-deposit-plan.json
 .ua/start-dashboard.ps1
 .ua/diff-overlay.json
 .clone-org-snapshots/
+
+# Baseline schema draft — chưa verify, không dùng để restore (xem manifest.json)
+supabase/baseline/schema.sql

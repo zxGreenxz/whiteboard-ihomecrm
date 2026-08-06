@@ -75,3 +75,14 @@ gaps:
     exit_condition: >
       Đọc log job quality-gates của một lần chạy gần đây. Nếu vitest báo 0 test cho các file
       này thì thêm chúng vào --exclude, để job không nhận công của node --test.
+
+  - id: baseline-draft-partition-index-leftovers
+    where: supabase/baseline/schema.sql
+    expires_at: 2026-09-30
+    why: >
+      Baseline đã chụp và loại được 84 partition ngày, nhưng còn 126 chỗ nhắc INDEX của
+      partition bị PostgreSQL cắt tên ở 63 ký tự (network_device_samples_202607_<cot>_idx).
+      Chúng ATTACH vào bảng đã bị loại nên restore sẽ lỗi. Manifest đang để status DRAFT.
+    exit_condition: >
+      Strip sạch nhóm index cắt tên, chạy restore test vào database sạch thành công, rồi đổi
+      manifest.status thành verified. Trước đó KHÔNG trỏ runbook nào vào baseline này.
