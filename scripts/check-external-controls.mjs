@@ -24,6 +24,17 @@ const OUT = join(repoRoot, 'docs', 'generated', 'external-controls.json');
 
 const REPO = 'zxGreenxz/whiteboard-ihomecrm';
 
+/**
+ * Nhánh mà Vercel ĐƯỢC PHÉP deploy production.
+ *
+ * Ở tier GitHub Free repo private không dùng được branch protection, nên việc
+ * tách nhánh phát hành khỏi `main` là lớp chặn cứng duy nhất còn lại: push vào
+ * `main` chỉ ra preview, muốn ra sản phẩm phải promote riêng. Nếu ai đó gạt
+ * production branch về `main` trong dashboard Vercel thì lớp chặn đó biến mất
+ * lặng lẽ — và đó chính là biến thể gate này từng bỏ lọt.
+ */
+const NHANH_PHAT_HANH = 'production';
+
 export const UNVERIFIED = 'unverified';
 
 function ghToken() {
@@ -64,11 +75,31 @@ export function interpretProtection(result) {
   if (!result.ok) return { status: UNVERIFIED, note: `Gọi API thất bại: ${result.reason}` };
 
   const p = result.data;
+  const requiredChecks = p.required_status_checks?.contexts ?? [];
+  const requiredApprovals = p.required_pull_request_reviews?.required_approving_review_count ?? 0;
+  const enforceAdmins = Boolean(p.enforce_admins?.enabled);
+  const choPhepForcePush = Boolean(p.allow_force_pushes?.enabled);
+  const choPhepXoaNhanh = Boolean(p.allow_deletions?.enabled);
+
+  // HTTP 200 chỉ nói "có một object protection", KHÔNG nói nó chặn được gì.
+  // Bản đầu chấm 'present' cho mọi phản hồi 200, dù required_status_checks rỗng,
+  // required_approvals = 0, enforce_admins = false, và cho phép cả force-push
+  // lẫn xoá nhánh. Ba con số đó ĐƯỢC TÍNH RỒI GHI VÀO JSON nhưng không bao giờ
+  // tham gia phán quyết — tức gate BÁO CÁO giá trị chứ không SO giá trị với kỳ
+  // vọng. Một protection rỗng ruột bảo vệ đúng bằng không có protection.
+  const rong = requiredChecks.length === 0 && requiredApprovals === 0 && !enforceAdmins;
   return {
-    status: 'present',
-    requiredChecks: p.required_status_checks?.contexts ?? [],
-    requiredApprovals: p.required_pull_request_reviews?.required_approving_review_count ?? 0,
-    enforceAdmins: Boolean(p.enforce_admins?.enabled),
+    status: rong || choPhepForcePush || choPhepXoaNhanh ? 'hollow' : 'present',
+    requiredChecks,
+    requiredApprovals,
+    enforceAdmins,
+    choPhepForcePush,
+    choPhepXoaNhanh,
+    note: rong
+      ? 'Có object protection nhưng RỖNG RUỘT: không required check, không cần duyệt, không áp cho admin — bảo vệ đúng bằng không có gì.'
+      : choPhepForcePush || choPhepXoaNhanh
+        ? 'Protection có nội dung nhưng vẫn cho force-push hoặc xoá nhánh — lịch sử main có thể bị ghi đè.'
+        : undefined,
   };
 }
 
@@ -89,6 +120,41 @@ async function vercelProductionBranch() {
     name: p.name,
     productionBranch: p.link?.productionBranch ?? null,
   }));
+
+  return danhGiaVercel(projects);
+}
+
+/**
+ * Phán quyết trên danh sách project Vercel.
+ *
+ * Tách riêng để test được: bản đầu chôn phán quyết trong hàm gọi mạng nên không
+ * cách nào kiểm bằng test, và nó sai suốt mà không ai thấy.
+ */
+export function danhGiaVercel(projects) {
+  // Danh sách RỖNG không phải là "đã kiểm". Token sai team trả 200 kèm 0 project,
+  // và bản đầu vẫn chấm 'checked' ✅ — soi đúng con số 0 rồi kết luận yên tâm.
+  if (projects.length === 0) {
+    return { status: UNVERIFIED, note: 'Vercel trả 0 project — token có thể sai team/scope. Không có project nào để đối chiếu thì không kiểm được gì.', projects };
+  }
+
+  // ĐÂY mới là phép kiểm. Bản đầu chấm 'checked' cho mọi phản hồi 200 rồi tự tay
+  // in ra "ihomecrm → production branch: main" như thể bình thường — trong khi
+  // đó chính là kịch bản control BỊ TẮT: mọi push vào main lại là một lần phát
+  // hành, đúng thứ script tự gọi là "kiểm soát cứng DUY NHẤT khả thi ở tier
+  // GitHub Free". Vì 'checked' được xếp vào ✅ và phần tổng kết chỉ đếm
+  // 'unverified'/'absent', thế giới nơi control bị tắt cho ra báo cáo SẠCH HƠN
+  // thế giới hiện tại.
+  const sai = projects.filter((p) => (p.productionBranch ?? 'main') !== NHANH_PHAT_HANH);
+  if (sai.length > 0) {
+    return {
+      status: 'failed',
+      projects,
+      note:
+        `${sai.length} project deploy production từ nhánh KHÔNG PHẢI "${NHANH_PHAT_HANH}": ` +
+        `${sai.map((p) => `${p.name}→${p.productionBranch ?? 'main (mặc định)'}`).join(', ')}. ` +
+        'Mọi push vào nhánh đó là một lần phát hành thẳng ra sản phẩm.',
+    };
+  }
   return { status: 'checked', projects };
 }
 
@@ -103,7 +169,13 @@ function localRepoState() {
   return {
     head: read('git', ['rev-parse', 'HEAD']),
     branch: read('git', ['rev-parse', '--abbrev-ref', 'HEAD']),
-    hasProductionBranch: read('git', ['rev-parse', '--verify', 'origin/production']) !== null,
+    // HỎI REMOTE, không đọc ref local. `rev-parse --verify origin/production`
+    // chỉ xem clone này có ref đó không — một ref cũ chưa `fetch --prune` vẫn
+    // cho ✅ "nhánh tồn tại" dù remote đã xoá nhánh. Đúng cái lỗi "ảnh chụp
+    // chứng minh lúc đó đã bật, không chứng minh bây giờ vẫn bật" mà chính
+    // header script này chê.
+    hasProductionBranch:
+      (read('git', ['ls-remote', '--heads', 'origin', NHANH_PHAT_HANH]) || '').trim() !== '',
   };
 }
 
@@ -134,7 +206,7 @@ async function main(argv) {
 
   console.log(`Kiểm soát ngoài repo — ${REPO}`);
   for (const [name, c] of Object.entries(report.controls)) {
-    const mark = c.status === 'present' || c.status === 'checked' ? '✅' : c.status === UNVERIFIED ? '❓' : '⚠';
+    const mark = c.status === 'present' || c.status === 'checked' ? '✅' : c.status === UNVERIFIED ? '❓' : c.status === 'failed' || c.status === 'hollow' ? '❌' : '⚠';
     console.log(`  ${mark} ${name}: ${c.status}`);
     if (c.note) console.log(`       ${c.note}`);
     if (c.projects) {
@@ -145,11 +217,31 @@ async function main(argv) {
 
   const unverified = Object.entries(report.controls).filter(([, c]) => c.status === UNVERIFIED);
   const absent = Object.entries(report.controls).filter(([, c]) => c.status === 'absent');
+  // 'failed'/'hollow' = control GỌI ĐƯỢC và câu trả lời cho thấy nó ĐANG TẮT.
+  // Bản đầu chỉ đếm 'unverified' và 'absent', nên đây là diện nguy hiểm nhất mà
+  // không diện nào đếm: thế giới có control bị tắt cho ra báo cáo TOÀN ✅ và
+  // dòng cảnh báo biến mất — sạch hơn cả thế giới hiện tại.
+  const tat = Object.entries(report.controls).filter(
+    ([, c]) => c.status === 'failed' || c.status === 'hollow',
+  );
 
   if (args.has('--write')) {
     mkdirSync(dirname(OUT), { recursive: true });
     writeFileSync(OUT, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
     console.log(`\n✅ Đã ghi ${OUT.replace(repoRoot, '.')}`);
+  }
+
+  // Control ĐANG TẮT thì exit 1, khác hẳn "chưa xác minh được".
+  //
+  // Ghi chú ở dưới giải thích vì sao thiếu token KHÔNG nên làm đỏ — đúng, vì
+  // biến nó thành gate đỏ khi thiếu token sẽ khiến người ta tắt script đi. Nhưng
+  // lý lẽ đó chỉ áp cho 'unverified'. Khi API TRẢ LỜI và câu trả lời nói control
+  // đã tắt thì im lặng là tệ nhất trong ba lựa chọn.
+  if (tat.length > 0) {
+    console.error(`\n❌ ${tat.length} kiểm soát ĐANG TẮT (gọi được API, câu trả lời cho thấy đã tắt):`);
+    for (const [ten, c] of tat) console.error(`  - ${ten}: ${c.status} — ${c.note ?? ''}`);
+    console.error('  Bật lại trước khi phát hành. Đây không phải "chưa xác minh" — đây là đã xác minh và KHÔNG ĐẠT.');
+    return 1;
   }
 
   if (unverified.length > 0 || absent.length > 0) {
