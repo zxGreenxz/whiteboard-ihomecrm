@@ -1,161 +1,105 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-
-// =============================================
-// Pure function: Available rooms filter for transfer
-// Replicates the exact logic from TransferRoomDialog.tsx
-// =============================================
+import { locPhongChuyenDuoc, type PhongCoTheChuyen } from '../contractRoomFilter';
 
 /**
- * Filter rooms for transfer: only AVAILABLE rooms, exclude current room,
- * optionally filter by building.
+ * Test này TRƯỚC ĐÂY tự định nghĩa `getAvailableRoomsForTransfer` ngay trong file,
+ * kèm chú thích "Replicates the exact logic from TransferRoomDialog.tsx".
+ * Nó KHÔNG replicate đúng — hai bản lệch nhau ở hai điểm:
+ *   - bản chép LOẠI phòng hiện tại; bản thật không loại
+ *   - bản chép coi lọc toà là TUỲ CHỌN; bản thật trả [] khi chưa chọn toà
+ * Nên suốt thời gian đó test chứng minh bản chép tự nhất quán, và khẳng định một
+ * bảo đảm ("không bao giờ trả phòng hiện tại") mà màn hình thật không hề có.
+ *
+ * Nay import hàm THẬT mà TransferRoomDialog dùng. Property test chỉ có giá trị khi
+ * nó chạy đúng đoạn mã người dùng bấm vào.
  */
-export function getAvailableRoomsForTransfer(
-  rooms: { id: string; status: string; building_id: string }[],
-  currentRoomId: string,
-  buildingId?: string,
-): { id: string; status: string; building_id: string }[] {
-  return rooms.filter(
-    (r) =>
-      r.status === 'AVAILABLE' &&
-      r.id !== currentRoomId &&
-      (!buildingId || r.building_id === buildingId),
-  );
-}
 
-// =============================================
-// Arbitraries
-// =============================================
-
-const roomStatusArb = fc.constantFrom(
-  'AVAILABLE',
-  'OCCUPIED',
-  'MAINTENANCE',
-  'RESERVED',
-  'UNAVAILABLE',
-);
-
-const roomIdPoolArb = fc.constantFrom(
-  'room-1', 'room-2', 'room-3', 'room-4', 'room-5',
-  'room-6', 'room-7', 'room-8', 'room-9', 'room-10',
-);
-
-const buildingIdPoolArb = fc.constantFrom('bld-1', 'bld-2', 'bld-3');
-
-const roomArb = fc.record({
-  id: roomIdPoolArb,
-  status: roomStatusArb,
-  building_id: buildingIdPoolArb,
+const phongArb: fc.Arbitrary<PhongCoTheChuyen> = fc.record({
+  id: fc.uuid(),
+  status: fc.constantFrom('AVAILABLE', 'OCCUPIED', 'RESERVED', 'MAINTENANCE'),
+  building_id: fc.constantFrom('toa-A', 'toa-B', 'toa-C'),
 });
 
-const roomListArb = fc.array(roomArb, { minLength: 0, maxLength: 30 });
-
-// =============================================
-// Property 16: Available rooms filter for transfer
-// =============================================
-
-/**
- * Feature: lease-contract-management
- * Property 16: Available rooms filter for transfer
- *
- * For any list of rooms shown in the Transfer_Room_Dialog, all rooms should
- * have status AVAILABLE. No room with status OCCUPIED, RESERVED, MAINTENANCE,
- * or UNAVAILABLE should appear. The current room is always excluded.
- *
- * **Validates: Requirements 5.4**
- */
-describe('Feature: lease-contract-management, Property 16: Available rooms filter for transfer', () => {
-  it('all returned rooms have status AVAILABLE', () => {
+describe('locPhongChuyenDuoc — tính chất', () => {
+  it('chưa chọn toà thì luôn trả rỗng, bất kể danh sách phòng', () => {
     fc.assert(
-      fc.property(roomListArb, roomIdPoolArb, (rooms, currentRoomId) => {
-        const result = getAvailableRoomsForTransfer(rooms, currentRoomId);
-
-        for (const r of result) {
-          expect(r.status).toBe('AVAILABLE');
-        }
+      fc.property(fc.array(phongArb, { maxLength: 40 }), (phong) => {
+        expect(locPhongChuyenDuoc(phong, null)).toEqual([]);
+        expect(locPhongChuyenDuoc(phong, undefined)).toEqual([]);
+        expect(locPhongChuyenDuoc(phong, '')).toEqual([]);
       }),
-      { numRuns: 100 },
     );
   });
 
-  it('current room is never in the result', () => {
-    fc.assert(
-      fc.property(roomListArb, roomIdPoolArb, (rooms, currentRoomId) => {
-        const result = getAvailableRoomsForTransfer(rooms, currentRoomId);
-
-        for (const r of result) {
-          expect(r.id).not.toBe(currentRoomId);
-        }
-      }),
-      { numRuns: 100 },
-    );
+  it('chưa chọn toà: KHÔNG khớp cả phòng có building_id rỗng', () => {
+    // Ca này tồn tại vì đột biến. Tôi thử bỏ `if (!toaDangChon) return []` khỏi hàm
+    // thật, và bốn test kia VẪN XANH — vì với dữ liệu sinh ra, `building_id` không
+    // bao giờ bằng '' hay undefined nên phép lọc vẫn ra rỗng. Tức guard đó không
+    // được test nào quan sát.
+    //
+    // Một phòng có building_id rỗng (dữ liệu lỗi, hoặc bản ghi đang dựng) là đầu
+    // vào DUY NHẤT phân biệt được hai bản: không có guard thì `'' === ''` khớp và
+    // phòng đó lọt vào danh sách chọn dù người dùng chưa chọn toà nào.
+    const phongLoi: PhongCoTheChuyen = { id: 'phong-loi', status: 'AVAILABLE', building_id: '' };
+    expect(locPhongChuyenDuoc([phongLoi], '')).toEqual([]);
+    expect(locPhongChuyenDuoc([phongLoi], null)).toEqual([]);
   });
 
-  it('when buildingId is specified, all returned rooms belong to that building', () => {
+  it('mọi phòng trả về đều AVAILABLE và đúng toà đã chọn', () => {
     fc.assert(
       fc.property(
-        roomListArb,
-        roomIdPoolArb,
-        buildingIdPoolArb,
-        (rooms, currentRoomId, buildingId) => {
-          const result = getAvailableRoomsForTransfer(rooms, currentRoomId, buildingId);
-
-          for (const r of result) {
-            expect(r.building_id).toBe(buildingId);
+        fc.array(phongArb, { maxLength: 40 }),
+        fc.constantFrom('toa-A', 'toa-B', 'toa-C'),
+        (phong, toa) => {
+          for (const p of locPhongChuyenDuoc(phong, toa)) {
+            expect(p.status).toBe('AVAILABLE');
+            expect(p.building_id).toBe(toa);
           }
         },
       ),
-      { numRuns: 100 },
     );
   });
 
-  it('all AVAILABLE rooms (except current) are included — completeness', () => {
-    fc.assert(
-      fc.property(roomListArb, roomIdPoolArb, (rooms, currentRoomId) => {
-        const result = getAvailableRoomsForTransfer(rooms, currentRoomId);
-        const resultIds = new Set(result.map((r) => r.id));
-
-        // Every AVAILABLE room that is not the current room must be in the result
-        const expectedAvailable = rooms.filter(
-          (r) => r.status === 'AVAILABLE' && r.id !== currentRoomId,
-        );
-
-        for (const r of expectedAvailable) {
-          expect(resultIds.has(r.id)).toBe(true);
-        }
-
-        // Result size matches expected
-        expect(result.length).toBe(expectedAvailable.length);
-      }),
-      { numRuns: 100 },
-    );
-  });
-
-  it('completeness with buildingId filter — all matching AVAILABLE rooms included', () => {
+  it('không bỏ sót: mọi phòng AVAILABLE đúng toà đều có mặt', () => {
     fc.assert(
       fc.property(
-        roomListArb,
-        roomIdPoolArb,
-        buildingIdPoolArb,
-        (rooms, currentRoomId, buildingId) => {
-          const result = getAvailableRoomsForTransfer(rooms, currentRoomId, buildingId);
-          const resultIds = new Set(result.map((r) => r.id));
-
-          const expectedAvailable = rooms.filter(
-            (r) =>
-              r.status === 'AVAILABLE' &&
-              r.id !== currentRoomId &&
-              r.building_id === buildingId,
-          );
-
-          for (const r of expectedAvailable) {
-            expect(resultIds.has(r.id)).toBe(true);
-          }
-
-          expect(result.length).toBe(expectedAvailable.length);
+        fc.array(phongArb, { maxLength: 40 }),
+        fc.constantFrom('toa-A', 'toa-B', 'toa-C'),
+        (phong, toa) => {
+          const mong = phong.filter((p) => p.status === 'AVAILABLE' && p.building_id === toa);
+          expect(locPhongChuyenDuoc(phong, toa)).toHaveLength(mong.length);
         },
       ),
-      { numRuns: 100 },
     );
+  });
+
+  it('giữ nguyên thứ tự đầu vào — danh sách chọn không được nhảy lung tung', () => {
+    fc.assert(
+      fc.property(
+        fc.array(phongArb, { maxLength: 40 }),
+        fc.constantFrom('toa-A', 'toa-B', 'toa-C'),
+        (phong, toa) => {
+          const ra = locPhongChuyenDuoc(phong, toa).map((p) => p.id);
+          const mong = phong
+            .filter((p) => p.status === 'AVAILABLE' && p.building_id === toa)
+            .map((p) => p.id);
+          expect(ra).toEqual(mong);
+        },
+      ),
+    );
+  });
+
+  it('KHÔNG lọc riêng phòng hiện tại — trạng thái mới là thứ loại nó', () => {
+    // Khoá lại đúng điểm mà bản chép cũ nói sai. Hợp đồng hiệu lực làm phòng thành
+    // OCCUPIED nên nó đã bị loại bởi điều kiện AVAILABLE. Nếu một ngày phòng hiện
+    // tại lại AVAILABLE thì dữ liệu đã sai ở chỗ khác, và hàm này KHÔNG được giấu
+    // đi — giấu thì mất luôn dấu hiệu duy nhất.
+    const phongHienTai: PhongCoTheChuyen = {
+      id: 'phong-dang-o',
+      status: 'AVAILABLE',
+      building_id: 'toa-A',
+    };
+    expect(locPhongChuyenDuoc([phongHienTai], 'toa-A')).toEqual([phongHienTai]);
   });
 });

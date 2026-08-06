@@ -36,6 +36,7 @@ import { useTransferRoom } from "@/hooks/useContractOperations";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
 import { todayISO } from '@/lib/collect';
+import { locPhongChuyenDuoc, type PhongCoTheChuyen } from "@/lib/contractRoomFilter";
 
 interface TransferRoomDialogProps {
   open: boolean;
@@ -90,13 +91,13 @@ export function TransferRoomDialog({
     }
   }, [open, contract, form]);
 
-  // Cascading: filter rooms by selected building, only AVAILABLE
-  const availableRooms = useMemo(() => {
-    if (!selectedBuildingId) return [];
-    return allRooms.filter(
-      (r: any) => r.building_id === selectedBuildingId && r.status === "AVAILABLE"
-    );
-  }, [allRooms, selectedBuildingId]);
+  // Cascading: filter rooms by selected building, only AVAILABLE.
+  // Logic nằm ở @/lib/contractRoomFilter để test property đo ĐÚNG hàm này thay vì
+  // đo một bản chép tay — hai bản đó đã từng lệch nhau, xem ghi chú trong file đó.
+  const availableRooms = useMemo(
+    () => locPhongChuyenDuoc(allRooms as PhongCoTheChuyen[], selectedBuildingId),
+    [allRooms, selectedBuildingId],
+  );
 
   // Reset room when building changes
   const handleBuildingChange = (buildingId: string) => {
