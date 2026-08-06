@@ -465,11 +465,17 @@ export function createRuntimeCommandHeartbeat(options: {
         await execute(cleanup);
         return;
       }
-      const response = exact(await options.runtime.post("/v1/qr/result", {
+      // `openclaw_finalize_account_connection_v1` answers with the ACCOUNT it just
+      // connected - {version, accountId, connectionGeneration, connectionState,
+      // evidenceHash} - on both the fresh and the idempotent-replay branch. It has
+      // never returned `challengeId` or `connected`, so the old exact-key check
+      // rejected every successful finalization and the scan could not complete.
+      // Assert the field that carries the meaning, and tolerate the rest.
+      const response = record(await options.runtime.post("/v1/qr/result", {
         version: 1,
         challengeId: payload.challengeId,
-      }), ["version", "challengeId", "connected"], "QR connection result");
-      if (response.version !== 1 || response.challengeId !== payload.challengeId || response.connected !== true) {
+      }), "QR connection result");
+      if (response.version !== 1 || response.connectionState !== "CONNECTED") {
         fail("QR connection result is invalid");
       }
     })();
@@ -483,9 +489,26 @@ export function createRuntimeCommandHeartbeat(options: {
   const publishQr = async (snapshot: RuntimeCommandJournalSnapshot): Promise<void> => {
     if (snapshot.publishPayload === null) throw new Error("QR publication journal is incomplete");
     const payload = snapshot.payload as QrLoginCommand["payload"];
-    const published = exact(await options.runtime.post("/v1/qr/publish", snapshot.publishPayload), [
-      "version", "challengeId", "accepted",
-    ], "QR publication result");
+    // THE bug that stopped every QR after the first one.
+    //
+    // `openclaw_submit_qr_result_v1` returns FIVE keys on both of its branches -
+    // {version, challengeId, materialVersion, publishedAt, accepted} - and the Edge
+    // passes the SQL result through untouched (`/v1/qr/publish` falls to
+    // `onlyVersionedObject`, which checks nothing but `version`). Demanding exactly
+    // three keys therefore threw on EVERY publish, including the ones the server had
+    // already committed.
+    //
+    // The damage was delayed and confusing: the challenge really did become READY, so
+    // the first QR appeared and could be scanned - but the command never left
+    // QR_MATERIAL_READY, so every following pulse republished it, threw again, and
+    // took the whole pulse down with it. Heartbeats stopped, no new command was ever
+    // claimed, and every later "Lấy mã QR" sat at "Đang chờ máy chủ phát mã" until it
+    // expired. Wiping the spool "fixed" it exactly once, which is what made this look
+    // like a network or timeout problem for hours.
+    const published = record(
+      await options.runtime.post("/v1/qr/publish", snapshot.publishPayload),
+      "QR publication result",
+    );
     if (published.version !== 1 || published.challengeId !== payload.challengeId || published.accepted !== true) {
       fail("QR publication result is invalid");
     }

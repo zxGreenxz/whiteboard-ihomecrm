@@ -167,7 +167,7 @@ export function createChannelRuntimeClient(
     !Number.isSafeInteger(options.fencingToken) || options.fencingToken < 1
   ) throw new TypeError("runtime generation binding is invalid");
   const request = options.fetch ?? globalThis.fetch;
-  const timeoutMs = options.timeoutMs ?? 10_000;
+const timeoutMs = options.timeoutMs ?? 10_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60_000) {
     throw new RangeError("runtime request timeout is invalid");
   }
@@ -205,7 +205,15 @@ export function createChannelRuntimeClient(
     } catch (error) {
       if (callerSignal?.aborted) throw callerSignal.reason;
       if (error instanceof RuntimeApiError) throw error;
-      throw new RuntimeApiError(stage, null, `${stage.toLowerCase()} transport failed`);
+      // Name the underlying failure. A bare "transport failed" hid the difference
+      // between a 10s abort, a DNS failure, and a TLS reset - three different bugs
+      // with three different fixes - and diagnosing which meant rebuilding the
+      // image with a log line anyway. The error NAME is content-free; bodies,
+      // URLs, and headers stay out of it.
+      const detail = error instanceof Error
+        ? `${error.name}${error.cause instanceof Error ? `/${(error.cause as Error).name}` : ""}`
+        : typeof error;
+      throw new RuntimeApiError(stage, null, `${stage.toLowerCase()} transport failed (${detail})`);
     } finally {
       globalThis.clearTimeout(timer);
       callerSignal?.removeEventListener("abort", onCallerAbort);

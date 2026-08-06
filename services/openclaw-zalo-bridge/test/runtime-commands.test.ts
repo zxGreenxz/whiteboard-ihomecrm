@@ -323,6 +323,68 @@ describe("durable runtime command heartbeat", () => {
     expect(restarted.spool.runtimeCommandSnapshot(COMMAND_ID)?.stage).toBe("AMBIGUOUS");
   });
 
+  /**
+   * What `openclaw_submit_qr_result_v1` actually answers, on BOTH its branches.
+   * The Edge does not reshape it: `/v1/qr/publish` falls through to
+   * `onlyVersionedObject`, which checks nothing but `version`.
+   */
+  const publishResult = (challengeId: string) => ({
+    version: 1,
+    challengeId,
+    materialVersion: 1,
+    publishedAt: "2026-08-01T00:00:01.000Z",
+    accepted: true,
+  });
+
+  /** What `openclaw_finalize_account_connection_v1` actually answers. */
+  const connectionResult = () => ({
+    version: 1,
+    accountId: ACCOUNT_ID,
+    connectionGeneration: 4,
+    connectionState: "CONNECTED",
+    evidenceHash: "b".repeat(64),
+  });
+
+  // The regression that stopped every QR after the first one. The fixtures used to
+  // carry a three-key publish response the server has never sent, so an exact-key
+  // check passed here and threw in production on every publish - leaving the command
+  // at QR_MATERIAL_READY, republishing on every pulse, taking the heartbeat down with
+  // it, and stranding the cockpit at "Đang chờ máy chủ phát mã".
+  it("completes a QR login against the shapes the server really returns", async () => {
+    const payload = {
+      version: 1,
+      challengeId: "dddd6000-0000-4000-8000-000000000002",
+      browserNonceHash: "a".repeat(64),
+    };
+    const qrDataUrl = `data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64")}`;
+    const harness = runtime([
+      heartbeat({ commands: [command("QR_LOGIN", payload)] }),
+      heartbeat({ commands: [command("QR_LOGIN", payload, "STARTED")] }),
+      publishResult(payload.challengeId),
+      connectionResult(),
+    ]);
+    const { spool } = openSpool();
+    const invoke = vi.fn(async (method: string) => {
+      if (method === "web.login.start") return { message: "scan", qrDataUrl, connected: false };
+      if (method === "web.login.wait") return { connected: true, message: "connected" };
+      throw new Error(`unexpected method ${method}`);
+    });
+    const consumer = createHeartbeat({
+      spool,
+      runtime: harness.client,
+      invoke,
+      qrEncryptionKey: Buffer.alloc(32, 7),
+    });
+
+    await consumer.pulse();
+    await consumer.stop();
+
+    // The publish was accepted, so the command must LEAVE QR_MATERIAL_READY. Staying
+    // there is exactly the loop that jammed production.
+    expect(spool.runtimeCommandSnapshot(COMMAND_ID)?.stage).not.toBe("QR_MATERIAL_READY");
+    expect(harness.bodies.map((entry) => entry.path)).toContain("/v1/qr/result");
+  });
+
   it("replays byte-identical encrypted QR publication after a lost response", async () => {
     const payload = {
       version: 1,
@@ -353,7 +415,7 @@ describe("durable runtime command heartbeat", () => {
     const restarted = openSpool(opened.path);
     const secondRuntime = runtime([
       heartbeat({ commands: [command("QR_LOGIN", payload, "STARTED")] }),
-      { version: 1, challengeId: payload.challengeId, accepted: true },
+      publishResult(payload.challengeId),
     ]);
     const secondStart = vi.fn();
     const second = createHeartbeat({
