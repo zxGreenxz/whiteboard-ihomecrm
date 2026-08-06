@@ -50,16 +50,21 @@ describe("todayISO — ngày theo giờ local, không phải UTC", () => {
     expect(todayISO()).toBe(mong);
   });
 
-  it("KHÔNG bao giờ rơi về ngày UTC khi máy ở múi giờ dương và đang là đầu ngày", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(KHOANH_GIO_HONG);
-
-    // Điều kiện chỉ đúng ở múi giờ DƯƠNG; ở UTC và múi giờ âm thì hai giá trị
-    // trùng nhau hoặc lệch theo chiều ngược lại, nên bỏ qua thay vì khẳng định sai.
-    if (new Date().getTimezoneOffset() >= 0) return;
-
-    expect(todayISO()).not.toBe(new Date().toISOString().slice(0, 10));
-  });
+  // ĐÃ GỠ một test thứ ba ở đây, và lý do đáng ghi lại.
+  //
+  // Nó viết là:
+  //     if (new Date().getTimezoneOffset() >= 0) return;
+  //     expect(todayISO()).not.toBe(new Date().toISOString().slice(0, 10));
+  //
+  // `getTimezoneOffset()` trả số phút SAU UTC, nên UTC ra 0 và điều kiện đó đúng.
+  // Trên CI (Ubuntu, TZ=UTC) test thoát ra TRƯỚC assertion duy nhất của nó ⇒ xanh
+  // mà không kiểm gì. Đúng lớp lỗi mà chính file này được viết ra để chống, và tôi
+  // tự mắc phải trong cùng một ngày.
+  //
+  // Không viết lại vì nó THỪA: điều nó muốn nói — cùng một thời điểm, ngày theo
+  // UTC và ngày theo giờ VN lệch nhau — đã được ca đầu khẳng định TẤT ĐỊNH bằng
+  // Intl với múi giờ khai tường minh, chạy đúng ở mọi máy. Thêm một ca phụ thuộc
+  // giờ máy chỉ làm giảm độ tin cậy chứ không thêm độ phủ.
 });
 
 /**

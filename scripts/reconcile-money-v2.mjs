@@ -101,12 +101,17 @@ async function main() {
             to_regclass('public.income_expense_posting_lines') IS NOT NULL AS lines`,
   );
   if (!gate[0]?.v2) {
-    console.log('schema not applied');
-    console.log(
+    console.error('=== ⚠ KHÔNG ĐỐI CHIẾU ĐƯỢC — KHÔNG PHẢI PASS ===');
+    console.error(
       '  public.accounts_with_balance_v2 chưa tồn tại (Finance V2 Stage-10 read-models chưa ' +
-        'forward-apply) — không có gì để đối chiếu. Thoát 0.',
+        'forward-apply) nên không có gì để đối chiếu.',
     );
-    process.exit(0);
+    console.error('');
+    console.error('  Trước đây chỗ này thoát 0, tức người chạy thấy đúng thứ họ thấy khi MỌI SỐ ĐỀU KHỚP.');
+    console.error('  Với một công cụ đối chiếu TIỀN thì "không kiểm được" phải khác "đã kiểm và khớp";');
+    console.error('  gộp hai thứ đó vào cùng một mã thoát là cách biến công cụ thành đồ trang trí.');
+    console.error('  Thoát 3 = chưa đủ điều kiện chạy (khác 1 = LỆCH, khác 2 = lỗi kỹ thuật).');
+    process.exit(3);
   }
   if (!gate[0]?.legacy || !gate[0]?.lines) {
     console.error(
@@ -127,6 +132,18 @@ async function main() {
     `SELECT count(*)::int AS c FROM public.accounts_with_balance_v2 WHERE is_virtual = false`,
   );
   const compared = Number(cmpCount[0]?.c ?? 0);
+
+  // Con số này trước đây chỉ được IN RA, không bao giờ được khẳng định. Nếu view
+  // trả 0 dòng thì `diffs` rỗng, `mismatch` false, và script in "✅ PASS — số dư
+  // legacy == v2" sau khi đối chiếu ĐÚNG KHÔNG SỔ NÀO. Một máy đối chiếu tiền báo
+  // PASS khi chưa so gì là thứ nguy hiểm hơn không có máy nào.
+  if (compared === 0) {
+    console.error('=== ❌ KHÔNG CÓ SỔ NÀO ĐỂ ĐỐI CHIẾU ===');
+    console.error('  accounts_with_balance_v2 trả 0 sổ thực (is_virtual = false).');
+    console.error('  Không thể kết luận "khớp" từ một tập rỗng — đây là lỗi cấu hình hoặc phạm vi,');
+    console.error('  không phải kết quả tốt.');
+    process.exit(3);
+  }
 
   // Cả 2 view đều bắt nguồn từ accounts a WHERE deleted_at IS NULL ⇒ cùng tập id.
   // organization_id lấy từ view v2 (legacy view không phơi cột này).
