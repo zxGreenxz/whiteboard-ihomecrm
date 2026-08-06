@@ -95,19 +95,47 @@ export function timTestGhimLoiThoi(cuoi, files) {
         .map((l, i) => (/\.not\s*\.\s*(toMatch|toContain)/.test(l) ? i : -1))
         .filter((i) => i >= 0),
     );
-    const hams = [
+    // NHẮC TÊN ≠ GHIM ĐỊNH NGHĨA.
+    //
+    // Sau khi nới regex để thấy dạng escape `public\.foo`, gate báo 6 test —
+    // trong đó có ca báo nhầm rõ ràng: accountingCompatibilityGuardsMigration
+    // trích thân `reverse_invoice_payment_v3` (định nghĩa cuối ĐÚNG là ở file
+    // nó đọc) rồi khẳng định thân đó GỌI `reverse_invoice_collection_v5`. Hàm
+    // được gọi có định nghĩa mới hơn ở file khác, nhưng test không hề nói gì về
+    // định nghĩa ấy — nó nói về LỜI GỌI. Ghim lời gọi vào file đóng băng là hợp
+    // lệ và vẫn có nghĩa mãi mãi.
+    //
+    // Nên chỉ tính hàm mà test THẬT SỰ trích thân ra để soi: xuất hiện trong
+    // một lời gọi kiểu extractFunction(<sql>, "<tên>") hoặc trong một khẳng
+    // định về CREATE FUNCTION của chính nó.
+    const trichThan = new Set(
+      [
+        ...s.matchAll(/\b(?:extractFunction|layThanHam|functionBody)\s*\([^,]+,\s*["'`]([a-z0-9_.\\]+)["'`]/g),
+        ...s.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public|app_private)(?:\\?\.|_)([a-z0-9_]+)/gi),
+      ].map((m) => m[1].replace(/^.*[.\\]/, "")),
+    );
+    const hams0 = [
       ...new Set(
         s
           .split("\n")
           .flatMap((l, i) =>
             dongPhuDinh.has(i)
               ? []
-              : [...l.matchAll(/\b(public|app_private)[._]([a-z0-9_]{6,})\b/g)].map(
+              // `(?:\\?\.|_)` chứ không phải `[._]`: lớp cũ chỉ nhận dấu chấm
+              // TRẦN (`public.foo`) hoặc gạch dưới, KHÔNG nhận dạng ESCAPE
+              // `public\.foo` — tức chính xác cách bắt buộc phải viết khi khẳng
+              // định bằng `toMatch(/…/)` thay vì `toContain("…")`. Hai cách viết
+              // tương đương về ngữ nghĩa test, và dạng regex còn phổ biến hơn:
+              // đo 07/08/2026 có 57 file test dưới src/ với 143 tên hàm dạng
+              // escape mà gate không thấy một cái nào.
+              : [...l.matchAll(/\b(public|app_private)(?:\\?\.|_)([a-z0-9_]{6,})\b/g)].map(
                   (m) => `${m[1]}.${m[2]}`,
                 ),
           ),
       ),
     ];
+    // Giữ lại đúng những hàm test THẬT SỰ trích thân ra để soi.
+    const hams = hams0.filter((h) => trichThan.has(h.split(".")[1]));
     // Tiêu chí ĐÚNG: file bị ghim PHẢI thực sự định nghĩa hàm đó, VÀ một file
     // muộn hơn đã định nghĩa lại. Chỉ khi đó test mới đang đo một bản đã bị thay.
     //

@@ -1,13 +1,10 @@
 {
-  "$comment": "Ratchet: test ghim file migration KHÔNG còn là nơi định nghĩa cuối cùng. Danh sách CHỈ ĐƯỢC NGẮN LẠI. Sinh bởi scripts/check-migration-test-liveness.mjs. Cách sửa: đổi test sang liveDefinitionOf() — khuôn ở src/lib/__tests__/salaryCompletionDate.test.ts.",
-  "total": 7,
+  "$comment": "Ratchet: test ghim file migration KHÔNG còn là nơi định nghĩa cuối cùng. Danh sách CHỈ ĐƯỢC NGẮN LẠI. Sinh bởi scripts/check-migration-test-liveness.mjs. Cách sửa: đổi test sang liveDefinitionOf() — khuôn ở src/lib/__tests__/salaryCompletionDate.test.ts. — CHỐT LẠI 07/08/2026 sau khi sửa PHÉP ĐO hai chỗ, danh sách 7 → 4. (a) Regex tên hàm dùng lớp [._] nên mù với dạng ESCAPE public.foo, tức cách bắt buộc khi khẳng định bằng toMatch(/…/) thay vì toContain(\"…\"); đo được 57 file test với 143 tên hàm dạng đó mà gate không thấy cái nào. Nới ra lộ thêm 6 ca. (b) Ngược lại, gate coi NHẮC TÊN là GHIM ĐỊNH NGHĨA — accountingCompatibilityGuardsMigration trích thân reverse_invoice_payment_v3 (định nghĩa cuối ĐÚNG ở file nó đọc) rồi khẳng định thân đó GỌI reverse_invoice_collection_v5; ghim một LỜI GỌI vào file đóng băng là hợp lệ và có nghĩa mãi mãi. Nay chỉ tính hàm mà test THẬT SỰ trích thân ra soi. Hai sửa đó cộng lại: bỏ 4 báo nhầm khỏi baseline cũ, thêm 1 ca thật (incomeExpenseTypeCanonicalizationMigration ghim create_commission_voucher, bản sống nay ở 20260806090000).",
+  "total": 4,
   "files": [
     "src/lib/__tests__/accountingHistoryResolutionMigration.test.ts",
     "src/lib/__tests__/accountingSecurityFindingsMigration.test.ts",
     "src/lib/__tests__/businessPerformanceSnapshotsMigration.test.ts",
-    "src/lib/__tests__/customerCreditMigration.test.ts",
-    "src/lib/__tests__/financeV2WriterMigration.test.ts",
-    "src/lib/__tests__/networkCenterDatabaseMigration.test.ts",
-    "src/lib/__tests__/publicRoomsHoldingDepositMigration.test.ts"
+    "src/lib/__tests__/incomeExpenseTypeCanonicalizationMigration.test.ts"
   ]
 }
