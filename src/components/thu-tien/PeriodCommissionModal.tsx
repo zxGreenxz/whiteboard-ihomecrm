@@ -16,7 +16,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { X, HandCoins, FileText, Info, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
-import { fmtFull } from '@/lib/collect';
+import { fmtFull, todayISO } from '@/lib/collect';
 import { useCreateCommissionVoucher } from '@/hooks/useCommissionVoucher';
 import { type PeriodCommissionRow } from '@/hooks/usePeriodFees';
 import { UtilityBookMenu } from './UtilityBookMenu';
@@ -24,7 +24,9 @@ import { BankSelect } from '@/components/income-expenses/BankSelect';
 
 const formatVN = (n: number) => (n > 0 ? n.toLocaleString('vi-VN') : '');
 const parseVN = (s: string) => { const d = s.replace(/\D/g, ''); return d ? parseInt(d, 10) : 0; };
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// (Trước đây file này tự định nghĩa `todayISO` bằng toISOString() — tức ngày UTC —
+// che mất helper đúng cùng tên ở @/lib/collect. Trường hợp thứ hai trong repo sau
+// CashbookForm. Nay dùng bản thật, import ở trên.)
 
 interface Props {
   row: PeriodCommissionRow | null;

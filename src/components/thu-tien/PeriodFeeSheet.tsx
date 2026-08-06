@@ -9,7 +9,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { X, ChevronDown, Check, Camera, ArrowRight, LayoutGrid, Zap, Droplet, Calendar, HandCoins, Plus, Lock, Info, Edit3, Ban, Pencil, History, ListChecks, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { fmtFull, fmtBillingMonth } from '@/lib/collect';
+import { fmtFull, fmtBillingMonth, todayISO } from '@/lib/collect';
 import { useIncomeExpenseFormBuildings } from '@/hooks/useIncomeExpenseFormScope';
 import { useBuildings } from '@/hooks/useBuildings';
 import { useIsAdmin, useIsSuperAdmin } from '@/hooks/useIsAdmin';
@@ -154,7 +154,7 @@ export function PeriodFeeSheet({ show, onClose, billingMonth, onBillingMonthChan
   const [createOpen, setCreateOpen] = useState(false);
   const [payer, setPayer] = useState('');
   const [batchBook, setBatchBook] = useState<string | null>(null);
-  const [batchDate, setBatchDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [batchDate, setBatchDate] = useState(() => todayISO());
   const [batchAtts, setBatchAtts] = useState<string[]>([]);
   const [batchUploading, setBatchUploading] = useState(false);
   const batchFileRef = useRef<HTMLInputElement>(null);

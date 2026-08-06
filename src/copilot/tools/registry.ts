@@ -216,7 +216,11 @@ export function buildRegistry(): DomainTool[] {
       execute: async (args) => {
         const today = new Date();
         const until = new Date(today.getTime() + args.so_ngay * 86_400_000);
-        const iso = (d: Date) => d.toISOString().slice(0, 10);
+        // Đọc theo giờ LOCAL: toISOString() đổi sang UTC nên trước 7h sáng giờ VN
+        // cả hai mốc lùi một ngày, và Copilot trả lời sai danh sách hợp đồng sắp
+        // hết hạn — sai âm thầm, vì kết quả vẫn "có vẻ hợp lý".
+        const iso = (d: Date) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         const { data, error } = await supabase
           .from('contracts')
           .select('id, contract_number, end_date, room:rooms(name), building:buildings(name), customer:customers(full_name)')

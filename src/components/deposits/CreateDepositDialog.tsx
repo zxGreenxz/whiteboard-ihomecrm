@@ -40,6 +40,7 @@ import { useCreateSaleBonusFromDeposit } from "@/hooks/useSaleBonus";
 import { useCreateTenant, useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
 import { useAccounts } from "@/hooks/useAccounts";
+import { todayISO } from '@/lib/collect';
 
 /**
  * Dialog "Tạo đặt cọc" — tạo CỌC GIỮ CHỖ thật, ghi vào income_expenses (phiếu
@@ -116,7 +117,7 @@ export function CreateDepositDialog({ open, onOpenChange }: CreateDepositDialogP
       tenant_phone: "",
       room_id: "",
       amount: 0,
-      deposit_date: new Date().toISOString().split("T")[0],
+      deposit_date: todayISO(),
       hold_until: "",
       ctv_name: "",
       notes: "",

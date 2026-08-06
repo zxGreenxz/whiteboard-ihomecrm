@@ -24,6 +24,7 @@ import MaterialUsageItemsEditor, {
 } from "@/components/materials/MaterialUsageItemsEditor";
 import { useUpsertJobMaterialUsage } from "@/hooks/useMaterialUsages";
 import { useMaterials } from "@/hooks/useMaterials";
+import { todayISO } from '@/lib/collect';
 import {
   parseJobQuickInput,
   formatDeadlineLabel,
@@ -204,7 +205,7 @@ export default function TaskCreateDialog({
         try {
           await upsertJobMaterials.mutateAsync({
             job_id: job.id,
-            usage_date: new Date().toISOString().slice(0, 10),
+            usage_date: todayISO(),
             notes: null,
             items: cleanMaterials,
           });

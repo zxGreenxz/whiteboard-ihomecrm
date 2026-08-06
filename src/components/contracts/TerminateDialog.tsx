@@ -67,6 +67,7 @@ import {
 } from "@/components/ui/select";
 import { TerminationExtraCharges } from "./TerminationExtraCharges";
 import type { ExtraChargeItem } from "@/lib/contractValidation";
+import { todayISO } from '@/lib/collect';
 
 type TerminationType = "FORFEIT" | "MOVE_OUT";
 
@@ -253,7 +254,7 @@ function StepForfeit({
   const form = useForm<TerminateForfeitFormData>({
     resolver: zodResolver(terminateForfeitFormSchema),
     defaultValues: {
-      forfeit_date: new Date().toISOString().split("T")[0],
+      forfeit_date: todayISO(),
     },
   });
 
@@ -543,7 +544,7 @@ function StepMoveOut({
     defaultValues: {
       move_out_date: contract.expected_move_out_date
         ? contract.expected_move_out_date.split("T")[0]
-        : new Date().toISOString().split("T")[0],
+        : todayISO(),
       deposit_refund: Math.min(totalDeposit, depositPaid),
       excess_rent: 0,
       notes: "",

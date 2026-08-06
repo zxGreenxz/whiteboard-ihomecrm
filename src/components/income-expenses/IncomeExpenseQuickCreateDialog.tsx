@@ -43,6 +43,7 @@ import {
 } from "@/lib/incomeExpenseQuickInput";
 import QuickCategoryInput from "./QuickCategoryInput";
 import CategoryCombobox from "@/components/income-expense-types/CategoryCombobox";
+import { todayISO } from '@/lib/collect';
 
 interface Props {
   open: boolean;
@@ -52,7 +53,7 @@ interface Props {
 }
 
 const fmtVND = (n: number) => new Intl.NumberFormat("vi-VN").format(n);
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayISO();
 
 const IncomeExpenseQuickCreateDialog = ({
   open,

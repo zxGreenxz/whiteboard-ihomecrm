@@ -3,6 +3,7 @@ import { Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMaterialUsageByJob, useUpsertJobMaterialUsage } from '@/hooks/useMaterialUsages';
 import { useMaterials } from '@/hooks/useMaterials';
+import { todayISO } from '@/lib/collect';
 import MaterialUsageItemsEditor, {
   type UsageItemRow,
   newUsageItemRow,
@@ -64,7 +65,7 @@ export default function MaterialUsageSection({ jobId, className }: Props) {
     try {
       await upsert.mutateAsync({
         job_id: jobId,
-        usage_date: new Date().toISOString().slice(0, 10),
+        usage_date: todayISO(),
         notes: null,
         items: clean,
       });

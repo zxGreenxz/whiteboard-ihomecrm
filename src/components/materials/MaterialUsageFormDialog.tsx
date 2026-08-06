@@ -11,6 +11,7 @@ import MaterialUsageItemsEditor, {
 import { useCreateMaterialUsage } from '@/hooks/useMaterialUsages';
 import { useMaterials } from '@/hooks/useMaterials';
 import { toast } from 'sonner';
+import { todayISO } from '@/lib/collect';
 
 interface Props {
   open: boolean;
@@ -21,13 +22,13 @@ export default function MaterialUsageFormDialog({ open, onOpenChange }: Props) {
   const createMut = useCreateMaterialUsage();
   const { data: materials = [] } = useMaterials({});
 
-  const [usageDate, setUsageDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [usageDate, setUsageDate] = useState(() => todayISO());
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<UsageItemRow[]>([newUsageItemRow()]);
 
   useEffect(() => {
     if (open) {
-      setUsageDate(new Date().toISOString().slice(0, 10));
+      setUsageDate(todayISO());
       setNotes('');
       setItems([newUsageItemRow()]);
     }

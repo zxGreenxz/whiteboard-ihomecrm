@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Material, MaterialAdjustment, MaterialAdjustmentItem } from '@/types/material';
+import { todayISO } from '@/lib/collect';
 
 export interface MaterialAdjustmentWithItems extends MaterialAdjustment {
   items: (MaterialAdjustmentItem & { material: Pick<Material, 'id' | 'name' | 'unit'> | null })[];
@@ -102,7 +103,7 @@ export const useSetMaterialStock = () => {
       const { data: header, error: hErr } = await supabase
         .from('material_adjustments' as any)
         .insert({
-          adjustment_date: new Date().toISOString().slice(0, 10),
+          adjustment_date: todayISO(),
           type,
           reason: input.reason ?? 'Kiểm kê — đặt lại tồn',
         })

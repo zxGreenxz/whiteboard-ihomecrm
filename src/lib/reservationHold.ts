@@ -6,6 +6,7 @@
 // (create_contract_v1 chuyển hold → APPROVED khi ký).
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { todayISO } from '@/lib/collect';
 
 /**
  * Đặt hold cho phòng trước khi tạo phiếu cọc.
@@ -19,7 +20,7 @@ import { getSessionUser } from "@/lib/authSession";
 export async function tryPlaceRoomHold(roomId: string, amount: number): Promise<void> {
   let blockedMessage: string | null = null;
   try {
-    const day = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const day = todayISO().replace(/-/g, "");
     const { error } = await supabase.rpc("create_reservation_deposit_v1", {
       p_room_id: roomId,
       p_amount: Math.max(Math.round(amount), 1),

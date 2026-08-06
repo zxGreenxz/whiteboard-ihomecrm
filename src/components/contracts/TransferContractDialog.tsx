@@ -26,6 +26,7 @@ import { transferContractFormSchema } from "@/lib/contractValidation";
 import type { TransferContractFormData } from "@/lib/contractValidation";
 import type { ContractWithRelations } from "@/types/contract";
 import { useTransferContract } from "@/hooks/useContractOperations";
+import { todayISO } from '@/lib/collect';
 import {
   CustomerSelectionDialog,
   type CustomerBasic,
@@ -52,7 +53,7 @@ export function TransferContractDialog({
       new_customer_id: "",
       new_rent_price: undefined,
       new_deposit: undefined,
-      transfer_date: new Date().toISOString().split("T")[0],
+      transfer_date: todayISO(),
       notes: "",
     },
   });
@@ -64,7 +65,7 @@ export function TransferContractDialog({
         new_customer_id: "",
         new_rent_price: undefined,
         new_deposit: undefined,
-        transfer_date: new Date().toISOString().split("T")[0],
+        transfer_date: todayISO(),
         notes: "",
       });
       setSelectedCustomer(null);

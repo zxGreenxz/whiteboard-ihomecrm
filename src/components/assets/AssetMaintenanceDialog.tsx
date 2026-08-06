@@ -14,6 +14,7 @@ import { useAssets } from "@/hooks/useAssets";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { todayISO } from '@/lib/collect';
 
 const maintenanceSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
@@ -62,7 +63,7 @@ export function AssetMaintenanceDialog({ open, onOpenChange }: AssetMaintenanceD
     defaultValues: {
       asset_id: "",
       issue_description: "",
-      maintenance_date: new Date().toISOString().split('T')[0],
+      maintenance_date: todayISO(),
       cost: 0,
       assigned_to: undefined,
       status: "PENDING",

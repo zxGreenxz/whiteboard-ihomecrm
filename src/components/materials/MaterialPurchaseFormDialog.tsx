@@ -15,6 +15,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { todayISO } from '@/lib/collect';
 
 interface Props {
   open: boolean;
@@ -58,7 +59,7 @@ export default function MaterialPurchaseFormDialog({ open, onOpenChange, editing
   const updateMut = useUpdateMaterialPurchase();
   const { data: suppliers = [] } = useSuppliersList();
 
-  const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [purchaseDate, setPurchaseDate] = useState(() => todayISO());
   const [supplierId, setSupplierId] = useState<string>(NONE);
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<ItemRow[]>([newRow()]);
@@ -80,7 +81,7 @@ export default function MaterialPurchaseFormDialog({ open, onOpenChange, editing
           })),
         );
       } else {
-        setPurchaseDate(new Date().toISOString().slice(0, 10));
+        setPurchaseDate(todayISO());
         setSupplierId(NONE);
         setNotes('');
         setItems([newRow()]);

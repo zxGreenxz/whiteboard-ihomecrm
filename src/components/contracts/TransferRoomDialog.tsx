@@ -35,6 +35,7 @@ import type { ContractWithRelations } from "@/types/contract";
 import { useTransferRoom } from "@/hooks/useContractOperations";
 import { useBuildings } from "@/hooks/useBuildings";
 import { useRooms } from "@/hooks/useRooms";
+import { todayISO } from '@/lib/collect';
 
 interface TransferRoomDialogProps {
   open: boolean;
@@ -67,7 +68,7 @@ export function TransferRoomDialog({
     defaultValues: {
       new_room_id: "",
       new_rent_price: undefined,
-      transfer_date: new Date().toISOString().split("T")[0],
+      transfer_date: todayISO(),
       notes: "",
     },
   });
@@ -81,7 +82,7 @@ export function TransferRoomDialog({
       form.reset({
         new_room_id: "",
         new_rent_price: undefined,
-        transfer_date: new Date().toISOString().split("T")[0],
+        transfer_date: todayISO(),
         notes: "",
       });
       // Clear building selection

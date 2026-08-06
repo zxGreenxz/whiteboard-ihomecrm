@@ -8,6 +8,7 @@ import { tryPlaceRoomHold } from "@/lib/reservationHold";
 import { Icon } from "./icons";
 import { fmtPrice, type Room } from "./sampleData";
 import { useTrack } from "./useTracking";
+import { todayISO } from '@/lib/collect';
 
 /**
  * Modal "Tạo phiếu cọc nhanh" — chỉ hiển thị cho user ĐANG ĐĂNG NHẬP có quyền
@@ -135,7 +136,7 @@ export function QuickDepositModal({
         accId = depAcc as string;
       }
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayISO();
       const extras: string[] = [];
       if (moveInDate) extras.push(`Ngày vào: ${fmtVNDate(moveInDate)}`);
       if (topupDate) extras.push(`Ngày bổ sung cọc: ${fmtVNDate(topupDate)}`);

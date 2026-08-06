@@ -17,8 +17,14 @@ import {
 } from "@/hooks/salary-v5/useSalaryV5Admin";
 
 const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("vi-VN") + "đ";
-const thisMonth = () => new Date().toISOString().slice(0, 8) + "01";
-const ymd = (d: Date) => d.toISOString().slice(0, 10);
+// Đọc theo giờ LOCAL, không qua toISOString(): toISOString đổi sang UTC nên trước
+// 7h sáng giờ VN nó trả ngày hôm trước — và với `thisMonth` thì vào ngày 1 nó trả
+// hẳn THÁNG trước, tức bảng điều khiển mở ra ở sai kỳ.
+// `ymd` còn nhận Date được cộng/trừ bằng setDate() (API local), nên đọc bằng UTC
+// là trộn hai hệ quy chiếu ngay trong một biểu thức.
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const thisMonth = () => ymd(new Date()).slice(0, 8) + "01";
 const hhmm = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "—";
 const fmtDwell = (sec: number | null) => {

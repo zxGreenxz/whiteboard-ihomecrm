@@ -11,6 +11,7 @@ import { useCreateAssetHandover } from "@/hooks/useAssets";
 import { useContracts } from "@/hooks/useContracts";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { todayISO } from '@/lib/collect';
 
 const handoverSchema = z.object({
   contract_id: z.string().min(1, "Phải chọn hợp đồng"),
@@ -40,7 +41,7 @@ export function AssetHandoverDialog({ open, onOpenChange }: AssetHandoverDialogP
     defaultValues: {
       contract_id: "",
       handover_type: "CHECK_IN",
-      handover_date: new Date().toISOString().split('T')[0],
+      handover_date: todayISO(),
       items: "",
     },
   });

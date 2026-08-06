@@ -11,6 +11,13 @@ export type RepeatCycle = 'NONE' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR';
  *
  * @param anchor chuỗi ngày 'YYYY-MM-DD'
  */
+// ĐỪNG "sửa" các `toISOString().slice(0, 10)` trong hàm này thành giờ local.
+// Ở đây ngày được DỰNG bằng `Date.UTC(...)` rồi đọc lại bằng `toISOString()` —
+// constructor UTC + getter UTC là NHẤT QUÁN, và đó chính là idiom an toàn cho
+// số học lịch thuần tuý (không có giờ trong bài toán này).
+// Lỗi múi giờ nằm ở chỗ TRỘN hai hệ quy chiếu — ví dụ `new Date()` (thời điểm
+// thật) rồi đọc bằng UTC, hoặc dựng bằng setDate() (local) rồi đọc bằng UTC.
+// Đợt rà 06/08/2026 sửa 35 chỗ thuộc loại trộn đó và CỐ Ý bỏ qua hàm này.
 export function addCycle(anchor: string, cycle: RepeatCycle, k: number): string {
   const [y, m, d] = anchor.split('-').map(Number);
 

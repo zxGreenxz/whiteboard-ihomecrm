@@ -34,6 +34,7 @@ import { useCreateDeposit } from "@/hooks/useDeposits";
 import { useCreateTenant } from "@/hooks/useTenants";
 import { useTenantsLegacy } from "@/hooks/useTenants";
 import { useRooms } from "@/hooks/useRooms";
+import { todayISO } from '@/lib/collect';
 
 const convertSchema = z.object({
   tenant_id: z.string().optional(),
@@ -72,7 +73,7 @@ export function ConvertLeadDialog({ open, onOpenChange, lead }: ConvertLeadDialo
       tenant_phone: lead.phone || "",
       room_id: lead.room_id || "",
       amount: 0,
-      deposit_date: new Date().toISOString().split('T')[0],
+      deposit_date: todayISO(),
       hold_until_date: "",
       notes: lead.notes || "",
     },

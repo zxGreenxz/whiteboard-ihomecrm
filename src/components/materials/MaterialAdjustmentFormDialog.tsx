@@ -16,6 +16,7 @@ import { MaterialPicker } from '@/components/materials/MaterialPicker';
 import { useCreateMaterialAdjustment, useSetMaterialStock } from '@/hooks/useMaterialAdjustments';
 import { useMaterials } from '@/hooks/useMaterials';
 import { toast } from 'sonner';
+import { todayISO } from '@/lib/collect';
 
 interface Props {
   open: boolean;
@@ -42,14 +43,14 @@ export default function MaterialAdjustmentFormDialog({ open, onOpenChange }: Pro
   const { data: materials = [] } = useMaterials({});
 
   const [type, setType] = useState<AdjType>('SET');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(todayISO());
   const [reason, setReason] = useState('');
   const [items, setItems] = useState<ItemRow[]>([newRow()]);
 
   useEffect(() => {
     if (open) {
       setType('SET');
-      setDate(new Date().toISOString().slice(0, 10));
+      setDate(todayISO());
       setReason('');
       setItems([newRow()]);
     }

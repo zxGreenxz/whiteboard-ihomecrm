@@ -29,6 +29,7 @@ import {
 import { useOrphanDepositVouchers } from "@/hooks/useDeposits";
 import { useAccounts, type Account } from "@/hooks/useAccounts";
 import { useAuth } from "@/hooks/useAuth";
+import { todayISO } from '@/lib/collect';
 import {
   nextDepositUid,
   type ContractPrefill,
@@ -189,7 +190,7 @@ export function useContractFormState({
     resolver: zodResolver(contractFormSchema),
     defaultValues: {
       room_id: "",
-      signed_date: new Date().toISOString().split("T")[0],
+      signed_date: todayISO(),
       start_date: "",
       end_date: "",
       rent_price: 0,
@@ -276,7 +277,7 @@ export function useContractFormState({
         account_id: p[p.length - 1]?.account_id || defaultDepositAccountId,
         received_date:
           form.getValues("signed_date") ||
-          new Date().toISOString().split("T")[0],
+          todayISO(),
         images: [],
       },
     ]);
@@ -375,7 +376,7 @@ export function useContractFormState({
       setDepositUnlocked(!!prefill?.depositAmount);
       form.reset({
         room_id: prefill?.roomId ?? "",
-        signed_date: new Date().toISOString().split("T")[0],
+        signed_date: todayISO(),
         start_date: "",
         end_date: "",
         rent_price: 0,

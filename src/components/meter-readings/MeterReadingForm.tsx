@@ -62,6 +62,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { uploadFile, sanitizeStorageFileName } from '@/lib/storage';
 import { toast } from 'sonner';
 import { ImagePlus, Loader2 } from 'lucide-react';
+import { todayISO } from '@/lib/collect';
 
 // ============================================================================
 // Types
@@ -119,7 +120,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
       room_id: '',
       meter_type: DEFAULT_METER_TYPE,
       settlement_month: currentMonth,
-      reading_date: new Date().toISOString().slice(0, 10),
+      reading_date: todayISO(),
       readings: [],
     },
   });
@@ -153,7 +154,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
         room_id: reading.room_id || '',
         meter_type: reading.meter_type as 'ELECTRICITY' | 'WATER' | 'GAS' | null,
         settlement_month: reading.settlement_month || currentMonth,
-        reading_date: reading.reading_date || new Date().toISOString().slice(0, 10),
+        reading_date: reading.reading_date || todayISO(),
         readings: [
           {
             meter_id: reading.meter_id,
@@ -170,7 +171,7 @@ const MeterReadingForm = ({ open, onOpenChange, reading }: MeterReadingFormProps
         room_id: '',
         meter_type: DEFAULT_METER_TYPE,
         settlement_month: currentMonth,
-        reading_date: new Date().toISOString().slice(0, 10),
+        reading_date: todayISO(),
         readings: [],
       });
       setSelectedBuildingId('');

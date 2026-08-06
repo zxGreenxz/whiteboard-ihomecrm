@@ -14,6 +14,7 @@ import { useAssets } from "@/hooks/useAssets";
 import { useRooms } from "@/hooks/useRooms";
 import { supabase } from "@/integrations/supabase/client";
 import { getSessionUser } from "@/lib/authSession";
+import { todayISO } from '@/lib/collect';
 
 const movementSchema = z.object({
   asset_id: z.string().min(1, "Phải chọn tài sản"),
@@ -43,7 +44,7 @@ export function AssetMovementDialog({ open, onOpenChange }: AssetMovementDialogP
       from_room_id: undefined,
       to_room_id: "",
       quantity: 1,
-      movement_date: new Date().toISOString().split('T')[0],
+      movement_date: todayISO(),
       reason: "",
     },
   });

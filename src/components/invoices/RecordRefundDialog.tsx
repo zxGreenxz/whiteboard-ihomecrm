@@ -26,6 +26,7 @@ import { useRecordRefundRPC } from '@/hooks/useInvoicePayments';
 import { useAccounts } from '@/hooks/useAccounts';
 import type { InvoiceWithRelations } from '@/types/invoice';
 import { ArrowDownCircle, Loader2 } from 'lucide-react';
+import { todayISO } from '@/lib/collect';
 
 interface RecordRefundDialogProps {
   open: boolean;
@@ -78,7 +79,7 @@ const RecordRefundDialog = ({ open, onOpenChange, invoice }: RecordRefundDialogP
     resolver: zodResolver(formSchema),
     defaultValues: {
       amount: 0,
-      payment_date: new Date().toISOString().split('T')[0],
+      payment_date: todayISO(),
       account_id: '',
       notes: '',
     },
