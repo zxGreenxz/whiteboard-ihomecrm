@@ -77,6 +77,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+          # fetch-depth: 0 — checkout mặc định là SHALLOW (chỉ 1 commit).
+          # check-graph-hygiene.mjs phải duyệt lịch sử các commit đụng .ua/ để
+          # cưỡng chế luật "refresh graph đi PR riêng" (Contract §12 luật #6), và
+          # check-graph-freshness.mjs đo độ lệch từ baseCommit của graph. Với
+          # repo nông, cả hai thoát 3 ("không kiểm được ≠ đạt") thay vì im lặng
+          # cho qua — nhưng như vậy thì gate không bao giờ thật sự chạy trên CI.
+          fetch-depth: 0
 
       - name: Setup Node 24.18.0
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -113,6 +120,16 @@ jobs:
           node scripts/check-test-only-exports.mjs
           node scripts/check-unknown-review.mjs
           node scripts/check-ts-suppressions.mjs
+          node scripts/check-graph-hygiene.mjs
+
+      # Độ mới graph — CỐ Ý KHÔNG CHẶN. Plan kiến trúc (dòng 119, 2271) đã chốt
+      # UA freshness không phải required check: graph 4 MB commit vào repo, refresh
+      # là cả một PR, nên đỏ CI mỗi khi nó cũ sẽ khiến người ta tắt gate đi. Chế độ
+      # mặc định (không cờ --nhiem-vu) in đủ số đo rồi thoát 0 khi graph cũ; nó CHỈ
+      # đỏ khi artifact hỏng hoặc không tự nhất quán — tức "không kết luận được".
+      # Cửa chặn cứng nằm ở máy dev, theo nhiệm vụ (xem Contract §12 luật #1, #2).
+      - name: Graph freshness (báo cáo — chỉ đỏ khi artifact hỏng)
+        run: node scripts/check-graph-freshness.mjs
 
       - name: Typecheck baseline (gate chính — chặn lỗi TS MỚI so với ts-baseline.json)
         run: npm run typecheck:baseline

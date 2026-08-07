@@ -445,14 +445,37 @@ hidden retry cho thao tác không idempotent.
 
 ## 12. Công cụ tri thức
 
-- **GitNexus** (khi đã pin version trong `tooling/agent-tools.json`): code exploration, impact
-  analysis cho TS/JS. **KHÔNG** dùng làm bằng chứng duy nhất cho SQL/RLS/trigger/RPC string/
-  runtime permission — graph không chứng minh object nào đang deploy.
-- **Understand Anything** (`.ua/`, pin 2.9.4, `outputLanguage: "vi"`): onboarding, domain map.
-  **KHÔNG** dùng làm authorization evidence. Graph hiện analyzed 29/07 (field `lastAnalyzedAt`),
-  chưa có Network Center/OpenClaw ⇒ coi là **stale** cho đến khi refresh.
-- Khoảng trống của cả hai (SQL, deployed state, string boundary) được bù bằng contract manifest +
-  SQL harness của repo, không bằng graph.
+Hai graph, hai vai trò khác nhau:
+
+- **GitNexus** (`.gitnexus/`, pin trong `tooling/agent-tools.json`, gọi qua
+  `scripts/run-pinned-gitnexus.mjs`): code exploration, impact analysis cho TS/JS. Chỉ mục là
+  **local-only** — không bao giờ commit.
+- **Understand Anything** (`.ua/`, hộ chiếu ở `tooling/graph-manifests/ua.json`): onboarding,
+  domain map, tài liệu. Graph được commit.
+
+**Cả hai KHÔNG** dùng làm bằng chứng duy nhất cho SQL/RLS/trigger/RPC string/runtime permission —
+graph không chứng minh object nào đang deploy.
+
+### Sáu luật
+
+1. **GitNexus freshness là cửa chặn cứng** cho task medium/high-risk.
+2. **UA freshness mặc định chỉ CẢNH BÁO**; là cửa chặn cứng CHỈ với: onboarding,
+   architecture review, domain review, generated docs.
+3. Mỗi graph phải ghi **baseCommit, analyzedAt, scope, tool version, config digest**.
+4. **Agent KHÔNG được nạp graph khi chưa có verdict còn hiệu lực** — chạy
+   `npm run gate:graph-freshness -- --nhiem-vu <nhiệm vụ>` TRƯỚC khi đọc `.ua/` hoặc `.gitnexus/`.
+   Verdict hết hiệu lực ngay khi `HEAD` đổi.
+5. **Contract manifest + SQL harness LUÔN ưu tiên hơn mọi graph.** Khi graph mâu thuẫn với
+   manifest hoặc kết quả harness, graph sai — không phải ngược lại.
+6. **Không auto-commit graph.** Refresh đi PR riêng, hoặc commit riêng trong architecture PR
+   liên quan.
+
+Ngưỡng và ánh xạ nhiệm-vụ→cửa-chặn nằm ở `tooling/graph-policy.json`. Hai gate cưỡng chế:
+`check-graph-hygiene.mjs` (luật #3, #6 — chạy trong CI) và `check-graph-freshness.mjs`
+(luật #1, #2, #4 — chạy local).
+
+Khoảng trống của cả hai graph (SQL, deployed state, string boundary) được bù bằng contract
+manifest + SQL harness của repo, không bằng graph.
 
 ---
 

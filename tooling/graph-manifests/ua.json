@@ -1,0 +1,25 @@
+{
+  "$comment": "Hộ chiếu cho graph Understand Anything trong .ua/ — PROJECT_CONTRACT §12 luật #3 (mỗi graph phải ghi baseCommit, analyzedAt, scope, tool version, config digest). Công cụ UA KHÔNG tự ghi scope/toolVersion/configDigest, nên sidecar này khai thay, và scripts/check-graph-hygiene.mjs cưỡng chế nó KHỚP artifact: baseCommit phải bằng cả ba nguồn trong .ua/ (meta.json, fingerprints.json top-level, knowledge-graph.json→project), analyzedFiles phải bằng số khoá trong fingerprints.files, configDigest phải bằng git blob OID hiện tại. Sai bất kỳ chỗ nào ⇒ đỏ. Một manifest không ai đối chiếu thì chỉ là lời khai.",
+  "schemaVersion": 1,
+  "graph": "ua",
+  "artifactDir": ".ua",
+
+  "baseCommit": "d0ffb0453e9336546d6d51579a4772c8d6e283f4",
+  "analyzedAt": "2026-07-29T14:02:16.449Z",
+  "analyzedFiles": 2120,
+
+  "scope": {
+    "description": "Toàn repo tại d0ffb045 trừ các mẫu trong .ua/.understandignore. KHÔNG bao gồm Network Center và OpenClaw: 7 thư mục services/* và infra/* của hai hệ đó tồn tại trên đĩa nhưng graph có 0 node nguồn cho chúng (đo 07/08/2026). Cũng thiếu 118 migration mới hơn.",
+    "excludesFrom": ".ua/.understandignore"
+  },
+
+  "toolVersion": "2.9.4",
+  "toolVersionSource": "attested",
+  "toolVersionNote": "KHAI BÁO, không đo được. Artifact trong .ua/ không ghi version công cụ ở đâu cả — trường `version: \"1.0.0\"` trong cả ba file là SCHEMA version, không phải version của UA. Con số 2.9.4 lấy từ pin ở plan kiến trúc §18 và tooling/agent-tools.json. Lần refresh graph tới BẮT BUỘC ghi version thật đo được, và đổi toolVersionSource thành \"measured\".",
+
+  "configDigest": {
+    ".ua/config.json": "git:bf23efcb9a6caea2bf2347cdb5cfb2d32e09af1a",
+    ".ua/.understandignore": "git:21d6e97c7b21c09c1e6111cb4127d08207bb5b97"
+  },
+  "configDigestNote": "git blob OID, KHÔNG phải sha256 nội dung worktree. Trên Windows worktree có thể là CRLF trong khi blob là LF, nên sha256 worktree sẽ lệch một cách vô nghĩa và gate sẽ đỏ giả. Blob OID là thứ git thật sự lưu."
+}

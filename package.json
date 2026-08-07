@@ -67,7 +67,9 @@
     "backup:lap-lich": "node scripts/dang-ky-backup-dinh-ky.mjs",
     "backup:xem-lich": "node scripts/dang-ky-backup-dinh-ky.mjs --xem",
     "graph:analyze": "node scripts/run-pinned-gitnexus.mjs analyze",
-    "graph:status": "node scripts/run-pinned-gitnexus.mjs status"
+    "graph:status": "node scripts/run-pinned-gitnexus.mjs status",
+    "gate:graph-hygiene": "node scripts/check-graph-hygiene.mjs",
+    "gate:graph-freshness": "node scripts/check-graph-freshness.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

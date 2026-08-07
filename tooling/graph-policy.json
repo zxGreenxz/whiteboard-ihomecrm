@@ -1,0 +1,42 @@
+{
+  "$comment": "Chính sách quản trị graph tri thức — PROJECT_CONTRACT §12. Ngưỡng hard đặt ở mức ~1/10 độ lệch đã ĐO ĐƯỢC ngày 07/08/2026 trên graph UA (cũ 487 commit · 1345 file · thiếu 118 migration · 2 tiểu hệ thống vắng mặt hoàn toàn). Ở mức lệch đó, một graph dùng cho onboarding hay domain review sẽ KỂ SAI kiến trúc: nó không biết Network Center và OpenClaw tồn tại. UA mặc định CHỈ CẢNH BÁO (plan kiến trúc dòng 119 + 2271 đã chốt: không phải required check) và chỉ thành cửa chặn cứng với bốn nhiệm vụ mà graph LÀ nguồn sự thật. GitNexus ngược lại: hard cho task medium/high-risk, nhưng CHỈ khi đã pin verified trong tooling/agent-tools.json — chưa áp dụng thì không chặn ai bằng một công cụ chưa tồn tại.",
+  "schemaVersion": 1,
+
+  "verdictFile": "tooling/graph-verdict.local.json",
+  "verdictTtlMinutes": 240,
+
+  "hardTasks": {
+    "onboarding": ["ua"],
+    "architecture": ["ua"],
+    "domain-review": ["ua"],
+    "generated-docs": ["ua"],
+    "medium-risk": ["gitnexus"],
+    "high-risk": ["gitnexus"]
+  },
+
+  "hard": {
+    "maxCommitsBehind": 50,
+    "maxFilesDrifted": 150,
+    "maxMigrationsMissing": 10,
+    "maxMissingSubsystems": 0,
+    "requireToolVersion": true
+  },
+
+  "subsystemRootPatterns": ["src/*", "services/*", "infra/*", "supabase/functions/*"],
+  "subsystemMinTrackedFiles": 3,
+
+  "hygiene": {
+    "graphPaths": [".ua/", ".gitnexus/"],
+    "commitAllowlistNote": "Điều luật #6 thật sự chặn: một diff 4 MB JSON nằm LẪN giữa thay đổi code, khiến không ai review nổi graph. Những đường dẫn dưới đây không mang được rủi ro đó. `.gitignore` nằm trong danh sách vì đưa graph vào repo bắt buộc phải khai luật ignore cho thư mục scratch của nó (commit fcf69f5e ngày 29/07 làm đúng vậy: thêm .ua/intermediate/, .ua/tmp/… ), và một file .gitignore không thể giấu thay đổi hành vi.",
+    "commitAllowlist": [
+      ".ua/",
+      ".gitnexus/",
+      ".gitignore",
+      "tooling/graph-manifests/",
+      "tooling/graph-policy.json",
+      "docs/"
+    ]
+  },
+
+  "precedence": ["contract-manifests-and-sql-harness", "gitnexus", "ua"]
+}
