@@ -35,8 +35,8 @@
       "path": "Dockerfile",
       "type": "blob",
       "mode": "100644",
-      "size": 2036,
-      "sha256": "a0735dd92035a65671f13c2ab261cc2d2547c399f632676a84537505d243b56f"
+      "size": 2215,
+      "sha256": "8e9daeef73dd38177b02e5f1618fff93ff39a695f6de51c5736ca5a9a7352789"
     },
     {
       "path": "config/openclaw.json.tmpl",
