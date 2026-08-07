@@ -139,6 +139,7 @@ jobs:
           node scripts/normalize-supabase-types.mjs --check
           node scripts/check-no-auto-apply.mjs
           node scripts/check-management-api-writes.mjs
+          node scripts/check-promote-readiness.mjs
           node scripts/check-migration-test-liveness.mjs
 
       - name: docs-freshness (Copilot manifest · số đếm tài liệu · vệ sinh graph)
