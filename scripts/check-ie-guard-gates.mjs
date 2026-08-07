@@ -95,7 +95,7 @@ const opened = (row.scopes_opened_by_writers ?? '')
 // cửa rồi bỏ sót phần còn lại — và khi ấy `opened.length > 0` nên chốt cũ im.
 // Đó chính là điều đã xảy ra: regex cũ thấy 1/5 cách viết mà vẫn qua cửa này.
 // Sàn theo SỐ LƯỢNG bắt được cả trường hợp đó.
-const TOI_THIEU_SCOPE = 4; // đo 07/08/2026: ANNOTATE, CASHBOOK_MOVE, LINK_CONTRACT, SALE_BONUS_DEPOSIT
+const TOI_THIEU_SCOPE = 5; // đo 07/08/2026: ANNOTATE, CASHBOOK_MOVE, LINK_CONTRACT, SALE_BONUS_DEPOSIT + HANDOVER (cửa bàn giao, 20260807140000)
 if (opened.length < TOI_THIEU_SCOPE) {
   console.error(`❌ Chỉ bóc được ${opened.length} scope từ writer (sàn ${TOI_THIEU_SCOPE}) — phép đo hỏng, KHÔNG phải "sạch".`);
   if (opened.length > 0) console.error(`   Bóc được: ${opened.join(', ')}`);
