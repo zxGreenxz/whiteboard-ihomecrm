@@ -8,8 +8,8 @@
     "done": 150,
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
-    "completedAfterAudit": 66,
-    "stillMissing": 125
+    "completedAfterAudit": 67,
+    "stillMissing": 124
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -685,14 +685,6 @@
         "size": "S",
         "touchesOpenClaw": false,
         "remaining": "Viết lại mục 'Quy tắc migration' theo forward-only lane hiện hành (migrate:forward + 4 lớp chặn + IHOMECRM_PROMOTION_TOKEN + backup bắt buộc) thay vì chỉ apply-sql.mjs."
-      },
-      {
-        "deliverable": "docs/incidents/YYYY-MM-DD-incident-slug.md (thư mục ghi TỪNG sự cố)",
-        "planRef": "mục 10, cấu trúc tài liệu",
-        "status": "CHUA_LAM",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Đã có docs/operations/incident-response.md — nhưng đó là SỔ TAY XỬ LÝ, khác hẳn thư mục ghi từng sự cố đã xảy ra. Hai thứ khác nhau: một cái nói 'làm gì khi hỏng', cái kia nói 'đã hỏng những gì'. Ứng viên đầu tiên: sự cố 07/08/2026 apply migration vòng qua lane."
       },
       {
         "deliverable": "docs/generated/ — repository-map.md, rpc-surface.md, capability-matrix.md (bản .md cho người đọc)",
