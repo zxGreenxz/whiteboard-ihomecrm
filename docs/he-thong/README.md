@@ -35,6 +35,7 @@
 
 ## Tham chiếu cắt ngang
 
+- [24 — Phát hành nền tảng](24-platform-delivery.md) — bốn đường lên production (web/schema/Edge/worker), CI gate nào chạy ở đâu, cron. Không phải domain nghiệp vụ nên Copilot **không** đọc.
 - [Realtime sync](realtime-sync.md) — chiến lược đồng bộ, invalidation và cập nhật giao diện.
 - [Audit hiệu năng 30/06](perf-2026-06-30-toi-uu-hieu-nang.md) — bằng chứng theo mốc, không thay tài liệu domain hiện hành.
 

@@ -54,9 +54,16 @@ paths = [
   '''^real_page\.html$''',
   '''^sample_page\.html$''',
 
-  # File tài liệu kiến trúc/audit: chứa TÊN biến credential và ví dụ minh hoạ,
-  # không chứa giá trị. Giá trị thật nằm ở CLAUDE.local.md và file đó bị gitignore.
-  '''^docs/.*\.md$''',
+  # Chính file baseline. Nó chứa fingerprint + CÂU GIẢI THÍCH vì sao từng finding
+  # là vô hại — và những câu đó trích lại chuỗi bị bắt, nên gitleaks bắt tiếp
+  # chính lời giải thích. Theo định nghĩa file này không chứa giá trị nào.
+  '''^\.gitleaksignore$''',
+
+  # KHÔNG miễn trừ docs/ nữa. Bản đầu có dòng `^docs/.*\.md$` với lý do "tài liệu
+  # chỉ chứa TÊN biến, không chứa giá trị" — nhưng đó chính là kiểu miễn trừ mà
+  # đầu file này cấm: miễn trừ cả một thư mục sẽ giấu luôn secret THẬT rơi vào đó,
+  # và tài liệu là nơi người ta dán giá trị vào nhiều nhất khi đang vội. Những
+  # finding thật sự vô hại trong docs/ nay nằm ở .gitleaksignore, từng cái một.
 ]
 
 regexes = [
@@ -77,7 +84,10 @@ regexes = [
   # thấp, và biết chúng không cho ai quyền gì (`ie_compat_cancel_v2`,
   # `cashbook.access.v2`, `v5_route_plan`). Một credential thật không bao giờ có
   # hình dạng này.
-  '''["'][a-z][a-z0-9]*([_.][a-z0-9]+)+["']''',
+  # Gồm CẢ dấu backtick: tài liệu Markdown viết tên RPC trong code span
+  # (`cancel_income_expense_flex_v1`), và bản chỉ phủ nháy đơn/kép sẽ mù với nó —
+  # lại đúng mẫu "bộ lọc chỉ phủ một biến thể".
+  '''["'`][a-z][a-z0-9]*([_.][a-z0-9]+)+["'`]''',
 
   # Giá trị GIẢ hiển nhiên dùng để test chính cơ chế che secret. Ví dụ thật trong
   # repo: `const secret = "sbp_0123456789abcdef0123456789abcdef01234567"` ở

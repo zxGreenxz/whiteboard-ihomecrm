@@ -69,6 +69,11 @@
       "requiredPermission": { "module": "openclaw_zalo", "action": "view" },
       "why": "tính năng chưa bật production; mô tả cả cơ chế bảo mật phiên và đường ra mạng"
     },
+    {
+      "file": "24-platform-delivery.md",
+      "copilotIngest": false,
+      "why": "quy trình phát hành hạ tầng (CI gate, promote, deploy Edge, cron) — dành cho người vận hành/lập trình viên, trả nguyên văn cho người dùng cuối là vô nghĩa và lộ bề mặt vận hành"
+    },
     { "file": "99-quy-trinh-tong.md", "copilotIngest": true, "reviewed": "2026-07-20" },
 
     {

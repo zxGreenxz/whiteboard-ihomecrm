@@ -54,3 +54,7 @@ e0c6426f1ab8ef480e62ceaba3219b2351ab74f0:src/components/my-day/RoutePlannerSheet
 
 # supabase/migrations/20260727090000_openclaw_maintenance_jobs.sql — Tên khoá cấu hình trong SQL, không có giá trị đi kèm.
 d20c7b93a5c46ebb1547339c6935a516f42a9904:supabase/migrations/20260727090000_openclaw_maintenance_jobs.sql:generic-api-key:4186
+# docs/superpowers/plans/2026-07-30-thu-tien-state-of-world.md — `cancel_income_expense_flex_v1`
+# là TÊN RPC trong một bảng kế hoạch, viết trong code span Markdown. Không miễn trừ
+# cả docs/ vì đó chính là kiểu miễn trừ mà .gitleaks.toml cấm ở đầu file.
+80153a9ae70c0e667253938201fc25369c80773f:docs/superpowers/plans/2026-07-30-thu-tien-state-of-world.md:generic-api-key:1157
