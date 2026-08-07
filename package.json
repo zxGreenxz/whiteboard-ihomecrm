@@ -85,7 +85,9 @@
     "gate:management-api-writes": "node scripts/check-management-api-writes.mjs",
     "gate:doc-freshness": "node scripts/check-doc-freshness.mjs",
     "gate:ledger-frozen": "node scripts/check-migration-ledger-frozen.mjs",
-    "gate:migration-idempotent": "node scripts/check-forward-migration-idempotent.mjs"
+    "gate:migration-idempotent": "node scripts/check-forward-migration-idempotent.mjs",
+    "docs:views": "node scripts/generate-docs-views.mjs",
+    "gate:docs-views": "node scripts/generate-docs-views.mjs --check"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

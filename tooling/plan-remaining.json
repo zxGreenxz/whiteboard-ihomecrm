@@ -8,8 +8,8 @@
     "done": 150,
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
-    "completedAfterAudit": 67,
-    "stillMissing": 124
+    "completedAfterAudit": 68,
+    "stillMissing": 123
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -240,7 +240,7 @@
         "status": "CHUA_LAM",
         "size": "S",
         "touchesOpenClaw": true,
-        "remaining": "Thêm surfaces.copilotNavigation vào CapabilityDefinition, sinh HIDDEN_PREFIXES từ registry, và quyết định OpenClaw có ẩn nút Copilot không."
+        "remaining": "MỘT NỬA đã làm: gate kiểm route trong PILOT_ROUTE_ALLOWLIST phải TỒN TẠI (check-capability-surfaces). Phần SINH TỪ registry chưa làm được — registry phủ 2/146 route và không biết /apartments, /invoices, /customers. Chặn bởi việc mở rộng registry, không phải bỏ quên."
       },
       {
         "deliverable": "Output dẫn xuất/kiểm từ registry: User docs path",
@@ -685,14 +685,6 @@
         "size": "S",
         "touchesOpenClaw": false,
         "remaining": "Viết lại mục 'Quy tắc migration' theo forward-only lane hiện hành (migrate:forward + 4 lớp chặn + IHOMECRM_PROMOTION_TOKEN + backup bắt buộc) thay vì chỉ apply-sql.mjs."
-      },
-      {
-        "deliverable": "docs/generated/ — repository-map.md, rpc-surface.md, capability-matrix.md (bản .md cho người đọc)",
-        "planRef": "mục 10 + mục 51",
-        "status": "MOT_PHAN",
-        "size": "M",
-        "touchesOpenClaw": false,
-        "remaining": "Đã có contracts/surfaces/*.json và docs/generated/database-inventory.json — máy đọc được. Plan còn đòi bản .md cho NGƯỜI đọc (repository-map, rpc-surface, capability-matrix). Sinh từ chính các JSON đó, không viết tay."
       }
     ],
     "file-map": [

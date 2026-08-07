@@ -146,6 +146,7 @@ jobs:
           node scripts/check-copilot-docs-manifest.mjs
           node scripts/check-doc-counts.mjs
           node scripts/check-doc-freshness.mjs
+          node scripts/generate-docs-views.mjs --check
           node scripts/check-graph-hygiene.mjs
 
       # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +

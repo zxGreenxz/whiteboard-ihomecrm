@@ -166,6 +166,32 @@ function main() {
     }
   }
 
+  // (5) Route trong allowlist của AI Copilot phải TỒN TẠI.
+  //
+  // `PILOT_ROUTE_ALLOWLIST` là chốt chặn an ninh: giữa một task, nếu SPA rời khỏi
+  // các route này thì guard ném lỗi và dừng thao tác. Một route chết trong danh
+  // sách đó KHÔNG làm gì đỏ — nó chỉ lặng lẽ thu hẹp phạm vi Copilot làm được,
+  // hoặc tệ hơn, người ta thêm route thay thế mà quên bỏ route cũ và tưởng phạm
+  // vi vẫn như cũ.
+  //
+  // Plan §7 muốn danh sách này SINH TỪ registry. Chưa làm được: registry hiện phủ
+  // 2/146 route và không biết /apartments, /invoices, /customers. Đã ghi ở
+  // tooling/plan-remaining.json — chặn bởi việc mở rộng registry, không phải bỏ quên.
+  const guard = doc("src/copilot/safetyGuard.ts");
+  const dsRoute = [...guard.matchAll(/PILOT_ROUTE_ALLOWLIST\s*=\s*\[([^\]]*)\]/g)]
+    .flatMap((m) => [...m[1].matchAll(/["'`]([^"'`]+)["'`]/g)].map((x) => x[1]));
+  if (dsRoute.length === 0) {
+    viPham.push("Không đọc được PILOT_ROUTE_ALLOWLIST trong src/copilot/safetyGuard.ts — bộ dò hỏng hoặc danh sách đã bị xoá.");
+  }
+  for (const r of dsRoute) {
+    if (!nguon.some((n) => coRoute(n.s, r))) {
+      viPham.push(
+        `Copilot được phép ở "${r}" nhưng KHÔNG có <Route> nào phục vụ đường đó — ` +
+          `phạm vi Copilot bị thu hẹp âm thầm.`,
+      );
+    }
+  }
+
   console.log(`Capability: ${caps.length} · consumer kiểm ${consumer.length} · nguồn route ${nguon.length}`);
 
   if (viPham.length > 0) {

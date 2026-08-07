@@ -1,0 +1,246 @@
+#!/usr/bin/env node
+// Sinh bản ĐỌC ĐƯỢC BẰNG MẮT từ các manifest máy-đọc (plan §10, §51).
+//
+// VÌ SAO CẦN, dù JSON đã có sẵn
+//   contracts/surfaces/rpc-surface.json là 94 KB. Không ai đọc nó. Nhưng câu hỏi
+//   mà nó trả lời được — "RPC nào chạm tiền, ai gọi, hàm nào SECURITY DEFINER" —
+//   là câu người ta hỏi khi rà an ninh hoặc khi nhận bàn giao.
+//
+//   Một manifest không ai đọc thì chỉ phục vụ gate. Bản .md này phục vụ NGƯỜI, và
+//   nó SINH RA từ đúng manifest đó nên không thể lệch.
+//
+// KHÔNG VIẾT TAY. Mọi con số ở đây đến từ JSON; sửa tay là tạo nguồn thứ hai.
+//
+//   node scripts/generate-docs-views.mjs
+//   node scripts/generate-docs-views.mjs --check   # đỏ nếu bản .md đã trôi
+//
+// Không cần credential. Thoát 0 · 1 (trôi ở chế độ --check) · 3.
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const OUT = join(repoRoot, "docs", "generated");
+
+const doc = (p) => JSON.parse(readFileSync(join(repoRoot, p), "utf8"));
+const NHAN_RUI_RO = { financial: "tiền", security: "an ninh", infrastructure: "hạ tầng", normal: "thường" };
+
+/** Bảng Markdown; escape `|` để một tên có dấu gạch đứng không phá cột. */
+function bang(cot, hang) {
+  const esc = (v) => String(v).replace(/\|/g, "\\|");
+  return [
+    `| ${cot.join(" | ")} |`,
+    `|${cot.map(() => "---").join("|")}|`,
+    ...hang.map((r) => `| ${r.map(esc).join(" | ")} |`),
+  ].join("\n");
+}
+
+function dauTrang(nguon) {
+  return [
+    "---",
+    "status: current",
+    `reviewed: ${new Date().toISOString().slice(0, 10)}`,
+    "source_paths:",
+    ...nguon.map((s) => `  - ${s}`),
+    "copilot_ingest: false",
+    "risk: normal",
+    "---",
+    "",
+    "> **SINH TỰ ĐỘNG — đừng sửa tay.** `node scripts/generate-docs-views.mjs`",
+    "> Sửa ở đây tạo nguồn sự thật thứ hai, và nó sẽ trôi khỏi manifest trong vài ngày.",
+    "",
+  ].join("\n");
+}
+
+export function dungRpcSurface(m) {
+  const rpcs = Object.entries(m.rpcs);
+  const theoRuiRo = {};
+  for (const [, r] of rpcs) theoRuiRo[r.risk] = (theoRuiRo[r.risk] ?? 0) + 1;
+
+  const definer = rpcs.filter(([, r]) => r.definitions.some((d) => d.securityDefiner));
+  const tien = rpcs.filter(([, r]) => r.risk === "financial").sort((a, b) => a[0].localeCompare(b[0]));
+  const anNinh = rpcs.filter(([, r]) => r.risk === "security").sort((a, b) => a[0].localeCompare(b[0]));
+
+  return [
+    dauTrang(["contracts/surfaces/rpc-surface.json"]),
+    "# Bề mặt RPC — TypeScript gọi gì trên PostgreSQL",
+    "",
+    "Biên này là **một chuỗi ký tự**: `supabase.rpc('ten_ham')`. Không trình biên dịch",
+    "nào chứng minh tên đó tồn tại trên server — types.ts chỉ che phần `src/` mà tsc soi,",
+    "còn Edge Function (Deno), `services/` và `infra/` nằm ngoài hoàn toàn.",
+    "",
+    bang(
+      ["Chỉ số", "Giá trị"],
+      [
+        ["RPC được gọi từ mã nguồn", rpcs.length],
+        ["Hàm trong catalog (public + api)", m.generatedFrom.catalogFunctions],
+        ["File mã nguồn đã quét", m.generatedFrom.sourceCallSites],
+        ["SECURITY DEFINER", definer.length],
+        ["**Gọi mà server KHÔNG CÓ**", `**${m.missingOnServer.length}**`],
+      ],
+    ),
+    "",
+    "## Theo mức rủi ro",
+    "",
+    bang(
+      ["Mức", "Số RPC", "Nghĩa là"],
+      Object.entries(theoRuiRo)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => [
+          NHAN_RUI_RO[k] ?? k,
+          v,
+          k === "financial"
+            ? "có nơi gọi nằm trong màn tiền — sai là sai sổ sách"
+            : k === "security"
+              ? "nơi gọi thuộc OpenClaw"
+              : k === "infrastructure"
+                ? "nơi gọi thuộc Network Center"
+                : "còn lại",
+        ]),
+    ),
+    "",
+    `## ${tien.length} RPC chạm TIỀN`,
+    "",
+    "Đây là danh sách đáng đọc nhất trong trang này: mỗi dòng là một đường ghi hoặc",
+    "đọc có thể làm lệch số trên sổ.",
+    "",
+    bang(
+      ["RPC", "DEFINER", "Nơi gọi"],
+      tien.map(([ten, r]) => [
+        `\`${ten}\``,
+        r.definitions.some((d) => d.securityDefiner) ? "✔" : "",
+        r.callers.map((c) => c.replace(/^src\//, "")).slice(0, 3).join(", ") +
+          (r.callers.length > 3 ? ` … (+${r.callers.length - 3})` : ""),
+      ]),
+    ),
+    "",
+    `## ${anNinh.length} RPC thuộc OpenClaw`,
+    "",
+    bang(["RPC", "Nơi gọi"], anNinh.map(([ten, r]) => [`\`${ten}\``, r.callers.join(", ")])),
+    "",
+  ].join("\n");
+}
+
+export function dungCapabilityMatrix(registrySrc, edgeM, rtM) {
+  const caps = [];
+  for (const khoi of registrySrc.split(/\n\s*\{\s*\n/).slice(1)) {
+    const id = khoi.match(/id:\s*"([^"]+)"/)?.[1];
+    if (!id) continue;
+    caps.push({
+      id,
+      route: khoi.match(/primaryRoute:\s*"([^"]+)"/)?.[1] ?? "?",
+      label: khoi.match(/label:\s*"([^"]+)"/)?.[1] ?? "?",
+      module: khoi.match(/module:\s*"([^"]+)"/)?.[1] ?? "?",
+      action: khoi.match(/action:\s*"([^"]+)"/)?.[1] ?? "?",
+      risk: khoi.match(/risk:\s*"([^"]+)"/)?.[1] ?? "?",
+      doc: khoi.match(/systemDoc:\s*"([^"]+)"/)?.[1] ?? "?",
+    });
+  }
+
+  const chuaDeploy = edgeM.sourceWithoutDeployment ?? [];
+  const congKhai = Object.entries(edgeM.functions ?? {})
+    .filter(([, f]) => f.deployed && f.verifyJwt === false)
+    .map(([s]) => s);
+
+  return [
+    dauTrang([
+      "src/app/capabilities/registry.ts",
+      "contracts/surfaces/edge-function-surface.json",
+      "contracts/surfaces/realtime-surface.json",
+    ]),
+    "# Ma trận bề mặt sản phẩm",
+    "",
+    "## Capability khai trong registry",
+    "",
+    "Registry hiện phủ **" + caps.length + "** capability. Toàn app có ~146 route —",
+    "phần còn lại vẫn khai tay ở từng nơi. Đây là trạng thái CÓ CHỦ Ý: registry bắt",
+    "đầu từ hai capability đã drift thật, mở rộng là việc riêng.",
+    "",
+    bang(
+      ["Capability", "Route", "Quyền", "Rủi ro", "Tài liệu"],
+      caps.map((c) => [c.label, `\`${c.route}\``, `\`${c.module}.${c.action}\``, NHAN_RUI_RO[c.risk] ?? c.risk, c.doc]),
+    ),
+    "",
+    "## Edge Function",
+    "",
+    bang(
+      ["Chỉ số", "Giá trị"],
+      [
+        ["Thư mục mã nguồn", edgeM.counts.source],
+        ["ĐANG CHẠY trên server", edgeM.counts.deployed],
+        ["Có mã mà **chưa deploy**", `${chuaDeploy.length}${chuaDeploy.length ? " — " + chuaDeploy.join(", ") : ""}`],
+        ["`verify_jwt = false` (ai cũng gọi được)", `${congKhai.length}${congKhai.length ? " — " + congKhai.join(", ") : ""}`],
+      ],
+    ),
+    "",
+    "Thư mục trong repo **không** có nghĩa là hàm đang chạy: deploy là thao tác riêng,",
+    "không gắn với `git push`.",
+    "",
+    "## Realtime",
+    "",
+    bang(
+      ["Chỉ số", "Giá trị"],
+      [
+        ["Bảng được publish", rtM.counts.published],
+        ["Hub nghiệp vụ lắng nghe", rtM.counts.listenedByHub],
+        ["**Hub nghe mà KHÔNG publish** (subscribe câm)", `**${(rtM.hubWithoutPublication ?? []).length}**`],
+        ["`REPLICA IDENTITY = DEFAULT`", `${rtM.counts.replicaIdentityDefault}/${rtM.counts.published}`],
+      ],
+    ),
+    "",
+    "`DEFAULT` nghĩa là payload `UPDATE`/`DELETE` chỉ mang **khoá chính**. Code đọc cột",
+    "khác từ payload đó nhận `undefined` — không lỗi, chỉ là một nhánh đi sai đường.",
+    "",
+  ].join("\n");
+}
+
+function main() {
+  const canCo = [
+    "contracts/surfaces/rpc-surface.json",
+    "contracts/surfaces/edge-function-surface.json",
+    "contracts/surfaces/realtime-surface.json",
+  ];
+  const thieu = canCo.filter((p) => !existsSync(join(repoRoot, p)));
+  if (thieu.length > 0) {
+    console.error(`❌ Thiếu manifest nguồn: ${thieu.join(", ")}`);
+    console.error("   Sinh trước: npm run surface:rpc / surface:edge / surface:realtime");
+    process.exit(3);
+  }
+
+  const ra = {
+    "rpc-surface.md": dungRpcSurface(doc(canCo[0])),
+    "capability-matrix.md": dungCapabilityMatrix(
+      readFileSync(join(repoRoot, "src/app/capabilities/registry.ts"), "utf8"),
+      doc(canCo[1]),
+      doc(canCo[2]),
+    ),
+  };
+
+  const kiem = process.argv.includes("--check");
+  mkdirSync(OUT, { recursive: true });
+  const troi = [];
+  for (const [ten, noiDung] of Object.entries(ra)) {
+    const p = join(OUT, ten);
+    // Bỏ dòng `reviewed:` khi so — nó đổi mỗi ngày và không nói gì về nội dung.
+    const bo = (s) => s.replace(/^reviewed: .*$/m, "");
+    if (kiem) {
+      const cu = existsSync(p) ? readFileSync(p, "utf8") : "";
+      if (bo(cu) !== bo(noiDung)) troi.push(ten);
+    } else {
+      writeFileSync(p, noiDung);
+      console.log(`✅ docs/generated/${ten}`);
+    }
+  }
+
+  if (kiem) {
+    if (troi.length > 0) {
+      console.error(`❌ ${troi.length} bản .md đã trôi khỏi manifest: ${troi.join(", ")}`);
+      console.error("   Sinh lại: node scripts/generate-docs-views.mjs");
+      process.exit(1);
+    }
+    console.log("✅ Bản .md khớp manifest.");
+  }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
