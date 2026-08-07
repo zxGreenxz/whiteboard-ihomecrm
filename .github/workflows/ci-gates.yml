@@ -126,6 +126,7 @@ jobs:
           node scripts/check-ts-suppressions.mjs
           node scripts/check-graph-hygiene.mjs
           node scripts/check-capability-surfaces.mjs
+          node scripts/check-error-swallow-ratchet.mjs
 
       # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
       # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
