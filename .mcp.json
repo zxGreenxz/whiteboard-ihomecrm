@@ -1,0 +1,9 @@
+{
+  "$comment": "MCP theo DỰ ÁN, không theo máy. Plan §14 viết 'setup một lần trên máy' — nhưng cấu hình theo máy nghĩa là mỗi người, mỗi máy, mỗi lần cài lại đều phải nhớ làm, và không có gì nhắc. File này commit được: ai clone repo là có, không ai phải cài tay. Lệnh đi qua scripts/run-pinned-gitnexus.mjs chứ KHÔNG gọi thẳng gitnexus, nên MCP server cũng bị ghim version như mọi đường khác — pin chưa verified thì wrapper từ chối chạy.",
+  "mcpServers": {
+    "gitnexus": {
+      "command": "node",
+      "args": ["scripts/run-pinned-gitnexus.mjs", "mcp"]
+    }
+  }
+}

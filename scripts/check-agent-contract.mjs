@@ -196,6 +196,12 @@ function main() {
     ['cap-1000', 'bug tổng chỉ 1000 dòng đầu'],
     ['CLAUDE.local.md', 'credential vault'],
     ['promotion token', 'ghi database production cần token nhập tại chỗ'],
+    // Bán kính ảnh hưởng (plan §16). Ghim vì đây là danh sách DỄ RƠI nhất trong
+    // Contract: nó không gắn với một script nào, không có gì đỏ khi mất, và bảy
+    // mục của nó chính là bảy chỗ mà một thay đổi lan ra ngoài file đang mở.
+    ['bán kính ảnh hưởng', 'phải hỏi graph trước khi sửa'],
+    ['detect_changes', 'đối chiếu thứ thực sự đổi với thứ định đổi'],
+    ['.mcp.json', 'GitNexus đăng ký MCP theo dự án, không theo máy'],
     ['hide_sandbox_admin', 'policy chặn org TEST lọt vào org thật'],
     ['can_access_building', 'cách lọc toà đúng trong hàm SECURITY DEFINER'],
     ['aaaa0000', 'org THẬT — chỉ đọc khi test'],

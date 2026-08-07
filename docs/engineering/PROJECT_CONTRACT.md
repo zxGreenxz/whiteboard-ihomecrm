@@ -483,6 +483,30 @@ graph không chứng minh object nào đang deploy.
 6. **Không auto-commit graph.** Refresh đi PR riêng, hoặc commit riêng trong architecture PR
    liên quan.
 
+### Hỏi bán kính ảnh hưởng trước khi sửa (plan §16)
+
+GitNexus đăng ký sẵn làm MCP server ở `.mcp.json` — theo **dự án**, không theo máy, nên ai clone
+repo là có. Lệnh đi qua `scripts/run-pinned-gitnexus.mjs` nên MCP cũng bị ghim version.
+
+Trước khi sửa bất cứ thứ gì ngoài một dòng, hỏi graph **bán kính ảnh hưởng** bằng `impact` /
+`context` / `route_map`, và đọc kết quả cùng bảy thứ dưới đây — đây là bảy chỗ mà một thay đổi
+lan ra ngoài file bạn đang mở:
+
+1. **migration SQL** — trigger, RLS, view phụ thuộc bảng bạn đổi
+2. **chuỗi tên RPC** trong `supabase.rpc('…')` — không trình biên dịch nào kiểm nó
+3. **slug Edge Function** trong `functions.invoke('…')` — và hàm đó có đang deploy không
+4. **bảng / view / hàm** mà đường bạn sửa đọc hoặc ghi
+5. **tên bảng realtime** — đổi tên bảng làm subscribe thành câm, không báo lỗi
+6. **feature flag** gác đường đó
+7. **quyền** (`module.action`) mà route và RPC đòi — hai chỗ này lệch nhau là người dùng thấy lối
+   vào rồi bị đá về
+
+Sau khi sửa: `detect_changes` để đối chiếu thứ thực sự đổi với thứ bạn định đổi.
+
+Graph trả lời được (1)–(7) ở mức **mã nguồn**. Nó KHÔNG trả lời được "object nào đang deploy" —
+phần đó xem `contracts/surfaces/*.json` và `docs/generated/database-inventory.json`, và luật #5
+vẫn áp dụng: khi mâu thuẫn, manifest thắng.
+
 Ngưỡng và ánh xạ nhiệm-vụ→cửa-chặn nằm ở `tooling/graph-policy.json`. Hai gate cưỡng chế:
 `check-graph-hygiene.mjs` (luật #3, #6 — chạy trong CI) và `check-graph-freshness.mjs`
 (luật #1, #2, #4 — chạy local).

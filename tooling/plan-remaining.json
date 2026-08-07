@@ -8,8 +8,8 @@
     "done": 150,
     "intentionallyDropped": 24,
     "missingAtAuditTime": 191,
-    "completedAfterAudit": 68,
-    "stillMissing": 123
+    "completedAfterAudit": 71,
+    "stillMissing": 120
   },
   "$note": "`completedAfterAudit` là các mục đã làm xong TRONG chính phiên 07/08 sau khi audit chụp trạng thái. Audit không thấy chúng vì nó chạy trước các commit đó.",
   "items": {
@@ -581,30 +581,6 @@
         "size": "S",
         "touchesOpenClaw": false,
         "remaining": "Thêm mục MCP (codex mcp add gitnexus qua wrapper pin) và quy trình mở draft PR."
-      },
-      {
-        "deliverable": "GitNexus §14 — đăng ký MCP một lần trên máy (claude mcp add gitnexus / codex mcp add)",
-        "planRef": "PHẦN IV §14, dòng 1673-1690",
-        "status": "CHUA_LAM",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Chạy `claude mcp add gitnexus -- node scripts/run-pinned-gitnexus.mjs mcp` (và bản Codex), hoặc commit .mcp.json ở repo để cả hai agent dùng chung — commit .mcp.json là cách duy nhất không phụ thuộc đường dẫn máy."
-      },
-      {
-        "deliverable": "GitNexus §16 — workflow trước/sau khi sửa (status → reindex → context → impact → manifest → doc → plan; rồi detect_changes → so test → gate)",
-        "planRef": "PHẦN IV §16, dòng 1743-1762",
-        "status": "MOT_PHAN",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Viết checklist 2 chiều (trước/sau) vào Contract §12 hoặc adapter, kèm lệnh cụ thể qua wrapper — không dựa vào skill sinh ra vì nó bị gitignore."
-      },
-      {
-        "deliverable": "GitNexus §16 — prompt bắt buộc trong agent contract về blast radius (migrations/RPC string/Edge slug/table-view-function/queue/flag/permission)",
-        "planRef": "PHẦN IV §16, dòng 1764-1776",
-        "status": "CHUA_LAM",
-        "size": "S",
-        "touchesOpenClaw": false,
-        "remaining": "Chèn nguyên đoạn prompt 7 gạch đầu dòng vào PROJECT_CONTRACT §12 và cho check-agent-contract.mjs ghim nó lại (giống cách nó đang ghim cặp ['CLAUDE.local.md','credential vault'] ở dòng 197)."
       },
       {
         "deliverable": "UA §19 — phạm vi phân tích + danh sách loại trừ (vendor, runtime state, data dump, secret/env)",
