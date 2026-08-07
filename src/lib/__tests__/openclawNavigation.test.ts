@@ -47,32 +47,51 @@ describe("OpenClaw Zalo navigation contract", () => {
     expect(tiles.filter((entry) => entry.href === "/openclaw-zalo")).toHaveLength(0);
   });
 
-  it("gates the launcher tile on the same module and action as the route", () => {
-    // Source-asserted because the exported data cannot carry the tile while the flag
-    // is off. It still pins the ENTRY as a whole rather than two substrings that
-    // could come from different lines: the tile must demand exactly what the route
-    // guard demands, or a user is shown an entry that bounces them home.
-    const tiles = readSource("src/pages/home/launcherTiles.ts");
-    const entries = tiles.match(/\{[^{}]*href: '\/openclaw-zalo'[^{}]*\}/gu) ?? [];
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toContain("module: 'openclaw_zalo'");
-    expect(entries[0]).toContain("action: 'view'");
-    // And it must sit inside the flag, not beside it.
-    expect(tiles).toMatch(/OPENCLAW_RUNTIME_ENABLED[\s\S]{0,200}href: '\/openclaw-zalo'/u);
+  // VIẾT LẠI Ở ĐỢT 4 LÁT 3.
+  //
+  // Hai test dưới đây trước kia bắt cụm `{ … href: '/openclaw-zalo' … }` trong
+  // VĂN BẢN NGUỒN của launcherTiles.ts và Sidebar.tsx, rồi đòi nó nằm gần chuỗi
+  // OPENCLAW_RUNTIME_ENABLED. Từ lát 3, cả tile lẫn mục sidebar SINH TỪ capability
+  // registry, nên cụm đó không còn tồn tại — hai test vỡ vì khẳng định một HÌNH
+  // DẠNG đã biến mất, không phải vì một tính chất bị mất.
+  //
+  // Tính chất cần giữ vẫn nguyên: "cả ba bề mặt — route, tile, sidebar — phải đòi
+  // đúng cùng một quyền và cùng bật/tắt". Nay nó được bảo đảm bằng CẤU TRÚC (một
+  // nguồn khai duy nhất) thay vì bằng phép so. Nên chỗ còn lệch được đã dời đi,
+  // và test phải dời theo:
+  //   - registry có đòi ĐÚNG quyền mà OpenClawRouteGuard thật sự kiểm không —
+  //     guard là mã viết tay, registry là dữ liệu, hai bên vẫn trôi khỏi nhau được;
+  //   - có ai khai TAY lại route ở consumer không — bản khai thứ hai làm registry
+  //     mất quyền sở hữu mà không gì đỏ.
+
+  it("registry đòi đúng quyền mà OpenClawRouteGuard thật sự kiểm", async () => {
+    const guard = readSource("src/components/openclaw-zalo/OpenClawRouteGuard.tsx");
+    const registry = readSource("src/app/capabilities/registry.ts");
+    const khoi = registry.split('id: "openclaw-zalo"')[1] ?? "";
+
+    const module = khoi.match(/module:\s*"([^"]+)"/)?.[1];
+    const action = khoi.match(/action:\s*"([^"]+)"/)?.[1];
+    expect(module, "registry phải khai module cho openclaw-zalo").toBeDefined();
+
+    // Guard kiểm chuỗi quyền dạng "<module>.<action>". Nếu ai đổi một bên, hai
+    // bên lệch và người dùng thấy lối vào rồi bị đá về trang chủ.
+    expect(guard).toContain(`"${module}.${action}"`);
   });
 
-  it("publishes exactly one desktop sidebar entry, and gates it on the flag", () => {
-    // Sidebar builds its list inline, so this stays a source assertion - but it pins
-    // the ENTRY as a whole instead of two substrings that could come from different
-    // lines and still look like a match.
-    const sidebar = readSource("src/components/layout/Sidebar.tsx");
-    const entries = sidebar.match(/\{[^{}]*href: '\/openclaw-zalo'[^{}]*\}/gu) ?? [];
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toContain("module: 'openclaw_zalo'");
-    // All three surfaces - route, launcher tile, sidebar - move together. A sidebar
-    // entry that outlives the route is the one an owner actually clicks, because
-    // they hold the permission and the desktop nav is always on screen.
-    expect(sidebar).toMatch(/OPENCLAW_RUNTIME_ENABLED[\s\S]{0,300}href: '\/openclaw-zalo'/u);
+  it("không nơi nào khai TAY lại route capability — bề mặt phải sinh từ registry", async () => {
+    const { timKhaiTay } = await import("../../../scripts/check-capability-surfaces.mjs");
+    for (const f of ["src/pages/home/launcherTiles.ts", "src/components/layout/Sidebar.tsx"]) {
+      expect(timKhaiTay(readSource(f), "/openclaw-zalo"), `${f} còn khai tay`).toBe(false);
+    }
+  });
+
+  it("cờ TẮT thì adapter không sinh mục nào cho cả sidebar lẫn launcher", async () => {
+    // Cờ mặc định TẮT (đã chốt ở test trên). Đây là trạng thái bản production
+    // đang ship, nên nó là trạng thái đáng kiểm nhất: một mục sống lâu hơn route
+    // của nó chính là mục người dùng bấm vào rồi rơi ra 404.
+    const { navFieldsFor, launcherFieldsFor } = await import("@/app/capabilities/surfaceAdapters");
+    expect(navFieldsFor("openclaw-zalo")).toHaveLength(0);
+    expect(launcherFieldsFor("openclaw-zalo")).toHaveLength(0);
   });
 
   it("records the breadcrumb label, and states plainly that nothing renders it yet", () => {

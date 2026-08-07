@@ -19,8 +19,7 @@ import { useMyPermissions } from '@/hooks/useMyPermissions';
 import { useBusinessPerformanceOrganizations } from '@/hooks/reports/useBusinessPerformance';
 import { canUse } from '@/lib/permissionPages';
 import type { ActionKey } from '@/lib/permissions';
-import { NETWORK_CENTER_RUNTIME_ENABLED } from '@/lib/network-center/runtime';
-import { OPENCLAW_RUNTIME_ENABLED } from '@/lib/openclaw-zalo/runtime';
+import { navFieldsFor } from '@/app/capabilities/surfaceAdapters';
 import {
   Collapsible,
   CollapsibleContent,
@@ -132,12 +131,11 @@ export const navigationGroups: NavGroup[] = [
     label: 'KÊNH CHAT',
     items: [
       { title: 'Chat Zalo', href: '/chat-zalo', icon: MessageSquare, module: 'chat_zalo' },
-      // Same flag as the route and the launcher tile. Left ungated, an owner sees
-      // this in the sidebar - they hold openclaw_zalo.view - and clicking it lands
-      // on 404, because the route is compiled out.
-      ...(OPENCLAW_RUNTIME_ENABLED
-        ? [{ title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, module: 'openclaw_zalo' } satisfies NavItem]
-        : []),
+      // Nhãn, route, quyền và cờ đều SINH TỪ capability registry (Đợt 4 lát 3).
+      // Trước đây bốn thứ đó khai lại ở đây và ba nơi khác, rồi trông chờ contract
+      // test bắt lệch — mà đối chiếu chỉ phát hiện lệch SAU KHI nó đã nằm trong mã
+      // nguồn. Ở đây chỉ còn phần trình bày: icon.
+      ...navFieldsFor('openclaw-zalo').map((f) => ({ ...f, icon: Bot }) satisfies NavItem),
     ],
   },
   {
@@ -190,9 +188,7 @@ export const navigationGroups: NavGroup[] = [
           { title: 'Ví cá nhân', href: '/finance/personal-wallet', icon: Coins, module: 'personal_finance' },
         ],
       },
-      ...(NETWORK_CENTER_RUNTIME_ENABLED
-        ? [{ title: 'Trung tâm mạng', href: '/network-center', icon: Network, module: 'network_center', action: 'view' } satisfies NavItem]
-        : []),
+      ...navFieldsFor('network-center').map((f) => ({ ...f, icon: Network }) satisfies NavItem),
       { title: 'Công việc', href: '/tasks', icon: ClipboardList, module: 'tasks' },
       { title: 'Thông báo', href: '/notifications', icon: Bell, module: 'notifications' },
     ],

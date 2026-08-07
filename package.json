@@ -71,7 +71,8 @@
     "gate:graph-hygiene": "node scripts/check-graph-hygiene.mjs",
     "gate:graph-freshness": "node scripts/check-graph-freshness.mjs",
     "gate:realtime-descriptors": "node scripts/check-realtime-descriptors.mjs",
-    "gate:strict-islands": "node scripts/check-strict-islands.mjs"
+    "gate:strict-islands": "node scripts/check-strict-islands.mjs",
+    "gate:capability-surfaces": "node scripts/check-capability-surfaces.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

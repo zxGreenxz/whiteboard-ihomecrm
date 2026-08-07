@@ -35,8 +35,7 @@ import {
   Banknote,
 } from 'lucide-react';
 import type { ActionKey } from '@/lib/permissions';
-import { NETWORK_CENTER_RUNTIME_ENABLED } from '@/lib/network-center/runtime';
-import { OPENCLAW_RUNTIME_ENABLED } from '@/lib/openclaw-zalo/runtime';
+import { launcherFieldsFor } from '@/app/capabilities/surfaceAdapters';
 
 /** Nguồn số badge — chỉ những count "rẻ" đã có sẵn ở Home (không over-fetch). */
 export type BadgeSource = 'totalRooms';
@@ -73,16 +72,11 @@ export const LAUNCHER_SECTIONS: LauncherSection[] = [
       { id: 'rooms', title: 'Căn hộ', href: '/apartments', icon: Home, accent: '#0d9488', module: 'rooms', badge: 'totalRooms' },
       { id: 'leads', title: 'Khách hẹn', href: '/leads', icon: UserPlus, accent: '#d97706', module: 'leads' },
       { id: 'tasks', title: 'Công việc', href: '/tasks', icon: ClipboardList, accent: '#0ea5e9', module: 'tasks' },
-      ...(NETWORK_CENTER_RUNTIME_ENABLED
-        ? [{ id: 'network-center', title: 'Trung tâm mạng', href: '/network-center', icon: Network, accent: '#111111', module: 'network_center', action: 'view' } satisfies LauncherTile]
-        : []),
+      // Sinh từ capability registry (Đợt 4 lát 3) — chỉ `icon`/`accent` là của
+      // riêng launcher, phần còn lại registry sở hữu.
+      ...launcherFieldsFor('network-center').map((f) => ({ ...f, icon: Network, accent: '#111111' }) satisfies LauncherTile),
       { id: 'sale-phong', title: 'Phòng trống', href: '/sale-phong', icon: DoorOpen, accent: '#16a34a', module: 'sale_phong', action: 'view' },
-      // Behind the same flag as its route. A tile that survives while the route is
-      // gone is worse than no tile: the owner has the permission, so it renders,
-      // and clicking it lands on the 404 page.
-      ...(OPENCLAW_RUNTIME_ENABLED
-        ? [{ id: 'openclaw-zalo', title: 'OpenClaw Zalo', href: '/openclaw-zalo', icon: Bot, accent: '#0f766e', module: 'openclaw_zalo', action: 'view' } satisfies LauncherTile]
-        : []),
+      ...launcherFieldsFor('openclaw-zalo').map((f) => ({ ...f, icon: Bot, accent: '#0f766e' }) satisfies LauncherTile),
     ],
   },
   {

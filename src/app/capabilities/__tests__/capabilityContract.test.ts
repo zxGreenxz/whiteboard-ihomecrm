@@ -5,6 +5,22 @@
 // đổi format, vừa có thể tự khớp vào chính comment nói về route — nó kiểm "chuỗi
 // này có xuất hiện không", chứ không kiểm "cấu hình có nhất quán không".
 //
+// ĐỌC KỸ TRƯỚC KHI TIN FILE NÀY — thay đổi từ Đợt 4 lát 3
+//   Sidebar và launcher nay SINH nav/tile từ registry (navFieldsFor /
+//   launcherFieldsFor). Nghĩa là các phép so title/href/module/action ở dưới đã
+//   trở thành TỰ QUY CHIẾU: chúng so registry với thứ vừa được sinh ra từ chính
+//   registry, nên xanh vĩnh viễn kể cả khi cả hai cùng sai. Giữ lại vì chúng vẫn
+//   chốt hình dạng dữ liệu và vẫn bắt được lỗi ở tầng adapter (ví dụ quên map
+//   `action`, hoặc trả tile khi cờ tắt).
+//
+//   Phép kiểm THẬT của lát 3 nằm ở scripts/check-capability-surfaces.mjs: nó đọc
+//   MÃ NGUỒN và bắt (a) ai đó khai tay lại một capability route, (b) route JSX
+//   viết tay lệch với registry, (c) trang permission picker biến mất. Ba thứ đó
+//   vẫn lệch được; những gì ở dưới thì không.
+//
+//   Các phép so với ALL_PAGES (permission picker) BÊN DƯỚI thì KHÔNG tự quy
+//   chiếu — permissionPages.ts vẫn khai tay hoàn toàn.
+//
 // QUAN TRỌNG: hai cờ runtime mặc định TẮT, nên nếu chỉ chạy ở trạng thái mặc
 // định thì mọi phép so nav/tile sẽ không có gì để so và test xanh trong khi
 // không kiểm gì — đúng lớp lỗi "suite chạy 0 test vẫn báo pass". Vì vậy file
