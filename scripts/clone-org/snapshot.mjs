@@ -83,30 +83,64 @@ const leaks = []
 // PROJECT_CONTRACT coi là bằng chứng đã kiểm xong. Với một cửa chặn rò rỉ giữa
 // công ty thật và org sandbox thì "không hỏi được" phải khác "hỏi rồi, sạch".
 const khongKiemDuoc = []
+// Rổ thứ ba, TÁCH RIÊNG khỏi "không kiểm được": role `authenticated` không có
+// GRANT SELECT trên bảng (lỗi Postgres 42501). PostgREST từ chối ở tầng quyền
+// TRƯỚC khi xét đến dòng nào, nên qua kênh này tài khoản thật không đọc nổi MỘT
+// dòng — rò rỉ là bất khả, không phải "chưa biết".
+//
+// Gộp chung là sai theo cả hai hướng và bản trước gộp chung: 73 bảng khoá cứng
+// nhất hệ thống bị đếm vào "có thể rò rỉ", gate exit 1, và in đúng câu
+// "✗ Có rò rỉ" trong khi rổ rò rỉ RỖNG. Một cửa chặn kêu sai như vậy sẽ được
+// người vận hành học cách bỏ qua, và lần nó kêu đúng cũng chịu chung số phận.
+const khoaCong = []
 for (const t of tables) {
+  // Probe bằng CHÍNH cột đang lọc, không phải `id`. Bản trước dùng `select=id`
+  // nên hai bảng nối khoá phức (area_buildings, income_expense_batch_items)
+  // không có cột `id` trả 400/42703 rồi rơi vào rổ "không hỏi được" — trong khi
+  // chúng hỏi được hoàn toàn: đổi projection sang organization_id là 200/count 0.
+  // Lọc theo organization_id đã ngụ ý cột đó tồn tại, nên projection này không
+  // bao giờ tự tạo ra lỗi cột mới.
   const res = await fetch(
-    `https://${REF}.supabase.co/rest/v1/${t}?select=id&organization_id=eq.${TEST_ORG}&limit=1`,
+    `https://${REF}.supabase.co/rest/v1/${t}?select=organization_id&organization_id=eq.${TEST_ORG}&limit=1`,
     { headers: { ...H, Prefer: 'count=exact', Range: '0-0' } },
   )
-  if (!res.ok) { khongKiemDuoc.push(`${t} (HTTP ${res.status})`); continue }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    if (err.code === '42501') khoaCong.push(t)
+    else khongKiemDuoc.push(`${t} (HTTP ${res.status} ${err.code ?? '?'}: ${(err.message ?? '').slice(0, 60)})`)
+    continue
+  }
   const n = Number(res.headers.get('content-range')?.split('/')[1] ?? 0)
   if (n > 0) leaks.push(`${t}=${n}`)
 }
-const daKiem = tables.length - khongKiemDuoc.length
+const daKiem = tables.length - khongKiemDuoc.length - khoaCong.length
 
-if (leaks.length) {
+// Chống xanh-rỗng: nếu token hết hạn hay rate-limit ở giữa chừng thì mọi bảng
+// rơi vào khongKiemDuoc và nhánh dưới bắt được. Nhưng nếu cloneTables() trả
+// danh sách rỗng thì vòng lặp chạy 0 lần và mọi rổ đều rỗng — "0 rò rỉ" trên 0
+// bảng. Hệ này chắc chắn có hàng trăm bảng nghiệp vụ.
+if (tables.length < 100) {
+  console.error(`\n✗ Chỉ liệt kê được ${tables.length} bảng (sàn 100) — phép đo hỏng, KHÔNG phải "không rò rỉ".`)
+  process.exitCode = 3
+} else if (leaks.length) {
   console.error(`\n✗ RÒ RỈ: tài khoản thật NHÌN THẤY dữ liệu org TEST ở ${leaks.length} bảng:`)
   for (const l of leaks.slice(0, 30)) console.error('   ' + l)
   console.error('→ thiếu policy <bảng>_hide_sandbox_admin, hoặc policy bị predicate khác ghi đè.')
   process.exitCode = 1
 } else if (khongKiemDuoc.length) {
-  console.error(`\n✗ KHÔNG KẾT LUẬN ĐƯỢC: ${khongKiemDuoc.length}/${tables.length} bảng không hỏi được.`)
+  console.error(`\n⏹ KHÔNG KẾT LUẬN ĐƯỢC: ${khongKiemDuoc.length}/${tables.length} bảng không hỏi được.`)
   for (const t of khongKiemDuoc.slice(0, 20)) console.error('   ' + t)
   console.error(`→ mới kiểm ${daKiem}/${tables.length} bảng, và ${daKiem} bảng sạch KHÔNG chứng minh`)
   console.error(`  ${tables.length} bảng sạch. Sửa lỗi truy cập rồi chạy lại; đừng đọc kết quả này là PASS.`)
-  process.exitCode = 1
+  process.exitCode = 3 // "không kiểm được" ≠ "có rò rỉ" — Contract §3
 } else {
-  log(`✓ 0/${tables.length} bảng rò rỉ dữ liệu org TEST sang mắt tài khoản thật (hỏi được đủ ${daKiem} bảng)`)
+  log(`✓ 0/${daKiem} bảng hỏi được rò rỉ dữ liệu org TEST sang mắt tài khoản thật.`)
+  if (khoaCong.length) {
+    log(`  ℹ ${khoaCong.length} bảng còn lại: role authenticated KHÔNG có GRANT SELECT (42501) ⇒ rò rỉ`)
+    log(`    bất khả qua PostgREST. Ví dụ: ${khoaCong.slice(0, 4).join(', ')}.`)
+    log(`    CHƯA CHE: một RPC SECURITY DEFINER vẫn có thể đọc hộ chúng — kênh đó nằm ngoài`)
+    log(`    phép đo này và luôn nằm ngoài, kể cả trước thay đổi hôm nay.`)
+  }
 }
 
 // Kiểm ngược: dòng organization_id IS NULL của công ty thật KHÔNG được biến mất
@@ -213,9 +247,16 @@ if (label === 'after') {
   } else {
     log('\n✓ Số liệu công ty THẬT không xê dịch.')
   }
+  // Câu kết phải NÓI ĐÚNG mã thoát. Bản trước in "✗ Có rò rỉ" cho mọi exitCode
+  // khác 0, kể cả khi rổ rò rỉ rỗng và lý do chỉ là vài bảng không hỏi được.
   if (process.exitCode === 1) {
-    console.error('\n✗ Có rò rỉ — xử lý xong mới được dùng bản sao.')
+    console.error('\n✗ CÓ RÒ RỈ — xử lý xong mới được dùng bản sao.')
     process.exit(1)
+  }
+  if (process.exitCode === 3) {
+    console.error('\n⏹ KHÔNG KẾT LUẬN ĐƯỢC — chưa chứng minh được bản sao kín, cũng chưa thấy rò rỉ.')
+    console.error('  Đừng đọc là PASS, cũng đừng đi sửa policy: chưa có bằng chứng nào chỉ vào policy.')
+    process.exit(3)
   }
   log('✓✓ Cửa chặn XANH: bản sao kín với tài khoản thật.')
 }
