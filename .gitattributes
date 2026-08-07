@@ -4,6 +4,11 @@
 infra/network-center-worker/deploy/*.conf text eol=lf
 *.sql text eol=lf
 supabase/functions/** text eol=lf
+# Ảnh cell ghim từng byte đầu vào trong image-lock.json. Một lần checkout trên
+# Windows biến LF thành CRLF là kích thước và sha256 đổi hết, gate dựng ảnh đỏ
+# mà chẳng file nào trông có gì khác.
+*.tmpl text eol=lf
+services/openclaw-zalo-cell/** text eol=lf
 
 # Shebang + CRLF phá bộ chuyển đổi module của vitest. Một file .mjs mở đầu bằng
 # `#!/usr/bin/env node` mà dòng đó kết thúc \r\n sẽ ném "SyntaxError: Invalid or

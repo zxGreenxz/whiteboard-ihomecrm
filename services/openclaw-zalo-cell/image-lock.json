@@ -42,8 +42,8 @@
       "path": "config/openclaw.json.tmpl",
       "type": "blob",
       "mode": "100644",
-      "size": 1711,
-      "sha256": "7bc3181a0af1b1000b50108579680b32c2240ffec5047abbb481534eac44441d"
+      "size": 1633,
+      "sha256": "b0fc2ff16c5288d2c7476979b8d0f45e8af6fbee5c1bf50abcb128bc4ed0969f"
     },
     {
       "path": "scripts/entrypoint.sh",
