@@ -23,6 +23,14 @@
   ],
   "done": [
     {
+      "item": "✅ Đợt 6: 246 đảo strict được khoá — ratchet chỉ đi một chiều",
+      "evidence": "Contract §13 ghi 'bật strict mode' là rule ĐÃ BỎ vì sai; đo lại 07/08 cho biết vì sao: 246/337 file .ts đã sạch, 91 file còn lỗi, bật toàn cục là 91 file đỏ ngay rồi lại phải tắt. Đo bằng cách chạy tsc RIÊNG từng file (lỗi của A kéo qua import sẽ đổ nhầm cho B nếu gộp), rồi biên dịch cả 246 cùng lúc để xác nhận. Ratchet là TẬP TÊN FILE chứ không phải số đếm. ĐỘT BIẾN PHÁT HIỆN LỖ TRONG BẢN NHÁP: thêm tham số không kiểu vào một đảo mà gate vẫn xanh, vì tsconfig.app.json đặt TƯỜNG MINH noImplicitAny:false và giá trị tường minh của cha thắng mặc-định-suy-từ-strict của con. Nay khai tường minh 9 cờ + gate hỏi tsc kết quả HỢP NHẤT qua --showConfig. 8/8 đột biến."
+    },
+    {
+      "item": "✅ Vá 2 cửa chặn nữa vốn xanh/đỏ sai — phát hiện khi chạy cả 23 gate một lượt",
+      "evidence": "(a) Cửa chặn rò rỉ sandbox exit 1 kèm câu '✗ Có rò rỉ' trong khi rổ rò rỉ RỖNG: 73 bảng bị đếm là 'có thể rò rỉ' thật ra là 42501 permission denied — nhóm KHOÁ CHẶT NHẤT hệ thống; 2 bảng nữa chỉ vì probe hard-code select=id trên bảng nối khoá phức. (b) Cửa chặn đối chiếu tiền CHƯA TỪNG kết luận được lần nào (chỉ xét một kỳ, kỳ đông nhất 723 phiếu < trần 1000) và điều đó GIẤU một chỗ lệch 3,5 tỷ: NGUỒN A loại dữ liệu tập dượt bằng danh sách đen viết từ thời chỉ có org demo, nên org nhân bản ihome-test lọt vào. Hai lỗi che nhau. Nay A neo bằng danh sách trắng is_demo=false. Đột biến 5/5 và 6/6."
+    },
+    {
       "item": "✅ Đợt 5 (bước 3): any-cast Supabase 22 -> 0 ở 4 file tiền — sửa ở GỐC, không gỡ mù",
       "evidence": "useContracts (12) · useVoucherDetail (5) · useCommissionVoucher (3) · useCashHandovers (2). Không chỗ nào bị gỡ suông: nguyên nhân gốc của 12 cast ở useContracts là fetchAllRows nhận builder rồi tự gọi .range() — supabase-js chỉ suy kiểu .select() từ chuỗi LITERAL, nên chuỗi ghép động luôn thành GenericStringError[]. Sửa bằng cách tách thành hai hằng literal + đổi chữ ký fetchAllRows sang thunk (án lệ customerCreditRpc.ts). Bậc hoa hồng và mảng đính kèm nay được KIỂM LÚC CHẠY qua jsonValue.ts thay vì khẳng định suông. Còn 2 khẳng định HẸP ở useContracts — đã đăng ký known-gaps#contract-type-handwritten-drift. rpc-cast-baseline hạ về 0."
     },
