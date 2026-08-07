@@ -385,6 +385,70 @@ describe("durable runtime command heartbeat", () => {
     expect(harness.bodies.map((entry) => entry.path)).toContain("/v1/qr/result");
   });
 
+  // The crash that made every second QR fail. `web.login.start` overlapping an
+  // outstanding `web.login.wait` drives the cell gateway out of memory in ~60s, so
+  // the request that arrives during the restart is answered by nothing and the code
+  // behind the one already on screen is dead. Measured on the live cell: three
+  // overlapping starts, three aborts; three non-overlapping ones, heap flat.
+  it("never runs web.login.start while a web.login.wait is outstanding", async () => {
+    const payload = {
+      version: 1,
+      challengeId: "dddd6000-0000-4000-8000-000000000002",
+      browserNonceHash: "a".repeat(64),
+    };
+    const qrDataUrl = `data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64")}`;
+    const later = {
+      ...command("QR_LOGIN", payload, "STARTED"),
+      runtimeCommandId: "dddd5000-0000-4000-8000-000000000002",
+    };
+    const harness = runtime([
+      heartbeat({ commands: [command("QR_LOGIN", payload)] }),
+      heartbeat({ commands: [command("QR_LOGIN", payload, "STARTED")] }),
+      publishResult(payload.challengeId),
+      heartbeat({ commands: [later] }),
+      publishResult(payload.challengeId),
+      connectionResult(),
+    ]);
+    const { spool } = openSpool();
+
+    let waitsOutstanding = 0;
+    let overlaps = 0;
+    let waitCalls = 0;
+    const invoke = vi.fn(async (method: string) => {
+      if (method === "web.login.start") {
+        if (waitsOutstanding > 0) overlaps += 1;
+        return { message: "scan", qrDataUrl, connected: false };
+      }
+      if (method === "web.login.wait") {
+        waitsOutstanding += 1;
+        waitCalls += 1;
+        try {
+          await new Promise((resolve) => { setTimeout(resolve, 5); });
+          // Nobody has scanned yet. The old code sealed here; the fix re-arms.
+          return { connected: waitCalls > 2, message: "pending" };
+        } finally {
+          waitsOutstanding -= 1;
+        }
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+    const consumer = createHeartbeat({
+      spool,
+      runtime: harness.client,
+      invoke,
+      qrEncryptionKey: Buffer.alloc(32, 7),
+    });
+
+    await consumer.pulse();
+    // A second "Lấy mã QR" lands while the first code is still being waited on.
+    await consumer.pulse();
+    await consumer.stop();
+
+    expect(overlaps).toBe(0);
+    // An unscanned code must be re-armed, not sealed on the first empty answer.
+    expect(waitCalls).toBeGreaterThan(1);
+  });
+
   it("replays byte-identical encrypted QR publication after a lost response", async () => {
     const payload = {
       version: 1,

@@ -17,7 +17,20 @@ const QR_DATA_URL = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u;
 const COMMAND_LEASE_SECONDS = 60;
 const MIN_EFFECT_MARGIN_MS = 15_000;
 const QR_START_TIMEOUT_MS = 30_000;
-const QR_WAIT_TIMEOUT_MS = 120_000;
+/**
+ * How long one `web.login.wait` blocks before it is re-armed.
+ *
+ * Deliberately short, because the wait holds the login gate (see `withLoginGate`)
+ * and a queued `web.login.start` cannot run until it returns. 20s is the longest a
+ * fresh "Lấy mã QR" should ever sit behind a stale one.
+ *
+ * Waiting longer in a single call buys nothing anyway: Zalo retires the code on its
+ * own. Measured against the live provider, `web.login.wait` returned early at 31.7s
+ * on a scan attempt while an unscanned code ran the full 120s. `finalizeQr` re-arms
+ * the wait in a loop, so the scan window is bounded by the challenge deadline rather
+ * than by this constant.
+ */
+const QR_WAIT_TIMEOUT_MS = 20_000;
 const MAX_COMMAND_BATCH = 8;
 
 type CommandKind = "QR_LOGIN" | "DISCONNECT";
@@ -444,16 +457,71 @@ export function createRuntimeCommandHeartbeat(options: {
   const waitingQr = new Set<string>();
   let stopped = false;
 
+  // THE crash that made every second QR fail.
+  //
+  // `web.login.start` and `web.login.wait` must never overlap on the same account.
+  // When they do, the cell gateway allocates without bound and dies of "JavaScript
+  // heap out of memory" roughly 60s later, taking ~68s to come back. Measured on the
+  // live cell: three starts that overlapped an outstanding wait each killed the
+  // process, while three that did not ran clean and left the heap flat at 276MB.
+  //
+  // The visible symptom was an exact alternation - QR 1 works, QR 2 never appears,
+  // QR 3 works - because request N+1 arrived into the crash window opened by request
+  // N and was answered by nothing. It also explains "mã quét không hoạt động": the
+  // process holding the login attempt behind the displayed code was already gone.
+  //
+  // The gate serialises the two calls. `loginEpoch` supersedes an in-flight wait so a
+  // new code does not queue behind the full lifetime of the code it replaces.
+  let loginGate: Promise<unknown> = Promise.resolve();
+  let loginEpoch = 0;
+
+  const withLoginGate = async <T>(run: () => Promise<T>): Promise<T> => {
+    const previous = loginGate;
+    let release = (): void => undefined;
+    loginGate = new Promise<void>((resolve) => { release = resolve; });
+    await previous.catch(() => undefined);
+    try {
+      return await run();
+    } finally {
+      release();
+    }
+  };
+
   const finalizeQr = (snapshot: RuntimeCommandJournalSnapshot): void => {
     if (waitingQr.has(snapshot.runtimeCommandId)) return;
     waitingQr.add(snapshot.runtimeCommandId);
     const payload = snapshot.payload as QrLoginCommand["payload"];
     const task = (async () => {
-      const waited = await options.cellRpc.invoke("web.login.wait", {
-        accountId: options.channelAccountId,
-        timeoutMs: QR_WAIT_TIMEOUT_MS,
-      });
-      if (stopped || !connectedResult(waited)) return;
+      const epoch = loginEpoch;
+      const deadline = snapshot.effectDeadlineAt === null
+        ? NaN
+        : Date.parse(snapshot.effectDeadlineAt);
+      const seal = (): void => {
+        // Nobody scanned inside the window, Zalo retired the code, or a newer code
+        // replaced it. The command is finished either way, and leaving it in
+        // LOGIN_WAITING kept the journal row alive forever.
+        options.spool.transitionRuntimeCommand(
+          snapshot.runtimeCommandId,
+          ["LOGIN_WAITING"],
+          "SEALED",
+          { sealedReason: "QR_EXPIRED_UNSCANNED" },
+          now(),
+        );
+      };
+      let waited: unknown;
+      for (;;) {
+        if (stopped) return;
+        // A newer QR_LOGIN has taken the account. Stop re-arming so the start behind
+        // the gate is served immediately instead of after this code's full lifetime.
+        if (epoch !== loginEpoch) { seal(); return; }
+        if (!Number.isFinite(deadline) || deadline - now() <= 0) { seal(); return; }
+        waited = await withLoginGate(() => options.cellRpc.invoke("web.login.wait", {
+          accountId: options.channelAccountId,
+          timeoutMs: QR_WAIT_TIMEOUT_MS,
+        }));
+        if (stopped) return;
+        if (connectedResult(waited)) break;
+      }
       if (options.spool.hasNewerRuntimeDisconnect(snapshot.sourceSessionGeneration)) {
         const cleanup = options.spool.transitionRuntimeCommand(
           snapshot.runtimeCommandId,
@@ -478,6 +546,15 @@ export function createRuntimeCommandHeartbeat(options: {
       if (response.version !== 1 || response.connectionState !== "CONNECTED") {
         fail("QR connection result is invalid");
       }
+      // Connected. Seal it - LOGIN_WAITING had NO exit at all, not even on success,
+      // so the journal row outlived the command it described.
+      options.spool.transitionRuntimeCommand(
+        snapshot.runtimeCommandId,
+        ["LOGIN_WAITING"],
+        "SEALED",
+        { sealedReason: "QR_LOGIN_CONFIRMED" },
+        now(),
+      );
     })();
     background.add(task);
     void task.finally(() => {
@@ -636,12 +713,16 @@ export function createRuntimeCommandHeartbeat(options: {
     const payload = snapshot.payload as QrLoginCommand["payload"];
     let qr: string;
     try {
-      qr = qrDataUrl(await options.cellRpc.invoke("web.login.start", {
+      // Supersede first, then take the gate: any outstanding `web.login.wait` stops
+      // re-arming and releases, so this start never overlaps it. Overlapping is what
+      // killed the cell with an out-of-memory abort - see `withLoginGate`.
+      loginEpoch += 1;
+      qr = qrDataUrl(await withLoginGate(() => options.cellRpc.invoke("web.login.start", {
         accountId: options.channelAccountId,
         force: true,
         verbose: false,
         timeoutMs: QR_START_TIMEOUT_MS,
-      }));
+      })));
     } catch {
       options.spool.transitionRuntimeCommand(
         snapshot.runtimeCommandId,

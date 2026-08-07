@@ -1529,10 +1529,23 @@ export class SqliteSpool {
 
   runtimeCommandRenewals(nowMs: number, remainingMs = 30_000, limit = 8): RuntimeCommandJournalSnapshot[] {
     const rows = this.db.prepare(
+      // LOGIN_WAITING and STALE_LOGIN_CLEANUP_PENDING are deliberately NOT renewed.
+      //
+      // By the time a command reaches either stage the server has already finished
+      // with it: publishing the QR sets state='ACKNOWLEDGED' and nulls both
+      // claim_token_hash and lease_expires_at. Renewing sends a start-marker for an
+      // ACKNOWLEDGED command, which the facade answers with
+      // `raise ... errcode='40001'` - and that rolls back the WHOLE heartbeat
+      // transaction, not just the marker. Because the journal's leaseExpiresAt is
+      // frozen at that point, the filter below matched forever, so every heartbeat
+      // from then on was destroyed by a command that had already succeeded.
+      //
+      // That is the "exactly one QR per bridge start" failure: the first code worked,
+      // and no later command could ever be leased again.
       `SELECT runtime_command_id FROM runtime_command_journal
        WHERE stage IN (
          'START_AUTHORIZED','EFFECT_INTENT','PROVIDER_RECORDED','QR_MATERIAL_READY',
-         'PUBLISH_PENDING','LOGIN_WAITING','RESULT_PENDING','STALE_LOGIN_CLEANUP_PENDING'
+         'PUBLISH_PENDING','RESULT_PENDING'
        ) ORDER BY updated_at_ms,runtime_command_id`,
     ).all() as Array<{ runtime_command_id: string }>;
     return rows
