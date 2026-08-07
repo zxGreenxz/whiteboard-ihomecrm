@@ -93,17 +93,32 @@ gaps:
 
 
 
-  - id: baseline-not-verified-on-supabase
-    where: supabase/baseline/ (manifest.json + schema.sql)
-    expires_at: 2026-10-31
-    why: >
-      Baseline đã sạch partition runtime (0 rò rỉ) và restore được trên PostgreSQL 17.10
-      trần: 303 bảng, 948 hàm, 803 policy. 817 lỗi còn lại đều do target thiếu schema auth
-      và các role của Supabase — trên project Supabase thật thì chúng có sẵn. Nhưng CHƯA
-      restore thử trên một Supabase project thật nên chưa gọi là verified.
-    exit_condition: >
-      Tạo một Supabase project tạm, restore baseline vào đó, xác nhận số bảng/hàm/policy khớp
-      production, rồi đổi manifest.status thành verified.
+# ĐÃ ĐÓNG 07/08/2026 — baseline-not-verified-on-supabase.
+#
+# Đã diễn tập thật trên một Supabase project trắng (PostgreSQL 17.6, cùng bản
+# chính với production) do chủ dự án cấp. Kết quả cuối: bảng 439/439 ·
+# view 14/14 · policy 1193/1193 · trigger 493/493.
+#
+# NHƯNG lần chạy ĐẦU TIÊN thất bại, và đó mới là giá trị của việc diễn tập:
+#   → policy chỉ dựng được 922/1193 (mất 271, tức mất phần lớn hàng rào RLS)
+#   → 249 lỗi 'role "…" does not exist'
+# Nguyên nhân: pg_dump --schema-only KHÔNG dump role (role thuộc cấp cluster),
+# nên baseline tham chiếu 7 role riêng của ứng dụng mà không tạo chúng.
+#
+# Ghi chú CŨ của mục này nói lỗi khi restore lên Postgres trần "đều do target
+# thiếu role của Supabase — trên project Supabase thật thì chúng có sẵn". Vế
+# đầu đúng, SUY LUẬN SAU SAI: các role thiếu là role của CHÍNH ỨNG DỤNG
+# (openclaw_function_owner, ie_canonical_writer…), Supabase không có sẵn. Chỉ
+# diễn tập thật mới phân biệt được hai điều đó.
+#
+# Và manifest luôn ghi đủ số đếm (439 bảng, 1193 policy) vì nó đếm trên FILE,
+# không đếm trên KẾT QUẢ khôi phục — nên trên giấy baseline lúc nào cũng đầy đủ.
+#
+# ĐÃ SỬA: supabase/baseline/roles.sql (sinh bởi capture-schema-baseline.mjs),
+# và quy trình khôi phục ba bước ghi ở supabase/baseline/README.md — roles.sql
+# trước, rồi schema.sql HAI LƯỢT (lượt 2 dựng nốt object tham chiếu tiến, ví dụ
+# public.rooms có cột sinh phụ thuộc public.room_sort_key).
+# Chạy lại bất cứ lúc nào: node scripts/dien-tap-khoi-phuc-baseline.mjs --dich "…"
 
 # ĐÃ ĐÓNG 06/08/2026 — buildingfilterselect-test-failing.
 # Nguyên nhân: commit 5b14e9a0 thêm option `includeVirtual` nhưng không sửa test;
