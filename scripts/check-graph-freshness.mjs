@@ -43,7 +43,7 @@ const PIN = join(repoRoot, "tooling", "agent-tools.json");
  * `maxCommitsBehind: 999999` biến mọi graph thành "tươi". Mức lệch đã đo
  * (487/1345/118) không bao giờ được phép đi qua cửa chặn cứng.
  */
-const TRAN = { maxCommitsBehind: 200, maxFilesDrifted: 500, maxMigrationsMissing: 30 };
+const TRAN = { maxCommitsBehind: 200, maxFilesDrifted: 500, maxMigrationsMissing: 30, maxNewFilesUnseen: 120 };
 
 function git(args, { imLang = false } = {}) {
   try {
@@ -52,6 +52,22 @@ function git(args, { imLang = false } = {}) {
     if (imLang) return null;
     throw e;
   }
+}
+
+/**
+ * File NGUỒN được THÊM MỚI kể từ lúc graph được sinh — graph chưa từng thấy chúng.
+ *
+ * Chỉ đếm phần mở rộng có mã, không đếm tài liệu/ảnh/lock: một trang Markdown mới
+ * không làm hỏng khả năng tìm code, còn một module mới thì có.
+ */
+export function demFileMoi(base, head) {
+  if (!base || base === head) return 0;
+  const ra = git(["diff", "--diff-filter=A", "--name-only", `${base}..${head}`], { imLang: true });
+  if (ra === null) return 0;
+  return ra
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs|sql|py|go|rs)$/.test(f)).length;
 }
 
 /** Chỉ mục GitNexus có ba trạng thái, và gộp chúng lại là hỏng cả luật. */
@@ -90,6 +106,20 @@ export function danhGiaTuoi(soDo, policy, batBuoc) {
   if (soDo.commitsBehind > h.maxCommitsBehind) loi.push(`cũ ${soDo.commitsBehind} commit (trần ${h.maxCommitsBehind})`);
   if (soDo.filesDrifted > h.maxFilesDrifted) loi.push(`${soDo.filesDrifted} file đã đổi (trần ${h.maxFilesDrifted})`);
   if (soDo.migrationsMissing > h.maxMigrationsMissing) loi.push(`thiếu ${soDo.migrationsMissing} migration (trần ${h.maxMigrationsMissing})`);
+  // File MỚI tách riêng khỏi filesDrifted, và trần chặt hơn hẳn.
+  //
+  // Hai thứ này không cùng loại: một file ĐÃ SỬA thì graph còn bản cũ — tìm ra
+  // được, chỉ sai chi tiết. Một file MỚI thì graph chưa từng thấy — tìm là TRƯỢT
+  // HOÀN TOÀN, và người dùng không nhận ra vì kết quả rỗng trông y hệt "không có".
+  //
+  // Bắt được 07/08/2026 khi chủ dự án hỏi "index còn dùng để tìm được không":
+  // gate báo GitNexus FRESH (32 commit, dưới trần 50; 116 file đổi, dưới trần
+  // 150) trong khi 64 file HOÀN TOÀN MỚI vô hình với nó — gồm trọn bốn thư mục
+  // src/app/providers, src/app/routes, src/lib/contracts, src/hooks/realtime.
+  // Cả hai ngưỡng cũ đều nói "tươi" cùng lúc.
+  if (h.maxNewFilesUnseen !== undefined && soDo.newFilesUnseen > h.maxNewFilesUnseen) {
+    loi.push(`${soDo.newFilesUnseen} file MỚI graph chưa từng thấy (trần ${h.maxNewFilesUnseen})`);
+  }
   if (soDo.missingSubsystems.length > h.maxMissingSubsystems) {
     loi.push(`${soDo.missingSubsystems.length} tiểu hệ thống vắng mặt: ${soDo.missingSubsystems.slice(0, 3).join(", ")}`);
   }
@@ -210,6 +240,7 @@ function main(argv) {
     const soDo = {
       commitsBehind: base === head ? 0 : Number(git(["rev-list", "--count", `${base}..${head}`])),
       filesDrifted: duongDan.length,
+      newFilesUnseen: demFileMoi(base, head),
       migrationsMissing: duongDan.filter((f) => f.startsWith("supabase/migrations/")).length,
       missingSubsystems: timSubsystemThieu(thuMucCoCode, tienTo),
       toolVersion: manifest.toolVersion,
@@ -225,9 +256,13 @@ function main(argv) {
   if (loai === "CO") {
     const m = JSON.parse(readFileSync(gnManifest, "utf8"));
     const behind = m.baseCommit === head ? 0 : Number(git(["rev-list", "--count", `${m.baseCommit}..${head}`], { imLang: true }) ?? "9999");
+    const moi = demFileMoi(m.baseCommit, head);
+    const quaTran =
+      behind > policy.hard.maxCommitsBehind ||
+      (policy.hard.maxNewFilesUnseen !== undefined && moi > policy.hard.maxNewFilesUnseen);
     graphs.gitnexus = {
-      status: behind > policy.hard.maxCommitsBehind ? "STALE" : "FRESH",
-      commitsBehind: behind, baseCommit: m.baseCommit, toolVersion: m.toolVersion,
+      status: quaTran ? "STALE" : "FRESH",
+      commitsBehind: behind, newFilesUnseen: moi, baseCommit: m.baseCommit, toolVersion: m.toolVersion,
     };
   } else {
     graphs.gitnexus = { status: loai };
@@ -241,6 +276,7 @@ function main(argv) {
   } else {
     console.log(
       `  UA        : ${u.status} — cũ ${u.commitsBehind} commit · ${u.filesDrifted} file đổi · ` +
+      `${u.newFilesUnseen} file mới · ` +
       `thiếu ${u.migrationsMissing} migration · ${u.missingSubsystems.length} tiểu hệ vắng mặt`,
     );
     if (u.missingSubsystems.length) console.log(`              vắng: ${u.missingSubsystems.join(", ")}`);
@@ -249,7 +285,9 @@ function main(argv) {
   console.log(
     `  GitNexus  : ${g.status}` +
     (g.status === "NOT_ADOPTED" ? " — CHƯA ÁP DỤNG (chưa pin verified trong tooling/agent-tools.json)" : "") +
-    (g.commitsBehind !== undefined ? ` — cũ ${g.commitsBehind} commit` : ""),
+    (g.commitsBehind !== undefined
+      ? ` — cũ ${g.commitsBehind} commit · ${g.newFilesUnseen ?? "?"} file mới chưa index`
+      : ""),
   );
   console.log(`\n  Ưu tiên khi mâu thuẫn: ${policy.precedence.join(" > ")}`);
 
