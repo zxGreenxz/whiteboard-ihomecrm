@@ -603,6 +603,15 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-migration-ledger-frozen.mjs
 
+      # Migration sau cutoff phải chạy lại được lần hai. Re-apply xảy ra khi apply
+      # hỏng giữa chừng, khi dựng lại môi trường từ baseline + forward lane, và khi
+      # hợp thức hoá một thay đổi đã đi đường tắt — cả ba đều là lúc người ta vội.
+      # Chạy trên production nhưng KHÔNG ghi: hai lượt trong một transaction, ROLLBACK.
+      - name: Migration forward chạy lại được lần hai (idempotent)
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-forward-migration-idempotent.mjs
+
       # BA BIÊN mà hợp đồng chỉ là MỘT CHUỖI, và không trình biên dịch nào kiểm
       # được: tên RPC, slug Edge Function, tên bảng realtime. types.ts có kiểu RPC
       # nhưng chỉ che phần src/ được tsc soi — Edge Function chạy Deno, services/

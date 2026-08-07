@@ -175,8 +175,16 @@ function goTransactionCuaFile(sql) {
 }
 
 /** Bọc migration trong một transaction có khoá và timeout rõ ràng. */
-export function buildTransaction(sql, { rollback = false } = {}) {
+export function buildTransaction(sql, { rollback = false, lanChay = 1 } = {}) {
   const body = goTransactionCuaFile(sql);
+
+  // `lanChay: 2` dán thân migration HAI LẦN trong CÙNG một transaction — dùng để
+  // chứng minh tính idempotent (scripts/check-forward-migration-idempotent.mjs).
+  // Chỉ cho phép kèm rollback: chạy hai lần rồi COMMIT là ghi đè thật hai lượt.
+  if (lanChay !== 1 && !rollback) {
+    throw new Error("lanChay > 1 chỉ dùng được với rollback: true — chạy lặp rồi COMMIT là ghi thật hai lượt.");
+  }
+  const than = Array.from({ length: lanChay }, () => body).join("\n\n");
 
   const out = [
     "BEGIN;",
@@ -184,7 +192,7 @@ export function buildTransaction(sql, { rollback = false } = {}) {
     `SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT}';`,
     `SELECT pg_advisory_xact_lock(hashtext('${LOCK_NAME}'));`,
     "",
-    body,
+    than,
     "",
     rollback ? "ROLLBACK;" : "COMMIT;",
   ].join("\n");
