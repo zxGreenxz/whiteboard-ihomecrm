@@ -26,26 +26,10 @@ import { useAuth } from "@/hooks/useAuth";
 // App (entry chunk), import tĩnh sẽ phồng bundle đầu vô ích.
 import type { PrefetchDomain } from "@/lib/prefetchPages";
 
-type SyncTable =
-  | "invoices"
-  | "income_expenses"
-  | "contracts"
-  | "rooms"
-  | "buildings"
-  | "jobs"
-  | "customers"
-  // Rủi ro #5 của plan thu chi: ba bảng tiền dưới đây trước KHÔNG có mặt ở đây.
-  // Hồi đó vô hại vì phiếu bất biến; từ Đợt 4/5/6 phiếu sửa/huỷ/chốt được nên
-  // hai người đối chiếu quỹ sẽ đọc ra hai số khác nhau nếu không đồng bộ.
-  | "payments"
-  | "income_expense_items"
-  | "accounts"
-  | "cash_handovers"
-  // Đợt 1: hai bảng VÒNG ĐỜI. Trước đây chúng không nằm trong publication
-  // `supabase_realtime` lẫn danh sách này, nên mọi thay đổi thanh lý / chuyển
-  // phòng là im lặng hoàn toàn.
-  | "contract_terminations"
-  | "contract_transfers";
+// Danh sách bảng + union kiểu nay ở src/lib/realtime/syncTables.ts — module DỮ
+// LIỆU THUẦN để scripts/check-realtime-descriptors.mjs đọc được mà không phải
+// nạp React. Khai ở hai nơi thì hai nơi sẽ trôi khỏi nhau.
+import { type SyncTable } from "@/lib/realtime/syncTables";
 
 type BusinessPerformanceSubtype =
   | "organizations"

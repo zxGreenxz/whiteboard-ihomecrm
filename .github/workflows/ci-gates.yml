@@ -552,6 +552,15 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-permission-catalog.mjs
 
+      # Bảng hub realtime lắng nghe mà KHÔNG nằm trong publication
+      # `supabase_realtime` = subscribe câm: Supabase không đẩy sự kiện nào,
+      # không lỗi, không cảnh báo, giao diện chỉ lặng lẽ ngừng tự cập nhật.
+      # Án lệ: contract_terminations/contract_transfers từng vắng ở cả hai nơi.
+      - name: Bảng realtime hub lắng nghe đều được publish
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-realtime-descriptors.mjs
+
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
   # Cần SUPABASE_ACCESS_TOKEN (Supabase CLI).
