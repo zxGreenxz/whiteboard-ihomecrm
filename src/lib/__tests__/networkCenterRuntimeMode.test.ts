@@ -63,7 +63,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
-import App from "@/App";
+import { AppRoutes } from "@/app/routes";
 import Sidebar from "@/components/layout/Sidebar";
 import {
   isNetworkCenterEnabled,
@@ -138,7 +138,12 @@ describe("Network Center runtime mode", () => {
   });
 
   it("falls through the real App route tree when off", () => {
-    const paths = collectRoutePaths(App());
+    // P1.2 tách App.tsx: cây route dời sang src/app/routes/index.tsx. Hàm duyệt
+    // dưới đây đi bộ trên JSX, nên nó phải nhận đúng chỗ cây route ĐANG nằm —
+    // gọi App() nay chỉ trả về <AppRoutes /> chưa render, và duyệt qua đó sẽ đếm
+    // ra 0 route rồi khẳng định "không có /network-center" một cách rỗng tuếch.
+    const paths = collectRoutePaths(AppRoutes());
+    expect(paths.length, "không dựng được bảng route — phép đo hỏng").toBeGreaterThan(50);
 
     expect(paths).not.toContain("/network-center/*");
     expect(resolveRoutePath(paths, "/network-center")).toBe("*");

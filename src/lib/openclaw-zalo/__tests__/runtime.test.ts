@@ -38,12 +38,34 @@ describe("OpenClaw runtime flag", () => {
     }
   });
 
-  it("gates the route, the way Network Center already does", () => {
-    // Asserted against App.tsx rather than described in prose: a flag nothing
-    // consults is not a flag. The route must sit inside the conditional.
-    const app = readFileSync("src/App.tsx", "utf8");
-    expect(app).toContain("OPENCLAW_RUNTIME_ENABLED");
-    const guarded = /OPENCLAW_RUNTIME_ENABLED \? \([\s\S]{0,600}?path="\/openclaw-zalo"/u;
-    expect(app, "the /openclaw-zalo route is not inside the flag").toMatch(guarded);
+  it("cờ TẮT thì bảng route THẬT không có /openclaw-zalo", async () => {
+    // VIẾT LẠI Ở P1.2 (tách App.tsx).
+    //
+    // Bản cũ regex trên VĂN BẢN NGUỒN của src/App.tsx, tìm `OPENCLAW_RUNTIME_ENABLED ? (`
+    // đứng gần `path="/openclaw-zalo"`. Cây route đã dời sang src/app/routes/index.tsx
+    // nên nó vỡ — vì HÌNH DẠNG đổi, không phải vì tính chất mất.
+    //
+    // Và bản cũ vốn yếu hơn tên gọi: nó chứng minh hai chuỗi ở gần nhau trong một
+    // file, không chứng minh react-router THẬT SỰ không thấy route đó. Nay dựng
+    // cây route thật rồi đếm — đúng cách test Network Center bên cạnh đang làm.
+    const { AppRoutes } = await import("@/app/routes");
+    const { Route } = await import("react-router-dom");
+    const { Children, isValidElement } = await import("react");
+
+    type ReactNode = Parameters<typeof Children.forEach>[0];
+    const duyet = (node: ReactNode, ra: string[] = []): string[] => {
+      Children.forEach(node, (child) => {
+        if (!isValidElement(child)) return;
+        const props = child.props as { path?: unknown; children?: ReactNode };
+        if (child.type === Route && typeof props.path === "string") ra.push(props.path);
+        duyet(props.children, ra);
+      });
+      return ra;
+    };
+
+    const paths = duyet(AppRoutes());
+    expect(paths.length, "không dựng được bảng route — phép đo hỏng").toBeGreaterThan(50);
+    // Cờ mặc định TẮT (đã chốt ở test khác trong file này).
+    expect(paths).not.toContain("/openclaw-zalo");
   });
 });
