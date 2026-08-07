@@ -568,6 +568,19 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-realtime-descriptors.mjs
 
+      # BA BIÊN mà hợp đồng chỉ là MỘT CHUỖI, và không trình biên dịch nào kiểm
+      # được: tên RPC, slug Edge Function, tên bảng realtime. types.ts có kiểu RPC
+      # nhưng chỉ che phần src/ được tsc soi — Edge Function chạy Deno, services/
+      # và infra/ nằm ngoài hoàn toàn. Manifest sinh từ HAI nguồn (call site +
+      # catalog live) theo plan §P1.7, và đỏ khi hai nguồn không giao nhau đúng.
+      - name: Bề mặt RPC · Edge · realtime khớp catalog live
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: |
+          node scripts/check-rpc-surface.mjs
+          node scripts/check-edge-surface.mjs
+          node scripts/check-realtime-surface.mjs
+
   # ─────────────────────────────────────────────────────────────────────────
   # Optional: phát hiện types.ts (Supabase generated types) trôi so với schema.
   # Cần SUPABASE_ACCESS_TOKEN (Supabase CLI).

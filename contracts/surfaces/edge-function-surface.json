@@ -1,0 +1,127 @@
+{
+  "$comment": "BỀ MẶT EDGE FUNCTION. Thư mục trong repo KHÔNG có nghĩa là hàm đang chạy — deploy là thao tác riêng, không gắn với git push. Sinh từ BA nguồn: thư mục supabase/functions/*, Management API (trạng thái đang chạy), và call site functions.invoke(). Sinh bởi scripts/generate-edge-surface.mjs; kiểm bởi scripts/check-edge-surface.mjs.",
+  "counts": {
+    "source": 13,
+    "deployed": 11,
+    "invoked": 2,
+    "publiclyCallable": 5
+  },
+  "sourceWithoutDeployment": [
+    "network-watchdog",
+    "openclaw-watchdog"
+  ],
+  "deploymentWithoutSource": [],
+  "invokedButNotDeployed": [],
+  "functions": {
+    "admin-create-user": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 20,
+      "verifyJwt": true,
+      "callers": [
+        "src/hooks/useAdminUsers.ts",
+        "src/hooks/useShareholders.ts"
+      ]
+    },
+    "demo-reset": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 16,
+      "verifyJwt": false,
+      "callers": []
+    },
+    "llm-proxy": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 23,
+      "verifyJwt": true,
+      "callers": []
+    },
+    "network-center-worker": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 5,
+      "verifyJwt": false,
+      "callers": []
+    },
+    "network-watchdog": {
+      "hasSource": true,
+      "deployed": false,
+      "status": null,
+      "version": null,
+      "verifyJwt": null,
+      "callers": []
+    },
+    "openclaw-control": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 3,
+      "verifyJwt": true,
+      "callers": []
+    },
+    "openclaw-object-tickets": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 3,
+      "verifyJwt": true,
+      "callers": []
+    },
+    "openclaw-qr": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 3,
+      "verifyJwt": true,
+      "callers": []
+    },
+    "openclaw-runtime": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 6,
+      "verifyJwt": false,
+      "callers": []
+    },
+    "openclaw-runtime-token": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 3,
+      "verifyJwt": false,
+      "callers": []
+    },
+    "openclaw-watchdog": {
+      "hasSource": true,
+      "deployed": false,
+      "status": null,
+      "version": null,
+      "verifyJwt": null,
+      "callers": []
+    },
+    "salary-v5-jobs": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 19,
+      "verifyJwt": false,
+      "callers": []
+    },
+    "send-push": {
+      "hasSource": true,
+      "deployed": true,
+      "status": "ACTIVE",
+      "version": 21,
+      "verifyJwt": true,
+      "callers": [
+        "src/lib/push.ts",
+        "src/lib/salaryBonusNotify.ts"
+      ]
+    }
+  }
+}

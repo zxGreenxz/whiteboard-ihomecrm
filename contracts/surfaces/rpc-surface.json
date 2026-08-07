@@ -1,0 +1,4602 @@
+{
+  "$comment": "BỀ MẶT RPC — hợp đồng ở biên TypeScript ↔ PostgreSQL, nơi mà không có nó thì hợp đồng chỉ là một chuỗi ký tự. Sinh từ HAI nguồn (call site trong mã nguồn + catalog live đã normalize) theo plan §P1.7; KHÔNG sinh từ văn bản migration vì 628 file không khớp ledger chính xác. Chỉ ghi RPC ĐANG ĐƯỢC GỌI: ghi cả 1040 hàm sẽ tạo file đổi theo mọi migration nội bộ và người ta sẽ ngừng đọc diff của nó. Sinh bởi scripts/generate-rpc-surface.mjs; kiểm bởi scripts/check-rpc-surface.mjs.",
+  "generatedFrom": {
+    "sourceCallSites": 1561,
+    "catalogFunctions": 1063,
+    "schemas": [
+      "public",
+      "api"
+    ]
+  },
+  "counts": {
+    "calledRpcs": 230,
+    "byRisk": {
+      "normal": 150,
+      "financial": 74,
+      "security": 6
+    },
+    "securityDefiner": 214
+  },
+  "missingOnServer": [],
+  "rpcs": {
+    "accept_organization_invitation_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_token text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/pages/auth/AcceptInvitation.tsx"
+      ],
+      "risk": "normal"
+    },
+    "annotate_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_add_attachments jsonb DEFAULT NULL::jsonb, p_remove_attachments jsonb DEFAULT NULL::jsonb, p_notes text DEFAULT NULL::text, p_note_mode text DEFAULT 'REPLACE'::text, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/annotateMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "append_fee_attachment": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_url text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "approve_contract_termination_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_termination_id uuid, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
+    "approve_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "approve_invoice_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid",
+          "returns": "invoices",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "approve_meter_reading": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_reading_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
+    "approve_meter_reading_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "meter_readings",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
+    "approve_voucher": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "voucher_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "archive_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook_id uuid",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useAccounts.ts"
+      ],
+      "risk": "normal"
+    },
+    "award_job_bonus": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_job_id uuid",
+          "returns": "TABLE(bonus_kind text, amount numeric, label text, note text, place text, content text, icon text, time_context text, notif_id uuid)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/salaryBonusNotify.ts"
+      ],
+      "risk": "financial"
+    },
+    "bulk_approve_invoices_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_ids uuid[]",
+          "returns": "integer",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "bulk_approve_meter_readings": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_reading_ids uuid[]",
+          "returns": "integer",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
+    "bulk_approve_meter_readings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_ids uuid[]",
+          "returns": "integer",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
+    "bulk_create_meter_readings": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_readings jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_break_even_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_basis text, p_month date, p_building_ids uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, analysis_window text, window_start date, window_end date, source_month_count integer, valid_month_count integer, revenue numeric, expense numeric, net numeric, gap_to_zero numeric, r_room numeric, r_other numeric, r_pass numeric, f_landlord numeric, f_other numeric, v_room numeric, v_other numeric, e_pass numeric, mapping_coverage_pct numeric, unmapped_amount numeric, outside_model_amount numeric, missing_landlord_months date[], cmr_core numeric, cmr_room numeric, r_core_be numeric, r_total_be numeric, r_room_be numeric, break_even_revenue_available boolean, break_even_revenue_reason text, room_break_even_revenue_available boolean, room_break_even_revenue_reason text, capacity_current numeric, capacity_blocked numeric, capacity_theory numeric, invalid_rent_room_count integer, break_even_occupancy_current numeric, break_even_occupancy_theory numeric, room_revenue_utilization_pct numeric, break_even_occupancy_available boolean, break_even_occupancy_reason text, capacity_source text, capacity_as_of timestamp with time zone, generated_at timestamp with time zone)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformanceGatedData.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_cash_received_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_month date, p_building_ids uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, cash_month date, cash_received numeric, payment_event_count integer, first_payment_date date, last_payment_date date, generated_at timestamp with time zone)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformanceGatedData.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_category_breakdown_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_basis text, p_start_date date, p_end_date date, p_building_ids uuid[]",
+          "returns": "TABLE(month date, side text, type_id uuid, type_name text, category text, total_amount numeric, voucher_count bigint)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformanceGatedData.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_inventory_history_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_start_month date, p_end_month date, p_building_ids uuid[]",
+          "returns": "TABLE(snapshot_month date, building_id uuid, building_name text, snapshot_status text, snapshot_missing boolean, availability_reason text, total integer, occupied integer, reserved integer, maintenance integer, unavailable integer, available integer, occupancy_pct numeric, committed_pct numeric, listed_rent_opportunity numeric, capacity_current numeric, capacity_blocked numeric, capacity_theory numeric, invalid_rent_room_count integer, as_of_date date, as_of_timestamp timestamp with time zone, captured_at timestamp with time zone, is_late boolean, capture_version integer)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformanceGatedData.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_invoice_cohort_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_cohort_month date, p_building_ids uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, cohort_month date, cohort_available boolean, billed_current_charge numeric, collected_current_charge numeric, remaining_current_charge numeric, collection_rate_pct numeric, invoice_count integer, allocation_unknown_count integer, allocation_unknown_amount numeric, component_anomaly_count integer, carried_invoice_debt numeric, carried_deposit_debt numeric, current_deposit numeric, draft_pending_count integer, draft_pending_amount numeric, settlement_count integer, settlement_amount numeric, generated_at timestamp with time zone)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformanceGatedData.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_occupancy_monthly_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_start_date date, p_end_date date, p_building_ids uuid[]",
+          "returns": "TABLE(month date, building_id uuid, building_name text, total_rooms integer, occupied_rooms integer, occupancy_pct numeric)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformance.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_occupancy_snapshot_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_as_of_date date, p_building_ids uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, total integer, occupied integer, reserved integer, maintenance integer, unavailable integer, available integer, occupancy_pct numeric, committed_pct numeric, missed_revenue numeric, generated_at timestamp with time zone)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformance.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_organizations_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(organization_id uuid, organization_name text, authorized_buildings jsonb, authorized_physical_building_count bigint, authorization_version bigint)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformance.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_pnl_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_basis text, p_start_date date, p_end_date date, p_building_ids uuid[]",
+          "returns": "TABLE(month date, building_id uuid, building_name text, is_virtual boolean, revenue numeric, expense numeric, net numeric)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformance.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_reporting_roles_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_month date, p_building_ids uuid[]",
+          "returns": "TABLE(income_expense_type_id uuid, type_name text, side text, category text, finance_reporting_role text, effective_from date, effective_to date, confirmed_at timestamp with time zone, confirmed_by uuid, suggested_role text, can_manage boolean)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformanceGatedData.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_set_reporting_role_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_income_expense_type_id uuid, p_finance_reporting_role text, p_effective_from date",
+          "returns": "TABLE(assignment_id uuid, finance_reporting_role text, effective_from date, effective_to date, confirmed_at timestamp with time zone, confirmed_by uuid)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformanceGatedData.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_snapshot_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_building_ids uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, total_rooms integer, rooms_available integer, rooms_occupied integer, rooms_reserved integer, rooms_maintenance integer, rooms_unavailable integer, vacancy_loss_month numeric, active_contracts bigint, avg_rent numeric, deposit_held numeric, receivable_total numeric, aging_not_due numeric, aging_1_30 numeric, aging_31_60 numeric, aging_61_90 numeric, aging_over_90 numeric)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformance.ts"
+      ],
+      "risk": "normal"
+    },
+    "business_performance_upcoming_vacancy_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_as_of_date date, p_window_days integer, p_building_ids uuid[]",
+          "returns": "TABLE(contract_id uuid, contract_number text, building_id uuid, building_name text, room_id uuid, room_name text, effective_end_date date, days_remaining integer, rent_price numeric, extension_applied boolean)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useBusinessPerformance.ts"
+      ],
+      "risk": "normal"
+    },
+    "can_cancel_income_voucher_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_ids uuid[]",
+          "returns": "TABLE(id uuid, eligible boolean, mode text, reason_code text, blocking_voucher_code text)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/incomeVoucherCancel.ts"
+      ],
+      "risk": "financial"
+    },
+    "can_flex_cancel_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_ids uuid[]",
+          "returns": "TABLE(id uuid, eligible boolean, reason_code text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/flexMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "can_reverse_collection_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_collection_ids uuid[]",
+          "returns": "TABLE(collection_id uuid, mode text, reason_code text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDeletePayment.ts"
+      ],
+      "risk": "financial"
+    },
+    "cancel_cashbook_closing_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "cancel_income_expense_flex_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_reason text, p_expected_approval_version bigint DEFAULT NULL::bigint, p_expected_posting_version bigint DEFAULT NULL::bigint",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/flexMutations.ts",
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "cancel_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_reason text DEFAULT NULL::text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "cancel_income_voucher_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/incomeVoucherCancel.ts"
+      ],
+      "risk": "financial"
+    },
+    "cancel_period_fee": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "cancel_reconciliation": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReconciliations.ts"
+      ],
+      "risk": "normal"
+    },
+    "cancel_utility_bill": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useUtilityBills.ts"
+      ],
+      "risk": "normal"
+    },
+    "cashbook_balance_as_of_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid, p_as_of date DEFAULT NULL::date",
+          "returns": "numeric",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_close_confirmers_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid",
+          "returns": "TABLE(user_id uuid, full_name text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_closing_blockers_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid",
+          "returns": "TABLE(code text, blocking boolean, detail text, count_n integer)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_closing_monthly_status_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_month date",
+          "returns": "TABLE(cashbook_id uuid, cashbook_name text, bank_name text, is_bank boolean, closed_through date, covered boolean, has_pending_request boolean, activity_count bigint, balance_at_month_end numeric, needs_closing boolean, can_be_closed boolean, confirmer_count integer, i_can_propose boolean, i_can_confirm boolean)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_opening_balance": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_before_date date, p_building_id uuid DEFAULT NULL::uuid, p_account_id uuid DEFAULT NULL::uuid",
+          "returns": "numeric",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashBook.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_period_totals": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start date DEFAULT NULL::date, p_end date DEFAULT NULL::date, p_building_id uuid DEFAULT NULL::uuid, p_account_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashBook.ts"
+      ],
+      "risk": "financial"
+    },
+    "cashbook_settlement_report": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_from date, p_to date",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSettlementReport.ts"
+      ],
+      "risk": "normal"
+    },
+    "cashflow_by_day": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start date, p_end date, p_building_id uuid DEFAULT NULL::uuid, p_account_id uuid DEFAULT NULL::uuid",
+          "returns": "TABLE(day date, income numeric, expense numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashBook.ts"
+      ],
+      "risk": "financial"
+    },
+    "clone_org_request_sync_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, clone_org",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCloneOrgSync.ts"
+      ],
+      "risk": "normal"
+    },
+    "clone_org_sync_status_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, clone_org",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCloneOrgSync.ts"
+      ],
+      "risk": "normal"
+    },
+    "confirm_cancel_handover": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_handover_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashHandovers.ts"
+      ],
+      "risk": "normal"
+    },
+    "confirm_cash_handover": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_handover_id uuid, p_to_account_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashHandovers.ts"
+      ],
+      "risk": "normal"
+    },
+    "confirm_cashbook_closing_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request uuid, p_counted_balance numeric",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "confirm_reconciliation": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReconciliations.ts"
+      ],
+      "risk": "normal"
+    },
+    "create_cash_handover": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_receiver_id uuid, p_voucher_ids uuid[], p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashHandovers.ts"
+      ],
+      "risk": "normal"
+    },
+    "create_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_name text, p_initial_amount numeric, p_initial_date date, p_bank_name text, p_account_number text, p_quick_default_building_id uuid, p_idempotency_key text, p_description text DEFAULT NULL::text, p_is_default boolean DEFAULT false, p_owner_user_id uuid DEFAULT NULL::uuid, p_organization_id uuid DEFAULT NULL::uuid",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useAccounts.ts"
+      ],
+      "risk": "normal"
+    },
+    "create_commission_voucher": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid, p_kind text, p_amount numeric, p_voucher_date date, p_account_id uuid DEFAULT NULL::uuid, p_payer_name text DEFAULT NULL::text, p_recipient_name text DEFAULT NULL::text, p_recipient_bank text DEFAULT NULL::text, p_recipient_account text DEFAULT NULL::text, p_item_description text DEFAULT NULL::text, p_attachments jsonb DEFAULT '[]'::jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCommissionVoucher.ts"
+      ],
+      "risk": "financial"
+    },
+    "create_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_type text, p_name text, p_building_id uuid, p_room_id uuid, p_tenant_id uuid, p_contract_id uuid, p_payer_name text, p_receive_bank_account text, p_receive_bank_name text, p_account_id uuid, p_attachments jsonb, p_business_result_accounting boolean, p_notes text, p_voucher_date date, p_items jsonb, p_idempotency_key text",
+          "returns": "income_expenses",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/mutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "create_invoice_refund_obligation_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid, p_amount numeric, p_reason text DEFAULT NULL::text, p_refund_class text DEFAULT 'REFUND_CONTRA_REVENUE'::text, p_idempotency_key text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoicePayments.ts"
+      ],
+      "risk": "financial"
+    },
+    "create_public_room_token": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_label text DEFAULT NULL::text",
+          "returns": "public_room_share_tokens",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomTokens.ts"
+      ],
+      "risk": "normal"
+    },
+    "create_reservation_deposit_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_room_id uuid, p_amount numeric, p_idempotency_key text",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/reservationHold.ts"
+      ],
+      "risk": "normal"
+    },
+    "create_sale_bonus_from_deposit_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_deposit_voucher_id uuid, p_amount numeric, p_recipient text DEFAULT NULL::text, p_account_number text DEFAULT NULL::text, p_bank text DEFAULT NULL::text, p_voucher_date date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSaleBonus.ts"
+      ],
+      "risk": "normal"
+    },
+    "create_termination_refund_voucher_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_obligation_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_force boolean DEFAULT false, p_force_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useTerminationRefund.ts"
+      ],
+      "risk": "normal"
+    },
+    "decide_financial_request_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request_id uuid, p_decision text, p_reason text DEFAULT NULL::text",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useApprovals.ts"
+      ],
+      "risk": "normal"
+    },
+    "decide_owned_income_expense_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_decision text, p_reason text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "delete_room_pass_listing": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePassListings.ts"
+      ],
+      "risk": "normal"
+    },
+    "delete_utility_account": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useUtilityBills.ts"
+      ],
+      "risk": "normal"
+    },
+    "demo_reset": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, pg_temp",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/demo-reset/index.ts"
+      ],
+      "risk": "normal"
+    },
+    "distribute_shareholder_profit_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_shareholder_id uuid, p_amount numeric, p_account_id uuid, p_voucher_date date, p_note text, p_idempotency_key text",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/specialized.ts"
+      ],
+      "risk": "financial"
+    },
+    "fa_invoice_collection": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_month text, p_end_month text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(billing_month text, building_id uuid, building_name text, billed numeric, collected numeric, remaining numeric, invoice_count bigint, draft_count bigint, pending_count bigint, approved_count bigint, paid_count bigint, partial_count bigint, overdue_count bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFinancialAnalysis.ts"
+      ],
+      "risk": "normal"
+    },
+    "fa_lease_events": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(month date, building_id uuid, building_name text, new_contracts bigint, renewals bigint, terminations bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFinancialAnalysis.ts"
+      ],
+      "risk": "normal"
+    },
+    "fa_monthly_pnl_accrual": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(month date, building_id uuid, building_name text, is_virtual boolean, revenue numeric, expense numeric, net numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useProfitVerification.ts",
+        "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "fa_occupancy_monthly": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(month date, building_id uuid, building_name text, total_rooms integer, occupied_rooms integer, occupancy_pct numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useOccupancyDashboard.ts",
+        "src/hooks/useFinancialAnalysis.ts"
+      ],
+      "risk": "normal"
+    },
+    "fa_snapshot_kpis": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, total_rooms integer, rooms_available integer, rooms_occupied integer, rooms_reserved integer, rooms_maintenance integer, rooms_unavailable integer, vacancy_loss_month numeric, active_contracts bigint, avg_rent numeric, deposit_held numeric, receivable_total numeric, aging_not_due numeric, aging_1_30 numeric, aging_31_60 numeric, aging_61_90 numeric, aging_over_90 numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFinancialAnalysis.ts"
+      ],
+      "risk": "normal"
+    },
+    "finalize_ai_usage": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_prompt_tokens integer, p_completion_tokens integer, p_total_tokens integer, p_cached_tokens integer, p_cost_usd numeric, p_latency_ms integer, p_status text, p_error text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/llm-proxy/index.ts"
+      ],
+      "risk": "normal"
+    },
+    "generate_recurring_vouchers_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(parent_id uuid, child_id uuid, voucher_date date)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/recurring.ts"
+      ],
+      "risk": "financial"
+    },
+    "generate_special_fees_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period text, p_building_ids uuid[], p_idempotency_key text, p_account_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpecialFeeBatch.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_acceptance_geofence_config": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "json",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useAcceptanceGeofence.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_authorization_context_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/components/openclaw-zalo/OpenClawRouteGuard.tsx",
+        "src/hooks/openclaw-zalo/useOpenClawPermissions.ts"
+      ],
+      "risk": "security"
+    },
+    "get_change_breakdown_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid, p_status invoice_status DEFAULT NULL::invoice_status, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_billing_month text DEFAULT NULL::text, p_payment_status text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(account_id uuid, account_name text, billing_month text, building_name text, room_name text, payer_name text, voucher_date date, change_amount numeric, code text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useStatBreakdowns.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_contract_stats": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[], p_today date DEFAULT NULL::date, p_in30 date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_customer_credit_balance_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid",
+          "returns": "numeric",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_customer_stats": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_status text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCustomers.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_dashboard_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDashboard.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_deposit_breakdown_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_billing_month text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, room_id uuid, room_name text, contract_id uuid, contract_number text, total_deposit numeric, deposit_paid numeric, deposit_remaining numeric, deposit_debt_mode text, voucher_id uuid, code text, voucher_date date, amount numeric, account_name text, notes text, invoice_id uuid, invoice_number text, invoice_total numeric)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useStatBreakdowns.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_deposits_report_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_status text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/financeReports.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_fee_config_matrix_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, fee_category text, provider_code text, account_holder text, default_amount numeric, default_account_id uuid, default_account_name text, not_applicable boolean, is_declared boolean, last_voucher_date date, voucher_count integer)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFeeConfigMatrix.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_held_deposit_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[], p_threshold numeric DEFAULT 10000",
+          "returns": "TABLE(building_id uuid, building_name text, contract_count bigint, expected numeric, held numeric, shortfall_all numeric, shortfall_short numeric, full_count bigint, short_count bigint, first_invoice_count bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDepositDashboard.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_ie_auto_approve_threshold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "numeric",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/pages/settings/GeneralSettingsPage.tsx"
+      ],
+      "risk": "normal"
+    },
+    "get_income_expense_history": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "TABLE(id uuid, action text, actor_id uuid, actor_name text, old_status text, new_status text, note text, created_at timestamp with time zone)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/queries.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_income_expense_layer_stats": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[], p_room_ids uuid[] DEFAULT NULL::uuid[], p_account_id uuid DEFAULT NULL::uuid, p_type text DEFAULT NULL::text, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_approval text DEFAULT 'ALL_ACTIVE'::text, p_creator_id uuid DEFAULT NULL::uuid, p_amount numeric DEFAULT NULL::numeric, p_amount_tol numeric DEFAULT 5000, p_verified text DEFAULT NULL::text, p_item_type_ids uuid[] DEFAULT NULL::uuid[], p_voucher_ids uuid[] DEFAULT NULL::uuid[], p_sources text[] DEFAULT NULL::text[], p_source_manual boolean DEFAULT false, p_internal_sources text[] DEFAULT NULL::text[], p_kqkd_only boolean DEFAULT false, p_posting text DEFAULT NULL::text",
+          "returns": "TABLE(cash_income numeric, cash_expense numeric, internal_count integer, internal_income numeric, internal_expense numeric, pending_count integer, pending_total numeric, pending_income numeric, pending_expense numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/queries.ts",
+        "src/hooks/useProfitVerification.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_invoice_statistics_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid, p_status invoice_status DEFAULT NULL::invoice_status, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_billing_month text DEFAULT NULL::text, p_payment_status text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts",
+        "src/hooks/useProfitVerification.ts",
+        "src/hooks/useUtilityBills.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_member_authorization_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_membership uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_meter_reading_stats": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid DEFAULT NULL::uuid, p_month text DEFAULT NULL::text",
+          "returns": "TABLE(total_readings bigint, unapproved_count bigint, approved_count bigint, electricity_consumption numeric, water_consumption numeric, gas_consumption numeric)",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": null,
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_meters_without_readings_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid DEFAULT NULL::uuid, p_room_id uuid DEFAULT NULL::uuid, p_meter_type text DEFAULT NULL::text, p_month text DEFAULT NULL::text",
+          "returns": "TABLE(meter_id uuid, code text, name text, room_name text, meter_type text, last_reading numeric, last_reading_date date)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeters.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_my_assignments": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(user_id uuid, building_id uuid)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMyBuildingScope.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_my_available_rooms": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/copilot/tools/registry.ts",
+        "src/hooks/useMyAvailableRooms.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_my_context": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "json",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMyContext.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_my_notification_preferences_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_my_permissions": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMyPermissions.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_my_share_buildings": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(id uuid, name text)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholders.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_notification_org_config_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_organization_profile_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_overpayment_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/financeReports.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_period_commissions": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(contract_id uuid, contract_number text, building_id uuid, building_name text, room_id uuid, room_name text, tenant_name text, signed_date date, months integer, tier_percent numeric, expected_amount numeric, voucher_id uuid, voucher_amount numeric, voucher_account_name text, account_is_empty boolean, status text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_period_fee_status": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_start text, p_period_end text, p_building_ids uuid[], p_category_keys text[]",
+          "returns": "TABLE(building_id uuid, category_key text, paid_amount numeric, draft_amount numeric, covered_start date, covered_end date, voucher_ids uuid[], vouchers jsonb, has_receipt boolean, account_name text, account_is_empty boolean, expected_amount numeric, not_applicable boolean)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_period_maintenance": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(batch_id uuid, payer_name text, voucher_id uuid, building_id uuid, building_name text, subtype text, amount numeric, account_name text, has_receipt boolean, voucher_date date, is_standalone boolean, approval_status text, posting_status text, state text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_public_available_rooms": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_token text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/pages/phong-trong/usePhongTrong.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_refund_forfeit_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDepositDashboard.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_reservation_deposit_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDeposits.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_salary_v5_config": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/salary-v5/useSalaryV5Admin.ts",
+        "src/pages/finance/ManagerSalaryPage.tsx",
+        "src/pages/finance/MySalaryPage.tsx"
+      ],
+      "risk": "financial"
+    },
+    "get_special_fee_prices_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_ids uuid[] DEFAULT NULL::uuid[], p_month text DEFAULT NULL::text",
+          "returns": "TABLE(building_id uuid, building_name text, fee_category text, amount numeric, effective_from text, source text, can_edit boolean)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpecialFeePrices.ts"
+      ],
+      "risk": "normal"
+    },
+    "get_voucher_cancellation_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/flexMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_voucher_change_log_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/flexMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "get_voucher_slot_warning_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_type_ids uuid[], p_start date, p_end date, p_type text DEFAULT 'EXPENSE'::text, p_exclude_id uuid DEFAULT NULL::uuid",
+          "returns": "TABLE(voucher_id uuid, code text, voucher_name text, total_amount numeric, matched_amount numeric, voucher_date date, approval_status text, created_at timestamp with time zone, creator_name text, type_names text, same_amount boolean)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useVoucherSlotWarning.ts"
+      ],
+      "risk": "financial"
+    },
+    "ie_compat_update_pending_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_patch jsonb, p_items jsonb DEFAULT NULL::jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useUpdatePaymentMethod.ts",
+        "src/hooks/useUploadPaymentReceipt.ts"
+      ],
+      "risk": "financial"
+    },
+    "ie_form_buildings": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(id uuid, name text, code text, is_virtual boolean, user_id uuid, managed boolean)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, auth",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useIncomeExpenseFormScope.ts"
+      ],
+      "risk": "normal"
+    },
+    "ie_form_rooms": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "_building_id uuid DEFAULT NULL::uuid",
+          "returns": "SETOF rooms",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, auth",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useIncomeExpenseFormScope.ts"
+      ],
+      "risk": "normal"
+    },
+    "invite_organization_member_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_email text, p_member_type text DEFAULT 'STAFF'::text, p_role_id uuid DEFAULT NULL::uuid, p_scope_ids uuid[] DEFAULT NULL::uuid[], p_expires_days integer DEFAULT 7",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private, extensions",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "invoice_active_payment_methods": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_ids uuid[]",
+          "returns": "TABLE(invoice_id uuid, payment_methods text[])",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "invoice_payment_method_drilldown": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_payment_method payment_method",
+          "returns": "SETOF invoices",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "is_admin": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "boolean",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useIsAdmin.ts",
+        "supabase/functions/salary-v5-jobs/index.ts"
+      ],
+      "risk": "financial"
+    },
+    "is_org_owner_self_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "boolean",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useIsOrgOwner.ts"
+      ],
+      "risk": "normal"
+    },
+    "is_super_admin": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "boolean",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useIsAdmin.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_authorization_catalog_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_cashbook_closings_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "list_ie_accounting_standard_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(organization_id uuid, organization_name text, strict_mode boolean, can_manage boolean)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useAccountingStandard.ts",
+        "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_my_cashbook_access_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(cashbook_id uuid, cashbook_name text, possession_kind text, since timestamp with time zone)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/incomeVoucherCashbook.ts"
+      ],
+      "risk": "financial"
+    },
+    "list_my_pending_approvals_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(request_id uuid, submission_no bigint, submitted_at timestamp with time zone, amount numeric, voucher_id uuid, voucher_code text, voucher_name text, voucher_type text, maker_name text, step_no integer, request_version bigint, organization_id uuid, approval_version bigint, posting_version bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useApprovals.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_organization_members_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "list_organization_roles_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "lock_salary_month_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month date, p_managers jsonb, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "log_income_expense_action": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_action text, p_note text DEFAULT NULL::text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "lucky_admin_add_team_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_event uuid, p_name text, p_deals integer DEFAULT 1, p_top_rank integer DEFAULT NULL::integer, p_top_prize numeric DEFAULT NULL::numeric, p_in_wheel boolean DEFAULT true",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "lucky_admin_delete_team_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_team uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "lucky_admin_force_draw_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_event uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "lucky_admin_get_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "lucky_admin_reset_draw_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_event uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "lucky_admin_update_team_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_team uuid, p jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "lucky_admin_upsert_event_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/luckyDrawApi.ts"
+      ],
+      "risk": "normal"
+    },
+    "manager_collection_cycle_report": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_manager_id uuid DEFAULT NULL::uuid, p_from date DEFAULT NULL::date, p_to date DEFAULT NULL::date",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCollectionCycleReport.ts"
+      ],
+      "risk": "normal"
+    },
+    "manager_salary_payout_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_manager_id uuid, p_amount numeric, p_account_id uuid, p_voucher_date date, p_note text, p_idempotency_key text",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/specialized.ts"
+      ],
+      "risk": "financial"
+    },
+    "mark_overdue_invoices_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "integer",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "move_income_voucher_cashbook_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_new_account uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/incomeVoucherCashbook.ts"
+      ],
+      "risk": "financial"
+    },
+    "my_org_ids": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "uuid[]",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "notify_claim_push_batch_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_limit integer DEFAULT 100",
+          "returns": "TABLE(notification_ids uuid[], user_id uuid, idem_key text, title text, body text, url text, tag text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/salary-v5-jobs/index.ts"
+      ],
+      "risk": "financial"
+    },
+    "notify_settle_push_batch_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_results jsonb",
+          "returns": "integer",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/salary-v5-jobs/index.ts"
+      ],
+      "risk": "financial"
+    },
+    "occupancy_snapshot_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_as_of_date date DEFAULT CURRENT_DATE, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, total integer, occupied integer, reserved integer, maintenance integer, unavailable integer, available integer, occupancy_pct numeric, committed_pct numeric, missed_revenue numeric, generated_at timestamp with time zone)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useOccupancyDashboard.ts"
+      ],
+      "risk": "normal"
+    },
+    "occupancy_upcoming_vacancy_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_as_of_date date DEFAULT CURRENT_DATE, p_window_days integer DEFAULT 60, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(contract_id uuid, contract_number text, building_id uuid, building_name text, room_id uuid, room_name text, effective_end_date date, days_remaining integer, rent_price numeric, extension_applied boolean)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/reports/useOccupancyDashboard.ts"
+      ],
+      "risk": "normal"
+    },
+    "openclaw_get_bootstrap_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/openclaw-zalo/useOpenClawBootstrap.ts"
+      ],
+      "risk": "security"
+    },
+    "openclaw_get_overview_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/openclaw-zalo/useOpenClawOverview.ts"
+      ],
+      "risk": "security"
+    },
+    "openclaw_list_conversations_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/openclaw-zalo/useOpenClawInbox.ts"
+      ],
+      "risk": "security"
+    },
+    "openclaw_list_messages_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/openclaw-zalo/useOpenClawInbox.ts"
+      ],
+      "risk": "security"
+    },
+    "openclaw_list_my_organizations_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=\"\"",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/openclaw-zalo/useOpenClawOrganization.ts"
+      ],
+      "risk": "security"
+    },
+    "pass_listing_form_rooms": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(room_id uuid, room_code text, room_name text, rent_price numeric, building_id uuid, building_name text, owner_id uuid, has_active_contract boolean, current_listing_id uuid)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePassListings.ts"
+      ],
+      "risk": "normal"
+    },
+    "pass_listing_room_customers": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_room_id uuid",
+          "returns": "TABLE(full_name text, phone text, is_representative boolean)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePassListings.ts"
+      ],
+      "risk": "normal"
+    },
+    "pay_draft_fee_voucher": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_account_id uuid, p_attachments jsonb DEFAULT NULL::jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "pay_period_fee": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_category_key text, p_amount numeric, p_period_start text, p_period_end text, p_voucher_date date DEFAULT NULL::date, p_provider_code text DEFAULT NULL::text, p_account_holder text DEFAULT NULL::text, p_account_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT NULL::jsonb, p_force boolean DEFAULT false",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "pay_utility_bill": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_utility_type text, p_amount numeric, p_period_month text, p_voucher_date date DEFAULT NULL::date, p_provider_code text DEFAULT NULL::text, p_account_holder text DEFAULT NULL::text, p_account_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT NULL::jsonb, p_utility_account_id uuid DEFAULT NULL::uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useUtilityBills.ts"
+      ],
+      "risk": "normal"
+    },
+    "pra_by_token": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false",
+          "returns": "TABLE(token text, label text, revoked boolean, sessions bigint, views bigint, room_opens bigint, contact_clicks bigint, errors bigint, avg_session_ms numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomsAnalytics.ts"
+      ],
+      "risk": "normal"
+    },
+    "pra_errors": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false, p_limit integer DEFAULT 200",
+          "returns": "TABLE(created_at timestamp with time zone, token text, session_id text, kind text, message text, context text, user_agent text)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomsAnalytics.ts"
+      ],
+      "risk": "normal"
+    },
+    "pra_funnel": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false",
+          "returns": "TABLE(sessions bigint, sessions_impression bigint, sessions_opened_room bigint, sessions_contacted bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomsAnalytics.ts"
+      ],
+      "risk": "normal"
+    },
+    "pra_summary": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false",
+          "returns": "TABLE(total_sessions bigint, total_views bigint, room_opens bigint, impressions bigint, contact_clicks bigint, favorites bigint, deposit_dialogs bigint, errors bigint, avg_session_ms numeric, unique_rooms_seen bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomsAnalytics.ts"
+      ],
+      "risk": "normal"
+    },
+    "pra_timeseries": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false, p_bucket text DEFAULT 'day'::text",
+          "returns": "TABLE(bucket timestamp with time zone, sessions bigint, events bigint, room_opens bigint, contact_clicks bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomsAnalytics.ts"
+      ],
+      "risk": "normal"
+    },
+    "pra_top_rooms": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start_date date, p_end_date date, p_token text DEFAULT NULL::text, p_building_ids uuid[] DEFAULT NULL::uuid[], p_exclude_staff boolean DEFAULT false, p_limit integer DEFAULT 50",
+          "returns": "TABLE(room_id uuid, room_name text, room_code text, building_name text, open_count bigint, impression_count bigint, total_dwell_ms numeric, avg_dwell_ms numeric, contact_clicks bigint)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePublicRoomsAnalytics.ts"
+      ],
+      "risk": "normal"
+    },
+    "preview_special_fees_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period text, p_building_ids uuid[] DEFAULT NULL::uuid[]",
+          "returns": "TABLE(building_id uuid, building_name text, fee_category text, amount numeric, provider_code text, status text, reason text, existing_code text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpecialFeeBatch.ts"
+      ],
+      "risk": "normal"
+    },
+    "preview_termination_refund_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_termination_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useTerminationRefund.ts"
+      ],
+      "risk": "normal"
+    },
+    "propose_cashbook_closing_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook uuid, p_counted_balance numeric, p_confirmer uuid, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashbookClosing.ts"
+      ],
+      "risk": "financial"
+    },
+    "propose_reconciliation": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_account_id uuid, p_as_of date, p_counted_balance numeric, p_counterparty_id uuid DEFAULT NULL::uuid, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useReconciliations.ts"
+      ],
+      "risk": "normal"
+    },
+    "record_payment_gps": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_income_expense_id uuid, p_lat numeric, p_lng numeric",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/lib/v5PaymentGps.ts"
+      ],
+      "risk": "financial"
+    },
+    "record_termination_refund_obligation_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_termination_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useTerminationRefund.ts"
+      ],
+      "risk": "normal"
+    },
+    "reject_cancel_handover": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_handover_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashHandovers.ts"
+      ],
+      "risk": "normal"
+    },
+    "reject_contract_termination_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_termination_id uuid, p_reason text DEFAULT NULL::text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContracts.ts"
+      ],
+      "risk": "normal"
+    },
+    "renew_contract": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid, p_new_end_date date, p_new_rent_price numeric DEFAULT NULL::numeric, p_new_deposit numeric DEFAULT NULL::numeric, p_notes text DEFAULT NULL::text",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractOperations.ts"
+      ],
+      "risk": "normal"
+    },
+    "request_cancel_handover": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_handover_id uuid, p_reason text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCashHandovers.ts"
+      ],
+      "risk": "normal"
+    },
+    "reserve_ai_usage": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user_id uuid, p_feature text, p_provider text, p_model text, p_task_id text, p_est_cost_usd numeric",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, auth",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/llm-proxy/index.ts"
+      ],
+      "risk": "normal"
+    },
+    "restore_income_expense": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "revenue_by_month": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_start date, p_end date, p_building_id uuid DEFAULT NULL::uuid",
+          "returns": "TABLE(month_start date, revenue numeric)",
+          "volatility": "STABLE",
+          "securityDefiner": false,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useDashboard.ts"
+      ],
+      "risk": "normal"
+    },
+    "reverse_posted_income_expense_v2": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher uuid, p_cashbook uuid, p_posted_on date, p_reason text, p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "revoke_organization_invitation_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invitation uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "salary_payout_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_staff_id uuid, p_period_month date, p_take_home numeric, p_account_id uuid, p_voucher_date date, p_note text, p_idempotency_key text, p_rent_invoice_id uuid DEFAULT NULL::uuid, p_rent_amount numeric DEFAULT NULL::numeric",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_staff_months": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "salary_work_ledger": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month date, p_staff_id uuid DEFAULT NULL::uuid",
+          "returns": "TABLE(staff_id uuid, item_type text, source_id uuid, occurred_date date, day_label text, content text, place text, job_type_name text, is_repair boolean, is_contract boolean, base_amount numeric, weekend_amount numeric, after_amount numeric, cash_amount numeric, has_photo boolean, bonus_amount numeric, reason text, excluded boolean)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "sale_bonus_status_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSaleBonus.ts"
+      ],
+      "risk": "normal"
+    },
+    "save_utility_account": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_building_id uuid, p_utility_type text, p_provider_code text DEFAULT NULL::text, p_account_holder text DEFAULT NULL::text",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useUtilityBills.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_ie_accounting_standard_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_strict boolean, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useAccountingStandard.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_ie_auto_approve_threshold_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_threshold numeric",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/pages/settings/GeneralSettingsPage.tsx"
+      ],
+      "risk": "normal"
+    },
+    "set_my_notification_preferences_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_organization_id uuid, p_prefs jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_my_ui_preference": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_key text, p_value jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useUiPreferences.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_notification_org_config_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_events jsonb DEFAULT NULL::jsonb, p_quiet_start integer DEFAULT NULL::integer, p_quiet_end integer DEFAULT NULL::integer",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useNotificationSettings.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_room_pass_listing_active": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_active boolean",
+          "returns": "room_pass_listings",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePassListings.ts"
+      ],
+      "risk": "normal"
+    },
+    "set_salary_v5_config": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_patch jsonb",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/salary-v5/useSalaryV5Admin.ts"
+      ],
+      "risk": "financial"
+    },
+    "set_special_fee_price_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_fee_category text, p_amount numeric, p_effective_from_month text DEFAULT NULL::text, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useSpecialFeePrices.ts"
+      ],
+      "risk": "normal"
+    },
+    "soft_delete_customer": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_customer_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useCustomers.ts"
+      ],
+      "risk": "normal"
+    },
+    "transfer_contract": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid, p_new_customer_id uuid, p_new_rent_price numeric DEFAULT NULL::numeric, p_new_deposit numeric DEFAULT NULL::numeric, p_transfer_date date DEFAULT CURRENT_DATE, p_notes text DEFAULT NULL::text",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractOperations.ts"
+      ],
+      "risk": "normal"
+    },
+    "transfer_room": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_contract_id uuid, p_new_room_id uuid, p_new_rent_price numeric DEFAULT NULL::numeric, p_transfer_date date DEFAULT CURRENT_DATE, p_notes text DEFAULT NULL::text",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useContractOperations.ts"
+      ],
+      "risk": "normal"
+    },
+    "unapprove_invoice_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid",
+          "returns": "invoices",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "unapprove_meter_reading_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid",
+          "returns": "meter_readings",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useMeterReadings.ts"
+      ],
+      "risk": "normal"
+    },
+    "unapprove_voucher": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "voucher_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "unlock_profit_month_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month text, p_building_ids uuid[]",
+          "returns": "integer",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useShareholderProfit.ts"
+      ],
+      "risk": "normal"
+    },
+    "unlock_salary_month_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_period_month date, p_staff_ids uuid[], p_idempotency_key text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "update_cashbook_metadata_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_cashbook_id uuid, p_name text, p_description text, p_initial_amount numeric, p_initial_date date, p_quick_default_building_id uuid, p_is_default boolean, p_owner_user_id uuid",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useAccounts.ts"
+      ],
+      "risk": "normal"
+    },
+    "update_income_expense_quick": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_account_id uuid, p_attachments jsonb, p_notes text",
+          "returns": "income_expenses",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, app_private, public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/mutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "update_invoice_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_invoice_id uuid, p_contract_id uuid, p_building_id uuid, p_room_id uuid, p_billing_month text, p_issue_date date, p_due_date date, p_subtotal numeric, p_discount_amount numeric, p_total_amount numeric, p_previous_debt numeric, p_items jsonb, p_prepaid_amount numeric DEFAULT 0, p_discount_notes text DEFAULT NULL::text, p_electricity_prev_overridden boolean DEFAULT false, p_previous_debt_sources jsonb DEFAULT '[]'::jsonb, p_template_id uuid DEFAULT NULL::uuid, p_notes text DEFAULT NULL::text",
+          "returns": "invoices",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useInvoices.ts"
+      ],
+      "risk": "financial"
+    },
+    "update_member_authorization_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_membership uuid, p_expected_version bigint, p_role_bindings jsonb DEFAULT NULL::jsonb, p_overrides jsonb DEFAULT NULL::jsonb, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "update_organization_profile_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_name text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "update_period_fee": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_voucher_id uuid, p_account_id uuid DEFAULT NULL::uuid, p_attachments jsonb DEFAULT NULL::jsonb, p_amount numeric DEFAULT NULL::numeric, p_period_start text DEFAULT NULL::text, p_period_end text DEFAULT NULL::text, p_notes text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "upsert_building_fee_account": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_building_id uuid, p_fee_category text, p_provider_code text DEFAULT NULL::text, p_account_holder text DEFAULT NULL::text, p_default_amount numeric DEFAULT NULL::numeric, p_default_account_id uuid DEFAULT NULL::uuid, p_not_applicable boolean DEFAULT NULL::boolean, p_clear_amount boolean DEFAULT false, p_clear_provider boolean DEFAULT false, p_clear_account boolean DEFAULT false",
+          "returns": "uuid",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useFeeConfigMatrix.ts",
+        "src/hooks/usePeriodFees.ts"
+      ],
+      "risk": "normal"
+    },
+    "upsert_organization_role_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_role_id uuid DEFAULT NULL::uuid, p_name text DEFAULT NULL::text, p_permissions jsonb DEFAULT NULL::jsonb, p_expected_version bigint DEFAULT NULL::bigint, p_reason text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useOrganizationAuthorization.ts"
+      ],
+      "risk": "normal"
+    },
+    "upsert_room_pass_listing": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_room_id uuid, p_contact_name text, p_contact_phone text, p_sale_policy text, p_pass_price numeric, p_active boolean, p_avail_date date DEFAULT NULL::date, p_contact_manager boolean DEFAULT false",
+          "returns": "room_pass_listings",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/usePassListings.ts"
+      ],
+      "risk": "normal"
+    },
+    "v5_apply_lock_adjustments": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_month date",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/salary-v5/useSalaryV5Admin.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_cron_finish": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_job text, p_idem text, p_rows integer, p_error text DEFAULT NULL::text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/salary-v5-jobs/index.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_cron_start": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_job text, p_idem text",
+          "returns": "boolean",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/salary-v5-jobs/index.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_lock_assert": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_month date",
+          "returns": "TABLE(staff_id uuid, staff_name text, n_chuan integer, ticked_days integer, attend_amount numeric, streak_amount numeric, total numeric, a1_caps_ok boolean, a2_no_open_flags boolean, a3_payment_join_ok boolean, all_ok boolean)",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/salary-v5/useSalaryV5Admin.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_month_money": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid, p_month date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useManagerSalary.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_run_digest": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "",
+          "returns": "TABLE(user_id uuid, title text, body text, url text)",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/salary-v5-jobs/index.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_run_job": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_job text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "supabase/functions/salary-v5-jobs/index.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_shadow_report": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_month date",
+          "returns": "jsonb",
+          "volatility": "STABLE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/salary-v5/useSalaryV5Admin.ts"
+      ],
+      "risk": "financial"
+    },
+    "v5_tick_from_job": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_job_id uuid",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/components/tasks/TaskCompleteDialog.tsx"
+      ],
+      "risk": "normal"
+    },
+    "v5_verdict": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_user uuid, p_date date, p_confirm boolean, p_note text DEFAULT NULL::text",
+          "returns": "jsonb",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/salary-v5/useSalaryV5Admin.ts"
+      ],
+      "risk": "financial"
+    },
+    "verify_income_expense": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_note text DEFAULT NULL::text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "verify_income_expense_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_id uuid, p_note text DEFAULT NULL::text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/income-expenses/statusMutations.ts"
+      ],
+      "risk": "financial"
+    },
+    "withdraw_financial_request_v1": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_request_id uuid, p_reason text DEFAULT NULL::text",
+          "returns": "json",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=pg_catalog, public, app_private",
+          "execRoles": [
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useApprovals.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_broadcast": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_ids uuid[], p_body text",
+          "returns": "integer",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_disconnect_account": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_account_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_load_history": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid, p_count integer DEFAULT 50",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_mark_read": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_react_message": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_message_id uuid, p_emoji text",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_recall_message": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_message_id uuid",
+          "returns": "void",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_request_connect": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_account_id uuid DEFAULT NULL::uuid, p_name text DEFAULT NULL::text",
+          "returns": "zalo_accounts",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_send_message": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_conversation_id uuid, p_type text DEFAULT 'text'::text, p_body text DEFAULT NULL::text, p_media_url text DEFAULT NULL::text, p_reply_to jsonb DEFAULT NULL::jsonb, p_cli_msg_id text DEFAULT NULL::text",
+          "returns": "zalo_messages",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    },
+    "zalo_toggle_automation": {
+      "definitions": [
+        {
+          "schema": "public",
+          "args": "p_kind text, p_enabled boolean",
+          "returns": "zalo_automations",
+          "volatility": "VOLATILE",
+          "securityDefiner": true,
+          "searchPath": "search_path=public",
+          "execRoles": [
+            "anon",
+            "authenticated",
+            "service_role"
+          ]
+        }
+      ],
+      "callers": [
+        "src/hooks/useZaloChat.ts"
+      ],
+      "risk": "normal"
+    }
+  }
+}

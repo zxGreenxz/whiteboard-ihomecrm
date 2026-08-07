@@ -72,7 +72,13 @@
     "gate:graph-freshness": "node scripts/check-graph-freshness.mjs",
     "gate:realtime-descriptors": "node scripts/check-realtime-descriptors.mjs",
     "gate:strict-islands": "node scripts/check-strict-islands.mjs",
-    "gate:capability-surfaces": "node scripts/check-capability-surfaces.mjs"
+    "gate:capability-surfaces": "node scripts/check-capability-surfaces.mjs",
+    "surface:rpc": "node scripts/generate-rpc-surface.mjs",
+    "surface:edge": "node scripts/generate-edge-surface.mjs",
+    "surface:realtime": "node scripts/generate-realtime-surface.mjs",
+    "gate:rpc-surface": "node scripts/check-rpc-surface.mjs",
+    "gate:edge-surface": "node scripts/check-edge-surface.mjs",
+    "gate:realtime-surface": "node scripts/check-realtime-surface.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
