@@ -221,8 +221,68 @@ const timeoutMs = options.timeoutMs ?? 10_000;
     }
   };
 
+  /**
+   * One runtime call at a time, process-wide.
+   *
+   * The bridge drives four loops against this one client - inbound drain, outbox and
+   * work every SECOND, heartbeat every ten - and each call is really two requests, a
+   * token exchange then the call. That is roughly six requests a second, and the SQL
+   * behind them takes `FOR UPDATE` on the same account, cell and command rows. They
+   * do not merely queue, they fight: `pg_stat_activity` showed these RPCs blocking
+   * each other on `transactionid` with `LockManager` contention behind them.
+   *
+   * The heartbeat is the loser, because it is the rarest. It would connect, get no
+   * response, and abort - so no command was ever claimed, no QR was ever produced,
+   * and the cockpit sat at "Đang chờ máy chủ phát mã" while the bridge reported
+   * itself healthy. Wiping the spool appeared to fix it only because a fresh spool
+   * leaves the 1s loops with nothing to do for a moment.
+   *
+   * Serialising here keeps every loop's cadence but stops them overlapping, so the
+   * database sees one runtime transaction at a time instead of six racing for the
+   * same rows.
+   */
+  let gate: Promise<unknown> = Promise.resolve();
+  const serialize = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = gate.then(run, run);
+    gate = next.then(() => undefined, () => undefined);
+    return next;
+  };
+
   return Object.freeze({
     async post<T = unknown>(pathValue: string, body: unknown, signal?: AbortSignal): Promise<T> {
+      // NO retry here, deliberately.
+      //
+      // A retry looks right and makes this exact failure worse. When a facade call
+      // is slow, the request is still running on the server long after this client
+      // gave up; a second attempt does not replace it, it queues behind it and takes
+      // another PostgREST connection. Measured during the outage: twenty connections,
+      // all the same heartbeat facade, all waiting on `Lock: tuple`, draining never.
+      // The Edge function now bounds its own call instead, and the next tick is the
+      // retry.
+      return await serialize(() => attempt<T>(pathValue, body, signal));
+    },
+    localSessionGeneration(): number {
+      return localSessionGeneration;
+    },
+    adoptSessionGeneration(generation: number): void {
+      if (!Number.isSafeInteger(generation) || generation < 1) {
+        throw new TypeError("adopted session generation is invalid");
+      }
+      if (generation === localSessionGeneration) return;
+      if (generation !== localSessionGeneration + 1) {
+        throw new TypeError("adopted session generation is not contiguous");
+      }
+      localSessionGeneration = generation;
+    },
+    async close(): Promise<void> {
+      if (closed) return;
+      closed = true;
+      for (const controller of controllers) controller.abort();
+      controllers.clear();
+    },
+  });
+
+  async function attempt<T = unknown>(pathValue: string, body: unknown, signal?: AbortSignal): Promise<T> {
       if (closed) throw new RuntimeApiError("TOKEN_EXCHANGE", null, "runtime client is closed");
       const path = runtimePath(pathValue);
       const bytes = canonicalJson(body);
@@ -318,25 +378,5 @@ const timeoutMs = options.timeoutMs ?? 10_000;
         signal,
       );
       return runtimeRequest.result as T;
-    },
-    localSessionGeneration(): number {
-      return localSessionGeneration;
-    },
-    adoptSessionGeneration(generation: number): void {
-      if (!Number.isSafeInteger(generation) || generation < 1) {
-        throw new TypeError("adopted session generation is invalid");
-      }
-      if (generation === localSessionGeneration) return;
-      if (generation !== localSessionGeneration + 1) {
-        throw new TypeError("adopted session generation is not contiguous");
-      }
-      localSessionGeneration = generation;
-    },
-    async close(): Promise<void> {
-      if (closed) return;
-      closed = true;
-      for (const controller of controllers) controller.abort();
-      controllers.clear();
-    },
-  });
+  }
 }

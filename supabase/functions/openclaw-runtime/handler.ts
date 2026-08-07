@@ -273,6 +273,15 @@ function plainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * How long a service facade may hold a PostgREST connection.
+ *
+ * Comfortably above a healthy call (measured at 300-900ms) and far below the ~2
+ * minutes Supabase waits before it gives up on its own - which was long enough for
+ * every later heartbeat to queue behind the stuck one.
+ */
+const RUNTIME_FACADE_TIMEOUT_MS = 8_000;
+
 const SIGNED_TICKET_ROUTES = new Set([
   "/v1/media/upload-ticket",
   "/v1/maintenance/media/upload-ticket",
@@ -402,6 +411,16 @@ export async function handleRuntimeRequest(
   dependencies: RuntimeDependencies,
 ): Promise<Response> {
   const requestId = dependencies.requestIdFactory?.() ?? crypto.randomUUID();
+  // Arrival marker, content-free. `function_edge_logs` only records requests that
+  // COMPLETE, so a request the client gives up on leaves no trace there at all -
+  // which made "the bridge sent it and got nothing" indistinguishable from "it never
+  // arrived". This line is the only thing that tells those two apart. Method and
+  // path only: no headers, no body, no principal.
+  dependencies.logger?.error("openclaw-runtime received", {
+    requestId,
+    method: request.method,
+    path: new URL(request.url).pathname,
+  });
   try {
     // Runtime endpoints are machine-to-machine: a browser Origin is a hard stop.
     requireNoBrowserOrigin(request.headers.get("origin"));
@@ -503,6 +522,23 @@ export async function handleRuntimeRequest(
       route,
     );
 
+    // Bound the facade call, or one slow RPC poisons every later one.
+    //
+    // These facades take `FOR UPDATE` on the account, cell and command rows. When two
+    // overlap, the second waits - and nothing here used to stop it waiting. The Bridge
+    // gives up after its own timeout, but the function does NOT: the RPC kept a
+    // PostgREST connection until Supabase killed it at about two minutes with
+    // "upstream request timeout". The next heartbeat then queued behind it, and the
+    // one after that behind them both.
+    //
+    // Measured during the failure: all twenty PostgREST connections were the SAME
+    // facade, `openclaw_service_runtime_heartbeat_v1`, every one waiting on
+    // `Lock: tuple`. A convoy that never drains - so no command was ever claimed and
+    // no QR was ever produced until the Bridge was restarted.
+    //
+    // Failing fast turns that into a retryable error on the next tick, which the
+    // Bridge already handles, and hands the connection straight back to the pool.
+    const rpcDeadline = AbortSignal.timeout(RUNTIME_FACADE_TIMEOUT_MS);
     const { data, error } = await client.rpc(route.facade, {
       p_principal: sqlPrincipal(verification.principal, route.serviceOperation),
       p_envelope: {
@@ -514,11 +550,19 @@ export async function handleRuntimeRequest(
         requestHash: await serviceRequestHash(route.serviceOperation, body),
       },
       p_request: body,
-    });
+    }).abortSignal(rpcDeadline);
     if (error) {
+      // `code` alone was useless: it came back `undefined`, which is what PostgREST
+      // reports for a TRANSPORT failure rather than a SQL error - and with no message
+      // there was no way to tell a dropped connection from a rejected statement.
       dependencies.logger?.error(
         "openclaw-runtime facade failed",
-        redactLogValue({ requestId, path: route.path, code: error.code }),
+        redactLogValue({
+          requestId,
+          path: route.path,
+          code: error.code,
+          message: error.message,
+        }),
       );
       throw mapRpcError(error);
     }

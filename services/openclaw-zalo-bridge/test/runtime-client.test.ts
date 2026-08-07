@@ -242,16 +242,19 @@ describe("channel runtime API client", () => {
   });
 
   it("aborts while consuming a Runtime JSON stream that never completes", async () => {
-    let requestCount = 0;
-    const fetch = vi.fn(async () => {
-      requestCount += 1;
-      if (requestCount === 1) {
+    // Keyed by PATH, not by call order: a transport failure is now retried once, so
+    // a counter-based fake would hand the retry's token exchange the hanging stream
+    // and report the wrong stage.
+    let runtimeAttempts = 0;
+    const fetch = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("/openclaw-runtime-token")) {
         return json({
           version: 1,
           requestId: "token-request",
           result: { version: 1, token: "short-lived-token", expiresInSeconds: 300 },
         });
       }
+      runtimeAttempts += 1;
       return new Response(new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('{"version":1,"result":'));
@@ -273,7 +276,12 @@ describe("channel runtime API client", () => {
 
     await expect(client.post("/v1/heartbeat", { version: 1 }))
       .rejects.toMatchObject({ stage: "RUNTIME_REQUEST", status: null });
-  }, 2_000);
+    // Tried ONCE. Retrying here queues a second call behind a server-side request
+    // that is still running, taking another PostgREST connection with it - which is
+    // how twenty heartbeat facades ended up deadlocked on the same rows. The next
+    // tick is the retry.
+    expect(runtimeAttempts).toBe(1);
+  }, 4_000);
 
   it("uses fresh runtime and exchange nonces for every request", async () => {
     const tokenRequests: unknown[] = [];
