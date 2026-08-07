@@ -71,12 +71,20 @@ export class HeartbeatLoop {
       // which invariant failed. One line here is the difference between a five-minute
       // diagnosis and an afternoon.
       void this.pulse().catch((error: unknown) => {
+        // `stage` and `status` are the whole diagnosis and cost nothing to print.
+        // Without them the log says only "runtime_request failed", which cannot
+        // distinguish a rejected principal (403) from a facade fault (500) from a
+        // dropped connection - and every one of those has a different fix.
+        const cause = error instanceof Error && error.cause instanceof Error
+          ? error.cause
+          : undefined;
+        const detail = (cause ?? error) as { stage?: unknown; status?: unknown };
         console.error(JSON.stringify({
           event: "heartbeat_pulse_failed",
           message: error instanceof Error ? error.message : String(error),
-          cause: error instanceof Error && error.cause instanceof Error
-            ? error.cause.message
-            : undefined,
+          cause: cause?.message,
+          stage: typeof detail.stage === "string" ? detail.stage : undefined,
+          status: typeof detail.status === "number" ? detail.status : undefined,
         }));
       });
     }, HEARTBEAT_INTERVAL_MS);

@@ -34,10 +34,14 @@ const REQUIRED_PUBLIC_ENTRYPOINTS = [
   "setup-plugin-api.ts",
 ];
 
+// Mirrors services/openclaw-zalo-cell/vendor/zalouser-bridge/patches/series. TWO
+// suites pin this list - this one and the fork's own reproducible-pack test - so a
+// new patch has to be declared in both or one of them goes red.
 const PATCH_SERIES = [
   "0001-durable-inbound-bridge-listener.patch",
   "0002-private-bridge-send-rpc.patch",
   "0003-close-bypasses-and-classify-control.patch",
+  "0004-declare-web-login-gateway-methods.patch",
 ];
 
 function readText(path: string): string {
