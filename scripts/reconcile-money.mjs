@@ -23,9 +23,11 @@
 //     (cơ chế bug THẬT — KHÔNG phải LIMIT 1000 trong SQL). B==A nhưng C<A ⇒ FE
 //     thiếu phân trang / dính cap-1000.
 //
-// DATASET GUARD: cap-1000 chỉ CHỨNG MINH được khi kỳ có >1000 dòng khớp bộ lọc.
-//   Nếu ≤1000 → tự chọn kỳ nhiều phiếu nhất, còn không có kỳ nào >1000 thì THOÁT 3
-//   (INCONCLUSIVE) — KHÔNG báo xanh giả.
+// DATASET GUARD: cap-1000 chỉ CHỨNG MINH được khi cửa sổ có >1000 dòng khớp bộ lọc.
+//   Không truyền kỳ → tự GOM từ kỳ mới nhất lùi dần cho tới khi vượt 1000 dòng.
+//   Gom nhiều kỳ là hợp lệ vì trần 1000 là trần DÒNG/RESPONSE của PostgREST, không
+//   liên quan ranh giới tháng. Chỉ khi CẢ TẬP dữ liệu ≤1000 dòng mới THOÁT 3
+//   (không kết luận được) — KHÔNG báo xanh giả.
 //
 // Không sửa dữ liệu. Chỉ đọc. KHÔNG in PAT/JWT ra ngoài.
 // Chạy: node scripts/reconcile-money.mjs [YYYY-MM]
@@ -126,31 +128,73 @@ const sb = createClient(supabaseUrl, anonKey, {
 });
 
 const FILTER = `type='INCOME' AND approval_status='APPROVED' AND deleted_at IS NULL`;
-// Source A chạy dưới postgres (BỎ QUA RLS) → thấy CẢ dữ liệu demo mà tài khoản
-// test (super_admin) bị policy *_hide_demo_admin ẩn đi. Loại demo ở A để A khớp
-// đúng phạm vi B/C nhìn thấy (nếu không sẽ lệch đúng bằng phần demo).
-const SQL_FILTER = `${FILTER} AND NOT (user_id = ANY(public.demo_user_ids()))`;
+// Source A chạy dưới postgres (BỎ QUA RLS) → thấy CẢ dữ liệu org tập dượt mà tài
+// khoản test bị policy *_hide_demo_admin / *_hide_sandbox_admin ẩn đi. Phải thu
+// phạm vi A về đúng phần B/C nhìn thấy, nếu không sẽ lệch đúng bằng phần bị ẩn.
+//
+// Bản trước loại theo `NOT (user_id = ANY(demo_user_ids()))` — một DANH SÁCH ĐEN,
+// và nó đã TRÔI: org nhân bản `ihome-test` (cccc…) ra đời sau, không nằm trong
+// danh sách đó, nên A thừa 709 phiếu / 3,52 tỷ so với B và C. Chỗ lệch này ngủ yên
+// vì cửa chặn luôn thoát 3 trước khi kịp so — cả hai lỗi che nhau.
+//
+// Nay dùng DANH SÁCH TRẮNG suy từ dữ liệu: chỉ tổ chức có is_demo = false. Org tập
+// dượt mới sinh ra sẽ tự nằm ngoài; còn nếu ai quên đánh cờ thì gate ĐỎ — hướng
+// hỏng đúng, vì "quên đánh dấu org tập dượt" là thứ phải biết chứ không phải thứ
+// nên bỏ qua.
+const SQL_FILTER =
+  `${FILTER} AND organization_id IN (SELECT id FROM public.organizations WHERE is_demo = false)`;
 
-// Chọn kỳ đối chiếu + đếm số phiếu khớp bộ lọc (cho DATASET GUARD).
-async function resolveMonth() {
+const bienNgay = (m) => {
+  const [y, mo] = m.split('-').map(Number);
+  return { dau: `${m}-01`, cuoi: `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}` };
+};
+
+// Chọn CỬA SỔ đối chiếu + đếm số phiếu khớp bộ lọc (cho DATASET GUARD).
+//
+// Bản trước chỉ xét MỘT kỳ, và kỳ đông nhất trên dữ liệu thật chỉ có 723 phiếu —
+// dưới trần 1000. Nghĩa là cửa chặn này thoát 3 (INCONCLUSIVE) mỗi lần chạy và
+// CHƯA BAO GIỜ chứng minh được điều nó sinh ra để chứng minh. Một cửa chặn tiền
+// vĩnh viễn không kết luận được thì không canh gì cả — nó chỉ trông như đang canh.
+//
+// Trần 1000 là trần DÒNG/RESPONSE của PostgREST, không liên quan gì tới ranh giới
+// tháng. Nên gom nhiều tháng liền kề là cách hợp lệ để kích hoạt đúng cơ chế đó,
+// và cả ba nguồn A/B/C đều nhận được khoảng ngày (voucher_date kiểu `date` nên so
+// khoảng là chính xác, không có bẫy múi giờ).
+async function resolveWindow() {
   if (argMonth) {
+    const { dau, cuoi } = bienNgay(argMonth);
     const rows = await sqlQuery(
       `SELECT count(*)::int c FROM income_expenses
-         WHERE ${SQL_FILTER} AND to_char(voucher_date,'YYYY-MM')='${argMonth}'`,
+         WHERE ${SQL_FILTER} AND voucher_date BETWEEN '${dau}' AND '${cuoi}'`,
     );
-    return { month: argMonth, count: Number(rows[0]?.c ?? 0), auto: false };
+    return { start: dau, end: cuoi, count: Number(rows[0]?.c ?? 0), auto: false, moTa: argMonth };
   }
-  // Auto: kỳ có NHIỀU phiếu THU-duyệt nhất (ứng viên tốt nhất để chạm cap-1000).
+  // Auto: gom từ kỳ MỚI NHẤT lùi dần cho tới khi vượt 1000 dòng — cửa sổ NHỎ NHẤT
+  // chạm được trần, tức nhanh nhất và sát dữ liệu đang dùng nhất.
   const rows = await sqlQuery(
     `SELECT to_char(voucher_date,'YYYY-MM') m, count(*)::int c FROM income_expenses
-       WHERE ${SQL_FILTER}
-       GROUP BY 1 ORDER BY c DESC, m DESC LIMIT 1`,
+       WHERE ${SQL_FILTER} GROUP BY 1 ORDER BY 1 DESC`,
   );
   if (!rows.length) {
     console.error('Không có phiếu THU đã duyệt nào để đối chiếu.');
     process.exit(3);
   }
-  return { month: rows[0].m, count: Number(rows[0].c), auto: true };
+  let luyKe = 0;
+  let i = 0;
+  for (; i < rows.length; i++) {
+    luyKe += Number(rows[i].c);
+    if (luyKe > PAGE) break;
+  }
+  const cuoiCung = rows[Math.min(i, rows.length - 1)];
+  const start = bienNgay(cuoiCung.m).dau;
+  const end = bienNgay(rows[0].m).cuoi;
+  return {
+    start,
+    end,
+    count: luyKe,
+    auto: true,
+    moTa: rows[0].m === cuoiCung.m ? rows[0].m : `${cuoiCung.m} → ${rows[0].m} (${i + 1} kỳ)`,
+  };
 }
 
 async function run() {
@@ -166,37 +210,32 @@ async function run() {
     process.exit(2);
   }
 
-  const { month, count, auto } = await resolveMonth();
+  const { start, end, count, auto, moTa } = await resolveWindow();
   console.log(`Chỉ tiêu : Tổng THU đã duyệt (income_expenses INCOME/APPROVED)`);
-  console.log(`Kỳ       : ${month}${auto ? '  (tự chọn — nhiều phiếu nhất)' : ''}`);
+  console.log(`Cửa sổ   : ${moTa}${auto ? '  (tự gom từ kỳ mới nhất cho tới khi vượt 1000 dòng)' : ''}`);
+  console.log(`Khoảng   : ${start} … ${end}`);
   console.log(`Số phiếu : ${count} dòng khớp bộ lọc\n`);
 
   // ---- HARDENING (c): DATASET GUARD ----
-  if (count <= 1000) {
-    console.error(`⏹  INCONCLUSIVE — need >1000 rows to prove cap-1000 fix`);
+  if (count <= PAGE) {
+    console.error(`⏹  KHÔNG KẾT LUẬN ĐƯỢC — cần >${PAGE} dòng mới chứng minh được cap-1000`);
     console.error(
-      `    Kỳ ${month} chỉ có ${count} phiếu (≤1000) → không kích hoạt được ` +
-        `trần 1000 dòng/response của PostgREST, nên KHÔNG chứng minh được đường ` +
+      `    Cửa sổ ${moTa} chỉ có ${count} phiếu (≤${PAGE}) → không kích hoạt được ` +
+        `trần ${PAGE} dòng/response của PostgREST, nên KHÔNG chứng minh được đường ` +
         `phân trang (NGUỒN C) khôi phục đủ tổng.`,
     );
     console.error(
       auto
-        ? `    (đã tự chọn kỳ nhiều phiếu nhất; không kỳ nào >1000 trên dữ liệu hiện tại)`
-        : `    Bỏ tham số kỳ để tự chọn kỳ nhiều phiếu nhất, hoặc chọn kỳ có >1000 phiếu.`,
+        ? `    (đã gom TOÀN BỘ kỳ có dữ liệu; cả tập dữ liệu vẫn ≤${PAGE} dòng)`
+        : `    Bỏ tham số kỳ để tự gom nhiều kỳ cho tới khi vượt ${PAGE} dòng.`,
     );
     process.exit(3);
   }
 
-  // Ranh giới ngày của kỳ (khớp A dùng to_char; B/C dùng khoảng ngày bao gồm 2 đầu).
-  const [y, mo] = month.split('-').map(Number);
-  const start = `${month}-01`;
-  const lastDay = new Date(y, mo, 0).getDate();
-  const end = `${month}-${String(lastDay).padStart(2, '0')}`;
-
   // ---- NGUỒN A: SUM() thuần SQL (chân lý, bỏ qua RLS, miễn nhiễm cap-1000) ----
   const aRows = await sqlQuery(
     `SELECT COALESCE(SUM(total_amount),0)::text v FROM income_expenses
-       WHERE ${SQL_FILTER} AND to_char(voucher_date,'YYYY-MM')='${month}'`,
+       WHERE ${SQL_FILTER} AND voucher_date BETWEEN '${start}' AND '${end}'`,
   );
   const A = Math.round(Number(aRows[0].v));
 
@@ -251,8 +290,7 @@ async function run() {
   console.log(`│ B · RPC layer_stats (JWT + RLS, invoker)        │ ${fmt(B).padStart(19)} │`);
   console.log(`│ C · Phân trang FE (JWT + RLS, .range)           │ ${fmt(C).padStart(19)} │`);
   console.log('└─────────────────────────────────────────────────┴─────────────────────┘');
-  console.log(`   C: ${cRows} dòng qua ${pages - 1} trang đầy + 1 trang rỗng ` +
-    `(vượt ${PAGE} ⇒ có kích hoạt cap-1000)\n`);
+  console.log(`   C: ${cRows} dòng qua ${pages - 1} trang + 1 trang rỗng\n`);
 
   // ---- Info line (KHÔNG tính PASS/FAIL): tổng số dư mọi sổ quỹ ----
   try {
@@ -269,12 +307,29 @@ async function run() {
   }
 
   // ---- PHÁN QUYẾT ----
-  if (A === B && B === C) {
+  // LỆCH được xét TRƯỚC mọi guard "đủ dữ liệu chưa". Đặt ngược lại là để guard
+  // nuốt mất phát hiện thật: khi đường FE bỏ phân trang, nó chỉ kéo đúng 1 trang
+  // ⇒ cRows == 1000 ⇒ guard cRows>PAGE bắn exit 3 và cái lệch tiền không bao giờ
+  // được in ra. Đột biến "chỉ lấy trang đầu" bắt được đúng lỗi này ở bản nháp.
+  if (A !== B || B !== C) {
+    console.log(`=== ❌ LỆCH — A/B/C KHÔNG bằng nhau ===`);
+  } else {
+    // DATASET GUARD lần hai, trên ĐÚNG con số quyết định. Guard đầu đếm bằng SQL
+    // (bỏ qua RLS); đường đang thử là C, đi QUA RLS — nếu RLS thu hẹp tập xuống
+    // dưới trần thì cap-1000 không hề bị chạm dù SQL đếm ra 1630. Bản trước in
+    // thẳng "(vượt 1000 ⇒ có kích hoạt cap-1000)" mà không nhìn cRows, nên nó
+    // khẳng định đã kích hoạt trong đúng lần chạy mà C chỉ kéo 921 dòng.
+    if (cRows <= PAGE) {
+      console.error(`⏹  KHÔNG KẾT LUẬN ĐƯỢC — đường C chỉ kéo ${cRows} dòng (≤${PAGE}).`);
+      console.error(`    Ba nguồn BẰNG NHAU, nhưng trần ${PAGE} dòng/response KHÔNG bị chạm nên`);
+      console.error(`    lần chạy này không chứng minh được gì về phân trang. Nới cửa sổ hoặc chờ dữ liệu.`);
+      process.exit(3);
+    }
+    console.log(`   ✓ ${cRows} > ${PAGE} ⇒ trần cap-1000 CÓ bị chạm, phân trang thực sự được thử.`);
     console.log(`=== ✅ PASS — A === B === C (${fmt(A)} VND) ===\n`);
     process.exit(0);
   }
 
-  console.log(`=== ❌ LỆCH — A/B/C KHÔNG bằng nhau ===`);
   if (A !== B) {
     console.log(
       `    A ≠ B (${fmt(A)} vs ${fmt(B)}) ⇒ nghi RLS/RPC SCOPE sai: JWT test thấy ` +
