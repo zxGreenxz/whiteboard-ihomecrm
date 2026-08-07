@@ -22,6 +22,30 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(repoRoot, "supabase", "baseline");
+
+/**
+ * Role RIÊNG của ứng dụng — thứ `pg_dump --schema-only` không bao giờ xuất.
+ *
+ * Đo trên production 07/08/2026 bằng pg_roles, sau khi loại role dựng sẵn của
+ * Postgres (`pg_*`) và của Supabase (postgres, anon, authenticated,
+ * service_role, authenticator, supabase_*, pgbouncer, dashboard_user).
+ * Cũng loại `cli_login_postgres` — đó là role tạm của Supabase CLI, TTL 300
+ * giây, không thuộc về schema.
+ *
+ * Danh sách này CHÉP TAY có chủ đích: đọc pg_roles lúc capture sẽ kéo theo cả
+ * role tạm sinh ra do một lệnh CLI đang chạy song song, và baseline sẽ mang
+ * theo rác khác nhau mỗi lần chụp. Thêm role mới ⇒ thêm vào đây; diễn tập
+ * khôi phục sẽ bắt được nếu quên (policy tham chiếu role thiếu sẽ rơi).
+ */
+const ROLE_UNG_DUNG = [
+  "ie_canonical_writer",
+  "openclaw_function_owner",
+  "openclaw_maintenance_writer",
+  "openclaw_migration_writer",
+  "openclaw_runtime_writer",
+  "openclaw_service_dispatcher",
+  "supabase_privileged_role",
+];
 const POOLER_HOST = "aws-1-ap-southeast-1.pooler.supabase.com";
 const POOLER_PORT = 5432;
 
@@ -209,6 +233,35 @@ function main(argv) {
   }
 
   mkdirSync(OUT_DIR, { recursive: true });
+
+  // ROLE PHẢI ĐI KÈM — thiếu nó thì baseline KHÔNG dựng lại được.
+  //
+  // `pg_dump --schema-only` KHÔNG dump role: role thuộc cấp cluster, chỉ
+  // `pg_dumpall --roles-only` mới lấy. Baseline vì thế tham chiếu
+  // openclaw_function_owner, ie_canonical_writer… mà không hề tạo chúng.
+  //
+  // Đo bằng diễn tập thật ngày 07/08/2026 trên một Supabase project trắng:
+  //   249 lỗi 'role "…" does not exist'
+  //   → bảng   380/439 (87%)
+  //   → policy 922/1193 (77%)   ← mất 271 policy, tức mất luôn hàng rào RLS
+  // Trước diễn tập, không ai biết điều này; manifest vẫn ghi đủ số đếm vì nó
+  // đếm trên FILE, không đếm trên kết quả khôi phục.
+  //
+  // Tất cả đều NOLOGIN (vai trò cấp quyền, không phải tài khoản đăng nhập) nên
+  // tái tạo an toàn: không mang theo mật khẩu, không mở đường đăng nhập nào.
+  const rolesPath = join(OUT_DIR, "roles.sql");
+  const roles = [
+    "-- SINH BỞI scripts/capture-schema-baseline.mjs — không sửa tay.",
+    "-- Chạy TRƯỚC schema.sql. Xem ghi chú trong script để biết vì sao file này tồn tại.",
+    "",
+    ...ROLE_UNG_DUNG.map(
+      (r) => `DO $$ BEGIN CREATE ROLE ${r} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+    ),
+    "",
+  ].join("\n");
+  writeFileSync(rolesPath, roles, "utf8");
+  console.log(`  đã ghi roles.sql (${ROLE_UNG_DUNG.length} role ứng dụng)`);
+
   const schemaPath = join(OUT_DIR, "schema.sql");
   writeFileSync(schemaPath, normalized, "utf8");
 
