@@ -1585,8 +1585,21 @@ export class SqliteSpool {
 
   hasBlockingRuntimeDisconnect(): boolean {
     const row = this.db.prepare(
+      // AMBIGUOUS is NOT blocking, because nothing will ever move it.
+      //
+      // A command sealed AMBIGUOUS is one the bridge has stopped acting on, and it is
+      // never reported (`runtimeCommandResults` reads only RESULT_PENDING). Counting
+      // it as blocking meant one abandoned disconnect refused every future QR command
+      // forever - measured on production as "QR command is blocked by an unresolved
+      // disconnect" on every heartbeat, with no path out short of wiping the spool.
+      //
+      // Dropping it loses nothing: `openclaw_begin_qr_login_v1` independently refuses
+      // to issue a challenge while any DISCONNECT is not in a terminal state, and the
+      // server-side sweep resolves abandoned ones as SEALED_UNCONFIRMED. The server
+      // holds the invariant; this local guard only has to avoid deadlocking it.
       `SELECT 1 AS present FROM runtime_command_journal
-       WHERE command_kind='DISCONNECT' AND stage NOT IN ('SERVER_ACCEPTED','SEALED') LIMIT 1`,
+       WHERE command_kind='DISCONNECT'
+         AND stage NOT IN ('SERVER_ACCEPTED','SEALED','AMBIGUOUS') LIMIT 1`,
     ).get() as { present: number } | undefined;
     return row !== undefined;
   }
