@@ -82,7 +82,8 @@
     "preflight:credentials": "node scripts/check-local-agent-credentials.mjs",
     "gate:production-promotion": "node scripts/check-production-promotion.mjs",
     "gate:error-swallow": "node scripts/check-error-swallow-ratchet.mjs",
-    "gate:management-api-writes": "node scripts/check-management-api-writes.mjs"
+    "gate:management-api-writes": "node scripts/check-management-api-writes.mjs",
+    "gate:doc-freshness": "node scripts/check-doc-freshness.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

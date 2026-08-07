@@ -83,6 +83,24 @@ gaps:
       Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
       xem RPO 24 giờ còn chấp nhận được không.
 
+  - id: ci-gates-mot-job-thay-vi-ba
+    where: .github/workflows/ci-gates.yml (job `quality-gates`)
+    expires_at: 2026-12-31
+    why: >
+      Plan §31 đặt tên ba job `contract-gates` / `schema-gates` / `docs-freshness`. Repo có ba
+      STEP mang đúng tên đó nhưng nằm trong MỘT job. Đây là lựa chọn có chủ ý, không phải bỏ sót.
+      Plan §0.6 vốn muốn gộp 8 job thành 3 để "giảm bề mặt bảo trì và số nơi có thể kẹt merge";
+      gộp về một job đi cùng hướng đó, chỉ xa hơn.
+      Phần giá trị DUY NHẤT còn thiếu là tên JOB, và tên job chỉ dùng được khi bật required check
+      — điều bất khả ở tier hiện tại: repo private trên GitHub Free, đã đo và ghi ở
+      docs/generated/external-controls.json (branch protection không enforce được).
+      Chia thành ba step CÓ TÊN lấy lại phần giá trị thực tế: giao diện PR chỉ ra ngay NHÓM nào
+      đỏ thay vì một khối 19 lệnh phải mở log mới biết. Ba runner khởi động thì không lấy lại gì.
+      Đăng ký 07/08/2026 để deliverable này không treo lơ lửng giữa "đã làm" và "chưa làm".
+    exit_condition: >
+      Repo chuyển sang tier bật được branch protection (GitHub Team/Pro, hoặc public). Khi đó tách
+      ba step thành ba job và đặt chúng làm required check — lúc ấy tên job mới có tác dụng.
+
   - id: ua-graph-stale
     where: .ua/ (knowledge-graph.json, fingerprints.json, meta.json) — baseCommit d0ffb045, 29/07/2026
     expires_at: 2026-09-30

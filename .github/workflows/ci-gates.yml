@@ -104,30 +104,49 @@ jobs:
       - name: OpenClaw isolation boundary
         run: node scripts/check-openclaw-isolation.mjs
 
-      # Ba gate tĩnh dưới đây gom một chỗ: đều là biến đổi văn bản thuần, không
-      # cần credential, chạy dưới một giây. Tách thành job riêng chỉ tốn thêm
-      # runner khởi động và thêm chỗ có thể kẹt merge.
-      - name: Contract gates (agent rules · Copilot docs · auto-apply · types · runtime · known gaps)
+      # BA NHÓM GATE TĨNH theo plan §31 — nhưng là ba STEP, không phải ba JOB.
+      #
+      # Plan §0.6 muốn gộp 8 job thành 3 để "giảm bề mặt bảo trì và số nơi có thể
+      # kẹt merge". Repo đi xa hơn: gộp về MỘT job. Tinh thần đã đạt, chỉ thiếu
+      # phần đặt tên — mà tên job chỉ có giá trị khi bật được required check, và
+      # điều đó bất khả ở tier hiện tại (repo private trên GitHub Free — đo ở
+      # docs/generated/external-controls.json).
+      #
+      # Chia thành ba step CÓ TÊN thì được đúng phần giá trị còn lại mà không tốn
+      # gì: giao diện PR chỉ ra ngay NHÓM nào đỏ, thay vì một khối 19 lệnh mà
+      # phải mở log mới biết cái nào. Ba runner khởi động thì không.
+      #
+      # Việc cố ý KHÔNG tách thành job riêng đã đăng ký ở tooling/known-gaps.yaml
+      # (ci-gates-mot-job-thay-vi-ba) — để deliverable không treo lơ lửng.
+
+      - name: contract-gates (luật agent · bề mặt sản phẩm · runtime pin · known-gap hết hạn)
         run: |
           node scripts/check-agent-contract.mjs
-          node scripts/check-copilot-docs-manifest.mjs
-          node scripts/check-no-auto-apply.mjs
-          node scripts/normalize-supabase-types.mjs --check
           node scripts/check-runtime-matrix.mjs
           node scripts/check-known-gaps.mjs
-          node scripts/check-test-matrix.mjs
-          node scripts/check-migration-provenance.mjs
-          node scripts/check-rpc-cast-ratchet.mjs
+          node scripts/check-capability-surfaces.mjs
           node scripts/check-route-guards.mjs
-          node scripts/check-doc-counts.mjs
-          node scripts/check-migration-test-liveness.mjs
+          node scripts/check-test-matrix.mjs
           node scripts/check-test-only-exports.mjs
           node scripts/check-unknown-review.mjs
           node scripts/check-ts-suppressions.mjs
-          node scripts/check-graph-hygiene.mjs
-          node scripts/check-capability-surfaces.mjs
+          node scripts/check-rpc-cast-ratchet.mjs
           node scripts/check-error-swallow-ratchet.mjs
+
+      - name: schema-gates (provenance migration · canonical types · đường ghi production)
+        run: |
+          node scripts/check-migration-provenance.mjs
+          node scripts/normalize-supabase-types.mjs --check
+          node scripts/check-no-auto-apply.mjs
           node scripts/check-management-api-writes.mjs
+          node scripts/check-migration-test-liveness.mjs
+
+      - name: docs-freshness (Copilot manifest · số đếm tài liệu · vệ sinh graph)
+        run: |
+          node scripts/check-copilot-docs-manifest.mjs
+          node scripts/check-doc-counts.mjs
+          node scripts/check-doc-freshness.mjs
+          node scripts/check-graph-hygiene.mjs
 
       # Tách khỏi "Contract gates" vì bước này gọi tsc HAI lượt (--showConfig +
       # biên dịch 247 file), tốn hàng chục giây — trong khi cả khối trên chạy dưới
