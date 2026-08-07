@@ -68,6 +68,9 @@ const INLINE_SECRET_NAME = /(?:credential|secret|password|token|api_?key|private
  */
 const NON_SECRET_ENVIRONMENT_NAMES: ReadonlySet<string> = new Set([
   "OPENCLAW_FENCING_TOKEN",
+  // Not a credential: it names WHICH claimant owns a runtime command, and the server
+  // only ever compares its hash against commands it already handed to that claimant.
+  "OPENCLAW_COMMAND_CLAIM_TOKEN",
 ]);
 
 export interface BridgeProcessOptions {
@@ -719,6 +722,19 @@ export async function createBridgeRuntimeFromEnvironment(
       runtime,
       cellRpc,
       channelAccountId: env.OPENCLAW_CHANNEL_ACCOUNT_ID ?? "default",
+      // A random-per-process claim token orphans work permanently.
+      //
+      // The server only re-emits a command to the claimant whose token hash it
+      // recorded (`command.claim_token_hash = v_claim_hash`), and nothing clears that
+      // hash when the lease expires. So one bridge restart while a DISCONNECT sat at
+      // STARTED left the command unreachable by ANY claimant - while
+      // `openclaw_disconnect_account_v1` refuses to supersede a STARTED disconnect.
+      // The account was wedged in DISCONNECTING with no path out: it could neither
+      // finish disconnecting nor request a new QR. Pinning the token lets a restarted
+      // bridge pick its own work back up.
+      ...(env.OPENCLAW_COMMAND_CLAIM_TOKEN === undefined
+        ? {}
+        : { claimToken: () => env.OPENCLAW_COMMAND_CLAIM_TOKEN as string }),
       qrEncryptionKey,
       knownSecretValues: [
         credential,

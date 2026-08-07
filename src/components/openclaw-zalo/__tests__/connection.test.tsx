@@ -29,6 +29,7 @@ function renderDialog(overrides: {
   challenge?: Parameters<typeof OpenClawConnectionDialog>[0]["challenge"];
   errorMessage?: string | null;
   open?: boolean;
+  onDisconnect?: (() => void) | undefined;
 } = {}) {
   const merged = { ...account, ...overrides.account };
   const gate = qrGateState({
@@ -44,6 +45,7 @@ function renderDialog(overrides: {
     errorMessage: overrides.errorMessage ?? null,
     onRequestQr: noop,
     onAcknowledgeDisclosure: noop,
+    onDisconnect: "onDisconnect" in overrides ? overrides.onDisconnect : noop,
     onClose: noop,
   }));
 }
@@ -82,6 +84,26 @@ describe("connection dialog", () => {
     // Scanning from a second device kicks the live session; the warning has to be
     // in front of the code, not in a help page.
     expect(renderDialog()).toContain("chính chiếc điện thoại");
+  });
+
+  // The dialog tells a connected owner to "Ngắt kết nối trước nếu muốn quét lại".
+  // Nothing in the app could do that: no production file called the disconnect path
+  // at all, so a connected account could never be re-linked. Copy that names an
+  // action the UI does not offer is worse than no copy.
+  it("offers the way out of ALREADY_CONNECTED, not just the instruction", () => {
+    const html = renderDialog({ account: { connectionState: "CONNECTED" as const } });
+    expect(html).toContain("Ngắt kết nối trước nếu muốn quét lại");
+    expect(buttonTag(html, "disconnect")).toBeTruthy();
+  });
+
+  it("hides the disconnect button from anyone who cannot manage connections", () => {
+    // The caller passes no handler at all - absent beats present-and-refused.
+    const html = renderDialog({
+      account: { connectionState: "CONNECTED" as const },
+      canManageConnections: false,
+      onDisconnect: undefined,
+    });
+    expect(html).not.toContain('data-openclaw-action="disconnect"');
   });
 
   it("names the gate that would refuse, and hides the code until it opens", () => {

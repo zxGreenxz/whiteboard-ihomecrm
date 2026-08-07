@@ -3,7 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { openClawQueryKeys } from "@/hooks/openclaw-zalo/queryKeys";
 import { useOpenClawRouteContext } from "../OpenClawRouteGuard";
-import { useOpenClawAcknowledgeDisclosure } from "@/hooks/openclaw-zalo/useOpenClawMutations";
+import {
+  useOpenClawAcknowledgeDisclosure,
+  useOpenClawDisconnectAccount,
+} from "@/hooks/openclaw-zalo/useOpenClawMutations";
 import { qrCountdownSeconds, qrGateState } from "@/lib/openclaw-zalo/connection";
 import {
   beginQrLogin,
@@ -73,6 +76,9 @@ export default function OpenClawConnectionSection({
 
   const queryClient = useQueryClient();
   const acknowledge = useOpenClawAcknowledgeDisclosure(
+    selectedOrganizationId, account?.accountId ?? "",
+  );
+  const disconnect = useOpenClawDisconnectAccount(
     selectedOrganizationId, account?.accountId ?? "",
   );
 
@@ -256,7 +262,7 @@ export default function OpenClawConnectionSection({
         secondsLeft,
         status: challenge.status,
       }}
-      pending={pending || acknowledge.isPending}
+      pending={pending || acknowledge.isPending || disconnect.isPending}
       errorMessage={errorMessage}
       onRequestQr={() => void requestQr()}
       onAcknowledgeDisclosure={() => {
@@ -271,6 +277,27 @@ export default function OpenClawConnectionSection({
           },
         });
       }}
+      onDisconnect={gate.canManageConnections
+        ? () => {
+          setErrorMessage(null);
+          disconnect.mutate({
+            clientOperationId: crypto.randomUUID(),
+            request: {
+              version: 1,
+              organizationId: selectedOrganizationId,
+              accountId: account.accountId,
+              // From the account, never a constant: the RPC raises 40001 on a
+              // mismatch, the same way the disclosure version does.
+              expectedConnectionGeneration: account.connectionGeneration,
+              reasonCode: "USER_REQUESTED",
+            },
+          }, {
+            onError: (error: unknown) => {
+              void messageOf(error).then(setErrorMessage);
+            },
+          });
+        }
+        : undefined}
       onClose={onClose}
     />
   );

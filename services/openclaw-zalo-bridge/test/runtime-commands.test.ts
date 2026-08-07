@@ -157,7 +157,11 @@ describe("durable runtime command heartbeat", () => {
       revokedSessionGeneration: 5,
       minimumSessionGeneration: 6,
       channel: "zalouser",
-      accountId: CHANNEL_ACCOUNT_ID,
+      // The ACCOUNT uuid, not the provider profile name. The fixture used to carry
+      // CHANNEL_ACCOUNT_ID ("primary"), which the Edge rejects with 400 because
+      // `validCommandResult` demands `uuid(result.accountId)` - so this suite went
+      // green while every real disconnect was refused at the door.
+      accountId: ACCOUNT_ID,
       credentialsCleared: false,
       loggedOut: true,
       status: "PROVIDER_LOGGED_OUT",
@@ -674,6 +678,31 @@ describe("durable runtime command heartbeat", () => {
         "STARTED",
         "2026-08-01T00:00:10.000Z",
       )] }),
+      // The refusal is now REPORTED, so a third heartbeat carries the result and the
+      // fourth acknowledges it.
+      heartbeat({}),
+      heartbeat({
+        commandResultAcks: [{
+          version: 1,
+          runtimeCommandId: COMMAND_ID,
+          commandKind: "QR_LOGIN",
+          claimGeneration: 1,
+          outcome: "FAILED",
+          resultHash: sha256({
+            version: 1,
+            reasonCode: "INSUFFICIENT_EFFECT_DEADLINE",
+            failureFingerprint: sha256({
+              version: 1,
+              runtimeCommandId: COMMAND_ID,
+              claimGeneration: 1,
+              reasonCode: "INSUFFICIENT_EFFECT_DEADLINE",
+            }),
+            status: "FAILED_BEFORE_START",
+          }),
+          adoptSessionGeneration: null,
+          status: "ACCEPTED",
+        }],
+      }),
     ]);
     const { spool } = openSpool();
     const start = vi.fn();
@@ -687,9 +716,24 @@ describe("durable runtime command heartbeat", () => {
     await consumer.pulse();
 
     expect(start).not.toHaveBeenCalled();
+    // Refusing is right; staying silent about it is not. An unreported refusal leaves
+    // the server holding the command at STARTED forever, and a STARTED disconnect
+    // blocks every later disconnect - that is how an account wedges in DISCONNECTING.
+    // Reported and acknowledged - the command is closed on BOTH sides, which is the
+    // whole point. Previously it sat at AMBIGUOUS, closed only locally.
     expect(spool.runtimeCommandSnapshot(COMMAND_ID)).toMatchObject({
-      stage: "AMBIGUOUS",
+      stage: "SERVER_ACCEPTED",
       sealedReason: "INSUFFICIENT_EFFECT_DEADLINE",
+    });
+    const reported = runtimeHarness.bodies
+      .flatMap((entry) => (entry as { body: { commandResults?: unknown[] } }).body.commandResults ?? []);
+    // Resent until acknowledged - at-least-once is the contract, not a defect.
+    expect(reported.length).toBeGreaterThanOrEqual(1);
+    expect(reported[0]).toMatchObject({
+      commandKind: "QR_LOGIN",
+      outcome: "FAILED",
+      // Only claimable because the effect provably never began.
+      result: { reasonCode: "INSUFFICIENT_EFFECT_DEADLINE", status: "FAILED_BEFORE_START" },
     });
   });
 

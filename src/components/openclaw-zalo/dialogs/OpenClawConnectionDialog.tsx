@@ -27,6 +27,11 @@ interface OpenClawConnectionDialogProps {
   errorMessage: string | null;
   onRequestQr: () => void;
   onAcknowledgeDisclosure: () => void;
+  /**
+   * Omitted when the viewer cannot manage connections, so the button is absent
+   * rather than present-and-refused.
+   */
+  onDisconnect?: () => void;
   onClose: () => void;
 }
 
@@ -54,6 +59,7 @@ export default function OpenClawConnectionDialog({
   errorMessage,
   onRequestQr,
   onAcknowledgeDisclosure,
+  onDisconnect,
   onClose,
 }: OpenClawConnectionDialogProps) {
   if (!open) return null;
@@ -89,6 +95,24 @@ export default function OpenClawConnectionDialog({
           >
             {BLOCK_COPY[blocked]}
           </p>
+        )}
+
+        {/*
+          The way OUT of the state the copy above just told the owner to leave.
+          Without it the dialog said "Ngắt kết nối trước nếu muốn quét lại" while
+          offering no way to do that: no production file called the disconnect path
+          at all, so a connected account could never be re-linked.
+        */}
+        {blocked === "ALREADY_CONNECTED" && onDisconnect !== undefined && (
+          <button
+            type="button"
+            data-openclaw-action="disconnect"
+            disabled={pending}
+            onClick={onDisconnect}
+            className="mt-3 w-full border border-[#b4443a] bg-white px-4 py-2 text-sm font-bold text-[#b4443a] disabled:opacity-60"
+          >
+            Ngắt kết nối tài khoản
+          </button>
         )}
 
         {blocked === "DISCLOSURE" && gate.disclosure.reason !== null && (

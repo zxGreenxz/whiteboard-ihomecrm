@@ -4,6 +4,7 @@ import type { ClosableCellRpcTransport } from "../adapters/channel-adapter.js";
 import type {
   RuntimeCommandJournalClaim,
   RuntimeCommandJournalSnapshot,
+  RuntimeCommandJournalStage,
   SqliteSpool,
 } from "../spool/sqlite-spool.js";
 import { canonicalJson } from "../spool/checksum.js";
@@ -690,6 +691,54 @@ export function createRuntimeCommandHeartbeat(options: {
     finalizeQr(waiting);
   };
 
+  /**
+   * Report a failure the server can act on, instead of a silence it cannot.
+   *
+   * A command sealed AMBIGUOUS is never reported: `runtimeCommandResults` only picks
+   * up RESULT_PENDING. The server therefore leaves it STARTED forever, and
+   * `openclaw_disconnect_account_v1` refuses to supersede a STARTED disconnect - the
+   * account wedges in DISCONNECTING with no way out.
+   *
+   * Only usable where the effect provably never began: the contract requires
+   * `status: "FAILED_BEFORE_START"`, and claiming that about a start whose outcome is
+   * genuinely unknown would be a lie. Those stay AMBIGUOUS and are resolved
+   * server-side by `expire_openclaw_stale_commands_v1`, which records them honestly
+   * as SEALED_UNCONFIRMED.
+   */
+  const sealFailedBeforeStart = (
+    snapshot: RuntimeCommandJournalSnapshot,
+    expectedStages: readonly RuntimeCommandJournalStage[],
+    reasonCode: string,
+  ): void => {
+    const failure = {
+      version: 1 as const,
+      reasonCode,
+      failureFingerprint: hashCanonical({
+        version: 1,
+        runtimeCommandId: snapshot.runtimeCommandId,
+        claimGeneration: snapshot.claimGeneration,
+        reasonCode,
+      }),
+      status: "FAILED_BEFORE_START" as const,
+    };
+    const result = {
+      version: 1 as const,
+      runtimeCommandId: snapshot.runtimeCommandId,
+      commandKind: snapshot.commandKind,
+      claimGeneration: snapshot.claimGeneration,
+      claimToken: snapshot.claimToken,
+      outcome: "FAILED" as const,
+      result: failure,
+    };
+    options.spool.transitionRuntimeCommand(
+      snapshot.runtimeCommandId,
+      expectedStages,
+      "RESULT_PENDING",
+      { result, resultHash: hashCanonical(failure), sealedReason: reasonCode },
+      now(),
+    );
+  };
+
   const execute = async (snapshot: RuntimeCommandJournalSnapshot): Promise<boolean> => {
     if (snapshot.stage === "STALE_LOGIN_CLEANUP_PENDING") {
       exactLogoutResult(await options.cellRpc.invoke("channels.logout", {
@@ -739,13 +788,7 @@ export function createRuntimeCommandHeartbeat(options: {
     if (snapshot.stage === "START_AUTHORIZED") {
       const deadline = snapshot.effectDeadlineAt === null ? NaN : Date.parse(snapshot.effectDeadlineAt);
       if (!Number.isFinite(deadline) || deadline - now() < MIN_EFFECT_MARGIN_MS) {
-        options.spool.transitionRuntimeCommand(
-          snapshot.runtimeCommandId,
-          ["START_AUTHORIZED"],
-          "AMBIGUOUS",
-          { sealedReason: "INSUFFICIENT_EFFECT_DEADLINE" },
-          now(),
-        );
+        sealFailedBeforeStart(snapshot, ["START_AUTHORIZED"], "INSUFFICIENT_EFFECT_DEADLINE");
         return true;
       }
       snapshot = options.spool.transitionRuntimeCommand(
@@ -776,7 +819,17 @@ export function createRuntimeCommandHeartbeat(options: {
           revokedSessionGeneration: payload.revokedSessionGeneration,
           minimumSessionGeneration: payload.minimumSessionGeneration,
           channel: "zalouser",
-          accountId: options.channelAccountId,
+          // The OpenClaw account UUID, NOT `channelAccountId`.
+          //
+          // Two different identifiers live one line apart here. `channelAccountId` is
+          // the provider-side profile name ("primary"), which is exactly right for
+          // `channels.logout` on the cell - and exactly wrong here, because
+          // `validCommandResult` requires `uuid(value.result.accountId)`. Sending the
+          // profile name made every heartbeat carrying a DISCONNECT result fail the
+          // Edge's body validation with 400, so the command never left RESULT_PENDING
+          // and the account stayed stuck in DISCONNECTING forever - unable to
+          // disconnect, and therefore unable to request a new QR either.
+          accountId: options.binding.accountId,
           credentialsCleared: false,
           loggedOut: true,
           status: "PROVIDER_LOGGED_OUT",
@@ -800,13 +853,7 @@ export function createRuntimeCommandHeartbeat(options: {
     }
 
     if (qrEncryptionKey === undefined) {
-      options.spool.transitionRuntimeCommand(
-        snapshot.runtimeCommandId,
-        ["EFFECT_INTENT"],
-        "AMBIGUOUS",
-        { sealedReason: "QR_ENCRYPTION_KEY_UNAVAILABLE" },
-        now(),
-      );
+      sealFailedBeforeStart(snapshot, ["EFFECT_INTENT"], "QR_ENCRYPTION_KEY_UNAVAILABLE");
       return true;
     }
     const payload = snapshot.payload as QrLoginCommand["payload"];
