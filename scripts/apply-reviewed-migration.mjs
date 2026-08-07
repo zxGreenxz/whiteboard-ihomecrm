@@ -22,6 +22,7 @@
 // PITR đang TẮT ⇒ luôn chạy backup trước:
 //   node scripts/backup-before-schema.mjs --reason "apply <tên file>"
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -147,7 +148,44 @@ async function main(argv) {
       return 1;
     }
     console.log("⚠ Đã có promotion token — sẽ GHI THẬT lên production.");
-    console.log("  Đã chạy backup chưa? (node scripts/backup-before-schema.mjs --reason \"…\")");
+
+    // BACKUP LÀ CỬA CHẶN, KHÔNG PHẢI LỜI NHẮC.
+    //
+    // Chỗ này trước đây chỉ in ra câu hỏi "Đã chạy backup chưa?" rồi chạy tiếp
+    // bất kể câu trả lời. Một lời nhắc mà người ta bấm Enter cho qua không phải
+    // lớp bảo vệ — nhất là khi agent mới là thứ hay chạy lệnh này.
+    //
+    // Việc này quan trọng hơn hẳn kể từ 07/08/2026, khi PITR được chốt là KHÔNG
+    // bật: bản dump chụp ngay trước lúc apply là ĐIỂM KHÔI PHỤC DUY NHẤT. Không
+    // có nó, đường lùi gần nhất là backup tự động hằng ngày của Supabase — tức
+    // mất tới ~24 giờ sổ sách.
+    //
+    // Cửa thoát hiểm `--khong-backup` vẫn còn cho tình huống khẩn (production
+    // đang hỏng, cần vá ngay), nhưng bắt buộc kèm lý do và lý do đó được IN RA
+    // — bỏ qua được, nhưng không im lặng.
+    const boQuaBackup = argv.includes("--khong-backup");
+    if (boQuaBackup) {
+      const lyDo = argv[argv.indexOf("--khong-backup") + 1];
+      if (!lyDo || lyDo.startsWith("--")) {
+        console.error("❌ --khong-backup phải kèm lý do: --khong-backup \"vì sao bỏ qua\".");
+        return 1;
+      }
+      console.warn(`⚠ BỎ QUA BACKUP theo yêu cầu — lý do: ${lyDo}`);
+      console.warn("  Nếu apply hỏng, đường lùi gần nhất là backup hằng ngày của Supabase (tới ~24h dữ liệu).");
+    } else {
+      console.log("→ Chạy backup trước khi apply…");
+      const bk = spawnSync(
+        process.execPath,
+        [join(repoRoot, "scripts", "backup-before-schema.mjs"), "--reason", `apply ${basename(abs)}`],
+        { cwd: repoRoot, encoding: "utf8", stdio: "inherit", timeout: 45 * 60 * 1000 },
+      );
+      if (bk.status !== 0) {
+        console.error("\n❌ Backup THẤT BẠI — KHÔNG apply.");
+        console.error("   Apply mà không có điểm khôi phục là đánh cược toàn bộ sổ sách.");
+        console.error("   Sửa backup rồi chạy lại, hoặc dùng --khong-backup \"lý do\" nếu thật sự khẩn.");
+        return 1;
+      }
+    }
   }
 
   const pat = readPat();

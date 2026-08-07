@@ -21,7 +21,7 @@
 
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,6 +96,58 @@ export function readProjectRef() {
 export function readPoolerPassword(localMd) {
   const m = localMd.match(/verify pooler login\)[^`]*`([^`]+)`/u);
   return m ? m[1] : null;
+}
+
+/**
+ * Giữ tối đa bao nhiêu bản dump, xoá bản cũ hơn.
+ *
+ * Mỗi bản ~22 MB. Không dọn thì mỗi lần đổi schema đẻ thêm một bản và thư mục
+ * phình vô hạn — đây là sổ sách tiền thật nằm không mã hoá trên ổ đĩa, càng ít
+ * bản trôi nổi càng tốt.
+ *
+ * Giữ 5: đủ để lùi vài đợt thay đổi liên tiếp, mà không tích thành kho.
+ * Bản manifest .json đi kèm bị xoá cùng bản dump của nó.
+ */
+const GIU_TOI_DA = 5;
+
+export function chonBanCanXoa(tenFile, giuToiDa = GIU_TOI_DA) {
+  // Sắp theo MỐC THỜI GIAN trong tên, KHÔNG sắp theo cả tên file.
+  //
+  // Bản đầu tôi viết `.sort()` trên nguyên tên với lý lẽ "tên chứa timestamp ISO
+  // nên sort chuỗi = sort thời gian". Sai: tên còn chứa LOẠI (`full` / `schema`)
+  // đứng TRƯỚC timestamp, và 's' > 'f'. Nên `ihomecrm-schema-2026-08-01` bị coi
+  // là mới hơn `ihomecrm-full-2026-08-03`.
+  //
+  // Hậu quả nếu để nguyên: dọn nhầm bản FULL mới nhất và giữ lại bản SCHEMA cũ —
+  // mà dump chỉ-schema KHÔNG khôi phục được dữ liệu. Tức cơ chế dọn dẹp tự tay
+  // xoá đường lùi. Test "bản schema-only cũng nằm trong diện dọn" bắt được đúng
+  // chỗ này.
+  const mocTG = (f) => /^ihomecrm-(?:full|schema)-(.+)\.dump$/.exec(f)?.[1] ?? "";
+  const dump = tenFile
+    .filter((f) => /^ihomecrm-(full|schema)-.*\.dump$/.test(f))
+    .sort((a, b) => mocTG(b).localeCompare(mocTG(a))); // mới → cũ
+  return dump.slice(giuToiDa);
+}
+
+function donBanCu(outDir) {
+  let tenFile;
+  try {
+    tenFile = readdirSync(outDir);
+  } catch {
+    return;
+  }
+  const canXoa = chonBanCanXoa(tenFile);
+  if (canXoa.length === 0) return;
+  let byte = 0;
+  for (const f of canXoa) {
+    const p = join(outDir, f);
+    try {
+      byte += statSync(p).size;
+      rmSync(p, { force: true });
+      rmSync(`${p}.json`, { force: true });
+    } catch { /* bản đang bị khoá — bỏ qua, lần sau dọn tiếp */ }
+  }
+  console.log(`  đã dọn ${canXoa.length} bản dump cũ (giữ ${GIU_TOI_DA} bản mới nhất, giải phóng ${(byte / 1048576).toFixed(1)} MB)`);
 }
 
 function parseArgs(argv) {
@@ -292,6 +344,7 @@ function main(argv) {
   writeFileSync(`${outFile}.json`, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
   const mb = (stat.size / 1024 / 1024).toFixed(1);
+  donBanCu(outDir);
   console.log(`✅ Xong sau ${manifest.durationSeconds}s — ${mb} MB`);
   console.log(`   sha256: ${sha256.slice(0, 16)}…`);
   console.log(`   manifest: ${outFile}.json`);
