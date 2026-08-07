@@ -24,236 +24,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 // Import ĐỘNG prefetchPages (kéo theo hooks của 4 trang) — file này mount từ
 // App (entry chunk), import tĩnh sẽ phồng bundle đầu vô ích.
-import type { PrefetchDomain } from "@/lib/prefetchPages";
 
 // Danh sách bảng + union kiểu nay ở src/lib/realtime/syncTables.ts — module DỮ
 // LIỆU THUẦN để scripts/check-realtime-descriptors.mjs đọc được mà không phải
 // nạp React. Khai ở hai nơi thì hai nơi sẽ trôi khỏi nhau.
 import { type SyncTable } from "@/lib/realtime/syncTables";
 
-type BusinessPerformanceSubtype =
-  | "organizations"
-  | "pnl"
-  | "snapshot"
-  | "occupancy-snapshot"
-  | "upcoming-vacancy"
-  | "occupancy-trend-12m";
-
-type BusinessPerformanceInvalidationRule =
-  | {
-      subtype: "pnl";
-      basis?: "ACCRUAL" | "VOUCHER_DATE";
-    }
-  | {
-      subtype: Exclude<BusinessPerformanceSubtype, "pnl">;
-    };
-
-interface SyncEntry {
-  table: SyncTable;
-  /** Prefix query key sẽ invalidate khi bảng đổi. */
-  keys: readonly (readonly unknown[])[];
-  /** Domain prefetch cần hâm lại (nếu là trang được prefetch từ màn chính). */
-  domain?: PrefetchDomain;
-}
-
-const BUSINESS_PERFORMANCE_OCCUPANCY_RULES = [
-  { subtype: "snapshot" },
-  { subtype: "occupancy-snapshot" },
-  { subtype: "upcoming-vacancy" },
-  { subtype: "occupancy-trend-12m" },
-] as const satisfies readonly BusinessPerformanceInvalidationRule[];
-
-const BUSINESS_PERFORMANCE_INVALIDATION_RULES = {
-  invoices: [
-    { subtype: "pnl", basis: "ACCRUAL" },
-    { subtype: "snapshot" },
-  ],
-  income_expenses: [{ subtype: "pnl" }],
-  contracts: BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
-  rooms: BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
-  buildings: [
-    { subtype: "organizations" },
-    { subtype: "pnl" },
-    ...BUSINESS_PERFORMANCE_OCCUPANCY_RULES,
-  ],
-} as const satisfies Partial<
-  Record<SyncTable, readonly BusinessPerformanceInvalidationRule[]>
->;
-
-// dashboard-summary đi kèm invoices/income_expenses/contracts để KPI màn
-// chính cũng nhảy số theo (RPC có staleTime 5ph — realtime rút ngắn độ trễ).
+// Descriptor nay TÁCH THEO MIỀN sang src/hooks/realtime/ (P1.8 của plan). Hub chỉ
+// còn ba việc: mở channel, gom debounce, điều phối. Bản đồ 13 bảng → query key
+// không còn nằm ở đây, và đó là điểm chính: người sửa màn thu chi không phải đọc
+// qua phần điều phối để tìm dòng của mình.
 //
-// LƯU Ý BẢO TRÌ: invalidate khớp theo PREFIX mảng — key cùng phần tử đầu được
-// phủ sẵn (vd ["income-expenses","stats",…], ["income-expenses","accrual-month",…]).
-// Nhưng mọi màn đọc từ các bảng này bằng key CÓ PHẦN TỬ ĐẦU KHÁC thì PHẢI liệt kê
-// tường minh ở đây, nếu không nó sẽ kẹt dữ liệu cũ khi thay đổi đến từ client
-// khác. Thêm màn/hook mới đọc các bảng này ⇒ nhớ bổ sung key tương ứng.
-// (Xem docs/he-thong/realtime-sync.md để biết đầy đủ bản đồ bảng → query key.)
-const SYNC_TABLES: SyncEntry[] = [
-  {
-    table: "invoices",
-    keys: [
-      ["invoices"],
-      ["invoice"], // chi tiết 1 hoá đơn (số ít ≠ "invoices")
-      ["invoices-legacy"],
-      ["invoice-statistics"],
-      ["invoice-totals-by-ids"],
-      ["first-invoice-details"],
-      ["invoice-rent-periods"],
-      ["invoice-collectors"], // quy công thu (đọc invoices + income_expenses)
-      ["unpaid-invoices"],
-      ["dashboard-alerts"],
-      ["recent-activities"],
-      ["dashboard-summary"],
-      ["business-performance"],
-    ],
-    domain: "invoices",
-  },
-  {
-    table: "income_expenses",
-    keys: [
-      ["income-expenses"],
-      ["deposit-dashboard"],
-      ["reservation-deposits"],
-      ["dashboard-summary"],
-      // --- màn nghiệp vụ đọc income_expenses bằng key riêng (Nhóm A) ---
-      ["utility-payments"], // "Đóng điện nước" — trạng thái đã đóng
-      ["utility-accounts"],
-      ["accounts-with-balance"], // số dư sổ quỹ
-      ["cash-book"],
-      ["cash-book-summary"],
-      ["cash-flow-by-day"],
-      ["handover-vouchers"], // bàn giao tiền
-      ["invoice-collectors"], // quy công thu
-      ["manager-salary"], // bảng lương quản lý
-      ["voucher-with-batch"], // chi tiết phiếu
-      ["orphan-deposit-vouchers"],
-      ["contract-deposit-vouchers"],
-      ["shareholder-distributions"],
-      ["manager-salary-payouts"],
-      ["change-breakdown"], // sổ thối
-      ["commission-prefill"],
-      ["business-performance"],
-      // --- Đợt 2→6: màn đọc phiếu bằng key riêng, trước đây bỏ sót ---
-      ["settlement-report"],
-      ["financial-analysis"],
-      ["monthly-building-profit"],
-      ["income-expense-batches"],
-      ["voucher-detail"],
-      ["voucher-cancellation"],
-      ["voucher-change-log"],
-      ["ie-history"],
-      ["flex-cancel-eligibility"],
-      ["can-reverse-collection"],
-    ],
-    domain: "income-expenses",
-  },
-  {
-    // Prefix ["contracts"] phủ luôn "paged"/"stats"/"dashboard-counts".
-    table: "contracts",
-    keys: [
-      ["contracts"],
-      ["contracts-legacy"],
-      // deposit-dashboard đọc contracts + contract_terminations (KHÔNG phải
-      // income_expenses) → phải gắn vào ĐÂY mới live theo thay đổi HĐ.
-      ["deposit-dashboard"],
-      ["unpaid-invoices"],
-      ["dashboard-alerts"],
-      ["recent-activities"],
-      ["dashboard-summary"],
-      ["business-performance"],
-      ["occupancy-dashboard"],
-    ],
-    domain: "contracts",
-  },
-  { table: "rooms", keys: [["business-performance"]] },
-  {
-    table: "buildings",
-    keys: [["business-performance"]],
-  },
-  { table: "jobs", keys: [["jobs"]], domain: "jobs" },
-  { table: "customers", keys: [["customers"], ["customer-stats"]] },
-
-  // ── Ba bảng TIỀN mà plan (Rủi ro #5) nêu là thiếu hẳn ─────────────
-  // payments: hoàn tác thu tiền đổi payments.reversed_at, và
-  // recompute_invoice_for_id tính paid_amount TỪ bảng này chứ không từ phiếu.
-  {
-    table: "payments",
-    keys: [
-      ["invoice-payments-summary"],
-      ["invoices"],
-      ["payments"],
-      ["invoice-statistics"],
-      ["invoice-collectors"],
-      ["can-reverse-collection"],
-      ["settlement-report"],
-    ],
-  },
-  // income_expense_items: sửa hạng mục đổi total_amount của phiếu qua trigger,
-  // tức đổi luôn tồn quỹ — mà trước đây không phát tín hiệu nào.
-  {
-    table: "income_expense_items",
-    keys: [
-      ["income-expenses"],
-      ["voucher-with-batch"],
-      ["voucher-detail"],
-      ["accounts-with-balance"],
-      ["cash-book-summary"],
-      ["financial-analysis"],
-    ],
-  },
-  // accounts: chốt sổ đặt lock_date, đổi số dư đầu, đổi người phụ trách.
-  {
-    table: "accounts",
-    keys: [
-      ["accounts"],
-      ["accounts-with-balance"],
-      ["cashbook-closings"],
-      ["cashbook-closing-blockers"],
-      ["cashbook-balance-as-of"],
-      ["cash-book-summary"],
-    ],
-  },
-  // cash_handovers: phiên bàn giao đổi trạng thái là hai bên phải thấy ngay.
-  {
-    table: "cash_handovers",
-    keys: [
-      ["cash-handovers"],
-      ["handover-vouchers"],
-      ["settlement-report"],
-      ["cashbook-closing-blockers"],
-    ],
-  },
-  // contract_terminations: hồ sơ thanh lý đổi status (DRAFT → PENDING_APPROVAL →
-  // APPROVED/COMPLETED) và đổi số quyết toán. Từ Đợt −1 có trigger đông cứng đầu
-  // vào quyết toán sau APPROVED/COMPLETED, nên trạng thái này có hệ quả CỨNG:
-  // người thứ hai bấm duyệt trên hồ sơ đã bị bác sẽ ăn lỗi thay vì thấy trước.
-  // Lưu ý: ["deposit-dashboard"] đang gắn ở entry `contracts` vì bảng cọc đọc cả
-  // hai — nhưng thay đổi CHỈ ở contract_terminations thì trước đây không phát gì.
-  {
-    table: "contract_terminations",
-    keys: [
-      ["deposit-dashboard"],
-      ["refund-forfeit-summary"],
-      ["contract-terminations"],
-      ["contracts"],
-    ],
-    domain: "contracts",
-  },
-  // contract_transfers: Đợt 2 biến bảng này thành SỔ AUDIT thật (audit ghi trước,
-  // không nuốt lỗi) và dựng projection đoạn cư trú đọc từ nó. Chuỗi cư trú đổi mà
-  // màn không đổi thì người rà tay đối chiếu số cũ.
-  {
-    table: "contract_transfers",
-    keys: [
-      ["room-residence-segments"],
-      ["contract-transfers"],
-      ["contracts"],
-      ["rooms"],
-    ],
-    domain: "contracts",
-  },
-];
+// index.ts của thư mục đó KHÔNG chỉ là chỗ gom — nó đối chiếu tập descriptor với
+// REALTIME_SYNC_TABLES. Tách một mảng thành nhiều file tạo ra một cách hỏng MỚI
+// mà bản gộp không có (quên nối một miền vào hub), và hậu quả trùng khít với lớp
+// lỗi mà cả hệ realtime này sinh ra để chống: im lặng tuyệt đối.
+import {
+  BUSINESS_PERFORMANCE_INVALIDATION_RULES,
+  SYNC_ENTRIES as SYNC_TABLES,
+  type BusinessPerformanceInvalidationRule,
+  type SyncEntry,
+} from "@/hooks/realtime";
 
 const DEBOUNCE_MS = 800;
 

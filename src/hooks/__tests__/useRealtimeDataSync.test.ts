@@ -249,7 +249,15 @@ describe("useRealtimeDataSync report invalidation", () => {
     const registeredTables = harness.channel.on.mock.calls.map(
       ([, filter]) => (filter as { table: string }).table,
     );
-    expect(registeredTables).toEqual([
+    // SO THEO TẬP, KHÔNG THEO THỨ TỰ.
+    //
+    // Bản trước so mảng theo đúng thứ tự khai. Thứ tự đăng ký handler không phải
+    // tính chất hành vi — mỗi bảng một handler độc lập — nên nó chỉ tạo ra một
+    // cách làm vỡ test mà không có lỗi nào: P1.8 tách descriptor theo miền
+    // (finance/contracts/operations), thứ tự nối đổi, test đỏ trong khi không mất
+    // một bảng nào. Hai tính chất THẬT SỰ cần chốt vẫn nguyên: đủ 13 bảng, và
+    // mỗi bảng đúng MỘT lần (dòng expect cuối).
+    expect([...registeredTables].sort()).toEqual([
       "invoices",
       "income_expenses",
       "contracts",
@@ -270,8 +278,20 @@ describe("useRealtimeDataSync report invalidation", () => {
       // phòng là im lặng hoàn toàn. Migration 20260731060000 thêm vào publication.
       "contract_terminations",
       "contract_transfers",
-    ]);
+    ].sort());
     expect(new Set(registeredTables).size).toBe(registeredTables.length);
+  });
+
+  // Chốt chặn cho chính việc tách file ở P1.8: tách một mảng thành ba module tạo
+  // ra một cách hỏng MỚI — quên nối một miền vào index — và hậu quả là im lặng
+  // tuyệt đối cho đúng miền bị rơi. Ba hàm dưới đây đối chiếu tập descriptor với
+  // danh sách bảng chuẩn, cùng danh sách mà gate publication đang dùng.
+  it("descriptor theo miền phủ đúng danh sách bảng chuẩn, không thiếu không thừa không trùng", async () => {
+    const { tablesWithoutDescriptor, descriptorsWithoutTable, duplicatedTables } =
+      await import("@/hooks/realtime");
+    expect(tablesWithoutDescriptor(), "bảng chuẩn mà không miền nào khai").toEqual([]);
+    expect(descriptorsWithoutTable(), "descriptor trỏ bảng ngoài danh sách chuẩn").toEqual([]);
+    expect(duplicatedTables(), "bảng bị hai miền cùng khai").toEqual([]);
   });
 
   it.each(Object.entries(expectedBusinessPerformanceInvalidations))(
