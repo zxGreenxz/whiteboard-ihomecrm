@@ -1,0 +1,15 @@
+diff --git a/src/channel.ts b/src/channel.ts
+index 2172853..a9a4ffa 100644
+--- a/src/channel.ts
++++ b/src/channel.ts
+@@ -159,6 +159,10 @@ export const zalouserPlugin: ChannelPlugin<ResolvedZalouserAccount, ZalouserProb
+           },
+         },
+       ),
++      // The host resolves web-login providers by looking for this list; without it
++      // `resolveWebLoginProvider()` finds nothing and `web.login.start` answers
++      // "web login provider is not available", so no QR can ever be produced.
++      gatewayMethods: ["web.login.start", "web.login.wait"],
+       gateway: {
+         startAccount: async (ctx) => {
+           const { getZaloUserInfo } = await loadZalouserChannelRuntime();

@@ -1,3 +1,4 @@
 0001-durable-inbound-bridge-listener.patch
 0002-private-bridge-send-rpc.patch
 0003-close-bypasses-and-classify-control.patch
+0004-declare-web-login-gateway-methods.patch

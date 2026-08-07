@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe("reviewed patch series", () => {
-  it("applies the exact three patches to the immutable source snapshot", () => {
+  it("applies the exact four patches to the immutable source snapshot", () => {
     const series = readFileSync(resolve(vendorRoot, "patches/series"), "utf8")
       .split(/\r?\n/)
       .filter(Boolean);
@@ -36,6 +36,7 @@ describe("reviewed patch series", () => {
       "0001-durable-inbound-bridge-listener.patch",
       "0002-private-bridge-send-rpc.patch",
       "0003-close-bypasses-and-classify-control.patch",
+      "0004-declare-web-login-gateway-methods.patch",
     ]);
     const preparedRoot = mkdtempSync(resolve(tmpdir(), "ihome-zalouser-patches-"));
     temporaryRoots.push(preparedRoot);
@@ -47,6 +48,11 @@ describe("reviewed patch series", () => {
       execFileSync("git", ["apply", patch], { cwd: preparedRoot });
     }
 
+    // Without this list the host's `resolveWebLoginProvider()` finds no provider and
+    // `web.login.start` answers "web login provider is not available" - no QR, ever.
+    expect(readFileSync(resolve(preparedRoot, "src/channel.ts"), "utf8")).toContain(
+      'gatewayMethods: ["web.login.start", "web.login.wait"],',
+    );
     const patchedZaloJs = readFileSync(resolve(preparedRoot, "src/zalo-js.ts"), "utf8");
     expect(patchedZaloJs).toContain(
       "const callbackReceivedAt = captureProviderCallbackReceivedAt();",

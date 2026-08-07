@@ -12,8 +12,8 @@
   },
   "sourceDateEpoch": 1785062400,
   "artifactPath": "artifacts/openclaw-zalouser-2026.7.1.tgz",
-  "artifactSha256": "3db159b14394dc142704453460b3f51cf5df3843544545d87d5ba9e99db0fb45",
-  "builtTgzSha256": "3db159b14394dc142704453460b3f51cf5df3843544545d87d5ba9e99db0fb45",
+  "artifactSha256": "472278d595253e352efb3682d56eba33eab0cd64d6dc8843aa7ee8b294134f69",
+  "builtTgzSha256": "472278d595253e352efb3682d56eba33eab0cd64d6dc8843aa7ee8b294134f69",
   "artifactMembers": [
     {
       "path": "package/LICENSE",
@@ -41,7 +41,7 @@
       "type": "file",
       "mode": "0644",
       "size": 1129,
-      "sha256": "c04542edd42824ac8786cf31302fddf3c708701ef7aa8ead682ac0f46d2bd518"
+      "sha256": "644eb7ae5ce70d343b15631b915b9bda840e7086c50e8084a42d082ca2e58a40"
     },
     {
       "path": "package/dist/behavior-contract-api.js",
@@ -55,7 +55,7 @@
       "type": "file",
       "mode": "0644",
       "size": 436,
-      "sha256": "7470c5ad31f25ae5684e4d57e452a77ae300f3e3d16227f66bb87b4b8d0440b7"
+      "sha256": "68d6e386634e67eddaa9ffbea8e1296ef5faf402fafcf2995e5a18bce4478326"
     },
     {
       "path": "package/dist/chunks/accounts.runtime-57R57YVU.js",
@@ -70,6 +70,20 @@
       "mode": "0644",
       "size": 1532,
       "sha256": "8b6d7cbbeae72fda17f8e359090b11a9c39449cdf76b7a8747f9d70f7863b5ee"
+    },
+    {
+      "path": "package/dist/chunks/chunk-2O2VPZ7X.js",
+      "type": "file",
+      "mode": "0644",
+      "size": 26738,
+      "sha256": "81854629f009c6ac1c5f434b6a3e7ba3c092d9f3fce609e076d75debd8e36876"
+    },
+    {
+      "path": "package/dist/chunks/chunk-57Q7WPGR.js",
+      "type": "file",
+      "mode": "0644",
+      "size": 217627,
+      "sha256": "d364a85ef9e90de7483abf91f94632c5fa12b8d0054d2f99af826dc1cdd9b7e3"
     },
     {
       "path": "package/dist/chunks/chunk-5BO7FA5D.js",
@@ -142,13 +156,6 @@
       "sha256": "3d78efbf44383f1e76eecaa231d037f0fe61211066b0d46d76b21ac277d41007"
     },
     {
-      "path": "package/dist/chunks/chunk-SQXJGPUY.js",
-      "type": "file",
-      "mode": "0644",
-      "size": 217627,
-      "sha256": "60ff4b971013b2989120afd2e57b4c89cc13739830f581d9d7c4be957827de45"
-    },
-    {
       "path": "package/dist/chunks/chunk-T2PWR2UQ.js",
       "type": "file",
       "mode": "0644",
@@ -168,13 +175,6 @@
       "mode": "0644",
       "size": 14780,
       "sha256": "2f315dcacb2b57c0501d67908b363edd03c8ec285c8de7d14de71b3232edc6f7"
-    },
-    {
-      "path": "package/dist/chunks/chunk-XP3SE3HF.js",
-      "type": "file",
-      "mode": "0644",
-      "size": 26441,
-      "sha256": "10b48e73fcae987bc73797bf6b026d0b52334047b7cc56cb1dc4d561804fbaaa"
     },
     {
       "path": "package/dist/chunks/dist-GJOM7BIC.js",
@@ -230,7 +230,7 @@
       "type": "file",
       "mode": "0644",
       "size": 3087,
-      "sha256": "a8653f5870f62dbd25f472213471da6ced6c909d7bdb5ecba0dce05a89c63d7b"
+      "sha256": "cad2eafac9d43348f0951820cf9820d70a977f44a8a643442c66246a7c7ea2b2"
     },
     {
       "path": "package/dist/secret-contract-api.js",
@@ -541,13 +541,14 @@
       "sha256": "d86034bc0f5320f55f4ea7b6e35fffb5d9868e04585ac1fe7b016f453192f17e"
     }
   ],
-  "artifactMembersSha256": "cf4457faa88876c187686e336058a0364a3b8d4913a9e0be79195dda8e47696e",
+  "artifactMembersSha256": "b29da7dad6eb1a120d3a3a9ee5a8912648c487a4947456066572aa63acc2499e",
   "patches": [
     "0001-durable-inbound-bridge-listener.patch",
     "0002-private-bridge-send-rpc.patch",
-    "0003-close-bypasses-and-classify-control.patch"
+    "0003-close-bypasses-and-classify-control.patch",
+    "0004-declare-web-login-gateway-methods.patch"
   ],
-  "patchSeriesSha256": "7e6312f6b6b58f287f2ba9dac0829128efdc8e7de0305d673b36fec8c96d60ec",
+  "patchSeriesSha256": "07d36eaf1c1048d3047e5573e88579f379bc1553437da660742a617e0c668a2f",
   "bridgeOverlay": {
     "members": [
       {
@@ -5547,6 +5548,8 @@
       "resolvedTarget": "package/dist/api.js",
       "expandedMembers": [
         "package/dist/api.js",
+        "package/dist/chunks/chunk-2O2VPZ7X.js",
+        "package/dist/chunks/chunk-57Q7WPGR.js",
         "package/dist/chunks/chunk-5BO7FA5D.js",
         "package/dist/chunks/chunk-5F5DQHOJ.js",
         "package/dist/chunks/chunk-5JFALIRO.js",
@@ -5556,11 +5559,9 @@
         "package/dist/chunks/chunk-JOHHRG5H.js",
         "package/dist/chunks/chunk-NQ2LO4JE.js",
         "package/dist/chunks/chunk-QSWGS6BV.js",
-        "package/dist/chunks/chunk-SQXJGPUY.js",
         "package/dist/chunks/chunk-T2PWR2UQ.js",
         "package/dist/chunks/chunk-V7WJDRXE.js",
-        "package/dist/chunks/chunk-WEVYUODE.js",
-        "package/dist/chunks/chunk-XP3SE3HF.js"
+        "package/dist/chunks/chunk-WEVYUODE.js"
       ]
     },
     {
@@ -5595,13 +5596,13 @@
       "resolvedTarget": "package/dist/channel-plugin-api.js",
       "expandedMembers": [
         "package/dist/channel-plugin-api.js",
+        "package/dist/chunks/chunk-2O2VPZ7X.js",
         "package/dist/chunks/chunk-5JFALIRO.js",
         "package/dist/chunks/chunk-HIEA2L7E.js",
         "package/dist/chunks/chunk-JOHHRG5H.js",
         "package/dist/chunks/chunk-NQ2LO4JE.js",
         "package/dist/chunks/chunk-T2PWR2UQ.js",
-        "package/dist/chunks/chunk-V7WJDRXE.js",
-        "package/dist/chunks/chunk-XP3SE3HF.js"
+        "package/dist/chunks/chunk-V7WJDRXE.js"
       ]
     },
     {
@@ -5665,6 +5666,8 @@
       "resolution": "literal",
       "resolvedTarget": "package/dist/runtime-api.js",
       "expandedMembers": [
+        "package/dist/chunks/chunk-2O2VPZ7X.js",
+        "package/dist/chunks/chunk-57Q7WPGR.js",
         "package/dist/chunks/chunk-5BO7FA5D.js",
         "package/dist/chunks/chunk-5F5DQHOJ.js",
         "package/dist/chunks/chunk-5JFALIRO.js",
@@ -5674,11 +5677,9 @@
         "package/dist/chunks/chunk-JOHHRG5H.js",
         "package/dist/chunks/chunk-NQ2LO4JE.js",
         "package/dist/chunks/chunk-QSWGS6BV.js",
-        "package/dist/chunks/chunk-SQXJGPUY.js",
         "package/dist/chunks/chunk-T2PWR2UQ.js",
         "package/dist/chunks/chunk-V7WJDRXE.js",
         "package/dist/chunks/chunk-WEVYUODE.js",
-        "package/dist/chunks/chunk-XP3SE3HF.js",
         "package/dist/runtime-api.js"
       ]
     },
@@ -5875,7 +5876,7 @@
     },
     {
       "source": "src/channel.ts",
-      "line": 184,
+      "line": 188,
       "column": 53,
       "operation": "dynamic-import",
       "expression": "\"./monitor.js\"",
@@ -5919,8 +5920,64 @@
       ]
     }
   ],
-  "runtimeDynamicSiteInventorySha256": "c7335b3e0653f7e079be1cabea8e4e3e4a3c39c945ab6be68932484ad5fa5470",
+  "runtimeDynamicSiteInventorySha256": "b802ab56a9dccc55da0b6e08f2b43d7bf167a1a603e3e1d27587962971b9629e",
   "emittedRuntimeSiteInventory": [
+    {
+      "source": "package/dist/chunks/chunk-2O2VPZ7X.js",
+      "line": 160,
+      "column": 64,
+      "operation": "dynamic-import",
+      "expression": "\"./channel.runtime-EB5TFWFD.js\"",
+      "classification": "artifact-members",
+      "resolution": "literal",
+      "specifier": "./channel.runtime-EB5TFWFD.js",
+      "resolvedTarget": "package/dist/chunks/channel.runtime-EB5TFWFD.js",
+      "expandedMembers": [
+        "package/dist/chunks/channel.runtime-EB5TFWFD.js"
+      ]
+    },
+    {
+      "source": "package/dist/chunks/chunk-2O2VPZ7X.js",
+      "line": 598,
+      "column": 66,
+      "operation": "dynamic-import",
+      "expression": "\"./channel.runtime-EB5TFWFD.js\"",
+      "classification": "artifact-members",
+      "resolution": "literal",
+      "specifier": "./channel.runtime-EB5TFWFD.js",
+      "resolvedTarget": "package/dist/chunks/channel.runtime-EB5TFWFD.js",
+      "expandedMembers": [
+        "package/dist/chunks/channel.runtime-EB5TFWFD.js"
+      ]
+    },
+    {
+      "source": "package/dist/chunks/chunk-2O2VPZ7X.js",
+      "line": 600,
+      "column": 22,
+      "operation": "dynamic-import",
+      "expression": "\"./setup-surface-RJTXEGRT.js\"",
+      "classification": "artifact-members",
+      "resolution": "literal",
+      "specifier": "./setup-surface-RJTXEGRT.js",
+      "resolvedTarget": "package/dist/chunks/setup-surface-RJTXEGRT.js",
+      "expandedMembers": [
+        "package/dist/chunks/setup-surface-RJTXEGRT.js"
+      ]
+    },
+    {
+      "source": "package/dist/chunks/chunk-2O2VPZ7X.js",
+      "line": 733,
+      "column": 51,
+      "operation": "dynamic-import",
+      "expression": "\"./monitor-MT5TRCM3.js\"",
+      "classification": "artifact-members",
+      "resolution": "literal",
+      "specifier": "./monitor-MT5TRCM3.js",
+      "resolvedTarget": "package/dist/chunks/monitor-MT5TRCM3.js",
+      "expandedMembers": [
+        "package/dist/chunks/monitor-MT5TRCM3.js"
+      ]
+    },
     {
       "source": "package/dist/chunks/chunk-5BO7FA5D.js",
       "line": 123,
@@ -5981,62 +6038,6 @@
       "resolvedTarget": "package/dist/chunks/accounts.runtime-57R57YVU.js",
       "expandedMembers": [
         "package/dist/chunks/accounts.runtime-57R57YVU.js"
-      ]
-    },
-    {
-      "source": "package/dist/chunks/chunk-XP3SE3HF.js",
-      "line": 160,
-      "column": 64,
-      "operation": "dynamic-import",
-      "expression": "\"./channel.runtime-EB5TFWFD.js\"",
-      "classification": "artifact-members",
-      "resolution": "literal",
-      "specifier": "./channel.runtime-EB5TFWFD.js",
-      "resolvedTarget": "package/dist/chunks/channel.runtime-EB5TFWFD.js",
-      "expandedMembers": [
-        "package/dist/chunks/channel.runtime-EB5TFWFD.js"
-      ]
-    },
-    {
-      "source": "package/dist/chunks/chunk-XP3SE3HF.js",
-      "line": 598,
-      "column": 66,
-      "operation": "dynamic-import",
-      "expression": "\"./channel.runtime-EB5TFWFD.js\"",
-      "classification": "artifact-members",
-      "resolution": "literal",
-      "specifier": "./channel.runtime-EB5TFWFD.js",
-      "resolvedTarget": "package/dist/chunks/channel.runtime-EB5TFWFD.js",
-      "expandedMembers": [
-        "package/dist/chunks/channel.runtime-EB5TFWFD.js"
-      ]
-    },
-    {
-      "source": "package/dist/chunks/chunk-XP3SE3HF.js",
-      "line": 600,
-      "column": 22,
-      "operation": "dynamic-import",
-      "expression": "\"./setup-surface-RJTXEGRT.js\"",
-      "classification": "artifact-members",
-      "resolution": "literal",
-      "specifier": "./setup-surface-RJTXEGRT.js",
-      "resolvedTarget": "package/dist/chunks/setup-surface-RJTXEGRT.js",
-      "expandedMembers": [
-        "package/dist/chunks/setup-surface-RJTXEGRT.js"
-      ]
-    },
-    {
-      "source": "package/dist/chunks/chunk-XP3SE3HF.js",
-      "line": 729,
-      "column": 51,
-      "operation": "dynamic-import",
-      "expression": "\"./monitor-MT5TRCM3.js\"",
-      "classification": "artifact-members",
-      "resolution": "literal",
-      "specifier": "./monitor-MT5TRCM3.js",
-      "resolvedTarget": "package/dist/chunks/monitor-MT5TRCM3.js",
-      "expandedMembers": [
-        "package/dist/chunks/monitor-MT5TRCM3.js"
       ]
     },
     {
@@ -6572,13 +6573,15 @@
       "expandedMembers": []
     }
   ],
-  "emittedRuntimeSiteInventorySha256": "8d4877d5dcd1b61f3a500867c5a5c786b5fccf64a338f427d8f57abd77662fed",
+  "emittedRuntimeSiteInventorySha256": "8df1b82f9003c8ca5e01280496afc9bebce257d7b37fb42143a83aedfa3f5e59",
   "derivedRuntimeSet": [
     "package/dist/api.js",
     "package/dist/behavior-contract-api.js",
     "package/dist/channel-plugin-api.js",
     "package/dist/chunks/accounts.runtime-57R57YVU.js",
     "package/dist/chunks/channel.runtime-EB5TFWFD.js",
+    "package/dist/chunks/chunk-2O2VPZ7X.js",
+    "package/dist/chunks/chunk-57Q7WPGR.js",
     "package/dist/chunks/chunk-5BO7FA5D.js",
     "package/dist/chunks/chunk-5F5DQHOJ.js",
     "package/dist/chunks/chunk-5JFALIRO.js",
@@ -6589,11 +6592,9 @@
     "package/dist/chunks/chunk-JOHHRG5H.js",
     "package/dist/chunks/chunk-NQ2LO4JE.js",
     "package/dist/chunks/chunk-QSWGS6BV.js",
-    "package/dist/chunks/chunk-SQXJGPUY.js",
     "package/dist/chunks/chunk-T2PWR2UQ.js",
     "package/dist/chunks/chunk-V7WJDRXE.js",
     "package/dist/chunks/chunk-WEVYUODE.js",
-    "package/dist/chunks/chunk-XP3SE3HF.js",
     "package/dist/chunks/dist-GJOM7BIC.js",
     "package/dist/chunks/monitor-MT5TRCM3.js",
     "package/dist/chunks/send-F4RXNY2X.js",
@@ -6612,6 +6613,8 @@
     "package/dist/channel-plugin-api.js",
     "package/dist/chunks/accounts.runtime-57R57YVU.js",
     "package/dist/chunks/channel.runtime-EB5TFWFD.js",
+    "package/dist/chunks/chunk-2O2VPZ7X.js",
+    "package/dist/chunks/chunk-57Q7WPGR.js",
     "package/dist/chunks/chunk-5BO7FA5D.js",
     "package/dist/chunks/chunk-5F5DQHOJ.js",
     "package/dist/chunks/chunk-5JFALIRO.js",
@@ -6622,11 +6625,9 @@
     "package/dist/chunks/chunk-JOHHRG5H.js",
     "package/dist/chunks/chunk-NQ2LO4JE.js",
     "package/dist/chunks/chunk-QSWGS6BV.js",
-    "package/dist/chunks/chunk-SQXJGPUY.js",
     "package/dist/chunks/chunk-T2PWR2UQ.js",
     "package/dist/chunks/chunk-V7WJDRXE.js",
     "package/dist/chunks/chunk-WEVYUODE.js",
-    "package/dist/chunks/chunk-XP3SE3HF.js",
     "package/dist/chunks/dist-GJOM7BIC.js",
     "package/dist/chunks/monitor-MT5TRCM3.js",
     "package/dist/chunks/send-F4RXNY2X.js",
@@ -6743,7 +6744,7 @@
         "type": "file",
         "mode": "0644",
         "size": 1129,
-        "sha256": "c04542edd42824ac8786cf31302fddf3c708701ef7aa8ead682ac0f46d2bd518"
+        "sha256": "644eb7ae5ce70d343b15631b915b9bda840e7086c50e8084a42d082ca2e58a40"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/behavior-contract-api.js",
@@ -6757,7 +6758,7 @@
         "type": "file",
         "mode": "0644",
         "size": 436,
-        "sha256": "7470c5ad31f25ae5684e4d57e452a77ae300f3e3d16227f66bb87b4b8d0440b7"
+        "sha256": "68d6e386634e67eddaa9ffbea8e1296ef5faf402fafcf2995e5a18bce4478326"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks",
@@ -6779,6 +6780,20 @@
         "mode": "0644",
         "size": 1532,
         "sha256": "8b6d7cbbeae72fda17f8e359090b11a9c39449cdf76b7a8747f9d70f7863b5ee"
+      },
+      {
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-2O2VPZ7X.js",
+        "type": "file",
+        "mode": "0644",
+        "size": 26738,
+        "sha256": "81854629f009c6ac1c5f434b6a3e7ba3c092d9f3fce609e076d75debd8e36876"
+      },
+      {
+        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-57Q7WPGR.js",
+        "type": "file",
+        "mode": "0644",
+        "size": 217627,
+        "sha256": "d364a85ef9e90de7483abf91f94632c5fa12b8d0054d2f99af826dc1cdd9b7e3"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-5BO7FA5D.js",
@@ -6851,13 +6866,6 @@
         "sha256": "3d78efbf44383f1e76eecaa231d037f0fe61211066b0d46d76b21ac277d41007"
       },
       {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-SQXJGPUY.js",
-        "type": "file",
-        "mode": "0644",
-        "size": 217627,
-        "sha256": "60ff4b971013b2989120afd2e57b4c89cc13739830f581d9d7c4be957827de45"
-      },
-      {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-T2PWR2UQ.js",
         "type": "file",
         "mode": "0644",
@@ -6877,13 +6885,6 @@
         "mode": "0644",
         "size": 14780,
         "sha256": "2f315dcacb2b57c0501d67908b363edd03c8ec285c8de7d14de71b3232edc6f7"
-      },
-      {
-        "path": "node_modules/@openclaw/zalouser/dist/chunks/chunk-XP3SE3HF.js",
-        "type": "file",
-        "mode": "0644",
-        "size": 26441,
-        "sha256": "10b48e73fcae987bc73797bf6b026d0b52334047b7cc56cb1dc4d561804fbaaa"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/chunks/dist-GJOM7BIC.js",
@@ -6939,7 +6940,7 @@
         "type": "file",
         "mode": "0644",
         "size": 3087,
-        "sha256": "a8653f5870f62dbd25f472213471da6ced6c909d7bdb5ecba0dce05a89c63d7b"
+        "sha256": "cad2eafac9d43348f0951820cf9820d70a977f44a8a643442c66246a7c7ea2b2"
       },
       {
         "path": "node_modules/@openclaw/zalouser/dist/secret-contract-api.js",
@@ -7546,7 +7547,7 @@
     ],
     "fileCount": 76,
     "directoryCount": 46,
-    "sha256": "6f71428681240624f8faa077b1ba20563e611c329b0387cc80a460e646310255",
-    "rootSha256": "6f71428681240624f8faa077b1ba20563e611c329b0387cc80a460e646310255"
+    "sha256": "b6b26922cb1f85c90d9a9d0063d2acf138b1e9bb4e2b45061ba694d510f16def",
+    "rootSha256": "b6b26922cb1f85c90d9a9d0063d2acf138b1e9bb4e2b45061ba694d510f16def"
   }
 }
