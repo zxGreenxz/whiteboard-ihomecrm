@@ -82,6 +82,39 @@ export function docManifestBackup(stdout, docFile = readFileSync, coFile = exist
   return { ok: true, manifest: j };
 }
 
+/**
+ * Chụp vân tay catalog production — dùng để ghi TRƯỚC/SAU mỗi lần apply.
+ *
+ * VÌ SAO EVIDENCE CẦN THÊM CÁI NÀY
+ *   Trước đây file evidence trả lời được "đã apply file nào, ai cho phép, khôi
+ *   phục từ đâu" — nhưng KHÔNG trả lời được "migration đó thật sự đổi gì trên
+ *   database". Sáu tháng sau, đó mới là câu hỏi người ta hỏi khi truy một sự cố.
+ *
+ *   Hai vân tay khác nhau ⇒ có bằng chứng migration làm được việc.
+ *   Hai vân tay GIỐNG nhau ⇒ migration không đổi gì ở tầng catalog. Với một
+ *   migration schema thì đó là tín hiệu đáng nhìn: hoặc nó đã được apply từ
+ *   trước (re-apply idempotent — bình thường), hoặc nó chỉ đổi DỮ LIỆU chứ không
+ *   đổi cấu trúc, hoặc nó không làm gì cả. Không kết luận thay người đọc, nhưng
+ *   phải NÓI RA.
+ *
+ * Chi phí đo được: 3,35 giây mỗi lần chụp.
+ */
+function chupVanTayCatalog() {
+  const r = spawnSync(process.execPath, [join(repoRoot, "scripts", "capture-production-catalog.mjs")], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: "pipe",
+    timeout: 10 * 60 * 1000,
+  });
+  if (r.status !== 0) return { ok: false, vi: `capture thoát ${r.status}` };
+  try {
+    const j = JSON.parse(readFileSync(join(repoRoot, "docs", "generated", "database-inventory.json"), "utf8"));
+    return { ok: true, fingerprint: j.catalogFingerprint, counts: j.counts };
+  } catch (e) {
+    return { ok: false, vi: `không đọc được inventory: ${e.message}` };
+  }
+}
+
 const LOCK_NAME = "ihomecrm:forward-migration:v1";
 const LOCK_TIMEOUT = "5s";
 const STATEMENT_TIMEOUT = "120s";
@@ -402,6 +435,13 @@ async function main(argv) {
   }
   const ref = projectRef();
 
+  // Chụp catalog TRƯỚC — chỉ khi apply thật. Dry-run không đổi gì nên chụp là
+  // lãng phí 3,35 giây và tạo ra một bản inventory không tương ứng lần chạy nào.
+  const vanTayTruoc = doApply ? chupVanTayCatalog() : null;
+  if (doApply && !vanTayTruoc.ok) {
+    console.warn(`⚠ Không chụp được catalog TRƯỚC (${vanTayTruoc.vi}) — evidence sẽ thiếu vế so sánh.`);
+  }
+
   const started = Date.now();
   const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: "POST",
@@ -419,6 +459,27 @@ async function main(argv) {
   console.log(`✅ ${doApply ? "Đã apply" : "Dry-run xanh (đã ROLLBACK)"} sau ${Math.round((Date.now() - started) / 1000)}s`);
 
   if (doApply) {
+    const vanTaySau = chupVanTayCatalog();
+    if (!vanTaySau.ok) console.warn(`⚠ Không chụp được catalog SAU (${vanTaySau.vi}).`);
+
+    const doiCatalog =
+      vanTayTruoc?.ok && vanTaySau.ok ? vanTayTruoc.fingerprint !== vanTaySau.fingerprint : null;
+    if (doiCatalog === true) {
+      console.log(`   catalog: ${vanTayTruoc.fingerprint.slice(0, 12)}… → ${vanTaySau.fingerprint.slice(0, 12)}… (ĐÃ ĐỔI)`);
+    } else if (doiCatalog === false) {
+      // KHÔNG kết luận thay người đọc — chỉ nói ra, vì có ba khả năng rất khác nhau.
+      console.log(`   catalog: ${vanTaySau.fingerprint.slice(0, 12)}… (KHÔNG ĐỔI)`);
+      console.log("   ⚠ Migration schema mà catalog không đổi. Ba khả năng: đã apply từ trước");
+      console.log("     (re-apply idempotent — bình thường) · chỉ đổi DỮ LIỆU · hoặc không làm gì.");
+    }
+
+    // Ai chạy, và trên bản mã nguồn nào. Sáu tháng sau đây là hai câu hỏi đầu
+    // tiên khi truy một thay đổi, và trước đây evidence không trả lời được.
+    const actor =
+      spawnSync("git", ["config", "user.email"], { cwd: repoRoot, encoding: "utf8" }).stdout?.trim() || "unknown";
+    const repoCommit =
+      spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).stdout?.trim() || "unknown";
+
     mkdirSync(EVIDENCE_DIR, { recursive: true });
     const evidence = {
       file: `supabase/migrations/${basename(abs)}`,
@@ -432,6 +493,16 @@ async function main(argv) {
       // chính lần apply này — sáu tháng nữa đó là thứ duy nhất trả lời được câu
       // "nếu hỏng thì khôi phục từ đâu".
       authorization: giayPhep,
+      actor,
+      repoCommit,
+      // Bằng chứng migration THẬT SỰ đổi gì. `catalogChanged: false` không phải
+      // lỗi — nó là dữ kiện, và nó chính là dấu hiệu của một lần re-apply.
+      catalog: {
+        before: vanTayTruoc?.ok ? vanTayTruoc.fingerprint : null,
+        after: vanTaySau.ok ? vanTaySau.fingerprint : null,
+        changed: doiCatalog,
+        countsAfter: vanTaySau.ok ? vanTaySau.counts : null,
+      },
       note: "Apply qua forward-only lane. Ledger supabase_migrations KHÔNG bị backfill — nguồn sự thật là manifest provenance + file evidence này.",
     };
     const out = join(EVIDENCE_DIR, `${basename(abs, ".sql")}.json`);
