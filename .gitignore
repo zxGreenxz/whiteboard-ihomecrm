@@ -40,6 +40,20 @@ crawl-resident/
 # GitNexus local code-intelligence index (database graph, không commit)
 .gitnexus/
 
+# Skill do GitNexus ghi ra — plan kiến trúc §15: generate local, review chất
+# lượng, KHÔNG auto-commit. Lần analyze đầu (07/08/2026) tạo 20 file trong
+# generated/ (sinh từ community của repo) và 6 thư mục trong gitnexus/ (hướng
+# dẫn dùng chính công cụ). Cả hai đều là CHỈ DẪN CHO AGENT do công cụ viết ra;
+# commit chúng là để công cụ tự thêm luật mà không ai duyệt — cùng lý do
+# `--skip-agents-md` chặn nó sửa CLAUDE.md/AGENTS.md. Cả hai đều dựng lại được
+# bằng `npm run graph:analyze`. Khi nào có tập curated ổn định thì commit có
+# chủ đích, từng file một.
+.claude/skills/
+
+# Verdict của gate graph freshness — trạng thái LOCAL, gắn với HEAD trên máy
+# này. Pattern `*.local` ở trên KHÔNG khớp đuôi `.local.json`.
+tooling/graph-verdict.local.json
+
 # Claude personal config (creds, PAT) — DO NOT COMMIT
 CLAUDE.local.md
 .claude/settings.local.json

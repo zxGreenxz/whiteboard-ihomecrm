@@ -1,0 +1,27 @@
+{
+  "$comment": "Pin công cụ tri thức (PROJECT_CONTRACT §12, plan kiến trúc §14/§18). Chỉ scripts/run-pinned-gitnexus.mjs được phép gọi GitNexus, và nó đọc version TỪ ĐÂY — không @latest, không version rời rạc trong workflow. `status` chỉ được đổi thành verified SAU khi smoke test chạy thật trên chính repo này và ghi bằng chứng vào smokeEvidence. Đây cũng là precondition mà check-graph-freshness.mjs dùng để phân biệt CHƯA ÁP DỤNG với ĐÃ ÁP DỤNG NHƯNG THIẾU INDEX — hai thứ đó không được đối xử như nhau.",
+  "schemaVersion": 1,
+  "gitnexus": {
+    "version": "1.6.9",
+    "status": "verified",
+    "analyzeArgs": [
+      "--skills",
+      "--skip-agents-md",
+      "--worker-timeout",
+      "60"
+    ],
+    "analyzeArgsNote": "Plan gốc §14 ghi kèm `--skip-embeddings`, nhưng cờ đó KHÔNG còn trong 1.6.9 (đã đọc `analyze --help` ngày 07/08/2026): embeddings nay TẮT MẶC ĐỊNH, chỉ có `--embeddings` để bật. Chạy đúng câu lệnh trong plan sẽ lỗi cờ lạ. Giữ nguyên ý định ban đầu (không sinh embedding ở lần index đầu) bằng cách không truyền gì. `--skip-agents-md` là bắt buộc: nó chặn GitNexus tự sửa CLAUDE.md/AGENTS.md, tức chặn công cụ ghi đè hợp đồng agent.",
+    "verifiedAt": "2026-08-07T03:39:51.691Z",
+    "smokeEvidence": {
+      "versionReported": "1.6.9",
+      "doctorExitCode": 0,
+      "platform": "win32 node v22.20.0"
+    }
+  },
+  "understandAnything": {
+    "version": "2.9.4",
+    "commit": "25442837f1087d1d39e5bfcb6aeda3c315f3da5b",
+    "outputLanguage": "vi",
+    "versionNote": "Pin theo plan kiến trúc §18. LƯU Ý: artifact trong .ua/ KHÔNG tự ghi version công cụ (meta.json:version = 1.0.0 là SCHEMA version, lặp y hệt ở cả ba file). Nên con số 2.9.4 là KHAI BÁO, không phải đo được từ artifact — tooling/graph-manifests/ua.json ghi rõ điều đó ở trường toolVersionSource."
+  }
+}

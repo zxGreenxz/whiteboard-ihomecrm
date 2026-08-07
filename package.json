@@ -65,7 +65,9 @@
     "backup:now": "node scripts/backup-before-schema.mjs --reason \"backup thu cong\"",
     "backup:check": "node scripts/check-backup-freshness.mjs",
     "backup:lap-lich": "node scripts/dang-ky-backup-dinh-ky.mjs",
-    "backup:xem-lich": "node scripts/dang-ky-backup-dinh-ky.mjs --xem"
+    "backup:xem-lich": "node scripts/dang-ky-backup-dinh-ky.mjs --xem",
+    "graph:analyze": "node scripts/run-pinned-gitnexus.mjs analyze",
+    "graph:status": "node scripts/run-pinned-gitnexus.mjs status"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
