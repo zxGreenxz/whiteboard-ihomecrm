@@ -31,7 +31,12 @@ const QR_START_TIMEOUT_MS = 30_000;
  * than by this constant.
  */
 const QR_WAIT_TIMEOUT_MS = 20_000;
+/** Floor between re-arms, so an instantly-answered wait cannot become a busy loop. */
+const QR_WAIT_MIN_INTERVAL_MS = 1_000;
 const MAX_COMMAND_BATCH = 8;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => { setTimeout(resolve, ms); });
 
 type CommandKind = "QR_LOGIN" | "DISCONNECT";
 type ExecutionState = "LEASED" | "STARTED";
@@ -487,6 +492,41 @@ export function createRuntimeCommandHeartbeat(options: {
     }
   };
 
+  /**
+   * Report a provider-confirmed login to the server, and seal only once it lands.
+   *
+   * Reachable twice: inline from `finalizeQr`, and from `execute()` when a command is
+   * found at PROVIDER_RECORDED on a later pulse. The second path is what makes a lost
+   * response survivable - the scan is already durable in the journal, so retrying
+   * costs a request instead of costing the owner another scan.
+   *
+   * `openclaw_finalize_account_connection_v1` answers with the ACCOUNT it just
+   * connected - {version, accountId, connectionGeneration, connectionState,
+   * evidenceHash} - on both the fresh and the idempotent-replay branch. It has never
+   * returned `challengeId` or `connected`, so an exact-key check rejected every
+   * successful finalization. Assert the field that carries the meaning, tolerate the
+   * rest, and stay safe to replay.
+   */
+  const confirmQr = async (
+    snapshot: RuntimeCommandJournalSnapshot,
+    challengeId: string,
+  ): Promise<void> => {
+    const response = record(await options.runtime.post("/v1/qr/result", {
+      version: 1,
+      challengeId,
+    }), "QR connection result");
+    if (response.version !== 1 || response.connectionState !== "CONNECTED") {
+      fail("QR connection result is invalid");
+    }
+    options.spool.transitionRuntimeCommand(
+      snapshot.runtimeCommandId,
+      ["PROVIDER_RECORDED"],
+      "SEALED",
+      { sealedReason: "QR_LOGIN_CONFIRMED" },
+      now(),
+    );
+  };
+
   const finalizeQr = (snapshot: RuntimeCommandJournalSnapshot): void => {
     if (waitingQr.has(snapshot.runtimeCommandId)) return;
     waitingQr.add(snapshot.runtimeCommandId);
@@ -515,12 +555,30 @@ export function createRuntimeCommandHeartbeat(options: {
         // the gate is served immediately instead of after this code's full lifetime.
         if (epoch !== loginEpoch) { seal(); return; }
         if (!Number.isFinite(deadline) || deadline - now() <= 0) { seal(); return; }
+        const startedAt = now();
         waited = await withLoginGate(() => options.cellRpc.invoke("web.login.wait", {
           accountId: options.channelAccountId,
           timeoutMs: QR_WAIT_TIMEOUT_MS,
         }));
         if (stopped) return;
+        // The provider's own words about the scan. `message` is the field the plugin
+        // writes to explain itself ("Login successful.", "Zalo login failed: …", "No
+        // active Zalo QR login in progress."), and it is the only place a cell-side
+        // login failure is ever named. Without it, a failed scan and an unscanned code
+        // are indistinguishable from outside.
+        console.error(JSON.stringify({
+          event: "qr_wait_result",
+          runtimeCommandId: snapshot.runtimeCommandId,
+          elapsedMs: now() - startedAt,
+          result: waited,
+        }));
         if (connectedResult(waited)) break;
+        // Once the provider has retired the attempt it answers "no active QR login"
+        // in ~55ms instead of blocking for the timeout. Measured on the live cell:
+        // without a floor this loop spun and hammered the gateway for the rest of the
+        // window.
+        const elapsed = now() - startedAt;
+        if (elapsed < QR_WAIT_MIN_INTERVAL_MS) await sleep(QR_WAIT_MIN_INTERVAL_MS - elapsed);
       }
       if (options.spool.hasNewerRuntimeDisconnect(snapshot.sourceSessionGeneration)) {
         const cleanup = options.spool.transitionRuntimeCommand(
@@ -533,34 +591,42 @@ export function createRuntimeCommandHeartbeat(options: {
         await execute(cleanup);
         return;
       }
-      // `openclaw_finalize_account_connection_v1` answers with the ACCOUNT it just
-      // connected - {version, accountId, connectionGeneration, connectionState,
-      // evidenceHash} - on both the fresh and the idempotent-replay branch. It has
-      // never returned `challengeId` or `connected`, so the old exact-key check
-      // rejected every successful finalization and the scan could not complete.
-      // Assert the field that carries the meaning, and tolerate the rest.
-      const response = record(await options.runtime.post("/v1/qr/result", {
-        version: 1,
-        challengeId: payload.challengeId,
-      }), "QR connection result");
-      if (response.version !== 1 || response.connectionState !== "CONNECTED") {
-        fail("QR connection result is invalid");
-      }
-      // Connected. Seal it - LOGIN_WAITING had NO exit at all, not even on success,
-      // so the journal row outlived the command it described.
-      options.spool.transitionRuntimeCommand(
+      // THE step that lost a real login.
+      //
+      // The provider has confirmed the scan and has ALREADY dropped the attempt:
+      // `waitForZaloQrLogin` calls `resetQrLogin(profile)` before answering
+      // {connected:true}. From this instant the confirmation exists nowhere but in
+      // this promise - every later `web.login.wait` answers "No active Zalo QR login
+      // in progress" in ~55ms. So record it durably BEFORE the first thing that can
+      // fail, then let the server call be retried from the journal.
+      //
+      // Without this, one failed `/v1/qr/result` threw into a swallowed catch, the
+      // next pulse restarted the wait loop against an attempt that no longer existed,
+      // and at the deadline the command was sealed QR_EXPIRED_UNSCANNED - reporting
+      // "nobody scanned" about a scan Zalo had already confirmed on the owner's phone.
+      const recorded = options.spool.transitionRuntimeCommand(
         snapshot.runtimeCommandId,
         ["LOGIN_WAITING"],
-        "SEALED",
-        { sealedReason: "QR_LOGIN_CONFIRMED" },
+        "PROVIDER_RECORDED",
+        {},
         now(),
       );
+      await confirmQr(recorded, payload.challengeId);
     })();
     background.add(task);
     void task.finally(() => {
       background.delete(task);
       waitingQr.delete(snapshot.runtimeCommandId);
-    }).catch(() => undefined);
+    }).catch((cause: unknown) => {
+      // Never swallow. A silent catch here is what made a confirmed scan look like a
+      // timeout for hours, with no trace anywhere in bridge, cell, Edge or SQL logs.
+      console.error(JSON.stringify({
+        event: "qr_finalize_failed",
+        runtimeCommandId: snapshot.runtimeCommandId,
+        challengeId: payload.challengeId,
+        message: cause instanceof Error ? cause.message : String(cause),
+      }));
+    });
   };
 
   const publishQr = async (snapshot: RuntimeCommandJournalSnapshot): Promise<void> => {
@@ -612,6 +678,14 @@ export function createRuntimeCommandHeartbeat(options: {
         { sealedReason: "STALE_QR_AFTER_DISCONNECT" },
         now(),
       );
+      return true;
+    }
+    // A scan the provider already confirmed, whose report to the server has not landed
+    // yet. Retry the report - never fall back to waiting, because the provider dropped
+    // the attempt the moment it answered {connected:true} and no later wait can ever
+    // re-observe this login.
+    if (snapshot.stage === "PROVIDER_RECORDED" && snapshot.commandKind === "QR_LOGIN") {
+      await confirmQr(snapshot, (snapshot.payload as QrLoginCommand["payload"]).challengeId);
       return true;
     }
     if (snapshot.stage === "LOGIN_WAITING") {
@@ -789,39 +863,65 @@ export function createRuntimeCommandHeartbeat(options: {
         ).values()].slice(0, MAX_COMMAND_BATCH);
         const results = options.spool.runtimeCommandResults(MAX_COMMAND_BATCH);
         const healthSignal = options.healthSignal?.() ?? null;
-        const response = parseHeartbeatResponse(
-          await options.runtime.post("/v1/heartbeat", {
-            version: 1,
-            commandClaimToken: claimToken,
-            commandLeaseSeconds: COMMAND_LEASE_SECONDS,
-            commandStarts: starts.map(startMarker),
-            commandResults: results.map(commandResult),
-            ...(healthSignal ?? {}),
-          }),
-          options.binding,
-          claimToken,
-          localSessionGeneration(),
-        );
-        applyAcks(response.commandResultAcks);
-        for (const command of response.commands) {
-          if (command.commandKind === "QR_LOGIN" && options.spool.hasBlockingRuntimeDisconnect()) {
-            fail("QR command is blocked by an unresolved disconnect");
+        // Recovery must not be downstream of the call it recovers from.
+        //
+        // The reconciliation loop below is the ONLY retry path for a scan the provider
+        // has already confirmed and already forgotten. While a throwing heartbeat
+        // skipped straight past it, one bad heartbeat could wedge the bridge for good:
+        // the wedge kept the heartbeat failing, and the loop that would have cleared
+        // the wedge never ran. Hold the failure, finish recovery, then report it.
+        let heartbeatFailure: unknown = null;
+        let response: ReturnType<typeof parseHeartbeatResponse> | null = null;
+        try {
+          response = parseHeartbeatResponse(
+            await options.runtime.post("/v1/heartbeat", {
+              version: 1,
+              commandClaimToken: claimToken,
+              commandLeaseSeconds: COMMAND_LEASE_SECONDS,
+              commandStarts: starts.map(startMarker),
+              commandResults: results.map(commandResult),
+              ...(healthSignal ?? {}),
+            }),
+            options.binding,
+            claimToken,
+            localSessionGeneration(),
+          );
+        } catch (cause) {
+          heartbeatFailure = cause;
+        }
+        if (response !== null) {
+          applyAcks(response.commandResultAcks);
+          for (const command of response.commands) {
+            if (command.commandKind === "QR_LOGIN" && options.spool.hasBlockingRuntimeDisconnect()) {
+              fail("QR command is blocked by an unresolved disconnect");
+            }
+            let snapshot = options.spool.recordRuntimeCommandClaim(command, now());
+            if (command.executionState === "STARTED" && snapshot.stage === "CLAIMED") {
+              snapshot = options.spool.transitionRuntimeCommand(
+                command.runtimeCommandId,
+                ["CLAIMED"],
+                "START_AUTHORIZED",
+                { effectDeadlineAt: command.effectDeadlineAt },
+                now(),
+              );
+            }
+            if (command.executionState === "STARTED") await execute(snapshot);
           }
-          let snapshot = options.spool.recordRuntimeCommandClaim(command, now());
-          if (command.executionState === "STARTED" && snapshot.stage === "CLAIMED") {
-            snapshot = options.spool.transitionRuntimeCommand(
-              command.runtimeCommandId,
-              ["CLAIMED"],
-              "START_AUTHORIZED",
-              { effectDeadlineAt: command.effectDeadlineAt },
-              now(),
-            );
-          }
-          if (command.executionState === "STARTED") await execute(snapshot);
         }
         for (const snapshot of options.spool.runtimeCommandReconciliations(MAX_COMMAND_BATCH)) {
-          await execute(snapshot);
+          try {
+            await execute(snapshot);
+          } catch (cause) {
+            // A stuck reconciliation must not take the heartbeat down with it either.
+            console.error(JSON.stringify({
+              event: "runtime_command_reconciliation_failed",
+              runtimeCommandId: snapshot.runtimeCommandId,
+              stage: snapshot.stage,
+              message: cause instanceof Error ? cause.message : String(cause),
+            }));
+          }
         }
+        if (heartbeatFailure !== null) throw heartbeatFailure;
         const hasPendingStart = options.spool.runtimeCommandStarts(MAX_COMMAND_BATCH).length > 0;
         const hasPendingResult = options.spool.runtimeCommandResults(MAX_COMMAND_BATCH).length > 0;
         if (!hasPendingStart && !hasPendingResult) break;

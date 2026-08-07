@@ -1542,11 +1542,19 @@ export class SqliteSpool {
       //
       // That is the "exactly one QR per bridge start" failure: the first code worked,
       // and no later command could ever be leased again.
+      //
+      // The same poison sits behind EVERY QR stage from QR_MATERIAL_READY onward, not
+      // just the two named above, because `/v1/qr/publish` is what flips the server to
+      // ACKNOWLEDGED. If its response is lost, the journal is still QR_MATERIAL_READY
+      // while the server is already done - and renewing that row wedges the bridge for
+      // good. So QR_LOGIN is renewed only while the server can still have it LEASED or
+      // STARTED; DISCONNECT keeps the later stages, where it stays STARTED until its
+      // result is accepted.
       `SELECT runtime_command_id FROM runtime_command_journal
-       WHERE stage IN (
-         'START_AUTHORIZED','EFFECT_INTENT','PROVIDER_RECORDED','QR_MATERIAL_READY',
-         'PUBLISH_PENDING','RESULT_PENDING'
-       ) ORDER BY updated_at_ms,runtime_command_id`,
+       WHERE stage IN ('START_AUTHORIZED','EFFECT_INTENT','RESULT_PENDING')
+          OR (command_kind='DISCONNECT'
+              AND stage IN ('QR_MATERIAL_READY','PUBLISH_PENDING','PROVIDER_RECORDED'))
+       ORDER BY updated_at_ms,runtime_command_id`,
     ).all() as Array<{ runtime_command_id: string }>;
     return rows
       .map((row) => this.runtimeCommandSnapshot(row.runtime_command_id)!)
@@ -1565,8 +1573,11 @@ export class SqliteSpool {
   runtimeCommandReconciliations(limit = 8): RuntimeCommandJournalSnapshot[] {
     const rows = this.db.prepare(
       `SELECT runtime_command_id FROM runtime_command_journal
+       -- PROVIDER_RECORDED carries a scan the provider has already confirmed and
+       -- already forgotten. If its report to the server was lost, only reconciliation
+       -- can retry it; dropping it here would cost the owner another scan.
        WHERE stage IN ('EFFECT_INTENT','QR_MATERIAL_READY','PUBLISH_PENDING','LOGIN_WAITING',
-                       'STALE_LOGIN_CLEANUP_PENDING')
+                       'PROVIDER_RECORDED','STALE_LOGIN_CLEANUP_PENDING')
        ORDER BY updated_at_ms,runtime_command_id LIMIT ?`,
     ).all(limit) as Array<{ runtime_command_id: string }>;
     return rows.map((row) => this.runtimeCommandSnapshot(row.runtime_command_id)!);

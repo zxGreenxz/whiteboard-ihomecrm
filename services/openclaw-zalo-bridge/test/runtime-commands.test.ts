@@ -449,6 +449,115 @@ describe("durable runtime command heartbeat", () => {
     expect(waitCalls).toBeGreaterThan(1);
   });
 
+  // Renewing a QR command the server has already finished with is fatal, not wasteful.
+  //
+  // `/v1/qr/publish` sets the server row to ACKNOWLEDGED and nulls its claim token and
+  // lease. A start-marker for such a command makes the facade raise 40001, which rolls
+  // back the WHOLE heartbeat transaction - and because the journal's leaseExpiresAt is
+  // frozen at that moment, the renewal filter matches forever. Every later heartbeat
+  // dies the same way: no command is ever leased again and no QR ever appears, while
+  // the process stays up. Excluding LOGIN_WAITING alone is not enough; every QR stage
+  // from QR_MATERIAL_READY onward carries the same poison, because a lost publish
+  // response leaves the journal behind the server.
+  it("never renews a QR command the server has already acknowledged", () => {
+    const { spool } = openSpool();
+    const payload = {
+      version: 1,
+      challengeId: "dddd6000-0000-4000-8000-000000000002",
+      browserNonceHash: "a".repeat(64),
+    };
+    spool.recordRuntimeCommandClaim(command("QR_LOGIN", payload, "STARTED"), NOW);
+    spool.transitionRuntimeCommand(COMMAND_ID, ["CLAIMED"], "START_AUTHORIZED", {}, NOW);
+    spool.transitionRuntimeCommand(COMMAND_ID, ["START_AUTHORIZED"], "EFFECT_INTENT", {}, NOW);
+    // Long past the frozen lease - exactly when the old filter matched forever.
+    const later = NOW + 10 * 60_000;
+
+    for (const stage of ["QR_MATERIAL_READY", "PUBLISH_PENDING", "LOGIN_WAITING", "PROVIDER_RECORDED"] as const) {
+      const from = spool.runtimeCommandSnapshot(COMMAND_ID)!.stage;
+      spool.transitionRuntimeCommand(COMMAND_ID, [from], stage, {}, NOW);
+      expect(spool.runtimeCommandRenewals(later).map((s) => s.stage)).toEqual([]);
+    }
+  });
+
+  // The other direction, so the fix above cannot be over-applied: a DISCONNECT stays
+  // STARTED server-side until its result is accepted, so it must still be renewed.
+  it("still renews a DISCONNECT waiting for its result to be accepted", () => {
+    const { spool } = openSpool();
+    const payload = {
+      version: 1,
+      reasonCode: "ACCOUNT_DISCONNECT",
+      revocationId: "dddd6000-0000-4000-8000-000000000001",
+      revokedSessionGeneration: 5,
+      minimumSessionGeneration: 6,
+    };
+    spool.recordRuntimeCommandClaim(command("DISCONNECT", payload, "STARTED"), NOW);
+    spool.transitionRuntimeCommand(COMMAND_ID, ["CLAIMED"], "START_AUTHORIZED", {}, NOW);
+    spool.transitionRuntimeCommand(COMMAND_ID, ["START_AUTHORIZED"], "EFFECT_INTENT", {}, NOW);
+    spool.transitionRuntimeCommand(COMMAND_ID, ["EFFECT_INTENT"], "PROVIDER_RECORDED", {}, NOW);
+
+    expect(spool.runtimeCommandRenewals(NOW + 10 * 60_000).map((s) => s.stage))
+      .toEqual(["PROVIDER_RECORDED"]);
+  });
+
+  // The scan the owner really made, that the system reported as "nobody scanned".
+  //
+  // `waitForZaloQrLogin` calls `resetQrLogin(profile)` BEFORE answering
+  // {connected:true}, so the confirmation exists nowhere but in that one response -
+  // every later `web.login.wait` answers "No active Zalo QR login in progress" in
+  // ~55ms. A failed `/v1/qr/result` therefore used to destroy a real login: the throw
+  // vanished into a swallowed catch, the next pulse went back to waiting on an attempt
+  // that no longer existed, and the deadline sealed it QR_EXPIRED_UNSCANNED while Zalo
+  // had already told the owner's phone the login succeeded.
+  it("keeps a provider-confirmed scan across a failed report and retries it", async () => {
+    const payload = {
+      version: 1,
+      challengeId: "dddd6000-0000-4000-8000-000000000002",
+      browserNonceHash: "a".repeat(64),
+    };
+    const qrDataUrl = `data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64")}`;
+    const harness = runtime([
+      heartbeat({ commands: [command("QR_LOGIN", payload)] }),
+      heartbeat({ commands: [command("QR_LOGIN", payload, "STARTED")] }),
+      publishResult(payload.challengeId),
+      new Error("qr result response lost"),
+      heartbeat({}),
+      connectionResult(),
+    ]);
+    const { spool } = openSpool();
+    let waits = 0;
+    const invoke = vi.fn(async (method: string) => {
+      if (method === "web.login.start") return { message: "scan", qrDataUrl, connected: false };
+      if (method === "web.login.wait") {
+        waits += 1;
+        // The provider confirms once, then forgets - exactly like the real one.
+        if (waits === 1) return { connected: true, message: "Login successful." };
+        return { connected: false, message: "No active Zalo QR login in progress." };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+    const consumer = createHeartbeat({
+      spool,
+      runtime: harness.client,
+      invoke,
+      qrEncryptionKey: Buffer.alloc(32, 7),
+    });
+
+    await consumer.pulse();
+    await new Promise((resolve) => { setTimeout(resolve, 40); });
+
+    // The report failed, but the scan must survive it.
+    expect(spool.runtimeCommandSnapshot(COMMAND_ID)?.stage).toBe("PROVIDER_RECORDED");
+
+    await consumer.pulse();
+    await consumer.stop();
+
+    const snapshot = spool.runtimeCommandSnapshot(COMMAND_ID);
+    expect(snapshot?.stage).toBe("SEALED");
+    expect(snapshot?.sealedReason).toBe("QR_LOGIN_CONFIRMED");
+    // The retry must be the report, never another wait against a dead attempt.
+    expect(harness.bodies.filter((entry) => entry.path === "/v1/qr/result")).toHaveLength(2);
+  });
+
   it("replays byte-identical encrypted QR publication after a lost response", async () => {
     const payload = {
       version: 1,
