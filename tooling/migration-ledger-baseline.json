@@ -1,0 +1,1869 @@
+{
+  "$comment": "Vân tay sổ ledger supabase_migrations.schema_migrations. Bảng này phải ĐỨNG YÊN: forward-only lane cố ý KHÔNG backfill nó, nên mọi thay đổi nghĩa là ai đó đã dùng đường khác (Supabase CLI, INSERT tay). Quan trọng vì migration-provenance.json xếp 351 file là `ledger-applied` DỰA TRÊN bảng này — viết lại bảng thì 351 khẳng định xuất xứ mất căn cứ mà không có lỗi nào. Chốt lại: npm run gate:ledger-frozen -- --write, và CHỈ khi biết rõ vì sao ledger đổi.",
+  "updatedAt": "2026-08-07",
+  "rowCount": 372,
+  "maxVersion": "20260727095000",
+  "fingerprint": "6717afc67d157ac1e8ddfbd9144201e455cf80d758628251ed43748f60fdbf70",
+  "rows": [
+    {
+      "version": "001",
+      "name": "extensions_and_enums",
+      "stmt_md5": "97ad7317245c575ac63badef862321c3"
+    },
+    {
+      "version": "002",
+      "name": "core_tables_part1",
+      "stmt_md5": "ee799410dcf504943b0252ed33d346e8"
+    },
+    {
+      "version": "003",
+      "name": "core_tables_part2",
+      "stmt_md5": "adc839f786f5f4b0787304b21d3bb894"
+    },
+    {
+      "version": "004",
+      "name": "contract_tables",
+      "stmt_md5": "2dce784b4e57f126d28fa81bfb5af46b"
+    },
+    {
+      "version": "005",
+      "name": "billing_tables",
+      "stmt_md5": "6b420fd13d88a262ac7b2ed467d01223"
+    },
+    {
+      "version": "006",
+      "name": "asset_issue_tables",
+      "stmt_md5": "6909c3d89573788c90977a050dc642a5"
+    },
+    {
+      "version": "007",
+      "name": "advanced_tables",
+      "stmt_md5": "5dacc4beaad0129b4c80e19866e980d1"
+    },
+    {
+      "version": "008",
+      "name": "triggers_functions",
+      "stmt_md5": "878c3c8816906865fbfec449376e885b"
+    },
+    {
+      "version": "009",
+      "name": "seed_data",
+      "stmt_md5": "effabee1f27ebc1e5d9f462820dd307a"
+    },
+    {
+      "version": "012",
+      "name": "auto_deposit_calculation",
+      "stmt_md5": "ccb40f2d0a13787bce69291158042499"
+    },
+    {
+      "version": "013",
+      "name": "contract_terminations",
+      "stmt_md5": "bddbe76e4b011d599b6f7e0960f0a19c"
+    },
+    {
+      "version": "014",
+      "name": "contract_transfers",
+      "stmt_md5": "ca321f6e6e90fd7a2b1bfb6b01e59770"
+    },
+    {
+      "version": "015",
+      "name": "contract_extensions",
+      "stmt_md5": "caed196bb7faed91f8d800a5caec86f3"
+    },
+    {
+      "version": "016",
+      "name": "customers_table",
+      "stmt_md5": "ab19b816e2d336b87b355366d0a8a4dc"
+    },
+    {
+      "version": "017",
+      "name": "job_workflow_seed",
+      "stmt_md5": "7a8e62e4cde4480f77da09fd475d219d"
+    },
+    {
+      "version": "018",
+      "name": "meter_readings_add_meter_link",
+      "stmt_md5": "765a26b97c4b1cc8a82f5844cfd6b565"
+    },
+    {
+      "version": "021",
+      "name": "add_contract_templates",
+      "stmt_md5": "4082ef048c2fea2e4c991462f727cc46"
+    },
+    {
+      "version": "022",
+      "name": "add_expected_move_out_date",
+      "stmt_md5": "089c38002a469442e41e8fb93e4deb58"
+    },
+    {
+      "version": "023",
+      "name": "ensure_deleted_at_columns",
+      "stmt_md5": "69cd70d88103e52707cc2f87d2f3fb9a"
+    },
+    {
+      "version": "024",
+      "name": "add_start_billing_date",
+      "stmt_md5": "15ff1fc0c5ded9157e6ea8dc246df0b2"
+    },
+    {
+      "version": "025",
+      "name": "create_contract_files_bucket",
+      "stmt_md5": "17897c4f78cd973f2a34d5d9226f4bf0"
+    },
+    {
+      "version": "026",
+      "name": "ai_assistant_tables",
+      "stmt_md5": "c7d753d85de887bb11c5c6c08bcdd710"
+    },
+    {
+      "version": "028",
+      "name": "fix_contracts_deleted_at",
+      "stmt_md5": "d4fcfab7ba350fcfde3b3e2a6a0ad959"
+    },
+    {
+      "version": "029",
+      "name": "missing_features",
+      "stmt_md5": "03519d9564c51ac5eb7d7b8145577532"
+    },
+    {
+      "version": "030",
+      "name": "final_fix_deleted_at",
+      "stmt_md5": "0b9783955913eff878323008de91b193"
+    },
+    {
+      "version": "031",
+      "name": "fix_all_deleted_at_issues",
+      "stmt_md5": "df85b7334691107705c38453d446a7c3"
+    },
+    {
+      "version": "032",
+      "name": "create_payment_receipts_bucket",
+      "stmt_md5": "ead26f4b15f5d8db1cb23fe86ee1e61c"
+    },
+    {
+      "version": "033",
+      "name": "contract_tenants",
+      "stmt_md5": "77531d25a23f59d6e702b3bbc045af6f"
+    },
+    {
+      "version": "20250101000001",
+      "name": "create_floors_table",
+      "stmt_md5": "a613925e7f6f400d85e95b578f3ebe91"
+    },
+    {
+      "version": "20250101000002",
+      "name": "create_hotlines_table",
+      "stmt_md5": "e2cd9dda905b6d8802f36c0bcb9d5ca8"
+    },
+    {
+      "version": "20250101000003",
+      "name": "create_income_expense_types_table",
+      "stmt_md5": "24e95219a5097d47def9ff41516cb747"
+    },
+    {
+      "version": "20250101000004",
+      "name": "create_service_quotas_table",
+      "stmt_md5": "d419a58d0bcb8a740e08791d6b543313"
+    },
+    {
+      "version": "20250101000005",
+      "name": "meters_table_already_exists",
+      "stmt_md5": "e0b34fcc3bf05374bcf2c5a2abb0845c"
+    },
+    {
+      "version": "20250101000006",
+      "name": "create_auto_debt_config_table",
+      "stmt_md5": "c5fefedfc235c31b77905e40111b5ae9"
+    },
+    {
+      "version": "20250101000007",
+      "name": "alter_document_templates",
+      "stmt_md5": "9b93af246bc61f8fb28e6d87054c2b8b"
+    },
+    {
+      "version": "20250101000008",
+      "name": "create_roles_and_staff_assignments",
+      "stmt_md5": "061d56ff26d7fdaaa94287b743447db2"
+    },
+    {
+      "version": "20250101000009",
+      "name": "create_subscription_tables",
+      "stmt_md5": "1365cf3df19c84c6a063fb30fa539fd7"
+    },
+    {
+      "version": "20250101000010",
+      "name": "create_task_types_and_asset_warehouses",
+      "stmt_md5": "884146d794ba46b9b2b8b2d2719834f2"
+    },
+    {
+      "version": "20250101000011",
+      "name": "drop_areas_table",
+      "stmt_md5": "383e2fc208535ff85c682982d13ff9a4"
+    },
+    {
+      "version": "20250101000012",
+      "name": "add_settings_keys",
+      "stmt_md5": "6dc24a0b70aa13f34f7fabdd34f5b543"
+    },
+    {
+      "version": "20250120000001",
+      "name": "create_income_expenses_table",
+      "stmt_md5": "00ba35f5bf622ad3deb5784486431c45"
+    },
+    {
+      "version": "20250120000002",
+      "name": "create_income_expense_items_table",
+      "stmt_md5": "2bd0bca05a7e1b1a6d361909dc26bb13"
+    },
+    {
+      "version": "20250120000003",
+      "name": "create_income_expense_templates_table",
+      "stmt_md5": "b04e1ad16db8d674cbeda750befe6e4c"
+    },
+    {
+      "version": "20250120000004",
+      "name": "create_income_expense_triggers_and_rpcs",
+      "stmt_md5": "9bb46a28a5160883217794391eb4bbcd"
+    },
+    {
+      "version": "20250130000001",
+      "name": "meter_reading_full_reimplementation",
+      "stmt_md5": "c97c447fcbb647cbbdc44563a50e0909"
+    },
+    {
+      "version": "20250130000002",
+      "name": "meter_reading_views",
+      "stmt_md5": "9d8dfdc96209b108c32c4490cf44eed4"
+    },
+    {
+      "version": "20250130000003",
+      "name": "meter_reading_triggers",
+      "stmt_md5": "61ff6e2f1a6e6a217863756cdfdae3c6"
+    },
+    {
+      "version": "20250130000004",
+      "name": "meter_reading_rpc_functions",
+      "stmt_md5": "5a310d02a91866c0e3dd2ecd9dbeedfc"
+    },
+    {
+      "version": "20250130000005",
+      "name": "meter_images_storage",
+      "stmt_md5": "e26d3a809e62e9228fee9675509cc772"
+    },
+    {
+      "version": "20250601000001",
+      "name": "invoice_reimplementation",
+      "stmt_md5": "abd4be97d283afaa88eebcfb907efc01"
+    },
+    {
+      "version": "20250701000001",
+      "name": "customer_vehicle_reimplementation",
+      "stmt_md5": "f88aa61f3063c5aac3eea15ea085f8d2"
+    },
+    {
+      "version": "20250702000001",
+      "name": "fix_customers_rls_soft_delete",
+      "stmt_md5": "2f7e391788918ceac0ea3f51a5c18599"
+    },
+    {
+      "version": "20250702000002",
+      "name": "soft_delete_customer_rpc",
+      "stmt_md5": "d6285b4c2a81accefa2b6152bac8e198"
+    },
+    {
+      "version": "20250703000001",
+      "name": "building_room_reimplementation",
+      "stmt_md5": "69ac696be72b2c5b0a056542045f1f6a"
+    },
+    {
+      "version": "20250710000001",
+      "name": "lease_contract_management",
+      "stmt_md5": "9243799f2218f69e399fd7f7d9e1d20e"
+    },
+    {
+      "version": "20251118074620",
+      "name": "",
+      "stmt_md5": "a1fab5e39f711d90e7cc5ab2a7f29e3a"
+    },
+    {
+      "version": "20251118074623",
+      "name": "6c9a0aff-92c3-46ca-ace4-013d8a76089b",
+      "stmt_md5": "538531ec70a997a32ee6af1e8db37172"
+    },
+    {
+      "version": "20251119012431",
+      "name": "",
+      "stmt_md5": "5ab7e8bac9545c2bf0713de05d93c40e"
+    },
+    {
+      "version": "20251119012432",
+      "name": "ca7704f1-5279-403c-a1cb-c841910a623a",
+      "stmt_md5": "6977f1525870b1091da7f3ea2ae6bd69"
+    },
+    {
+      "version": "20251120000001",
+      "name": "thu_chi_ui_alignment",
+      "stmt_md5": "127b740915fb98812772ae2e2353b1de"
+    },
+    {
+      "version": "20251121000001",
+      "name": "create_jobs_table",
+      "stmt_md5": "c9cfba5eccd978790c00e54330ea4cf3"
+    },
+    {
+      "version": "20260222131327",
+      "name": "create_floors_table",
+      "stmt_md5": "9abb38ce742660ac7fb01d11cdc1be6e"
+    },
+    {
+      "version": "20260222131337",
+      "name": "create_hotlines_table",
+      "stmt_md5": "3f19b62065c461ba8e3040cf89f09635"
+    },
+    {
+      "version": "20260222131347",
+      "name": "create_income_expense_types_table",
+      "stmt_md5": "9e5d2e68036bc25c4b7dda68b8d828fa"
+    },
+    {
+      "version": "20260222131358",
+      "name": "create_service_quotas_table",
+      "stmt_md5": "16e8ee70c566b45268c18338ebb799c7"
+    },
+    {
+      "version": "20260222131444",
+      "name": "create_meters_table",
+      "stmt_md5": "d9a4d67f604c2093b35c1e59d0502c43"
+    },
+    {
+      "version": "20260222131456",
+      "name": "create_auto_debt_config_table",
+      "stmt_md5": "6612dc6fb447482dc8e848e859cb3fb8"
+    },
+    {
+      "version": "20260222131507",
+      "name": "alter_document_templates",
+      "stmt_md5": "12810c93f79eab0e1bc4b337068c9d7d"
+    },
+    {
+      "version": "20260222131520",
+      "name": "create_staff_assignments_table",
+      "stmt_md5": "68f6695723d760571377d9c85936f81f"
+    },
+    {
+      "version": "20260222131536",
+      "name": "create_subscription_tables",
+      "stmt_md5": "10e95a610b30325f5985ea532bed9ab5"
+    },
+    {
+      "version": "20260222131551",
+      "name": "create_task_types_and_asset_warehouses",
+      "stmt_md5": "8fd17b3cebb2edfd8c6364d81119cbcf"
+    },
+    {
+      "version": "20260222131559",
+      "name": "drop_areas_table",
+      "stmt_md5": "1ab2abb97cebd8bb61bc41e49a4b5255"
+    },
+    {
+      "version": "20260222131616",
+      "name": "add_settings_keys",
+      "stmt_md5": "6c5483f7c0a3a26f611b4cb923869097"
+    },
+    {
+      "version": "20260222135029",
+      "name": "recreate_areas_table",
+      "stmt_md5": "c6d1e2fc99b5ff08c552d800aa1c23fb"
+    },
+    {
+      "version": "20260222155059",
+      "name": "rebuild_services_schema",
+      "stmt_md5": "a0fb8f2ff6e1caafa37f374d443ce0a5"
+    },
+    {
+      "version": "20260425000001",
+      "name": "cashbooks_extend_accounts",
+      "stmt_md5": "11e05508c98cace33bc096a855feb073"
+    },
+    {
+      "version": "20260426000001",
+      "name": "cashbooks_balance_includes_unapproved",
+      "stmt_md5": "4e2b9bbb3f385608f1049e3e9df4e836"
+    },
+    {
+      "version": "20260426000002",
+      "name": "thu_chi_remove_approval_add_cancel",
+      "stmt_md5": "fce14e73dd344b0bcd8cc34fcf9b0920"
+    },
+    {
+      "version": "20260426000003",
+      "name": "thu_chi_creator_name",
+      "stmt_md5": "181a999f8d7f744c17aaf0430f6de97e"
+    },
+    {
+      "version": "20260426000004",
+      "name": "invoice_creator_name",
+      "stmt_md5": "d9cab7edf06afa725492198da2b86820"
+    },
+    {
+      "version": "20260426000005",
+      "name": "lead_referrer_ctv_finder",
+      "stmt_md5": "22d3bdca93fa36ad779f103a2928ff07"
+    },
+    {
+      "version": "20260426000006",
+      "name": "deposits_code_and_ctv",
+      "stmt_md5": "82a62d9df180a6c06cee70bd009bd551"
+    },
+    {
+      "version": "20260426000007",
+      "name": "income_expenses_invoice_link",
+      "stmt_md5": "61e7316ef730d2b96ce5dcc29712f72e"
+    },
+    {
+      "version": "20260426000008",
+      "name": "income_expense_recurring",
+      "stmt_md5": "20f955f8ee80b6a2bc03ab4af45999e9"
+    },
+    {
+      "version": "20260426000009",
+      "name": "document_templates_other_type",
+      "stmt_md5": "78b8cd0e8e367dfdc6ca70059a7e1dbc"
+    },
+    {
+      "version": "20260502000001",
+      "name": "fix_user_provision_flow",
+      "stmt_md5": "f120bfd05a401b40fbbecb6771755a9a"
+    },
+    {
+      "version": "20260502000002",
+      "name": "delete_staff_member_rpc",
+      "stmt_md5": "8ae9227d98b93577d5575c31382984ad"
+    },
+    {
+      "version": "20260502000003",
+      "name": "cascade_roles_user_id",
+      "stmt_md5": "8aa4ff7894fb2752310e0189757682a2"
+    },
+    {
+      "version": "20260506000002",
+      "name": "admin_bypass_rls",
+      "stmt_md5": "f49c6d1ce149c3eda79183ead55dce50"
+    },
+    {
+      "version": "20260506000003",
+      "name": "super_admin_tier",
+      "stmt_md5": "a9d556db865d814e0c0c60b04dacb0be"
+    },
+    {
+      "version": "20260506000004",
+      "name": "tenant_symmetric_visibility",
+      "stmt_md5": "16dcd73c2c902f58329ca4be304e3c38"
+    },
+    {
+      "version": "20260510000001",
+      "name": "buildings_default_templates",
+      "stmt_md5": "6d5b1f8ca4fc9e925a76a55a984a2fe2"
+    },
+    {
+      "version": "20260510000003",
+      "name": "invoice_default_approved",
+      "stmt_md5": "e0dfbd6509e945328cd35c5915ebb351"
+    },
+    {
+      "version": "20260510000004",
+      "name": "income_expense_batches",
+      "stmt_md5": "5cf98472c67fa9d9f0a2f29a6c20f5de"
+    },
+    {
+      "version": "20260510000005",
+      "name": "drop_service_buildings",
+      "stmt_md5": "34559768bbb8c1dd5571083c18ab868c"
+    },
+    {
+      "version": "20260510000006",
+      "name": "refund_cashbooks_and_type",
+      "stmt_md5": "7c2a9dfe2465ec328b8af1193e98adc8"
+    },
+    {
+      "version": "20260510000008",
+      "name": "voucher_payment_link",
+      "stmt_md5": "f5b830f4fc68b03da5a3b975d4549dfb"
+    },
+    {
+      "version": "20260510000009",
+      "name": "recompute_invoice_on_payment_change",
+      "stmt_md5": "4c2201ab74ef9d88b7d434ad304d468d"
+    },
+    {
+      "version": "20260510000010",
+      "name": "paid_amount_subtract_refund",
+      "stmt_md5": "ff94203e6daaea47c834aa2c91c761f5"
+    },
+    {
+      "version": "20260510000011",
+      "name": "contract_customers_notes",
+      "stmt_md5": "e02c5226f5261f8cd3de9100052da3f1"
+    },
+    {
+      "version": "20260510000012",
+      "name": "contract_action_rpcs",
+      "stmt_md5": "4a90cbdf0a4b2b58cde7b0ddd7204817"
+    },
+    {
+      "version": "20260510000013",
+      "name": "termination_proper_cashflow",
+      "stmt_md5": "ab1d6cd7f09d5a4c4822a6e124d0709e"
+    },
+    {
+      "version": "20260510000014",
+      "name": "termination_full_invoice_no_autopay",
+      "stmt_md5": "aba973453ae15b2d5f8105699adb540a"
+    },
+    {
+      "version": "20260510000020",
+      "name": "add_commission_tiers_to_buildings",
+      "stmt_md5": "c83a7eead6c809965690fa9341436e69"
+    },
+    {
+      "version": "20260510000021",
+      "name": "seed_commission_expense_types",
+      "stmt_md5": "3fee8b43fa8932795ec0667ef704fe22"
+    },
+    {
+      "version": "20260510000053",
+      "name": "service_buildings_admin_policies",
+      "stmt_md5": "971974140181c8952f2ceb1d0df1f873"
+    },
+    {
+      "version": "20260510000054",
+      "name": "unify_service_building_links",
+      "stmt_md5": "998ea8f200ab127e5c747d02033f0e8e"
+    },
+    {
+      "version": "20260510000055",
+      "name": "payment_method_three_values",
+      "stmt_md5": "626c4f495026356bc9c327bef94e4b59"
+    },
+    {
+      "version": "20260510000056",
+      "name": "staff_write_rls",
+      "stmt_md5": "60c5c5ca1fe082e45d88e29095dd3527"
+    },
+    {
+      "version": "20260511000001",
+      "name": "income_expense_types_category",
+      "stmt_md5": "ace13253a3a3a929e5f4ce2947d6717f"
+    },
+    {
+      "version": "20260511000002",
+      "name": "open_income_expense_types_access",
+      "stmt_md5": "42039a243f21095b775adc4d6d05da0a"
+    },
+    {
+      "version": "20260512000001",
+      "name": "thuchi_logic_restructure",
+      "stmt_md5": "d2eb29d9de840448bba6c9600b6fdc33"
+    },
+    {
+      "version": "20260512000002",
+      "name": "admin_bypass_and_dedupe_chung",
+      "stmt_md5": "dac9646001c3d01fe1082b369980cf9d"
+    },
+    {
+      "version": "20260512000003",
+      "name": "refund_log_balance_and_notes",
+      "stmt_md5": "22a87f36698a7c13352e462a358f4377"
+    },
+    {
+      "version": "20260512000004",
+      "name": "contract_end_billing_date",
+      "stmt_md5": "cbbb5434635c404adaea8e85525a2225"
+    },
+    {
+      "version": "20260514000001",
+      "name": "customer_images_storage_rls",
+      "stmt_md5": "095606a2d18075913dc946894c7219eb"
+    },
+    {
+      "version": "20260514000002",
+      "name": "customers_id_images_default_object",
+      "stmt_md5": "a81338f3f08ebf1bace9af8199059fd9"
+    },
+    {
+      "version": "20260514000003",
+      "name": "payment_receipts_public",
+      "stmt_md5": "5d2221eaacb65bb055d64a75f3d4d66b"
+    },
+    {
+      "version": "20260514000004",
+      "name": "super_admin_bypass_missing_tables",
+      "stmt_md5": "823b49342a9461b4589e60eec4b7e680"
+    },
+    {
+      "version": "20260514000005",
+      "name": "super_admin_bypass_rpcs_and_storage",
+      "stmt_md5": "221fdd4f0d2975061aec25bc0da75337"
+    },
+    {
+      "version": "20260514000006",
+      "name": "invoice_audit_log",
+      "stmt_md5": "86c6db93d38c2633f5993b4281090ca9"
+    },
+    {
+      "version": "20260514000007",
+      "name": "invoice_audit_log_rls_admin",
+      "stmt_md5": "78ba6c1e2dde6e3ce910a43fac6d5a4d"
+    },
+    {
+      "version": "20260514000051",
+      "name": "drop_accounts_type",
+      "stmt_md5": "85884b0826da4c7011e8c9910c42291f"
+    },
+    {
+      "version": "20260515000001",
+      "name": "public_room_latest_invoice",
+      "stmt_md5": "57eeab633e650282a61d121386339113"
+    },
+    {
+      "version": "20260515000002",
+      "name": "public_contract_latest_invoice",
+      "stmt_md5": "300f1b6402b7b57a19309cc2e3ce9c8c"
+    },
+    {
+      "version": "20260516000001",
+      "name": "jobs_drop_job_group_id",
+      "stmt_md5": "7b67ff4387fdf6b1d6d5319abd238ea4"
+    },
+    {
+      "version": "20260516000002",
+      "name": "job_types_shared",
+      "stmt_md5": "202d46bfed35994a7a362b4bb6c3cb89"
+    },
+    {
+      "version": "20260516000003",
+      "name": "jobs_assignee_name",
+      "stmt_md5": "1c6a5adf6d40dfe7260c6f4960573877"
+    },
+    {
+      "version": "20260516000004",
+      "name": "account_shared_users",
+      "stmt_md5": "2289872f421d0923319a180dbcb1e983"
+    },
+    {
+      "version": "20260516000005",
+      "name": "account_shared_users_fix_recursion",
+      "stmt_md5": "483bccc7e6ec59b7c8fe70a5fc3707d3"
+    },
+    {
+      "version": "20260516000006",
+      "name": "invoice_statistics_extended",
+      "stmt_md5": "52a637de78e32e401470f35e232d9076"
+    },
+    {
+      "version": "20260516000007",
+      "name": "invoice_statistics_fix_pdv_and_change",
+      "stmt_md5": "0fb36354e752adf02b1102fc2fe8d18e"
+    },
+    {
+      "version": "20260516000008",
+      "name": "invoice_statistics_staff_support",
+      "stmt_md5": "cfafb9e6a1a845db8290394c9da43d68"
+    },
+    {
+      "version": "20260516000009",
+      "name": "invoice_statistics_staff_detection_fix",
+      "stmt_md5": "39da23ad1d4f9f66c18862d4bb52ef41"
+    },
+    {
+      "version": "20260516000010",
+      "name": "get_my_context_rpc",
+      "stmt_md5": "caceb480a420ea717cd2d19bea85924f"
+    },
+    {
+      "version": "20260516000011",
+      "name": "get_my_context_default_area",
+      "stmt_md5": "0b54fac9c4f374782e9611d1c270ee8b"
+    },
+    {
+      "version": "20260516000053",
+      "name": "jobs_simplify_status",
+      "stmt_md5": "2fc3131983d040cc23739751e7ecfd2f"
+    },
+    {
+      "version": "20260518000001",
+      "name": "cleanup_bulk_refund_expense_vouchers",
+      "stmt_md5": "fdf034111387fce08fe64ac912ca6e2b"
+    },
+    {
+      "version": "20260518000002",
+      "name": "invoice_discount_notes",
+      "stmt_md5": "89195673dfe20f4ef038728b529f2d93"
+    },
+    {
+      "version": "20260518000051",
+      "name": "staff_building_scope_writes",
+      "stmt_md5": "ba3786e4295b5c1e652960012d3bee00"
+    },
+    {
+      "version": "20260518000052",
+      "name": "open_buildings_view_for_staff",
+      "stmt_md5": "33b9b4afb69bdfec7b7843e2f2d20a9c"
+    },
+    {
+      "version": "20260519000001",
+      "name": "invoice_electricity_prev_overridden",
+      "stmt_md5": "8319254f6020ed944049d7328b8fba66"
+    },
+    {
+      "version": "20260519000002",
+      "name": "invoice_unique_index_exclude_cancelled",
+      "stmt_md5": "ad3a14313900e00f96d72a1437311dff"
+    },
+    {
+      "version": "20260519000003",
+      "name": "terminate_forfeit_cancels_existing_invoice",
+      "stmt_md5": "78e47458cb8331f83daa8a6c822bebc7"
+    },
+    {
+      "version": "20260525000001",
+      "name": "building_default_cashbook_tt_tk",
+      "stmt_md5": "a02869795bea12e05814e5eaf185799a"
+    },
+    {
+      "version": "20260525000002",
+      "name": "super_admin_force_cancel_invoice",
+      "stmt_md5": "ff31b4539b0204dec95413299812b7a6"
+    },
+    {
+      "version": "20260525000003",
+      "name": "backfill_invoice_record_payment_permission",
+      "stmt_md5": "4adaad680e80cdab96bffc8c006db921"
+    },
+    {
+      "version": "20260525000004",
+      "name": "get_my_permissions_rpc",
+      "stmt_md5": "f439e13953cdc6d5689ec735dbe208f6"
+    },
+    {
+      "version": "20260526000001",
+      "name": "jobs_scope_owner_or_assignee",
+      "stmt_md5": "f1b553904ddc9082e3c8379697376000"
+    },
+    {
+      "version": "20260527000001",
+      "name": "fix_generate_job_code_rls",
+      "stmt_md5": "63b8f8aee4399f4b526cc18b96d5805c"
+    },
+    {
+      "version": "20260527000002",
+      "name": "invoice_stats_partial",
+      "stmt_md5": "b48e90d0342c1fcb946fb5f8f6ee2abe"
+    },
+    {
+      "version": "20260527000003",
+      "name": "backfill_rounding_audit",
+      "stmt_md5": "43efa0dd608e31fe1944329ee62dd7d9"
+    },
+    {
+      "version": "20260527000004",
+      "name": "accounts_balance_include_rounding",
+      "stmt_md5": "1e0ad64cc9baa1548367c1266a684395"
+    },
+    {
+      "version": "20260527000005",
+      "name": "income_expense_quick_edit",
+      "stmt_md5": "0897687d2482b4d9a7c05e238687efd0"
+    },
+    {
+      "version": "20260527000006",
+      "name": "rbac_phase2_trigger_auto_user_id",
+      "stmt_md5": "a2c6e06f41643a47676650983b7015af"
+    },
+    {
+      "version": "20260527000007",
+      "name": "rbac_phase3_contracts",
+      "stmt_md5": "38eaa99ecdb7cd7d59f92feb1707180b"
+    },
+    {
+      "version": "20260527000008",
+      "name": "rbac_phase4_buildings_rooms",
+      "stmt_md5": "9380a3ddd5165e9cd9ca7969b7e5bf18"
+    },
+    {
+      "version": "20260527000009",
+      "name": "rbac_phase5_misc",
+      "stmt_md5": "741b67a7bbf78c572e20a054c0f9fd9e"
+    },
+    {
+      "version": "20260527000010",
+      "name": "rbac_phase6_annotate_user_id",
+      "stmt_md5": "a6fac8cb96e5d4df2d2350bf8082d42c"
+    },
+    {
+      "version": "20260527000051",
+      "name": "invoice_previous_debt",
+      "stmt_md5": "a3a3f1fa9d12a22fefe7358af15100dd"
+    },
+    {
+      "version": "20260527000053",
+      "name": "rbac_helpers",
+      "stmt_md5": "912aea9b90f937d6d96382b9eb6580cd"
+    },
+    {
+      "version": "20260527000054",
+      "name": "rbac_phase2_policies_invoices_payments_ie",
+      "stmt_md5": "555e241c95f1c7cfc09b402fcfd139ca"
+    },
+    {
+      "version": "20260527000055",
+      "name": "rbac_phase2_rpc_v2",
+      "stmt_md5": "2f777a9e894015973c9b075771808f68"
+    },
+    {
+      "version": "20260527000061",
+      "name": "rounding_under_10k",
+      "stmt_md5": "551376577dff3a7eb6bc3ea38fe2c328"
+    },
+    {
+      "version": "20260528000001",
+      "name": "rbac_batch_a_config_tables",
+      "stmt_md5": "74090db3719dec9583d23b1cf1a2776e"
+    },
+    {
+      "version": "20260528000002",
+      "name": "rbac_batch_c_rpc_v2",
+      "stmt_md5": "8d7160b1f459c6d20c0e1edd559b7e54"
+    },
+    {
+      "version": "20260528000003",
+      "name": "rbac_batch_f_drop_legacy",
+      "stmt_md5": "e5046f2a1015ad876fc32b7600bd973a"
+    },
+    {
+      "version": "20260528000004",
+      "name": "rbac_batch_f_drop_rpc_v1",
+      "stmt_md5": "9cb3491c1d8d2c50a8029d4bfd8c1df4"
+    },
+    {
+      "version": "20260528000005",
+      "name": "drop_beds",
+      "stmt_md5": "5896144f528bcc3466caf02d3a86804f"
+    },
+    {
+      "version": "20260528000006",
+      "name": "drop_beds_fix_triggers",
+      "stmt_md5": "005f2f4bb7d852c4f5f0d21706067b3b"
+    },
+    {
+      "version": "20260528000007",
+      "name": "drop_beds_fix_rpcs",
+      "stmt_md5": "9464e0cb5c554ae61402257d4896f5d3"
+    },
+    {
+      "version": "20260528000008",
+      "name": "fix_asset_trigger_no_op",
+      "stmt_md5": "ed99d99d5f419d549325dce54632095c"
+    },
+    {
+      "version": "20260528000009",
+      "name": "income_expense_verified",
+      "stmt_md5": "5881194f7425d849f4a8735c06794b13"
+    },
+    {
+      "version": "20260529000001",
+      "name": "per_staff_permissions",
+      "stmt_md5": "910fb60285d064e22e34cadbdff0984b"
+    },
+    {
+      "version": "20260529000002",
+      "name": "seed_system_role_templates",
+      "stmt_md5": "1900820c511a61d668a1227a1efa0f2e"
+    },
+    {
+      "version": "20260529000003",
+      "name": "deposit_unify",
+      "stmt_md5": "148623e13c20626868037b50b5b59546"
+    },
+    {
+      "version": "20260529000004",
+      "name": "create_materials_inventory",
+      "stmt_md5": "6b5532a8d6a2a36cb86ce242b65e4687"
+    },
+    {
+      "version": "20260530000000",
+      "name": "fix_dangling_bed_refs_after_drop_beds",
+      "stmt_md5": "e9d92c0548a40781ee7e10aa47dc2c6a"
+    },
+    {
+      "version": "20260530000001",
+      "name": "forfeit_keep_partial_paid_revenue",
+      "stmt_md5": "a6e90293deaa30a6e66c366029aedea2"
+    },
+    {
+      "version": "20260530000002",
+      "name": "recompute_preserve_cancelled",
+      "stmt_md5": "44d9f9f7040660c7c16f6533cb982bd0"
+    },
+    {
+      "version": "20260530000003",
+      "name": "contract_public_short_code",
+      "stmt_md5": "17190bb0711d6b1627991b72e55679e0"
+    },
+    {
+      "version": "20260531000001",
+      "name": "business_result_accounting",
+      "stmt_md5": "d84b090e430839e5c9ac66ba0df78024"
+    },
+    {
+      "version": "20260531000002",
+      "name": "termination_split_deposit_refund",
+      "stmt_md5": "368163829154991caaeb5c389e8488e9"
+    },
+    {
+      "version": "20260601000000",
+      "name": "remove_tax_fields",
+      "stmt_md5": "fff070b2e31212a87b786f9bd6c70e0e"
+    },
+    {
+      "version": "20260601000001",
+      "name": "ie_fund_owner_select",
+      "stmt_md5": "1a33b02b89c3e61f3dd9b443cbb2b795"
+    },
+    {
+      "version": "20260601000100",
+      "name": "sec_contract_rpc_authz_and_anon_revoke",
+      "stmt_md5": "901d827048c878a01b7ebd6402f41262"
+    },
+    {
+      "version": "20260601000200",
+      "name": "sec_private_buckets",
+      "stmt_md5": "2a454f04b01dd9cf15a0bdbb26a57996"
+    },
+    {
+      "version": "20260601000300",
+      "name": "drop_bed_remnants_db",
+      "stmt_md5": "888f40310b45bbac0e6be193a1c7cc15"
+    },
+    {
+      "version": "20260602000001",
+      "name": "accounts_quick_default_building",
+      "stmt_md5": "e83866312320970f70a1a69c97072855"
+    },
+    {
+      "version": "20260603000001",
+      "name": "shareholder_profit_module",
+      "stmt_md5": "a6142e503d6d773c5bbcb90bab83a5cf"
+    },
+    {
+      "version": "20260603000002",
+      "name": "ie_all_buildings_permission",
+      "stmt_md5": "78657f05f9d6c771674f56d90d03bfc4"
+    },
+    {
+      "version": "20260603000003",
+      "name": "contract_deposit_debt_ack",
+      "stmt_md5": "03f61710e03faeac6f6793d9c76bd929"
+    },
+    {
+      "version": "20260603000010",
+      "name": "recurring_vouchers_rewrite",
+      "stmt_md5": "d9e52929351bbfec87c954b53ce5be81"
+    },
+    {
+      "version": "20260603000011",
+      "name": "recurring_vouchers_cron",
+      "stmt_md5": "b6bbbb53220a0434bc85d3a703e70f3f"
+    },
+    {
+      "version": "20260603000020",
+      "name": "termination_net_settlement",
+      "stmt_md5": "c9fdbeb6777f5fc3c9d8bdcb25fba500"
+    },
+    {
+      "version": "20260603000021",
+      "name": "termination_pick_account_building_cashbook",
+      "stmt_md5": "1846f9f8b73873adcc9ebf9cce3c5033"
+    },
+    {
+      "version": "20260603000022",
+      "name": "termination_deposit_book_transfer",
+      "stmt_md5": "5563a2ec6158ad486df715e20ba1e360"
+    },
+    {
+      "version": "20260603000100",
+      "name": "recreate_transfer_room_no_bed",
+      "stmt_md5": "9735ed0bccd67c55f89fedb9be86863d"
+    },
+    {
+      "version": "20260606120000",
+      "name": "public_room_share_phong_trong",
+      "stmt_md5": "1536812b5798dc2d792db2ee5a9fd1b8"
+    },
+    {
+      "version": "20260606140000",
+      "name": "contract_extended_decouple",
+      "stmt_md5": "44882d73782dbf301c10d8fe671ce5dd"
+    },
+    {
+      "version": "20260607090000",
+      "name": "public_room_settings",
+      "stmt_md5": "f3fcc09cac29a9193b15b7f0cd514ec9"
+    },
+    {
+      "version": "20260607090100",
+      "name": "building_floor_layouts",
+      "stmt_md5": "3930826a8978a434c8193711a4b17da0"
+    },
+    {
+      "version": "20260607090200",
+      "name": "room_sale_images_bucket",
+      "stmt_md5": "42a01d0f699158204124b131682726f2"
+    },
+    {
+      "version": "20260607090300",
+      "name": "create_public_room_token_rpc",
+      "stmt_md5": "e6d74062ec330f44dfb14633a87cec73"
+    },
+    {
+      "version": "20260607090400",
+      "name": "get_public_available_rooms_v2",
+      "stmt_md5": "92d67b30ed2ed826e30e61c5b4c9f34a"
+    },
+    {
+      "version": "20260607120000",
+      "name": "room_sale_note",
+      "stmt_md5": "70d23601d6e2d34fa67c8b6ff2183d8d"
+    },
+    {
+      "version": "20260607130000",
+      "name": "room_type",
+      "stmt_md5": "9ac9c95f0bc18ac470d5cb2795960594"
+    },
+    {
+      "version": "20260607140000",
+      "name": "room_sale_bonus_building_public_contact",
+      "stmt_md5": "7bd51b8f13c1ba1f300102a32a94b1a3"
+    },
+    {
+      "version": "20260607150000",
+      "name": "building_public_elec_lift",
+      "stmt_md5": "b27d9f50508ebaa9a5d9e04ace4fec58"
+    },
+    {
+      "version": "20260608000000",
+      "name": "room_reservation_reconcile",
+      "stmt_md5": "89a98aaf0b486676d7dae46292449626"
+    },
+    {
+      "version": "20260608100000",
+      "name": "ensure_room_deposit_type_rpc",
+      "stmt_md5": "e930f271b90c5b19b672dc3f84532167"
+    },
+    {
+      "version": "20260610100000",
+      "name": "invoice_stats_building_ids",
+      "stmt_md5": "d74075dc469e7dad9f2ca0e5c21453f2"
+    },
+    {
+      "version": "20260610110000",
+      "name": "perf_indexes_cashbook_rpc",
+      "stmt_md5": "cf88cec07cdf43a0ad0ad71c0c8b93e5"
+    },
+    {
+      "version": "20260610130000",
+      "name": "cash_handover",
+      "stmt_md5": "c7e0f9fdc4746127799ae274f25c70c7"
+    },
+    {
+      "version": "20260611100000",
+      "name": "area_buildings_m2m",
+      "stmt_md5": "09c23d146a3b1b432fb9ecc3ed4da797"
+    },
+    {
+      "version": "20260611110000",
+      "name": "staff_assignments_area_scope",
+      "stmt_md5": "f87ff3f172185d1245fe3a17c5fdae1a"
+    },
+    {
+      "version": "20260611120000",
+      "name": "area_id_dependents_rewrite",
+      "stmt_md5": "a610fd23ab4df6685385839f2e7bd729"
+    },
+    {
+      "version": "20260611130000",
+      "name": "drop_buildings_area_id",
+      "stmt_md5": "1849e56e3ab1e0edc426edf1ac6f1367"
+    },
+    {
+      "version": "20260611140000",
+      "name": "financial_analysis_rpcs",
+      "stmt_md5": "022feef17807229d046368ab93dadb59"
+    },
+    {
+      "version": "20260613000000",
+      "name": "ie_restricted_categories",
+      "stmt_md5": "995719cea0cd452bd4e909eb5244b5e9"
+    },
+    {
+      "version": "20260613100000",
+      "name": "cash_handover_batched_transfer",
+      "stmt_md5": "33d99107ec0c88bd36e359b807b2e75e"
+    },
+    {
+      "version": "20260617090000",
+      "name": "room_pass_listings",
+      "stmt_md5": "ef056d3efb6b4e29d53a55a1946fe143"
+    },
+    {
+      "version": "20260617090100",
+      "name": "get_public_available_rooms_pass",
+      "stmt_md5": "fecdf24f5d5f996061dcd5ced2b3a846"
+    },
+    {
+      "version": "20260617091000",
+      "name": "fix_recurring_voucher_encoding",
+      "stmt_md5": "86112b8c56f2c83dfd66bff8b6169e7b"
+    },
+    {
+      "version": "20260617100000",
+      "name": "room_pass_listings_enhance",
+      "stmt_md5": "c9476abefc08ef2d15dfb4bc7cdb5161"
+    },
+    {
+      "version": "20260617100100",
+      "name": "get_public_available_rooms_pass_availdate",
+      "stmt_md5": "a65a014dfdab6ba8c5c1d812db4a8250"
+    },
+    {
+      "version": "20260618000001",
+      "name": "forfeit_use_paid_deposit",
+      "stmt_md5": "d1c5588093b7be0a3060df8312dd1555"
+    },
+    {
+      "version": "20260619000001",
+      "name": "cash_handover_single_voucher",
+      "stmt_md5": "931bfb77262cb33389ad02374d0fdcca"
+    },
+    {
+      "version": "20260619120000",
+      "name": "teams",
+      "stmt_md5": "7874d2156f0e475a86059bfc2892cd31"
+    },
+    {
+      "version": "20260619140000",
+      "name": "handover_detailed_note",
+      "stmt_md5": "1248f9718ad52a6cc844d9d14ea134fe"
+    },
+    {
+      "version": "20260620000000",
+      "name": "building_utility_accounts",
+      "stmt_md5": "6b12fb0c5062b156f9bdf40180b31260"
+    },
+    {
+      "version": "20260621000001",
+      "name": "stat_breakdown_rpcs",
+      "stmt_md5": "3f3f6aa4943431d459243fde1dbc015f"
+    },
+    {
+      "version": "20260621100000",
+      "name": "public_room_analytics",
+      "stmt_md5": "9207de9c7c9b0b769beea433b907dfde"
+    },
+    {
+      "version": "20260621100100",
+      "name": "public_room_analytics_reports",
+      "stmt_md5": "64af988b06b7c21b6b9f1fe5cf5c37b8"
+    },
+    {
+      "version": "20260621110000",
+      "name": "deposit_breakdown_invoice_link",
+      "stmt_md5": "433142789b26a2a1cab66e7d0750fb68"
+    },
+    {
+      "version": "20260624000000",
+      "name": "get_my_available_rooms",
+      "stmt_md5": "5411011ce93beeb8b941c21e93d6984d"
+    },
+    {
+      "version": "20260626000000",
+      "name": "fa_accrual_pnl",
+      "stmt_md5": "2a47de7a3dc126c599fdebdcd8a5144d"
+    },
+    {
+      "version": "20260626000001",
+      "name": "zalo_chat_schema",
+      "stmt_md5": "f2918e1ad19b8a33f8c2aa33a806c440"
+    },
+    {
+      "version": "20260626000002",
+      "name": "zalo_realtime",
+      "stmt_md5": "1e23ab63be8acd1a331bced1e8de7b3e"
+    },
+    {
+      "version": "20260626000003",
+      "name": "zalo_account_connect",
+      "stmt_md5": "e728ba94a29614c1611f4d3d53dc9f2a"
+    },
+    {
+      "version": "20260626000004",
+      "name": "zalo_message_dedup",
+      "stmt_md5": "47cb51c6010da96bbb4bd96ad82d0d1f"
+    },
+    {
+      "version": "20260626000005",
+      "name": "zalo_chat_actions",
+      "stmt_md5": "0f6c29ed51465525d4917717f580c576"
+    },
+    {
+      "version": "20260626000006",
+      "name": "zalo_video_msgtype",
+      "stmt_md5": "709882970b9a6eb92eef32ca8ed407ca"
+    },
+    {
+      "version": "20260626000007",
+      "name": "zalo_labels",
+      "stmt_md5": "c2780d297a3792353f5aee558a3cdae4"
+    },
+    {
+      "version": "20260626000008",
+      "name": "zalo_broadcast",
+      "stmt_md5": "0005ee668cc4f7dfbb1c8ceaedf762a0"
+    },
+    {
+      "version": "20260627000001",
+      "name": "profiles_ui_preferences",
+      "stmt_md5": "a44dda7054e56ce923427f74889ad52a"
+    },
+    {
+      "version": "20260627000002",
+      "name": "ie_types_hide_in_report",
+      "stmt_md5": "aeed4d6423cc044b4dc078a807aaea31"
+    },
+    {
+      "version": "20260627120000",
+      "name": "fix_get_my_available_rooms_area_ids",
+      "stmt_md5": "e3961f34ffbf31848197e7d60b94fc21"
+    },
+    {
+      "version": "20260628000001",
+      "name": "acceptance_geofence",
+      "stmt_md5": "0f6c786b0f30a6fd9363bc260c6c5758"
+    },
+    {
+      "version": "20260628000002",
+      "name": "salary_config_room",
+      "stmt_md5": "271bb9393dcf6f710df49d6d4a757792"
+    },
+    {
+      "version": "20260629000000",
+      "name": "public_rooms_moveout_respect_soon_window",
+      "stmt_md5": "376dc2e1dca2556ca7932783e64b0e02"
+    },
+    {
+      "version": "20260629000001",
+      "name": "completion_address",
+      "stmt_md5": "a72aef1573f7ebf4540e2147fd5aa53c"
+    },
+    {
+      "version": "20260629000003",
+      "name": "salary_staff_visible_months",
+      "stmt_md5": "69f427147fbcddc1a0388656b61d5e07"
+    },
+    {
+      "version": "20260629000004",
+      "name": "salary_ledger_owner_scope_fix",
+      "stmt_md5": "395c363e6fff83b17fb8b31d8ff141ba"
+    },
+    {
+      "version": "20260629000010",
+      "name": "notification_type_salary_bonus",
+      "stmt_md5": "bad6302259a3ea259e7b3e618474754c"
+    },
+    {
+      "version": "20260629000011",
+      "name": "award_job_bonus",
+      "stmt_md5": "b571bcf7a22f812920c5609794e3ecae"
+    },
+    {
+      "version": "20260629000020",
+      "name": "profit_manager_salary",
+      "stmt_md5": "d2e874584ecd975ca2b882400b1bb8fe"
+    },
+    {
+      "version": "20260629100000",
+      "name": "room_pass_listings_contact_manager",
+      "stmt_md5": "15ce40c87ce1501fd16600b5d22e7048"
+    },
+    {
+      "version": "20260630000001",
+      "name": "bonus_rules_contract_combo",
+      "stmt_md5": "f587482ec2acc85c14e80b8c214dcced"
+    },
+    {
+      "version": "20260630000002",
+      "name": "ledger_drop_contract_branch",
+      "stmt_md5": "71b208a8394fbfbf21d2d22ed6022994"
+    },
+    {
+      "version": "20260630000003",
+      "name": "award_job_bonus_note",
+      "stmt_md5": "a9c8b846ce24a5fbd2baf7d90590505e"
+    },
+    {
+      "version": "20260630000004",
+      "name": "income_expense_restore_and_audit",
+      "stmt_md5": "1ef179ada55b94dc2e446d8137bf006f"
+    },
+    {
+      "version": "20260630000005",
+      "name": "award_job_bonus_time_context",
+      "stmt_md5": "a73bcd7225c6665507631ece16deba7d"
+    },
+    {
+      "version": "20260630120000",
+      "name": "optimize_invoice_statistics_v2",
+      "stmt_md5": "a97682364ce0b032a099190955e8f9f8"
+    },
+    {
+      "version": "20260701000001",
+      "name": "secdef_code_generators",
+      "stmt_md5": "7bfb4551cfd2116ca36838294a046e0e"
+    },
+    {
+      "version": "20260701120000",
+      "name": "cash_handover_net_sweep",
+      "stmt_md5": "ef3730c44d842bd412f3971db67f6db8"
+    },
+    {
+      "version": "20260701130000",
+      "name": "cashbook_reconciliation_report",
+      "stmt_md5": "4c7c49c64463c5de49fc045fe85d8d0f"
+    },
+    {
+      "version": "20260701140000",
+      "name": "reconciliation_fixes",
+      "stmt_md5": "7fda4920d3d18322af4871bd735f3a69"
+    },
+    {
+      "version": "20260701150000",
+      "name": "profiles_super_admin_visible",
+      "stmt_md5": "f3a806f656bca85077f2a6c14a6d3ebb"
+    },
+    {
+      "version": "20260701160000",
+      "name": "manager_collection_cycle_report",
+      "stmt_md5": "98129ec8637b80ac087f1f4bcb95d67c"
+    },
+    {
+      "version": "20260701170000",
+      "name": "shareholder_scope_split",
+      "stmt_md5": "7584d457c9bd8af02cd9b74f974d0c39"
+    },
+    {
+      "version": "20260702100000",
+      "name": "invoice_room_natural_sort",
+      "stmt_md5": "e5cd220d78ffa5e10694fb2d77004111"
+    },
+    {
+      "version": "20260702120000",
+      "name": "kqkd_item_level",
+      "stmt_md5": "91395f4f346b884b80411d20883be590"
+    },
+    {
+      "version": "20260702130000",
+      "name": "deposit_recompute_on_last_delete",
+      "stmt_md5": "1e34cbd2af7a8bcb519f714f319c96f9"
+    },
+    {
+      "version": "20260702150000",
+      "name": "rls_initplan_setbased_select",
+      "stmt_md5": "8ca63f626541ccc590d2158245b1dab6"
+    },
+    {
+      "version": "20260703000001",
+      "name": "v5_foundation",
+      "stmt_md5": "3870ecf0cb08ac24e382d99f58a25db8"
+    },
+    {
+      "version": "20260703000002",
+      "name": "v5_engine",
+      "stmt_md5": "419dbe17330436d6fc4b73e475f46c2b"
+    },
+    {
+      "version": "20260703000003",
+      "name": "v5_jobs",
+      "stmt_md5": "21f118e6bb9288a6418a1fafa645a446"
+    },
+    {
+      "version": "20260703000004",
+      "name": "v5_myday",
+      "stmt_md5": "fb3f3926d65ce63f123fce4ca265eed0"
+    },
+    {
+      "version": "20260703000005",
+      "name": "v5_money_lock",
+      "stmt_md5": "15ec5e506948300f51952b1a05790a58"
+    },
+    {
+      "version": "20260703100000",
+      "name": "org_entity_tenant_guard",
+      "stmt_md5": "a1a4b6152274307b0f86c160e1967c53"
+    },
+    {
+      "version": "20260703110000",
+      "name": "hide_demo_from_real_admins",
+      "stmt_md5": "dc164aeecea12ea380b8bcd6cfc411d8"
+    },
+    {
+      "version": "20260703160000",
+      "name": "approve_voucher_permission_guard",
+      "stmt_md5": "3c52ea5ee142db0513ad56a5cc561db5"
+    },
+    {
+      "version": "20260703161000",
+      "name": "ie_select_policies_setbased",
+      "stmt_md5": "0c7b78464e1780cafdee8fe702d2b748"
+    },
+    {
+      "version": "20260703162000",
+      "name": "monthly_building_profit_tenant_aware",
+      "stmt_md5": "6b7a41957b078324dd785ba036957edc"
+    },
+    {
+      "version": "20260703170000",
+      "name": "write_policies_setbased",
+      "stmt_md5": "9fc52fc337e3961b8afd3d0f65a000d6"
+    },
+    {
+      "version": "20260703180000",
+      "name": "dashboard_summary_rpc",
+      "stmt_md5": "89f3710490b37b0bf04d56f1304af51e"
+    },
+    {
+      "version": "20260704090000",
+      "name": "termination_refund_single_draft_voucher",
+      "stmt_md5": "c57c0f54a7f68d20225413b2040bd843"
+    },
+    {
+      "version": "20260704100000",
+      "name": "accounts_is_virtual",
+      "stmt_md5": "c986c7fc85a00d36bcd35810ac48bc09"
+    },
+    {
+      "version": "20260704110000",
+      "name": "income_expenses_system_source",
+      "stmt_md5": "76c137e341741915b9e649087960c3cf"
+    },
+    {
+      "version": "20260704120000",
+      "name": "realtime_business_tables",
+      "stmt_md5": "ec0969a3ed6eaea1516e2f34f93987fa"
+    },
+    {
+      "version": "20260704130000",
+      "name": "income_expense_layer_stats_rpc",
+      "stmt_md5": "cbcf2010208607ce26bc18defa070602"
+    },
+    {
+      "version": "20260704140000",
+      "name": "layer_stats_pending_split",
+      "stmt_md5": "2e10b37860ec8843cf49ed2f1e4e3a69"
+    },
+    {
+      "version": "20260704150000",
+      "name": "create_opening_adjustment",
+      "stmt_md5": "c768338a8c0598423dde50410ce25afc"
+    },
+    {
+      "version": "20260704160000",
+      "name": "demo_reset_unlock_accounts",
+      "stmt_md5": "9030bc239091abc05a97720f63ecc2e2"
+    },
+    {
+      "version": "20260704170000",
+      "name": "cashbook_cleanup_deposit_account",
+      "stmt_md5": "06dac463592ab76bece7aeed9bb9d77e"
+    },
+    {
+      "version": "20260704180000",
+      "name": "views_security_invoker",
+      "stmt_md5": "d30ad35dbac38329540a3e378b58468d"
+    },
+    {
+      "version": "20260704210000",
+      "name": "merge_virtual_chung_into_kho",
+      "stmt_md5": "ef9918f236ddafc1d9087eed11dc46a6"
+    },
+    {
+      "version": "20260705120000",
+      "name": "add_has_elevator_to_buildings",
+      "stmt_md5": "d5cddc8e0ce28d9ee47a66ed04c5a222"
+    },
+    {
+      "version": "20260705130000",
+      "name": "shareholder_read_ie_types",
+      "stmt_md5": "eeaa5a0c1e056234cf2922ef74eb3f10"
+    },
+    {
+      "version": "20260705210000",
+      "name": "stats_rpc_contract_customer",
+      "stmt_md5": "67d1f1bedcdf3dac0620e4b953a44bbf"
+    },
+    {
+      "version": "20260706120000",
+      "name": "fix_invoice_number_generator_max_global",
+      "stmt_md5": "56c1146abc9ae372d410c43a16fbac4c"
+    },
+    {
+      "version": "20260708100000",
+      "name": "pay_utility_bill_account_attachments",
+      "stmt_md5": "63b26bffc0522b66759171da9d4f30f5"
+    },
+    {
+      "version": "20260708100001",
+      "name": "cancel_utility_bill",
+      "stmt_md5": "7eb56660f05d6576da6e9e9e85eae6f3"
+    },
+    {
+      "version": "20260708110000",
+      "name": "utility_multi_meter",
+      "stmt_md5": "ab5877faf0ef428664249e97cca18ffb"
+    },
+    {
+      "version": "20260708130000",
+      "name": "building_fee_accounts",
+      "stmt_md5": "c16c4236e361acbdfbd92d55c660c09d"
+    },
+    {
+      "version": "20260708130100",
+      "name": "nrm_vn_resolve_fixed_expense_type",
+      "stmt_md5": "3fe1f1d6f74879d222695815ec8fdf00"
+    },
+    {
+      "version": "20260708130200",
+      "name": "pay_period_fee",
+      "stmt_md5": "ebc306a6cf60f09d6694be8923c20d2f"
+    },
+    {
+      "version": "20260708130300",
+      "name": "get_period_fee_status",
+      "stmt_md5": "77e66b338a6f376d9ab2b70767b3115c"
+    },
+    {
+      "version": "20260708130400",
+      "name": "get_period_commissions",
+      "stmt_md5": "c7653070018c376ad8506015fb9a1571"
+    },
+    {
+      "version": "20260708130500",
+      "name": "get_period_maintenance",
+      "stmt_md5": "1fbe126f98b651dacc34a70894112208"
+    },
+    {
+      "version": "20260708130600",
+      "name": "update_period_fee",
+      "stmt_md5": "ee776b15ccd87f05cda82fac747385b2"
+    },
+    {
+      "version": "20260709100000",
+      "name": "settlement_invoice_kind",
+      "stmt_md5": "6e14c744f78bbf1f8a3957fa4ab24e77"
+    },
+    {
+      "version": "20260709110000",
+      "name": "ie_commission_kind_unique",
+      "stmt_md5": "25501de36800c9cc2bb0680be47b6dc1"
+    },
+    {
+      "version": "20260709110001",
+      "name": "create_commission_voucher_rpc",
+      "stmt_md5": "ad396b38268a8445c89c240250eeec9e"
+    },
+    {
+      "version": "20260709120000",
+      "name": "buildings_hidden_fixed_expenses",
+      "stmt_md5": "0ddcc1a2cd10e25d2c017e486ff862a3"
+    },
+    {
+      "version": "20260710120000",
+      "name": "period_fee_status_v2",
+      "stmt_md5": "68ae5d8035b94e1d857a273c9e05ddf9"
+    },
+    {
+      "version": "20260710120100",
+      "name": "pay_update_cancel_v2",
+      "stmt_md5": "400d7bdddcfbfaf8089cb61d44cf6810"
+    },
+    {
+      "version": "20260710120200",
+      "name": "get_period_commissions_v2",
+      "stmt_md5": "1b4314b4ed2078c26eda5e6ccd48e089"
+    },
+    {
+      "version": "20260710120300",
+      "name": "recurring_draft_mode",
+      "stmt_md5": "298001d10fc15b079e694da6adc89e7a"
+    },
+    {
+      "version": "20260710120400",
+      "name": "backfill_defaults_elevator",
+      "stmt_md5": "77660239904e1d66d57fd9a37da168be"
+    },
+    {
+      "version": "20260710120500",
+      "name": "append_fee_attachment",
+      "stmt_md5": "716d3f869b892126fb994baf7831f960"
+    },
+    {
+      "version": "20260710120600",
+      "name": "unify_not_applicable",
+      "stmt_md5": "5df2ebeb9e7cc5416c3e4790fcb714de"
+    },
+    {
+      "version": "20260710130000",
+      "name": "security_cross_tenant_hotfix",
+      "stmt_md5": "eb982d705d4220005985bbf497001f74"
+    },
+    {
+      "version": "20260710130500",
+      "name": "revoke_internal_definer_grants",
+      "stmt_md5": "9127a5dc42dd476c266d7c49667e40b3"
+    },
+    {
+      "version": "20260710140000",
+      "name": "rls_initplan_wrap_remaining",
+      "stmt_md5": "23fd96fc8513453f8fffdf54f3ab4159"
+    },
+    {
+      "version": "20260710150000",
+      "name": "tenant_isolation_hardening",
+      "stmt_md5": "f1f81b71b78f38aa33e272934fa496f2"
+    },
+    {
+      "version": "20260710160000",
+      "name": "recreate_forfeit_settle_trigger",
+      "stmt_md5": "4929585ca66768f9c2e567d3d161881e"
+    },
+    {
+      "version": "20260710170000",
+      "name": "money_aggregate_rpcs",
+      "stmt_md5": "3fa910dee0f0955b9923a47190d62727"
+    },
+    {
+      "version": "20260710180000",
+      "name": "occupancy_v2_rpcs",
+      "stmt_md5": "6655612035905e8e4d09308774d32148"
+    },
+    {
+      "version": "20260710190000",
+      "name": "drop_legacy_ai_assistant",
+      "stmt_md5": "7ab502448d2081c68414340b802b8d5f"
+    },
+    {
+      "version": "20260710200000",
+      "name": "ai_copilot_backend",
+      "stmt_md5": "5c43d8dd5bad5390588d1af3d361d242"
+    },
+    {
+      "version": "20260711050000",
+      "name": "ai_write_audit",
+      "stmt_md5": "eb783e0d9b3baa3acaa28ecae19f9e34"
+    },
+    {
+      "version": "20260711160000",
+      "name": "seed_9router_provider",
+      "stmt_md5": "f33a975149c9f02dbdfc06436f2acadf"
+    },
+    {
+      "version": "20260712020000",
+      "name": "9router_cloud_vps",
+      "stmt_md5": "672ff69cb5f143119fe02465a600d2f4"
+    },
+    {
+      "version": "20260713090000",
+      "name": "sprint0_fail_closed_permissions",
+      "stmt_md5": "c76af70430a1cc0a8fe649590fa52a6a"
+    },
+    {
+      "version": "20260713091000",
+      "name": "sprint0_revoke_internal_definer",
+      "stmt_md5": "54889eef47e508f8efee768ce89b35f5"
+    },
+    {
+      "version": "20260713100000",
+      "name": "sprint1_organization_foundation",
+      "stmt_md5": "f5be874e512dcfecaa927ca72d7f65ad"
+    },
+    {
+      "version": "20260713110000",
+      "name": "sprint2a_rbac_schema",
+      "stmt_md5": "7013282cead1c5466983392402d81312"
+    },
+    {
+      "version": "20260713110100",
+      "name": "sprint2b_seed_permission_definitions",
+      "stmt_md5": "0e4c9d76a9259d19762852f90765a65b"
+    },
+    {
+      "version": "20260713110200",
+      "name": "sprint2c_materialize_rbac",
+      "stmt_md5": "ead15204da5ed484a729e03dc40fa142"
+    },
+    {
+      "version": "20260713110300",
+      "name": "sprint2d_authorize_v2",
+      "stmt_md5": "182072ade40dcf32449ca9047e0a73c2"
+    },
+    {
+      "version": "20260713110400",
+      "name": "sprint2e_shareholder_perm_overrides",
+      "stmt_md5": "bdfcfd93c040c651d2edccf6318294f3"
+    },
+    {
+      "version": "20260713120000",
+      "name": "sprint3a_org_rollout_all_tables",
+      "stmt_md5": "d4c21af7168c639c00c0c4eb7383d33d"
+    },
+    {
+      "version": "20260713121000",
+      "name": "sprint3b_org_autofill_and_boundary",
+      "stmt_md5": "beb150806add3f030ae6c833ab9adce8"
+    },
+    {
+      "version": "20260713130000",
+      "name": "sprint4a_approval_engine_schema",
+      "stmt_md5": "3c38f98e1081895c975c9ee843f112c3"
+    },
+    {
+      "version": "20260713130100",
+      "name": "sprint4b_seed_rules",
+      "stmt_md5": "450f5c3fb903c3785cefbd04e0797674"
+    },
+    {
+      "version": "20260713130200",
+      "name": "sprint4c_approval_rpcs",
+      "stmt_md5": "770fb8bafa802ab014dc43c55abd8b5d"
+    },
+    {
+      "version": "20260713140000",
+      "name": "sprint5a_financial_column_guard",
+      "stmt_md5": "de5469f32f0468cc3e162062bd6f5afc"
+    },
+    {
+      "version": "20260713150000",
+      "name": "sprint6a_definer_hygiene",
+      "stmt_md5": "f701c02f83d9a7bec29c82dd8f302285"
+    },
+    {
+      "version": "20260713160000",
+      "name": "sprint5b_payment_atomic_v3",
+      "stmt_md5": "1f1a0b95bcc3b24501d26dfce1dfb0bd"
+    },
+    {
+      "version": "20260713161000",
+      "name": "sprint5b2_v3_receipt_number",
+      "stmt_md5": "dadb45cab85d1b86ac4f656af7fca1ad"
+    },
+    {
+      "version": "20260713162000",
+      "name": "sprint5b3_v3_voucher_owner",
+      "stmt_md5": "c7b42964f7fefadb429da0528bbf7597"
+    },
+    {
+      "version": "20260716120000",
+      "name": "t1a_contain_approval_rpcs",
+      "stmt_md5": "549ca5eb30301ab1cf4b77ea65ddfc72"
+    },
+    {
+      "version": "20260716120100",
+      "name": "t2_seed_approval_permission_keys",
+      "stmt_md5": "f5dc97be5387292434d3439edf37f874"
+    },
+    {
+      "version": "20260716120200",
+      "name": "t5_infra_flags_and_invoice_settings",
+      "stmt_md5": "09ad4e77a466f2efa79ebe4d7edfcf59"
+    },
+    {
+      "version": "20260716120300",
+      "name": "t6a_exception_queue_harden_and_tracked_fallback",
+      "stmt_md5": "eb41a1377eb079896fa2a24c10ad3678"
+    },
+    {
+      "version": "20260716140000",
+      "name": "t6a_phase2_backfill_null_org",
+      "stmt_md5": "8010a2075fd79024edcb451db4ed2b4e"
+    },
+    {
+      "version": "20260716160000",
+      "name": "t5_meter_reading_canonical_writers",
+      "stmt_md5": "8010a2075fd79024edcb451db4ed2b4e"
+    },
+    {
+      "version": "20260716170000",
+      "name": "fix_autofill_org_min_uuid",
+      "stmt_md5": "c7f9483d017649f5652ddcb8d981f4da"
+    },
+    {
+      "version": "20260727010000",
+      "name": "openclaw_catalog_foundation",
+      "stmt_md5": "7780555bfc7a6a69ec41ff835d952422"
+    },
+    {
+      "version": "20260727015000",
+      "name": "openclaw_security_principals",
+      "stmt_md5": "6f263c9fbed8008020a3cec31e19fefc"
+    },
+    {
+      "version": "20260727020000",
+      "name": "openclaw_inbox_schema",
+      "stmt_md5": "d8cb28834025bfd34d868f5c12728ae4"
+    },
+    {
+      "version": "20260727025000",
+      "name": "openclaw_inbound_automation",
+      "stmt_md5": "c9c952905ad7578a59c6c007b1402cd4"
+    },
+    {
+      "version": "20260727030000",
+      "name": "openclaw_policy_automation_knowledge",
+      "stmt_md5": "1170a79d771cf07284af1580affa9d27"
+    },
+    {
+      "version": "20260727040000",
+      "name": "openclaw_delivery_audit_ops",
+      "stmt_md5": "ff5e4d4215ff2d118f67ad0ec01d6960"
+    },
+    {
+      "version": "20260727050000",
+      "name": "openclaw_access_policies",
+      "stmt_md5": "e557a4c6ee33b43958bbf4646f6df28f"
+    },
+    {
+      "version": "20260727060000",
+      "name": "openclaw_rpc_surface",
+      "stmt_md5": "be26c8b1c4a86f29202b00dd9047b2e4"
+    },
+    {
+      "version": "20260727070000",
+      "name": "openclaw_crm_event_sources",
+      "stmt_md5": "9aee64f7a993d382377bf8d99312aa8a"
+    },
+    {
+      "version": "20260727080000",
+      "name": "openclaw_realtime_allowlist",
+      "stmt_md5": "d5f49aef73556179aad194a9fc6e9a79"
+    },
+    {
+      "version": "20260727090000",
+      "name": "openclaw_maintenance_jobs",
+      "stmt_md5": "1ae2270c71dea6aa1c2f0482115cc315"
+    },
+    {
+      "version": "20260727095000",
+      "name": "openclaw_activation_guards",
+      "stmt_md5": "56e7e6a7eb981efcd59274c03d16874e"
+    }
+  ]
+}

@@ -593,6 +593,16 @@ jobs:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
         run: node scripts/check-realtime-descriptors.mjs
 
+      # Ledger supabase_migrations phải ĐỨNG YÊN: forward-only lane cố ý không
+      # backfill nó, nên mọi thay đổi nghĩa là ai đó đã dùng đường khác. Quan
+      # trọng vì migration-provenance.json xếp 351 file là `ledger-applied` DỰA
+      # TRÊN bảng này — viết lại bảng thì 351 khẳng định xuất xứ mất căn cứ mà
+      # không có lỗi nào phát ra.
+      - name: Sổ ledger migration không bị viết lại
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+        run: node scripts/check-migration-ledger-frozen.mjs
+
       # BA BIÊN mà hợp đồng chỉ là MỘT CHUỖI, và không trình biên dịch nào kiểm
       # được: tên RPC, slug Edge Function, tên bảng realtime. types.ts có kiểu RPC
       # nhưng chỉ che phần src/ được tsc soi — Edge Function chạy Deno, services/
