@@ -29,6 +29,7 @@ import {
 } from '@/hooks/useCashHandovers';
 import { ownCashAccountId } from '@/lib/cashAccount';
 import { fmtFull } from '@/lib/collect';
+import { friendlyError } from '@/lib/friendlyError';
 import {
   fmtDateTime,
   handoverStatusLabel,
@@ -136,7 +137,8 @@ export function HandoverSheet({ show, onClose }: Props) {
       setNote('');
       setTab('open');
     } catch (e) {
-      toast.error((e as Error).message);
+      const fe = friendlyError(e, 'Không tạo được phiên bàn giao');
+      toast.error(fe.title, { description: fe.description });
     }
   };
 
@@ -156,7 +158,8 @@ export function HandoverSheet({ show, onClose }: Props) {
       });
       toast.success(`Đã nhận ${fmtFull(h.total_amount)} — phiên ${res.code} hoàn tất, tiền đã vào sổ của bạn`);
     } catch (e) {
-      toast.error((e as Error).message);
+      const fe = friendlyError(e, 'Không xác nhận nhận được phiên bàn giao');
+      toast.error(fe.title, { description: fe.description });
     }
   };
 
@@ -168,7 +171,8 @@ export function HandoverSheet({ show, onClose }: Props) {
       setCancelFor(null);
       setCancelReason('');
     } catch (e) {
-      toast.error((e as Error).message);
+      const fe = friendlyError(e, 'Không gửi được yêu cầu hủy');
+      toast.error(fe.title, { description: fe.description });
     }
   };
 
@@ -177,7 +181,8 @@ export function HandoverSheet({ show, onClose }: Props) {
       await confirmCancelMut.mutateAsync({ handoverId: h.id });
       toast.success(`Đã hủy phiên ${h.code} — các phiếu thu được nhả về "Chưa bàn giao"`);
     } catch (e) {
-      toast.error((e as Error).message);
+      const fe = friendlyError(e, 'Không hủy được phiên bàn giao');
+      toast.error(fe.title, { description: fe.description });
     }
   };
 
@@ -186,7 +191,8 @@ export function HandoverSheet({ show, onClose }: Props) {
       await rejectCancelMut.mutateAsync({ handoverId: h.id });
       toast.success(mine ? `Đã thu hồi yêu cầu hủy phiên ${h.code}` : `Đã từ chối yêu cầu hủy phiên ${h.code}`);
     } catch (e) {
-      toast.error((e as Error).message);
+      const fe = friendlyError(e, 'Không xử lý được yêu cầu hủy');
+      toast.error(fe.title, { description: fe.description });
     }
   };
 

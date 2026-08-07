@@ -145,7 +145,9 @@ export const useCreateHandover = () => {
         p_voucher_ids: args.voucherIds,
         p_note: args.note ?? null,
       });
-      if (error) throw new Error(error.message);
+      // Ném NGUYÊN error (PostgrestError có .code) — new Error(error.message)
+      // làm rơi code, friendlyError hết nhận diện được 55000/42501.
+      if (error) throw error;
       return data as {
         id: string;
         code: string;
@@ -167,7 +169,7 @@ export const useConfirmHandover = () => {
         p_handover_id: args.handoverId,
         p_to_account_id: args.toAccountId ?? null,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return data as { id: string; code: string };
     },
     onSuccess: invalidate,
@@ -182,7 +184,7 @@ export const useRequestCancelHandover = () => {
         p_handover_id: args.handoverId,
         p_reason: args.reason,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return data as { id: string; code: string };
     },
     onSuccess: invalidate,
@@ -196,7 +198,7 @@ export const useConfirmCancelHandover = () => {
       const { data, error } = await supabase.rpc('confirm_cancel_handover', {
         p_handover_id: args.handoverId,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return data as { id: string; code: string };
     },
     onSuccess: invalidate,
@@ -210,7 +212,7 @@ export const useRejectCancelHandover = () => {
       const { data, error } = await supabase.rpc('reject_cancel_handover', {
         p_handover_id: args.handoverId,
       });
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       return data as { id: string; code: string };
     },
     onSuccess: invalidate,
