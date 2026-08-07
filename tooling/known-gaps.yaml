@@ -83,6 +83,30 @@ gaps:
       Bật PITR khi quy mô tiền/rủi ro đủ lớn để 100 USD/tháng là rẻ; hoặc rà lại sau 6 tháng
       xem RPO 24 giờ còn chấp nhận được không.
 
+  - id: ua-graph-stale
+    where: .ua/ (knowledge-graph.json, fingerprints.json, meta.json) — baseCommit d0ffb045, 29/07/2026
+    expires_at: 2026-09-30
+    why: >
+      Graph UA committed một lần duy nhất rồi không refresh: nay CŨ 488 commit / 1.345 file
+      lệch / thiếu 118 migration, và có 18 subsystem KHÔNG có node nào — gồm TRỌN VẸN
+      Network Center lẫn OpenClaw, tức hai hệ phức tạp nhất repo lại là hai hệ graph mù
+      hoàn toàn. Đăng ký 07/08/2026 vì luật #2 (chủ dự án bổ sung) đặt UA ở mức CẢNH BÁO
+      mặc định, nên mức lệch này KHÔNG làm đỏ CI — đúng thiết kế, nhưng cảnh báo không có
+      ngày hết hạn thì thành tiếng ồn nền rồi không ai đọc nữa.
+      ĐÃ ĐƯỢC CHE: scripts/check-graph-freshness.mjs in đủ bốn con số mỗi lần chạy;
+      `--nhiem-vu onboarding|architecture|domain-review|generated-docs` là HARD nên bốn
+      loại việc thực sự dựa vào graph sẽ bị chặn thay vì đọc dữ liệu 488 commit trước.
+      Trần hard-code trong script (200/500/30) bảo đảm không ai nới policy cho mức lệch
+      hiện tại đi qua.
+      CHƯA ĐƯỢC CHE: manifest ghi toolVersion 2.9.4 với toolVersionSource "attested" —
+      artifact KHÔNG tự ghi version, con số đó lấy từ pin của plan §18 chứ không phải đọc
+      ra từ graph. Nếu graph thật ra sinh bởi bản khác thì không cách nào biết cho tới lần
+      refresh tới.
+    exit_condition: >
+      Refresh UA trong PR RIÊNG (luật #6 — không kèm vào PR tính năng), manifest mới ghi
+      toolVersion đọc THẬT từ công cụ thay vì attested, và
+      `npm run gate:graph-freshness -- --nhiem-vu architecture` exit 0.
+
   - id: contract-type-handwritten-drift
     where: src/hooks/useContracts.ts (2 chỗ `as unknown as ContractWithRelations`)
     expires_at: 2026-11-30

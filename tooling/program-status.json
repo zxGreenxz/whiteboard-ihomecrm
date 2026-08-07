@@ -1,9 +1,55 @@
 {
   "$comment": "Nhịp tim của chương trình kiến trúc/agent (xem docs/whiteboard-ihomecrm-architecture-agent-plan-2026-08-05 (1).md). Chương trình một người chết trong im lặng — file này để mỗi session biết đang ở đâu mà không phải đọc lại 3000 dòng plan. Cập nhật khi trạng thái đổi, không phải mỗi commit.",
-  "updatedAt": "2026-08-06",
-  "currentWave": "5",
-  "waveTitle": "Typed RPC boundary — ratchet chặn thoái lui",
+  "updatedAt": "2026-08-07",
+  "currentWave": "5-6",
+  "waveTitle": "Công cụ tri thức + biên kiểu đã đóng — chương trình còn 3 mục bị CHỦ DỰ ÁN hoãn",
+  "$trangThai": "Đợt 0,1,2,3 xong. Đợt 4 xong TRỪ lát 3 (chủ dự án hoãn: lát đó đụng 2 dòng OpenClaw trong Sidebar/launcherTiles, mà OpenClaw đang được chính chủ code). Đợt 5 xong (ratchet cast về 0). Đợt 6 xong phần README + docs. Ba mục bị hoãn có CHỦ Ý, không phải bỏ quên — xem mảng `hoanCoChuY`.",
+  "hoanCoChuY": [
+    {
+      "item": "Đợt 4 lát 3: nối Sidebar + launcherTiles vào capability registry",
+      "quyetDinh": "Chủ dự án hoãn 07/08/2026",
+      "vi": "Lát này phải sửa 2 dòng OpenClaw trong Sidebar.tsx và launcherTiles.ts. Chủ dự án đang code chính phần OpenClaw nên mọi thay đổi ở đó sẽ đụng nhau. Rủi ro kỹ thuật của lát này vốn thấp nhất chương trình — hoãn vì lý do phối hợp, không vì lý do kỹ thuật."
+    },
+    {
+      "item": "Apply migration thật lên production",
+      "quyetDinh": "Chủ dự án hoãn 07/08/2026 (\"không gấp\")",
+      "vi": "Không có migration nào đang chờ apply. Đường apply đã có đủ 4 lớp chặn + backup bắt buộc + đã dry-run thật trên production (ROLLBACK). Chạy apply lúc này chỉ để diễn tập; không có gì hỏng nếu chưa chạy."
+    },
+    {
+      "item": "Bật PITR",
+      "quyetDinh": "Chủ dự án bỏ hẳn 06/08/2026",
+      "vi": "Add-on tính phí. Rủi ro ĐƯỢC CHẤP NHẬN và đã ghi ở known-gaps.yaml#pitr-disabled-accepted-risk: RPO tối đa ~24 giờ trên dữ liệu tiền thật; backup thủ công KHÔNG che được sự cố đến từ code chạy hằng ngày."
+    }
+  ],
   "done": [
+    {
+      "item": "✅ Đợt 5 (bước 3): any-cast Supabase 22 -> 0 ở 4 file tiền — sửa ở GỐC, không gỡ mù",
+      "evidence": "useContracts (12) · useVoucherDetail (5) · useCommissionVoucher (3) · useCashHandovers (2). Không chỗ nào bị gỡ suông: nguyên nhân gốc của 12 cast ở useContracts là fetchAllRows nhận builder rồi tự gọi .range() — supabase-js chỉ suy kiểu .select() từ chuỗi LITERAL, nên chuỗi ghép động luôn thành GenericStringError[]. Sửa bằng cách tách thành hai hằng literal + đổi chữ ký fetchAllRows sang thunk (án lệ customerCreditRpc.ts). Bậc hoa hồng và mảng đính kèm nay được KIỂM LÚC CHẠY qua jsonValue.ts thay vì khẳng định suông. Còn 2 khẳng định HẸP ở useContracts — đã đăng ký known-gaps#contract-type-handwritten-drift. rpc-cast-baseline hạ về 0."
+    },
+    {
+      "item": "✅ Gate chặn subscribe câm — bảng realtime hub lắng nghe phải được publish",
+      "evidence": "src/lib/realtime/syncTables.ts tách danh sách 13 bảng thành module dữ liệu thuần; union SyncTable nay SUY RA từ danh sách. scripts/check-realtime-descriptors.mjs đọc CHÍNH module đó qua vite-node (không chép tay) rồi đối chiếu pg_publication_tables. Đo: 13/13 bảng hub đều được publish, publication có 30 bảng. Vì sao cần: lệch chiều này im lặng TUYỆT ĐỐI — subscribe() vẫn trả SUBSCRIBED, không lỗi, không log, giao diện chỉ lặng lẽ ngừng tự cập nhật. Án lệ có thật trong file hub: contract_terminations + contract_transfers từng vắng ở CẢ HAI nơi."
+    },
+    {
+      "item": "✅ Cài GitNexus 1.6.9 qua wrapper pin (plan §14) — 25.430 node, 56.001 edge",
+      "evidence": "tooling/agent-tools.json fail-closed: status chỉ đổi sang verified SAU smoke test thật trên repo này (doctor exit 0, version 1.6.9, win32 node v22.20.0). scripts/run-pinned-gitnexus.mjs là CỬA DUY NHẤT gọi GitNexus — từ chối mọi subcommand ngoài `smoke` khi chưa verified, ép --skip-agents-md để không đè Contract. Phát hiện khi cài: cờ --skip-embeddings mà plan §14 chỉ định KHÔNG còn tồn tại ở 1.6.9; đã ghi lại trong agent-tools.json thay vì im lặng bỏ. Bẫy Windows: npx là npx.cmd, Node từ chối spawn .cmd khi shell:false (vá CVE-2024-27980) nhưng shell:true lại không bọc nháy đối số — mà đường dẫn repo có dấu cách."
+    },
+    {
+      "item": "✅ Cưỡng chế 6 luật quản trị graph tri thức (bổ sung của chủ dự án 07/08)",
+      "evidence": "Trước đó KHÔNG luật nào được cưỡng chế. scripts/check-graph-hygiene.mjs (CI blocking) giữ luật #3 hộ chiếu + #6 không auto-commit + GHIM 3 dòng Contract; scripts/check-graph-freshness.mjs (local) giữ #1 GitNexus hard cho medium/high-risk + #2 UA warning-mặc-định + #4 cấm nạp graph khi chưa có verdict. Script có TRẦN hard-code (200 commit / 500 file / 30 migration) nên không ai nới policy âm thầm để cho mức lệch đã đo 488/1345/118 đi qua. Đột biến 34 unit + 15 e2e."
+    },
+    {
+      "item": "✅ Vá 3 điểm mù trong chính các gate đang canh (gate xanh mà không kiểm gì)",
+      "evidence": "(a) check-permission-catalog: quyền bị GIẤU khỏi bảng phân quyền không được kiểm gì cả. (b) check-stable-fn-locks: mù với dạng `public\\.foo` và coi NHẮC-TÊN là GHIM-ĐỊNH-NGHĨA. (c) check-approver-provenance: \"có xuất xứ\" bị hiểu là \"khác NULL\", nên chuỗi rỗng tắt được cửa chặn. Cả ba là cùng MỘT mẫu lặp lại xuyên suốt repo: bộ lọc chỉ phủ MỘT biến thể (hoa/thường, kiểu xuống dòng, thư mục con, cú pháp khai báo, IS NULL vs chuỗi rỗng)."
+    },
+    {
+      "item": "✅ Backup: sửa bản dump ĐANG HỎNG, thêm kiểm toàn vẹn, chạy định kỳ, tự dọn, bắt buộc trước khi apply",
+      "evidence": "Bản dump đứt ở giây 344 vì thiếu TCP keepalive qua pooler — bằng chứng cũ (\"đã chạy thật 306 giây\") CHỨNG MINH NÓ TỪNG CHẠY, không chứng minh NÓ CÒN CHẠY. Đây là kiểu hỏng chính của cả chương trình, đã tái diễn hai lần trong một ngày (backup + baseline). Vá: keepalives=1&keepalives_idle=30 (verify 332 giây thành công), pg_restore --list đếm TABLE DATA với sàn 450. Giả thuyết \"loại bảng 48MB cho nhanh\" bị BÁC BỎ bằng đo: loại đi còn CHẬM HƠN (405s vs 332s) — nút cổ chai là độ trễ mỗi object, không phải kích thước; đã đảo cờ thành opt-in. Tác vụ Windows hằng tuần (CN 09:00) đã đăng ký thật."
+    },
+    {
+      "item": "✅ Baseline production ĐÃ ĐƯỢC KIỂM CHỨNG bằng diễn tập khôi phục thật trên Supabase",
+      "evidence": "Kết quả cuối: bảng 439/439 · view 14/14 · policy 1193/1193 · trigger 493/493 trên PostgreSQL 17.6 (cùng bản chính với production). NHƯNG lần chạy ĐẦU thất bại — và đó mới là giá trị: policy chỉ dựng 922/1193 (MẤT 271 hàng rào RLS) do pg_dump --schema-only KHÔNG dump role (role thuộc cấp cluster). Ghi chú cũ đoán \"role Supabase thật thì có sẵn\" — SAI: role thiếu là role của chính ứng dụng. Manifest luôn ghi đủ số vì nó đếm trên FILE chứ không đếm trên KẾT QUẢ khôi phục, nên trên giấy baseline lúc nào cũng đầy đủ. Đã thêm supabase/baseline/roles.sql + quy trình 3 bước (roles trước, schema HAI LƯỢT vì public.rooms có cột sinh tham chiếu tiến)."
+    },
     {
       "item": "Đợt 5 (bước 2): chứng minh 157/176 any-cast là THỪA, không cần facade",
       "evidence": "types.ts mô tả 648 function — phần lớn cast là di sản từ thời types.ts chưa đủ. Bỏ cast ở annotateMutations.ts rồi ĐỘT BIẾN chứng minh compiler bắt được: đổi p_voucher thành p_vouchr => 1 lỗi TS; đổi tên RPC => 1 lỗi TS; hoàn nguyên => 0 lỗi. Trước đó cả hai đều biên dịch sạch. scripts/find-removable-rpc-casts.mjs đo: 157 bỏ được ngay, 0 phải giữ, 16 cần xem tay. Ratchet hạ 176 -> 175."
@@ -135,9 +181,10 @@
   ],
   "blockers": [],
   "next": [
-    "Bỏ dần 157 cast còn lại theo domain, mỗi domain một commit kèm typecheck + test",
-    "Restore baseline vào Supabase project tạm",
-    "Đợt 4 lát 3: consumer sinh từ registry"
+    "Refresh graph UA trong PR RIÊNG (đang cũ 488 commit, thiếu 18 subsystem gồm toàn bộ Network Center + OpenClaw) — xem known-gaps#ua-graph-stale",
+    "Hoà giải ContractWithRelations với kiểu sinh từ types.ts để bỏ 2 khẳng định hẹp cuối cùng — known-gaps#contract-type-handwritten-drift",
+    "Mở rộng strict islands: mỗi lần dọn xong một module thì THÊM vào tsconfig.strict-islands.json (ratchet chỉ đi một chiều)",
+    "Khi chủ dự án báo xong OpenClaw: làm Đợt 4 lát 3"
   ],
   "knownDirtyFiles": [
     {
